@@ -73,7 +73,7 @@ N/A — see individual area files.
 | `rowDataUpdateStarted` | `RowDataUpdateStartedEvent<TData, TContext>` | Community | `04-data-updates.md` | Row data update is about to start; `firstRowData` is the first item in the new data. |
 | `pinnedRowDataChanged` | `PinnedRowDataChangedEvent<TData, TContext>` | Community | `16-pinning-and-layout.md` | **Deprecated** — use `pinnedRowsChanged` instead. |
 | `pinnedRowsChanged` | `PinnedRowsChangedEvent<TData, TContext>` | Community | `16-pinning-and-layout.md` | Pinned top or bottom rows change. |
-| `rowGroupOpened` | `RowGroupOpenedEvent<TData, TContext>` | Enterprise | `09-row-grouping.md` | A row group is expanded or collapsed; `expanded` indicates new state. |
+| `rowGroupOpened` | `RowGroupOpenedEvent<TData, TContext>` | Community | `09-row-grouping.md` | A row group, master row, or tree node is expanded or collapsed; `expanded` indicates new state. Event itself is core; row-grouping context requires `RowGroupingModule` (Enterprise). |
 | `rowValueChanged` | `RowValueChangedEvent<TData, TContext>` | Community | `06-cell-editing.md` | Full-row editing completes; fires once per row after all cell edits. |
 | `rowEditingStarted` | `RowEditingStartedEvent<TData, TContext>` | Community | `06-cell-editing.md` | Full-row edit mode begins. |
 | `rowEditingStopped` | `RowEditingStoppedEvent<TData, TContext>` | Community | `06-cell-editing.md` | Full-row edit mode ends. |

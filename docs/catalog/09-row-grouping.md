@@ -85,7 +85,7 @@ Key concepts:
 
 | Event | Payload | Tier | Fires when |
 |-------|---------|------|-----------|
-| `rowGroupOpened` | `RowGroupOpenedEvent { expanded: boolean; node: IRowNode; data: TData; rowIndex: number \| null }` | Enterprise | A group row is expanded or collapsed. `expanded` is `true` when opening. |
+| `rowGroupOpened` | `RowGroupOpenedEvent { expanded: boolean; node: IRowNode; data: TData; rowIndex: number \| null }` | Community | A group row is expanded or collapsed. `expanded` is `true` when opening. Event itself is core; the row-grouping behavior that triggers it requires `RowGroupingModule` (Enterprise). Also fires for master-detail (`13`) and tree data (`14`) expansion. |
 | `columnRowGroupChanged` | `ColumnRowGroupChangedEvent { column: Column \| null; columns: Column[] \| null; source: ColumnEventType }` | Enterprise | A column is added to or removed from the row-group hierarchy. |
 
 ## Behaviors / interactions

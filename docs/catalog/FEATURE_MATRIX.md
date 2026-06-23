@@ -416,7 +416,7 @@
 | 09 | collapseAll | Community | api | yes | P0 | Collapses all group nodes — primarily used with row grouping (Enterprise) |
 | 09 | setRowNodeExpanded | Community | api | no | P1 | Sets expanded state on a specific group node — primarily used with row grouping (Enterprise) |
 | 09 | onGroupExpandedOrCollapsed | Community | api | no | P1 | Signals grid that expansion state was mutated externally — primarily used with row grouping (Enterprise) |
-| 09 | rowGroupOpened | Enterprise | event | no | P0 | Group row expanded or collapsed |
+| 09 | rowGroupOpened | Community | event | no | P0 | Group row expanded or collapsed; event is core, row-group context needs RowGroupingModule (Enterprise) |
 | 09 | columnRowGroupChanged | Enterprise | event | no | P1 | Column added to or removed from group hierarchy |
 | 09 | groupDisplayType singleColumn mode | Enterprise | behavior | yes | P0 | All group levels share one auto column with indent |
 | 09 | groupDisplayType multipleColumns mode | Enterprise | behavior | no | P1 | One auto column generated per group level |
