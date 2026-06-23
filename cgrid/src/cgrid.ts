@@ -32,16 +32,23 @@ export type {
 } from './types';
 
 /**
- * Infer the row-ID field name from a `(row) => row.path.to.field` style accessor.
+ * Infer the row-ID field name from a `(row) => row.<field>` style accessor.
  * Exported as a top-level function so it can be unit-tested independently of CGrid.
+ *
+ * Foundation cycle: only top-level single-property accessors are supported.
+ * Nested paths like `row.meta.id` are rejected with a clear error — the RowStore
+ * does a flat `row[rowIdField]` lookup so nested paths would silently corrupt IDs.
  */
 export function inferRowIdField<T>(getRowId: (row: T) => string): string {
   const src = getRowId.toString();
-  // Capture the LAST `.identifier` in a property-access chain.
   const matches = Array.from(src.matchAll(/\.(\w+)/g));
-  const last = matches[matches.length - 1];
-  if (last && last[1]) return last[1];
-  throw new Error('[cgrid] could not infer rowIdField from getRowId — Foundation cycle only supports `row => row.<field>` (optionally nested) style');
+  if (matches.length === 0) {
+    throw new Error('[cgrid] could not infer rowIdField from getRowId — Foundation cycle only supports `row => row.<field>` style');
+  }
+  if (matches.length > 1) {
+    throw new Error('[cgrid] Foundation cycle only supports top-level `row => row.<field>` getRowId — nested accessors like `row.meta.id` are deferred to a follow-up cycle');
+  }
+  return matches[0]![1]!;
 }
 
 // Suppress unused import lint for DirtyRect — used as type only via PaintLoop callback signature.
@@ -77,6 +84,7 @@ export class CGrid<TRow = any> {
   private workerClient: WorkerClient;
   private destroyed = false;
   private resizeObs: ResizeObserver;
+  private selectionUnsubscribe: () => void = () => {};
 
   constructor(private container: HTMLElement, private options: CGridOptions<TRow>) {
     if (!options.getRowId) throw new Error('[cgrid] options.getRowId is required');
@@ -161,8 +169,10 @@ export class CGrid<TRow = any> {
     this.a11y = new A11yOverlay(this.root);
 
     // 8. Worker
-    // Foundation: use options.worker.url for test injection; otherwise use the bundler's new URL() for the worker entry.
-    const workerUrl = options.worker?.url ?? new URL('./worker/worker.ts', import.meta.url).toString();
+    // Foundation: use options.worker.url for test injection; otherwise resolve the co-emitted worker.js
+    // via new URL() so bundlers (Vite library mode) emit a proper static asset reference rather than
+    // inlining raw TypeScript as a data: URL (which browsers reject).
+    const workerUrl = options.worker?.url ?? new URL('./worker.js', import.meta.url).toString();
     const worker = new Worker(workerUrl as unknown as URL, { type: 'module' });
     this.workerClient = new WorkerClient(worker as unknown as import('./worker/client').WorkerLike, {
       onModelUpdated: (visibleCount) => {
@@ -190,7 +200,7 @@ export class CGrid<TRow = any> {
     this.handleResize();
 
     // 10. Selection feedback
-    this.selection.onChange(() => {
+    this.selectionUnsubscribe = this.selection.onChange(() => {
       this.paintLoop.markFullDirty();
       this.events.emit({ type: 'selectionChanged', selectedRowIds: this.getSelectedRowIds() });
       this.updateA11y();
@@ -282,6 +292,7 @@ export class CGrid<TRow = any> {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.selectionUnsubscribe();
     this.paintLoop.stop();
     this.workerClient.destroy();
     this.resizeObs.disconnect();
@@ -370,6 +381,9 @@ export class CGrid<TRow = any> {
         this.decodedTextCols.clear();
         this.paintLoop.markFullDirty();
         this.updateA11y();
+        if (chunk.totals) {
+          this.events.emit({ type: 'aggregationChanged', totals: chunk.totals });
+        }
       })
       .catch((err) => {
         this.viewportRequestPending = false;

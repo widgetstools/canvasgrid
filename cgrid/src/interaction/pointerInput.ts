@@ -84,6 +84,11 @@ export class PointerInput {
     this.deps.canvas.removeEventListener('mouseup', this.mouseUp);
     this.deps.canvas.removeEventListener('dblclick', this.dblClick);
     this.deps.canvas.removeEventListener('wheel', this.wheel);
+    // Remove the window-level mousemove listener that is attached during a column resize drag.
+    // The mouseup once-listener self-removes, but mousemove is permanent until destroy.
+    window.removeEventListener('mousemove', this.mouseMove);
+    this.resizing = null;
+    this.downAt = null;
   }
 
   private toLocal(e: MouseEvent): { x: number; y: number } {

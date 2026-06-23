@@ -46,16 +46,16 @@ describe('CGrid integration', () => {
 });
 
 describe('inferRowIdField', () => {
-  it('captures the last field in a single-level accessor', () => {
+  it('captures the field in a single-level accessor', () => {
     expect(inferRowIdField((row: { id: string }) => row.id)).toBe('id');
   });
 
-  it('captures the last field in a nested accessor', () => {
-    expect(inferRowIdField((row: { meta: { id: string } }) => row.meta.id)).toBe('id');
+  it('throws for a nested accessor (row.meta.id) because RowStore does flat lookup', () => {
+    expect(() => inferRowIdField((row: { meta: { id: string } }) => row.meta.id)).toThrow(/nested/);
   });
 
-  it('captures the last field in a deeply-nested accessor', () => {
-    expect(inferRowIdField((row: any) => row.deeply.nested.field)).toBe('field');
+  it('throws for a deeply-nested accessor (row.deeply.nested.field)', () => {
+    expect(() => inferRowIdField((row: any) => row.deeply.nested.field)).toThrow(/nested/);
   });
 
   it('throws when no property access present', () => {

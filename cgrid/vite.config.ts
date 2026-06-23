@@ -4,9 +4,13 @@ import { resolve } from 'node:path';
 export default defineConfig({
   build: {
     lib: {
-      entry: resolve(__dirname, 'src/cgrid.ts'),
+      entry: {
+        cgrid: resolve(__dirname, 'src/cgrid.ts'),
+        worker: resolve(__dirname, 'src/worker/worker.ts'),
+      },
       formats: ['es'],
-      fileName: 'cgrid',
+      // For multi-entry, fileName receives (format, entryName)
+      fileName: (_format, entryName) => `${entryName}.js`,
     },
     target: 'es2022',
     sourcemap: true,

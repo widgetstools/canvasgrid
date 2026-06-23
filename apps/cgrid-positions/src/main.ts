@@ -1,3 +1,4 @@
+import 'cgrid/style.css';
 import { createPositionsGrid } from './positionsGrid';
 import { connectStomp } from './stomp';
 

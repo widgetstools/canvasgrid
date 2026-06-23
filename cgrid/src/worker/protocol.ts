@@ -31,6 +31,7 @@ export interface ViewportChunk {
   numericCols: Record<string, Float64Array>;
   textCols: Record<string, { offsets: Uint32Array; bytes: Uint8Array }>;
   flashMask?: Uint8Array;
+  totals?: Record<string, number | null>;    // grand-total aggregation results (undefined when no aggFunc columns)
 }
 
 export type WorkerRequest =

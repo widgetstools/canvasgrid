@@ -77,7 +77,8 @@ export type CGridEvent =
   | { type: 'sortChanged'; sortModel: SortModel }
   | { type: 'filterChanged'; filterModel: FilterModel }
   | { type: 'columnResized'; colId: string; width: number }
-  | { type: 'asyncTransactionsFlushed'; results: TransactionResult[] };
+  | { type: 'asyncTransactionsFlushed'; results: TransactionResult[] }
+  | { type: 'aggregationChanged'; totals: Record<string, number | null> };
 
 export interface CGridApi {
   setRowData(rows: any[]): void;

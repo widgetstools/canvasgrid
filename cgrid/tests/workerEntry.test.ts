@@ -25,6 +25,30 @@ describe('worker host', () => {
     expect(viewport.chunk.rowCount).toBe(2);
   });
 
+  it('getViewport includes totals when aggFunc columns are defined', () => {
+    const sent: any[] = [];
+    const host = createWorkerHost((msg, _xfer) => sent.push(msg));
+    host.handle({ id: 1, type: 'init', payload: {
+      rowIdField: 'id',
+      columns: [
+        { colId: 'name', field: 'name', type: 'text' },
+        { colId: 'val',  field: 'val',  type: 'number', aggFunc: 'sum' },
+      ],
+    }});
+    host.handle({ id: 2, type: 'setRowData', payload: { rows: [
+      { id: 'a', name: 'alpha', val: 10 },
+      { id: 'b', name: 'beta',  val: 20 },
+      { id: 'c', name: 'gamma', val: 30 },
+    ] } });
+    host.handle({ id: 3, type: 'getViewport', payload: {
+      rowStart: 0, rowEnd: 3, columns: ['name', 'val'],
+    }});
+    const viewport = sent.find((m) => m.type === 'viewport');
+    expect(viewport).toBeDefined();
+    expect(viewport.chunk.totals).toBeDefined();
+    expect(viewport.chunk.totals.val).toBe(60); // sum of 10+20+30
+  });
+
   it('applyTransaction async triggers asyncTransactionsFlushed push', async () => {
     vi.useFakeTimers();
     const sent: any[] = [];

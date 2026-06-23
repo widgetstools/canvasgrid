@@ -8,7 +8,8 @@
     ".": {
       "types": "./dist/cgrid.d.ts",
       "import": "./dist/cgrid.js"
-    }
+    },
+    "./style.css": "./dist/cgrid.css"
   },
   "scripts": {
     "build": "vite build && tsc --emitDeclarationOnly",

@@ -139,7 +139,13 @@ export function createWorkerHost(post: PostFn): WorkerHost {
           }
 
           case 'getViewport': {
-            const chunk = state.slicer.slice(visible(), req.payload);
+            const visIds = visible();
+            const chunk = state.slicer.slice(visIds, req.payload);
+            // Wire AggPass: compute grand-total aggregations over all visible rows.
+            const aggResult = state.agg.apply(visIds);
+            if (Object.keys(aggResult.totals).length > 0) {
+              chunk.totals = aggResult.totals;
+            }
             post(
               { id: req.id, type: 'viewport', chunk },
               collectViewportTransferables(chunk) as ArrayBuffer[],
