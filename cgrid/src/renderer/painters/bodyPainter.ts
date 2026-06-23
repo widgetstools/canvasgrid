@@ -3,6 +3,13 @@ import type { PainterCtx } from './types';
 export function paintBody(ctx: CanvasRenderingContext2D, p: PainterCtx): void {
   const { viewport: vs, theme, columnDefs, cellRenderers, cellData, selection } = p;
 
+  // Clip to the body region so overscan rows don't paint into the header zone
+  // and horizontally-scrolled body cells don't leak into the pinned bands.
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(vs.bodyLeft, vs.bodyTop, vs.bodyRight - vs.bodyLeft, vs.bodyBottom - vs.bodyTop);
+  ctx.clip();
+
   for (const row of vs.visibleRows) {
     const rowBg = selection.selectedRowIndices.has(row.rowIndex)
       ? theme.rowSelectedBg
@@ -35,4 +42,6 @@ export function paintBody(ctx: CanvasRenderingContext2D, p: PainterCtx): void {
       });
     }
   }
+
+  ctx.restore();
 }

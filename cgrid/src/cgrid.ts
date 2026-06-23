@@ -85,6 +85,7 @@ export class CGrid<TRow = any> {
   private destroyed = false;
   private resizeObs: ResizeObserver;
   private selectionUnsubscribe: () => void = () => {};
+  private sortModel: SortModel = [];
 
   constructor(private container: HTMLElement, private options: CGridOptions<TRow>) {
     if (!options.getRowId) throw new Error('[cgrid] options.getRowId is required');
@@ -135,6 +136,7 @@ export class CGrid<TRow = any> {
       cellRenderers: this.cellRenderers,
       cellData: (rowIndex, colId) => this.cellAt(rowIndex, colId),
       getSelection: () => this.selection.state,
+      getSortModel: () => this.sortModel,
     });
 
     // 7. Hit-test + input
@@ -160,6 +162,7 @@ export class CGrid<TRow = any> {
           this.openEditor(rowIndex, colId);
         }
       },
+      onHeaderClicked: (colId: string) => this.cycleSort(colId),
       onColumnResize: (colId: string, dx: number) => this.resizeColumn(colId, dx),
       onScroll: (dx: number, dy: number) => this.applyScroll(dx, dy),
     };
@@ -248,12 +251,28 @@ export class CGrid<TRow = any> {
   flushAsyncTransactions(): void { /* Foundation: deferred — relies on worker's setTimeout */ }
 
   setSortModel(s: SortModel): void {
+    this.sortModel = s;
     this.workerClient.setSortModel(s).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
       this.viewport = this.computeCurrentViewport();
       this.events.emit({ type: 'sortChanged', sortModel: s });
+      this.paintLoop.markFullDirty();
       this.requestViewport();
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+  }
+
+  /** Cycle the sort state for a column: unsorted → asc → desc → unsorted. */
+  private cycleSort(colId: string): void {
+    const existing = this.sortModel.find((e) => e.colId === colId);
+    let next: SortModel;
+    if (!existing) {
+      next = [{ colId, direction: 'asc' }];
+    } else if (existing.direction === 'asc') {
+      next = [{ colId, direction: 'desc' }];
+    } else {
+      next = [];
+    }
+    this.setSortModel(next);
   }
 
   setFilterModel(f: FilterModel): void {

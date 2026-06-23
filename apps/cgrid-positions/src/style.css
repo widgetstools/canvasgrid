@@ -1,6 +1,8 @@
 *, *::before, *::after { box-sizing: border-box }
-html, body { margin: 0; height: 100%; font-family: Inter, system-ui, sans-serif; }
-.app { display: flex; flex-direction: column; height: 100%; padding: 12px; gap: 8px; background: #e8ecef; }
+html, body { margin: 0; height: 100%; font-family: Inter, system-ui, sans-serif; color: #e2e8f0; }
+.app { display: flex; flex-direction: column; height: 100%; padding: 12px; gap: 8px; background: #0b1220; }
 header { display: flex; justify-content: space-between; align-items: center; }
-.grid-host { flex: 1; min-height: 0; background: #fff; border: 1px solid #d5dbe0; border-radius: 6px; }
-button { padding: 6px 12px; border: 1px solid #c8d0d8; background: #fff; border-radius: 4px; cursor: pointer; }
+header h1 { margin: 0; color: #e2e8f0; font-size: 18px; font-weight: 600; }
+.grid-host { flex: 1; min-height: 0; background: #0f172a; border: 1px solid #334155; border-radius: 6px; }
+button { padding: 6px 12px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; border-radius: 4px; cursor: pointer; }
+button:hover { background: #283549; }

@@ -24,7 +24,7 @@ export function createPositionsGrid(container: HTMLElement): CGrid<Position> {
     cellFlashDuration: 500,
     cellFadeDuration: 800,
     asyncTransactionWaitMillis: 50,
-    theme: 'cg-theme-quartz',
+    theme: 'cg-theme-quartz-dark',
   };
   return new CGrid<Position>(container, options);
 }

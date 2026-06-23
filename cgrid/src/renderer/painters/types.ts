@@ -2,6 +2,7 @@ import type { ViewportState } from '../../core/viewport';
 import type { ResolvedTheme } from '../../theming/cssReader';
 import type { ResolvedColDef } from '../../core/propertyChain';
 import type { CellRendererRegistry } from '../cellRenderers/registry';
+import type { SortModel } from '../../types';
 
 export type CellDataLookup = (
   rowIndex: number,
@@ -19,4 +20,5 @@ export interface PainterCtx {
     focusedColId: string | null;
     selectedRowIndices: Set<number>;
   };
+  sortModel: SortModel;
 }

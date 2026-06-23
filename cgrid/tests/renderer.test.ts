@@ -26,6 +26,7 @@ describe('Renderer', () => {
       cellRenderers: new CellRendererRegistry(),
       cellData: () => null,
       getSelection: () => ({ focusedRowIndex: null, focusedColId: null, selectedRowIndices: new Set() }),
+      getSortModel: () => [],
     });
     Object.defineProperty(window, 'devicePixelRatio', { value: 2, configurable: true });
     r.syncSize(800, 600);

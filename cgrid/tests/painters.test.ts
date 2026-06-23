@@ -10,7 +10,9 @@ import type { ResolvedTheme } from '../src/theming/cssReader';
 function ctx() {
   return {
     fillRect: vi.fn(), strokeRect: vi.fn(), fillText: vi.fn(), save: vi.fn(), restore: vi.fn(),
-    rect: vi.fn(), clip: vi.fn(), beginPath: vi.fn(), stroke: vi.fn(), measureText: () => ({ width: 50 }),
+    rect: vi.fn(), clip: vi.fn(), beginPath: vi.fn(), stroke: vi.fn(),
+    moveTo: vi.fn(), lineTo: vi.fn(),
+    measureText: () => ({ width: 50 }),
     fillStyle: '', strokeStyle: '', font: '', textBaseline: '', textAlign: '', lineWidth: 1, globalAlpha: 1,
   } as any;
 }
@@ -47,14 +49,14 @@ const selection = { focusedRowIndex: null, focusedColId: null, selectedRowIndice
 describe('painters', () => {
   it('paintHeader fills + writes column header text per visible column', () => {
     const c = ctx();
-    paintHeader(c, { viewport: vs, theme, columnDefs: cols, cellRenderers: reg, cellData, selection });
+    paintHeader(c, { viewport: vs, theme, columnDefs: cols, cellRenderers: reg, cellData, selection, sortModel: [] });
     expect(c.fillRect).toHaveBeenCalled();
     expect(c.fillText.mock.calls.length).toBe(2);
   });
 
   it('paintBody draws every visible cell', () => {
     const c = ctx();
-    paintBody(c, { viewport: vs, theme, columnDefs: cols, cellRenderers: reg, cellData, selection });
+    paintBody(c, { viewport: vs, theme, columnDefs: cols, cellRenderers: reg, cellData, selection, sortModel: [] });
     // 2 rows x 2 cols = 4 fills (background per cell)
     expect(c.fillRect.mock.calls.length).toBeGreaterThanOrEqual(4);
   });
@@ -64,6 +66,7 @@ describe('painters', () => {
     paintOverlay(c, {
       viewport: vs, theme, columnDefs: cols, cellRenderers: reg, cellData,
       selection: { focusedRowIndex: 0, focusedColId: 'b', selectedRowIndices: new Set() },
+      sortModel: [],
     });
     expect(c.strokeRect).toHaveBeenCalled();
   });

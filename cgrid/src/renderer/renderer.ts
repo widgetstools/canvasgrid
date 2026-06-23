@@ -4,6 +4,7 @@ import type { ResolvedTheme } from '../theming/cssReader';
 import type { DirtyRect, PaintLoop } from '../core/paintLoop';
 import type { CellRendererRegistry } from './cellRenderers/registry';
 import type { CellDataLookup } from './painters/types';
+import type { SortModel } from '../types';
 import { paintHeader } from './painters/headerPainter';
 import { paintBody } from './painters/bodyPainter';
 import { paintPinned } from './painters/pinnedPainter';
@@ -24,6 +25,7 @@ export interface RendererOpts {
     focusedColId: string | null;
     selectedRowIndices: Set<number>;
   };
+  getSortModel: () => SortModel;
 }
 
 export class Renderer {
@@ -55,6 +57,7 @@ export class Renderer {
       cellRenderers: this.opts.cellRenderers,
       cellData: this.opts.cellData,
       selection: this.opts.getSelection(),
+      sortModel: this.opts.getSortModel(),
     };
     ctx.fillStyle = pctx.theme.bg;
     ctx.fillRect(0, 0, this.opts.canvas.width, this.opts.canvas.height);

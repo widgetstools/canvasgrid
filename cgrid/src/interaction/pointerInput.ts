@@ -9,6 +9,7 @@ export interface InputDeps {
   visibleRowIndices: () => number[];
   onCellClicked: (rowIndex: number, colId: string, mouse: MouseEvent) => void;
   onCellDoubleClicked: (rowIndex: number, colId: string, mouse: MouseEvent) => void;
+  onHeaderClicked?: (colId: string, mouse: MouseEvent) => void;
   onColumnResize?: (colId: string, deltaPx: number) => void;
   onScroll?: (dx: number, dy: number) => void;
 }
@@ -56,8 +57,22 @@ export class PointerInput {
         this.deps.selectionModel.selectSingle(hit.rowIndex);
       }
       this.deps.onCellClicked(hit.rowIndex, hit.colId, e);
+    } else if (hit.kind === 'header' && this.downAt.hit.kind === 'header' &&
+               hit.colId === this.downAt.hit.colId) {
+      this.deps.onHeaderClicked?.(hit.colId, e);
     }
     this.downAt = null;
+  };
+
+  /** Bare mousemove on the canvas (NOT the resize drag) — updates the hover cursor. */
+  private hoverMove = (e: MouseEvent) => {
+    if (this.resizing) return;
+    const { x, y } = this.toLocal(e);
+    const hit = this.deps.hitTester.locate(x, y);
+    let cursor = 'default';
+    if (hit.kind === 'headerResizer') cursor = 'col-resize';
+    else if (hit.kind === 'header') cursor = 'pointer';
+    if (this.deps.canvas.style.cursor !== cursor) this.deps.canvas.style.cursor = cursor;
   };
 
   private dblClick = (e: MouseEvent) => {
@@ -76,6 +91,7 @@ export class PointerInput {
     deps.canvas.addEventListener('mousedown', this.mouseDown);
     deps.canvas.addEventListener('mouseup', this.mouseUp);
     deps.canvas.addEventListener('dblclick', this.dblClick);
+    deps.canvas.addEventListener('mousemove', this.hoverMove);
     deps.canvas.addEventListener('wheel', this.wheel, { passive: false });
   }
 
@@ -83,6 +99,7 @@ export class PointerInput {
     this.deps.canvas.removeEventListener('mousedown', this.mouseDown);
     this.deps.canvas.removeEventListener('mouseup', this.mouseUp);
     this.deps.canvas.removeEventListener('dblclick', this.dblClick);
+    this.deps.canvas.removeEventListener('mousemove', this.hoverMove);
     this.deps.canvas.removeEventListener('wheel', this.wheel);
     // Remove the window-level mousemove listener that is attached during a column resize drag.
     // The mouseup once-listener self-removes, but mousemove is permanent until destroy.
