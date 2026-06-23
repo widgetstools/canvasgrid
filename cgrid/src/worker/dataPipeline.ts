@@ -1,4 +1,5 @@
-import type { TransactionResult } from '../types';
+import type { TransactionResult, FilterModel, FilterModelEntry } from '../types';
+import type { WorkerColumn } from './protocol';
 
 /** Source-of-truth row storage in the worker. Keyed by rowIdField on each row. */
 export class RowStore<TRow = any> {
@@ -147,4 +148,54 @@ export class TransactionQueue<TRow = any> {
     }
     this.flushFn();
   }
+}
+
+export class FilterPass<TRow = any> {
+  private model: FilterModel = {};
+  private colIndex = new Map<string, WorkerColumn>();
+
+  constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
+    for (const col of columns) this.colIndex.set(col.colId, col);
+  }
+
+  setModel(model: FilterModel): void {
+    this.model = model;
+  }
+
+  apply(): string[] {
+    const entries = Object.entries(this.model);
+    if (entries.length === 0) {
+      return Array.from(this.store.rows()).map((r) => this.store.getRowId(r));
+    }
+    const out: string[] = [];
+    for (const row of this.store.rows()) {
+      let pass = true;
+      for (const [colId, entry] of entries) {
+        const col = this.colIndex.get(colId);
+        if (!col || !col.field) continue;
+        const value = (row as Record<string, unknown>)[col.field];
+        if (!matches(entry, value)) { pass = false; break; }
+      }
+      if (pass) out.push(this.store.getRowId(row));
+    }
+    return out;
+  }
+}
+
+function matches(entry: FilterModelEntry, raw: unknown): boolean {
+  if (entry.type === 'text') {
+    const s = String(raw ?? '').toLowerCase();
+    const q = entry.value.toLowerCase();
+    if (entry.op === 'contains')   return s.includes(q);
+    if (entry.op === 'equals')     return s === q;
+    if (entry.op === 'startsWith') return s.startsWith(q);
+    return false;
+  }
+  const n = Number(raw);
+  if (Number.isNaN(n)) return false;
+  if (entry.op === 'eq') return n === entry.value;
+  if (entry.op === 'gt') return n >  entry.value;
+  if (entry.op === 'lt') return n <  entry.value;
+  if (entry.op === 'between') return n >= entry.value && n <= (entry.value2 ?? entry.value);
+  return false;
 }
