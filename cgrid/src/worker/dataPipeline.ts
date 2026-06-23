@@ -1,4 +1,4 @@
-import type { TransactionResult, FilterModel, FilterModelEntry } from '../types';
+import type { TransactionResult, FilterModel, FilterModelEntry, SortModel } from '../types';
 import type { WorkerColumn } from './protocol';
 
 /** Source-of-truth row storage in the worker. Keyed by rowIdField on each row. */
@@ -198,4 +198,48 @@ function matches(entry: FilterModelEntry, raw: unknown): boolean {
   if (entry.op === 'lt') return n <  entry.value;
   if (entry.op === 'between') return n >= entry.value && n <= (entry.value2 ?? entry.value);
   return false;
+}
+
+export class SortPass<TRow = any> {
+  private model: SortModel = [];
+  private colIndex = new Map<string, WorkerColumn>();
+
+  constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
+    for (const col of columns) this.colIndex.set(col.colId, col);
+  }
+
+  setModel(model: SortModel): void { this.model = model; }
+
+  apply(inputIds: string[]): string[] {
+    if (this.model.length === 0) return inputIds;
+    const sorted = inputIds.slice();
+    sorted.sort((aId, bId) => {
+      const aRow = this.store.getById(aId);
+      const bRow = this.store.getById(bId);
+      if (!aRow || !bRow) return 0;
+      for (const entry of this.model) {
+        const col = this.colIndex.get(entry.colId);
+        if (!col || !col.field) continue;
+        const av = (aRow as Record<string, unknown>)[col.field];
+        const bv = (bRow as Record<string, unknown>)[col.field];
+        const cmp = compare(av, bv, col.type);
+        if (cmp !== 0) return entry.direction === 'asc' ? cmp : -cmp;
+      }
+      return 0;
+    });
+    return sorted;
+  }
+}
+
+function compare(a: unknown, b: unknown, type: 'text' | 'number'): number {
+  if (type === 'number') {
+    const an = Number(a), bn = Number(b);
+    if (Number.isNaN(an) && Number.isNaN(bn)) return 0;
+    if (Number.isNaN(an)) return  1;
+    if (Number.isNaN(bn)) return -1;
+    return an < bn ? -1 : an > bn ? 1 : 0;
+  }
+  const as = String(a ?? '');
+  const bs = String(b ?? '');
+  return as < bs ? -1 : as > bs ? 1 : 0;
 }
