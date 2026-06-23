@@ -1,5 +1,6 @@
 import type { TransactionResult, FilterModel, FilterModelEntry, SortModel } from '../types';
-import type { WorkerColumn } from './protocol';
+import type { WorkerColumn, ViewportRequest, ViewportChunk } from './protocol';
+import { encodeText } from './chunkFormat';
 
 /** Source-of-truth row storage in the worker. Keyed by rowIdField on each row. */
 export class RowStore<TRow = any> {
@@ -242,6 +243,63 @@ function compare(a: unknown, b: unknown, type: 'text' | 'number'): number {
   const as = String(a ?? '');
   const bs = String(b ?? '');
   return as < bs ? -1 : as > bs ? 1 : 0;
+}
+
+export class ViewportSlicer<TRow = any> {
+  private colIndex = new Map<string, WorkerColumn>();
+
+  constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
+    for (const col of columns) this.colIndex.set(col.colId, col);
+  }
+
+  slice(visibleIds: string[], req: ViewportRequest): ViewportChunk {
+    const rowStart = Math.max(0, req.rowStart);
+    const rowEnd = Math.min(visibleIds.length, req.rowEnd);
+    const count = Math.max(0, rowEnd - rowStart);
+
+    const rowIds = new Uint32Array(count);
+    const rowKinds = new Uint8Array(count);   // all leaf for Foundation
+    const groupDepth = new Uint8Array(count);
+
+    for (let i = 0; i < count; i++) {
+      const id = visibleIds[rowStart + i]!;
+      rowIds[i] = this.store.getNumericId(id);
+    }
+
+    const numericCols: Record<string, Float64Array> = {};
+    const textCols: Record<string, { offsets: Uint32Array; bytes: Uint8Array }> = {};
+
+    for (const colId of req.columns) {
+      const col = this.colIndex.get(colId);
+      if (!col || !col.field) continue;
+      if (col.type === 'number') {
+        const arr = new Float64Array(count);
+        for (let i = 0; i < count; i++) {
+          const row = this.store.getById(visibleIds[rowStart + i]!);
+          arr[i] = Number((row as Record<string, unknown> | undefined)?.[col.field!]);
+        }
+        numericCols[colId] = arr;
+      } else {
+        const values: string[] = new Array(count);
+        for (let i = 0; i < count; i++) {
+          const row = this.store.getById(visibleIds[rowStart + i]!);
+          const v = (row as Record<string, unknown> | undefined)?.[col.field!];
+          values[i] = v == null ? '' : String(v);
+        }
+        textCols[colId] = encodeText(values);
+      }
+    }
+
+    return {
+      rowStart,
+      rowCount: count,
+      rowIds,
+      rowKinds,
+      groupDepth,
+      numericCols,
+      textCols,
+    };
+  }
 }
 
 export class AggPass<TRow = any> {
