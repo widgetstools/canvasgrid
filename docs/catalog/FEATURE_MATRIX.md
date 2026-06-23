@@ -622,16 +622,113 @@
 | 15 | Group state restoration | Enterprise | behavior | no | P2 | Capture expansion via getServerSideGroupLevelState; restore with setRowNodeExpanded |
 
 <!-- area:16 Pinning & layout -->
+| 16 | ColDef.pinned / initialPinned / lockPinned | Community | config | yes | P1 | Left/right column pinning; lockPinned prevents user change |
+| 16 | setColumnsPinned | Community | api | no | P1 | Programmatically pin/unpin columns |
+| 16 | isPinning / isPinningLeft / isPinningRight | Community | api | no | P2 | Query whether any column is currently pinned |
+| 16 | getDisplayedLeftColumns / getDisplayedRightColumns | Community | api | no | P1 | Retrieve columns in pinned panes |
+| 16 | pinnedTopRowData / pinnedBottomRowData | Enterprise | config | no | P1 | Static data rows frozen above/below scrollable body |
+| 16 | enableRowPinning | Enterprise | config | no | P2 | User-initiated row pinning via context menu |
+| 16 | getPinnedTopRowCount / getPinnedBottomRowCount | Enterprise | api | no | P2 | Count of pinned rows |
+| 16 | domLayout | Community | config | no | P1 | normal / autoHeight / print layout modes |
+| 16 | enableRtl | Community | config | no | P2 | Right-to-left layout |
+| 16 | ensureDomOrder | Community | config | no | P2 | DOM row order matches visual order; required for AT |
+| 16 | headerHeight / groupHeaderHeight / floatingFiltersHeight | Community | config | no | P1 | Override individual header row heights |
+| 16 | pivotHeaderHeight / pivotGroupHeaderHeight | Community | config | no | P2 | Header heights in pivot mode |
+| 16 | isFullWidthRow / fullWidthCellRenderer | Community | config | no | P2 | Full-width rows spanning all column panes |
+| 16 | processUnpinnedColumns | Community | config | no | P2 | Callback when viewport too narrow for pinned columns |
+| 16 | columnPinned event | Community | event | no | P1 | Fires when a column is pinned or unpinned |
+| 16 | pinnedRowDataChanged / pinnedRowsChanged | Enterprise | event | no | P2 | Fires when pinned row data changes |
 
 <!-- area:17 Side bar & tool panels -->
+| 17 | sideBar (shorthand: 'columns', 'filters', true) | Enterprise | config | yes | P1 | Quick-configure side bar with built-in panels |
+| 17 | SideBarDef (position, defaultToolPanel, hiddenByDefault, hideButtons) | Enterprise | config | yes | P1 | Full side bar configuration object |
+| 17 | ToolPanelDef (id, iconKey, minWidth, maxWidth, width) | Enterprise | config | yes | P1 | Individual tool panel registration and sizing |
+| 17 | agColumnsToolPanel | Enterprise | config | yes | P1 | Built-in column visibility and grouping panel |
+| 17 | IToolPanelColumnCompParams (suppressColumnMove, suppressRowGroups, buttons) | Enterprise | config | yes | P2 | Columns tool panel params |
+| 17 | agFiltersToolPanel | Enterprise | config | yes | P1 | Built-in per-column filter panel |
+| 17 | IToolPanelFiltersCompParams | Enterprise | config | no | P2 | Filters tool panel params |
+| 17 | Custom IToolPanelComp | Enterprise | config | no | P2 | Custom tool panel component interface |
+| 17 | openToolPanel / closeToolPanel | Enterprise | api | no | P1 | Open or close a specific panel programmatically |
+| 17 | getOpenedToolPanel / isToolPanelShowing | Enterprise | api | no | P2 | Query open panel state |
+| 17 | isSideBarVisible / setSideBarVisible | Enterprise | api | no | P2 | Show or hide the side bar |
+| 17 | setSideBarPosition | Enterprise | api | no | P2 | Move side bar to left or right |
+| 17 | refreshToolPanel | Enterprise | api | no | P2 | Trigger refresh on the active tool panel |
+| 17 | getToolPanelInstance | Enterprise | api | no | P2 | Access custom tool panel component instance |
+| 17 | toolPanelVisibleChanged event | Enterprise | event | no | P2 | Fires when panel opens, closes, or switches |
+| 17 | toolPanelSizeChanged event | Enterprise | event | no | P2 | Fires while user drags panel resize handle |
+| 17 | allowDragFromColumnsToolPanel | Enterprise | config | no | P2 | Drag columns from tool panel into grid |
 
 <!-- area:18 Status bar -->
+| 18 | statusBar config (StatusPanelDef, align) | Enterprise | config | yes | P1 | Configure status bar panels with left/center/right alignment |
+| 18 | agTotalRowCountComponent | Enterprise | config | no | P2 | Built-in total row count panel |
+| 18 | agFilteredRowCountComponent | Enterprise | config | no | P2 | Built-in filtered row count panel |
+| 18 | agSelectedRowCountComponent | Enterprise | config | no | P2 | Built-in selected row count panel |
+| 18 | agTotalAndFilteredRowCountComponent | Enterprise | config | no | P2 | Built-in combined total/filtered count panel |
+| 18 | agAggregationComponent (IAggregationStatusPanelParams) | Enterprise | config | yes | P1 | Aggregation panel showing count/sum/min/max/avg for selection |
+| 18 | Custom IStatusPanelComp | Enterprise | config | yes | P1 | Custom status bar panel component |
+| 18 | getStatusPanel | Enterprise | api | no | P2 | Retrieve live status panel component instance by key |
 
 <!-- area:19 Context menu & clipboard -->
+| 19 | getContextMenuItems / MenuItemDef | Enterprise | config | no | P1 | Customise context menu items and add custom entries |
+| 19 | suppressContextMenu | Enterprise | config | no | P2 | Disable right-click context menu |
+| 19 | DefaultMenuItem string identifiers | Enterprise | config | no | P1 | Built-in menu item keys (copy, paste, export, pin, etc.) |
+| 19 | copyToClipboard | Community | api | no | P1 | Copy focused cell or selected rows to clipboard |
+| 19 | copySelectedRangeToClipboard | Enterprise | api | no | P1 | Copy cell range selection to clipboard |
+| 19 | cutToClipboard | Enterprise | api | no | P2 | Cut selected cells to clipboard |
+| 19 | copySelectedRowsToClipboard | Enterprise | api | no | P2 | Copy selected rows with optional column restriction |
+| 19 | pasteFromClipboard | Enterprise | api | no | P2 | Programmatically paste from clipboard |
+| 19 | copySelectedRangeDown | Enterprise | api | no | P2 | Fill-down within selected range |
+| 19 | processCellForClipboard | Community | config | no | P1 | Transform cell values before clipboard write |
+| 19 | processCellFromClipboard | Community | config | no | P1 | Transform pasted values before grid update |
+| 19 | sendToClipboard | Community | config | no | P2 | Intercept clipboard write; handle it yourself |
+| 19 | processDataFromClipboard | Community | config | no | P2 | Full paste operation control including cancel |
+| 19 | copyHeadersToClipboard / copyGroupHeadersToClipboard | Community | config | no | P2 | Include header rows in Ctrl+C copy |
+| 19 | clipboardDelimiter | Community | config | no | P2 | Field separator for clipboard text |
+| 19 | suppressClipboardPaste / suppressCutToClipboard | Community | config | no | P2 | Disable paste or cut operations |
+| 19 | contextMenuVisibleChanged event | Enterprise | event | no | P2 | Context menu appears or disappears |
+| 19 | pasteStart / pasteEnd events | Enterprise | event | no | P2 | Bracket a paste operation |
+| 19 | cutStart / cutEnd events | Enterprise | event | no | P2 | Bracket a cut operation |
 
 <!-- area:20 Keyboard & a11y -->
+| 20 | navigateToNextCell | Community | config | no | P1 | Override arrow-key cell navigation |
+| 20 | tabToNextCell | Community | config | no | P1 | Override Tab/Shift+Tab cell navigation |
+| 20 | navigateToNextHeader / tabToNextHeader | Community | config | no | P2 | Override navigation in header rows |
+| 20 | tabToNextGridContainer | Community | config | no | P2 | Override Tab between major grid containers |
+| 20 | focusGridInnerElement | Community | config | no | P2 | Handle focus arrival from outside the grid |
+| 20 | enterNavigatesVertically / enterNavigatesVerticallyAfterEdit | Community | config | no | P2 | Excel-style Enter navigation |
+| 20 | suppressCellFocus / suppressHeaderFocus | Community | config | no | P2 | Disable grid-managed focus on cells or headers |
+| 20 | enableCellTextSelection | Community | config | no | P2 | Allow native text selection in cells |
+| 20 | tabIndex | Community | config | no | P2 | Grid's tab order position in the page |
+| 20 | ensureDomOrder | Community | config | no | P2 | DOM order matches visual order for screen readers |
+| 20 | cellAriaRole (ColDef) | Community | config | no | P2 | Override ARIA role on body cells per column |
+| 20 | getFocusedCell / setFocusedCell / clearFocusedCell | Community | api | no | P1 | Programmatic keyboard focus management |
+| 20 | tabToNextCell / tabToPreviousCell (api) | Community | api | no | P2 | Programmatically advance/retreat Tab focus |
+| 20 | setFocusedHeader | Community | api | no | P2 | Move focus to a header cell |
+| 20 | setGridAriaProperty | Community | api | no | P2 | Set aria-* attributes on grid root element |
+| 20 | cellFocused event | Community | event | no | P1 | Fires when focused cell changes |
+| 20 | cellKeyDown event | Community | event | no | P2 | Fires on keydown in a focused body cell |
+| 20 | headerFocused event | Community | event | no | P2 | Fires when a header cell receives focus |
+| 20 | Default keyboard map (arrows/tab/enter/page/home/end) | Community | behavior | no | P1 | Built-in navigation shortcuts |
 
 <!-- area:21 Themes & styling -->
+| 21 | theme grid option (Theme object or 'legacy') | Community | config | yes | P1 | Apply Theming API theme or opt into legacy CSS class mode |
+| 21 | themeQuartz | Community | config | yes | P1 | Default modern theme; used in showcase via withParams |
+| 21 | themeAlpine | Community | config | no | P2 | Alpine theme with blue accents |
+| 21 | themeBalham | Community | config | no | P2 | Compact spreadsheet-style theme |
+| 21 | themeMaterial | Community | config | no | P2 | Material Design theme |
+| 21 | Theme.withParams(defaults, mode) | Community | config | yes | P1 | Override theme CSS variable values; supports light/dark modes |
+| 21 | Theme.withPart(part) | Community | config | no | P2 | Replace a design sub-system (icon set, color scheme, input style) |
+| 21 | Theme.withoutPart(feature) | Community | config | no | P3 | Remove a named design part |
+| 21 | createTheme() | Community | config | no | P3 | Factory for a fully custom theme with no design parts |
+| 21 | loadThemeGoogleFonts | Community | config | no | P2 | Auto-load Google Fonts declared in the theme |
+| 21 | themeCssLayer | Community | config | no | P3 | Wrap theme CSS in @layer for cascade control |
+| 21 | styleNonce | Community | config | no | P3 | CSP nonce for injected style elements |
+| 21 | themeStyleContainer | Community | config | no | P2 | Element to receive theme style tags; supports shadow DOM |
+| 21 | --ag-* CSS variables (spacing, accentColor, rowHeight, etc.) | Community | config | no | P1 | Low-level CSS variable overrides for theme params |
+| 21 | cellClass / cellClassRules / cellStyle | Community | config | yes | P1 | Per-cell styling; precedence order class→rules→style |
+| 21 | Dark mode via withParams({...}, 'dark') | Community | config | no | P2 | Conditional params for dark color scheme |
+| 21 | updateGridOptions({ theme }) | Community | api | no | P1 | Switch theme at runtime; updates style injection immediately |
+| 21 | refreshCells (re-evaluate cellClassRules) | Community | api | yes | P1 | Force re-draw and re-evaluation of cell style callbacks |
 
 <!-- area:22 Events -->
 
