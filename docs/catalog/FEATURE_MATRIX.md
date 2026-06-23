@@ -762,7 +762,109 @@
 | 23 | Misc API | Community | api | yes | P1 | getFocusedCell, setFocusedCell, ensureColumnVisible, ensureIndexVisible, paginationGoToPage — see `23-api.md` |
 
 <!-- area:24 Charts & sparklines -->
+| 24 | enableCharts | Enterprise | option | no | P2 | Enables integrated charting; requires IntegratedChartsModule + ag-charts-community peer |
+| 24 | chartThemes | Enterprise | option | no | P3 | List of built-in theme names available in the chart panel; initial-only |
+| 24 | customChartThemes | Enterprise | option | no | P3 | Map of user-defined theme name to AgChartTheme objects; initial-only |
+| 24 | chartThemeOverrides | Enterprise | option | no | P3 | Global theme overrides applied to all charts; initial-only |
+| 24 | chartToolPanelsDef | Enterprise | option | no | P3 | Controls visibility and order of Chart Tool Panels and chart type list; initial-only |
+| 24 | chartMenuItems | Enterprise | option | no | P3 | Custom context-menu items for charts; requires ag-charts-enterprise |
+| 24 | agSparklineCellRenderer | Enterprise | option | no | P1 | Inline sparkline cell renderer; requires SparklinesModule + ag-charts-community peer |
+| 24 | ISparklineCellRendererParams.sparklineOptions | Enterprise | option | no | P1 | Full AgSparklineOptions config (type: line/area/bar/column, axis, tooltip, markers) |
+| 24 | createRangeChart | Enterprise | api | no | P2 | Creates a live-linked range chart from a cell range; returns ChartRef |
+| 24 | createPivotChart | Enterprise | api | no | P2 | Creates a chart from pivot result columns; requires pivotMode=true |
+| 24 | createCrossFilterChart | Enterprise | api | no | P3 | Creates a cross-filter chart that filters the grid when a series is clicked |
+| 24 | updateChart | Enterprise | api | no | P3 | Updates type/theme/options/range of an existing chart by chartId |
+| 24 | getChartModels | Enterprise | api | no | P3 | Returns serialisable ChartModel[] for all open charts |
+| 24 | getChartRef | Enterprise | api | no | P3 | Returns ChartRef for a chart by its chartId |
+| 24 | getChartImageDataURL | Enterprise | api | no | P3 | Returns PNG/JPEG data URL of a chart image |
+| 24 | downloadChart | Enterprise | api | no | P3 | Triggers browser download of a chart as an image file |
+| 24 | openChartToolPanel | Enterprise | api | no | P3 | Programmatically opens the Chart Tool Panel to a named panel |
+| 24 | closeChartToolPanel | Enterprise | api | no | P3 | Programmatically closes the Chart Tool Panel |
+| 24 | restoreChart | Enterprise | api | no | P3 | Restores a chart from a serialised ChartModel |
+| 24 | chartCreated | Enterprise | event | no | P3 | Fires when a new integrated chart is created; payload: ChartCreatedEvent { chartId } |
+| 24 | chartRangeSelectionChanged | Enterprise | event | no | P3 | Fires when the cell range driving a chart changes; payload: { chartId, cellRange } |
+| 24 | chartOptionsChanged | Enterprise | event | no | P3 | Fires when chart type/theme/options change via tool panel; payload: { chartId, chartType, chartThemeName } |
+| 24 | chartDestroyed | Enterprise | event | no | P3 | Fires when a chart is closed; payload: ChartDestroyedEvent { chartId } |
+| 24 | Range selection → chart creation | Enterprise | behavior | no | P2 | Right-click cell range shows Chart Range; chart opens linked to range; see 12-selection.md |
+| 24 | Live-linked chart updates | Enterprise | behavior | no | P2 | Linked charts re-render automatically on transaction flush or rowData change |
+| 24 | Chart serialisation / restore | Enterprise | behavior | no | P3 | getChartModels + restoreChart for save/restore across page loads |
+| 24 | Pivot chart integration | Enterprise | behavior | no | P3 | createPivotChart uses secondary pivot columns; see 11-pivoting.md |
+| 24 | Cross-filter chart | Enterprise | behavior | no | P3 | Series click translates to setFilterModel on the grid |
+| 24 | Sparkline column value contract | Enterprise | behavior | no | P1 | Cell value must be number[] or {x,y}[]; valueGetter output feeds sparkline |
+| 24 | Module dependencies | Enterprise | behavior | no | P2 | IntegratedChartsModule + ag-charts-community; ag-charts-enterprise for extra types |
 
 <!-- area:25 Export -->
+| 25 | exportDataAsCsv | Community | api | no | P1 | Serialise displayed data to CSV and trigger browser download |
+| 25 | getDataAsCsv | Community | api | no | P1 | Return CSV-serialised string without triggering download |
+| 25 | exportDataAsExcel | Enterprise | api | no | P1 | Serialise displayed data to .xlsx and trigger browser download |
+| 25 | getDataAsExcel | Enterprise | api | no | P1 | Return Excel data as Blob or base64 string without download |
+| 25 | getSheetDataForExcel | Enterprise | api | no | P2 | Return raw sheet XML for use with exportMultipleSheetsAsExcel |
+| 25 | getMultipleSheetsAsExcel | Enterprise | api | no | P2 | Merge multiple sheet XML strings into a single Blob |
+| 25 | exportMultipleSheetsAsExcel | Enterprise | api | no | P2 | Merge multiple sheet XML strings and trigger browser download |
+| 25 | allColumns (BaseExportParams) | Community | option | no | P1 | Export all columnDefs columns in definition order |
+| 25 | columnKeys (BaseExportParams) | Community | option | no | P1 | Explicit ordered column list for export; overrides allColumns |
+| 25 | exportedRows (BaseExportParams) | Community | option | no | P1 | 'all' or 'filteredAndSorted' (default); controls which rows are exported |
+| 25 | onlySelected (BaseExportParams) | Community | option | no | P2 | Export only currently selected rows |
+| 25 | skipColumnHeaders / skipColumnGroupHeaders (BaseExportParams) | Community | option | no | P1 | Omit header rows from the export output |
+| 25 | skipRowGroups / skipPinnedTop / skipPinnedBottom (BaseExportParams) | Community | option | no | P2 | Omit group, top-pinned, or bottom-pinned rows from export |
+| 25 | shouldRowBeSkipped (BaseExportParams) | Community | option | no | P2 | Per-row veto callback; return true to exclude a row |
+| 25 | processCellCallback | Community | option | no | P1 | Per-cell callback returning string override for exported value |
+| 25 | processHeaderCallback | Community | option | no | P1 | Per-column callback returning string override for header text |
+| 25 | processGroupHeaderCallback | Community | option | no | P2 | Per-column-group callback returning override for group header |
+| 25 | processRowGroupCallback | Community | option | no | P1 | Per-row-group callback returning override for group cell; see 09-row-grouping.md |
+| 25 | columnSeparator (CsvExportParams) | Community | option | no | P2 | Delimiter character between cells in CSV output |
+| 25 | suppressQuotes (CsvExportParams) | Community | option | no | P2 | Disable RFC 4180 quoting; caller must avoid separator in values |
+| 25 | sheetName (ExcelWorksheetConfigParams) | Enterprise | option | no | P1 | Excel sheet tab name; max 31 characters |
+| 25 | freezeRows / freezeColumns (ExcelWorksheetConfigParams) | Enterprise | option | no | P2 | Freeze header rows and/or pinned columns in the Excel worksheet |
+| 25 | protectSheet (ExcelWorksheetConfigParams) | Enterprise | option | no | P2 | Protect worksheet; ExcelSheetProtection allows specific user actions |
+| 25 | exportAsExcelTable (ExcelWorksheetConfigParams) | Enterprise | option | no | P2 | Wrap data in an Excel Table for built-in sort/filter in Excel |
+| 25 | rowGroupExpandState (ExcelWorksheetConfigParams) | Enterprise | option | no | P2 | expanded/collapsed/match — state of row groups in the workbook |
+| 25 | addImageToCell (ExcelWorksheetConfigParams) | Enterprise | option | no | P3 | Callback to embed an image in a specific cell |
+| 25 | autoConvertFormulas (ExcelWorksheetConfigParams) | Enterprise | option | no | P3 | Treat values starting with = as Excel formulas |
+| 25 | excelStyles (GridOptions) | Enterprise | option | no | P1 | ExcelStyle[] matched to cell CSS classes at export time |
+| 25 | defaultExcelExportParams (GridOptions) | Enterprise | option | no | P2 | Default ExcelExportParams merged with per-call params |
+| 25 | defaultCsvExportParams (GridOptions) | Community | option | no | P2 | Default CsvExportParams merged with per-call params |
+| 25 | ExcelStyle.id CSS-class matching | Enterprise | behavior | no | P1 | ExcelStyle id matches cellClass; enables CSS-driven Excel formatting |
+| 25 | Multi-sheet export pattern | Enterprise | behavior | no | P2 | getSheetDataForExcel per sheet + exportMultipleSheetsAsExcel to bundle |
+| 25 | processCellCallback shared with clipboard | Community | behavior | no | P1 | Same hook fires for CSV, Excel, and clipboard copy; see 19-context-menu-and-clipboard.md |
+| 25 | CSV is renderer-agnostic | Community | behavior | no | P0 | Serialisation reads from row model; no DOM dependency; canvas-portable as-is |
 
 <!-- area:26 Performance knobs -->
+| 26 | rowBuffer | Community | option | yes | P0 | Rows rendered outside viewport; canvas equiv is overscan; see 05-rendering-and-dom.md |
+| 26 | suppressRowVirtualisation | Community | option | no | P3 | Render all rows; no canvas equivalent — canvas always virtualises |
+| 26 | suppressMaxRenderedRowRestriction | Community | option | no | P3 | Remove 500-row cap; no canvas equivalent |
+| 26 | suppressColumnVirtualisation | Community | option | no | P1 | Render all columns; obsolete in canvas grid — column virtualisation is mandatory |
+| 26 | animateRows | Community | option | yes | P2 | CSS row-position animation; set false for high-freq updates; no DOM equivalent in canvas |
+| 26 | suppressAnimationFrame | Community | option | no | P2 | Synchronous cell rendering during scroll; obsolete — canvas is rAF-driven |
+| 26 | debounceVerticalScrollbar | Community | option | no | P2 | Debounce vertical scroll events for slow machines |
+| 26 | asyncTransactionWaitMillis | Community | option | yes | P0 | Batch window for applyTransactionAsync; translates directly to canvas port |
+| 26 | suppressModelUpdateAfterUpdateTransaction | Community | option | no | P1 | Skip pipeline refresh on update-only transactions; translates directly |
+| 26 | getRowId (immutable mode) | Community | option | yes | P0 | Stable row ID enables delta detection on rowData replace; translates directly |
+| 26 | resetRowDataOnUpdate | Community | option | no | P2 | Force full reset even with getRowId; translates directly |
+| 26 | suppressChangeDetection | Community | option | no | P1 | Disable value diff before refresh; canvas port can use dirty-region paint instead |
+| 26 | suppressPropertyNamesCheck | Community | option | no | P3 | Deprecated v33; use context property and ValidationModule instead |
+| 26 | cacheQuickFilter | Community | option | no | P1 | Cache per-row quick-filter text aggregate; translates directly |
+| 26 | valueCache | Community | option | no | P2 | Cache valueGetter results; requires ValueCacheModule; translates directly |
+| 26 | valueCacheNeverExpires | Community | option | no | P3 | Prevent value cache expiry on data update; translates directly |
+| 26 | deltaSort | Community | option | no | P1 | Re-sort only transaction-changed rows; see 07-sorting.md; translates directly |
+| 26 | aggregateOnlyChangedColumns | Enterprise | option | no | P2 | Re-aggregate only columns with changed leaf values; see 10-aggregation.md |
+| 26 | rowModelType (large dataset selection) | Community | option | no | P0 | Infinite/serverSide/viewport row models for data beyond ~50k rows; see 03-row-models.md |
+| 26 | cacheBlockSize | Community | option | no | P2 | Rows per block for Infinite/SSRM; tune to minimise round-trips; see 03-row-models.md |
+| 26 | maxBlocksInCache | Community | option | no | P2 | LRU eviction cap for Infinite row model; limits memory; see 03-row-models.md |
+| 26 | blockLoadDebounceMillis | Community | option | no | P2 | Debounce before block fetch in Infinite row model |
+| 26 | applyTransactionAsync | Community | api | yes | P0 | Queue transaction for batched apply; core perf API for streaming data |
+| 26 | flushAsyncTransactions | Community | api | no | P0 | Immediately flush pending async transactions |
+| 26 | refreshClientSideRowModel | Community | api | no | P1 | Re-run CSRM pipeline from a given step without data change |
+| 26 | refreshCells | Community | api | no | P0 | Re-render specified cells in place; lower cost than redrawRows |
+| 26 | redrawRows | Community | api | no | P1 | Destroy and recreate rows; higher cost; use when row structure changes |
+| 26 | asyncTransactionsFlushed | Community | event | yes | P0 | Async transaction batch applied; payload includes all RowNodeTransaction results |
+| 26 | modelUpdated | Community | event | no | P0 | Displayed rows recomputed after any pipeline pass |
+| 26 | Async transaction batching | Community | behavior | yes | P0 | applyTransactionAsync queues; flush after waitMillis; single pipeline pass |
+| 26 | getRowId delta detection | Community | behavior | yes | P0 | rowData replacement constructs synthetic add/update/remove transactions |
+| 26 | Row virtualisation window | Community | behavior | no | P0 | viewport_rows + 2*rowBuffer rows in DOM; see 05-rendering-and-dom.md |
+| 26 | suppressColumnVirtualisation cost | Community | behavior | no | P1 | All N columns in DOM simultaneously; multiplicative DOM node increase |
+| 26 | animateRows:false for streaming data | Community | behavior | yes | P1 | Eliminates CSS animation overhead; first recommendation for high-freq updates |
+| 26 | suppressAnimationFrame trade-off | Community | behavior | no | P2 | Eliminates blank cells during scroll but blocks main thread |
+| 26 | Column virtualisation obsolete in canvas | Community | behavior | no | P0 | Canvas grid always virtualises columns; suppressColumnVirtualisation has no canvas analog |
+| 26 | rowBuffer → canvas overscan | Community | behavior | no | P0 | rowBuffer maps to overscan row count in canvas; offscreen tile pre-render on worker |
+| 26 | Dirty-region canvas repaint | Community | behavior | no | P0 | Canvas port can repaint only changed cell regions; finer than refreshCells |
