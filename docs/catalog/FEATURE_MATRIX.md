@@ -501,12 +501,124 @@
 | 11 | Pivot chart integration | Enterprise | behavior | no | P2 | Pivot result columns feed AG Charts; see 24-charts-and-sparklines.md |
 
 <!-- area:12 Selection -->
+| 12 | rowSelection (RowSelectionOptions) | Community | option | yes | P0 | Object-based row selection config; replaces deprecated string literals |
+| 12 | rowSelection.mode singleRow | Community | option | no | P1 | Only one row selected at a time |
+| 12 | rowSelection.mode multiRow | Community | option | yes | P0 | Multiple rows selectable; supports Shift/Ctrl extend |
+| 12 | rowSelection.enableClickSelection | Community | option | yes | P0 | Controls click-to-select / click-to-deselect behaviour |
+| 12 | rowSelection.checkboxes | Community | option | yes | P0 | Show checkbox per row |
+| 12 | rowSelection.checkboxLocation | Community | option | yes | P1 | 'selectionColumn' or 'autoGroupColumn' |
+| 12 | rowSelection.headerCheckbox | Community | option | yes | P1 | Show select-all in column header |
+| 12 | rowSelection.selectAll | Community | option | yes | P1 | 'all' / 'filtered' / 'currentPage' scope for header checkbox |
+| 12 | rowSelection.groupSelects | Community | option | yes | P1 | 'self' / 'descendants' / 'filteredDescendants'; supersedes deprecated groupSelectsChildren |
+| 12 | rowSelection.isRowSelectable | Community | option | no | P1 | Callback to make specific rows non-selectable |
+| 12 | rowSelection.enableSelectionWithoutKeys | Community | option | no | P2 | Toggle rows without Ctrl/Cmd |
+| 12 | rowSelection.masterSelects | Community | option | no | P2 | 'self' or 'detail' — master row affecting detail grid selection |
+| 12 | rowSelection.copySelectedRows | Community | option | no | P2 | Copy includes full row data instead of focused cell only |
+| 12 | selectionColumnDef | Community | option | no | P1 | Customise dedicated selection column (width, pinned, etc.) |
+| 12 | rowMultiSelectWithClick | Community | option | no | P3 | Deprecated v32.2; use rowSelection.enableSelectionWithoutKeys |
+| 12 | suppressRowDeselection | Community | option | no | P3 | Deprecated v32.2; use rowSelection.enableClickSelection |
+| 12 | suppressRowClickSelection | Community | option | no | P3 | Deprecated v32.2; use rowSelection.enableClickSelection: false |
+| 12 | cellSelection | Enterprise | option | no | P1 | Boolean or CellSelectionOptions; enables cell range selection |
+| 12 | cellSelection.suppressMultiRanges | Enterprise | option | no | P2 | Limit to one range at a time |
+| 12 | cellSelection.enableHeaderHighlight | Enterprise | option | no | P2 | Highlight column header when cells in it are in a range |
+| 12 | cellSelection.enableColumnSelection | Enterprise | option | no | P2 | Click column header to select entire column |
+| 12 | cellSelection.handle (fill mode) | Enterprise | option | no | P1 | Fill handle with direction and custom fill callback |
+| 12 | cellSelection.handle (range mode) | Enterprise | option | no | P2 | Range handle to extend selection by dragging |
+| 12 | enableRangeSelection | Enterprise | option | no | P3 | Deprecated v32.2; use cellSelection = true |
+| 12 | enableFillHandle | Enterprise | option | no | P3 | Deprecated v32.2; use cellSelection.handle = { mode: 'fill' } |
+| 12 | fillHandleDirection | Enterprise | option | no | P3 | Deprecated v32.2; use cellSelection.handle.direction |
+| 12 | selectAll | Community | api | yes | P0 | Select all rows; optional mode param scopes to filtered/currentPage |
+| 12 | deselectAll | Community | api | yes | P0 | Deselect all rows |
+| 12 | getSelectedNodes | Community | api | yes | P0 | Returns list of selected IRowNode objects |
+| 12 | getSelectedRows | Community | api | yes | P0 | Returns list of selected row data objects |
+| 12 | getCellRanges | Enterprise | api | no | P1 | Returns current cell selection ranges |
+| 12 | addCellRange | Enterprise | api | no | P1 | Adds a cell range to the current selection |
+| 12 | clearCellSelection | Enterprise | api | no | P1 | Clears all cell selection ranges |
+| 12 | getServerSideSelectionState | Enterprise | api | no | P1 | Returns SSRM selection rule set |
+| 12 | setServerSideSelectionState | Enterprise | api | no | P1 | Restores SSRM selection state |
+| 12 | rowSelected | Community | event | yes | P0 | Fires per row when its selection state changes |
+| 12 | selectionChanged | Community | event | yes | P0 | Fires after bulk selection change completes |
+| 12 | cellSelectionChanged | Enterprise | event | no | P1 | Fires on cell range changes (started/finished flags) |
+| 12 | fillStart | Enterprise | event | no | P2 | User starts dragging fill handle |
+| 12 | fillEnd | Enterprise | event | no | P2 | User releases fill handle; carries initial and final ranges |
+| 12 | cellSelectionDeleteStart | Enterprise | event | no | P2 | Delete key begins clearing cell range |
+| 12 | cellSelectionDeleteEnd | Enterprise | event | no | P2 | Delete key finishes clearing cell range |
+| 12 | Row selection mode behaviour | Community | behavior | yes | P0 | singleRow vs multiRow click/Shift/Ctrl semantics |
+| 12 | Group selection cascade | Community | behavior | yes | P1 | groupSelects: descendants/filteredDescendants checkbox indeterminate state |
+| 12 | SSRM selection rule-set | Enterprise | behavior | no | P1 | Selection stored as rules not row IDs; persist via getServerSideSelectionState |
+| 12 | Fill handle value progression | Enterprise | behavior | no | P2 | Numbers increment linearly; non-numbers copy; override with setFillValue |
 
 <!-- area:13 Master/Detail -->
+| 13 | masterDetail | Enterprise | option | no | P2 | Enables Master/Detail mode |
+| 13 | isRowMaster | Enterprise | option | no | P2 | Callback; return false to prevent a row being expandable |
+| 13 | detailCellRenderer | Enterprise | option | no | P2 | Custom renderer for the detail row |
+| 13 | detailCellRendererParams | Enterprise | option | no | P2 | Params for default or custom detail renderer |
+| 13 | detailCellRendererParams.detailGridOptions | Enterprise | option | no | P2 | Full GridOptions for the embedded detail grid |
+| 13 | detailCellRendererParams.getDetailRowData | Enterprise | option | no | P2 | Callback to supply detail rows (async via successCallback) |
+| 13 | detailCellRendererParams.refreshStrategy | Enterprise | option | no | P2 | 'rows' / 'everything' / 'nothing' on master data change |
+| 13 | detailCellRendererParams.template | Enterprise | option | no | P3 | Custom HTML wrapper around detail grid |
+| 13 | detailRowHeight | Enterprise | option | no | P2 | Fixed pixel height for detail rows (initial-only) |
+| 13 | detailRowAutoHeight | Enterprise | option | no | P2 | Expand detail row to fit content (initial-only) |
+| 13 | keepDetailRows | Enterprise | option | no | P2 | Cache detail grid instances when master row collapses (initial-only) |
+| 13 | keepDetailRowsCount | Enterprise | option | no | P2 | Max cached detail instances; LRU eviction (initial-only) |
+| 13 | getDetailGridInfo | Enterprise | api | no | P2 | Returns DetailGridInfo (including api) by detail row ID |
+| 13 | forEachDetailGridInfo | Enterprise | api | no | P2 | Iterates all active detail grid instances |
+| 13 | addDetailGridInfo | Enterprise | api | no | P3 | Registers custom detail renderer with master (internal use) |
+| 13 | removeDetailGridInfo | Enterprise | api | no | P3 | Unregisters custom detail renderer on destroy |
+| 13 | rowGroupOpened | Community | event | no | P2 | Master row expanded or collapsed (expanded field) |
+| 13 | Detail row lifecycle (create/destroy) | Enterprise | behavior | no | P2 | keepDetailRows false: destroy on collapse; true: cache up to keepDetailRowsCount |
+| 13 | refreshStrategy behaviour | Enterprise | behavior | no | P2 | 'rows' applies delta; 'everything' re-fetches; 'nothing' leaves detail unchanged |
+| 13 | Accessing detail grid API | Enterprise | behavior | no | P2 | getDetailGridInfo('detail_{id}').api for operations on detail grid |
+| 13 | masterSelects: 'detail' integration | Community | behavior | no | P2 | Selecting master row acts as header checkbox of detail; see 12-selection.md |
 
 <!-- area:14 Tree data -->
+| 14 | treeData | Enterprise | option | no | P2 | Enables Tree Data mode |
+| 14 | getDataPath | Enterprise | option | no | P2 | Callback returning string[] path for each row (path-based strategy) |
+| 14 | treeDataChildrenField | Enterprise | option | no | P2 | Field containing array of child objects (children-field strategy) |
+| 14 | treeDataParentIdField | Enterprise | option | no | P2 | Field containing parent row ID (parent-ID strategy; requires getRowId) |
+| 14 | treeDataDisplayType | Enterprise | option | no | P2 | 'auto' (grid adds group column) or 'custom' (app supplies column) |
+| 14 | autoGroupColumnDef (tree) | Community | option | no | P2 | Overrides auto group column for tree display; shared with row grouping |
+| 14 | groupDefaultExpanded (tree) | Community | option | no | P2 | Depth to expand by default; -1 expands all |
+| 14 | suppressGroupRowsSticky (tree) | Enterprise | option | no | P3 | Prevents tree rows from sticking to viewport top |
+| 14 | applyTransaction (tree) | Community | api | no | P2 | Add/remove/update rows in tree; intermediate nodes created/removed automatically |
+| 14 | expandAll (tree) | Community | api | no | P2 | Expand all tree nodes |
+| 14 | collapseAll (tree) | Community | api | no | P2 | Collapse all tree nodes |
+| 14 | setRowNodeExpanded (tree) | Community | api | no | P2 | Expand or collapse a specific tree node |
+| 14 | rowGroupOpened (tree) | Community | event | no | P2 | Tree node expanded or collapsed |
+| 14 | modelUpdated (tree) | Community | event | no | P2 | Tree structure rebuilt after data/sort/filter change |
+| 14 | Path-based tree filler nodes | Enterprise | behavior | no | P2 | Intermediate path nodes without data become non-selectable filler nodes |
+| 14 | Filter behaviour in tree | Enterprise | behavior | no | P2 | Parent shown if any descendant passes filter; hidden only if all filtered out |
+| 14 | Sort behaviour in tree | Enterprise | behavior | no | P2 | Leaf nodes sorted within parent; group order is structural |
+| 14 | Tree Data + SSRM | Enterprise | behavior | no | P2 | getRows request carries groupKeys path; grid calls per expanded branch |
 
 <!-- area:15 Server-side row model -->
+| 15 | rowModelType: 'serverSide' | Enterprise | option | no | P1 | Activates SSRM; initial-only |
+| 15 | serverSideDatasource | Enterprise | option | no | P1 | IServerSideDatasource object; runtime-mutable |
+| 15 | cacheBlockSize (SSRM) | Enterprise | option | no | P1 | Rows per block in infinite-scroll mode; initial-only |
+| 15 | maxBlocksInCache (SSRM) | Enterprise | option | no | P1 | LRU block eviction limit per store level; initial-only |
+| 15 | maxConcurrentDatasourceRequests | Enterprise | option | no | P2 | Max parallel getRows calls; initial-only |
+| 15 | blockLoadDebounceMillis (SSRM) | Enterprise | option | no | P2 | Debounce before issuing block request; initial-only |
+| 15 | serverSideInitialRowCount | Enterprise | option | no | P2 | Loading placeholder row count at root level; initial-only |
+| 15 | suppressServerSideFullWidthLoadingRow | Enterprise | option | no | P2 | Use colDef loading renderers instead of full-width loading row |
+| 15 | purgeClosedRowNodes | Enterprise | option | no | P2 | Destroy child data on group collapse; re-fetch on next expand |
+| 15 | serverSideSortAllLevels | Enterprise | option | no | P2 | Refresh all group levels on sort change |
+| 15 | serverSideEnableClientSideSort | Enterprise | option | no | P2 | Sort fully-loaded blocks in browser; reduces round-trips |
+| 15 | serverSideOnlyRefreshFilteredGroups | Enterprise | option | no | P2 | Only refresh groups affected by filter; initial-only |
+| 15 | serverSidePivotResultFieldSeparator | Enterprise | option | no | P3 | Field name separator for pivot result columns; initial-only |
+| 15 | refreshServerSide | Enterprise | api | no | P1 | Refresh a store level; purge=true shows loading rows immediately |
+| 15 | getServerSideGroupLevelState | Enterprise | api | no | P2 | Returns row count, block size, lastRowIndexKnown per expanded level |
+| 15 | applyServerSideTransaction | Enterprise | api | no | P1 | Apply add/remove/update transaction to a store level |
+| 15 | applyServerSideTransactionAsync | Enterprise | api | no | P1 | Queue async SSRM transaction |
+| 15 | flushServerSideAsyncTransactions | Enterprise | api | no | P2 | Immediately process all queued SSRM async transactions |
+| 15 | applyServerSideRowData | Enterprise | api | no | P2 | Directly apply LoadSuccessParams to a store level or block |
+| 15 | retryServerSideLoads | Enterprise | api | no | P2 | Retry all failed store loads |
+| 15 | storeRefreshed | Enterprise | event | no | P1 | Store level finishes refreshing; route field identifies level |
+| 15 | IServerSideDatasource.getRows contract | Enterprise | behavior | no | P1 | groupKeys=[] root; groupKeys=['X'] children of X; startRow/endRow undefined = full store |
+| 15 | Full store vs infinite scroll | Enterprise | behavior | no | P1 | cacheBlockSize undefined = full store; finite value = infinite scroll blocks |
+| 15 | SSRM grouping/pivot request fields | Enterprise | behavior | no | P1 | rowGroupCols/valueCols/pivotCols/pivotMode carried in every getRows request |
+| 15 | Grand total row via LoadSuccessParams | Enterprise | behavior | no | P2 | grandTotalData in success response inserts/updates footer row; null removes it |
+| 15 | Transaction routing via route field | Enterprise | behavior | no | P1 | route=[] targets root; route=['A','B'] targets child store under A>B |
+| 15 | Group state restoration | Enterprise | behavior | no | P2 | Capture expansion via getServerSideGroupLevelState; restore with setRowNodeExpanded |
 
 <!-- area:16 Pinning & layout -->
 
