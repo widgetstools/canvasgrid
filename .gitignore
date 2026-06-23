@@ -1,0 +1,12 @@
+# Logs
+node_modules
+dist
+dist-ssr
+*.local
+.DS_Store
+
+# TS build cache
+tsconfig.tsbuildinfo
+
+# Subagent-driven progress ledger (local scratch)
+.superpowers/
