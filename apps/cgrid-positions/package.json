@@ -11,7 +11,7 @@
   },
   "dependencies": {
     "@stomp/stompjs": "^7.1.1",
-    "cgrid": "workspace:*"
+    "cgrid": "*"
   },
   "devDependencies": {
     "typescript": "~5.9.3",
