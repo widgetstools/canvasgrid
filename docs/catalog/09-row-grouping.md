@@ -56,6 +56,8 @@ Key concepts:
 | `groupHideParentOfSingleChild` | `boolean \| 'leafGroupsOnly'` | `false` | Enterprise | Replaces a group node with its single child row. `'leafGroupsOnly'` applies only to the lowest level. |
 | `groupRemoveSingleChildren` | `boolean` | `false` | Enterprise | **Deprecated v33.** Use `groupHideParentOfSingleChild` instead. |
 | `groupRemoveLowestSingleChildren` | `boolean` | `false` | Enterprise | **Deprecated v33.** Use `groupHideParentOfSingleChild: 'leafGroupsOnly'` instead. |
+| `groupSelectsChildren` | `boolean` | `false` | Enterprise | **Deprecated v32.2.** Use `rowSelection.groupSelects` instead. When true, selecting a group selects its descendant leaves. |
+| `groupSelectsFiltered` | `boolean` | `false` | Enterprise | **Deprecated v32.2.** Use `rowSelection.groupSelects` configuration instead. When true with `groupSelectsChildren`, only filtered descendants are selected. |
 | `groupAllowUnbalanced` | `boolean` | `false` | Enterprise | Prevents creation of a `(Blanks)` group for rows with no value in a group column. |
 | `rowGroupPanelShow` | `'always' \| 'onlyWhenGrouping' \| 'never'` | `'never'` | Enterprise | Controls visibility of the drag-and-drop row group panel above the grid. Requires `RowGroupingPanelModule`. |
 | `rowGroupPanelSuppressSort` | `boolean` | `false` | Enterprise | Hides sort indicators and actions in the row group panel. Requires `RowGroupingPanelModule`. |
@@ -74,10 +76,10 @@ Key concepts:
 | `removeRowGroupColumns` | `(colKeys: ColKey[]) => void` | Enterprise | Removes columns from the row-group hierarchy. |
 | `moveRowGroupColumn` | `(fromIndex: number, toIndex: number) => void` | Enterprise | Reorders row-group columns by index. |
 | `getRowGroupColumns` | `() => Column[]` | Enterprise | Returns current row-group columns in hierarchy order. |
-| `expandAll` | `() => void` | Enterprise | Expands all group nodes. |
-| `collapseAll` | `() => void` | Enterprise | Collapses all group nodes. |
-| `setRowNodeExpanded` | `(rowNode: IRowNode<TData>, expanded: boolean, expandParents?: boolean, forceSync?: boolean) => void` | Enterprise | Sets expanded state on a single group node. `expandParents=true` also expands ancestors. |
-| `onGroupExpandedOrCollapsed` | `() => void` | Enterprise | Notifies the grid that row node expansion state has been mutated externally; triggers a refresh without running the full pipeline. |
+| `expandAll` | `() => void` | Community | Expands all group nodes — primarily used with row grouping (Enterprise). |
+| `collapseAll` | `() => void` | Community | Collapses all group nodes — primarily used with row grouping (Enterprise). |
+| `setRowNodeExpanded` | `(rowNode: IRowNode<TData>, expanded: boolean, expandParents?: boolean, forceSync?: boolean) => void` | Community | Sets expanded state on a single group node. `expandParents=true` also expands ancestors — primarily used with row grouping (Enterprise). |
+| `onGroupExpandedOrCollapsed` | `() => void` | Community | Notifies the grid that row node expansion state has been mutated externally; triggers a refresh without running the full pipeline — primarily used with row grouping (Enterprise). |
 
 ## Events
 

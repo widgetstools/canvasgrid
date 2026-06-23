@@ -406,15 +406,16 @@
 | 09 | groupHierarchyConfig | Enterprise | option | no | P2 | Registers custom hierarchy types for colDef.groupHierarchy |
 | 09 | initialGroupOrderComparator | Enterprise | option | no | P2 | Callback for initial ordering of group nodes |
 | 09 | groupSelectsChildren | Enterprise | option | no | P2 | Deprecated v32.2 — use rowSelection.groupSelects; see 12-selection.md |
+| 09 | groupSelectsFiltered | Enterprise | option | no | P3 | Deprecated v32.2 — use rowSelection.groupSelects configuration instead. When true with groupSelectsChildren, only filtered descendants selected. |
 | 09 | setRowGroupColumns | Enterprise | api | no | P0 | Replaces current row-group columns |
 | 09 | addRowGroupColumns | Enterprise | api | no | P0 | Adds columns to the row-group hierarchy |
 | 09 | removeRowGroupColumns | Enterprise | api | no | P0 | Removes columns from the row-group hierarchy |
 | 09 | moveRowGroupColumn | Enterprise | api | no | P1 | Reorders row-group columns by index |
 | 09 | getRowGroupColumns | Enterprise | api | no | P1 | Returns current row-group columns |
-| 09 | expandAll | Enterprise | api | yes | P0 | Expands all group nodes |
-| 09 | collapseAll | Enterprise | api | yes | P0 | Collapses all group nodes |
-| 09 | setRowNodeExpanded | Enterprise | api | no | P1 | Sets expanded state on a specific group node |
-| 09 | onGroupExpandedOrCollapsed | Enterprise | api | no | P1 | Signals grid that expansion state was mutated externally |
+| 09 | expandAll | Community | api | yes | P0 | Expands all group nodes — primarily used with row grouping (Enterprise) |
+| 09 | collapseAll | Community | api | yes | P0 | Collapses all group nodes — primarily used with row grouping (Enterprise) |
+| 09 | setRowNodeExpanded | Community | api | no | P1 | Sets expanded state on a specific group node — primarily used with row grouping (Enterprise) |
+| 09 | onGroupExpandedOrCollapsed | Community | api | no | P1 | Signals grid that expansion state was mutated externally — primarily used with row grouping (Enterprise) |
 | 09 | rowGroupOpened | Enterprise | event | no | P0 | Group row expanded or collapsed |
 | 09 | columnRowGroupChanged | Enterprise | event | no | P1 | Column added to or removed from group hierarchy |
 | 09 | groupDisplayType singleColumn mode | Enterprise | behavior | yes | P0 | All group levels share one auto column with indent |
