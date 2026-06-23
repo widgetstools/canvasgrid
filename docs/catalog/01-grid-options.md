@@ -33,7 +33,7 @@ Destruction is triggered by framework unmount or by calling `api.destroy()` dire
 | `suppressAnimationFrame` | `boolean` | `false` | Community | Disables async animation-frame row drawing during scroll. Initial-only. |
 | `suppressChangeDetection` | `boolean` | `false` | Community | Disables change-detection optimisation. Runtime-mutable. |
 | `debug` | `boolean` | `false` | Community | Enables verbose console logging. Initial-only. |
-| `context` | `any` | `undefined` | Community | Arbitrary application data forwarded to all callbacks. Initial-only. |
+| `context` | `any` | `undefined` | Community | Arbitrary application data forwarded to all callbacks. Initial-only. — Deprecated since v33; use the same property directly on the entity needing it. |
 | `loading` | `boolean` | `undefined` | Community | Explicitly show/hide loading overlay. Runtime-mutable. |
 | `suppressOverlays` | `OverlayType[]` | `undefined` | Community | Named overlay types to suppress. Runtime-mutable. |
 | `overlayComponent` | `any` | `undefined` | Community | Custom overlay component for all grid-provided overlays. Initial-only. |

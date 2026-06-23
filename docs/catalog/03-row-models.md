@@ -99,7 +99,7 @@ how data is fetched, stored, and paginated:
 | `rowDataUpdated` | `RowDataUpdatedEvent` | Community | New row data is set on CSRM (via `rowData` option or `setGridOption`). |
 | `modelUpdated` | `ModelUpdatedEvent { animate, keepRenderedRows, newData, newPage }` | Community | Row model recomputes displayed rows (after sort, filter, grouping, or data change). |
 | `asyncTransactionsFlushed` | `AsyncTransactionsFlushedEvent { results: RowNodeTransaction[] }` | Community | Pending async transactions are flushed and applied. |
-| `storeRefreshed` | `StoreRefreshedEvent { route? }` | Enterprise | SSRM store (at a specific group path) finishes refreshing. |
+| `storeRefreshed` | `StoreRefreshedEvent { route?: string[] }` | Enterprise | SSRM store (at a specific group path) finishes refreshing. |
 
 ## Behaviors / interactions
 

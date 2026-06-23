@@ -42,14 +42,6 @@ HTML. Full-width rows escape the column grid and span the entire row width.
 | `ensureDomOrder` | `boolean` | `false` | Community | Forces DOM order to match visual row/column order; disables row animations. Initial-only. |
 | `suppressRowTransform` | `boolean` | `false` | Community | Uses CSS `top` instead of `transform` for row positioning. Initial-only. |
 
-### DOM layout modes
-
-| Option | Type | Default | Tier | Description |
-|--------|------|---------|------|-------------|
-| `domLayout` | `'normal'` | `'normal'` | Community | Grid fills its container; scrollbars appear as needed. |
-| `domLayout` | `'autoHeight'` | — | Community | Grid grows in height to show all rows; no vertical scrollbar. |
-| `domLayout` | `'print'` | — | Community | All rows visible; disables virtualisation; suitable for `window.print()`. |
-
 ### Full-width rows
 
 | Option | Type | Default | Tier | Description |
