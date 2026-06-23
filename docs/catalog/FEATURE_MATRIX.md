@@ -732,8 +732,34 @@
 | 21 | refreshCells (re-evaluate cellClassRules) | Community | api | yes | P1 | Force re-draw and re-evaluation of cell style callbacks |
 
 <!-- area:22 Events -->
+| 22 | Grid lifecycle events | Community | event | yes | P0 | gridReady, gridPreDestroyed, gridSizeChanged, firstDataRendered, modelUpdated, stateUpdated — see `22-events.md` |
+| 22 | Column events | Community | event | yes | P1 | columnMoved, columnVisible, columnResized, displayedColumnsChanged, columnHeaderClicked, etc. — see `22-events.md` |
+| 22 | Row events | Community | event | yes | P0 | rowDataUpdated, rowGroupOpened, rowClicked, rowEditingStarted/Stopped, asyncTransactionsFlushed — see `22-events.md` |
+| 22 | Cell events | Community | event | yes | P0 | cellClicked, cellValueChanged, cellEditingStarted/Stopped, cellFocused, tooltipShow — see `22-events.md` |
+| 22 | Selection events | Community | event | yes | P0 | rowSelected, selectionChanged, cellSelectionChanged — see `22-events.md` |
+| 22 | Filter / sort events | Community | event | yes | P1 | filterChanged, filterOpened, sortChanged, findChanged, advancedFilterBuilderVisibleChanged — see `22-events.md` |
+| 22 | Group / pivot events | Enterprise | event | no | P1 | columnRowGroupChanged, columnPivotModeChanged, pivotMaxColumnsExceeded, expandOrCollapseAll — see `22-events.md` |
+| 22 | Drag events | Community | event | yes | P1 | rowDragEnter/Move/Leave/End/Cancel, dragStarted/Stopped/Cancelled — see `22-events.md` |
+| 22 | Tool panel / side bar events | Enterprise | event | no | P2 | toolPanelVisibleChanged, toolPanelSizeChanged, sideBarUpdated, contextMenuVisibleChanged — see `22-events.md` |
+| 22 | Chart events | Enterprise | event | no | P3 | chartCreated, chartOptionsChanged, chartDestroyed, chartTitleEdit — see `22-events.md` |
+| 22 | Misc events | Community | event | yes | P1 | undoStarted/Ended, redoStarted/Ended, cutStart/End, pasteStart/End, fillStart/End, batchEditingStarted/Stopped — see `22-events.md` |
 
 <!-- area:23 API -->
+| 23 | Lifecycle API | Community | api | yes | P0 | getGridId, destroy, setGridOption, updateGridOptions, getState, setState, addEventListener — see `23-api.md` |
+| 23 | Data API | Community | api | yes | P0 | applyTransaction, applyTransactionAsync, flushAsyncTransactions, refreshClientSideRowModel, setRowCount — see `23-api.md` |
+| 23 | Columns API | Community | api | yes | P0 | getColumnDefs, getColumn, applyColumnState, getColumnState, setColumnsVisible, sizeColumnsToFit, autoSizeColumns — see `23-api.md` |
+| 23 | Rows API | Community | api | yes | P0 | getRowNode, getDisplayedRowCount, forEachNode, redrawRows, expandAll, collapseAll, getPinnedTopRow — see `23-api.md` |
+| 23 | Cells API | Community | api | yes | P0 | refreshCells, flashCells, getCellRendererInstances, startEditingCell, stopEditing, undoCellEditing — see `23-api.md` |
+| 23 | Selection API | Community | api | yes | P0 | selectAll, deselectAll, getSelectedNodes, getSelectedRows, getCellRanges, clearCellSelection — see `23-api.md` |
+| 23 | Sorting API | Community | api | no | P1 | onSortChanged — see `23-api.md` |
+| 23 | Filtering API | Community | api | yes | P1 | isAnyFilterPresent, setFilterModel, getFilterModel, setColumnFilterModel, getAdvancedFilterModel — see `23-api.md` |
+| 23 | Grouping / aggregation / pivot API | Enterprise | api | no | P2 | setRowGroupColumns, addAggFuncs, isPivotMode, setPivotColumns, addDetailGridInfo — see `23-api.md` |
+| 23 | Server-side API | Enterprise | api | no | P2 | applyServerSideTransaction, refreshServerSide, getServerSideGroupLevelState — see `23-api.md` |
+| 23 | Clipboard API | Enterprise | api | no | P2 | copyToClipboard, cutToClipboard, pasteFromClipboard, copySelectedRowsToClipboard — see `23-api.md` |
+| 23 | Charts API | Enterprise | api | no | P3 | createRangeChart, createPivotChart, getChartModels, updateChart, restoreChart — see `23-api.md` |
+| 23 | Export API | Community | api | no | P2 | getDataAsCsv, exportDataAsCsv, exportDataAsExcel, exportMultipleSheetsAsExcel — see `23-api.md` |
+| 23 | Status bar / side bar API | Enterprise | api | no | P2 | getStatusPanel, isSideBarVisible, openToolPanel, getToolPanelInstance — see `23-api.md` |
+| 23 | Misc API | Community | api | yes | P1 | getFocusedCell, setFocusedCell, ensureColumnVisible, ensureIndexVisible, paginationGoToPage — see `23-api.md` |
 
 <!-- area:24 Charts & sparklines -->
 
