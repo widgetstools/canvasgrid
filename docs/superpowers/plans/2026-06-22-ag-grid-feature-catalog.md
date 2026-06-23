@@ -252,11 +252,11 @@ Expected: `ok`.
 
 Run:
 ```bash
-awk '/<!-- area:01/,/<!-- area:02/' docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|$'
-awk '/<!-- area:02/,/<!-- area:03/' docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|$'
-awk '/<!-- area:03/,/<!-- area:04/' docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|$'
-awk '/<!-- area:04/,/<!-- area:05/' docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|$'
-awk '/<!-- area:05/,/<!-- area:06/' docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|$'
+awk '/<!-- area:01/,/<!-- area:02/' docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|.*|$'
+awk '/<!-- area:02/,/<!-- area:03/' docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|.*|$'
+awk '/<!-- area:03/,/<!-- area:04/' docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|.*|$'
+awk '/<!-- area:04/,/<!-- area:05/' docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|.*|$'
+awk '/<!-- area:05/,/<!-- area:06/' docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|.*|$'
 ```
 
 Expected: each count is ≥ 1.
@@ -313,7 +313,7 @@ grep -nE 'TODO|TBD|coming soon|fill in|XXX' docs/catalog/0{6,7,8}-*.md && echo "
 for a in 06 07 08; do
   next=$(printf "%02d" $((10#$a + 1)))
   echo -n "area:$a rows: "
-  awk "/<!-- area:$a/,/<!-- area:$next/" docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|$'
+  awk "/<!-- area:$a/,/<!-- area:$next/" docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|.*|$'
 done
 ```
 
@@ -367,7 +367,7 @@ grep -nE 'TODO|TBD|coming soon|fill in|XXX' docs/catalog/{09,10,11}-*.md && echo
 for a in 09 10 11; do
   next=$(printf "%02d" $((10#$a + 1)))
   echo -n "area:$a rows: "
-  awk "/<!-- area:$a/,/<!-- area:$next/" docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|$'
+  awk "/<!-- area:$a/,/<!-- area:$next/" docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|.*|$'
 done
 ```
 
@@ -423,7 +423,7 @@ grep -nE 'TODO|TBD|coming soon|fill in|XXX' docs/catalog/{12,13,14,15}-*.md && e
 for a in 12 13 14 15; do
   next=$(printf "%02d" $((10#$a + 1)))
   echo -n "area:$a rows: "
-  awk "/<!-- area:$a/,/<!-- area:$next/" docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|$'
+  awk "/<!-- area:$a/,/<!-- area:$next/" docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|.*|$'
 done
 ```
 
@@ -483,7 +483,7 @@ grep -nE 'TODO|TBD|coming soon|fill in|XXX' docs/catalog/{16,17,18,19,20,21}-*.m
 for a in 16 17 18 19 20 21; do
   next=$(printf "%02d" $((10#$a + 1)))
   echo -n "area:$a rows: "
-  awk "/<!-- area:$a/,/<!-- area:$next/" docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|$'
+  awk "/<!-- area:$a/,/<!-- area:$next/" docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|.*|$'
 done
 ```
 
@@ -592,7 +592,7 @@ grep -nE 'TODO|TBD|coming soon|fill in|XXX' docs/catalog/{24,25,26}-*.md && echo
 for a in 24 25 26; do
   next=$(printf "%02d" $((10#$a + 1)))
   echo -n "area:$a rows: "
-  awk "/<!-- area:$a/,/<!-- area:$next/" docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|$'
+  awk "/<!-- area:$a/,/<!-- area:$next/" docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|.*|$'
 done
 ```
 
@@ -817,7 +817,7 @@ grep -rnE 'TODO|TBD|coming soon|fill in|XXX' docs/catalog/ && echo "PLACEHOLDER 
 # Matrix has rows under every anchor
 for a in $(seq -w 1 26); do
   next=$(printf "%02d" $((10#$a + 1)))
-  count=$(awk "/<!-- area:$a/,/<!-- area:$next/" docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|$')
+  count=$(awk "/<!-- area:$a/,/<!-- area:$next/" docs/catalog/FEATURE_MATRIX.md | grep -c '^|.*|.*|.*|.*|.*|.*|.*|$')
   if [ "$count" -eq 0 ]; then echo "MATRIX FAIL: area $a has 0 rows"; fi
 done
 
