@@ -27,8 +27,22 @@ export const CGRID_VERSION = '0.0.0';
 
 export type {
   CGridOptions, CColDef, CGridEvent, CGridApi, Tx, TransactionResult,
-  SortModel, FilterModel, GroupModel,
+  SortModel, SortModelEntry, FilterModel, FilterModelEntry, GroupModel,
+  CValueGetterParams, CValueFormatterParams,
 } from './types';
+
+/**
+ * Infer the row-ID field name from a `(row) => row.path.to.field` style accessor.
+ * Exported as a top-level function so it can be unit-tested independently of CGrid.
+ */
+export function inferRowIdField<T>(getRowId: (row: T) => string): string {
+  const src = getRowId.toString();
+  // Capture the LAST `.identifier` in a property-access chain.
+  const matches = Array.from(src.matchAll(/\.(\w+)/g));
+  const last = matches[matches.length - 1];
+  if (last && last[1]) return last[1];
+  throw new Error('[cgrid] could not infer rowIdField from getRowId — Foundation cycle only supports `row => row.<field>` (optionally nested) style');
+}
 
 // Suppress unused import lint for DirtyRect — used as type only via PaintLoop callback signature.
 type _DirtyRectAlias = DirtyRect;
@@ -163,12 +177,12 @@ export class CGrid<TRow = any> {
     });
 
     this.workerClient.init({
-      rowIdField: this.inferRowIdField(options),
+      rowIdField: inferRowIdField(options.getRowId),
       columns: this.workerColumns(),
     }).then(() => {
       this.events.emit({ type: 'gridReady', api: this.makeApi() });
       if (options.rowData) this.setRowData(options.rowData);
-    });
+    }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
 
     // 9. Resize observer
     this.resizeObs = new ResizeObserver(() => this.handleResize());
@@ -196,7 +210,7 @@ export class CGrid<TRow = any> {
       this.rowCount = visibleCount;
       this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
       this.requestViewport();
-    });
+    }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
   }
 
   applyTransaction(t: Tx<TRow>): TransactionResult {
@@ -206,7 +220,7 @@ export class CGrid<TRow = any> {
       update: t.update as unknown[],
       remove: (t.remove as TRow[] | undefined)?.map((r) => this.options.getRowId(r)),
       async: false,
-    });
+    }).catch((err) => { if (!this.destroyed) console.error('[cgrid] applyTransaction:', err); });
     return { add: [], update: [], remove: [] };
   }
 
@@ -216,7 +230,7 @@ export class CGrid<TRow = any> {
       update: t.update as unknown[],
       remove: (t.remove as TRow[] | undefined)?.map((r) => this.options.getRowId(r)),
       async: true,
-    });
+    }).catch((err) => { if (!this.destroyed) console.error('[cgrid] applyTransaction:', err); });
   }
 
   flushAsyncTransactions(): void { /* Foundation: deferred — relies on worker's setTimeout */ }
@@ -226,7 +240,7 @@ export class CGrid<TRow = any> {
       this.rowCount = visibleCount;
       this.events.emit({ type: 'sortChanged', sortModel: s });
       this.requestViewport();
-    });
+    }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
   }
 
   setFilterModel(f: FilterModel): void {
@@ -234,7 +248,7 @@ export class CGrid<TRow = any> {
       this.rowCount = visibleCount;
       this.events.emit({ type: 'filterChanged', filterModel: f });
       this.requestViewport();
-    });
+    }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
   }
 
   setGroupModel(_g: GroupModel): void { /* Out of scope for Foundation */ }
@@ -308,14 +322,6 @@ export class CGrid<TRow = any> {
       aggFunc: c.aggFunc,
       filter: c.filter,
     }));
-  }
-
-  private inferRowIdField(opts: CGridOptions<TRow>): string {
-    // Foundation: parse the field name out of a `(row) => row.id` style fn body.
-    const src = opts.getRowId.toString();
-    const m = src.match(/(?:return\s+)?(?:\w+|\(\w+\))\.(\w+)/);
-    if (m) return m[1]!;
-    throw new Error('[cgrid] could not infer rowIdField from getRowId — Foundation cycle only supports `row => row.<field>` style');
   }
 
   private handleResize(): void {

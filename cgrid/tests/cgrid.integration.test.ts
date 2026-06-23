@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { CGrid } from '../src/cgrid';
+import { CGrid, inferRowIdField } from '../src/cgrid';
 
 // Stub Worker for happy-dom env. CGrid accepts options.worker.url; in tests we inject a fake.
 beforeAll(() => {
@@ -42,5 +42,23 @@ describe('CGrid integration', () => {
     w.listeners.forEach((cb: any) => cb({ data: { id: 1, type: 'ready' } }));
     await new Promise((r) => setTimeout(r, 0));
     expect(events.length).toBe(1);
+  });
+});
+
+describe('inferRowIdField', () => {
+  it('captures the last field in a single-level accessor', () => {
+    expect(inferRowIdField((row: { id: string }) => row.id)).toBe('id');
+  });
+
+  it('captures the last field in a nested accessor', () => {
+    expect(inferRowIdField((row: { meta: { id: string } }) => row.meta.id)).toBe('id');
+  });
+
+  it('captures the last field in a deeply-nested accessor', () => {
+    expect(inferRowIdField((row: any) => row.deeply.nested.field)).toBe('field');
+  });
+
+  it('throws when no property access present', () => {
+    expect(() => inferRowIdField(() => 'literal')).toThrow(/Foundation cycle/);
   });
 });
