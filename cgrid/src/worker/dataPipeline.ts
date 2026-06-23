@@ -243,3 +243,40 @@ function compare(a: unknown, b: unknown, type: 'text' | 'number'): number {
   const bs = String(b ?? '');
   return as < bs ? -1 : as > bs ? 1 : 0;
 }
+
+export class AggPass<TRow = any> {
+  private aggCols: Array<{ colId: string; field: string; func: NonNullable<WorkerColumn['aggFunc']> }> = [];
+
+  constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
+    for (const col of columns) {
+      if (col.aggFunc && col.field) {
+        this.aggCols.push({ colId: col.colId, field: col.field, func: col.aggFunc });
+      }
+    }
+  }
+
+  apply(inputIds: string[]): { totals: Record<string, number | null> } {
+    const totals: Record<string, number | null> = {};
+    for (const { colId, field, func } of this.aggCols) {
+      let sum = 0, count = 0, min = Number.POSITIVE_INFINITY, max = Number.NEGATIVE_INFINITY;
+      for (const id of inputIds) {
+        const row = this.store.getById(id);
+        if (!row) continue;
+        if (func === 'count') { count++; continue; }
+        const v = Number((row as Record<string, unknown>)[field]);
+        if (Number.isNaN(v)) continue;
+        sum += v;
+        count++;
+        if (v < min) min = v;
+        if (v > max) max = v;
+      }
+      if (func === 'sum')   totals[colId] = sum;
+      else if (func === 'count') totals[colId] = count;
+      else if (count === 0) totals[colId] = null;
+      else if (func === 'avg') totals[colId] = sum / count;
+      else if (func === 'min') totals[colId] = min;
+      else if (func === 'max') totals[colId] = max;
+    }
+    return { totals };
+  }
+}
