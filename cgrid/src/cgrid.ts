@@ -177,6 +177,7 @@ export class CGrid<TRow = any> {
     this.workerClient = new WorkerClient(worker as unknown as import('./worker/client').WorkerLike, {
       onModelUpdated: (visibleCount) => {
         this.rowCount = visibleCount;
+        this.viewport = this.computeCurrentViewport();
         this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
         this.requestViewport();
       },
@@ -218,6 +219,7 @@ export class CGrid<TRow = any> {
   setRowData(rows: TRow[]): void {
     this.workerClient.setRowData(rows).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
+      this.viewport = this.computeCurrentViewport();
       this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
       this.requestViewport();
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
@@ -248,6 +250,7 @@ export class CGrid<TRow = any> {
   setSortModel(s: SortModel): void {
     this.workerClient.setSortModel(s).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
+      this.viewport = this.computeCurrentViewport();
       this.events.emit({ type: 'sortChanged', sortModel: s });
       this.requestViewport();
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
@@ -256,6 +259,7 @@ export class CGrid<TRow = any> {
   setFilterModel(f: FilterModel): void {
     this.workerClient.setFilterModel(f).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
+      this.viewport = this.computeCurrentViewport();
       this.events.emit({ type: 'filterChanged', filterModel: f });
       this.requestViewport();
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
