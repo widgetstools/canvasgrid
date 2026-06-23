@@ -1,0 +1,46 @@
+import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { CGrid } from '../src/cgrid';
+
+// Stub Worker for happy-dom env. CGrid accepts options.worker.url; in tests we inject a fake.
+beforeAll(() => {
+  (globalThis as any).Worker = class {
+    listeners: Array<(e: { data: any }) => void> = [];
+    constructor(public url: URL) {}
+    postMessage = vi.fn();
+    addEventListener = (_: string, cb: (e: { data: any }) => void) => this.listeners.push(cb);
+    terminate = vi.fn();
+  };
+
+  // Stub canvas 2D context — happy-dom does not implement it.
+  const fakeCtx: any = {
+    fillRect: vi.fn(), strokeRect: vi.fn(), fillText: vi.fn(),
+    save: vi.fn(), restore: vi.fn(), rect: vi.fn(), clip: vi.fn(),
+    beginPath: vi.fn(), stroke: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(),
+    setTransform: vi.fn(), clearRect: vi.fn(),
+    measureText: () => ({ width: 50 }),
+    fillStyle: '', strokeStyle: '', font: '', textBaseline: '',
+    textAlign: '', lineWidth: 1, globalAlpha: 1,
+  };
+  HTMLCanvasElement.prototype.getContext = () => fakeCtx as any;
+});
+
+describe('CGrid integration', () => {
+  it('constructs and emits gridReady', async () => {
+    const container = document.createElement('div');
+    container.style.cssText = 'width:800px; height:600px;';
+    container.className = 'cg-theme-quartz';
+    document.body.appendChild(container);
+    const events: any[] = [];
+    const grid = new CGrid<{ id: string; name: string }>(container, {
+      columnDefs: [{ field: 'id' }, { field: 'name' }],
+      getRowId: (r) => r.id,
+      theme: 'cg-theme-quartz',
+    });
+    grid.on('gridReady', (e) => events.push(e));
+    // Simulate worker 'ready' response so the integration completes.
+    const w = (grid as any).workerClient.worker;  // fakeWorker
+    w.listeners.forEach((cb: any) => cb({ data: { id: 1, type: 'ready' } }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(events.length).toBe(1);
+  });
+});
