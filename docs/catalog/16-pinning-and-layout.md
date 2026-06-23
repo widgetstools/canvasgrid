@@ -24,10 +24,10 @@ Cross-reference: column-level pinning properties (`ColDef.pinned`, `ColDef.initi
 
 | Option | Type | Default | Tier | Description |
 |--------|------|---------|------|-------------|
-| `pinnedTopRowData` | `any[]` | `undefined` | Enterprise | Static data rows frozen above the scrollable body. Requires `PinnedRowModule`. |
-| `pinnedBottomRowData` | `any[]` | `undefined` | Enterprise | Static data rows frozen below the scrollable body. Requires `PinnedRowModule`. |
-| `enableRowPinning` | `boolean \| 'top' \| 'bottom'` | `undefined` | Enterprise | Enables the row context-menu pin option. `true` allows top and bottom; `'top'`/`'bottom'` restricts direction. |
-| `allowPinRowByIndex` | `(params) => boolean` | `undefined` | Enterprise | Callback that returns `false` to prevent a specific row from being pinned by the user. |
+| `pinnedTopRowData` | `any[]` | `undefined` | Community | Static data rows frozen above the scrollable body. Requires `PinnedRowModule`. |
+| `pinnedBottomRowData` | `any[]` | `undefined` | Community | Static data rows frozen below the scrollable body. Requires `PinnedRowModule`. |
+| `enableRowPinning` | `boolean \| 'top' \| 'bottom'` | `undefined` | Community | Enables the row context-menu pin option. `true` allows top and bottom; `'top'`/`'bottom'` restricts direction. |
+| `isRowPinnable` | `IsRowPinnable<TData>` | `undefined` | Community | Callback `(params: IsRowPinnableParams) => boolean`. Return `false` to prevent a specific row from being pinnable by the user. |
 
 ### DOM layout
 
@@ -74,10 +74,10 @@ Cross-reference: column-level pinning properties (`ColDef.pinned`, `ColDef.initi
 | `getDisplayedLeftColumns` | `() => Column[]` | Community | Returns the visible columns in the left pinned pane. |
 | `getDisplayedCenterColumns` | `() => Column[]` | Community | Returns the visible columns in the center scrollable pane. |
 | `getDisplayedRightColumns` | `() => Column[]` | Community | Returns the visible columns in the right pinned pane. |
-| `getPinnedTopRowCount` | `() => number` | Enterprise | Returns the number of rows pinned to the top. |
-| `getPinnedBottomRowCount` | `() => number` | Enterprise | Returns the number of rows pinned to the bottom. |
-| `getPinnedTopRow` | `(index: number) => IRowNode \| undefined` | Enterprise | Returns the row node at the given top-pinned index. |
-| `getPinnedBottomRow` | `(index: number) => IRowNode \| undefined` | Enterprise | Returns the row node at the given bottom-pinned index. |
+| `getPinnedTopRowCount` | `() => number` | Community | Returns the number of rows pinned to the top. |
+| `getPinnedBottomRowCount` | `() => number` | Community | Returns the number of rows pinned to the bottom. |
+| `getPinnedTopRow` | `(index: number) => IRowNode \| undefined` | Community | Returns the row node at the given top-pinned index. |
+| `getPinnedBottomRow` | `(index: number) => IRowNode \| undefined` | Community | Returns the row node at the given bottom-pinned index. |
 
 ## Events
 

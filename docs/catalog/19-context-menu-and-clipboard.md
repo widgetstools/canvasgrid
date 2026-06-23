@@ -4,7 +4,7 @@
 
 AG Grid provides a right-click **context menu** (Enterprise) with built-in items for pinning, sorting, grouping, clipboard operations, and export. The menu is customisable via `getContextMenuItems`. Items can be default strings from the `DefaultMenuItem` union type, or custom `MenuItemDef` objects including sub-menus and custom renderer components.
 
-**Clipboard** operations span both Community and Enterprise tiers. Basic copy of the focused cell or selected rows to the system clipboard is Community. Range copy/paste (requiring a selected cell range) is Enterprise. Processing callbacks (`processCellForClipboard`, `processCellFromClipboard`) are Community regardless of tier.
+**Clipboard** operations are Enterprise-tier. The grid provides copy/paste of the focused cell, selected rows, or cell ranges to the system clipboard. Processing callbacks are available to transform cell values during clipboard operations.
 
 ## Configuration surface
 
@@ -12,7 +12,7 @@ AG Grid provides a right-click **context menu** (Enterprise) with built-in items
 
 | Option | Type | Default | Tier | Description |
 |--------|------|---------|------|-------------|
-| `suppressContextMenu` | `boolean` | `false` | Enterprise | Disables the grid's right-click context menu entirely. Use `onCellContextMenu` to implement a custom handler. Requires `ContextMenuModule` to be present for this to have effect. |
+| `suppressContextMenu` | `boolean` | `false` | Community | Disables the grid's right-click context menu entirely. Use `onCellContextMenu` to implement a custom handler. |
 | `getContextMenuItems` | `GetContextMenuItems<TData>` | `undefined` | Enterprise | Callback `(params: GetContextMenuItemsParams) => (DefaultMenuItem \| MenuItemDef \| 'separator')[]`. Return the list of items to show. Returning `[]` suppresses the menu. Requires `ContextMenuModule`. |
 | `preventDefaultOnContextMenu` | `boolean` | `false` | Enterprise | Prevents the browser's native context menu from appearing when right-clicking the grid. |
 
@@ -40,36 +40,36 @@ The following string literals can be returned from `getContextMenuItems` to incl
 
 `'copy'`, `'copyWithHeaders'`, `'copyWithGroupHeaders'`, `'cut'`, `'paste'`, `'export'`, `'csvExport'`, `'excelExport'`, `'separator'`, `'pinSubMenu'`, `'pinLeft'`, `'pinRight'`, `'clearPinned'`, `'autoSizeThis'`, `'autoSizeAll'`, `'resetColumns'`, `'expandAll'`, `'contractAll'`, `'rowGroup'`, `'rowUnGroup'`, `'valueAggSubMenu'`, `'sortAscending'`, `'sortDescending'`, `'sortUnSort'`, `'columnFilter'`, `'columnChooser'`, `'chartRange'`, `'pivotChart'`.
 
-### Clipboard (Community)
+### Clipboard
 
 | Option | Type | Default | Tier | Description |
 |--------|------|---------|------|-------------|
-| `copyHeadersToClipboard` | `boolean` | `false` | Community | Include column header row when copying via `Ctrl+C`. Requires `ClipboardModule`. |
-| `copyGroupHeadersToClipboard` | `boolean` | `false` | Community | Include column group header rows when copying via `Ctrl+C`. Requires `ClipboardModule`. |
-| `clipboardDelimiter` | `string` | `'\t'` | Community | Field separator used when copying to and pasting from clipboard. Requires `ClipboardModule`. |
-| `suppressLastEmptyLineOnPaste` | `boolean` | `false` | Community | Strips the trailing empty line Excel adds on Windows when pasting. Requires `ClipboardModule`. |
-| `suppressClipboardPaste` | `boolean` | `false` | Community | Disables clipboard paste operations. Requires `ClipboardModule`. |
-| `suppressClipboardApi` | `boolean` | `false` | Community | Prevents use of the async Clipboard API; falls back to the execCommand workaround immediately. Requires `ClipboardModule`. |
-| `suppressCutToClipboard` | `boolean` | `false` | Community | Blocks cut operations. Requires `ClipboardModule`. |
-| `processCellForClipboard` | `ProcessCellForClipboard<TData>` | `undefined` | Community | Callback to transform cell values before writing to the clipboard (e.g. format Dates). |
-| `processHeaderForClipboard` | `ProcessHeaderForClipboard<TData>` | `undefined` | Community | Callback to transform column header text before writing to the clipboard. |
-| `processGroupHeaderForClipboard` | `ProcessGroupHeaderForClipboard<TData>` | `undefined` | Community | Callback to transform column group header text before writing to the clipboard. |
-| `processCellFromClipboard` | `ProcessCellFromClipboard<TData>` | `undefined` | Community | Callback to transform pasted values before they enter the grid (e.g. block non-numeric input). |
-| `sendToClipboard` | `SendToClipboard<TData>` | `undefined` | Community | Intercept the clipboard write; receive the tab-separated string and handle it yourself instead. |
-| `processDataFromClipboard` | `ProcessDataFromClipboard<TData>` | `undefined` | Community | Full control of the paste operation; receives the raw 2-D array of pasted cells. Return a modified array or `null` to cancel. |
+| `copyHeadersToClipboard` | `boolean` | `false` | Enterprise | Include column header row when copying via `Ctrl+C`. Requires `ClipboardModule`. |
+| `copyGroupHeadersToClipboard` | `boolean` | `false` | Enterprise | Include column group header rows when copying via `Ctrl+C`. Requires `ClipboardModule`. |
+| `clipboardDelimiter` | `string` | `'\t'` | Enterprise | Field separator used when copying to and pasting from clipboard. Requires `ClipboardModule`. |
+| `suppressLastEmptyLineOnPaste` | `boolean` | `false` | Enterprise | Strips the trailing empty line Excel adds on Windows when pasting. Requires `ClipboardModule`. |
+| `suppressClipboardPaste` | `boolean` | `false` | Enterprise | Disables clipboard paste operations. Requires `ClipboardModule`. |
+| `suppressClipboardApi` | `boolean` | `false` | Enterprise | Prevents use of the async Clipboard API; falls back to the execCommand workaround immediately. Requires `ClipboardModule`. |
+| `suppressCutToClipboard` | `boolean` | `false` | Enterprise | Blocks cut operations. Requires `ClipboardModule`. |
+| `processCellForClipboard` | `ProcessCellForClipboard<TData>` | `undefined` | Enterprise | Callback to transform cell values before writing to the clipboard (e.g. format Dates). |
+| `processHeaderForClipboard` | `ProcessHeaderForClipboard<TData>` | `undefined` | Enterprise | Callback to transform column header text before writing to the clipboard. |
+| `processGroupHeaderForClipboard` | `ProcessGroupHeaderForClipboard<TData>` | `undefined` | Enterprise | Callback to transform column group header text before writing to the clipboard. |
+| `processCellFromClipboard` | `ProcessCellFromClipboard<TData>` | `undefined` | Enterprise | Callback to transform pasted values before they enter the grid (e.g. block non-numeric input). |
+| `sendToClipboard` | `SendToClipboard<TData>` | `undefined` | Enterprise | Intercept the clipboard write; receive the tab-separated string and handle it yourself instead. |
+| `processDataFromClipboard` | `ProcessDataFromClipboard<TData>` | `undefined` | Enterprise | Full control of the paste operation; receives the raw 2-D array of pasted cells. Return a modified array or `null` to cancel. |
 
-### Clipboard (Enterprise — `suppressCopyRowsToClipboard` deprecated)
+### Deprecated clipboard options
 
 | Option | Type | Default | Tier | Description |
 |--------|------|---------|------|-------------|
-| `suppressCopyRowsToClipboard` | `boolean` | `false` | Community | **Deprecated v32.2.** Use `rowSelection.copySelectedRows` instead. Forces range copy even for single-cell selections. |
-| `suppressCopySingleCellRanges` | `boolean` | `false` | Community | **Deprecated v32.2.** Use `rowSelection.copySelectedRows` instead. |
+| `suppressCopyRowsToClipboard` | `boolean` | `false` | Community | **Deprecated v32.2.** Use `rowSelection.copySelectedRows` instead. Copies the cell range or focused cell to the clipboard, bypassing row-selection copy behaviour. |
+| `suppressCopySingleCellRanges` | `boolean` | `false` | Community | **Deprecated v32.2.** Use `rowSelection.copySelectedRows` instead. Copies rows when the selection is a single-cell range instead of copying the range. |
 
 ## API methods
 
 | Method | Signature | Tier | Description |
 |--------|-----------|------|-------------|
-| `copyToClipboard` | `(params?: IClipboardCopyParams) => void` | Community | Copies the focused cell or selected rows to the clipboard. `IClipboardCopyParams`: `{ includeHeaders?, includeGroupHeaders? }`. |
+| `copyToClipboard` | `(params?: IClipboardCopyParams) => void` | Enterprise | Copies the focused cell or selected rows to the clipboard. `IClipboardCopyParams`: `{ includeHeaders?, includeGroupHeaders? }`. |
 | `cutToClipboard` | `(params?: IClipboardCopyParams) => void` | Enterprise | Copies and then clears the focused cell or selected rows. |
 | `copySelectedRowsToClipboard` | `(params?: IClipboardCopyRowsParams) => void` | Enterprise | Copies selected rows to the clipboard. `IClipboardCopyRowsParams` adds `columnKeys` to restrict columns. |
 | `copySelectedRangeToClipboard` | `(params?: IClipboardCopyParams) => void` | Enterprise | Copies the current cell-range selection to the clipboard. Requires `CellSelectionModule`. |
@@ -95,7 +95,7 @@ The following string literals can be returned from `getContextMenuItems` to incl
 
 **Range copy vs row copy:** When no Enterprise range selection module is loaded, `Ctrl+C` copies the focused cell or selected rows. When `CellSelectionModule` (Enterprise) is present and a range exists, it copies the range. `copyToClipboard` follows the same logic.
 
-**`processCellForClipboard` Community tier:** This callback fires for every cell written to the clipboard regardless of whether the copy originated from a Community or Enterprise path. It is the correct place to format Dates, Decimal types, or mask sensitive values.
+**`processCellForClipboard`:** This callback fires for every cell written to the clipboard. It is the correct place to format Dates, Decimal types, or mask sensitive values.
 
 **`sendToClipboard`:** When set, the grid never writes to the system clipboard itself. The callback receives the completed tab-delimited string; the app must call `navigator.clipboard.writeText` or equivalent.
 

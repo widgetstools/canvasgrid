@@ -20,56 +20,56 @@ Cell-level styling (independent of the grid theme) is applied in precedence orde
 | `styleNonce` | `string` | `undefined` | Community | Sets a `nonce` attribute on `<style>` elements injected by the theme, enabling the CSP `style-src 'nonce-<value>'` directive. |
 | `themeStyleContainer` | `HTMLElement \| (() => HTMLElement \| void)` | `document.head` | Community | Element into which theme `<style>` tags are inserted. Use `document.body` with `themeCssLayer` or for shadow DOM support. Initial. |
 
-### Built-in theme objects (Community)
+### Built-in theme objects
 
-| Theme | Export | Description |
-|-------|--------|-------------|
-| `themeQuartz` | `Theme<ThemeDefaultParams>` | Default modern theme with rounded corners and the Inter font. `@default` for `theme` option. |
-| `themeAlpine` | `Theme<ThemeDefaultParams>` | Clean theme with blue accents and a subtle focus shadow. |
-| `themeBalham` | `Theme<ThemeDefaultParams>` | Compact spreadsheet-like theme with striped rows and bold headers. |
-| `themeMaterial` | `Theme<ThemeDefaultParams & StyleMaterialParams>` | Material Design–inspired theme; requires `styleMaterial` part and adds `primaryColor` param. |
+| Theme | Type | Default | Tier | Description |
+|-------|------|---------|------|-------------|
+| `themeQuartz` | `Theme<ThemeDefaultParams>` | N/A | Community | Default modern theme with rounded corners and the Inter font. `@default` for `theme` option. |
+| `themeAlpine` | `Theme<ThemeDefaultParams>` | N/A | Community | Clean theme with blue accents and a subtle focus shadow. |
+| `themeBalham` | `Theme<ThemeDefaultParams>` | N/A | Community | Compact spreadsheet-like theme with striped rows and bold headers. |
+| `themeMaterial` | `Theme<ThemeDefaultParams & StyleMaterialParams>` | N/A | Community | Material Design–inspired theme; requires `styleMaterial` part and adds `primaryColor` param. |
 
 ### Theme API methods
 
-| Method | Signature | Description |
-|--------|-----------|-------------|
-| `withParams` | `(defaults: Partial<TParams>, mode?: string) => Theme<TParams>` | Returns a new theme with overridden default values for the listed params. Pass a `mode` string (`'light'`, `'dark'`, or custom) to apply the params only in that color-scheme context. |
-| `withPart` | `<TPartParams>(part: Part<TPartParams> \| (() => Part<TPartParams>)) => Theme<TParams & TPartParams>` | Returns a new theme that uses the given part, replacing any existing part for the same design feature. |
-| `withoutPart` | `(feature: string) => Theme<TParams>` | Returns a new theme with the named part removed. |
-| `createTheme` | `() => Theme<CoreParams & ButtonStyleParams & ...>` | Factory for a blank theme containing only core grid styles and no design parts. Start from here for fully custom themes. |
+| Method | Signature | Tier | Description |
+|--------|-----------|------|-------------|
+| `withParams` | `(defaults: Partial<TParams>, mode?: string) => Theme<TParams>` | Community | Returns a new theme with overridden default values for the listed params. Pass a `mode` string (`'light'`, `'dark'`, or custom) to apply the params only in that color-scheme context. |
+| `withPart` | `<TPartParams>(part: Part<TPartParams> \| (() => Part<TPartParams>)) => Theme<TParams & TPartParams>` | Community | Returns a new theme that uses the given part, replacing any existing part for the same design feature. |
+| `withoutPart` | `(feature: string) => Theme<TParams>` | Community | Returns a new theme with the named part removed. |
+| `createTheme` | `() => Theme<CoreParams & ButtonStyleParams & ...>` | Community | Factory for a blank theme containing only core grid styles and no design parts. Start from here for fully custom themes. |
 
 ### Key theme parameters (excerpt from `SharedThemeParams` and `CoreParams`)
 
-| Parameter | Type | Description |
-|-----------|------|-------------|
-| `accentColor` | `ColorValue` | Brand color for selections, focus rings, and checkboxes. |
-| `backgroundColor` | `ColorValue` | Grid background; semi-transparent UI elements blend with this. |
-| `foregroundColor` | `ColorValue` | Base neutral color; most text, borders, and backgrounds derive from this. |
-| `borderColor` | `ColorValue` | Default border color. |
-| `borderRadius` | `LengthValue` | Corner radius for menus, dialogs, and widgets. |
-| `chromeBackgroundColor` | `ColorValue` | Headers, tool panels, and menus background. |
-| `spacing` | `LengthValue` | Base spacing unit; all padding and margins are multiples of this. |
-| `fontSize` | `LengthValue` | Default font size throughout the grid. |
-| `fontFamily` | `FontFamilyValue` | Default font family. Accepts Google Font descriptor `{ googleFont: 'Inter' }`. |
-| `headerHeight` | `LengthValue` | Height of the column header row (theme default; overridden by `gridOptions.headerHeight`). |
-| `rowHeight` | `LengthValue` | Height of data rows (theme default; overridden by `gridOptions.rowHeight` or `getRowHeight`). |
-| `oddRowBackgroundColor` | `ColorValue` | Alternating row stripe color. |
-| `rowHoverColor` | `ColorValue` | Row background on mouse hover. |
-| `headerBackgroundColor` | `ColorValue` | Header cell background. |
-| `headerFontFamily` | `FontFamilyValue` | Header cell font family. |
-| `headerFontSize` | `LengthValue` | Header cell font size. |
-| `headerFontWeight` | `FontWeightValue` | Header cell font weight. |
-| `headerTextColor` | `ColorValue` | Header cell text color. |
-| `cellHorizontalPadding` | `LengthValue` | Left/right padding inside body and header cells. |
-| `pinnedColumnBorder` | `BorderValue` | Divider line between pinned and center column regions. |
-| `pinnedRowBorder` | `BorderValue` | Divider line between pinned and scrollable row regions. |
-| `focusShadow` | `ShadowValue` | Box-shadow on focused form inputs and buttons. |
-| `rangeSelectionBorderColor` | `ColorValue` | Border color around range selections. |
-| `rangeSelectionBackgroundColor` | `ColorValue` | Background fill for range selections (semi-transparent recommended). |
-| `menuBackgroundColor` | `ColorValue` | Background of context menu and column menu. |
-| `menuShadow` | `ShadowValue` | Shadow on menus. |
-| `browserColorScheme` | `ColorSchemeValue` | CSS `color-scheme` applied to the grid; controls browser scrollbar and input default appearance. |
-| `wrapperBorderRadius` | `LengthValue` | Corner radius of the grid wrapper element. |
+| Parameter | Type | Tier | Description |
+|-----------|------|------|-------------|
+| `accentColor` | `ColorValue` | Community | Brand color for selections, focus rings, and checkboxes. |
+| `backgroundColor` | `ColorValue` | Community | Grid background; semi-transparent UI elements blend with this. |
+| `foregroundColor` | `ColorValue` | Community | Base neutral color; most text, borders, and backgrounds derive from this. |
+| `borderColor` | `ColorValue` | Community | Default border color. |
+| `borderRadius` | `LengthValue` | Community | Corner radius for menus, dialogs, and widgets. |
+| `chromeBackgroundColor` | `ColorValue` | Community | Headers, tool panels, and menus background. |
+| `spacing` | `LengthValue` | Community | Base spacing unit; all padding and margins are multiples of this. |
+| `fontSize` | `LengthValue` | Community | Default font size throughout the grid. |
+| `fontFamily` | `FontFamilyValue` | Community | Default font family. Accepts Google Font descriptor `{ googleFont: 'Inter' }`. |
+| `headerHeight` | `LengthValue` | Community | Height of the column header row (theme default; overridden by `gridOptions.headerHeight`). |
+| `rowHeight` | `LengthValue` | Community | Height of data rows (theme default; overridden by `gridOptions.rowHeight` or `getRowHeight`). |
+| `oddRowBackgroundColor` | `ColorValue` | Community | Alternating row stripe color. |
+| `rowHoverColor` | `ColorValue` | Community | Row background on mouse hover. |
+| `headerBackgroundColor` | `ColorValue` | Community | Header cell background. |
+| `headerFontFamily` | `FontFamilyValue` | Community | Header cell font family. |
+| `headerFontSize` | `LengthValue` | Community | Header cell font size. |
+| `headerFontWeight` | `FontWeightValue` | Community | Header cell font weight. |
+| `headerTextColor` | `ColorValue` | Community | Header cell text color. |
+| `cellHorizontalPadding` | `LengthValue` | Community | Left/right padding inside body and header cells. |
+| `pinnedColumnBorder` | `BorderValue` | Community | Divider line between pinned and center column regions. |
+| `pinnedRowBorder` | `BorderValue` | Community | Divider line between pinned and scrollable row regions. |
+| `focusShadow` | `ShadowValue` | Community | Box-shadow on focused form inputs and buttons. |
+| `rangeSelectionBorderColor` | `ColorValue` | Community | Border color around range selections. |
+| `rangeSelectionBackgroundColor` | `ColorValue` | Community | Background fill for range selections (semi-transparent recommended). |
+| `menuBackgroundColor` | `ColorValue` | Community | Background of context menu and column menu. |
+| `menuShadow` | `ShadowValue` | Community | Shadow on menus. |
+| `browserColorScheme` | `ColorSchemeValue` | Community | CSS `color-scheme` applied to the grid; controls browser scrollbar and input default appearance. |
+| `wrapperBorderRadius` | `LengthValue` | Community | Corner radius of the grid wrapper element. |
 
 ### Cell styling (ColDef — cross-reference)
 

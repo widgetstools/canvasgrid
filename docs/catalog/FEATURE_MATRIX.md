@@ -626,9 +626,9 @@
 | 16 | setColumnsPinned | Community | api | no | P1 | Programmatically pin/unpin columns |
 | 16 | isPinning / isPinningLeft / isPinningRight | Community | api | no | P2 | Query whether any column is currently pinned |
 | 16 | getDisplayedLeftColumns / getDisplayedRightColumns | Community | api | no | P1 | Retrieve columns in pinned panes |
-| 16 | pinnedTopRowData / pinnedBottomRowData | Enterprise | config | no | P1 | Static data rows frozen above/below scrollable body |
-| 16 | enableRowPinning | Enterprise | config | no | P2 | User-initiated row pinning via context menu |
-| 16 | getPinnedTopRowCount / getPinnedBottomRowCount | Enterprise | api | no | P2 | Count of pinned rows |
+| 16 | pinnedTopRowData / pinnedBottomRowData | Community | config | no | P1 | Static data rows frozen above/below scrollable body |
+| 16 | enableRowPinning | Community | config | no | P2 | User-initiated row pinning via context menu |
+| 16 | getPinnedTopRowCount / getPinnedBottomRowCount | Community | api | no | P2 | Count of pinned rows |
 | 16 | domLayout | Community | config | no | P1 | normal / autoHeight / print layout modes |
 | 16 | enableRtl | Community | config | no | P2 | Right-to-left layout |
 | 16 | ensureDomOrder | Community | config | no | P2 | DOM row order matches visual order; required for AT |
@@ -637,7 +637,8 @@
 | 16 | isFullWidthRow / fullWidthCellRenderer | Community | config | no | P2 | Full-width rows spanning all column panes |
 | 16 | processUnpinnedColumns | Community | config | no | P2 | Callback when viewport too narrow for pinned columns |
 | 16 | columnPinned event | Community | event | no | P1 | Fires when a column is pinned or unpinned |
-| 16 | pinnedRowDataChanged / pinnedRowsChanged | Enterprise | event | no | P2 | Fires when pinned row data changes |
+| 16 | isRowPinnable | Community | config | no | P2 | Callback to prevent specific row from being pinned by user |
+| 16 | pinnedRowDataChanged / pinnedRowsChanged | Community | event | no | P2 | Fires when pinned row data changes |
 
 <!-- area:17 Side bar & tool panels -->
 | 17 | sideBar (shorthand: 'columns', 'filters', true) | Enterprise | config | yes | P1 | Quick-configure side bar with built-in panels |
@@ -670,21 +671,21 @@
 
 <!-- area:19 Context menu & clipboard -->
 | 19 | getContextMenuItems / MenuItemDef | Enterprise | config | no | P1 | Customise context menu items and add custom entries |
-| 19 | suppressContextMenu | Enterprise | config | no | P2 | Disable right-click context menu |
+| 19 | suppressContextMenu | Community | config | no | P2 | Disable right-click context menu |
 | 19 | DefaultMenuItem string identifiers | Enterprise | config | no | P1 | Built-in menu item keys (copy, paste, export, pin, etc.) |
-| 19 | copyToClipboard | Community | api | no | P1 | Copy focused cell or selected rows to clipboard |
+| 19 | copyToClipboard | Enterprise | api | no | P1 | Copy focused cell or selected rows to clipboard |
 | 19 | copySelectedRangeToClipboard | Enterprise | api | no | P1 | Copy cell range selection to clipboard |
 | 19 | cutToClipboard | Enterprise | api | no | P2 | Cut selected cells to clipboard |
 | 19 | copySelectedRowsToClipboard | Enterprise | api | no | P2 | Copy selected rows with optional column restriction |
 | 19 | pasteFromClipboard | Enterprise | api | no | P2 | Programmatically paste from clipboard |
 | 19 | copySelectedRangeDown | Enterprise | api | no | P2 | Fill-down within selected range |
-| 19 | processCellForClipboard | Community | config | no | P1 | Transform cell values before clipboard write |
-| 19 | processCellFromClipboard | Community | config | no | P1 | Transform pasted values before grid update |
-| 19 | sendToClipboard | Community | config | no | P2 | Intercept clipboard write; handle it yourself |
-| 19 | processDataFromClipboard | Community | config | no | P2 | Full paste operation control including cancel |
-| 19 | copyHeadersToClipboard / copyGroupHeadersToClipboard | Community | config | no | P2 | Include header rows in Ctrl+C copy |
-| 19 | clipboardDelimiter | Community | config | no | P2 | Field separator for clipboard text |
-| 19 | suppressClipboardPaste / suppressCutToClipboard | Community | config | no | P2 | Disable paste or cut operations |
+| 19 | processCellForClipboard | Enterprise | config | no | P1 | Transform cell values before clipboard write |
+| 19 | processCellFromClipboard | Enterprise | config | no | P1 | Transform pasted values before grid update |
+| 19 | sendToClipboard | Enterprise | config | no | P2 | Intercept clipboard write; handle it yourself |
+| 19 | processDataFromClipboard | Enterprise | config | no | P2 | Full paste operation control including cancel |
+| 19 | copyHeadersToClipboard / copyGroupHeadersToClipboard | Enterprise | config | no | P2 | Include header rows in Ctrl+C copy |
+| 19 | clipboardDelimiter | Enterprise | config | no | P2 | Field separator for clipboard text |
+| 19 | suppressClipboardPaste / suppressCutToClipboard | Enterprise | config | no | P2 | Disable paste or cut operations |
 | 19 | contextMenuVisibleChanged event | Enterprise | event | no | P2 | Context menu appears or disappears |
 | 19 | pasteStart / pasteEnd events | Enterprise | event | no | P2 | Bracket a paste operation |
 | 19 | cutStart / cutEnd events | Enterprise | event | no | P2 | Bracket a cut operation |
