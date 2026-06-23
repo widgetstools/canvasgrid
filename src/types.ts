@@ -1,3 +1,11 @@
+export interface Trade {
+  id: string;
+  timestamp: string; // ISO
+  side: 'buy' | 'sell';
+  quantity: number;
+  price: number;
+}
+
 export interface PositionRow {
   positionId: string;
   cusip: string;
@@ -32,6 +40,9 @@ export interface PositionRow {
     fitch?: string;
     composite?: string;
   };
+  priceHistory?: number[]; // 30 mock intraday prices
+  trades?: Trade[];        // mock per-position trades
+  path?: string[];         // [bookName, portfolio, positionId] for tree data
   [key: string]: unknown;
 }
 

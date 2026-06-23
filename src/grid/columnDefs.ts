@@ -24,6 +24,18 @@ function multiFilter(kind: 'text' | 'number'): Pick<ColDef<PositionRow>, 'filter
   };
 }
 
+function setFilter(): Pick<ColDef<PositionRow>, 'filter'> {
+  return { filter: 'agSetColumnFilter' };
+}
+
+function textFilter(): Pick<ColDef<PositionRow>, 'filter'> {
+  return { filter: 'agTextColumnFilter' };
+}
+
+function numberFilter(): Pick<ColDef<PositionRow>, 'filter'> {
+  return { filter: 'agNumberColumnFilter' };
+}
+
 export const columnDefs: ColDef<PositionRow>[] = [
   {
     field: 'positionId',
@@ -44,70 +56,86 @@ export const columnDefs: ColDef<PositionRow>[] = [
     headerName: 'Desk',
     rowGroup: true,
     hide: true,
-    ...multiFilter('text'),
+    ...setFilter(),
   },
   {
     field: 'region',
     headerName: 'Region',
     rowGroup: true,
     hide: true,
-    ...multiFilter('text'),
+    pivot: true,
+    ...setFilter(),
   },
   {
     field: 'instrumentType',
     headerName: 'Instrument Type',
     rowGroup: true,
     hide: true,
-    ...multiFilter('text'),
+    ...setFilter(),
   },
   {
     field: 'ticker',
     headerName: 'Ticker',
     width: 100,
-    ...multiFilter('text'),
+    ...textFilter(),
   },
   {
     field: 'instrumentName',
     headerName: 'Instrument',
     minWidth: 180,
     flex: 1,
-    ...multiFilter('text'),
+    ...textFilter(),
   },
   {
     field: 'productFamily',
     headerName: 'Product Family',
     width: 130,
-    ...multiFilter('text'),
+    ...setFilter(),
   },
   {
     field: 'bookName',
     headerName: 'Book',
     width: 100,
-    ...multiFilter('text'),
+    ...setFilter(),
   },
   {
     field: 'portfolio',
     headerName: 'Portfolio',
     width: 100,
-    ...multiFilter('text'),
+    ...setFilter(),
   },
   {
     field: 'trader',
     headerName: 'Trader',
     width: 130,
-    ...multiFilter('text'),
+    ...textFilter(),
   },
   {
     field: 'country',
     headerName: 'Country',
     width: 90,
-    ...multiFilter('text'),
+    ...setFilter(),
   },
   {
     field: 'currency',
     headerName: 'CCY',
     width: 70,
-    ...multiFilter('text'),
+    ...setFilter(),
+  },
+  {
+    field: 'priceHistory',
+    headerName: 'Price Trend',
+    cellRenderer: 'agSparklineCellRenderer',
+    cellRendererParams: {
+      sparklineOptions: {
+        type: 'line',
+        line: { stroke: '#0d9488', strokeWidth: 1 },
+        padding: { top: 4, bottom: 4 },
+      },
+    },
+    width: 120,
+    sortable: false,
+    filter: false,
   },
   {
     field: 'notionalAmount',
@@ -117,7 +145,10 @@ export const columnDefs: ColDef<PositionRow>[] = [
     width: 130,
     valueFormatter: currencyFmt(0),
     enableCellChangeFlash: true,
-    ...multiFilter('number'),
+    cellEditor: 'agNumberCellEditor',
+    cellEditorPopup: true,
+    cellEditorParams: { precision: 0 },
+    ...numberFilter(),
   },
   {
     field: 'marketValue',
@@ -127,6 +158,7 @@ export const columnDefs: ColDef<PositionRow>[] = [
     width: 130,
     valueFormatter: currencyFmt(0),
     enableCellChangeFlash: true,
+    cellEditor: 'agNumberCellEditor',
     ...multiFilter('number'),
   },
   {
@@ -148,13 +180,14 @@ export const columnDefs: ColDef<PositionRow>[] = [
     pinned: 'right',
     valueFormatter: currencyFmt(0),
     enableCellChangeFlash: true,
+    cellEditor: 'agNumberCellEditor',
     cellStyle: (p) => {
       const v = Number(p.value ?? 0);
       if (v > 0) return { color: '#0d9488', fontWeight: 600 };
       if (v < 0) return { color: '#dc2626', fontWeight: 600 };
       return undefined;
     },
-    ...multiFilter('number'),
+    ...numberFilter(),
   },
   {
     field: 'dailyPnl',
@@ -183,6 +216,7 @@ export const columnDefs: ColDef<PositionRow>[] = [
     width: 90,
     valueFormatter: compactNum(3),
     enableCellChangeFlash: true,
+    cellEditor: 'agNumberCellEditor',
     ...multiFilter('number'),
   },
   {
@@ -220,7 +254,7 @@ export const columnDefs: ColDef<PositionRow>[] = [
     headerName: 'Rating',
     width: 90,
     valueGetter: (p) => p.data?.rating?.composite ?? p.data?.rating?.sp ?? '',
-    ...multiFilter('text'),
+    ...textFilter(),
   },
 ];
 
