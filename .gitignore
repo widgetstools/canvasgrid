@@ -8,5 +8,8 @@ dist-ssr
 # TS build cache
 tsconfig.tsbuildinfo
 
+# Vite cache
+.vite/
+
 # Subagent-driven progress ledger (local scratch)
 .superpowers/
