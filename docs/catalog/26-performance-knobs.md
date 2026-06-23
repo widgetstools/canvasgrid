@@ -76,7 +76,7 @@ The most impactful performance decision for datasets beyond ~50 000 rows is choo
 
 | Method | Signature | Tier | Description |
 |--------|-----------|------|-------------|
-| `applyTransactionAsync` | `(transaction: RowDataTransaction<TData>, callback?: AsyncTransactionsFlushedEvent => void) => void` | Community | Queues a row transaction for batched application after `asyncTransactionWaitMillis`. Reduces pipeline invocations for high-frequency updates. See `04-data-updates.md`. |
+| `applyTransactionAsync` | `(transaction: RowDataTransaction<TData>, callback?: (res: RowNodeTransaction<TData>) => void) => void` | Community | Queues a row transaction for batched application after `asyncTransactionWaitMillis`. Reduces pipeline invocations for high-frequency updates. See `04-data-updates.md`. |
 | `flushAsyncTransactions` | `() => void` | Community | Immediately flushes all pending async transactions without waiting for the timer. Useful before navigation or screenshot capture. |
 | `refreshClientSideRowModel` | `(step?: ClientSideRowModelStep) => void` | Community | Re-runs the CSRM pipeline from a given step (`'group'`, `'filter'`, `'pivot'`, `'aggregate'`, `'sort'`, `'map'`). Use to force a refresh without changing data. |
 | `refreshCells` | `(params?: RefreshCellsParams) => void` | Community | Re-renders specified cells in place without destroying the renderer. Lower cost than `redrawRows`. |
@@ -87,8 +87,8 @@ The most impactful performance decision for datasets beyond ~50 000 rows is choo
 
 | Event | Payload | Tier | Fires when |
 |-------|---------|------|-----------|
-| `asyncTransactionsFlushed` | `AsyncTransactionsFlushedEvent { results: RowNodeTransaction<TData>[] }` | Community | The async transaction batch is applied; contains all individual transaction results. |
-| `modelUpdated` | `ModelUpdatedEvent { newData: boolean; newPage: boolean; keepRenderedRows: boolean; animate: boolean; rowDataUpdated: boolean }` | Community | Displayed rows are recomputed after any pipeline pass (sort, filter, group, transaction). |
+| `asyncTransactionsFlushed` | `AsyncTransactionsFlushedEvent { results: (RowNodeTransaction<TData> \| ServerSideTransactionResult<TData>)[] }` | Community | The async transaction batch is applied; contains all individual transaction results (CSRM context yields RowNodeTransaction; SSRM yields ServerSideTransactionResult). |
+| `modelUpdated` | `ModelUpdatedEvent { animate?: boolean; keepRenderedRows?: boolean; newData?: boolean; newPage: boolean; newPageSize?: boolean; keepUndoRedoStack?: boolean }` | Community | Displayed rows are recomputed after any pipeline pass (sort, filter, group, transaction). |
 
 ## Behaviors / interactions
 
