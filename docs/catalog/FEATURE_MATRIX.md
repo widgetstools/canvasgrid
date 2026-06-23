@@ -237,8 +237,8 @@
 | 06 | suppressStartEditOnTab | Community | option | no | P2 | Prevent Tab from starting next cell edit |
 | 06 | invalidEditValueMode | Community | option | no | P2 | 'block' keeps editor open on validation failure |
 | 06 | getFullRowEditValidationErrors | Community | option | no | P2 | Validate full-row edit before commit |
-| 06 | undoRedoCellEditing | Enterprise | option | no | P2 | Enable undo/redo stack for cell edits |
-| 06 | undoRedoCellEditingLimit | Enterprise | option | no | P2 | Max depth of undo/redo stack |
+| 06 | undoRedoCellEditing | Community | option | no | P2 | Enable undo/redo stack for cell edits |
+| 06 | undoRedoCellEditingLimit | Community | option | no | P2 | Max depth of undo/redo stack |
 | 06 | agTextCellEditor | Community | option | no | P1 | Built-in plain text editor |
 | 06 | agLargeTextCellEditor | Community | option | no | P2 | Built-in textarea editor |
 | 06 | agSelectCellEditor | Community | option | no | P2 | Built-in native select editor |
@@ -254,9 +254,10 @@
 | 06 | getCellEditorInstances | Community | api | no | P2 | Access live editor component instances |
 | 06 | isEditing | Community | api | no | P2 | Check if a specific cell is being edited |
 | 06 | validateEdit | Community | api | no | P2 | Run validation on all active editors |
-| 06 | undoCellEditing | Enterprise | api | no | P2 | Revert last cell edit |
-| 06 | redoCellEditing | Enterprise | api | no | P2 | Re-apply most recently undone edit |
-| 06 | getCurrentUndoSize | Enterprise | api | no | P3 | Number of available undo operations |
+| 06 | undoCellEditing | Community | api | no | P2 | Revert last cell edit |
+| 06 | redoCellEditing | Community | api | no | P2 | Re-apply most recently undone edit |
+| 06 | getCurrentUndoSize | Community | api | no | P3 | Number of available undo operations |
+| 06 | getCurrentRedoSize | Community | api | no | P3 | Number of available redo operations |
 | 06 | cellEditingStarted | Community | event | no | P1 | Cell editor activated |
 | 06 | cellEditingStopped | Community | event | no | P1 | Cell editor closed |
 | 06 | cellValueChanged | Community | event | no | P1 | Cell value committed (edit, paste, undo, redo) |
@@ -264,15 +265,15 @@
 | 06 | rowEditingStarted | Community | event | no | P2 | Full-row edit started |
 | 06 | rowEditingStopped | Community | event | no | P2 | Full-row edit ended |
 | 06 | rowValueChanged | Community | event | no | P2 | At least one value changed in full-row edit |
-| 06 | undoStarted | Enterprise | event | no | P2 | Undo operation begins |
-| 06 | undoEnded | Enterprise | event | no | P2 | Undo operation completes |
-| 06 | redoStarted | Enterprise | event | no | P2 | Redo operation begins |
-| 06 | redoEnded | Enterprise | event | no | P2 | Redo operation completes |
+| 06 | undoStarted | Community | event | no | P2 | Undo operation begins |
+| 06 | undoEnded | Community | event | no | P2 | Undo operation completes |
+| 06 | redoStarted | Community | event | no | P2 | Redo operation begins |
+| 06 | redoEnded | Community | event | no | P2 | Redo operation completes |
 | 06 | Single-cell vs full-row edit mode | Community | behavior | no | P1 | editType='fullRow' activates all editable cells in row |
 | 06 | valueParser / valueSetter pipeline | Community | behavior | no | P1 | Editor → parser → setter → data write |
 | 06 | Popup editor positioning | Community | behavior | no | P2 | 'over' covers cell; 'under' leaves value visible |
 | 06 | readOnlyEdit immutable pattern | Community | behavior | no | P1 | Grid fires cellEditRequest; app pushes transaction |
-| 06 | Undo / redo stack semantics | Enterprise | behavior | no | P2 | Bounded stack; cleared on external transaction |
+| 06 | Undo / redo stack semantics | Community | behavior | no | P2 | Bounded stack; cleared on external transaction |
 | 06 | Custom editor ICellEditor interface | Community | behavior | no | P1 | getValue/isCancelBeforeStart/isCancelAfterEnd lifecycle |
 | 06 | Validation via getValidationErrors | Community | behavior | no | P2 | Editor returns errors; grid blocks commit when configured |
 
@@ -345,6 +346,7 @@
 | 08 | isExternalFilterPresent | Community | option | no | P1 | Callback returning true when external filter is active |
 | 08 | doesExternalFilterPass | Community | option | no | P1 | Per-row callback for external filter logic |
 | 08 | alwaysPassFilter | Community | option | no | P2 | Rows bypassing all filters unconditionally |
+| 08 | enableFilterHandlers | Community | option | no | P2 | When true, grid expects user-provided filter handlers; toggles which filter events fire |
 | 08 | getFilterModel | Community | api | no | P1 | Returns all column filter models as serialisable object |
 | 08 | setFilterModel | Community | api | no | P1 | Restore all column filter states from model object |
 | 08 | getColumnFilterModel | Community | api | no | P1 | Get filter model for a single column |

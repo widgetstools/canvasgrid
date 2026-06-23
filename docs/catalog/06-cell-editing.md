@@ -48,8 +48,8 @@ identity (`field`, `valueSetter`, `valueParser`) is detailed in `02-column-model
 
 | Option | Type | Default | Tier | Description |
 |--------|------|---------|------|-------------|
-| `undoRedoCellEditing` | `boolean` | `false` | Enterprise | Enable undo / redo for cell edits. `@initial`. Requires `UndoRedoEditModule`. |
-| `undoRedoCellEditingLimit` | `number` | `10` | Enterprise | Maximum depth of the undo / redo stack. `@initial`. |
+| `undoRedoCellEditing` | `boolean` | `false` | Community | Enable undo / redo for cell edits. `@initial`. Requires `UndoRedoEditModule`. |
+| `undoRedoCellEditingLimit` | `number` | `10` | Community | Maximum depth of the undo / redo stack. `@initial`. |
 
 ### ColDef — per-column editing
 
@@ -89,14 +89,15 @@ identity (`field`, `valueSetter`, `valueParser`) is detailed in `02-column-model
 |--------|-----------|------|-------------|
 | `startEditingCell` | `(params: StartEditingCellParams) => void` | Community | Programmatically start editing the specified cell. `StartEditingCellParams` includes `rowIndex`, `colKey`, `rowPinned?`, `key?`. |
 | `stopEditing` | `(cancel?: boolean) => void` | Community | Stop any active edit. Pass `true` to cancel (discard new value). |
-| `getEditingCells` | `() => EditingCellPosition[]` | Community | Returns the list of cells currently in edit mode (`colId`, row position, pending value). |
+| `getEditingCells` | `() => EditingCellPosition[]` | Community | Returns the list of cells currently in edit mode. Use `colId` for column identity; the `column` and `colKey` fields on the returned `EditingCellPosition` are deprecated. |
 | `getEditRowValues` | `(rowNode: IRowNode) => Record<string, any> \| undefined` | Community | Returns pending edit values for a row during full-row edit. |
 | `getCellEditorInstances` | `(params?: GetCellEditorInstancesParams) => ICellEditor[]` | Community | Returns live cell editor component instances, optionally filtered by column/row. |
 | `isEditing` | `(cellPosition: CellPosition) => boolean` | Community | Returns `true` if the specified cell is currently being edited. |
 | `validateEdit` | `() => ICellEditorValidationError[] \| null` | Community | Runs validation on all active editors; returns errors or `null` if valid. |
-| `undoCellEditing` | `() => void` | Enterprise | Reverts the most recent cell edit from the undo stack. Requires `UndoRedoEditModule`. |
-| `redoCellEditing` | `() => void` | Enterprise | Re-applies the most recently undone edit. Requires `UndoRedoEditModule`. |
-| `getCurrentUndoSize` | `() => number` | Enterprise | Returns the number of available undo operations. |
+| `undoCellEditing` | `() => void` | Community | Reverts the most recent cell edit from the undo stack. Requires `UndoRedoEditModule`. |
+| `redoCellEditing` | `() => void` | Community | Re-applies the most recently undone edit. Requires `UndoRedoEditModule`. |
+| `getCurrentUndoSize` | `() => number` | Community | Returns the number of available undo operations. |
+| `getCurrentRedoSize` | `() => number` | Community | Returns the number of available redo operations. |
 
 ## Events
 
@@ -109,10 +110,10 @@ identity (`field`, `valueSetter`, `valueParser`) is detailed in `02-column-model
 | `rowEditingStarted` | `RowEditingStartedEvent { node, rowIndex, rowPinned, data }` | Community | Full-row edit mode: all editors in the row become active. |
 | `rowEditingStopped` | `RowEditingStoppedEvent { node, rowIndex, rowPinned, data }` | Community | Full-row edit mode: row editing ends. |
 | `rowValueChanged` | `RowValueChangedEvent { node, rowIndex, rowPinned, data }` | Community | Full-row edit mode: at least one cell value changed when the row editing stopped. |
-| `undoStarted` | `UndoStartedEvent { source: 'api' \| 'ui' }` | Enterprise | An undo operation begins. |
-| `undoEnded` | `UndoEndedEvent { source: 'api' \| 'ui', operationPerformed: boolean }` | Enterprise | An undo operation completes; `operationPerformed` is `false` if stack was empty. |
-| `redoStarted` | `RedoStartedEvent { source: 'api' \| 'ui' }` | Enterprise | A redo operation begins. |
-| `redoEnded` | `RedoEndedEvent { source: 'api' \| 'ui', operationPerformed: boolean }` | Enterprise | A redo operation completes; `operationPerformed` is `false` if stack was empty. |
+| `undoStarted` | `UndoStartedEvent { source: 'api' \| 'ui' }` | Community | An undo operation begins. |
+| `undoEnded` | `UndoEndedEvent { source: 'api' \| 'ui', operationPerformed: boolean }` | Community | An undo operation completes; `operationPerformed` is `false` if stack was empty. |
+| `redoStarted` | `RedoStartedEvent { source: 'api' \| 'ui' }` | Community | A redo operation begins. |
+| `redoEnded` | `RedoEndedEvent { source: 'api' \| 'ui', operationPerformed: boolean }` | Community | A redo operation completes; `operationPerformed` is `false` if stack was empty. |
 
 ## Behaviors / interactions
 

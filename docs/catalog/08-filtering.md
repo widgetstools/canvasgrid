@@ -48,6 +48,7 @@ model persistence uses `getFilterModel` / `setFilterModel` (this file). Server-s
 
 | Option | Type | Default | Tier | Description |
 |--------|------|---------|------|-------------|
+| `enableFilterHandlers` | `boolean` | `false` | Community | When true, the grid expects user-provided filter handlers via the new filter handler API; toggles which filter events fire. |
 | `enableAdvancedFilter` | `boolean` | `false` | Enterprise | Enable the Advanced Filter. See `26-advanced-filter.md`. Module: `AdvancedFilterModule`. |
 | `excludeChildrenWhenTreeDataFiltering` | `boolean` | `false` | Community | In tree data mode, exclude child nodes from filter results (filter only leaf nodes). Module: `TreeDataModule`. |
 
@@ -151,10 +152,10 @@ model persistence uses `getFilterModel` / `setFilterModel` (this file). Server-s
 | Event | Payload | Tier | Fires when |
 |-------|---------|------|-----------|
 | `filterChanged` | `FilterChangedEvent { source?: 'api'\|'quickFilter'\|'columnFilter'\|'advancedFilter', afterDataChange?: boolean, afterFloatingFilter?: boolean, columns: Column[] }` | Community | Any filter changes and the displayed rows are re-evaluated. |
-| `filterModified` | `FilterModifiedEvent { filterInstance: IFilterComp, column: Column }` | Community | The filter UI is modified by the user but not yet applied (e.g., user is typing). |
-| `filterUiChanged` | `FilterUiChangedEvent { column: Column }` | Community | The filter UI state changes (broader than `filterModified`). |
+| `filterModified` | `FilterModifiedEvent { filterInstance: IFilterComp, column: Column }` | Community | The filter UI is modified by the user but not yet applied (e.g., user is typing). Only fires when `enableFilterHandlers: false`. |
+| `filterUiChanged` | `FilterUiChangedEvent { column: Column }` | Community | The filter UI state changes (broader than `filterModified`). Only fires when `enableFilterHandlers: true`. |
 | `filterOpened` | `FilterOpenedEvent { column: Column \| ProvidedColumnGroup, source: FilterRequestSource, eGui: HTMLElement }` | Community | A column filter popup is opened. |
-| `floatingFilterUiChanged` | `FloatingFilterUiChangedEvent { column: Column }` | Community | The floating filter UI state changes. |
+| `floatingFilterUiChanged` | `FloatingFilterUiChangedEvent { column: Column }` | Community | The floating filter UI state changes. Only fires when `enableFilterHandlers: true`. |
 
 ## Behaviors / interactions
 
