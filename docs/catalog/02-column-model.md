@@ -183,7 +183,7 @@ group is expanded. The grid animates the width change when a group opens or clos
 
 ## Look & feel
 
-_Screenshots captured in Task 8 — see `screenshots/<area>-*.png`._
+- ![Flat table without grouping](screenshots/02-column-flat-table.png) — Grid with grouping toggled off; all columns visible in flat-table mode covering pinned-left identifiers, the numeric value cluster, and the right-pinned P&L column.
 
 ## Canvas-port implications
 

@@ -69,6 +69,7 @@ The status bar does not emit dedicated events. It reacts to grid-level events in
 ## Look & feel
 
 ![Status bar with aggregation component](screenshots/18-status-bar-aggregation-component.png) — Status bar showing the custom live-feed panel (left: phase, row count, update count) and the agAggregationComponent (right) populated with sum/avg/min/max for the 5 selected rows.
+- ![Status bar with all built-in components](screenshots/18-status-bar-all-components.png) — Rich Status Bar mode showing `agTotalRowCountComponent`, `agFilteredRowCountComponent`, `agSelectedRowCountComponent`, `agAggregationComponent`, and the custom phase panel together.
 
 ## Canvas-port implications
 

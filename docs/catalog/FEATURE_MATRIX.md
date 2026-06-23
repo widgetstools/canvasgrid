@@ -1,6 +1,6 @@
 # AG Grid Feature Matrix
 
-> Last verified: 2026-06-22 against AG Grid 35.3.1
+> Last verified: 2026-06-23 against AG Grid 35.3.1
 
 | Area | Feature | Tier | Surface | Showcase-uses? | Canvas-port priority | Notes |
 |------|---------|------|---------|----------------|----------------------|-------|

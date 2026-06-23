@@ -185,6 +185,7 @@ Returning `false` renders the checkbox as disabled (or hidden when `hideDisabled
 ![Checkbox indeterminate state on group](screenshots/12-selection-checkbox-mixed-state.png) — Two leaf rows selected within the Rates group; the parent group checkbox shows an indeterminate (mixed) state.
 
 ![Range selection with fill handle visible](screenshots/12-selection-range-cell-fill-handle.png) — Fill Handle toggle ON; a 4-row × 2-column range is selected across the Notional and Market Value columns; the blue fill-handle square appears at the bottom-right corner of the selection ready to drag-fill.
+- ![Multi-row checkbox selection (flat table)](screenshots/12-selection-multirow-checkbox-flat.png) — Several leaf rows selected via checkboxes in flat-table mode; status bar reports selection count.
 
 ## Canvas-port implications
 

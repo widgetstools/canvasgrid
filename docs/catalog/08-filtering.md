@@ -227,6 +227,9 @@ globally.
 ![Multi-filter with both Filter and Set tabs](screenshots/08-filtering-multi-filter-tabs.png) — agMultiColumnFilter popup showing both the text filter section and the set filter section simultaneously.
 
 ![Floating filter row with active values](screenshots/08-filtering-floating-filter-row.png) — Floating filter row below the column headers populated with "POS-1" in Position ID and "8" in CUSIP, showing 237 filtered rows.
+- ![Number filter popup](screenshots/08-filtering-number-filter-popup.png) — Plain `agNumberColumnFilter` popup over a numeric column in flat-table mode; condition/value inputs visible.
+- ![Set filter popup (flat mode)](screenshots/08-filtering-set-filter-popup-flat.png) — Plain `agSetColumnFilter` popup over a categorical column in flat-table mode; value list with search box.
+- ![Text filter popup (flat mode)](screenshots/08-filtering-text-filter-popup-flat.png) — Plain `agTextColumnFilter` popup over a text column in flat-table mode; condition selector + text input.
 
 ## Canvas-port implications
 

@@ -111,6 +111,7 @@ which prevents unnecessary row-position thrash in the DOM.
 ## Look & feel
 
 ![Multi-sort three columns](screenshots/07-sorting-multi-sort-three-cols.png) — Three sort indicators visible on P&L (desc, 1), Notional (asc, 2), and Market Value (desc, 3) columns simultaneously.
+- ![Single-column sort on flat table](screenshots/07-sorting-single-column-flat.png) — Descending sort on P&L with grouping off; single-direction indicator visible in the header.
 
 ## Canvas-port implications
 
