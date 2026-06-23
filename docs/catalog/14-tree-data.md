@@ -103,7 +103,7 @@ Removing a parent row also removes all its descendants.
 
 ## Look & feel
 
-_Screenshots captured in Task 8 — see `screenshots/<area>-*.png`._
+![Tree data hierarchy — book / portfolio / position path](screenshots/14-tree-data-hierarchy.png) — Tree Data toggle ON; the grid shows the `getDataPath`-driven 3-level hierarchy (Book → Portfolio → Position) with expand/collapse chevrons in the auto-group column; group rows show the book and portfolio names as parent nodes.
 
 ## Canvas-port implications
 

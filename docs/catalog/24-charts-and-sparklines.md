@@ -99,7 +99,11 @@ Note: the aliases `ChartCreated`, `ChartRangeSelectionChanged`, `ChartOptionsCha
 
 ## Look & feel
 
-_Screenshots captured in Task 8 — see `screenshots/<area>-*.png`._
+![Range selection for chart creation](screenshots/24-charts-range-chart.png) — Charts toggle ON; a 6-row × 3-column range (Notional, Market Value, Price) is selected in the grid ready for chart creation; the "Chart selected range" toolbar button is visible above the toggle row.
+
+![Integrated range chart dialog](screenshots/24-charts-toolbar.png) — After clicking "Chart selected range", AG Charts opens an integrated bar/column chart dialog on top of the grid showing the selected numeric data with the chart toolbar (chart type, settings, download controls).
+
+![Sparkline column — Price Trend miniature line charts](screenshots/24-sparklines-column.png) — The Price Trend column renders a miniature sparkline (AG Sparklines) in each leaf cell, showing the last-N price history as a line chart within the row height; group rows show no sparkline.
 
 ## Canvas-port implications
 

@@ -164,7 +164,9 @@ exposes validation feedback via `getValidationElement()`.
 
 ## Look & feel
 
-_Planned screenshot `06-cell-editing-popup-editor-open.png` could not be captured — no columns have `editable: true` configured in the showcase grid._
+![Popup number editor open on Notional cell](screenshots/06-cell-editing-popup-editor-open.png) — Editing toggle ON; the `agNumberCellEditor` with `cellEditorPopup: true` floats above the Notional cell (Tom Brown / BOOK003 row), showing a spin-button input with the current value.
+
+![Text cell editor active on Trader column](screenshots/06-cell-editing-text-editor-active.png) — Inline text editor (`agTextCellEditor`) active on the Trader column of a leaf row; the cell is in edit mode with cursor inside the input field.
 
 ## Canvas-port implications
 

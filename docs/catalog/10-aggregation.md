@@ -130,6 +130,8 @@ which functions appear in the GUI. `functionsReadOnly=true` makes the GUI displa
 
 ![Aggregation in group/total rows](screenshots/10-aggregation-aggfunc-in-header.png) — Grid scrolled right to show Notional column with aggregated sum values in group rows and the grand total pinned-bottom row (note: `suppressAggFuncInHeader` is set, so column headers show the field name only).
 
+![Agg func names visible in column headers](screenshots/10-aggregation-aggfunc-in-header-real.png) — Same view with `suppressAggFuncInHeader` toggled OFF; column headers now display "sum(Notional)", "avg(Price)", "sum(Daily P&L)" etc., making the aggregation function explicit in each header.
+
 ## Canvas-port implications
 
 - The canvas engine must run the aggregation pipeline bottom-up through the group tree after each

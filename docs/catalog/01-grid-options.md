@@ -117,7 +117,7 @@ The `ValidationModule` additionally reports misconfigurations at startup.
 
 ## Look & feel
 
-_Screenshots captured in Task 8 — see `screenshots/<area>-*.png`._
+![Feature toggle row — interactive showcase controls](screenshots/01-grid-options-toggle-row.png) — The toggle strip added in Task 8b-A: checkboxes for Grouping, Editing, Fill Handle, Suppress Agg Header, Pivot Mode, Master/Detail, Tree Data, Charts; a Theme dropdown (Quartz Light/Dark, Alpine, Material); and the Rich Status Bar toggle. Each control live-reconfigures the grid options without a page reload.
 
 ## Canvas-port implications
 

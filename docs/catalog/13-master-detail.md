@@ -99,7 +99,7 @@ By default (`masterSelects: 'self'`), selecting a master row has no effect on th
 
 ## Look & feel
 
-_Screenshots captured in Task 8 — see `screenshots/<area>-*.png`._
+![Master row expanded showing detail grid](screenshots/13-master-detail-row-expanded.png) — Master/Detail toggle ON; the first leaf row (TICK4032 / Tom Brown) is expanded revealing the embedded detail AG Grid beneath it, displaying position-level sub-data with its own column headers and rows.
 
 ## Canvas-port implications
 

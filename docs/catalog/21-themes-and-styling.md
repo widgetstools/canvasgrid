@@ -128,6 +128,12 @@ The theming system does not emit dedicated events.
 
 ![Quartz Light theme — default grid state](screenshots/21-theme-quartz-light.png) — Showcase grid in its clean default state using `themeQuartz` with custom teal accent (`#0d9488`), Inter font, and light Quartz color scheme showing grouped rows and the status bar.
 
+![Quartz Dark theme](screenshots/21-theme-quartz-dark.png) — Same showcase grid switched to `themeQuartz` dark variant via the Theme dropdown; dark background with teal accent highlights on selection and header elements.
+
+![Alpine theme](screenshots/21-theme-alpine.png) — Grid using the `themeAlpine` preset; clean white rows with a blue accent, slightly larger default row height, and the Alpine-style compact header.
+
+![Material theme](screenshots/21-theme-material.png) — Grid using the `themeMaterial` preset; Material Design–inspired elevated header, roboto-style typography, and blue ripple accent on focused/selected cells.
+
 ## Canvas-port implications
 
 - CSS-variable–based theming (`--ag-*`) is irrelevant to canvas rendering; the canvas port needs a parallel **design token system** that maps the same conceptual tokens (accent color, row height, cell padding, etc.) to drawing primitives (fill colors, line widths, font metrics).
