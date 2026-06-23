@@ -11,9 +11,18 @@
     }
   },
   "scripts": {
-    "build": "echo 'cgrid build placeholder — wired in Task 2'",
-    "test": "echo 'cgrid test placeholder — wired in Task 2'",
-    "typecheck": "echo 'cgrid typecheck placeholder — wired in Task 2'"
+    "build": "vite build && tsc --emitDeclarationOnly",
+    "test": "vitest run --passWithNoTests",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit"
   },
-  "files": ["dist"]
+  "files": ["dist", "src"],
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "happy-dom": "^15.0.0",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.2",
+    "vitest": "^2.1.0",
+    "@vitest/coverage-v8": "^2.1.0"
+  }
 }
