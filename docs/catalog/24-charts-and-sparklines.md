@@ -101,9 +101,9 @@ Note: the aliases `ChartCreated`, `ChartRangeSelectionChanged`, `ChartOptionsCha
 
 ![Range selection for chart creation](screenshots/24-charts-range-chart.png) — Charts toggle ON; a 6-row × 3-column range (Notional, Market Value, Price) is selected in the grid ready for chart creation; the "Chart selected range" toolbar button is visible above the toggle row.
 
-![Integrated range chart dialog](screenshots/24-charts-toolbar.png) — After clicking "Chart selected range", AG Charts opens an integrated bar/column chart dialog on top of the grid showing the selected numeric data with the chart toolbar (chart type, settings, download controls).
+![Integrated range chart dialog](screenshots/24-charts-toolbar.png) — After clicking "Chart selected range", AG Charts opens an integrated line chart dialog on top of the grid showing the selected numeric data (Notional, Market Value, Price and related columns) with the chart toolbar menu (Edit Chart, Unlink from Grid, Download Chart controls).
 
-![Sparkline column — Price Trend miniature line charts](screenshots/24-sparklines-column.png) — The Price Trend column renders a miniature sparkline (AG Sparklines) in each leaf cell, showing the last-N price history as a line chart within the row height; group rows show no sparkline.
+![Sparkline column — Price Trend miniature line charts](screenshots/24-sparklines-column.png) — The Price Trend column renders a miniature sparkline (AG Sparklines) in each leaf cell via `agSparklineCellRenderer`; group rows show no sparkline. Known limitation: sparkline canvas pixels are not composited by the headless screenshot tool, so the sparkline cells appear blank in this capture even though the `SparklinesModule` and `AgChartsCommunityModule` are registered and the sparklines do render in a normal browser session.
 
 ## Canvas-port implications
 
