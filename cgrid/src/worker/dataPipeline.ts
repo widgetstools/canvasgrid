@@ -1,0 +1,150 @@
+import type { TransactionResult } from '../types';
+
+/** Source-of-truth row storage in the worker. Keyed by rowIdField on each row. */
+export class RowStore<TRow = any> {
+  private byId = new Map<string, TRow>();
+  private order: string[] = [];
+  // Numeric ID assignment — monotonic per session.
+  private nextNumeric = 1;
+  private stringToNumeric = new Map<string, number>();
+  private numericToString = new Map<number, string>();
+
+  constructor(private rowIdField: string) {}
+
+  setAll(rows: TRow[]): void {
+    this.byId.clear();
+    this.order.length = 0;
+    for (const row of rows) {
+      const id = this.getRowId(row);
+      this.byId.set(id, row);
+      this.order.push(id);
+      if (!this.stringToNumeric.has(id)) {
+        const n = this.nextNumeric++;
+        this.stringToNumeric.set(id, n);
+        this.numericToString.set(n, id);
+      }
+    }
+  }
+
+  apply(tx: { add?: TRow[]; update?: TRow[]; remove?: string[] }): TransactionResult {
+    const result: TransactionResult = { add: [], update: [], remove: [] };
+    if (tx.add) {
+      for (const row of tx.add) {
+        const id = this.getRowId(row);
+        if (!this.byId.has(id)) {
+          this.byId.set(id, row);
+          this.order.push(id);
+          if (!this.stringToNumeric.has(id)) {
+            const n = this.nextNumeric++;
+            this.stringToNumeric.set(id, n);
+            this.numericToString.set(n, id);
+          }
+          result.add.push({ rowId: id });
+        }
+      }
+    }
+    if (tx.update) {
+      for (const row of tx.update) {
+        const id = this.getRowId(row);
+        if (this.byId.has(id)) {
+          this.byId.set(id, row);
+          result.update.push({ rowId: id });
+        }
+      }
+    }
+    if (tx.remove) {
+      for (const id of tx.remove) {
+        if (this.byId.delete(id)) {
+          const i = this.order.indexOf(id);
+          if (i !== -1) this.order.splice(i, 1);
+          result.remove.push({ rowId: id });
+        }
+      }
+    }
+    return result;
+  }
+
+  size(): number { return this.byId.size; }
+
+  *rows(): IterableIterator<TRow> {
+    for (const id of this.order) {
+      const r = this.byId.get(id);
+      if (r !== undefined) yield r;
+    }
+  }
+
+  getById(rowId: string): TRow | undefined {
+    return this.byId.get(rowId);
+  }
+
+  getRowId(row: TRow): string {
+    const v = (row as Record<string, unknown>)[this.rowIdField];
+    if (v == null) throw new Error(`[cgrid] row missing rowIdField '${this.rowIdField}'`);
+    return String(v);
+  }
+
+  getNumericId(rowId: string): number {
+    let n = this.stringToNumeric.get(rowId);
+    if (n === undefined) {
+      n = this.nextNumeric++;
+      this.stringToNumeric.set(rowId, n);
+      this.numericToString.set(n, rowId);
+    }
+    return n;
+  }
+
+  getStringId(numericId: number): string | undefined {
+    return this.numericToString.get(numericId);
+  }
+}
+
+interface QueueOpts {
+  waitMs: number;
+  onFlush: (results: TransactionResult[]) => void;
+}
+
+export class TransactionQueue<TRow = any> {
+  private pending: { add?: TRow[]; update?: TRow[]; remove?: string[] }[] = [];
+  private timer: ReturnType<typeof setTimeout> | null = null;
+  private flushFn: () => void;
+
+  constructor(private opts: QueueOpts) {
+    // Default flush: drains the queue and calls onFlush with empty results per tx.
+    // Task 12's worker.ts replaces this via setFlushFn once RowStore is available.
+    this.flushFn = () => {
+      const queued = this.pending;
+      this.pending = [];
+      this.timer = null;
+      if (queued.length === 0) return;
+      // Default: pretend each tx produced an empty result (real worker overrides).
+      this.opts.onFlush(queued.map(() => ({ add: [], update: [], remove: [] })));
+    };
+  }
+
+  /** Caller (worker.ts) installs the actual flush function once RowStore exists. */
+  setFlushFn(fn: (txs: { add?: TRow[]; update?: TRow[]; remove?: string[] }[]) => TransactionResult[]): void {
+    this.flushFn = () => {
+      const queued = this.pending;
+      this.pending = [];
+      this.timer = null;
+      if (queued.length === 0) return;
+      const results = fn(queued);
+      this.opts.onFlush(results);
+    };
+  }
+
+  push(tx: { add?: TRow[]; update?: TRow[]; remove?: string[] }): void {
+    this.pending.push(tx);
+    if (this.timer === null) {
+      this.timer = setTimeout(() => this.flushFn(), this.opts.waitMs);
+    }
+  }
+
+  flush(): void {
+    if (this.timer !== null) {
+      clearTimeout(this.timer);
+      this.timer = null;
+    }
+    this.flushFn();
+  }
+}
