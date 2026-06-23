@@ -69,10 +69,11 @@ export const numberCell: CellPainter<number> = {
     ctx.fillStyle = p.style.fg;
     ctx.font = p.style.font;
     ctx.textBaseline = 'middle';
-    ctx.textAlign = p.style.halign === 'center' ? 'center' : 'right';
+    ctx.textAlign = p.style.halign === 'left' || p.style.halign === 'center' ? p.style.halign : 'right';
     const cy = p.bounds.y + p.bounds.h / 2;
     const x = ctx.textAlign === 'right' ? p.bounds.x + p.bounds.w - PADDING
-            : p.bounds.x + p.bounds.w / 2;
+            : ctx.textAlign === 'center' ? p.bounds.x + p.bounds.w / 2
+            : p.bounds.x + PADDING;
     ctx.fillText(p.valueFormatted, x, cy);
   },
 };

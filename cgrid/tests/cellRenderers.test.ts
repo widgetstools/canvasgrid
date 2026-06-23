@@ -39,8 +39,29 @@ describe('textCell', () => {
 describe('numberCell', () => {
   it('right-aligns by default', () => {
     const ctx = makeCtx();
-    numberCell.paint(ctx, baseParams({ value: 42, valueFormatted: '42' }));
+    numberCell.paint(ctx, baseParams({
+      value: 42, valueFormatted: '42',
+      style: { ...baseParams().style, halign: 'right' },
+    }));
     expect(ctx.textAlign).toBe('right');
+  });
+
+  it('respects explicit center halign', () => {
+    const ctx = makeCtx();
+    numberCell.paint(ctx, baseParams({
+      value: 42, valueFormatted: '42',
+      style: { ...baseParams().style, halign: 'center' },
+    }));
+    expect(ctx.textAlign).toBe('center');
+  });
+
+  it('respects explicit left halign', () => {
+    const ctx = makeCtx();
+    numberCell.paint(ctx, baseParams({
+      value: 7, valueFormatted: '7',
+      style: { ...baseParams().style, halign: 'left' },
+    }));
+    expect(ctx.textAlign).toBe('left');
   });
 });
 
