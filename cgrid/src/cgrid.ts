@@ -3,3 +3,9 @@
 // worker/, theming/. See docs/superpowers/specs/2026-06-23-canvasgrid-foundation-design.md.
 
 export const CGRID_VERSION = '0.0.0';
+
+export type {
+  CGridOptions, CColDef, CValueGetterParams, CValueFormatterParams,
+  SortModel, SortModelEntry, FilterModel, FilterModelEntry, GroupModel,
+  Tx, TransactionResult, CGridEvent, CGridApi,
+} from './types';
