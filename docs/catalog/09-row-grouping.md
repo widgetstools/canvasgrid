@@ -143,7 +143,9 @@ the group cell.
 
 ## Look & feel
 
-_Screenshots captured in Task 8 — see `screenshots/<area>-*.png`._
+![Three-level grouping expanded](screenshots/09-grouping-three-level-expanded.png) — Desk → Region → Instrument Type hierarchy with the Rates desk expanded, showing APAC region child group visible.
+
+![Group total row](screenshots/09-grouping-group-total-row.png) — "Total Rates" group footer row visible at the bottom of the Rates desk group, showing aggregated P&L sum for the group.
 
 ## Canvas-port implications
 

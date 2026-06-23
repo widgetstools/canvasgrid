@@ -105,7 +105,7 @@ The following string literals can be returned from `getContextMenuItems` to incl
 
 ## Look & feel
 
-_Screenshots captured in Task 8 — see `screenshots/<area>-*.png`._
+![Default context menu on cell right-click](screenshots/19-context-menu-default.png) — Default AG Grid context menu appearing on right-click of a group cell, showing Cut, Copy, Copy with Headers, Copy with Group Headers, Paste, and Export sub-menu items.
 
 ## Canvas-port implications
 

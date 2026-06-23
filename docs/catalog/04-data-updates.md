@@ -143,7 +143,7 @@ sort keys or filter-eligible fields.
 
 ## Look & feel
 
-_Screenshots captured in Task 8 — see `screenshots/<area>-*.png`._
+![Cell flash on live tick](screenshots/04-data-updates-cell-flash.png) — Numeric cells (Notional, Market Value, P&L) showing the `ag-cell-data-changed` highlight class mid-flash during a STOMP tick.
 
 ## Canvas-port implications
 

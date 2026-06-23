@@ -182,7 +182,9 @@ Returning `false` renders the checkbox as disabled (or hidden when `hideDisabled
 
 ## Look & feel
 
-_Screenshots captured in Task 8 — see `screenshots/<area>-*.png`._
+![Checkbox indeterminate state on group](screenshots/12-selection-checkbox-mixed-state.png) — Two leaf rows selected within the Rates group; the parent group checkbox shows an indeterminate (mixed) state.
+
+_Planned screenshot `12-selection-range-cell-fill-handle.png` could not be captured — `cellSelection` / `enableRangeSelection` is not enabled in the showcase grid._
 
 ## Canvas-port implications
 

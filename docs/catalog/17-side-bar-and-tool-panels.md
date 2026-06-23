@@ -106,7 +106,9 @@ Cross-references: the Columns Tool Panel is tightly coupled to `02-column-model.
 
 ## Look & feel
 
-_Screenshots captured in Task 8 — see `screenshots/<area>-*.png`._
+![Columns tool panel open](screenshots/17-sidebar-columns-panel-open.png) — Side bar with the Columns tab active, showing the full column list with checkboxes, row-group and value-aggregation drop-zones.
+
+![Filters tool panel open](screenshots/17-sidebar-filters-panel-open.png) — Side bar with the Filters tab active, listing all filterable columns with their current filter status.
 
 ## Canvas-port implications
 

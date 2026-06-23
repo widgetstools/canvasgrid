@@ -199,7 +199,9 @@ recompute heights and layout. For a single row change, call `rowNode.setRowHeigh
 
 ## Look & feel
 
-_Screenshots captured in Task 8 — see `screenshots/<area>-*.png`._
+![Virtual scroll at mid-point](screenshots/05-rendering-virtual-scroll-mid.png) — Viewport scrolled halfway through the 3,000-row dataset; rows above and below the visible window have been recycled.
+
+![No-rows overlay](screenshots/05-rendering-overlay-no-rows.png) — "No Matching Rows" overlay displayed after applying a filter that matches zero records.
 
 ## Canvas-port implications
 

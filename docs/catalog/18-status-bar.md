@@ -68,7 +68,7 @@ The status bar does not emit dedicated events. It reacts to grid-level events in
 
 ## Look & feel
 
-_Screenshots captured in Task 8 — see `screenshots/<area>-*.png`._
+![Status bar with aggregation component](screenshots/18-status-bar-aggregation-component.png) — Status bar showing the custom live-feed panel (left: phase, row count, update count) and the agAggregationComponent (right) populated with sum/avg/min/max for the 5 selected rows.
 
 ## Canvas-port implications
 

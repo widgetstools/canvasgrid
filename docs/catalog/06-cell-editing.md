@@ -164,7 +164,7 @@ exposes validation feedback via `getValidationElement()`.
 
 ## Look & feel
 
-_Screenshots captured in Task 8 — see `screenshots/<area>-*.png`._
+_Planned screenshot `06-cell-editing-popup-editor-open.png` could not be captured — no columns have `editable: true` configured in the showcase grid._
 
 ## Canvas-port implications
 

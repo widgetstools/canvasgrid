@@ -220,7 +220,13 @@ globally.
 
 ## Look & feel
 
-_Screenshots captured in Task 8 — see `screenshots/<area>-*.png`._
+![Text filter popup on Position ID](screenshots/08-filtering-text-filter-popup.png) — agMultiColumnFilter popup open on Position ID column showing the agTextColumnFilter with "Contains" operator and value "POS-1".
+
+![Set filter popup showing value list](screenshots/08-filtering-set-filter-popup.png) — Set filter portion of the agMultiColumnFilter popup displaying the list of unique Position ID values with checkboxes.
+
+![Multi-filter with both Filter and Set tabs](screenshots/08-filtering-multi-filter-tabs.png) — agMultiColumnFilter popup showing both the text filter section and the set filter section simultaneously.
+
+![Floating filter row with active values](screenshots/08-filtering-floating-filter-row.png) — Floating filter row below the column headers populated with "POS-1" in Position ID and "8" in CUSIP, showing 237 filtered rows.
 
 ## Canvas-port implications
 

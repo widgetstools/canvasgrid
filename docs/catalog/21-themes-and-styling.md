@@ -126,7 +126,7 @@ The theming system does not emit dedicated events.
 
 ## Look & feel
 
-_Screenshots captured in Task 8 — see `screenshots/<area>-*.png`._
+![Quartz Light theme — default grid state](screenshots/21-theme-quartz-light.png) — Showcase grid in its clean default state using `themeQuartz` with custom teal accent (`#0d9488`), Inter font, and light Quartz color scheme showing grouped rows and the status bar.
 
 ## Canvas-port implications
 

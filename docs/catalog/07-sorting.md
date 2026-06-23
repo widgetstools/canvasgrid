@@ -110,7 +110,7 @@ which prevents unnecessary row-position thrash in the DOM.
 
 ## Look & feel
 
-_Screenshots captured in Task 8 — see `screenshots/<area>-*.png`._
+![Multi-sort three columns](screenshots/07-sorting-multi-sort-three-cols.png) — Three sort indicators visible on P&L (desc, 1), Notional (asc, 2), and Market Value (desc, 3) columns simultaneously.
 
 ## Canvas-port implications
 

@@ -128,7 +128,7 @@ which functions appear in the GUI. `functionsReadOnly=true` makes the GUI displa
 
 ## Look & feel
 
-_Screenshots captured in Task 8 — see `screenshots/<area>-*.png`._
+![Aggregation in group/total rows](screenshots/10-aggregation-aggfunc-in-header.png) — Grid scrolled right to show Notional column with aggregated sum values in group rows and the grand total pinned-bottom row (note: `suppressAggFuncInHeader` is set, so column headers show the field name only).
 
 ## Canvas-port implications
 

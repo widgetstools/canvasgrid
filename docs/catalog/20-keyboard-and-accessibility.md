@@ -119,7 +119,7 @@ Cross-reference: `suppressNavigable` and `suppressKeyboardEvent` are documented 
 
 ## Look & feel
 
-_Screenshots captured in Task 8 — see `screenshots/<area>-*.png`._
+![Keyboard focus ring on cell](screenshots/20-keyboard-focus-ring-on-cell.png) — A data cell in the scrollable center viewport is focused via keyboard/click, showing AG Grid's focus ring (teal accent border) highlighting the active cell.
 
 ## Canvas-port implications
 

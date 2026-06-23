@@ -107,7 +107,7 @@ Cross-reference: column-level pinning properties (`ColDef.pinned`, `ColDef.initi
 
 ## Look & feel
 
-_Screenshots captured in Task 8 — see `screenshots/<area>-*.png`._
+![Pinned left and right columns](screenshots/16-pinning-left-and-right.png) — Grid showing the auto-group column and Position ID/CUSIP pinned left (57 cells), and P&L pinned right (19 cells), with the scrollable center viewport between them.
 
 ## Canvas-port implications
 
