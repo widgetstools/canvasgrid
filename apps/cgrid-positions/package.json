@@ -1,0 +1,9 @@
+{
+  "name": "cgrid-positions",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "echo 'cgrid-positions placeholder — implemented in Task 25'"
+  }
+}

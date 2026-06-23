@@ -1,0 +1,19 @@
+{
+  "name": "cgrid",
+  "version": "0.0.0",
+  "type": "module",
+  "main": "./dist/cgrid.js",
+  "types": "./dist/cgrid.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/cgrid.d.ts",
+      "import": "./dist/cgrid.js"
+    }
+  },
+  "scripts": {
+    "build": "echo 'cgrid build placeholder — wired in Task 2'",
+    "test": "echo 'cgrid test placeholder — wired in Task 2'",
+    "typecheck": "echo 'cgrid typecheck placeholder — wired in Task 2'"
+  },
+  "files": ["dist"]
+}
