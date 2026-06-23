@@ -60,7 +60,7 @@ N/A — see `22-events.md` for the events reference catalog. Individual area fil
 | `isRowDataEmpty` | `(): boolean` | Community | `04-data-updates.md` | Returns `true` if the CSRM has no rows (unaffected by filtering or pinned rows) (`ClientSideRowModelApiModule`). |
 | `refreshClientSideRowModel` | `(step?: ClientSideRowModelStep): void` | Community | `03-row-models.md` | Re-runs grouping, filtering, and sorting; optionally from a specific step (`ClientSideRowModelApiModule`). |
 | `setRowCount` | `(rowCount: number, maxRowFound?: boolean): void` | Community | `03-row-models.md` | Sets `rowCount` and optionally `maxRowFound` for Infinite/SSRM (`InfiniteRowModelModule / ServerSideRowModelApiModule`). |
-| `getCacheBlockState` | `(): any` | Community | `03-row-models.md` | Returns the current cache block state for Infinite/SSRM (`InfiniteRowModelModule / ServerSideRowModelApiModule`). |
+| `getCacheBlockState` | `(): any` | Community / Enterprise | `03-row-models.md` | Returns the current cache block state; Community via InfiniteRowModelModule; Enterprise via ServerSideRowModelApiModule. See `15-server-side-row-model.md` for SSRM context. |
 | `isLastRowIndexKnown` | `(): boolean \| undefined` | Community | `03-row-models.md` | Returns `false` if the grid allows scrolling past the last row for infinite scroll (`InfiniteRowModelModule / ServerSideRowModelApiModule`). |
 | `refreshInfiniteCache` | `(): void` | Community | `03-row-models.md` | Marks all Infinite Row Model cache blocks for reload (`InfiniteRowModelModule`). |
 | `purgeInfiniteCache` | `(): void` | Community | `03-row-models.md` | Purges the Infinite Row Model cache; grid shows blank while blocks reload (`InfiniteRowModelModule`). |
@@ -135,10 +135,10 @@ N/A — see `22-events.md` for the events reference catalog. Individual area fil
 | `addRenderedRowListener` | `(eventName: RenderedRowEvent, rowIndex: number, callback: (...args: any[]) => any): void` | Community | `05-rendering-and-dom.md` | Registers a listener for a virtual row; auto-removed when row leaves DOM (`RowApiModule`). |
 | `onRowHeightChanged` | `(): void` | Community | `05-rendering-and-dom.md` | Notifies the grid that row heights have changed (call after `rowNode.setRowHeight()`). |
 | `resetRowHeights` | `(): void` | Community | `05-rendering-and-dom.md` | Tells the grid to recalculate all row heights (`ClientSideRowModelApiModule / ServerSideRowModelApiModule`). |
-| `expandAll` | `(): void` | Enterprise | `09-row-grouping.md` | Expands all row groups (`ClientSideRowModelApiModule / ServerSideRowModelApiModule`). |
-| `collapseAll` | `(): void` | Enterprise | `09-row-grouping.md` | Collapses all row groups (`ClientSideRowModelApiModule / ServerSideRowModelApiModule`). |
-| `resetRowGroupExpansion` | `(): void` | Enterprise | `09-row-grouping.md` | Resets all group expansion to defaults; discards user overrides (`ClientSideRowModelApiModule / ServerSideRowModelApiModule`). |
-| `onGroupExpandedOrCollapsed` | `(): void` | Enterprise | `09-row-grouping.md` | Notifies the grid of external group expansion state changes; triggers a single re-render (`ClientSideRowModelApiModule`). |
+| `expandAll` | `(): void` | Community | `09-row-grouping.md` | Expands all row groups (`ClientSideRowModelApiModule / ServerSideRowModelApiModule`). |
+| `collapseAll` | `(): void` | Community | `09-row-grouping.md` | Collapses all row groups (`ClientSideRowModelApiModule / ServerSideRowModelApiModule`). |
+| `resetRowGroupExpansion` | `(): void` | Community | `09-row-grouping.md` | Resets all group expansion to defaults; discards user overrides (`ClientSideRowModelApiModule / ServerSideRowModelApiModule`). |
+| `onGroupExpandedOrCollapsed` | `(): void` | Community | `09-row-grouping.md` | Notifies the grid of external group expansion state changes; triggers a single re-render (`ClientSideRowModelApiModule`). |
 | `getBestCostNodeSelection` | `(): IRowNode<TData>[] \| undefined` | Community | `12-selection.md` | Returns selected nodes at best cost (groups instead of all children) (`ClientSideRowModelApiModule`). |
 | `getPinnedTopRowCount` | `(): number` | Community | `16-pinning-and-layout.md` | Returns the number of top pinned rows (`PinnedRowModule`). |
 | `getPinnedBottomRowCount` | `(): number` | Community | `16-pinning-and-layout.md` | Returns the number of bottom pinned rows (`PinnedRowModule`). |
@@ -169,13 +169,13 @@ N/A — see `22-events.md` for the events reference catalog. Individual area fil
 | `redoCellEditing` | `(): void` | Community | `06-cell-editing.md` | Re-applies the most recently undone cell edit (`UndoRedoEditModule`). |
 | `getCurrentUndoSize` | `(): number` | Community | `06-cell-editing.md` | Returns the number of available undo operations (`UndoRedoEditModule`). |
 | `getCurrentRedoSize` | `(): number` | Community | `06-cell-editing.md` | Returns the number of available redo operations (`UndoRedoEditModule`). |
-| `startBatchEdit` | `(): void` | Community | `06-cell-editing.md` | Starts a batch editing session — edits accumulate without being committed (`BatchEditModule`). |
-| `commitBatchEdit` | `(): void` | Community | `06-cell-editing.md` | Commits all pending batch edits to the row data (`BatchEditModule`). |
-| `cancelBatchEdit` | `(): void` | Community | `06-cell-editing.md` | Cancels all pending batch edits; reverts cells to original values (`BatchEditModule`). |
-| `isBatchEditing` | `(): boolean` | Community | `06-cell-editing.md` | Returns `true` if a batch editing session is currently active (`BatchEditModule`). |
-| `getNote` | `(params: GetNoteParams): Note \| undefined` | Community | `06-cell-editing.md` | Returns the current note for a cell (`NotesModule`). |
-| `setNote` | `(params: SetNoteParams): void` | Community | `06-cell-editing.md` | Sets or removes the note for a cell; pass `note: undefined` to remove (`NotesModule`). |
-| `refreshNotes` | `(params?: RefreshNotesParams): void` | Community | `06-cell-editing.md` | Refreshes note presence for currently rendered cells (`NotesModule`). |
+| `startBatchEdit` | `(): void` | Enterprise | `06-cell-editing.md` | Starts a batch editing session — edits accumulate without being committed (`BatchEditModule`). |
+| `commitBatchEdit` | `(): void` | Enterprise | `06-cell-editing.md` | Commits all pending batch edits to the row data (`BatchEditModule`). |
+| `cancelBatchEdit` | `(): void` | Enterprise | `06-cell-editing.md` | Cancels all pending batch edits; reverts cells to original values (`BatchEditModule`). |
+| `isBatchEditing` | `(): boolean` | Enterprise | `06-cell-editing.md` | Returns `true` if a batch editing session is currently active (`BatchEditModule`). |
+| `getNote` | `(params: GetNoteParams): Note \| undefined` | Enterprise | `06-cell-editing.md` | Returns the current note for a cell (`NotesModule`). |
+| `setNote` | `(params: SetNoteParams): void` | Enterprise | `06-cell-editing.md` | Sets or removes the note for a cell; pass `note: undefined` to remove (`NotesModule`). |
+| `refreshNotes` | `(params?: RefreshNotesParams): void` | Enterprise | `06-cell-editing.md` | Refreshes note presence for currently rendered cells (`NotesModule`). |
 
 ### Selection
 
@@ -265,12 +265,13 @@ N/A — see `22-events.md` for the events reference catalog. Individual area fil
 | `removeDetailGridInfo` | `(id: string): void` | Enterprise | `13-master-detail.md` | Unregisters a detail grid from the master grid (`MasterDetailModule`). |
 | `getDetailGridInfo` | `(id: string): DetailGridInfo \| undefined` | Enterprise | `13-master-detail.md` | Returns the `DetailGridInfo` for the given detail grid ID (`MasterDetailModule`). |
 | `forEachDetailGridInfo` | `(callback: (gridInfo: DetailGridInfo, index: number) => void): void` | Enterprise | `13-master-detail.md` | Iterates all registered detail grids (`MasterDetailModule`). |
-| `refreshFormulas` | `(rowNode?: IRowNode<TData> \| string): boolean` | Community | `06-cell-editing.md` | Invalidates the formula cache; returns `true` if a refresh was performed (`FormulaModule`). |
+| `refreshFormulas` | `(rowNode?: IRowNode<TData> \| string): boolean` | Enterprise | `06-cell-editing.md` | Invalidates the formula cache; returns `true` if a refresh was performed (`FormulaModule`). |
 
 ### Server-side
 
 | Method | Signature | Tier | Originating area | Description |
 |--------|-----------|------|-----------------|-------------|
+| `getCacheBlockState` | `(): any` | Enterprise | `15-server-side-row-model.md` | Returns the current server-side cache block state (`ServerSideRowModelApiModule`). See `03-row-models.md` for the Community via InfiniteRowModelModule variant. |
 | `applyServerSideTransaction` | `(transaction: ServerSideTransaction): ServerSideTransactionResult<TData> \| undefined` | Enterprise | `15-server-side-row-model.md` | Applies a transaction to the SSRM (`ServerSideRowModelApiModule`). |
 | `applyServerSideTransactionAsync` | `(transaction: ServerSideTransaction, callback?: (res: ServerSideTransactionResult<TData>) => void): void` | Enterprise | `15-server-side-row-model.md` | Batch-applies an SSRM transaction asynchronously (`ServerSideRowModelApiModule`). |
 | `applyServerSideRowData` | `(params: { successParams: LoadSuccessParams<TData>; route?: string[]; startRow?: number }): void` | Enterprise | `15-server-side-row-model.md` | Applies row data directly to a server-side store level (`ServerSideRowModelApiModule`). |

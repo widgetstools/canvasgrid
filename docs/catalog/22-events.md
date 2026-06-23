@@ -103,7 +103,7 @@ N/A — see individual area files.
 | `headerFocused` | `HeaderFocusedEvent<TData, TContext>` | Community | `20-keyboard-and-accessibility.md` | Focus moves to a column header. |
 | `cellValueChanged` | `CellValueChangedEvent<TData, TValue, TContext>` | Community | `06-cell-editing.md` | A cell value is committed; provides `oldValue`, `newValue`, `newRawValue`, `source`. |
 | `cellEditRequest` | `CellEditRequestEvent<TData, TValue, TContext>` | Community | `06-cell-editing.md` | Read-only grid (`readOnlyEdit: true`) receives an edit; app handles data update. |
-| `cellEditValuesChanged` | `CellEditValuesChangedEvent<TData, TValue, TContext>` | Community | `06-cell-editing.md` | Pending batch-edit value changes in a cell; fires during batch editing session. |
+| `cellEditValuesChanged` | `CellEditValuesChangedEvent<TData, TValue, TContext>` | Community | `06-cell-editing.md` | Fires when one or more cells have pending edit values; emitted during standard editing flows that buffer values before commit. |
 | `cellEditingStarted` | `CellEditingStartedEvent<TData, TValue, TContext>` | Community | `06-cell-editing.md` | A cell enters edit mode. |
 | `cellEditingStopped` | `CellEditingStoppedEvent<TData, TValue, TContext>` | Community | `06-cell-editing.md` | A cell exits edit mode; `oldValue`, `newValue`, `valueChanged` provided. |
 | `tooltipShow` | `TooltipShowEvent<TData, TContext>` | Community | `05-rendering-and-dom.md` | A tooltip becomes visible; `tooltipGui` and `parentGui` are provided. |
@@ -193,10 +193,10 @@ N/A — see individual area files.
 | `fillEnd` | `FillEndEvent<TData, TContext>` | Enterprise | `19-context-menu-and-clipboard.md` | Fill-handle drag completes; `initialRange` and `finalRange` provided. |
 | `cellSelectionDeleteStart` | `CellSelectionDeleteStartEvent<TData, TContext>` | Enterprise | `12-selection.md` | Delete key press over a cell range begins; `source: 'deleteKey'`. |
 | `cellSelectionDeleteEnd` | `CellSelectionDeleteEndEvent<TData, TContext>` | Enterprise | `12-selection.md` | Delete key press over a cell range completes. |
-| `rangeDeleteStart` | `RangeDeleteStartEvent<TData, TContext>` | Enterprise | `12-selection.md` | **Alias** — same as `cellSelectionDeleteStart` (older name). |
-| `rangeDeleteEnd` | `RangeDeleteEndEvent<TData, TContext>` | Enterprise | `12-selection.md` | **Alias** — same as `cellSelectionDeleteEnd` (older name). |
-| `batchEditingStarted` | `BatchEditingStartedEvent<TData, TContext>` | Community | `06-cell-editing.md` | First cell edit within a batch editing session starts (`BatchEditModule`). |
-| `batchEditingStopped` | `BatchEditingStoppedEvent<TData, TContext>` | Community | `06-cell-editing.md` | Batch editing session ends (commit or cancel). |
+| `rangeDeleteStart` | `RangeDeleteStartEvent<TData, TContext>` | Enterprise | `12-selection.md` | Alternate name — fires with same payload as `cellSelectionDeleteStart`. |
+| `rangeDeleteEnd` | `RangeDeleteEndEvent<TData, TContext>` | Enterprise | `12-selection.md` | Alternate name — fires with same payload as `cellSelectionDeleteEnd`. |
+| `batchEditingStarted` | `BatchEditingStartedEvent<TData, TContext>` | Enterprise | `06-cell-editing.md` | First cell edit within a batch editing session starts (`BatchEditModule`). |
+| `batchEditingStopped` | `BatchEditingStoppedEvent<TData, TContext>` | Enterprise | `06-cell-editing.md` | Batch editing session ends (commit or cancel). |
 | `bulkEditingStarted` | `BulkEditingStartedEvent<TData, TContext>` | Community | `06-cell-editing.md` | A bulk editing operation begins. |
 | `bulkEditingStopped` | `BulkEditingStoppedEvent<TData, TContext>` | Community | `06-cell-editing.md` | A bulk editing operation ends. |
 
