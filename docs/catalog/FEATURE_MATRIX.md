@@ -511,7 +511,7 @@
 | 12 | rowSelection.selectAll | Community | option | yes | P1 | 'all' / 'filtered' / 'currentPage' scope for header checkbox |
 | 12 | rowSelection.groupSelects | Community | option | yes | P1 | 'self' / 'descendants' / 'filteredDescendants'; supersedes deprecated groupSelectsChildren |
 | 12 | rowSelection.isRowSelectable | Community | option | no | P1 | Callback to make specific rows non-selectable |
-| 12 | rowSelection.enableSelectionWithoutKeys | Community | option | no | P2 | Toggle rows without Ctrl/Cmd |
+| 12 | rowSelection.enableSelectionWithoutKeys | Community | option | no | P2 | Toggle rows without Ctrl/Cmd; applies to both singleRow and multiRow modes |
 | 12 | rowSelection.masterSelects | Community | option | no | P2 | 'self' or 'detail' — master row affecting detail grid selection |
 | 12 | rowSelection.copySelectedRows | Community | option | no | P2 | Copy includes full row data instead of focused cell only |
 | 12 | selectionColumnDef | Community | option | no | P1 | Customise dedicated selection column (width, pinned, etc.) |
@@ -577,8 +577,8 @@
 | 14 | treeDataChildrenField | Enterprise | option | no | P2 | Field containing array of child objects (children-field strategy) |
 | 14 | treeDataParentIdField | Enterprise | option | no | P2 | Field containing parent row ID (parent-ID strategy; requires getRowId) |
 | 14 | treeDataDisplayType | Enterprise | option | no | P2 | 'auto' (grid adds group column) or 'custom' (app supplies column) |
-| 14 | autoGroupColumnDef (tree) | Community | option | no | P2 | Overrides auto group column for tree display; shared with row grouping |
-| 14 | groupDefaultExpanded (tree) | Community | option | no | P2 | Depth to expand by default; -1 expands all |
+| 14 | autoGroupColumnDef (tree) | Enterprise | option | no | P2 | Overrides auto group column for tree display; shared with row grouping |
+| 14 | groupDefaultExpanded (tree) | Enterprise | option | no | P2 | Depth to expand by default; -1 expands all |
 | 14 | suppressGroupRowsSticky (tree) | Enterprise | option | no | P3 | Prevents tree rows from sticking to viewport top |
 | 14 | applyTransaction (tree) | Community | api | no | P2 | Add/remove/update rows in tree; intermediate nodes created/removed automatically |
 | 14 | expandAll (tree) | Community | api | no | P2 | Expand all tree nodes |
@@ -612,6 +612,7 @@
 | 15 | flushServerSideAsyncTransactions | Enterprise | api | no | P2 | Immediately process all queued SSRM async transactions |
 | 15 | applyServerSideRowData | Enterprise | api | no | P2 | Directly apply LoadSuccessParams to a store level or block |
 | 15 | retryServerSideLoads | Enterprise | api | no | P2 | Retry all failed store loads |
+| 15 | getCacheBlockState | Enterprise | api | no | P2 | Returns raw block cache state for all levels — useful for debugging |
 | 15 | storeRefreshed | Enterprise | event | no | P1 | Store level finishes refreshing; route field identifies level |
 | 15 | IServerSideDatasource.getRows contract | Enterprise | behavior | no | P1 | groupKeys=[] root; groupKeys=['X'] children of X; startRow/endRow undefined = full store |
 | 15 | Full store vs infinite scroll | Enterprise | behavior | no | P1 | cacheBlockSize undefined = full store; finite value = infinite scroll blocks |

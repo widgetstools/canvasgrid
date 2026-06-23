@@ -25,8 +25,8 @@ Tree Data can be combined with the Server-Side Row Model (SSRM) for large hierar
 | `treeDataChildrenField` | `string` | `undefined` | Enterprise | Field name on each row object containing an array of child objects. Supports dot notation. |
 | `treeDataParentIdField` | `string` | `undefined` | Enterprise | Field name containing the parent row's ID. Requires `getRowId`. Supports dot notation. |
 | `treeDataDisplayType` | `'auto' \| 'custom'` | `'auto'` | Enterprise | `'auto'` adds the group column automatically; `'custom'` lets you supply your own hierarchy column(s). |
-| `autoGroupColumnDef` | `AutoGroupColumnDef<TData>` | `undefined` | Community | Shared with row grouping — overrides the auto group column definition. In tree mode the column label defaults to "Group". |
-| `groupDefaultExpanded` | `number` | `0` | Community | Depth to expand by default. `-1` expands all levels. Applies to both grouping and tree data. |
+| `autoGroupColumnDef` | `AutoGroupColumnDef<TData>` | `undefined` | Enterprise | Shared with row grouping — overrides the auto group column definition. In tree mode the column label defaults to "Group". |
+| `groupDefaultExpanded` | `number` | `0` | Enterprise | Depth to expand by default. `-1` expands all levels. Applies to both grouping and tree data. |
 | `suppressGroupRowsSticky` | `boolean` | `false` | Enterprise | Prevents group/tree rows from sticking to the top of the viewport when scrolled. `@agModule RowGroupingModule / TreeDataModule`. |
 
 ## API methods

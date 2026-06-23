@@ -114,7 +114,7 @@ interface ServerSideTransactionResult<TData = any> {
 | `retryServerSideLoads` | `() => void` | Enterprise | Retries all stores that are in a failed load state. |
 | `getServerSideSelectionState` | `() => IServerSideSelectionState \| IServerSideGroupSelectionState \| null` | Enterprise | Returns the current SSRM selection state (rule set, not row IDs). See `12-selection.md`. |
 | `setServerSideSelectionState` | `(state: IServerSideSelectionState \| IServerSideGroupSelectionState) => void` | Enterprise | Restores previously saved SSRM selection state. See `12-selection.md`. |
-| `getCacheBlockState` | `() => any` | Community | Returns raw block cache state for all levels — useful for debugging. |
+| `getCacheBlockState` | `() => any` | Enterprise | Returns raw block cache state for all levels — useful for debugging. (via `ServerSideRowModelApiModule`; also available in Infinite row model context via the Community `InfiniteRowModelModule`) |
 
 ### `RefreshServerSideParams`
 

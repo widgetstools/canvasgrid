@@ -29,7 +29,6 @@ The two subsystems are independent; both can be enabled simultaneously. Row sele
 | `hideDisabledCheckboxes` | `boolean` | `false` | Community | Hides checkbox when the row is not selectable. |
 | `isRowSelectable` | `IsRowSelectable<TData>` | `undefined` | Community | Callback returning `false` makes a row non-selectable. |
 | `copySelectedRows` | `boolean` | `false` | Community | Copy action copies the full row rather than just the focused cell. |
-| `enableSelectionWithoutKeys` | `boolean` | `false` | Community | Allows multi-select without holding Ctrl/Cmd. |
 | `masterSelects` | `'self' \| 'detail'` | `'self'` | Community | Whether selecting a master row also selects its detail grid (`'detail'`). |
 
 #### Additional `MultiRowSelectionOptions` (`mode: 'multiRow'`)
@@ -41,6 +40,7 @@ The two subsystems are independent; both can be enabled simultaneously. Row sele
 | `selectAll` | `'all' \| 'filtered' \| 'currentPage'` | `'all'` | Community | Scope of header checkbox "select all". |
 | `headerCheckbox` | `boolean` | `true` | Community | Renders "select all" checkbox in header. |
 | `ctrlASelectsRows` | `boolean` | `false` | Community | Ctrl+A selects rows when cell selection is also enabled. |
+| `enableSelectionWithoutKeys` | `boolean` | `false` | Community | Allows multi-select (multiRow) or click-toggle (singleRow) without holding Ctrl/Cmd. Available on both modes via CommonRowSelectionOptions. |
 
 #### Column-level selection (ColDef)
 
