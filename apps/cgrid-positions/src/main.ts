@@ -1,11 +1,24 @@
-console.log('cgrid-positions: bootstrapping');
-// Real grid wiring lands in Task 26.
+import { createPositionsGrid } from './positionsGrid';
+import { connectStomp } from './stomp';
+
 const host = document.getElementById('grid');
-if (host) host.textContent = 'Initializing grid…';
+if (!host) throw new Error('grid host not found');
+
+const grid = createPositionsGrid(host);
+
+grid.on('gridReady', () => {
+  console.log('[cgrid] ready');
+  connectStomp({
+    onSnapshot: (rows) => grid.setRowData(rows),
+    onLiveUpdate: (updates) => grid.applyTransactionAsync({ update: updates }),
+    onPhase: (phase) => console.log('[stomp] phase:', phase),
+  });
+});
+
+grid.on('modelUpdated', (e) => console.log('[cgrid] modelUpdated, visible:', e.visibleRowCount));
 
 document.getElementById('theme')?.addEventListener('click', () => {
-  const h = document.getElementById('grid');
-  if (!h) return;
-  h.classList.toggle('cg-theme-quartz');
-  h.classList.toggle('cg-theme-quartz-dark');
+  host.classList.toggle('cg-theme-quartz');
+  host.classList.toggle('cg-theme-quartz-dark');
+  grid.refresh();
 });
