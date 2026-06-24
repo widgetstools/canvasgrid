@@ -1,5 +1,6 @@
 import type { ColumnLayout } from './layout';
 import type { Subgrid } from './subgrid';
+import type { RowHeightIndex } from './rowHeightIndex';
 
 export interface ViewportColumn {
   colId: string;
@@ -68,6 +69,13 @@ export interface ViewportInput {
   suppressColumnVirtualisation?: boolean;
   /** When true, every data row is materialised regardless of scrollTop. */
   suppressRowVirtualisation?: boolean;
+  /** Cumulative-height index for the data subgrid (Cycle 5 / Task 7). When
+   *  supplied AND its length matches the data subgrid's row count, the
+   *  first-visible-row search descends through the index in O(log n) and
+   *  `dataContentHeight` reads `index.totalHeight()` exactly. When omitted
+   *  the viewport falls back to the uniform-height approximation built from
+   *  `subgrid.getRowHeight(0)`. */
+  dataRowHeightIndex?: RowHeightIndex;
 }
 
 export function computeViewport(opts: ViewportInput): ViewportState {
@@ -111,26 +119,44 @@ export function computeViewport(opts: ViewportInput): ViewportState {
   const bodyHeight = Math.max(0, bodyBottom - bodyTop);
 
   // Pass 2: data subgrid(s). Only the data area scrolls. Per-row heights —
-  // each data subgrid exposes `getRowHeight(local)` (Cycle 5 / Task 6). The
-  // first-visible-row search still uses a uniform-height approximation
-  // (`subgrid.getRowHeight(0)` as the fallback) — Task 7's Fenwick tree
-  // replaces that scan with O(log n) cumulative lookups. Within the visible
-  // range we walk per-row so variable-height rows position correctly relative
-  // to one another (no overlap, no gap).
+  // each data subgrid exposes `getRowHeight(local)` (Cycle 5 / Task 6). When
+  // a `dataRowHeightIndex` is supplied (Cycle 5 / Task 7) the first/last
+  // visible-row search descends the Fenwick tree in O(log n) and the
+  // pre-window top is read as a single `index.topOf(firstDataRow)` query.
+  // Without the index we fall back to the uniform-height approximation
+  // (`subgrid.getRowHeight(0)` as the fallback row size). Within the visible
+  // range we still walk per-row so variable-height rows position correctly
+  // relative to one another (no overlap, no gap).
   let yAfterData = bodyTop;
   for (const subgrid of opts.subgrids) {
     if (!subgrid.isData) continue;
     const fallbackH = subgrid.getRowHeight(0);
     if (fallbackH <= 0) continue;
     const totalRows = subgrid.getRowCount();
-    // dataContentHeight uses the fallback uniformly — Task 7's Fenwick gives
-    // the exact total height in O(log n). Until then, scrollbar thumb extent
-    // is approximate when many rows deviate from the fallback.
-    dataContentHeight += totalRows * fallbackH;
+    // Use the index only when it covers the same row population the data
+    // subgrid reports. A length mismatch means a sort/filter just landed
+    // and the index hasn't been rebuilt yet — fall back to uniform math
+    // until the next `requestViewport()` completes.
+    const idx = opts.dataRowHeightIndex && opts.dataRowHeightIndex.length() === totalRows
+      ? opts.dataRowHeightIndex : undefined;
+
+    if (idx) {
+      dataContentHeight += idx.totalHeight();
+    } else {
+      // No index — scrollbar thumb extent is approximate when many rows
+      // deviate from `fallbackH`. Acceptable for the first frame after a
+      // sort/filter; the next chunk-arrival rebuilds the index.
+      dataContentHeight += totalRows * fallbackH;
+    }
 
     if (suppressRows) {
       firstDataRow = 0;
       lastDataRow = totalRows - 1;
+    } else if (idx) {
+      const firstRowRaw = idx.rowAt(opts.scrollTop);
+      const lastRowRaw = idx.rowAt(opts.scrollTop + bodyHeight);
+      firstDataRow = Math.max(0, firstRowRaw - overscan);
+      lastDataRow = Math.min(totalRows - 1, lastRowRaw + overscan);
     } else {
       const firstRowRaw = Math.floor(opts.scrollTop / fallbackH);
       const lastRowRaw = Math.floor((opts.scrollTop + bodyHeight) / fallbackH);
@@ -138,10 +164,17 @@ export function computeViewport(opts: ViewportInput): ViewportState {
       lastDataRow = Math.min(totalRows - 1, lastRowRaw + overscan);
     }
 
-    // Accumulate the top of `firstDataRow` by walking pre-window rows once.
-    // O(firstDataRow) — acceptable for Task 6; Task 7 swaps this for O(log n).
-    let top = bodyTop - opts.scrollTop;
-    for (let pre = 0; pre < firstDataRow; pre++) top += subgrid.getRowHeight(pre);
+    // Pre-window top: one Fenwick query when the index is present, else a
+    // linear accumulator walk over the pre-firstDataRow heights. The linear
+    // walk is O(firstDataRow) — fine for the indexless fallback because that
+    // path only fires the first frame after a sort/filter.
+    let top: number;
+    if (idx) {
+      top = bodyTop + idx.topOf(firstDataRow) - opts.scrollTop;
+    } else {
+      top = bodyTop - opts.scrollTop;
+      for (let pre = 0; pre < firstDataRow; pre++) top += subgrid.getRowHeight(pre);
+    }
     for (let local = firstDataRow; local <= lastDataRow; local++) {
       const h = subgrid.getRowHeight(local);
       visibleRows.push({

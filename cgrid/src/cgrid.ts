@@ -15,6 +15,7 @@ import {
 } from './core/runtimeOptions';
 import { resolveColumnWidths, type ColumnLayout } from './core/layout';
 import { computeViewport, type ViewportState } from './core/viewport';
+import { RowHeightIndex } from './core/rowHeightIndex';
 import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, type Subgrid } from './core/subgrid';
 import { CGridCanvas } from './core/canvas';
 import { CssReader, type ResolvedTheme } from './theming/cssReader';
@@ -74,6 +75,14 @@ export class CGrid<TRow = any> {
   private scrollTop = 0;
   private rowCount = 0;
   private chunk: ViewportChunk | null = null;
+  /** Cumulative row-height index over the current visible-row order. Built
+   *  on first chunk arrival (filled with the global `rowHeight` fallback for
+   *  every row), then updated incrementally as chunks layer their per-row
+   *  heights on top. Rebuilt from scratch when `rowCount` changes (sort /
+   *  filter / transaction). `null` until the first chunk lands — the
+   *  viewport falls back to uniform-height math in that window.
+   *  Cycle 5 / Task 7. */
+  private rowHeightIndex: RowHeightIndex | null = null;
   private decodedTextCols = new Map<string, string[]>();
   private viewportRequestPending = false;
   private viewportRequestQueued = false;
@@ -327,6 +336,12 @@ export class CGrid<TRow = any> {
     this.workerClient = new WorkerClient(worker as unknown as import('./worker/client').WorkerLike, {
       onModelUpdated: (visibleCount) => {
         this.rowCount = visibleCount;
+        // Row order may have shifted (sort, filter, transaction add/remove) —
+        // per-row heights live with row identity, not slot. Drop the index
+        // and let the next chunk rebuild it (Cycle 5 / Task 7). The viewport
+        // falls back to uniform-height math for the single frame before the
+        // chunk lands.
+        this.rowHeightIndex = null;
         this.recomputeViewport();
         // Re-resolve persistent selection ids against the freshly-sorted /
         // filtered visible order. Without this, indices set by
@@ -559,6 +574,9 @@ export class CGrid<TRow = any> {
     this.sortModel = s;
     this.workerClient.setSortModel(s).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
+      // Sort reorders rows — invalidate the Fenwick index so stale per-row
+      // heights aren't read at their pre-sort positions (Cycle 5 / Task 7).
+      this.rowHeightIndex = null;
       this.recomputeViewport();
       // The worker doesn't push `modelUpdated` for sort changes — it only
       // replies with the new rowCount — so persistent selections need an
@@ -588,6 +606,10 @@ export class CGrid<TRow = any> {
   setFilterModel(f: FilterModel): void {
     this.workerClient.setFilterModel(f).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
+      // Filter changes the visible row set — invalidate the Fenwick index so
+      // stale per-row heights aren't read at the wrong slots (Cycle 5 /
+      // Task 7).
+      this.rowHeightIndex = null;
       this.recomputeViewport();
       // Same rationale as setSortModel — filter changes don't trigger a
       // `modelUpdated` push, so persistent selection indices need to be
@@ -928,6 +950,7 @@ export class CGrid<TRow = any> {
       rowBuffer: this.options.rowBuffer,
       suppressColumnVirtualisation: this.options.suppressColumnVirtualisation,
       suppressRowVirtualisation: this.options.suppressRowVirtualisation,
+      dataRowHeightIndex: this.rowHeightIndex ?? undefined,
     });
   }
 
@@ -983,13 +1006,21 @@ export class CGrid<TRow = any> {
   /** Bring the row at `rowIndex` into the visible body.
    *  `'auto'` scrolls just enough to expose the row (no-op if already in
    *  view); the named positions force `top` / `middle` / `bottom` alignment
-   *  inside the body area. Clamping is delegated to `setScroll`. */
+   *  inside the body area. Clamping is delegated to `setScroll`.
+   *
+   *  Row top / height are read from the Fenwick tree when available so
+   *  variable-height rows scroll to the right pixel (Cycle 5 / Task 7).
+   *  Without an index — e.g. before the first chunk lands — we fall back to
+   *  uniform-height arithmetic. */
   private ensureRowIndexVisible(
     rowIndex: number,
     position: 'auto' | 'top' | 'middle' | 'bottom' = 'auto',
   ): void {
-    const rh = this.options.rowHeight ?? this.theme.rowHeight;
-    const top = rowIndex * rh;
+    const fallback = this.options.rowHeight ?? this.theme.rowHeight;
+    const idx = this.rowHeightIndex;
+    const useIdx = idx !== null && rowIndex < idx.length();
+    const top = useIdx ? idx!.topOf(rowIndex) : rowIndex * fallback;
+    const rh = useIdx ? idx!.heightAt(rowIndex) : fallback;
     const bottom = top + rh;
     const bodyH = this.viewport.bodyHeight;
     if (position === 'top') {
@@ -1103,6 +1134,14 @@ export class CGrid<TRow = any> {
         this.viewportRequestPending = false;
         this.chunk = chunk;
         this.decodedTextCols.clear();
+        // Build / refresh the cumulative row-height index (Cycle 5 / Task 7).
+        // Initial build seeds every row with the grid-level fallback; subsequent
+        // chunks layer their per-row heights in. A rowCount change (sort /
+        // filter / transaction) discards the existing index so per-row entries
+        // that shifted slots aren't read at their old positions — the next
+        // chunks rebuild it. Done before recomputeViewport so the index is
+        // current for the first paint after the chunk lands.
+        this.refreshRowHeightIndex(chunk);
         // Recompute the viewport so DataSubgrid.getRowHeight reads the new
         // chunk's per-row heights (Cycle 5 / Task 6). Without this the
         // visibleRows array carries heights from BEFORE the chunk arrived
@@ -1131,6 +1170,28 @@ export class CGrid<TRow = any> {
         this.viewportRequestQueued = false;
         if (!this.destroyed) console.error('[cgrid] viewport request:', err);
       });
+  }
+
+  /** Build the cumulative-height index from scratch when `rowCount` changed,
+   *  then merge the chunk's per-row heights into it. The 0 sentinel in
+   *  `chunk.heights` means "no per-row override" — we leave those at the
+   *  fallback so rows without explicit heights stay at the grid-level
+   *  `rowHeight`. Cycle 5 / Task 7. */
+  private refreshRowHeightIndex(chunk: ViewportChunk): void {
+    const fallback = this.options.rowHeight ?? this.theme.rowHeight;
+    if (!this.rowHeightIndex || this.rowHeightIndex.length() !== this.rowCount) {
+      this.rowHeightIndex = new RowHeightIndex(this.rowCount, () => fallback);
+    }
+    const idx = this.rowHeightIndex;
+    for (let i = 0; i < chunk.heights.length; i++) {
+      const globalIdx = chunk.rowStart + i;
+      if (globalIdx >= idx.length()) break;
+      const raw = chunk.heights[i]!;
+      const resolved = raw > 0 ? raw : fallback;
+      if (idx.heightAt(globalIdx) !== resolved) {
+        idx.update(globalIdx, resolved);
+      }
+    }
   }
 
   /** Resolve the height of the data row at `localRowIndex`. When the row is
