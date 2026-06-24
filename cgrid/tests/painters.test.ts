@@ -2,6 +2,7 @@ import { describe, it, expect, vi } from 'vitest';
 import { paintHeader } from '../src/renderer/painters/headerPainter';
 import { paintBody } from '../src/renderer/painters/bodyPainter';
 import { paintOverlay } from '../src/renderer/painters/overlayPainter';
+import { paintGridLines } from '../src/renderer/painters/gridLinesPainter';
 import { CellRendererRegistry, textCell, numberCell } from '../src/renderer/cellRenderers/registry';
 import type { ViewportState } from '../src/core/viewport';
 import type { ResolvedColDef } from '../src/core/propertyChain';
@@ -79,5 +80,48 @@ describe('painters', () => {
       sortModel: [],
     });
     expect((c.strokeRect as any)).toHaveBeenCalled();
+  });
+
+  it('paintGridLines writes one fillRect per row bottom + one per inter-column gap', () => {
+    const c = fakeGc();
+    paintGridLines(c, { viewport: vs, theme, columnDefs: cols, cellRenderers: reg, cellData, selection, sortModel: [] });
+    // Every fillRect call is a 1px-wide-or-tall line. Count the horizontals: one
+    // per visible row whose bottom sits inside the body band (here both rows do).
+    // Count the verticals: visibleColumns has 2 center columns → 1 inter-column gap.
+    // No pinned columns in `vs`, so no band-edge lines either.
+    const calls = (c.fillRect as any).mock.calls as number[][];
+    const horizontals = calls.filter((call) => call[3] === 1).length; // height === 1
+    const verticals = calls.filter((call) => call[2] === 1).length;   // width === 1
+    expect(horizontals).toBe(vs.visibleRows.length); // 2
+    expect(verticals).toBe(vs.visibleColumns.length - 1); // 1
+  });
+
+  it('paintGridLines does not call stroke or strokeRect', () => {
+    const c = fakeGc();
+    paintGridLines(c, { viewport: vs, theme, columnDefs: cols, cellRenderers: reg, cellData, selection, sortModel: [] });
+    expect((c.stroke as any)).not.toHaveBeenCalled();
+    expect((c.strokeRect as any)).not.toHaveBeenCalled();
+  });
+
+  it('paintGridLines adds heavier band-edge lines for pinned columns', () => {
+    const c = fakeGc();
+    // Layout: left-pinned [0..60], body [60..200], right-pinned [200..250].
+    const vsPinned = {
+      ...vs,
+      bodyLeft: 60, bodyRight: 200, bodyWidth: 140,
+      visibleColumns: [
+        { colId: 'p', index: 0, left: 0, right: 60, width: 60, pinned: 'left' as const },
+        { colId: 'a', index: 1, left: 60, right: 130, width: 70 },
+        { colId: 'b', index: 2, left: 130, right: 200, width: 70 },
+        { colId: 'q', index: 3, left: 200, right: 250, width: 50, pinned: 'right' as const },
+      ],
+    };
+    paintGridLines(c, { viewport: vsPinned, theme, columnDefs: cols, cellRenderers: reg, cellData, selection, sortModel: [] });
+    // Count width=1, height=bodyHeight fills — should include both band edges
+    // (heavier borderColor lines) + the single inter-center vertical.
+    const calls = (c.fillRect as any).mock.calls as number[][];
+    const bodyH = vsPinned.bodyBottom - vsPinned.bodyTop;
+    const fullHeightVerticals = calls.filter((call) => call[2] === 1 && call[3] === bodyH).length;
+    expect(fullHeightVerticals).toBe(3); // 2 band edges + 1 inter-center gap
   });
 });

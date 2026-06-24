@@ -44,6 +44,16 @@ describe('textCell', () => {
     const [, x] = (gc.fillText as any).mock.calls[0]!;
     expect(x).toBeGreaterThan(50);
   });
+
+  // Cell renderers must NOT draw cell-edge lines themselves. Grid lines run as
+  // a single pass at the end of the frame; per-cell strokes leave double-stroked
+  // seams between adjacent cells.
+  it('does not stroke any cell-edge dividers', () => {
+    const gc = makeGc();
+    textCell.paint(gc, baseParams({ value: 'x', valueFormatted: 'x' }));
+    expect((gc.stroke as any)).not.toHaveBeenCalled();
+    expect((gc.strokeRect as any)).not.toHaveBeenCalled();
+  });
 });
 
 describe('numberCell', () => {
@@ -72,6 +82,13 @@ describe('numberCell', () => {
       style: { ...baseParams().style, halign: 'left' },
     }));
     expect(gc.textAlign).toBe('left');
+  });
+
+  it('does not stroke any cell-edge dividers', () => {
+    const gc = makeGc();
+    numberCell.paint(gc, baseParams({ value: 42, valueFormatted: '42' }));
+    expect((gc.stroke as any)).not.toHaveBeenCalled();
+    expect((gc.strokeRect as any)).not.toHaveBeenCalled();
   });
 });
 

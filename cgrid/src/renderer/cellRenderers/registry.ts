@@ -33,13 +33,9 @@ function paintBackground(gc: CachedContext2D, p: CellPaintParams): void {
   const { x, y, w, h } = p.bounds;
   gc.cache.fillStyle = p.style.bg;
   gc.fillRect(x, y, w, h);
-  // Bottom-only row divider — no vertical column dividers, matches reference design.
-  gc.cache.strokeStyle = p.style.borderColor;
-  gc.cache.lineWidth = 1;
-  gc.beginPath();
-  gc.moveTo(x, y + h - 0.5);
-  gc.lineTo(x + w, y + h - 0.5);
-  gc.stroke();
+  // Row/column dividers are drawn in a single paintGridLines pass at the end of
+  // the frame — no per-cell strokes here, which would leave double-stroked
+  // seams between adjacent cells.
   if (p.flashAlpha && p.flashAlpha > 0) {
     gc.cache.save();
     gc.cache.globalAlpha = p.flashAlpha;

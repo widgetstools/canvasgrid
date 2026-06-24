@@ -8,6 +8,7 @@ import type { CachedContext2D } from './gc';
 import { paintHeader } from './painters/headerPainter';
 import { paintBody } from './painters/bodyPainter';
 import { paintPinned } from './painters/pinnedPainter';
+import { paintGridLines } from './painters/gridLinesPainter';
 import { paintOverlay } from './painters/overlayPainter';
 
 export type { CellDataLookup };
@@ -55,6 +56,9 @@ export class Renderer {
     paintPinned(gc, pctx, 'left');
     paintBody(gc, pctx);
     paintPinned(gc, pctx, 'right');
+    // Gridlines run after all cell paints so they sit on top with no double-stroked
+    // seams. Overlay (focus ring) goes last so it sits above the gridlines.
+    paintGridLines(gc, pctx);
     paintOverlay(gc, pctx);
   }
 }
