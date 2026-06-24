@@ -9,6 +9,7 @@ import { TypedEventEmitter } from './core/eventEmitter';
 import { resolveColDef, type ResolvedColDef } from './core/propertyChain';
 import { resolveColumnWidths, type ColumnLayout } from './core/layout';
 import { computeViewport, type ViewportState } from './core/viewport';
+import { HeaderSubgrid, DataSubgrid, type Subgrid } from './core/subgrid';
 import { CGridCanvas } from './core/canvas';
 import { CssReader, type ResolvedTheme } from './theming/cssReader';
 import { CellRendererRegistry, textCell, numberCell, checkboxCell } from './renderer/cellRenderers/registry';
@@ -74,6 +75,7 @@ export class CGrid<TRow = any> {
   private cssReader: CssReader;
   private cellRenderers: CellRendererRegistry;
   private renderer: Renderer;
+  private subgrids: Subgrid[] = [];
   private viewport!: ViewportState;
   private selection: SelectionModel;
   private hitTester: HitTester;
@@ -126,7 +128,21 @@ export class CGrid<TRow = any> {
       this.columnOrder.push(r);
     }
 
-    // 4. Initial layout + viewport. The first measurement happens inside the
+    // 4. Subgrid stack — header on top, data below. Future totals/footer rows
+    // are a `this.subgrids.push(...)` away. computeViewport walks this list.
+    this.subgrids = [
+      new HeaderSubgrid(
+        this.columnDefsMap as Map<string, ResolvedColDef>,
+        () => this.options.headerHeight ?? this.theme.headerHeight,
+      ),
+      new DataSubgrid(
+        () => this.rowCount,
+        () => this.options.rowHeight ?? this.theme.rowHeight,
+        (rowIndex, colId) => this.cellAt(rowIndex, colId),
+      ),
+    ];
+
+    // 5. Initial layout + viewport. The first measurement happens inside the
     // CGridCanvas constructor below (via the setBounds callback), but
     // recomputeViewport needs an initial layout so it doesn't crash on undefined.
     this.columnLayout = resolveColumnWidths(this.columnOrder, this.scroller.clientWidth || 800);
@@ -188,7 +204,9 @@ export class CGrid<TRow = any> {
       hitTester: this.hitTester,
       selectionModel: this.selection,
       visibleColIds: () => this.viewport.visibleColumns.map((c) => c.colId),
-      visibleRowIndices: () => this.viewport.visibleRows.map((r) => r.rowIndex),
+      visibleRowIndices: () => this.viewport.visibleRows
+        .filter((r) => r.subgrid.isData)
+        .map((r) => r.localRowIndex),
       allColIds: () => this.columnOrder.map((c) => c.colId),
       totalRowCount: () => this.rowCount,
       onCellClicked: (rowIndex: number, colId: string, mouse: MouseEvent) => {
@@ -414,9 +432,7 @@ export class CGrid<TRow = any> {
     const h = this.scroller.clientHeight || this.root.clientHeight || 600;
     return computeViewport({
       columnLayout: this.columnLayout,
-      rowCount: this.rowCount,
-      rowHeight: this.options.rowHeight ?? this.theme.rowHeight,
-      headerHeight: this.options.headerHeight ?? this.theme.headerHeight,
+      subgrids: this.subgrids,
       containerWidth: w,
       containerHeight: h,
       scrollLeft: this.scrollLeft,
@@ -597,7 +613,9 @@ export class CGrid<TRow = any> {
     const def = this.columnDefsMap.get(colId);
     if (!def || !def.editable) return;
     const col = this.viewport.visibleColumns.find((c) => c.colId === colId);
-    const row = this.viewport.visibleRows.find((r) => r.rowIndex === rowIndex);
+    const row = this.viewport.visibleRows.find(
+      (r) => r.subgrid.isData && r.localRowIndex === rowIndex,
+    );
     if (!col || !row) return;
     const data = this.cellAt(rowIndex, colId);
     this.editorContainer.style.pointerEvents = 'auto';

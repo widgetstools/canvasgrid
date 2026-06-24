@@ -7,8 +7,10 @@ export function paintOverlay(gc: CachedContext2D, p: PainterCtx): void {
 
   if (focusedRowIndex === null || focusedColId === null) return;
 
-  // Find the focused row and column in the current viewport.
-  const row = vs.visibleRows.find((r) => r.rowIndex === focusedRowIndex);
+  // Find the focused data row + column in the current viewport. `focusedRowIndex`
+  // is a data-row index — so match against `subgrid.isData && localRowIndex`,
+  // not the new `rowIndex` (which is the visibleRows array slot).
+  const row = vs.visibleRows.find((r) => r.subgrid.isData && r.localRowIndex === focusedRowIndex);
   const col = vs.visibleColumns.find((c) => c.colId === focusedColId);
   if (!row || !col) return;
 

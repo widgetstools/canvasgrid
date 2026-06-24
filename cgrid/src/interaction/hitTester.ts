@@ -29,7 +29,11 @@ export class HitTester {
     if (y >= vs.bodyTop && y <= vs.bodyBottom) {
       const col = this.findCol(vs, x);
       const row = this.findRow(vs, y);
-      if (col && row) return { kind: 'cell', rowIndex: row.rowIndex, colId: col.colId };
+      // Hits only count when they land in a DataSubgrid row — header / totals
+      // rows are handled separately. `localRowIndex` is the data-row index.
+      if (col && row && row.subgrid.isData) {
+        return { kind: 'cell', rowIndex: row.localRowIndex, colId: col.colId };
+      }
     }
 
     return { kind: 'empty' };

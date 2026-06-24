@@ -1,6 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import { HitTester } from '../src/interaction/hitTester';
 import type { ViewportState } from '../src/core/viewport';
+import type { Subgrid } from '../src/core/subgrid';
+
+const dataSubgrid: Subgrid = {
+  type: 'data', isHeader: false, isData: true, isTotals: false, isFooter: false,
+  getRowCount: () => 100, getRowHeight: () => 30, getCell: () => null,
+};
 
 const vs: ViewportState = {
   visibleColumns: [
@@ -8,8 +14,8 @@ const vs: ViewportState = {
     { colId: 'b', index: 1, left: 100, right: 250, width: 150 },
   ],
   visibleRows: [
-    { rowIndex: 0, top: 32, bottom: 62, height: 30 },
-    { rowIndex: 1, top: 62, bottom: 92, height: 30 },
+    { rowIndex: 0, subgrid: dataSubgrid, localRowIndex: 0, top: 32, bottom: 62, height: 30 },
+    { rowIndex: 1, subgrid: dataSubgrid, localRowIndex: 1, top: 62, bottom: 92, height: 30 },
   ],
   firstRow: 0, lastRow: 1,
   scrollLeft: 0, scrollTop: 0,

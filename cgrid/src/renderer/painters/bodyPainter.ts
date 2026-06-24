@@ -12,9 +12,11 @@ export function paintBody(gc: CachedContext2D, p: PainterCtx): void {
   gc.clip();
 
   for (const row of vs.visibleRows) {
-    const rowBg = selection.selectedRowIndices.has(row.rowIndex)
+    if (!row.subgrid.isData) continue; // header / totals / footer handled by their painters
+    const dataIdx = row.localRowIndex;
+    const rowBg = selection.selectedRowIndices.has(dataIdx)
       ? theme.rowSelectedBg
-      : row.rowIndex % 2 === 1
+      : dataIdx % 2 === 1
         ? theme.rowAltBg
         : theme.bg;
 
@@ -22,7 +24,7 @@ export function paintBody(gc: CachedContext2D, p: PainterCtx): void {
       if (col.pinned) continue; // pinnedPainter handles pinned columns
       const def = columnDefs.get(col.colId);
       if (!def) continue;
-      const data = cellData(row.rowIndex, col.colId);
+      const data = cellData(dataIdx, col.colId);
       cellRenderers.get(def.cellRenderer).paint(gc, {
         value: data?.value ?? '',
         valueFormatted: data?.valueFormatted ?? '',
@@ -36,9 +38,9 @@ export function paintBody(gc: CachedContext2D, p: PainterCtx): void {
         },
         flashAlpha: data?.flashAlpha,
         isFocused:
-          selection.focusedRowIndex === row.rowIndex &&
+          selection.focusedRowIndex === dataIdx &&
           selection.focusedColId === col.colId,
-        isSelected: selection.selectedRowIndices.has(row.rowIndex),
+        isSelected: selection.selectedRowIndices.has(dataIdx),
         isHovered: false,
       });
     }

@@ -28,10 +28,13 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
     ? vs.bodyRight
     : Math.max(vs.bodyRight, ...vs.visibleColumns.map((c) => c.right));
 
-  // Horizontals — one per visible row bottom, spanning the full painted width.
-  // Skip lines that would fall outside the body region (overscan rows above/below).
+  // Horizontals — one per visible data row bottom, spanning the full painted width.
+  // Header rows aren't gridlines-eligible (their own band-divider in headerPainter
+  // covers the header→body separator). Skip rows whose bottom lands outside the
+  // body region (overscan rows above/below).
   gc.cache.fillStyle = theme.gridLineColor;
   for (const row of vs.visibleRows) {
+    if (!row.subgrid.isData) continue;
     if (row.bottom <= vs.bodyTop || row.bottom > vs.bodyBottom) continue;
     const y = Math.round(row.bottom) - 1;
     gc.fillRect(0, y, rightEdge, 1);

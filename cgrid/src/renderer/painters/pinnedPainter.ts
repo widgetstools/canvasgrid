@@ -24,16 +24,18 @@ export function paintPinned(
   gc.clip();
 
   for (const row of vs.visibleRows) {
-    const rowBg = selection.selectedRowIndices.has(row.rowIndex)
+    if (!row.subgrid.isData) continue; // header / totals / footer handled elsewhere
+    const dataIdx = row.localRowIndex;
+    const rowBg = selection.selectedRowIndices.has(dataIdx)
       ? theme.rowSelectedBg
-      : row.rowIndex % 2 === 1
+      : dataIdx % 2 === 1
         ? theme.rowAltBg
         : theme.bg;
 
     for (const col of pinnedCols) {
       const def = columnDefs.get(col.colId);
       if (!def) continue;
-      const data = cellData(row.rowIndex, col.colId);
+      const data = cellData(dataIdx, col.colId);
       cellRenderers.get(def.cellRenderer).paint(gc, {
         value: data?.value ?? '',
         valueFormatted: data?.valueFormatted ?? '',
@@ -47,9 +49,9 @@ export function paintPinned(
         },
         flashAlpha: data?.flashAlpha,
         isFocused:
-          selection.focusedRowIndex === row.rowIndex &&
+          selection.focusedRowIndex === dataIdx &&
           selection.focusedColId === col.colId,
-        isSelected: selection.selectedRowIndices.has(row.rowIndex),
+        isSelected: selection.selectedRowIndices.has(dataIdx),
         isHovered: false,
       });
     }

@@ -5,9 +5,15 @@ import { paintOverlay } from '../src/renderer/painters/overlayPainter';
 import { paintGridLines } from '../src/renderer/painters/gridLinesPainter';
 import { CellRendererRegistry, textCell, numberCell } from '../src/renderer/cellRenderers/registry';
 import type { ViewportState } from '../src/core/viewport';
+import type { Subgrid } from '../src/core/subgrid';
 import type { ResolvedColDef } from '../src/core/propertyChain';
 import type { ResolvedTheme } from '../src/theming/cssReader';
 import type { CachedContext2D } from '../src/renderer/gc';
+
+const dataSubgrid: Subgrid = {
+  type: 'data', isHeader: false, isData: true, isTotals: false, isFooter: false,
+  getRowCount: () => 1000, getRowHeight: () => 30, getCell: () => null,
+};
 
 function fakeGc(): CachedContext2D {
   const ctx: any = {
@@ -33,8 +39,8 @@ const vs: ViewportState = {
     { colId: 'b', index: 1, left: 100, right: 250, width: 150 },
   ],
   visibleRows: [
-    { rowIndex: 0, top: 32, bottom: 62, height: 30 },
-    { rowIndex: 1, top: 62, bottom: 92, height: 30 },
+    { rowIndex: 0, subgrid: dataSubgrid, localRowIndex: 0, top: 32, bottom: 62, height: 30 },
+    { rowIndex: 1, subgrid: dataSubgrid, localRowIndex: 1, top: 62, bottom: 92, height: 30 },
   ],
   firstRow: 0, lastRow: 1,
   scrollLeft: 0, scrollTop: 0,

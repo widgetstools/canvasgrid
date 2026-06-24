@@ -3,13 +3,19 @@ import { PointerInput } from '../src/interaction/pointerInput';
 import { HitTester } from '../src/interaction/hitTester';
 import { SelectionModel } from '../src/interaction/selectionModel';
 import type { ViewportState } from '../src/core/viewport';
+import type { Subgrid } from '../src/core/subgrid';
+
+const dataSubgrid: Subgrid = {
+  type: 'data', isHeader: false, isData: true, isTotals: false, isFooter: false,
+  getRowCount: () => 1, getRowHeight: () => 30, getCell: () => null,
+};
 
 const vs: ViewportState = {
   visibleColumns: [
     { colId: 'a', index: 0, left: 0, right: 100, width: 100 },
     { colId: 'b', index: 1, left: 100, right: 250, width: 150 },
   ],
-  visibleRows: [{ rowIndex: 0, top: 32, bottom: 62, height: 30 }],
+  visibleRows: [{ rowIndex: 0, subgrid: dataSubgrid, localRowIndex: 0, top: 32, bottom: 62, height: 30 }],
   firstRow: 0, lastRow: 0,
   scrollLeft: 0, scrollTop: 0,
   bodyLeft: 0, bodyRight: 250, bodyTop: 32, bodyBottom: 62, bodyWidth: 250, bodyHeight: 30,
