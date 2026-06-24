@@ -108,6 +108,73 @@ describe('computeViewport', () => {
     expect(vs.bodyTop).toBe(48);
   });
 
+  it('rowBuffer of 10 expands overscan above and below the visible window', () => {
+    const baseline = computeViewport({
+      columnLayout: [{ colId: 'a', left: 0, width: 100 }],
+      subgrids: [data(1000, 30)],
+      containerWidth: 100, containerHeight: 300,
+      scrollLeft: 0, scrollTop: 300,
+      overscanRows: 0,
+    });
+    const baselineData = baseline.visibleRows.filter((r) => r.subgrid.isData).length;
+
+    const buffered = computeViewport({
+      columnLayout: [{ colId: 'a', left: 0, width: 100 }],
+      subgrids: [data(1000, 30)],
+      containerWidth: 100, containerHeight: 300,
+      scrollLeft: 0, scrollTop: 300,
+      rowBuffer: 10,
+    });
+    const bufferedData = buffered.visibleRows.filter((r) => r.subgrid.isData).length;
+    // Plenty of headroom both sides at scrollTop=300, so we add 2*N rows.
+    expect(bufferedData).toBe(baselineData + 20);
+  });
+
+  it('rowBuffer takes precedence over overscanRows when both are supplied', () => {
+    const vs = computeViewport({
+      columnLayout: [{ colId: 'a', left: 0, width: 100 }],
+      subgrids: [data(1000, 30)],
+      containerWidth: 100, containerHeight: 300,
+      scrollLeft: 0, scrollTop: 300,
+      overscanRows: 2,
+      rowBuffer: 5,
+    });
+    expect(vs.firstRow).toBe(10 - 5);
+    expect(vs.lastRow).toBe(20 + 5);
+  });
+
+  it('suppressRowVirtualisation paints every data row regardless of scrollTop', () => {
+    const vs = computeViewport({
+      columnLayout: [{ colId: 'a', left: 0, width: 100 }],
+      subgrids: [header(32), data(250, 30)],
+      containerWidth: 100, containerHeight: 200,
+      scrollLeft: 0, scrollTop: 900,
+      suppressRowVirtualisation: true,
+    });
+    const dataRows = vs.visibleRows.filter((r) => r.subgrid.isData);
+    expect(dataRows.length).toBe(250);
+    expect(vs.firstRow).toBe(0);
+    expect(vs.lastRow).toBe(249);
+  });
+
+  it('suppressColumnVirtualisation keeps every column in visibleColumns at any scrollLeft', () => {
+    const cols = Array.from({ length: 20 }, (_, i) => ({
+      colId: `c${i}`,
+      left: i * 100,
+      width: 100,
+    }));
+    const vs = computeViewport({
+      columnLayout: cols,
+      subgrids: [header(32), data(100, 30)],
+      containerWidth: 300, containerHeight: 400,
+      scrollLeft: 800, scrollTop: 0,
+      suppressColumnVirtualisation: true,
+    });
+    expect(vs.visibleColumns.length).toBe(cols.length);
+    // Order preserved.
+    expect(vs.visibleColumns.map((c) => c.colId)).toEqual(cols.map((c) => c.colId));
+  });
+
   it('totals subgrid lands after data rows (positional sanity)', () => {
     const vs = computeViewport({
       columnLayout: [{ colId: 'a', left: 0, width: 100 }],

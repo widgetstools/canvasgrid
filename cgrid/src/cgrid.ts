@@ -612,6 +612,9 @@ export class CGrid<TRow = any> {
       containerHeight: h,
       scrollLeft: this.scrollLeft,
       scrollTop: this.scrollTop,
+      rowBuffer: this.options.rowBuffer,
+      suppressColumnVirtualisation: this.options.suppressColumnVirtualisation,
+      suppressRowVirtualisation: this.options.suppressRowVirtualisation,
     });
   }
 

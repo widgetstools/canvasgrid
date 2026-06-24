@@ -56,11 +56,24 @@ export interface ViewportInput {
   containerHeight: number;
   scrollLeft: number;
   scrollTop: number;
+  /** Legacy overscan field — still respected, but `rowBuffer` wins when both
+   *  are supplied. Defaults to 3 when neither is set. */
   overscanRows?: number;
+  /** Public ag-grid-parity name for the row overscan. Takes precedence over
+   *  `overscanRows` so the runtime `setGridOption('rowBuffer', N)` path is
+   *  honoured regardless of the legacy field. */
+  rowBuffer?: number;
+  /** When true, every center column lands in `visibleColumns` regardless of
+   *  scrollLeft. Pinned columns are unaffected (they're always visible). */
+  suppressColumnVirtualisation?: boolean;
+  /** When true, every data row is materialised regardless of scrollTop. */
+  suppressRowVirtualisation?: boolean;
 }
 
 export function computeViewport(opts: ViewportInput): ViewportState {
-  const overscan = opts.overscanRows ?? 3;
+  const overscan = opts.rowBuffer ?? opts.overscanRows ?? 3;
+  const suppressRows = opts.suppressRowVirtualisation === true;
+  const suppressCols = opts.suppressColumnVirtualisation === true;
 
   // ---------------------------------------------------------------------------
   // Row visibility — walk the subgrid stack.
@@ -106,10 +119,15 @@ export function computeViewport(opts: ViewportInput): ViewportState {
     const totalRows = subgrid.getRowCount();
     dataContentHeight += totalRows * rowH;
 
-    const firstRowRaw = Math.floor(opts.scrollTop / rowH);
-    const lastRowRaw = Math.floor((opts.scrollTop + bodyHeight) / rowH);
-    firstDataRow = Math.max(0, firstRowRaw - overscan);
-    lastDataRow = Math.min(totalRows - 1, lastRowRaw + overscan);
+    if (suppressRows) {
+      firstDataRow = 0;
+      lastDataRow = totalRows - 1;
+    } else {
+      const firstRowRaw = Math.floor(opts.scrollTop / rowH);
+      const lastRowRaw = Math.floor((opts.scrollTop + bodyHeight) / rowH);
+      firstDataRow = Math.max(0, firstRowRaw - overscan);
+      lastDataRow = Math.min(totalRows - 1, lastRowRaw + overscan);
+    }
 
     for (let local = firstDataRow; local <= lastDataRow; local++) {
       const top = bodyTop + local * rowH - opts.scrollTop;
@@ -174,12 +192,15 @@ export function computeViewport(opts: ViewportInput): ViewportState {
   }
 
   // Center (scrollable) columns — shifted by scrollLeft, clipped to body region.
+  // When `suppressColumnVirtualisation` is on, every center column ships through
+  // unchanged so apps that need stable column instances (screenshot suites,
+  // CSV-style export) don't see culling.
   const centerBaseLeft = bodyLeft;
   const centerContentLeft = pinnedLeftWidth;
   for (const c of center) {
     const cellLeft = centerBaseLeft + (c.left - centerContentLeft) - opts.scrollLeft;
     const cellRight = cellLeft + c.width;
-    if (cellRight <= bodyLeft || cellLeft >= bodyRight) continue;
+    if (!suppressCols && (cellRight <= bodyLeft || cellLeft >= bodyRight)) continue;
     visibleColumns.push({
       colId: c.colId,
       index: idx++,

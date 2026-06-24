@@ -26,14 +26,15 @@ export interface CGridOptions<TRow = any> {
   /** Hint to skip CSS-animated row transitions. Runtime-mutable; storage-only
    *  in Cycle 4 (no read site yet; downstream cycles consume). */
   animateRows?: boolean;
-  /** Render every column regardless of horizontal scroll position.
-   *  Read site lands in Task 5. */
+  /** Render every center column regardless of horizontal scroll position.
+   *  Useful for screenshot tests and CSV-style exports where the painter
+   *  needs every column visible at once. Pinned columns are unaffected. */
   suppressColumnVirtualisation?: boolean;
-  /** Render every row regardless of vertical scroll position.
-   *  Read site lands in Task 5. */
+  /** Render every data row regardless of vertical scroll position. Trades
+   *  scroll-FPS for guaranteed full-grid materialisation. */
   suppressRowVirtualisation?: boolean;
-  /** Extra rows rendered above/below the viewport. Read site lands in Task 5.
-   *  Defaults to the engine's internal overscan when unset. */
+  /** Number of extra rows to materialise above and below the visible window.
+   *  Defaults to the engine's internal overscan (3) when unset. */
   rowBuffer?: number;
   /** Opaque application data forwarded to callbacks (matches ag-grid).
    *  Storage-only in Cycle 4. */

@@ -96,8 +96,8 @@ export function applyRuntimeOption<TRow>(
     case 'suppressColumnVirtualisation':
     case 'suppressRowVirtualisation':
     case 'rowBuffer':
-      // Task 5 reads these in computeViewport; for now just re-run the
-      // viewport pass so future Task 5 changes light up without a refactor.
+      // computeViewport reads these directly from CGridOptions, so a single
+      // viewport recompute is enough — no column-tree rebuild needed.
       target.refreshLayout();
       return;
     case 'rowData':
