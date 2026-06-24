@@ -1074,6 +1074,10 @@ export class CGrid<TRow = any> {
       charPress,
       onCommit: (newValue) => {
         this.editorContainer.style.pointerEvents = 'none';
+        // Return focus to the canvas so arrow keys / Tab resume cell
+        // navigation immediately after the editor closes. Without this the
+        // user has to mouse-click a cell before the keyboard re-engages.
+        this.cgridCanvas.canvas.focus({ preventScroll: true });
         // Fetch the full row from the worker, run valueParser → valueSetter
         // (or the default field assignment), emit cellValueChanged with the
         // real rowId + old/new values, then enqueue the update so the worker
@@ -1110,6 +1114,9 @@ export class CGrid<TRow = any> {
       },
       onCancel: () => {
         this.editorContainer.style.pointerEvents = 'none';
+        // Mirrors onCommit — restore canvas focus so the keyboard nav layer
+        // keeps responding without a mouse click.
+        this.cgridCanvas.canvas.focus({ preventScroll: true });
         const e = this.activeEdit;
         this.activeEdit = null;
         if (!e) return;
