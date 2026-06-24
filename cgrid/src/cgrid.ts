@@ -16,8 +16,7 @@ import { CellRendererRegistry, textCell, numberCell, checkboxCell } from './rend
 import { Renderer } from './renderer/renderer';
 import { HitTester } from './interaction/hitTester';
 import { SelectionModel } from './interaction/selectionModel';
-import { PointerInput } from './interaction/pointerInput';
-import { KeyboardInput } from './interaction/keyboardInput';
+import { FeatureChain } from './interaction/featureChain';
 import { EditorOverlay } from './interaction/editorOverlay';
 import { A11yOverlay } from './interaction/a11yOverlay';
 import { WorkerClient } from './worker/client';
@@ -79,8 +78,7 @@ export class CGrid<TRow = any> {
   private viewport!: ViewportState;
   private selection: SelectionModel;
   private hitTester: HitTester;
-  private pointer: PointerInput;
-  private keyboard: KeyboardInput;
+  private featureChain: FeatureChain;
   private editor: EditorOverlay;
   private a11y: A11yOverlay;
   private workerClient: WorkerClient;
@@ -199,33 +197,30 @@ export class CGrid<TRow = any> {
       () => this.theme.headerHeight,
       () => this.theme.resizerHotZone,
     );
-    const inputDeps: import('./interaction/pointerInput').InputDeps = {
-      canvas: this.cgridCanvas.canvas,
+    this.featureChain = new FeatureChain({
+      canvas: this.cgridCanvas,
+      selection: this.selection,
       hitTester: this.hitTester,
-      selectionModel: this.selection,
-      visibleColIds: () => this.viewport.visibleColumns.map((c) => c.colId),
       visibleRowIndices: () => this.viewport.visibleRows
         .filter((r) => r.subgrid.isData)
         .map((r) => r.localRowIndex),
       allColIds: () => this.columnOrder.map((c) => c.colId),
       totalRowCount: () => this.rowCount,
-      onCellClicked: (rowIndex: number, colId: string, mouse: MouseEvent) => {
+      resizeColumn: (colId, dx) => this.resizeColumn(colId, dx),
+      cycleSort: (colId) => this.cycleSort(colId),
+      scrollBy: (dx, dy) => this.scroller.scrollBy({ left: dx, top: dy, behavior: 'auto' }),
+      emitCellClicked: (rowIndex, colId, mouse) => {
         const rowId = this.rowIdAt(rowIndex);
         if (rowId) this.events.emit({ type: 'cellClicked', rowId, colId, value: this.cellAt(rowIndex, colId)?.value, mouse });
       },
-      onCellDoubleClicked: (rowIndex: number, colId: string, mouse: MouseEvent) => {
+      emitCellDoubleClicked: (rowIndex, colId, mouse) => {
         const rowId = this.rowIdAt(rowIndex);
         if (rowId) {
           this.events.emit({ type: 'cellDoubleClicked', rowId, colId, value: this.cellAt(rowIndex, colId)?.value, mouse });
           this.openEditor(rowIndex, colId);
         }
       },
-      onHeaderClicked: (colId: string) => this.cycleSort(colId),
-      onColumnResize: (colId: string, dx: number) => this.resizeColumn(colId, dx),
-      onWheel: (dx, dy) => this.scroller.scrollBy({ left: dx, top: dy, behavior: 'auto' }),
-    };
-    this.pointer = new PointerInput(inputDeps);
-    this.keyboard = new KeyboardInput(inputDeps);
+    });
     this.editor = new EditorOverlay();
     this.a11y = new A11yOverlay(this.root);
 
@@ -387,8 +382,7 @@ export class CGrid<TRow = any> {
     this.selectionUnsubscribe();
     this.cgridCanvas.destroy();
     this.workerClient.destroy();
-    this.pointer.destroy();
-    this.keyboard.destroy();
+    this.featureChain.destroy();
     this.a11y.destroy();
     this.editor.close();
     this.root.parentElement?.removeChild(this.root);
