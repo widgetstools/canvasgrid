@@ -241,8 +241,18 @@ function paintBand(
         flashAlpha,
       });
 
+      // Per-cell clip — adjacent columns share the same band clip, so a value
+      // wider than its column (long Position ID, fat number) would otherwise
+      // bleed into the next cell. Intersection with the band clip means the
+      // cell never paints outside [col.left, col.right] ∩ [x0, x1] or below
+      // the row band — correct under both horizontal and vertical scroll.
+      gc.cache.save();
+      gc.beginPath();
+      gc.rect(col.left, row.top, col.width, row.height);
+      gc.clip();
       const rendererName = row.subgrid.isHeader ? 'header' : def.cellRenderer;
       cellRenderers.get(rendererName).paint(gc, config);
+      gc.cache.restore();
     }
   }
 

@@ -411,6 +411,51 @@ describe('paintCellsByRows — data rows do not bleed into header region', () =>
   });
 });
 
+// ─── Within-band cell-to-cell bleed regression ────────────────────────────────
+
+describe('paintCellsByRows — text in one cell cannot bleed into the next cell', () => {
+  // When a value is wider than its column (e.g. a long Position ID in a
+  // narrow pinned-left column) the cell renderer draws past col.right. The
+  // band-level clip prevents bleed BETWEEN bands but not WITHIN one — two
+  // adjacent pinned-left columns share the same band clip, so Position ID
+  // overflows into CUSIP unless every cell additionally clips to its own
+  // bounds. Regression repro for the second screenshot in Cycle 4.
+
+  it('wraps each cell paint in a clip rect matching its column bounds', () => {
+    const colsTwo = new Map<string, ResolvedColDef>([
+      ['posId', { colId: 'posId', headerName: 'Position ID', minWidth: 30, maxWidth: Infinity, type: 'text', cellRenderer: 'text', sortable: true, resizable: true, editable: false, columnGroupShow: null }],
+      ['cusip', { colId: 'cusip', headerName: 'CUSIP', minWidth: 30, maxWidth: Infinity, type: 'text', cellRenderer: 'text', sortable: true, resizable: true, editable: false, columnGroupShow: null }],
+    ]);
+    const vs: ViewportState = {
+      visibleColumns: [
+        { colId: 'posId', index: 0, left: 0, right: 80, width: 80, pinned: 'left' },
+        { colId: 'cusip', index: 1, left: 80, right: 160, width: 80, pinned: 'left' },
+      ],
+      visibleRows: [
+        { rowIndex: 0, subgrid: dataSubgrid, localRowIndex: 1, top: 32, bottom: 62, height: 30 },
+      ],
+      firstRow: 1, lastRow: 1,
+      scrollLeft: 0, scrollTop: 0,
+      bodyLeft: 160, bodyRight: 400, bodyTop: 32, bodyBottom: 200,
+      bodyWidth: 240, bodyHeight: 168,
+      contentWidth: 240, contentHeight: 1000, maxScrollLeft: 0, maxScrollTop: 800,
+    };
+    const gc = fakeGc();
+    paintCellsByRows(gc, {
+      viewport: vs, theme, columnDefs: colsTwo, cellRenderers: makeReg(),
+      cellData: () => ({ value: 'POS-' + 'x'.repeat(50), valueFormatted: 'POS-' + 'x'.repeat(50) }),
+      selection, sortModel: [],
+    });
+    // The painter must set a per-cell clip rect of [col.left, row.top, col.width, row.height]
+    // around each cell paint. With 2 cells in the row we expect at least 2 such rect calls.
+    const rectCalls = (gc.rect as any).mock.calls as number[][];
+    const cellClips = rectCalls.filter(([x, y, w, h]) =>
+      ((x === 0 && w === 80) || (x === 80 && w === 80)) && y === 32 && h === 30,
+    );
+    expect(cellClips.length).toBeGreaterThanOrEqual(2);
+  });
+});
+
 // ─── Pinned columns paint ──────────────────────────────────────────────────────
 
 describe('paintCellsByRows — pinned columns paint', () => {
