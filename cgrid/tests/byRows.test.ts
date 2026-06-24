@@ -631,6 +631,50 @@ describe('paintGridLines', () => {
     expect(fullHeightVerticals.length).toBeGreaterThanOrEqual(1);
   });
 
+  it('paints a vertical at group boundaries in the group-header row, none inside a span', () => {
+    // Group 'pnl' spans daily + mtd; ytd is ungrouped. Expect a vertical
+    // between mtd (last in group) and ytd (ungrouped), but NONE between
+    // daily and mtd (both inside 'pnl').
+    const tree = resolveColumnTree([
+      { field: 'id' },
+      { groupId: 'pnl', headerName: 'P&L', children: [{ field: 'daily' }, { field: 'mtd' }] },
+      { field: 'ytd' },
+    ]);
+    const groupSubgrid = new HeaderGroupSubgrid(
+      () => tree, () => 24, 0, () => ['id', 'daily', 'mtd', 'ytd'],
+    );
+    const colDefs = new Map<string, ResolvedColDef>(
+      tree.leaves.map((l) => [l.colId, l as ResolvedColDef]),
+    );
+    const vs: ViewportState = {
+      visibleColumns: [
+        { colId: 'id',    index: 0, left: 0,   right: 60,  width: 60 },
+        { colId: 'daily', index: 1, left: 60,  right: 160, width: 100 },
+        { colId: 'mtd',   index: 2, left: 160, right: 260, width: 100 },
+        { colId: 'ytd',   index: 3, left: 260, right: 360, width: 100 },
+      ],
+      visibleRows: [
+        { rowIndex: 0, subgrid: groupSubgrid, localRowIndex: 0, top: 0, bottom: 24, height: 24 },
+        { rowIndex: 1, subgrid: headerSubgrid, localRowIndex: 0, top: 24, bottom: 56, height: 32 },
+      ],
+      firstRow: 0, lastRow: -1,
+      scrollLeft: 0, scrollTop: 0,
+      bodyLeft: 0, bodyRight: 360, bodyTop: 56, bodyBottom: 56, bodyWidth: 360, bodyHeight: 0,
+      contentWidth: 360, contentHeight: 0, maxScrollLeft: 0, maxScrollTop: 0,
+    };
+    const c = fakeGc();
+    paintGridLines(c, { viewport: vs, theme, columnDefs: colDefs, cellRenderers: makeReg(), cellData, selection: selectionEmpty, sortModel: [] });
+    const calls = (c.fillRect as any).mock.calls as number[][];
+    // Group-header row spans y=[0,24]. Verticals in it have h=24, w=1.
+    const inGroupRow = calls.filter(([, y, w, h]) => y === 0 && w === 1 && h === 24);
+    // Expected boundaries: id|daily (null→pnl), mtd|ytd (pnl→null) = 2.
+    // NOT expected: daily|mtd (both pnl), ytd|<no neighbour>.
+    expect(inGroupRow.length).toBe(2);
+    // Verify the x positions: id.right=60 → x=59, mtd.right=260 → x=259.
+    const xs = inGroupRow.map((c) => c[0]).sort((a, b) => a - b);
+    expect(xs).toEqual([59, 259]);
+  });
+
   it('paints a horizontal line at every header row bottom', () => {
     // Regression for multi-row headers (group + leaf): without per-header-row
     // horizontals, group + leaf rows visually merge.

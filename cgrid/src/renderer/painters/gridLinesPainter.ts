@@ -64,6 +64,20 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
   paintVerticalsInBand(gc, center, vs.bodyLeft, vs.bodyRight, leafHeaderTop, vs.bodyBottom, theme.gridLineColor);
   paintVerticalsInBand(gc, rightPinned, vs.bodyRight, rightEdge, leafHeaderTop, vs.bodyBottom, theme.gridLineColor);
 
+  // Group-header rows: paint verticals ONLY at group boundaries (where two
+  // adjacent leaves resolve to different groups at this depth). Inside a
+  // group span the cells stay merged. Cells where both neighbours are
+  // ungrouped at this depth also stay un-divided so the row reads quietly
+  // outside the grouped regions.
+  for (const row of vs.visibleRows) {
+    if (!row.subgrid.isHeader) continue;
+    const sg = row.subgrid as { getGroupIdAt?: (colId: string) => string | null };
+    if (typeof sg.getGroupIdAt !== 'function') continue;
+    paintGroupBoundariesInBand(gc, leftPinned, 0, vs.bodyLeft, row.top, row.bottom, sg, theme.gridLineColor);
+    paintGroupBoundariesInBand(gc, center, vs.bodyLeft, vs.bodyRight, row.top, row.bottom, sg, theme.gridLineColor);
+    paintGroupBoundariesInBand(gc, rightPinned, vs.bodyRight, rightEdge, row.top, row.bottom, sg, theme.gridLineColor);
+  }
+
   // Pinned-band edges — heavier line via theme.borderColor. Span from the top
   // of the canvas to bodyBottom so the pinned/scroll divider is visible even
   // through group-header rows (the divider doesn't subdivide a single cell —
@@ -106,6 +120,39 @@ function paintVerticalsInBand(
   // edge for the rightmost band) and is either drawn as a band-edge line or
   // doesn't need one at all.
   for (let i = 0; i < cols.length - 1; i++) {
+    const x = Math.round(cols[i]!.right) - 1;
+    gc.fillRect(x, top, 1, bottom - top);
+  }
+  gc.cache.restore();
+}
+
+/** Paint verticals only at group boundaries in a group-header row.
+ *  A boundary exists between adjacent columns whose groupId at this row's
+ *  depth differs (and at least one is non-null). Inside a contiguous group
+ *  span both neighbours share the same groupId — no vertical. Between two
+ *  ungrouped columns both are null — also no vertical, so the un-grouped
+ *  area of the group-header reads as one quiet strip. */
+function paintGroupBoundariesInBand(
+  gc: CachedContext2D,
+  cols: ViewportColumn[],
+  bandLeft: number,
+  bandRight: number,
+  top: number,
+  bottom: number,
+  subgrid: { getGroupIdAt?: (colId: string) => string | null },
+  color: string,
+): void {
+  if (cols.length <= 1 || !subgrid.getGroupIdAt) return;
+  gc.cache.save();
+  gc.beginPath();
+  gc.rect(bandLeft, top, bandRight - bandLeft, bottom - top);
+  gc.clip();
+  gc.cache.fillStyle = color;
+  for (let i = 0; i < cols.length - 1; i++) {
+    const a = subgrid.getGroupIdAt(cols[i]!.colId);
+    const b = subgrid.getGroupIdAt(cols[i + 1]!.colId);
+    if (a === b) continue;
+    // a !== b — at least one side belongs to a group; emit a boundary line.
     const x = Math.round(cols[i]!.right) - 1;
     gc.fillRect(x, top, 1, bottom - top);
   }
