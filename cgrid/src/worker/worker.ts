@@ -152,6 +152,13 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             break;
           }
 
+          case 'getRowIndexForId': {
+            const ids = visible();
+            const idx = ids.indexOf(req.payload.rowId);
+            post({ id: req.id, type: 'rowIndex', index: idx });
+            break;
+          }
+
           case 'getViewport': {
             const visIds = visible();
             const chunk = state.slicer.slice(visIds, req.payload);

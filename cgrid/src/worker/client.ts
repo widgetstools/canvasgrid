@@ -79,6 +79,14 @@ export class WorkerClient {
     return this.send<{ visibleCount: number }>({ type: 'updateColumns', payload: { columns } });
   }
 
+  /** Resolve a row's current index in the worker's visible (filter + sort)
+   *  order. Returns -1 when the rowId is unknown or has been filtered out.
+   *  Used by `ensureRowVisible(rowId)` + `setFocusedCell(rowId, ...)`. */
+  getRowIndexForId(rowId: string): Promise<number> {
+    return this.send<{ index: number }>({ type: 'getRowIndexForId', payload: { rowId } })
+      .then((r) => r.index);
+  }
+
   destroy(): void {
     this.worker.terminate();
     this.pending.forEach((p) => p.reject(new Error('worker terminated')));

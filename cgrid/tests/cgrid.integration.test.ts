@@ -54,6 +54,66 @@ describe('CGrid integration', () => {
     grid.destroy();
   });
 
+  it('ensureColumnVisible is a no-op for pinned columns and unknown IDs', async () => {
+    const container = document.createElement('div');
+    container.style.cssText = 'width:800px; height:600px;';
+    container.className = 'cg-theme-quartz';
+    document.body.appendChild(container);
+    const grid = new CGrid<{ id: string; a: number; b: number }>(container, {
+      columnDefs: [
+        { field: 'id', width: 80, pinned: 'left' },
+        { field: 'a',  width: 200 },
+        { field: 'b',  width: 200 },
+      ],
+      getRowId: (r) => r.id,
+    });
+    const api = (grid as any).makeApi();
+    // No throw; the API surface accepts both signatures.
+    api.ensureColumnVisible('id');           // pinned → no-op
+    api.ensureColumnVisible('does-not-exist'); // unknown → no-op
+    api.ensureColumnVisible('a', 'start');
+    api.ensureColumnVisible('b', 'middle');
+    grid.destroy();
+  });
+
+  it('ensureColumnGroupVisible opens ancestor groups before scrolling to the first leaf', async () => {
+    const container = document.createElement('div');
+    container.style.cssText = 'width:800px; height:600px;';
+    container.className = 'cg-theme-quartz';
+    document.body.appendChild(container);
+    const grid = new CGrid<{ id: string; a: number; b: number; c: number }>(container, {
+      columnDefs: [
+        { field: 'id', width: 80 },
+        {
+          groupId: 'outer',
+          openByDefault: false,
+          children: [
+            { field: 'a', width: 100 },
+            {
+              groupId: 'inner',
+              openByDefault: false,
+              children: [
+                { field: 'b', width: 100 },
+                { field: 'c', width: 100 },
+              ],
+            },
+          ],
+        },
+      ],
+      getRowId: (r) => r.id,
+    });
+    const groupState = (grid as any).columnGroupState;
+    expect(groupState.isOpen('outer')).toBe(false);
+    expect(groupState.isOpen('inner')).toBe(false);
+    const api = (grid as any).makeApi();
+    api.ensureColumnGroupVisible('inner');
+    expect(groupState.isOpen('outer')).toBe(true);
+    expect(groupState.isOpen('inner')).toBe(true);
+    // Unknown groupId is a no-op (no throw).
+    api.ensureColumnGroupVisible('not-a-group');
+    grid.destroy();
+  });
+
   it('accepts a CColGroupDef in columnDefs and resolves leaves in declaration order', async () => {
     const container = document.createElement('div');
     container.style.cssText = 'width:800px; height:600px;';

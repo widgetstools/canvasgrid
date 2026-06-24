@@ -150,7 +150,17 @@ export interface CGridApi {
   setFilterModel(f: FilterModel): void;
   setGroupModel(g: GroupModel): void;
 
-  ensureRowVisible(rowId: string, position?: 'top' | 'middle' | 'bottom'): void;
+  /** Scroll the row with the given ID into view. Resolves once the worker
+   *  has resolved the rowId → current index (filter + sort applied). Resolves
+   *  immediately when the row is not in the visible model. */
+  ensureRowVisible(rowId: string, position?: 'auto' | 'top' | 'middle' | 'bottom'): Promise<void>;
+  /** Scroll the column with the given ID into view. No-op for pinned columns
+   *  (always visible) or unknown IDs. `'auto'` scrolls just enough; the named
+   *  positions force start/middle/end alignment. */
+  ensureColumnVisible(colId: string, position?: 'auto' | 'start' | 'middle' | 'end'): void;
+  /** Open every ancestor group + the target group, then scroll its first
+   *  visible leaf into view. No-op for unknown groupIds. */
+  ensureColumnGroupVisible(groupId: string, position?: 'auto' | 'start' | 'middle' | 'end'): void;
   getSelectedRowIds(): string[];
   setSelectedRowIds(ids: string[]): void;
 

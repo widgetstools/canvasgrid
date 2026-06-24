@@ -385,8 +385,33 @@ export class CGrid<TRow = any> {
 
   setGroupModel(_g: GroupModel): void { /* Out of scope for Foundation */ }
 
-  ensureRowVisible(_rowId: string, _position?: 'top' | 'middle' | 'bottom'): void {
-    // Foundation: simple — scroll to the row's index*rowHeight. Lookup requires worker support not in v1.
+  /** Resolve `rowId` to its current visible-row index via the worker, then
+   *  scroll it into view. No-op when the row is unknown / filtered out. */
+  async ensureRowVisible(rowId: string, position: 'auto' | 'top' | 'middle' | 'bottom' = 'auto'): Promise<void> {
+    if (this.destroyed) return;
+    const idx = await this.workerClient.getRowIndexForId(rowId);
+    if (this.destroyed) return;
+    if (idx < 0) return;
+    this.ensureRowIndexVisible(idx, position);
+  }
+
+  /** Scroll `colId` into view. Pinned columns + unknown IDs are no-ops. */
+  ensureColumnVisible(colId: string, position: 'auto' | 'start' | 'middle' | 'end' = 'auto'): void {
+    this.ensureColIdVisible(colId, position);
+  }
+
+  /** Open ancestor groups + the target group, then scroll the group's first
+   *  leaf into view. Unknown groupIds are no-ops. */
+  ensureColumnGroupVisible(groupId: string, position: 'auto' | 'start' | 'middle' | 'end' = 'auto'): void {
+    const group = this.columnTree.groupById.get(groupId);
+    if (!group) return;
+    const ancestors = this.findGroupAncestors(groupId);
+    const entries = ancestors.map((id) => ({ groupId: id, open: true }));
+    entries.push({ groupId, open: true });
+    this.columnGroupState.apply(entries);
+    const firstLeaf = group.leafColIds[0];
+    if (!firstLeaf) return;
+    this.ensureColIdVisible(firstLeaf, position);
   }
 
   getSelectedRowIds(): string[] {
@@ -564,6 +589,8 @@ export class CGrid<TRow = any> {
       setFilterModel: (f) => this.setFilterModel(f),
       setGroupModel: (g) => this.setGroupModel(g),
       ensureRowVisible: (id, pos) => this.ensureRowVisible(id, pos),
+      ensureColumnVisible: (id, pos) => this.ensureColumnVisible(id, pos),
+      ensureColumnGroupVisible: (id, pos) => this.ensureColumnGroupVisible(id, pos),
       getSelectedRowIds: () => this.getSelectedRowIds(),
       setSelectedRowIds: (ids) => this.setSelectedRowIds(ids),
       getFocusedCell: () => this.getFocusedCell(),
@@ -667,31 +694,90 @@ export class CGrid<TRow = any> {
     }
   }
 
-  /** Bring the row at `rowIndex` into the visible body, with a small overscan buffer. */
-  private ensureRowIndexVisible(rowIndex: number): void {
+  /** Bring the row at `rowIndex` into the visible body.
+   *  `'auto'` scrolls just enough to expose the row (no-op if already in
+   *  view); the named positions force `top` / `middle` / `bottom` alignment
+   *  inside the body area. Clamping is delegated to `setScroll`. */
+  private ensureRowIndexVisible(
+    rowIndex: number,
+    position: 'auto' | 'top' | 'middle' | 'bottom' = 'auto',
+  ): void {
     const rh = this.options.rowHeight ?? this.theme.rowHeight;
     const top = rowIndex * rh;
     const bottom = top + rh;
+    const bodyH = this.viewport.bodyHeight;
+    if (position === 'top') {
+      this.setScroll(this.scrollLeft, top);
+      return;
+    }
+    if (position === 'middle') {
+      this.setScroll(this.scrollLeft, top - Math.max(0, (bodyH - rh) / 2));
+      return;
+    }
+    if (position === 'bottom') {
+      this.setScroll(this.scrollLeft, bottom - bodyH);
+      return;
+    }
     if (top < this.scrollTop) {
       this.setScroll(this.scrollLeft, top);
-    } else if (bottom > this.scrollTop + this.viewport.bodyHeight) {
-      this.setScroll(this.scrollLeft, bottom - this.viewport.bodyHeight);
+    } else if (bottom > this.scrollTop + bodyH) {
+      this.setScroll(this.scrollLeft, bottom - bodyH);
     }
   }
 
-  /** Bring the column with `colId` into the visible body. Pinned columns are always visible. */
-  private ensureColIdVisible(colId: string): void {
+  /** Bring the column with `colId` into the visible body. Pinned columns are
+   *  always visible. `'auto'` scrolls just enough; the named positions force
+   *  `start` / `middle` / `end` alignment inside the body area. */
+  private ensureColIdVisible(
+    colId: string,
+    position: 'auto' | 'start' | 'middle' | 'end' = 'auto',
+  ): void {
     const layoutCol = this.columnLayout.find((c) => c.colId === colId);
     if (!layoutCol || layoutCol.pinned) return;
     // Convert content-space left (relative to layout) into body-content space.
     const pinnedLeftWidth = this.columnLayout.filter((c) => c.pinned === 'left').reduce((s, c) => s + c.width, 0);
     const left = layoutCol.left - pinnedLeftWidth;
     const right = left + layoutCol.width;
+    const bodyW = this.viewport.bodyWidth;
+    if (position === 'start') {
+      this.setScroll(left, this.scrollTop);
+      return;
+    }
+    if (position === 'middle') {
+      this.setScroll(left - Math.max(0, (bodyW - layoutCol.width) / 2), this.scrollTop);
+      return;
+    }
+    if (position === 'end') {
+      this.setScroll(right - bodyW, this.scrollTop);
+      return;
+    }
     if (left < this.scrollLeft) {
       this.setScroll(left, this.scrollTop);
-    } else if (right > this.scrollLeft + this.viewport.bodyWidth) {
-      this.setScroll(right - this.viewport.bodyWidth, this.scrollTop);
+    } else if (right > this.scrollLeft + bodyW) {
+      this.setScroll(right - bodyW, this.scrollTop);
     }
+  }
+
+  /** Walk the column tree to collect the ancestor groupIds (root → parent)
+   *  of `groupId`. Excludes `groupId` itself. Empty for top-level groups. */
+  private findGroupAncestors(groupId: string): string[] {
+    const path: string[] = [];
+    const visit = (node: import('./core/columnTree').ColumnTreeNode, trail: string[]): boolean => {
+      if (node.kind !== 'group') return false;
+      if (node.groupId === groupId) {
+        path.push(...trail);
+        return true;
+      }
+      const nextTrail = [...trail, node.groupId];
+      for (const child of node.children) {
+        if (visit(child, nextTrail)) return true;
+      }
+      return false;
+    };
+    for (const root of this.columnTree.roots) {
+      if (visit(root, [])) break;
+    }
+    return path;
   }
 
   private requestViewport(): void {

@@ -42,13 +42,15 @@ export type WorkerRequest =
   | { id: ReqId; type: 'setFilterModel';   payload: FilterModel }
   | { id: ReqId; type: 'setGroupModel';    payload: GroupModel }
   | { id: ReqId; type: 'getViewport';      payload: ViewportRequest }
-  | { id: ReqId; type: 'updateColumns';    payload: { columns: WorkerColumn[] } };
+  | { id: ReqId; type: 'updateColumns';    payload: { columns: WorkerColumn[] } }
+  | { id: ReqId; type: 'getRowIndexForId'; payload: { rowId: string } };
 
 export type WorkerResponse =
   | { id: ReqId; type: 'ready' }
   | { id: ReqId; type: 'rowCount';            count: number; visibleCount: number }
   | { id: ReqId; type: 'viewport';            chunk: ViewportChunk }
   | { id: ReqId; type: 'transactionFlushed';  results: TransactionResult }
+  | { id: ReqId; type: 'rowIndex';            index: number }
   | { id: ReqId; type: 'error';               error: string };
 
 export type WorkerPush =
