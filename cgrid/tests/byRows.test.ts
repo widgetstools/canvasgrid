@@ -618,6 +618,38 @@ describe('paintGridLines', () => {
     expect(verticals).toBe(vsGridLines.visibleColumns.length - 1); // 1
   });
 
+  it('paints vertical separators in the header region too', () => {
+    // Regression: previously verticals spanned only [bodyTop, bodyBottom]; the
+    // header read as one merged strip with no column separators. Now verticals
+    // span 0..bodyBottom — every header column gets a divider.
+    const c = fakeGc();
+    paintGridLines(c, { viewport: vsGridLines, theme, columnDefs: cols, cellRenderers: makeReg(), cellData, selection: selectionEmpty, sortModel: [] });
+    const calls = (c.fillRect as any).mock.calls as number[][];
+    const fullHeightVerticals = calls.filter((call) =>
+      call[1] === 0 && call[2] === 1 && call[3] === vsGridLines.bodyBottom,
+    );
+    expect(fullHeightVerticals.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('paints a horizontal line at every header row bottom', () => {
+    // Regression for multi-row headers (group + leaf): without per-header-row
+    // horizontals, group + leaf rows visually merge.
+    const c = fakeGc();
+    const vsWithHeader: ViewportState = {
+      ...vsGridLines,
+      visibleRows: [
+        { rowIndex: 0, subgrid: headerSubgrid, localRowIndex: 0, top: 0, bottom: 32, height: 32 },
+        ...vsGridLines.visibleRows.map((r, i) => ({ ...r, rowIndex: i + 1 })),
+      ],
+    };
+    paintGridLines(c, { viewport: vsWithHeader, theme, columnDefs: cols, cellRenderers: makeReg(), cellData, selection: selectionEmpty, sortModel: [] });
+    const calls = (c.fillRect as any).mock.calls as number[][];
+    // Header row bottom is at y=31 (Math.round(32) - 1). Look for a horizontal
+    // line spanning the full width starting at y=31.
+    const headerHorizontals = calls.filter((call) => call[1] === 31 && call[3] === 1);
+    expect(headerHorizontals.length).toBeGreaterThanOrEqual(1);
+  });
+
   it('does not call stroke or strokeRect', () => {
     const c = fakeGc();
     paintGridLines(c, { viewport: vsGridLines, theme, columnDefs: cols, cellRenderers: makeReg(), cellData, selection: selectionEmpty, sortModel: [] });
@@ -639,9 +671,13 @@ describe('paintGridLines', () => {
     };
     paintGridLines(c, { viewport: vsPinned, theme, columnDefs: cols, cellRenderers: makeReg(), cellData, selection: selectionEmpty, sortModel: [] });
     const calls = (c.fillRect as any).mock.calls as number[][];
-    const bodyH = vsPinned.bodyBottom - vsPinned.bodyTop;
-    const fullHeightVerticals = calls.filter((call) => call[2] === 1 && call[3] === bodyH).length;
-    expect(fullHeightVerticals).toBe(3); // 2 band edges + 1 inter-center gap
+    // Verticals now span the full canvas height (0..bodyBottom) so header
+    // column separators are visible too. Expect 2 band edges + 1 inter-center
+    // gap, all with width=1 and height=bodyBottom (y=0).
+    const fullHeightVerticals = calls.filter((call) =>
+      call[1] === 0 && call[2] === 1 && call[3] === vsPinned.bodyBottom,
+    ).length;
+    expect(fullHeightVerticals).toBe(3);
   });
 
   it('paints the header→body separator when bodyTop > 0', () => {

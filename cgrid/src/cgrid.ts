@@ -103,7 +103,11 @@ export class CGrid<TRow = any> {
 
     this.scroller = document.createElement('div');
     this.scroller.className = 'cg-scroller';
-    this.scroller.style.cssText = 'position:absolute; inset:0; overflow:auto;';
+    // overflow:scroll (not auto) so scrollbar gutters are reserved unconditionally —
+    // macOS overlay scrollbars otherwise disappear when idle and the user can't
+    // see they're scrollable. The webkit-scrollbar styles in tokens.css then
+    // theme the persistent track + thumb.
+    this.scroller.style.cssText = 'position:absolute; inset:0; overflow:scroll;';
     this.sizer = document.createElement('div');
     this.sizer.className = 'cg-sizer';
     this.sizer.style.cssText = 'width:1px; height:1px; pointer-events:none;';
