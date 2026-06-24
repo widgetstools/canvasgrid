@@ -127,6 +127,18 @@ export function createPositionsGrid(container: HTMLElement): CGrid<Position> {
     // adjacent cell. F2, dblclick, single-click and api.startEditingCell
     // start in 'edit' mode so arrows still move the input caret.
     enableExcelEditing: true,
+    // Cycle 5 / Task 6 — variable row heights. A deterministic per-positionId
+    // rule that produces a visible mix in the demo viewport: positions whose
+    // ID ends with a character code divisible by 4 render 56 px tall, the
+    // rest fall back to the grid-level rowHeight. Picks roughly a quarter
+    // of rows so the E2E can scan a small window and still find at least
+    // one tall + one normal row.
+    getRowHeight: ({ data }) => {
+      const id = data.positionId;
+      if (!id) return null;
+      const last = id.charCodeAt(id.length - 1);
+      return last % 4 === 0 ? 56 : null;
+    },
   };
   const grid = new CGrid<Position>(container, options);
   grid.registerCellRenderer('pnlPill', pnlPill);

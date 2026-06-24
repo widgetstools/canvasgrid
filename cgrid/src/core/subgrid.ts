@@ -143,12 +143,18 @@ export class DataSubgrid implements Subgrid {
 
   constructor(
     private getRowCountFn: () => number,
-    private getRowHeightFn: () => number,
+    /**
+     * Per-row height in CSS px. Receives the local data-row index so the
+     * implementation can substitute per-row overrides (Cycle 5 / Task 6 —
+     * `CGridOptions.getRowHeight`) on top of the grid-level fallback.
+     * Rows outside the current chunk should return the fallback.
+     */
+    private getRowHeightFn: (local: number) => number,
     private cellAt: DataCellLookup,
   ) {}
 
   getRowCount(): number { return this.getRowCountFn(); }
-  getRowHeight(_local: number): number { return this.getRowHeightFn(); }
+  getRowHeight(local: number): number { return this.getRowHeightFn(local); }
   getCell(local: number, colId: string): SubgridCell | null {
     return this.cellAt(local, colId);
   }

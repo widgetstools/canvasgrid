@@ -10,12 +10,22 @@ export class RowStore<TRow = any> {
   private nextNumeric = 1;
   private stringToNumeric = new Map<string, number>();
   private numericToString = new Map<number, string>();
+  /**
+   * Per-row heights resolved main-side via `CGridOptions.getRowHeight` and
+   * shipped over the protocol. Canonical here; main thread reads them off
+   * each `ViewportChunk.heights`. Rows without an entry fall back to the
+   * grid-level `rowHeight`. Cycle 5 / Task 6.
+   */
+  private heightsByRowId = new Map<string, number>();
 
   constructor(private rowIdField: string) {}
 
-  setAll(rows: TRow[]): void {
+  setAll(rows: TRow[], heightsByRowId?: Map<string, number>): void {
     this.byId.clear();
     this.order.length = 0;
+    // A full-replace wipes prior heights so a fresh dataset can't inherit
+    // height entries for rowIds that no longer exist.
+    this.heightsByRowId.clear();
     for (const row of rows) {
       const id = this.getRowId(row);
       this.byId.set(id, row);
@@ -26,9 +36,17 @@ export class RowStore<TRow = any> {
         this.numericToString.set(n, id);
       }
     }
+    if (heightsByRowId) {
+      for (const [id, h] of heightsByRowId) this.heightsByRowId.set(id, h);
+    }
   }
 
-  apply(tx: { add?: TRow[]; update?: TRow[]; remove?: string[] }): TransactionResult {
+  apply(tx: {
+    add?: TRow[];
+    update?: TRow[];
+    remove?: string[];
+    heightsByRowId?: Map<string, number>;
+  }): TransactionResult {
     const result: TransactionResult = { add: [], update: [], remove: [] };
     if (tx.add) {
       for (const row of tx.add) {
@@ -59,11 +77,23 @@ export class RowStore<TRow = any> {
         if (this.byId.delete(id)) {
           const i = this.order.indexOf(id);
           if (i !== -1) this.order.splice(i, 1);
+          // Drop the per-row height too so a re-added row doesn't inherit
+          // the previous row's height ghost.
+          this.heightsByRowId.delete(id);
           result.remove.push({ rowId: id });
         }
       }
     }
+    if (tx.heightsByRowId) {
+      for (const [id, h] of tx.heightsByRowId) this.heightsByRowId.set(id, h);
+    }
     return result;
+  }
+
+  /** Per-row height for `rowId` in CSS px, or `undefined` when no per-row
+   *  entry exists (caller falls back to the grid-level `rowHeight`). */
+  getHeight(rowId: string): number | undefined {
+    return this.heightsByRowId.get(rowId);
   }
 
   size(): number { return this.byId.size; }
@@ -105,8 +135,17 @@ interface QueueOpts {
   onFlush: (results: TransactionResult[]) => void;
 }
 
+/** Shape of a queued or applied transaction. heightsByRowId rides along so
+ *  height-bearing updates flow through the async batching path too. */
+export interface QueuedTx<TRow = any> {
+  add?: TRow[];
+  update?: TRow[];
+  remove?: string[];
+  heightsByRowId?: Map<string, number>;
+}
+
 export class TransactionQueue<TRow = any> {
-  private pending: { add?: TRow[]; update?: TRow[]; remove?: string[] }[] = [];
+  private pending: QueuedTx<TRow>[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
   private flushFn: () => void;
 
@@ -124,7 +163,7 @@ export class TransactionQueue<TRow = any> {
   }
 
   /** Caller (worker.ts) installs the actual flush function once RowStore exists. */
-  setFlushFn(fn: (txs: { add?: TRow[]; update?: TRow[]; remove?: string[] }[]) => TransactionResult[]): void {
+  setFlushFn(fn: (txs: QueuedTx<TRow>[]) => TransactionResult[]): void {
     this.flushFn = () => {
       const queued = this.pending;
       this.pending = [];
@@ -135,7 +174,7 @@ export class TransactionQueue<TRow = any> {
     };
   }
 
-  push(tx: { add?: TRow[]; update?: TRow[]; remove?: string[] }): void {
+  push(tx: QueuedTx<TRow>): void {
     this.pending.push(tx);
     if (this.timer === null) {
       this.timer = setTimeout(() => this.flushFn(), this.opts.waitMs);
@@ -277,10 +316,16 @@ export class ViewportSlicer<TRow = any> {
     const rowIds = new Uint32Array(count);
     const rowKinds = new Uint8Array(count);   // all leaf for Foundation
     const groupDepth = new Uint8Array(count);
+    // Per-row heights ride alongside rowIds in the same visible order.
+    // 0 sentinel means "no per-row entry — main thread uses the global
+    // rowHeight fallback". Cycle 5 / Task 6.
+    const heights = new Float32Array(count);
 
     for (let i = 0; i < count; i++) {
       const id = visibleIds[rowStart + i]!;
       rowIds[i] = this.store.getNumericId(id);
+      const h = this.store.getHeight(id);
+      if (h !== undefined) heights[i] = h;
     }
 
     const numericCols: Record<string, Float64Array> = {};
@@ -313,6 +358,7 @@ export class ViewportSlicer<TRow = any> {
       rowIds,
       rowKinds,
       groupDepth,
+      heights,
       numericCols,
       textCols,
     };

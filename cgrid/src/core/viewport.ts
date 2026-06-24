@@ -110,38 +110,53 @@ export function computeViewport(opts: ViewportInput): ViewportState {
   const bodyBottom = opts.containerHeight;
   const bodyHeight = Math.max(0, bodyBottom - bodyTop);
 
-  // Pass 2: data subgrid(s). Only the data area scrolls.
+  // Pass 2: data subgrid(s). Only the data area scrolls. Per-row heights —
+  // each data subgrid exposes `getRowHeight(local)` (Cycle 5 / Task 6). The
+  // first-visible-row search still uses a uniform-height approximation
+  // (`subgrid.getRowHeight(0)` as the fallback) — Task 7's Fenwick tree
+  // replaces that scan with O(log n) cumulative lookups. Within the visible
+  // range we walk per-row so variable-height rows position correctly relative
+  // to one another (no overlap, no gap).
   let yAfterData = bodyTop;
   for (const subgrid of opts.subgrids) {
     if (!subgrid.isData) continue;
-    const rowH = subgrid.getRowHeight(0); // assume uniform — refined when variable-height lands
-    if (rowH <= 0) continue;
+    const fallbackH = subgrid.getRowHeight(0);
+    if (fallbackH <= 0) continue;
     const totalRows = subgrid.getRowCount();
-    dataContentHeight += totalRows * rowH;
+    // dataContentHeight uses the fallback uniformly — Task 7's Fenwick gives
+    // the exact total height in O(log n). Until then, scrollbar thumb extent
+    // is approximate when many rows deviate from the fallback.
+    dataContentHeight += totalRows * fallbackH;
 
     if (suppressRows) {
       firstDataRow = 0;
       lastDataRow = totalRows - 1;
     } else {
-      const firstRowRaw = Math.floor(opts.scrollTop / rowH);
-      const lastRowRaw = Math.floor((opts.scrollTop + bodyHeight) / rowH);
+      const firstRowRaw = Math.floor(opts.scrollTop / fallbackH);
+      const lastRowRaw = Math.floor((opts.scrollTop + bodyHeight) / fallbackH);
       firstDataRow = Math.max(0, firstRowRaw - overscan);
       lastDataRow = Math.min(totalRows - 1, lastRowRaw + overscan);
     }
 
+    // Accumulate the top of `firstDataRow` by walking pre-window rows once.
+    // O(firstDataRow) — acceptable for Task 6; Task 7 swaps this for O(log n).
+    let top = bodyTop - opts.scrollTop;
+    for (let pre = 0; pre < firstDataRow; pre++) top += subgrid.getRowHeight(pre);
     for (let local = firstDataRow; local <= lastDataRow; local++) {
-      const top = bodyTop + local * rowH - opts.scrollTop;
+      const h = subgrid.getRowHeight(local);
       visibleRows.push({
         rowIndex: visibleRows.length,
         subgrid,
         localRowIndex: local,
         top,
-        bottom: top + rowH,
-        height: rowH,
+        bottom: top + h,
+        height: h,
       });
+      top += h;
     }
-    // Advance yAfterData so trailing subgrids (totals/footer) land below.
-    yAfterData = Math.max(yAfterData, bodyTop + (lastDataRow + 1) * rowH - opts.scrollTop);
+    // Advance yAfterData so trailing subgrids (totals/footer) land below the
+    // last visible data row — `top` is now exactly that bottom edge.
+    yAfterData = Math.max(yAfterData, top);
   }
 
   // Pass 3: totals/footer subgrids — stacked after the visible data rows.

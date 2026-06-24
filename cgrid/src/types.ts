@@ -81,6 +81,26 @@ export interface CGridOptions<TRow = any> {
    *  When `false` (default) the mode is inert and arrow keys always
    *  behave like the input's native handler. */
   enableExcelEditing?: boolean;
+
+  /**
+   * Per-row height in CSS px. Called by the main thread on `setRowData`,
+   * `applyTransaction(add|update)`, and any row whose underlying data
+   * mutates. Returning `null` / `undefined` falls back to the grid-level
+   * `rowHeight`. The resolved height is shipped to the worker
+   * (`heightsByRowId` on the matching message) and rides each viewport
+   * chunk back as a `Float32Array`. Cycle 5 / Task 6.
+   */
+  getRowHeight?: (params: GetRowHeightParams<TRow>) => number | null | undefined;
+}
+
+/** Params for `CGridOptions.getRowHeight`. The row is identified by its
+ *  full data + the application-provided rowId; `rowIndex` is the row's
+ *  current position in the visible (filter + sort) order at the time the
+ *  callback runs. */
+export interface GetRowHeightParams<TRow = any> {
+  data: TRow;
+  rowId: string;
+  rowIndex: number;
 }
 
 /** Predicate that decides whether a single cell is editable. Receives the
@@ -447,6 +467,11 @@ export interface CGridApi {
    *  in the canvas's coordinate space. Returns `null` when the cell is not
    *  in the current viewport. Used by E2E to position synthetic clicks. */
   getCellBoundsAt(rowIndex: number, colId: string): { x: number; y: number; w: number; h: number } | null;
+  /** Returns the vertical pixel bounds (top + height) of the data row at
+   *  `rowIndex`. `null` when the row isn't currently visible. Useful for
+   *  asserting variable-height row layouts in E2E without a per-column
+   *  lookup. Cycle 5 / Task 6. */
+  getRowBoundsAt(rowIndex: number): { y: number; h: number } | null;
   /** Returns the raw value of the cell at (`rowIndex`, `colId`) from the
    *  current viewport chunk, or `null` when the cell is not in the chunk. */
   getCellValue(rowIndex: number, colId: string): unknown;

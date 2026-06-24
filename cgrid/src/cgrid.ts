@@ -496,7 +496,8 @@ export class CGrid<TRow = any> {
   // down with the rest of the editor-cycle additions (Cycle 5 / Task 1).
 
   setRowData(rows: TRow[]): void {
-    this.workerClient.setRowData(rows).then(({ visibleCount }) => {
+    const heightsByRowId = this.resolveHeightsForRows(rows);
+    this.workerClient.setRowData(rows, heightsByRowId).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
       this.recomputeViewport();
       this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
@@ -506,22 +507,50 @@ export class CGrid<TRow = any> {
 
   applyTransaction(t: Tx<TRow>): TransactionResult {
     // Foundation: async only. For sync semantics, callers use the worker's sync path via separate cycle.
+    const heightsByRowId = this.resolveHeightsForRows([...(t.add ?? []), ...(t.update ?? [])]);
     this.workerClient.applyTransaction({
       add: t.add as unknown[],
       update: t.update as unknown[],
       remove: (t.remove as TRow[] | undefined)?.map((r) => this.options.getRowId(r)),
       async: false,
+      heightsByRowId,
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid] applyTransaction:', err); });
     return { add: [], update: [], remove: [] };
   }
 
   applyTransactionAsync(t: Tx<TRow>): void {
+    const heightsByRowId = this.resolveHeightsForRows([...(t.add ?? []), ...(t.update ?? [])]);
     this.workerClient.applyTransaction({
       add: t.add as unknown[],
       update: t.update as unknown[],
       remove: (t.remove as TRow[] | undefined)?.map((r) => this.options.getRowId(r)),
       async: true,
+      heightsByRowId,
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid] applyTransaction:', err); });
+  }
+
+  /** Run the user-provided `getRowHeight` callback over `rows` and collect
+   *  the non-null results into a Map keyed by rowId. Returns `undefined` when
+   *  no callback is configured OR the result is empty — main thread avoids
+   *  shipping a noop map across the worker boundary. Errors in the callback
+   *  fall back silently to the grid-level `rowHeight`. */
+  private resolveHeightsForRows(rows: TRow[]): Map<string, number> | undefined {
+    const cb = this.options.getRowHeight;
+    if (!cb || rows.length === 0) return undefined;
+    const out = new Map<string, number>();
+    for (const row of rows) {
+      let rowId: string;
+      try { rowId = this.options.getRowId(row); } catch { continue; }
+      try {
+        const h = cb({ data: row, rowId, rowIndex: -1 });
+        if (typeof h === 'number' && Number.isFinite(h) && h > 0) {
+          out.set(rowId, h);
+        }
+      } catch {
+        // Callback threw — leave this row without a per-row entry.
+      }
+    }
+    return out.size === 0 ? undefined : out;
   }
 
   flushAsyncTransactions(): void { /* Foundation: deferred — relies on worker's setTimeout */ }
@@ -795,7 +824,11 @@ export class CGrid<TRow = any> {
     ));
     stack.push(new DataSubgrid(
       () => this.rowCount,
-      () => this.options.rowHeight ?? this.theme.rowHeight,
+      // Per-row height — first try the chunk's heights (canonical for the
+      // rows currently in the visible window), fall back to the grid-level
+      // `rowHeight`. Rows outside the chunk return the fallback; Task 7's
+      // Fenwick tree replaces this with a global O(log n) lookup.
+      (local) => this.rowHeightAt(local),
       (rowIndex, colId) => this.cellAt(rowIndex, colId),
     ));
     this.subgrids = stack;
@@ -855,6 +888,7 @@ export class CGrid<TRow = any> {
       addEventListener: (t, h) => this.addEventListener(t as CGridEvent['type'], h as any),
       removeEventListener: (t, h) => this.removeEventListener(t as CGridEvent['type'], h as any),
       getCellBoundsAt: (r, c) => this.getCellBoundsAt(r, c),
+      getRowBoundsAt: (r) => this.getRowBoundsAt(r),
       getCellValue: (r, c) => this.getCellValue(r, c),
     };
   }
@@ -1069,6 +1103,12 @@ export class CGrid<TRow = any> {
         this.viewportRequestPending = false;
         this.chunk = chunk;
         this.decodedTextCols.clear();
+        // Recompute the viewport so DataSubgrid.getRowHeight reads the new
+        // chunk's per-row heights (Cycle 5 / Task 6). Without this the
+        // visibleRows array carries heights from BEFORE the chunk arrived
+        // and variable-height rows paint at the fallback until the next
+        // scroll triggers another recompute.
+        this.recomputeViewport();
         this.cgridCanvas.requestRepaint();
         this.updateA11y();
         if (chunk.totals) {
@@ -1091,6 +1131,21 @@ export class CGrid<TRow = any> {
         this.viewportRequestQueued = false;
         if (!this.destroyed) console.error('[cgrid] viewport request:', err);
       });
+  }
+
+  /** Resolve the height of the data row at `localRowIndex`. When the row is
+   *  present in the current viewport chunk and has a non-zero per-row entry,
+   *  use that; otherwise fall back to the grid-level `rowHeight`. The 0
+   *  sentinel in `chunk.heights` means "no per-row override" — substitute
+   *  the fallback so columns with mixed-heights row sets don't shrink to 0.
+   *  Task 7's Fenwick tree extends this with O(log n) global coverage. */
+  private rowHeightAt(localRowIndex: number): number {
+    const fallback = this.options.rowHeight ?? this.theme.rowHeight;
+    if (!this.chunk) return fallback;
+    const i = localRowIndex - this.chunk.rowStart;
+    if (i < 0 || i >= this.chunk.heights.length) return fallback;
+    const h = this.chunk.heights[i]!;
+    return h > 0 ? h : fallback;
   }
 
   private cellAt(rowIndex: number, colId: string): { value: unknown; valueFormatted: string } | null {
@@ -1420,6 +1475,18 @@ export class CGrid<TRow = any> {
     );
     if (!col || !row) return null;
     return { x: col.left, y: row.top, w: col.width, h: row.height };
+  }
+
+  /** Pixel bounds of the data row at `rowIndex` (vertical band spanning the
+   *  full body width). Returns `null` when the row isn't currently visible.
+   *  Used by E2E to assert variable-height row layout without bottoming out
+   *  on a per-column lookup. Cycle 5 / Task 6. */
+  getRowBoundsAt(rowIndex: number): { y: number; h: number } | null {
+    const row = this.viewport.visibleRows.find(
+      (r) => r.subgrid.isData && r.localRowIndex === rowIndex,
+    );
+    if (!row) return null;
+    return { y: row.top, h: row.height };
   }
 
   /** Raw cell value from the current viewport chunk. `null` when the cell

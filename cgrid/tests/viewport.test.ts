@@ -22,6 +22,26 @@ function data(rowCount = 1000, rowHeight = 30): Subgrid {
   };
 }
 
+/**
+ * Data subgrid backed by a per-row height map keyed by `localRowIndex`.
+ * Rows missing from the map fall back to `fallback` (mirrors how the real
+ * DataSubgrid's per-row callback substitutes the grid-level rowHeight when
+ * the current chunk has no entry for a row).
+ */
+function variableData(
+  rowCount: number,
+  fallback: number,
+  perRow: Record<number, number>,
+): Subgrid {
+  return {
+    type: 'data',
+    isHeader: false, isData: true, isTotals: false, isFooter: false,
+    getRowCount: () => rowCount,
+    getRowHeight: (local: number) => perRow[local] ?? fallback,
+    getCell: () => null,
+  };
+}
+
 function totals(rowCount = 1, height = 28): Subgrid {
   return {
     type: 'totals',
@@ -173,6 +193,49 @@ describe('computeViewport', () => {
     expect(vs.visibleColumns.length).toBe(cols.length);
     // Order preserved.
     expect(vs.visibleColumns.map((c) => c.colId)).toEqual(cols.map((c) => c.colId));
+  });
+
+  it('per-row data heights — accumulator threads each row\'s height into top', () => {
+    // 10 data rows; rows 2 and 5 are 60 px tall, the rest 30 px.
+    const vs = computeViewport({
+      columnLayout: [{ colId: 'a', left: 0, width: 100 }],
+      subgrids: [variableData(10, 30, { 2: 60, 5: 60 })],
+      containerWidth: 100, containerHeight: 1000,
+      scrollLeft: 0, scrollTop: 0,
+      suppressRowVirtualisation: true,
+    });
+    const dataRows = vs.visibleRows.filter((r) => r.subgrid.isData);
+    expect(dataRows.length).toBe(10);
+    // Expected tops (no header, bodyTop=0): 0, 30, 60, 120, 150, 180, 240, 270, 300, 330.
+    expect(dataRows.map((r) => r.top)).toEqual([0, 30, 60, 120, 150, 180, 240, 270, 300, 330]);
+    // Rows 2 and 5 are 60 tall; the rest are 30.
+    expect(dataRows[2]!.height).toBe(60);
+    expect(dataRows[5]!.height).toBe(60);
+    expect(dataRows[0]!.height).toBe(30);
+    expect(dataRows[9]!.height).toBe(30);
+    // Bottom of each row equals next row's top (no gaps).
+    for (let i = 0; i < dataRows.length - 1; i++) {
+      expect(dataRows[i]!.bottom).toBe(dataRows[i + 1]!.top);
+    }
+  });
+
+  it('per-row data heights — accumulates pre-firstDataRow heights when scrolled', () => {
+    // Row 1 is 90 px; row 0 + others are 30 px.
+    // scrollTop=120 with fallback=30 → firstRowRaw=4. With per-row, the
+    // top of row 4 in canvas space is bodyTop - scrollTop + (30+90+30+30) = -120 + 180 = 60.
+    const vs = computeViewport({
+      columnLayout: [{ colId: 'a', left: 0, width: 100 }],
+      subgrids: [variableData(20, 30, { 1: 90 })],
+      containerWidth: 100, containerHeight: 300,
+      scrollLeft: 0, scrollTop: 120,
+      overscanRows: 0,
+    });
+    const firstVisible = vs.visibleRows.find((r) => r.subgrid.isData && r.localRowIndex === 4);
+    // Without per-row math: top would be bodyTop + 4*30 - 120 = 0. With the
+    // accumulator-aware refactor, the +60 from row 1's extra height shifts
+    // row 4's top down to 60.
+    expect(firstVisible).toBeDefined();
+    expect(firstVisible!.top).toBe(60);
   });
 
   it('totals subgrid lands after data rows (positional sanity)', () => {

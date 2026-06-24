@@ -97,7 +97,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
 
         switch (req.type) {
           case 'setRowData': {
-            state.store.setAll(req.payload.rows as any[]);
+            state.store.setAll(req.payload.rows as any[], req.payload.heightsByRowId);
             state.visibleCache = null;
             const visibleCount = invalidateAndCount();
             post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount });
@@ -105,12 +105,12 @@ export function createWorkerHost(post: PostFn): WorkerHost {
           }
 
           case 'applyTransaction': {
-            const { add, update, remove, async: isAsync } = req.payload;
+            const { add, update, remove, async: isAsync, heightsByRowId } = req.payload;
             if (isAsync) {
-              state.queue.push({ add: add as any[], update: update as any[], remove });
+              state.queue.push({ add: add as any[], update: update as any[], remove, heightsByRowId });
               post({ id: req.id, type: 'transactionFlushed', results: { add: [], update: [], remove: [] } });
             } else {
-              const results = state.store.apply({ add: add as any[], update: update as any[], remove });
+              const results = state.store.apply({ add: add as any[], update: update as any[], remove, heightsByRowId });
               state.visibleCache = null;
               post({ id: req.id, type: 'transactionFlushed', results });
               post({ type: 'modelUpdated', visibleCount: invalidateAndCount() });

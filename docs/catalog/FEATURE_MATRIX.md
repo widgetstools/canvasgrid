@@ -175,7 +175,7 @@
 | 05 | suppressAnimationFrame | Community | option | no | P1 | Disable rAF scheduling for scroll rendering |
 | 05 | suppressColumnVirtualisation | Community | option | no | P1 | Render all columns regardless of scroll |
 | 05 | rowHeight | Community | option | yes | P0 | Default row height in pixels |
-| 05 | getRowHeight | Community | option | no | P1 | Per-row height callback |
+| 05 | getRowHeight | Community | option | yes | P1 | Per-row height callback |
 | 05 | domLayout: normal | Community | option | no | P0 | Fixed-height container with scrollbars |
 | 05 | domLayout: autoHeight | Community | option | no | P2 | Container grows to show all rows |
 | 05 | domLayout: print | Community | option | no | P3 | All rows visible; no scrollbars |
@@ -215,7 +215,7 @@
 | 05 | ICellRendererComp interface | Community | behavior | yes | P0 | init/getGui/refresh/destroy lifecycle |
 | 05 | valueGetter / valueFormatter / cellRenderer separation | Community | behavior | yes | P0 | Sort/filter use valueGetter; renderer sees both |
 | 05 | cellRendererSelector dynamic dispatch | Community | behavior | no | P1 | Per-row renderer selection |
-| 05 | Dynamic row heights via getRowHeight | Community | behavior | no | P1 | Per-row pixel height callback |
+| 05 | Dynamic row heights via getRowHeight | Community | behavior | yes | P1 | Per-row pixel height callback |
 | 05 | Full-width row paint mode | Community | behavior | no | P2 | Single painter spans full row width |
 | 05 | domLayout autoHeight | Community | behavior | no | P2 | Container grows; no vertical scrollbar |
 | 05 | domLayout print | Community | behavior | no | P3 | All rows rendered; no scroll; for printing |

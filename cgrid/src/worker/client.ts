@@ -51,11 +51,16 @@ export class WorkerClient {
     return this.send<{ type: 'ready' }>({ type: 'init', payload }).then(() => {});
   }
 
-  setRowData(rows: unknown[]): Promise<{ count: number; visibleCount: number }> {
-    return this.send<{ count: number; visibleCount: number }>({ type: 'setRowData', payload: { rows } });
+  setRowData(rows: unknown[], heightsByRowId?: Map<string, number>): Promise<{ count: number; visibleCount: number }> {
+    return this.send<{ count: number; visibleCount: number }>({
+      type: 'setRowData', payload: { rows, heightsByRowId },
+    });
   }
 
-  applyTransaction(payload: { add?: unknown[]; update?: unknown[]; remove?: string[]; async: boolean }): Promise<TransactionResult> {
+  applyTransaction(payload: {
+    add?: unknown[]; update?: unknown[]; remove?: string[];
+    async: boolean; heightsByRowId?: Map<string, number>;
+  }): Promise<TransactionResult> {
     return this.send<{ results: TransactionResult }>({ type: 'applyTransaction', payload })
       .then((r) => r.results);
   }
