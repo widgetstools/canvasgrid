@@ -26,6 +26,7 @@ export interface CGridLike {
   totalRowCount(): number;
   resizeColumn(colId: string, deltaPx: number): void;
   cycleSort(colId: string): void;
+  toggleColumnGroup(groupId: string): void;
   scrollBy(dx: number, dy: number): void;
   emitCellClicked(rowIndex: number, colId: string, e: MouseEvent): void;
   emitCellDoubleClicked(rowIndex: number, colId: string, e: MouseEvent): void;

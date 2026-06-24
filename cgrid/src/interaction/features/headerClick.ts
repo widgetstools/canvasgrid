@@ -8,6 +8,10 @@ export class HeaderClick extends Feature {
       ctx.grid.cycleSort(ctx.hit.colId);
       return;
     }
+    if (ctx.hit.kind === 'headerGroup') {
+      ctx.grid.toggleColumnGroup(ctx.hit.groupId);
+      return;
+    }
     super.handleClick(ctx);
   }
 }

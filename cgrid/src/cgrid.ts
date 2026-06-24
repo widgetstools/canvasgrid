@@ -8,6 +8,7 @@ import type {
 import { TypedEventEmitter } from './core/eventEmitter';
 import { type ResolvedColDef } from './core/propertyChain';
 import { resolveColumnTree, type ColumnTree } from './core/columnTree';
+import { ColumnGroupState, resolveVisibleLeaves } from './core/columnGroupState';
 import { resolveColumnWidths, type ColumnLayout } from './core/layout';
 import { computeViewport, type ViewportState } from './core/viewport';
 import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, type Subgrid } from './core/subgrid';
@@ -55,6 +56,7 @@ export function inferRowIdField<T>(getRowId: (row: T) => string): string {
 export class CGrid<TRow = any> {
   private events = new TypedEventEmitter<CGridEvent>();
   private columnTree!: ColumnTree;
+  private columnGroupState!: ColumnGroupState;
   private columnDefsMap: Map<string, ResolvedColDef<TRow>> = new Map();
   private columnOrder: ResolvedColDef<TRow>[] = [];
   private columnLayout: ColumnLayout[] = [];
@@ -122,13 +124,16 @@ export class CGrid<TRow = any> {
     this.cellRenderers.register('checkbox', checkboxCell);
     this.cellRenderers.register('header', headerCell);
 
-    // 3. Column model — resolve into a tree (groups + leaves). For the rest
-    // of the cycle we operate on the flat `leaves` ordering; Task 2 adds the
-    // HeaderGroupSubgrid that consumes `tree.roots` + `tree.maxDepth` to
-    // paint nested group headers.
+    // 3. Column model — resolve into a tree (groups + leaves), then derive
+    // the visible-leaf ordering from the group open/closed state. Task 3
+    // makes group headers clickable and honors `columnGroupShow` on leaves
+    // so collapsing a group hides its 'open'-only children (and vice-versa).
+    // `columnDefsMap` keeps every leaf (including currently-hidden ones) so
+    // toggling a group back open can rehydrate without re-resolving defs.
     this.columnTree = resolveColumnTree(options.columnDefs, options.defaultColDef);
-    this.columnOrder = this.columnTree.leaves as ResolvedColDef<TRow>[];
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
+    this.columnGroupState = new ColumnGroupState(this.columnTree);
+    this.columnOrder = this.computeVisibleColumnOrder();
 
     // 4. Subgrid stack — group-header rows (one per tree depth) on top, then
     // the leaf header, then data. Future totals/footer rows are a
@@ -221,6 +226,7 @@ export class CGrid<TRow = any> {
       totalRowCount: () => this.rowCount,
       resizeColumn: (colId, dx) => this.resizeColumn(colId, dx),
       cycleSort: (colId) => this.cycleSort(colId),
+      toggleColumnGroup: (groupId) => this.toggleColumnGroup(groupId),
       scrollBy: (dx, dy) => this.scroller.scrollBy({ left: dx, top: dy, behavior: 'auto' }),
       emitCellClicked: (rowIndex, colId, mouse) => {
         const rowId = this.rowIdAt(rowIndex);
@@ -267,6 +273,24 @@ export class CGrid<TRow = any> {
     // 10. Native scroll listener
     this.scroller.addEventListener('scroll', () => {
       this.onScrollerScroll(this.scroller.scrollLeft, this.scroller.scrollTop);
+    });
+
+    // Subscribe to group state changes — recompute visible columns, repaint,
+    // and surface both the per-group event and the broader displayed-columns
+    // signal. Done before selection wiring so the first paint sees the right
+    // column set even if openByDefault flipped any leaves below.
+    this.columnGroupState.onChange((changed) => {
+      this.columnOrder = this.computeVisibleColumnOrder();
+      this.columnLayout = resolveColumnWidths(this.columnOrder, this.canvasBounds.width || this.scroller.clientWidth || 800);
+      this.recomputeViewport();
+      this.cgridCanvas?.requestRepaint();
+      for (const c of changed) {
+        this.events.emit({ type: 'columnGroupOpened', groupId: c.groupId, open: c.open });
+      }
+      this.events.emit({ type: 'displayedColumnsChanged', source: 'columnGroupOpened' });
+      // Re-fetch the chunk for the new visible-column set so newly-shown
+      // leaves get data instead of blank cells until the next scroll tick.
+      if (this.workerClient) this.requestViewport();
     });
 
     // 11. Selection feedback
@@ -421,7 +445,22 @@ export class CGrid<TRow = any> {
       refresh: () => this.refresh(),
       setTheme: (t) => this.setTheme(t),
       destroy: () => this.destroy(),
+      getColumnGroupState: () => this.columnGroupState.getState(),
+      setColumnGroupState: (s) => { this.columnGroupState.apply(s); },
+      resetColumnGroupState: () => this.columnGroupState.reset(),
     };
+  }
+
+  private toggleColumnGroup(groupId: string): void {
+    this.columnGroupState.toggle(groupId);
+  }
+
+  /** Map `resolveVisibleLeaves` (colIds) back to ResolvedColDefs. Hidden
+   *  leaves stay in `columnDefsMap`, so a later toggle picks them up without
+   *  re-resolving. */
+  private computeVisibleColumnOrder(): ResolvedColDef<TRow>[] {
+    const ids = resolveVisibleLeaves(this.columnTree, this.columnGroupState);
+    return ids.map((id) => this.columnDefsMap.get(id)!);
   }
 
   private workerColumns(): WorkerColumn[] {

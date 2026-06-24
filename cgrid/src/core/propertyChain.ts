@@ -25,6 +25,10 @@ export interface ResolvedColDef<TRow = any> {
   editable: boolean | ((row: TRow) => boolean);
   cellEditor?: 'text' | 'number';
   cellStyle?: ColCellOverrides;
+  /** `null` when the leaf is always visible; `'open'` / `'closed'` only when
+   *  the parent column group is in that state. Resolved by
+   *  `resolveVisibleLeaves` in `core/columnGroupState.ts`. */
+  columnGroupShow: 'open' | 'closed' | null;
 }
 
 export interface ApplyCellPropsInput {
@@ -105,5 +109,6 @@ export function resolveColDef<TRow>(
     editable: merged.editable ?? false,
     cellEditor: merged.cellEditor,
     cellStyle: merged.cellStyle,
+    columnGroupShow: merged.columnGroupShow ?? null,
   };
 }

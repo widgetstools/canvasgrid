@@ -114,7 +114,9 @@ export type CGridEvent =
   | { type: 'filterChanged'; filterModel: FilterModel }
   | { type: 'columnResized'; colId: string; width: number }
   | { type: 'asyncTransactionsFlushed'; results: TransactionResult[] }
-  | { type: 'aggregationChanged'; totals: Record<string, number | null> };
+  | { type: 'aggregationChanged'; totals: Record<string, number | null> }
+  | { type: 'columnGroupOpened'; groupId: string; open: boolean }
+  | { type: 'displayedColumnsChanged'; source: 'columnGroupOpened' | 'columnDefsChanged' };
 
 export interface CGridApi {
   setRowData(rows: any[]): void;
@@ -136,4 +138,8 @@ export interface CGridApi {
   refresh(): void;
   setTheme(themeClass: string): void;
   destroy(): void;
+
+  getColumnGroupState(): { groupId: string; open: boolean }[];
+  setColumnGroupState(state: { groupId: string; open: boolean }[]): void;
+  resetColumnGroupState(): void;
 }
