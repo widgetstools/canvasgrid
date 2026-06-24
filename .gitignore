@@ -16,3 +16,7 @@ apps/*/package-lock.json
 
 # Subagent-driven progress ledger (local scratch)
 .superpowers/
+
+# Playwright artifacts
+test-results/
+playwright-report/

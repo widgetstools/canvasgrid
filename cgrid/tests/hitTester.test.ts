@@ -15,22 +15,23 @@ const vs: ViewportState = {
   scrollLeft: 0, scrollTop: 0,
   bodyLeft: 0, bodyRight: 250, bodyTop: 32, bodyBottom: 332,
   bodyWidth: 250, bodyHeight: 300,
+  contentWidth: 250, contentHeight: 300, maxScrollLeft: 0, maxScrollTop: 0,
 };
 
 describe('HitTester', () => {
   it('header click', () => {
-    const ht = new HitTester(() => vs, () => 32, () => 4);
+    const ht = new HitTester(() => vs, () => 32, () => 4, () => 10);
     expect(ht.locate(50, 16).kind).toBe('header');
   });
 
   it('header resizer hot zone on right edge', () => {
-    const ht = new HitTester(() => vs, () => 32, () => 4);
+    const ht = new HitTester(() => vs, () => 32, () => 4, () => 10);
     const h = ht.locate(99, 16);
     expect(h.kind).toBe('headerResizer');
   });
 
   it('cell hit', () => {
-    const ht = new HitTester(() => vs, () => 32, () => 4);
+    const ht = new HitTester(() => vs, () => 32, () => 4, () => 10);
     const h = ht.locate(120, 75) as any;
     expect(h.kind).toBe('cell');
     expect(h.colId).toBe('b');
@@ -38,7 +39,7 @@ describe('HitTester', () => {
   });
 
   it('empty region returns empty', () => {
-    const ht = new HitTester(() => vs, () => 32, () => 4);
+    const ht = new HitTester(() => vs, () => 32, () => 4, () => 10);
     expect(ht.locate(500, 500).kind).toBe('empty');
   });
 });

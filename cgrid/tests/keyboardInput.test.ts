@@ -10,13 +10,14 @@ describe('KeyboardInput', () => {
     document.body.appendChild(canvas);
     const sel = new SelectionModel('multiple');
     sel.setFocus(2, 'b');
-    const hit = new HitTester(() => ({} as any), () => 32, () => 4);
+    const hit = new HitTester(() => ({} as any), () => 32, () => 4, () => 10);
     const visibleCols = () => ['a', 'b', 'c'];
     const visibleRows = () => [0, 1, 2, 3, 4];
     const onDbl = vi.fn();
     const k = new KeyboardInput({
       canvas, hitTester: hit, selectionModel: sel,
       visibleColIds: visibleCols, visibleRowIndices: visibleRows,
+      allColIds: visibleCols, totalRowCount: () => 5,
       onCellClicked: () => {}, onCellDoubleClicked: onDbl,
     });
     return { canvas, sel, onDbl };

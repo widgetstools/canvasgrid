@@ -29,6 +29,12 @@ export interface ViewportState {
   bodyBottom: number;
   bodyWidth: number;
   bodyHeight: number;
+  /** Total content extent of the scrollable BODY region (center columns + all rows). */
+  contentWidth: number;
+  contentHeight: number;
+  /** Maximum valid scrollLeft / scrollTop. ≤0 means body has no overflow. */
+  maxScrollLeft: number;
+  maxScrollTop: number;
 }
 
 export interface ViewportInput {
@@ -125,6 +131,11 @@ export function computeViewport(opts: ViewportInput): ViewportState {
     });
   }
 
+  const contentWidth = centerTotalWidth;
+  const contentHeight = opts.rowCount * opts.rowHeight;
+  const maxScrollLeft = Math.max(0, contentWidth - bodyWidth);
+  const maxScrollTop = Math.max(0, contentHeight - bodyHeight);
+
   return {
     visibleColumns,
     visibleRows,
@@ -138,5 +149,9 @@ export function computeViewport(opts: ViewportInput): ViewportState {
     bodyBottom,
     bodyWidth,
     bodyHeight,
+    contentWidth,
+    contentHeight,
+    maxScrollLeft,
+    maxScrollTop,
   };
 }

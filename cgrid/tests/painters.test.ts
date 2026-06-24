@@ -11,7 +11,7 @@ function ctx() {
   return {
     fillRect: vi.fn(), strokeRect: vi.fn(), fillText: vi.fn(), save: vi.fn(), restore: vi.fn(),
     rect: vi.fn(), clip: vi.fn(), beginPath: vi.fn(), stroke: vi.fn(),
-    moveTo: vi.fn(), lineTo: vi.fn(),
+    moveTo: vi.fn(), lineTo: vi.fn(), arcTo: vi.fn(), closePath: vi.fn(),
     measureText: () => ({ width: 50 }),
     fillStyle: '', strokeStyle: '', font: '', textBaseline: '', textAlign: '', lineWidth: 1, globalAlpha: 1,
   } as any;
@@ -29,13 +29,14 @@ const vs: ViewportState = {
   firstRow: 0, lastRow: 1,
   scrollLeft: 0, scrollTop: 0,
   bodyLeft: 0, bodyRight: 250, bodyTop: 32, bodyBottom: 92, bodyWidth: 250, bodyHeight: 60,
+  contentWidth: 250, contentHeight: 300, maxScrollLeft: 0, maxScrollTop: 0,
 };
 const theme: ResolvedTheme = {
   font: '13px Inter', fg: '#000', bg: '#fff', headerBg: '#eee', headerFg: '#000',
   borderColor: '#ccc', gridLineColor: '#eee', rowAltBg: '#fafafa', rowHoverBg: '#f5f5f5',
   rowSelectedBg: 'rgba(0,0,0,0.1)', focusRingColor: '#08f', focusRingWidth: 2,
   flashFromColor: '#ffeb3b', flashToColor: 'transparent',
-  rowHeight: 30, headerHeight: 32, resizerHotZone: 4,
+  rowHeight: 30, headerHeight: 32, resizerHotZone: 4, scrollbarThickness: 10,
 };
 const cols = new Map<string, ResolvedColDef>([
   ['a', { colId: 'a', headerName: 'A', minWidth: 30, maxWidth: Infinity, type: 'text', cellRenderer: 'text', sortable: true, resizable: true, editable: false }],

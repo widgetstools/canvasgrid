@@ -18,8 +18,10 @@ grid.on('gridReady', () => {
 
 grid.on('modelUpdated', (e) => console.log('[cgrid] modelUpdated, visible:', e.visibleRowCount));
 
+let darkTheme = true;
 document.getElementById('theme')?.addEventListener('click', () => {
-  host.classList.toggle('cg-theme-quartz');
-  host.classList.toggle('cg-theme-quartz-dark');
-  grid.refresh();
+  darkTheme = !darkTheme;
+  grid.setTheme(darkTheme ? 'cg-theme-quartz-dark' : 'cg-theme-quartz');
+  host.classList.toggle('cg-theme-quartz', !darkTheme);
+  host.classList.toggle('cg-theme-quartz-dark', darkTheme);
 });

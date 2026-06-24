@@ -98,5 +98,6 @@ export interface CGridApi {
   setFocusedCell(rowId: string, colId: string): void;
 
   refresh(): void;
+  setTheme(themeClass: string): void;
   destroy(): void;
 }

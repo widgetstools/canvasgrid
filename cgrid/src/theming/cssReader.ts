@@ -16,6 +16,7 @@ export interface ResolvedTheme {
   rowHeight: number;
   headerHeight: number;
   resizerHotZone: number;
+  scrollbarThickness: number;
 }
 
 export class CssReader {
@@ -50,6 +51,7 @@ export class CssReader {
       rowHeight: px('--cg-row-height', 30),
       headerHeight: px('--cg-header-height', 32),
       resizerHotZone: px('--cg-resizer-hot-zone', 4),
+      scrollbarThickness: px('--cg-scrollbar-thickness', 10),
     };
   }
 }

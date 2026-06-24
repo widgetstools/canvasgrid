@@ -144,13 +144,16 @@ export class CGrid<TRow = any> {
       () => this.viewport,
       () => this.theme.headerHeight,
       () => this.theme.resizerHotZone,
+      () => this.theme.scrollbarThickness,
     );
-    const inputDeps = {
+    const inputDeps: import('./interaction/pointerInput').InputDeps = {
       canvas: this.canvas,
       hitTester: this.hitTester,
       selectionModel: this.selection,
       visibleColIds: () => this.viewport.visibleColumns.map((c) => c.colId),
       visibleRowIndices: () => this.viewport.visibleRows.map((r) => r.rowIndex),
+      allColIds: () => this.columnOrder.map((c) => c.colId),
+      totalRowCount: () => this.rowCount,
       onCellClicked: (rowIndex: number, colId: string, mouse: MouseEvent) => {
         const rowId = this.rowIdAt(rowIndex);
         if (rowId) this.events.emit({ type: 'cellClicked', rowId, colId, value: this.cellAt(rowIndex, colId)?.value, mouse });
@@ -165,6 +168,9 @@ export class CGrid<TRow = any> {
       onHeaderClicked: (colId: string) => this.cycleSort(colId),
       onColumnResize: (colId: string, dx: number) => this.resizeColumn(colId, dx),
       onScroll: (dx: number, dy: number) => this.applyScroll(dx, dy),
+      onScrollTo: (axis, startScroll, deltaPx) => this.dragScroll(axis, startScroll, deltaPx),
+      onPageScroll: (axis, direction) => this.pageScroll(axis, direction),
+      getScrollPosition: () => ({ x: this.scrollLeft, y: this.scrollTop }),
     };
     this.pointer = new PointerInput(inputDeps);
     this.keyboard = new KeyboardInput(inputDeps);
@@ -204,7 +210,11 @@ export class CGrid<TRow = any> {
     this.handleResize();
 
     // 10. Selection feedback
-    this.selectionUnsubscribe = this.selection.onChange(() => {
+    this.selectionUnsubscribe = this.selection.onChange((state) => {
+      // Auto-scroll the focused cell into view so keyboard nav past the
+      // visible window keeps the focus in the rendered region.
+      if (state.focusedRowIndex !== null) this.ensureRowIndexVisible(state.focusedRowIndex);
+      if (state.focusedColId !== null) this.ensureColIdVisible(state.focusedColId);
       this.paintLoop.markFullDirty();
       this.events.emit({ type: 'selectionChanged', selectedRowIds: this.getSelectedRowIds() });
       this.updateA11y();
@@ -312,6 +322,15 @@ export class CGrid<TRow = any> {
 
   refresh(): void { this.paintLoop.markFullDirty(); }
 
+  setTheme(themeClass: string): void {
+    const current = Array.from(this.root.classList).filter((c) => c.startsWith('cg-theme-'));
+    current.forEach((c) => this.root.classList.remove(c));
+    this.root.classList.add(themeClass);
+    this.theme = this.cssReader.read();
+    this.viewport = this.computeCurrentViewport();
+    this.paintLoop.markFullDirty();
+  }
+
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
@@ -344,6 +363,7 @@ export class CGrid<TRow = any> {
       getFocusedCell: () => this.getFocusedCell(),
       setFocusedCell: (r, c) => this.setFocusedCell(r, c),
       refresh: () => this.refresh(),
+      setTheme: (t) => this.setTheme(t),
       destroy: () => this.destroy(),
     };
   }
@@ -383,12 +403,78 @@ export class CGrid<TRow = any> {
   }
 
   private applyScroll(dx: number, dy: number): void {
-    this.scrollLeft = Math.max(0, this.scrollLeft + dx);
-    this.scrollTop  = Math.max(0, this.scrollTop  + dy);
+    const next = {
+      x: Math.max(0, Math.min(this.viewport.maxScrollLeft, this.scrollLeft + dx)),
+      y: Math.max(0, Math.min(this.viewport.maxScrollTop, this.scrollTop + dy)),
+    };
+    this.setScroll(next.x, next.y);
+  }
+
+  private setScroll(x: number, y: number): void {
+    const clampedX = Math.max(0, Math.min(this.viewport.maxScrollLeft, x));
+    const clampedY = Math.max(0, Math.min(this.viewport.maxScrollTop, y));
+    if (clampedX === this.scrollLeft && clampedY === this.scrollTop) return;
+    this.scrollLeft = clampedX;
+    this.scrollTop = clampedY;
     this.viewport = this.computeCurrentViewport();
     this.events.emit({ type: 'viewportChanged', firstRow: this.viewport.firstRow, lastRow: this.viewport.lastRow });
     this.paintLoop.markFullDirty();
     this.requestViewport();
+  }
+
+  /** Scrollbar thumb drag — translate mouse delta into a scroll position. */
+  private dragScroll(axis: 'x' | 'y', startScroll: number, deltaPx: number): void {
+    // Convert mouse-pixel delta to content-pixel delta via thumb / track ratio.
+    const vs = this.viewport;
+    if (axis === 'y') {
+      const trackH = vs.bodyHeight - (vs.maxScrollLeft > 0 ? this.theme.scrollbarThickness : 0);
+      const thumbH = Math.max(24, (vs.bodyHeight / vs.contentHeight) * trackH);
+      const range = trackH - thumbH;
+      if (range <= 0) return;
+      const contentDelta = (deltaPx / range) * vs.maxScrollTop;
+      this.setScroll(this.scrollLeft, startScroll + contentDelta);
+    } else {
+      const trackW = vs.bodyWidth - (vs.maxScrollTop > 0 ? this.theme.scrollbarThickness : 0);
+      const thumbW = Math.max(24, (vs.bodyWidth / vs.contentWidth) * trackW);
+      const range = trackW - thumbW;
+      if (range <= 0) return;
+      const contentDelta = (deltaPx / range) * vs.maxScrollLeft;
+      this.setScroll(startScroll + contentDelta, this.scrollTop);
+    }
+  }
+
+  /** Track click outside the thumb — page-scroll by one viewport. */
+  private pageScroll(axis: 'x' | 'y', direction: -1 | 1): void {
+    const vs = this.viewport;
+    if (axis === 'y') this.applyScroll(0, direction * vs.bodyHeight);
+    else this.applyScroll(direction * vs.bodyWidth, 0);
+  }
+
+  /** Bring the row at `rowIndex` into the visible body, with a small overscan buffer. */
+  private ensureRowIndexVisible(rowIndex: number): void {
+    const rh = this.options.rowHeight ?? this.theme.rowHeight;
+    const top = rowIndex * rh;
+    const bottom = top + rh;
+    if (top < this.scrollTop) {
+      this.setScroll(this.scrollLeft, top);
+    } else if (bottom > this.scrollTop + this.viewport.bodyHeight) {
+      this.setScroll(this.scrollLeft, bottom - this.viewport.bodyHeight);
+    }
+  }
+
+  /** Bring the column with `colId` into the visible body. Pinned columns are always visible. */
+  private ensureColIdVisible(colId: string): void {
+    const layoutCol = this.columnLayout.find((c) => c.colId === colId);
+    if (!layoutCol || layoutCol.pinned) return;
+    // Convert content-space left (relative to layout) into body-content space.
+    const pinnedLeftWidth = this.columnLayout.filter((c) => c.pinned === 'left').reduce((s, c) => s + c.width, 0);
+    const left = layoutCol.left - pinnedLeftWidth;
+    const right = left + layoutCol.width;
+    if (left < this.scrollLeft) {
+      this.setScroll(left, this.scrollTop);
+    } else if (right > this.scrollLeft + this.viewport.bodyWidth) {
+      this.setScroll(right - this.viewport.bodyWidth, this.scrollTop);
+    }
   }
 
   private requestViewport(): void {

@@ -13,20 +13,21 @@ const vs: ViewportState = {
   firstRow: 0, lastRow: 0,
   scrollLeft: 0, scrollTop: 0,
   bodyLeft: 0, bodyRight: 250, bodyTop: 32, bodyBottom: 62, bodyWidth: 250, bodyHeight: 30,
+  contentWidth: 250, contentHeight: 300, maxScrollLeft: 0, maxScrollTop: 0,
 };
 
 function setup() {
   const canvas = document.createElement('canvas');
   Object.defineProperty(canvas, 'getBoundingClientRect', { value: () => ({ left: 0, top: 0, width: 300, height: 200 }) });
   document.body.appendChild(canvas);
-  const hit = new HitTester(() => vs, () => 32, () => 4);
+  const hit = new HitTester(() => vs, () => 32, () => 4, () => 10);
   const sel = new SelectionModel('multiple');
   const onClick = vi.fn();
   const onDbl = vi.fn();
   const input = new PointerInput({
     canvas, hitTester: hit, selectionModel: sel,
     visibleColIds: () => ['a', 'b'],
-    visibleRowIndices: () => [0],
+    visibleRowIndices: () => [0], allColIds: () => ["a", "b"], totalRowCount: () => 1,
     onCellClicked: onClick, onCellDoubleClicked: onDbl,
   });
   return { canvas, sel, onClick, onDbl, input };
