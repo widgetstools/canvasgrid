@@ -83,6 +83,21 @@ export interface CColDef<TRow = any, TValue = any> {
   cellEditor?: 'text' | 'number';
   cellStyle?: ColCellOverrides;
   /**
+   * Convert the editor's emitted value into the typed value to commit. Runs
+   * before `valueSetter`. Receives the value already cast by the editor
+   * (`Number()` for `type: 'number'`, raw string for text). Return the value
+   * to commit. When omitted, the editor's value flows through unchanged.
+   */
+  valueParser?: (params: CValueParserParams<TRow, TValue>) => TValue;
+  /**
+   * Apply the committed value to the row. Default behavior is
+   * `data[field] = newValue`. Provide this to customise the write — for
+   * example, to split a `firstName lastName` string back into two columns,
+   * or to keep a denormalised total in sync. The function should mutate
+   * `data` in place; the returned value (if any) is ignored.
+   */
+  valueSetter?: (params: CValueSetterParams<TRow, TValue>) => boolean | void;
+  /**
    * When the parent column group is open: visible only if `'open'`.
    * When the parent group is closed: visible only if `'closed'`.
    * `null` / undefined = always visible regardless of group state.
@@ -138,6 +153,28 @@ export interface CColGroupDef<TRow = any> {
 export interface CValueGetterParams<TRow> { data: TRow; colId: string }
 export interface CValueFormatterParams<TRow, TValue> {
   data: TRow; value: TValue; colId: string;
+}
+
+/** Params passed to `CColDef.valueParser`. */
+export interface CValueParserParams<TRow = any, TValue = any> {
+  /** Value emitted by the editor (already cast by `type` when applicable). */
+  newValue: unknown;
+  /** The row's previous value at `colDef.field`. */
+  oldValue: TValue;
+  /** The full row object as it currently lives in the worker. */
+  data: TRow;
+  colDef: CColDef<TRow, TValue>;
+}
+
+/** Params passed to `CColDef.valueSetter`. */
+export interface CValueSetterParams<TRow = any, TValue = any> {
+  /** Mutable row object. Mutate this in place to apply the commit. */
+  data: TRow;
+  /** The parsed value (output of `valueParser` if provided). */
+  newValue: TValue;
+  /** The row's previous value at `colDef.field`. */
+  oldValue: TValue;
+  colDef: CColDef<TRow, TValue>;
 }
 
 export interface SortModelEntry { colId: string; direction: 'asc' | 'desc' }

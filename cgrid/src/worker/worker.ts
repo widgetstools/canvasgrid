@@ -159,6 +159,19 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             break;
           }
 
+          case 'getRowByIndex': {
+            const ids = visible();
+            const { rowIndex } = req.payload;
+            if (rowIndex < 0 || rowIndex >= ids.length) {
+              post({ id: req.id, type: 'row', rowId: null, data: null });
+              break;
+            }
+            const rowId = ids[rowIndex]!;
+            const data = state.store.getById(rowId);
+            post({ id: req.id, type: 'row', rowId, data: data ?? null });
+            break;
+          }
+
           case 'getRowIndicesForIds': {
             // Build a one-shot lookup table so an N-id batch is O(visible + N)
             // instead of O(visible * N). Critical when the selection set is

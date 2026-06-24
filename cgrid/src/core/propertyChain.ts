@@ -1,6 +1,6 @@
 import type {
   CColDef, CValueGetterParams, CValueFormatterParams, ColCellOverrides,
-  CCellRendererSelector,
+  CCellRendererSelector, CValueParserParams, CValueSetterParams,
 } from '../types';
 import type { CellPaintConfig } from '../renderer/cellRenderers/registry';
 import type { ResolvedTheme } from '../theming/cssReader';
@@ -32,6 +32,11 @@ export interface ResolvedColDef<TRow = any> {
   editable: boolean | ((row: TRow) => boolean);
   cellEditor?: 'text' | 'number';
   cellStyle?: ColCellOverrides;
+  /** See `CColDef.valueParser`. Invoked at editor-commit time before the
+   *  worker transaction is queued. */
+  valueParser?: (params: CValueParserParams<TRow, unknown>) => unknown;
+  /** See `CColDef.valueSetter`. Mutates `data` in place. */
+  valueSetter?: (params: CValueSetterParams<TRow, unknown>) => boolean | void;
   /** `null` when the leaf is always visible; `'open'` / `'closed'` only when
    *  the parent column group is in that state. Resolved by
    *  `resolveVisibleLeaves` in `core/columnGroupState.ts`. */
@@ -110,6 +115,8 @@ export function resolveColDef<TRow>(
     type,
     valueGetter: merged.valueGetter as ResolvedColDef<TRow>['valueGetter'],
     valueFormatter: merged.valueFormatter as ResolvedColDef<TRow>['valueFormatter'],
+    valueParser: merged.valueParser as ResolvedColDef<TRow>['valueParser'],
+    valueSetter: merged.valueSetter as ResolvedColDef<TRow>['valueSetter'],
     cellRenderer: merged.cellRenderer ?? type,
     cellRendererParams: merged.cellRendererParams,
     cellRendererSelector: merged.cellRendererSelector as ResolvedColDef<TRow>['cellRendererSelector'],

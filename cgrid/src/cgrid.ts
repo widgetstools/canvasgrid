@@ -976,10 +976,29 @@ export class CGrid<TRow = any> {
       initialValue: data?.value ?? '',
       onCommit: (newValue) => {
         this.editorContainer.style.pointerEvents = 'none';
-        const rowId = this.rowIdAt(rowIndex);
-        if (!rowId) return;
-        this.events.emit({ type: 'cellValueChanged', rowId, colId, oldValue: data?.value, newValue });
-        // Foundation: emit only; actual transaction wiring needs rowId-by-index lookup (deferred to a follow-up cycle).
+        // Fetch the full row from the worker, run valueParser → valueSetter
+        // (or the default field assignment), emit cellValueChanged with the
+        // real rowId + old/new values, then enqueue the update so the worker
+        // re-runs filter / sort / agg against the new value.
+        this.workerClient.getRowByIndex(rowIndex).then((fetched) => {
+          if (this.destroyed || !fetched.rowId || fetched.data == null) return;
+          const rowData = fetched.data as Record<string, unknown>;
+          const field = def.field as string | undefined;
+          const oldValue = field !== undefined ? rowData[field] : undefined;
+          const parsed = def.valueParser
+            ? def.valueParser({ newValue, oldValue, data: rowData as any, colDef: def as any })
+            : newValue;
+          if (def.valueSetter) {
+            def.valueSetter({ data: rowData as any, newValue: parsed, oldValue, colDef: def as any });
+          } else if (field !== undefined) {
+            rowData[field] = parsed;
+          }
+          this.events.emit({
+            type: 'cellValueChanged', rowId: fetched.rowId, colId, oldValue, newValue: parsed,
+          });
+          this.workerClient.applyTransaction({ update: [rowData], async: false })
+            .catch((err) => { if (!this.destroyed) console.error('[cgrid] commit-back:', err); });
+        }).catch((err) => { if (!this.destroyed) console.error('[cgrid] commit-back fetch:', err); });
       },
       onCancel: () => { this.editorContainer.style.pointerEvents = 'none'; },
     });

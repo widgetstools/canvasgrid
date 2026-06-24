@@ -87,6 +87,16 @@ export class WorkerClient {
       .then((r) => r.index);
   }
 
+  /** Resolve a visible-order row index back to its rowId and full row object.
+   *  Returns `{ rowId: null, data: null }` for indices outside the current
+   *  visible window. Used by the editor commit pathway to load `data` before
+   *  invoking `valueSetter` and posting the update back. */
+  getRowByIndex(rowIndex: number): Promise<{ rowId: string | null; data: unknown | null }> {
+    return this.send<{ rowId: string | null; data: unknown | null }>({
+      type: 'getRowByIndex', payload: { rowIndex },
+    }).then((r) => ({ rowId: r.rowId, data: r.data }));
+  }
+
   /** Batched variant of `getRowIndexForId`. Returns one index per input id,
    *  in the same order. Indices are -1 for unknown / filtered ids. Used by
    *  `setSelectedRowIds([...])` and by the modelUpdated rebuild path. */

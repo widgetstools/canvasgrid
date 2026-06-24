@@ -44,7 +44,8 @@ export type WorkerRequest =
   | { id: ReqId; type: 'getViewport';      payload: ViewportRequest }
   | { id: ReqId; type: 'updateColumns';    payload: { columns: WorkerColumn[] } }
   | { id: ReqId; type: 'getRowIndexForId';    payload: { rowId: string } }
-  | { id: ReqId; type: 'getRowIndicesForIds'; payload: { rowIds: string[] } };
+  | { id: ReqId; type: 'getRowIndicesForIds'; payload: { rowIds: string[] } }
+  | { id: ReqId; type: 'getRowByIndex';       payload: { rowIndex: number } };
 
 export type WorkerResponse =
   | { id: ReqId; type: 'ready' }
@@ -53,6 +54,7 @@ export type WorkerResponse =
   | { id: ReqId; type: 'transactionFlushed';  results: TransactionResult }
   | { id: ReqId; type: 'rowIndex';            index: number }
   | { id: ReqId; type: 'rowIndices';          indices: Int32Array }
+  | { id: ReqId; type: 'row';                 rowId: string | null; data: unknown | null }
   | { id: ReqId; type: 'error';               error: string };
 
 export type WorkerPush =
