@@ -401,10 +401,11 @@ export class CGrid<TRow = any> {
   private handleResize(): void {
     const w = this.scroller.clientWidth || this.root.clientWidth;
     const h = this.scroller.clientHeight || this.root.clientHeight;
-    this.renderer.syncSize(w, h);
+    // Layout + viewport BEFORE syncSize so the synchronous repaint inside
+    // syncSize sees fresh column widths and viewport state.
     this.columnLayout = resolveColumnWidths(this.columnOrder, w);
     this.recomputeViewport();
-    this.syncSizer();
+    this.renderer.syncSize(w, h);
     this.requestViewport();
   }
 
