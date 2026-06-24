@@ -225,8 +225,8 @@
 | 06 | cellEditor (ColDef) | Community | option | no | P1 | Built-in or custom editor component key/class |
 | 06 | cellEditorParams (ColDef) | Community | option | no | P1 | Params passed to the cell editor on init |
 | 06 | cellEditorSelector (ColDef) | Community | option | no | P1 | Per-row callback returning dynamic editor + params |
-| 06 | cellEditorPopup (ColDef) | Community | option | no | P2 | Render editor in a popup overlay |
-| 06 | cellEditorPopupPosition (ColDef) | Community | option | no | P2 | Popup position: 'over' or 'under' the cell |
+| 06 | cellEditorPopup (ColDef) | Community | option | ✅ | P2 | Render editor in a popup overlay |
+| 06 | cellEditorPopupPosition (ColDef) | Community | option | ✅ | P2 | Popup position: 'over' or 'under' the cell |
 | 06 | singleClickEdit (ColDef) | Community | option | no | P2 | Start editing on single click for this column |
 | 06 | valueSetter (ColDef) | Community | option | no | P1 | Writes parsed edit value back to row data |
 | 06 | valueParser (ColDef) | Community | option | no | P1 | Converts raw editor string to typed value |

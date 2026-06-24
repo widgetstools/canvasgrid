@@ -1072,6 +1072,9 @@ export class CGrid<TRow = any> {
       cellBounds: { x: col.left, y: row.top, w: col.width, h: row.height },
       params: this.resolveEditorParams(def, ({} as TRow)),
       charPress,
+      cellEditorPopup: (def as { cellEditorPopup?: boolean }).cellEditorPopup,
+      cellEditorPopupPosition: (def as { cellEditorPopupPosition?: 'over' | 'under' }).cellEditorPopupPosition,
+      viewportBounds: { width: this.canvasBounds.width, height: this.canvasBounds.height },
       onCommit: (newValue) => {
         this.editorContainer.style.pointerEvents = 'none';
         // Return focus to the canvas so arrow keys / Tab resume cell

@@ -80,6 +80,69 @@ describe('EditorOverlay (registry-driven)', () => {
     expect(overlay.isOpen()).toBe(false);
   });
 
+  it('dispatches to PopupHost when editor.isPopup() returns true', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const reg = new CellEditorRegistry();
+    CellEditorRegistry.seed(reg);
+    const overlay = new EditorOverlay(host, reg);
+    overlay.open({
+      // 'largeText' editor returns isPopup() === true by default.
+      editorName: 'largeText', rowData: {}, colId: 'notes', value: 'hello',
+      cellBounds: { x: 5, y: 10, w: 80, h: 22 }, params: {}, charPress: null,
+      viewportBounds: { width: 800, height: 600 },
+      onCommit: vi.fn(), onCancel: vi.fn(),
+    });
+    // PopupHost mounts the textarea directly on the host (not inside a
+    // cg-editor-overlay wrapper). Inline mode would put a wrapper between
+    // the host and the gui; popup mode does not.
+    const wrapper = host.querySelector('.cg-editor-overlay');
+    expect(wrapper).toBeNull();
+    const ta = host.querySelector('textarea.cg-cell-editor--large-text') as HTMLTextAreaElement;
+    expect(ta).not.toBeNull();
+    expect(ta.parentElement).toBe(host);
+    expect(ta.style.position).toBe('absolute');
+  });
+
+  it('dispatches to PopupHost when col-def opts.cellEditorPopup is true (text editor)', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const reg = new CellEditorRegistry();
+    CellEditorRegistry.seed(reg);
+    const overlay = new EditorOverlay(host, reg);
+    overlay.open({
+      // 'text' editor never returns isPopup() true on its own; the col-def
+      // flag must be the dispatcher.
+      editorName: 'text', rowData: {}, colId: 'a', value: 'x',
+      cellBounds: { x: 0, y: 0, w: 60, h: 20 }, params: {}, charPress: null,
+      cellEditorPopup: true,
+      viewportBounds: { width: 800, height: 600 },
+      onCommit: vi.fn(), onCancel: vi.fn(),
+    });
+    const wrapper = host.querySelector('.cg-editor-overlay');
+    expect(wrapper).toBeNull();
+    const input = host.querySelector('input.cg-cell-editor--text') as HTMLInputElement;
+    expect(input).not.toBeNull();
+    expect(input.parentElement).toBe(host);
+  });
+
+  it('close() in popup mode removes the gui from the host', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const reg = new CellEditorRegistry();
+    CellEditorRegistry.seed(reg);
+    const overlay = new EditorOverlay(host, reg);
+    overlay.open({
+      editorName: 'largeText', rowData: {}, colId: 'notes', value: '',
+      cellBounds: { x: 0, y: 0, w: 80, h: 22 }, params: {}, charPress: null,
+      viewportBounds: { width: 800, height: 600 },
+      onCommit: vi.fn(), onCancel: vi.fn(),
+    });
+    expect(host.querySelector('textarea.cg-cell-editor--large-text')).not.toBeNull();
+    overlay.close();
+    expect(host.querySelector('textarea.cg-cell-editor--large-text')).toBeNull();
+  });
+
   it('Escape keystroke inside the editor cancels via stopEditing', () => {
     const host = document.createElement('div');
     document.body.appendChild(host);

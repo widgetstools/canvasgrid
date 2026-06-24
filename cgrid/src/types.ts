@@ -98,6 +98,21 @@ export interface CColDef<TRow = any, TValue = any> {
    * opaque; the resolved editor interprets the shape.
    */
   cellEditorParams?: Record<string, unknown> | ((row: TRow) => Record<string, unknown>);
+  /**
+   * Force the editor into popup mode regardless of whether the editor's own
+   * `isPopup()` returns true. Matches ag-grid's `cellEditorPopup`. When
+   * unset, the editor's own `isPopup()` hook decides — built-in editors are
+   * inline-by-default except `'largeText'`, which returns `isPopup(): true`.
+   */
+  cellEditorPopup?: boolean;
+  /**
+   * Position of the popup editor relative to the cell. Defaults to `'over'`
+   * (popup hides the original cell value). `'under'` floats below so the
+   * underlying value stays readable. Honored only when popup mode is active
+   * (via `cellEditorPopup` OR `editor.isPopup()`). The editor's own
+   * `getPopupPosition()` takes precedence over this col-def value.
+   */
+  cellEditorPopupPosition?: 'over' | 'under';
   cellStyle?: ColCellOverrides;
   /**
    * Convert the editor's emitted value into the typed value to commit. Runs
