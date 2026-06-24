@@ -9,7 +9,6 @@ import { paintHeader } from './painters/headerPainter';
 import { paintBody } from './painters/bodyPainter';
 import { paintPinned } from './painters/pinnedPainter';
 import { paintOverlay } from './painters/overlayPainter';
-import { paintScrollbars } from './painters/scrollbarPainter';
 
 export type { CellDataLookup };
 
@@ -67,6 +66,5 @@ export class Renderer {
     paintBody(ctx, pctx);
     paintPinned(ctx, pctx, 'right');
     paintOverlay(ctx, pctx);
-    paintScrollbars(ctx, pctx);
   }
 }

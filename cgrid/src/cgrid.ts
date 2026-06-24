@@ -68,13 +68,15 @@ export class CGrid<TRow = any> {
   private viewportRequestPending = false;
 
   private root: HTMLDivElement;
+  private scroller: HTMLDivElement;
+  private sizer: HTMLDivElement;
   private canvas: HTMLCanvasElement;
   private editorContainer: HTMLDivElement;
   private cssReader: CssReader;
   private cellRenderers: CellRendererRegistry;
   private paintLoop: PaintLoop;
   private renderer: Renderer;
-  private viewport: ViewportState;
+  private viewport!: ViewportState;
   private selection: SelectionModel;
   private hitTester: HitTester;
   private pointer: PointerInput;
@@ -90,16 +92,29 @@ export class CGrid<TRow = any> {
   constructor(private container: HTMLElement, private options: CGridOptions<TRow>) {
     if (!options.getRowId) throw new Error('[cgrid] options.getRowId is required');
 
-    // 1. DOM scaffold
+    // 1. DOM scaffold — scroller (with sized sizer child) provides native scrollbars;
+    // the canvas overlays the scroller's content area but leaves the scrollbar strips
+    // uncovered so the browser-drawn scrollbars remain interactive.
     this.root = document.createElement('div');
     this.root.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
     this.root.classList.add(options.theme ?? 'cg-theme-quartz');
+
+    this.scroller = document.createElement('div');
+    this.scroller.className = 'cg-scroller';
+    this.scroller.style.cssText = 'position:absolute; inset:0; overflow:auto;';
+    this.sizer = document.createElement('div');
+    this.sizer.className = 'cg-sizer';
+    this.sizer.style.cssText = 'width:1px; height:1px; pointer-events:none;';
+    this.scroller.appendChild(this.sizer);
+
     this.canvas = document.createElement('canvas');
+    this.canvas.className = 'cg-canvas';
     this.canvas.style.cssText = 'display:block; position:absolute; left:0; top:0; outline:none;';
     this.canvas.tabIndex = 0;
     this.editorContainer = document.createElement('div');
     this.editorContainer.style.cssText = 'position:absolute; left:0; top:0; right:0; bottom:0; pointer-events:none;';
     // Children of editorContainer set pointer-events:auto themselves
+    this.root.appendChild(this.scroller);
     this.root.appendChild(this.canvas);
     this.root.appendChild(this.editorContainer);
     container.appendChild(this.root);
@@ -120,7 +135,7 @@ export class CGrid<TRow = any> {
     }
 
     // 4. Initial viewport
-    this.viewport = this.computeCurrentViewport();
+    this.recomputeViewport();
 
     // 5. Selection
     this.selection = new SelectionModel(options.rowSelection ?? 'none');
@@ -144,7 +159,6 @@ export class CGrid<TRow = any> {
       () => this.viewport,
       () => this.theme.headerHeight,
       () => this.theme.resizerHotZone,
-      () => this.theme.scrollbarThickness,
     );
     const inputDeps: import('./interaction/pointerInput').InputDeps = {
       canvas: this.canvas,
@@ -167,10 +181,7 @@ export class CGrid<TRow = any> {
       },
       onHeaderClicked: (colId: string) => this.cycleSort(colId),
       onColumnResize: (colId: string, dx: number) => this.resizeColumn(colId, dx),
-      onScroll: (dx: number, dy: number) => this.applyScroll(dx, dy),
-      onScrollTo: (axis, startScroll, deltaPx) => this.dragScroll(axis, startScroll, deltaPx),
-      onPageScroll: (axis, direction) => this.pageScroll(axis, direction),
-      getScrollPosition: () => ({ x: this.scrollLeft, y: this.scrollTop }),
+      onWheel: (dx, dy) => this.scroller.scrollBy({ left: dx, top: dy, behavior: 'auto' }),
     };
     this.pointer = new PointerInput(inputDeps);
     this.keyboard = new KeyboardInput(inputDeps);
@@ -186,7 +197,7 @@ export class CGrid<TRow = any> {
     this.workerClient = new WorkerClient(worker as unknown as import('./worker/client').WorkerLike, {
       onModelUpdated: (visibleCount) => {
         this.rowCount = visibleCount;
-        this.viewport = this.computeCurrentViewport();
+        this.recomputeViewport();
         this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
         this.requestViewport();
       },
@@ -204,10 +215,14 @@ export class CGrid<TRow = any> {
       if (options.rowData) this.setRowData(options.rowData);
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
 
-    // 9. Resize observer
+    // 9. Resize observer + native scroll listener
     this.resizeObs = new ResizeObserver(() => this.handleResize());
     this.resizeObs.observe(this.root);
     this.handleResize();
+
+    this.scroller.addEventListener('scroll', () => {
+      this.onScrollerScroll(this.scroller.scrollLeft, this.scroller.scrollTop);
+    });
 
     // 10. Selection feedback
     this.selectionUnsubscribe = this.selection.onChange((state) => {
@@ -232,7 +247,7 @@ export class CGrid<TRow = any> {
   setRowData(rows: TRow[]): void {
     this.workerClient.setRowData(rows).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
-      this.viewport = this.computeCurrentViewport();
+      this.recomputeViewport();
       this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
       this.requestViewport();
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
@@ -264,7 +279,7 @@ export class CGrid<TRow = any> {
     this.sortModel = s;
     this.workerClient.setSortModel(s).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
-      this.viewport = this.computeCurrentViewport();
+      this.recomputeViewport();
       this.events.emit({ type: 'sortChanged', sortModel: s });
       this.paintLoop.markFullDirty();
       this.requestViewport();
@@ -288,7 +303,7 @@ export class CGrid<TRow = any> {
   setFilterModel(f: FilterModel): void {
     this.workerClient.setFilterModel(f).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
-      this.viewport = this.computeCurrentViewport();
+      this.recomputeViewport();
       this.events.emit({ type: 'filterChanged', filterModel: f });
       this.requestViewport();
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
@@ -327,7 +342,7 @@ export class CGrid<TRow = any> {
     current.forEach((c) => this.root.classList.remove(c));
     this.root.classList.add(themeClass);
     this.theme = this.cssReader.read();
-    this.viewport = this.computeCurrentViewport();
+    this.recomputeViewport();
     this.paintLoop.markFullDirty();
   }
 
@@ -378,18 +393,24 @@ export class CGrid<TRow = any> {
     }));
   }
 
+  /**
+   * Recompute layout + canvas dims based on the scroller's inner client area
+   * (which excludes the space taken by native scrollbars). Also re-size the
+   * sizer so the browser's scrollbars span the right range.
+   */
   private handleResize(): void {
-    const w = this.root.clientWidth;
-    const h = this.root.clientHeight;
+    const w = this.scroller.clientWidth || this.root.clientWidth;
+    const h = this.scroller.clientHeight || this.root.clientHeight;
     this.renderer.syncSize(w, h);
     this.columnLayout = resolveColumnWidths(this.columnOrder, w);
-    this.viewport = this.computeCurrentViewport();
+    this.recomputeViewport();
+    this.syncSizer();
     this.requestViewport();
   }
 
   private computeCurrentViewport(): ViewportState {
-    const w = this.root.clientWidth || 800;
-    const h = this.root.clientHeight || 600;
+    const w = this.scroller.clientWidth || this.root.clientWidth || 800;
+    const h = this.scroller.clientHeight || this.root.clientHeight || 600;
     return computeViewport({
       columnLayout: this.columnLayout,
       rowCount: this.rowCount,
@@ -402,52 +423,53 @@ export class CGrid<TRow = any> {
     });
   }
 
-  private applyScroll(dx: number, dy: number): void {
-    const next = {
-      x: Math.max(0, Math.min(this.viewport.maxScrollLeft, this.scrollLeft + dx)),
-      y: Math.max(0, Math.min(this.viewport.maxScrollTop, this.scrollTop + dy)),
-    };
-    this.setScroll(next.x, next.y);
+  /** Size the invisible sizer to match the viewport's scrollable extent so the
+   * native scrollbars track the right range. clientWidth/Height excludes the
+   * scrollbar gutter, so adding maxScrollLeft/Top gives the browser exactly
+   * the overflow it needs to expose.
+   */
+  private syncSizer(): void {
+    if (!this.sizer) return; // happy-dom guard during early construction
+    const w = (this.scroller.clientWidth || this.root.clientWidth) + this.viewport.maxScrollLeft;
+    const h = (this.scroller.clientHeight || this.root.clientHeight) + this.viewport.maxScrollTop;
+    this.sizer.style.width = `${Math.max(1, w)}px`;
+    this.sizer.style.height = `${Math.max(1, h)}px`;
+  }
+
+  /** Reassign viewport AND re-sync the sizer so native scrollbars stay accurate. */
+  private recomputeViewport(): void {
+    this.viewport = this.computeCurrentViewport();
+    this.syncSizer();
+  }
+
+  /** Called by the scroller's native 'scroll' event. Idempotent — if the
+   * internal state already matches (e.g., because we just set scrollLeft
+   * programmatically), it's a no-op so there's no feedback loop.
+   */
+  private onScrollerScroll(x: number, y: number): void {
+    if (x === this.scrollLeft && y === this.scrollTop) return;
+    this.scrollLeft = x;
+    this.scrollTop = y;
+    this.recomputeViewport();
+    this.events.emit({ type: 'viewportChanged', firstRow: this.viewport.firstRow, lastRow: this.viewport.lastRow });
+    this.paintLoop.markFullDirty();
+    this.requestViewport();
   }
 
   private setScroll(x: number, y: number): void {
     const clampedX = Math.max(0, Math.min(this.viewport.maxScrollLeft, x));
     const clampedY = Math.max(0, Math.min(this.viewport.maxScrollTop, y));
     if (clampedX === this.scrollLeft && clampedY === this.scrollTop) return;
-    this.scrollLeft = clampedX;
-    this.scrollTop = clampedY;
-    this.viewport = this.computeCurrentViewport();
-    this.events.emit({ type: 'viewportChanged', firstRow: this.viewport.firstRow, lastRow: this.viewport.lastRow });
-    this.paintLoop.markFullDirty();
-    this.requestViewport();
-  }
-
-  /** Scrollbar thumb drag — translate mouse delta into a scroll position. */
-  private dragScroll(axis: 'x' | 'y', startScroll: number, deltaPx: number): void {
-    // Convert mouse-pixel delta to content-pixel delta via thumb / track ratio.
-    const vs = this.viewport;
-    if (axis === 'y') {
-      const trackH = vs.bodyHeight - (vs.maxScrollLeft > 0 ? this.theme.scrollbarThickness : 0);
-      const thumbH = Math.max(24, (vs.bodyHeight / vs.contentHeight) * trackH);
-      const range = trackH - thumbH;
-      if (range <= 0) return;
-      const contentDelta = (deltaPx / range) * vs.maxScrollTop;
-      this.setScroll(this.scrollLeft, startScroll + contentDelta);
-    } else {
-      const trackW = vs.bodyWidth - (vs.maxScrollTop > 0 ? this.theme.scrollbarThickness : 0);
-      const thumbW = Math.max(24, (vs.bodyWidth / vs.contentWidth) * trackW);
-      const range = trackW - thumbW;
-      if (range <= 0) return;
-      const contentDelta = (deltaPx / range) * vs.maxScrollLeft;
-      this.setScroll(startScroll + contentDelta, this.scrollTop);
+    // Drive the scroller; its scroll event will call onScrollerScroll which
+    // updates internal state and repaints. Setting these properties also
+    // visually moves the native scrollbar thumb.
+    this.scroller.scrollLeft = clampedX;
+    this.scroller.scrollTop = clampedY;
+    // Belt-and-suspenders: if the scroll event hasn't fired yet (e.g., in
+    // happy-dom tests), update synchronously so callers see the new state.
+    if (this.scrollLeft !== clampedX || this.scrollTop !== clampedY) {
+      this.onScrollerScroll(clampedX, clampedY);
     }
-  }
-
-  /** Track click outside the thumb — page-scroll by one viewport. */
-  private pageScroll(axis: 'x' | 'y', direction: -1 | 1): void {
-    const vs = this.viewport;
-    if (axis === 'y') this.applyScroll(0, direction * vs.bodyHeight);
-    else this.applyScroll(direction * vs.bodyWidth, 0);
   }
 
   /** Bring the row at `rowIndex` into the visible body, with a small overscan buffer. */
@@ -552,7 +574,7 @@ export class CGrid<TRow = any> {
     const newW = Math.max(def.minWidth, cur.width + dx);
     def.width = newW;
     this.columnLayout = resolveColumnWidths(this.columnOrder, this.root.clientWidth);
-    this.viewport = this.computeCurrentViewport();
+    this.recomputeViewport();
     this.paintLoop.markFullDirty();
     this.events.emit({ type: 'columnResized', colId, width: newW });
   }

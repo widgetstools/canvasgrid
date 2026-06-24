@@ -31,9 +31,13 @@ function paintBackground(ctx: CanvasRenderingContext2D, p: CellPaintParams): voi
   const { x, y, w, h } = p.bounds;
   ctx.fillStyle = p.style.bg;
   ctx.fillRect(x, y, w, h);
+  // Bottom-only row divider — no vertical column dividers, matches reference design.
   ctx.strokeStyle = p.style.borderColor;
   ctx.lineWidth = 1;
-  ctx.strokeRect(x + 0.5, y + 0.5, w, h);  // crisp 1px line
+  ctx.beginPath();
+  ctx.moveTo(x, y + h - 0.5);
+  ctx.lineTo(x + w, y + h - 0.5);
+  ctx.stroke();
   if (p.flashAlpha && p.flashAlpha > 0) {
     ctx.save();
     ctx.globalAlpha = p.flashAlpha;

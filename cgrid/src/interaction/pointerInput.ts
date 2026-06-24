@@ -15,19 +15,13 @@ export interface InputDeps {
   onCellDoubleClicked: (rowIndex: number, colId: string, mouse: MouseEvent) => void;
   onHeaderClicked?: (colId: string, mouse: MouseEvent) => void;
   onColumnResize?: (colId: string, deltaPx: number) => void;
-  onScroll?: (dx: number, dy: number) => void;
-  /** Called during scrollbar-thumb drag. The grid recomputes its absolute scroll position. */
-  onScrollTo?: (axis: 'x' | 'y', startScroll: number, deltaPx: number) => void;
-  /** Called when the user clicks the scrollbar track outside the thumb. Sign indicates direction. */
-  onPageScroll?: (axis: 'x' | 'y', direction: -1 | 1) => void;
-  /** Read the current scroll position. Used to anchor a thumb-drag's startScroll. */
-  getScrollPosition?: () => { x: number; y: number };
+  /** Mouse wheel deltas. The grid forwards these to the native scroller. */
+  onWheel?: (dx: number, dy: number) => void;
 }
 
 export class PointerInput {
   private downAt: { x: number; y: number; hit: Hit } | null = null;
   private resizing: { colId: string; startX: number } | null = null;
-  private dragScroll: { axis: 'x' | 'y'; startMouse: number; startScroll: number } | null = null;
 
   private mouseDown = (e: MouseEvent) => {
     const { x, y } = this.toLocal(e);
@@ -37,21 +31,6 @@ export class PointerInput {
       this.resizing = { colId: hit.colId, startX: x };
       window.addEventListener('mousemove', this.mouseMove);
       window.addEventListener('mouseup', this.mouseUp, { once: true });
-      return;
-    }
-    if (hit.kind === 'scrollbarThumb' && this.deps.onScrollTo) {
-      const start = this.deps.getScrollPosition?.() ?? { x: 0, y: 0 };
-      this.dragScroll = {
-        axis: hit.axis,
-        startMouse: hit.axis === 'y' ? y : x,
-        startScroll: hit.axis === 'y' ? start.y : start.x,
-      };
-      window.addEventListener('mousemove', this.mouseMove);
-      window.addEventListener('mouseup', this.mouseUp, { once: true });
-      return;
-    }
-    if (hit.kind === 'scrollbarTrack' && this.deps.onPageScroll) {
-      this.deps.onPageScroll(hit.axis, hit.before ? -1 : 1);
     }
   };
 
@@ -63,14 +42,6 @@ export class PointerInput {
         this.deps.onColumnResize?.(this.resizing.colId, dx);
         this.resizing.startX = x;
       }
-      return;
-    }
-    if (this.dragScroll && this.deps.onScrollTo) {
-      const { x, y } = this.toLocal(e);
-      const m = this.dragScroll.axis === 'y' ? y : x;
-      const dm = m - this.dragScroll.startMouse;
-      this.deps.onScrollTo(this.dragScroll.axis, this.dragScroll.startScroll, dm);
-      return;
     }
   };
 
@@ -80,7 +51,6 @@ export class PointerInput {
     const { x, y } = this.toLocal(e);
     const hit = this.deps.hitTester.locate(x, y);
     if (this.resizing) { this.resizing = null; this.downAt = null; return; }
-    if (this.dragScroll) { this.dragScroll = null; this.downAt = null; return; }
     if (hit.kind === 'cell' && this.downAt.hit.kind === 'cell' &&
         hit.rowIndex === this.downAt.hit.rowIndex && hit.colId === this.downAt.hit.colId) {
       this.deps.selectionModel.setFocus(hit.rowIndex, hit.colId);
@@ -102,13 +72,12 @@ export class PointerInput {
 
   /** Bare mousemove on the canvas (NOT the resize drag) — updates the hover cursor. */
   private hoverMove = (e: MouseEvent) => {
-    if (this.resizing || this.dragScroll) return;
+    if (this.resizing) return;
     const { x, y } = this.toLocal(e);
     const hit = this.deps.hitTester.locate(x, y);
     let cursor = 'default';
     if (hit.kind === 'headerResizer') cursor = 'col-resize';
     else if (hit.kind === 'header') cursor = 'pointer';
-    else if (hit.kind === 'scrollbarThumb' || hit.kind === 'scrollbarTrack') cursor = 'default';
     if (this.deps.canvas.style.cursor !== cursor) this.deps.canvas.style.cursor = cursor;
   };
 
@@ -119,9 +88,9 @@ export class PointerInput {
   };
 
   private wheel = (e: WheelEvent) => {
-    if (!this.deps.onScroll) return;
+    if (!this.deps.onWheel) return;
     e.preventDefault();
-    this.deps.onScroll(e.deltaX, e.deltaY);
+    this.deps.onWheel(e.deltaX, e.deltaY);
   };
 
   constructor(private deps: InputDeps) {
@@ -138,8 +107,6 @@ export class PointerInput {
     this.deps.canvas.removeEventListener('dblclick', this.dblClick);
     this.deps.canvas.removeEventListener('mousemove', this.hoverMove);
     this.deps.canvas.removeEventListener('wheel', this.wheel);
-    // Remove the window-level mousemove listener that is attached during a column resize drag.
-    // The mouseup once-listener self-removes, but mousemove is permanent until destroy.
     window.removeEventListener('mousemove', this.mouseMove);
     this.resizing = null;
     this.downAt = null;

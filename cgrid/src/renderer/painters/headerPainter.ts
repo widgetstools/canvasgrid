@@ -112,13 +112,6 @@ function paintColumnHeader(
   const { headerHeight } = theme;
   const cy = headerHeight / 2;
 
-  // Right-edge divider line.
-  ctx.strokeStyle = theme.borderColor;
-  ctx.beginPath();
-  ctx.moveTo(col.right - 0.5, 0);
-  ctx.lineTo(col.right - 0.5, headerHeight);
-  ctx.stroke();
-
   ctx.fillStyle = theme.headerFg;
   ctx.fillText(def.headerName, col.left + PADDING, cy);
 

@@ -1,43 +1,92 @@
 .cg-theme-quartz {
-  --cg-font-family: Inter, system-ui, -apple-system, sans-serif;
+  --cg-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
   --cg-font-size: 13px;
-  --cg-row-height: 30px;
-  --cg-header-height: 32px;
+  --cg-row-height: 32px;
+  --cg-header-height: 40px;
   --cg-fg-color: #1a1f24;
   --cg-bg-color: #ffffff;
-  --cg-row-alt-bg: #f4f6f8;
-  --cg-header-bg: #e8ecef;
+  --cg-row-alt-bg: #ffffff;
+  --cg-header-bg: #f4f6f8;
   --cg-header-fg: #1a1f24;
   --cg-border-color: #d5dbe0;
-  --cg-grid-line-color: #e8ecef;
+  --cg-grid-line-color: #eceff2;
   --cg-row-hover-bg: #eef1f3;
-  --cg-row-selected-bg: rgb(13 148 136 / 12%);
-  --cg-focus-ring-color: #0d9488;
+  --cg-row-selected-bg: rgb(56 132 195 / 22%);
+  --cg-focus-ring-color: #3b82f6;
   --cg-focus-ring-width: 2px;
   --cg-flash-from-color: #fef3c7;
   --cg-flash-to-color: rgba(254, 243, 199, 0);
   --cg-resizer-hot-zone: 4px;
-  --cg-scrollbar-thickness: 8px;
+  --cg-scrollbar-thickness: 14px;
 }
 
 .cg-theme-quartz-dark {
-  --cg-font-family: Inter, system-ui, -apple-system, sans-serif;
+  --cg-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
   --cg-font-size: 13px;
-  --cg-row-height: 30px;
-  --cg-header-height: 32px;
-  --cg-fg-color: #e2e8f0;
-  --cg-bg-color: #0f172a;
-  --cg-row-alt-bg: #111c2f;
-  --cg-header-bg: #1e293b;
-  --cg-header-fg: #e2e8f0;
-  --cg-border-color: #334155;
-  --cg-grid-line-color: #1e293b;
-  --cg-row-hover-bg: #1a2540;
-  --cg-row-selected-bg: rgb(13 148 136 / 22%);
-  --cg-focus-ring-color: #2dd4bf;
+  --cg-row-height: 32px;
+  --cg-header-height: 40px;
+  --cg-fg-color: #cbd5e1;
+  --cg-bg-color: #0a1428;
+  --cg-row-alt-bg: #0a1428;
+  --cg-header-bg: #0d1a33;
+  --cg-header-fg: #cbd5e1;
+  --cg-border-color: #1e2b47;
+  --cg-grid-line-color: #18243d;
+  --cg-row-hover-bg: #11203a;
+  --cg-row-selected-bg: rgb(56 132 195 / 32%);
+  --cg-focus-ring-color: #60a5fa;
   --cg-focus-ring-width: 2px;
   --cg-flash-from-color: #b45309;
   --cg-flash-to-color: rgba(180, 83, 9, 0);
   --cg-resizer-hot-zone: 4px;
-  --cg-scrollbar-thickness: 8px;
+  --cg-scrollbar-thickness: 14px;
+}
+
+/* Native scrollbar styling (Chromium/WebKit) — visible thumb on dark track. */
+.cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+.cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-track {
+  background: #0d1a33;
+}
+.cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-thumb {
+  background: #4a5b7a;
+  border: 3px solid #0d1a33;
+  border-radius: 7px;
+}
+.cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-thumb:hover {
+  background: #6b7a99;
+}
+.cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-corner {
+  background: #0d1a33;
+}
+
+.cg-theme-quartz .cg-scroller::-webkit-scrollbar {
+  width: 14px;
+  height: 14px;
+}
+.cg-theme-quartz .cg-scroller::-webkit-scrollbar-track {
+  background: #eceff2;
+}
+.cg-theme-quartz .cg-scroller::-webkit-scrollbar-thumb {
+  background: #b5bdc6;
+  border: 3px solid #eceff2;
+  border-radius: 7px;
+}
+.cg-theme-quartz .cg-scroller::-webkit-scrollbar-thumb:hover {
+  background: #8c97a3;
+}
+.cg-theme-quartz .cg-scroller::-webkit-scrollbar-corner {
+  background: #eceff2;
+}
+
+/* Firefox */
+.cg-theme-quartz-dark .cg-scroller {
+  scrollbar-color: #4a5b7a #0d1a33;
+  scrollbar-width: thin;
+}
+.cg-theme-quartz .cg-scroller {
+  scrollbar-color: #b5bdc6 #eceff2;
+  scrollbar-width: thin;
 }

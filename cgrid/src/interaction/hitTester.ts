@@ -1,13 +1,10 @@
 import type { ViewportState, ViewportColumn, ViewportRow } from '../core/viewport';
-import { computeScrollbars } from '../core/scrollbarGeometry';
 
 export type Hit =
   | { kind: 'header'; colId: string }
   | { kind: 'headerResizer'; colId: string }
   | { kind: 'cell'; rowIndex: number; colId: string }
   | { kind: 'pinnedSplitter'; side: 'left' | 'right' }
-  | { kind: 'scrollbarThumb'; axis: 'x' | 'y' }
-  | { kind: 'scrollbarTrack'; axis: 'x' | 'y'; before: boolean }
   | { kind: 'empty' };
 
 export class HitTester {
@@ -15,7 +12,6 @@ export class HitTester {
     private readonly getViewport: () => ViewportState,
     private readonly getHeaderHeight: () => number,
     private readonly getResizerHotZone: () => number,
-    private readonly getScrollbarThickness: () => number,
   ) {}
 
   locate(x: number, y: number): Hit {
@@ -23,31 +19,7 @@ export class HitTester {
     const headerH = this.getHeaderHeight();
     const hot = this.getResizerHotZone();
 
-    // Scrollbar hit-test first — they overlay the body region.
-    const sb = computeScrollbars(vs, this.getScrollbarThickness());
-    if (sb.vertical.visible) {
-      const t = sb.vertical.thumb;
-      if (x >= t.x && x < t.x + t.w && y >= t.y && y < t.y + t.h) {
-        return { kind: 'scrollbarThumb', axis: 'y' };
-      }
-      const tr = sb.vertical.track;
-      if (x >= tr.x && x < tr.x + tr.w && y >= tr.y && y < tr.y + tr.h) {
-        return { kind: 'scrollbarTrack', axis: 'y', before: y < t.y };
-      }
-    }
-    if (sb.horizontal.visible) {
-      const t = sb.horizontal.thumb;
-      if (x >= t.x && x < t.x + t.w && y >= t.y && y < t.y + t.h) {
-        return { kind: 'scrollbarThumb', axis: 'x' };
-      }
-      const tr = sb.horizontal.track;
-      if (x >= tr.x && x < tr.x + tr.w && y >= tr.y && y < tr.y + tr.h) {
-        return { kind: 'scrollbarTrack', axis: 'x', before: x < t.x };
-      }
-    }
-
     if (y < headerH) {
-      // Header zone.
       const col = this.findCol(vs, x);
       if (!col) return { kind: 'empty' };
       if (x >= col.right - hot) return { kind: 'headerResizer', colId: col.colId };
