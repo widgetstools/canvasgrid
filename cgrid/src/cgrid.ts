@@ -24,6 +24,8 @@ import { HitTester } from './interaction/hitTester';
 import { SelectionModel } from './interaction/selectionModel';
 import { FeatureChain } from './interaction/featureChain';
 import { EditorOverlay } from './interaction/editorOverlay';
+import { CellEditorRegistry } from './interaction/editors/registry';
+import type { CellEditorCtor, ICellEditor } from './interaction/editors/iCellEditor';
 import { A11yOverlay } from './interaction/a11yOverlay';
 import { WorkerClient } from './worker/client';
 import type { WorkerColumn, ViewportChunk } from './worker/protocol';
@@ -38,6 +40,7 @@ export type {
   CCellRendererSelector, CCellRendererSelectorParams, CCellRendererSelectorResult,
 } from './types';
 export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/registry';
+export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
 
 /**
  * Infer the row-ID field name from a `(row) => row.<field>` style accessor.
@@ -89,7 +92,22 @@ export class CGrid<TRow = any> {
   private selection: SelectionModel;
   private hitTester: HitTester;
   private featureChain: FeatureChain;
+  private cellEditorRegistry: CellEditorRegistry;
   private editor: EditorOverlay;
+  /** Editor instances currently mounted. Cycle 5 supports single-cell edit
+   *  so the array carries at most one entry; full-row edit (Task 10) will
+   *  populate one per editable column. Surface for
+   *  `api.getCellEditorInstances` (later cycle). */
+  private editorInstances: ICellEditor[] = [];
+  /** Tracks the cell currently being edited (single-cell mode). Cleared on
+   *  close. Used to compose `cellEditingStarted/Stopped` payloads. */
+  private activeEdit: {
+    rowIndex: number;
+    rowId: string;
+    colId: string;
+    oldValue: unknown;
+    data: unknown;
+  } | null = null;
   private a11y: A11yOverlay;
   private workerClient: WorkerClient;
   private destroyed = false;
@@ -269,7 +287,9 @@ export class CGrid<TRow = any> {
         }
       },
     });
-    this.editor = new EditorOverlay();
+    this.cellEditorRegistry = new CellEditorRegistry();
+    CellEditorRegistry.seed(this.cellEditorRegistry);
+    this.editor = new EditorOverlay(this.editorContainer, this.cellEditorRegistry);
     this.a11y = new A11yOverlay(this.root);
 
     // 9. Worker
@@ -340,10 +360,8 @@ export class CGrid<TRow = any> {
   }
 
   // --- Public API -----------------------------------------------------------
-
-  on<E extends CGridEvent['type']>(type: E, handler: (e: Extract<CGridEvent, { type: E }>) => void): () => void {
-    return this.events.on(type, handler);
-  }
+  // `on` / `off` / `addEventListener` / `removeEventListener` live further
+  // down with the rest of the editor-cycle additions (Cycle 5 / Task 1).
 
   setRowData(rows: TRow[]): void {
     this.workerClient.setRowData(rows).then(({ visibleCount }) => {
@@ -697,6 +715,13 @@ export class CGrid<TRow = any> {
       setGridOption: (k, v) => this.setGridOption(k as keyof CGridOptions<TRow>, v as any),
       updateGridOptions: (p) => this.updateGridOptions(p as Partial<CGridOptions<TRow>>),
       registerCellRenderer: (n, p) => this.registerCellRenderer(n, p),
+      registerCellEditor: (n, c) => this.registerCellEditor(n, c),
+      on: (t, h) => this.on(t as CGridEvent['type'], h as any),
+      off: (t, h) => this.off(t as CGridEvent['type'], h as any),
+      addEventListener: (t, h) => this.addEventListener(t as CGridEvent['type'], h as any),
+      removeEventListener: (t, h) => this.removeEventListener(t as CGridEvent['type'], h as any),
+      getCellBoundsAt: (r, c) => this.getCellBoundsAt(r, c),
+      getCellValue: (r, c) => this.getCellValue(r, c),
     };
   }
 
@@ -991,7 +1016,35 @@ export class CGrid<TRow = any> {
     this.events.emit({ type: 'columnResized', colId, width: newW });
   }
 
-  private openEditor(rowIndex: number, colId: string): void {
+  /** Resolve `colDef.cellEditor` into a registry name. Strings look up
+   *  directly. Constructors are interned under a synthetic name keyed by the
+   *  colId so the registry stays the single source of truth at edit time.
+   *  Undefined falls back to `'text'` (the universal default for editable
+   *  columns; matches ag-grid). */
+  private resolveEditorName(def: ResolvedColDef<TRow>): string {
+    const e = def.cellEditor as string | CellEditorCtor | undefined;
+    if (typeof e === 'string') return e;
+    if (typeof e === 'function') {
+      const synthetic = `__inline_${def.colId}`;
+      if (!this.cellEditorRegistry.has(synthetic)) {
+        this.cellEditorRegistry.register(synthetic, e);
+      }
+      return synthetic;
+    }
+    return 'text';
+  }
+
+  /** Call `cellEditorParams` (or use the static object) to produce the
+   *  params forwarded into `ICellEditorParams.params`. Empty object when
+   *  no params are configured. */
+  private resolveEditorParams(def: ResolvedColDef<TRow>, row: TRow): Record<string, unknown> {
+    const p = (def as { cellEditorParams?: unknown }).cellEditorParams;
+    if (p == null) return {};
+    if (typeof p === 'function') return (p as (r: TRow) => Record<string, unknown>)(row);
+    return p as Record<string, unknown>;
+  }
+
+  private openEditor(rowIndex: number, colId: string, charPress: string | null = null): void {
     const def = this.columnDefsMap.get(colId);
     if (!def || !def.editable) return;
     const col = this.viewport.visibleColumns.find((c) => c.colId === colId);
@@ -999,13 +1052,26 @@ export class CGrid<TRow = any> {
       (r) => r.subgrid.isData && r.localRowIndex === rowIndex,
     );
     if (!col || !row) return;
-    const data = this.cellAt(rowIndex, colId);
+    const cell = this.cellAt(rowIndex, colId);
+    const initialValue = cell?.value ?? '';
+    const editorName = this.resolveEditorName(def);
+    const rowId = this.rowIdAt(rowIndex) ?? `row-${rowIndex}`;
+    // Snapshot the active-edit so the close hook (commit OR cancel) can
+    // compose the `cellEditingStopped` payload without re-fetching state.
+    this.activeEdit = {
+      rowIndex, rowId, colId,
+      oldValue: initialValue,
+      data: cell?.value !== undefined ? { [colId]: cell.value } : null,
+    };
     this.editorContainer.style.pointerEvents = 'auto';
     this.editor.open({
-      container: this.editorContainer,
-      bounds: { x: col.left, y: row.top, w: col.width, h: row.height },
-      colDef: def,
-      initialValue: data?.value ?? '',
+      editorName,
+      rowData: cell?.value !== undefined ? { [colId]: cell.value } : {},
+      colId,
+      value: initialValue,
+      cellBounds: { x: col.left, y: row.top, w: col.width, h: row.height },
+      params: this.resolveEditorParams(def, ({} as TRow)),
+      charPress,
       onCommit: (newValue) => {
         this.editorContainer.style.pointerEvents = 'none';
         // Fetch the full row from the worker, run valueParser → valueSetter
@@ -1025,14 +1091,97 @@ export class CGrid<TRow = any> {
           } else if (field !== undefined) {
             rowData[field] = parsed;
           }
+          const changed = parsed !== oldValue;
           this.events.emit({
-            type: 'cellValueChanged', rowId: fetched.rowId, colId, oldValue, newValue: parsed,
+            type: 'cellValueChanged',
+            rowId: fetched.rowId, colId, oldValue, newValue: parsed,
+            newRawValue: newValue, source: 'edit', rowIndex, data: rowData,
           });
+          this.events.emit({
+            type: 'cellEditingStopped',
+            rowIndex, rowId: fetched.rowId, colId,
+            oldValue, newValue: parsed, valueChanged: changed,
+            data: rowData,
+          });
+          this.activeEdit = null;
           this.workerClient.applyTransaction({ update: [rowData], async: false })
             .catch((err) => { if (!this.destroyed) console.error('[cgrid] commit-back:', err); });
         }).catch((err) => { if (!this.destroyed) console.error('[cgrid] commit-back fetch:', err); });
       },
-      onCancel: () => { this.editorContainer.style.pointerEvents = 'none'; },
+      onCancel: () => {
+        this.editorContainer.style.pointerEvents = 'none';
+        const e = this.activeEdit;
+        this.activeEdit = null;
+        if (!e) return;
+        this.events.emit({
+          type: 'cellEditingStopped',
+          rowIndex: e.rowIndex, rowId: e.rowId, colId: e.colId,
+          oldValue: e.oldValue, newValue: e.oldValue, valueChanged: false,
+          data: e.data,
+        });
+      },
     });
+    // cellEditingStarted fires AFTER the editor has mounted (matches catalog
+    // 06: "A cell editor is activated"). The DOM is live, focus is set.
+    this.events.emit({
+      type: 'cellEditingStarted',
+      rowIndex, rowId, colId,
+      value: initialValue,
+      data: this.activeEdit?.data,
+    });
+  }
+
+  /** Register a custom cell editor. Columns with `cellEditor: name`
+   *  dispatch to `ctor` when edit starts. Built-in names ('text') can be
+   *  overridden by re-registering. */
+  registerCellEditor(name: string, ctor: CellEditorCtor): void {
+    this.cellEditorRegistry.register(name, ctor);
+  }
+
+  /** Subscribe to a typed grid event. Returns an unsubscribe. */
+  on<E extends CGridEvent['type']>(
+    type: E,
+    handler: (e: Extract<CGridEvent, { type: E }>) => void,
+  ): () => void {
+    return this.events.on(type, handler);
+  }
+  /** Remove a previously-registered listener. */
+  off<E extends CGridEvent['type']>(
+    type: E,
+    handler: (e: Extract<CGridEvent, { type: E }>) => void,
+  ): void {
+    this.events.off(type, handler);
+  }
+  /** Alias for `on`, present for ag-grid API parity. */
+  addEventListener<E extends CGridEvent['type']>(
+    type: E,
+    handler: (e: Extract<CGridEvent, { type: E }>) => void,
+  ): () => void {
+    return this.on(type, handler);
+  }
+  /** Alias for `off`, present for ag-grid API parity. */
+  removeEventListener<E extends CGridEvent['type']>(
+    type: E,
+    handler: (e: Extract<CGridEvent, { type: E }>) => void,
+  ): void {
+    this.off(type, handler);
+  }
+
+  /** Pixel bounds of the cell at (`rowIndex`, `colId`) in the canvas's
+   *  coordinate space. Returns `null` when not in the current viewport
+   *  (off-screen rows / columns + pinned-but-clipped layouts). */
+  getCellBoundsAt(rowIndex: number, colId: string): { x: number; y: number; w: number; h: number } | null {
+    const col = this.viewport.visibleColumns.find((c) => c.colId === colId);
+    const row = this.viewport.visibleRows.find(
+      (r) => r.subgrid.isData && r.localRowIndex === rowIndex,
+    );
+    if (!col || !row) return null;
+    return { x: col.left, y: row.top, w: col.width, h: row.height };
+  }
+
+  /** Raw cell value from the current viewport chunk. `null` when the cell
+   *  isn't in the chunk (most common: row outside the visible window). */
+  getCellValue(rowIndex: number, colId: string): unknown {
+    return this.cellAt(rowIndex, colId)?.value ?? null;
   }
 }

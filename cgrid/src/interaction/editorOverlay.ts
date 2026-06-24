@@ -1,69 +1,79 @@
-import type { ResolvedColDef } from '../core/propertyChain';
+import type { CellEditorRegistry } from './editors/registry';
+import type { ICellEditor, ICellEditorParams } from './editors/iCellEditor';
 
-export interface EditorAttachOpts {
-  container: HTMLElement;
-  bounds: { x: number; y: number; w: number; h: number };
-  colDef: ResolvedColDef;
-  initialValue: unknown;
-  onCommit: (newValue: unknown) => void;
+export interface EditorAttachOpts<TRow = unknown, TValue = unknown> {
+  editorName: string;
+  rowData: TRow;
+  colId: string;
+  value: TValue;
+  cellBounds: { x: number; y: number; w: number; h: number };
+  params: Record<string, unknown>;
+  charPress: string | null;
+  onCommit: (newValue: TValue) => void;
   onCancel: () => void;
 }
 
 export class EditorOverlay {
-  private wrapper: HTMLDivElement | null = null;
-  private input: HTMLInputElement | null = null;
-  private opts: EditorAttachOpts | null = null;
+  private current: { editor: ICellEditor; opts: EditorAttachOpts; wrapper: HTMLElement } | null = null;
 
-  isOpen(): boolean { return this.wrapper !== null; }
+  constructor(private host: HTMLElement, private registry: CellEditorRegistry) {}
+
+  isOpen(): boolean { return this.current !== null; }
 
   open(opts: EditorAttachOpts): void {
+    if (this.current) this.close();
+    const Ctor = this.registry.resolve(opts.editorName);
+    const editor = new Ctor();
+    const params: ICellEditorParams = {
+      data: opts.rowData,
+      colId: opts.colId,
+      value: opts.value,
+      charPress: opts.charPress,
+      params: opts.params,
+      cellBounds: opts.cellBounds,
+      stopEditing: (cancel?: boolean) => { if (cancel) this.cancel(); else this.commit(); },
+    };
+    editor.init(params);
+    if (editor.isCancelBeforeStart?.()) { editor.destroy(); return; }
+    const gui = editor.getGui();
+    // Wrap the editor body in a positioned container so the editor itself
+    // can be styled to 100%/100% without caring about absolute positioning.
+    const wrapper = document.createElement('div');
+    wrapper.className = 'cg-editor-overlay';
+    wrapper.style.cssText =
+      `position:absolute; left:${opts.cellBounds.x}px; top:${opts.cellBounds.y}px;` +
+      ` width:${opts.cellBounds.w}px; height:${opts.cellBounds.h}px; z-index:10; pointer-events:auto;`;
+    wrapper.appendChild(gui);
+    this.host.appendChild(wrapper);
+    this.current = { editor, opts, wrapper };
+    editor.afterGuiAttached?.();
+  }
+
+  /** Read getValue from the editor and dispatch onCommit. Host is responsible
+   *  for routing through valueParser / valueSetter (cgrid.ts does that). */
+  commit(): void {
+    if (!this.current) return;
+    const { editor, opts } = this.current;
+    if (editor.isCancelAfterEnd?.()) { this.cancel(); return; }
+    const newValue = editor.getValue();
+    // Tear down DOM + clear `current` BEFORE calling onCommit so listeners
+    // observing `isOpen()` see the editor closed.
     this.close();
-    this.opts = opts;
-    const w = document.createElement('div');
-    w.className = 'cg-editor-overlay';
-    w.style.cssText = `position:absolute; left:${opts.bounds.x}px; top:${opts.bounds.y}px; width:${opts.bounds.w}px; height:${opts.bounds.h}px; z-index:10`;
-    const input = document.createElement('input');
-    const editorType = opts.colDef.cellEditor ?? (opts.colDef.type === 'number' ? 'number' : 'text');
-    input.type = editorType === 'number' ? 'number' : 'text';
-    input.value = String(opts.initialValue ?? '');
-    input.style.cssText = 'width:100%; height:100%; box-sizing:border-box; padding:0 4px; border:1px solid #0d9488; font: inherit; outline: none;';
-    input.addEventListener('keydown', this.keydown);
-    input.addEventListener('blur', this.blur);
-    w.appendChild(input);
-    opts.container.appendChild(w);
-    this.wrapper = w;
-    this.input = input;
-    input.focus();
-    input.select();
+    opts.onCommit(newValue);
+  }
+
+  cancel(): void {
+    if (!this.current) return;
+    const { opts } = this.current;
+    this.close();
+    opts.onCancel();
   }
 
   close(): void {
-    if (this.wrapper && this.wrapper.parentElement) {
-      this.wrapper.parentElement.removeChild(this.wrapper);
-    }
-    this.wrapper = null;
-    this.input = null;
-    this.opts = null;
+    if (!this.current) return;
+    const { editor, wrapper } = this.current;
+    wrapper.remove();
+    editor.destroy();
+    this.current = null;
   }
-
-  private keydown = (e: KeyboardEvent) => {
-    if (!this.opts || !this.input) return;
-    if (e.key === 'Enter') {
-      const raw = this.input.value;
-      const value = this.opts.colDef.type === 'number' ? Number(raw) : raw;
-      this.opts.onCommit(value);
-      this.close();
-    } else if (e.key === 'Escape') {
-      this.opts.onCancel();
-      this.close();
-    }
-  };
-
-  private blur = () => {
-    if (!this.opts || !this.input) return;
-    const raw = this.input.value;
-    const value = this.opts.colDef.type === 'number' ? Number(raw) : raw;
-    this.opts.onCommit(value);
-    this.close();
-  };
 }

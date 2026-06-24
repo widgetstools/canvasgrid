@@ -39,7 +39,8 @@ export function createPositionsGrid(container: HTMLElement): CGrid<Position> {
     columnDefs: [
       { field: 'positionId',     headerName: 'Position ID',  width: 150, pinned: 'left' },
       { field: 'cusip',          headerName: 'CUSIP',         width: 110, pinned: 'left' },
-      { field: 'ticker',         headerName: 'Ticker',        width: 100 },
+      // Cycle 5 Task 1: ticker is the editable target for the editor E2E.
+      { field: 'ticker',         headerName: 'Ticker',        width: 100, editable: true },
       { field: 'notionalAmount', headerName: 'Notional',      type: 'number', width: 130, aggFunc: 'sum' },
       { field: 'marketValue',    headerName: 'Market Value',  type: 'number', width: 130, aggFunc: 'sum' },
       { field: 'currentPrice',   headerName: 'Price',         type: 'number', width: 100, aggFunc: 'avg' },

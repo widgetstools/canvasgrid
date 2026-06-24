@@ -16,6 +16,13 @@ export class TypedEventEmitter<E extends { type: string }> {
     return () => set!.delete(handler);
   }
 
+  off<T extends E['type']>(
+    type: T,
+    handler: (e: Extract<E, { type: T }>) => void,
+  ): void {
+    this.handlers.get(type)?.delete(handler);
+  }
+
   emit<T extends E['type']>(event: Extract<E, { type: T }>): void {
     const set = this.handlers.get(event.type as T);
     if (!set) return;

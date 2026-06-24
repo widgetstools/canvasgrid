@@ -7,6 +7,15 @@ if (!host) throw new Error('grid host not found');
 
 const grid = createPositionsGrid(host);
 
+// E2E hooks: expose the grid + a readiness flag so Playwright tests can wait
+// for first-data-rendered and call api helpers (`getCellBoundsAt`,
+// `getCellValue`) instead of guessing pixel coordinates.
+(window as unknown as { __cgrid: typeof grid }).__cgrid = grid;
+(window as unknown as { __cgridReady: boolean }).__cgridReady = false;
+grid.on('firstDataRendered', () => {
+  (window as unknown as { __cgridReady: boolean }).__cgridReady = true;
+});
+
 grid.on('gridReady', () => {
   console.log('[cgrid] ready');
   connectStomp({

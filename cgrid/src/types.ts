@@ -1,6 +1,10 @@
 // Public types for cgrid. Re-exported from src/cgrid.ts.
 // See docs/superpowers/specs/2026-06-23-canvasgrid-foundation-design.md §9.
 
+import type { CellEditorCtor } from './interaction/editors/iCellEditor';
+
+export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
+
 export interface ColCellOverrides {
   font?: string;
   fg?: string;
@@ -80,7 +84,20 @@ export interface CColDef<TRow = any, TValue = any> {
   sortable?: boolean;
   resizable?: boolean;
   editable?: boolean | ((row: TRow) => boolean);
-  cellEditor?: 'text' | 'number';
+  /**
+   * Built-in key (`'text'`, `'number'`, `'date'`, `'dateString'`, `'select'`,
+   * `'largeText'`, `'checkbox'`) or a custom constructor registered via
+   * `api.registerCellEditor`. When omitted, editable columns default to
+   * `'text'`. Per-editor param schemas live in
+   * `docs/catalog/06-cell-editing.md` ("Built-in editor types").
+   */
+  cellEditor?: string | CellEditorCtor<TRow, TValue>;
+  /**
+   * Static params object — or a callback `(row) => params` — forwarded into
+   * `ICellEditorParams.params` at edit-start time. The engine treats this as
+   * opaque; the resolved editor interprets the shape.
+   */
+  cellEditorParams?: Record<string, unknown> | ((row: TRow) => Record<string, unknown>);
   cellStyle?: ColCellOverrides;
   /**
    * Convert the editor's emitted value into the typed value to commit. Runs
@@ -198,12 +215,55 @@ export interface TransactionResult {
   remove: { rowId: string }[];
 }
 
+/** Fires before the editor's DOM mounts. Cycle 5 wiring uses `rowIndex` as
+ *  the primary positional identity; `rowId` is best-effort (synthetic
+ *  `row-${idx}` until the worker→main rowId map lands). */
+export interface CellEditingStartedEvent<TRow = unknown> {
+  type: 'cellEditingStarted';
+  rowIndex: number;
+  rowId: string;
+  colId: string;
+  value: unknown;
+  data: TRow;
+}
+/** Fires unconditionally when an editor closes (commit OR cancel).
+ *  `valueChanged` is `true` only when the commit produced a real value
+ *  change AND it was not cancelled. */
+export interface CellEditingStoppedEvent<TRow = unknown> {
+  type: 'cellEditingStopped';
+  rowIndex: number;
+  rowId: string;
+  colId: string;
+  oldValue: unknown;
+  newValue: unknown;
+  valueChanged: boolean;
+  data: TRow;
+}
+
 export type CGridEvent =
   | { type: 'gridReady'; api: CGridApi }
   | { type: 'cellClicked'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
   | { type: 'cellDoubleClicked'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
   | { type: 'cellFocused'; rowId: string; colId: string }
-  | { type: 'cellValueChanged'; rowId: string; colId: string; oldValue: unknown; newValue: unknown }
+  | {
+      type: 'cellValueChanged';
+      rowId: string;
+      colId: string;
+      oldValue: unknown;
+      newValue: unknown;
+      /** Raw value returned by the editor before `valueParser` ran. Same as
+       *  `newValue` when no parser was configured. */
+      newRawValue?: unknown;
+      /** Origin of the change. `'edit'` for manual cell edits. Reserved
+       *  values: `'paste'` / `'fill'` / `'api'` (later cycles). */
+      source?: 'edit';
+      /** Row index in the current visible order. */
+      rowIndex?: number;
+      /** Mutated row object as it lives in the worker after the commit. */
+      data?: unknown;
+    }
+  | CellEditingStartedEvent
+  | CellEditingStoppedEvent
   | { type: 'selectionChanged'; selectedRowIds: string[] }
   | { type: 'viewportChanged'; firstRow: number; lastRow: number }
   | { type: 'modelUpdated'; visibleRowCount: number }
@@ -278,4 +338,39 @@ export interface CGridApi {
    *  will dispatch to `painter` at paint time. Built-in names ('text',
    *  'number', 'checkbox', 'header') can be overridden by re-registering. */
   registerCellRenderer(name: string, painter: import('./renderer/cellRenderers/registry').CellPainter): void;
+
+  /** Register a custom cell editor under `name`. Columns referencing it via
+   *  `cellEditor: name` will mount this editor when edit starts. Built-in
+   *  names ('text' shipped in Cycle 5 Task 1; 'number' / 'date' / 'select' /
+   *  'largeText' / 'checkbox' / 'dateString' in Task 2) can be overridden. */
+  registerCellEditor(name: string, ctor: CellEditorCtor): void;
+
+  /** Subscribe to a typed event. Returns an unsubscribe function. */
+  on<K extends CGridEvent['type']>(
+    type: K,
+    handler: (event: Extract<CGridEvent, { type: K }>) => void,
+  ): () => void;
+  /** Remove a previously-registered listener. */
+  off<K extends CGridEvent['type']>(
+    type: K,
+    handler: (event: Extract<CGridEvent, { type: K }>) => void,
+  ): void;
+  /** Alias for `on()`, present for ag-grid API parity. */
+  addEventListener<K extends CGridEvent['type']>(
+    type: K,
+    handler: (event: Extract<CGridEvent, { type: K }>) => void,
+  ): () => void;
+  /** Alias for `off()`, present for ag-grid API parity. */
+  removeEventListener<K extends CGridEvent['type']>(
+    type: K,
+    handler: (event: Extract<CGridEvent, { type: K }>) => void,
+  ): void;
+
+  /** Returns the on-screen pixel bounds of the cell at (`rowIndex`, `colId`)
+   *  in the canvas's coordinate space. Returns `null` when the cell is not
+   *  in the current viewport. Used by E2E to position synthetic clicks. */
+  getCellBoundsAt(rowIndex: number, colId: string): { x: number; y: number; w: number; h: number } | null;
+  /** Returns the raw value of the cell at (`rowIndex`, `colId`) from the
+   *  current viewport chunk, or `null` when the cell is not in the chunk. */
+  getCellValue(rowIndex: number, colId: string): unknown;
 }

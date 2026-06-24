@@ -1,6 +1,7 @@
 import type {
   CColDef, CValueGetterParams, CValueFormatterParams, ColCellOverrides,
   CCellRendererSelector, CValueParserParams, CValueSetterParams,
+  CellEditorCtor,
 } from '../types';
 import type { CellPaintConfig } from '../renderer/cellRenderers/registry';
 import type { ResolvedTheme } from '../theming/cssReader';
@@ -30,7 +31,11 @@ export interface ResolvedColDef<TRow = any> {
   sortable: boolean;
   resizable: boolean;
   editable: boolean | ((row: TRow) => boolean);
-  cellEditor?: 'text' | 'number';
+  /** Built-in editor key or a custom `ICellEditor` constructor. See
+   *  `CColDef.cellEditor` in `types.ts` for full semantics. */
+  cellEditor?: string | CellEditorCtor<TRow, unknown>;
+  /** Static params or callback forwarded into `ICellEditorParams.params`. */
+  cellEditorParams?: Record<string, unknown> | ((row: TRow) => Record<string, unknown>);
   cellStyle?: ColCellOverrides;
   /** See `CColDef.valueParser`. Invoked at editor-commit time before the
    *  worker transaction is queued. */
@@ -126,7 +131,8 @@ export function resolveColDef<TRow>(
     sortable: merged.sortable ?? true,
     resizable: merged.resizable ?? true,
     editable: merged.editable ?? false,
-    cellEditor: merged.cellEditor,
+    cellEditor: merged.cellEditor as ResolvedColDef<TRow>['cellEditor'],
+    cellEditorParams: merged.cellEditorParams as ResolvedColDef<TRow>['cellEditorParams'],
     cellStyle: merged.cellStyle,
     columnGroupShow: merged.columnGroupShow ?? null,
   };
