@@ -11,11 +11,11 @@
 | 01 | defaultColDef | Community | option | yes | P0 | Shared column defaults; runtime-mutable |
 | 01 | rowModelType | Community | option | no | P0 | Selects CSRM, Infinite, SSRM, or Viewport; initial-only |
 | 01 | getRowId | Community | option | yes | P0 | Stable row identity function; enables delta detection |
-| 01 | rowBuffer | Community | option | no | P0 | Extra rows rendered outside visible viewport |
+| 01 | ✅ rowBuffer | Community | option | no | P0 | Extra rows rendered outside visible viewport |
 | 01 | domLayout | Community | option | no | P1 | normal / autoHeight / print layout mode |
 | 01 | animateRows | Community | option | no | P2 | CSS transition for row position changes |
-| 01 | suppressColumnVirtualisation | Community | option | no | P1 | Render all columns regardless of scroll |
-| 01 | suppressRowVirtualisation | Community | option | no | P2 | Render all rows regardless of scroll |
+| 01 | ✅ suppressColumnVirtualisation | Community | option | no | P1 | Render all columns regardless of scroll |
+| 01 | ✅ suppressRowVirtualisation | Community | option | no | P2 | Render all rows regardless of scroll |
 | 01 | suppressChangeDetection | Community | option | no | P1 | Disable value change diffing |
 | 01 | asyncTransactionWaitMillis | Community | option | yes | P0 | Async transaction batch window (ms) |
 | 01 | suppressModelUpdateAfterUpdateTransaction | Community | option | no | P1 | Skip pipeline refresh on update-only transactions |
@@ -25,14 +25,14 @@
 | 01 | loading | Community | option | no | P2 | Show/hide loading overlay |
 | 01 | debug | Community | option | no | P3 | Verbose console logging |
 | 01 | getGridId | Community | api | no | P2 | Returns grid instance identifier |
-| 01 | setGridOption | Community | api | yes | P0 | Updates a single runtime-mutable option |
-| 01 | updateGridOptions | Community | api | no | P0 | Batch-updates multiple runtime-mutable options |
+| 01 | ✅ setGridOption | Community | api | yes | P0 | Updates a single runtime-mutable option |
+| 01 | ✅ updateGridOptions | Community | api | no | P0 | Batch-updates multiple runtime-mutable options |
 | 01 | destroy | Community | api | no | P0 | Tears down the grid instance |
 | 01 | addEventListener | Community | api | no | P1 | Subscribes to a grid event |
 | 01 | gridReady | Community | event | yes | P0 | Grid initialised; API available |
-| 01 | gridPreDestroyed | Community | event | no | P1 | Before grid teardown; state snapshot available |
-| 01 | gridSizeChanged | Community | event | no | P1 | Grid container resized |
-| 01 | firstDataRendered | Community | event | no | P0 | First rows rendered in viewport |
+| 01 | ✅ gridPreDestroyed | Community | event | no | P1 | Before grid teardown; state snapshot available |
+| 01 | ✅ gridSizeChanged | Community | event | no | P1 | Grid container resized |
+| 01 | ✅ firstDataRendered | Community | event | no | P0 | First rows rendered in viewport |
 | 01 | stateUpdated | Community | event | no | P2 | Any serialisable grid state changes |
 | 01 | Grid creation flow | Community | behavior | no | P0 | Init modules → cols → row model → state → render → gridReady |
 | 01 | Initial vs runtime lifecycle | Community | behavior | no | P0 | initial-only props ignored by setGridOption at runtime |
@@ -46,8 +46,8 @@
 | 02 | headerValueGetter | Community | option | no | P2 | Dynamic header text via function/expression |
 | 02 | valueGetter | Community | option | yes | P0 | Derives cell value from row data; used for sort/filter/export |
 | 02 | valueFormatter | Community | option | yes | P0 | Formats raw value to display string |
-| 02 | valueSetter | Community | option | no | P2 | Writes edited value back to row data |
-| 02 | valueParser | Community | option | no | P2 | Parses string edit value before valueSetter |
+| 02 | ✅ valueSetter | Community | option | no | P2 | Writes edited value back to row data |
+| 02 | ✅ valueParser | Community | option | no | P2 | Parses string edit value before valueSetter |
 | 02 | type (columnTypes) | Community | option | yes | P1 | Named column type templates for property reuse |
 | 02 | cellDataType | Community | option | no | P1 | Infers/declares data type for filtering and formatting |
 | 02 | headerClass | Community | option | no | P1 | CSS class(es) on header cell |
@@ -57,8 +57,8 @@
 | 02 | tooltipField | Community | option | no | P2 | Data field value shown as cell tooltip |
 | 02 | tooltipValueGetter | Community | option | no | P2 | Callback returning tooltip string |
 | 02 | cellRenderer | Community | option | yes | P0 | Custom cell renderer component or function |
-| 02 | cellRendererParams | Community | option | yes | P0 | Static params passed to cellRenderer |
-| 02 | cellRendererSelector | Community | option | no | P1 | Per-row dynamic renderer selection callback |
+| 02 | ✅ cellRendererParams | Community | option | yes | P0 | Static params passed to cellRenderer |
+| 02 | ✅ cellRendererSelector | Community | option | no | P1 | Per-row dynamic renderer selection callback |
 | 02 | enableCellChangeFlash | Community | option | yes | P1 | Flash cell on value change |
 | 02 | autoHeight | Community | option | no | P2 | Row height expands to fit this column's content |
 | 02 | wrapText | Community | option | no | P2 | Enables text wrap inside cell |
@@ -74,9 +74,15 @@
 | 02 | lockPinned | Community | option | no | P2 | Prevent user pin changes |
 | 02 | suppressNavigable | Community | option | no | P2 | Exclude cell from keyboard tab navigation |
 | 02 | suppressKeyboardEvent | Community | option | no | P2 | Block specific keyboard events in cell |
-| 02 | ColGroupDef.children | Community | option | yes | P0 | Children of a column group |
-| 02 | ColGroupDef.openByDefault | Community | option | no | P2 | Group expanded on load |
-| 02 | ColGroupDef.marryChildren | Community | option | no | P2 | Prevents separating group's columns via drag |
+| 02 | ✅ ColGroupDef.children | Community | option | yes | P0 | Children of a column group |
+| 02 | ✅ ColGroupDef.openByDefault | Community | option | no | P2 | Group expanded on load |
+| 02 | ✅ ColGroupDef.marryChildren | Community | option | no | P2 | Prevents separating group's columns via drag |
+| 02 | ✅ ColGroupDef.groupId | Community | option | no | P0 | Stable identifier for column group; auto-generated when omitted |
+| 02 | ✅ ColGroupDef.headerName | Community | option | yes | P0 | Text shown in column-group header cell |
+| 02 | ✅ columnGroupShow | Community | option | no | P1 | Per-leaf visibility hint within a group: 'open' \| 'closed' \| null |
+| 02 | ✅ getColumnGroupState | Community | api | no | P1 | Snapshot of `{ groupId, open }[]` for column groups |
+| 02 | ✅ setColumnGroupState | Community | api | no | P1 | Restore column-group open/closed state from snapshot |
+| 02 | ✅ resetColumnGroupState | Community | api | no | P2 | Reset column-group state to definition defaults |
 | 02 | getColumnState | Community | api | no | P1 | Serialisable snapshot of column state |
 | 02 | applyColumnState | Community | api | no | P1 | Restores column state from snapshot |
 | 02 | resetColumnState | Community | api | no | P2 | Resets column state to definition defaults |
@@ -732,8 +738,8 @@
 | 21 | refreshCells (re-evaluate cellClassRules) | Community | api | yes | P1 | Force re-draw and re-evaluation of cell style callbacks |
 
 <!-- area:22 Events -->
-| 22 | Grid lifecycle events | Community | event | yes | P0 | gridReady, gridPreDestroyed, gridSizeChanged, firstDataRendered, modelUpdated, stateUpdated — see `22-events.md` |
-| 22 | Column events | Community | event | yes | P1 | columnMoved, columnVisible, columnResized, displayedColumnsChanged, columnHeaderClicked, etc. — see `22-events.md` |
+| 22 | Grid lifecycle events | Community | event | yes | P0 | gridReady, ✅ gridPreDestroyed, ✅ gridSizeChanged, ✅ firstDataRendered, modelUpdated, stateUpdated — see `22-events.md` |
+| 22 | Column events | Community | event | yes | P1 | columnMoved, columnVisible, columnResized, ✅ displayedColumnsChanged (partial — fires on group open; column-state changes land in Cycle 6), ✅ columnGroupOpened, columnHeaderClicked, etc. — see `22-events.md` |
 | 22 | Row events | Community | event | yes | P0 | rowDataUpdated, rowGroupOpened, rowClicked, rowEditingStarted/Stopped, asyncTransactionsFlushed — see `22-events.md` |
 | 22 | Cell events | Community | event | yes | P0 | cellClicked, cellValueChanged, cellEditingStarted/Stopped, cellFocused, tooltipShow — see `22-events.md` |
 | 22 | Selection events | Community | event | yes | P0 | rowSelected, selectionChanged, cellSelectionChanged — see `22-events.md` |
@@ -745,12 +751,12 @@
 | 22 | Misc events | Community | event | yes | P1 | undoStarted/Ended, redoStarted/Ended, cutStart/End, pasteStart/End, fillStart/End, batchEditingStarted/Stopped — see `22-events.md` |
 
 <!-- area:23 API -->
-| 23 | Lifecycle API | Community | api | yes | P0 | getGridId, destroy, setGridOption, updateGridOptions, getState, setState, addEventListener — see `23-api.md` |
+| 23 | Lifecycle API | Community | api | yes | P0 | getGridId, destroy, ✅ setGridOption, ✅ updateGridOptions, getState, setState, addEventListener — see `23-api.md` |
 | 23 | Data API | Community | api | yes | P0 | applyTransaction, applyTransactionAsync, flushAsyncTransactions, refreshClientSideRowModel, setRowCount — see `23-api.md` |
 | 23 | Columns API | Community | api | yes | P0 | getColumnDefs, getColumn, applyColumnState, getColumnState, setColumnsVisible, sizeColumnsToFit, autoSizeColumns — see `23-api.md` |
 | 23 | Rows API | Community | api | yes | P0 | getRowNode, getDisplayedRowCount, forEachNode, redrawRows, expandAll, collapseAll, getPinnedTopRow — see `23-api.md` |
-| 23 | Cells API | Community | api | yes | P0 | refreshCells, flashCells, getCellRendererInstances, startEditingCell, stopEditing, undoCellEditing — see `23-api.md` |
-| 23 | Selection API | Community | api | yes | P0 | selectAll, deselectAll, getSelectedNodes, getSelectedRows, getCellRanges, clearCellSelection — see `23-api.md` |
+| 23 | Cells API | Community | api | yes | P0 | refreshCells, flashCells, getCellRendererInstances, ✅ registerCellRenderer, startEditingCell, stopEditing, undoCellEditing — see `23-api.md` |
+| 23 | Selection API | Community | api | yes | P0 | selectAll, deselectAll, getSelectedNodes, getSelectedRows, ✅ setSelectedRowIds, getCellRanges, clearCellSelection — see `23-api.md` |
 | 23 | Sorting API | Community | api | no | P1 | onSortChanged — see `23-api.md` |
 | 23 | Filtering API | Community | api | yes | P1 | isAnyFilterPresent, setFilterModel, getFilterModel, setColumnFilterModel, getAdvancedFilterModel — see `23-api.md` |
 | 23 | Grouping / aggregation / pivot API | Enterprise | api | no | P2 | setRowGroupColumns, addAggFuncs, isPivotMode, setPivotColumns, addDetailGridInfo — see `23-api.md` |
@@ -759,7 +765,7 @@
 | 23 | Charts API | Enterprise | api | no | P3 | createRangeChart, createPivotChart, getChartModels, updateChart, restoreChart — see `23-api.md` |
 | 23 | Export API | Community | api | no | P2 | getDataAsCsv, exportDataAsCsv, exportDataAsExcel, exportMultipleSheetsAsExcel — see `23-api.md` |
 | 23 | Status bar / side bar API | Enterprise | api | no | P2 | getStatusPanel, isSideBarVisible, openToolPanel, getToolPanelInstance — see `23-api.md` |
-| 23 | Misc API | Community | api | yes | P1 | getFocusedCell, setFocusedCell, ensureColumnVisible, ensureIndexVisible, paginationGoToPage — see `23-api.md` |
+| 23 | Misc API | Community | api | yes | P1 | getFocusedCell, ✅ setFocusedCell, ✅ ensureColumnVisible, ✅ ensureColumnGroupVisible, ✅ ensureRowVisible (by rowId), ensureIndexVisible, paginationGoToPage — see `23-api.md` |
 
 <!-- area:24 Charts & sparklines -->
 | 24 | enableCharts | Enterprise | option | no | P2 | Enables integrated charting; requires IntegratedChartsModule + ag-charts-community peer |

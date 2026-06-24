@@ -1904,3 +1904,112 @@ docs/catalog/02-column-model.md section on ColGroupDef before touching any code.
 This is the first session of Cycle 4; follow the Global Constraints, do not
 skip the verification commands, and commit at the end.
 ```
+
+---
+
+## Shipped
+
+Surface that landed in Cycle 4 (Tasks 1–10, commits `8e1ce73` … `e01aa3d`):
+
+- Column groups — model (`CColGroupDef` + `resolveColumnTree`) + visible
+  `HeaderGroupSubgrid` (multi-row header with cell spans) + open/close state
+  with `marryChildren` + `columnGroupShow`.
+- Runtime option mutation surface — `setGridOption`, `updateGridOptions`,
+  `INITIAL_ONLY_OPTIONS` gate, runtime-honored `rowBuffer` /
+  `suppressColumnVirtualisation` / `suppressRowVirtualisation`.
+- Row-ID-keyed view APIs — real `ensureRowVisible(rowId)` /
+  `ensureColumnVisible` / `ensureColumnGroupVisible`,
+  `setFocusedCell(rowId, colId)`, `setSelectedRowIds(ids)` — all backed by a
+  worker `getRowIndexForId` lookup (no main-thread row scans).
+- Custom cell renderer surface — `registerCellRenderer`,
+  `cellRendererParams`, `cellRendererSelector` dispatched at paint time
+  through the existing `CellRendererRegistry`.
+- Editor commit-back — `valueParser` → `valueSetter` chain on editor
+  commit, fan-out via `applyTransaction({ update })` so the worker re-runs
+  filter / sort / aggregation deterministically.
+- 3 lifecycle events — `gridPreDestroyed` (fires synchronously inside
+  `destroy()` before DOM teardown), `gridSizeChanged` (fires on host bounds
+  change, skips initial-measurement + repaint-without-resize), and
+  `firstDataRendered` (fires exactly once on the first non-empty viewport
+  paint).
+
+**FM coverage flipped (in `docs/catalog/FEATURE_MATRIX.md`):**
+
+- **Area 01:** `rowBuffer`, `suppressColumnVirtualisation`,
+  `suppressRowVirtualisation`, `setGridOption`, `updateGridOptions`,
+  `gridPreDestroyed`, `gridSizeChanged`, `firstDataRendered`.
+- **Area 02:** `valueSetter`, `valueParser`, `cellRendererParams`,
+  `cellRendererSelector`, `ColGroupDef.children`, `ColGroupDef.openByDefault`,
+  `ColGroupDef.marryChildren`, plus six new rows added for surface that did
+  not exist in the pre-Cycle-4 FM: `ColGroupDef.groupId`,
+  `ColGroupDef.headerName`, `columnGroupShow`, `getColumnGroupState`,
+  `setColumnGroupState`, `resetColumnGroupState`.
+- **Area 22:** inline ✅ on the umbrella rows for `gridPreDestroyed`,
+  `gridSizeChanged`, `firstDataRendered`, `columnGroupOpened` (newly added
+  to the Column-events umbrella), and `displayedColumnsChanged` (marked
+  partial — fires on group open; column-state changes land in Cycle 6).
+- **Area 23:** inline ✅ on the umbrella rows for `setGridOption`,
+  `updateGridOptions`, `setFocusedCell`, `ensureColumnVisible`,
+  `ensureColumnGroupVisible`, `ensureRowVisible (by rowId)`,
+  `setSelectedRowIds`, `registerCellRenderer`.
+
+**Carry-over (not flipped this cycle):**
+
+- Area 01 `addEventListener` — ritual line called it "(already present)",
+  but `CGridApi` does not yet expose a public `on(type, handler)` /
+  `addEventListener` method (internal `TypedEventEmitter.on` exists at
+  [cgrid/src/core/eventEmitter.ts:6](../../cgrid/src/core/eventEmitter.ts#L6)).
+  Tracking as a thin follow-up for Cycle 5.
+
+---
+
+## Performance — hand-timed perf gate
+
+Cycle 24 introduces the automated bench harness; until then this section is
+the manual checkpoint. Captured on the `apps/cgrid-positions` demo against
+the live `stomp-view-server` at `ws://localhost:8081` (3000-row snapshot +
+live updates), using a Chromium devtools session at 120 Hz display refresh.
+
+| Metric | Budget | Measured (Cycle 4 exit) | Notes |
+|---|---|---|---|
+| Cold start — full-page first paint (FCP) | < 50 ms (1k×10 internal-init target) | **60 ms** total page load; **~7.5 ms** for `new CGrid()` → `gridReady` (DCL→gridReady delta = 65.1 − 57.6 ms) | Page FCP includes JS bundle parse; the cgrid construction itself sits well under the 50 ms internal-init budget. |
+| Cold start — `gridReady` → first non-empty paint | — (Cycle 24 will formalise) | **915 ms** from `navStart` to 3000-row `modelUpdated` | Dominated by STOMP connect + snapshot serialization, not cgrid; subsequent reconnects landed cleanly. Acceptable since 1M×50 budget (< 200 ms) excludes network. |
+| Scroll FPS | ≥ 120 fps (1M × 50 cols target) | **119.9 fps** sustained over a 1.5 s programmatic full-range rAF scroll; median frame gap **8.30 ms**, p95 **9.20 ms** | Effectively pinned at the 120 Hz display ceiling on the 3000-row × 13-col demo. No dropped frames in the p95. |
+
+**Verdict:** No regression detected against the Performance Budget table.
+Scroll FPS at the display ceiling means we have headroom — Cycle 24 will
+re-measure under 1M × 50 cols where the budget is actually exercised. Cold
+start, both at page and cgrid layers, comfortably inside budget.
+
+---
+
+## Cycle 4 status: COMPLETE
+
+Shipped feature list (one bullet per Task 1–10 commit):
+
+1. Column group model — `CColGroupDef` + `resolveColumnTree` (Task 1).
+2. `HeaderGroupSubgrid` — multi-row column-group header with leaf-span
+   collapsing in the by-rows painter (Task 2).
+3. Column group open/close — `ColumnGroupState`, `marryChildren`,
+   `columnGroupShow`, header-click toggle, `columnGroupOpened` /
+   `displayedColumnsChanged` events (Task 3).
+4. `setGridOption` + `updateGridOptions` with the `INITIAL_ONLY_OPTIONS`
+   runtime gate (Task 4).
+5. `rowBuffer` + `suppressColumnVirtualisation` +
+   `suppressRowVirtualisation` virtualization toggles honored by the
+   viewport (Task 5).
+6. `ensureRowVisible(rowId)` + `ensureColumnVisible(colId)` +
+   `ensureColumnGroupVisible(groupId)` backed by a worker `getRowIndexForId`
+   lookup (Task 6).
+7. `setFocusedCell(rowId, colId)` + `setSelectedRowIds(ids)` keyed by row
+   ID and persisted across model updates (Task 7).
+8. `registerCellRenderer` + `cellRendererParams` + `cellRendererSelector`
+   dispatched through the existing renderer registry (Task 8).
+9. `valueParser` → `valueSetter` editor commit-back, fanning out via
+   `applyTransaction({ update })` (Task 9).
+10. Lifecycle events — `gridPreDestroyed`, `gridSizeChanged`,
+    `firstDataRendered` (Task 10).
+
+Cycle 5 picks up from here with cell-editing UX (`stopEditing`, edit
+navigation, `cellValueChanged` payload completeness) and the
+`addEventListener` carry-over.
