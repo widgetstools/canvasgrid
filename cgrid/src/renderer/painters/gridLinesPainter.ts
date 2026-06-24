@@ -58,6 +58,13 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
     gc.cache.fillStyle = theme.borderColor;
     gc.fillRect(Math.round(vs.bodyRight), vs.bodyTop, 1, vs.bodyBottom - vs.bodyTop);
   }
+
+  // Subgrid separators — header→body, data→totals, etc.
+  // bodyTop is the y where data rows start; a 1px borderColor line sits at bodyTop - 1.
+  if (vs.bodyTop > 0) {
+    gc.cache.fillStyle = theme.borderColor;
+    gc.fillRect(0, Math.round(vs.bodyTop) - 1, rightEdge, 1);
+  }
 }
 
 function paintVerticalsInBand(

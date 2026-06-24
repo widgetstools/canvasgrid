@@ -12,7 +12,7 @@ import { computeViewport, type ViewportState } from './core/viewport';
 import { HeaderSubgrid, DataSubgrid, type Subgrid } from './core/subgrid';
 import { CGridCanvas } from './core/canvas';
 import { CssReader, type ResolvedTheme } from './theming/cssReader';
-import { CellRendererRegistry, textCell, numberCell, checkboxCell } from './renderer/cellRenderers/registry';
+import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell } from './renderer/cellRenderers/registry';
 import { Renderer } from './renderer/renderer';
 import { HitTester } from './interaction/hitTester';
 import { SelectionModel } from './interaction/selectionModel';
@@ -118,6 +118,7 @@ export class CGrid<TRow = any> {
     this.cellRenderers.register('text', textCell);
     this.cellRenderers.register('number', numberCell);
     this.cellRenderers.register('checkbox', checkboxCell);
+    this.cellRenderers.register('header', headerCell);
 
     // 3. Column model
     for (const def of options.columnDefs) {

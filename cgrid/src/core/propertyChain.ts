@@ -1,4 +1,8 @@
-import type { CColDef, CValueGetterParams, CValueFormatterParams } from '../types';
+import type { CColDef, CValueGetterParams, CValueFormatterParams, ColCellOverrides } from '../types';
+import type { CellPaintConfig } from '../renderer/cellRenderers/registry';
+import type { ResolvedTheme } from '../theming/cssReader';
+
+export type { ColCellOverrides };
 
 export interface ResolvedColDef<TRow = any> {
   colId: string;
@@ -20,6 +24,51 @@ export interface ResolvedColDef<TRow = any> {
   resizable: boolean;
   editable: boolean | ((row: TRow) => boolean);
   cellEditor?: 'text' | 'number';
+  cellStyle?: ColCellOverrides;
+}
+
+export interface ApplyCellPropsInput {
+  theme: ResolvedTheme;
+  colDef: ResolvedColDef;
+  value: unknown;
+  valueFormatted: string;
+  x: number; y: number; w: number; h: number;
+  rowBg: string;
+  prefillColor: string;
+  isFocused: boolean;
+  isSelected: boolean;
+  isHovered: boolean;
+  isHeader: boolean;
+  iconColor?: string;
+  sortDirection?: 'asc' | 'desc';
+  flashAlpha?: number;
+}
+
+/** Repopulate `target` in place. The caller reuses a single config object
+ * across the whole frame to keep paint allocation-free. */
+export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput): void {
+  const cs = ctx.colDef.cellStyle;
+  target.value = ctx.value;
+  target.valueFormatted = ctx.valueFormatted;
+  target.bounds.x = ctx.x;
+  target.bounds.y = ctx.y;
+  target.bounds.w = ctx.w;
+  target.bounds.h = ctx.h;
+  target.font = cs?.font ?? ctx.theme.font;
+  target.fg = ctx.isHeader
+    ? ctx.theme.headerFg
+    : (cs?.fg ?? ctx.theme.fg);
+  target.bg = ctx.rowBg;
+  target.borderColor = ctx.theme.gridLineColor;
+  target.halign = cs?.halign ?? (ctx.colDef.type === 'number' ? 'right' : 'left');
+  target.prefillColor = ctx.prefillColor;
+  target.isFocused = ctx.isFocused;
+  target.isSelected = ctx.isSelected;
+  target.isHovered = ctx.isHovered;
+  target.isHeader = ctx.isHeader;
+  target.iconColor = ctx.iconColor;
+  target.sortDirection = ctx.sortDirection;
+  target.flashAlpha = ctx.flashAlpha;
 }
 
 export function resolveColDef<TRow>(
@@ -55,5 +104,6 @@ export function resolveColDef<TRow>(
     resizable: merged.resizable ?? true,
     editable: merged.editable ?? false,
     cellEditor: merged.cellEditor,
+    cellStyle: merged.cellStyle,
   };
 }

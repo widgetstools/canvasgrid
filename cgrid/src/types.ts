@@ -1,6 +1,13 @@
 // Public types for cgrid. Re-exported from src/cgrid.ts.
 // See docs/superpowers/specs/2026-06-23-canvasgrid-foundation-design.md §9.
 
+export interface ColCellOverrides {
+  font?: string;
+  fg?: string;
+  bg?: string;
+  halign?: 'left' | 'right' | 'center';
+}
+
 export interface CGridOptions<TRow = any> {
   columnDefs: CColDef<TRow>[];
   defaultColDef?: Partial<CColDef<TRow>>;
@@ -37,6 +44,7 @@ export interface CColDef<TRow = any, TValue = any> {
   resizable?: boolean;
   editable?: boolean | ((row: TRow) => boolean);
   cellEditor?: 'text' | 'number';
+  cellStyle?: ColCellOverrides;
 }
 
 export interface CValueGetterParams<TRow> { data: TRow; colId: string }

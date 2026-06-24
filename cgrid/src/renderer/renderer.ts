@@ -5,9 +5,7 @@ import type { CellRendererRegistry } from './cellRenderers/registry';
 import type { CellDataLookup } from './painters/types';
 import type { SortModel } from '../types';
 import type { CachedContext2D } from './gc';
-import { paintHeader } from './painters/headerPainter';
-import { paintBody } from './painters/bodyPainter';
-import { paintPinned } from './painters/pinnedPainter';
+import { paintCellsByRows } from './painters/byRows';
 import { paintGridLines } from './painters/gridLinesPainter';
 import { paintOverlay } from './painters/overlayPainter';
 
@@ -52,10 +50,7 @@ export class Renderer {
     const h = this.opts.getCanvasHeight();
     gc.cache.fillStyle = pctx.theme.bg;
     gc.fillRect(0, 0, w, h);
-    paintHeader(gc, pctx);
-    paintPinned(gc, pctx, 'left');
-    paintBody(gc, pctx);
-    paintPinned(gc, pctx, 'right');
+    paintCellsByRows(gc, pctx);
     // Gridlines run after all cell paints so they sit on top with no double-stroked
     // seams. Overlay (focus ring) goes last so it sits above the gridlines.
     paintGridLines(gc, pctx);
