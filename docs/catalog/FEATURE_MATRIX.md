@@ -61,7 +61,7 @@
 | 02 | ✅ cellRendererSelector | Community | option | no | P1 | Per-row dynamic renderer selection callback |
 | 02 | enableCellChangeFlash | Community | option | yes | P1 | Flash cell on value change |
 | 02 | ✅ autoHeight | Community | option | yes | P2 | Row height expands to fit this column's content |
-| 02 | wrapText | Community | option | no | P2 | Enables text wrap inside cell |
+| 02 | ✅ wrapText | Community | option | no | P2 | Enables text wrap inside cell |
 | 02 | width / initialWidth | Community | option | yes | P0 | Column pixel width |
 | 02 | minWidth / maxWidth | Community | option | yes | P0 | Column width constraints |
 | 02 | flex | Community | option | yes | P0 | Proportional width allocation; overrides explicit width |
@@ -73,7 +73,7 @@
 | 02 | pinned / initialPinned | Community | option | yes | P1 | Pin column to left or right frozen pane |
 | 02 | lockPinned | Community | option | no | P2 | Prevent user pin changes |
 | 02 | suppressNavigable | Community | option | no | P2 | Exclude cell from keyboard tab navigation |
-| 02 | suppressKeyboardEvent | Community | option | no | P2 | Block specific keyboard events in cell |
+| 02 | ✅ suppressKeyboardEvent | Community | option | no | P2 | Block specific keyboard events in cell |
 | 02 | ✅ ColGroupDef.children | Community | option | yes | P0 | Children of a column group |
 | 02 | ✅ ColGroupDef.openByDefault | Community | option | no | P2 | Group expanded on load |
 | 02 | ✅ ColGroupDef.marryChildren | Community | option | no | P2 | Prevents separating group's columns via drag |
@@ -174,8 +174,8 @@
 | 05 | suppressMaxRenderedRowRestriction | Community | option | no | P3 | Remove 500-row cap when virt disabled |
 | 05 | suppressAnimationFrame | Community | option | no | P1 | Disable rAF scheduling for scroll rendering |
 | 05 | suppressColumnVirtualisation | Community | option | no | P1 | Render all columns regardless of scroll |
-| 05 | rowHeight | Community | option | yes | P0 | Default row height in pixels |
-| 05 | getRowHeight | Community | option | yes | P1 | Per-row height callback |
+| 05 | ✅ rowHeight | Community | option | yes | P0 | Default row height in pixels |
+| 05 | ✅ getRowHeight | Community | option | yes | P1 | Per-row height callback |
 | 05 | domLayout: normal | Community | option | no | P0 | Fixed-height container with scrollbars |
 | 05 | domLayout: autoHeight | Community | option | no | P2 | Container grows to show all rows |
 | 05 | domLayout: print | Community | option | no | P3 | All rows visible; no scrollbars |
@@ -188,7 +188,7 @@
 | 05 | cellRendererParams (ColDef) | Community | option | yes | P0 | Params for cell renderer |
 | 05 | cellRendererSelector (ColDef) | Community | option | no | P1 | Per-row dynamic renderer selection |
 | 05 | ✅ autoHeight (ColDef) | Community | option | yes | P2 | Row expands to fit column content |
-| 05 | wrapText (ColDef) | Community | option | no | P2 | Enable text wrap in cell |
+| 05 | ✅ wrapText (ColDef) | Community | option | no | P2 | Enable text wrap in cell |
 | 05 | animateRows | Community | option | no | P2 | CSS transition for row position animation |
 | 05 | suppressScrollOnNewData | Community | option | no | P2 | No auto-scroll to top on data replace |
 | 05 | alwaysShowHorizontalScroll | Community | option | no | P2 | Always visible horizontal scrollbar |
@@ -221,40 +221,40 @@
 | 05 | domLayout print | Community | behavior | no | P3 | All rows rendered; no scroll; for printing |
 
 <!-- area:06 Cell editing -->
-| 06 | editable (ColDef) | Community | option | no | P1 | Boolean or callback enabling cell editing per column |
-| 06 | cellEditor (ColDef) | Community | option | no | P1 | Built-in or custom editor component key/class |
-| 06 | cellEditorParams (ColDef) | Community | option | no | P1 | Params passed to the cell editor on init |
+| 06 | ✅ editable (ColDef) | Community | option | no | P1 | Boolean or callback enabling cell editing per column |
+| 06 | ✅ cellEditor (ColDef) | Community | option | no | P1 | Built-in or custom editor component key/class |
+| 06 | ✅ cellEditorParams (ColDef) | Community | option | no | P1 | Params passed to the cell editor on init |
 | 06 | cellEditorSelector (ColDef) | Community | option | no | P1 | Per-row callback returning dynamic editor + params |
-| 06 | cellEditorPopup (ColDef) | Community | option | ✅ | P2 | Render editor in a popup overlay |
-| 06 | cellEditorPopupPosition (ColDef) | Community | option | ✅ | P2 | Popup position: 'over' or 'under' the cell |
-| 06 | singleClickEdit (ColDef) | Community | option | no | P2 | Start editing on single click for this column |
-| 06 | valueSetter (ColDef) | Community | option | no | P1 | Writes parsed edit value back to row data |
-| 06 | valueParser (ColDef) | Community | option | no | P1 | Converts raw editor string to typed value |
+| 06 | ✅ cellEditorPopup (ColDef) | Community | option | ✅ | P2 | Render editor in a popup overlay |
+| 06 | ✅ cellEditorPopupPosition (ColDef) | Community | option | ✅ | P2 | Popup position: 'over' or 'under' the cell |
+| 06 | ✅ singleClickEdit (ColDef) | Community | option | no | P2 | Start editing on single click for this column |
+| 06 | ✅ valueSetter (ColDef) | Community | option | no | P1 | Writes parsed edit value back to row data |
+| 06 | ✅ valueParser (ColDef) | Community | option | no | P1 | Converts raw editor string to typed value |
 | 06 | useValueParserForImport (ColDef) | Community | option | no | P2 | Apply valueParser on clipboard paste and fill handle |
 | 06 | onCellValueChanged (ColDef) | Community | option | no | P1 | Column-level callback when cell value changes |
-| 06 | editType (GridOptions) | Community | option | no | P1 | 'fullRow' enables full-row edit mode |
-| 06 | singleClickEdit (GridOptions) | Community | option | no | P2 | Grid-level single-click to edit |
-| 06 | suppressClickEdit | Community | option | no | P2 | Disable click-to-edit; programmatic only |
+| 06 | ✅ editType (GridOptions) | Community | option | no | P1 | 'fullRow' enables full-row edit mode |
+| 06 | ✅ singleClickEdit (GridOptions) | Community | option | no | P2 | Grid-level single-click to edit |
+| 06 | ✅ suppressClickEdit | Community | option | no | P2 | Disable click-to-edit; programmatic only |
 | 06 | readOnlyEdit | Community | option | no | P1 | Grid fires cellEditRequest instead of committing edits |
-| 06 | stopEditingWhenCellsLoseFocus | Community | option | no | P2 | Stop edit when grid loses focus |
-| 06 | enterNavigatesVertically | Community | option | no | P2 | Enter moves focus down (Excel-style) |
-| 06 | enterNavigatesVerticallyAfterEdit | Community | option | no | P2 | Enter moves down after edit commit |
-| 06 | enableCellEditingOnBackspace | Community | option | no | P3 | macOS: start edit on Backspace |
-| 06 | suppressStartEditOnTab | Community | option | no | P2 | Prevent Tab from starting next cell edit |
+| 06 | ✅ stopEditingWhenCellsLoseFocus | Community | option | no | P2 | Stop edit when grid loses focus |
+| 06 | ✅ enterNavigatesVertically | Community | option | no | P2 | Enter moves focus down (Excel-style) |
+| 06 | ✅ enterNavigatesVerticallyAfterEdit | Community | option | no | P2 | Enter moves down after edit commit |
+| 06 | ✅ enableCellEditingOnBackspace | Community | option | no | P3 | macOS: start edit on Backspace |
+| 06 | ✅ suppressStartEditOnTab | Community | option | no | P2 | Prevent Tab from starting next cell edit |
 | 06 | invalidEditValueMode | Community | option | no | P2 | 'block' keeps editor open on validation failure |
 | 06 | getFullRowEditValidationErrors | Community | option | no | P2 | Validate full-row edit before commit |
 | 06 | undoRedoCellEditing | Community | option | no | P2 | Enable undo/redo stack for cell edits |
 | 06 | undoRedoCellEditingLimit | Community | option | no | P2 | Max depth of undo/redo stack |
-| 06 | agTextCellEditor | Community | option | no | P1 | Built-in plain text editor |
-| 06 | agLargeTextCellEditor | Community | option | no | P2 | Built-in textarea editor |
-| 06 | agSelectCellEditor | Community | option | no | P2 | Built-in native select editor |
-| 06 | agNumberCellEditor | Community | option | no | P1 | Built-in numeric input editor |
-| 06 | agDateCellEditor | Community | option | no | P2 | Built-in date picker editor |
-| 06 | agDateStringCellEditor | Community | option | no | P2 | Built-in date editor storing value as string |
-| 06 | agCheckboxCellEditor | Community | option | no | P2 | Built-in checkbox editor |
+| 06 | ✅ agTextCellEditor (cgrid: 'text') | Community | option | no | P1 | Built-in plain text editor |
+| 06 | ✅ agLargeTextCellEditor (cgrid: 'largeText') | Community | option | no | P2 | Built-in textarea editor |
+| 06 | ✅ agSelectCellEditor (cgrid: 'select') | Community | option | no | P2 | Built-in native select editor |
+| 06 | ✅ agNumberCellEditor (cgrid: 'number') | Community | option | no | P1 | Built-in numeric input editor |
+| 06 | ✅ agDateCellEditor (cgrid: 'date') | Community | option | no | P2 | Built-in date picker editor |
+| 06 | ✅ agDateStringCellEditor (cgrid: 'dateString') | Community | option | no | P2 | Built-in date editor storing value as string |
+| 06 | ✅ agCheckboxCellEditor (cgrid: 'checkbox') | Community | option | no | P2 | Built-in checkbox editor |
 | 06 | agRichSelectCellEditor | Enterprise | option | no | P2 | Enterprise virtualised dropdown editor with search |
-| 06 | startEditingCell | Community | api | no | P1 | Programmatically start editing a cell |
-| 06 | stopEditing | Community | api | no | P1 | Stop any active edit; optionally cancel |
+| 06 | ✅ startEditingCell | Community | api | no | P1 | Programmatically start editing a cell |
+| 06 | ✅ stopEditing | Community | api | no | P1 | Stop any active edit; optionally cancel |
 | 06 | getEditingCells | Community | api | no | P1 | Return list of cells currently in edit mode |
 | 06 | getEditRowValues | Community | api | no | P2 | Pending edit values for a row during full-row edit |
 | 06 | getCellEditorInstances | Community | api | no | P2 | Access live editor component instances |
@@ -264,23 +264,23 @@
 | 06 | redoCellEditing | Community | api | no | P2 | Re-apply most recently undone edit |
 | 06 | getCurrentUndoSize | Community | api | no | P3 | Number of available undo operations |
 | 06 | getCurrentRedoSize | Community | api | no | P3 | Number of available redo operations |
-| 06 | cellEditingStarted | Community | event | no | P1 | Cell editor activated |
-| 06 | cellEditingStopped | Community | event | no | P1 | Cell editor closed |
-| 06 | cellValueChanged | Community | event | no | P1 | Cell value committed (edit, paste, undo, redo) |
+| 06 | ✅ cellEditingStarted | Community | event | no | P1 | Cell editor activated |
+| 06 | ✅ cellEditingStopped | Community | event | no | P1 | Cell editor closed |
+| 06 | ✅ cellValueChanged | Community | event | no | P1 | Cell value committed (edit, paste, undo, redo) |
 | 06 | cellEditRequest | Community | event | no | P1 | Fired instead of commit when readOnlyEdit=true |
-| 06 | rowEditingStarted | Community | event | no | P2 | Full-row edit started |
-| 06 | rowEditingStopped | Community | event | no | P2 | Full-row edit ended |
-| 06 | rowValueChanged | Community | event | no | P2 | At least one value changed in full-row edit |
+| 06 | ✅ rowEditingStarted | Community | event | no | P2 | Full-row edit started |
+| 06 | ✅ rowEditingStopped | Community | event | no | P2 | Full-row edit ended |
+| 06 | ✅ rowValueChanged | Community | event | no | P2 | At least one value changed in full-row edit |
 | 06 | undoStarted | Community | event | no | P2 | Undo operation begins |
 | 06 | undoEnded | Community | event | no | P2 | Undo operation completes |
 | 06 | redoStarted | Community | event | no | P2 | Redo operation begins |
 | 06 | redoEnded | Community | event | no | P2 | Redo operation completes |
-| 06 | Single-cell vs full-row edit mode | Community | behavior | no | P1 | editType='fullRow' activates all editable cells in row |
-| 06 | valueParser / valueSetter pipeline | Community | behavior | no | P1 | Editor → parser → setter → data write |
-| 06 | Popup editor positioning | Community | behavior | no | P2 | 'over' covers cell; 'under' leaves value visible |
+| 06 | ✅ Single-cell vs full-row edit mode | Community | behavior | no | P1 | editType='fullRow' activates all editable cells in row |
+| 06 | ✅ valueParser / valueSetter pipeline | Community | behavior | no | P1 | Editor → parser → setter → data write |
+| 06 | ✅ Popup editor positioning | Community | behavior | no | P2 | 'over' covers cell; 'under' leaves value visible |
 | 06 | readOnlyEdit immutable pattern | Community | behavior | no | P1 | Grid fires cellEditRequest; app pushes transaction |
 | 06 | Undo / redo stack semantics | Community | behavior | no | P2 | Bounded stack; cleared on external transaction |
-| 06 | Custom editor ICellEditor interface | Community | behavior | no | P1 | getValue/isCancelBeforeStart/isCancelAfterEnd lifecycle |
+| 06 | ✅ Custom editor ICellEditor interface | Community | behavior | no | P1 | getValue/isCancelBeforeStart/isCancelAfterEnd lifecycle |
 | 06 | Validation via getValidationErrors | Community | behavior | no | P2 | Editor returns errors; grid blocks commit when configured |
 
 <!-- area:07 Sorting -->
@@ -740,8 +740,8 @@
 <!-- area:22 Events -->
 | 22 | Grid lifecycle events | Community | event | yes | P0 | gridReady, ✅ gridPreDestroyed, ✅ gridSizeChanged, ✅ firstDataRendered, modelUpdated, stateUpdated — see `22-events.md` |
 | 22 | Column events | Community | event | yes | P1 | columnMoved, columnVisible, columnResized, ✅ displayedColumnsChanged (partial — fires on group open; column-state changes land in Cycle 6), ✅ columnGroupOpened, columnHeaderClicked, etc. — see `22-events.md` |
-| 22 | Row events | Community | event | yes | P0 | rowDataUpdated, rowGroupOpened, rowClicked, rowEditingStarted/Stopped, asyncTransactionsFlushed — see `22-events.md` |
-| 22 | Cell events | Community | event | yes | P0 | cellClicked, cellValueChanged, cellEditingStarted/Stopped, cellFocused, tooltipShow — see `22-events.md` |
+| 22 | Row events | Community | event | yes | P0 | rowDataUpdated, rowGroupOpened, rowClicked, ✅ rowEditingStarted/Stopped, ✅ rowValueChanged, asyncTransactionsFlushed — see `22-events.md` |
+| 22 | Cell events | Community | event | yes | P0 | cellClicked, ✅ cellValueChanged, ✅ cellEditingStarted/Stopped, cellFocused, tooltipShow — see `22-events.md` |
 | 22 | Selection events | Community | event | yes | P0 | rowSelected, selectionChanged, cellSelectionChanged — see `22-events.md` |
 | 22 | Filter / sort events | Community | event | yes | P1 | filterChanged, filterOpened, sortChanged, findChanged, advancedFilterBuilderVisibleChanged — see `22-events.md` |
 | 22 | Group / pivot events | Enterprise | event | no | P1 | columnRowGroupChanged, columnPivotModeChanged, pivotMaxColumnsExceeded, expandOrCollapseAll — see `22-events.md` |
@@ -751,11 +751,11 @@
 | 22 | Misc events | Community | event | yes | P1 | undoStarted/Ended, redoStarted/Ended, cutStart/End, pasteStart/End, fillStart/End, batchEditingStarted/Stopped — see `22-events.md` |
 
 <!-- area:23 API -->
-| 23 | Lifecycle API | Community | api | yes | P0 | getGridId, destroy, ✅ setGridOption, ✅ updateGridOptions, getState, setState, addEventListener — see `23-api.md` |
+| 23 | Lifecycle API | Community | api | yes | P0 | getGridId, destroy, ✅ setGridOption, ✅ updateGridOptions, getState, setState, ✅ addEventListener / removeEventListener / on / off — see `23-api.md` |
 | 23 | Data API | Community | api | yes | P0 | applyTransaction, applyTransactionAsync, flushAsyncTransactions, refreshClientSideRowModel, setRowCount — see `23-api.md` |
 | 23 | Columns API | Community | api | yes | P0 | getColumnDefs, getColumn, applyColumnState, getColumnState, setColumnsVisible, sizeColumnsToFit, autoSizeColumns — see `23-api.md` |
 | 23 | Rows API | Community | api | yes | P0 | getRowNode, getDisplayedRowCount, forEachNode, redrawRows, expandAll, collapseAll, getPinnedTopRow — see `23-api.md` |
-| 23 | Cells API | Community | api | yes | P0 | refreshCells, flashCells, getCellRendererInstances, ✅ registerCellRenderer, startEditingCell, stopEditing, undoCellEditing — see `23-api.md` |
+| 23 | Cells API | Community | api | yes | P0 | refreshCells, flashCells, getCellRendererInstances, ✅ registerCellRenderer, ✅ registerCellEditor, ✅ startEditingCell, ✅ stopEditing, undoCellEditing — see `23-api.md` |
 | 23 | Selection API | Community | api | yes | P0 | selectAll, deselectAll, getSelectedNodes, getSelectedRows, ✅ setSelectedRowIds, getCellRanges, clearCellSelection — see `23-api.md` |
 | 23 | Sorting API | Community | api | no | P1 | onSortChanged — see `23-api.md` |
 | 23 | Filtering API | Community | api | yes | P1 | isAnyFilterPresent, setFilterModel, getFilterModel, setColumnFilterModel, getAdvancedFilterModel — see `23-api.md` |
