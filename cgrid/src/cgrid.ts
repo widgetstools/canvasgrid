@@ -3,13 +3,13 @@
 // worker/, theming/. See docs/superpowers/specs/2026-06-23-canvasgrid-foundation-design.md.
 import './theming/tokens.css';
 import type {
-  CGridOptions, CGridEvent, CGridApi, Tx, TransactionResult, SortModel, FilterModel, GroupModel, CColDef,
+  CGridOptions, CGridEvent, CGridApi, Tx, TransactionResult, SortModel, FilterModel, GroupModel,
 } from './types';
 import { TypedEventEmitter } from './core/eventEmitter';
 import { resolveColDef, type ResolvedColDef } from './core/propertyChain';
 import { resolveColumnWidths, type ColumnLayout } from './core/layout';
 import { computeViewport, type ViewportState } from './core/viewport';
-import { PaintLoop, type DirtyRect } from './core/paintLoop';
+import { CGridCanvas } from './core/canvas';
 import { CssReader, type ResolvedTheme } from './theming/cssReader';
 import { CellRendererRegistry, textCell, numberCell, checkboxCell } from './renderer/cellRenderers/registry';
 import { Renderer } from './renderer/renderer';
@@ -51,9 +51,6 @@ export function inferRowIdField<T>(getRowId: (row: T) => string): string {
   return matches[0]![1]!;
 }
 
-// Suppress unused import lint for DirtyRect — used as type only via PaintLoop callback signature.
-type _DirtyRectAlias = DirtyRect;
-
 export class CGrid<TRow = any> {
   private events = new TypedEventEmitter<CGridEvent>();
   private columnDefsMap = new Map<string, ResolvedColDef<TRow>>();
@@ -71,11 +68,11 @@ export class CGrid<TRow = any> {
   private root: HTMLDivElement;
   private scroller: HTMLDivElement;
   private sizer: HTMLDivElement;
-  private canvas: HTMLCanvasElement;
+  private cgridCanvas!: CGridCanvas;
+  private canvasBounds = { width: 0, height: 0 };
   private editorContainer: HTMLDivElement;
   private cssReader: CssReader;
   private cellRenderers: CellRendererRegistry;
-  private paintLoop: PaintLoop;
   private renderer: Renderer;
   private viewport!: ViewportState;
   private selection: SelectionModel;
@@ -86,16 +83,16 @@ export class CGrid<TRow = any> {
   private a11y: A11yOverlay;
   private workerClient: WorkerClient;
   private destroyed = false;
-  private resizeObs: ResizeObserver;
   private selectionUnsubscribe: () => void = () => {};
   private sortModel: SortModel = [];
 
-  constructor(private container: HTMLElement, private options: CGridOptions<TRow>) {
+  constructor(container: HTMLElement, private options: CGridOptions<TRow>) {
     if (!options.getRowId) throw new Error('[cgrid] options.getRowId is required');
 
     // 1. DOM scaffold — scroller (with sized sizer child) provides native scrollbars;
-    // the canvas overlays the scroller's content area but leaves the scrollbar strips
-    // uncovered so the browser-drawn scrollbars remain interactive.
+    // the canvas (created later by CGridCanvas) overlays the scroller's content area
+    // but is sized to scroller.clientWidth/Height so the scrollbar strips remain
+    // interactive.
     this.root = document.createElement('div');
     this.root.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
     this.root.classList.add(options.theme ?? 'cg-theme-quartz');
@@ -108,16 +105,10 @@ export class CGrid<TRow = any> {
     this.sizer.style.cssText = 'width:1px; height:1px; pointer-events:none;';
     this.scroller.appendChild(this.sizer);
 
-    this.canvas = document.createElement('canvas');
-    this.canvas.className = 'cg-canvas';
-    this.canvas.style.cssText = 'display:block; position:absolute; left:0; top:0; outline:none;';
-    this.canvas.tabIndex = 0;
     this.editorContainer = document.createElement('div');
     this.editorContainer.style.cssText = 'position:absolute; left:0; top:0; right:0; bottom:0; pointer-events:none;';
     // Children of editorContainer set pointer-events:auto themselves
     this.root.appendChild(this.scroller);
-    this.root.appendChild(this.canvas);
-    this.root.appendChild(this.editorContainer);
     container.appendChild(this.root);
 
     // 2. Theme + cell renderers
@@ -135,17 +126,17 @@ export class CGrid<TRow = any> {
       this.columnOrder.push(r);
     }
 
-    // 4. Initial viewport
+    // 4. Initial layout + viewport. The first measurement happens inside the
+    // CGridCanvas constructor below (via the setBounds callback), but
+    // recomputeViewport needs an initial layout so it doesn't crash on undefined.
+    this.columnLayout = resolveColumnWidths(this.columnOrder, this.scroller.clientWidth || 800);
     this.recomputeViewport();
 
     // 5. Selection
     this.selection = new SelectionModel(options.rowSelection ?? 'none');
 
-    // 6. Paint loop + renderer
-    this.paintLoop = new PaintLoop((rects) => this.renderer.paint(rects));
+    // 6. Renderer — no canvas, no paint loop; just the per-frame paint logic.
     this.renderer = new Renderer({
-      canvas: this.canvas,
-      paintLoop: this.paintLoop,
       getViewport: () => this.viewport,
       getTheme: () => this.theme,
       getColumnDefs: () => this.columnDefsMap as Map<string, ResolvedColDef>,
@@ -153,16 +144,47 @@ export class CGrid<TRow = any> {
       cellData: (rowIndex, colId) => this.cellAt(rowIndex, colId),
       getSelection: () => this.selection.state,
       getSortModel: () => this.sortModel,
+      getCanvasWidth: () => this.canvasBounds.width,
+      getCanvasHeight: () => this.canvasBounds.height,
     });
 
-    // 7. Hit-test + input
+    // 7. Canvas wrapper — owns the <canvas>, gc cache, RAF + resize polling.
+    // The setBounds callback fires synchronously inside the constructor's first
+    // resize() — BEFORE this.cgridCanvas is assigned — so the renderer must
+    // read canvas dimensions from `canvasBounds` (which setBounds sets first),
+    // not from this.cgridCanvas.bounds.
+    this.cgridCanvas = new CGridCanvas(this.root, {
+      setBounds: (b) => {
+        this.canvasBounds.width = b.width;
+        this.canvasBounds.height = b.height;
+        this.columnLayout = resolveColumnWidths(this.columnOrder, b.width);
+        this.recomputeViewport();
+        // Only request viewport once the worker is connected; before that, the
+        // worker client throws on send. After init the gridReady handler does
+        // the first fetch and any later resize re-fetches normally.
+        if (this.workerClient) this.requestViewport();
+      },
+      paint: (gc) => this.renderer.paint(gc),
+    }, {
+      // Drawable size = scroller's inner area (excludes the scrollbar gutter)
+      // so the canvas never overlaps the native scrollbar.
+      measureSize: () => ({
+        width: this.scroller.clientWidth || this.root.clientWidth || 0,
+        height: this.scroller.clientHeight || this.root.clientHeight || 0,
+      }),
+    });
+    // Stack editorContainer above the canvas (canvas was appended to root
+    // by CGridCanvas, so editor goes on top).
+    this.root.appendChild(this.editorContainer);
+
+    // 8. Hit-test + input
     this.hitTester = new HitTester(
       () => this.viewport,
       () => this.theme.headerHeight,
       () => this.theme.resizerHotZone,
     );
     const inputDeps: import('./interaction/pointerInput').InputDeps = {
-      canvas: this.canvas,
+      canvas: this.cgridCanvas.canvas,
       hitTester: this.hitTester,
       selectionModel: this.selection,
       visibleColIds: () => this.viewport.visibleColumns.map((c) => c.colId),
@@ -189,7 +211,7 @@ export class CGrid<TRow = any> {
     this.editor = new EditorOverlay();
     this.a11y = new A11yOverlay(this.root);
 
-    // 8. Worker
+    // 9. Worker
     // Foundation: use options.worker.url for test injection; otherwise resolve the co-emitted worker.js
     // via new URL() so bundlers (Vite library mode) emit a proper static asset reference rather than
     // inlining raw TypeScript as a data: URL (which browsers reject).
@@ -216,27 +238,21 @@ export class CGrid<TRow = any> {
       if (options.rowData) this.setRowData(options.rowData);
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
 
-    // 9. Resize observer + native scroll listener
-    this.resizeObs = new ResizeObserver(() => this.handleResize());
-    this.resizeObs.observe(this.root);
-    this.handleResize();
-
+    // 10. Native scroll listener
     this.scroller.addEventListener('scroll', () => {
       this.onScrollerScroll(this.scroller.scrollLeft, this.scroller.scrollTop);
     });
 
-    // 10. Selection feedback
+    // 11. Selection feedback
     this.selectionUnsubscribe = this.selection.onChange((state) => {
       // Auto-scroll the focused cell into view so keyboard nav past the
       // visible window keeps the focus in the rendered region.
       if (state.focusedRowIndex !== null) this.ensureRowIndexVisible(state.focusedRowIndex);
       if (state.focusedColId !== null) this.ensureColIdVisible(state.focusedColId);
-      this.paintLoop.markFullDirty();
+      this.cgridCanvas.requestRepaint();
       this.events.emit({ type: 'selectionChanged', selectedRowIds: this.getSelectedRowIds() });
       this.updateA11y();
     });
-
-    this.paintLoop.start();
   }
 
   // --- Public API -----------------------------------------------------------
@@ -282,7 +298,7 @@ export class CGrid<TRow = any> {
       this.rowCount = visibleCount;
       this.recomputeViewport();
       this.events.emit({ type: 'sortChanged', sortModel: s });
-      this.paintLoop.markFullDirty();
+      this.cgridCanvas.requestRepaint();
       this.requestViewport();
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
   }
@@ -336,7 +352,7 @@ export class CGrid<TRow = any> {
 
   setFocusedCell(_rowId: string, _colId: string): void { /* deferred */ }
 
-  refresh(): void { this.paintLoop.markFullDirty(); }
+  refresh(): void { this.cgridCanvas.requestRepaint(); }
 
   setTheme(themeClass: string): void {
     const current = Array.from(this.root.classList).filter((c) => c.startsWith('cg-theme-'));
@@ -344,16 +360,15 @@ export class CGrid<TRow = any> {
     this.root.classList.add(themeClass);
     this.theme = this.cssReader.read();
     this.recomputeViewport();
-    this.paintLoop.markFullDirty();
+    this.cgridCanvas.requestRepaint();
   }
 
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
     this.selectionUnsubscribe();
-    this.paintLoop.stop();
+    this.cgridCanvas.destroy();
     this.workerClient.destroy();
-    this.resizeObs.disconnect();
     this.pointer.destroy();
     this.keyboard.destroy();
     this.a11y.destroy();
@@ -392,22 +407,6 @@ export class CGrid<TRow = any> {
       aggFunc: c.aggFunc,
       filter: c.filter,
     }));
-  }
-
-  /**
-   * Recompute layout + canvas dims based on the scroller's inner client area
-   * (which excludes the space taken by native scrollbars). Also re-size the
-   * sizer so the browser's scrollbars span the right range.
-   */
-  private handleResize(): void {
-    const w = this.scroller.clientWidth || this.root.clientWidth;
-    const h = this.scroller.clientHeight || this.root.clientHeight;
-    // Layout + viewport BEFORE syncSize so the synchronous repaint inside
-    // syncSize sees fresh column widths and viewport state.
-    this.columnLayout = resolveColumnWidths(this.columnOrder, w);
-    this.recomputeViewport();
-    this.renderer.syncSize(w, h);
-    this.requestViewport();
   }
 
   private computeCurrentViewport(): ViewportState {
@@ -454,7 +453,7 @@ export class CGrid<TRow = any> {
     this.scrollTop = y;
     this.recomputeViewport();
     this.events.emit({ type: 'viewportChanged', firstRow: this.viewport.firstRow, lastRow: this.viewport.lastRow });
-    this.paintLoop.markFullDirty();
+    this.cgridCanvas.requestRepaint();
     this.requestViewport();
   }
 
@@ -520,7 +519,7 @@ export class CGrid<TRow = any> {
         this.viewportRequestPending = false;
         this.chunk = chunk;
         this.decodedTextCols.clear();
-        this.paintLoop.markFullDirty();
+        this.cgridCanvas.requestRepaint();
         this.updateA11y();
         if (chunk.totals) {
           this.events.emit({ type: 'aggregationChanged', totals: chunk.totals });
@@ -590,7 +589,7 @@ export class CGrid<TRow = any> {
     def.width = newW;
     this.columnLayout = resolveColumnWidths(this.columnOrder, this.root.clientWidth);
     this.recomputeViewport();
-    this.paintLoop.markFullDirty();
+    this.cgridCanvas.requestRepaint();
     this.events.emit({ type: 'columnResized', colId, width: newW });
   }
 

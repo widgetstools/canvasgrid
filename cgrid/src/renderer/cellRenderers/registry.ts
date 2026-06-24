@@ -1,3 +1,5 @@
+import type { CachedContext2D } from '../gc';
+
 export interface CellPaintParams<T = unknown> {
   value: T;
   valueFormatted: string;
@@ -10,7 +12,7 @@ export interface CellPaintParams<T = unknown> {
 }
 
 export interface CellPainter<T = unknown> {
-  paint(ctx: CanvasRenderingContext2D, params: CellPaintParams<T>): void;
+  paint(gc: CachedContext2D, params: CellPaintParams<T>): void;
 }
 
 export class CellRendererRegistry {
@@ -27,76 +29,79 @@ export class CellRendererRegistry {
 
 const PADDING = 6;
 
-function paintBackground(ctx: CanvasRenderingContext2D, p: CellPaintParams): void {
+function paintBackground(gc: CachedContext2D, p: CellPaintParams): void {
   const { x, y, w, h } = p.bounds;
-  ctx.fillStyle = p.style.bg;
-  ctx.fillRect(x, y, w, h);
+  gc.cache.fillStyle = p.style.bg;
+  gc.fillRect(x, y, w, h);
   // Bottom-only row divider — no vertical column dividers, matches reference design.
-  ctx.strokeStyle = p.style.borderColor;
-  ctx.lineWidth = 1;
-  ctx.beginPath();
-  ctx.moveTo(x, y + h - 0.5);
-  ctx.lineTo(x + w, y + h - 0.5);
-  ctx.stroke();
+  gc.cache.strokeStyle = p.style.borderColor;
+  gc.cache.lineWidth = 1;
+  gc.beginPath();
+  gc.moveTo(x, y + h - 0.5);
+  gc.lineTo(x + w, y + h - 0.5);
+  gc.stroke();
   if (p.flashAlpha && p.flashAlpha > 0) {
-    ctx.save();
-    ctx.globalAlpha = p.flashAlpha;
-    ctx.fillStyle = '#fef3c7';
-    ctx.fillRect(x, y, w, h);
-    ctx.restore();
+    gc.cache.save();
+    gc.cache.globalAlpha = p.flashAlpha;
+    gc.cache.fillStyle = '#fef3c7';
+    gc.fillRect(x, y, w, h);
+    gc.cache.restore();
   }
 }
 
 export const textCell: CellPainter<string> = {
-  paint(ctx, p) {
-    paintBackground(ctx, p);
-    ctx.fillStyle = p.style.fg;
-    ctx.font = p.style.font;
-    ctx.textBaseline = 'middle';
+  paint(gc, p) {
+    paintBackground(gc, p);
+    gc.cache.fillStyle = p.style.fg;
+    gc.cache.font = p.style.font;
+    gc.cache.textBaseline = 'middle';
     const cy = p.bounds.y + p.bounds.h / 2;
     if (p.style.halign === 'right') {
-      ctx.textAlign = 'right';
-      ctx.fillText(p.valueFormatted, p.bounds.x + p.bounds.w - PADDING, cy);
+      gc.cache.textAlign = 'right';
+      gc.fillText(p.valueFormatted, p.bounds.x + p.bounds.w - PADDING, cy);
     } else if (p.style.halign === 'center') {
-      ctx.textAlign = 'center';
-      ctx.fillText(p.valueFormatted, p.bounds.x + p.bounds.w / 2, cy);
+      gc.cache.textAlign = 'center';
+      gc.fillText(p.valueFormatted, p.bounds.x + p.bounds.w / 2, cy);
     } else {
-      ctx.textAlign = 'left';
-      ctx.fillText(p.valueFormatted, p.bounds.x + PADDING, cy);
+      gc.cache.textAlign = 'left';
+      gc.fillText(p.valueFormatted, p.bounds.x + PADDING, cy);
     }
   },
 };
 
 export const numberCell: CellPainter<number> = {
-  paint(ctx, p) {
-    paintBackground(ctx, p);
-    ctx.fillStyle = p.style.fg;
-    ctx.font = p.style.font;
-    ctx.textBaseline = 'middle';
-    ctx.textAlign = p.style.halign === 'left' || p.style.halign === 'center' ? p.style.halign : 'right';
+  paint(gc, p) {
+    paintBackground(gc, p);
+    gc.cache.fillStyle = p.style.fg;
+    gc.cache.font = p.style.font;
+    gc.cache.textBaseline = 'middle';
+    const align: CanvasTextAlign = p.style.halign === 'left' || p.style.halign === 'center'
+      ? p.style.halign
+      : 'right';
+    gc.cache.textAlign = align;
     const cy = p.bounds.y + p.bounds.h / 2;
-    const x = ctx.textAlign === 'right' ? p.bounds.x + p.bounds.w - PADDING
-            : ctx.textAlign === 'center' ? p.bounds.x + p.bounds.w / 2
+    const x = align === 'right' ? p.bounds.x + p.bounds.w - PADDING
+            : align === 'center' ? p.bounds.x + p.bounds.w / 2
             : p.bounds.x + PADDING;
-    ctx.fillText(p.valueFormatted, x, cy);
+    gc.fillText(p.valueFormatted, x, cy);
   },
 };
 
 export const checkboxCell: CellPainter<boolean> = {
-  paint(ctx, p) {
-    paintBackground(ctx, p);
+  paint(gc, p) {
+    paintBackground(gc, p);
     const size = 14;
     const cx = p.bounds.x + p.bounds.w / 2 - size / 2;
     const cy = p.bounds.y + p.bounds.h / 2 - size / 2;
-    ctx.strokeStyle = p.style.fg;
-    ctx.lineWidth = 1;
-    ctx.strokeRect(cx + 0.5, cy + 0.5, size, size);
+    gc.cache.strokeStyle = p.style.fg;
+    gc.cache.lineWidth = 1;
+    gc.strokeRect(cx + 0.5, cy + 0.5, size, size);
     if (p.value) {
-      ctx.beginPath();
-      ctx.moveTo(cx + 3, cy + size / 2);
-      ctx.lineTo(cx + size / 2 - 1, cy + size - 3);
-      ctx.lineTo(cx + size - 2, cy + 3);
-      ctx.stroke();
+      gc.beginPath();
+      gc.moveTo(cx + 3, cy + size / 2);
+      gc.lineTo(cx + size / 2 - 1, cy + size - 3);
+      gc.lineTo(cx + size - 2, cy + 3);
+      gc.stroke();
     }
   },
 };

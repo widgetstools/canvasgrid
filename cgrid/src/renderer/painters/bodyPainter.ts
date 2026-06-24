@@ -1,14 +1,15 @@
 import type { PainterCtx } from './types';
+import type { CachedContext2D } from '../gc';
 
-export function paintBody(ctx: CanvasRenderingContext2D, p: PainterCtx): void {
+export function paintBody(gc: CachedContext2D, p: PainterCtx): void {
   const { viewport: vs, theme, columnDefs, cellRenderers, cellData, selection } = p;
 
   // Clip to the body region so overscan rows don't paint into the header zone
   // and horizontally-scrolled body cells don't leak into the pinned bands.
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(vs.bodyLeft, vs.bodyTop, vs.bodyRight - vs.bodyLeft, vs.bodyBottom - vs.bodyTop);
-  ctx.clip();
+  gc.cache.save();
+  gc.beginPath();
+  gc.rect(vs.bodyLeft, vs.bodyTop, vs.bodyRight - vs.bodyLeft, vs.bodyBottom - vs.bodyTop);
+  gc.clip();
 
   for (const row of vs.visibleRows) {
     const rowBg = selection.selectedRowIndices.has(row.rowIndex)
@@ -22,7 +23,7 @@ export function paintBody(ctx: CanvasRenderingContext2D, p: PainterCtx): void {
       const def = columnDefs.get(col.colId);
       if (!def) continue;
       const data = cellData(row.rowIndex, col.colId);
-      cellRenderers.get(def.cellRenderer).paint(ctx, {
+      cellRenderers.get(def.cellRenderer).paint(gc, {
         value: data?.value ?? '',
         valueFormatted: data?.valueFormatted ?? '',
         bounds: { x: col.left, y: row.top, w: col.width, h: row.height },
@@ -43,5 +44,5 @@ export function paintBody(ctx: CanvasRenderingContext2D, p: PainterCtx): void {
     }
   }
 
-  ctx.restore();
+  gc.cache.restore();
 }

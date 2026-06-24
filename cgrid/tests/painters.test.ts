@@ -6,15 +6,24 @@ import { CellRendererRegistry, textCell, numberCell } from '../src/renderer/cell
 import type { ViewportState } from '../src/core/viewport';
 import type { ResolvedColDef } from '../src/core/propertyChain';
 import type { ResolvedTheme } from '../src/theming/cssReader';
+import type { CachedContext2D } from '../src/renderer/gc';
 
-function ctx() {
-  return {
+function fakeGc(): CachedContext2D {
+  const ctx: any = {
     fillRect: vi.fn(), strokeRect: vi.fn(), fillText: vi.fn(), save: vi.fn(), restore: vi.fn(),
     rect: vi.fn(), clip: vi.fn(), beginPath: vi.fn(), stroke: vi.fn(),
     moveTo: vi.fn(), lineTo: vi.fn(), arcTo: vi.fn(), closePath: vi.fn(),
+    translate: vi.fn(), scale: vi.fn(),
     measureText: () => ({ width: 50 }),
-    fillStyle: '', strokeStyle: '', font: '', textBaseline: '', textAlign: '', lineWidth: 1, globalAlpha: 1,
-  } as any;
+    fillStyle: '', strokeStyle: '', font: '', textBaseline: '', textAlign: '',
+    lineWidth: 1, globalAlpha: 1, lineCap: 'butt', lineJoin: 'miter',
+  };
+  ctx.cache = new Proxy(ctx, {
+    get(target, key) { return target[key]; },
+    set(target, key, value) { target[key] = value; return true; },
+  });
+  ctx.clearFill = vi.fn();
+  return ctx as CachedContext2D;
 }
 
 const vs: ViewportState = {
@@ -49,26 +58,26 @@ const selection = { focusedRowIndex: null, focusedColId: null, selectedRowIndice
 
 describe('painters', () => {
   it('paintHeader fills + writes column header text per visible column', () => {
-    const c = ctx();
+    const c = fakeGc();
     paintHeader(c, { viewport: vs, theme, columnDefs: cols, cellRenderers: reg, cellData, selection, sortModel: [] });
-    expect(c.fillRect).toHaveBeenCalled();
-    expect(c.fillText.mock.calls.length).toBe(2);
+    expect((c.fillRect as any)).toHaveBeenCalled();
+    expect((c.fillText as any).mock.calls.length).toBe(2);
   });
 
   it('paintBody draws every visible cell', () => {
-    const c = ctx();
+    const c = fakeGc();
     paintBody(c, { viewport: vs, theme, columnDefs: cols, cellRenderers: reg, cellData, selection, sortModel: [] });
     // 2 rows x 2 cols = 4 fills (background per cell)
-    expect(c.fillRect.mock.calls.length).toBeGreaterThanOrEqual(4);
+    expect((c.fillRect as any).mock.calls.length).toBeGreaterThanOrEqual(4);
   });
 
   it('paintOverlay draws focus ring when focused cell is set', () => {
-    const c = ctx();
+    const c = fakeGc();
     paintOverlay(c, {
       viewport: vs, theme, columnDefs: cols, cellRenderers: reg, cellData,
       selection: { focusedRowIndex: 0, focusedColId: 'b', selectedRowIndices: new Set() },
       sortModel: [],
     });
-    expect(c.strokeRect).toHaveBeenCalled();
+    expect((c.strokeRect as any)).toHaveBeenCalled();
   });
 });

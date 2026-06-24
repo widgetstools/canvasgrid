@@ -1,7 +1,8 @@
 import type { PainterCtx } from './types';
+import type { CachedContext2D } from '../gc';
 
 export function paintPinned(
-  ctx: CanvasRenderingContext2D,
+  gc: CachedContext2D,
   p: PainterCtx,
   side: 'left' | 'right',
 ): void {
@@ -17,10 +18,10 @@ export function paintPinned(
   const bandTop = vs.bodyTop;
   const bandBottom = vs.bodyBottom;
 
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(bandLeft, bandTop, bandRight - bandLeft, bandBottom - bandTop);
-  ctx.clip();
+  gc.cache.save();
+  gc.beginPath();
+  gc.rect(bandLeft, bandTop, bandRight - bandLeft, bandBottom - bandTop);
+  gc.clip();
 
   for (const row of vs.visibleRows) {
     const rowBg = selection.selectedRowIndices.has(row.rowIndex)
@@ -33,7 +34,7 @@ export function paintPinned(
       const def = columnDefs.get(col.colId);
       if (!def) continue;
       const data = cellData(row.rowIndex, col.colId);
-      cellRenderers.get(def.cellRenderer).paint(ctx, {
+      cellRenderers.get(def.cellRenderer).paint(gc, {
         value: data?.value ?? '',
         valueFormatted: data?.valueFormatted ?? '',
         bounds: { x: col.left, y: row.top, w: col.width, h: row.height },
@@ -54,5 +55,5 @@ export function paintPinned(
     }
   }
 
-  ctx.restore();
+  gc.cache.restore();
 }

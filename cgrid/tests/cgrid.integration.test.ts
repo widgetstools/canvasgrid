@@ -11,17 +11,26 @@ beforeAll(() => {
     terminate = vi.fn();
   };
 
-  // Stub canvas 2D context — happy-dom does not implement it.
-  const fakeCtx: any = {
-    fillRect: vi.fn(), strokeRect: vi.fn(), fillText: vi.fn(),
-    save: vi.fn(), restore: vi.fn(), rect: vi.fn(), clip: vi.fn(),
-    beginPath: vi.fn(), stroke: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(),
-    setTransform: vi.fn(), clearRect: vi.fn(),
-    measureText: () => ({ width: 50 }),
-    fillStyle: '', strokeStyle: '', font: '', textBaseline: '',
-    textAlign: '', lineWidth: 1, globalAlpha: 1,
-  };
-  HTMLCanvasElement.prototype.getContext = () => fakeCtx as any;
+  // Stub canvas 2D context — happy-dom does not implement it. attachGcCache
+  // walks our explicit CACHED_PROPS list and installs getters/setters on a
+  // proxy of this object, so the fake just needs the methods + plain data
+  // properties.
+  HTMLCanvasElement.prototype.getContext = (() => {
+    const fakeCtx: any = {
+      fillRect: vi.fn(), strokeRect: vi.fn(), fillText: vi.fn(),
+      save: vi.fn(), restore: vi.fn(), rect: vi.fn(), clip: vi.fn(),
+      beginPath: vi.fn(), stroke: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(),
+      setTransform: vi.fn(), clearRect: vi.fn(), translate: vi.fn(), scale: vi.fn(),
+      measureText: () => ({ width: 50 }),
+      fillStyle: '', strokeStyle: '', font: '', textBaseline: '',
+      textAlign: '', lineWidth: 1, globalAlpha: 1,
+      lineCap: 'butt', lineJoin: 'miter', miterLimit: 10, lineDashOffset: 0,
+      shadowOffsetX: 0, shadowOffsetY: 0, shadowBlur: 0, shadowColor: '',
+      globalCompositeOperation: 'source-over', imageSmoothingEnabled: true,
+      direction: 'inherit', filter: 'none',
+    };
+    return () => fakeCtx as any;
+  })() as any;
 });
 
 describe('CGrid integration', () => {
@@ -42,6 +51,7 @@ describe('CGrid integration', () => {
     w.listeners.forEach((cb: any) => cb({ data: { id: 1, type: 'ready' } }));
     await new Promise((r) => setTimeout(r, 0));
     expect(events.length).toBe(1);
+    grid.destroy();
   });
 });
 

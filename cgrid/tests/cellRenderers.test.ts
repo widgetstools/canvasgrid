@@ -1,15 +1,25 @@
 import { describe, it, expect, vi } from 'vitest';
 import { textCell, numberCell, checkboxCell, CellRendererRegistry } from '../src/renderer/cellRenderers/registry';
 import type { CellPaintParams } from '../src/renderer/cellRenderers/registry';
+import type { CachedContext2D } from '../src/renderer/gc';
 
-function makeCtx() {
-  return {
-    fillRect: vi.fn(), strokeRect: vi.fn(), fillText: vi.fn(), beginPath: vi.fn(), arc: vi.fn(), fill: vi.fn(), stroke: vi.fn(),
+function makeGc(): CachedContext2D {
+  const ctx: any = {
+    fillRect: vi.fn(), strokeRect: vi.fn(), fillText: vi.fn(), beginPath: vi.fn(),
+    arc: vi.fn(), fill: vi.fn(), stroke: vi.fn(),
     moveTo: vi.fn(), lineTo: vi.fn(),
-    save: vi.fn(), restore: vi.fn(), rect: vi.fn(), clip: vi.fn(), measureText: vi.fn(() => ({ width: 50 })),
+    save: vi.fn(), restore: vi.fn(), rect: vi.fn(), clip: vi.fn(),
+    measureText: vi.fn(() => ({ width: 50 })),
+    translate: vi.fn(), scale: vi.fn(),
     fillStyle: '', strokeStyle: '', font: '', textBaseline: 'alphabetic', textAlign: 'start',
-    globalAlpha: 1, lineWidth: 1,
-  } as any;
+    globalAlpha: 1, lineWidth: 1, lineCap: 'butt', lineJoin: 'miter',
+  };
+  ctx.cache = new Proxy(ctx, {
+    get(target, key) { return target[key]; },
+    set(target, key, value) { target[key] = value; return true; },
+  });
+  ctx.clearFill = vi.fn();
+  return ctx as CachedContext2D;
 }
 
 const baseParams = (over: Partial<CellPaintParams> = {}): CellPaintParams => ({
@@ -22,55 +32,55 @@ const baseParams = (over: Partial<CellPaintParams> = {}): CellPaintParams => ({
 
 describe('textCell', () => {
   it('paints background + text', () => {
-    const ctx = makeCtx();
-    textCell.paint(ctx, baseParams({ value: 'hi', valueFormatted: 'hi' }));
-    expect(ctx.fillRect).toHaveBeenCalled();
-    expect(ctx.fillText).toHaveBeenCalledWith('hi', expect.any(Number), expect.any(Number));
+    const gc = makeGc();
+    textCell.paint(gc, baseParams({ value: 'hi', valueFormatted: 'hi' }));
+    expect((gc.fillRect as any)).toHaveBeenCalled();
+    expect((gc.fillText as any)).toHaveBeenCalledWith('hi', expect.any(Number), expect.any(Number));
   });
 
   it('halign right adjusts text x to right side', () => {
-    const ctx = makeCtx();
-    textCell.paint(ctx, baseParams({ value: 'x', valueFormatted: 'x', style: { ...baseParams().style, halign: 'right' } }));
-    const [, x] = ctx.fillText.mock.calls[0]!;
+    const gc = makeGc();
+    textCell.paint(gc, baseParams({ value: 'x', valueFormatted: 'x', style: { ...baseParams().style, halign: 'right' } }));
+    const [, x] = (gc.fillText as any).mock.calls[0]!;
     expect(x).toBeGreaterThan(50);
   });
 });
 
 describe('numberCell', () => {
   it('right-aligns by default', () => {
-    const ctx = makeCtx();
-    numberCell.paint(ctx, baseParams({
+    const gc = makeGc();
+    numberCell.paint(gc, baseParams({
       value: 42, valueFormatted: '42',
       style: { ...baseParams().style, halign: 'right' },
     }));
-    expect(ctx.textAlign).toBe('right');
+    expect(gc.textAlign).toBe('right');
   });
 
   it('respects explicit center halign', () => {
-    const ctx = makeCtx();
-    numberCell.paint(ctx, baseParams({
+    const gc = makeGc();
+    numberCell.paint(gc, baseParams({
       value: 42, valueFormatted: '42',
       style: { ...baseParams().style, halign: 'center' },
     }));
-    expect(ctx.textAlign).toBe('center');
+    expect(gc.textAlign).toBe('center');
   });
 
   it('respects explicit left halign', () => {
-    const ctx = makeCtx();
-    numberCell.paint(ctx, baseParams({
+    const gc = makeGc();
+    numberCell.paint(gc, baseParams({
       value: 7, valueFormatted: '7',
       style: { ...baseParams().style, halign: 'left' },
     }));
-    expect(ctx.textAlign).toBe('left');
+    expect(gc.textAlign).toBe('left');
   });
 });
 
 describe('checkboxCell', () => {
   it('paints a checkmark when value is true', () => {
-    const ctx = makeCtx();
-    checkboxCell.paint(ctx, baseParams({ value: true, valueFormatted: '' }));
-    expect(ctx.strokeRect).toHaveBeenCalled();
-    expect(ctx.stroke).toHaveBeenCalled();
+    const gc = makeGc();
+    checkboxCell.paint(gc, baseParams({ value: true, valueFormatted: '' }));
+    expect((gc.strokeRect as any)).toHaveBeenCalled();
+    expect((gc.stroke as any)).toHaveBeenCalled();
   });
 });
 
