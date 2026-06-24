@@ -32,8 +32,9 @@ export class NumberCellEditor implements ICellEditor<unknown, number> {
     input.style.cssText =
       'box-sizing:border-box; width:100%; height:100%; ' +
       'border:0; padding:0 8px; margin:0; ' +
-      'background:var(--cg-cell-editor-bg, #fff); color:var(--cg-text-color, #111); ' +
-      'font:inherit; outline:2px solid var(--cg-focus-ring-color, #4a90e2); text-align:right;';
+      'background:var(--cg-cell-editor-bg, var(--cg-bg-color, #fff)); color:var(--cg-text-color, var(--cg-fg-color, #111)); ' +
+      'font-family:var(--cg-font-family, inherit); font-size:var(--cg-font-size, inherit); ' +
+      'outline:2px solid var(--cg-focus-ring-color, #4a90e2); text-align:right;';
     this.keydownHandler = (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
         e.stopPropagation();

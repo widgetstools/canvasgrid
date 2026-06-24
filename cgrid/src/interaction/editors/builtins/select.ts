@@ -16,6 +16,7 @@ export class SelectCellEditor<TValue = unknown> implements ICellEditor<unknown, 
   private params!: ICellEditorParams<unknown, TValue>;
   private values: TValue[] = [];
   private keydownHandler!: (e: KeyboardEvent) => void;
+  private changeHandler!: () => void;
 
   init(params: ICellEditorParams<unknown, TValue>): void {
     this.params = params;
@@ -38,8 +39,9 @@ export class SelectCellEditor<TValue = unknown> implements ICellEditor<unknown, 
     select.style.cssText +=
       'box-sizing:border-box; width:100%; height:100%; ' +
       'border:0; padding:0 8px; margin:0; ' +
-      'background:var(--cg-cell-editor-bg, #fff); color:var(--cg-text-color, #111); ' +
-      'font:inherit; outline:2px solid var(--cg-focus-ring-color, #4a90e2);';
+      'background:var(--cg-cell-editor-bg, var(--cg-bg-color, #fff)); color:var(--cg-text-color, var(--cg-fg-color, #111)); ' +
+      'font-family:var(--cg-font-family, inherit); font-size:var(--cg-font-size, inherit); ' +
+      'outline:2px solid var(--cg-focus-ring-color, #4a90e2);';
     this.keydownHandler = (e: KeyboardEvent) => {
       if (e.key === 'Enter') {
         e.stopPropagation();
@@ -49,7 +51,11 @@ export class SelectCellEditor<TValue = unknown> implements ICellEditor<unknown, 
         this.params.stopEditing(true);
       }
     };
+    // Single-click select commit — ag-grid's default behaviour. The user
+    // shouldn't have to press Enter after picking an option.
+    this.changeHandler = () => this.params.stopEditing(false);
     select.addEventListener('keydown', this.keydownHandler);
+    select.addEventListener('change', this.changeHandler);
     this.select = select;
   }
 
@@ -63,6 +69,7 @@ export class SelectCellEditor<TValue = unknown> implements ICellEditor<unknown, 
 
   destroy(): void {
     this.select.removeEventListener('keydown', this.keydownHandler);
+    this.select.removeEventListener('change', this.changeHandler);
   }
 
   afterGuiAttached(): void {

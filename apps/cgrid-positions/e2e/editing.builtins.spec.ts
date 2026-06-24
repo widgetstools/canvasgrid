@@ -70,10 +70,10 @@ test.describe('Cell editing — built-in editors (Cycle 5 / Task 2)', () => {
     await expect(select).toBeVisible();
     await expect(select.locator('option')).toHaveCount(7);
     // Pick a value that differs from the row's original ticker so the test
-    // always observes a change.
+    // always observes a change. selectOption fires `change` → auto-commit;
+    // no Enter required.
     const newValue = original === 'TSLA' ? 'AAPL' : 'TSLA';
     await select.selectOption({ label: newValue });
-    await select.press('Enter');
     await expect(select).toHaveCount(0);
 
     await expect.poll(

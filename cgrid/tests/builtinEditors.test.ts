@@ -207,6 +207,16 @@ describe('SelectCellEditor', () => {
     select.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(stopEditing).toHaveBeenLastCalledWith(true);
   });
+
+  it('change event auto-commits (single-click select)', () => {
+    const stopEditing = vi.fn();
+    const e = new SelectCellEditor();
+    mount(e, makeParams<string>({ value: 'a', params: { values: ['a', 'b', 'c'] }, stopEditing }));
+    const select = e.getGui() as HTMLSelectElement;
+    select.selectedIndex = 2;
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    expect(stopEditing).toHaveBeenCalledWith(false);
+  });
 });
 
 describe('LargeTextCellEditor', () => {

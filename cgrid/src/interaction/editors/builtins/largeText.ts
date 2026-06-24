@@ -20,11 +20,15 @@ export class LargeTextCellEditor implements ICellEditor<unknown, string> {
     textarea.maxLength = ltParams.maxLength ?? 200;
     textarea.rows = ltParams.rows ?? 10;
     textarea.cols = ltParams.cols ?? 60;
+    // Popup-only editor (isPopup() === true) — size from rows/cols so the
+    // textarea has an intrinsic footprint instead of stretching to fill the
+    // editor host. PopupHost positions it; we don't want width: 100% there.
     textarea.style.cssText =
-      'box-sizing:border-box; width:100%; height:100%; ' +
+      'box-sizing:border-box; ' +
       'border:0; padding:6px 8px; margin:0; resize:none; ' +
-      'background:var(--cg-cell-editor-bg, #fff); color:var(--cg-text-color, #111); ' +
-      'font:inherit; outline:2px solid var(--cg-focus-ring-color, #4a90e2);';
+      'background:var(--cg-cell-editor-bg, var(--cg-bg-color, #fff)); color:var(--cg-text-color, var(--cg-fg-color, #111)); ' +
+      'font-family:var(--cg-font-family, inherit); font-size:var(--cg-font-size, inherit); ' +
+      'outline:2px solid var(--cg-focus-ring-color, #4a90e2);';
     this.keydownHandler = (e: KeyboardEvent) => {
       // Ctrl/Cmd+Enter commits; bare Enter inserts a newline (default).
       if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
