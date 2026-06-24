@@ -1158,45 +1158,108 @@ in Task 1's iCellEditor.ts. Follow the per-task workflow.
 
 ---
 
-## Task 5 — Type-to-edit
+## Task 5 — Type-to-edit + Excel-style arrow-commit mode
 
-**Goal:** When a printable character is pressed while a cell is focused (and
-no editor is open), start editing with that character as the editor's initial
-value. The `ICellEditorParams.charPress` field already supports this
-(Task 1 wired it in `TextCellEditor`). Task 5 just hooks the keyboard
-dispatch.
+**Goal:** Two coupled spreadsheet-style behaviours:
 
-**Why:** Spreadsheet-style typing. Without it, users must F2 or click to
-start every edit — friction that AG Grid users will notice.
+1. **Type-to-edit.** Printable char while a focused editable cell is in
+   non-editing state opens the editor with the char as initial value via
+   `ICellEditorParams.charPress` (already wired in `TextCellEditor`).
+2. **Excel-mode arrows (opt-in via `CGridOptions.enableExcelEditing`).**
+   Each open edit carries a `mode: 'enter' | 'edit'` flag:
+   - `'enter'` — Excel's "Enter mode". Arrow keys commit + move focus to
+     the adjacent cell (Up/Down/Left/Right). Type-to-edit starts here.
+   - `'edit'` — Excel's "Edit mode". Arrow keys do the input's native
+     caret-move. F2, double-click, single-click (when `singleClickEdit`)
+     and `api.startEditingCell` start here.
+   - Mousedown inside the open editor input flips `'enter'` → `'edit'`
+     so a user who clicks the input mid-type can keep editing without
+     accidentally committing on the next arrow.
+
+When `enableExcelEditing` is false (default), the `mode` field is
+inert — arrows always behave like today (caret-move inside the input).
+
+**Why:** Spreadsheet-style typing + arrow-key-to-commit-and-navigate is a
+top-three power-user request for data grids. Excel models this with a
+visible "Ready / Enter / Edit" status bar; we adopt the same vocabulary
+internally. Bundling these two behaviours keeps the edit-mode dispatch
+logic in one place — both consult the per-edit `mode` state in the same
+root capture-phase handler that already owns Tab / Enter / Escape.
 
 **Read first:**
 - `cgrid/src/interaction/features/keyPaging.ts`
+- `cgrid/src/interaction/features/editTrigger.ts` (Task 4)
 - `cgrid/src/interaction/editors/iCellEditor.ts` — `charPress` field
+- `cgrid/src/cgrid.ts` — root capture-phase keydown handler (Task 4)
 
 **Files:**
-- Modify: `cgrid/src/interaction/features/keyPaging.ts` (detect printable
-  char → call `cgrid.openEditor(rowIndex, colId, { charPress: ev.key })`)
-- Modify: `cgrid/src/cgrid.ts` (`openEditor` accepts optional `charPress`
-  string; threads through to `EditorOverlay.open.opts.charPress`)
-- Update: `apps/cgrid-positions/tests/editing.spec.ts` (one test: type 'X'
-  on focused trader cell starts edit with 'X')
+- Modify: `cgrid/src/interaction/features/keyPaging.ts` (printable-char
+  → `openEditor(rowIndex, colId, charPress)`)
+- Modify: `cgrid/src/interaction/features/editTrigger.ts` (single/double
+  click open in `'edit'` mode)
+- Modify: `cgrid/src/cgrid.ts`:
+  - `openEditor` takes an optional `mode: 'enter' | 'edit'`; type-to-edit
+    passes `'enter'`, every other path passes `'edit'`.
+  - `activeEdit` carries `mode` and a mutation entry point.
+  - Editor-container mousedown listener flips `'enter'` → `'edit'`.
+  - Root capture keydown extends to handle Arrow* in `'enter'` mode
+    (commit + move focus).
+- Modify: `cgrid/src/types.ts` (`CGridOptions.enableExcelEditing?: boolean`).
+- Update: `cgrid/tests/editTrigger.test.ts` (single-click opens with `mode:
+  'edit'`) + `cgrid/tests/excelEditing.test.ts` (new — arrow-commit dispatch).
+- Update: `apps/cgrid-positions/src/positionsGrid.ts` (`enableExcelEditing:
+  true` so the E2E exercises it).
+- Update: `apps/cgrid-positions/e2e/editing.triggers.spec.ts` or new
+  `editing.excel.spec.ts` (3 E2E tests below).
 
 **Steps:**
 
-- [ ] **Step 1:** Failing E2E — type 'X' while focused, assert editor opens
-      with value 'X'.
-- [ ] **Step 2:** In `keyPaging.ts.onKeyDown`, after suppressKeyboardEvent
-      gate but before the navigation switch, check
-      `ev.key.length === 1 && !ev.ctrlKey && !ev.metaKey && !ev.altKey` and
-      whether the focused column is `editable`. If so, call openEditor
-      with `charPress: ev.key`. Prevent default + stop propagation.
-- [ ] **Step 3:** Verify E2E passes; typecheck; build; commit.
+- [ ] **Step 1:** Add `enableExcelEditing?: boolean` to `CGridOptions`.
+- [ ] **Step 2:** Extend `activeEdit` to track `mode: 'enter' | 'edit'`.
+      `openEditor` accepts the mode (default `'edit'`).
+- [ ] **Step 3:** Failing unit test in `cgrid/tests/excelEditing.test.ts`
+      that mocks an open edit with `mode: 'enter'`, dispatches ArrowDown
+      to the root, and asserts `stopEditing(false)` was called followed by
+      a focus move down by 1 row.
+- [ ] **Step 4:** Extend the Task 4 root capture handler:
+      - On ArrowDown / ArrowUp / ArrowLeft / ArrowRight:
+        if `enableExcelEditing` is on AND `activeEdit.mode === 'enter'`:
+        commit + move focus (preventDefault + stopPropagation).
+      - Otherwise: do nothing (let the input handle it natively).
+- [ ] **Step 5:** Add the mousedown-flips-mode listener:
+      `editorContainer.addEventListener('mousedown', ...)`. If
+      `activeEdit.mode === 'enter'`, set it to `'edit'`.
+- [ ] **Step 6:** Hook printable-key in `keyPaging.ts`:
+      `ev.key.length === 1 && !ev.ctrl/meta/alt && focused col is editable
+      && !editing` → `openEditor(fr, fc, ev.key, 'enter')`. Prevent default
+      + stop propagation.
+- [ ] **Step 7:** Update editor-trigger paths (F2 / Enter / click / dblclick
+      / `startEditingCell`) to pass `mode: 'edit'`.
+- [ ] **Step 8:** Demo turns on `enableExcelEditing: true`.
+- [ ] **Step 9:** Add E2E `editing.excel.spec.ts` (3 tests):
+      1. Type 'X' on focused cusip → editor opens with 'X', press
+         ArrowDown → editor closes, value committed as 'X', focus moved to
+         row 1 / cusip.
+      2. F2 on focused cusip → editor opens in `'edit'` mode, press
+         ArrowDown → editor stays open (no commit), input caret moves.
+      3. Type 'X' on focused cusip → click inside the input → press
+         ArrowDown → editor stays open (mode flipped to `'edit'`), value
+         not yet committed.
+- [ ] **Step 10:** Run unit + typecheck + build + E2E; commit.
 
 **Acceptance criteria:**
-- [ ] Printable char while focused + editable opens editor with `charPress`.
-- [ ] Modifier-key combos (Ctrl+/Cmd+/Alt+) do not trigger.
-- [ ] When focused column is non-editable, key event is ignored by edit
-      trigger (other handlers may still consume it).
+- [ ] `CGridOptions.enableExcelEditing` typed + storage-wired.
+- [ ] Type-to-edit opens with `charPress` AND starts in `'enter'` mode.
+- [ ] F2 / dblclick / single-click / api.startEditingCell open in `'edit'`
+      mode.
+- [ ] Mousedown inside the editor flips `'enter'` → `'edit'`.
+- [ ] In `'enter'` mode with `enableExcelEditing: true`: ArrowUp/Down/Left/
+      Right commit + move focus; Enter still commits + descends per Task 4.
+- [ ] In `'edit'` mode (or when flag is off): arrows behave as the input's
+      native key handler (caret-move).
+- [ ] Modifier-key combos (Ctrl+/Cmd+/Alt+) do not trigger type-to-edit.
+- [ ] Demo opts in via `enableExcelEditing: true`. Three new E2E tests
+      green plus all previous E2E tests green.
 
 **Next session prompt:**
 

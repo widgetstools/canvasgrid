@@ -26,7 +26,11 @@ export class EditTrigger extends Feature {
     const single = grid.isColSingleClickEdit(ctx.hit.colId) ?? flags.singleClickEdit;
     if (!single) return;
     if (!grid.isCellEditable(ctx.hit.rowIndex, ctx.hit.colId)) return;
-    grid.openEditor(ctx.hit.rowIndex, ctx.hit.colId);
+    // Explicit 'edit' mode — single-click is a deliberate click-to-edit,
+    // so arrow keys should move the caret inside the input (not commit +
+    // navigate, even when enableExcelEditing is on). Type-to-edit
+    // (KeyPaging) is the only trigger that opens in 'enter' mode.
+    grid.openEditor(ctx.hit.rowIndex, ctx.hit.colId, undefined, 'edit');
   }
 
   override handleDoubleClick(ctx: CGridEventCtx): void {
@@ -37,7 +41,7 @@ export class EditTrigger extends Feature {
     const flags = grid.getEditingFlags();
     if (flags.suppressClickEdit) return;
     if (!grid.isCellEditable(ctx.hit.rowIndex, ctx.hit.colId)) return;
-    grid.openEditor(ctx.hit.rowIndex, ctx.hit.colId);
+    grid.openEditor(ctx.hit.rowIndex, ctx.hit.colId, undefined, 'edit');
   }
 
   override handleKeyDown(ctx: CGridEventCtx): void {

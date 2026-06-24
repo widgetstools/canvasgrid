@@ -21,6 +21,7 @@ export interface EditingFlags {
   enterNavigatesVerticallyAfterEdit: boolean;
   suppressStartEditOnTab: boolean;
   enableCellEditingOnBackspace: boolean;
+  enableExcelEditing: boolean;
 }
 
 /** Per-column key-event predicate signature. Mirrors
@@ -64,8 +65,14 @@ export interface CGridLike {
   /** True when an editor is currently mounted. */
   isEditing(): boolean;
   /** Open the cell editor at `(rowIndex, colId)`. No-op when the cell is
-   *  not editable or not currently in the viewport. */
-  openEditor(rowIndex: number, colId: string, charPress?: string): void;
+   *  not editable or not currently in the viewport. `mode` controls
+   *  Excel's Enter / Edit dichotomy (see `CGridOptions.enableExcelEditing`).
+   *  Defaults to `'edit'` (arrows = caret-move). */
+  openEditor(
+    rowIndex: number, colId: string,
+    charPress?: string,
+    mode?: 'enter' | 'edit',
+  ): void;
   /** Close any open editor. `cancel=true` discards; default commits. */
   stopEditing(cancel?: boolean): void;
   /** Find the next editable cell from `(rowIndex, colId)` in render order.

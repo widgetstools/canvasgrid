@@ -25,6 +25,24 @@ export class KeyPaging extends Feature {
     const flags = ctx.grid.getEditingFlags();
     const editing = ctx.grid.isEditing();
 
+    // Type-to-edit (Cycle 5 / Task 5): when no editor is open and the
+    // focused cell is editable, a printable character starts the edit
+    // with the char as initial value. Excel-mode dispatch tags this path
+    // as `'enter'` so arrows commit + nav (when `enableExcelEditing` is
+    // on). Modifier-key combos (Ctrl+/Cmd+/Alt+) are ignored so shortcuts
+    // like Ctrl+A keep working.
+    if (
+      !editing && fr != null && fc != null
+      && e.key.length === 1
+      && !e.ctrlKey && !e.metaKey && !e.altKey
+      && ctx.grid.isCellEditable(fr, fc)
+    ) {
+      ctx.grid.openEditor(fr, fc, e.key, 'enter');
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+
     if (editing) {
       switch (e.key) {
         case 'Escape':
@@ -48,7 +66,7 @@ export class KeyPaging extends Feature {
             if (next) {
               sel.setFocus(next.rowIndex, next.colId);
               if (!flags.suppressStartEditOnTab) {
-                ctx.grid.openEditor(next.rowIndex, next.colId);
+                ctx.grid.openEditor(next.rowIndex, next.colId, undefined, 'edit');
               }
             }
           }
@@ -60,7 +78,7 @@ export class KeyPaging extends Feature {
       switch (e.key) {
         case 'F2':
           if (fr != null && fc != null && ctx.grid.isCellEditable(fr, fc)) {
-            ctx.grid.openEditor(fr, fc);
+            ctx.grid.openEditor(fr, fc, undefined, 'edit');
             e.preventDefault();
             return;
           }
@@ -74,7 +92,7 @@ export class KeyPaging extends Feature {
             return;
           }
           if (ctx.grid.isCellEditable(fr, fc)) {
-            ctx.grid.openEditor(fr, fc);
+            ctx.grid.openEditor(fr, fc, undefined, 'edit');
             e.preventDefault();
             return;
           }

@@ -69,6 +69,18 @@ export interface CGridOptions<TRow = any> {
   /** Prevent Tab from opening the editor on the next editable cell after
    *  a commit. Tab still moves focus. */
   suppressStartEditOnTab?: boolean;
+  /** Excel-style editing. Each open edit carries a `mode` of `'enter'` or
+   *  `'edit'`:
+   *  - Type-to-edit (printable key) starts in `'enter'` — arrow keys then
+   *    commit + move focus to the adjacent cell.
+   *  - F2, double-click, single-click (when `singleClickEdit`) and
+   *    `api.startEditingCell` start in `'edit'` — arrow keys move the
+   *    caret inside the input.
+   *  - Mousedown inside the open editor flips `'enter'` → `'edit'`.
+   *
+   *  When `false` (default) the mode is inert and arrow keys always
+   *  behave like the input's native handler. */
+  enableExcelEditing?: boolean;
 }
 
 /** Predicate that decides whether a single cell is editable. Receives the

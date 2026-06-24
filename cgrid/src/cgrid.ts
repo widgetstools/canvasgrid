@@ -100,13 +100,16 @@ export class CGrid<TRow = any> {
    *  `api.getCellEditorInstances` (later cycle). */
   private editorInstances: ICellEditor[] = [];
   /** Tracks the cell currently being edited (single-cell mode). Cleared on
-   *  close. Used to compose `cellEditingStarted/Stopped` payloads. */
+   *  close. Used to compose `cellEditingStarted/Stopped` payloads. The
+   *  `mode` field implements Excel's Enter / Edit dichotomy — see
+   *  `CGridOptions.enableExcelEditing` for the dispatch rules. */
   private activeEdit: {
     rowIndex: number;
     rowId: string;
     colId: string;
     oldValue: unknown;
     data: unknown;
+    mode: 'enter' | 'edit';
   } | null = null;
   private a11y: A11yOverlay;
   private workerClient: WorkerClient;
@@ -294,6 +297,7 @@ export class CGrid<TRow = any> {
         enterNavigatesVerticallyAfterEdit: this.options.enterNavigatesVerticallyAfterEdit ?? false,
         suppressStartEditOnTab: this.options.suppressStartEditOnTab ?? false,
         enableCellEditingOnBackspace: this.options.enableCellEditingOnBackspace ?? false,
+        enableExcelEditing: this.options.enableExcelEditing ?? false,
       }),
       isCellEditable: (rowIndex, colId) => this.isCellEditable(rowIndex, colId),
       isColSingleClickEdit: (colId) => this.columnDefsMap.get(colId)?.singleClickEdit,
@@ -305,7 +309,7 @@ export class CGrid<TRow = any> {
       },
       getRowDataAt: (rowIndex) => this.rowDataSnapshotAt(rowIndex),
       isEditing: () => this.editor.isOpen(),
-      openEditor: (rowIndex, colId, charPress) => this.openEditor(rowIndex, colId, charPress ?? null),
+      openEditor: (rowIndex, colId, charPress, mode) => this.openEditor(rowIndex, colId, charPress ?? null, mode ?? 'edit'),
       stopEditing: (cancel) => this.stopEditing(cancel),
       nextEditableCell: (rowIndex, colId, dir) => this.nextEditableCell(rowIndex, colId, dir),
     });
@@ -365,12 +369,16 @@ export class CGrid<TRow = any> {
       });
     }
 
-    // Edit-mode keyboard matrix (Task 4). Root capture-phase listener
-    // because the editor's <input>/<select>/<textarea> has focus while
-    // editing — KeyPaging fires on the canvas and never sees these keys.
+    // Edit-mode keyboard matrix (Task 4 + Task 5). Root capture-phase
+    // listener because the editor's <input>/<select>/<textarea> has focus
+    // while editing — KeyPaging fires on the canvas and never sees these
+    // keys.
     // - Escape: cancel
     // - Enter: commit (+ optional descend per enterNavigatesVerticallyAfterEdit)
     // - Tab: commit + advance to next editable cell (unless suppressStartEditOnTab)
+    // - Excel mode + activeEdit.mode === 'enter' + Arrow*: commit + move focus
+    //   to the adjacent cell. Otherwise arrow keys fall through to the input's
+    //   native caret-move handler.
     // We capture-and-stopPropagation so the per-editor Enter/Esc handlers
     // can't double-fire on the same keypress.
     this.root.addEventListener('keydown', (raw) => {
@@ -409,12 +417,49 @@ export class CGrid<TRow = any> {
           if (next) {
             this.selection.setFocus(next.rowIndex, next.colId);
             if (!this.options.suppressStartEditOnTab) {
-              this.openEditor(next.rowIndex, next.colId);
+              this.openEditor(next.rowIndex, next.colId, null, 'edit');
             }
           }
         }
+        return;
+      }
+      // Excel-mode arrow commits — only fire when both the grid flag and the
+      // active edit's mode opt in. The default 'edit' mode (F2 / dblclick /
+      // single-click / API) keeps arrow keys for caret-move inside the input.
+      if (
+        this.options.enableExcelEditing
+        && this.activeEdit?.mode === 'enter'
+        && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp'
+            || ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')
+      ) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const fr = this.selection.state.focusedRowIndex;
+        const fc = this.selection.state.focusedColId;
+        this.stopEditing(false);
+        if (fr == null || fc == null) return;
+        const cols = this.columnOrder.map((c) => c.colId);
+        const ci = cols.indexOf(fc);
+        if (ev.key === 'ArrowDown') {
+          this.selection.setFocus(Math.min(this.rowCount - 1, fr + 1), fc);
+        } else if (ev.key === 'ArrowUp') {
+          this.selection.setFocus(Math.max(0, fr - 1), fc);
+        } else if (ev.key === 'ArrowRight' && ci >= 0) {
+          this.selection.setFocus(fr, cols[Math.min(cols.length - 1, ci + 1)]!);
+        } else if (ev.key === 'ArrowLeft' && ci >= 0) {
+          this.selection.setFocus(fr, cols[Math.max(0, ci - 1)]!);
+        }
       }
     }, true);
+
+    // Excel-mode mousedown flip: a click inside the open editor switches
+    // a type-started 'enter' edit into 'edit' mode so the user can move the
+    // caret with the arrow keys instead of accidentally committing.
+    this.editorContainer.addEventListener('mousedown', () => {
+      if (this.activeEdit?.mode === 'enter') {
+        this.activeEdit.mode = 'edit';
+      }
+    });
 
     // Subscribe to group state changes — recompute visible columns, repaint,
     // and surface both the per-group event and the broader displayed-columns
@@ -1216,9 +1261,17 @@ export class CGrid<TRow = any> {
 
   /** Open the editor on the cell at `(rowIndex, colId)`. No-op when the
    *  cell is not editable, not currently in the viewport, or already in
-   *  edit mode. Called by the EditTrigger feature (click/dblclick) and
-   *  KeyPaging (F2 / Enter / Tab next-editable). */
-  openEditor(rowIndex: number, colId: string, charPress: string | null = null): void {
+   *  edit mode. `mode` controls Excel's Enter / Edit dichotomy — defaults
+   *  to `'edit'` (arrows = caret-move). Type-to-edit (KeyPaging printable
+   *  key) passes `'enter'` so arrows commit + navigate when
+   *  `enableExcelEditing` is on. Called by the EditTrigger feature
+   *  (click/dblclick) and KeyPaging (F2 / Enter / Tab next-editable). */
+  openEditor(
+    rowIndex: number,
+    colId: string,
+    charPress: string | null = null,
+    mode: 'enter' | 'edit' = 'edit',
+  ): void {
     if (this.editor.isOpen()) return;
     const def = this.columnDefsMap.get(colId);
     if (!def || !this.isCellEditable(rowIndex, colId)) return;
@@ -1241,6 +1294,7 @@ export class CGrid<TRow = any> {
       rowIndex, rowId, colId,
       oldValue: initialValue,
       data: cell?.value !== undefined ? { [colId]: cell.value } : null,
+      mode,
     };
     this.editorContainer.style.pointerEvents = 'auto';
     this.editor.open({

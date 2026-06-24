@@ -84,10 +84,10 @@ describe('EditTrigger — click', () => {
   let trigger: EditTrigger;
   beforeEach(() => { trigger = new EditTrigger(); });
 
-  it('singleClickEdit + editable opens the editor on click', () => {
+  it("singleClickEdit + editable opens the editor on click in 'edit' mode", () => {
     const { grid, openEditor } = fakeGrid({ flags: { singleClickEdit: true } });
     trigger.handleClick(clickCtx(grid, cellHit(2, 'a')));
-    expect(openEditor).toHaveBeenCalledWith(2, 'a');
+    expect(openEditor).toHaveBeenCalledWith(2, 'a', undefined, 'edit');
   });
 
   it('singleClickEdit OFF leaves a click alone (dblclick handles the edit)', () => {
@@ -102,7 +102,7 @@ describe('EditTrigger — click', () => {
       singleClickEditPerCol: new Map([['a', true]]),
     });
     trigger.handleClick(clickCtx(grid, cellHit(0, 'a')));
-    expect(openEditor).toHaveBeenCalledWith(0, 'a');
+    expect(openEditor).toHaveBeenCalledWith(0, 'a', undefined, 'edit');
   });
 
   it('per-column singleClickEdit=false wins over grid=true', () => {
@@ -145,10 +145,10 @@ describe('EditTrigger — double-click', () => {
   let trigger: EditTrigger;
   beforeEach(() => { trigger = new EditTrigger(); });
 
-  it('opens editor on a cell dblclick when editable', () => {
+  it("opens editor on a cell dblclick when editable in 'edit' mode", () => {
     const { grid, openEditor } = fakeGrid();
     trigger.handleDoubleClick(dblClickCtx(grid, cellHit(3, 'b')));
-    expect(openEditor).toHaveBeenCalledWith(3, 'b');
+    expect(openEditor).toHaveBeenCalledWith(3, 'b', undefined, 'edit');
   });
 
   it('suppressClickEdit blocks dblclick', () => {

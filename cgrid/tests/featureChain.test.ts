@@ -68,6 +68,7 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
       enterNavigatesVerticallyAfterEdit: false,
       suppressStartEditOnTab: false,
       enableCellEditingOnBackspace: false,
+      enableExcelEditing: false,
     }),
     isCellEditable: () => editable,
     isColSingleClickEdit: () => undefined,
@@ -182,13 +183,13 @@ describe('FeatureChain — keyboard', () => {
     expect(sel.state.selectedRowIndices.has(2)).toBe(true);
   });
 
-  it('F2 opens the editor on the focused cell', () => {
+  it("F2 opens the editor on the focused cell in 'edit' mode", () => {
     const { canvas, openEditor } = setup({
       rowCount: 5, cols: ['a', 'b', 'c'],
       initialFocus: { row: 2, col: 'b' }, editable: true,
     });
     canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }));
-    expect(openEditor).toHaveBeenCalledWith(2, 'b');
+    expect(openEditor).toHaveBeenCalledWith(2, 'b', undefined, 'edit');
   });
 
   it('F2 is a no-op on a non-editable cell', () => {
@@ -200,13 +201,13 @@ describe('FeatureChain — keyboard', () => {
     expect(openEditor).not.toHaveBeenCalled();
   });
 
-  it('Enter opens the editor on an editable focused cell', () => {
+  it("Enter opens the editor on an editable focused cell in 'edit' mode", () => {
     const { canvas, openEditor } = setup({
       rowCount: 5, cols: ['a', 'b', 'c'],
       initialFocus: { row: 2, col: 'b' }, editable: true,
     });
     canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
-    expect(openEditor).toHaveBeenCalledWith(2, 'b');
+    expect(openEditor).toHaveBeenCalledWith(2, 'b', undefined, 'edit');
   });
 
   it('Escape clears selection', () => {
@@ -229,5 +230,32 @@ describe('FeatureChain — keyboard', () => {
     canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', bubbles: true }));
     // visibleRowIndices() returns [0] (length 1), so PageDown advances by 1.
     expect(sel.state.focusedRowIndex).toBe(1);
+  });
+
+  it("type-to-edit: printable char opens editor with charPress in 'enter' mode", () => {
+    const { canvas, openEditor } = setup({
+      rowCount: 5, cols: ['a', 'b', 'c'],
+      initialFocus: { row: 2, col: 'b' }, editable: true,
+    });
+    canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'X', bubbles: true }));
+    expect(openEditor).toHaveBeenCalledWith(2, 'b', 'X', 'enter');
+  });
+
+  it('type-to-edit: ignores modifier-key combinations (Ctrl+A)', () => {
+    const { canvas, openEditor } = setup({
+      rowCount: 5, cols: ['a', 'b', 'c'],
+      initialFocus: { row: 2, col: 'b' }, editable: true,
+    });
+    canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }));
+    expect(openEditor).not.toHaveBeenCalled();
+  });
+
+  it('type-to-edit: skips when the focused column is not editable', () => {
+    const { canvas, openEditor } = setup({
+      rowCount: 5, cols: ['a', 'b', 'c'],
+      initialFocus: { row: 2, col: 'b' }, editable: false,
+    });
+    canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'X', bubbles: true }));
+    expect(openEditor).not.toHaveBeenCalled();
   });
 });

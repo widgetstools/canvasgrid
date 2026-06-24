@@ -122,6 +122,11 @@ export function createPositionsGrid(container: HTMLElement): CGrid<Position> {
     // honest (clicking the input would otherwise commit on focusout).
     singleClickEdit: true,
     enterNavigatesVerticallyAfterEdit: true,
+    // Cycle 5 / Task 5 — Excel-style arrow-commit. Type-to-edit starts in
+    // 'enter' mode; ArrowDown/Up/Left/Right commit + move focus to the
+    // adjacent cell. F2, dblclick, single-click and api.startEditingCell
+    // start in 'edit' mode so arrows still move the input caret.
+    enableExcelEditing: true,
   };
   const grid = new CGrid<Position>(container, options);
   grid.registerCellRenderer('pnlPill', pnlPill);
