@@ -213,7 +213,20 @@ export type CGridEvent =
   | { type: 'asyncTransactionsFlushed'; results: TransactionResult[] }
   | { type: 'aggregationChanged'; totals: Record<string, number | null> }
   | { type: 'columnGroupOpened'; groupId: string; open: boolean }
-  | { type: 'displayedColumnsChanged'; source: 'columnGroupOpened' | 'columnDefsChanged' };
+  | { type: 'displayedColumnsChanged'; source: 'columnGroupOpened' | 'columnDefsChanged' }
+  /** Fires synchronously inside `destroy()` BEFORE any DOM removal so apps
+   *  can stash a state snapshot. `state` is `{}` until Cycle 22 wires the
+   *  full state-snapshot API; the event surface is shipped now so apps can
+   *  start wiring listeners against a stable shape. */
+  | { type: 'gridPreDestroyed'; state: Record<string, unknown> }
+  /** Fires when the host (canvas-drawable) bounds actually change. Skips
+   *  the initial measurement and any repaint that doesn't change the size,
+   *  so it's safe to listen for as a real layout trigger. */
+  | { type: 'gridSizeChanged'; width: number; height: number }
+  /** Fires exactly once per grid instance — the first non-empty viewport
+   *  chunk has been received and a repaint scheduled. Use for analytics
+   *  ("data was rendered"), autosize-on-mount, or to flip a loading flag. */
+  | { type: 'firstDataRendered' };
 
 export interface CGridApi {
   setRowData(rows: any[]): void;

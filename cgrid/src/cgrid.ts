@@ -95,6 +95,12 @@ export class CGrid<TRow = any> {
   private destroyed = false;
   private selectionUnsubscribe: () => void = () => {};
   private sortModel: SortModel = [];
+  /** Last bounds we emitted `gridSizeChanged` for. `null` until the initial
+   *  setBounds lands — that first call records but does not emit, so external
+   *  listeners only see real post-mount size changes. */
+  private lastEmittedBounds: { width: number; height: number } | null = null;
+  /** Latches `firstDataRendered` to exactly once per grid instance. */
+  private firstDataFired = false;
 
   constructor(container: HTMLElement, private options: CGridOptions<TRow>) {
     if (!options.getRowId) throw new Error('[cgrid] options.getRowId is required');
@@ -188,6 +194,20 @@ export class CGrid<TRow = any> {
         // worker client throws on send. After init the gridReady handler does
         // the first fetch and any later resize re-fetches normally.
         if (this.workerClient) this.requestViewport();
+        // gridSizeChanged: skip the initial measurement (lastEmittedBounds is
+        // null on first call — we record the size silently). Emit only when
+        // dimensions actually change so a repaint-poll tick that re-measures
+        // to the same size never spams listeners.
+        if (this.lastEmittedBounds === null) {
+          this.lastEmittedBounds = { width: b.width, height: b.height };
+        } else if (
+          b.width !== this.lastEmittedBounds.width ||
+          b.height !== this.lastEmittedBounds.height
+        ) {
+          this.lastEmittedBounds.width = b.width;
+          this.lastEmittedBounds.height = b.height;
+          this.events.emit({ type: 'gridSizeChanged', width: b.width, height: b.height });
+        }
       },
       paint: (gc) => this.renderer.paint(gc),
     }, {
@@ -633,6 +653,11 @@ export class CGrid<TRow = any> {
 
   destroy(): void {
     if (this.destroyed) return;
+    // gridPreDestroyed fires SYNCHRONOUSLY before any teardown so listeners
+    // can read state (selection, scroll, column widths) one last time. The
+    // state payload is a stub until Cycle 22's snapshot API; shipping the
+    // event surface now means apps can wire listeners against a stable shape.
+    this.events.emit({ type: 'gridPreDestroyed', state: {} });
     this.destroyed = true;
     this.selectionUnsubscribe();
     this.cgridCanvas.destroy();
@@ -889,6 +914,13 @@ export class CGrid<TRow = any> {
         this.updateA11y();
         if (chunk.totals) {
           this.events.emit({ type: 'aggregationChanged', totals: chunk.totals });
+        }
+        // firstDataRendered: latch once per grid instance, the first time a
+        // non-empty chunk has landed and a repaint has been scheduled. Empty
+        // chunks (e.g. setRowData([]) or filter-out-everything) don't count.
+        if (!this.firstDataFired && chunk.rowCount > 0) {
+          this.firstDataFired = true;
+          this.events.emit({ type: 'firstDataRendered' });
         }
         if (this.viewportRequestQueued) {
           this.viewportRequestQueued = false;
