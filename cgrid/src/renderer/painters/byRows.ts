@@ -221,6 +221,24 @@ function paintBand(
         continue; // totals/footer not yet wired
       }
 
+      // Resolve the renderer per cell: header rows always go to 'header';
+      // data rows ask the column's cellRendererSelector (if any) and fall
+      // back to the static cellRenderer + cellRendererParams. The selector
+      // is the only per-cell hook here — keep it cheap.
+      let rendererName: string;
+      let params: unknown;
+      if (row.subgrid.isHeader) {
+        rendererName = 'header';
+        params = undefined;
+      } else if (def.cellRendererSelector) {
+        const selected = def.cellRendererSelector({ value, colId: col.colId, data: null });
+        rendererName = selected?.component ?? def.cellRenderer;
+        params = selected?.params !== undefined ? selected.params : def.cellRendererParams;
+      } else {
+        rendererName = def.cellRenderer;
+        params = def.cellRendererParams;
+      }
+
       applyCellProps(config, {
         theme,
         colDef: def,
@@ -239,6 +257,7 @@ function paintBand(
         iconColor: theme.focusRingColor,
         sortDirection,
         flashAlpha,
+        params,
       });
 
       // Per-cell clip — adjacent columns share the same band clip, so a value
@@ -250,7 +269,6 @@ function paintBand(
       gc.beginPath();
       gc.rect(col.left, row.top, col.width, row.height);
       gc.clip();
-      const rendererName = row.subgrid.isHeader ? 'header' : def.cellRenderer;
       cellRenderers.get(rendererName).paint(gc, config);
       gc.cache.restore();
     }

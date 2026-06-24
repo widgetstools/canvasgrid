@@ -252,3 +252,41 @@ test('vertical scrollbar gutter is reserved to the right of the canvas', async (
   });
   expect(d.rootW - d.canvasW).toBeGreaterThanOrEqual(10);
 });
+
+// ─── Custom cell renderer (Cycle 4 Task 8) ───────────────────────────────────
+
+test('custom pnlPill renderer paints a coloured pill on the Total P&L column', async ({ page }) => {
+  const canvas = page.locator(GRID_SELECTOR);
+  await waitForGridPopulated(page, canvas);
+
+  // Total P&L is right-pinned (width 110). Sample the centre of the data
+  // body in that column and assert at least one of the two pill fills is
+  // present — green for positive, red for negative. The default 'number'
+  // renderer would only paint header/row backgrounds (greys), never these
+  // saturated translucent fills.
+  const found = await canvas.evaluate((el: HTMLCanvasElement) => {
+    const ctx = el.getContext('2d')!;
+    const cssW = parseInt(el.style.width || `${el.width}`, 10);
+    const cssH = parseInt(el.style.height || `${el.height}`, 10);
+    const dpr = el.width / cssW;
+    // Right-pinned Total column: x ≈ [cssW - 110, cssW]. Sample the inner
+    // pill region (4px inset) over the first 8 data rows.
+    const sx = Math.round((cssW - 100) * dpr);
+    const sy = Math.round(85 * dpr);
+    const sw = Math.round(90 * dpr);
+    const sh = Math.round(Math.min(300, cssH - 100) * dpr);
+    const img = ctx.getImageData(sx, sy, sw, sh).data;
+    let green = 0; let red = 0;
+    for (let i = 0; i < img.length; i += 4) {
+      const r = img[i]!; const g = img[i + 1]!; const b = img[i + 2]!;
+      // Pill fills sit on a dark header/row background, so the painter's
+      // alpha-blended fill registers as a visibly green-dominant or
+      // red-dominant pixel. Loose thresholds to survive theme tints.
+      if (g > r + 15 && g > b + 15) green++;
+      else if (r > g + 15 && r > b + 15) red++;
+    }
+    return { green, red };
+  });
+  // At least one direction should clearly show pill pixels.
+  expect(found.green + found.red).toBeGreaterThan(50);
+});

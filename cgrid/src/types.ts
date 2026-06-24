@@ -59,6 +59,21 @@ export interface CColDef<TRow = any, TValue = any> {
   valueGetter?: (params: CValueGetterParams<TRow>) => TValue;
   valueFormatter?: (params: CValueFormatterParams<TRow, TValue>) => string;
   cellRenderer?: string;
+  /**
+   * Static params forwarded to the resolved cell renderer as
+   * `CellPaintConfig.params`. Apps choose the shape; the engine treats it
+   * as opaque. Inherited from `defaultColDef.cellRendererParams` when not
+   * set at column level.
+   */
+  cellRendererParams?: unknown;
+  /**
+   * Per-cell renderer selector. Invoked at paint time with the cell's
+   * `value` and `colId`; returning `{ component, params? }` overrides
+   * the static `cellRenderer` and (if `params` is set) the static
+   * `cellRendererParams`. Return `undefined` to fall back to the static
+   * pair.
+   */
+  cellRendererSelector?: CCellRendererSelector<TRow, TValue>;
   comparator?: (a: TValue, b: TValue, ar: TRow, br: TRow) => number;
   filter?: 'text' | 'number';
   aggFunc?: 'sum' | 'avg' | 'min' | 'max' | 'count';
@@ -75,6 +90,29 @@ export interface CColDef<TRow = any, TValue = any> {
    */
   columnGroupShow?: 'open' | 'closed' | null;
 }
+
+/**
+ * Params passed to a `cellRendererSelector`. Foundation cycle: row `data` is
+ * stored in the worker, so the selector receives the materialised `value`
+ * and `colId` only. Row data will join this object when main-thread row
+ * access lands in a later cycle.
+ */
+export interface CCellRendererSelectorParams<TValue = unknown> {
+  value: TValue;
+  colId: string;
+}
+
+export interface CCellRendererSelectorResult {
+  /** Registered cell-renderer name to dispatch to. */
+  component: string;
+  /** Dynamic params forwarded to the painter. Override static
+   *  `cellRendererParams` when defined; falls back to them when omitted. */
+  params?: unknown;
+}
+
+export type CCellRendererSelector<TRow = any, TValue = any> = (
+  params: CCellRendererSelectorParams<TValue> & { data?: TRow | null },
+) => CCellRendererSelectorResult | undefined;
 
 /**
  * Column group definition. `columnDefs` accepts a mix of `CColDef` (leaf
@@ -184,4 +222,10 @@ export interface CGridApi {
    *  honored only via this batched entrypoint (not via `setGridOption`)
    *  because it rebuilds the column tree + worker column metadata. */
   updateGridOptions(partial: Partial<CGridOptions>): void;
+
+  /** Register a custom cell renderer under `name`. Columns referencing the
+   *  name via `cellRenderer` (or a `cellRendererSelector` return value)
+   *  will dispatch to `painter` at paint time. Built-in names ('text',
+   *  'number', 'checkbox', 'header') can be overridden by re-registering. */
+  registerCellRenderer(name: string, painter: import('./renderer/cellRenderers/registry').CellPainter): void;
 }

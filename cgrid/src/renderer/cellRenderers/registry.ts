@@ -26,6 +26,13 @@ export interface CellPaintConfig {
   sortDirection?: 'asc' | 'desc';
   // Flash overlay (already supported; carries through)
   flashAlpha?: number;
+  /**
+   * Opaque per-cell params forwarded by the painter. Set from either the
+   * resolved column's static `cellRendererParams` or — when a column has a
+   * `cellRendererSelector` that returned `{ params }` — that per-cell
+   * override. Custom painters interpret the shape.
+   */
+  params?: unknown;
 }
 
 export interface CellPainter {

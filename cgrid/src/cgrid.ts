@@ -18,7 +18,7 @@ import { computeViewport, type ViewportState } from './core/viewport';
 import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, type Subgrid } from './core/subgrid';
 import { CGridCanvas } from './core/canvas';
 import { CssReader, type ResolvedTheme } from './theming/cssReader';
-import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell } from './renderer/cellRenderers/registry';
+import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell, type CellPainter } from './renderer/cellRenderers/registry';
 import { Renderer } from './renderer/renderer';
 import { HitTester } from './interaction/hitTester';
 import { SelectionModel } from './interaction/selectionModel';
@@ -35,7 +35,9 @@ export type {
   CGridOptions, CColDef, CColGroupDef, CGridEvent, CGridApi, Tx, TransactionResult,
   SortModel, SortModelEntry, FilterModel, FilterModelEntry, GroupModel,
   CValueGetterParams, CValueFormatterParams,
+  CCellRendererSelector, CCellRendererSelectorParams, CCellRendererSelectorResult,
 } from './types';
+export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/registry';
 
 /**
  * Infer the row-ID field name from a `(row) => row.<field>` style accessor.
@@ -491,6 +493,16 @@ export class CGrid<TRow = any> {
 
   refresh(): void { this.cgridCanvas.requestRepaint(); }
 
+  /** Register a custom cell renderer. After registration, columns with
+   *  `cellRenderer: name` (or whose `cellRendererSelector` returns
+   *  `{ component: name }`) will dispatch to `painter`. Built-in names
+   *  ('text', 'number', 'checkbox', 'header') can be overridden by
+   *  re-registering; the override applies on the next repaint. */
+  registerCellRenderer(name: string, painter: CellPainter): void {
+    this.cellRenderers.register(name, painter);
+    this.cgridCanvas?.requestRepaint();
+  }
+
   setTheme(themeClass: string): void {
     const current = Array.from(this.root.classList).filter((c) => c.startsWith('cg-theme-'));
     current.forEach((c) => this.root.classList.remove(c));
@@ -659,6 +671,7 @@ export class CGrid<TRow = any> {
       getGridOption: (k) => this.getGridOption(k as keyof CGridOptions<TRow>) as any,
       setGridOption: (k, v) => this.setGridOption(k as keyof CGridOptions<TRow>, v as any),
       updateGridOptions: (p) => this.updateGridOptions(p as Partial<CGridOptions<TRow>>),
+      registerCellRenderer: (n, p) => this.registerCellRenderer(n, p),
     };
   }
 

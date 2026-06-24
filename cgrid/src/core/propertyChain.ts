@@ -1,4 +1,7 @@
-import type { CColDef, CValueGetterParams, CValueFormatterParams, ColCellOverrides } from '../types';
+import type {
+  CColDef, CValueGetterParams, CValueFormatterParams, ColCellOverrides,
+  CCellRendererSelector,
+} from '../types';
 import type { CellPaintConfig } from '../renderer/cellRenderers/registry';
 import type { ResolvedTheme } from '../theming/cssReader';
 
@@ -17,6 +20,10 @@ export interface ResolvedColDef<TRow = any> {
   valueGetter?: (params: CValueGetterParams<TRow>) => unknown;
   valueFormatter?: (params: CValueFormatterParams<TRow, unknown>) => string;
   cellRenderer: string;
+  /** Static params forwarded to the painter as `CellPaintConfig.params`. */
+  cellRendererParams?: unknown;
+  /** Per-cell renderer selector (see `CCellRendererSelector`). */
+  cellRendererSelector?: CCellRendererSelector<TRow>;
   comparator?: (a: unknown, b: unknown, ar: TRow, br: TRow) => number;
   filter?: 'text' | 'number';
   aggFunc?: 'sum' | 'avg' | 'min' | 'max' | 'count';
@@ -46,6 +53,8 @@ export interface ApplyCellPropsInput {
   iconColor?: string;
   sortDirection?: 'asc' | 'desc';
   flashAlpha?: number;
+  /** Resolved per-cell renderer params (see `CellPaintConfig.params`). */
+  params?: unknown;
 }
 
 /** Repopulate `target` in place. The caller reuses a single config object
@@ -73,6 +82,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.iconColor = ctx.iconColor;
   target.sortDirection = ctx.sortDirection;
   target.flashAlpha = ctx.flashAlpha;
+  target.params = ctx.params;
 }
 
 export function resolveColDef<TRow>(
@@ -101,6 +111,8 @@ export function resolveColDef<TRow>(
     valueGetter: merged.valueGetter as ResolvedColDef<TRow>['valueGetter'],
     valueFormatter: merged.valueFormatter as ResolvedColDef<TRow>['valueFormatter'],
     cellRenderer: merged.cellRenderer ?? type,
+    cellRendererParams: merged.cellRendererParams,
+    cellRendererSelector: merged.cellRendererSelector as ResolvedColDef<TRow>['cellRendererSelector'],
     comparator: merged.comparator as ResolvedColDef<TRow>['comparator'],
     filter: merged.filter,
     aggFunc: merged.aggFunc,
