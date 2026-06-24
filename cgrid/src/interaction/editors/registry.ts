@@ -1,5 +1,11 @@
 import type { CellEditorCtor } from './iCellEditor';
 import { TextCellEditor } from './builtins/text';
+import { NumberCellEditor } from './builtins/number';
+import { DateCellEditor } from './builtins/date';
+import { DateStringCellEditor } from './builtins/dateString';
+import { SelectCellEditor } from './builtins/select';
+import { LargeTextCellEditor } from './builtins/largeText';
+import { CheckboxCellEditor } from './builtins/checkbox';
 
 export class CellEditorRegistry {
   private map = new Map<string, CellEditorCtor>();
@@ -20,7 +26,11 @@ export class CellEditorRegistry {
 
   static seed(reg: CellEditorRegistry): void {
     reg.register('text', TextCellEditor);
-    // Task 2 registers the remaining built-ins (number, date, dateString,
-    // select, largeText, checkbox).
+    reg.register('number', NumberCellEditor);
+    reg.register('date', DateCellEditor);
+    reg.register('dateString', DateStringCellEditor);
+    reg.register('select', SelectCellEditor as unknown as CellEditorCtor);
+    reg.register('largeText', LargeTextCellEditor);
+    reg.register('checkbox', CheckboxCellEditor);
   }
 }

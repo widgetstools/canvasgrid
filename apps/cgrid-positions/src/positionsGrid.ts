@@ -38,10 +38,24 @@ export function createPositionsGrid(container: HTMLElement): CGrid<Position> {
   const options: CGridOptions<Position> = {
     columnDefs: [
       { field: 'positionId',     headerName: 'Position ID',  width: 150, pinned: 'left' },
-      { field: 'cusip',          headerName: 'CUSIP',         width: 110, pinned: 'left' },
-      // Cycle 5 Task 1: ticker is the editable target for the editor E2E.
-      { field: 'ticker',         headerName: 'Ticker',        width: 100, editable: true },
-      { field: 'notionalAmount', headerName: 'Notional',      type: 'number', width: 130, aggFunc: 'sum' },
+      // Cycle 5 Task 2: cusip carries the text-editor E2E coverage now that
+      // ticker hosts the select editor.
+      { field: 'cusip',          headerName: 'CUSIP',         width: 110, pinned: 'left', editable: true },
+      // Cycle 5 Task 2: ticker exercises the 'select' editor; the values list
+      // is fixed for the demo so the E2E can pick a known entry.
+      {
+        field: 'ticker', headerName: 'Ticker', width: 100, editable: true,
+        cellEditor: 'select',
+        cellEditorParams: { values: ['AAPL', 'MSFT', 'GOOG', 'AMZN', 'NVDA', 'TSLA', 'META'] },
+      },
+      // Cycle 5 Task 2: notionalAmount exercises the 'number' editor; min/precision
+      // enforce non-negative two-decimal commits.
+      {
+        field: 'notionalAmount', headerName: 'Notional', type: 'number', width: 130, aggFunc: 'sum',
+        editable: true,
+        cellEditor: 'number',
+        cellEditorParams: { min: 0, precision: 2 },
+      },
       { field: 'marketValue',    headerName: 'Market Value',  type: 'number', width: 130, aggFunc: 'sum' },
       { field: 'currentPrice',   headerName: 'Price',         type: 'number', width: 100, aggFunc: 'avg' },
       {

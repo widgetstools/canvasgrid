@@ -4,10 +4,10 @@
  * Assumes the dev server is running and the STOMP server is feeding the
  * positions snapshot (same fixture as cycle4.spec.ts and grid.spec.ts).
  *
- * The `ticker` column is the editable target (see `positionsGrid.ts`
- * — Cycle 5 Task 1 marks it `editable: true`). We use the grid's
- * `getCellBoundsAt` helper to position synthetic clicks instead of guessing
- * pixel coordinates so the tests survive layout tweaks.
+ * The `cusip` column is the text-editable target. (Originally `ticker`
+ * carried this coverage; Cycle 5 Task 2 re-targets ticker to the select
+ * editor and promotes cusip to the text-edit target so this spec stays
+ * focused on the default 'text' editor.)
  */
 import { test, expect } from '@playwright/test';
 
@@ -19,10 +19,10 @@ test.describe('Cell editing — text editor (Cycle 5 / Task 1)', () => {
     await page.waitForFunction(() => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true, null, { timeout: 20_000 });
   });
 
-  test('double-click ticker cell opens text editor; Enter commits typed value', async ({ page }) => {
+  test('double-click cusip cell opens text editor; Enter commits typed value', async ({ page }) => {
     const bounds = await page.evaluate(() => {
       const grid = (window as unknown as { __cgrid: { getCellBoundsAt: (r: number, c: string) => { x: number; y: number; w: number; h: number } | null } }).__cgrid;
-      return grid.getCellBoundsAt(0, 'ticker');
+      return grid.getCellBoundsAt(0, 'cusip');
     });
     expect(bounds).not.toBeNull();
     const canvasRect = await page.locator('#grid canvas').boundingBox();
@@ -43,7 +43,7 @@ test.describe('Cell editing — text editor (Cycle 5 / Task 1)', () => {
     await expect.poll(
       () => page.evaluate(() => {
         const g = (window as unknown as { __cgrid: { getCellValue: (r: number, c: string) => unknown } }).__cgrid;
-        return g.getCellValue(0, 'ticker');
+        return g.getCellValue(0, 'cusip');
       }),
       { timeout: 5_000 },
     ).toBe('CHANGED');
@@ -52,11 +52,11 @@ test.describe('Cell editing — text editor (Cycle 5 / Task 1)', () => {
   test('Escape cancels without writing', async ({ page }) => {
     const original = await page.evaluate(() => {
       const grid = (window as unknown as { __cgrid: { getCellValue: (r: number, c: string) => unknown } }).__cgrid;
-      return grid.getCellValue(0, 'ticker');
+      return grid.getCellValue(0, 'cusip');
     });
     const bounds = await page.evaluate(() => {
       const grid = (window as unknown as { __cgrid: { getCellBoundsAt: (r: number, c: string) => { x: number; y: number; w: number; h: number } | null } }).__cgrid;
-      return grid.getCellBoundsAt(0, 'ticker');
+      return grid.getCellBoundsAt(0, 'cusip');
     });
     const canvasRect = await page.locator('#grid canvas').boundingBox();
     const clickX = canvasRect!.x + bounds!.x + Math.min(10, bounds!.w / 2);
@@ -71,7 +71,7 @@ test.describe('Cell editing — text editor (Cycle 5 / Task 1)', () => {
 
     const after = await page.evaluate(() => {
       const grid = (window as unknown as { __cgrid: { getCellValue: (r: number, c: string) => unknown } }).__cgrid;
-      return grid.getCellValue(0, 'ticker');
+      return grid.getCellValue(0, 'cusip');
     });
     expect(after).toBe(original);
   });
