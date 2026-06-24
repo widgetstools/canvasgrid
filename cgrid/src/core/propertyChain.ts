@@ -43,6 +43,10 @@ export interface ResolvedColDef<TRow = any> {
   /** Static params or callback forwarded into `ICellEditorParams.params`. */
   cellEditorParams?: Record<string, unknown> | ((row: TRow) => Record<string, unknown>);
   cellStyle?: ColCellOverrides;
+  /** See `CColDef.autoHeight`. When true, the worker measures wrapped-text
+   *  height for every visible row in this column and contributes the result
+   *  into the row's resolved height. Cycle 5 / Task 8. */
+  autoHeight?: boolean;
   /** See `CColDef.valueParser`. Invoked at editor-commit time before the
    *  worker transaction is queued. */
   valueParser?: (params: CValueParserParams<TRow, unknown>) => unknown;
@@ -142,6 +146,7 @@ export function resolveColDef<TRow>(
     cellEditor: merged.cellEditor as ResolvedColDef<TRow>['cellEditor'],
     cellEditorParams: merged.cellEditorParams as ResolvedColDef<TRow>['cellEditorParams'],
     cellStyle: merged.cellStyle,
+    autoHeight: merged.autoHeight,
     columnGroupShow: merged.columnGroupShow ?? null,
   };
 }

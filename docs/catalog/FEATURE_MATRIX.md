@@ -60,7 +60,7 @@
 | 02 | ✅ cellRendererParams | Community | option | yes | P0 | Static params passed to cellRenderer |
 | 02 | ✅ cellRendererSelector | Community | option | no | P1 | Per-row dynamic renderer selection callback |
 | 02 | enableCellChangeFlash | Community | option | yes | P1 | Flash cell on value change |
-| 02 | autoHeight | Community | option | no | P2 | Row height expands to fit this column's content |
+| 02 | ✅ autoHeight | Community | option | yes | P2 | Row height expands to fit this column's content |
 | 02 | wrapText | Community | option | no | P2 | Enables text wrap inside cell |
 | 02 | width / initialWidth | Community | option | yes | P0 | Column pixel width |
 | 02 | minWidth / maxWidth | Community | option | yes | P0 | Column width constraints |
@@ -187,7 +187,7 @@
 | 05 | cellRenderer (ColDef) | Community | option | yes | P0 | Custom cell renderer component |
 | 05 | cellRendererParams (ColDef) | Community | option | yes | P0 | Params for cell renderer |
 | 05 | cellRendererSelector (ColDef) | Community | option | no | P1 | Per-row dynamic renderer selection |
-| 05 | autoHeight (ColDef) | Community | option | no | P2 | Row expands to fit column content |
+| 05 | ✅ autoHeight (ColDef) | Community | option | yes | P2 | Row expands to fit column content |
 | 05 | wrapText (ColDef) | Community | option | no | P2 | Enable text wrap in cell |
 | 05 | animateRows | Community | option | no | P2 | CSS transition for row position animation |
 | 05 | suppressScrollOnNewData | Community | option | no | P2 | No auto-scroll to top on data replace |

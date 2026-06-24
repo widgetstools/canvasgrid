@@ -1,5 +1,5 @@
 import type {
-  WorkerRequest, WorkerResponse, WorkerPush, WorkerInitPayload,
+  WorkerRequest, WorkerResponse, WorkerPush, WorkerInitPayload, MeasureTextItem,
 } from './protocol';
 import { collectViewportTransferables } from './protocol';
 import {
@@ -7,6 +7,25 @@ import {
 } from './dataPipeline';
 import type { TransactionResult } from '../types';
 import type { WorkerColumn } from './protocol';
+import {
+  MeasureCache, measureKey, offscreenMeasurer, workerCanMeasure, wrapTextToHeight,
+} from './measureText';
+
+interface AutoHeightCol {
+  colId: string;
+  field: string;
+  font: string;
+  width: number;
+  lineHeight: number;
+  padding: number;
+}
+
+interface PendingMeasure {
+  rowId: string;
+  colId: string;
+  cacheKey: string;
+  itemIndex: number;
+}
 
 interface State {
   store: RowStore;
@@ -17,6 +36,12 @@ interface State {
   queue: TransactionQueue;
   columns: WorkerColumn[];
   visibleCache: string[] | null;
+  /** Cache of `(font|width|text)` → wrapped-text-height. Bounded LRU. */
+  measureCache: MeasureCache;
+  /** Pending fallback batches keyed by `batchId`. Resolves when main posts
+   *  back the matching `measureTextResponse`. */
+  pendingFallbacks: Map<number, (heights: Float32Array) => void>;
+  nextBatchId: number;
 }
 
 type Postable = WorkerResponse | WorkerPush;
@@ -52,6 +77,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
 
   function initHost(payload: WorkerInitPayload, id: number): void {
     const store = new RowStore(payload.rowIdField);
+    if (payload.rowHeight != null) store.setGridRowHeight(payload.rowHeight);
 
     const queue = new TransactionQueue({
       waitMs: 50,
@@ -77,9 +103,141 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       queue,
       columns: payload.columns,
       visibleCache: null,
+      measureCache: new MeasureCache(1024),
+      pendingFallbacks: new Map(),
+      nextBatchId: 1,
     };
 
     post({ id, type: 'ready' });
+  }
+
+  /** Project the autoHeight columns from the current `state.columns`. Only
+   *  columns whose metadata is complete (font + width + lineHeight) are
+   *  included — partial metadata would silently misalign the measurement
+   *  with the renderer. */
+  function autoHeightCols(): AutoHeightCol[] {
+    if (!state) return [];
+    const out: AutoHeightCol[] = [];
+    for (const col of state.columns) {
+      if (!col.autoHeight || !col.field) continue;
+      const font = col.autoHeightFont;
+      const width = col.autoHeightWidth;
+      const lineHeight = col.autoHeightLineHeight;
+      const padding = col.autoHeightPadding ?? 0;
+      if (!font || width == null || lineHeight == null) continue;
+      out.push({ colId: col.colId, field: col.field, font, width, lineHeight, padding });
+    }
+    return out;
+  }
+
+  /** Run autoHeight measurement over the rowIds in `visIds`. Uses the
+   *  worker's OffscreenCanvas when available; otherwise batches into a
+   *  `measureTextRequest` fallback. Writes contributions to the store and
+   *  posts a `heightsChanged` push with the updated rows. The push only
+   *  fires when at least one resolved height changed.
+   *
+   *  This runs OUT-OF-BAND from the `getViewport` response so the first
+   *  chunk lands fast; the heights settle one rAF later when this finishes. */
+  async function runAutoHeightPass(visIds: string[], rowStartArg: number, rowEndArg: number): Promise<void> {
+    if (!state) return;
+    const cols = autoHeightCols();
+    if (cols.length === 0) return;
+    const rowStart = Math.max(0, rowStartArg);
+    const rowEnd = Math.min(visIds.length, rowEndArg);
+    if (rowEnd <= rowStart) return;
+
+    const gridRH = state.store.getGridRowHeight();
+    const measure = workerCanMeasure() ? null : 'fallback';
+    // Per-font measurer cache — building one per font avoids re-setting
+    // ctx.font inside the inner loop, which is a non-trivial CSS-shorthand
+    // parse per call.
+    const measurers = new Map<string, ((s: string) => number)>();
+    const getMeasurer = (font: string) => {
+      if (measure === 'fallback') return null;
+      let m = measurers.get(font);
+      if (!m) {
+        m = offscreenMeasurer(font) ?? undefined;
+        if (m) measurers.set(font, m);
+      }
+      return m ?? null;
+    };
+
+    const pendingItems: MeasureTextItem[] = [];
+    const pendingMeta: PendingMeasure[] = [];
+    let anyChanged = false;
+    const initialHeights = new Float32Array(rowEnd - rowStart);
+    for (let i = rowStart; i < rowEnd; i++) {
+      initialHeights[i - rowStart] = state.store.effectiveShippedHeight(visIds[i]!);
+    }
+
+    for (let i = rowStart; i < rowEnd; i++) {
+      const rowId = visIds[i];
+      if (rowId === undefined) continue;
+      const row = state.store.getById(rowId);
+      if (!row) continue;
+      for (const col of cols) {
+        const raw = (row as Record<string, unknown>)[col.field];
+        const text = raw == null ? '' : String(raw);
+        // Empty cells contribute nothing — measuring an empty string still
+        // produces `lineHeight + 2 * padding`, which can exceed the grid
+        // baseline (e.g. lineHeight 32 + padding 4 = 40 vs baseline 30) and
+        // silently bump every empty row. Skip to keep autoHeight strictly
+        // content-driven.
+        if (text === '') {
+          // Drop any stale contribution from a prior populated value so a
+          // cleared cell shrinks back to baseline.
+          state.store.clearAutoHeightContribution(rowId, col.colId, gridRH);
+          continue;
+        }
+        const key = measureKey(col.font, col.width, text);
+        const cached = state.measureCache.get(key);
+        if (cached !== undefined) {
+          state.store.setAutoHeightContribution(rowId, col.colId, cached, gridRH);
+          continue;
+        }
+        const m = getMeasurer(col.font);
+        if (m) {
+          const h = wrapTextToHeight(text, col.width, col.lineHeight, col.padding, m);
+          state.measureCache.set(key, h);
+          state.store.setAutoHeightContribution(rowId, col.colId, h, gridRH);
+        } else {
+          pendingMeta.push({ rowId, colId: col.colId, cacheKey: key, itemIndex: pendingItems.length });
+          pendingItems.push({
+            text, width: col.width, font: col.font,
+            lineHeight: col.lineHeight, padding: col.padding,
+          });
+        }
+      }
+    }
+
+    if (pendingItems.length > 0) {
+      const batchId = state.nextBatchId++;
+      const heights = await new Promise<Float32Array>((resolve) => {
+        state!.pendingFallbacks.set(batchId, resolve);
+        post({ type: 'measureTextRequest', batchId, items: pendingItems });
+      });
+      for (const meta of pendingMeta) {
+        const h = heights[meta.itemIndex];
+        if (h === undefined) continue;
+        state.measureCache.set(meta.cacheKey, h);
+        state.store.setAutoHeightContribution(meta.rowId, meta.colId, h, gridRH);
+      }
+    }
+
+    // Emit one chunk-aligned heights buffer for the whole range. Main applies
+    // the delta to its Fenwick index keyed by global visible-row index.
+    const finalHeights = new Float32Array(rowEnd - rowStart);
+    for (let i = rowStart; i < rowEnd; i++) {
+      const h = state.store.effectiveShippedHeight(visIds[i]!);
+      finalHeights[i - rowStart] = h;
+      if (h !== initialHeights[i - rowStart]) anyChanged = true;
+    }
+    if (anyChanged) {
+      post(
+        { type: 'heightsChanged', rowStart, heights: finalHeights },
+        [finalHeights.buffer],
+      );
+    }
   }
 
   return {
@@ -201,6 +359,25 @@ export function createWorkerHost(post: PostFn): WorkerHost {
               { id: req.id, type: 'viewport', chunk },
               collectViewportTransferables(chunk) as ArrayBuffer[],
             );
+            // AutoHeight pass — runs out-of-band so the first chunk lands
+            // fast; the heights settle one rAF later via a `heightsChanged`
+            // push that main applies to the Fenwick index. Cycle 5 / Task 8.
+            const rowStart = chunk.rowStart;
+            const rowEnd = chunk.rowStart + chunk.rowCount;
+            void runAutoHeightPass(visIds, rowStart, rowEnd);
+            break;
+          }
+
+          case 'measureTextResponse': {
+            // Fallback path: main has measured the previously-batched items.
+            // Resolve the waiting promise so `runAutoHeightPass` can continue.
+            const { batchId, heights } = req.payload;
+            const resolver = state.pendingFallbacks.get(batchId);
+            if (resolver) {
+              state.pendingFallbacks.delete(batchId);
+              resolver(heights);
+            }
+            post({ id: req.id, type: 'measureTextAck' });
             break;
           }
         }

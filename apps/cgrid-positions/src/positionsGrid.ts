@@ -98,10 +98,15 @@ export function createPositionsGrid(container: HTMLElement): CGrid<Position> {
         field: 'expiryDate', headerName: 'Expiry', width: 120, editable: true,
         cellEditor: 'date',
       },
+      // Cycle 5 / Task 8 — autoHeight target. main.ts seeds ~1 in 3 rows
+      // with a long synthetic description so the worker's measure pass has
+      // real wrap content. The largeText editor stays — popup mode is
+      // exactly what an autoHeight cell wants when the user edits.
       {
-        field: 'notes', headerName: 'Notes', width: 140, editable: true,
+        field: 'notes', headerName: 'Notes', width: 200, editable: true,
         cellEditor: 'largeText',
         cellEditorParams: { rows: 6, cols: 40, maxLength: 500 },
+        autoHeight: true,
       },
       {
         field: 'confirmed', headerName: 'Conf.', width: 70, editable: true,

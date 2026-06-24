@@ -29,6 +29,7 @@ import { CellEditorRegistry } from './interaction/editors/registry';
 import type { CellEditorCtor, ICellEditor } from './interaction/editors/iCellEditor';
 import { A11yOverlay } from './interaction/a11yOverlay';
 import { WorkerClient } from './worker/client';
+import { wrapTextToHeight } from './worker/measureText';
 import type { WorkerColumn, ViewportChunk } from './worker/protocol';
 import { decodeText } from './worker/chunkFormat';
 
@@ -354,12 +355,15 @@ export class CGrid<TRow = any> {
       onAsyncTransactionsFlushed: (results) => {
         this.events.emit({ type: 'asyncTransactionsFlushed', results });
       },
+      onHeightsChanged: (rowIds, heights) => this.onHeightsChanged(rowIds, heights),
+      onMeasureTextRequest: (batchId, items) => this.onMeasureTextRequest(batchId, items),
       onError: (msg) => console.error('[cgrid] worker error:', msg),
     });
 
     this.workerClient.init({
       rowIdField: inferRowIdField(options.getRowId),
       columns: this.workerColumns(),
+      rowHeight: this.options.rowHeight ?? this.theme.rowHeight,
     }).then(() => {
       this.events.emit({ type: 'gridReady', api: this.makeApi() });
       if (options.rowData) this.setRowData(options.rowData);
@@ -928,13 +932,96 @@ export class CGrid<TRow = any> {
   }
 
   private workerColumns(): WorkerColumn[] {
-    return this.columnOrder.map((c) => ({
-      colId: c.colId,
-      field: c.field as string | undefined,
-      type: c.type,
-      aggFunc: c.aggFunc,
-      filter: c.filter,
-    }));
+    return this.columnOrder.map((c) => {
+      const base: WorkerColumn = {
+        colId: c.colId,
+        field: c.field as string | undefined,
+        type: c.type,
+        aggFunc: c.aggFunc,
+        filter: c.filter,
+      };
+      // Cycle 5 / Task 8 — forward autoHeight metadata so the worker can
+      // measure wrapped text without re-walking the column tree. Width is
+      // the inner text width (column width minus the cell horizontal
+      // padding); font + lineHeight + padding are taken from the active
+      // theme so the worker's measure matches what the renderer paints.
+      if (c.autoHeight) {
+        const horizPad = 16; // matches the inline-cell horizontal padding in painters/byRows
+        const fontFromCell = c.cellStyle?.font;
+        const lineHeight = this.theme.rowHeight;
+        const padding = 4;
+        base.autoHeight = true;
+        base.autoHeightFont = fontFromCell ?? this.theme.font;
+        base.autoHeightWidth = Math.max(0, (c.width ?? 200) - horizPad);
+        base.autoHeightLineHeight = lineHeight;
+        base.autoHeightPadding = padding;
+      }
+      return base;
+    });
+  }
+
+  /** Cycle 5 / Task 8 — apply heights pushed from the worker's autoHeight
+   *  pass. Updates the Fenwick index for the affected range and requests a
+   *  repaint. Skips when the index has been wiped between request and
+   *  response (sort/filter/transaction landed in between) — the next
+   *  viewport fetch rebuilds it cleanly. */
+  private onHeightsChanged(rowStart: number, heights: Float32Array): void {
+    const idx = this.rowHeightIndex;
+    if (!idx) return;
+    const fallback = this.options.rowHeight ?? this.theme.rowHeight;
+    let any = false;
+    for (let i = 0; i < heights.length; i++) {
+      const globalIdx = rowStart + i;
+      if (globalIdx >= idx.length()) break;
+      const raw = heights[i]!;
+      const resolved = raw > 0 ? raw : fallback;
+      if (idx.heightAt(globalIdx) !== resolved) {
+        idx.update(globalIdx, resolved);
+        any = true;
+      }
+    }
+    if (any) {
+      // Mirror into the chunk so DataSubgrid.getRowHeight (which reads
+      // chunk.heights for in-window rows) picks up the new values without
+      // refetching the chunk.
+      if (this.chunk) {
+        for (let i = 0; i < heights.length; i++) {
+          const localIdx = rowStart + i - this.chunk.rowStart;
+          if (localIdx >= 0 && localIdx < this.chunk.heights.length) {
+            this.chunk.heights[localIdx] = heights[i]!;
+          }
+        }
+      }
+      this.recomputeViewport();
+      this.cgridCanvas.requestRepaint();
+    }
+  }
+
+  /** Cycle 5 / Task 8 — main-thread fallback for `OffscreenCanvas.measureText`.
+   *  Runs the same greedy word-wrap the worker would, using a regular
+   *  `<canvas>` 2D context so Safari 15.4–16.3 + Firefox 100–104 still get
+   *  autoHeight without blocking the worker pipeline. */
+  private onMeasureTextRequest(batchId: number, items: import('./worker/protocol').MeasureTextItem[]): void {
+    const canvas = document.createElement('canvas');
+    const ctx = canvas.getContext('2d');
+    if (!ctx) {
+      // No 2D context anywhere — best effort: zero-height response so the
+      // worker resolves and the autoHeight pass exits cleanly.
+      void this.workerClient.measureTextResponse(batchId, new Float32Array(items.length));
+      return;
+    }
+    const heights = new Float32Array(items.length);
+    let lastFont = '';
+    for (let i = 0; i < items.length; i++) {
+      const item = items[i]!;
+      if (item.font !== lastFont) {
+        ctx.font = item.font;
+        lastFont = item.font;
+      }
+      const measure = (s: string) => ctx.measureText(s).width;
+      heights[i] = wrapTextToHeight(item.text, item.width, item.lineHeight, item.padding, measure);
+    }
+    void this.workerClient.measureTextResponse(batchId, heights);
   }
 
   private computeCurrentViewport(): ViewportState {

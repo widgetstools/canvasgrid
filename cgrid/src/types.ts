@@ -190,6 +190,16 @@ export interface CColDef<TRow = any, TValue = any> {
   cellEditorPopupPosition?: 'over' | 'under';
   cellStyle?: ColCellOverrides;
   /**
+   * When true, the row's height grows to fit this cell's wrapped text. The
+   * worker measures every visible row in this column via
+   * `OffscreenCanvas.measureText` (with a main-thread fallback on Safari
+   * 15.4–16.3 and Firefox 100–104), then aggregates the result into the
+   * row's resolved height — `max(getRowHeight, max(autoHeight columns))`.
+   * Typically paired with `wrapText: true` (Cycle 5 / Task 9) so the
+   * renderer actually paints across multiple lines. Cycle 5 / Task 8.
+   */
+  autoHeight?: boolean;
+  /**
    * Convert the editor's emitted value into the typed value to commit. Runs
    * before `valueSetter`. Receives the value already cast by the editor
    * (`Number()` for `type: 'number'`, raw string for text). Return the value

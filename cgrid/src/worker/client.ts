@@ -1,6 +1,6 @@
 import type {
   WorkerRequest, WorkerResponse, WorkerPush, WorkerInitPayload, ViewportRequest, ViewportChunk,
-  WorkerColumn,
+  WorkerColumn, MeasureTextItem,
 } from './protocol';
 import type { TransactionResult, SortModel, FilterModel } from '../types';
 
@@ -8,6 +8,14 @@ export interface WorkerClientHandlers {
   onModelUpdated: (visibleCount: number) => void;
   onAsyncTransactionsFlushed: (results: TransactionResult[]) => void;
   onError: (error: string) => void;
+  /** Cycle 5 / Task 8 — worker has measured a chunk of autoHeight rows and
+   *  is shipping back the updated per-row heights for the Fenwick index.
+   *  `rowStart` is the global visible-row index of `heights[0]`. */
+  onHeightsChanged?: (rowStart: number, heights: Float32Array) => void;
+  /** Cycle 5 / Task 8 — main-thread fallback for `OffscreenCanvas.measureText`.
+   *  Main runs the wrap algorithm against a real `<canvas>` context and posts
+   *  back via `WorkerClient.measureTextResponse(batchId, heights)`. */
+  onMeasureTextRequest?: (batchId: number, items: MeasureTextItem[]) => void;
 }
 
 export interface WorkerLike {
@@ -37,6 +45,24 @@ export class WorkerClient {
     }
     if (msg.type === 'modelUpdated') this.handlers.onModelUpdated(msg.visibleCount);
     else if (msg.type === 'asyncTransactionsFlushed') this.handlers.onAsyncTransactionsFlushed(msg.results);
+    else if (msg.type === 'heightsChanged') {
+      this.handlers.onHeightsChanged?.(msg.rowStart, msg.heights);
+    } else if (msg.type === 'measureTextRequest') {
+      this.handlers.onMeasureTextRequest?.(msg.batchId, msg.items);
+    }
+  }
+
+  /** Cycle 5 / Task 8 — return main-thread measureText results to the
+   *  worker. Sends transferables for the heights array to avoid a copy. */
+  measureTextResponse(batchId: number, heights: Float32Array): Promise<void> {
+    const id = this.nextId++;
+    return new Promise<void>((resolve, reject) => {
+      this.pending.set(id, { resolve: () => resolve(), reject });
+      this.worker.postMessage(
+        { id, type: 'measureTextResponse', payload: { batchId, heights } },
+        [heights.buffer as ArrayBuffer],
+      );
+    });
   }
 
   private send<T>(req: Omit<WorkerRequest, 'id'>): Promise<T> {

@@ -17,6 +17,18 @@ export class RowStore<TRow = any> {
    * grid-level `rowHeight`. Cycle 5 / Task 6.
    */
   private heightsByRowId = new Map<string, number>();
+  /**
+   * Per-(row, column) measured heights from the autoHeight pass. Kept
+   * separately from `heightsByRowId` so removing autoHeight from one column
+   * does not drop the contribution of other autoHeight columns to the same
+   * row — when the user toggles `autoHeight: false`, we strip just that
+   * column's inner map entry and re-aggregate. Cycle 5 / Task 8.
+   */
+  private autoHeightContributions = new Map<string, Map<string, number>>();
+  /** Grid-level rowHeight fallback set at init time. The autoHeight pass
+   *  floors every contribution at this value so a short autoHeight row never
+   *  paints below the grid baseline. Cycle 5 / Task 8. */
+  private gridRowHeight = 0;
 
   constructor(private rowIdField: string) {}
 
@@ -26,6 +38,7 @@ export class RowStore<TRow = any> {
     // A full-replace wipes prior heights so a fresh dataset can't inherit
     // height entries for rowIds that no longer exist.
     this.heightsByRowId.clear();
+    this.autoHeightContributions.clear();
     for (const row of rows) {
       const id = this.getRowId(row);
       this.byId.set(id, row);
@@ -80,6 +93,7 @@ export class RowStore<TRow = any> {
           // Drop the per-row height too so a re-added row doesn't inherit
           // the previous row's height ghost.
           this.heightsByRowId.delete(id);
+          this.autoHeightContributions.delete(id);
           result.remove.push({ rowId: id });
         }
       }
@@ -94,6 +108,78 @@ export class RowStore<TRow = any> {
    *  entry exists (caller falls back to the grid-level `rowHeight`). */
   getHeight(rowId: string): number | undefined {
     return this.heightsByRowId.get(rowId);
+  }
+
+  /**
+   * Record an autoHeight measurement for one (row, column) and reaggregate
+   * the row's resolved height as `max(getRowHeight contribution, gridFallback,
+   * max(autoHeight contributions across columns))`. Returns the new resolved
+   * height. Cycle 5 / Task 8.
+   *
+   * `gridRowHeight` is the floor — short text in a single autoHeight column
+   * must not shrink rows below the grid's baseline `rowHeight`.
+   */
+  setAutoHeightContribution(rowId: string, colId: string, height: number, gridRowHeight: number): number {
+    let contribs = this.autoHeightContributions.get(rowId);
+    if (!contribs) {
+      contribs = new Map();
+      this.autoHeightContributions.set(rowId, contribs);
+    }
+    // Floor every contribution at the grid fallback so a single-line autoHeight
+    // measurement cannot shrink the row below the user's baseline rowHeight.
+    contribs.set(colId, Math.max(height, gridRowHeight));
+    return this.resolveHeight(rowId, gridRowHeight);
+  }
+
+  /** Drop one column's autoHeight contribution for `rowId`. Used when the
+   *  user toggles `autoHeight: false` on a column at runtime. */
+  clearAutoHeightContribution(rowId: string, colId: string, gridRowHeight: number): number {
+    const contribs = this.autoHeightContributions.get(rowId);
+    if (contribs) {
+      contribs.delete(colId);
+      if (contribs.size === 0) this.autoHeightContributions.delete(rowId);
+    }
+    return this.resolveHeight(rowId, gridRowHeight);
+  }
+
+  /** Aggregate the resolved height for `rowId`: the max of any explicit
+   *  getRowHeight contribution, the autoHeight contributions, and the grid
+   *  fallback. Pure read — does not write back. */
+  resolveHeight(rowId: string, gridRowHeight: number): number {
+    let h = this.heightsByRowId.get(rowId) ?? gridRowHeight;
+    const contribs = this.autoHeightContributions.get(rowId);
+    if (contribs) {
+      for (const v of contribs.values()) if (v > h) h = v;
+    }
+    return h;
+  }
+
+  /** Wire pass that owns the chunk pipeline calls this so the slicer can
+   *  produce per-row heights without re-passing the grid rowHeight on every
+   *  chunk request. Cycle 5 / Task 8. */
+  setGridRowHeight(h: number): void {
+    this.gridRowHeight = h;
+  }
+
+  getGridRowHeight(): number {
+    return this.gridRowHeight;
+  }
+
+  /** Shipped height for the protocol's `ViewportChunk.heights[i]`:
+   *  - Returns the explicit getRowHeight value when no autoHeight contrib.
+   *  - Returns `max(explicit ?? 0, max(contribs))` when contribs exist.
+   *  - Returns 0 (sentinel for "use grid fallback") only when neither
+   *    explicit nor any autoHeight contribution exists for this row.
+   *  The store's job is just aggregation; the floor-against-gridRowHeight
+   *  guarantee lives in `setAutoHeightContribution`, which never stores a
+   *  value below the grid fallback. */
+  effectiveShippedHeight(rowId: string): number {
+    const explicit = this.heightsByRowId.get(rowId);
+    const contribs = this.autoHeightContributions.get(rowId);
+    if (!contribs || contribs.size === 0) return explicit ?? 0;
+    let max = explicit ?? 0;
+    for (const v of contribs.values()) if (v > max) max = v;
+    return max;
   }
 
   size(): number { return this.byId.size; }
@@ -318,14 +404,15 @@ export class ViewportSlicer<TRow = any> {
     const groupDepth = new Uint8Array(count);
     // Per-row heights ride alongside rowIds in the same visible order.
     // 0 sentinel means "no per-row entry — main thread uses the global
-    // rowHeight fallback". Cycle 5 / Task 6.
+    // rowHeight fallback". Cycle 5 / Task 6. Autoheight contributions
+    // ride alongside the explicit getRowHeight value via the store's
+    // `effectiveShippedHeight` aggregation. Cycle 5 / Task 8.
     const heights = new Float32Array(count);
 
     for (let i = 0; i < count; i++) {
       const id = visibleIds[rowStart + i]!;
       rowIds[i] = this.store.getNumericId(id);
-      const h = this.store.getHeight(id);
-      if (h !== undefined) heights[i] = h;
+      heights[i] = this.store.effectiveShippedHeight(id);
     }
 
     const numericCols: Record<string, Float64Array> = {};
