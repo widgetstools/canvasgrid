@@ -202,12 +202,28 @@ export class CGrid<TRow = any> {
       },
       paint: (gc) => this.renderer.paint(gc),
     }, {
-      // Drawable size = scroller's inner area (excludes the scrollbar gutter)
-      // so the canvas never overlaps the native scrollbar.
-      measureSize: () => ({
-        width: this.scroller.clientWidth || this.root.clientWidth || 0,
-        height: this.scroller.clientHeight || this.root.clientHeight || 0,
-      }),
+      // Drawable size = scroller's inner area MINUS the scrollbar thickness.
+      // macOS overlay scrollbars don't reserve a gutter (clientWidth ===
+      // offsetWidth), so without an explicit subtraction the canvas paints
+      // over where the scrollbar would render and the user sees nothing.
+      // Always reserving the gutter is the right trade-off for a data grid
+      // where scrolling is expected.
+      measureSize: () => {
+        const sbT = this.theme.scrollbarThickness;
+        const baseW = this.scroller.clientWidth || this.root.clientWidth || 0;
+        const baseH = this.scroller.clientHeight || this.root.clientHeight || 0;
+        // If clientWidth already excludes the gutter (classic scrollbars), the
+        // root.clientWidth is wider than scroller.clientWidth — no further
+        // subtraction needed. Otherwise (overlay), reserve sbT pixels.
+        const rootW = this.root.clientWidth || baseW;
+        const rootH = this.root.clientHeight || baseH;
+        const reserveW = rootW - baseW >= sbT - 1 ? 0 : sbT;
+        const reserveH = rootH - baseH >= sbT - 1 ? 0 : sbT;
+        return {
+          width: Math.max(0, baseW - reserveW),
+          height: Math.max(0, baseH - reserveH),
+        };
+      },
     });
     // Stack editorContainer above the canvas (canvas was appended to root
     // by CGridCanvas, so editor goes on top).

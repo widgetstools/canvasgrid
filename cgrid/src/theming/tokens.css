@@ -94,12 +94,15 @@
   background: #eceff2;
 }
 
-/* Firefox */
+/* Firefox + cross-browser: scrollbar-gutter:stable reserves the gutter
+ * unconditionally so the macOS overlay scrollbar doesn't make the scrollbars
+ * appear and disappear with system preferences. */
+.cg-scroller {
+  scrollbar-gutter: stable;
+}
 .cg-theme-quartz-dark .cg-scroller {
   scrollbar-color: #4a5b7a #0d1a33;
-  scrollbar-width: thin;
 }
 .cg-theme-quartz .cg-scroller {
   scrollbar-color: #b5bdc6 #eceff2;
-  scrollbar-width: thin;
 }
