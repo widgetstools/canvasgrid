@@ -40,27 +40,35 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
 
   // 3. Build row bundles — consecutive rows with the same bg that differs from theme.bg.
   // theme.bg was already painted by the top-level full-canvas fill, so skip it.
-  type Bundle = { top: number; bottom: number; bg: string };
+  // Track per-bundle whether all member rows belong to the data subgrid; data
+  // bundles get clamped to the body region in step 4 so overscan rows above
+  // bodyTop (negative `top`) don't bleed their backgrounds into the header.
+  type Bundle = { top: number; bottom: number; bg: string; isData: boolean };
   let bundle: Bundle | null = null;
   const bundles: Bundle[] = [];
   for (let r = 0; r < vs.visibleRows.length; r++) {
     const row = vs.visibleRows[r]!;
     const bg = rowBgs[r]!;
     if (bg === theme.bg) { bundle = null; continue; }
-    if (bundle && bundle.bg === bg && bundle.bottom === row.top) {
+    const rowIsData = row.subgrid.isData;
+    if (bundle && bundle.bg === bg && bundle.bottom === row.top && bundle.isData === rowIsData) {
       bundle.bottom = row.bottom;
     } else {
-      bundle = { top: row.top, bottom: row.bottom, bg };
+      bundle = { top: row.top, bottom: row.bottom, bg, isData: rowIsData };
       bundles.push(bundle);
     }
   }
 
   // 4. Paint bundles — one fillRect per bundle.
   // Use fillRect (NOT clearFill) so translucent bgs like rowSelectedBg alpha-blend
-  // correctly over the underlying theme bg.
+  // correctly over the underlying theme bg. Data bundles are clamped to the body
+  // region so scrolled-overscan rows (top < bodyTop) can't paint over the header.
   for (const b of bundles) {
+    const top = b.isData ? Math.max(b.top, vs.bodyTop) : b.top;
+    const bottom = b.isData ? Math.min(b.bottom, vs.bodyBottom) : b.bottom;
+    if (bottom <= top) continue;
     gc.cache.fillStyle = b.bg;
-    gc.fillRect(0, b.top, rightEdge, b.bottom - b.top);
+    gc.fillRect(0, top, rightEdge, bottom - top);
   }
 
   // 5. Split columns into bands and paint cells.
@@ -97,18 +105,25 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
   };
 
   for (const sb of subgridBands) {
-    const sgTop = sb.yTop;
-    const sgBottom = sb.yBottom;
+    const isDataBand = sb.rows[0]!.subgrid.isData;
+    // Data subgrid bands always clip to the body region (vs.bodyTop..bodyBottom)
+    // in every column band — left + center + right pinned. Without this, overscan
+    // data rows whose top is < bodyTop paint cell text over the header band, and
+    // the right-pinned band (which previously had clip:false) leaks data values
+    // alongside the leaf header labels. Header bands keep their natural extent
+    // and don't need clipping — their rows always have top >= 0.
+    const sgTop = isDataBand ? vs.bodyTop : sb.yTop;
+    const sgBottom = isDataBand ? vs.bodyBottom : sb.yBottom;
 
     paintBand(gc, sb.rows, leftPinned,
               0, vs.bodyLeft, sgTop, sgBottom,
-              /*clip*/ false, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme);
+              /*clip*/ isDataBand, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme);
     paintBand(gc, sb.rows, center,
               vs.bodyLeft, vs.bodyRight, sgTop, sgBottom,
               /*clip*/ true, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme);
     paintBand(gc, sb.rows, rightPinned,
               vs.bodyRight, rightEdge, sgTop, sgBottom,
-              /*clip*/ false, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme);
+              /*clip*/ isDataBand, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme);
   }
 }
 

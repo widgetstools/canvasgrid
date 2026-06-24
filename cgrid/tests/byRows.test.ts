@@ -325,6 +325,92 @@ describe('paintCellsByRows — header dispatch', () => {
   });
 });
 
+// ─── Header-region bleed regression ───────────────────────────────────────────
+
+describe('paintCellsByRows — data rows do not bleed into header region', () => {
+  // When the user scrolls, computeViewport returns overscan data rows whose
+  // `top` is < bodyTop (i.e. visually inside the header band). Without per-band
+  // clipping the painter draws those rows' backgrounds and cell text on top of
+  // the header. Regression repro for the screenshot reported in Cycle 4.
+
+  function makeScrolledViewport(): ViewportState {
+    // Layout: 1 header row (height 32), bodyTop=32, body height=120.
+    // First "visible" data row is local index 4 (rowH=30, scrollTop≈100), but
+    // overscan pulls in local 1..3 too — and local 1's top = 32 + 30 - 100 = -38.
+    return {
+      visibleColumns: [
+        { colId: 'p', index: 0, left: 0, right: 60, width: 60, pinned: 'left' },
+        { colId: 'a', index: 1, left: 60, right: 160, width: 100 },
+        { colId: 'r', index: 2, left: 160, right: 220, width: 60, pinned: 'right' },
+      ],
+      visibleRows: [
+        { rowIndex: 0, subgrid: headerSubgrid, localRowIndex: 0, top: 0, bottom: 32, height: 32 },
+        // Overscan rows above the viewport — all have top < bodyTop (32).
+        { rowIndex: 1, subgrid: dataSubgrid, localRowIndex: 1, top: -38, bottom: -8, height: 30 },
+        { rowIndex: 2, subgrid: dataSubgrid, localRowIndex: 3, top: -8, bottom: 22, height: 30 },
+        { rowIndex: 3, subgrid: dataSubgrid, localRowIndex: 5, top: 22, bottom: 52, height: 30 },
+      ],
+      firstRow: 1, lastRow: 5,
+      scrollLeft: 0, scrollTop: 100,
+      bodyLeft: 60, bodyRight: 160, bodyTop: 32, bodyBottom: 152,
+      bodyWidth: 100, bodyHeight: 120,
+      contentWidth: 100, contentHeight: 1000, maxScrollLeft: 0, maxScrollTop: 850,
+    };
+  }
+
+  const colsLPR = new Map<string, ResolvedColDef>([
+    ['p', { colId: 'p', headerName: 'P', minWidth: 30, maxWidth: Infinity, type: 'text', cellRenderer: 'text', sortable: true, resizable: true, editable: false, columnGroupShow: null }],
+    ['a', { colId: 'a', headerName: 'A', minWidth: 30, maxWidth: Infinity, type: 'text', cellRenderer: 'text', sortable: true, resizable: true, editable: false, columnGroupShow: null }],
+    ['r', { colId: 'r', headerName: 'R', minWidth: 30, maxWidth: Infinity, type: 'text', cellRenderer: 'text', sortable: true, resizable: true, editable: false, columnGroupShow: null }],
+  ]);
+
+  it('row-background fillRects for data rows never paint above bodyTop', () => {
+    const gc = fakeGc();
+    const vs = makeScrolledViewport();
+    paintCellsByRows(gc, {
+      viewport: vs, theme, columnDefs: colsLPR, cellRenderers: makeReg(),
+      cellData, selection, sortModel: [],
+    });
+    const calls = (gc.fillRect as any).mock.calls as number[][];
+    // The header row uses theme.headerBg (different from theme.bg), so it
+    // produces a bundle fillRect with top=0, height=32 — that is allowed.
+    // Every OTHER fillRect (data-row bundles) must NOT cross y=bodyTop.
+    for (const [, top, , height] of calls) {
+      if (top === 0 && height === 32) continue; // header bundle
+      expect(top).toBeGreaterThanOrEqual(vs.bodyTop);
+    }
+  });
+
+  it('pinned-left band wraps its data-row paints in a clip from bodyTop', () => {
+    const paintsByCol: { colId: string; y: number }[] = [];
+    const captureRenderer = {
+      paint: (_gc: CachedContext2D, p: CellPaintConfig) => {
+        paintsByCol.push({ colId: '', y: p.bounds.y }); // colId not on config; y is what we assert
+      },
+    };
+    const spyReg = new CellRendererRegistry();
+    spyReg.register('text', captureRenderer);
+    spyReg.register('header', captureRenderer);
+
+    const gc = fakeGc();
+    const vs = makeScrolledViewport();
+    paintCellsByRows(gc, {
+      viewport: vs, theme, columnDefs: colsLPR, cellRenderers: spyReg,
+      cellData, selection, sortModel: [],
+    });
+    // The painter must save/clip/restore around the pinned-left + pinned-right
+    // data-row paints. Without it, data cells with bounds.y < bodyTop paint
+    // visibly into the header area. Look for at least one clip rect that
+    // starts at y=bodyTop and spans the body region.
+    const rectCalls = (gc.rect as any).mock.calls as number[][];
+    const bodyClips = rectCalls.filter(([, y, , h]) =>
+      y === vs.bodyTop && h === vs.bodyBottom - vs.bodyTop,
+    );
+    // One per band (left + center + right) when data subgrid is active.
+    expect(bodyClips.length).toBeGreaterThanOrEqual(3);
+  });
+});
+
 // ─── Pinned columns paint ──────────────────────────────────────────────────────
 
 describe('paintCellsByRows — pinned columns paint', () => {
