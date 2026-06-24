@@ -17,9 +17,20 @@ import { CellSelection } from './features/cellSelection';
 import { KeyPaging } from './features/keyPaging';
 import { HeaderClick } from './features/headerClick';
 
+/** Idle gap (ms) after the last wheel event before the axis lock releases.
+ *  ~150ms matches the natural pause between separate trackpad gestures while
+ *  still feeling instant — too short and a brief deceleration in a continuous
+ *  swipe re-detects the wrong axis; too long and the user can't quickly
+ *  switch directions. */
+const WHEEL_LOCK_IDLE_MS = 150;
+
 export class FeatureChain {
   private head: Feature;
   private mouseIsDown = false;
+  /** Axis the current wheel gesture is locked to. `null` between gestures so
+   *  the next event re-detects the dominant axis. */
+  private wheelAxis: 'x' | 'y' | null = null;
+  private wheelIdleTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private grid: CGridLike) {
     this.head = new ColumnResizing();
@@ -49,6 +60,10 @@ export class FeatureChain {
     c.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('mousemove', this.onWindowMouseMove);
     window.removeEventListener('mouseup', this.onWindowMouseUp);
+    if (this.wheelIdleTimer !== null) {
+      clearTimeout(this.wheelIdleTimer);
+      this.wheelIdleTimer = null;
+    }
   }
 
   private toLocal(e: MouseEvent): { x: number; y: number } {
@@ -103,7 +118,23 @@ export class FeatureChain {
   private onWheel = (e: WheelEvent): void => {
     e.preventDefault();
     this.head.handleWheel(this.buildCtx(e));
-    this.grid.scrollBy(e.deltaX, e.deltaY);
+    // Axis lock: pick the dominant axis at gesture start, suppress the
+    // off-axis delta until the user pauses (gesture ends). Avoids diagonal
+    // drift on trackpads — a swipe down stays vertical even if the user's
+    // fingers wobble horizontally mid-gesture.
+    let dx = e.deltaX;
+    let dy = e.deltaY;
+    if (this.wheelAxis === null && (dx !== 0 || dy !== 0)) {
+      this.wheelAxis = Math.abs(dx) > Math.abs(dy) ? 'x' : 'y';
+    }
+    if (this.wheelAxis === 'x') dy = 0;
+    else if (this.wheelAxis === 'y') dx = 0;
+    if (this.wheelIdleTimer !== null) clearTimeout(this.wheelIdleTimer);
+    this.wheelIdleTimer = setTimeout(() => {
+      this.wheelAxis = null;
+      this.wheelIdleTimer = null;
+    }, WHEEL_LOCK_IDLE_MS);
+    this.grid.scrollBy(dx, dy);
   };
 
   private onKeyDown = (e: KeyboardEvent): void => {

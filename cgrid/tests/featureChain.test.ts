@@ -101,7 +101,37 @@ describe('FeatureChain — mouse', () => {
   it('wheel forwards delta to scrollBy', () => {
     const { canvas, scrollBy } = setup();
     canvas.dispatchEvent(new WheelEvent('wheel', { deltaX: 10, deltaY: 20, bubbles: true, cancelable: true }));
-    expect(scrollBy).toHaveBeenCalledWith(10, 20);
+    // First event in a gesture: |dy| > |dx| → axis locks to 'y', dx zeroed.
+    expect(scrollBy).toHaveBeenCalledWith(0, 20);
+  });
+
+  it('axis-lock: dominant-y gesture zeroes dx for the rest of the gesture', () => {
+    const { canvas, scrollBy } = setup();
+    // First event picks 'y' (|dy|>|dx|).
+    canvas.dispatchEvent(new WheelEvent('wheel', { deltaX: 2, deltaY: 30, bubbles: true, cancelable: true }));
+    // Subsequent events in the same gesture: even a large dx is suppressed.
+    canvas.dispatchEvent(new WheelEvent('wheel', { deltaX: 50, deltaY: 5, bubbles: true, cancelable: true }));
+    expect(scrollBy).toHaveBeenNthCalledWith(1, 0, 30);
+    expect(scrollBy).toHaveBeenNthCalledWith(2, 0, 5);
+  });
+
+  it('axis-lock: dominant-x gesture zeroes dy for the rest of the gesture', () => {
+    const { canvas, scrollBy } = setup();
+    canvas.dispatchEvent(new WheelEvent('wheel', { deltaX: 40, deltaY: 3, bubbles: true, cancelable: true }));
+    canvas.dispatchEvent(new WheelEvent('wheel', { deltaX: 5, deltaY: 60, bubbles: true, cancelable: true }));
+    expect(scrollBy).toHaveBeenNthCalledWith(1, 40, 0);
+    expect(scrollBy).toHaveBeenNthCalledWith(2, 5, 0);
+  });
+
+  it('axis-lock releases after the idle window, next gesture re-detects', async () => {
+    const { canvas, scrollBy } = setup();
+    canvas.dispatchEvent(new WheelEvent('wheel', { deltaX: 1, deltaY: 30, bubbles: true, cancelable: true }));
+    // Wait past WHEEL_LOCK_IDLE_MS (150ms) so the lock releases.
+    await new Promise((r) => setTimeout(r, 200));
+    // New gesture: dominant-x this time.
+    canvas.dispatchEvent(new WheelEvent('wheel', { deltaX: 40, deltaY: 2, bubbles: true, cancelable: true }));
+    expect(scrollBy).toHaveBeenNthCalledWith(1, 0, 30);
+    expect(scrollBy).toHaveBeenNthCalledWith(2, 40, 0);
   });
 });
 
