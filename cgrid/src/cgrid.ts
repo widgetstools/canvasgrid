@@ -6,7 +6,8 @@ import type {
   CGridOptions, CGridEvent, CGridApi, Tx, TransactionResult, SortModel, FilterModel, GroupModel,
 } from './types';
 import { TypedEventEmitter } from './core/eventEmitter';
-import { resolveColDef, type ResolvedColDef } from './core/propertyChain';
+import { type ResolvedColDef } from './core/propertyChain';
+import { resolveColumnTree, type ColumnTree } from './core/columnTree';
 import { resolveColumnWidths, type ColumnLayout } from './core/layout';
 import { computeViewport, type ViewportState } from './core/viewport';
 import { HeaderSubgrid, DataSubgrid, type Subgrid } from './core/subgrid';
@@ -26,7 +27,7 @@ import { decodeText } from './worker/chunkFormat';
 export const CGRID_VERSION = '0.0.0';
 
 export type {
-  CGridOptions, CColDef, CGridEvent, CGridApi, Tx, TransactionResult,
+  CGridOptions, CColDef, CColGroupDef, CGridEvent, CGridApi, Tx, TransactionResult,
   SortModel, SortModelEntry, FilterModel, FilterModelEntry, GroupModel,
   CValueGetterParams, CValueFormatterParams,
 } from './types';
@@ -53,7 +54,8 @@ export function inferRowIdField<T>(getRowId: (row: T) => string): string {
 
 export class CGrid<TRow = any> {
   private events = new TypedEventEmitter<CGridEvent>();
-  private columnDefsMap = new Map<string, ResolvedColDef<TRow>>();
+  private columnTree!: ColumnTree;
+  private columnDefsMap: Map<string, ResolvedColDef<TRow>> = new Map();
   private columnOrder: ResolvedColDef<TRow>[] = [];
   private columnLayout: ColumnLayout[] = [];
   private theme: ResolvedTheme;
@@ -120,12 +122,13 @@ export class CGrid<TRow = any> {
     this.cellRenderers.register('checkbox', checkboxCell);
     this.cellRenderers.register('header', headerCell);
 
-    // 3. Column model
-    for (const def of options.columnDefs) {
-      const r = resolveColDef(def, options.defaultColDef);
-      this.columnDefsMap.set(r.colId, r);
-      this.columnOrder.push(r);
-    }
+    // 3. Column model — resolve into a tree (groups + leaves). For the rest
+    // of the cycle we operate on the flat `leaves` ordering; Task 2 adds the
+    // HeaderGroupSubgrid that consumes `tree.roots` + `tree.maxDepth` to
+    // paint nested group headers.
+    this.columnTree = resolveColumnTree(options.columnDefs, options.defaultColDef);
+    this.columnOrder = this.columnTree.leaves as ResolvedColDef<TRow>[];
+    this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
 
     // 4. Subgrid stack — header on top, data below. Future totals/footer rows
     // are a `this.subgrids.push(...)` away. computeViewport walks this list.

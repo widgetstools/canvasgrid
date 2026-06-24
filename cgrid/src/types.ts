@@ -9,7 +9,7 @@ export interface ColCellOverrides {
 }
 
 export interface CGridOptions<TRow = any> {
-  columnDefs: CColDef<TRow>[];
+  columnDefs: (CColDef<TRow> | CColGroupDef<TRow>)[];
   defaultColDef?: Partial<CColDef<TRow>>;
   rowData?: TRow[];
   getRowId: (row: TRow) => string;
@@ -45,6 +45,34 @@ export interface CColDef<TRow = any, TValue = any> {
   editable?: boolean | ((row: TRow) => boolean);
   cellEditor?: 'text' | 'number';
   cellStyle?: ColCellOverrides;
+  /**
+   * When the parent column group is open: visible only if `'open'`.
+   * When the parent group is closed: visible only if `'closed'`.
+   * `null` / undefined = always visible regardless of group state.
+   * Honored once column groups land (Cycle 4 Task 3).
+   */
+  columnGroupShow?: 'open' | 'closed' | null;
+}
+
+/**
+ * Column group definition. `columnDefs` accepts a mix of `CColDef` (leaf
+ * columns) and `CColGroupDef` (groups). Groups nest arbitrarily; the grid
+ * builds a tree at construction time and flattens to a leaf-ordered render
+ * list. `groupId` is auto-generated when omitted.
+ */
+export interface CColGroupDef<TRow = any> {
+  /** Stable identifier. Auto-generated as `cg-grp-${n}` when omitted. */
+  groupId?: string;
+  /** Text shown in the group header cell. Empty string OK. */
+  headerName?: string;
+  /** Child columns or nested groups. Required; must be non-empty. */
+  children: (CColDef<TRow> | CColGroupDef<TRow>)[];
+  /** Group is expanded on first render. Default false (closed). */
+  openByDefault?: boolean;
+  /** Prevents user from dragging child columns outside this group. */
+  marryChildren?: boolean;
+  /** CSS class hint applied to the group header cell. */
+  headerClass?: string;
 }
 
 export interface CValueGetterParams<TRow> { data: TRow; colId: string }

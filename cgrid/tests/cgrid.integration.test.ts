@@ -53,6 +53,27 @@ describe('CGrid integration', () => {
     expect(events.length).toBe(1);
     grid.destroy();
   });
+
+  it('accepts a CColGroupDef in columnDefs and resolves leaves in declaration order', async () => {
+    const container = document.createElement('div');
+    container.style.cssText = 'width:800px; height:600px;';
+    container.className = 'cg-theme-quartz';
+    document.body.appendChild(container);
+    const grid = new CGrid<{ id: string; a: number; b: number; c: number }>(container, {
+      columnDefs: [
+        { field: 'id', width: 80 },
+        {
+          headerName: 'metrics',
+          children: [{ field: 'a' }, { field: 'b' }, { field: 'c' }],
+        },
+      ],
+      getRowId: (r) => r.id,
+    });
+    const tree = (grid as any).columnTree;
+    expect(tree.leaves.map((l: any) => l.colId)).toEqual(['id', 'a', 'b', 'c']);
+    expect(tree.maxDepth).toBe(1);
+    grid.destroy();
+  });
 });
 
 describe('inferRowIdField', () => {
