@@ -3,6 +3,7 @@ import type { CachedContext2D } from '../gc';
 import type { ViewportColumn, ViewportRow } from '../../core/viewport';
 import type { CellPaintConfig } from '../cellRenderers/registry';
 import { applyCellProps } from '../../core/propertyChain';
+import { HeaderGroupSubgrid } from '../../core/subgrid';
 
 export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
   const { viewport: vs, theme, columnDefs, cellRenderers, cellData, selection, sortModel } = p;
@@ -141,6 +142,47 @@ function paintBand(
     const row = rows[ri]!;
     const r = row.rowIndex;
     const rowBg = rowBgs[r]!;
+
+    // HeaderGroupSubgrid: walk columns left→right, merging adjacent leaves
+    // that resolve to the same group at this row's depth. One rect per group;
+    // ungrouped slots paint nothing (the row background bundle remains).
+    if (row.subgrid instanceof HeaderGroupSubgrid) {
+      let i = 0;
+      while (i < cols.length) {
+        const col = cols[i]!;
+        const groupId = row.subgrid.getGroupIdAt(col.colId);
+        let span = 1;
+        while (
+          groupId !== null &&
+          i + span < cols.length &&
+          row.subgrid.getGroupIdAt(cols[i + span]!.colId) === groupId
+        ) {
+          span++;
+        }
+        const def = columnDefs.get(col.colId);
+        if (def && groupId) {
+          const lastCol = cols[i + span - 1]!;
+          const w = lastCol.right - col.left;
+          const cell = row.subgrid.getCell(0, col.colId);
+          const text = cell?.valueFormatted ?? '';
+          applyCellProps(config, {
+            theme,
+            colDef: def,
+            value: text,
+            valueFormatted: text,
+            x: col.left, y: row.top, w, h: row.height,
+            rowBg,
+            prefillColor: rowBg,
+            isFocused: false, isSelected: false, isHovered: false, isHeader: true,
+            iconColor: theme.focusRingColor,
+          });
+          cellRenderers.get('header').paint(gc, config);
+        }
+        i += span;
+      }
+      continue;
+    }
+
     for (const col of cols) {
       const def = columnDefs.get(col.colId);
       if (!def) continue;

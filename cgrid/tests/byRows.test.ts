@@ -5,7 +5,8 @@ import { paintOverlay } from '../src/renderer/painters/overlayPainter';
 import { CellRendererRegistry, textCell, numberCell, headerCell } from '../src/renderer/cellRenderers/registry';
 import type { CellPaintConfig } from '../src/renderer/cellRenderers/registry';
 import type { ViewportState } from '../src/core/viewport';
-import type { Subgrid } from '../src/core/subgrid';
+import { HeaderGroupSubgrid, type Subgrid } from '../src/core/subgrid';
+import { resolveColumnTree } from '../src/core/columnTree';
 import type { ResolvedColDef } from '../src/core/propertyChain';
 import type { ResolvedTheme } from '../src/theming/cssReader';
 import type { CachedContext2D } from '../src/renderer/gc';
@@ -389,6 +390,69 @@ describe('paintCellsByRows — center band clipping', () => {
 
     expect((gc.save as any)).toHaveBeenCalled();
     expect((gc.clip as any)).toHaveBeenCalled();
+  });
+});
+
+// ─── HeaderGroupSubgrid span paint ────────────────────────────────────────────
+
+describe('paintCellsByRows — HeaderGroupSubgrid span paint', () => {
+  it('3 adjacent leaves sharing a group paint as one span (one header renderer call) with merged width', () => {
+    const tree = resolveColumnTree([
+      { field: 'id' },
+      { groupId: 'pnl', headerName: 'P&L',
+        children: [{ field: 'daily' }, { field: 'mtd' }, { field: 'ytd' }] },
+    ]);
+    const groupSubgrid = new HeaderGroupSubgrid(() => tree, () => 24, 0, () => ['id', 'daily', 'mtd', 'ytd']);
+
+    const captured: CellPaintConfig[] = [];
+    const headerSpy = vi.fn((_gc: CachedContext2D, p: CellPaintConfig) => {
+      captured.push({ ...p, bounds: { ...p.bounds } });
+    });
+    const textSpy = vi.fn();
+    const numberSpy = vi.fn();
+    const spyReg = new CellRendererRegistry();
+    spyReg.register('header', { paint: headerSpy });
+    spyReg.register('text', { paint: textSpy });
+    spyReg.register('number', { paint: numberSpy });
+
+    const colDefs = new Map<string, ResolvedColDef>([
+      ['id',    { colId: 'id',    headerName: 'ID',    minWidth: 30, maxWidth: Infinity, type: 'text',   cellRenderer: 'text',   sortable: true, resizable: true, editable: false }],
+      ['daily', { colId: 'daily', headerName: 'Daily', minWidth: 30, maxWidth: Infinity, type: 'number', cellRenderer: 'number', sortable: true, resizable: true, editable: false }],
+      ['mtd',   { colId: 'mtd',   headerName: 'MTD',   minWidth: 30, maxWidth: Infinity, type: 'number', cellRenderer: 'number', sortable: true, resizable: true, editable: false }],
+      ['ytd',   { colId: 'ytd',   headerName: 'YTD',   minWidth: 30, maxWidth: Infinity, type: 'number', cellRenderer: 'number', sortable: true, resizable: true, editable: false }],
+    ]);
+
+    const vs: ViewportState = {
+      visibleColumns: [
+        { colId: 'id',    index: 0, left: 0,   right: 60,  width: 60 },
+        { colId: 'daily', index: 1, left: 60,  right: 160, width: 100 },
+        { colId: 'mtd',   index: 2, left: 160, right: 260, width: 100 },
+        { colId: 'ytd',   index: 3, left: 260, right: 360, width: 100 },
+      ],
+      visibleRows: [
+        { rowIndex: 0, subgrid: groupSubgrid, localRowIndex: 0, top: 0, bottom: 24, height: 24 },
+      ],
+      firstRow: 0, lastRow: -1,
+      scrollLeft: 0, scrollTop: 0,
+      bodyLeft: 0, bodyRight: 360, bodyTop: 24, bodyBottom: 24, bodyWidth: 360, bodyHeight: 0,
+      contentWidth: 360, contentHeight: 0, maxScrollLeft: 0, maxScrollTop: 0,
+    };
+
+    const gc = fakeGc();
+    paintCellsByRows(gc, {
+      viewport: vs, theme, columnDefs: colDefs, cellRenderers: spyReg,
+      cellData, selection, sortModel: [],
+    });
+
+    // Only one header renderer call for the spanned group; 'id' has no group at this depth → no call.
+    expect(headerSpy).toHaveBeenCalledTimes(1);
+    expect(textSpy).not.toHaveBeenCalled();
+    expect(numberSpy).not.toHaveBeenCalled();
+    // Captured config should have the merged width (daily.left=60 to ytd.right=360) = 300.
+    expect(captured[0]!.bounds.x).toBe(60);
+    expect(captured[0]!.bounds.w).toBe(300);
+    expect(captured[0]!.valueFormatted).toBe('P&L');
+    expect(captured[0]!.isHeader).toBe(true);
   });
 });
 

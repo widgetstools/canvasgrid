@@ -2,6 +2,7 @@ import type { ViewportState, ViewportColumn, ViewportRow } from '../core/viewpor
 
 export type Hit =
   | { kind: 'header'; colId: string }
+  | { kind: 'headerGroup'; groupId: string; colId: string }
   | { kind: 'headerResizer'; colId: string }
   | { kind: 'cell'; rowIndex: number; colId: string }
   | { kind: 'pinnedSplitter'; side: 'left' | 'right' }
@@ -16,12 +17,19 @@ export class HitTester {
 
   locate(x: number, y: number): Hit {
     const vs = this.getViewport();
-    const headerH = this.getHeaderHeight();
     const hot = this.getResizerHotZone();
 
-    if (y < headerH) {
+    // Header region spans `bodyTop` — sum of every header subgrid's height,
+    // which includes group-header rows above the leaf header.
+    if (y < vs.bodyTop) {
       const col = this.findCol(vs, x);
       if (!col) return { kind: 'empty' };
+      const row = this.findRow(vs, y);
+      // Group-header rows expose `getGroupIdAt`; the leaf HeaderSubgrid does not.
+      if (row && 'getGroupIdAt' in row.subgrid) {
+        const groupId = (row.subgrid as { getGroupIdAt(c: string): string | null }).getGroupIdAt(col.colId);
+        if (groupId) return { kind: 'headerGroup', groupId, colId: col.colId };
+      }
       if (x >= col.right - hot) return { kind: 'headerResizer', colId: col.colId };
       return { kind: 'header', colId: col.colId };
     }

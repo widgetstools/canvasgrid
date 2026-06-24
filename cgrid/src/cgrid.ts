@@ -10,7 +10,7 @@ import { type ResolvedColDef } from './core/propertyChain';
 import { resolveColumnTree, type ColumnTree } from './core/columnTree';
 import { resolveColumnWidths, type ColumnLayout } from './core/layout';
 import { computeViewport, type ViewportState } from './core/viewport';
-import { HeaderSubgrid, DataSubgrid, type Subgrid } from './core/subgrid';
+import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, type Subgrid } from './core/subgrid';
 import { CGridCanvas } from './core/canvas';
 import { CssReader, type ResolvedTheme } from './theming/cssReader';
 import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell } from './renderer/cellRenderers/registry';
@@ -130,19 +130,28 @@ export class CGrid<TRow = any> {
     this.columnOrder = this.columnTree.leaves as ResolvedColDef<TRow>[];
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
 
-    // 4. Subgrid stack — header on top, data below. Future totals/footer rows
-    // are a `this.subgrids.push(...)` away. computeViewport walks this list.
-    this.subgrids = [
-      new HeaderSubgrid(
-        this.columnDefsMap as Map<string, ResolvedColDef>,
+    // 4. Subgrid stack — group-header rows (one per tree depth) on top, then
+    // the leaf header, then data. Future totals/footer rows are a
+    // `this.subgrids.push(...)` away. computeViewport walks this list.
+    const stack: Subgrid[] = [];
+    for (let depth = 0; depth < this.columnTree.maxDepth; depth++) {
+      stack.push(new HeaderGroupSubgrid(
+        () => this.columnTree,
         () => this.options.headerHeight ?? this.theme.headerHeight,
-      ),
-      new DataSubgrid(
-        () => this.rowCount,
-        () => this.options.rowHeight ?? this.theme.rowHeight,
-        (rowIndex, colId) => this.cellAt(rowIndex, colId),
-      ),
-    ];
+        depth,
+        () => this.columnOrder.map((c) => c.colId),
+      ));
+    }
+    stack.push(new HeaderSubgrid(
+      this.columnDefsMap as Map<string, ResolvedColDef>,
+      () => this.options.headerHeight ?? this.theme.headerHeight,
+    ));
+    stack.push(new DataSubgrid(
+      () => this.rowCount,
+      () => this.options.rowHeight ?? this.theme.rowHeight,
+      (rowIndex, colId) => this.cellAt(rowIndex, colId),
+    ));
+    this.subgrids = stack;
 
     // 5. Initial layout + viewport. The first measurement happens inside the
     // CGridCanvas constructor below (via the setBounds callback), but

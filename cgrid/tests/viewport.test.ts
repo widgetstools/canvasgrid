@@ -95,6 +95,19 @@ describe('computeViewport', () => {
     expect(dataRows[dataRows.length - 1]!.localRowIndex).toBe(9);
   });
 
+  it('stacks one header row per group-tree depth above the leaf header', () => {
+    // 2 header subgrids (a group row + a leaf header row) + 1 data subgrid.
+    const vs = computeViewport({
+      columnLayout: [{ colId: 'a', left: 0, width: 50 }],
+      subgrids: [header(24), header(24), data(5, 30)],
+      containerWidth: 200, containerHeight: 200,
+      scrollLeft: 0, scrollTop: 0,
+      overscanRows: 0,
+    });
+    expect(vs.visibleRows.filter((r) => r.subgrid.isHeader).length).toBe(2);
+    expect(vs.bodyTop).toBe(48);
+  });
+
   it('totals subgrid lands after data rows (positional sanity)', () => {
     const vs = computeViewport({
       columnLayout: [{ colId: 'a', left: 0, width: 100 }],
