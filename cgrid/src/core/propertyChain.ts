@@ -47,6 +47,10 @@ export interface ResolvedColDef<TRow = any> {
    *  height for every visible row in this column and contributes the result
    *  into the row's resolved height. Cycle 5 / Task 8. */
   autoHeight?: boolean;
+  /** See `CColDef.wrapText`. When true, the cell renderer paints multi-line
+   *  wrapped text. Auto-selects the `'text-wrap'` renderer when no
+   *  `cellRenderer` is set explicitly. Cycle 5 / Task 9. */
+  wrapText?: boolean;
   /** See `CColDef.valueParser`. Invoked at editor-commit time before the
    *  worker transaction is queued. */
   valueParser?: (params: CValueParserParams<TRow, unknown>) => unknown;
@@ -132,7 +136,7 @@ export function resolveColDef<TRow>(
     valueFormatter: merged.valueFormatter as ResolvedColDef<TRow>['valueFormatter'],
     valueParser: merged.valueParser as ResolvedColDef<TRow>['valueParser'],
     valueSetter: merged.valueSetter as ResolvedColDef<TRow>['valueSetter'],
-    cellRenderer: merged.cellRenderer ?? type,
+    cellRenderer: merged.cellRenderer ?? (merged.wrapText ? 'text-wrap' : type),
     cellRendererParams: merged.cellRendererParams,
     cellRendererSelector: merged.cellRendererSelector as ResolvedColDef<TRow>['cellRendererSelector'],
     comparator: merged.comparator as ResolvedColDef<TRow>['comparator'],
@@ -147,6 +151,7 @@ export function resolveColDef<TRow>(
     cellEditorParams: merged.cellEditorParams as ResolvedColDef<TRow>['cellEditorParams'],
     cellStyle: merged.cellStyle,
     autoHeight: merged.autoHeight,
+    wrapText: merged.wrapText,
     columnGroupShow: merged.columnGroupShow ?? null,
   };
 }

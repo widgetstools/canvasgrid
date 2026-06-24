@@ -107,6 +107,10 @@ export function createPositionsGrid(container: HTMLElement): CGrid<Position> {
         cellEditor: 'largeText',
         cellEditorParams: { rows: 6, cols: 40, maxLength: 500 },
         autoHeight: true,
+        // Cycle 5 / Task 9 — paint multi-line wrapped text inside the cell.
+        // Combined with autoHeight, the row grows to fit; without autoHeight,
+        // the last visible line would truncate with an ellipsis.
+        wrapText: true,
       },
       {
         field: 'confirmed', headerName: 'Conf.', width: 70, editable: true,

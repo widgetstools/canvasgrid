@@ -200,6 +200,15 @@ export interface CColDef<TRow = any, TValue = any> {
    */
   autoHeight?: boolean;
   /**
+   * When true, the cell renderer paints `valueFormatted` across multiple
+   * lines using greedy word-wrap against the cell's inner width. Lines that
+   * exceed the row height are truncated with `…` on the last visible line.
+   * Pair with `autoHeight: true` so the row grows to fit; without
+   * `autoHeight`, wrapped text truncates at the row boundary. Cycle 5 /
+   * Task 9.
+   */
+  wrapText?: boolean;
+  /**
    * Convert the editor's emitted value into the typed value to commit. Runs
    * before `valueSetter`. Receives the value already cast by the editor
    * (`Number()` for `type: 'number'`, raw string for text). Return the value

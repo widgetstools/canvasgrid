@@ -20,6 +20,7 @@ import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, type Subgrid } from './
 import { CGridCanvas } from './core/canvas';
 import { CssReader, type ResolvedTheme } from './theming/cssReader';
 import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell, type CellPainter } from './renderer/cellRenderers/registry';
+import { wrapTextCell } from './renderer/cellRenderers/wrapText';
 import { Renderer } from './renderer/renderer';
 import { HitTester } from './interaction/hitTester';
 import { SelectionModel } from './interaction/selectionModel';
@@ -170,6 +171,7 @@ export class CGrid<TRow = any> {
     this.cellRenderers.register('number', numberCell);
     this.cellRenderers.register('checkbox', checkboxCell);
     this.cellRenderers.register('header', headerCell);
+    this.cellRenderers.register('text-wrap', wrapTextCell);
 
     // 3. Column model — resolve into a tree (groups + leaves), then derive
     // the visible-leaf ordering from the group open/closed state. Task 3
