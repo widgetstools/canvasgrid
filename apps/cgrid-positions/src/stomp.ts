@@ -14,6 +14,12 @@ export interface Position {
   spread: number;
   dv01: number;
   pv01: number;
+  // Demo-only fields populated by user edits — not sent by the STOMP server.
+  // Drive the date, dateString, largeText, and checkbox editor demos.
+  tradeDate?: string;
+  expiryDate?: Date;
+  notes?: string;
+  confirmed?: boolean;
 }
 
 export interface StompCallbacks {

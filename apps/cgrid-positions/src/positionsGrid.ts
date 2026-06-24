@@ -86,6 +86,27 @@ export function createPositionsGrid(container: HTMLElement): CGrid<Position> {
       { field: 'spread', headerName: 'Spread', type: 'number', width: 90,  aggFunc: 'avg' },
       { field: 'dv01',   headerName: 'DV01',   type: 'number', width: 100, aggFunc: 'sum' },
       { field: 'pv01',   headerName: 'PV01',   type: 'number', width: 100, aggFunc: 'sum' },
+      // Cycle 5 Task 2: synthetic columns so the remaining four built-in
+      // editors (dateString, date, largeText, checkbox) have a click target
+      // in the demo. The fields are not sent by STOMP — they start empty and
+      // persist user edits via the default valueSetter path.
+      {
+        field: 'tradeDate', headerName: 'Trade Date', width: 120, editable: true,
+        cellEditor: 'dateString',
+      },
+      {
+        field: 'expiryDate', headerName: 'Expiry', width: 120, editable: true,
+        cellEditor: 'date',
+      },
+      {
+        field: 'notes', headerName: 'Notes', width: 140, editable: true,
+        cellEditor: 'largeText',
+        cellEditorParams: { rows: 6, cols: 40, maxLength: 500 },
+      },
+      {
+        field: 'confirmed', headerName: 'Conf.', width: 70, editable: true,
+        cellEditor: 'checkbox',
+      },
     ],
     getRowId: (row) => row.positionId,
     rowSelection: 'multiple',
