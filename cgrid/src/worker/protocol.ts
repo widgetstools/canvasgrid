@@ -41,7 +41,8 @@ export type WorkerRequest =
   | { id: ReqId; type: 'setSortModel';     payload: SortModel }
   | { id: ReqId; type: 'setFilterModel';   payload: FilterModel }
   | { id: ReqId; type: 'setGroupModel';    payload: GroupModel }
-  | { id: ReqId; type: 'getViewport';      payload: ViewportRequest };
+  | { id: ReqId; type: 'getViewport';      payload: ViewportRequest }
+  | { id: ReqId; type: 'updateColumns';    payload: { columns: WorkerColumn[] } };
 
 export type WorkerResponse =
   | { id: ReqId; type: 'ready' }

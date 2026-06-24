@@ -9,6 +9,10 @@ import { TypedEventEmitter } from './core/eventEmitter';
 import { type ResolvedColDef } from './core/propertyChain';
 import { resolveColumnTree, type ColumnTree } from './core/columnTree';
 import { ColumnGroupState, resolveVisibleLeaves } from './core/columnGroupState';
+import {
+  INITIAL_ONLY_OPTIONS, applyRuntimeOption, isRuntimeOption,
+  type RuntimeOptionTarget,
+} from './core/runtimeOptions';
 import { resolveColumnWidths, type ColumnLayout } from './core/layout';
 import { computeViewport, type ViewportState } from './core/viewport';
 import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, type Subgrid } from './core/subgrid';
@@ -140,27 +144,10 @@ export class CGrid<TRow = any> {
     this.columnOrder = this.computeVisibleColumnOrder();
 
     // 4. Subgrid stack — group-header rows (one per tree depth) on top, then
-    // the leaf header, then data. Future totals/footer rows are a
-    // `this.subgrids.push(...)` away. computeViewport walks this list.
-    const stack: Subgrid[] = [];
-    for (let depth = 0; depth < this.columnTree.maxDepth; depth++) {
-      stack.push(new HeaderGroupSubgrid(
-        () => this.columnTree,
-        () => this.options.headerHeight ?? this.theme.headerHeight,
-        depth,
-        () => this.columnOrder.map((c) => c.colId),
-      ));
-    }
-    stack.push(new HeaderSubgrid(
-      this.columnDefsMap as Map<string, ResolvedColDef>,
-      () => this.options.headerHeight ?? this.theme.headerHeight,
-    ));
-    stack.push(new DataSubgrid(
-      () => this.rowCount,
-      () => this.options.rowHeight ?? this.theme.rowHeight,
-      (rowIndex, colId) => this.cellAt(rowIndex, colId),
-    ));
-    this.subgrids = stack;
+    // the leaf header, then data. Rebuilt in place by `rebuildSubgridStack`
+    // when `updateGridOptions({ columnDefs })` lands a tree with a different
+    // depth.
+    this.rebuildSubgridStack();
 
     // 5. Initial layout + viewport. The first measurement happens inside the
     // CGridCanvas constructor below (via the setBounds callback), but
@@ -429,8 +416,127 @@ export class CGrid<TRow = any> {
     current.forEach((c) => this.root.classList.remove(c));
     this.root.classList.add(themeClass);
     this.theme = this.cssReader.read();
+    this.options.theme = themeClass;
     this.recomputeViewport();
     this.cgridCanvas.requestRepaint();
+  }
+
+  /** Read any grid option (runtime or initial). Mirrors ag-grid's
+   *  `getGridOption` — useful for app code that needs to round-trip a setting. */
+  getGridOption<K extends keyof CGridOptions<TRow>>(key: K): CGridOptions<TRow>[K] | undefined {
+    return this.options[key];
+  }
+
+  /** Set a single runtime-mutable option. Throws when `key` is in
+   *  `INITIAL_ONLY_OPTIONS` (e.g. `columnDefs`, `getRowId`, `worker`). The
+   *  `columnDefs` mutation surface lives on `updateGridOptions` because it
+   *  needs a coupled tree-rebuild + worker column-metadata swap. */
+  setGridOption<K extends keyof CGridOptions<TRow>>(key: K, value: CGridOptions<TRow>[K]): void {
+    if (INITIAL_ONLY_OPTIONS.has(key as keyof CGridOptions<any>)) {
+      throw new Error(
+        `[cgrid] '${String(key)}' is initial-only and cannot be changed at runtime` +
+        (key === 'columnDefs' ? "; use api.updateGridOptions({ columnDefs }) instead" : ''),
+      );
+    }
+    if (!isRuntimeOption(key as string)) {
+      throw new Error(`[cgrid] '${String(key)}' is not a recognised runtime option`);
+    }
+    this.options[key] = value;
+    applyRuntimeOption(this.runtimeTarget(), key as any, value);
+  }
+
+  /** Batch-update grid options. `columnDefs` is honored only via this
+   *  entrypoint and rebuilds the column tree, refreshes the worker's column
+   *  metadata, and preserves group state for IDs that survive the swap. */
+  updateGridOptions(partial: Partial<CGridOptions<TRow>>): void {
+    // Special-case columnDefs first so the tree rebuild happens once even when
+    // both columnDefs AND defaultColDef change in the same call.
+    if ('columnDefs' in partial && partial.columnDefs) {
+      const newDefault = partial.defaultColDef ?? this.options.defaultColDef;
+      this.options.columnDefs = partial.columnDefs;
+      if ('defaultColDef' in partial) this.options.defaultColDef = partial.defaultColDef;
+      this.rebuildColumns({ defaultColDef: newDefault });
+      this.workerClient.updateColumns(this.workerColumns())
+        .then(({ visibleCount }) => {
+          this.rowCount = visibleCount;
+          this.recomputeViewport();
+          this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
+          this.events.emit({ type: 'displayedColumnsChanged', source: 'columnDefsChanged' });
+          this.requestViewport();
+        })
+        .catch((err) => { if (!this.destroyed) console.error('[cgrid] updateColumns:', err); });
+    }
+    for (const k of Object.keys(partial) as (keyof CGridOptions<TRow>)[]) {
+      if (k === 'columnDefs') continue;
+      // defaultColDef was already applied as part of the columnDefs path
+      // (when both were provided) — skip a redundant rebuild.
+      if (k === 'defaultColDef' && 'columnDefs' in partial) {
+        // still update the stored value if it wasn't already
+        if (this.options.defaultColDef !== partial.defaultColDef) {
+          this.options.defaultColDef = partial.defaultColDef;
+        }
+        continue;
+      }
+      this.setGridOption(k, partial[k] as CGridOptions<TRow>[typeof k]);
+    }
+  }
+
+  /** Adapter passed to the runtimeOptions apply table. Built fresh per call
+   *  so the table never holds a stale reference to mutable internals. */
+  private runtimeTarget(): RuntimeOptionTarget<TRow> {
+    return {
+      options: this.options,
+      setTheme: (t) => this.setTheme(t),
+      rebuildColumns: ({ defaultColDef }) => this.rebuildColumns({ defaultColDef }),
+      refreshLayout: () => {
+        this.recomputeViewport();
+        this.cgridCanvas?.requestRepaint();
+      },
+      setSelectionMode: (mode) => this.selection.setMode(mode),
+      applyRowData: (rows) => this.setRowData(rows as TRow[]),
+    };
+  }
+
+  /** Re-resolve the column tree from `options.columnDefs`, rebuild the
+   *  visible column list, refresh layout, and rebuild the subgrid stack so
+   *  any change in group depth lands a matching number of header rows. */
+  private rebuildColumns({ defaultColDef }: { defaultColDef?: Partial<any> }): void {
+    this.columnTree = resolveColumnTree(this.options.columnDefs, defaultColDef ?? this.options.defaultColDef);
+    this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
+    this.columnGroupState.setTree(this.columnTree);
+    this.columnOrder = this.computeVisibleColumnOrder();
+    this.columnLayout = resolveColumnWidths(
+      this.columnOrder,
+      this.canvasBounds.width || this.scroller.clientWidth || 800,
+    );
+    this.rebuildSubgridStack();
+    this.recomputeViewport();
+    this.cgridCanvas?.requestRepaint();
+  }
+
+  /** Rebuild the subgrid stack so the header-group row count matches the
+   *  current `columnTree.maxDepth`. Data + leaf header subgrids are
+   *  callback-driven and therefore re-pickable as-is. */
+  private rebuildSubgridStack(): void {
+    const stack: Subgrid[] = [];
+    for (let depth = 0; depth < this.columnTree.maxDepth; depth++) {
+      stack.push(new HeaderGroupSubgrid(
+        () => this.columnTree,
+        () => this.options.headerHeight ?? this.theme.headerHeight,
+        depth,
+        () => this.columnOrder.map((c) => c.colId),
+      ));
+    }
+    stack.push(new HeaderSubgrid(
+      this.columnDefsMap as Map<string, ResolvedColDef>,
+      () => this.options.headerHeight ?? this.theme.headerHeight,
+    ));
+    stack.push(new DataSubgrid(
+      () => this.rowCount,
+      () => this.options.rowHeight ?? this.theme.rowHeight,
+      (rowIndex, colId) => this.cellAt(rowIndex, colId),
+    ));
+    this.subgrids = stack;
   }
 
   destroy(): void {
@@ -468,6 +574,9 @@ export class CGrid<TRow = any> {
       getColumnGroupState: () => this.columnGroupState.getState(),
       setColumnGroupState: (s) => { this.columnGroupState.apply(s); },
       resetColumnGroupState: () => this.columnGroupState.reset(),
+      getGridOption: (k) => this.getGridOption(k as keyof CGridOptions<TRow>) as any,
+      setGridOption: (k, v) => this.setGridOption(k as keyof CGridOptions<TRow>, v as any),
+      updateGridOptions: (p) => this.updateGridOptions(p as Partial<CGridOptions<TRow>>),
     };
   }
 

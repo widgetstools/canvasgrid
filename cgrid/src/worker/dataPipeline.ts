@@ -156,11 +156,18 @@ export class FilterPass<TRow = any> {
   private colIndex = new Map<string, WorkerColumn>();
 
   constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
-    for (const col of columns) this.colIndex.set(col.colId, col);
+    this.setColumns(columns);
   }
 
   setModel(model: FilterModel): void {
     this.model = model;
+  }
+
+  /** Swap column metadata in place. Preserves the current filter model so
+   *  `updateGridOptions({ columnDefs })` doesn't silently wipe user filters. */
+  setColumns(columns: WorkerColumn[]): void {
+    this.colIndex.clear();
+    for (const col of columns) this.colIndex.set(col.colId, col);
   }
 
   apply(): string[] {
@@ -206,10 +213,15 @@ export class SortPass<TRow = any> {
   private colIndex = new Map<string, WorkerColumn>();
 
   constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
-    for (const col of columns) this.colIndex.set(col.colId, col);
+    this.setColumns(columns);
   }
 
   setModel(model: SortModel): void { this.model = model; }
+
+  setColumns(columns: WorkerColumn[]): void {
+    this.colIndex.clear();
+    for (const col of columns) this.colIndex.set(col.colId, col);
+  }
 
   apply(inputIds: string[]): string[] {
     if (this.model.length === 0) return inputIds;
@@ -249,6 +261,11 @@ export class ViewportSlicer<TRow = any> {
   private colIndex = new Map<string, WorkerColumn>();
 
   constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
+    this.setColumns(columns);
+  }
+
+  setColumns(columns: WorkerColumn[]): void {
+    this.colIndex.clear();
     for (const col of columns) this.colIndex.set(col.colId, col);
   }
 
@@ -306,6 +323,11 @@ export class AggPass<TRow = any> {
   private aggCols: Array<{ colId: string; field: string; func: NonNullable<WorkerColumn['aggFunc']> }> = [];
 
   constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
+    this.setColumns(columns);
+  }
+
+  setColumns(columns: WorkerColumn[]): void {
+    this.aggCols = [];
     for (const col of columns) {
       if (col.aggFunc && col.field) {
         this.aggCols.push({ colId: col.colId, field: col.field, func: col.aggFunc });

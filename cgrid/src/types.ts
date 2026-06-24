@@ -22,6 +22,27 @@ export interface CGridOptions<TRow = any> {
   asyncTransactionWaitMillis?: number;
   theme?: string;
   worker?: { url?: string };
+
+  /** Hint to skip CSS-animated row transitions. Runtime-mutable; storage-only
+   *  in Cycle 4 (no read site yet; downstream cycles consume). */
+  animateRows?: boolean;
+  /** Render every column regardless of horizontal scroll position.
+   *  Read site lands in Task 5. */
+  suppressColumnVirtualisation?: boolean;
+  /** Render every row regardless of vertical scroll position.
+   *  Read site lands in Task 5. */
+  suppressRowVirtualisation?: boolean;
+  /** Extra rows rendered above/below the viewport. Read site lands in Task 5.
+   *  Defaults to the engine's internal overscan when unset. */
+  rowBuffer?: number;
+  /** Opaque application data forwarded to callbacks (matches ag-grid).
+   *  Storage-only in Cycle 4. */
+  context?: unknown;
+  /** Explicit loading-overlay toggle. Storage-only in Cycle 4; the overlay
+   *  surface lands in a later cycle. */
+  loading?: boolean;
+  /** Enables verbose console logging from the engine. Storage-only. */
+  debug?: boolean;
 }
 
 export interface CColDef<TRow = any, TValue = any> {
@@ -142,4 +163,14 @@ export interface CGridApi {
   getColumnGroupState(): { groupId: string; open: boolean }[];
   setColumnGroupState(state: { groupId: string; open: boolean }[]): void;
   resetColumnGroupState(): void;
+
+  /** Read the current value of any grid option. */
+  getGridOption<K extends keyof CGridOptions>(key: K): CGridOptions[K] | undefined;
+  /** Update a single runtime-mutable option. Throws on initial-only keys
+   *  (see `INITIAL_ONLY_OPTIONS` in `core/runtimeOptions.ts`). */
+  setGridOption<K extends keyof CGridOptions>(key: K, value: CGridOptions[K]): void;
+  /** Batch-update multiple runtime-mutable options. The `columnDefs` key is
+   *  honored only via this batched entrypoint (not via `setGridOption`)
+   *  because it rebuilds the column tree + worker column metadata. */
+  updateGridOptions(partial: Partial<CGridOptions>): void;
 }

@@ -138,6 +138,20 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             break;
           }
 
+          case 'updateColumns': {
+            // Swap column metadata in place across every pass so an in-flight
+            // filter/sort model stays applied against the new columns.
+            const cols = req.payload.columns;
+            state.columns = cols;
+            state.filter.setColumns(cols);
+            state.sort.setColumns(cols);
+            state.agg.setColumns(cols);
+            state.slicer.setColumns(cols);
+            state.visibleCache = null;
+            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: invalidateAndCount() });
+            break;
+          }
+
           case 'getViewport': {
             const visIds = visible();
             const chunk = state.slicer.slice(visIds, req.payload);

@@ -1,5 +1,6 @@
 import type {
   WorkerRequest, WorkerResponse, WorkerPush, WorkerInitPayload, ViewportRequest, ViewportChunk,
+  WorkerColumn,
 } from './protocol';
 import type { TransactionResult, SortModel, FilterModel } from '../types';
 
@@ -69,6 +70,13 @@ export class WorkerClient {
 
   getViewport(req: ViewportRequest): Promise<ViewportChunk> {
     return this.send<{ chunk: ViewportChunk }>({ type: 'getViewport', payload: req }).then((r) => r.chunk);
+  }
+
+  /** Push updated column metadata into the worker so filter/sort/agg/slicer
+   *  passes pick up new fields, aggFuncs, types, etc. Resolves with the new
+   *  visible row count after the column swap re-runs the pipeline. */
+  updateColumns(columns: WorkerColumn[]): Promise<{ visibleCount: number }> {
+    return this.send<{ visibleCount: number }>({ type: 'updateColumns', payload: { columns } });
   }
 
   destroy(): void {

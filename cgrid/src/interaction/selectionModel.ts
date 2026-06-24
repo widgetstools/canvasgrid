@@ -16,6 +16,24 @@ export class SelectionModel {
 
   get state(): Readonly<SelectionState> { return this._state; }
 
+  /** Swap the selection mode at runtime. Demotes the current selection when
+   *  moving to a stricter mode (multiple→single drops all but one;
+   *  any→'none' clears everything). Matches the runtime contract of
+   *  `api.setGridOption('rowSelection', ...)`. */
+  setMode(mode: SelectionMode): void {
+    if (this.mode === mode) return;
+    this.mode = mode;
+    if (mode === 'none' && this._state.selectedRowIndices.size > 0) {
+      this._state.selectedRowIndices.clear();
+      this.emit();
+    } else if (mode === 'single' && this._state.selectedRowIndices.size > 1) {
+      const first = this._state.selectedRowIndices.values().next().value;
+      this._state.selectedRowIndices.clear();
+      if (first !== undefined) this._state.selectedRowIndices.add(first);
+      this.emit();
+    }
+  }
+
   setFocus(rowIndex: number | null, colId: string | null): void {
     if (this._state.focusedRowIndex === rowIndex && this._state.focusedColId === colId) return;
     this._state.focusedRowIndex = rowIndex;
