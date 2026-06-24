@@ -58,4 +58,7 @@ export class DateCellEditor implements ICellEditor<unknown, Date> {
   afterGuiAttached(): void {
     this.input.focus();
   }
+
+  focusIn(): void { this.input.focus(); }
+  focusOut(): void { this.input.blur(); }
 }

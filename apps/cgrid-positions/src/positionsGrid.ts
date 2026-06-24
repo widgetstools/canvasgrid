@@ -34,7 +34,17 @@ const pnlPill: CellPainter = {
   },
 };
 
-export function createPositionsGrid(container: HTMLElement): CGrid<Position> {
+/** Demo bootstrap options. `editType` is forwarded from the URL query
+ *  (`?editType=fullRow`) so the Cycle 5 / Task 10 E2E can flip into
+ *  full-row mode without changing the default single-cell demo flow. */
+export interface PositionsGridOptions {
+  editType?: 'fullRow';
+}
+
+export function createPositionsGrid(
+  container: HTMLElement,
+  opts: PositionsGridOptions = {},
+): CGrid<Position> {
   const options: CGridOptions<Position> = {
     columnDefs: [
       { field: 'positionId',     headerName: 'Position ID',  width: 150, pinned: 'left' },
@@ -148,6 +158,11 @@ export function createPositionsGrid(container: HTMLElement): CGrid<Position> {
       const last = id.charCodeAt(id.length - 1);
       return last % 4 === 0 ? 56 : null;
     },
+    // Cycle 5 / Task 10 — full-row edit. Opt-in via `?editType=fullRow`
+    // (main.ts reads the URL). Triggering an edit on any editable cell
+    // opens N editors at once; Tab cycles within the row, Enter commits
+    // all, Esc cancels all.
+    ...(opts.editType ? { editType: opts.editType } : {}),
   };
   const grid = new CGrid<Position>(container, options);
   grid.registerCellRenderer('pnlPill', pnlPill);

@@ -5,7 +5,13 @@ import { connectStomp } from './stomp';
 const host = document.getElementById('grid');
 if (!host) throw new Error('grid host not found');
 
-const grid = createPositionsGrid(host);
+// Cycle 5 / Task 10 — `?editType=fullRow` flips the demo into full-row
+// edit mode without changing the default single-cell flow. The E2E
+// targeting full-row navigates with this query param; other E2Es keep
+// the default.
+const editTypeParam = new URLSearchParams(window.location.search).get('editType');
+const editType = editTypeParam === 'fullRow' ? 'fullRow' as const : undefined;
+const grid = createPositionsGrid(host, { editType });
 
 // E2E hooks: expose the grid + a readiness flag so Playwright tests can wait
 // for first-data-rendered and call api helpers (`getCellBoundsAt`,

@@ -75,4 +75,7 @@ export class SelectCellEditor<TValue = unknown> implements ICellEditor<unknown, 
   afterGuiAttached(): void {
     this.select.focus();
   }
+
+  focusIn(): void { this.select.focus(); }
+  focusOut(): void { this.select.blur(); }
 }

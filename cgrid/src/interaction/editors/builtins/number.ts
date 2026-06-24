@@ -74,4 +74,11 @@ export class NumberCellEditor implements ICellEditor<unknown, number> {
     this.input.focus();
     if (this.params.charPress == null) this.input.select();
   }
+
+  focusIn(): void {
+    this.input.focus();
+    this.input.select();
+  }
+
+  focusOut(): void { this.input.blur(); }
 }

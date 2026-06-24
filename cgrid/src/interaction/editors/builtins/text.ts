@@ -41,4 +41,11 @@ export class TextCellEditor implements ICellEditor<unknown, string> {
     if (this.params.charPress == null) this.input.select();
     else this.input.setSelectionRange(this.input.value.length, this.input.value.length);
   }
+
+  focusIn(): void {
+    this.input.focus();
+    this.input.select();
+  }
+
+  focusOut(): void { this.input.blur(); }
 }

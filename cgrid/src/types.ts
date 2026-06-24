@@ -81,6 +81,15 @@ export interface CGridOptions<TRow = any> {
    *  When `false` (default) the mode is inert and arrow keys always
    *  behave like the input's native handler. */
   enableExcelEditing?: boolean;
+  /**
+   * Full-row edit mode. When `'fullRow'`, triggering an edit on any cell in
+   * a row opens an editor for every editable column in that row
+   * simultaneously. Tab/Shift+Tab cycle between editors within the row;
+   * Enter commits all values together; Escape cancels the entire row.
+   * Fires `rowEditingStarted` / `rowEditingStopped` / `rowValueChanged`
+   * (catalog 22) in addition to the per-cell events. Cycle 5 / Task 10.
+   */
+  editType?: 'fullRow';
 
   /**
    * Per-row height in CSS px. Called by the main thread on `setRowData`,
@@ -349,6 +358,38 @@ export interface CellEditingStoppedEvent<TRow = unknown> {
   data: TRow;
 }
 
+/** Fires after every editor in the row's editable cells has mounted in
+ *  full-row edit mode (`editType: 'fullRow'`). Single-cell edits do not
+ *  fire this. Cycle 5 / Task 10. */
+export interface RowEditingStartedEvent<TRow = unknown> {
+  type: 'rowEditingStarted';
+  rowIndex: number;
+  rowId: string;
+  data: TRow;
+}
+
+/** Fires unconditionally when full-row editing ends (commit OR cancel).
+ *  Pair with `rowValueChanged` to know whether anything actually
+ *  committed — `rowEditingStopped` always fires, `rowValueChanged` fires
+ *  only when ≥ 1 cell changed. Cycle 5 / Task 10. */
+export interface RowEditingStoppedEvent<TRow = unknown> {
+  type: 'rowEditingStopped';
+  rowIndex: number;
+  rowId: string;
+  data: TRow;
+}
+
+/** Fires once after a full-row commit that produced at least one changed
+ *  cell. Per-cell `cellValueChanged` events still fire alongside; this is
+ *  a single row-level signal apps can use to drive whole-row workflows
+ *  (server-side write-back, validation banners). Cycle 5 / Task 10. */
+export interface RowValueChangedEvent<TRow = unknown> {
+  type: 'rowValueChanged';
+  rowIndex: number;
+  rowId: string;
+  data: TRow;
+}
+
 export type CGridEvent =
   | { type: 'gridReady'; api: CGridApi }
   | { type: 'cellClicked'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
@@ -373,6 +414,9 @@ export type CGridEvent =
     }
   | CellEditingStartedEvent
   | CellEditingStoppedEvent
+  | RowEditingStartedEvent
+  | RowEditingStoppedEvent
+  | RowValueChangedEvent
   | { type: 'selectionChanged'; selectedRowIds: string[] }
   | { type: 'viewportChanged'; firstRow: number; lastRow: number }
   | { type: 'modelUpdated'; visibleRowCount: number }
