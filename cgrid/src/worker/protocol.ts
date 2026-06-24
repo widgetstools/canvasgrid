@@ -43,7 +43,8 @@ export type WorkerRequest =
   | { id: ReqId; type: 'setGroupModel';    payload: GroupModel }
   | { id: ReqId; type: 'getViewport';      payload: ViewportRequest }
   | { id: ReqId; type: 'updateColumns';    payload: { columns: WorkerColumn[] } }
-  | { id: ReqId; type: 'getRowIndexForId'; payload: { rowId: string } };
+  | { id: ReqId; type: 'getRowIndexForId';    payload: { rowId: string } }
+  | { id: ReqId; type: 'getRowIndicesForIds'; payload: { rowIds: string[] } };
 
 export type WorkerResponse =
   | { id: ReqId; type: 'ready' }
@@ -51,6 +52,7 @@ export type WorkerResponse =
   | { id: ReqId; type: 'viewport';            chunk: ViewportChunk }
   | { id: ReqId; type: 'transactionFlushed';  results: TransactionResult }
   | { id: ReqId; type: 'rowIndex';            index: number }
+  | { id: ReqId; type: 'rowIndices';          indices: Int32Array }
   | { id: ReqId; type: 'error';               error: string };
 
 export type WorkerPush =

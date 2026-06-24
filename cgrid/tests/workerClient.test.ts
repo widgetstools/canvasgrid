@@ -90,6 +90,41 @@ describe('WorkerClient', () => {
     expect(await client.getRowIndexForId('a')).toBe(2);
   });
 
+  it('getRowIndicesForIds resolves a batch of rowIds in one round trip', async () => {
+    const w = new FakeWorker();
+    const client = new WorkerClient(w as any, {
+      onModelUpdated: vi.fn(), onAsyncTransactionsFlushed: vi.fn(), onError: vi.fn(),
+    });
+    await client.init({
+      rowIdField: 'id',
+      columns: [
+        { colId: 'id',  field: 'id',  type: 'text' },
+        { colId: 'pri', field: 'pri', type: 'number' },
+      ],
+    });
+    await client.setRowData([
+      { id: 'a', pri: 1 },
+      { id: 'b', pri: 2 },
+      { id: 'c', pri: 3 },
+    ]);
+    const out = await client.getRowIndicesForIds(['c', 'unknown', 'a']);
+    expect(Array.from(out)).toEqual([2, -1, 0]);
+  });
+
+  it('getRowIndicesForIds returns an empty Int32Array for an empty input', async () => {
+    const w = new FakeWorker();
+    const client = new WorkerClient(w as any, {
+      onModelUpdated: vi.fn(), onAsyncTransactionsFlushed: vi.fn(), onError: vi.fn(),
+    });
+    await client.init({
+      rowIdField: 'id',
+      columns: [{ colId: 'id', field: 'id', type: 'text' }],
+    });
+    await client.setRowData([{ id: 'a' }]);
+    const out = await client.getRowIndicesForIds([]);
+    expect(out.length).toBe(0);
+  });
+
   it('getRowIndexForId returns -1 for rows filtered out of the visible model', async () => {
     const w = new FakeWorker();
     const client = new WorkerClient(w as any, {

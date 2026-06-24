@@ -260,6 +260,11 @@ export class CGrid<TRow = any> {
       onModelUpdated: (visibleCount) => {
         this.rowCount = visibleCount;
         this.recomputeViewport();
+        // Re-resolve persistent selection ids against the freshly-sorted /
+        // filtered visible order. Without this, indices set by
+        // `setSelectedRowIds` and `setFocusedCell` would point at the wrong
+        // rows the moment the user sorts.
+        this.rebuildSelectionFromPersistentIds();
         this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
         this.requestViewport();
       },
@@ -354,6 +359,11 @@ export class CGrid<TRow = any> {
     this.workerClient.setSortModel(s).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
       this.recomputeViewport();
+      // The worker doesn't push `modelUpdated` for sort changes — it only
+      // replies with the new rowCount — so persistent selections need an
+      // explicit rebuild here. Without this `setSelectedRowIds` /
+      // `setFocusedCell` would silently paint the wrong rows after a sort.
+      this.rebuildSelectionFromPersistentIds();
       this.events.emit({ type: 'sortChanged', sortModel: s });
       this.cgridCanvas.requestRepaint();
       this.requestViewport();
@@ -378,6 +388,10 @@ export class CGrid<TRow = any> {
     this.workerClient.setFilterModel(f).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
       this.recomputeViewport();
+      // Same rationale as setSortModel — filter changes don't trigger a
+      // `modelUpdated` push, so persistent selection indices need to be
+      // rebuilt here against the freshly-filtered visible order.
+      this.rebuildSelectionFromPersistentIds();
       this.events.emit({ type: 'filterChanged', filterModel: f });
       this.requestViewport();
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
@@ -415,6 +429,13 @@ export class CGrid<TRow = any> {
   }
 
   getSelectedRowIds(): string[] {
+    // Prefer the persistent id set populated by `setSelectedRowIds(...)`. When
+    // selection came from UI clicks the persistent set is empty — fall back to
+    // synthetic `row-${idx}` ids so existing callers (e.g. demo's status bar)
+    // keep working. The real index → rowId reverse lookup is deferred to a
+    // later cycle when the chunk carries string rowIds.
+    const persistent = this.selection.getPersistentSelectedRowIds();
+    if (persistent.length > 0) return persistent;
     const out: string[] = [];
     for (const idx of this.selection.state.selectedRowIndices) {
       const id = this.rowIdAt(idx);
@@ -423,16 +444,50 @@ export class CGrid<TRow = any> {
     return out;
   }
 
-  setSelectedRowIds(_ids: string[]): void { /* needs a rowId -> rowIndex map; deferred */ }
+  /** Replace the current selection with `ids`. Resolves each id to a visible
+   *  row index via the worker, paints the rows that resolve, and stashes the
+   *  full id set so a later sort / filter / transaction rebuilds the paint
+   *  indices instead of dropping the selection. Triggers `selectionChanged`. */
+  setSelectedRowIds(ids: string[]): void {
+    if (this.destroyed) return;
+    if (ids.length === 0) {
+      this.selection.setSelectedRowIds([], []);
+      return;
+    }
+    this.workerClient.getRowIndicesForIds(ids).then((indices) => {
+      if (this.destroyed) return;
+      this.selection.setSelectedRowIds(ids, Array.from(indices));
+    }).catch((err) => { if (!this.destroyed) console.error('[cgrid] setSelectedRowIds:', err); });
+  }
 
   getFocusedCell(): { rowId: string; colId: string } | null {
     const { focusedRowIndex, focusedColId } = this.selection.state;
-    if (focusedRowIndex == null || focusedColId == null) return null;
+    if (focusedColId == null) return null;
+    // Prefer the persistent rowId from an API-driven setFocusedCell. Falls
+    // back to the synthetic id when focus came from a click — same caveat
+    // as getSelectedRowIds.
+    const persistent = this.selection.getPersistentFocusedRowId();
+    if (persistent !== null) return { rowId: persistent, colId: focusedColId };
+    if (focusedRowIndex == null) return null;
     const rowId = this.rowIdAt(focusedRowIndex);
     return rowId ? { rowId, colId: focusedColId } : null;
   }
 
-  setFocusedCell(_rowId: string, _colId: string): void { /* deferred */ }
+  /** Focus the cell at (`rowId`, `colId`). Scrolls the row into view, then
+   *  records both the persistent id and the paint index so subsequent re-sorts
+   *  keep the focus on the same logical cell. No-op for unknown row / column.
+   *  Observers see the change via `selectionChanged`. */
+  setFocusedCell(rowId: string, colId: string): void {
+    if (this.destroyed) return;
+    if (!this.columnDefsMap.has(colId)) return;
+    this.workerClient.getRowIndicesForIds([rowId]).then((idx) => {
+      if (this.destroyed) return;
+      const resolved = idx.length > 0 ? idx[0]! : -1;
+      if (resolved >= 0) this.ensureRowIndexVisible(resolved);
+      this.ensureColIdVisible(colId);
+      this.selection.setFocusByRowId(rowId, colId, resolved);
+    }).catch((err) => { if (!this.destroyed) console.error('[cgrid] setFocusedCell:', err); });
+  }
 
   refresh(): void { this.cgridCanvas.requestRepaint(); }
 
@@ -756,6 +811,24 @@ export class CGrid<TRow = any> {
     } else if (right > this.scrollLeft + bodyW) {
       this.setScroll(right - bodyW, this.scrollTop);
     }
+  }
+
+  /** After the worker model changes (sort / filter / transaction / column
+   *  swap), re-resolve every persistent selection rowId to its new visible
+   *  index and apply it to the paint set. No worker round-trip when no
+   *  persistent ids are tracked — keeps the common no-selection case free. */
+  private rebuildSelectionFromPersistentIds(): void {
+    const selectedIds = this.selection.getPersistentSelectedRowIds();
+    const focusedId = this.selection.getPersistentFocusedRowId();
+    const allIds: string[] = [...selectedIds];
+    if (focusedId !== null && !selectedIds.includes(focusedId)) allIds.push(focusedId);
+    if (allIds.length === 0) return;
+    this.workerClient.getRowIndicesForIds(allIds).then((indices) => {
+      if (this.destroyed) return;
+      const map = new Map<string, number>();
+      for (let i = 0; i < allIds.length; i++) map.set(allIds[i]!, indices[i]!);
+      this.selection.rebuildIndices(map);
+    }).catch((err) => { if (!this.destroyed) console.error('[cgrid] rebuildSelectionFromPersistentIds:', err); });
   }
 
   /** Walk the column tree to collect the ancestor groupIds (root → parent)

@@ -87,6 +87,15 @@ export class WorkerClient {
       .then((r) => r.index);
   }
 
+  /** Batched variant of `getRowIndexForId`. Returns one index per input id,
+   *  in the same order. Indices are -1 for unknown / filtered ids. Used by
+   *  `setSelectedRowIds([...])` and by the modelUpdated rebuild path. */
+  getRowIndicesForIds(rowIds: string[]): Promise<Int32Array> {
+    if (rowIds.length === 0) return Promise.resolve(new Int32Array(0));
+    return this.send<{ indices: Int32Array }>({ type: 'getRowIndicesForIds', payload: { rowIds } })
+      .then((r) => r.indices);
+  }
+
   destroy(): void {
     this.worker.terminate();
     this.pending.forEach((p) => p.reject(new Error('worker terminated')));

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { CGrid, inferRowIdField } from '../src/cgrid';
+import { createWorkerHost } from '../src/worker/worker';
 
 // Stub Worker for happy-dom env. CGrid accepts options.worker.url; in tests we inject a fake.
 beforeAll(() => {
@@ -112,6 +113,146 @@ describe('CGrid integration', () => {
     // Unknown groupId is a no-op (no throw).
     api.ensureColumnGroupVisible('not-a-group');
     grid.destroy();
+  });
+
+  describe('setFocusedCell / setSelectedRowIds (Task 7)', () => {
+    // Swap the fake Worker stub for a wired one that routes messages through
+    // the real createWorkerHost — exercises the full main → worker → main loop
+    // for the new ID-keyed APIs.
+    function buildWiredGrid<T extends { id: string }>(rows: T[], cols: any[]) {
+      const container = document.createElement('div');
+      container.style.cssText = 'width:800px; height:600px;';
+      container.className = 'cg-theme-quartz';
+      document.body.appendChild(container);
+      const prevWorker = (globalThis as any).Worker;
+      (globalThis as any).Worker = class {
+        listeners: Array<(e: { data: any }) => void> = [];
+        host = createWorkerHost((msg) => {
+          // Microtask delay mirrors the real Worker postMessage boundary.
+          queueMicrotask(() => this.listeners.forEach((cb) => cb({ data: msg })));
+        });
+        constructor(public url: URL) {}
+        postMessage(msg: any) { this.host.handle(msg); }
+        addEventListener(_: string, cb: (e: { data: any }) => void) { this.listeners.push(cb); }
+        terminate() {}
+      };
+      const grid = new CGrid<T>(container, {
+        columnDefs: cols,
+        getRowId: (r) => r.id,
+        rowSelection: 'multiple',
+        rowData: rows,
+      });
+      const restore = () => { (globalThis as any).Worker = prevWorker; container.remove(); };
+      return { grid, container, restore };
+    }
+
+    it('setSelectedRowIds resolves rowIds to indices and survives a setSortModel', async () => {
+      const { grid, restore } = buildWiredGrid<{ id: string; pri: number }>(
+        [
+          { id: 'a', pri: 30 },
+          { id: 'b', pri: 10 },
+          { id: 'c', pri: 20 },
+        ],
+        [{ field: 'id' }, { field: 'pri', type: 'number' }],
+      );
+      const selectionEvents: string[][] = [];
+      grid.on('selectionChanged', (e) => selectionEvents.push(e.selectedRowIds));
+
+      await new Promise((r) => setTimeout(r, 50));
+      expect((grid as any).rowCount).toBe(3);
+      grid.setSelectedRowIds(['a', 'c']);
+      await new Promise((r) => setTimeout(r, 50));
+      // Initial order: a=0, b=1, c=2.
+      const indices = Array.from((grid as any).selection.state.selectedRowIndices as Set<number>).sort();
+      expect(indices).toEqual([0, 2]);
+      expect(selectionEvents.at(-1)).toEqual(['a', 'c']);
+
+      // Sort ascending by pri: b(10), c(20), a(30) → a=2, c=1.
+      grid.setSortModel([{ colId: 'pri', direction: 'asc' }]);
+      await new Promise((r) => setTimeout(r, 50));
+      const afterSort = Array.from((grid as any).selection.state.selectedRowIndices as Set<number>).sort();
+      expect(afterSort).toEqual([1, 2]);
+      expect(grid.getSelectedRowIds().sort()).toEqual(['a', 'c']);
+
+      grid.destroy();
+      restore();
+    });
+
+    it('setFocusedCell resolves rowId to the visible-order index and survives setSortModel', async () => {
+      const { grid, restore } = buildWiredGrid<{ id: string; pri: number }>(
+        [
+          { id: 'a', pri: 30 },
+          { id: 'b', pri: 10 },
+          { id: 'c', pri: 20 },
+        ],
+        [{ field: 'id' }, { field: 'pri', type: 'number' }],
+      );
+      await new Promise((r) => setTimeout(r, 50));
+      expect((grid as any).rowCount).toBe(3);
+      grid.setFocusedCell('c', 'pri');
+      await new Promise((r) => setTimeout(r, 50));
+      expect((grid as any).selection.state.focusedRowIndex).toBe(2);
+      expect(grid.getFocusedCell()).toEqual({ rowId: 'c', colId: 'pri' });
+
+      // Sort ascending: c → index 1.
+      grid.setSortModel([{ colId: 'pri', direction: 'asc' }]);
+      await new Promise((r) => setTimeout(r, 50));
+      expect((grid as any).selection.state.focusedRowIndex).toBe(1);
+      expect(grid.getFocusedCell()).toEqual({ rowId: 'c', colId: 'pri' });
+
+      grid.destroy();
+      restore();
+    });
+
+    it('focused cell ID survives applyTransaction({ update: [...] })', async () => {
+      const { grid, restore } = buildWiredGrid<{ id: string; v: number }>(
+        [{ id: 'a', v: 1 }, { id: 'b', v: 2 }, { id: 'c', v: 3 }],
+        [{ field: 'id' }, { field: 'v', type: 'number' }],
+      );
+      await new Promise((r) => setTimeout(r, 50));
+      grid.setFocusedCell('b', 'v');
+      await new Promise((r) => setTimeout(r, 50));
+      expect(grid.getFocusedCell()).toEqual({ rowId: 'b', colId: 'v' });
+
+      // Sync update — worker pushes a modelUpdated which should re-resolve focus.
+      grid.applyTransaction({ update: [{ id: 'b', v: 99 }] });
+      await new Promise((r) => setTimeout(r, 50));
+      expect(grid.getFocusedCell()).toEqual({ rowId: 'b', colId: 'v' });
+      expect((grid as any).selection.state.focusedRowIndex).toBe(1);
+
+      grid.destroy();
+      restore();
+    });
+
+    it('setSelectedRowIds is a no-op for unknown rowIds (paint set empty, ids retained)', async () => {
+      const { grid, restore } = buildWiredGrid<{ id: string }>(
+        [{ id: 'a' }, { id: 'b' }],
+        [{ field: 'id' }],
+      );
+      await new Promise((r) => setTimeout(r, 50));
+      expect((grid as any).rowCount).toBe(2);
+      grid.setSelectedRowIds(['ghost']);
+      // Allow one round-trip for the worker resolve.
+      await new Promise((r) => setTimeout(r, 20));
+      expect((grid as any).selection.state.selectedRowIndices.size).toBe(0);
+      expect(grid.getSelectedRowIds()).toEqual(['ghost']);
+      grid.destroy();
+      restore();
+    });
+
+    it('setFocusedCell with unknown colId is a no-op', async () => {
+      const { grid, restore } = buildWiredGrid<{ id: string }>(
+        [{ id: 'a' }],
+        [{ field: 'id' }],
+      );
+      await new Promise((r) => setTimeout(r, 50));
+      expect((grid as any).rowCount).toBe(1);
+      grid.setFocusedCell('a', 'does-not-exist');
+      await new Promise((r) => setTimeout(r, 20));
+      expect((grid as any).selection.state.focusedColId).toBeNull();
+      grid.destroy();
+      restore();
+    });
   });
 
   it('accepts a CColGroupDef in columnDefs and resolves leaves in declaration order', async () => {

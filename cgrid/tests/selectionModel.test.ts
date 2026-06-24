@@ -53,4 +53,98 @@ describe('SelectionModel', () => {
     expect(m.state.selectedRowIndices.size).toBe(0);
     expect(fn).toHaveBeenCalledOnce();
   });
+
+  describe('ID-keyed persistence (Task 7)', () => {
+    it('setSelectedRowIds stores ids + paint indices and fires onChange', () => {
+      const m = new SelectionModel('multiple');
+      const fn = vi.fn();
+      m.onChange(fn);
+      m.setSelectedRowIds(['r1', 'r2', 'r3'], [0, 1, 2]);
+      expect(m.getPersistentSelectedRowIds()).toEqual(['r1', 'r2', 'r3']);
+      expect(Array.from(m.state.selectedRowIndices).sort((a, b) => a - b)).toEqual([0, 1, 2]);
+      expect(fn).toHaveBeenCalledOnce();
+    });
+
+    it('setSelectedRowIds skips ids with index -1 (filtered/unknown rows) but keeps them in the persistent set', () => {
+      const m = new SelectionModel('multiple');
+      m.setSelectedRowIds(['present', 'missing'], [4, -1]);
+      expect(Array.from(m.state.selectedRowIndices)).toEqual([4]);
+      // missing rowId survives — a later modelUpdated may re-resolve it.
+      expect(m.getPersistentSelectedRowIds()).toEqual(['present', 'missing']);
+    });
+
+    it('setSelectedRowIds is a no-op when mode=none', () => {
+      const m = new SelectionModel('none');
+      m.setSelectedRowIds(['r1'], [0]);
+      expect(m.state.selectedRowIndices.size).toBe(0);
+      expect(m.getPersistentSelectedRowIds()).toEqual([]);
+    });
+
+    it('setSelectedRowIds with mode=single keeps only the first id', () => {
+      const m = new SelectionModel('single');
+      m.setSelectedRowIds(['r1', 'r2'], [0, 1]);
+      expect(m.getPersistentSelectedRowIds()).toEqual(['r1']);
+      expect(Array.from(m.state.selectedRowIndices)).toEqual([0]);
+    });
+
+    it('setFocusByRowId stores id + index + colId and fires onChange', () => {
+      const m = new SelectionModel('single');
+      const fn = vi.fn();
+      m.onChange(fn);
+      m.setFocusByRowId('r9', 'price', 9);
+      expect(m.getPersistentFocusedRowId()).toBe('r9');
+      expect(m.state.focusedRowIndex).toBe(9);
+      expect(m.state.focusedColId).toBe('price');
+      expect(fn).toHaveBeenCalledOnce();
+    });
+
+    it('setFocusByRowId with index=-1 keeps the id but clears the paint index', () => {
+      const m = new SelectionModel('single');
+      m.setFocusByRowId('r9', 'price', -1);
+      expect(m.getPersistentFocusedRowId()).toBe('r9');
+      expect(m.state.focusedRowIndex).toBeNull();
+    });
+
+    it('rebuildIndices re-resolves indices for the persistent id set', () => {
+      const m = new SelectionModel('multiple');
+      m.setSelectedRowIds(['a', 'b', 'c'], [0, 1, 2]);
+      m.setFocusByRowId('b', 'x', 1);
+      // Simulate a re-sort: a→2, b→0, c→1
+      const fn = vi.fn();
+      m.onChange(fn);
+      m.rebuildIndices(new Map([['a', 2], ['b', 0], ['c', 1]]));
+      expect(Array.from(m.state.selectedRowIndices).sort((a, b) => a - b)).toEqual([0, 1, 2]);
+      expect(m.state.focusedRowIndex).toBe(0);
+      // Persistent ids are unchanged.
+      expect(m.getPersistentSelectedRowIds()).toEqual(['a', 'b', 'c']);
+      expect(m.getPersistentFocusedRowId()).toBe('b');
+      expect(fn).toHaveBeenCalledOnce();
+    });
+
+    it('rebuildIndices drops indices for ids that are now missing (e.g. filtered)', () => {
+      const m = new SelectionModel('multiple');
+      m.setSelectedRowIds(['a', 'b'], [0, 1]);
+      m.rebuildIndices(new Map([['a', 0]])); // b filtered out
+      expect(Array.from(m.state.selectedRowIndices)).toEqual([0]);
+      // 'b' kept in the persistent set so re-adding it later restores it.
+      expect(m.getPersistentSelectedRowIds()).toEqual(['a', 'b']);
+    });
+
+    it('rebuildIndices drops the focused index when its id is missing', () => {
+      const m = new SelectionModel('single');
+      m.setFocusByRowId('a', 'col', 0);
+      m.rebuildIndices(new Map()); // a missing
+      expect(m.state.focusedRowIndex).toBeNull();
+      expect(m.getPersistentFocusedRowId()).toBe('a');
+    });
+
+    it('rebuildIndices does not fire onChange when nothing actually changed', () => {
+      const m = new SelectionModel('multiple');
+      m.setSelectedRowIds(['a'], [0]);
+      const fn = vi.fn();
+      m.onChange(fn);
+      m.rebuildIndices(new Map([['a', 0]]));
+      expect(fn).not.toHaveBeenCalled();
+    });
+  });
 });

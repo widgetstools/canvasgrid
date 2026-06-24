@@ -159,6 +159,23 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             break;
           }
 
+          case 'getRowIndicesForIds': {
+            // Build a one-shot lookup table so an N-id batch is O(visible + N)
+            // instead of O(visible * N). Critical when the selection set is
+            // large (e.g. selectAll over a million rows).
+            const ids = visible();
+            const lookup = new Map<string, number>();
+            for (let i = 0; i < ids.length; i++) lookup.set(ids[i]!, i);
+            const requested = req.payload.rowIds;
+            const out = new Int32Array(requested.length);
+            for (let i = 0; i < requested.length; i++) {
+              const idx = lookup.get(requested[i]!);
+              out[i] = idx === undefined ? -1 : idx;
+            }
+            post({ id: req.id, type: 'rowIndices', indices: out }, [out.buffer]);
+            break;
+          }
+
           case 'getViewport': {
             const visIds = visible();
             const chunk = state.slicer.slice(visIds, req.payload);
