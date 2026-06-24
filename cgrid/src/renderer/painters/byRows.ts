@@ -99,13 +99,13 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
     const sgTop = sb.yTop;
     const sgBottom = sb.yBottom;
 
-    paintBand(gc, p, sb.rows, leftPinned,
+    paintBand(gc, sb.rows, leftPinned,
               0, vs.bodyLeft, sgTop, sgBottom,
               /*clip*/ false, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme);
-    paintBand(gc, p, sb.rows, center,
+    paintBand(gc, sb.rows, center,
               vs.bodyLeft, vs.bodyRight, sgTop, sgBottom,
               /*clip*/ true, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme);
-    paintBand(gc, p, sb.rows, rightPinned,
+    paintBand(gc, sb.rows, rightPinned,
               vs.bodyRight, rightEdge, sgTop, sgBottom,
               /*clip*/ false, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme);
   }
@@ -113,7 +113,6 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
 
 function paintBand(
   gc: CachedContext2D,
-  _p: PainterCtx,
   rows: ViewportRow[],
   cols: ViewportColumn[],
   x0: number,

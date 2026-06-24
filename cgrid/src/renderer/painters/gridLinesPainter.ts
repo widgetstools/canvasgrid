@@ -29,9 +29,9 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
     : Math.max(vs.bodyRight, ...vs.visibleColumns.map((c) => c.right));
 
   // Horizontals — one per visible data row bottom, spanning the full painted width.
-  // Header rows aren't gridlines-eligible (their own band-divider in headerPainter
-  // covers the header→body separator). Skip rows whose bottom lands outside the
-  // body region (overscan rows above/below).
+  // Header rows aren't gridlines-eligible — the header→body band divider is
+  // painted as a subgrid separator at the end of this function. Skip rows whose
+  // bottom lands outside the body region (overscan rows above/below).
   gc.cache.fillStyle = theme.gridLineColor;
   for (const row of vs.visibleRows) {
     if (!row.subgrid.isData) continue;
