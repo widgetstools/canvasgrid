@@ -66,6 +66,7 @@ export class CGrid<TRow = any> {
   private chunk: ViewportChunk | null = null;
   private decodedTextCols = new Map<string, string[]>();
   private viewportRequestPending = false;
+  private viewportRequestQueued = false;
 
   private root: HTMLDivElement;
   private scroller: HTMLDivElement;
@@ -501,7 +502,15 @@ export class CGrid<TRow = any> {
   }
 
   private requestViewport(): void {
-    if (this.viewportRequestPending) return;
+    // Coalesce: while one fetch is in-flight, additional calls flip a queued
+    // flag so a single follow-up runs after the current completes. Without
+    // this, rapid resizes drop all but the first request — the chunk stays
+    // stuck on the initial viewport range and newly-visible rows render with
+    // no data until the user stops resizing.
+    if (this.viewportRequestPending) {
+      this.viewportRequestQueued = true;
+      return;
+    }
     this.viewportRequestPending = true;
     const cols = this.viewport.visibleColumns.map((c) => c.colId);
     const rowStart = this.viewport.firstRow;
@@ -516,10 +525,15 @@ export class CGrid<TRow = any> {
         if (chunk.totals) {
           this.events.emit({ type: 'aggregationChanged', totals: chunk.totals });
         }
+        if (this.viewportRequestQueued) {
+          this.viewportRequestQueued = false;
+          this.requestViewport();
+        }
       })
       .catch((err) => {
         this.viewportRequestPending = false;
-        console.error('[cgrid] viewport request:', err);
+        this.viewportRequestQueued = false;
+        if (!this.destroyed) console.error('[cgrid] viewport request:', err);
       });
   }
 

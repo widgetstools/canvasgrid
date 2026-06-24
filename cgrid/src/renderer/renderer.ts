@@ -32,9 +32,15 @@ export class Renderer {
   private ctx: CanvasRenderingContext2D;
 
   constructor(private opts: RendererOpts) {
-    const c = opts.canvas.getContext('2d');
+    // alpha:false forces an opaque backing store. Without it, the canvas is
+    // transparent between context creation and the first paint — and between
+    // any canvas.width assignment and the next fill — letting the page bg
+    // bleed through during browser-resize. With opaque, blank frames are
+    // black instead of see-through; combined with the theme bg fill that's
+    // the FIRST instruction of every paint, there's no visible gap.
+    const c = opts.canvas.getContext('2d', { alpha: false });
     if (!c) throw new Error('[cgrid] failed to get 2d context');
-    this.ctx = c;
+    this.ctx = c as CanvasRenderingContext2D;
   }
 
   syncSize(cssWidth: number, cssHeight: number): void {
@@ -79,8 +85,14 @@ export class Renderer {
       selection: this.opts.getSelection(),
       sortModel: this.opts.getSortModel(),
     };
+    // Fill the entire canvas with theme bg as the very first instruction so
+    // there's no transparent moment between the prior frame's pixels (or the
+    // freshly-allocated backing store from a canvas.width assignment) and the
+    // grid content. Coords are CSS pixels — the ctx transform handles DPR.
+    const cssW = parseFloat(this.opts.canvas.style.width) || this.opts.canvas.width;
+    const cssH = parseFloat(this.opts.canvas.style.height) || this.opts.canvas.height;
     ctx.fillStyle = pctx.theme.bg;
-    ctx.fillRect(0, 0, this.opts.canvas.width, this.opts.canvas.height);
+    ctx.fillRect(0, 0, cssW, cssH);
     paintHeader(ctx, pctx);
     paintPinned(ctx, pctx, 'left');
     paintBody(ctx, pctx);
