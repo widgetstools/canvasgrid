@@ -1,7 +1,7 @@
 import type {
   CColDef, CValueGetterParams, CValueFormatterParams, ColCellOverrides,
   CCellRendererSelector, CValueParserParams, CValueSetterParams,
-  CellEditorCtor,
+  CellEditorCtor, EditableCallback, SuppressKeyboardEventCallback,
 } from '../types';
 import type { CellPaintConfig } from '../renderer/cellRenderers/registry';
 import type { ResolvedTheme } from '../theming/cssReader';
@@ -30,7 +30,13 @@ export interface ResolvedColDef<TRow = any> {
   aggFunc?: 'sum' | 'avg' | 'min' | 'max' | 'count';
   sortable: boolean;
   resizable: boolean;
-  editable: boolean | ((row: TRow) => boolean);
+  editable: boolean | EditableCallback<TRow, unknown>;
+  /** Per-column override of grid-level `singleClickEdit`. Undefined =
+   *  inherit from grid options. */
+  singleClickEdit?: boolean;
+  /** Per-column key-event short-circuit. Mirrors
+   *  `CColDef.suppressKeyboardEvent`. */
+  suppressKeyboardEvent?: SuppressKeyboardEventCallback<TRow>;
   /** Built-in editor key or a custom `ICellEditor` constructor. See
    *  `CColDef.cellEditor` in `types.ts` for full semantics. */
   cellEditor?: string | CellEditorCtor<TRow, unknown>;
@@ -130,7 +136,9 @@ export function resolveColDef<TRow>(
     aggFunc: merged.aggFunc,
     sortable: merged.sortable ?? true,
     resizable: merged.resizable ?? true,
-    editable: merged.editable ?? false,
+    editable: (merged.editable ?? false) as ResolvedColDef<TRow>['editable'],
+    singleClickEdit: merged.singleClickEdit,
+    suppressKeyboardEvent: merged.suppressKeyboardEvent as ResolvedColDef<TRow>['suppressKeyboardEvent'],
     cellEditor: merged.cellEditor as ResolvedColDef<TRow>['cellEditor'],
     cellEditorParams: merged.cellEditorParams as ResolvedColDef<TRow>['cellEditorParams'],
     cellStyle: merged.cellStyle,

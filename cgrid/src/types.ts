@@ -48,7 +48,41 @@ export interface CGridOptions<TRow = any> {
   loading?: boolean;
   /** Enables verbose console logging from the engine. Storage-only. */
   debug?: boolean;
+
+  /** Start editing on a single click instead of double-click. Per-column
+   *  override via `CColDef.singleClickEdit` (column wins). */
+  singleClickEdit?: boolean;
+  /** Disable click-to-edit (single AND double click). Editing then only
+   *  starts via keyboard (F2 / Enter) or programmatic API. */
+  suppressClickEdit?: boolean;
+  /** Commit any open editor when the grid host loses focus. `@initial` — the
+   *  blur listener is wired at construction time. */
+  stopEditingWhenCellsLoseFocus?: boolean;
+  /** Excel-style: Enter (without editing) moves the focused cell down by
+   *  one row instead of opening the editor. */
+  enterNavigatesVertically?: boolean;
+  /** When a cell edit commits via Enter, also move the focus down by one
+   *  row. Combine with `enterNavigatesVertically` for full Excel parity. */
+  enterNavigatesVerticallyAfterEdit?: boolean;
+  /** macOS convenience: start editing on Backspace key press. */
+  enableCellEditingOnBackspace?: boolean;
+  /** Prevent Tab from opening the editor on the next editable cell after
+   *  a commit. Tab still moves focus. */
+  suppressStartEditOnTab?: boolean;
 }
+
+/** Predicate that decides whether a single cell is editable. Receives the
+ *  resolved cell context — matches ag-grid's `EditableCallback` shape. */
+export type EditableCallback<TRow = any, TValue = any> = (
+  params: { data: TRow; colId: string; rowIndex: number; value: TValue },
+) => boolean;
+
+/** Per-column key-event predicate. Return `true` to swallow the event before
+ *  any grid handler (navigation, edit-trigger, paging) sees it. Receives
+ *  whether an editor is currently open on the cell. */
+export type SuppressKeyboardEventCallback<TRow = any> = (
+  params: { event: KeyboardEvent; editing: boolean; data: TRow; colId: string },
+) => boolean;
 
 export interface CColDef<TRow = any, TValue = any> {
   colId?: string;
@@ -83,7 +117,16 @@ export interface CColDef<TRow = any, TValue = any> {
   aggFunc?: 'sum' | 'avg' | 'min' | 'max' | 'count';
   sortable?: boolean;
   resizable?: boolean;
-  editable?: boolean | ((row: TRow) => boolean);
+  /** Editable predicate. Pass `true` / `false` for a static answer, or a
+   *  callback receiving `{ data, colId, rowIndex, value }`. */
+  editable?: boolean | EditableCallback<TRow, TValue>;
+  /** Per-column override of `CGridOptions.singleClickEdit`. When set, this
+   *  wins over the grid-level value for this column. */
+  singleClickEdit?: boolean;
+  /** Per-column key-event short-circuit. Runs at the head of the input
+   *  chain — return `true` to suppress every grid handler for the
+   *  keystroke. */
+  suppressKeyboardEvent?: SuppressKeyboardEventCallback<TRow>;
   /**
    * Built-in key (`'text'`, `'number'`, `'date'`, `'dateString'`, `'select'`,
    * `'largeText'`, `'checkbox'`) or a custom constructor registered via
@@ -359,6 +402,13 @@ export interface CGridApi {
    *  names ('text' shipped in Cycle 5 Task 1; 'number' / 'date' / 'select' /
    *  'largeText' / 'checkbox' / 'dateString' in Task 2) can be overridden. */
   registerCellEditor(name: string, ctor: CellEditorCtor): void;
+
+  /** Programmatically start editing the cell at `(rowIndex, colId)`.
+   *  No-op when the cell is not editable or not in the current viewport. */
+  startEditingCell(rowIndex: number, colId: string): void;
+  /** Close any active editor. `cancel=true` discards the new value; default
+   *  commits it through `valueParser → valueSetter` like Enter / Tab. */
+  stopEditing(cancel?: boolean): void;
 
   /** Subscribe to a typed event. Returns an unsubscribe function. */
   on<K extends CGridEvent['type']>(

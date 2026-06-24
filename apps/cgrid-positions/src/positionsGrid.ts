@@ -115,6 +115,13 @@ export function createPositionsGrid(container: HTMLElement): CGrid<Position> {
     cellFadeDuration: 800,
     asyncTransactionWaitMillis: 50,
     theme: 'cg-theme-quartz-dark',
+    // Cycle 5 / Task 4 — turn on the click + key edit-triggers so the
+    // editing.triggers E2E can exercise singleClickEdit and
+    // enterNavigatesVerticallyAfterEdit. stopEditingWhenCellsLoseFocus
+    // is opted-out to keep the existing Esc-cancels-without-writing E2E
+    // honest (clicking the input would otherwise commit on focusout).
+    singleClickEdit: true,
+    enterNavigatesVerticallyAfterEdit: true,
   };
   const grid = new CGrid<Position>(container, options);
   grid.registerCellRenderer('pnlPill', pnlPill);

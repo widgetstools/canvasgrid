@@ -115,7 +115,10 @@ test('arrow keys move focus + auto-scroll past viewport', async ({ page }) => {
   const canvas = page.locator(GRID_SELECTOR);
   await waitForGridPopulated(page, canvas);
 
-  await canvas.click({ position: { x: 200, y: 80 } });
+  // Seed focus on the (non-editable) positionId column. Cycle 5 / Task 4
+  // turned on grid-level `singleClickEdit`, so clicking an editable cell
+  // here would open the editor and steer the arrow keys into the input.
+  await canvas.click({ position: { x: 80, y: 80 } });
   await page.waitForTimeout(150);
   const d = await dims(canvas);
 

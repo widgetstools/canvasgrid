@@ -70,6 +70,9 @@ export class CellSelection extends Feature {
         e.preventDefault();
         return;
       case 'Tab': {
+        // KeyPaging owns Tab while an editor is open (commit + jump to the
+        // next editable cell). When closed, normal cell navigation.
+        if (ctx.grid.isEditing()) break;
         let nextRow = fr ?? 0;
         let nextCi: number;
         if (e.shiftKey) {
@@ -90,15 +93,10 @@ export class CellSelection extends Feature {
           return;
         }
         break;
-      case 'F2':
-      case 'Enter':
-        if (fr != null && fc != null) {
-          ctx.grid.emitCellDoubleClicked(fr, fc, e as unknown as MouseEvent);
-          e.preventDefault();
-          return;
-        }
-        break;
       case 'Escape':
+        // KeyPaging owns Esc while editing (cancel). When closed, Esc still
+        // clears the selection.
+        if (ctx.grid.isEditing()) break;
         sel.clear();
         return;
     }

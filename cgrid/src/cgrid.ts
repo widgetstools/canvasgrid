@@ -279,13 +279,35 @@ export class CGrid<TRow = any> {
         const rowId = this.rowIdAt(rowIndex);
         if (rowId) this.events.emit({ type: 'cellClicked', rowId, colId, value: this.cellAt(rowIndex, colId)?.value, mouse });
       },
+      // Task 4: the editor-open dispatch moved to the new EditTrigger
+      // feature. emitCellDoubleClicked now only emits the lifecycle event
+      // so single-vs-double-click + suppressClickEdit gates can live in
+      // one place.
       emitCellDoubleClicked: (rowIndex, colId, mouse) => {
         const rowId = this.rowIdAt(rowIndex);
-        if (rowId) {
-          this.events.emit({ type: 'cellDoubleClicked', rowId, colId, value: this.cellAt(rowIndex, colId)?.value, mouse });
-          this.openEditor(rowIndex, colId);
-        }
+        if (rowId) this.events.emit({ type: 'cellDoubleClicked', rowId, colId, value: this.cellAt(rowIndex, colId)?.value, mouse });
       },
+      getEditingFlags: () => ({
+        singleClickEdit: this.options.singleClickEdit ?? false,
+        suppressClickEdit: this.options.suppressClickEdit ?? false,
+        enterNavigatesVertically: this.options.enterNavigatesVertically ?? false,
+        enterNavigatesVerticallyAfterEdit: this.options.enterNavigatesVerticallyAfterEdit ?? false,
+        suppressStartEditOnTab: this.options.suppressStartEditOnTab ?? false,
+        enableCellEditingOnBackspace: this.options.enableCellEditingOnBackspace ?? false,
+      }),
+      isCellEditable: (rowIndex, colId) => this.isCellEditable(rowIndex, colId),
+      isColSingleClickEdit: (colId) => this.columnDefsMap.get(colId)?.singleClickEdit,
+      getColSuppressKeyboardEvent: (colId) => {
+        const def = this.columnDefsMap.get(colId);
+        return def?.suppressKeyboardEvent as ((p: {
+          event: KeyboardEvent; editing: boolean; data: unknown; colId: string;
+        }) => boolean) | undefined;
+      },
+      getRowDataAt: (rowIndex) => this.rowDataSnapshotAt(rowIndex),
+      isEditing: () => this.editor.isOpen(),
+      openEditor: (rowIndex, colId, charPress) => this.openEditor(rowIndex, colId, charPress ?? null),
+      stopEditing: (cancel) => this.stopEditing(cancel),
+      nextEditableCell: (rowIndex, colId, dir) => this.nextEditableCell(rowIndex, colId, dir),
     });
     this.cellEditorRegistry = new CellEditorRegistry();
     CellEditorRegistry.seed(this.cellEditorRegistry);
@@ -328,6 +350,71 @@ export class CGrid<TRow = any> {
     this.scroller.addEventListener('scroll', () => {
       this.onScrollerScroll(this.scroller.scrollLeft, this.scroller.scrollTop);
     });
+
+    // stopEditingWhenCellsLoseFocus — commit the open editor when focus
+    // leaves the grid root. Uses focusout (which bubbles, unlike blur) so a
+    // shift from the canvas to e.g. the document body still fires. The
+    // relatedTarget check keeps the editor open while focus moves between
+    // the canvas and the editor's own DOM (or between popup DOM and canvas).
+    if (this.options.stopEditingWhenCellsLoseFocus) {
+      this.root.addEventListener('focusout', (ev) => {
+        if (!this.editor.isOpen()) return;
+        const next = (ev as FocusEvent).relatedTarget as Node | null;
+        if (next && this.root.contains(next)) return;
+        this.stopEditing(false);
+      });
+    }
+
+    // Edit-mode keyboard matrix (Task 4). Root capture-phase listener
+    // because the editor's <input>/<select>/<textarea> has focus while
+    // editing — KeyPaging fires on the canvas and never sees these keys.
+    // - Escape: cancel
+    // - Enter: commit (+ optional descend per enterNavigatesVerticallyAfterEdit)
+    // - Tab: commit + advance to next editable cell (unless suppressStartEditOnTab)
+    // We capture-and-stopPropagation so the per-editor Enter/Esc handlers
+    // can't double-fire on the same keypress.
+    this.root.addEventListener('keydown', (raw) => {
+      if (!this.editor.isOpen()) return;
+      const ev = raw as KeyboardEvent;
+      if (ev.key === 'Escape') {
+        ev.preventDefault();
+        ev.stopPropagation();
+        this.stopEditing(true);
+        return;
+      }
+      if (ev.key === 'Enter') {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const fr = this.selection.state.focusedRowIndex;
+        const fc = this.selection.state.focusedColId;
+        this.stopEditing(false);
+        if (this.options.enterNavigatesVerticallyAfterEdit && fr != null && fc != null) {
+          const dir = ev.shiftKey ? -1 : 1;
+          this.selection.setFocus(
+            Math.max(0, Math.min(Math.max(0, this.rowCount - 1), fr + dir)),
+            fc,
+          );
+        }
+        return;
+      }
+      if (ev.key === 'Tab') {
+        ev.preventDefault();
+        ev.stopPropagation();
+        const fr = this.selection.state.focusedRowIndex;
+        const fc = this.selection.state.focusedColId;
+        this.stopEditing(false);
+        if (fr != null && fc != null) {
+          const dir = ev.shiftKey ? 'backward' : 'forward';
+          const next = this.nextEditableCell(fr, fc, dir);
+          if (next) {
+            this.selection.setFocus(next.rowIndex, next.colId);
+            if (!this.options.suppressStartEditOnTab) {
+              this.openEditor(next.rowIndex, next.colId);
+            }
+          }
+        }
+      }
+    }, true);
 
     // Subscribe to group state changes — recompute visible columns, repaint,
     // and surface both the per-group event and the broader displayed-columns
@@ -716,6 +803,8 @@ export class CGrid<TRow = any> {
       updateGridOptions: (p) => this.updateGridOptions(p as Partial<CGridOptions<TRow>>),
       registerCellRenderer: (n, p) => this.registerCellRenderer(n, p),
       registerCellEditor: (n, c) => this.registerCellEditor(n, c),
+      startEditingCell: (r, c) => this.openEditor(r, c),
+      stopEditing: (cancel) => this.stopEditing(cancel),
       on: (t, h) => this.on(t as CGridEvent['type'], h as any),
       off: (t, h) => this.off(t as CGridEvent['type'], h as any),
       addEventListener: (t, h) => this.addEventListener(t as CGridEvent['type'], h as any),
@@ -1044,14 +1133,104 @@ export class CGrid<TRow = any> {
     return p as Record<string, unknown>;
   }
 
-  private openEditor(rowIndex: number, colId: string, charPress: string | null = null): void {
+  /** Resolve the editable predicate for the cell at `(rowIndex, colId)`.
+   *  Static booleans flow through directly; callbacks receive the cell's
+   *  current `{ data, colId, rowIndex, value }`. Returns `false` for
+   *  unknown columns. */
+  private isCellEditable(rowIndex: number, colId: string): boolean {
     const def = this.columnDefsMap.get(colId);
-    if (!def || !def.editable) return;
+    if (!def) return false;
+    const e = def.editable;
+    if (typeof e === 'boolean') return e;
+    if (typeof e === 'function') {
+      const data = this.rowDataSnapshotAt(rowIndex);
+      const value = this.cellAt(rowIndex, colId)?.value;
+      try {
+        return (e as (p: { data: unknown; colId: string; rowIndex: number; value: unknown }) => boolean)(
+          { data, colId, rowIndex, value },
+        );
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  }
+
+  /** Best-effort row snapshot built from the current viewport chunk —
+   *  every cell in the chunk for this row, keyed by colId. Empty object
+   *  when the row hasn't been chunked yet. The real `getRowByIndex`
+   *  worker round-trip is used at commit time; this synchronous flavour
+   *  is what predicates / suppressKeyboardEvent callbacks see. */
+  private rowDataSnapshotAt(rowIndex: number): Record<string, unknown> {
+    const snapshot: Record<string, unknown> = {};
+    for (const col of this.viewport.visibleColumns) {
+      const cell = this.cellAt(rowIndex, col.colId);
+      if (cell) snapshot[col.colId] = cell.value;
+    }
+    return snapshot;
+  }
+
+  /** Close any open editor. `cancel=true` discards the in-progress value.
+   *  Wired into the host blur listener (`stopEditingWhenCellsLoseFocus`)
+   *  and the keyboard handler (Escape cancels; Enter / Tab commit). */
+  stopEditing(cancel: boolean = false): void {
+    if (!this.editor.isOpen()) return;
+    if (cancel) this.editor.cancel();
+    else this.editor.commit();
+  }
+
+  /** Walk the visible-column order to find the next editable cell from
+   *  `(fromRow, fromCol)`. `'forward'` increments by column, wrapping to
+   *  the next row's first column at the right edge; `'backward'`
+   *  mirrors. Returns `null` when no further editable cell exists. */
+  private nextEditableCell(
+    fromRow: number,
+    fromCol: string,
+    direction: 'forward' | 'backward',
+  ): { rowIndex: number; colId: string } | null {
+    const cols = this.columnOrder.map((c) => c.colId);
+    if (cols.length === 0 || this.rowCount === 0) return null;
+    const startCi = cols.indexOf(fromCol);
+    if (startCi < 0) return null;
+    const step = direction === 'forward' ? 1 : -1;
+    let row = fromRow;
+    let ci = startCi + step;
+    const maxIter = cols.length * Math.max(1, this.rowCount);
+    for (let i = 0; i < maxIter; i++) {
+      if (ci >= cols.length) {
+        ci = 0;
+        row += 1;
+      } else if (ci < 0) {
+        ci = cols.length - 1;
+        row -= 1;
+      }
+      if (row < 0 || row >= this.rowCount) return null;
+      const candidate = cols[ci]!;
+      if (this.isCellEditable(row, candidate)) {
+        return { rowIndex: row, colId: candidate };
+      }
+      ci += step;
+    }
+    return null;
+  }
+
+  /** Open the editor on the cell at `(rowIndex, colId)`. No-op when the
+   *  cell is not editable, not currently in the viewport, or already in
+   *  edit mode. Called by the EditTrigger feature (click/dblclick) and
+   *  KeyPaging (F2 / Enter / Tab next-editable). */
+  openEditor(rowIndex: number, colId: string, charPress: string | null = null): void {
+    if (this.editor.isOpen()) return;
+    const def = this.columnDefsMap.get(colId);
+    if (!def || !this.isCellEditable(rowIndex, colId)) return;
     const col = this.viewport.visibleColumns.find((c) => c.colId === colId);
     const row = this.viewport.visibleRows.find(
       (r) => r.subgrid.isData && r.localRowIndex === rowIndex,
     );
     if (!col || !row) return;
+    // Selection follows the editor — without this, closing the editor leaves
+    // focus on whatever cell was previously selected, so subsequent arrow-key
+    // navigation jumps from the wrong origin.
+    this.selection.setFocus(rowIndex, colId);
     const cell = this.cellAt(rowIndex, colId);
     const initialValue = cell?.value ?? '';
     const editorName = this.resolveEditorName(def);
