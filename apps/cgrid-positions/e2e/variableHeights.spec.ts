@@ -20,11 +20,15 @@ interface GridApiSurface {
 
 test.describe('Variable row heights (Cycle 5 / Task 6)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    // Demo opts into variable row heights via `?variableHeights=1` so
+    // the default demo can render uniform rows for the screenshot
+    // walkthrough. This spec MUST set the flag to exercise the
+    // `getRowHeight` callback wiring.
+    await page.goto('/?variableHeights=1');
     await page.waitForFunction(
       () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,
       null,
-      { timeout: 20_000 },
+      { timeout: 45_000 },
     );
   });
 

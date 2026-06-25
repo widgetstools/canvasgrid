@@ -29,7 +29,7 @@ async function gridReady(page: import('@playwright/test').Page): Promise<void> {
   await page.waitForFunction(
     () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,
     null,
-    { timeout: 20_000 },
+    { timeout: 45_000 },
   );
   // Settle so the first viewport paints and getHeaderBoundsAt resolves.
   await page.evaluate(

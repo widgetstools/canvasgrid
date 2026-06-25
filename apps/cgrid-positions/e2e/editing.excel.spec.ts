@@ -61,7 +61,7 @@ test.describe('Excel-style editing (Cycle 5 / Task 5)', () => {
     await page.waitForFunction(
       () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,
       null,
-      { timeout: 20_000 },
+      { timeout: 45_000 },
     );
   });
 

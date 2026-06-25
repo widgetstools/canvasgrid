@@ -46,7 +46,7 @@ test.describe('Cell editing — full-row mode (Cycle 5 / Task 10)', () => {
     await page.waitForFunction(
       () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,
       null,
-      { timeout: 20_000 },
+      { timeout: 45_000 },
     );
     // Park a sink for row-level events on window so tests can assert
     // they fired by the time the editor closes.

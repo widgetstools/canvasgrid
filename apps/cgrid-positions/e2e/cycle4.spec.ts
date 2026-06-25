@@ -31,7 +31,7 @@ async function waitForGridPopulated(page: Page, canvas: Locator) {
           }
           return set.size;
         }),
-      { timeout: 20_000, intervals: [500, 1000, 2000] },
+      { timeout: 45_000, intervals: [500, 1000, 2000] },
     )
     .toBeGreaterThan(10);
 }

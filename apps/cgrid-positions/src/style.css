@@ -21,3 +21,18 @@ button { padding: 6px 12px; border: 1px solid #334155; background: #1e293b; colo
 button:hover { background: #283549; }
 .toolbar-checkbox { display: inline-flex; align-items: center; gap: 4px; color: #e2e8f0; font-size: 13px; user-select: none; }
 .toolbar-checkbox input { margin: 0; }
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
+  border: 1px solid #334155;
+  border-radius: 999px;
+  background: #1e293b;
+  color: #cbd5e1;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.status-pill .status-sep { color: #475569; }
+.status-pill .status-faint { color: #64748b; }
