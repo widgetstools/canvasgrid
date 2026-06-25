@@ -184,6 +184,8 @@ New ones marked **NEW** for this cycle.
 | `getDistinctValues` (1 col, 20k rows) | < 20 ms p95 | Set-filter popup open must feel instant |
 | Floating-filter overlay re-pin (per scroll frame) | < 1 ms; zero layout reads | 120fps scroll target preserved |
 | Filter popup open/close | < 16 ms | One-frame budget; user-perceived as instant |
+| `VirtualList` scroll-slice recompute (50k items, 24px rows) | < 1 ms per scroll frame; zero `getBoundingClientRect` reads on the scroll path | Set filter + future column chooser must scroll smoothly at 50k+ entries |
+| Set filter open with 10k distinct values | < 30 ms (worker `getDistinctValues` + first VirtualList window mount) | Set-filter open must feel as instant as any other filter popup |
 
 ---
 
@@ -199,7 +201,7 @@ New ones marked **NEW** for this cycle.
 | 6 | Multi-condition filter UI (up to 2 conditions, `AND` / `OR` join, `maxNumConditions` / `numAlwaysVisibleConditions` / `defaultJoinOperator` params, `closeOnApply`) | One column can now express `contains "POS" AND startsWith "POS-1"` in a single popup | `interaction/filters/multiCondition.ts` (new), `worker/dataPipeline.ts`, `types.ts`, demo, tests |
 | 7 | `quickFilterText` + `QuickFilterPass` + `cacheQuickFilter` + `includeHiddenColumnsInQuickFilter` + `quickFilterParser` + `quickFilterMatcher` + `getQuickFilterText` per-column override | Single text input above the grid filters every row across every column | `worker/dataPipeline.ts` (`QuickFilterPass`), `worker/worker.ts`, `worker/client.ts`, `worker/protocol.ts`, `cgrid.ts`, `types.ts`, demo, tests |
 | 8 | External filter (`isExternalFilterPresent` + `doesExternalFilterPass` + `alwaysPassFilter`) + the rowIds round-trip protocol | App provides a predicate; grid runs it on main and stitches the survivors back | `worker/protocol.ts`, `worker/worker.ts`, `worker/client.ts`, `cgrid.ts`, `types.ts`, demo, tests |
-| 9 | Set Filter (lightweight) + `DistinctValuesPass` + `getColumnFilterInstance` / `getColumnFilterModel` / `setColumnFilterModel` / `getFilterModel` / `setFilterModel` round-trip polish + `filterChanged` / `filterModified` / `filterOpened` events + Cycle 7 exit ritual | Per-column distinct-value checkboxes; full state round-trip; FM reflects every Area-08 row Cycle 7 ships | `interaction/filters/setFilter.ts` (new), `worker/dataPipeline.ts` (`DistinctValuesPass`), `worker/worker.ts`, `worker/client.ts`, `worker/protocol.ts`, `cgrid.ts`, `types.ts`, `docs/catalog/FEATURE_MATRIX.md`, this worklog |
+| 9 | `VirtualList<T>` primitive + virtualised Set Filter + `DistinctValuesPass` + per-column filter API (`getColumnFilterModel` / `setColumnFilterModel` / `isAnyFilterPresent` / `isColumnFilterPresent` / `destroyFilter`) + `filterChanged` / `filterModified` / `filterOpened` events + Cycle 7 exit ritual | Per-column distinct-value checkboxes scaling to 50k+ entries via a reusable VirtualList primitive; full state round-trip; FM reflects every Area-08 row Cycle 7 ships | `interaction/ui/virtualList.ts` (new), `interaction/filters/setFilter.ts` (new), `worker/dataPipeline.ts` (`DistinctValuesPass`), `worker/worker.ts`, `worker/client.ts`, `worker/protocol.ts`, `cgrid.ts`, `types.ts`, `docs/catalog/FEATURE_MATRIX.md`, this worklog |
 
 ---
 
@@ -1851,16 +1853,32 @@ setColumnFilterModel (lines 138-139). Follow the per-task workflow.
 
 ---
 
-## Task 9 — Set Filter (lightweight) + per-column filter API polish + filter events + Cycle 7 exit ritual
+## Task 9 — Set Filter (virtualised) + reusable `VirtualList` primitive + per-column filter API polish + filter events + Cycle 7 exit ritual
 
-**Goal:** Per-column distinct-value checkbox filter. Click expand on a
-set-filter column → popup opens listing every distinct value with a
-checkbox; mini-search at the top narrows the visible list;
-`Select All` / `Clear` controls. Apply commits a `CSetFilterModel`
+**Goal:** Per-column distinct-value checkbox filter that scales to tens
+of thousands of distinct values. Click expand on a set-filter column →
+popup opens with a virtualised checkbox list (only rows in the visible
+window are mounted; off-window rows are unmounted, not just
+`display:none`); a tri-state `Select All` header that reflects
+all/none/partial; an optional mini-search input that filters the
+in-memory distinct list inline (debounced) — search recomputes the
+virtualised slice without re-fetching from the worker; `Apply` /
+`Clear` / `Reset` buttons (per the shared filter-popup pattern from
+Task 3). Apply commits a `CSetFilterModel`
 (`{ filterType: 'set', values: string[] }`). Worker
 `DistinctValuesPass` computes the distinct value set on demand via a
 one-pass hash over `store.rows()`; results cache until the next
 transaction lands for that column.
+
+**Virtualisation is a reusable primitive.** The windowed list is NOT
+buried inside `setFilter.ts` — it lives at
+`cgrid/src/interaction/ui/virtualList.ts` as a generic
+`VirtualList<T>` that takes an item array + fixed row height + a
+per-item renderer and emits rendered rows on scroll. Same primitive is
+reused by Cycle-9+'s column chooser, the advanced-filter side panel,
+any future tool-panel list, and the multi-select editor's option list.
+Keeps cgrid off external virtualisation libraries (`react-window`,
+`tanstack-virtual`) which don't fit a vanilla-TS canvas grid anyway.
 
 Also lands the per-column filter API: `getColumnFilterModel(colId)`,
 `setColumnFilterModel(colId, model)`, `isAnyFilterPresent()`,
@@ -1873,9 +1891,14 @@ Runs the Cycle 7 exit ritual: flip every Area-08 row to ✅ in the FM,
 populate the worklog's Shipped + Performance + Status sections.
 
 **Why this is Task 9:** Set filter is the heaviest UI piece — needs a
-virtualised list (potentially thousands of distinct values) — so it
-lands last. The per-column API + event polish lands here too because
-every prior task generates events that need their final shape locked.
+virtualised list (potentially tens of thousands of distinct values) —
+so it lands last. Splitting `VirtualList` out as its own primitive
+costs ~200 LOC + one test file now, but earns reuse credit immediately
+in Cycles 9-12 (column chooser, advanced-filter side panel, tool
+panels) — building it inline in `setFilter.ts` and "extracting later"
+always means rewriting from scratch. The per-column API + event polish
+lands here too because every prior task generates events that need
+their final shape locked.
 
 **Read first:**
 - `docs/catalog/08-filtering.md` — `ISetFilterParams` (lines 105-123);
@@ -1885,10 +1908,17 @@ every prior task generates events that need their final shape locked.
   is the same shape — hash over store rows
 - `cgrid/src/interaction/filters/filterPopupHost.ts` (Task 3) — popup
   orchestration
+- `cgrid/src/core/viewport.ts` — the cgrid main grid's virtualisation
+  pattern (slice computation from scrollTop + fixed row height + visible
+  height). `VirtualList<T>` is the same shape stripped of canvas paint:
+  scroll listener → slice index range → mount/unmount DOM rows.
 - All Cycle 5 / Task 7 worklog exit-ritual paragraphs (the playbook
   Task 9 mirrors)
 
 **Files:**
+- Create: `cgrid/src/interaction/ui/virtualList.ts` (generic windowed
+  list primitive — set filter's first consumer; column chooser + tool
+  panels consume in later cycles)
 - Create: `cgrid/src/interaction/filters/setFilter.ts`
 - Modify: `cgrid/src/worker/dataPipeline.ts` (new `DistinctValuesPass`;
   extend `matches` to handle `filterType: 'set'`)
@@ -1908,6 +1938,7 @@ every prior task generates events that need their final shape locked.
   `desk`, `region` with `filter: 'set'`)
 - Update: `docs/catalog/FEATURE_MATRIX.md` (flip Area-08 rows to ✅)
 - Update: this worklog (Shipped + Performance + Status sections)
+- Create: `cgrid/tests/virtualList.test.ts`
 - Create: `cgrid/tests/setFilter.test.ts`
 - Create: `cgrid/tests/distinctValuesPass.test.ts`
 - Create: `cgrid/tests/perColumnFilterApi.test.ts`
@@ -1916,6 +1947,56 @@ every prior task generates events that need their final shape locked.
 **Interfaces produced (cycle exit; consumed by future cycles):**
 
 ```ts
+// cgrid/src/interaction/ui/virtualList.ts
+
+/** Generic windowed list primitive. Renders only the rows in the
+ *  visible viewport; off-window rows are unmounted (not just hidden)
+ *  so a 50k-item list costs the same DOM as a 50-item list. Cycle 7 /
+ *  Task 9's set filter is the first consumer; Cycle 9+'s column
+ *  chooser, advanced-filter side panel, and tool panels reuse.
+ *
+ *  Performance contract:
+ *  - Scroll → recompute slice → mount/unmount rows: 0 layout reads on
+ *    the scroll path (cached `scrollTop` + fixed row height).
+ *  - 50k items, 24px rows, 400px popup → renders ~17 rows per frame.
+ *  - `setItems(newItems)` is O(visible), not O(items) — drops the
+ *    cached slice + re-renders the window.
+ */
+export interface VirtualListDeps<T> {
+  /** Fixed row height in CSS px. Constant per VirtualList instance —
+   *  variable-height windows belong to a future RowHeightIndex-backed
+   *  variant, not this primitive. */
+  rowHeight: number;
+  /** Builds the row DOM for `item`. Called once per mount; the same
+   *  element is reused across scrolls (pooled by index slot — NOT by
+   *  item identity, so the renderer must overwrite all dynamic
+   *  content). Return `null` to render an empty slot at that index. */
+  renderRow: (item: T, index: number) => HTMLElement | null;
+  /** Optional overscan — how many rows beyond the visible window to
+   *  pre-mount. Default 3. Trades DOM count for scroll smoothness. */
+  overscan?: number;
+}
+
+export class VirtualList<T> {
+  constructor(host: HTMLElement, deps: VirtualListDeps<T>);
+  /** Replace the item set. Resets scroll to top by default; pass
+   *  `{ preserveScroll: true }` to keep `scrollTop` (used by mini-search
+   *  in the set filter so typing doesn't yank the user to the top). */
+  setItems(items: T[], opts?: { preserveScroll?: boolean }): void;
+  /** Programmatically scroll to the row at `index`. No-op for out-of-
+   *  range indices. */
+  scrollToIndex(index: number): void;
+  /** Returns the [first, last] index range currently mounted (inclusive
+   *  of overscan). For tests + scroll-driven a11y announcements. */
+  visibleRange(): { first: number; last: number };
+  /** Trigger a re-render of currently-mounted rows without changing
+   *  the item list. Used after an external mutation (e.g. a checkbox
+   *  toggle in the set filter flips a row's `checked` state). */
+  refresh(): void;
+  /** Tear down — removes the inner scroll host + pooled rows. */
+  destroy(): void;
+}
+
 // cgrid/src/types.ts
 
 export interface CSetFilterParams extends CFilterParams {
@@ -1960,21 +2041,75 @@ export type CGridEvent =
 
 **Steps:**
 
-- [ ] **Step 1: Write the failing `distinctValuesPass.test.ts`** —
+- [ ] **Step 1: Write the failing `virtualList.test.ts`** — TDD the
+      primitive in isolation so it's solid before the set filter
+      depends on it. Assertions (≥ 10):
+      - With `items.length = 1000`, `rowHeight = 24`, host height =
+        240, only ~13 rows (`10 visible + 3 overscan`) are mounted in
+        the DOM
+      - Total scroll-sizer height = `items.length * rowHeight`
+        (so the native scrollbar reflects the full list size)
+      - `scrollToIndex(500)` brings index 500 into the mounted set
+      - Scrolling triggers row mount/unmount, not just visibility
+        toggles (assert via `host.querySelectorAll('[data-cg-vlist-row]').length`)
+      - Pool reuse: scrolling by exactly one row reuses N-1 existing
+        DOM nodes (assert via element identity tracking)
+      - `setItems(newItems)` with `preserveScroll: true` keeps
+        `scrollTop` constant
+      - `setItems(newItems)` without `preserveScroll` resets to 0
+      - `refresh()` re-invokes `renderRow` on currently-mounted rows
+        without changing the mounted set
+      - `destroy()` empties the host
+      - `visibleRange()` returns `{ first: 0, last: 12 }` on initial
+        mount of a 1000-item list (matches the 13-row window)
+- [ ] **Step 2: Implement `VirtualList<T>`** in
+      `interaction/ui/virtualList.ts` — < 200 LOC. Inner DOM shape:
+
+```
+host (overflow: auto, height: deps' to set)
+  └── sizer (absolute-positioned spacer, height = items.length * rowHeight, width: 1px)
+  └── window (absolute-positioned container that holds the mounted rows)
+        └── row[0]  (absolute, top: index * rowHeight)
+        └── row[1]
+        └── …
+```
+
+      Scroll listener: read `host.scrollTop` ONCE per scroll event,
+      compute `firstVisible = floor(scrollTop / rowHeight)`,
+      `lastVisible = ceil((scrollTop + clientHeight) / rowHeight)`,
+      then `[firstMount, lastMount] = [firstVisible - overscan,
+      lastVisible + overscan]` clamped to `[0, items.length - 1]`.
+      Diff against the previous mounted range — remove rows that left,
+      mount rows that entered, set `style.top` on every mounted row.
+      No `getBoundingClientRect` reads on the scroll path. Pool the
+      row elements by index slot (a `Map<number, HTMLElement>`).
+
+- [ ] **Step 3: Verify** — `npm test --workspace=cgrid -- virtualList` green.
+
+- [ ] **Step 4: Write the failing `distinctValuesPass.test.ts`** —
       assertions:
       - Returns the unique set of column values
       - Caches results per colId; second call hits the cache (verified
         by spying on the store-walk counter)
       - Cache invalidates after a transaction touches the column
-- [ ] **Step 2: Write the failing `setFilter.test.ts`** — DOM
+- [ ] **Step 5: Write the failing `setFilter.test.ts`** — DOM
       assertions:
-      - `buildGui()` renders a list of checkboxes one per distinct
-        value
+      - `buildGui()` mounts a `VirtualList` whose first window of rows
+        renders one checkbox each
+      - With 10,000 synthetic distinct values, the DOM contains < 50
+        `<input type="checkbox">` elements (proves virtualisation)
       - `suppressMiniFilter` hides the search input
-      - Typing in the mini-search narrows the visible list
-      - `Select All` toggles every checkbox
+      - Typing in the mini-search narrows the visible list AND
+        preserves scroll (per `VirtualList.setItems({ preserveScroll })`)
+      - `Select All` toggles every value (including off-window ones —
+        selection state lives in a `Set<string>`, not in DOM)
+      - Select All is tri-state: indeterminate when partial, checked
+        when all, unchecked when none
+      - Toggling an off-window row via API (programmatic) and then
+        scrolling it into view shows it correctly checked (proves
+        state survives virtualisation)
       - Apply commits a `CSetFilterModel` with the checked values
-- [ ] **Step 3: Write the failing `perColumnFilterApi.test.ts`** —
+- [ ] **Step 6: Write the failing `perColumnFilterApi.test.ts`** —
       assertions:
       - `getColumnFilterModel('colA')` returns null when no filter
         is set
@@ -1985,37 +2120,52 @@ export type CGridEvent =
         filter state
       - `destroyFilter('colA')` clears the column's filter and any
         cached UI state
-- [ ] **Step 4: Implement `DistinctValuesPass`** in `dataPipeline.ts`.
-- [ ] **Step 5: Extend `matches` for `filterType: 'set'`** — `Set`
+- [ ] **Step 7: Implement `DistinctValuesPass`** in `dataPipeline.ts`.
+- [ ] **Step 8: Extend `matches` for `filterType: 'set'`** — `Set`
       lookup against the entry's `values` array.
-- [ ] **Step 6: Wire `getDistinctValues` protocol** + worker + client.
-- [ ] **Step 7: Implement `setFilter.ts`** — virtualised list (reuse
-      data-subgrid virtualisation pattern but lighter — manual
-      `display: none` for off-screen items is enough at ≤ 1000 distinct
-      values).
-- [ ] **Step 8: Route in `cgrid.ts`** — `case 'set': new SetFilterPopup(...)`.
-- [ ] **Step 9: Add per-column filter API + event refinements** in
+- [ ] **Step 9: Wire `getDistinctValues` protocol** + worker + client.
+- [ ] **Step 10: Implement `setFilter.ts`** — consumes `VirtualList`.
+      Maintains the canonical selection as a `Set<string>` (NOT in
+      DOM — off-window rows wouldn't survive otherwise);
+      `renderRow(value)` reads the Set to set `checked`. Mini-search
+      filters the distinct array inline → `vlist.setItems(filtered,
+      { preserveScroll: true })`. `Select All` mutates the Set and
+      calls `vlist.refresh()` so visible rows reflect the new state.
+- [ ] **Step 11: Route in `cgrid.ts`** — `case 'set': new SetFilterPopup(...)`.
+- [ ] **Step 12: Add per-column filter API + event refinements** in
       `cgrid.ts`. Fire `filterOpened` from every
       `filterPopupHost.open` call; fire `filterModified` from every
       condition-row `onChange` (debounced wire-up).
-- [ ] **Step 10: Wire the demo** — `currency`, `desk`, `region`.
-- [ ] **Step 11: E2E** — click expand on `currency`; popup lists USD /
+- [ ] **Step 13: Wire the demo** — `currency`, `desk`, `region`.
+- [ ] **Step 14: E2E** — click expand on `currency`; popup lists USD /
       EUR / GBP / JPY; check USD only; apply; assert only USD rows
-      visible.
-- [ ] **Step 12: Typecheck + build + full test suite + cycle7 E2E
+      visible. **Additional virtualisation E2E:** on a column with
+      ≥ 1000 distinct values (synthetic test column in the demo or a
+      dedicated test fixture), assert the popup DOM contains < 50
+      checkbox inputs even though the model has 1000+ entries.
+- [ ] **Step 15: Typecheck + build + full test suite + cycle7 E2E
       green.**
-- [ ] **Step 13: Commit the set-filter + API + events** before the
-      exit ritual:
+- [ ] **Step 16: Commit the VirtualList + set-filter + API + events**
+      before the exit ritual:
 
 ```bash
 git commit -m "$(cat <<'EOF'
-feat(cgrid): set filter + per-column filter API + filter events
+feat(cgrid): VirtualList primitive + virtualised set filter + per-column filter API + filter events
 
-Lands a lightweight set filter — distinct-value checkboxes per column
-backed by a worker DistinctValuesPass (one-pass hash, cache per
-colId, invalidate on transaction). Mini-search narrows the visible
-list; Select All toggles every checkbox; Apply commits a
-CSetFilterModel.
+Lands `interaction/ui/virtualList.ts` — a generic windowed-list
+primitive that mounts only the rows in the visible viewport (overscan
+configurable, default 3) and unmounts on scroll-out. Pool-keyed by
+index slot so 50k items cost the same DOM as 50 items. First consumer
+is the set filter; column chooser, advanced-filter side panel, and
+tool panels in later cycles consume the same primitive.
+
+Set filter is built on VirtualList: per-column distinct-value
+checkboxes backed by a worker DistinctValuesPass (one-pass hash,
+cache per colId, invalidate on transaction). Selection state lives
+in a Set<string> (not in DOM) so off-window rows survive
+virtualisation. Mini-search filters the distinct list inline +
+preserves scroll. Tri-state Select All (all/none/partial). Apply
+commits a CSetFilterModel.
 
 Per-column filter API: getColumnFilterModel / setColumnFilterModel /
 isAnyFilterPresent / isColumnFilterPresent / destroyFilter. Filter
@@ -2077,8 +2227,13 @@ EOF
         per-column `getQuickFilterText`.
       - External filter + `alwaysPassFilter` + `onFilterChanged` +
         candidate-rowIds protocol.
-      - Set filter + `DistinctValuesPass` + per-column filter API +
-        `filterChanged` / `filterOpened` / `filterModified` events.
+      - `VirtualList<T>` primitive in `interaction/ui/` —
+        windowed-list utility consumed by the set filter; reusable in
+        Cycles 9+ for column chooser / advanced-filter side panel /
+        tool panels.
+      - Set filter (virtualised) + `DistinctValuesPass` + per-column
+        filter API + `filterChanged` / `filterOpened` /
+        `filterModified` events.
 
 - [ ] Run the perf checks (hand-time on the demo against the live
       `stomp-view-server`; Cycle 24 introduces the automated bench):
@@ -2102,8 +2257,17 @@ Cycle 7 / exit ritual."
 ```
 
 **Acceptance criteria for Task 9 + exit:**
-- [ ] Set filter renders distinct-value checkboxes; applying commits
-      a `CSetFilterModel`.
+- [ ] `VirtualList<T>` exists at `interaction/ui/virtualList.ts`,
+      independent of the set filter; ≥ 10 unit assertions covering
+      slice math, pool reuse, `setItems({preserveScroll})`, `refresh`,
+      `scrollToIndex`, `destroy`.
+- [ ] Set filter renders distinct-value checkboxes via VirtualList;
+      DOM holds < 50 checkbox inputs even for a 1000+ distinct-value
+      column (verified by both a unit test and an E2E assertion);
+      applying commits a `CSetFilterModel`.
+- [ ] Selection state lives in a `Set<string>`, not DOM — toggling an
+      off-window row via API then scrolling it into view shows the
+      correct checked state (unit test).
 - [ ] Per-column filter API surface complete (≥ 5 methods).
 - [ ] `filterChanged.source` + `filterOpened` + `filterModified` fire
       from every relevant trigger.
