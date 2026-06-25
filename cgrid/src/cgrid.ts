@@ -976,12 +976,28 @@ export class CGrid<TRow = any> {
     // Cache the lowercased terms on the grid so the renderer can tint
     // matching cells without re-lowering per cell per frame. Empty array
     // = no highlight (renderer's `quickFilterActive` short-circuits the
-    // per-cell `includes` check).
+    // per-cell `includes` check). Updated SYNCHRONOUSLY so a fast typer
+    // typing "6672" → "66721" sees the next paint use the new terms
+    // immediately, never the previous-substring matches.
     this.quickFilterLowerTerms = terms === null
       ? []
       : terms.map((t) => t.toLowerCase());
+    // Trigger a repaint right away so the highlight reflects the new
+    // terms even before the worker round-trip lands. The visible row set
+    // may still be stale for one frame — that's fine; cells that no
+    // longer match are simply un-tinted in the next paint, while the
+    // chunk catches up.
+    this.cgridCanvas?.requestRepaint();
+    // Bump the request id so any in-flight reply for an earlier term set
+    // (the user's previous keystroke) is dropped on arrival — see the
+    // `reqId` check inside the `.then` below.
+    const reqId = ++this.quickFilterReqId;
     this.workerClient.setQuickFilter({ terms, cacheQuickFilter, colIds })
       .then(({ visibleCount }) => {
+        // Stale reply — a later applyQuickFilter has superseded this one.
+        // Dropping prevents rowCount + viewport from flickering back to a
+        // previous keystroke's visible set.
+        if (reqId !== this.quickFilterReqId) return;
         this.rowCount = visibleCount;
         // Visible row set changed; invalidate the Fenwick index so the next
         // viewport request reads heights against the new visible order.
@@ -1009,6 +1025,14 @@ export class CGrid<TRow = any> {
    *  with `applyQuickFilter` so the highlight set always matches the
    *  worker's visible row set. */
   private quickFilterLowerTerms: readonly string[] = [];
+
+  /** Cycle 7 / Task 7 — monotonic request id for in-flight `setQuickFilter`
+   *  worker round-trips. Each `applyQuickFilter` bumps it and captures the
+   *  value; the worker `.then` callback bails when the captured id no
+   *  longer matches `this.quickFilterReqId`. Drops stale replies during
+   *  fast typing so the visible row count + repaint always reflect the
+   *  most recent search text, never an out-of-order earlier one. */
+  private quickFilterReqId = 0;
 
   /** Cycle 7 / Task 3 — open the per-column filter popup for `colId`.
    *  Resolves the column's filter type, instantiates the matching popup,

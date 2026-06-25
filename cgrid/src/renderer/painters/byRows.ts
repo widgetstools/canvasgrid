@@ -292,17 +292,22 @@ function paintBand(
       });
 
       // Cycle 7 / Task 7 — quick-filter cell highlight. Tints any data
-      // cell whose value contains an active search term with the theme's
-      // `quickFilterMatchBg`. Skipped on header rows (which never participate
-      // in row filtering) and on selected rows (the selection bg already
-      // signals "this row matters"; doubling up would fight the focus ring).
-      // Cells get the override after the cellClassRules pass so the highlight
-      // doesn't get clobbered by a class-driven bg.
+      // cell whose RENDERED text contains an active search term with the
+      // theme's `quickFilterMatchBg`. We test against `valueFormatted`,
+      // not the raw `value`, so the tint tracks what the user actually
+      // sees on screen — a moneyFormatter turning 12345.67 into
+      // "$12,345.67" would otherwise leave a cell highlighted that the
+      // user can't see why (raw includes "12345" but the comma in the
+      // formatted text breaks the visible substring). Skipped on header
+      // rows (no row filter participation) and on selected rows (the
+      // selection bg already signals "this row matters"; doubling up
+      // would fight the focus ring). Applied AFTER the cellClassRules
+      // pass so the highlight wins over class-driven bg.
       if (
         quickFilterActive
         && row.subgrid.isData
         && !config.isSelected
-        && cellMatchesAnyQuickFilterTerm(value, quickFilterLowerTerms)
+        && cellMatchesAnyQuickFilterTerm(valueFormatted, quickFilterLowerTerms)
       ) {
         config.bg = theme.quickFilterMatchBg;
       }

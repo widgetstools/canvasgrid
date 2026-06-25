@@ -36,9 +36,11 @@ async function rowCount(page: import('@playwright/test').Page): Promise<number> 
 }
 
 async function settle(page: import('@playwright/test').Page): Promise<void> {
-  // setGridOption('quickFilterText', ...) is synchronous on main but the
-  // worker round-trip + recomputeViewport lands one rAF later. Wait a few
-  // frames to let `rowCount` reflect the new visible set.
+  // The demo's #quick-filter input applies a 200ms trailing debounce
+  // before calling setGridOption('quickFilterText', ...) — wait it out
+  // so the worker round-trip + recomputeViewport land before we read
+  // `rowCount`. A handful of RAFs after the debounce flushes the paint.
+  await page.waitForTimeout(280);
   await page.evaluate(
     () => new Promise<void>((res) => {
       let n = 0;

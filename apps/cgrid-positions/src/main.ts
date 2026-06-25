@@ -118,16 +118,26 @@ document.getElementById('imp-reset-widths')?.addEventListener('click', () => {
   ]);
 });
 
-// Cycle 7 / Task 7 — cross-column quick filter. The search input drives
-// `setGridOption('quickFilterText', value)` on every keystroke. The
-// option flows through `applyRuntimeOption`, which calls the worker's
-// `setQuickFilter` and re-evaluates the visible row set in a single
-// round-trip per keystroke.
+// Cycle 7 / Task 7 — cross-column quick filter. Input drives
+// `setGridOption('quickFilterText', value)` after a short trailing
+// debounce. Without it, a 5-char string would fire 5 worker round-trips
+// and 5 repaints; with 200ms the user types the query and only the
+// final value reaches the worker. cgrid's applyQuickFilter also drops
+// stale replies via its own request-id guard, so this debounce is
+// purely about saving wire traffic + paint cost in the demo.
 const quickInput = document.getElementById('quick-filter') as HTMLInputElement | null;
-quickInput?.addEventListener('input', () => {
-  const api = grid as unknown as {
-    setGridOption: (key: 'quickFilterText', value: string) => void;
-  };
-  api.setGridOption('quickFilterText', quickInput.value);
-});
+if (quickInput) {
+  let debounceHandle: number | null = null;
+  const QUICK_FILTER_DEBOUNCE_MS = 200;
+  quickInput.addEventListener('input', () => {
+    if (debounceHandle !== null) window.clearTimeout(debounceHandle);
+    debounceHandle = window.setTimeout(() => {
+      debounceHandle = null;
+      const api = grid as unknown as {
+        setGridOption: (key: 'quickFilterText', value: string) => void;
+      };
+      api.setGridOption('quickFilterText', quickInput.value);
+    }, QUICK_FILTER_DEBOUNCE_MS);
+  });
+}
 
