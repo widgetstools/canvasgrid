@@ -1665,6 +1665,25 @@ export class CGrid<TRow = any> {
 
     if (leafOrderChanged) {
       this.rebuildColumns({ defaultColDef: this.options.defaultColDef });
+      // rebuildColumns rebuilt the tree from `options.columnDefs` — the
+      // raw `CColDef`s do not carry the runtime width / hide / pinned
+      // mutations `applyStateToTree` just applied to the now-discarded
+      // tree. Re-apply the state against the freshly-resolved leaves so
+      // the round-trip lands in ONE call (without this, the demo's
+      // Restore button needed two clicks to fully restore). The second
+      // call is intentionally a no-op for event reporting — we keep
+      // `result.changes` from the first call as the authoritative
+      // change log.
+      applyStateToTree(this.columnTree, params, locks);
+      // Re-run visibility + width pass after the second mutation pass so
+      // hide flips light up and widths land before the repaint.
+      this.columnOrder = this.computeVisibleColumnOrder();
+      this.columnLayout = resolveColumnWidths(
+        this.columnOrder,
+        this.canvasBounds.width || this.scroller.clientWidth || 800,
+      );
+      this.recomputeViewport();
+      this.cgridCanvas?.requestRepaint();
     } else {
       // Mutations on existing ResolvedColDef slots — recompute the visible
       // column order so a `hide` flip lights up immediately, then rerun
@@ -1735,15 +1754,31 @@ export class CGrid<TRow = any> {
       });
     }
 
+    // Sort: collect every change record's {colId, direction, sortIndex},
+    // drop nulls, and order by sortIndex so multi-column sort restores
+    // in the right precedence. The previous implementation walked the
+    // filtered array with a stale index against the original array,
+    // pairing the wrong colId with each direction.
     const sortChanges = result.changes.filter((c) => c.kind === 'sort');
     if (sortChanges.length > 0) {
-      const next: SortModel = sortChanges
-        .map((c) => c.newValue as { direction: 'asc' | 'desc' | null; index: number | null })
-        .filter((s) => s.direction !== null)
-        .map((s, i) => ({ colId: sortChanges[i]!.colId, direction: s.direction as 'asc' | 'desc' }))
-        .filter(Boolean);
-      this.sortModel = next;
-      this.events.emit({ type: 'sortChanged', sortModel: next });
+      const entries = sortChanges
+        .map((c) => {
+          const v = c.newValue as { direction: 'asc' | 'desc' | null; index: number | null };
+          return { colId: c.colId, direction: v.direction, index: v.index };
+        })
+        .filter((e): e is { colId: string; direction: 'asc' | 'desc'; index: number | null } =>
+          e.direction !== null);
+      entries.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
+      const next: SortModel = entries.map(({ colId, direction }) => ({ colId, direction }));
+      // Route through setSortModel so the worker re-sorts the chunk —
+      // without this, the rendered rows stay in the pre-restore order
+      // even though the header sort indicator updates. setSortModel also
+      // mutates this.sortModel and emits sortChanged on its own (async
+      // after the worker round-trip), so we no longer emit it here.
+      const same = this.sortModel.length === next.length
+        && this.sortModel.every((e, i) =>
+          e.colId === next[i]!.colId && e.direction === next[i]!.direction);
+      if (!same) this.setSortModel(next);
     }
 
     // Push column metadata + visible-set change to the worker so a freshly

@@ -416,6 +416,98 @@ describe('CGrid integration', () => {
       expect(ok).toBe(false);
       grid.destroy();
     });
+
+    it('applyColumnState with order change + width/hide mutations lands in ONE call', () => {
+      // Regression: when applyOrder rebuilds the column tree, the
+      // freshly-resolved leaves use construction-time defaults. The
+      // just-applied width/hide mutations live on the discarded old
+      // tree's leaves. Earlier behavior required a second
+      // applyColumnState call before the width/hide values stuck —
+      // visible to demo users as "click Restore twice."
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number; c: number }>(
+        [],
+        [
+          { field: 'id', width: 80 },
+          { field: 'a', width: 100 },
+          { field: 'b', width: 100 },
+          { field: 'c', width: 100 },
+        ],
+      );
+      grid.applyColumnState({
+        state: [
+          { colId: 'id', width: 80, hide: false },
+          { colId: 'c', width: 300, hide: false },
+          { colId: 'a', width: 250, hide: false },
+          { colId: 'b', width: 100, hide: true },
+        ],
+        applyOrder: true,
+      });
+      // Order honored.
+      const state = grid.getColumnState();
+      expect(state.map((s) => s.colId)).toEqual(['id', 'c', 'a', 'b']);
+      // Widths land in ONE call.
+      expect(state.find((s) => s.colId === 'c')?.width).toBe(300);
+      expect(state.find((s) => s.colId === 'a')?.width).toBe(250);
+      // Hide flip lands in ONE call — b is filtered out of the visible
+      // order even though it is still present in the snapshot.
+      const visibleIds = ((grid as any).columnOrder as Array<{ colId: string }>).map((c) => c.colId);
+      expect(visibleIds).toEqual(['id', 'c', 'a']);
+      expect(state.find((s) => s.colId === 'b')?.hide).toBe(true);
+      grid.destroy();
+    });
+
+    it('applyColumnState with a single-column sort pushes it to the worker', async () => {
+      // Regression: the sort handler used to mutate this.sortModel
+      // in-place and emit sortChanged, but never push to the worker via
+      // setSortModel. The rendered rows then stayed in the pre-restore
+      // order even though the header indicator updated. Now we route
+      // through setSortModel so the worker re-sorts the chunk.
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number }>(
+        [],
+        [{ field: 'id' }, { field: 'a' }, { field: 'b' }],
+      );
+      const workerSpy = vi.spyOn((grid as any).workerClient, 'setSortModel');
+      workerSpy.mockClear();
+      grid.applyColumnState({
+        state: [
+          { colId: 'a', sort: 'desc', sortIndex: 0 },
+          { colId: 'b', sort: null, sortIndex: null },
+          { colId: 'id', sort: null, sortIndex: null },
+        ],
+      });
+      expect(workerSpy).toHaveBeenCalledTimes(1);
+      const sortArg = workerSpy.mock.calls[0]![0];
+      expect(sortArg).toEqual([{ colId: 'a', direction: 'desc' }]);
+      grid.destroy();
+    });
+
+    it('applyColumnState reorders multi-column sort entries by sortIndex', async () => {
+      // Regression: the sort handler walked `sortChanges` in change-record
+      // order and paired direction with the wrong colId via a filtered+map
+      // index mismatch. Multi-column sort must respect sortIndex.
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number; c: number }>(
+        [],
+        [{ field: 'id' }, { field: 'a' }, { field: 'b' }, { field: 'c' }],
+      );
+      const workerSpy = vi.spyOn((grid as any).workerClient, 'setSortModel');
+      workerSpy.mockClear();
+      grid.applyColumnState({
+        state: [
+          // declare order id → a → b → c; sortIndex says b is first, a is second
+          { colId: 'id', sort: null, sortIndex: null },
+          { colId: 'a',  sort: 'asc', sortIndex: 1 },
+          { colId: 'b',  sort: 'desc', sortIndex: 0 },
+          { colId: 'c',  sort: null, sortIndex: null },
+        ],
+      });
+      expect(workerSpy).toHaveBeenCalledTimes(1);
+      const sortArg = workerSpy.mock.calls[0]![0];
+      expect(sortArg).toEqual([
+        { colId: 'b', direction: 'desc' },
+        { colId: 'a', direction: 'asc' },
+      ]);
+      grid.destroy();
+    });
   });
 
   it('accepts a CColGroupDef in columnDefs and resolves leaves in declaration order', async () => {
