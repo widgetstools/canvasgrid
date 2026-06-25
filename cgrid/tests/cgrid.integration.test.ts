@@ -481,6 +481,104 @@ describe('CGrid integration', () => {
       grid.destroy();
     });
 
+    it('every CColumnState slot round-trips: save → restore → re-save matches', () => {
+      // The ag-grid ColumnState contract (catalog 02 line 174-176) covers
+      // 12 slots: colId, width, flex, hide, pinned, sort, sortIndex,
+      // aggFunc, rowGroup, rowGroupIndex, pivot, pivotIndex. This test
+      // mutates every slot to a non-default value, asserts the snapshot
+      // captures each one, then round-trips through reset + apply and
+      // asserts the second snapshot equals the first. Any slot that
+      // fails to persist OR restore surfaces here.
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number; c: number; d: number }>(
+        [],
+        [
+          { field: 'id', width: 80 },
+          { field: 'a', width: 100 },
+          { field: 'b', width: 120 },
+          { field: 'c', width: 140 },
+          { field: 'd', width: 160 },
+        ],
+      );
+      // Drive every slot to a distinct value.
+      grid.applyColumnState({
+        state: [
+          { colId: 'id', width: 80,  hide: false, pinned: 'left',  flex: null, sort: null,   sortIndex: null, aggFunc: null,  rowGroup: false, rowGroupIndex: null, pivot: false, pivotIndex: null },
+          { colId: 'a',  width: 250, hide: false, pinned: null,    flex: null, sort: 'asc',  sortIndex: 1,    aggFunc: 'sum', rowGroup: true,  rowGroupIndex: 0,    pivot: false, pivotIndex: null },
+          { colId: 'b',  width: 220, hide: true,  pinned: null,    flex: null, sort: 'desc', sortIndex: 0,    aggFunc: 'avg', rowGroup: false, rowGroupIndex: null, pivot: true,  pivotIndex: 0 },
+          { colId: 'c',  width: 180, hide: false, pinned: 'right', flex: 2,    sort: null,   sortIndex: null, aggFunc: 'max', rowGroup: false, rowGroupIndex: null, pivot: false, pivotIndex: null },
+          { colId: 'd',  width: 200, hide: false, pinned: null,    flex: null, sort: null,   sortIndex: null, aggFunc: 'min', rowGroup: false, rowGroupIndex: null, pivot: false, pivotIndex: null },
+        ],
+        applyOrder: true,
+      });
+      const snapshot = grid.getColumnState();
+
+      // Snapshot-side assertions: every slot was actually captured by
+      // getColumnState (catches "always returns null" bugs).
+      const byId = new Map(snapshot.map((s) => [s.colId, s]));
+      expect(byId.get('a')).toMatchObject({
+        width: 250, hide: false, pinned: null,
+        sort: 'asc', sortIndex: 1, aggFunc: 'sum',
+        rowGroup: true, rowGroupIndex: 0,
+      });
+      expect(byId.get('b')).toMatchObject({
+        width: 220, hide: true, sort: 'desc', sortIndex: 0,
+        aggFunc: 'avg', pivot: true, pivotIndex: 0,
+      });
+      expect(byId.get('c')).toMatchObject({
+        width: 180, pinned: 'right', flex: 2, aggFunc: 'max',
+      });
+
+      // Round-trip: reset → re-apply the snapshot.
+      grid.resetColumnState();
+      grid.applyColumnState({ state: snapshot, applyOrder: true });
+      const restored = grid.getColumnState();
+
+      // Strict equality across every slot. JSON-clone normalises ordering
+      // of the objects so the diff prints cleanly on failure.
+      expect(JSON.parse(JSON.stringify(restored))).toEqual(JSON.parse(JSON.stringify(snapshot)));
+      grid.destroy();
+    });
+
+    it('save snapshot survives a fresh grid instance (simulates page reload)', () => {
+      // The demo's persistence path: getColumnState → JSON.stringify →
+      // localStorage. On reload, a brand-new CGrid is constructed from
+      // the original CColDefs, then applyColumnState replays the saved
+      // snapshot. This test exercises that exact shape.
+      const cols = [
+        { field: 'id', width: 80 },
+        { field: 'a', width: 100 },
+        { field: 'b', width: 120 },
+        { field: 'c', width: 140 },
+      ];
+      const { grid: g1 } = buildBareGrid<{ id: string; a: number; b: number; c: number }>(
+        [],
+        cols,
+      );
+      // Mutate every slot.
+      g1.applyColumnState({
+        state: [
+          { colId: 'id', width: 80 },
+          { colId: 'c',  width: 333, pinned: 'right', sort: 'asc',  sortIndex: 1, aggFunc: 'sum' },
+          { colId: 'a',  width: 222, hide: true,     sort: 'desc', sortIndex: 0, aggFunc: 'avg' },
+          { colId: 'b',  width: 111, pinned: 'left', flex: 3,      rowGroup: true, rowGroupIndex: 0 },
+        ],
+        applyOrder: true,
+      });
+      const saved = JSON.parse(JSON.stringify(g1.getColumnState()));
+      g1.destroy();
+
+      // Fresh grid, same column defs (the original construction shape).
+      const { grid: g2 } = buildBareGrid<{ id: string; a: number; b: number; c: number }>(
+        [],
+        cols,
+      );
+      g2.applyColumnState({ state: saved, applyOrder: true });
+      const restored = JSON.parse(JSON.stringify(g2.getColumnState()));
+
+      expect(restored).toEqual(saved);
+      g2.destroy();
+    });
+
     it('applyColumnState reorders multi-column sort entries by sortIndex', async () => {
       // Regression: the sort handler walked `sortChanges` in change-record
       // order and paired direction with the wrong colId via a filtered+map
