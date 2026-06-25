@@ -31,6 +31,9 @@
   --cg-flash-to-color: rgba(254, 243, 199, 0);
   --cg-resizer-hot-zone: 4px;
   --cg-scrollbar-thickness: 14px;
+  --cg-floating-filter-bg: #ffffff;
+  --cg-floating-filter-border: #d5dbe0;
+  --cg-floating-filter-placeholder: #94a3b8;
 }
 
 .cg-theme-quartz-dark {
@@ -53,6 +56,9 @@
   --cg-flash-to-color: rgba(180, 83, 9, 0);
   --cg-resizer-hot-zone: 4px;
   --cg-scrollbar-thickness: 14px;
+  --cg-floating-filter-bg: transparent;
+  --cg-floating-filter-border: #38507a;
+  --cg-floating-filter-placeholder: #64748b;
 }
 
 /* Native scrollbar styling (Chromium/WebKit) — visible thumb on dark track. */
@@ -105,4 +111,26 @@
 }
 .cg-theme-quartz .cg-scroller {
   scrollbar-color: #b5bdc6 #eceff2;
+}
+
+/* Floating-filter row inputs — Cycle 7 / Task 1. The overlay positions
+ * each pooled <input> via `transform: translate(x, y)` and explicitly
+ * insets the box (transform + width/height shrinkage) so border +
+ * padding land cleanly inside the column rect — `margin` would shift
+ * an absolutely-positioned element instead of resizing it. */
+.cg-floating-filter-input {
+  padding: 0 8px;
+  border: 1px solid var(--cg-floating-filter-border);
+  border-radius: 4px;
+  background: var(--cg-floating-filter-bg);
+  color: var(--cg-fg-color);
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  outline: none;
+}
+.cg-floating-filter-input::placeholder {
+  color: var(--cg-floating-filter-placeholder);
+}
+.cg-floating-filter-input:focus {
+  border-color: var(--cg-focus-ring-color);
 }

@@ -473,6 +473,7 @@ export class CGrid<TRow = any> {
         return def ? {
           floatingFilter: def.floatingFilter,
           filter: def.filter,
+          cellDataType: def.cellDataType,
           suppressFloatingFilterButton: def.suppressFloatingFilterButton,
         } : undefined;
       },

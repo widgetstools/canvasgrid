@@ -68,7 +68,7 @@ describe('FloatingFilterOverlay', () => {
     overlay.destroy();
   });
 
-  it('positions each input via transform: translate(left, top)', () => {
+  it('positions each input via transform: translate(left+inset, top+inset)', () => {
     const overlay = new FloatingFilterOverlay(host, makeDeps());
     const vp = makeViewport([
       { colId: 'a', index: 0, left: 0,   right: 100, width: 100 },
@@ -78,16 +78,59 @@ describe('FloatingFilterOverlay', () => {
     const inputA = host.querySelector('input[data-cg-col-id="a"]') as HTMLInputElement;
     const inputB = host.querySelector('input[data-cg-col-id="b"]') as HTMLInputElement;
     // Uses transform, not `left` (avoids layout reads on scroll path).
-    expect(inputA.style.transform).toContain('translate(0px');
-    expect(inputB.style.transform).toContain('translate(100px');
-    // Y comes from deps.getRowTop().
-    expect(inputA.style.transform).toContain('30px');
-    expect(inputA.style.width).toBe('100px');
-    expect(inputA.style.height).toBe('28px');
+    // Inputs are inset 6px horizontally / 4px vertically so the styled
+    // border + padding fit cleanly inside the column rect.
+    expect(inputA.style.transform).toContain('translate(6px');
+    expect(inputB.style.transform).toContain('translate(106px');
+    // Y comes from deps.getRowTop() + INSET_Y (4).
+    expect(inputA.style.transform).toContain('34px');
+    // width = col.width - 2*INSET_X; height = rowHeight - 2*INSET_Y.
+    expect(inputA.style.width).toBe('88px');
+    expect(inputA.style.height).toBe('20px');
     // `left` stays at the static reset (0px) across columns — only `transform`
     // varies per column. Proves positioning isn't done via the `left` style
     // (which would force layout reads on the scroll path).
     expect(inputA.style.left).toBe(inputB.style.left);
+    overlay.destroy();
+  });
+
+  it('applies the cg-floating-filter-input class for theming', () => {
+    const overlay = new FloatingFilterOverlay(host, makeDeps());
+    const vp = makeViewport([
+      { colId: 'a', index: 0, left: 0, right: 100, width: 100 },
+    ]);
+    overlay.repositionAll(vp);
+    const input = host.querySelector('input[data-cg-col-id="a"]') as HTMLInputElement;
+    expect(input.classList.contains('cg-floating-filter-input')).toBe(true);
+    overlay.destroy();
+  });
+
+  it('sets an operator-hint placeholder on number-typed columns', () => {
+    const deps = makeDeps({
+      getColDef: (colId) => colId === 'qty'
+        ? { floatingFilter: true, filter: 'number' }
+        : colId === 'price'
+          ? { floatingFilter: true, cellDataType: 'number' }
+          : { floatingFilter: true, filter: 'text' },
+    });
+    const overlay = new FloatingFilterOverlay(host, deps);
+    const vp = makeViewport([
+      { colId: 'name',  index: 0, left: 0,   right: 100, width: 100 },
+      { colId: 'qty',   index: 1, left: 100, right: 200, width: 100 },
+      { colId: 'price', index: 2, left: 200, right: 300, width: 100 },
+    ]);
+    overlay.repositionAll(vp);
+    const text   = host.querySelector('input[data-cg-col-id="name"]') as HTMLInputElement;
+    const qty    = host.querySelector('input[data-cg-col-id="qty"]') as HTMLInputElement;
+    const price  = host.querySelector('input[data-cg-col-id="price"]') as HTMLInputElement;
+    expect(text.placeholder).toBe('');
+    // Explicit `filter: 'number'` lights up the placeholder.
+    expect(qty.placeholder).toBe('>100, 1,2,3, 100-150');
+    // `cellDataType: 'number'` is the fallback signal when `filter` is unset.
+    expect(price.placeholder).toBe('>100, 1,2,3, 100-150');
+    // Resolved filter type also lands as a data-* attribute.
+    expect(qty.getAttribute('data-cg-filter-type')).toBe('number');
+    expect(price.getAttribute('data-cg-filter-type')).toBe('number');
     overlay.destroy();
   });
 
@@ -127,7 +170,8 @@ describe('FloatingFilterOverlay', () => {
     const secondInput = host.querySelector('input[data-cg-col-id="a"]') as HTMLInputElement;
     expect(secondInput).toBe(firstInput);
     expect(secondInput.dataset.testMarker).toBe('original');
-    expect(secondInput.style.transform).toContain('translate(50px');
+    // 50 (col.left) + 6 (INSET_X) = 56.
+    expect(secondInput.style.transform).toContain('translate(56px');
     overlay.destroy();
   });
 

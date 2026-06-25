@@ -15,6 +15,10 @@ export interface FloatingFilterColDef {
   /** Resolved filter type. Currently used only as metadata in `data-*`
    *  attributes; popup wiring lands in Tasks 3-6 + 9. */
   filter?: 'text' | 'number' | 'date' | 'set';
+  /** Resolved cell data type (`'text'` / `'number'`). Used as a fallback
+   *  signal for "this is a numeric column" when `filter` is unset — drives
+   *  the operator-hint placeholder. Cycle 7 / Task 1. */
+  cellDataType?: 'text' | 'number';
   /** When true, the floating cell renders the input without the expand
    *  button (popup entry-point). Task 1 has no expand button yet; this
    *  field reserves the contract so the deps interface is stable. */
@@ -78,15 +82,20 @@ export class FloatingFilterOverlay {
     if (this.destroyed) return;
     const rowTop = this.deps.getRowTop();
     const rowHeight = this.deps.getRowHeight();
+    // Inset the input inside its column rect so the border/padding land
+    // visually between the cell edges. Matched in `tokens.css` — the
+    // border + padding fit within the resulting width/height.
+    const INSET_X = 6;
+    const INSET_Y = 4;
     const seen = new Set<string>();
     for (const col of viewport.visibleColumns) {
       const def = this.deps.getColDef(col.colId);
       if (!def || def.floatingFilter === false) continue;
       seen.add(col.colId);
       const input = this.acquireInput(col.colId, def);
-      input.style.transform = `translate(${col.left}px, ${rowTop}px)`;
-      input.style.width = `${col.width}px`;
-      input.style.height = `${rowHeight}px`;
+      input.style.transform = `translate(${col.left + INSET_X}px, ${rowTop + INSET_Y}px)`;
+      input.style.width = `${Math.max(0, col.width - INSET_X * 2)}px`;
+      input.style.height = `${Math.max(0, rowHeight - INSET_Y * 2)}px`;
       input.style.display = '';
     }
     for (const [colId, input] of this.pool) {
@@ -125,12 +134,21 @@ export class FloatingFilterOverlay {
     if (existing) return existing;
     const input = document.createElement('input');
     input.type = 'text';
+    input.className = 'cg-floating-filter-input';
     input.setAttribute('data-cg-floating-filter', '');
     input.setAttribute('data-cg-col-id', colId);
-    if (def.filter) input.setAttribute('data-cg-filter-type', def.filter);
+    // Resolved filter type: explicit `filter:` wins, else fall back to
+    // `cellDataType` (every column has one). Number/date columns hint
+    // the eventual operator surface; the floating-filter input does a
+    // text-contains match in Task 1 — the operator parsing (>N, N-M,
+    // comma-set) lands in Tasks 2 / 3 / 9.
+    const resolvedFilter = def.filter ?? def.cellDataType;
+    if (resolvedFilter) input.setAttribute('data-cg-filter-type', resolvedFilter);
+    if (resolvedFilter === 'number' || resolvedFilter === 'date') {
+      input.placeholder = '>100, 1,2,3, 100-150';
+    }
     input.style.cssText =
-      'position:absolute;left:0;top:0;box-sizing:border-box;' +
-      'pointer-events:auto;font:inherit;';
+      'position:absolute;left:0;top:0;box-sizing:border-box;pointer-events:auto;';
     input.addEventListener('input', () => this.onInputChanged(colId, input));
     const initial = this.deps.getColumnFilterModel(colId);
     if (initial && initial.filter != null) input.value = initial.filter;
