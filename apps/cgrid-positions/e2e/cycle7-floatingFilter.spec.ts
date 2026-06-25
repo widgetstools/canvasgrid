@@ -70,9 +70,12 @@ test.describe('Cycle 7 / Task 1 — floating-filter row', () => {
     expect(after).toBeGreaterThan(0);
   });
 
-  test('horizontal scroll re-pins the inputs via transform (not via the left style)', async ({ page }) => {
+  test('horizontal scroll re-pins the cells via transform (not via the left style)', async ({ page }) => {
     await gridReady(page);
-    const sel = 'input[data-cg-floating-filter][data-cg-col-id="dailyPnl"]';
+    // Cycle 7 / Task 1 (clear-button refactor): the input is now wrapped
+    // in a positioning cell (`div[data-cg-floating-filter-cell]`); the
+    // transform that follows scroll lives on the wrapper.
+    const sel = 'div[data-cg-floating-filter-cell][data-cg-col-id="dailyPnl"]';
     const before = await page.evaluate((s) => {
       const el = document.querySelector(s) as HTMLElement | null;
       return el ? { transform: el.style.transform, left: el.style.left } : null;

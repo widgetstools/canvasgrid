@@ -94,6 +94,49 @@ test.describe('Cycle 7 / Task 1 — floating-filter parser', () => {
     expect(await readDisplayedRowCount(page)).toBe(before);
   });
 
+  test('clear button appears after typing and clears the column on click', async ({ page }) => {
+    await gridReady(page);
+    const before = await readDisplayedRowCount(page);
+    const inputSel = 'input[data-cg-floating-filter][data-cg-col-id="currentPrice"]';
+    const clearSel = 'button[data-cg-floating-filter-clear][data-cg-col-id="currentPrice"]';
+    const cellSel  = 'div[data-cg-floating-filter-cell][data-cg-col-id="currentPrice"]';
+
+    // Before typing: button hidden via CSS (cell lacks .has-value class).
+    expect(await page.evaluate(
+      (s) => document.querySelector(s)?.classList.contains('has-value'),
+      cellSel,
+    )).toBe(false);
+
+    await page.fill(inputSel, '>999999999');
+    await waitForFilterApply(page);
+    // After typing: cell has .has-value class → button is visible.
+    expect(await page.evaluate(
+      (s) => document.querySelector(s)?.classList.contains('has-value'),
+      cellSel,
+    )).toBe(true);
+    expect(await readDisplayedRowCount(page)).toBe(0);
+
+    // Click the clear button — input empties, filter clears, row count
+    // snaps back to the unfiltered total, and the .has-value class drops.
+    await page.click(clearSel);
+    // No debounce — clear fires immediately. Still wait a beat for the
+    // worker round-trip + recompute.
+    await page.evaluate(
+      () => new Promise<void>((res) => {
+        let n = 0;
+        const tick = () => (++n >= 6 ? res() : requestAnimationFrame(tick));
+        requestAnimationFrame(tick);
+      }),
+    );
+    await page.waitForTimeout(100);
+    expect(await page.inputValue(inputSel)).toBe('');
+    expect(await page.evaluate(
+      (s) => document.querySelector(s)?.classList.contains('has-value'),
+      cellSel,
+    )).toBe(false);
+    expect(await readDisplayedRowCount(page)).toBe(before);
+  });
+
   test('unparseable number input leaves the row set unchanged (clears filter)', async ({ page }) => {
     await gridReady(page);
     const before = await readDisplayedRowCount(page);

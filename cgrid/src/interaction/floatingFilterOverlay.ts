@@ -51,20 +51,33 @@ export interface FloatingFilterOverlayDeps {
   debounceMs?: number;
 }
 
+/** A pool entry — one per column that's ever been mounted. Each entry
+ *  groups the wrapper cell (positioned via transform on every
+ *  `repositionAll`), the input, and the clear button. Tasks 3-9 will
+ *  add a popup-expand button as a fourth slot inside the same wrapper.
+ *  Cycle 7 / Task 1. */
+interface PoolEntry {
+  wrapper: HTMLDivElement;
+  input: HTMLInputElement;
+  clearBtn: HTMLButtonElement;
+}
+
 /**
- * DOM overlay that pools `<input>` elements for the floating-filter row.
+ * DOM overlay that pools input cells for the floating-filter row.
  *
- * Inputs are mounted once and re-positioned via `transform: translate(x, y)`
- * on every `repositionAll` — never destroyed and never positioned via
- * `left`/`top`, so horizontal scroll incurs zero layout reads. Inputs whose
- * column scrolls out of the visible set become `display:none` instead of
- * being removed; this preserves IME, autocomplete, and selection state
- * across scroll-out / scroll-in cycles.
+ * Each cell is an absolutely-positioned wrapper holding the column's
+ * `<input>` plus a clear `×` button. Wrappers are mounted once and
+ * re-positioned via `transform: translate(x, y)` on every
+ * `repositionAll` — never destroyed and never positioned via
+ * `left`/`top`, so horizontal scroll incurs zero layout reads. Cells
+ * whose column scrolls out of the visible set become `display:none`
+ * instead of being removed; this preserves IME, autocomplete, and
+ * selection state across scroll-out / scroll-in cycles.
  *
  * Cycle 7 / Task 1.
  */
 export class FloatingFilterOverlay {
-  private pool = new Map<string, HTMLInputElement>();
+  private pool = new Map<string, PoolEntry>();
   private debouncers = new Map<string, ReturnType<typeof setTimeout>>();
   private destroyed = false;
 
@@ -73,9 +86,9 @@ export class FloatingFilterOverlay {
     private deps: FloatingFilterOverlayDeps,
   ) {}
 
-  /** Reposition every pooled input against `viewport`. Walks the visible
-   *  column set, creates inputs lazily for newly-visible columns, and hides
-   *  (does not destroy) inputs whose columns left the visible set.
+  /** Reposition every pooled cell against `viewport`. Walks the visible
+   *  column set, creates cells lazily for newly-visible columns, and
+   *  hides (does not destroy) cells whose columns left the visible set.
    *
    *  Cycle 7 / Task 1.
    */
@@ -83,9 +96,8 @@ export class FloatingFilterOverlay {
     if (this.destroyed) return;
     const rowTop = this.deps.getRowTop();
     const rowHeight = this.deps.getRowHeight();
-    // Inset the input inside its column rect so the border/padding land
-    // visually between the cell edges. Matched in `tokens.css` — the
-    // border + padding fit within the resulting width/height.
+    // Inset the cell inside its column rect so the input border + padding
+    // land visually between the cell edges. Matched in `tokens.css`.
     const INSET_X = 6;
     const INSET_Y = 4;
     const seen = new Set<string>();
@@ -93,14 +105,14 @@ export class FloatingFilterOverlay {
       const def = this.deps.getColDef(col.colId);
       if (!def || def.floatingFilter === false) continue;
       seen.add(col.colId);
-      const input = this.acquireInput(col.colId, def);
-      input.style.transform = `translate(${col.left + INSET_X}px, ${rowTop + INSET_Y}px)`;
-      input.style.width = `${Math.max(0, col.width - INSET_X * 2)}px`;
-      input.style.height = `${Math.max(0, rowHeight - INSET_Y * 2)}px`;
-      input.style.display = '';
+      const entry = this.acquireCell(col.colId, def);
+      entry.wrapper.style.transform = `translate(${col.left + INSET_X}px, ${rowTop + INSET_Y}px)`;
+      entry.wrapper.style.width = `${Math.max(0, col.width - INSET_X * 2)}px`;
+      entry.wrapper.style.height = `${Math.max(0, rowHeight - INSET_Y * 2)}px`;
+      entry.wrapper.style.display = '';
     }
-    for (const [colId, input] of this.pool) {
-      if (!seen.has(colId)) input.style.display = 'none';
+    for (const [colId, entry] of this.pool) {
+      if (!seen.has(colId)) entry.wrapper.style.display = 'none';
     }
   }
 
@@ -116,25 +128,25 @@ export class FloatingFilterOverlay {
    *    input alone. Null in particular preserves the user's in-flight
    *    typing when the parser couldn't make sense of it — the row set
    *    returns to its unfiltered state but the user keeps the text
-   *    they were composing so they can correct it. Programmatic
-   *    callers who want to wipe the input should set the value
-   *    directly via `getScroller()` / DOM access; that's an
-   *    intentional asymmetry to protect user input.
+   *    they were composing so they can correct it.
    *
    *  Cycle 7 / Task 1.
    */
   syncInputValue(colId: string, model: CFilterModelEntry | null): void {
-    const input = this.pool.get(colId);
-    if (!input) return;
+    const entry = this.pool.get(colId);
+    if (!entry) return;
     if (model === null) return;
     if (model.filterType === 'text' || model.filterType === 'number' || model.filterType === 'date') {
       const v = model.filter;
-      if (v != null) input.value = String(v);
+      if (v != null) {
+        entry.input.value = String(v);
+        this.updateHasValueClass(entry);
+      }
     }
     // multi-condition / set: leave input.value untouched.
   }
 
-  /** Tear down — remove every pooled input from the DOM and cancel any
+  /** Tear down — remove every pooled cell from the DOM and cancel any
    *  outstanding debounce timers. Idempotent.
    *
    *  Cycle 7 / Task 1.
@@ -144,13 +156,19 @@ export class FloatingFilterOverlay {
     this.destroyed = true;
     for (const timer of this.debouncers.values()) clearTimeout(timer);
     this.debouncers.clear();
-    for (const input of this.pool.values()) input.remove();
+    for (const entry of this.pool.values()) entry.wrapper.remove();
     this.pool.clear();
   }
 
-  private acquireInput(colId: string, def: FloatingFilterColDef): HTMLInputElement {
+  private acquireCell(colId: string, def: FloatingFilterColDef): PoolEntry {
     const existing = this.pool.get(colId);
     if (existing) return existing;
+
+    const wrapper = document.createElement('div');
+    wrapper.className = 'cg-floating-filter-cell';
+    wrapper.setAttribute('data-cg-floating-filter-cell', '');
+    wrapper.setAttribute('data-cg-col-id', colId);
+
     const input = document.createElement('input');
     input.type = 'text';
     input.className = 'cg-floating-filter-input';
@@ -164,18 +182,43 @@ export class FloatingFilterOverlay {
     const resolvedFilter = resolveFilterType(def);
     if (resolvedFilter) input.setAttribute('data-cg-filter-type', resolvedFilter);
     input.placeholder = placeholderFor(resolvedFilter);
-    input.style.cssText =
-      'position:absolute;left:0;top:0;box-sizing:border-box;pointer-events:auto;';
-    input.addEventListener('input', () => this.onInputChanged(colId, input));
+
+    const clearBtn = document.createElement('button');
+    clearBtn.type = 'button';
+    clearBtn.className = 'cg-floating-filter-clear';
+    clearBtn.setAttribute('data-cg-floating-filter-clear', '');
+    clearBtn.setAttribute('data-cg-col-id', colId);
+    clearBtn.setAttribute('aria-label', 'Clear filter');
+    clearBtn.tabIndex = -1;
+    clearBtn.textContent = '×';
+
+    const entry: PoolEntry = { wrapper, input, clearBtn };
+
+    input.addEventListener('input', () => {
+      this.updateHasValueClass(entry);
+      this.onInputChanged(colId, input);
+    });
+    clearBtn.addEventListener('mousedown', (e) => {
+      // Use mousedown so the click doesn't first focus the button and
+      // blur the input — keeping focus on the input lets the user keep
+      // typing after a clear without an extra click.
+      e.preventDefault();
+    });
+    clearBtn.addEventListener('click', () => this.onClearClicked(colId, entry));
+
     const initial = this.deps.getColumnFilterModel(colId);
     if (initial
         && (initial.filterType === 'text' || initial.filterType === 'number' || initial.filterType === 'date')
         && initial.filter != null) {
       input.value = String(initial.filter);
     }
-    this.host.appendChild(input);
-    this.pool.set(colId, input);
-    return input;
+    this.updateHasValueClass(entry);
+
+    wrapper.appendChild(input);
+    wrapper.appendChild(clearBtn);
+    this.host.appendChild(wrapper);
+    this.pool.set(colId, entry);
+    return entry;
   }
 
   private onInputChanged(colId: string, input: HTMLInputElement): void {
@@ -200,6 +243,30 @@ export class FloatingFilterOverlay {
       return;
     }
     this.debouncers.set(colId, setTimeout(apply, debounceMs));
+  }
+
+  /** Clear-button click — wipes the input, cancels any pending debounce
+   *  (the user's intent is explicit, no need to wait), fires
+   *  `setColumnFilterModel(null)` immediately so the row count snaps
+   *  back, and refocuses the input so typing can resume.
+   *  Cycle 7 / Task 1. */
+  private onClearClicked(colId: string, entry: PoolEntry): void {
+    const existing = this.debouncers.get(colId);
+    if (existing) {
+      clearTimeout(existing);
+      this.debouncers.delete(colId);
+    }
+    entry.input.value = '';
+    this.updateHasValueClass(entry);
+    this.deps.setColumnFilterModel(colId, null);
+    entry.input.focus();
+  }
+
+  /** Toggle the `.has-value` class on the wrapper so the CSS rule
+   *  showing the clear button activates only when the input has text.
+   *  Called from every input event + clear + sync. Cycle 7 / Task 1. */
+  private updateHasValueClass(entry: PoolEntry): void {
+    entry.wrapper.classList.toggle('has-value', entry.input.value !== '');
   }
 }
 
