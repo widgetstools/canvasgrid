@@ -115,7 +115,14 @@ test('arrow keys move focus + auto-scroll past viewport', async ({ page }) => {
   const canvas = page.locator(GRID_SELECTOR);
   await waitForGridPopulated(page, canvas);
 
-  await canvas.click({ position: { x: 200, y: 80 } });
+  // Seed focus on the (non-editable) positionId column. Cycle 5 / Task 4
+  // turned on grid-level `singleClickEdit`, so clicking an editable cell
+  // here would open the editor and steer the arrow keys into the input.
+  // Cycle 7 / Task 1 — the demo now opts every column into the
+  // floating-filter row, which adds ~28px between the leaf header and
+  // the first data row. Click at y:120 so the seed click lands on a
+  // body cell instead of the floating-filter input above it.
+  await canvas.click({ position: { x: 80, y: 120 } });
   await page.waitForTimeout(150);
   const d = await dims(canvas);
 
@@ -136,7 +143,11 @@ test('Tab + Shift+Tab move horizontally', async ({ page }) => {
   const d = await dims(canvas);
 
   // Seed focus on the first body cell.
-  await canvas.click({ position: { x: 80, y: 80 } });
+  // Cycle 7 / Task 1 — the demo now opts every column into the
+  // floating-filter row, which adds ~28px between the leaf header and
+  // the first data row. Click at y:120 so the seed click lands on a
+  // body cell instead of the floating-filter input above it.
+  await canvas.click({ position: { x: 80, y: 120 } });
   await page.waitForTimeout(150);
 
   // Sample the top header area for "before sort"-state pixel signature.

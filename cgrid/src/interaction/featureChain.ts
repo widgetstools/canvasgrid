@@ -1,9 +1,14 @@
 // FeatureChain — builds the input chain and routes canvas + window DOM events
 // into it.
 //
-// Chain order (head → tail): ColumnResizing, CellSelection, HeaderClick,
-// KeyPaging, OnHover. setCursor walks tail→head so the head's cursor wins
-// when more than one feature sets one in the same mousemove tick.
+// Chain order (head → tail): ColumnResizing, EditTrigger, CellSelection,
+// HeaderClick, KeyPaging, OnHover. setCursor walks tail→head so the head's
+// cursor wins when more than one feature sets one in the same mousemove tick.
+//
+// EditTrigger sits ahead of CellSelection so its head-of-chain
+// `suppressKeyboardEvent` short-circuit covers every downstream feature,
+// while its click / dblclick handlers call `super` first so focus is set
+// before the editor opens.
 //
 // Drag handling: on canvas mousedown, FeatureChain attaches window
 // mousemove/mouseup listeners so handleMouseDrag fires for every drag tick
@@ -13,9 +18,11 @@
 import { Feature, type CGridLike, type CGridEventCtx } from './feature';
 import { OnHover } from './features/onHover';
 import { ColumnResizing } from './features/columnResizing';
+import { ColumnDrag } from './features/columnDrag';
 import { CellSelection } from './features/cellSelection';
 import { KeyPaging } from './features/keyPaging';
 import { HeaderClick } from './features/headerClick';
+import { EditTrigger } from './features/editTrigger';
 
 /** Idle gap (ms) after the last wheel event before the axis lock releases.
  *  ~150ms matches the natural pause between separate trackpad gestures while
@@ -35,6 +42,8 @@ export class FeatureChain {
   constructor(private grid: CGridLike) {
     this.head = new ColumnResizing();
     this.head
+      .append(new ColumnDrag())
+      .append(new EditTrigger())
       .append(new CellSelection())
       .append(new HeaderClick())
       .append(new KeyPaging())

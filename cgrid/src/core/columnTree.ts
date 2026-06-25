@@ -1,4 +1,4 @@
-import type { CColDef, CColGroupDef } from '../types';
+import type { CColDef, CColGroupDef, HeaderClass } from '../types';
 import { resolveColDef, type ResolvedColDef } from './propertyChain';
 
 /**
@@ -17,7 +17,19 @@ export interface ResolvedColGroupDef {
   headerName: string;
   openByDefault: boolean;
   marryChildren: boolean;
-  headerClass?: string;
+  /** Raw HeaderClass value (kept for round-trip / introspection). */
+  headerClass?: HeaderClass;
+  /**
+   * Pre-compiled static header class names. Parallel to `ResolvedColDef.headerClassStatic`.
+   * Resolved once at tree-build time; paint path reads this at zero allocation cost.
+   * Cycle 6 / Task 7 (fix-pass).
+   */
+  headerClassStatic?: string[];
+  /**
+   * Function-form headerClass for group headers. Parallel to `ResolvedColDef.headerClassFn`.
+   * Cycle 6 / Task 7 (fix-pass).
+   */
+  headerClassFn?: (params: { colId: string }) => string | string[] | undefined;
   /** Depth from root. Root nodes are depth 0. */
   depth: number;
   /** Tree children — groups or leaves, in declaration order. */
@@ -63,6 +75,7 @@ export function isColGroupDef<TRow>(
 export function resolveColumnTree<TRow>(
   defs: (CColDef<TRow> | CColGroupDef<TRow>)[],
   defaultColDef?: Partial<CColDef<TRow>>,
+  columnTypes?: Record<string, Partial<CColDef<TRow>>>,
 ): ColumnTree {
   const leaves: ResolvedColDef[] = [];
   const leafById = new Map<string, ResolvedColDef>();
@@ -83,6 +96,18 @@ export function resolveColumnTree<TRow>(
       if (groupById.has(groupId)) {
         throw new Error(`[cgrid] duplicate groupId '${groupId}'`);
       }
+      // Pre-resolve group headerClass into static array or fn — mirrors leaf
+      // resolveColDef logic; inlined here to avoid import cycles with propertyChain.ts.
+      const hc = node.headerClass;
+      const headerClassStatic: string[] | undefined =
+        typeof hc === 'string' ? [hc]
+        : Array.isArray(hc) ? (hc as string[]).slice()
+        : undefined;
+      const headerClassFn: ResolvedColGroupDef['headerClassFn'] | undefined =
+        typeof hc === 'function'
+          ? (hc as ResolvedColGroupDef['headerClassFn'])
+          : undefined;
+
       const groupNode: ResolvedColGroupDef = {
         kind: 'group',
         groupId,
@@ -90,6 +115,8 @@ export function resolveColumnTree<TRow>(
         openByDefault: node.openByDefault ?? false,
         marryChildren: node.marryChildren ?? false,
         headerClass: node.headerClass,
+        headerClassStatic,
+        headerClassFn,
         depth,
         children: [],
         leafColIds: [],
@@ -109,7 +136,7 @@ export function resolveColumnTree<TRow>(
       return groupNode;
     }
 
-    const resolved = resolveColDef<TRow>(node, defaultColDef);
+    const resolved = resolveColDef<TRow>(node, defaultColDef, columnTypes);
     if (leafById.has(resolved.colId)) {
       throw new Error(`[cgrid] duplicate colId '${resolved.colId}'`);
     }

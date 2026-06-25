@@ -1,4 +1,19 @@
-import type { TransactionResult, FilterModel, FilterModelEntry, SortModel } from '../types';
+import type {
+  TransactionResult, FilterModel, FilterModelEntry, FilterModelEntryLegacy,
+  CFilterModelEntry, CTextFilterModel, CNumberFilterModel, CDateFilterModel,
+  CMultiConditionFilterModel,
+  SortModel,
+} from '../types';
+
+/**
+ * Cycle 7 / Task 1 — the worker's `FilterPass` matcher speaks both the
+ * Cycle 4 / 5 legacy entry shape AND the ag-grid-compatible v2
+ * discriminated union (`{ filterType: 'text' | 'number' | 'date' |
+ * 'multi', ... }`). The floating-filter overlay emits v2 directly via
+ * the inline operator parser; cgrid.ts forwards v2 entries to the
+ * worker unchanged.
+ */
+type WorkerFilterModelEntry = FilterModelEntryLegacy;
 import type { WorkerColumn, ViewportRequest, ViewportChunk } from './protocol';
 import { encodeText } from './chunkFormat';
 
@@ -10,12 +25,35 @@ export class RowStore<TRow = any> {
   private nextNumeric = 1;
   private stringToNumeric = new Map<string, number>();
   private numericToString = new Map<number, string>();
+  /**
+   * Per-row heights resolved main-side via `CGridOptions.getRowHeight` and
+   * shipped over the protocol. Canonical here; main thread reads them off
+   * each `ViewportChunk.heights`. Rows without an entry fall back to the
+   * grid-level `rowHeight`. Cycle 5 / Task 6.
+   */
+  private heightsByRowId = new Map<string, number>();
+  /**
+   * Per-(row, column) measured heights from the autoHeight pass. Kept
+   * separately from `heightsByRowId` so removing autoHeight from one column
+   * does not drop the contribution of other autoHeight columns to the same
+   * row — when the user toggles `autoHeight: false`, we strip just that
+   * column's inner map entry and re-aggregate. Cycle 5 / Task 8.
+   */
+  private autoHeightContributions = new Map<string, Map<string, number>>();
+  /** Grid-level rowHeight fallback set at init time. The autoHeight pass
+   *  floors every contribution at this value so a short autoHeight row never
+   *  paints below the grid baseline. Cycle 5 / Task 8. */
+  private gridRowHeight = 0;
 
   constructor(private rowIdField: string) {}
 
-  setAll(rows: TRow[]): void {
+  setAll(rows: TRow[], heightsByRowId?: Map<string, number>): void {
     this.byId.clear();
     this.order.length = 0;
+    // A full-replace wipes prior heights so a fresh dataset can't inherit
+    // height entries for rowIds that no longer exist.
+    this.heightsByRowId.clear();
+    this.autoHeightContributions.clear();
     for (const row of rows) {
       const id = this.getRowId(row);
       this.byId.set(id, row);
@@ -26,9 +64,17 @@ export class RowStore<TRow = any> {
         this.numericToString.set(n, id);
       }
     }
+    if (heightsByRowId) {
+      for (const [id, h] of heightsByRowId) this.heightsByRowId.set(id, h);
+    }
   }
 
-  apply(tx: { add?: TRow[]; update?: TRow[]; remove?: string[] }): TransactionResult {
+  apply(tx: {
+    add?: TRow[];
+    update?: TRow[];
+    remove?: string[];
+    heightsByRowId?: Map<string, number>;
+  }): TransactionResult {
     const result: TransactionResult = { add: [], update: [], remove: [] };
     if (tx.add) {
       for (const row of tx.add) {
@@ -59,11 +105,96 @@ export class RowStore<TRow = any> {
         if (this.byId.delete(id)) {
           const i = this.order.indexOf(id);
           if (i !== -1) this.order.splice(i, 1);
+          // Drop the per-row height too so a re-added row doesn't inherit
+          // the previous row's height ghost.
+          this.heightsByRowId.delete(id);
+          this.autoHeightContributions.delete(id);
           result.remove.push({ rowId: id });
         }
       }
     }
+    if (tx.heightsByRowId) {
+      for (const [id, h] of tx.heightsByRowId) this.heightsByRowId.set(id, h);
+    }
     return result;
+  }
+
+  /** Per-row height for `rowId` in CSS px, or `undefined` when no per-row
+   *  entry exists (caller falls back to the grid-level `rowHeight`). */
+  getHeight(rowId: string): number | undefined {
+    return this.heightsByRowId.get(rowId);
+  }
+
+  /**
+   * Record an autoHeight measurement for one (row, column) and reaggregate
+   * the row's resolved height as `max(getRowHeight contribution, gridFallback,
+   * max(autoHeight contributions across columns))`. Returns the new resolved
+   * height. Cycle 5 / Task 8.
+   *
+   * `gridRowHeight` is the floor — short text in a single autoHeight column
+   * must not shrink rows below the grid's baseline `rowHeight`.
+   */
+  setAutoHeightContribution(rowId: string, colId: string, height: number, gridRowHeight: number): number {
+    let contribs = this.autoHeightContributions.get(rowId);
+    if (!contribs) {
+      contribs = new Map();
+      this.autoHeightContributions.set(rowId, contribs);
+    }
+    // Floor every contribution at the grid fallback so a single-line autoHeight
+    // measurement cannot shrink the row below the user's baseline rowHeight.
+    contribs.set(colId, Math.max(height, gridRowHeight));
+    return this.resolveHeight(rowId, gridRowHeight);
+  }
+
+  /** Drop one column's autoHeight contribution for `rowId`. Used when the
+   *  user toggles `autoHeight: false` on a column at runtime. */
+  clearAutoHeightContribution(rowId: string, colId: string, gridRowHeight: number): number {
+    const contribs = this.autoHeightContributions.get(rowId);
+    if (contribs) {
+      contribs.delete(colId);
+      if (contribs.size === 0) this.autoHeightContributions.delete(rowId);
+    }
+    return this.resolveHeight(rowId, gridRowHeight);
+  }
+
+  /** Aggregate the resolved height for `rowId`: the max of any explicit
+   *  getRowHeight contribution, the autoHeight contributions, and the grid
+   *  fallback. Pure read — does not write back. */
+  resolveHeight(rowId: string, gridRowHeight: number): number {
+    let h = this.heightsByRowId.get(rowId) ?? gridRowHeight;
+    const contribs = this.autoHeightContributions.get(rowId);
+    if (contribs) {
+      for (const v of contribs.values()) if (v > h) h = v;
+    }
+    return h;
+  }
+
+  /** Wire pass that owns the chunk pipeline calls this so the slicer can
+   *  produce per-row heights without re-passing the grid rowHeight on every
+   *  chunk request. Cycle 5 / Task 8. */
+  setGridRowHeight(h: number): void {
+    this.gridRowHeight = h;
+  }
+
+  getGridRowHeight(): number {
+    return this.gridRowHeight;
+  }
+
+  /** Shipped height for the protocol's `ViewportChunk.heights[i]`:
+   *  - Returns the explicit getRowHeight value when no autoHeight contrib.
+   *  - Returns `max(explicit ?? 0, max(contribs))` when contribs exist.
+   *  - Returns 0 (sentinel for "use grid fallback") only when neither
+   *    explicit nor any autoHeight contribution exists for this row.
+   *  The store's job is just aggregation; the floor-against-gridRowHeight
+   *  guarantee lives in `setAutoHeightContribution`, which never stores a
+   *  value below the grid fallback. */
+  effectiveShippedHeight(rowId: string): number {
+    const explicit = this.heightsByRowId.get(rowId);
+    const contribs = this.autoHeightContributions.get(rowId);
+    if (!contribs || contribs.size === 0) return explicit ?? 0;
+    let max = explicit ?? 0;
+    for (const v of contribs.values()) if (v > max) max = v;
+    return max;
   }
 
   size(): number { return this.byId.size; }
@@ -105,8 +236,17 @@ interface QueueOpts {
   onFlush: (results: TransactionResult[]) => void;
 }
 
+/** Shape of a queued or applied transaction. heightsByRowId rides along so
+ *  height-bearing updates flow through the async batching path too. */
+export interface QueuedTx<TRow = any> {
+  add?: TRow[];
+  update?: TRow[];
+  remove?: string[];
+  heightsByRowId?: Map<string, number>;
+}
+
 export class TransactionQueue<TRow = any> {
-  private pending: { add?: TRow[]; update?: TRow[]; remove?: string[] }[] = [];
+  private pending: QueuedTx<TRow>[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
   private flushFn: () => void;
 
@@ -124,7 +264,7 @@ export class TransactionQueue<TRow = any> {
   }
 
   /** Caller (worker.ts) installs the actual flush function once RowStore exists. */
-  setFlushFn(fn: (txs: { add?: TRow[]; update?: TRow[]; remove?: string[] }[]) => TransactionResult[]): void {
+  setFlushFn(fn: (txs: QueuedTx<TRow>[]) => TransactionResult[]): void {
     this.flushFn = () => {
       const queued = this.pending;
       this.pending = [];
@@ -135,7 +275,7 @@ export class TransactionQueue<TRow = any> {
     };
   }
 
-  push(tx: { add?: TRow[]; update?: TRow[]; remove?: string[] }): void {
+  push(tx: QueuedTx<TRow>): void {
     this.pending.push(tx);
     if (this.timer === null) {
       this.timer = setTimeout(() => this.flushFn(), this.opts.waitMs);
@@ -178,11 +318,18 @@ export class FilterPass<TRow = any> {
     const out: string[] = [];
     for (const row of this.store.rows()) {
       let pass = true;
-      for (const [colId, entry] of entries) {
+      for (const [colId, rawEntry] of entries) {
         const col = this.colIndex.get(colId);
         if (!col || !col.field) continue;
         const value = (row as Record<string, unknown>)[col.field];
-        if (!matches(entry, value)) { pass = false; break; }
+        // v2 entries (`filterType` discriminator) go through matchesV2;
+        // legacy entries through `matches`. Worker accepts both for the
+        // duration of Cycle 7 — Task 2 will remove the legacy branch
+        // once all callers migrate.
+        const ok = 'filterType' in rawEntry
+          ? matchesV2(rawEntry as CFilterModelEntry, value)
+          : matches(rawEntry as WorkerFilterModelEntry, value);
+        if (!ok) { pass = false; break; }
       }
       if (pass) out.push(this.store.getRowId(row));
     }
@@ -190,7 +337,7 @@ export class FilterPass<TRow = any> {
   }
 }
 
-function matches(entry: FilterModelEntry, raw: unknown): boolean {
+function matches(entry: WorkerFilterModelEntry, raw: unknown): boolean {
   if (entry.type === 'text') {
     const s = String(raw ?? '').toLowerCase();
     const q = entry.value.toLowerCase();
@@ -206,6 +353,115 @@ function matches(entry: FilterModelEntry, raw: unknown): boolean {
   if (entry.op === 'lt') return n <  entry.value;
   if (entry.op === 'between') return n >= entry.value && n <= (entry.value2 ?? entry.value);
   return false;
+}
+
+/** v2 matcher — handles `CTextFilterModel` / `CNumberFilterModel` /
+ *  `CDateFilterModel` / `CMultiConditionFilterModel` (recursive). Used
+ *  by `FilterPass.apply` whenever an entry carries the `filterType`
+ *  discriminator. Cycle 7 / Task 1 (parser enhancement). */
+function matchesV2(entry: CFilterModelEntry, raw: unknown): boolean {
+  if (entry.filterType === 'multi') {
+    return matchesMulti(entry, raw);
+  }
+  if (entry.filterType === 'text') {
+    return matchesText(entry, raw);
+  }
+  if (entry.filterType === 'number') {
+    return matchesNumber(entry, raw);
+  }
+  if (entry.filterType === 'date') {
+    return matchesDate(entry, raw);
+  }
+  return false;
+}
+
+function matchesMulti(entry: CMultiConditionFilterModel, raw: unknown): boolean {
+  // Empty conditions array is treated as "no constraint" — `null`-shaped
+  // entries don't reach the worker (cgrid drops them in
+  // setColumnFilterModel), so this is purely defensive.
+  if (entry.conditions.length === 0) return true;
+  if (entry.operator === 'AND') {
+    for (const c of entry.conditions) {
+      if (!matchesV2(c, raw)) return false;
+    }
+    return true;
+  }
+  // OR — short-circuit on the first pass.
+  for (const c of entry.conditions) {
+    if (matchesV2(c, raw)) return true;
+  }
+  return false;
+}
+
+function matchesText(entry: CTextFilterModel, raw: unknown): boolean {
+  const cs = entry.caseSensitive === true;
+  const haystack = cs ? String(raw ?? '') : String(raw ?? '').toLowerCase();
+  const needle = entry.filter == null ? ''
+    : cs ? entry.filter : entry.filter.toLowerCase();
+  switch (entry.type) {
+    case 'contains':    return haystack.includes(needle);
+    case 'notContains': return !haystack.includes(needle);
+    case 'equals':      return haystack === needle;
+    case 'notEqual':    return haystack !== needle;
+    case 'startsWith':  return haystack.startsWith(needle);
+    case 'endsWith':    return haystack.endsWith(needle);
+    case 'blank':       return haystack === '';
+    case 'notBlank':    return haystack !== '';
+  }
+  return false;
+}
+
+function matchesNumber(entry: CNumberFilterModel, raw: unknown): boolean {
+  if (entry.type === 'blank')    return raw == null || raw === '';
+  if (entry.type === 'notBlank') return raw != null && raw !== '';
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (Number.isNaN(n)) return false;
+  const a = entry.filter;
+  if (a == null) return false;
+  switch (entry.type) {
+    case 'equals':              return n === a;
+    case 'notEqual':            return n !== a;
+    case 'lessThan':            return n <  a;
+    case 'lessThanOrEqual':     return n <= a;
+    case 'greaterThan':         return n >  a;
+    case 'greaterThanOrEqual':  return n >= a;
+    case 'inRange':             return entry.filterTo != null
+      && n >= a && n <= entry.filterTo;
+  }
+  return false;
+}
+
+/** Date matcher — compares ISO strings via `Date.parse`. Returns false
+ *  when either side fails to parse so an invalid date entry never
+ *  silently includes rows. */
+function matchesDate(entry: CDateFilterModel, raw: unknown): boolean {
+  if (entry.type === 'blank')    return raw == null || raw === '';
+  if (entry.type === 'notBlank') return raw != null && raw !== '';
+  const r = parseDateMs(raw);
+  if (r === null) return false;
+  const a = entry.filter == null ? null : parseDateMs(entry.filter);
+  if (a === null) return false;
+  switch (entry.type) {
+    case 'equals':              return r === a;
+    case 'notEqual':            return r !== a;
+    case 'lessThan':            return r <  a;
+    case 'lessThanOrEqual':     return r <= a;
+    case 'greaterThan':         return r >  a;
+    case 'greaterThanOrEqual':  return r >= a;
+    case 'inRange': {
+      const b = entry.filterTo == null ? null : parseDateMs(entry.filterTo);
+      return b !== null && r >= a && r <= b;
+    }
+  }
+  return false;
+}
+
+function parseDateMs(raw: unknown): number | null {
+  if (raw == null) return null;
+  const s = String(raw);
+  if (s === '') return null;
+  const t = Date.parse(s);
+  return Number.isNaN(t) ? null : t;
 }
 
 export class SortPass<TRow = any> {
@@ -277,10 +533,17 @@ export class ViewportSlicer<TRow = any> {
     const rowIds = new Uint32Array(count);
     const rowKinds = new Uint8Array(count);   // all leaf for Foundation
     const groupDepth = new Uint8Array(count);
+    // Per-row heights ride alongside rowIds in the same visible order.
+    // 0 sentinel means "no per-row entry — main thread uses the global
+    // rowHeight fallback". Cycle 5 / Task 6. Autoheight contributions
+    // ride alongside the explicit getRowHeight value via the store's
+    // `effectiveShippedHeight` aggregation. Cycle 5 / Task 8.
+    const heights = new Float32Array(count);
 
     for (let i = 0; i < count; i++) {
       const id = visibleIds[rowStart + i]!;
       rowIds[i] = this.store.getNumericId(id);
+      heights[i] = this.store.effectiveShippedHeight(id);
     }
 
     const numericCols: Record<string, Float64Array> = {};
@@ -313,6 +576,7 @@ export class ViewportSlicer<TRow = any> {
       rowIds,
       rowKinds,
       groupDepth,
+      heights,
       numericCols,
       textCols,
     };

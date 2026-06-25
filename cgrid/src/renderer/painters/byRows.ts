@@ -5,8 +5,9 @@ import type { CellPaintConfig } from '../cellRenderers/registry';
 import { applyCellProps } from '../../core/propertyChain';
 import { HeaderGroupSubgrid } from '../../core/subgrid';
 
+
 export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
-  const { viewport: vs, theme, columnDefs, cellRenderers, cellData, selection, sortModel } = p;
+  const { viewport: vs, theme, columnDefs, cellRenderers, cellData, selection, sortModel, rowDataSnapshotAt } = p;
 
   // 1. Compute the right edge of the painted area (mirrors gridLinesPainter).
   const rightEdge = vs.visibleColumns.length === 0
@@ -117,13 +118,13 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
 
     paintBand(gc, sb.rows, leftPinned,
               0, vs.bodyLeft, sgTop, sgBottom,
-              /*clip*/ isDataBand, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme);
+              /*clip*/ isDataBand, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt);
     paintBand(gc, sb.rows, center,
               vs.bodyLeft, vs.bodyRight, sgTop, sgBottom,
-              /*clip*/ true, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme);
+              /*clip*/ true, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt);
     paintBand(gc, sb.rows, rightPinned,
               vs.bodyRight, rightEdge, sgTop, sgBottom,
-              /*clip*/ isDataBand, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme);
+              /*clip*/ isDataBand, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt);
   }
 }
 
@@ -144,6 +145,7 @@ function paintBand(
   cellData: PainterCtx['cellData'],
   selection: PainterCtx['selection'],
   theme: PainterCtx['theme'],
+  rowDataSnapshotAt: PainterCtx['rowDataSnapshotAt'],
 ): void {
   if (cols.length === 0 || rows.length === 0) return;
   if (clip) {
@@ -180,6 +182,20 @@ function paintBand(
           const w = lastCol.right - col.left;
           const cell = row.subgrid.getCell(0, col.colId);
           const text = cell?.valueFormatted ?? '';
+          // Resolve the group's headerClass into class names for applyCellProps.
+          const groupDef = (row.subgrid as HeaderGroupSubgrid).getGroupDef(col.colId);
+          let groupHeaderClassNames: string[] | undefined;
+          if (groupDef) {
+            if (groupDef.headerClassStatic) {
+              groupHeaderClassNames = groupDef.headerClassStatic;
+            } else if (groupDef.headerClassFn) {
+              const result = groupDef.headerClassFn({ colId: col.colId });
+              const arr = result === undefined ? [] : Array.isArray(result) ? result : [result];
+              groupHeaderClassNames = arr.filter(Boolean) as string[];
+            } else {
+              groupHeaderClassNames = []; // signal: group path, no class names
+            }
+          }
           applyCellProps(config, {
             theme,
             colDef: def,
@@ -190,6 +206,8 @@ function paintBand(
             prefillColor: rowBg,
             isFocused: false, isSelected: false, isHovered: false, isHeader: true,
             iconColor: theme.focusRingColor,
+            rowData: undefined,
+            groupHeaderClassNames,
           });
           cellRenderers.get('header').paint(gc, config);
         }
@@ -197,6 +215,13 @@ function paintBand(
       }
       continue;
     }
+
+    // Compute rowData once per data row (not per cell) for use by
+    // cellClassRules predicates and function-form cellStyle / cellClass.
+    // Header rows don't need row data.
+    const rowData: Record<string, unknown> | undefined = row.subgrid.isData
+      ? rowDataSnapshotAt(row.localRowIndex)
+      : undefined;
 
     for (const col of cols) {
       const def = columnDefs.get(col.colId);
@@ -258,6 +283,8 @@ function paintBand(
         sortDirection,
         flashAlpha,
         params,
+        rowData,
+        rowIndex: row.subgrid.isData ? row.localRowIndex : 0,
       });
 
       // Per-cell clip — adjacent columns share the same band clip, so a value

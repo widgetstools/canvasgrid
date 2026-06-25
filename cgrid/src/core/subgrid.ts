@@ -13,7 +13,7 @@ import type { ColumnTree, ColumnTreeNode, ResolvedColGroupDef } from './columnTr
  * `new TotalsSubgrid()` push — no painter or viewport change required.
  */
 
-export type SubgridType = 'header' | 'data' | 'totals' | 'footer';
+export type SubgridType = 'header' | 'data' | 'totals' | 'footer' | 'floatingFilter';
 
 export interface SubgridCell {
   value: unknown;
@@ -26,6 +26,11 @@ export interface Subgrid {
   readonly isData: boolean;
   readonly isTotals: boolean;
   readonly isFooter: boolean;
+  /** Cycle 7 / Task 1 — true only for `FloatingFilterSubgrid`. Mirrors the
+   *  `isHeader` / `isData` shorthand so the viewport + painter can skip the
+   *  row uniformly without an instanceof check. Optional on the interface
+   *  so existing subgrids don't have to declare it. */
+  readonly isFloatingFilter?: boolean;
   /** Rows this subgrid contributes to the visible stack. */
   getRowCount(): number;
   /** Per-row height. Most subgrids return a constant. */
@@ -109,6 +114,12 @@ export class HeaderGroupSubgrid implements Subgrid {
     return this.groupForLeaf(colId)?.groupId ?? null;
   }
 
+  /** Returns the resolved group def at this subgrid's depth for `colId`, or null.
+   *  Used by the painter to access pre-compiled headerClass fields. Cycle 6 / Task 7 (fix-pass). */
+  getGroupDef(colId: string): ResolvedColGroupDef | null {
+    return this.groupForLeaf(colId);
+  }
+
   private groupForLeaf(colId: string): ResolvedColGroupDef | null {
     const path = this.getLeafGroupPath(colId);
     if (this.depth >= path.length) return null;
@@ -143,12 +154,18 @@ export class DataSubgrid implements Subgrid {
 
   constructor(
     private getRowCountFn: () => number,
-    private getRowHeightFn: () => number,
+    /**
+     * Per-row height in CSS px. Receives the local data-row index so the
+     * implementation can substitute per-row overrides (Cycle 5 / Task 6 —
+     * `CGridOptions.getRowHeight`) on top of the grid-level fallback.
+     * Rows outside the current chunk should return the fallback.
+     */
+    private getRowHeightFn: (local: number) => number,
     private cellAt: DataCellLookup,
   ) {}
 
   getRowCount(): number { return this.getRowCountFn(); }
-  getRowHeight(_local: number): number { return this.getRowHeightFn(); }
+  getRowHeight(local: number): number { return this.getRowHeightFn(local); }
   getCell(local: number, colId: string): SubgridCell | null {
     return this.cellAt(local, colId);
   }

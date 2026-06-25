@@ -1,6 +1,6 @@
 import type {
   WorkerRequest, WorkerResponse, WorkerPush, WorkerInitPayload, ViewportRequest, ViewportChunk,
-  WorkerColumn,
+  WorkerColumn, MeasureTextItem, AutosizeColumnRequest,
 } from './protocol';
 import type { TransactionResult, SortModel, FilterModel } from '../types';
 
@@ -8,6 +8,14 @@ export interface WorkerClientHandlers {
   onModelUpdated: (visibleCount: number) => void;
   onAsyncTransactionsFlushed: (results: TransactionResult[]) => void;
   onError: (error: string) => void;
+  /** Cycle 5 / Task 8 — worker has measured a chunk of autoHeight rows and
+   *  is shipping back the updated per-row heights for the Fenwick index.
+   *  `rowStart` is the global visible-row index of `heights[0]`. */
+  onHeightsChanged?: (rowStart: number, heights: Float32Array) => void;
+  /** Cycle 5 / Task 8 — main-thread fallback for `OffscreenCanvas.measureText`.
+   *  Main runs the wrap algorithm against a real `<canvas>` context and posts
+   *  back via `WorkerClient.measureTextResponse(batchId, heights)`. */
+  onMeasureTextRequest?: (batchId: number, items: MeasureTextItem[]) => void;
 }
 
 export interface WorkerLike {
@@ -37,6 +45,24 @@ export class WorkerClient {
     }
     if (msg.type === 'modelUpdated') this.handlers.onModelUpdated(msg.visibleCount);
     else if (msg.type === 'asyncTransactionsFlushed') this.handlers.onAsyncTransactionsFlushed(msg.results);
+    else if (msg.type === 'heightsChanged') {
+      this.handlers.onHeightsChanged?.(msg.rowStart, msg.heights);
+    } else if (msg.type === 'measureTextRequest') {
+      this.handlers.onMeasureTextRequest?.(msg.batchId, msg.items);
+    }
+  }
+
+  /** Cycle 5 / Task 8 — return main-thread measureText results to the
+   *  worker. Sends transferables for the heights array to avoid a copy. */
+  measureTextResponse(batchId: number, heights: Float32Array): Promise<void> {
+    const id = this.nextId++;
+    return new Promise<void>((resolve, reject) => {
+      this.pending.set(id, { resolve: () => resolve(), reject });
+      this.worker.postMessage(
+        { id, type: 'measureTextResponse', payload: { batchId, heights } },
+        [heights.buffer as ArrayBuffer],
+      );
+    });
   }
 
   private send<T>(req: Omit<WorkerRequest, 'id'>): Promise<T> {
@@ -51,11 +77,16 @@ export class WorkerClient {
     return this.send<{ type: 'ready' }>({ type: 'init', payload }).then(() => {});
   }
 
-  setRowData(rows: unknown[]): Promise<{ count: number; visibleCount: number }> {
-    return this.send<{ count: number; visibleCount: number }>({ type: 'setRowData', payload: { rows } });
+  setRowData(rows: unknown[], heightsByRowId?: Map<string, number>): Promise<{ count: number; visibleCount: number }> {
+    return this.send<{ count: number; visibleCount: number }>({
+      type: 'setRowData', payload: { rows, heightsByRowId },
+    });
   }
 
-  applyTransaction(payload: { add?: unknown[]; update?: unknown[]; remove?: string[]; async: boolean }): Promise<TransactionResult> {
+  applyTransaction(payload: {
+    add?: unknown[]; update?: unknown[]; remove?: string[];
+    async: boolean; heightsByRowId?: Map<string, number>;
+  }): Promise<TransactionResult> {
     return this.send<{ results: TransactionResult }>({ type: 'applyTransaction', payload })
       .then((r) => r.results);
   }
@@ -95,6 +126,22 @@ export class WorkerClient {
     return this.send<{ rowId: string | null; data: unknown | null }>({
       type: 'getRowByIndex', payload: { rowIndex },
     }).then((r) => ({ rowId: r.rowId, data: r.data }));
+  }
+
+  /** Cycle 6 / Task 4 — autosize the listed columns. Resolves with the
+   *  measured widths (already padding-included and min/max-clamped). When
+   *  `skipHeader` is false (default) the header label is included in the
+   *  max. `maxSampleSize` overrides the worker's default head 2,500 +
+   *  tail 2,500 cap. */
+  autosizeColumns(
+    columns: AutosizeColumnRequest[],
+    skipHeader: boolean,
+    maxSampleSize?: number,
+  ): Promise<Record<string, number>> {
+    return this.send<{ widths: Record<string, number> }>({
+      type: 'autosize',
+      payload: { columns, skipHeader, maxSampleSize },
+    }).then((r) => r.widths);
   }
 
   /** Batched variant of `getRowIndexForId`. Returns one index per input id,

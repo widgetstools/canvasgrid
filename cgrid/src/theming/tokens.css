@@ -12,6 +12,12 @@
 }
 
 .cg-theme-quartz {
+  /* Tells the UA to render native form controls (date-picker calendar,
+   * number-input spinners, autofill chrome) in light mode. The date
+   * filter popup mounts a native `<input type="date">` whose calendar
+   * widget is UA-rendered — without this property it always renders
+   * light regardless of grid theme. */
+  color-scheme: light;
   --cg-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
   --cg-font-size: 13px;
   --cg-row-height: 32px;
@@ -31,9 +37,16 @@
   --cg-flash-to-color: rgba(254, 243, 199, 0);
   --cg-resizer-hot-zone: 4px;
   --cg-scrollbar-thickness: 14px;
+  --cg-floating-filter-bg: #ffffff;
+  --cg-floating-filter-border: #d5dbe0;
+  --cg-floating-filter-placeholder: #94a3b8;
 }
 
 .cg-theme-quartz-dark {
+  /* Dark-mode counterpart — flips the native date-picker calendar,
+   * spinners, and autofill chrome to dark UA rendering so they match
+   * the grid surface instead of punching a white square out of it. */
+  color-scheme: dark;
   --cg-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
   --cg-font-size: 13px;
   --cg-row-height: 32px;
@@ -53,6 +66,9 @@
   --cg-flash-to-color: rgba(180, 83, 9, 0);
   --cg-resizer-hot-zone: 4px;
   --cg-scrollbar-thickness: 14px;
+  --cg-floating-filter-bg: transparent;
+  --cg-floating-filter-border: #38507a;
+  --cg-floating-filter-placeholder: #64748b;
 }
 
 /* Native scrollbar styling (Chromium/WebKit) — visible thumb on dark track. */
@@ -105,4 +121,191 @@
 }
 .cg-theme-quartz .cg-scroller {
   scrollbar-color: #b5bdc6 #eceff2;
+}
+
+/* Floating-filter row cells — Cycle 7 / Task 1. Each cell is an
+ * absolutely-positioned wrapper that owns the column's input AND
+ * the clear-button. The overlay positions the wrapper via
+ * `transform: translate(x, y)`; layout inside the wrapper is plain
+ * relative positioning (input fills the cell, clear button anchors
+ * right-center). Tasks 3-9 will add more buttons (popup expand, set
+ * filter trigger) as additional absolute children. */
+.cg-floating-filter-cell {
+  position: absolute;
+  left: 0;
+  top: 0;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+.cg-floating-filter-input {
+  display: block;
+  width: 100%;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 0 22px 0 8px;
+  border: 1px solid var(--cg-floating-filter-border);
+  border-radius: 0;
+  background: var(--cg-floating-filter-bg);
+  color: var(--cg-fg-color);
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  outline: none;
+  pointer-events: auto;
+}
+.cg-floating-filter-input::placeholder {
+  color: var(--cg-floating-filter-placeholder);
+  font-size: 11px;
+  opacity: 0.7;
+}
+.cg-floating-filter-input:focus {
+  border-color: var(--cg-focus-ring-color);
+}
+/* Clear button — small × glyph on the input's right edge. Hidden by
+ * default; the overlay toggles `.has-value` on the cell when the
+ * input's value transitions to/from empty so the button only appears
+ * when there's something to clear. */
+.cg-floating-filter-clear {
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--cg-floating-filter-placeholder);
+  font-family: var(--cg-font-family);
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  transform: translateY(-50%);
+}
+.cg-floating-filter-cell.has-value .cg-floating-filter-clear {
+  display: flex;
+}
+.cg-floating-filter-clear:hover {
+  background: color-mix(in srgb, var(--cg-focus-ring-color) 18%, transparent);
+  color: var(--cg-fg-color);
+}
+/* Expand button — opens the per-column filter popup. Sits at the
+ * right edge alongside (or in place of) the clear `×`. Both buttons
+ * are absolutely positioned; the cell's `.has-value` class shifts the
+ * clear button left to make room. */
+.cg-floating-filter-expand {
+  position: absolute;
+  right: 3px;
+  top: 50%;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: var(--cg-floating-filter-placeholder);
+  font-family: var(--cg-font-family);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  transform: translateY(-50%);
+}
+.cg-floating-filter-expand:hover {
+  background: color-mix(in srgb, var(--cg-focus-ring-color) 18%, transparent);
+  color: var(--cg-fg-color);
+}
+/* When the input has a value, the clear button appears at right:3 and
+ * we slide the expand button left to right:24 so they don't overlap. */
+.cg-floating-filter-cell.has-value .cg-floating-filter-expand {
+  right: 24px;
+}
+/* When an expand button is mounted, reserve a little more right
+ * padding on the input so the user's text doesn't slide under either
+ * action button. */
+.cg-floating-filter-cell:has(.cg-floating-filter-expand) .cg-floating-filter-input {
+  padding-right: 26px;
+}
+.cg-floating-filter-cell.has-value:has(.cg-floating-filter-expand) .cg-floating-filter-input {
+  padding-right: 46px;
+}
+
+/* Filter popup body — mounted by FilterPopupHost into the editor
+ * overlay container, positioned by PopupHost. Cycle 7 / Task 3. */
+.cg-filter-popup {
+  background: var(--cg-bg-color);
+  color: var(--cg-fg-color);
+  border: 1px solid var(--cg-border-color);
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 200px;
+}
+.cg-filter-popup-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.cg-filter-popup-operator {
+  flex: 1 1 auto;
+  padding: 4px 6px;
+  background: var(--cg-bg-color);
+  color: var(--cg-fg-color);
+  border: 1px solid var(--cg-border-color);
+  border-radius: 2px;
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+}
+.cg-filter-popup-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  background: var(--cg-bg-color);
+  color: var(--cg-fg-color);
+  border: 1px solid var(--cg-border-color);
+  border-radius: 2px;
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+}
+.cg-filter-popup-inputs {
+  flex-wrap: wrap;
+}
+.cg-filter-popup-buttons {
+  justify-content: flex-end;
+  padding-top: 2px;
+}
+.cg-filter-popup-button {
+  padding: 4px 10px;
+  background: var(--cg-header-bg);
+  color: var(--cg-fg-color);
+  border: 1px solid var(--cg-border-color);
+  border-radius: 2px;
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  cursor: pointer;
+}
+.cg-filter-popup-button:hover {
+  background: color-mix(in srgb, var(--cg-focus-ring-color) 22%, var(--cg-header-bg));
+}
+.cg-filter-popup-button-apply {
+  background: var(--cg-focus-ring-color);
+  color: #ffffff;
+  border-color: var(--cg-focus-ring-color);
+}
+.cg-filter-popup-button-apply:hover {
+  filter: brightness(1.1);
+  background: var(--cg-focus-ring-color);
 }

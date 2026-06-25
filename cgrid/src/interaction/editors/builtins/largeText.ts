@@ -57,4 +57,11 @@ export class LargeTextCellEditor implements ICellEditor<unknown, string> {
     if (this.params.charPress == null) this.textarea.select();
     else this.textarea.setSelectionRange(this.textarea.value.length, this.textarea.value.length);
   }
+
+  focusIn(): void {
+    this.textarea.focus();
+    this.textarea.select();
+  }
+
+  focusOut(): void { this.textarea.blur(); }
 }

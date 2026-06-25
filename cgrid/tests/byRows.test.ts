@@ -51,6 +51,7 @@ const theme: ResolvedTheme = {
   rowSelectedBg: 'rgba(0,0,0,0.1)', focusRingColor: '#08f', focusRingWidth: 2,
   flashFromColor: '#ffeb3b', flashToColor: 'transparent',
   rowHeight: 30, headerHeight: 32, resizerHotZone: 4, scrollbarThickness: 10,
+  cellClassVariants: new Map(), headerClassVariants: new Map(),
 };
 
 // ─── Shared column defs ───────────────────────────────────────────────────────
@@ -142,7 +143,7 @@ describe('paintCellsByRows — bundle consolidation', () => {
     const vs = makeVsAltRows();
     paintCellsByRows(gc, {
       viewport: vs, theme, columnDefs: cols, cellRenderers: makeReg(),
-      cellData, selection, sortModel: [],
+      cellData, selection, sortModel: [], rowDataSnapshotAt: () => ({}),
     });
     const calls = (gc.fillRect as any).mock.calls as number[][];
     // Bundle fillRects span a height > 30 (one row). The single alt bundle covers
@@ -157,7 +158,7 @@ describe('paintCellsByRows — bundle consolidation', () => {
     const vs = makeVsMixedRows();
     paintCellsByRows(gc, {
       viewport: vs, theme, columnDefs: cols, cellRenderers: makeReg(),
-      cellData, selection, sortModel: [],
+      cellData, selection, sortModel: [], rowDataSnapshotAt: () => ({}),
     });
     const calls = (gc.fillRect as any).mock.calls as number[][];
     // alt bundles have height=60 (2 rows × 30px each).
@@ -172,7 +173,7 @@ describe('paintCellsByRows — bundle consolidation', () => {
       viewport: vs, theme, columnDefs: new Map([
         ['a', { colId: 'a', headerName: 'A', minWidth: 30, maxWidth: Infinity, type: 'text', cellRenderer: 'text', sortable: true, resizable: true, editable: false }],
       ]), cellRenderers: makeReg(),
-      cellData, selection, sortModel: [],
+      cellData, selection, sortModel: [], rowDataSnapshotAt: () => ({}),
     });
     const calls = (gc.fillRect as any).mock.calls as number[][];
     // Only the header bundle (height=32) should be painted. Data rows are theme.bg → skipped.
@@ -213,7 +214,7 @@ describe('paintCellsByRows — cell paint count', () => {
     const gc = fakeGc();
     paintCellsByRows(gc, {
       viewport: vs, theme, columnDefs: cols, cellRenderers: spyReg,
-      cellData, selection, sortModel: [],
+      cellData, selection, sortModel: [], rowDataSnapshotAt: () => ({}),
     });
 
     // 1 header row × 3 cols + 2 data rows × 3 cols = 9
@@ -236,7 +237,7 @@ describe('paintCellsByRows — prefillColor propagation', () => {
     const gc = fakeGc();
     paintCellsByRows(gc, {
       viewport: vs, theme, columnDefs: cols, cellRenderers: spyReg,
-      cellData, selection, sortModel: [],
+      cellData, selection, sortModel: [], rowDataSnapshotAt: () => ({}),
     });
 
     // All data cells in the alt-row bundle should have prefillColor === theme.rowAltBg
@@ -275,7 +276,7 @@ describe('paintCellsByRows — column cellStyle override', () => {
     const gc = fakeGc();
     paintCellsByRows(gc, {
       viewport: vs, theme, columnDefs: colsWithStyle, cellRenderers: spyReg,
-      cellData, selection, sortModel: [],
+      cellData, selection, sortModel: [], rowDataSnapshotAt: () => ({}),
     });
 
     expect(captured.length).toBeGreaterThan(0);
@@ -315,7 +316,7 @@ describe('paintCellsByRows — header dispatch', () => {
     const gc = fakeGc();
     paintCellsByRows(gc, {
       viewport: vs, theme, columnDefs: colsA, cellRenderers: spyReg,
-      cellData, selection, sortModel: [],
+      cellData, selection, sortModel: [], rowDataSnapshotAt: () => ({}),
     });
 
     expect(headerSpy).toHaveBeenCalledTimes(1);  // 1 header row × 1 col
@@ -369,7 +370,7 @@ describe('paintCellsByRows — data rows do not bleed into header region', () =>
     const vs = makeScrolledViewport();
     paintCellsByRows(gc, {
       viewport: vs, theme, columnDefs: colsLPR, cellRenderers: makeReg(),
-      cellData, selection, sortModel: [],
+      cellData, selection, sortModel: [], rowDataSnapshotAt: () => ({}),
     });
     const calls = (gc.fillRect as any).mock.calls as number[][];
     // The header row uses theme.headerBg (different from theme.bg), so it
@@ -396,7 +397,7 @@ describe('paintCellsByRows — data rows do not bleed into header region', () =>
     const vs = makeScrolledViewport();
     paintCellsByRows(gc, {
       viewport: vs, theme, columnDefs: colsLPR, cellRenderers: spyReg,
-      cellData, selection, sortModel: [],
+      cellData, selection, sortModel: [], rowDataSnapshotAt: () => ({}),
     });
     // The painter must save/clip/restore around the pinned-left + pinned-right
     // data-row paints. Without it, data cells with bounds.y < bodyTop paint
@@ -444,7 +445,7 @@ describe('paintCellsByRows — text in one cell cannot bleed into the next cell'
     paintCellsByRows(gc, {
       viewport: vs, theme, columnDefs: colsTwo, cellRenderers: makeReg(),
       cellData: () => ({ value: 'POS-' + 'x'.repeat(50), valueFormatted: 'POS-' + 'x'.repeat(50) }),
-      selection, sortModel: [],
+      selection, sortModel: [], rowDataSnapshotAt: () => ({}),
     });
     // The painter must set a per-cell clip rect of [col.left, row.top, col.width, row.height]
     // around each cell paint. With 2 cells in the row we expect at least 2 such rect calls.
@@ -487,7 +488,7 @@ describe('paintCellsByRows — pinned columns paint', () => {
     const gc = fakeGc();
     paintCellsByRows(gc, {
       viewport: vs, theme, columnDefs: colsWithPinned, cellRenderers: spyReg,
-      cellData, selection, sortModel: [],
+      cellData, selection, sortModel: [], rowDataSnapshotAt: () => ({}),
     });
 
     // 1 data row × 2 cols (1 pinned + 1 center) = 2 calls
@@ -516,7 +517,7 @@ describe('paintCellsByRows — center band clipping', () => {
     const gc = fakeGc();
     paintCellsByRows(gc, {
       viewport: vs, theme, columnDefs: cols, cellRenderers: spyReg,
-      cellData, selection, sortModel: [],
+      cellData, selection, sortModel: [], rowDataSnapshotAt: () => ({}),
     });
 
     expect((gc.save as any)).toHaveBeenCalled();
@@ -572,7 +573,7 @@ describe('paintCellsByRows — HeaderGroupSubgrid span paint', () => {
     const gc = fakeGc();
     paintCellsByRows(gc, {
       viewport: vs, theme, columnDefs: colDefs, cellRenderers: spyReg,
-      cellData, selection, sortModel: [],
+      cellData, selection, sortModel: [], rowDataSnapshotAt: () => ({}),
     });
 
     // Only one header renderer call for the spanned group; 'id' has no group at this depth → no call.

@@ -1,5 +1,6 @@
 import type { ColumnLayout } from './layout';
 import type { Subgrid } from './subgrid';
+import type { RowHeightIndex } from './rowHeightIndex';
 
 export interface ViewportColumn {
   colId: string;
@@ -45,6 +46,15 @@ export interface ViewportState {
   /** Maximum valid scrollLeft / scrollTop. ≤0 means body has no overflow. */
   maxScrollLeft: number;
   maxScrollTop: number;
+  /** Top edge (CSS px from the container's top) of the floating-filter
+   *  row, when present. `undefined` when no `FloatingFilterSubgrid` is
+   *  in the subgrid stack. `FloatingFilterOverlay.repositionAll` reads
+   *  this to position the pooled `<input>` elements via `transform`.
+   *  Cycle 7 / Task 1. */
+  floatingFilterRowTop?: number;
+  /** Pixel height of the floating-filter row, when present. `undefined`
+   *  when no `FloatingFilterSubgrid` is in the stack. Cycle 7 / Task 1. */
+  floatingFilterRowHeight?: number;
 }
 
 export interface ViewportInput {
@@ -68,6 +78,13 @@ export interface ViewportInput {
   suppressColumnVirtualisation?: boolean;
   /** When true, every data row is materialised regardless of scrollTop. */
   suppressRowVirtualisation?: boolean;
+  /** Cumulative-height index for the data subgrid (Cycle 5 / Task 7). When
+   *  supplied AND its length matches the data subgrid's row count, the
+   *  first-visible-row search descends through the index in O(log n) and
+   *  `dataContentHeight` reads `index.totalHeight()` exactly. When omitted
+   *  the viewport falls back to the uniform-height approximation built from
+   *  `subgrid.getRowHeight(0)`. */
+  dataRowHeightIndex?: RowHeightIndex;
 }
 
 export function computeViewport(opts: ViewportInput): ViewportState {
@@ -88,13 +105,21 @@ export function computeViewport(opts: ViewportInput): ViewportState {
   let firstDataRow = 0;
   let lastDataRow = -1;
   let dataContentHeight = 0;
+  let floatingFilterRowTop: number | undefined;
+  let floatingFilterRowHeight: number | undefined;
 
-  // Pass 1: header subgrids — accumulate their height into bodyTop.
+  // Pass 1: header + floating-filter subgrids — both sit above the
+  // scrollable data region. Cycle 7 / Task 1 — the floating-filter row is
+  // non-scrolling like headers and contributes to bodyTop the same way.
   for (const subgrid of opts.subgrids) {
-    if (!subgrid.isHeader) continue;
+    if (!subgrid.isHeader && !subgrid.isFloatingFilter) continue;
     const rows = subgrid.getRowCount();
     for (let local = 0; local < rows; local++) {
       const h = subgrid.getRowHeight(local);
+      if (subgrid.isFloatingFilter) {
+        floatingFilterRowTop = bodyTop;
+        floatingFilterRowHeight = h;
+      }
       visibleRows.push({
         rowIndex: visibleRows.length,
         subgrid,
@@ -110,38 +135,78 @@ export function computeViewport(opts: ViewportInput): ViewportState {
   const bodyBottom = opts.containerHeight;
   const bodyHeight = Math.max(0, bodyBottom - bodyTop);
 
-  // Pass 2: data subgrid(s). Only the data area scrolls.
+  // Pass 2: data subgrid(s). Only the data area scrolls. Per-row heights —
+  // each data subgrid exposes `getRowHeight(local)` (Cycle 5 / Task 6). When
+  // a `dataRowHeightIndex` is supplied (Cycle 5 / Task 7) the first/last
+  // visible-row search descends the Fenwick tree in O(log n) and the
+  // pre-window top is read as a single `index.topOf(firstDataRow)` query.
+  // Without the index we fall back to the uniform-height approximation
+  // (`subgrid.getRowHeight(0)` as the fallback row size). Within the visible
+  // range we still walk per-row so variable-height rows position correctly
+  // relative to one another (no overlap, no gap).
   let yAfterData = bodyTop;
   for (const subgrid of opts.subgrids) {
     if (!subgrid.isData) continue;
-    const rowH = subgrid.getRowHeight(0); // assume uniform — refined when variable-height lands
-    if (rowH <= 0) continue;
+    const fallbackH = subgrid.getRowHeight(0);
+    if (fallbackH <= 0) continue;
     const totalRows = subgrid.getRowCount();
-    dataContentHeight += totalRows * rowH;
+    // Use the index only when it covers the same row population the data
+    // subgrid reports. A length mismatch means a sort/filter just landed
+    // and the index hasn't been rebuilt yet — fall back to uniform math
+    // until the next `requestViewport()` completes.
+    const idx = opts.dataRowHeightIndex && opts.dataRowHeightIndex.length() === totalRows
+      ? opts.dataRowHeightIndex : undefined;
+
+    if (idx) {
+      dataContentHeight += idx.totalHeight();
+    } else {
+      // No index — scrollbar thumb extent is approximate when many rows
+      // deviate from `fallbackH`. Acceptable for the first frame after a
+      // sort/filter; the next chunk-arrival rebuilds the index.
+      dataContentHeight += totalRows * fallbackH;
+    }
 
     if (suppressRows) {
       firstDataRow = 0;
       lastDataRow = totalRows - 1;
+    } else if (idx) {
+      const firstRowRaw = idx.rowAt(opts.scrollTop);
+      const lastRowRaw = idx.rowAt(opts.scrollTop + bodyHeight);
+      firstDataRow = Math.max(0, firstRowRaw - overscan);
+      lastDataRow = Math.min(totalRows - 1, lastRowRaw + overscan);
     } else {
-      const firstRowRaw = Math.floor(opts.scrollTop / rowH);
-      const lastRowRaw = Math.floor((opts.scrollTop + bodyHeight) / rowH);
+      const firstRowRaw = Math.floor(opts.scrollTop / fallbackH);
+      const lastRowRaw = Math.floor((opts.scrollTop + bodyHeight) / fallbackH);
       firstDataRow = Math.max(0, firstRowRaw - overscan);
       lastDataRow = Math.min(totalRows - 1, lastRowRaw + overscan);
     }
 
+    // Pre-window top: one Fenwick query when the index is present, else a
+    // linear accumulator walk over the pre-firstDataRow heights. The linear
+    // walk is O(firstDataRow) — fine for the indexless fallback because that
+    // path only fires the first frame after a sort/filter.
+    let top: number;
+    if (idx) {
+      top = bodyTop + idx.topOf(firstDataRow) - opts.scrollTop;
+    } else {
+      top = bodyTop - opts.scrollTop;
+      for (let pre = 0; pre < firstDataRow; pre++) top += subgrid.getRowHeight(pre);
+    }
     for (let local = firstDataRow; local <= lastDataRow; local++) {
-      const top = bodyTop + local * rowH - opts.scrollTop;
+      const h = subgrid.getRowHeight(local);
       visibleRows.push({
         rowIndex: visibleRows.length,
         subgrid,
         localRowIndex: local,
         top,
-        bottom: top + rowH,
-        height: rowH,
+        bottom: top + h,
+        height: h,
       });
+      top += h;
     }
-    // Advance yAfterData so trailing subgrids (totals/footer) land below.
-    yAfterData = Math.max(yAfterData, bodyTop + (lastDataRow + 1) * rowH - opts.scrollTop);
+    // Advance yAfterData so trailing subgrids (totals/footer) land below the
+    // last visible data row — `top` is now exactly that bottom edge.
+    yAfterData = Math.max(yAfterData, top);
   }
 
   // Pass 3: totals/footer subgrids — stacked after the visible data rows.
@@ -247,5 +312,7 @@ export function computeViewport(opts: ViewportInput): ViewportState {
     contentHeight,
     maxScrollLeft,
     maxScrollTop,
+    floatingFilterRowTop,
+    floatingFilterRowHeight,
   };
 }

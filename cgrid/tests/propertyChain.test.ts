@@ -17,8 +17,8 @@ describe('resolveColDef', () => {
     expect(r.headerName).toBe('instrumentName');
   });
 
-  it('defaults type to text', () => {
-    expect(resolveColDef({ field: 'a' }).type).toBe('text');
+  it('defaults cellDataType to text', () => {
+    expect(resolveColDef({ field: 'a' }).cellDataType).toBe('text');
   });
 
   it('defaults cellRenderer to type', () => {

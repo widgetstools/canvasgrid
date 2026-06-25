@@ -24,7 +24,7 @@ const vs: ViewportState = {
   contentWidth: 250, contentHeight: 300, maxScrollLeft: 0, maxScrollTop: 0,
 };
 
-function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row: number; col: string } } = {}) {
+function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row: number; col: string }; editable?: boolean } = {}) {
   const canvas = document.createElement('canvas');
   Object.defineProperty(canvas, 'getBoundingClientRect', { value: () => ({ left: 0, top: 0, width: 300, height: 200 }) });
   document.body.appendChild(canvas);
@@ -38,11 +38,16 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
 
   const cols = opts.cols ?? ['a', 'b'];
   const rowCount = opts.rowCount ?? 1;
+  const editable = opts.editable ?? false;
   const emitClicked = vi.fn();
   const emitDoubleClicked = vi.fn();
   const resizeColumn = vi.fn();
+  const finishColumnResize = vi.fn();
   const cycleSort = vi.fn();
   const scrollBy = vi.fn();
+  const toggleColumnGroup = vi.fn();
+  const openEditor = vi.fn();
+  const stopEditing = vi.fn();
 
   const grid: CGridLike = {
     canvas: cgridCanvas,
@@ -52,13 +57,32 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
     allColIds: () => cols,
     totalRowCount: () => rowCount,
     resizeColumn,
+    finishColumnResize,
     cycleSort,
+    toggleColumnGroup,
     scrollBy,
     emitCellClicked: emitClicked,
     emitCellDoubleClicked: emitDoubleClicked,
+    getEditingFlags: () => ({
+      singleClickEdit: false,
+      suppressClickEdit: false,
+      enterNavigatesVertically: false,
+      enterNavigatesVerticallyAfterEdit: false,
+      suppressStartEditOnTab: false,
+      enableCellEditingOnBackspace: false,
+      enableExcelEditing: false,
+    }),
+    isCellEditable: () => editable,
+    isColSingleClickEdit: () => undefined,
+    getColSuppressKeyboardEvent: () => undefined,
+    getRowDataAt: () => ({}),
+    isEditing: () => false,
+    openEditor,
+    stopEditing,
+    nextEditableCell: () => null,
   };
   const chain = new FeatureChain(grid);
-  return { canvas, sel, chain, emitClicked, emitDoubleClicked, resizeColumn, cycleSort, scrollBy };
+  return { canvas, sel, chain, emitClicked, emitDoubleClicked, resizeColumn, cycleSort, scrollBy, openEditor, stopEditing };
 }
 
 describe('FeatureChain — mouse', () => {
@@ -161,10 +185,31 @@ describe('FeatureChain — keyboard', () => {
     expect(sel.state.selectedRowIndices.has(2)).toBe(true);
   });
 
-  it('F2 emits cellDoubleClicked (edit trigger)', () => {
-    const { canvas, emitDoubleClicked } = setup({ rowCount: 5, cols: ['a', 'b', 'c'], initialFocus: { row: 2, col: 'b' } });
+  it("F2 opens the editor on the focused cell in 'edit' mode", () => {
+    const { canvas, openEditor } = setup({
+      rowCount: 5, cols: ['a', 'b', 'c'],
+      initialFocus: { row: 2, col: 'b' }, editable: true,
+    });
     canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }));
-    expect(emitDoubleClicked).toHaveBeenCalled();
+    expect(openEditor).toHaveBeenCalledWith(2, 'b', undefined, 'edit');
+  });
+
+  it('F2 is a no-op on a non-editable cell', () => {
+    const { canvas, openEditor } = setup({
+      rowCount: 5, cols: ['a', 'b', 'c'],
+      initialFocus: { row: 2, col: 'b' }, editable: false,
+    });
+    canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'F2', bubbles: true }));
+    expect(openEditor).not.toHaveBeenCalled();
+  });
+
+  it("Enter opens the editor on an editable focused cell in 'edit' mode", () => {
+    const { canvas, openEditor } = setup({
+      rowCount: 5, cols: ['a', 'b', 'c'],
+      initialFocus: { row: 2, col: 'b' }, editable: true,
+    });
+    canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(openEditor).toHaveBeenCalledWith(2, 'b', undefined, 'edit');
   });
 
   it('Escape clears selection', () => {
@@ -187,5 +232,32 @@ describe('FeatureChain — keyboard', () => {
     canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'PageDown', bubbles: true }));
     // visibleRowIndices() returns [0] (length 1), so PageDown advances by 1.
     expect(sel.state.focusedRowIndex).toBe(1);
+  });
+
+  it("type-to-edit: printable char opens editor with charPress in 'enter' mode", () => {
+    const { canvas, openEditor } = setup({
+      rowCount: 5, cols: ['a', 'b', 'c'],
+      initialFocus: { row: 2, col: 'b' }, editable: true,
+    });
+    canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'X', bubbles: true }));
+    expect(openEditor).toHaveBeenCalledWith(2, 'b', 'X', 'enter');
+  });
+
+  it('type-to-edit: ignores modifier-key combinations (Ctrl+A)', () => {
+    const { canvas, openEditor } = setup({
+      rowCount: 5, cols: ['a', 'b', 'c'],
+      initialFocus: { row: 2, col: 'b' }, editable: true,
+    });
+    canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'a', ctrlKey: true, bubbles: true }));
+    expect(openEditor).not.toHaveBeenCalled();
+  });
+
+  it('type-to-edit: skips when the focused column is not editable', () => {
+    const { canvas, openEditor } = setup({
+      rowCount: 5, cols: ['a', 'b', 'c'],
+      initialFocus: { row: 2, col: 'b' }, editable: false,
+    });
+    canvas.dispatchEvent(new KeyboardEvent('keydown', { key: 'X', bubbles: true }));
+    expect(openEditor).not.toHaveBeenCalled();
   });
 });

@@ -255,6 +255,359 @@ describe('CGrid integration', () => {
     });
   });
 
+  describe('column state round-trip (Cycle 6 / Task 2)', () => {
+    function buildBareGrid<T extends { id: string }>(rows: T[], cols: any[]) {
+      const container = document.createElement('div');
+      container.style.cssText = 'width:800px; height:600px;';
+      container.className = 'cg-theme-quartz';
+      document.body.appendChild(container);
+      const grid = new CGrid<T>(container, {
+        columnDefs: cols,
+        getRowId: (r) => r.id,
+        rowData: rows,
+      });
+      // Drive the fake worker's `ready` so init resolves.
+      const w = (grid as any).workerClient.worker;
+      w.listeners.forEach((cb: any) => cb({ data: { id: 1, type: 'ready' } }));
+      return { grid, container };
+    }
+
+    it('getColumnState returns one entry per leaf in declaration order including hidden leaves', () => {
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number }>(
+        [],
+        [
+          { field: 'id', width: 100 },
+          { field: 'a', width: 150, hide: true },
+          { field: 'b', width: 200 },
+        ],
+      );
+      const state = grid.getColumnState();
+      expect(state.map((s) => s.colId)).toEqual(['id', 'a', 'b']);
+      const aState = state.find((s) => s.colId === 'a')!;
+      expect(aState.hide).toBe(true);
+      grid.destroy();
+    });
+
+    it('applyColumnState triggers exactly one recomputeViewport invocation', () => {
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number }>(
+        [],
+        [{ field: 'id' }, { field: 'a' }, { field: 'b' }],
+      );
+      const spy = vi.spyOn(grid as any, 'recomputeViewport');
+      spy.mockClear();
+      grid.applyColumnState({
+        state: [
+          { colId: 'a', width: 300 },
+          { colId: 'b', width: 250 },
+        ],
+      });
+      expect(spy).toHaveBeenCalledTimes(1);
+      grid.destroy();
+    });
+
+    it('applyColumnState with hide:true filters the column out of the visible-leaf order', () => {
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number }>(
+        [],
+        [{ field: 'id' }, { field: 'a' }, { field: 'b' }],
+      );
+      grid.applyColumnState({ state: [{ colId: 'a', hide: true }] });
+      const visibleIds = ((grid as any).columnOrder as Array<{ colId: string }>).map((c) => c.colId);
+      expect(visibleIds).toEqual(['id', 'b']);
+      // But getColumnState still reports the hidden column.
+      const state = grid.getColumnState();
+      expect(state.find((s) => s.colId === 'a')?.hide).toBe(true);
+      grid.destroy();
+    });
+
+    it('lockVisible silently rejects a hide mutation', () => {
+      const { grid } = buildBareGrid<{ id: string; a: number }>(
+        [],
+        [{ field: 'id' }, { field: 'a', lockVisible: true }],
+      );
+      const ok = grid.applyColumnState({ state: [{ colId: 'a', hide: true }] });
+      expect(ok).toBe(true);
+      // `a` remains visible because lockVisible vetoed the hide flip.
+      const visibleIds = ((grid as any).columnOrder as Array<{ colId: string }>).map((c) => c.colId);
+      expect(visibleIds).toEqual(['id', 'a']);
+      grid.destroy();
+    });
+
+    it('lockPinned silently rejects a pinned mutation', () => {
+      const { grid } = buildBareGrid<{ id: string; a: number }>(
+        [],
+        [{ field: 'id' }, { field: 'a', pinned: 'left', lockPinned: true }],
+      );
+      const events: any[] = [];
+      grid.on('columnPinned', (e) => events.push(e));
+      grid.applyColumnState({ state: [{ colId: 'a', pinned: null }] });
+      // Resolved pinned untouched.
+      expect((grid as any).columnDefsMap.get('a').pinned).toBe('left');
+      expect(events).toEqual([]);
+      grid.destroy();
+    });
+
+    it('defaultState applies to leaves not mentioned in state', () => {
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number }>(
+        [],
+        [{ field: 'id' }, { field: 'a' }, { field: 'b' }],
+      );
+      grid.applyColumnState({
+        state: [{ colId: 'id', hide: false }],
+        defaultState: { hide: true },
+      });
+      const visibleIds = ((grid as any).columnOrder as Array<{ colId: string }>).map((c) => c.colId);
+      expect(visibleIds).toEqual(['id']);
+      grid.destroy();
+    });
+
+    it('resetColumnState restores the construction-time snapshot and fires columnsReset', async () => {
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number }>(
+        [],
+        [
+          { field: 'id', width: 100 },
+          { field: 'a', width: 150 },
+          { field: 'b', width: 200 },
+        ],
+      );
+      // Mutate first — hide `a`, widen `b`.
+      grid.applyColumnState({
+        state: [{ colId: 'a', hide: true }, { colId: 'b', width: 500 }],
+      });
+      const events: string[] = [];
+      grid.on('columnsReset', () => events.push('columnsReset'));
+      grid.on('columnVisible', () => events.push('columnVisible'));
+      grid.on('columnResized', () => events.push('columnResized'));
+      grid.resetColumnState();
+      expect(events[0]).toBe('columnsReset');
+      // After reset, `a` is visible again and `b` is back to its initial width.
+      expect((grid as any).columnDefsMap.get('a').hide).toBe(false);
+      expect((grid as any).columnDefsMap.get('b').width).toBe(200);
+      grid.destroy();
+    });
+
+    it('applyColumnState with applyOrder: true rewrites the visible leaf order', () => {
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number; c: number }>(
+        [],
+        [{ field: 'id' }, { field: 'a' }, { field: 'b' }, { field: 'c' }],
+      );
+      const initial = grid.getColumnState().map((s) => s.colId);
+      expect(initial).toEqual(['id', 'a', 'b', 'c']);
+      grid.applyColumnState({
+        state: [
+          { colId: 'id' },
+          { colId: 'c' },
+          { colId: 'b' },
+          { colId: 'a' },
+        ],
+        applyOrder: true,
+      });
+      const after = grid.getColumnState().map((s) => s.colId);
+      expect(after).toEqual(['id', 'c', 'b', 'a']);
+    });
+
+    it('applyColumnState returns false when one or more colIds are unknown', () => {
+      const { grid } = buildBareGrid<{ id: string; a: number }>(
+        [],
+        [{ field: 'id' }, { field: 'a' }],
+      );
+      const ok = grid.applyColumnState({
+        state: [{ colId: 'a', width: 250 }, { colId: 'does-not-exist', hide: true }],
+      });
+      expect(ok).toBe(false);
+      grid.destroy();
+    });
+
+    it('applyColumnState with order change + width/hide mutations lands in ONE call', () => {
+      // Regression: when applyOrder rebuilds the column tree, the
+      // freshly-resolved leaves use construction-time defaults. The
+      // just-applied width/hide mutations live on the discarded old
+      // tree's leaves. Earlier behavior required a second
+      // applyColumnState call before the width/hide values stuck —
+      // visible to demo users as "click Restore twice."
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number; c: number }>(
+        [],
+        [
+          { field: 'id', width: 80 },
+          { field: 'a', width: 100 },
+          { field: 'b', width: 100 },
+          { field: 'c', width: 100 },
+        ],
+      );
+      grid.applyColumnState({
+        state: [
+          { colId: 'id', width: 80, hide: false },
+          { colId: 'c', width: 300, hide: false },
+          { colId: 'a', width: 250, hide: false },
+          { colId: 'b', width: 100, hide: true },
+        ],
+        applyOrder: true,
+      });
+      // Order honored.
+      const state = grid.getColumnState();
+      expect(state.map((s) => s.colId)).toEqual(['id', 'c', 'a', 'b']);
+      // Widths land in ONE call.
+      expect(state.find((s) => s.colId === 'c')?.width).toBe(300);
+      expect(state.find((s) => s.colId === 'a')?.width).toBe(250);
+      // Hide flip lands in ONE call — b is filtered out of the visible
+      // order even though it is still present in the snapshot.
+      const visibleIds = ((grid as any).columnOrder as Array<{ colId: string }>).map((c) => c.colId);
+      expect(visibleIds).toEqual(['id', 'c', 'a']);
+      expect(state.find((s) => s.colId === 'b')?.hide).toBe(true);
+      grid.destroy();
+    });
+
+    it('applyColumnState with a single-column sort pushes it to the worker', async () => {
+      // Regression: the sort handler used to mutate this.sortModel
+      // in-place and emit sortChanged, but never push to the worker via
+      // setSortModel. The rendered rows then stayed in the pre-restore
+      // order even though the header indicator updated. Now we route
+      // through setSortModel so the worker re-sorts the chunk.
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number }>(
+        [],
+        [{ field: 'id' }, { field: 'a' }, { field: 'b' }],
+      );
+      const workerSpy = vi.spyOn((grid as any).workerClient, 'setSortModel');
+      workerSpy.mockClear();
+      grid.applyColumnState({
+        state: [
+          { colId: 'a', sort: 'desc', sortIndex: 0 },
+          { colId: 'b', sort: null, sortIndex: null },
+          { colId: 'id', sort: null, sortIndex: null },
+        ],
+      });
+      expect(workerSpy).toHaveBeenCalledTimes(1);
+      const sortArg = workerSpy.mock.calls[0]![0];
+      expect(sortArg).toEqual([{ colId: 'a', direction: 'desc' }]);
+      grid.destroy();
+    });
+
+    it('every CColumnState slot round-trips: save → restore → re-save matches', () => {
+      // The ag-grid ColumnState contract (catalog 02 line 174-176) covers
+      // 12 slots: colId, width, flex, hide, pinned, sort, sortIndex,
+      // aggFunc, rowGroup, rowGroupIndex, pivot, pivotIndex. This test
+      // mutates every slot to a non-default value, asserts the snapshot
+      // captures each one, then round-trips through reset + apply and
+      // asserts the second snapshot equals the first. Any slot that
+      // fails to persist OR restore surfaces here.
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number; c: number; d: number }>(
+        [],
+        [
+          { field: 'id', width: 80 },
+          { field: 'a', width: 100 },
+          { field: 'b', width: 120 },
+          { field: 'c', width: 140 },
+          { field: 'd', width: 160 },
+        ],
+      );
+      // Drive every slot to a distinct value.
+      grid.applyColumnState({
+        state: [
+          { colId: 'id', width: 80,  hide: false, pinned: 'left',  flex: null, sort: null,   sortIndex: null, aggFunc: null,  rowGroup: false, rowGroupIndex: null, pivot: false, pivotIndex: null },
+          { colId: 'a',  width: 250, hide: false, pinned: null,    flex: null, sort: 'asc',  sortIndex: 1,    aggFunc: 'sum', rowGroup: true,  rowGroupIndex: 0,    pivot: false, pivotIndex: null },
+          { colId: 'b',  width: 220, hide: true,  pinned: null,    flex: null, sort: 'desc', sortIndex: 0,    aggFunc: 'avg', rowGroup: false, rowGroupIndex: null, pivot: true,  pivotIndex: 0 },
+          { colId: 'c',  width: 180, hide: false, pinned: 'right', flex: 2,    sort: null,   sortIndex: null, aggFunc: 'max', rowGroup: false, rowGroupIndex: null, pivot: false, pivotIndex: null },
+          { colId: 'd',  width: 200, hide: false, pinned: null,    flex: null, sort: null,   sortIndex: null, aggFunc: 'min', rowGroup: false, rowGroupIndex: null, pivot: false, pivotIndex: null },
+        ],
+        applyOrder: true,
+      });
+      const snapshot = grid.getColumnState();
+
+      // Snapshot-side assertions: every slot was actually captured by
+      // getColumnState (catches "always returns null" bugs).
+      const byId = new Map(snapshot.map((s) => [s.colId, s]));
+      expect(byId.get('a')).toMatchObject({
+        width: 250, hide: false, pinned: null,
+        sort: 'asc', sortIndex: 1, aggFunc: 'sum',
+        rowGroup: true, rowGroupIndex: 0,
+      });
+      expect(byId.get('b')).toMatchObject({
+        width: 220, hide: true, sort: 'desc', sortIndex: 0,
+        aggFunc: 'avg', pivot: true, pivotIndex: 0,
+      });
+      expect(byId.get('c')).toMatchObject({
+        width: 180, pinned: 'right', flex: 2, aggFunc: 'max',
+      });
+
+      // Round-trip: reset → re-apply the snapshot.
+      grid.resetColumnState();
+      grid.applyColumnState({ state: snapshot, applyOrder: true });
+      const restored = grid.getColumnState();
+
+      // Strict equality across every slot. JSON-clone normalises ordering
+      // of the objects so the diff prints cleanly on failure.
+      expect(JSON.parse(JSON.stringify(restored))).toEqual(JSON.parse(JSON.stringify(snapshot)));
+      grid.destroy();
+    });
+
+    it('save snapshot survives a fresh grid instance (simulates page reload)', () => {
+      // The demo's persistence path: getColumnState → JSON.stringify →
+      // localStorage. On reload, a brand-new CGrid is constructed from
+      // the original CColDefs, then applyColumnState replays the saved
+      // snapshot. This test exercises that exact shape.
+      const cols = [
+        { field: 'id', width: 80 },
+        { field: 'a', width: 100 },
+        { field: 'b', width: 120 },
+        { field: 'c', width: 140 },
+      ];
+      const { grid: g1 } = buildBareGrid<{ id: string; a: number; b: number; c: number }>(
+        [],
+        cols,
+      );
+      // Mutate every slot.
+      g1.applyColumnState({
+        state: [
+          { colId: 'id', width: 80 },
+          { colId: 'c',  width: 333, pinned: 'right', sort: 'asc',  sortIndex: 1, aggFunc: 'sum' },
+          { colId: 'a',  width: 222, hide: true,     sort: 'desc', sortIndex: 0, aggFunc: 'avg' },
+          { colId: 'b',  width: 111, pinned: 'left', flex: 3,      rowGroup: true, rowGroupIndex: 0 },
+        ],
+        applyOrder: true,
+      });
+      const saved = JSON.parse(JSON.stringify(g1.getColumnState()));
+      g1.destroy();
+
+      // Fresh grid, same column defs (the original construction shape).
+      const { grid: g2 } = buildBareGrid<{ id: string; a: number; b: number; c: number }>(
+        [],
+        cols,
+      );
+      g2.applyColumnState({ state: saved, applyOrder: true });
+      const restored = JSON.parse(JSON.stringify(g2.getColumnState()));
+
+      expect(restored).toEqual(saved);
+      g2.destroy();
+    });
+
+    it('applyColumnState reorders multi-column sort entries by sortIndex', async () => {
+      // Regression: the sort handler walked `sortChanges` in change-record
+      // order and paired direction with the wrong colId via a filtered+map
+      // index mismatch. Multi-column sort must respect sortIndex.
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number; c: number }>(
+        [],
+        [{ field: 'id' }, { field: 'a' }, { field: 'b' }, { field: 'c' }],
+      );
+      const workerSpy = vi.spyOn((grid as any).workerClient, 'setSortModel');
+      workerSpy.mockClear();
+      grid.applyColumnState({
+        state: [
+          // declare order id → a → b → c; sortIndex says b is first, a is second
+          { colId: 'id', sort: null, sortIndex: null },
+          { colId: 'a',  sort: 'asc', sortIndex: 1 },
+          { colId: 'b',  sort: 'desc', sortIndex: 0 },
+          { colId: 'c',  sort: null, sortIndex: null },
+        ],
+      });
+      expect(workerSpy).toHaveBeenCalledTimes(1);
+      const sortArg = workerSpy.mock.calls[0]![0];
+      expect(sortArg).toEqual([
+        { colId: 'b', direction: 'desc' },
+        { colId: 'a', direction: 'asc' },
+      ]);
+      grid.destroy();
+    });
+  });
+
   it('accepts a CColGroupDef in columnDefs and resolves leaves in declaration order', async () => {
     const container = document.createElement('div');
     container.style.cssText = 'width:800px; height:600px;';

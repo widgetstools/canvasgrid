@@ -10,6 +10,14 @@ export class CellSelection extends Feature {
       super.handleMouseDown(ctx);
       return;
     }
+    // Esc semantics on click-another-cell: cancel any open editor before
+    // moving focus. The mousedown only reaches the canvas when the user
+    // clicks outside the editor's DOM overlay, so any hit here is by
+    // definition "click outside the editor input." singleClickEdit will
+    // re-open a fresh editor on the new cell via EditTrigger.handleClick.
+    if (ctx.grid.isEditing()) {
+      ctx.grid.stopEditing(true);
+    }
     const sel = ctx.grid.selection;
     const e = ctx.raw as MouseEvent;
     const prevFocus = sel.state.focusedRowIndex;
@@ -70,6 +78,9 @@ export class CellSelection extends Feature {
         e.preventDefault();
         return;
       case 'Tab': {
+        // KeyPaging owns Tab while an editor is open (commit + jump to the
+        // next editable cell). When closed, normal cell navigation.
+        if (ctx.grid.isEditing()) break;
         let nextRow = fr ?? 0;
         let nextCi: number;
         if (e.shiftKey) {
@@ -90,15 +101,10 @@ export class CellSelection extends Feature {
           return;
         }
         break;
-      case 'F2':
-      case 'Enter':
-        if (fr != null && fc != null) {
-          ctx.grid.emitCellDoubleClicked(fr, fc, e as unknown as MouseEvent);
-          e.preventDefault();
-          return;
-        }
-        break;
       case 'Escape':
+        // KeyPaging owns Esc while editing (cancel). When closed, Esc still
+        // clears the selection.
+        if (ctx.grid.isEditing()) break;
         sel.clear();
         return;
     }
