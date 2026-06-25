@@ -325,9 +325,11 @@ export class FilterPass<TRow = any> {
         // v2 entries (`filterType` discriminator) go through matchesV2;
         // legacy entries through `matches`. Worker accepts both for the
         // duration of Cycle 7 — Task 2 will remove the legacy branch
-        // once all callers migrate.
+        // once all callers migrate. Cycle 7 / Task 5 — column metadata
+        // (textFormatter) threads into matchesV2 so the text matcher
+        // can normalise both sides pre-compare.
         const ok = 'filterType' in rawEntry
-          ? matchesV2(rawEntry as CFilterModelEntry, value)
+          ? matchesV2(rawEntry as CFilterModelEntry, value, col)
           : matches(rawEntry as WorkerFilterModelEntry, value);
         if (!ok) { pass = false; break; }
       }
@@ -358,13 +360,15 @@ function matches(entry: WorkerFilterModelEntry, raw: unknown): boolean {
 /** v2 matcher — handles `CTextFilterModel` / `CNumberFilterModel` /
  *  `CDateFilterModel` / `CMultiConditionFilterModel` (recursive). Used
  *  by `FilterPass.apply` whenever an entry carries the `filterType`
- *  discriminator. Cycle 7 / Task 1 (parser enhancement). */
-function matchesV2(entry: CFilterModelEntry, raw: unknown): boolean {
+ *  discriminator. Cycle 7 / Task 1 (parser enhancement). Cycle 7 /
+ *  Task 5 threads the WorkerColumn through so the text matcher can read
+ *  the column-level `textFormatter`. */
+function matchesV2(entry: CFilterModelEntry, raw: unknown, col?: WorkerColumn): boolean {
   if (entry.filterType === 'multi') {
-    return matchesMulti(entry, raw);
+    return matchesMulti(entry, raw, col);
   }
   if (entry.filterType === 'text') {
-    return matchesText(entry, raw);
+    return matchesText(entry, raw, col);
   }
   if (entry.filterType === 'number') {
     return matchesNumber(entry, raw);
@@ -375,29 +379,45 @@ function matchesV2(entry: CFilterModelEntry, raw: unknown): boolean {
   return false;
 }
 
-function matchesMulti(entry: CMultiConditionFilterModel, raw: unknown): boolean {
+function matchesMulti(
+  entry: CMultiConditionFilterModel,
+  raw: unknown,
+  col?: WorkerColumn,
+): boolean {
   // Empty conditions array is treated as "no constraint" — `null`-shaped
   // entries don't reach the worker (cgrid drops them in
   // setColumnFilterModel), so this is purely defensive.
   if (entry.conditions.length === 0) return true;
   if (entry.operator === 'AND') {
     for (const c of entry.conditions) {
-      if (!matchesV2(c, raw)) return false;
+      if (!matchesV2(c, raw, col)) return false;
     }
     return true;
   }
   // OR — short-circuit on the first pass.
   for (const c of entry.conditions) {
-    if (matchesV2(c, raw)) return true;
+    if (matchesV2(c, raw, col)) return true;
   }
   return false;
 }
 
-function matchesText(entry: CTextFilterModel, raw: unknown): boolean {
-  const cs = entry.caseSensitive === true;
-  const haystack = cs ? String(raw ?? '') : String(raw ?? '').toLowerCase();
-  const needle = entry.filter == null ? ''
-    : cs ? entry.filter : entry.filter.toLowerCase();
+function matchesText(entry: CTextFilterModel, raw: unknown, col?: WorkerColumn): boolean {
+  let haystack = String(raw ?? '');
+  let needle = entry.filter == null ? '' : entry.filter;
+  // Cycle 7 / Task 5 — column-level textFormatter runs on BOTH sides
+  // before case normalisation. 'lowercase' / 'uppercase' subsume any
+  // entry-level caseSensitive flag because the post-formatter strings
+  // are already in a single case; 'trim' is orthogonal to case.
+  const formatter = col?.textFormatter;
+  if (formatter) {
+    haystack = applyTextFormatter(haystack, formatter);
+    needle = applyTextFormatter(needle, formatter);
+  }
+  // Entry-level caseSensitive: false (default) lowercases both sides.
+  if (entry.caseSensitive !== true) {
+    haystack = haystack.toLowerCase();
+    needle = needle.toLowerCase();
+  }
   switch (entry.type) {
     case 'contains':    return haystack.includes(needle);
     case 'notContains': return !haystack.includes(needle);
@@ -409,6 +429,12 @@ function matchesText(entry: CTextFilterModel, raw: unknown): boolean {
     case 'notBlank':    return haystack !== '';
   }
   return false;
+}
+
+function applyTextFormatter(s: string, formatter: 'lowercase' | 'uppercase' | 'trim'): string {
+  if (formatter === 'lowercase') return s.toLowerCase();
+  if (formatter === 'uppercase') return s.toUpperCase();
+  return s.trim();
 }
 
 function matchesNumber(entry: CNumberFilterModel, raw: unknown): boolean {

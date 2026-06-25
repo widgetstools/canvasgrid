@@ -696,6 +696,32 @@ export interface CFilterParams {
   readOnly?: boolean;
 }
 
+/** Cycle 7 / Task 5 — text-filter specific parameters. Extends the
+ *  shared `CFilterParams` surface with the four ag-grid knobs the text
+ *  filter exposes:
+ *
+ *  - `caseSensitive` — default state for the in-popup checkbox. The
+ *    emitted `CTextFilterModel` carries the resolved per-entry value;
+ *    this field only seeds the initial UI state.
+ *  - `textFormatter` — column-level pre-comparison normaliser the
+ *    worker runs on BOTH the cell value AND the filter value before
+ *    the operator fires. Built-in formatters: `'lowercase'` /
+ *    `'uppercase'` / `'trim'`. Arbitrary closures are out of scope
+ *    until Cycle 24's worker-module loader.
+ *  - `trimInput` — when true, the filter value is trimmed at
+ *    `setColumnFilterModel` time (main-side, before the model reaches
+ *    the worker). Distinct from the column-level `textFormatter: 'trim'`,
+ *    which trims values on every row comparison.
+ *  - `showCaseSensitiveToggle` — when false, the popup suppresses the
+ *    caseSensitive checkbox. Defaults to true.
+ */
+export interface CTextFilterParams extends CFilterParams {
+  caseSensitive?: boolean;
+  textFormatter?: 'lowercase' | 'uppercase' | 'trim';
+  trimInput?: boolean;
+  showCaseSensitiveToggle?: boolean;
+}
+
 export interface GroupModel { rowGroupCols: string[] }
 
 export interface Tx<TRow = any> {
