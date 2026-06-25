@@ -17,13 +17,16 @@ import {
   snapshotState, applyStateToTree, cloneStateForReset,
   type SnapshotLocks, type ChangeRecord,
 } from './core/columnState';
-import type { CColumnState, CApplyColumnStateParams } from './types';
+import type { CColumnState, CApplyColumnStateParams, ISizeColumnsToFitParams } from './types';
 import type { CColDef, CColGroupDef } from './types';
 import {
   INITIAL_ONLY_OPTIONS, applyRuntimeOption, isRuntimeOption,
   type RuntimeOptionTarget,
 } from './core/runtimeOptions';
-import { resolveColumnWidths, type ColumnLayout } from './core/layout';
+import {
+  resolveColumnWidths, sizeColumnsToFit as computeSizeColumnsToFit,
+  type ColumnLayout,
+} from './core/layout';
 import { computeViewport, type ViewportState } from './core/viewport';
 import { RowHeightIndex } from './core/rowHeightIndex';
 import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, type Subgrid } from './core/subgrid';
@@ -1056,6 +1059,7 @@ export class CGrid<TRow = any> {
       getColumnState: () => this.getColumnState(),
       applyColumnState: (p) => this.applyColumnState(p),
       resetColumnState: () => this.resetColumnState(),
+      sizeColumnsToFit: (p) => this.sizeColumnsToFit(p),
       getCellBoundsAt: (r, c) => this.getCellBoundsAt(r, c),
       getHeaderBoundsAt: (c) => this.getHeaderBoundsAt(c),
       getRowBoundsAt: (r) => this.getRowBoundsAt(r),
@@ -1580,6 +1584,44 @@ export class CGrid<TRow = any> {
       { state: cloneStateForReset(this.initialColumnStateSnapshot), applyOrder: true },
       /* emitReset */ true,
     );
+  }
+
+  /** Cycle 6 / Task 3 — distribute the canvas drawable width across the
+   *  visible non-`suppressSizeToFit` leaves. Pure helper returns the new
+   *  widths; we mutate the matching `ResolvedColDef.width` slots, rerun
+   *  the standard `resolveColumnWidths` pass so pinned-pane layout still
+   *  honors the new sizes, recompute the viewport once, and fire one
+   *  `columnResized` per changed leaf with `finished: true`. */
+  sizeColumnsToFit(params: ISizeColumnsToFitParams = {}): void {
+    const containerWidth = this.canvasBounds.width
+      || this.scroller.clientWidth
+      || 800;
+    const newWidths = computeSizeColumnsToFit(
+      this.columnOrder,
+      containerWidth,
+      params,
+    );
+    const changes: Array<{ colId: string; width: number }> = [];
+    for (const def of this.columnOrder) {
+      const next = newWidths.get(def.colId);
+      if (next == null) continue;
+      if (def.width === next) continue;
+      def.width = next;
+      changes.push({ colId: def.colId, width: next });
+    }
+    if (changes.length === 0) return;
+    this.columnLayout = resolveColumnWidths(this.columnOrder, containerWidth);
+    this.recomputeViewport();
+    this.cgridCanvas?.requestRepaint();
+    for (const c of changes) {
+      this.events.emit({
+        type: 'columnResized',
+        colId: c.colId,
+        width: c.width,
+        finished: true,
+        source: 'sizeColumnsToFit',
+      });
+    }
   }
 
   /** Engine entry-point shared by `applyColumnState` and `resetColumnState`.

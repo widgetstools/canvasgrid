@@ -77,6 +77,10 @@ export interface ResolvedColDef<TRow = any> {
    *  `setColumnsPinned` silently drop any mutation that would change
    *  `pinned`. Cycle 6 / Task 2. */
   lockPinned: boolean;
+  /** See `CColDef.suppressSizeToFit`. When true, the column's width is
+   *  held during `sizeColumnsToFit` and the remaining columns absorb the
+   *  container width. Cycle 6 / Task 3. */
+  suppressSizeToFit: boolean;
   /** Reserved Cycle-13/14/17 slots. Round-trip opaquely through
    *  `getColumnState` / `applyColumnState` until those cycles wire the
    *  model logic. */
@@ -198,5 +202,6 @@ export function resolveColDef<TRow>(
     hide: resolvedHide,
     lockVisible: merged.lockVisible ?? false,
     lockPinned: merged.lockPinned ?? false,
+    suppressSizeToFit: merged.suppressSizeToFit ?? false,
   };
 }

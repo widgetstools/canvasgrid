@@ -287,6 +287,12 @@ export interface CColDef<TRow = any, TValue = any> {
    * Cycle 6 / Task 2.
    */
   lockPinned?: boolean;
+  /**
+   * When true, `sizeColumnsToFit` skips this column — its width is held
+   * at the current value while the remaining columns absorb the container
+   * width. Cycle 6 / Task 3.
+   */
+  suppressSizeToFit?: boolean;
 }
 
 /**
@@ -410,6 +416,25 @@ export interface CApplyColumnStateParams {
   defaultState?: Omit<CColumnState, 'colId'>;
 }
 
+/**
+ * Parameters for `CGridApi.sizeColumnsToFit`. Cycle 6 / Task 3.
+ *
+ * - `width` — explicit width to fit to. Defaults to the canvas drawable
+ *   width (already excludes the vertical-scrollbar gutter).
+ * - `defaultMinWidth` / `defaultMaxWidth` — fallback bounds applied to
+ *   leaves that don't carry per-column `minWidth` / `maxWidth`. The
+ *   tighter of the two wins (per-column min beats default min only when
+ *   it's larger; per-column max beats default max only when it's smaller).
+ * - `columnLimits` — per-column min/max overrides keyed by `colId`. Wins
+ *   over both the column's own bounds and the param-level defaults.
+ */
+export interface ISizeColumnsToFitParams {
+  width?: number;
+  defaultMinWidth?: number;
+  defaultMaxWidth?: number;
+  columnLimits?: Array<{ key: string; minWidth?: number; maxWidth?: number }>;
+}
+
 export type FilterModelEntry =
   | { type: 'text'; op: 'contains' | 'equals' | 'startsWith'; value: string }
   | { type: 'number'; op: 'eq' | 'gt' | 'lt' | 'between'; value: number; value2?: number };
@@ -517,7 +542,16 @@ export type CGridEvent =
   | { type: 'modelUpdated'; visibleRowCount: number }
   | { type: 'sortChanged'; sortModel: SortModel }
   | { type: 'filterChanged'; filterModel: FilterModel }
-  | { type: 'columnResized'; colId: string; width: number; source?: 'columnState' | 'ui' | 'api' }
+  | {
+      type: 'columnResized';
+      colId: string;
+      width: number;
+      /** False during a drag-resize tick. True on drag end + every
+       *  imperative width mutation (including `sizeColumnsToFit`,
+       *  Cycle 6 / Task 3). */
+      finished?: boolean;
+      source?: 'columnState' | 'ui' | 'api' | 'sizeColumnsToFit';
+    }
   /** Fires when one or more columns have changed visibility. `source`
    *  distinguishes a column-state restore (`'columnState'`) from a future
    *  Task-5 imperative call (`'api'`). Cycle 6 / Task 2 — emitted by
@@ -684,6 +718,15 @@ export interface CGridApi {
    *  `columnsReset`, then the per-slot change events with
    *  `source: 'columnState'`. Cycle 6 / Task 2. */
   resetColumnState(): void;
+
+  /** Distribute the container width across the visible non-suppressed
+   *  leaves. Flex columns prefer their flex weight; non-flex columns
+   *  prefer their current width as a starting share. Per-column min/max
+   *  win over the param-level defaults; `columnLimits` overrides both.
+   *  `suppressSizeToFit: true` columns hold their current width. Fires
+   *  one `columnResized` per changed leaf with `finished: true` and
+   *  `source: 'sizeColumnsToFit'`. Cycle 6 / Task 3. */
+  sizeColumnsToFit(params?: ISizeColumnsToFitParams): void;
 
   /** Returns the on-screen pixel bounds of the cell at (`rowIndex`, `colId`)
    *  in the canvas's coordinate space. Returns `null` when the cell is not

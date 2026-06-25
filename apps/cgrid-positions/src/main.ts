@@ -80,3 +80,11 @@ document.getElementById('reset-layout')?.addEventListener('click', () => {
   api.resetColumnState();
 });
 
+// Cycle 6 / Task 3 — distribute the canvas drawable width across the
+// visible non-`suppressSizeToFit` leaves. Clicking the button forces a
+// fit even after the user has manually resized columns.
+document.getElementById('fit-columns')?.addEventListener('click', () => {
+  const api = grid as unknown as { sizeColumnsToFit: (p?: unknown) => void };
+  api.sizeColumnsToFit();
+});
+

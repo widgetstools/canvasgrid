@@ -51,7 +51,10 @@ export function createPositionsGrid(
       // is already a strong visual signal that this column shouldn't move;
       // suppressMovable enforces it for the UI without binding the
       // imperative moveColumnByIndex API.
-      { field: 'positionId',     headerName: 'Position ID',  width: 150, pinned: 'left', suppressMovable: true },
+      // Cycle 6 / Task 3: suppressSizeToFit holds positionId at its
+      // declared width during a Fit-columns pass — the identifier column
+      // shouldn't shrink to absorb container width.
+      { field: 'positionId',     headerName: 'Position ID',  width: 150, pinned: 'left', suppressMovable: true, suppressSizeToFit: true },
       // Cycle 5 Task 2: cusip carries the text-editor E2E coverage now that
       // ticker hosts the select editor.
       { field: 'cusip',          headerName: 'CUSIP',         width: 110, pinned: 'left', editable: true },
