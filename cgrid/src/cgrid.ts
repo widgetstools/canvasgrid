@@ -2519,7 +2519,6 @@ export class CGrid<TRow = any> {
       data: cell?.value !== undefined ? { [colId]: cell.value } : null,
       mode,
     };
-    this.editorContainer.style.pointerEvents = 'auto';
     this.editor.open({
       editorName,
       rowData: cell?.value !== undefined ? { [colId]: cell.value } : {},
@@ -2532,7 +2531,6 @@ export class CGrid<TRow = any> {
       cellEditorPopupPosition: (def as { cellEditorPopupPosition?: 'over' | 'under' }).cellEditorPopupPosition,
       viewportBounds: { width: this.canvasBounds.width, height: this.canvasBounds.height },
       onCommit: (newValue) => {
-        this.editorContainer.style.pointerEvents = 'none';
         // Return focus to the canvas so arrow keys / Tab resume cell
         // navigation immediately after the editor closes. Without this the
         // user has to mouse-click a cell before the keyboard re-engages.
@@ -2572,7 +2570,6 @@ export class CGrid<TRow = any> {
         }).catch((err) => { if (!this.destroyed) console.error('[cgrid] commit-back fetch:', err); });
       },
       onCancel: () => {
-        this.editorContainer.style.pointerEvents = 'none';
         // Mirrors onCommit — restore canvas focus so the keyboard nav layer
         // keeps responding without a mouse click.
         this.cgridCanvas.canvas.focus({ preventScroll: true });
@@ -2636,7 +2633,6 @@ export class CGrid<TRow = any> {
     // Selection mirrors the active editor — without this, Esc + arrow nav
     // resume from the previous focused cell instead of the row being edited.
     this.selection.setFocus(rowIndex, initialColId);
-    this.editorContainer.style.pointerEvents = 'auto';
     this.rowEdit.open({
       rowIndex,
       rowId,
@@ -2664,7 +2660,6 @@ export class CGrid<TRow = any> {
     rowId: string,
     commits: Array<{ colId: string; newRawValue: unknown }>,
   ): void {
-    this.editorContainer.style.pointerEvents = 'none';
     this.cgridCanvas.canvas.focus({ preventScroll: true });
     this.workerClient.getRowByIndex(rowIndex).then((fetched) => {
       if (this.destroyed) return;
@@ -2710,7 +2705,6 @@ export class CGrid<TRow = any> {
   /** Cycle 5 / Task 10 — full-row cancel. No worker round-trip; emit
    *  `rowEditingStopped` with the best-effort snapshot we already had. */
   private handleRowCancel(rowIndex: number, rowId: string, snapshot: unknown): void {
-    this.editorContainer.style.pointerEvents = 'none';
     this.cgridCanvas.canvas.focus({ preventScroll: true });
     this.events.emit({ type: 'rowEditingStopped', rowIndex, rowId, data: snapshot });
   }

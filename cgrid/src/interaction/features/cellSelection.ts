@@ -10,6 +10,14 @@ export class CellSelection extends Feature {
       super.handleMouseDown(ctx);
       return;
     }
+    // Esc semantics on click-another-cell: cancel any open editor before
+    // moving focus. The mousedown only reaches the canvas when the user
+    // clicks outside the editor's DOM overlay, so any hit here is by
+    // definition "click outside the editor input." singleClickEdit will
+    // re-open a fresh editor on the new cell via EditTrigger.handleClick.
+    if (ctx.grid.isEditing()) {
+      ctx.grid.stopEditing(true);
+    }
     const sel = ctx.grid.selection;
     const e = ctx.raw as MouseEvent;
     const prevFocus = sel.state.focusedRowIndex;
