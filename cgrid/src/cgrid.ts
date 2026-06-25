@@ -366,6 +366,7 @@ export class CGrid<TRow = any> {
       allColIds: () => this.columnOrder.map((c) => c.colId),
       totalRowCount: () => this.rowCount,
       resizeColumn: (colId, dx) => this.resizeColumn(colId, dx),
+      finishColumnResize: (colId) => this.finishColumnResize(colId),
       reorderColumn: (colId, toIndex, source) => this.reorderColumn(colId, toIndex, source),
       getColDef: (colId) => {
         const def = this.columnDefsMap.get(colId);
@@ -1062,6 +1063,10 @@ export class CGrid<TRow = any> {
       sizeColumnsToFit: (p) => this.sizeColumnsToFit(p),
       autoSizeColumns: (keys, skipHeader) => this.autoSizeColumns(keys, skipHeader),
       autoSizeAllColumns: (skipHeader) => this.autoSizeAllColumns(skipHeader),
+      setColumnsVisible: (keys, visible) => this.setColumnsVisible(keys, visible),
+      setColumnsPinned: (keys, pinned) => this.setColumnsPinned(keys, pinned),
+      setColumnWidths: (widths, finished) => this.setColumnWidths(widths, finished),
+      moveColumns: (keys, toIndex) => this.moveColumns(keys, toIndex),
       getCellBoundsAt: (r, c) => this.getCellBoundsAt(r, c),
       getHeaderBoundsAt: (c) => this.getHeaderBoundsAt(c),
       getRowBoundsAt: (r) => this.getRowBoundsAt(r),
@@ -1507,7 +1512,25 @@ export class CGrid<TRow = any> {
     this.columnLayout = resolveColumnWidths(this.columnOrder, this.root.clientWidth);
     this.recomputeViewport();
     this.cgridCanvas.requestRepaint();
-    this.events.emit({ type: 'columnResized', colId, width: newW });
+    // Per-tick emission during a drag: finished:false so apps can defer
+    // persistence to the mouseup `finished:true` event. Cycle 6 / Task 5.
+    this.events.emit({
+      type: 'columnResized', colId, width: newW,
+      finished: false, source: 'uiColumnResized',
+    });
+  }
+
+  /** Emit the trailing `columnResized` with `finished: true` for the last
+   *  column touched in a resize-drag. Called by `ColumnResizing` on mouseup
+   *  so apps that persist on `finished: true` fire one save per drag.
+   *  Cycle 6 / Task 5. */
+  private finishColumnResize(colId: string): void {
+    const def = this.columnDefsMap.get(colId);
+    if (!def || def.width == null) return;
+    this.events.emit({
+      type: 'columnResized', colId, width: def.width,
+      finished: true, source: 'uiColumnResized',
+    });
   }
 
   /** Move `colId` to `toIndex` in the flat visible-leaf order. The legal
@@ -1699,6 +1722,153 @@ export class CGrid<TRow = any> {
       .filter((c) => !c.suppressAutoSize && !c.hide)
       .map((c) => c.colId);
     return this.autoSizeColumns(keys, skipHeader);
+  }
+
+  /** Cycle 6 / Task 5 — flip visibility on every listed leaf in a batch.
+   *  Unknown keys + `lockVisible: true` columns are silently dropped. One
+   *  re-layout + one `columnVisible` event whose `colIds` lists the
+   *  actually-changed columns. No-op when nothing flipped. */
+  setColumnsVisible(keys: string[], visible: boolean): void {
+    const targetHide = !visible;
+    const changed: string[] = [];
+    for (const key of keys) {
+      const def = this.columnDefsMap.get(key);
+      if (!def) continue;
+      if (def.lockVisible) continue;
+      if (def.hide === targetHide) continue;
+      def.hide = targetHide;
+      changed.push(def.colId);
+    }
+    if (changed.length === 0) return;
+    this.relayoutAfterColumnMutation();
+    this.events.emit({
+      type: 'columnVisible', visible, colIds: changed, source: 'api',
+    });
+    this.workerClient?.updateColumns(this.workerColumns())
+      .then(({ visibleCount }) => {
+        this.rowCount = visibleCount;
+        this.recomputeViewport();
+        this.events.emit({ type: 'displayedColumnsChanged', source: 'columnDefsChanged' });
+        this.requestViewport();
+      })
+      .catch((err) => { if (!this.destroyed) console.error('[cgrid] setColumnsVisible:', err); });
+  }
+
+  /** Cycle 6 / Task 5 — set pinning on every listed leaf in a batch.
+   *  Unknown keys + `lockPinned: true` columns are silently dropped. One
+   *  re-layout + one `columnPinned` event per distinct `pinned` bucket
+   *  whose `colIds` lists the actually-changed columns. No-op when
+   *  nothing flipped. */
+  setColumnsPinned(keys: string[], pinned: 'left' | 'right' | null): void {
+    const targetPinned = pinned ?? undefined;
+    const changed: string[] = [];
+    for (const key of keys) {
+      const def = this.columnDefsMap.get(key);
+      if (!def) continue;
+      if (def.lockPinned) continue;
+      if (def.pinned === targetPinned) continue;
+      def.pinned = targetPinned;
+      changed.push(def.colId);
+    }
+    if (changed.length === 0) return;
+    this.relayoutAfterColumnMutation();
+    this.events.emit({
+      type: 'columnPinned', pinned, colIds: changed, source: 'api',
+    });
+  }
+
+  /** Cycle 6 / Task 5 — set explicit widths in a batch. Each width is
+   *  clamped to the column's resolved `minWidth` / `maxWidth`. Unknown
+   *  keys are silently dropped. Fires one `columnResized` per changed
+   *  column with `source: 'api'`. `finished` defaults to `true`. */
+  setColumnWidths(
+    columnWidths: Array<{ key: string; newWidth: number }>,
+    finished: boolean = true,
+  ): void {
+    const changes: Array<{ colId: string; width: number }> = [];
+    for (const { key, newWidth } of columnWidths) {
+      const def = this.columnDefsMap.get(key);
+      if (!def) continue;
+      const clamped = Math.max(def.minWidth, Math.min(def.maxWidth, newWidth));
+      if (def.width === clamped) continue;
+      def.width = clamped;
+      changes.push({ colId: def.colId, width: clamped });
+    }
+    if (changes.length === 0) return;
+    this.relayoutAfterColumnMutation();
+    for (const c of changes) {
+      this.events.emit({
+        type: 'columnResized', colId: c.colId, width: c.width,
+        finished, source: 'api',
+      });
+    }
+  }
+
+  /** Cycle 6 / Task 5 — move every listed leaf to start at `toIndex` in
+   *  the flat visible-leaf order, preserving input order. Honors
+   *  `lockPosition` + `marryChildren` — illegal targets clamp to the
+   *  nearest legal index. Unknown keys are silently dropped. Fires one
+   *  `columnMoved` per actually-moved column with `source: 'api'`. */
+  moveColumns(keys: string[], toIndex: number): void {
+    const validKeys: string[] = [];
+    const seen = new Set<string>();
+    for (const key of keys) {
+      if (seen.has(key)) continue;
+      if (!this.columnDefsMap.has(key)) continue;
+      seen.add(key);
+      validKeys.push(key);
+    }
+    if (validKeys.length === 0) return;
+    const currentOrder = this.columnOrder.map((c) => c.colId);
+    const oldIndex: Record<string, number> = {};
+    for (let i = 0; i < currentOrder.length; i++) oldIndex[currentOrder[i]!] = i;
+    const withoutKeys = currentOrder.filter((id) => !seen.has(id));
+    const insertAt = Math.max(0, Math.min(withoutKeys.length, toIndex));
+    const desired = withoutKeys
+      .slice(0, insertAt)
+      .concat(validKeys)
+      .concat(withoutKeys.slice(insertAt));
+    const constraints = this.buildColumnOrderConstraints();
+    const finalOrder = reorderLeavesByList(this.columnTree, desired, constraints);
+    const orderChanged = finalOrder.length !== currentOrder.length
+      || finalOrder.some((id, i) => id !== currentOrder[i]);
+    if (!orderChanged) return;
+    const newDefs = rebuildColumnDefsByLeafOrder(this.options.columnDefs, finalOrder);
+    this.options.columnDefs = newDefs;
+    this.rebuildColumns({ defaultColDef: this.options.defaultColDef });
+    this.workerClient?.updateColumns(this.workerColumns())
+      .then(({ visibleCount }) => {
+        this.rowCount = visibleCount;
+        this.recomputeViewport();
+        this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
+        this.events.emit({ type: 'displayedColumnsChanged', source: 'columnDefsChanged' });
+        this.requestViewport();
+      })
+      .catch((err) => { if (!this.destroyed) console.error('[cgrid] moveColumns:', err); });
+    for (const colId of validKeys) {
+      const newIdx = finalOrder.indexOf(colId);
+      if (newIdx < 0) continue;
+      if (newIdx === oldIndex[colId]) continue;
+      this.events.emit({
+        type: 'columnMoved', toIndex: newIdx, colIds: [colId], source: 'api',
+      });
+    }
+  }
+
+  /** Shared single-re-layout helper for the Task 5 batch mutations that
+   *  don't need a column-tree rebuild (`setColumnsVisible` /
+   *  `setColumnsPinned` / `setColumnWidths`). Recomputes the visible
+   *  column order so hide flips light up, reruns the width pass so
+   *  pinned-pane positions update, then one `recomputeViewport +
+   *  requestRepaint`. */
+  private relayoutAfterColumnMutation(): void {
+    this.columnOrder = this.computeVisibleColumnOrder();
+    this.columnLayout = resolveColumnWidths(
+      this.columnOrder,
+      this.canvasBounds.width || this.scroller.clientWidth || 800,
+    );
+    this.recomputeViewport();
+    this.cgridCanvas?.requestRepaint();
   }
 
   /** Engine entry-point shared by `applyColumnState` and `resetColumnState`.

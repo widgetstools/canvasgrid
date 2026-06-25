@@ -42,6 +42,7 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
   const emitClicked = vi.fn();
   const emitDoubleClicked = vi.fn();
   const resizeColumn = vi.fn();
+  const finishColumnResize = vi.fn();
   const cycleSort = vi.fn();
   const scrollBy = vi.fn();
   const toggleColumnGroup = vi.fn();
@@ -56,6 +57,7 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
     allColIds: () => cols,
     totalRowCount: () => rowCount,
     resizeColumn,
+    finishColumnResize,
     cycleSort,
     toggleColumnGroup,
     scrollBy,

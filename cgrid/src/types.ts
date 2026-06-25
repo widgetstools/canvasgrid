@@ -552,16 +552,20 @@ export type CGridEvent =
       type: 'columnResized';
       colId: string;
       width: number;
-      /** False during a drag-resize tick. True on drag end + every
-       *  imperative width mutation (including `sizeColumnsToFit`,
-       *  Cycle 6 / Task 3, and `autoSizeColumns`, Cycle 6 / Task 4). */
+      /** False during a drag-resize tick. True on mouseup AND on every
+       *  imperative width mutation (including `setColumnWidths` —
+       *  Cycle 6 / Task 5, `sizeColumnsToFit` — Cycle 6 / Task 3, and
+       *  `autoSizeColumns` — Cycle 6 / Task 4). Apps that persist on
+       *  `finished: true` only fire one save per drag instead of one
+       *  per pixel. */
       finished?: boolean;
-      source?: 'columnState' | 'ui' | 'api' | 'sizeColumnsToFit' | 'autosizeColumns';
+      source?: 'columnState' | 'uiColumnResized' | 'api' | 'sizeColumnsToFit' | 'autosizeColumns';
     }
   /** Fires when one or more columns have changed visibility. `source`
-   *  distinguishes a column-state restore (`'columnState'`) from a future
-   *  Task-5 imperative call (`'api'`). Cycle 6 / Task 2 — emitted by
-   *  `applyColumnState` / `resetColumnState`. */
+   *  distinguishes a column-state restore (`'columnState'`) from a Task-5
+   *  imperative `setColumnsVisible` call (`'api'`). Cycle 6 / Task 2
+   *  (emit on `applyColumnState` / `resetColumnState`) + Task 5 (emit
+   *  on `setColumnsVisible`). */
   | {
       type: 'columnVisible';
       visible: boolean;
@@ -569,8 +573,8 @@ export type CGridEvent =
       source: 'columnState' | 'api';
     }
   /** Fires when one or more columns have changed pinning. `pinned: null`
-   *  for unpinned columns. Cycle 6 / Task 2 — emitted by
-   *  `applyColumnState` / `resetColumnState`. */
+   *  for unpinned columns. Cycle 6 / Task 2 (emit on `applyColumnState`
+   *  / `resetColumnState`) + Task 5 (emit on `setColumnsPinned`). */
   | {
       type: 'columnPinned';
       pinned: 'left' | 'right' | null;
@@ -704,6 +708,41 @@ export interface CGridApi {
    *  to the nearest legal index, NOT throw. Fires `columnMoved` with
    *  `source: 'api'`. Cycle 6 / Task 1. */
   moveColumnByIndex(fromIndex: number, toIndex: number): void;
+
+  /** Show or hide every listed column in one batch. Unknown keys + columns
+   *  marked `lockVisible: true` are silently dropped. Mutates
+   *  `columnDefsMap` in place through ONE re-layout + repaint and emits
+   *  one `columnVisible` event whose `colIds` is the list that actually
+   *  changed (`source: 'api'`). No-op when no column's `hide` state
+   *  actually flips. Cycle 6 / Task 5. */
+  setColumnsVisible(keys: string[], visible: boolean): void;
+
+  /** Pin or unpin every listed column in one batch. Pass `null` to unpin.
+   *  Unknown keys + columns marked `lockPinned: true` are silently
+   *  dropped. Mutates `columnDefsMap` in place through ONE re-layout +
+   *  repaint and emits one `columnPinned` event whose `colIds` is the
+   *  list that actually changed (`source: 'api'`). Cycle 6 / Task 5. */
+  setColumnsPinned(keys: string[], pinned: 'left' | 'right' | null): void;
+
+  /** Set explicit pixel widths for the listed columns in one batch. Each
+   *  width is clamped to the column's resolved `minWidth` / `maxWidth`.
+   *  Unknown keys are silently dropped. Mutates `columnDefsMap` in place
+   *  through ONE re-layout + repaint and fires one `columnResized` per
+   *  changed column with `source: 'api'`. The `finished` flag defaults
+   *  to `true` (one save per call) but app code can pass `false` for the
+   *  in-progress tick of a custom resize gesture. Cycle 6 / Task 5. */
+  setColumnWidths(
+    columnWidths: Array<{ key: string; newWidth: number }>,
+    finished?: boolean,
+  ): void;
+
+  /** Move every listed column to start at `toIndex` in the flat visible-
+   *  leaf order, preserving their declaration order. `lockPosition` +
+   *  `marryChildren` still apply — illegal targets clamp to the nearest
+   *  legal index. Unknown keys are silently dropped. Fires one
+   *  `columnMoved` event per moved column with `source: 'api'`. Cycle 6 /
+   *  Task 5. */
+  moveColumns(keys: string[], toIndex: number): void;
 
   /** Serialisable snapshot of every leaf's mutable state (width, hide,
    *  pinned, sort, sortIndex, flex, plus reserved rowGroup / pivot /

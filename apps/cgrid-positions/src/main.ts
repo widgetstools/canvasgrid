@@ -96,3 +96,25 @@ document.getElementById('autosize-all')?.addEventListener('click', () => {
   void api.autoSizeAllColumns();
 });
 
+// Cycle 6 / Task 5 — imperative column API. Three buttons exercise the
+// batch mutation surface against the live demo grid.
+document.getElementById('imp-hide-pnl')?.addEventListener('click', () => {
+  const api = grid as unknown as { setColumnsVisible: (keys: string[], visible: boolean) => void };
+  api.setColumnsVisible(['pnl', 'dailyPnl', 'unrealizedPnl'], false);
+});
+document.getElementById('imp-pin-spread')?.addEventListener('click', () => {
+  const api = grid as unknown as { setColumnsPinned: (keys: string[], pinned: 'left' | 'right' | null) => void };
+  api.setColumnsPinned(['spread'], 'left');
+});
+document.getElementById('imp-reset-widths')?.addEventListener('click', () => {
+  const api = grid as unknown as {
+    setColumnWidths: (widths: Array<{ key: string; newWidth: number }>, finished?: boolean) => void;
+  };
+  api.setColumnWidths([
+    { key: 'ticker', newWidth: 100 },
+    { key: 'cusip', newWidth: 110 },
+    { key: 'notionalAmount', newWidth: 130 },
+    { key: 'marketValue', newWidth: 130 },
+  ]);
+});
+

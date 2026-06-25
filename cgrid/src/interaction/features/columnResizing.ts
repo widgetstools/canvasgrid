@@ -32,7 +32,12 @@ export class ColumnResizing extends Feature {
 
   override handleMouseUp(ctx: CGridEventCtx): void {
     if (this.resizing) {
+      const finishedColId = this.resizing.colId;
       this.resizing = null;
+      // Fire the trailing finished:true companion to the per-tick
+      // finished:false emissions so apps that persist on mouseup only
+      // fire once per drag. Cycle 6 / Task 5.
+      ctx.grid.finishColumnResize(finishedColId);
       return;
     }
     super.handleMouseUp(ctx);

@@ -44,6 +44,12 @@ export interface CGridLike {
   /** Total row count after filter/sort. */
   totalRowCount(): number;
   resizeColumn(colId: string, deltaPx: number): void;
+  /** Cycle 6 / Task 5 — fire the trailing `columnResized` with
+   *  `finished: true` for the last column touched in a drag-resize. The
+   *  per-tick `resizeColumn` calls emit `finished: false`; this is the
+   *  mouseup companion so apps that persist on `finished: true` fire
+   *  once per drag. */
+  finishColumnResize(colId: string): void;
   /** Cycle 6 / Task 1 — drag-reorder commit point. Resolves a legal drop
    *  index against `lockPosition` + `marryChildren` before mutating the
    *  column order. `source` distinguishes UI drag (`'uiColumnDragged'`)
