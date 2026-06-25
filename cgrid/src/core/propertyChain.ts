@@ -2,11 +2,19 @@ import type {
   CColDef, CValueGetterParams, CValueFormatterParams, ColCellOverrides,
   CCellRendererSelector, CValueParserParams, CValueSetterParams,
   CellEditorCtor, EditableCallback, SuppressKeyboardEventCallback,
+  CellClass, CellClassRules, CellStyleFunc, HeaderClass,
 } from '../types';
 import type { CellPaintConfig } from '../renderer/cellRenderers/registry';
 import type { ResolvedTheme } from '../theming/cssReader';
 
 export type { ColCellOverrides };
+
+/** Pre-compiled entry for one `cellClassRules` predicate. Allocated once in
+ *  `resolveColDef`; zero allocation per paint call. Cycle 6 / Task 7. */
+interface CompiledClassRule {
+  className: string;
+  predicate: (params: { data: unknown; value: unknown; colId: string; rowIndex: number }) => boolean;
+}
 
 export interface ResolvedColDef<TRow = any> {
   colId: string;
@@ -49,7 +57,46 @@ export interface ResolvedColDef<TRow = any> {
   cellEditor?: string | CellEditorCtor<TRow, unknown>;
   /** Static params or callback forwarded into `ICellEditorParams.params`. */
   cellEditorParams?: Record<string, unknown> | ((row: TRow) => Record<string, unknown>);
+  /** Object-form cell style override. Applied after class-driven variants;
+   *  `cellStyleFn` (function form) takes even higher precedence. Cycle 6 / Task 7. */
   cellStyle?: ColCellOverrides;
+  /**
+   * Compiled static cell class names. Resolved from `CColDef.cellClass` at
+   * `resolveColDef` time when it is a static string or string[]. Stored as a
+   * pre-allocated array so the hot paint path pays zero allocation. When
+   * `CColDef.cellClass` is a function, `cellClassFn` is used instead.
+   * Cycle 6 / Task 7.
+   */
+  cellClassStatic?: string[];
+  /**
+   * Function-form `CColDef.cellClass`. Called per cell to return class names.
+   * Mutually exclusive with `cellClassStatic` (the resolver stores one or the
+   * other). Cycle 6 / Task 7.
+   */
+  cellClassFn?: (params: { data: unknown; value: unknown; colId: string; rowIndex: number }) => string | string[] | undefined;
+  /**
+   * Pre-compiled `cellClassRules` entries. Each entry is a `{ className,
+   * predicate }` pair; at paint time we iterate this array, call the
+   * predicate, and collect matched class names. Allocated once in
+   * `resolveColDef`; zero allocation per paint. Cycle 6 / Task 7.
+   */
+  cellClassRules?: CompiledClassRule[];
+  /**
+   * Function-form `cellStyle`. Applied after class-driven variants; highest
+   * precedence among all style mechanisms. Cycle 6 / Task 7.
+   */
+  cellStyleFn?: CellStyleFunc;
+  /**
+   * Pre-compiled header class resolver. Parallel to `cellClassStatic` /
+   * `cellClassFn` but for header cells. Applied through
+   * `theme.headerClassVariants`. Cycle 6 / Task 7.
+   */
+  headerClassStatic?: string[];
+  /**
+   * Function-form `headerClass`. Called once per header cell paint.
+   * Cycle 6 / Task 7.
+   */
+  headerClassFn?: (params: { colId: string }) => string | string[] | undefined;
   /** See `CColDef.autoHeight`. When true, the worker measures wrapped-text
    *  height for every visible row in this column and contributes the result
    *  into the row's resolved height. Cycle 5 / Task 8. */
@@ -117,25 +164,53 @@ export interface ApplyCellPropsInput {
   flashAlpha?: number;
   /** Resolved per-cell renderer params (see `CellPaintConfig.params`). */
   params?: unknown;
+  /**
+   * Row data snapshot for this row. Used by `cellClassRules` predicates and
+   * the function-form `cellStyle` / `cellClass` callbacks. Resolved once per
+   * row in the painter (not per cell) via `rowDataSnapshotAt`. Pass
+   * `undefined` for header rows. Cycle 6 / Task 7.
+   */
+  rowData?: Record<string, unknown>;
+  /**
+   * Row index in the data subgrid. Required for `cellClassRules` predicate
+   * params; defaults to `0` when omitted (header use). Cycle 6 / Task 7.
+   */
+  rowIndex?: number;
+}
+
+/** Apply a `ColCellOverrides` patch onto the mutable slots of `target`.
+ *  Only defined fields in `patch` are applied; `undefined` fields are
+ *  silently skipped, which is what "later wins" stacking requires. */
+function applyOverridePatch(target: CellPaintConfig, patch: ColCellOverrides): void {
+  if (patch.font !== undefined) target.font = patch.font;
+  if (patch.fg !== undefined) target.fg = patch.fg;
+  if (patch.bg !== undefined) target.bg = patch.bg;
+  if (patch.halign !== undefined) target.halign = patch.halign;
 }
 
 /** Repopulate `target` in place. The caller reuses a single config object
- * across the whole frame to keep paint allocation-free. */
+ * across the whole frame to keep paint allocation-free.
+ *
+ * Styling precedence (lowest → highest):
+ *  1. Theme defaults (font, fg, headerFg, rowBg, halign from cellDataType).
+ *  2. Static `cellStyle` object overrides.
+ *  3. Class-driven variants (`cellClass` / `cellClassRules` → `cellClassVariants`
+ *     or `headerClass` → `headerClassVariants`). Later class names win.
+ *  4. Function-form `cellStyle` (highest; called per cell, return value wins).
+ *
+ * Cycle 6 / Task 7.
+ */
 export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput): void {
-  const cs = ctx.colDef.cellStyle;
+  const { colDef, theme } = ctx;
+
+  // ── 1. Base values ──────────────────────────────────────────────────────
   target.value = ctx.value;
   target.valueFormatted = ctx.valueFormatted;
   target.bounds.x = ctx.x;
   target.bounds.y = ctx.y;
   target.bounds.w = ctx.w;
   target.bounds.h = ctx.h;
-  target.font = cs?.font ?? ctx.theme.font;
-  target.fg = ctx.isHeader
-    ? ctx.theme.headerFg
-    : (cs?.fg ?? ctx.theme.fg);
-  target.bg = ctx.rowBg;
-  target.borderColor = ctx.theme.gridLineColor;
-  target.halign = cs?.halign ?? (ctx.colDef.cellDataType === 'number' ? 'right' : 'left');
+  target.borderColor = theme.gridLineColor;
   target.prefillColor = ctx.prefillColor;
   target.isFocused = ctx.isFocused;
   target.isSelected = ctx.isSelected;
@@ -145,6 +220,134 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.sortDirection = ctx.sortDirection;
   target.flashAlpha = ctx.flashAlpha;
   target.params = ctx.params;
+
+  // Theme defaults.
+  target.font = theme.font;
+  target.fg = ctx.isHeader ? theme.headerFg : theme.fg;
+  target.bg = ctx.rowBg;
+  target.halign = colDef.cellDataType === 'number' ? 'right' : 'left';
+
+  // ── 2. Static cellStyle object ─────────────────────────────────────────
+  const staticCellStyle = colDef.cellStyle;
+  if (staticCellStyle !== undefined && typeof staticCellStyle === 'object') {
+    applyOverridePatch(target, staticCellStyle as ColCellOverrides);
+  }
+
+  // ── 3. Class-driven variants ───────────────────────────────────────────
+  // Build the params object for callbacks (shared shape).
+  const callbackParams = {
+    data: (ctx.rowData ?? {}) as Record<string, unknown>,
+    value: ctx.value,
+    colId: colDef.colId,
+    rowIndex: ctx.rowIndex ?? 0,
+  };
+
+  if (ctx.isHeader) {
+    // Header path: resolve headerClass → headerClassVariants.
+    let headerClassNames: string[] | undefined;
+    if (colDef.headerClassStatic) {
+      headerClassNames = colDef.headerClassStatic;
+    } else if (colDef.headerClassFn) {
+      const result = colDef.headerClassFn({ colId: colDef.colId });
+      headerClassNames = result === undefined ? undefined
+        : Array.isArray(result) ? result : [result];
+    }
+    if (headerClassNames) {
+      for (const name of headerClassNames) {
+        const patch = theme.headerClassVariants.get(name);
+        if (patch) applyOverridePatch(target, patch);
+      }
+    }
+  } else {
+    // Data-cell path: resolve cellClass + cellClassRules → cellClassVariants.
+    const variantMap = theme.cellClassVariants;
+
+    // 3a. Static / function cellClass names.
+    let staticClassNames: string[] | undefined;
+    if (colDef.cellClassStatic) {
+      staticClassNames = colDef.cellClassStatic;
+    } else if (colDef.cellClassFn) {
+      const result = colDef.cellClassFn(callbackParams);
+      staticClassNames = result === undefined ? undefined
+        : Array.isArray(result) ? result : [result];
+    }
+    if (staticClassNames) {
+      for (const name of staticClassNames) {
+        const patch = variantMap.get(name);
+        if (patch) applyOverridePatch(target, patch);
+      }
+    }
+
+    // 3b. cellClassRules — pre-compiled predicates, evaluated in order.
+    if (colDef.cellClassRules) {
+      for (const rule of colDef.cellClassRules) {
+        let matched: boolean;
+        try {
+          matched = rule.predicate(callbackParams);
+        } catch {
+          matched = false;
+        }
+        if (matched) {
+          const patch = variantMap.get(rule.className);
+          if (patch) applyOverridePatch(target, patch);
+        }
+      }
+    }
+  }
+
+  // ── 4. Function-form cellStyle (highest precedence) ────────────────────
+  if (colDef.cellStyleFn) {
+    let patch: ColCellOverrides | null | undefined;
+    try {
+      patch = colDef.cellStyleFn(callbackParams);
+    } catch {
+      patch = undefined;
+    }
+    if (patch) applyOverridePatch(target, patch);
+  }
+}
+
+/**
+ * Normalize a `CellClass` value (from the merged colDef) into either a
+ * static string array or a compiled function. Returns `{ static, fn }` with
+ * at most one set. Allocation happens here once (at resolve time), not per
+ * paint. Cycle 6 / Task 7.
+ */
+function compileCellClass(
+  cellClass: CellClass | undefined,
+): { cellClassStatic?: string[]; cellClassFn?: ResolvedColDef['cellClassFn'] } {
+  if (cellClass === undefined) return {};
+  if (typeof cellClass === 'string') return { cellClassStatic: [cellClass] };
+  if (Array.isArray(cellClass)) return { cellClassStatic: cellClass.slice() };
+  // Function form.
+  return { cellClassFn: cellClass as ResolvedColDef['cellClassFn'] };
+}
+
+/**
+ * Normalize a `HeaderClass` value into either a static string array or a
+ * compiled function. Cycle 6 / Task 7.
+ */
+function compileHeaderClass(
+  headerClass: HeaderClass | undefined,
+): { headerClassStatic?: string[]; headerClassFn?: ResolvedColDef['headerClassFn'] } {
+  if (headerClass === undefined) return {};
+  if (typeof headerClass === 'string') return { headerClassStatic: [headerClass] };
+  if (Array.isArray(headerClass)) return { headerClassStatic: headerClass.slice() };
+  return { headerClassFn: headerClass as ResolvedColDef['headerClassFn'] };
+}
+
+/**
+ * Pre-compile `CellClassRules` into an ordered array of `{ className,
+ * predicate }` pairs. The array is allocated once at resolve time; paint
+ * loops iterate it at zero per-frame allocation cost. Cycle 6 / Task 7.
+ */
+function compileCellClassRules(
+  rules: CellClassRules | undefined,
+): CompiledClassRule[] | undefined {
+  if (!rules) return undefined;
+  const entries = Object.entries(rules);
+  if (entries.length === 0) return undefined;
+  return entries.map(([className, predicate]) => ({ className, predicate: predicate as CompiledClassRule['predicate'] }));
 }
 
 export function resolveColDef<TRow>(
@@ -225,7 +428,17 @@ export function resolveColDef<TRow>(
     suppressKeyboardEvent: merged.suppressKeyboardEvent as ResolvedColDef<TRow>['suppressKeyboardEvent'],
     cellEditor: merged.cellEditor as ResolvedColDef<TRow>['cellEditor'],
     cellEditorParams: merged.cellEditorParams as ResolvedColDef<TRow>['cellEditorParams'],
-    cellStyle: merged.cellStyle,
+    // Split cellStyle into object form vs function form.
+    cellStyle: typeof merged.cellStyle === 'object' && merged.cellStyle !== null
+      ? merged.cellStyle as ColCellOverrides
+      : undefined,
+    cellStyleFn: typeof merged.cellStyle === 'function'
+      ? merged.cellStyle as CellStyleFunc
+      : undefined,
+    // Pre-compile cellClass, cellClassRules, headerClass. Cycle 6 / Task 7.
+    ...compileCellClass(merged.cellClass as CellClass | undefined),
+    cellClassRules: compileCellClassRules(merged.cellClassRules as CellClassRules | undefined),
+    ...compileHeaderClass(merged.headerClass as HeaderClass | undefined),
     autoHeight: merged.autoHeight,
     wrapText: merged.wrapText,
     columnGroupShow: merged.columnGroupShow ?? null,

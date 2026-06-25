@@ -1,4 +1,4 @@
-import type { CColDef, CColGroupDef } from '../types';
+import type { CColDef, CColGroupDef, HeaderClass } from '../types';
 import { resolveColDef, type ResolvedColDef } from './propertyChain';
 
 /**
@@ -17,7 +17,7 @@ export interface ResolvedColGroupDef {
   headerName: string;
   openByDefault: boolean;
   marryChildren: boolean;
-  headerClass?: string;
+  headerClass?: HeaderClass;
   /** Depth from root. Root nodes are depth 0. */
   depth: number;
   /** Tree children — groups or leaves, in declaration order. */

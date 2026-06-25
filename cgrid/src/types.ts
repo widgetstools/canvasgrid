@@ -12,6 +12,55 @@ export interface ColCellOverrides {
   halign?: 'left' | 'right' | 'center';
 }
 
+/** Params passed to `cellClass`, `cellClassRules`, and `cellStyle` callbacks. */
+export interface CellClassParams<TRow = any, TValue = any> {
+  data: TRow;
+  value: TValue;
+  colId: string;
+  rowIndex: number;
+}
+
+/**
+ * Per-column cell class. Applied to the cell before `cellClassRules`.
+ * Resolves to one or more variant names looked up from the theme's
+ * `cellClassVariants` map. Cycle 6 / Task 7.
+ */
+export type CellClass<TRow = any, TValue = any> =
+  | string
+  | string[]
+  | ((params: CellClassParams<TRow, TValue>) => string | string[] | undefined);
+
+/**
+ * Map of class-name → predicate. The predicate is called per cell at paint
+ * time; when it returns `true`, the class name is resolved through the theme's
+ * `cellClassVariants` map and the resulting `ColCellOverrides` patch is applied.
+ * Pre-compiled once in `resolveColDef`; zero allocation per paint.
+ * Cycle 6 / Task 7.
+ */
+export type CellClassRules<TRow = any, TValue = any> = Record<
+  string,
+  (params: CellClassParams<TRow, TValue>) => boolean
+>;
+
+/**
+ * Function-form `cellStyle`. Called per cell; its return value is a raw
+ * `ColCellOverrides` patch applied AFTER class-driven variants (highest
+ * precedence). Return `null` / `undefined` to apply no override.
+ * Cycle 6 / Task 7.
+ */
+export type CellStyleFunc<TRow = any, TValue = any> = (
+  params: CellClassParams<TRow, TValue>,
+) => ColCellOverrides | null | undefined;
+
+/**
+ * Per-column header class. Resolves to one or more variant names looked up
+ * from the theme's `headerClassVariants` map. Cycle 6 / Task 7.
+ */
+export type HeaderClass =
+  | string
+  | string[]
+  | ((params: { colId: string }) => string | string[] | undefined);
+
 export interface CGridOptions<TRow = any> {
   columnDefs: (CColDef<TRow> | CColGroupDef<TRow>)[];
   defaultColDef?: Partial<CColDef<TRow>>;
@@ -232,7 +281,32 @@ export interface CColDef<TRow = any, TValue = any> {
    * `getPopupPosition()` takes precedence over this col-def value.
    */
   cellEditorPopupPosition?: 'over' | 'under';
-  cellStyle?: ColCellOverrides;
+  /**
+   * Static class name(s) or a callback returning class name(s). Each class
+   * name is looked up in the theme's `cellClassVariants` map and the matching
+   * `ColCellOverrides` patch is applied to the cell. Applied before
+   * `cellClassRules`. Cycle 6 / Task 7.
+   */
+  cellClass?: CellClass<TRow, TValue>;
+  /**
+   * Map of class-name → predicate. The predicate is called per cell at paint
+   * time; when it returns `true`, the matching `ColCellOverrides` patch from
+   * the theme is applied. Rules are evaluated after `cellClass`.
+   * Cycle 6 / Task 7.
+   */
+  cellClassRules?: CellClassRules<TRow, TValue>;
+  /**
+   * Static object or function-form per-cell style override. The object form
+   * (static `ColCellOverrides`) is merged on top of class-driven variants.
+   * The function form (`CellStyleFunc`) is called per cell and its return value
+   * is applied last (highest precedence). Cycle 6 / Task 7.
+   */
+  cellStyle?: ColCellOverrides | CellStyleFunc<TRow, TValue>;
+  /**
+   * Class name(s) applied to the header cell. Resolves through the theme's
+   * `headerClassVariants` map. Cycle 6 / Task 7.
+   */
+  headerClass?: HeaderClass;
   /**
    * When true, the row's height grows to fit this cell's wrapped text. The
    * worker measures every visible row in this column via
@@ -376,8 +450,12 @@ export interface CColGroupDef<TRow = any> {
   openByDefault?: boolean;
   /** Prevents user from dragging child columns outside this group. */
   marryChildren?: boolean;
-  /** CSS class hint applied to the group header cell. */
-  headerClass?: string;
+  /**
+   * Class name(s) applied to the group header cell. Resolves through the
+   * theme's `headerClassVariants` map. Cycle 6 / Task 7 wires this (Cycle 4
+   * was storage-only).
+   */
+  headerClass?: HeaderClass;
 }
 
 export interface CValueGetterParams<TRow> { data: TRow; colId: string }
@@ -841,4 +919,15 @@ export interface CGridApi {
   /** Returns the raw value of the cell at (`rowIndex`, `colId`) from the
    *  current viewport chunk, or `null` when the cell is not in the chunk. */
   getCellValue(rowIndex: number, colId: string): unknown;
+
+  /**
+   * Returns the resolved background color that would be painted for the cell
+   * at (`rowIndex`, `colId`), accounting for `cellClass`, `cellClassRules`,
+   * and the function-form `cellStyle`. Returns `null` when the column is
+   * unknown or the row is not in the current viewport chunk.
+   *
+   * Used by E2E tests to assert visual differentiation without reading canvas
+   * pixels. Cycle 6 / Task 7.
+   */
+  getCellPaintedBg(rowIndex: number, colId: string): string | null;
 }

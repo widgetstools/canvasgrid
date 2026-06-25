@@ -38,6 +38,7 @@ const theme: ResolvedTheme = {
   rowSelectedBg: 'rgba(0,0,0,0.1)', focusRingColor: '#08f', focusRingWidth: 2,
   flashFromColor: '#ffeb3b', flashToColor: 'transparent',
   rowHeight: 30, headerHeight: 32, resizerHotZone: 4, scrollbarThickness: 10,
+  cellClassVariants: new Map(), headerClassVariants: new Map(),
 };
 
 const selectionEmpty = { focusedRowIndex: null, focusedColId: null, selectedRowIndices: new Set<number>() };
@@ -120,7 +121,7 @@ describe('paintCellsByRows — custom cellRenderer dispatch', () => {
 
     paintCellsByRows(fakeGc(), {
       viewport: vs, theme, columnDefs: cols, cellRenderers: reg,
-      cellData, selection: selectionEmpty, sortModel: [],
+      cellData, selection: selectionEmpty, sortModel: [], rowDataSnapshotAt: () => ({}),
     });
 
     expect(badgePaint).toHaveBeenCalledTimes(1);
@@ -152,7 +153,7 @@ describe('paintCellsByRows — custom cellRenderer dispatch', () => {
 
     paintCellsByRows(fakeGc(), {
       viewport: vs, theme, columnDefs: cols, cellRenderers: reg,
-      cellData, selection: selectionEmpty, sortModel: [],
+      cellData, selection: selectionEmpty, sortModel: [], rowDataSnapshotAt: () => ({}),
     });
 
     expect(captured.length).toBe(1);
@@ -182,7 +183,7 @@ describe('paintCellsByRows — custom cellRenderer dispatch', () => {
 
     paintCellsByRows(fakeGc(), {
       viewport: vs, theme, columnDefs: cols, cellRenderers: reg,
-      cellData, selection: selectionEmpty, sortModel: [],
+      cellData, selection: selectionEmpty, sortModel: [], rowDataSnapshotAt: () => ({}),
     });
 
     expect(redBadge.paint).toHaveBeenCalledTimes(1);
@@ -209,7 +210,7 @@ describe('paintCellsByRows — custom cellRenderer dispatch', () => {
 
     paintCellsByRows(fakeGc(), {
       viewport: vs, theme, columnDefs: cols, cellRenderers: reg,
-      cellData, selection: selectionEmpty, sortModel: [],
+      cellData, selection: selectionEmpty, sortModel: [], rowDataSnapshotAt: () => ({}),
     });
 
     expect(textPaint).toHaveBeenCalledTimes(1);
@@ -239,7 +240,7 @@ describe('paintCellsByRows — custom cellRenderer dispatch', () => {
 
     paintCellsByRows(fakeGc(), {
       viewport: vs, theme, columnDefs: cols, cellRenderers: reg,
-      cellData, selection: selectionEmpty, sortModel: [],
+      cellData, selection: selectionEmpty, sortModel: [], rowDataSnapshotAt: () => ({}),
     });
 
     expect(captured.length).toBe(1);
@@ -280,7 +281,7 @@ describe('paintCellsByRows — custom cellRenderer dispatch', () => {
     paintCellsByRows(fakeGc(), {
       viewport: vs, theme, columnDefs: cols, cellRenderers: reg,
       cellData: () => ({ value: '', valueFormatted: '' }),
-      selection: selectionEmpty, sortModel: [],
+      selection: selectionEmpty, sortModel: [], rowDataSnapshotAt: () => ({}),
     });
 
     expect(headerPaint).toHaveBeenCalledTimes(1);

@@ -113,17 +113,28 @@ export function createPositionsGrid(
         children: [
           // Static cellRenderer + cellRendererParams: every Total cell paints
           // as a pill, padX wires through to the painter.
+          // Cycle 6 / Task 7 — cellClassRules colour the *cell background*
+          // underneath the pill: positive → #e7f7ec, negative → #fde7e9.
+          // Both coexist visually — the pill's semi-transparent fill renders
+          // on top of the class-driven bg.
           {
             field: 'pnl', headerName: 'Total', type: 'number', width: 110, pinned: 'right',
             aggFunc: 'sum',
             cellRenderer: 'pnlPill',
             cellRendererParams: { padX: 4 },
+            cellClassRules: {
+              positive: (p: { value: unknown }) => typeof p.value === 'number' && p.value > 0,
+              negative: (p: { value: unknown }) => typeof p.value === 'number' && p.value < 0,
+            },
           },
           // cellRendererSelector: positive → pnlPill, negative or zero →
           // default 'number' renderer. Demonstrates the per-cell override.
+          // Cycle 6 / Task 7 — static cellClass 'warning' for demo coverage
+          // of the static-class path (applies a pale-yellow bg to all cells).
           {
             field: 'dailyPnl', headerName: 'Daily', type: 'number', width: 110,
             aggFunc: 'sum',
+            cellClass: 'warning',
             cellRendererSelector: (p) => {
               const n = typeof p.value === 'number' ? p.value : Number(p.value);
               return Number.isFinite(n) && n > 0 ? { component: 'pnlPill' } : undefined;

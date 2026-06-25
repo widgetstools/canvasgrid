@@ -6,7 +6,7 @@ import type {
   CGridOptions, CGridEvent, CGridApi, Tx, TransactionResult, SortModel, FilterModel, GroupModel,
 } from './types';
 import { TypedEventEmitter } from './core/eventEmitter';
-import { type ResolvedColDef } from './core/propertyChain';
+import { type ResolvedColDef, applyCellProps } from './core/propertyChain';
 import { resolveColumnTree, isColGroupDef, type ColumnTree } from './core/columnTree';
 import { ColumnGroupState, resolveVisibleLeaves } from './core/columnGroupState';
 import {
@@ -55,6 +55,8 @@ export type {
   SortModel, SortModelEntry, FilterModel, FilterModelEntry, GroupModel,
   CValueGetterParams, CValueFormatterParams,
   CCellRendererSelector, CCellRendererSelectorParams, CCellRendererSelectorResult,
+  ColCellOverrides,
+  CellClass, CellClassRules, CellStyleFunc, HeaderClass,
 } from './types';
 export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/registry';
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
@@ -289,6 +291,7 @@ export class CGrid<TRow = any> {
       getSortModel: () => this.sortModel,
       getCanvasWidth: () => this.canvasBounds.width,
       getCanvasHeight: () => this.canvasBounds.height,
+      rowDataSnapshotAt: (rowIndex) => this.rowDataSnapshotAt(rowIndex),
     });
 
     // 7. Canvas wrapper — owns the <canvas>, gc cache, RAF + resize polling.
@@ -1071,6 +1074,7 @@ export class CGrid<TRow = any> {
       getHeaderBoundsAt: (c) => this.getHeaderBoundsAt(c),
       getRowBoundsAt: (r) => this.getRowBoundsAt(r),
       getCellValue: (r, c) => this.getCellValue(r, c),
+      getCellPaintedBg: (r, c) => this.getCellPaintedBg(r, c),
     };
   }
 
@@ -2517,5 +2521,51 @@ export class CGrid<TRow = any> {
    *  isn't in the chunk (most common: row outside the visible window). */
   getCellValue(rowIndex: number, colId: string): unknown {
     return this.cellAt(rowIndex, colId)?.value ?? null;
+  }
+
+  /**
+   * Returns the resolved background color that would be painted for the cell
+   * at (`rowIndex`, `colId`), accounting for `cellClass`, `cellClassRules`,
+   * and the function-form `cellStyle`. Returns `null` when the column is
+   * unknown or the row is not in the current viewport chunk.
+   *
+   * Used by E2E tests to assert visual differentiation without reading canvas
+   * pixels. Pattern mirrors `getCellValue`. Cycle 6 / Task 7.
+   */
+  getCellPaintedBg(rowIndex: number, colId: string): string | null {
+    const def = this.columnDefsMap.get(colId);
+    if (!def) return null;
+    const cell = this.cellAt(rowIndex, colId);
+    if (!cell) return null;
+
+    const rowData = this.rowDataSnapshotAt(rowIndex);
+    const isSelected = this.selection.state.selectedRowIndices.has(rowIndex);
+    const rowBg = isSelected
+      ? this.theme.rowSelectedBg
+      : (rowIndex % 2 === 1 ? this.theme.rowAltBg : this.theme.bg);
+
+    const throwaway: import('./renderer/cellRenderers/registry').CellPaintConfig = {
+      value: '', valueFormatted: '',
+      bounds: { x: 0, y: 0, w: 0, h: 0 },
+      font: '', fg: '', bg: '', borderColor: '',
+      halign: 'left', prefillColor: '',
+      isFocused: false, isSelected: false, isHovered: false, isHeader: false,
+    };
+    applyCellProps(throwaway, {
+      theme: this.theme,
+      colDef: def,
+      value: cell.value,
+      valueFormatted: cell.valueFormatted,
+      x: 0, y: 0, w: 0, h: 0,
+      rowBg,
+      prefillColor: rowBg,
+      isFocused: false,
+      isSelected,
+      isHovered: false,
+      isHeader: false,
+      rowData,
+      rowIndex,
+    });
+    return throwaway.bg;
   }
 }

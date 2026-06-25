@@ -21,4 +21,12 @@ export interface PainterCtx {
     selectedRowIndices: Set<number>;
   };
   sortModel: SortModel;
+  /**
+   * Synchronous best-effort row snapshot from the current viewport chunk,
+   * keyed by colId. Resolves once per data row in the painter — all cells
+   * in that row share the same snapshot for `cellClassRules` predicates and
+   * function-form `cellStyle` / `cellClass` callbacks. Returns `{}` when the
+   * row has not been chunked yet. Cycle 6 / Task 7.
+   */
+  rowDataSnapshotAt: (rowIndex: number) => Record<string, unknown>;
 }

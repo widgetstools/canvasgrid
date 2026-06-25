@@ -3,6 +3,19 @@ html, body { margin: 0; height: 100%; font-family: Inter, system-ui, sans-serif;
 .app { display: flex; flex-direction: column; height: 100%; padding: 12px; gap: 8px; background: #0b1220; }
 header { display: flex; justify-content: space-between; align-items: center; }
 header h1 { margin: 0; color: #e2e8f0; font-size: 18px; font-weight: 600; }
-.grid-host { flex: 1; min-height: 0; background: #0f172a; border: 1px solid #334155; border-radius: 6px; }
+.grid-host {
+  flex: 1;
+  min-height: 0;
+  background: #0f172a;
+  border: 1px solid #334155;
+  border-radius: 6px;
+  /* Cycle 6 / Task 7 — cell-class variant tokens. The CSS custom properties
+   * are picked up by CssReader.scanVariantVariables() which walks stylesheet
+   * rules and buckets them into the theme's cellClassVariants map. */
+  --cg-cell-class-warning-bg: #fff4d1;
+  --cg-cell-class-warning-fg: #6b4f00;
+  --cg-cell-class-positive-bg: #e7f7ec;
+  --cg-cell-class-negative-bg: #fde7e9;
+}
 button { padding: 6px 12px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; border-radius: 4px; cursor: pointer; }
 button:hover { background: #283549; }

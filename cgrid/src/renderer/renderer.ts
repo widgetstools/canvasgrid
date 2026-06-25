@@ -27,6 +27,12 @@ export interface RendererOpts {
   getCanvasWidth: () => number;
   /** Total drawable height in CSS px (matches CGridCanvas.bounds.height). */
   getCanvasHeight: () => number;
+  /**
+   * Synchronous row snapshot — keyed by colId. Forwarded into `PainterCtx`
+   * for `cellClassRules` / function-form `cellStyle` callbacks.
+   * Cycle 6 / Task 7.
+   */
+  rowDataSnapshotAt: (rowIndex: number) => Record<string, unknown>;
 }
 
 export class Renderer {
@@ -41,6 +47,7 @@ export class Renderer {
       cellData: this.opts.cellData,
       selection: this.opts.getSelection(),
       sortModel: this.opts.getSortModel(),
+      rowDataSnapshotAt: this.opts.rowDataSnapshotAt,
     };
     // Fill the entire drawable area with theme bg as the FIRST instruction so
     // there's no transparent moment between the prior frame's pixels (or a
