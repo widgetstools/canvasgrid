@@ -3,7 +3,8 @@
 // worker/, theming/. See docs/superpowers/specs/2026-06-23-canvasgrid-foundation-design.md.
 import './theming/tokens.css';
 import type {
-  CGridOptions, CGridEvent, CGridApi, Tx, TransactionResult, SortModel, FilterModel, GroupModel,
+  CGridOptions, CGridEvent, CGridApi, Tx, TransactionResult, SortModel, FilterModel,
+  CFilterModelEntry, GroupModel,
 } from './types';
 import { TypedEventEmitter } from './core/eventEmitter';
 import { type ResolvedColDef, applyCellProps } from './core/propertyChain';
@@ -30,6 +31,8 @@ import {
 import { computeViewport, type ViewportState } from './core/viewport';
 import { RowHeightIndex } from './core/rowHeightIndex';
 import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, type Subgrid } from './core/subgrid';
+import { FloatingFilterSubgrid } from './core/floatingFilterSubgrid';
+import { FloatingFilterOverlay } from './interaction/floatingFilterOverlay';
 import { CGridCanvas } from './core/canvas';
 import { CssReader, type ResolvedTheme } from './theming/cssReader';
 import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell, type CellPainter } from './renderer/cellRenderers/registry';
@@ -52,7 +55,8 @@ export const CGRID_VERSION = '0.0.0';
 
 export type {
   CGridOptions, CColDef, CColGroupDef, CGridEvent, CGridApi, Tx, TransactionResult,
-  SortModel, SortModelEntry, FilterModel, FilterModelEntry, GroupModel,
+  SortModel, SortModelEntry, FilterModel, FilterModelEntry, FilterModelEntryLegacy,
+  CFilterModelEntry, CTextFilterModel, GroupModel,
   CValueGetterParams, CValueFormatterParams,
   CCellRendererSelector, CCellRendererSelectorParams, CCellRendererSelectorResult,
   ColCellOverrides,
@@ -181,6 +185,18 @@ export class CGrid<TRow = any> {
   private featureChain: FeatureChain;
   private cellEditorRegistry: CellEditorRegistry;
   private editor: EditorOverlay;
+  /** Cycle 7 / Task 1 — DOM overlay that pools `<input>` elements for the
+   *  floating-filter row. Mounts onto the same `editorContainer` host so
+   *  it stacks above the canvas; positions per `transform: translate`. */
+  private floatingFilterOverlay: FloatingFilterOverlay;
+  /** Cycle 7 / Task 1 — canonical per-column v2 filter model state. Drives
+   *  `getColumnFilterModel`; `setColumnFilterModel` updates this map and
+   *  fans the resulting full model out to the worker via `setFilterModel`
+   *  (which still ships the Cycle-4/5 legacy shape until Task 2 widens
+   *  the worker matcher). Stored separately from the legacy `FilterModel`
+   *  so a user calling `setFilterModel({legacy})` doesn't drop entries
+   *  set via `setColumnFilterModel`. */
+  private columnFilterModels: Map<string, CFilterModelEntry> = new Map();
   /** Full-row edit coordinator (Cycle 5 / Task 10). Mutually exclusive with
    *  `this.editor` at runtime — `openEditor` dispatches to one or the other
    *  based on `options.editType`. Surface for `api.getCellEditorInstances`
@@ -443,6 +459,27 @@ export class CGrid<TRow = any> {
     CellEditorRegistry.seed(this.cellEditorRegistry);
     this.editor = new EditorOverlay(this.editorContainer, this.cellEditorRegistry);
     this.rowEdit = new RowEditCoordinator(this.editorContainer, this.cellEditorRegistry);
+    // Cycle 7 / Task 1 — floating-filter overlay shares the editorContainer
+    // host so its pooled `<input>` elements stack above the canvas and pick
+    // up the same pointer-events:auto/none gating the editor uses. The
+    // overlay's per-column `setColumnFilterModel` callback routes through
+    // `this.setColumnFilterModel`, which updates `columnFilterModels` and
+    // fans the full model out to the worker.
+    this.floatingFilterOverlay = new FloatingFilterOverlay(this.editorContainer, {
+      getColumnFilterModel: (colId) => this.getColumnFilterModel(colId),
+      setColumnFilterModel: (colId, model) => this.setColumnFilterModel(colId, model),
+      getColDef: (colId) => {
+        const def = this.columnDefsMap.get(colId);
+        return def ? {
+          floatingFilter: def.floatingFilter,
+          filter: def.filter,
+          suppressFloatingFilterButton: def.suppressFloatingFilterButton,
+        } : undefined;
+      },
+      openColumnFilter: (_colId) => { /* Wired in Tasks 3-6 + 9. */ },
+      getRowTop: () => this.viewport.floatingFilterRowTop ?? 0,
+      getRowHeight: () => this.viewport.floatingFilterRowHeight ?? (this.options.floatingFilterHeight ?? 28),
+    });
     this.a11y = new A11yOverlay(this.root);
 
     // 9. Worker
@@ -760,6 +797,11 @@ export class CGrid<TRow = any> {
   }
 
   setFilterModel(f: FilterModel): void {
+    // Cycle 7 / Task 1 — replacing the full filter model also resets the
+    // v2 per-column map so a `setFilterModel({})` wipes any entries the
+    // floating-filter overlay had set via `setColumnFilterModel`. Apps
+    // calling `setFilterModel` should be passing the authoritative state.
+    this.columnFilterModels.clear();
     this.workerClient.setFilterModel(f).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
       // Filter changes the visible row set — invalidate the Fenwick index so
@@ -775,6 +817,52 @@ export class CGrid<TRow = any> {
       this.requestViewport();
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
   }
+
+  /** Cycle 7 / Task 1 — return the v2 filter model entry for `colId`, or
+   *  `null` when the column is unfiltered. Backs the floating-filter
+   *  overlay's `getColumnFilterModel` dep. Tasks 3-6 + 9 surface this on
+   *  `CGridApi`. */
+  getColumnFilterModel(colId: string): CFilterModelEntry | null {
+    return this.columnFilterModels.get(colId) ?? null;
+  }
+
+  /** Cycle 7 / Task 1 — apply a per-column filter mutation. Updates the
+   *  canonical v2 map, ships the composed legacy `FilterModel` to the
+   *  worker for re-evaluation, then mirrors the new value back into the
+   *  floating-filter input so a programmatic call keeps the UI in sync.
+   *  Passing `model: null` clears the column. */
+  setColumnFilterModel(colId: string, model: CFilterModelEntry | null): void {
+    if (model) this.columnFilterModels.set(colId, model);
+    else this.columnFilterModels.delete(colId);
+    const legacy: FilterModel = {};
+    for (const [id, entry] of this.columnFilterModels) {
+      // v2-text-contains → legacy-text-contains. The worker still speaks
+      // the Cycle 4 / 5 legacy shape until Task 2 widens its matcher.
+      if (entry.filterType === 'text' && entry.type === 'contains' && entry.filter != null) {
+        legacy[id] = { type: 'text', op: 'contains', value: entry.filter };
+      }
+    }
+    this.workerClient.setFilterModel(legacy).then(({ visibleCount }) => {
+      this.rowCount = visibleCount;
+      this.rowHeightIndex = null;
+      this.recomputeViewport();
+      this.rebuildSelectionFromPersistentIds();
+      this.events.emit({ type: 'filterChanged', filterModel: legacy });
+      this.requestViewport();
+      this.floatingFilterOverlay.syncInputValue(colId, model);
+    }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+  }
+
+  /** Cycle 7 / Task 1 — debug accessor for E2E tests that need the
+   *  scrollable host directly (e.g. to drive `scrollLeft = N` and verify
+   *  the floating-filter overlay re-pins on scroll). Stable across cycles
+   *  but not part of the public API surface. */
+  getScroller(): HTMLElement { return this.scroller; }
+
+  /** Cycle 7 / Task 1 — current displayed (post-filter) row count. Backs
+   *  the floating-filter E2E that asserts typing reduces the visible
+   *  rows. Identical to the value last shipped via `modelUpdated`. */
+  getDisplayedRowCount(): number { return this.rowCount; }
 
   setGroupModel(_g: GroupModel): void { /* Out of scope for Foundation */ }
 
@@ -1000,6 +1088,15 @@ export class CGrid<TRow = any> {
       this.columnDefsMap as Map<string, ResolvedColDef>,
       () => this.options.headerHeight ?? this.theme.headerHeight,
     ));
+    // Cycle 7 / Task 1 — floating-filter row sits between the leaf header
+    // and the data subgrid. Enabled when the grid-wide option is set OR
+    // any column carries `floatingFilter: true`. A column with
+    // `floatingFilter: false` skips its own input but does not collapse
+    // the row; that's handled by the overlay's per-column gating.
+    stack.push(new FloatingFilterSubgrid(
+      () => this.options.floatingFilterHeight ?? 28,
+      () => this.isFloatingFilterEnabled(),
+    ));
     stack.push(new DataSubgrid(
       () => this.rowCount,
       // Per-row height — first try the chunk's heights (canonical for the
@@ -1010,6 +1107,19 @@ export class CGrid<TRow = any> {
       (rowIndex, colId) => this.cellAt(rowIndex, colId),
     ));
     this.subgrids = stack;
+  }
+
+  /** Cycle 7 / Task 1 — true when the floating-filter row should render.
+   *  Resolves the grid-wide default plus any per-column override. A column
+   *  explicitly setting `floatingFilter: false` does NOT suppress the row
+   *  globally; only the grid-wide default (off) combined with no column
+   *  opting in collapses the row to zero height. */
+  private isFloatingFilterEnabled(): boolean {
+    if (this.options.floatingFilter === true) return true;
+    for (const col of this.columnOrder) {
+      if (col.floatingFilter === true) return true;
+    }
+    return false;
   }
 
   destroy(): void {
@@ -1027,6 +1137,7 @@ export class CGrid<TRow = any> {
     this.a11y.destroy();
     this.editor.close();
     this.rowEdit.close();
+    this.floatingFilterOverlay.destroy();
     this.root.parentElement?.removeChild(this.root);
     this.events.destroy();
   }
@@ -1239,6 +1350,12 @@ export class CGrid<TRow = any> {
     this.viewport = this.computeCurrentViewport();
     this.syncSizer();
     this.detectVirtualColumnsChanged(afterScroll);
+    // Cycle 7 / Task 1 — re-pin the floating-filter `<input>` pool after
+    // every layout pass. Guarded because `recomputeViewport` runs once in
+    // the constructor before `floatingFilterOverlay` is assigned.
+    if (this.floatingFilterOverlay) {
+      this.floatingFilterOverlay.repositionAll(this.viewport);
+    }
   }
 
   /** Compare the materialised center-column range against the previous

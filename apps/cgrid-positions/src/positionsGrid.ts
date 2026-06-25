@@ -68,6 +68,12 @@ export function createPositionsGrid(
 
   const options: CGridOptions<Position> = {
     columnTypes,
+    // Cycle 7 / Task 1 — turn on the floating-filter row so the
+    // cycle7-floatingFilter E2E has a typing target. Per-column
+    // `floatingFilter: false` opts an individual column out of the row
+    // without collapsing the row itself.
+    defaultColDef: { floatingFilter: true },
+    floatingFilter: true,
     columnDefs: [
       // Cycle 6 / Task 1: positionId opts out of drag-reorder. Pinned-left
       // is already a strong visual signal that this column shouldn't move;

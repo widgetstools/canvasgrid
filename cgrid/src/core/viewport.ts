@@ -46,6 +46,15 @@ export interface ViewportState {
   /** Maximum valid scrollLeft / scrollTop. ≤0 means body has no overflow. */
   maxScrollLeft: number;
   maxScrollTop: number;
+  /** Top edge (CSS px from the container's top) of the floating-filter
+   *  row, when present. `undefined` when no `FloatingFilterSubgrid` is
+   *  in the subgrid stack. `FloatingFilterOverlay.repositionAll` reads
+   *  this to position the pooled `<input>` elements via `transform`.
+   *  Cycle 7 / Task 1. */
+  floatingFilterRowTop?: number;
+  /** Pixel height of the floating-filter row, when present. `undefined`
+   *  when no `FloatingFilterSubgrid` is in the stack. Cycle 7 / Task 1. */
+  floatingFilterRowHeight?: number;
 }
 
 export interface ViewportInput {
@@ -96,13 +105,21 @@ export function computeViewport(opts: ViewportInput): ViewportState {
   let firstDataRow = 0;
   let lastDataRow = -1;
   let dataContentHeight = 0;
+  let floatingFilterRowTop: number | undefined;
+  let floatingFilterRowHeight: number | undefined;
 
-  // Pass 1: header subgrids — accumulate their height into bodyTop.
+  // Pass 1: header + floating-filter subgrids — both sit above the
+  // scrollable data region. Cycle 7 / Task 1 — the floating-filter row is
+  // non-scrolling like headers and contributes to bodyTop the same way.
   for (const subgrid of opts.subgrids) {
-    if (!subgrid.isHeader) continue;
+    if (!subgrid.isHeader && !subgrid.isFloatingFilter) continue;
     const rows = subgrid.getRowCount();
     for (let local = 0; local < rows; local++) {
       const h = subgrid.getRowHeight(local);
+      if (subgrid.isFloatingFilter) {
+        floatingFilterRowTop = bodyTop;
+        floatingFilterRowHeight = h;
+      }
       visibleRows.push({
         rowIndex: visibleRows.length,
         subgrid,
@@ -295,5 +312,7 @@ export function computeViewport(opts: ViewportInput): ViewportState {
     contentHeight,
     maxScrollLeft,
     maxScrollTop,
+    floatingFilterRowTop,
+    floatingFilterRowHeight,
   };
 }

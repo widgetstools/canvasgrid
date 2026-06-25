@@ -144,6 +144,14 @@ export interface CGridOptions<TRow = any> {
    *  When `false` (default) the mode is inert and arrow keys always
    *  behave like the input's native handler. */
   enableExcelEditing?: boolean;
+  /** Grid-wide default for the floating-filter row. When `true`, every
+   *  column with a default-resolved filter renders a floating-filter
+   *  `<input>` beneath the leaf-header row. Per-column
+   *  `CColDef.floatingFilter` wins over this. Cycle 7 / Task 1. */
+  floatingFilter?: boolean;
+  /** Pixel height of the floating-filter row. Defaults to `28`. Forwarded
+   *  to `FloatingFilterSubgrid` + `FloatingFilterOverlay`. Cycle 7 / Task 1. */
+  floatingFilterHeight?: number;
   /**
    * Full-row edit mode. When `'fullRow'`, triggering an edit on any cell in
    * a row opens an editor for every editable column in that row
@@ -239,6 +247,15 @@ export interface CColDef<TRow = any, TValue = any> {
   cellRendererSelector?: CCellRendererSelector<TRow, TValue>;
   comparator?: (a: TValue, b: TValue, ar: TRow, br: TRow) => number;
   filter?: 'text' | 'number';
+  /** Per-column override of `CGridOptions.floatingFilter`. When set on a
+   *  column, the column joins (or opts out of) the floating-filter row
+   *  regardless of the grid-wide default. Cycle 7 / Task 1. */
+  floatingFilter?: boolean;
+  /** Hide the expand button that opens the full filter popup on the
+   *  floating-filter input. Only meaningful when `floatingFilter: true`
+   *  for this column. Task 1 reserves the field; popups land in Tasks
+   *  3-6 + 9. Cycle 7 / Task 1. */
+  suppressFloatingFilterButton?: boolean;
   aggFunc?: 'sum' | 'avg' | 'min' | 'max' | 'count';
   sortable?: boolean;
   resizable?: boolean;
@@ -554,9 +571,32 @@ export interface ISizeColumnsToFitParams {
   columnLimits?: Array<{ key: string; minWidth?: number; maxWidth?: number }>;
 }
 
-export type FilterModelEntry =
+/** Legacy Cycle 4 / 5 filter entry shape. Continues to round-trip through
+ *  `setFilterModel`; the worker's matcher accepts it directly. Task 2 of
+ *  Cycle 7 widens the public type alias to the ag-grid-compatible v2 union
+ *  ({ filterType, type, filter, ... }) while preserving this shape via a
+ *  back-compat normaliser. */
+export type FilterModelEntryLegacy =
   | { type: 'text'; op: 'contains' | 'equals' | 'startsWith'; value: string }
   | { type: 'number'; op: 'eq' | 'gt' | 'lt' | 'between'; value: number; value2?: number };
+
+/** Forward-compatible v2 text-filter entry. Cycle 7 / Task 1 introduces the
+ *  shape so the floating-filter overlay can emit it; Cycle 7 / Task 2
+ *  widens this to the full ag-grid `CFilterModelEntry` discriminated union
+ *  (text / number / date / set / multi). The current single-variant form
+ *  is intentional — only `contains` is wired through the floating-filter
+ *  row in Task 1. */
+export interface CTextFilterModel {
+  filterType: 'text';
+  type: 'contains';
+  filter?: string;
+}
+
+/** Cycle 7 type alias for a single column's filter entry. Currently a
+ *  one-member union; Task 2 widens it. */
+export type CFilterModelEntry = CTextFilterModel;
+
+export type FilterModelEntry = FilterModelEntryLegacy | CFilterModelEntry;
 export type FilterModel = Record<string, FilterModelEntry>;
 
 export interface GroupModel { rowGroupCols: string[] }

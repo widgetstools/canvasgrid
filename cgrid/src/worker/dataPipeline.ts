@@ -1,4 +1,14 @@
-import type { TransactionResult, FilterModel, FilterModelEntry, SortModel } from '../types';
+import type { TransactionResult, FilterModel, FilterModelEntry, FilterModelEntryLegacy, SortModel } from '../types';
+
+/**
+ * Cycle 7 / Task 1 — the worker's `FilterPass` matcher only speaks the
+ * Cycle 4 / 5 legacy entry shape. cgrid.ts converts any v2 entries the
+ * floating-filter overlay emits (`{ filterType, type, filter }`) into
+ * the legacy form (`{ type, op, value }`) before shipping the model to
+ * the worker. Cycle 7 / Task 2 widens the matcher to accept v2 entries
+ * natively and removes this narrowing.
+ */
+type WorkerFilterModelEntry = FilterModelEntryLegacy;
 import type { WorkerColumn, ViewportRequest, ViewportChunk } from './protocol';
 import { encodeText } from './chunkFormat';
 
@@ -303,9 +313,15 @@ export class FilterPass<TRow = any> {
     const out: string[] = [];
     for (const row of this.store.rows()) {
       let pass = true;
-      for (const [colId, entry] of entries) {
+      for (const [colId, rawEntry] of entries) {
         const col = this.colIndex.get(colId);
         if (!col || !col.field) continue;
+        // Cycle 7 / Task 1 — the floating-filter overlay emits v2-shape
+        // entries; cgrid.ts converts them to legacy before sending, but a
+        // direct `setFilterModel({})` caller may still ship a v2 entry.
+        // Skip those here — Task 2 widens the matcher to evaluate them.
+        if ('filterType' in rawEntry) continue;
+        const entry = rawEntry as WorkerFilterModelEntry;
         const value = (row as Record<string, unknown>)[col.field];
         if (!matches(entry, value)) { pass = false; break; }
       }
@@ -315,7 +331,7 @@ export class FilterPass<TRow = any> {
   }
 }
 
-function matches(entry: FilterModelEntry, raw: unknown): boolean {
+function matches(entry: WorkerFilterModelEntry, raw: unknown): boolean {
   if (entry.type === 'text') {
     const s = String(raw ?? '').toLowerCase();
     const q = entry.value.toLowerCase();

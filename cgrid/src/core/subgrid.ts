@@ -13,7 +13,7 @@ import type { ColumnTree, ColumnTreeNode, ResolvedColGroupDef } from './columnTr
  * `new TotalsSubgrid()` push — no painter or viewport change required.
  */
 
-export type SubgridType = 'header' | 'data' | 'totals' | 'footer';
+export type SubgridType = 'header' | 'data' | 'totals' | 'footer' | 'floatingFilter';
 
 export interface SubgridCell {
   value: unknown;
@@ -26,6 +26,11 @@ export interface Subgrid {
   readonly isData: boolean;
   readonly isTotals: boolean;
   readonly isFooter: boolean;
+  /** Cycle 7 / Task 1 — true only for `FloatingFilterSubgrid`. Mirrors the
+   *  `isHeader` / `isData` shorthand so the viewport + painter can skip the
+   *  row uniformly without an instanceof check. Optional on the interface
+   *  so existing subgrids don't have to declare it. */
+  readonly isFloatingFilter?: boolean;
   /** Rows this subgrid contributes to the visible stack. */
   getRowCount(): number;
   /** Per-row height. Most subgrids return a constant. */

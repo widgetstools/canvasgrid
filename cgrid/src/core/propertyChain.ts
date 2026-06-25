@@ -42,6 +42,14 @@ export interface ResolvedColDef<TRow = any> {
   cellRendererSelector?: CCellRendererSelector<TRow>;
   comparator?: (a: unknown, b: unknown, ar: TRow, br: TRow) => number;
   filter?: 'text' | 'number';
+  /** Per-column override of `CGridOptions.floatingFilter`. `undefined` means
+   *  inherit the grid-level value at `rebuildSubgridStack` time. The
+   *  floating-filter overlay reads this on every `repositionAll`; explicit
+   *  `false` collapses to "no input for this column". Cycle 7 / Task 1. */
+  floatingFilter?: boolean;
+  /** See `CColDef.suppressFloatingFilterButton`. Reserved by Task 1; the
+   *  expand-button mounts in Tasks 3-6 + 9. Cycle 7 / Task 1. */
+  suppressFloatingFilterButton: boolean;
   aggFunc?: 'sum' | 'avg' | 'min' | 'max' | 'count';
   sortable: boolean;
   resizable: boolean;
@@ -435,6 +443,8 @@ export function resolveColDef<TRow>(
     cellRendererSelector: merged.cellRendererSelector as ResolvedColDef<TRow>['cellRendererSelector'],
     comparator: merged.comparator as ResolvedColDef<TRow>['comparator'],
     filter: merged.filter,
+    floatingFilter: merged.floatingFilter,
+    suppressFloatingFilterButton: merged.suppressFloatingFilterButton ?? false,
     aggFunc: merged.aggFunc,
     sortable: merged.sortable ?? true,
     resizable: merged.resizable ?? true,

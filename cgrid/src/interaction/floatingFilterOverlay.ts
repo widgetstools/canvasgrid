@@ -1,0 +1,161 @@
+import type { ViewportState } from '../core/viewport';
+import type { CFilterModelEntry } from '../types';
+
+/**
+ * Resolved per-column metadata the overlay reads to decide whether to mount
+ * an input for `colId`. Mirrors the relevant slots from `ResolvedColDef`
+ * without forcing the overlay to import the resolver.
+ *
+ * Cycle 7 / Task 1.
+ */
+export interface FloatingFilterColDef {
+  /** Per-column resolution of grid-level `CGridOptions.floatingFilter`. When
+   *  `false` (explicit), the overlay skips the column entirely. */
+  floatingFilter?: boolean;
+  /** Resolved filter type. Currently used only as metadata in `data-*`
+   *  attributes; popup wiring lands in Tasks 3-6 + 9. */
+  filter?: 'text' | 'number' | 'date' | 'set';
+  /** When true, the floating cell renders the input without the expand
+   *  button (popup entry-point). Task 1 has no expand button yet; this
+   *  field reserves the contract so the deps interface is stable. */
+  suppressFloatingFilterButton?: boolean;
+}
+
+export interface FloatingFilterOverlayDeps {
+  /** Current filter model entry for `colId`, or null when the column is
+   *  unfiltered. Drives `<input>.value` on mount and after a programmatic
+   *  `setFilterModel` round-trip. */
+  getColumnFilterModel: (colId: string) => CFilterModelEntry | null;
+  /** Apply a filter mutation. Called by the overlay after the typing
+   *  debounce; `model: null` clears the column's filter. */
+  setColumnFilterModel: (colId: string, model: CFilterModelEntry | null) => void;
+  /** Resolved per-column floating-filter metadata. Returning `undefined`
+   *  collapses to "no input" for that column. */
+  getColDef: (colId: string) => FloatingFilterColDef | undefined;
+  /** Open the column's full filter popup. Wired by Tasks 3-6 + 9; Task 1
+   *  reserves the hook so the deps interface is stable. */
+  openColumnFilter: (colId: string) => void;
+  /** Y-coordinate (in container CSS px) of the floating-filter row's top
+   *  edge. Read on every `repositionAll`; the overlay applies it via
+   *  `transform: translate(x, y)`. */
+  getRowTop: () => number;
+  /** Pixel height of the floating-filter row. Drives `<input>.style.height`. */
+  getRowHeight: () => number;
+  /** Optional override of the per-input typing debounce. Defaults to 500ms
+   *  to match the catalog's text/number filter `debounceMs` default. */
+  debounceMs?: number;
+}
+
+/**
+ * DOM overlay that pools `<input>` elements for the floating-filter row.
+ *
+ * Inputs are mounted once and re-positioned via `transform: translate(x, y)`
+ * on every `repositionAll` — never destroyed and never positioned via
+ * `left`/`top`, so horizontal scroll incurs zero layout reads. Inputs whose
+ * column scrolls out of the visible set become `display:none` instead of
+ * being removed; this preserves IME, autocomplete, and selection state
+ * across scroll-out / scroll-in cycles.
+ *
+ * Cycle 7 / Task 1.
+ */
+export class FloatingFilterOverlay {
+  private pool = new Map<string, HTMLInputElement>();
+  private debouncers = new Map<string, ReturnType<typeof setTimeout>>();
+  private destroyed = false;
+
+  constructor(
+    private host: HTMLElement,
+    private deps: FloatingFilterOverlayDeps,
+  ) {}
+
+  /** Reposition every pooled input against `viewport`. Walks the visible
+   *  column set, creates inputs lazily for newly-visible columns, and hides
+   *  (does not destroy) inputs whose columns left the visible set.
+   *
+   *  Cycle 7 / Task 1.
+   */
+  repositionAll(viewport: ViewportState): void {
+    if (this.destroyed) return;
+    const rowTop = this.deps.getRowTop();
+    const rowHeight = this.deps.getRowHeight();
+    const seen = new Set<string>();
+    for (const col of viewport.visibleColumns) {
+      const def = this.deps.getColDef(col.colId);
+      if (!def || def.floatingFilter === false) continue;
+      seen.add(col.colId);
+      const input = this.acquireInput(col.colId, def);
+      input.style.transform = `translate(${col.left}px, ${rowTop}px)`;
+      input.style.width = `${col.width}px`;
+      input.style.height = `${rowHeight}px`;
+      input.style.display = '';
+    }
+    for (const [colId, input] of this.pool) {
+      if (!seen.has(colId)) input.style.display = 'none';
+    }
+  }
+
+  /** Reflect `model` into the pooled input for `colId`. No-op when the
+   *  column has no input yet — `repositionAll` will pick up the latest
+   *  filter model when the column next enters the visible set.
+   *
+   *  Cycle 7 / Task 1.
+   */
+  syncInputValue(colId: string, model: CFilterModelEntry | null): void {
+    const input = this.pool.get(colId);
+    if (!input) return;
+    input.value = model && model.filter != null ? model.filter : '';
+  }
+
+  /** Tear down — remove every pooled input from the DOM and cancel any
+   *  outstanding debounce timers. Idempotent.
+   *
+   *  Cycle 7 / Task 1.
+   */
+  destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    for (const timer of this.debouncers.values()) clearTimeout(timer);
+    this.debouncers.clear();
+    for (const input of this.pool.values()) input.remove();
+    this.pool.clear();
+  }
+
+  private acquireInput(colId: string, def: FloatingFilterColDef): HTMLInputElement {
+    const existing = this.pool.get(colId);
+    if (existing) return existing;
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.setAttribute('data-cg-floating-filter', '');
+    input.setAttribute('data-cg-col-id', colId);
+    if (def.filter) input.setAttribute('data-cg-filter-type', def.filter);
+    input.style.cssText =
+      'position:absolute;left:0;top:0;box-sizing:border-box;' +
+      'pointer-events:auto;font:inherit;';
+    input.addEventListener('input', () => this.onInputChanged(colId, input));
+    const initial = this.deps.getColumnFilterModel(colId);
+    if (initial && initial.filter != null) input.value = initial.filter;
+    this.host.appendChild(input);
+    this.pool.set(colId, input);
+    return input;
+  }
+
+  private onInputChanged(colId: string, input: HTMLInputElement): void {
+    const debounceMs = this.deps.debounceMs ?? 500;
+    const existing = this.debouncers.get(colId);
+    if (existing) clearTimeout(existing);
+    const apply = () => {
+      this.debouncers.delete(colId);
+      if (this.destroyed) return;
+      const raw = input.value;
+      const model: CFilterModelEntry | null = raw === ''
+        ? null
+        : { filterType: 'text', type: 'contains', filter: raw };
+      this.deps.setColumnFilterModel(colId, model);
+    };
+    if (debounceMs <= 0) {
+      apply();
+      return;
+    }
+    this.debouncers.set(colId, setTimeout(apply, debounceMs));
+  }
+}
