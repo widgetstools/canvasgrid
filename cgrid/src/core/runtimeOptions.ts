@@ -45,7 +45,10 @@ export type RuntimeOption =
   | 'context'
   | 'loading'
   | 'debug'
-  | 'rowData';
+  | 'rowData'
+  | 'quickFilterText'
+  | 'cacheQuickFilter'
+  | 'includeHiddenColumnsInQuickFilter';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
  *  import on `CGrid` (cgrid.ts imports this module). */
@@ -63,6 +66,12 @@ export interface RuntimeOptionTarget<TRow = any> {
   setSelectionMode(mode: 'none' | 'single' | 'multiple'): void;
   /** Replace the row data set (mirrors `api.setRowData`). */
   applyRowData(rows: unknown[]): void;
+  /** Cycle 7 / Task 7 — re-evaluate the quick filter using the current
+   *  `options.quickFilterText` / `cacheQuickFilter` /
+   *  `includeHiddenColumnsInQuickFilter`. Implementation in `cgrid.ts`
+   *  parses the text, ships to the worker, and fires `filterChanged` with
+   *  `source: 'quickFilter'`. */
+  applyQuickFilter(): void;
 }
 
 /**
@@ -103,6 +112,15 @@ export function applyRuntimeOption<TRow>(
     case 'rowData':
       if (Array.isArray(value)) target.applyRowData(value);
       return;
+    case 'quickFilterText':
+    case 'cacheQuickFilter':
+    case 'includeHiddenColumnsInQuickFilter':
+      // All three feed into a single worker round-trip. The caller has
+      // already mutated `target.options[key]` so `applyQuickFilter` reads
+      // the current values back; toggling cache or the hidden-columns
+      // flag therefore re-evaluates with the existing text in place.
+      target.applyQuickFilter();
+      return;
     case 'animateRows':
     case 'enableCellChangeFlash':
     case 'cellFlashDuration':
@@ -128,4 +146,5 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'enableCellChangeFlash', 'cellFlashDuration', 'cellFadeDuration',
   'asyncTransactionWaitMillis', 'rowBuffer',
   'context', 'loading', 'debug', 'rowData',
+  'quickFilterText', 'cacheQuickFilter', 'includeHiddenColumnsInQuickFilter',
 ]);

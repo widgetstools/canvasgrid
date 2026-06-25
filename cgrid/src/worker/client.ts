@@ -99,6 +99,20 @@ export class WorkerClient {
     return this.send<{ visibleCount: number }>({ type: 'setFilterModel', payload: f });
   }
 
+  /** Cycle 7 / Task 7 — ship parsed quick-filter terms (or `null` to
+   *  clear) to the worker. `colIds` narrows the aggregate to a subset
+   *  of worker columns (used to honor `includeHiddenColumnsInQuickFilter:
+   *  false` — main passes only the visible colIds). `cacheQuickFilter`
+   *  toggles the worker's per-row aggregate cache. Resolves with the
+   *  new visible row count after `QuickFilterPass` + `FilterPass` run. */
+  setQuickFilter(payload: {
+    terms: string[] | null;
+    cacheQuickFilter: boolean;
+    colIds: string[] | null;
+  }): Promise<{ visibleCount: number }> {
+    return this.send<{ visibleCount: number }>({ type: 'setQuickFilter', payload });
+  }
+
   getViewport(req: ViewportRequest): Promise<ViewportChunk> {
     return this.send<{ chunk: ViewportChunk }>({ type: 'getViewport', payload: req }).then((r) => r.chunk);
   }

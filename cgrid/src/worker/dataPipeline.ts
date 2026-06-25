@@ -291,6 +291,145 @@ export class TransactionQueue<TRow = any> {
   }
 }
 
+/**
+ * Cycle 7 / Task 7 — cross-column quick filter. Runs BEFORE `FilterPass`
+ * in the worker pipeline. Each row produces an aggregate string of every
+ * eligible column's stringified value joined with `'\n'`; a row passes
+ * when every search term is `includes`-matched against the aggregate
+ * (lower-cased on both sides — the default matcher is case-insensitive).
+ *
+ * Terms are split main-side via `quickFilterParser` and shipped as a
+ * `string[]`. A `null` (or empty) terms array short-circuits to `null`
+ * from `apply()` — the caller treats that as "every row passes" and skips
+ * any intersection.
+ *
+ * `cacheQuickFilter: true` memoizes the per-row aggregate so a hot
+ * type-as-you-search loop avoids the `String(value)` coercion per
+ * keystroke. The cache is invalidated whenever the column set changes
+ * (column add / hide / show / order can change the aggregate composition)
+ * and whenever the worker's transaction hook calls `invalidateRows`.
+ *
+ * The eligible column set is the worker columns whose `field` is set,
+ * optionally narrowed by `setColIds` — main passes the visible-only or
+ * include-hidden list per `includeHiddenColumnsInQuickFilter`.
+ */
+export class QuickFilterPass<TRow = any> {
+  private terms: string[] | null = null;
+  private lowerTerms: string[] = [];
+  private cacheEnabled = false;
+  /** All worker columns with a resolvable `field`. */
+  private allColumns: WorkerColumn[] = [];
+  /** Active aggregate column set — `allColumns` filtered by `colIds`. */
+  private aggColumns: WorkerColumn[] = [];
+  /** Whitelist of colIds to include in the aggregate; `null` means "all". */
+  private colIdWhitelist: Set<string> | null = null;
+  private aggregateCache = new Map<string, string>();
+
+  constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
+    this.setColumns(columns);
+  }
+
+  /** Replace the search terms. `null` or empty array disables the pass. */
+  setTerms(terms: string[] | null): void {
+    if (terms === null || terms.length === 0) {
+      this.terms = null;
+      this.lowerTerms = [];
+      return;
+    }
+    this.terms = terms;
+    // Pre-lower so the per-row `includes` check pays nothing per term.
+    this.lowerTerms = terms.map((t) => t.toLowerCase());
+  }
+
+  /** Swap the worker columns. Invalidates the aggregate cache because the
+   *  per-row aggregate text composition changes with the column set. */
+  setColumns(columns: WorkerColumn[]): void {
+    this.allColumns = columns.filter((c) => c.field !== undefined);
+    this.recomputeAggColumns();
+    this.aggregateCache.clear();
+  }
+
+  /** Narrow the aggregate to the listed colIds. Pass `null` to use every
+   *  worker column with a field. Invalidates the aggregate cache. */
+  setColIds(colIds: string[] | null): void {
+    this.colIdWhitelist = colIds === null ? null : new Set(colIds);
+    this.recomputeAggColumns();
+    this.aggregateCache.clear();
+  }
+
+  /** Toggle the per-row aggregate cache. Flipping the flag clears the
+   *  cache so a `false → true` transition rebuilds from scratch and
+   *  a `true → false` doesn't leave a stale Map sitting in memory. */
+  setCacheEnabled(enabled: boolean): void {
+    if (this.cacheEnabled !== enabled) {
+      this.aggregateCache.clear();
+    }
+    this.cacheEnabled = enabled;
+  }
+
+  /** Drop cached aggregate text for the given rowIds. Called from the
+   *  worker's transaction hook so a row whose data just changed doesn't
+   *  return a stale aggregate on the next apply. */
+  invalidateRows(rowIds: Iterable<string>): void {
+    if (!this.cacheEnabled || this.aggregateCache.size === 0) return;
+    for (const id of rowIds) this.aggregateCache.delete(id);
+  }
+
+  /** Returns the surviving rowIds, or `null` when the pass is disabled
+   *  (`terms === null`). Callers intersect with `FilterPass.apply` —
+   *  `null` short-circuits to "no quick-filter constraint". */
+  apply(): string[] | null {
+    if (this.terms === null) return null;
+    const out: string[] = [];
+    const lowerTerms = this.lowerTerms;
+    const aggCols = this.aggColumns;
+    for (const row of this.store.rows()) {
+      const id = this.store.getRowId(row);
+      const agg = this.getAggregateText(id, row, aggCols);
+      if (this.matchesAll(agg, lowerTerms)) out.push(id);
+    }
+    return out;
+  }
+
+  private recomputeAggColumns(): void {
+    if (this.colIdWhitelist === null) {
+      this.aggColumns = this.allColumns;
+      return;
+    }
+    const whitelist = this.colIdWhitelist;
+    this.aggColumns = this.allColumns.filter((c) => whitelist.has(c.colId));
+  }
+
+  private getAggregateText(rowId: string, row: TRow, aggCols: WorkerColumn[]): string {
+    if (this.cacheEnabled) {
+      const cached = this.aggregateCache.get(rowId);
+      if (cached !== undefined) return cached;
+    }
+    let agg = '';
+    for (let i = 0; i < aggCols.length; i++) {
+      const col = aggCols[i]!;
+      const v = (row as Record<string, unknown>)[col.field!];
+      // Empty / null values still emit a separator so the aggregate shape
+      // is positional — useful when a future matcher inspects per-column
+      // slots (Cycle 24 module loader work).
+      if (i > 0) agg += '\n';
+      agg += v == null ? '' : String(v);
+    }
+    // Lowercase once at aggregation time so the per-term `includes` check
+    // doesn't re-lower on every comparison.
+    const lower = agg.toLowerCase();
+    if (this.cacheEnabled) this.aggregateCache.set(rowId, lower);
+    return lower;
+  }
+
+  private matchesAll(agg: string, lowerTerms: string[]): boolean {
+    for (let i = 0; i < lowerTerms.length; i++) {
+      if (!agg.includes(lowerTerms[i]!)) return false;
+    }
+    return true;
+  }
+}
+
 export class FilterPass<TRow = any> {
   private model: FilterModel = {};
   private colIndex = new Map<string, WorkerColumn>();

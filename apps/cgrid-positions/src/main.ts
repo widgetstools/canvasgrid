@@ -118,3 +118,16 @@ document.getElementById('imp-reset-widths')?.addEventListener('click', () => {
   ]);
 });
 
+// Cycle 7 / Task 7 — cross-column quick filter. The search input drives
+// `setGridOption('quickFilterText', value)` on every keystroke. The
+// option flows through `applyRuntimeOption`, which calls the worker's
+// `setQuickFilter` and re-evaluates the visible row set in a single
+// round-trip per keystroke.
+const quickInput = document.getElementById('quick-filter') as HTMLInputElement | null;
+quickInput?.addEventListener('input', () => {
+  const api = grid as unknown as {
+    setGridOption: (key: 'quickFilterText', value: string) => void;
+  };
+  api.setGridOption('quickFilterText', quickInput.value);
+});
+

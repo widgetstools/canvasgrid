@@ -101,6 +101,21 @@ export type WorkerRequest =
   | { id: ReqId; type: 'applyTransaction'; payload: { add?: unknown[]; update?: unknown[]; remove?: string[]; async: boolean; heightsByRowId?: Map<string, number> } }
   | { id: ReqId; type: 'setSortModel';     payload: SortModel }
   | { id: ReqId; type: 'setFilterModel';   payload: FilterModel }
+  /** Cycle 7 / Task 7 — cross-column quick-filter terms. The worker runs
+   *  a `QuickFilterPass` BEFORE the per-column `FilterPass`. `terms: null`
+   *  (or `[]`) disables the pass. `colIds: null` includes every worker
+   *  column with a `field`; a non-null list narrows the aggregate to the
+   *  given columns (used to honor `includeHiddenColumnsInQuickFilter:
+   *  false`). `cacheQuickFilter` toggles the per-row aggregate cache. */
+  | {
+      id: ReqId;
+      type: 'setQuickFilter';
+      payload: {
+        terms: string[] | null;
+        cacheQuickFilter: boolean;
+        colIds: string[] | null;
+      };
+    }
   | { id: ReqId; type: 'setGroupModel';    payload: GroupModel }
   | { id: ReqId; type: 'getViewport';      payload: ViewportRequest }
   | { id: ReqId; type: 'updateColumns';    payload: { columns: WorkerColumn[] } }
