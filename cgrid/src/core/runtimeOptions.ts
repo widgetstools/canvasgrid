@@ -72,6 +72,11 @@ export interface RuntimeOptionTarget<TRow = any> {
    *  parses the text, ships to the worker, and fires `filterChanged` with
    *  `source: 'quickFilter'`. */
   applyQuickFilter(): void;
+  /** Cycle 4 / Task 11 (cell-flash patch) — forward the runtime
+   *  `enableCellChangeFlash` flip to the worker so the diff producer
+   *  starts / stops on the next applyTransaction. Implementation in
+   *  `cgrid.ts` calls `workerClient.setEnableCellChangeFlash`. */
+  forwardEnableCellChangeFlash(enabled: boolean): void;
 }
 
 /**
@@ -121,8 +126,14 @@ export function applyRuntimeOption<TRow>(
       // flag therefore re-evaluates with the existing text in place.
       target.applyQuickFilter();
       return;
-    case 'animateRows':
     case 'enableCellChangeFlash':
+      // Cycle 4 / Task 11 — forward to the worker so the diff producer
+      // starts / stops on the next applyTransaction. The main-side
+      // FlashRegistry reads `options.enableCellChangeFlash` live so no
+      // additional wiring is needed there.
+      target.forwardEnableCellChangeFlash(value === true);
+      return;
+    case 'animateRows':
     case 'cellFlashDuration':
     case 'cellFadeDuration':
     case 'asyncTransactionWaitMillis':

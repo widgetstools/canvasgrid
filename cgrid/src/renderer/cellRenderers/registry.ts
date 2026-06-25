@@ -24,8 +24,12 @@ export interface CellPaintConfig {
   // Header-only adornments (ignored by data renderers)
   iconColor?: string;
   sortDirection?: 'asc' | 'desc';
-  // Flash overlay (already supported; carries through)
+  // Flash overlay (Cycle 4 / Task 11 — `flashAlpha` is the per-cell
+  // alpha drained from FlashRegistry; `flashFromColor` is the theme's
+  // current --cg-flash-from-color so light + dark themes both paint
+  // their declared color instead of a hard-coded swatch).
   flashAlpha?: number;
+  flashFromColor?: string;
   /**
    * Opaque per-cell params forwarded by the painter. Set from either the
    * resolved column's static `cellRendererParams` or — when a column has a
@@ -65,7 +69,10 @@ function paintBackground(gc: CachedContext2D, p: CellPaintConfig): void {
   if (p.flashAlpha && p.flashAlpha > 0) {
     gc.cache.save();
     gc.cache.globalAlpha = p.flashAlpha;
-    gc.cache.fillStyle = '#fef3c7';
+    // Cycle 4 / Task 11 — theme-driven flash color. Falls back to the
+    // ag-grid yellow so the painter still renders something useful
+    // when the theme variable hasn't been resolved (defensive).
+    gc.cache.fillStyle = p.flashFromColor ?? '#fef3c7';
     gc.fillRect(p.bounds.x, p.bounds.y, p.bounds.w, p.bounds.h);
     gc.cache.restore();
   }

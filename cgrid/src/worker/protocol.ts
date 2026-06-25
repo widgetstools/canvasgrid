@@ -10,6 +10,14 @@ export interface WorkerInitPayload {
    *  contributions — a single short line should not shrink a row below the
    *  user's grid `rowHeight`. */
   rowHeight?: number;
+  /** Cycle 4 / Task 11 (cell-flash patch) — when true, the worker
+   *  diffs `applyTransaction.update` rows against the stored row data
+   *  and stages the changed (rowId, field) pairs in `pendingFlashes`.
+   *  The next `getViewport` reply packs those into the chunk's
+   *  `flashMask`. Defaults to false so apps that don't enable flash
+   *  pay zero diff overhead. Runtime-mutable via the
+   *  `setEnableCellChangeFlash` message. */
+  enableCellChangeFlash?: boolean;
 }
 
 export interface WorkerColumn {
@@ -172,7 +180,21 @@ export type WorkerRequest =
    *  `applyTransaction` lands on the column (or any column — the cache
    *  is wiped wholesale, matching how `QuickFilterPass` handles
    *  invalidation). */
-  | { id: ReqId; type: 'getDistinctValues'; payload: { colId: string } };
+  | { id: ReqId; type: 'getDistinctValues'; payload: { colId: string } }
+  /** Cycle 4 / Task 11 (cell-flash patch) — flip the cell-flash
+   *  diff producer on or off at runtime. When off, `applyTransaction.update`
+   *  no longer computes per-row diffs (zero allocation overhead for
+   *  apps that don't use flash). When flipped on the next
+   *  `applyTransaction` will start staging diffs. */
+  | { id: ReqId; type: 'setEnableCellChangeFlash'; payload: { enabled: boolean } }
+  /** Cycle 4 / Task 11 (cell-flash patch) — programmatic flash.
+   *  `api.flashCells({rowIds, colIds, ...})` routes here so the worker
+   *  can resolve the string rowIds via its own `RowStore` lookup and
+   *  stage the cells into `pendingFlashes`. Unknown rowIds are
+   *  silently dropped. Empty colIds means "every column with a field
+   *  in this rowId" — the worker expands. The flash actually
+   *  appears in the next `getViewport` reply's `flashMask`. */
+  | { id: ReqId; type: 'flashCells'; payload: { rowIds: string[]; colIds: string[] } };
 
 export type WorkerResponse =
   | { id: ReqId; type: 'ready' }

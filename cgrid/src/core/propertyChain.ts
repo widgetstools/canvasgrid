@@ -241,6 +241,10 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.iconColor = ctx.iconColor;
   target.sortDirection = ctx.sortDirection;
   target.flashAlpha = ctx.flashAlpha;
+  // Cycle 4 / Task 11 — pipe the theme's resolved flash color through
+  // so painters don't hard-code it. Read once per cell (constant per
+  // theme); no perf hit.
+  target.flashFromColor = theme.flashFromColor;
   target.params = ctx.params;
 
   // Theme defaults.

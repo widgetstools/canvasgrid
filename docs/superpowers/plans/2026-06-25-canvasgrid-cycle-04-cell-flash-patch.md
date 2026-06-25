@@ -433,11 +433,71 @@ Operational gotchas from the Cycle 7 sessions that apply here:
 
 ## Shipped
 
-_(Filled in at task exit.)_
+- `FlashRegistry` in `core/flashRegistry.ts` — numeric-keyed per-cell
+  flash tracker; tri-state lifecycle (active / fading / pruned); honors
+  live `enabled` + `reducedMotion` deps; per-rAF tick prunes entries
+  + requests repaint when any remain (zero-cost when empty).
+- `diffRowFields(old, new)` helper in `worker/dataPipeline.ts` — shallow
+  per-field diff used by `applyTransaction.update` to populate the
+  worker's `pendingFlashes` map.
+- `ViewportSlicer.slice` extended — packs `flashMask: Uint8Array` (one
+  bit per cell, row-major) from `pendingFlashes`; caller drains after.
+- Worker hooks: `enableCellChangeFlash` init flag, `setEnableCellChangeFlash`
+  + `flashCells` request envelopes, `pendingFlashes` state, sync +
+  async `applyTransaction` diff producer, `setRowData` reset.
+- `CGridApi.flashCells({rowIds, colIds, ...})` — programmatic flash;
+  routes through the worker so the worker's string→numeric rowId map
+  resolves authoritatively; flash actually lands on the next viewport
+  chunk reply.
+- `setGridOption('enableCellChangeFlash', N)` runtime mutation —
+  forwards to the worker via `setEnableCellChangeFlash` (off wipes
+  pendingFlashes so a stale entry doesn't paint).
+- Theme-driven flash color — `theme.flashFromColor` resolved at
+  `CssReader.read()` time + threaded through `CellPaintConfig.flashFromColor`;
+  painter blend uses it instead of hard-coded `#fef3c7`. Light + dark
+  themes both flash in their declared colors.
+- `prefers-reduced-motion: reduce` opt-out — `matchMedia` listener in
+  cgrid; FlashRegistry short-circuits every `flash()` and `getAlpha()`
+  call. Cycle 23 / Task 7 can layer additional opt-out surfaces.
+- Demo wiring — `apps/cgrid-positions` already had
+  `enableCellChangeFlash: true` in its options; STOMP live updates now
+  visibly flash updated cells (visual smoke at
+  `.playwright-mcp/cycle4-task11-01-live-flash.png`).
+- Tests:
+  - `tests/flashRegistry.test.ts` — 13 unit assertions.
+  - `tests/dataPipelineFlash.test.ts` — 11 unit assertions (diff +
+    slicer mask packing).
+  - `apps/cgrid-positions/e2e/cell-flash.spec.ts` — 4 E2E specs
+    (programmatic flash, runtime disable, re-enable, reduced-motion).
 
 ---
 
-## Cell-flash patch status
+## Cell-flash patch status: COMPLETE
 
-_(Filled in at task exit. Replace this line with `## Cell-flash patch
-status: COMPLETE` + the acceptance-criteria checklist.)_
+Acceptance criteria:
+- [x] `enableCellChangeFlash: true` produces visible flashes on STOMP
+      updates in the demo (visual smoke captured).
+- [x] `enableCellChangeFlash: false` ships zero overhead — worker
+      doesn't compute diff, slicer doesn't pack mask, registry is
+      empty.
+- [x] `cellFlashDuration` and `cellFadeDuration` are runtime-mutable
+      via `setGridOption` (no regression from Cycle 4 / Task 4 wiring).
+- [x] `api.flashCells({rowIds, colIds})` flashes the named cells
+      programmatically (E2E green).
+- [x] `prefers-reduced-motion: reduce` suppresses every flash (E2E
+      green).
+- [x] Light + dark themes both flash in their declared colors
+      (resolved from `--cg-flash-from-color`).
+- [x] FM Area 01 (`cellFlashDuration` / `cellFadeDuration`), Area 02
+      (`enableCellChangeFlash`), Area 04 (`enableCellChangeFlash` /
+      `cellFlashDuration` / `cellFadeDuration` / `flashCells` /
+      auto-trigger behavior), Area 05 (`flashCells`), Area 23 (Cells
+      API `flashCells`) rows flipped.
+- [x] All cgrid (714) + cgrid-positions tests + Cycle 7 E2E (46) +
+      new cell-flash E2E (4) green.
+
+Next sessions can now schedule **Cycle 23 / Task 7** (reduced-motion
+opt-out, which can layer additional surfaces on top of the
+`matchMedia` listener this patch wires) and **Cycle 24 / Task 7** (GPU
+cell-flash overlay, a perf optimization that replaces the per-cell
+repaint with a single offscreen alpha-mask canvas).
