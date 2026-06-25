@@ -250,6 +250,22 @@ export type EditableCallback<TRow = any, TValue = any> = (
   params: { data: TRow; colId: string; rowIndex: number; value: TValue },
 ) => boolean;
 
+/** Cycle 4 / Task 11 (cell-flash patch) — params for
+ *  `CGridApi.flashCells`. Programmatic cell flash for app-driven
+ *  highlights (validation success pulse, row-just-loaded). */
+export interface FlashCellsParams {
+  /** Row IDs to flash. Required; must be non-empty. */
+  rowIds: string[];
+  /** Column IDs to flash within each row. When omitted or empty,
+   *  every column with a resolved field flashes. */
+  colIds?: string[];
+  /** Reserved for a follow-up patch — overrides the global
+   *  `cellFlashDuration` for this batch. Cycle 4 ships the API
+   *  surface; per-call overrides land when a use case lands. */
+  flashDuration?: number;
+  fadeDuration?: number;
+}
+
 /** Per-column key-event predicate. Return `true` to swallow the event before
  *  any grid handler (navigation, edit-trigger, paging) sees it. Receives
  *  whether an editor is currently open on the cell. */
@@ -1099,6 +1115,14 @@ export interface CGridApi {
    *  popup state (closes the popup if it's open on `colId`).
    *  Idempotent. */
   destroyFilter(colId: string): void;
+
+  /** Cycle 4 / Task 11 (cell-flash patch) — programmatic cell flash.
+   *  Useful for app-driven highlights (validation success pulse,
+   *  row-just-loaded). No-op when `enableCellChangeFlash: false` or
+   *  `prefers-reduced-motion: reduce`. The flash actually paints on
+   *  the next viewport reply (one frame of latency for the worker
+   *  round-trip). */
+  flashCells(params: FlashCellsParams): void;
 
   /** Open the filter popup for `colId`. No-op when the column has no
    *  resolved filter, the column isn't currently in the viewport, or

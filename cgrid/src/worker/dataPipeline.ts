@@ -795,6 +795,42 @@ function compare(a: unknown, b: unknown, type: 'text' | 'number'): number {
   return as < bs ? -1 : as > bs ? 1 : 0;
 }
 
+/**
+ * Cycle 4 / Task 11 (cell-flash patch) — shallow diff between two row
+ * snapshots. Returns the set of top-level field names whose value
+ * changed (strict-equality). Used by the worker's `applyTransaction.update`
+ * hook to populate `pendingFlashes` so the next viewport slice can
+ * pack the corresponding `flashMask` bits.
+ *
+ * Strict-equality on top-level fields only: nested object identity
+ * change (e.g. a re-allocated nested `meta` object with identical
+ * contents) is treated as a change. This matches the row-replace
+ * semantics most apps use (immutable row updates). Apps that mutate
+ * row objects in place need to do the equivalent of `applyTransaction.
+ * update` to fire — flash is driven by the update path, not by
+ * arbitrary mutation.
+ */
+export function diffRowFields(oldRow: unknown, newRow: unknown): Set<string> {
+  const changed = new Set<string>();
+  if (oldRow === newRow) return changed;
+  if (oldRow == null || newRow == null) return changed;
+  const o = oldRow as Record<string, unknown>;
+  const n = newRow as Record<string, unknown>;
+  // Walk newRow keys + flag any that diverge.
+  for (const k in n) {
+    if (Object.prototype.hasOwnProperty.call(n, k) && o[k] !== n[k]) {
+      changed.add(k);
+    }
+  }
+  // Keys removed in newRow also count.
+  for (const k in o) {
+    if (Object.prototype.hasOwnProperty.call(o, k) && !Object.prototype.hasOwnProperty.call(n, k)) {
+      changed.add(k);
+    }
+  }
+  return changed;
+}
+
 export class ViewportSlicer<TRow = any> {
   private colIndex = new Map<string, WorkerColumn>();
 
@@ -807,7 +843,17 @@ export class ViewportSlicer<TRow = any> {
     for (const col of columns) this.colIndex.set(col.colId, col);
   }
 
-  slice(visibleIds: string[], req: ViewportRequest): ViewportChunk {
+  slice(
+    visibleIds: string[],
+    req: ViewportRequest,
+    /** Cycle 4 / Task 11 — when supplied AND `req.includeFlashMask !== false`,
+     *  the slicer packs a `flashMask: Uint8Array` (one bit per cell,
+     *  row-major) covering every cell whose rowId is in the visible
+     *  window and whose colId resolves to a field in the rowId's
+     *  pending-flash set. The caller drains `pendingFlashes` after
+     *  slicing so each flash fires exactly once. */
+    pendingFlashes?: Map<string, Set<string>>,
+  ): ViewportChunk {
     const rowStart = Math.max(0, req.rowStart);
     const rowEnd = Math.min(visibleIds.length, req.rowEnd);
     const count = Math.max(0, rowEnd - rowStart);
@@ -852,6 +898,43 @@ export class ViewportSlicer<TRow = any> {
       }
     }
 
+    // Cycle 4 / Task 11 — pack flashMask when the caller supplied a
+    // pendingFlashes map and the request didn't opt out. One bit per
+    // (row × col), row-major; bit `r * colCount + c`. We populate by
+    // walking ROW-major (cache-friendly) and ANDing the column field
+    // against the per-row pending set. The mask is omitted when
+    // there's nothing to flash so the transferable list stays minimal.
+    let flashMask: Uint8Array | undefined;
+    if (
+      pendingFlashes !== undefined && pendingFlashes.size > 0
+      && req.includeFlashMask !== false
+      && count > 0 && req.columns.length > 0
+    ) {
+      const colCount = req.columns.length;
+      const totalBits = count * colCount;
+      const mask = new Uint8Array((totalBits + 7) >>> 3);
+      let anySet = false;
+      // Pre-resolve column fields once (avoid re-lookup per row).
+      const colFields: Array<string | undefined> = new Array(colCount);
+      for (let c = 0; c < colCount; c++) {
+        const col = this.colIndex.get(req.columns[c]!);
+        colFields[c] = col?.field;
+      }
+      for (let r = 0; r < count; r++) {
+        const rowId = visibleIds[rowStart + r]!;
+        const fields = pendingFlashes.get(rowId);
+        if (!fields || fields.size === 0) continue;
+        for (let c = 0; c < colCount; c++) {
+          const field = colFields[c];
+          if (!field || !fields.has(field)) continue;
+          const bitIdx = r * colCount + c;
+          mask[bitIdx >>> 3]! |= 1 << (bitIdx & 7);
+          anySet = true;
+        }
+      }
+      if (anySet) flashMask = mask;
+    }
+
     return {
       rowStart,
       rowCount: count,
@@ -861,6 +944,7 @@ export class ViewportSlicer<TRow = any> {
       heights,
       numericCols,
       textCols,
+      flashMask,
     };
   }
 }

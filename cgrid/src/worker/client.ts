@@ -166,6 +166,27 @@ export class WorkerClient {
     }).then((r) => r.values);
   }
 
+  /** Cycle 4 / Task 11 (cell-flash patch) — runtime mutation for the
+   *  worker's `enableCellChangeFlash` flag. Flipping off wipes any
+   *  staged pendingFlashes so a stale entry from before the toggle
+   *  doesn't paint. */
+  setEnableCellChangeFlash(enabled: boolean): Promise<void> {
+    return this.send<{ visibleCount: number }>({
+      type: 'setEnableCellChangeFlash', payload: { enabled },
+    }).then(() => {});
+  }
+
+  /** Cycle 4 / Task 11 (cell-flash patch) — programmatic cell flash.
+   *  Worker resolves the string rowIds against its RowStore (drops
+   *  unknowns silently), expands empty colIds to "every column with a
+   *  field", and stages the (rowId, field) pairs into pendingFlashes.
+   *  The flash actually paints on the next viewport reply. */
+  flashCells(rowIds: string[], colIds: string[]): Promise<void> {
+    return this.send<{ visibleCount: number }>({
+      type: 'flashCells', payload: { rowIds, colIds },
+    }).then(() => {});
+  }
+
   /** Cycle 7 / Task 7 — ship parsed quick-filter terms (or `null` to
    *  clear) to the worker. `colIds` narrows the aggregate to a subset
    *  of worker columns (used to honor `includeHiddenColumnsInQuickFilter:

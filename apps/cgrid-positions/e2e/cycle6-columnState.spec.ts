@@ -39,7 +39,7 @@ async function gridReady(page: import('@playwright/test').Page): Promise<void> {
   await page.waitForFunction(
     () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,
     null,
-    { timeout: 20_000 },
+    { timeout: 45_000 },
   );
   // Settle frames.
   await page.evaluate(
@@ -106,7 +106,7 @@ test.describe('Cycle 6 / Task 2 — column state round-trip', () => {
     await page.waitForFunction(
       () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,
       null,
-      { timeout: 20_000 },
+      { timeout: 45_000 },
     );
 
     // Confirm localStorage carried the expected order (debug aid).

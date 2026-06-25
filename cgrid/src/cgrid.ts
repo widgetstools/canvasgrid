@@ -4,7 +4,7 @@
 import './theming/tokens.css';
 import type {
   CGridOptions, CGridEvent, CGridApi, Tx, TransactionResult, SortModel, FilterModel,
-  CFilterModelEntry, GroupModel,
+  CFilterModelEntry, GroupModel, FlashCellsParams,
 } from './types';
 import { TypedEventEmitter } from './core/eventEmitter';
 import { type ResolvedColDef, applyCellProps } from './core/propertyChain';
@@ -39,6 +39,7 @@ import { NumberFilterPopup } from './interaction/filters/numberFilter';
 import { DateFilterPopup } from './interaction/filters/dateFilter';
 import { TextFilterPopup, applyTrimInputToModel } from './interaction/filters/textFilter';
 import { SetFilterPopup } from './interaction/filters/setFilter';
+import { FlashRegistry } from './core/flashRegistry';
 import { CGridCanvas } from './core/canvas';
 import { CssReader, type ResolvedTheme } from './theming/cssReader';
 import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell, type CellPainter } from './renderer/cellRenderers/registry';
@@ -66,6 +67,7 @@ export type {
   CMultiConditionFilterModel, CSetFilterModel,
   CFilterParams, CTextFilterParams, CSetFilterParams,
   CTextFilterOp, CNumberFilterOp, CDateFilterOp,
+  FlashCellsParams,
   GroupModel,
   CValueGetterParams, CValueFormatterParams,
   CCellRendererSelector, CCellRendererSelectorParams, CCellRendererSelectorResult,
@@ -267,6 +269,14 @@ export class CGrid<TRow = any> {
    *  date / text / multi / set). Owns its own PopupHost instance so it
    *  can mount + unmount independently of the editor's popup. */
   private filterPopupHost: FilterPopupHost;
+  /** Cycle 4 / Task 11 (cell-flash patch) — per-cell flash tracker.
+   *  Drained from each `getViewport` chunk's `flashMask` and queried
+   *  by the painter's `cellData` callback to produce `flashAlpha`. */
+  private flashRegistry: FlashRegistry;
+  /** Cycle 4 / Task 11 — `prefers-reduced-motion: reduce` listener.
+   *  Live-read by `FlashRegistry.getReducedMotion`. */
+  private reducedMotionQuery: MediaQueryList | null = null;
+  private reducedMotion = false;
   /** Cycle 7 / Task 1 — canonical per-column v2 filter model state. Drives
    *  `getColumnFilterModel`; `setColumnFilterModel` updates this map and
    *  fans the resulting full model out to the worker via `setFilterModel`
@@ -569,6 +579,29 @@ export class CGrid<TRow = any> {
       this.editorContainer,
       new PopupHost(this.editorContainer),
     );
+
+    // Cycle 4 / Task 11 (cell-flash patch) — FlashRegistry tracks
+    // active cell-flash animations. Deps are live-read closures so
+    // `setGridOption('enableCellChangeFlash', N)` / `cellFlashDuration` /
+    // `cellFadeDuration` flow through immediately. `requestRepaint` is
+    // wired so the rAF tick keeps re-painting while flashes are
+    // active. `prefers-reduced-motion: reduce` is watched via
+    // matchMedia so the opt-out flips live.
+    if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+      this.reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+      this.reducedMotion = this.reducedMotionQuery.matches;
+      this.reducedMotionQuery.addEventListener('change', (e) => {
+        this.reducedMotion = e.matches;
+      });
+    }
+    this.flashRegistry = new FlashRegistry({
+      getEnabled: () => this.options.enableCellChangeFlash === true,
+      getFlashDuration: () => this.options.cellFlashDuration ?? 500,
+      getFadeDuration: () => this.options.cellFadeDuration ?? 1000,
+      getReducedMotion: () => this.reducedMotion,
+      requestRepaint: () => this.cgridCanvas?.requestRepaint(),
+    });
+
     this.a11y = new A11yOverlay(this.root);
 
     // 9. Worker
@@ -612,6 +645,11 @@ export class CGrid<TRow = any> {
       rowIdField: inferRowIdField(options.getRowId),
       columns: this.workerColumns(),
       rowHeight: this.options.rowHeight ?? this.theme.rowHeight,
+      // Cycle 4 / Task 11 — forward the cell-flash flag at init time so
+      // the very first setRowData → applyTransaction sequence ships
+      // diffs to main. Runtime mutation via `setGridOption('enableCellChangeFlash', N)`
+      // flows through `setEnableCellChangeFlash` later.
+      enableCellChangeFlash: this.options.enableCellChangeFlash === true,
     }).then(async () => {
       // Cycle 7 / Task 8 — register the external-filter round-trip BEFORE
       // gridReady fires so the first setRowData runs against a worker
@@ -1626,6 +1664,14 @@ export class CGrid<TRow = any> {
       setSelectionMode: (mode) => this.selection.setMode(mode),
       applyRowData: (rows) => this.setRowData(rows as TRow[]),
       applyQuickFilter: () => this.applyQuickFilter(),
+      forwardEnableCellChangeFlash: (enabled) => {
+        // Cycle 4 / Task 11 (cell-flash patch) — forward the flag to
+        // the worker. Fire-and-forget; the resolve just signals the
+        // worker acked the toggle, no main-side state to update.
+        this.workerClient.setEnableCellChangeFlash(enabled).catch((err) => {
+          if (!this.destroyed) console.error('[cgrid] setEnableCellChangeFlash:', err);
+        });
+      },
     };
   }
 
@@ -1714,6 +1760,14 @@ export class CGrid<TRow = any> {
     this.rowEdit.close();
     this.floatingFilterOverlay.destroy();
     this.filterPopupHost.destroy();
+    // Cycle 4 / Task 11 (cell-flash patch) — cancel any in-flight
+    // rAF tick + clear the registry so a late callback can't fire on
+    // a destroyed grid.
+    if (this.flashTickHandle !== null && typeof cancelAnimationFrame === 'function') {
+      cancelAnimationFrame(this.flashTickHandle);
+      this.flashTickHandle = null;
+    }
+    this.flashRegistry.destroy();
     this.root.parentElement?.removeChild(this.root);
     this.events.destroy();
   }
@@ -1738,6 +1792,7 @@ export class CGrid<TRow = any> {
       isAnyFilterPresent: () => this.isAnyFilterPresent(),
       isColumnFilterPresent: () => this.isColumnFilterPresent(),
       destroyFilter: (c) => this.destroyFilter(c),
+      flashCells: (p) => this.flashCells(p),
       ensureRowVisible: (id, pos) => this.ensureRowVisible(id, pos),
       ensureColumnVisible: (id, pos) => this.ensureColumnVisible(id, pos),
       ensureColumnGroupVisible: (id, pos) => this.ensureColumnGroupVisible(id, pos),
@@ -2137,6 +2192,19 @@ export class CGrid<TRow = any> {
         this.viewportRequestPending = false;
         this.chunk = chunk;
         this.decodedTextCols.clear();
+        // Cycle 4 / Task 11 (cell-flash patch) — drain the worker's
+        // per-cell flashMask into the registry. The chunk's `rowIds`
+        // are numeric (the worker's stable mapping); the painter's
+        // cellData callback reads `registry.getAlpha(numericRowId,
+        // colId, now)` to produce flashAlpha per visible cell.
+        if (chunk.flashMask) {
+          this.flashRegistry.ingestMask({
+            rowIds: chunk.rowIds,
+            colIds: cols,
+            mask: chunk.flashMask,
+          });
+          this.startFlashTickLoop();
+        }
         // Build / refresh the cumulative row-height index (Cycle 5 / Task 7).
         // Initial build seeds every row with the grid-level fallback; subsequent
         // chunks layer their per-row heights in. A rowCount change (sort /
@@ -2212,23 +2280,77 @@ export class CGrid<TRow = any> {
     return h > 0 ? h : fallback;
   }
 
-  private cellAt(rowIndex: number, colId: string): { value: unknown; valueFormatted: string } | null {
+  /** Cycle 4 / Task 11 (cell-flash patch) — rAF handle for the
+   *  self-sustaining flash tick. Held so a chunk that arrives while
+   *  the loop is already running doesn't double-schedule. */
+  private flashTickHandle: number | null = null;
+
+  /** Start (or keep alive) the per-rAF flash tick. Each tick calls
+   *  `registry.tick(now)` which prunes expired entries + requests a
+   *  repaint when any remain. The loop self-cancels when the
+   *  registry empties. Idempotent — already-running ticks aren't
+   *  re-scheduled. */
+  private startFlashTickLoop(): void {
+    if (this.flashTickHandle !== null) return;
+    if (typeof requestAnimationFrame !== 'function') return;
+    const tick = (now: number): void => {
+      this.flashTickHandle = null;
+      if (this.destroyed) return;
+      this.flashRegistry.tick(now);
+      if (this.flashRegistry.size() > 0) {
+        this.flashTickHandle = requestAnimationFrame(tick);
+      }
+    };
+    this.flashTickHandle = requestAnimationFrame(tick);
+  }
+
+  /** Cycle 4 / Task 11 (cell-flash patch) — programmatic cell flash.
+   *  Routes through the worker so the worker's string→numeric rowId
+   *  mapping resolves; the flash actually paints on the next viewport
+   *  chunk reply. No-op when `enableCellChangeFlash: false`,
+   *  `prefers-reduced-motion: reduce`, or the row IDs are unknown
+   *  worker-side. */
+  flashCells(params: FlashCellsParams): void {
+    if (this.destroyed) return;
+    if (this.options.enableCellChangeFlash !== true) return;
+    if (this.reducedMotion) return;
+    if (!params.rowIds || params.rowIds.length === 0) return;
+    const colIds = params.colIds ?? [];
+    this.workerClient.flashCells(params.rowIds, colIds)
+      .then(() => {
+        if (this.destroyed) return;
+        // Force a viewport refresh so the worker drains pendingFlashes
+        // into the next chunk's flashMask without waiting for a scroll
+        // or other natural trigger.
+        this.requestViewport();
+      })
+      .catch((err) => { if (!this.destroyed) console.error('[cgrid] flashCells:', err); });
+  }
+
+  private cellAt(rowIndex: number, colId: string): { value: unknown; valueFormatted: string; flashAlpha?: number } | null {
     if (!this.chunk) return null;
     const localIndex = rowIndex - this.chunk.rowStart;
     if (localIndex < 0 || localIndex >= this.chunk.rowCount) return null;
+    // Cycle 4 / Task 11 (cell-flash patch) — per-cell flashAlpha read
+    // from the FlashRegistry. Keyed by the chunk's numeric rowId
+    // (allocation-free per-cell lookup). Returns 0 when no flash is
+    // active or when the registry is disabled / reduced-motion.
+    const numericRowId = this.chunk.rowIds[localIndex]!;
+    const flashAlpha = this.flashRegistry.getAlpha(numericRowId, colId, performance.now());
+    const flash = flashAlpha > 0 ? flashAlpha : undefined;
     const numeric = this.chunk.numericCols[colId];
     if (numeric) {
       const value = numeric[localIndex]!;
-      return { value, valueFormatted: this.formatNumber(colId, value) };
+      return { value, valueFormatted: this.formatNumber(colId, value), flashAlpha: flash };
     }
     const text = this.chunk.textCols[colId];
     if (text) {
       let decoded = this.decodedTextCols.get(colId);
       if (!decoded) { decoded = decodeText(text.offsets, text.bytes); this.decodedTextCols.set(colId, decoded); }
       const value = decoded[localIndex] ?? '';
-      return { value, valueFormatted: value };
+      return { value, valueFormatted: value, flashAlpha: flash };
     }
-    return { value: '', valueFormatted: '' };
+    return { value: '', valueFormatted: '', flashAlpha: flash };
   }
 
   private rowIdAt(rowIndex: number): string | null {

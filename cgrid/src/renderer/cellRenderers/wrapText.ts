@@ -96,7 +96,9 @@ class WrapTextPainter implements CellPainter {
     if (p.flashAlpha && p.flashAlpha > 0) {
       gc.cache.save();
       gc.cache.globalAlpha = p.flashAlpha;
-      gc.cache.fillStyle = '#fef3c7';
+      // Cycle 4 / Task 11 — theme-driven flash color (same as
+      // registry.ts paintBackground).
+      gc.cache.fillStyle = p.flashFromColor ?? '#fef3c7';
       gc.fillRect(p.bounds.x, p.bounds.y, p.bounds.w, p.bounds.h);
       gc.cache.restore();
     }

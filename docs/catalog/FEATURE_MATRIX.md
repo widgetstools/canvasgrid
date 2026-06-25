@@ -19,8 +19,8 @@
 | 01 | suppressChangeDetection | Community | option | no | P1 | Disable value change diffing |
 | 01 | asyncTransactionWaitMillis | Community | option | yes | P0 | Async transaction batch window (ms) |
 | 01 | suppressModelUpdateAfterUpdateTransaction | Community | option | no | P1 | Skip pipeline refresh on update-only transactions |
-| 01 | cellFlashDuration | Community | option | yes | P1 | Duration of cell flash highlight |
-| 01 | cellFadeDuration | Community | option | yes | P1 | Duration of cell flash fade-out |
+| 01 | ✅ cellFlashDuration | Community | option | yes | P1 | Duration of cell flash highlight |
+| 01 | ✅ cellFadeDuration | Community | option | yes | P1 | Duration of cell flash fade-out |
 | 01 | context | Community | option | no | P1 | Arbitrary app data passed to callbacks |
 | 01 | loading | Community | option | no | P2 | Show/hide loading overlay |
 | 01 | debug | Community | option | no | P3 | Verbose console logging |
@@ -59,7 +59,7 @@
 | 02 | cellRenderer | Community | option | yes | P0 | Custom cell renderer component or function |
 | 02 | ✅ cellRendererParams | Community | option | yes | P0 | Static params passed to cellRenderer |
 | 02 | ✅ cellRendererSelector | Community | option | no | P1 | Per-row dynamic renderer selection callback |
-| 02 | enableCellChangeFlash | Community | option | yes | P1 | Flash cell on value change |
+| 02 | ✅ enableCellChangeFlash | Community | option | yes | P1 | Flash cell on value change |
 | 02 | ✅ autoHeight | Community | option | yes | P2 | Row height expands to fit this column's content |
 | 02 | ✅ wrapText | Community | option | no | P2 | Enables text wrap inside cell |
 | 02 | ✅ width / initialWidth | Community | option | yes | P0 | Column pixel width; initialWidth applies on first construction only |
@@ -147,9 +147,9 @@
 | 04 | resetRowDataOnUpdate | Community | option | no | P1 | Forces full replacement even with getRowId |
 | 04 | asyncTransactionWaitMillis | Community | option | yes | P0 | Batching window for applyTransactionAsync |
 | 04 | suppressModelUpdateAfterUpdateTransaction | Community | option | no | P1 | Skip pipeline refresh on update-only transactions |
-| 04 | enableCellChangeFlash (ColDef) | Community | option | yes | P1 | Auto-flash on value change |
-| 04 | cellFlashDuration | Community | option | yes | P1 | Flash hold duration (ms) |
-| 04 | cellFadeDuration | Community | option | yes | P1 | Flash fade duration (ms) |
+| 04 | ✅ enableCellChangeFlash (ColDef) | Community | option | yes | P1 | Auto-flash on value change |
+| 04 | ✅ cellFlashDuration | Community | option | yes | P1 | Flash hold duration (ms) |
+| 04 | ✅ cellFadeDuration | Community | option | yes | P1 | Flash fade duration (ms) |
 | 04 | deltaSort | Community | option | no | P1 | Sort only changed rows in transaction |
 | 04 | suppressChangeDetection | Community | option | no | P1 | Disable value diff before refresh |
 | 04 | applyTransaction | Community | api | yes | P0 | Sync add/update/remove transaction |
@@ -157,7 +157,7 @@
 | 04 | flushAsyncTransactions | Community | api | no | P0 | Flush pending async transactions immediately |
 | 04 | refreshCells | Community | api | no | P0 | Re-render cells in place |
 | 04 | redrawRows | Community | api | no | P1 | Destroy and recreate rows |
-| 04 | flashCells | Community | api | no | P1 | Trigger flash animation on cells |
+| 04 | ✅ flashCells | Community | api | no | P1 | Trigger flash animation on cells |
 | 04 | refreshClientSideRowModel | Community | api | no | P1 | Re-run CSRM pipeline from a given step |
 | 04 | rowDataUpdated | Community | event | no | P0 | rowData set on CSRM |
 | 04 | modelUpdated | Community | event | yes | P0 | Displayed rows recomputed |
@@ -167,7 +167,7 @@
 | 04 | Async transaction batching | Community | behavior | yes | P0 | Queue → setTimeout → flush → fire event |
 | 04 | Immutable data mode (rowData replace + getRowId) | Community | behavior | no | P1 | Store-driven update pattern |
 | 04 | refreshCells vs redrawRows | Community | behavior | no | P0 | Refresh in-place vs full row recreate |
-| 04 | enableCellChangeFlash auto-trigger | Community | behavior | yes | P1 | Flash on value change in transaction |
+| 04 | ✅ enableCellChangeFlash auto-trigger | Community | behavior | yes | P1 | Flash on value change in transaction |
 | 04 | deltaSort for large streamed datasets | Community | behavior | no | P1 | Sort only transaction-changed rows |
 
 <!-- area:05 Rendering & DOM -->
@@ -197,7 +197,7 @@
 | 05 | alwaysShowVerticalScroll | Community | option | no | P2 | Always visible vertical scrollbar |
 | 05 | refreshCells | Community | api | no | P0 | Re-render cells in place |
 | 05 | redrawRows | Community | api | no | P1 | Destroy and recreate rows |
-| 05 | flashCells | Community | api | no | P1 | Trigger flash animation |
+| 05 | ✅ flashCells | Community | api | no | P1 | Trigger flash animation |
 | 05 | getCellRendererInstances | Community | api | no | P2 | Access live renderer instances |
 | 05 | getRenderedNodes | Community | api | no | P1 | Viewport + buffer row nodes |
 | 05 | ensureIndexVisible | Community | api | no | P1 | Scroll to row by index |
@@ -757,7 +757,7 @@
 | 23 | Data API | Community | api | yes | P0 | applyTransaction, applyTransactionAsync, flushAsyncTransactions, refreshClientSideRowModel, setRowCount — see `23-api.md` |
 | 23 | ✅ Columns API | Community | api | yes | P0 | getColumnDefs, getColumn, ✅ applyColumnState, ✅ getColumnState, ✅ resetColumnState, ✅ setColumnsVisible, ✅ setColumnsPinned, ✅ setColumnWidths, ✅ moveColumns, ✅ moveColumnByIndex, ✅ sizeColumnsToFit, ✅ autoSizeColumns, ✅ autoSizeAllColumns, ✅ getHeaderBoundsAt — see `23-api.md` |
 | 23 | Rows API | Community | api | yes | P0 | getRowNode, getDisplayedRowCount, forEachNode, redrawRows, expandAll, collapseAll, getPinnedTopRow — see `23-api.md` |
-| 23 | Cells API | Community | api | yes | P0 | refreshCells, flashCells, getCellRendererInstances, ✅ registerCellRenderer, ✅ registerCellEditor, ✅ startEditingCell, ✅ stopEditing, undoCellEditing — see `23-api.md` |
+| 23 | Cells API | Community | api | yes | P0 | refreshCells, ✅ flashCells, getCellRendererInstances, ✅ registerCellRenderer, ✅ registerCellEditor, ✅ startEditingCell, ✅ stopEditing, undoCellEditing — see `23-api.md` |
 | 23 | Selection API | Community | api | yes | P0 | selectAll, deselectAll, getSelectedNodes, getSelectedRows, ✅ setSelectedRowIds, getCellRanges, clearCellSelection — see `23-api.md` |
 | 23 | Sorting API | Community | api | no | P1 | onSortChanged — see `23-api.md` |
 | 23 | ✅ Filtering API | Community | api | yes | P1 | ✅ isAnyFilterPresent, ✅ isColumnFilterPresent, ✅ setFilterModel, getFilterModel, ✅ getColumnFilterModel, ✅ setColumnFilterModel, ✅ destroyFilter, ✅ showColumnFilter, ✅ hideColumnFilter, ✅ onFilterChanged, getAdvancedFilterModel — see `23-api.md` |

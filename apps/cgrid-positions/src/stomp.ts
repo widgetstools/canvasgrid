@@ -31,12 +31,31 @@ export interface StompCallbacks {
 const DEFAULTS = {
   wsUrl: 'ws://localhost:8081',
   clientId: 'TRADER001',
-  snapshotRows: 3000,
-  rate: 7,
+  // 20k row snapshot — exercises the worker's chunk pipeline + paint
+  // throughput at the high end of the showcase target. The server
+  // (stomp-view-server) defaults to 20k via DEFAULT_SNAPSHOT_ROWS.
+  snapshotRows: 20_000,
+  // 200 ticks/sec × 50 updates/tick = 10,000 row updates/sec
+  // PUBLISHED by the server (verified via stomp-view-server logs).
+  // Server-side patch `stomp-view-server/src/stomp/connection.ts`
+  // honors the `updates-per-tick` header by packing N row mutations
+  // into each MESSAGE so we can break Node's ~1ms `setInterval`
+  // floor. The grid's status pill shows both the published rate and
+  // the rate the main thread actually processes (typically
+  // 5-7 k/sec on a dev laptop — the gap is decode + worker round-
+  // trip + canvas repaint per chunk; Cycle 24 perf-hardening
+  // narrows it).
+  rate: 200,
   batchSize: 50,
   sparse: true,
-  updatesPerTick: 100,
+  updatesPerTick: 50,
 };
+
+/** Cycle 4 follow-up — expose the configured server publish rate
+ *  (rate × updatesPerTick) so the demo's status pill can render the
+ *  theoretical max alongside the realised processing rate. */
+export const STOMP_PUBLISH_RATE_PER_SEC =
+  DEFAULTS.rate * DEFAULTS.updatesPerTick;
 
 const SNAPSHOT_END_TOKEN = 'Success';
 

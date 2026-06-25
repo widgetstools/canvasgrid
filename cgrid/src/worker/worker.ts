@@ -4,7 +4,7 @@ import type {
 import { collectViewportTransferables } from './protocol';
 import {
   RowStore, FilterPass, SortPass, AggPass, ViewportSlicer, TransactionQueue,
-  QuickFilterPass, DistinctValuesPass,
+  QuickFilterPass, DistinctValuesPass, diffRowFields,
 } from './dataPipeline';
 import type { TransactionResult } from '../types';
 import type { WorkerColumn } from './protocol';
@@ -67,6 +67,19 @@ interface State {
   pendingExternalFilters: Map<number, (surviving: string[]) => void>;
   /** Cycle 7 / Task 8 — monotonic counter for external-filter callIds. */
   nextExternalFilterCallId: number;
+  /** Cycle 4 / Task 11 (cell-flash patch) — when true, the worker
+   *  computes per-row diffs on `applyTransaction.update` and stages
+   *  the changed (rowId, field) pairs in `pendingFlashes`. Runtime-
+   *  mutable via the `setEnableCellChangeFlash` message; off by
+   *  default so apps that don't use flash pay zero diff overhead. */
+  enableCellChangeFlash: boolean;
+  /** Cycle 4 / Task 11 (cell-flash patch) — staged changed-field set
+   *  per rowId, drained into the next `ViewportSlicer.slice` call
+   *  (which packs the matching bits into the chunk's `flashMask`).
+   *  Populated by both `applyTransaction.update` diffs AND
+   *  programmatic `flashCells` requests. Cleared after every slice
+   *  so each flash fires exactly once. */
+  pendingFlashes: Map<string, Set<string>>;
 }
 
 type Postable = WorkerResponse | WorkerPush;
@@ -159,6 +172,27 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     return state.visibleCache.length;
   }
 
+  /** Cycle 4 / Task 11 (cell-flash patch) — diff each update row
+   *  against the currently-stored row (PRE-apply) and merge changed
+   *  field names into `state.pendingFlashes`. The next viewport slice
+   *  reads + drains this map. */
+  function stageFlashesForUpdates(s: State, updates: unknown[]): void {
+    for (const newRow of updates) {
+      let rowId: string;
+      try { rowId = s.store.getRowId(newRow); } catch { continue; }
+      const oldRow = s.store.getById(rowId);
+      if (oldRow === undefined) continue;
+      const changed = diffRowFields(oldRow, newRow);
+      if (changed.size === 0) continue;
+      const existing = s.pendingFlashes.get(rowId);
+      if (existing) {
+        for (const f of changed) existing.add(f);
+      } else {
+        s.pendingFlashes.set(rowId, changed);
+      }
+    }
+  }
+
   function initHost(payload: WorkerInitPayload, id: number): void {
     const store = new RowStore(payload.rowIdField);
     if (payload.rowHeight != null) store.setGridRowHeight(payload.rowHeight);
@@ -174,6 +208,13 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       const all: TransactionResult[] = [];
       const touched = new Set<string>();
       for (const tx of txs) {
+        // Cycle 4 / Task 11 — diff each update row against the stored
+        // row BEFORE apply, so we can populate pendingFlashes with the
+        // changed (rowId, field) pairs. Skipped when the worker's
+        // flash flag is off.
+        if (state!.enableCellChangeFlash && tx.update && tx.update.length > 0) {
+          stageFlashesForUpdates(state!, tx.update);
+        }
         const r = store.apply(tx);
         all.push(r);
         // Aggregate cache must drop any row that just mutated so the next
@@ -221,6 +262,8 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       alwaysPassIds: new Set(),
       pendingExternalFilters: new Map(),
       nextExternalFilterCallId: 1,
+      enableCellChangeFlash: payload.enableCellChangeFlash === true,
+      pendingFlashes: new Map(),
     };
 
     post({ id, type: 'ready' });
@@ -392,6 +435,11 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             // the per-column distinct caches; the previous row set has
             // no relationship to the new one.
             state.distinct.invalidateRows([]);
+            // Cycle 4 / Task 11 — wipe pendingFlashes: any cell from
+            // the previous data set is no longer in the store, and
+            // flashing the initial setRowData would create an
+            // overwhelming "everything just changed" highlight wave.
+            state.pendingFlashes.clear();
             state.visibleCache = null;
             const visibleCount = await invalidateAndCount();
             post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount });
@@ -404,6 +452,12 @@ export function createWorkerHost(post: PostFn): WorkerHost {
               state.queue.push({ add: add as any[], update: update as any[], remove, heightsByRowId });
               post({ id: req.id, type: 'transactionFlushed', results: { add: [], update: [], remove: [] } });
             } else {
+              // Cycle 4 / Task 11 — diff updates BEFORE apply (need old
+              // row values to compare). Skipped when the worker flag is
+              // off (zero cost for apps that don't use flash).
+              if (state.enableCellChangeFlash && update && update.length > 0) {
+                stageFlashesForUpdates(state, update as unknown[]);
+              }
               const results = state.store.apply({ add: add as any[], update: update as any[], remove, heightsByRowId });
               // Cycle 7 / Task 7 — sync transactions also need the quick
               // filter aggregate cache invalidated for the touched rows.
@@ -512,6 +566,46 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             break;
           }
 
+          case 'setEnableCellChangeFlash': {
+            // Cycle 4 / Task 11 — runtime mutation. Flipping off
+            // wipes pendingFlashes too so a stale "flash on next view"
+            // entry from before the toggle doesn't paint.
+            state.enableCellChangeFlash = req.payload.enabled === true;
+            if (!state.enableCellChangeFlash) state.pendingFlashes.clear();
+            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: state.visibleCache?.length ?? 0 });
+            break;
+          }
+
+          case 'flashCells': {
+            // Cycle 4 / Task 11 — programmatic flash. Resolves string
+            // rowIds against the store (drops unknowns silently);
+            // expands empty colIds to "every column with a field".
+            // Stages into pendingFlashes; the next viewport reply
+            // ships the flashMask bits.
+            const { rowIds, colIds } = req.payload;
+            const fields = colIds.length === 0
+              ? state.columns.filter((c) => c.field).map((c) => c.field!)
+              : (() => {
+                  const out: string[] = [];
+                  for (const colId of colIds) {
+                    const col = state.columns.find((c) => c.colId === colId);
+                    if (col?.field) out.push(col.field);
+                  }
+                  return out;
+                })();
+            for (const rowId of rowIds) {
+              if (state.store.getById(rowId) === undefined) continue;
+              const existing = state.pendingFlashes.get(rowId);
+              if (existing) {
+                for (const f of fields) existing.add(f);
+              } else {
+                state.pendingFlashes.set(rowId, new Set(fields));
+              }
+            }
+            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: state.visibleCache?.length ?? 0 });
+            break;
+          }
+
           case 'getDistinctValues': {
             // Cycle 7 / Task 9 — derive (or read the cached) distinct
             // stringified value set for `colId`. One-pass hash over
@@ -572,7 +666,30 @@ export function createWorkerHost(post: PostFn): WorkerHost {
 
           case 'getViewport': {
             const visIds = await visibleAsync();
-            const chunk = state.slicer.slice(visIds, req.payload);
+            // Cycle 4 / Task 11 — pass pendingFlashes to the slicer so
+            // it can pack the flashMask. Drain ONLY the cells the slice
+            // actually emitted (drop rowId entries whose visible cells
+            // were all covered by this chunk's columns + rowStart/rowEnd
+            // window) — flashes for off-window rows persist until those
+            // rows are visible.
+            const pending = state.enableCellChangeFlash ? state.pendingFlashes : undefined;
+            const chunk = state.slicer.slice(visIds, req.payload, pending);
+            if (pending !== undefined && chunk.flashMask !== undefined) {
+              // Drain: clear the (rowId, field) entries we just flashed.
+              // For each visible row in the chunk window, remove the
+              // fields that correspond to this request's columns.
+              const s = state;
+              const colFields = req.payload.columns
+                .map((colId) => s.columns.find((c) => c.colId === colId)?.field)
+                .filter((f): f is string => f !== undefined);
+              for (let r = 0; r < chunk.rowCount; r++) {
+                const rowId = visIds[chunk.rowStart + r]!;
+                const set = pending.get(rowId);
+                if (!set) continue;
+                for (const f of colFields) set.delete(f);
+                if (set.size === 0) pending.delete(rowId);
+              }
+            }
             // Wire AggPass: compute grand-total aggregations over all visible rows.
             const aggResult = state.agg.apply(visIds);
             if (Object.keys(aggResult.totals).length > 0) {

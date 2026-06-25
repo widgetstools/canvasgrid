@@ -34,11 +34,25 @@ const pnlPill: CellPainter = {
   },
 };
 
-/** Demo bootstrap options. `editType` is forwarded from the URL query
- *  (`?editType=fullRow`) so the Cycle 5 / Task 10 E2E can flip into
- *  full-row mode without changing the default single-cell demo flow. */
+/** Demo bootstrap options. All flags default off so the demo opens
+ *  clean (uniform rows, no decorative cell backgrounds). E2E specs
+ *  that depend on the variant features opt in via the URL:
+ *
+ *   - `?editType=fullRow` — full-row edit mode (Cycle 5 / Task 10)
+ *   - `?variableHeights=1` — `getRowHeight` returns 56px for ~25% of
+ *     rows (Cycle 5 / Task 6's variableHeights.spec.ts)
+ *   - `?autoHeight=1` — `notes` column flips to `autoHeight: true` +
+ *     `wrapText: true` (Cycle 5 / Task 8 + 9's autoHeight.spec.ts +
+ *     wrapText.spec.ts)
+ *   - `?cellClassDemo=1` — re-enables the Cycle 6 / Task 7 demo
+ *     surfaces: `cellClassRules` (positive/negative bg on Total) +
+ *     `cellClass: 'warning'` (pale-yellow bg on Daily). Off by
+ *     default so the default demo isn't visually busy. */
 export interface PositionsGridOptions {
   editType?: 'fullRow';
+  variableHeights?: boolean;
+  autoHeight?: boolean;
+  cellClassDemo?: boolean;
 }
 
 /** Cycle 7 / Task 8 — toolbar-driven external filter state. The
@@ -155,21 +169,23 @@ export function createPositionsGrid(
       {
         groupId: 'pnl', headerName: 'P&L',
         children: [
-          // Static cellRenderer + cellRendererParams: every Total cell paints
-          // as a pill, padX wires through to the painter.
-          // Cycle 6 / Task 7 — cellClassRules colour the *cell background*
-          // underneath the pill: positive → #e7f7ec, negative → #fde7e9.
-          // Both coexist visually — the pill's semi-transparent fill renders
-          // on top of the class-driven bg.
+          // Total uses the pnlPill renderer for its pill-shaped fill.
+          // The cell background stays at the theme default — the pill
+          // colour already encodes positive/negative.
           {
             field: 'pnl', headerName: 'Total', type: 'number', width: 110, pinned: 'right',
             aggFunc: 'sum',
             cellRenderer: 'pnlPill',
             cellRendererParams: { padX: 4 },
-            cellClassRules: {
-              positive: (p: { value: unknown }) => typeof p.value === 'number' && p.value > 0,
-              negative: (p: { value: unknown }) => typeof p.value === 'number' && p.value < 0,
-            },
+            // Cycle 6 / Task 7 — cellClassRules opt-in: positive →
+            // pale-green bg, negative → pale-red bg. Off by default;
+            // `?cellClassDemo=1` re-enables.
+            ...(opts.cellClassDemo ? {
+              cellClassRules: {
+                positive: (p: { value: unknown }) => typeof p.value === 'number' && p.value > 0,
+                negative: (p: { value: unknown }) => typeof p.value === 'number' && p.value < 0,
+              },
+            } : {}),
             // Cycle 7 / Task 6 — multi-condition popup. Two condition rows
             // joined by AND / OR. Demonstrates expressions like
             // "greaterThan 0 OR lessThan -1000".
@@ -178,12 +194,13 @@ export function createPositionsGrid(
           },
           // cellRendererSelector: positive → pnlPill, negative or zero →
           // default 'number' renderer. Demonstrates the per-cell override.
-          // Cycle 6 / Task 7 — static cellClass 'warning' for demo coverage
-          // of the static-class path (applies a pale-yellow bg to all cells).
           {
             field: 'dailyPnl', headerName: 'Daily', type: 'number', width: 110,
             aggFunc: 'sum',
-            cellClass: 'warning',
+            // Cycle 6 / Task 7 — static `cellClass: 'warning'` opt-in
+            // (pale-yellow bg). Off by default; `?cellClassDemo=1`
+            // re-enables.
+            ...(opts.cellClassDemo ? { cellClass: 'warning' } : {}),
             cellRendererSelector: (p) => {
               const n = typeof p.value === 'number' ? p.value : Number(p.value);
               return Number.isFinite(n) && n > 0 ? { component: 'pnlPill' } : undefined;
@@ -213,19 +230,15 @@ export function createPositionsGrid(
         cellEditor: 'date',
         filter: 'date',
       },
-      // Cycle 5 / Task 8 — autoHeight target. main.ts seeds ~1 in 3 rows
-      // with a long synthetic description so the worker's measure pass has
-      // real wrap content. The largeText editor stays — popup mode is
-      // exactly what an autoHeight cell wants when the user edits.
+      // Notes column — fixed-height by default; the autoHeight +
+      // wrapText behaviors opt in via `?autoHeight=1` so the
+      // autoHeight.spec.ts and wrapText.spec.ts E2Es still have a
+      // target while the default demo stays uniform.
       {
         field: 'notes', headerName: 'Notes', width: 200, editable: true,
         cellEditor: 'largeText',
         cellEditorParams: { rows: 6, cols: 40, maxLength: 500 },
-        autoHeight: true,
-        // Cycle 5 / Task 9 — paint multi-line wrapped text inside the cell.
-        // Combined with autoHeight, the row grows to fit; without autoHeight,
-        // the last visible line would truncate with an ellipsis.
-        wrapText: true,
+        ...(opts.autoHeight ? { autoHeight: true, wrapText: true } : {}),
       },
       {
         field: 'confirmed', headerName: 'Conf.', width: 70, editable: true,
@@ -251,18 +264,18 @@ export function createPositionsGrid(
     // adjacent cell. F2, dblclick, single-click and api.startEditingCell
     // start in 'edit' mode so arrows still move the input caret.
     enableExcelEditing: true,
-    // Cycle 5 / Task 6 — variable row heights. A deterministic per-positionId
-    // rule that produces a visible mix in the demo viewport: positions whose
-    // ID ends with a character code divisible by 4 render 56 px tall, the
-    // rest fall back to the grid-level rowHeight. Picks roughly a quarter
-    // of rows so the E2E can scan a small window and still find at least
-    // one tall + one normal row.
-    getRowHeight: ({ data }) => {
-      const id = data.positionId;
-      if (!id) return null;
-      const last = id.charCodeAt(id.length - 1);
-      return last % 4 === 0 ? 56 : null;
-    },
+    // Default: uniform rows. `?variableHeights=1` re-enables the
+    // Cycle 5 / Task 6 `getRowHeight` rule (56px for positionIds
+    // whose last char-code is divisible by 4) so the
+    // variableHeights.spec.ts E2E still has a target.
+    ...(opts.variableHeights ? {
+      getRowHeight: ({ data }) => {
+        const id = (data as { positionId?: string } | null)?.positionId;
+        if (!id) return null;
+        const last = id.charCodeAt(id.length - 1);
+        return last % 4 === 0 ? 56 : null;
+      },
+    } : {}),
     // Cycle 5 / Task 10 — full-row edit. Opt-in via `?editType=fullRow`
     // (main.ts reads the URL). Triggering an edit on any editable cell
     // opens N editors at once; Tab cycles within the row, Enter commits
