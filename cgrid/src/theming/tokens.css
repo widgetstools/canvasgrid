@@ -12,6 +12,12 @@
 }
 
 .cg-theme-quartz {
+  /* Tells the UA to render native form controls (date-picker calendar,
+   * number-input spinners, autofill chrome) in light mode. The date
+   * filter popup mounts a native `<input type="date">` whose calendar
+   * widget is UA-rendered — without this property it always renders
+   * light regardless of grid theme. */
+  color-scheme: light;
   --cg-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
   --cg-font-size: 13px;
   --cg-row-height: 32px;
@@ -37,6 +43,10 @@
 }
 
 .cg-theme-quartz-dark {
+  /* Dark-mode counterpart — flips the native date-picker calendar,
+   * spinners, and autofill chrome to dark UA rendering so they match
+   * the grid surface instead of punching a white square out of it. */
+  color-scheme: dark;
   --cg-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
   --cg-font-size: 13px;
   --cg-row-height: 32px;
