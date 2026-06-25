@@ -56,6 +56,14 @@ export class VirtualList<T> {
   private prevOverflow: string;
   private prevPosition: string;
   private readonly onScroll = (): void => this.recompute();
+  /** Recomputes when the host's box size changes — covers the
+   *  popup-mount case (clientHeight goes from 0 to its styled value
+   *  one frame after `setItems`) and any later container resize
+   *  (window resize, side-panel drag). Without this the first
+   *  `setItems` mounts only the overscan-below window, leaving the
+   *  visible viewport half-empty until the user nudges the
+   *  scrollbar. */
+  private readonly resizeObserver: ResizeObserver | null;
 
   constructor(host: HTMLElement, deps: VirtualListDeps<T>) {
     this.host = host;
@@ -81,6 +89,15 @@ export class VirtualList<T> {
     host.appendChild(this.sizer);
     host.appendChild(this.window);
     host.addEventListener('scroll', this.onScroll);
+    // The set-filter popup builds its GUI before the FilterPopupHost
+    // mounts it; at construction time `host.clientHeight` is 0, so the
+    // first recompute mounts only the overscan-below window. Observe the
+    // host so the next layout (caused by the mount) re-fires recompute
+    // with the real viewport size.
+    this.resizeObserver = typeof ResizeObserver !== 'undefined'
+      ? new ResizeObserver(() => this.recompute())
+      : null;
+    this.resizeObserver?.observe(host);
   }
 
   /** Replace the item set. Resets scroll to top by default; pass
@@ -156,6 +173,7 @@ export class VirtualList<T> {
     if (this.destroyed) return;
     this.destroyed = true;
     this.host.removeEventListener('scroll', this.onScroll);
+    this.resizeObserver?.disconnect();
     for (const el of this.mounted.values()) el.remove();
     this.mounted.clear();
     this.sizer.remove();
