@@ -20,6 +20,13 @@
  * `null` (removes any active filter for the column) and clears the
  * caseSensitive toggle back to its default.
  *
+ * Cycle 7 / Task 6 — operator <select> + text input + caseSensitive
+ * checkbox extracted into `buildConditionRow` so the popup either
+ * renders alone (default) or wraps inside `MultiConditionWrapper` when
+ * `maxNumConditions > 1`. The caseSensitive flag is per-condition (each
+ * CTextFilterModel inside the multi shape carries its own
+ * `caseSensitive` value).
+ *
  * The worker's matchesText() honors the entry-level `caseSensitive`
  * flag and the column-level `textFormatter` ('lowercase' / 'uppercase'
  * / 'trim'); main-side `trimInput` is applied via
@@ -27,20 +34,29 @@
  * model is shipped to the worker.
  */
 
-import type { CTextFilterModel, CTextFilterOp, CFilterModelEntry } from '../../types';
+import type {
+  CFilterModelEntry,
+  CMultiConditionFilterModel,
+  CTextFilterModel,
+  CTextFilterOp,
+} from '../../types';
 import type { FilterPopupFactory } from './filterPopupHost';
+import { MultiConditionWrapper, type MultiConditionJoin } from './multiCondition';
 
 export type TextFilterButton = 'apply' | 'clear' | 'reset' | 'cancel';
 
 export interface TextFilterPopupDeps {
-  initialModel: CTextFilterModel | null;
-  onApply: (model: CTextFilterModel | null) => void;
+  initialModel: CTextFilterModel | CMultiConditionFilterModel | null;
+  onApply: (model: CTextFilterModel | CMultiConditionFilterModel | null) => void;
   onClose: () => void;
   buttons?: TextFilterButton[];
   closeOnApply?: boolean;
   /** When false, the caseSensitive checkbox does not render. Defaults
    *  to true. */
   showCaseSensitiveToggle?: boolean;
+  maxNumConditions?: number;
+  numAlwaysVisibleConditions?: number;
+  defaultJoinOperator?: MultiConditionJoin;
 }
 
 const OPERATOR_OPTIONS: ReadonlyArray<{ value: CTextFilterOp; label: string }> = [
@@ -56,12 +72,19 @@ const OPERATOR_OPTIONS: ReadonlyArray<{ value: CTextFilterOp; label: string }> =
 
 const DEFAULT_OP: CTextFilterOp = 'contains';
 
+interface RowController {
+  el: HTMLElement;
+  getModel(): CTextFilterModel | null;
+  reset(): void;
+  clearInputs(): void;
+}
+
 export class TextFilterPopup implements FilterPopupFactory {
   private gui: HTMLDivElement | null = null;
-  private select!: HTMLSelectElement;
-  private primary!: HTMLInputElement;
-  private caseSensitive: HTMLInputElement | null = null;
   private destroyed = false;
+  private singleRow: RowController | null = null;
+  private rowControllers: RowController[] = [];
+  private wrapper: MultiConditionWrapper | null = null;
 
   constructor(private deps: TextFilterPopupDeps) {}
 
@@ -69,47 +92,24 @@ export class TextFilterPopup implements FilterPopupFactory {
     const root = document.createElement('div');
     root.className = 'cg-filter-popup cg-filter-popup-text';
 
-    const opRow = document.createElement('div');
-    opRow.className = 'cg-filter-popup-row';
-    const select = document.createElement('select');
-    select.className = 'cg-filter-popup-operator';
-    for (const { value, label } of OPERATOR_OPTIONS) {
-      const opt = document.createElement('option');
-      opt.value = value;
-      opt.textContent = label;
-      select.appendChild(opt);
-    }
-    select.value = this.deps.initialModel?.type ?? DEFAULT_OP;
-    opRow.appendChild(select);
-    root.appendChild(opRow);
-
-    const inputsRow = document.createElement('div');
-    inputsRow.className = 'cg-filter-popup-row cg-filter-popup-inputs';
-    const primary = document.createElement('input');
-    primary.type = 'text';
-    primary.className = 'cg-filter-popup-input';
-    primary.setAttribute('data-cg-filter-input', 'primary');
-    primary.placeholder = 'Filter...';
-    if (this.deps.initialModel?.filter != null) primary.value = this.deps.initialModel.filter;
-    inputsRow.appendChild(primary);
-    root.appendChild(inputsRow);
-
-    if (this.deps.showCaseSensitiveToggle !== false) {
-      const csRow = document.createElement('div');
-      csRow.className = 'cg-filter-popup-row cg-filter-popup-case-sensitive';
-      const csLabel = document.createElement('label');
-      csLabel.className = 'cg-filter-popup-case-sensitive-label';
-      const cs = document.createElement('input');
-      cs.type = 'checkbox';
-      cs.setAttribute('data-cg-filter-case-sensitive', '');
-      cs.checked = this.deps.initialModel?.caseSensitive === true;
-      const csText = document.createElement('span');
-      csText.textContent = 'Case sensitive';
-      csLabel.appendChild(cs);
-      csLabel.appendChild(csText);
-      csRow.appendChild(csLabel);
-      root.appendChild(csRow);
-      this.caseSensitive = cs;
+    const maxConditions = this.deps.maxNumConditions ?? 1;
+    if (maxConditions > 1) {
+      const initial = this.normalizeInitial();
+      this.wrapper = new MultiConditionWrapper(root, {
+        buildConditionRow: (rowInitial, onChange) => {
+          const ctl = this.buildConditionRow(rowInitial as CTextFilterModel | null, onChange);
+          this.rowControllers.push(ctl);
+          return ctl.el;
+        },
+        initial,
+        maxNumConditions: maxConditions,
+        numAlwaysVisibleConditions: this.deps.numAlwaysVisibleConditions ?? 1,
+        onChange: () => { /* live state tracked via row controllers */ },
+      });
+    } else {
+      const initialSingle = this.singleInitialModel();
+      this.singleRow = this.buildConditionRow(initialSingle, () => { /* read at apply */ });
+      root.appendChild(this.singleRow.el);
     }
 
     const buttonsRow = document.createElement('div');
@@ -126,46 +126,157 @@ export class TextFilterPopup implements FilterPopupFactory {
     }
     root.appendChild(buttonsRow);
 
-    this.select = select;
-    this.primary = primary;
     this.gui = root;
-
-    select.addEventListener('change', () => this.syncInputVisibility());
-    this.syncInputVisibility();
     return root;
   }
 
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.wrapper?.destroy();
+    this.wrapper = null;
+    this.rowControllers = [];
+    this.singleRow = null;
     this.gui = null;
   }
 
-  /** Hide the value input for `blank` / `notBlank` — operator alone is
-   *  the entire model. Every other operator shows it. The input stays
-   *  in the DOM so the user's typed value survives a quick operator
-   *  swap. */
-  private syncInputVisibility(): void {
-    const op = this.select.value as CTextFilterOp;
-    const isBlank = op === 'blank' || op === 'notBlank';
-    this.primary.style.display = isBlank ? 'none' : '';
+  /** Cycle 7 / Task 6 — operator <select> + text input + (optional)
+   *  caseSensitive checkbox. Used by both the single-condition path
+   *  and the MultiConditionWrapper factory. */
+  private buildConditionRow(
+    initial: CTextFilterModel | null,
+    onChange: (next: CTextFilterModel | null) => void,
+  ): RowController {
+    const row = document.createElement('div');
+    row.className = 'cg-filter-popup-condition';
+
+    const opRow = document.createElement('div');
+    opRow.className = 'cg-filter-popup-row';
+    const select = document.createElement('select');
+    select.className = 'cg-filter-popup-operator';
+    for (const { value, label } of OPERATOR_OPTIONS) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      select.appendChild(opt);
+    }
+    select.value = initial?.type ?? DEFAULT_OP;
+    opRow.appendChild(select);
+    row.appendChild(opRow);
+
+    const inputsRow = document.createElement('div');
+    inputsRow.className = 'cg-filter-popup-row cg-filter-popup-inputs';
+    const primary = document.createElement('input');
+    primary.type = 'text';
+    primary.className = 'cg-filter-popup-input';
+    primary.setAttribute('data-cg-filter-input', 'primary');
+    primary.placeholder = 'Filter...';
+    if (initial?.filter != null) primary.value = initial.filter;
+    inputsRow.appendChild(primary);
+    row.appendChild(inputsRow);
+
+    let caseSensitive: HTMLInputElement | null = null;
+    if (this.deps.showCaseSensitiveToggle !== false) {
+      const csRow = document.createElement('div');
+      csRow.className = 'cg-filter-popup-row cg-filter-popup-case-sensitive';
+      const csLabel = document.createElement('label');
+      csLabel.className = 'cg-filter-popup-case-sensitive-label';
+      const cs = document.createElement('input');
+      cs.type = 'checkbox';
+      cs.setAttribute('data-cg-filter-case-sensitive', '');
+      cs.checked = initial?.caseSensitive === true;
+      const csText = document.createElement('span');
+      csText.textContent = 'Case sensitive';
+      csLabel.appendChild(cs);
+      csLabel.appendChild(csText);
+      csRow.appendChild(csLabel);
+      row.appendChild(csRow);
+      caseSensitive = cs;
+    }
+
+    const syncInputVisibility = (): void => {
+      const op = select.value as CTextFilterOp;
+      const isBlank = op === 'blank' || op === 'notBlank';
+      primary.style.display = isBlank ? 'none' : '';
+    };
+
+    const readModel = (): CTextFilterModel | null => {
+      const op = select.value as CTextFilterOp;
+      if (op === 'blank' || op === 'notBlank') {
+        return { filterType: 'text', type: op };
+      }
+      const primaryRaw = primary.value;
+      if (primaryRaw === '') return null;
+      const model: CTextFilterModel = { filterType: 'text', type: op, filter: primaryRaw };
+      if (caseSensitive?.checked) model.caseSensitive = true;
+      return model;
+    };
+
+    const fire = (): void => onChange(readModel());
+    select.addEventListener('change', () => {
+      syncInputVisibility();
+      fire();
+    });
+    primary.addEventListener('input', fire);
+    caseSensitive?.addEventListener('change', fire);
+
+    syncInputVisibility();
+
+    return {
+      el: row,
+      getModel: readModel,
+      reset(): void {
+        primary.value = '';
+        select.value = DEFAULT_OP;
+        if (caseSensitive) caseSensitive.checked = false;
+        syncInputVisibility();
+      },
+      clearInputs(): void {
+        primary.value = '';
+      },
+    };
+  }
+
+  private normalizeInitial(): {
+    operator: MultiConditionJoin;
+    conditions: CFilterModelEntry[];
+  } {
+    const m = this.deps.initialModel;
+    const defaultJoin: MultiConditionJoin = this.deps.defaultJoinOperator ?? 'AND';
+    if (m && m.filterType === 'multi') {
+      return { operator: m.operator, conditions: m.conditions };
+    }
+    if (m && m.filterType === 'text') {
+      return { operator: defaultJoin, conditions: [m] };
+    }
+    return { operator: defaultJoin, conditions: [] };
+  }
+
+  private singleInitialModel(): CTextFilterModel | null {
+    const m = this.deps.initialModel;
+    if (!m) return null;
+    if (m.filterType === 'text') return m;
+    if (m.filterType === 'multi') {
+      const first = m.conditions[0];
+      return first && first.filterType === 'text' ? first : null;
+    }
+    return null;
   }
 
   private handleAction(kind: TextFilterButton): void {
     if (kind === 'apply') {
-      this.deps.onApply(this.buildModel());
+      this.deps.onApply(this.composeModel());
       if (this.deps.closeOnApply) this.deps.onClose();
       return;
     }
     if (kind === 'clear') {
-      this.primary.value = '';
+      if (this.singleRow) this.singleRow.clearInputs();
+      for (const c of this.rowControllers) c.clearInputs();
       return;
     }
     if (kind === 'reset') {
-      this.primary.value = '';
-      this.select.value = DEFAULT_OP;
-      if (this.caseSensitive) this.caseSensitive.checked = false;
-      this.syncInputVisibility();
+      if (this.singleRow) this.singleRow.reset();
+      for (const c of this.rowControllers) c.reset();
       this.deps.onApply(null);
       return;
     }
@@ -175,22 +286,23 @@ export class TextFilterPopup implements FilterPopupFactory {
     }
   }
 
-  /** Compose the v2 `CTextFilterModel` from the current UI state.
-   *  Returns `null` when the operator needs a filter value but none was
-   *  typed (treating an empty Apply as "no filter"). Always carries the
-   *  caseSensitive flag when the toggle is on — main-side
-   *  `applyTrimInputToModel` then handles `trimInput` before the model
-   *  reaches the worker. */
-  private buildModel(): CTextFilterModel | null {
-    const op = this.select.value as CTextFilterOp;
-    if (op === 'blank' || op === 'notBlank') {
-      return { filterType: 'text', type: op };
+  private composeModel(): CTextFilterModel | CMultiConditionFilterModel | null {
+    if (!this.wrapper) {
+      return this.singleRow?.getModel() ?? null;
     }
-    const primaryRaw = this.primary.value;
-    if (primaryRaw === '') return null;
-    const model: CTextFilterModel = { filterType: 'text', type: op, filter: primaryRaw };
-    if (this.caseSensitive?.checked) model.caseSensitive = true;
-    return model;
+    const models: CTextFilterModel[] = [];
+    for (const ctl of this.rowControllers) {
+      const m = ctl.getModel();
+      if (m) models.push(m);
+    }
+    if (models.length === 0) return null;
+    if (models.length === 1) return models[0]!;
+    const wrapperOp = this.wrapper.getValue().operator;
+    return {
+      filterType: 'multi',
+      operator: wrapperOp,
+      conditions: models,
+    };
   }
 }
 
@@ -208,13 +320,41 @@ function labelFor(kind: TextFilterButton): string {
  *  text filter with a string `filter`, returns a copy with the filter
  *  trimmed; everything else passes through unchanged. Exported for
  *  cgrid.setColumnFilterModel + unit tests in
- *  `filterPass.text.params.test.ts`. */
+ *  `filterPass.text.params.test.ts`.
+ *
+ *  Cycle 7 / Task 6 — also walks `CMultiConditionFilterModel`
+ *  conditions, trimming any text-shape children so multi-condition
+ *  popups respect `trimInput` per condition. */
 export function applyTrimInputToModel(
   model: CFilterModelEntry | null,
   trim: boolean,
 ): CFilterModelEntry | null {
   if (!model || !trim) return model;
+  if (model.filterType === 'multi') {
+    return {
+      filterType: 'multi',
+      operator: model.operator,
+      conditions: model.conditions.map((c) => trimNonMultiCondition(c, trim)),
+    };
+  }
   if (model.filterType !== 'text') return model;
   if (typeof model.filter !== 'string') return model;
   return { ...model, filter: model.filter.trim() };
+}
+
+/** Multi-condition `conditions` is strictly text | number | date — no
+ *  nested multi. Trims string filters on text entries; passes
+ *  number/date entries through unchanged. */
+function trimNonMultiCondition(
+  c: import('../../types').CTextFilterModel
+   | import('../../types').CNumberFilterModel
+   | import('../../types').CDateFilterModel,
+  trim: boolean,
+): import('../../types').CTextFilterModel
+ | import('../../types').CNumberFilterModel
+ | import('../../types').CDateFilterModel {
+  if (!trim) return c;
+  if (c.filterType !== 'text') return c;
+  if (typeof c.filter !== 'string') return c;
+  return { ...c, filter: c.filter.trim() };
 }
