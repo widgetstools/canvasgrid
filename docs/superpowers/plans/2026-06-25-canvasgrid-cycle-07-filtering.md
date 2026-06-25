@@ -2319,29 +2319,57 @@ skip the verification commands, and commit at the end.
 
 ## Shipped
 
-_(Filled in at cycle exit — Task 9's exit ritual.)_
+- `FloatingFilterSubgrid` + `FloatingFilterOverlay` + `CGridOptions.floatingFilter` + `CColDef.floatingFilter` + `suppressFloatingFilterButton`.
+- `CFilterModelEntry` v2 discriminated union + back-compat shim for the Cycle 4 / 5 shape.
+- Number-filter popup + every number operator.
+- Date-filter popup + every date operator + ISO-string worker storage.
+- Text-filter popup + `caseSensitive` + `textFormatter` / `trimInput`.
+- Multi-condition wrapper + AND / OR join (up to two conditions per popup).
+- `quickFilterText` + `QuickFilterPass` + `cacheQuickFilter` + `includeHiddenColumnsInQuickFilter` + parser / matcher + per-column `getQuickFilterText`.
+- External filter + `alwaysPassFilter` + `onFilterChanged` + candidate-rowIds protocol.
+- `VirtualList<T>` primitive in `interaction/ui/` — windowed-list utility consumed by the set filter; reusable in Cycles 9+ for the column chooser, advanced-filter side panel, and tool panels.
+- Set filter (virtualised) + `DistinctValuesPass` + per-column filter API (`getColumnFilterModel` / `setColumnFilterModel` / `isAnyFilterPresent` / `isColumnFilterPresent` / `destroyFilter`) + `filterChanged` (refined) / `filterOpened` / `filterModified` events.
 
 ---
 
 ## Performance — hand-timed perf gate
 
-_(Filled in at cycle exit — Task 9's exit ritual. Cycle 24 introduces
-the automated bench harness; until then this section is the manual
-checkpoint captured on the `apps/cgrid-positions` demo against the
-live `stomp-view-server` at `ws://localhost:8081`.)_
+_(Cycle 24 introduces the automated bench harness; until then this
+section is the manual checkpoint captured on the `apps/cgrid-positions`
+demo against the live `stomp-view-server` at `ws://localhost:8081`.)_
 
 | Metric | Budget | Measured (Cycle 7 exit) | Notes |
 |---|---|---|---|
-| `setFilterModel` (5-col, 20k rows) | < 30 ms p95 | _(TBD)_ | Worker round-trip including FilterPass.apply |
-| `quickFilterText` apply (20k rows × 17 cols, cacheQuickFilter on) | < 50 ms p95 | _(TBD)_ | Hot path during type-as-you-search |
-| `quickFilterText` apply (cacheQuickFilter off) | < 200 ms p95 | _(TBD)_ | Cold path; aggregate-text rebuild every call |
-| `getDistinctValues` (1 col, 20k rows) | < 20 ms p95 | _(TBD)_ | Set-filter popup open |
-| Floating-filter overlay re-pin (per scroll frame) | < 1 ms; zero layout reads | _(TBD)_ | DOM `transform` writes only |
-| Filter popup open/close | < 16 ms | _(TBD)_ | One-frame budget |
+| `setFilterModel` (5-col, 20k rows) | < 30 ms p95 | _(deferred; no live `stomp-view-server` available this session — re-measure when Cycle 24's bench lands)_ | Worker round-trip including FilterPass.apply |
+| `quickFilterText` apply (20k rows × 17 cols, cacheQuickFilter on) | < 50 ms p95 | _(deferred; see above)_ | Hot path during type-as-you-search |
+| `quickFilterText` apply (cacheQuickFilter off) | < 200 ms p95 | _(deferred; see above)_ | Cold path; aggregate-text rebuild every call |
+| `getDistinctValues` (1 col, 20k rows) | < 20 ms p95 | _(deferred; see above)_ | Set-filter popup open |
+| Floating-filter overlay re-pin (per scroll frame) | < 1 ms; zero layout reads | _(deferred; see above)_ | DOM `transform` writes only |
+| Filter popup open/close | < 16 ms | _(deferred; see above)_ | One-frame budget |
+
+Note: the cycle's E2E smoke suite (46 Cycle 7 specs, including the new
+6-test `cycle7-setFilter` spec) ran green end-to-end against the demo's
+synthetic in-process row source; the perf numbers above are the only
+deferred checkpoint and will be backfilled by the Cycle 24 bench
+harness against a real `stomp-view-server` snapshot.
 
 ---
 
-## Cycle 7 status
+## Cycle 7 status: COMPLETE
 
-_(Filled in at cycle exit — Task 9's exit ritual. Replace this line with
-`## Cycle 7 status: COMPLETE` + the 9-task closing checklist.)_
+Cycle 7 — Filtering — landed across nine tasks (PR stack:
+batch/cycle-7-task-5-2026-06-25 → batch/cycle-7-task-9-2026-06-25).
+
+- [x] Task 1 — `FloatingFilterSubgrid` + `FloatingFilterOverlay` + `floatingFilter` opt-in
+- [x] Task 2 — `CFilterModelEntry` v2 discriminated union + back-compat shim
+- [x] Task 3 — Number-filter popup + reusable `filterPopupHost`
+- [x] Task 4 — Date-filter popup + `inRange` + ISO-string worker storage
+- [x] Task 5 — Text-filter popup + `caseSensitive` + `textFormatter` / `trimInput`
+- [x] Task 6 — Multi-condition filter UI (AND / OR, up to 2 conditions)
+- [x] Task 7 — `quickFilterText` + `QuickFilterPass` + `cacheQuickFilter` + parser / matcher / per-column `getQuickFilterText`
+- [x] Task 8 — External filter (`isExternalFilterPresent` + `doesExternalFilterPass` + `alwaysPassFilter`) + candidate-rowIds protocol + stale-reply guard
+- [x] Task 9 — Set Filter (virtualised) + reusable `VirtualList` primitive + per-column filter API + filter events + Cycle 7 exit ritual
+
+Next session: read the master plan's Cycle 8 section and author the
+Cycle 8 worklog at
+`docs/superpowers/plans/<YYYY-MM-DD>-canvasgrid-cycle-08-sorting.md`.

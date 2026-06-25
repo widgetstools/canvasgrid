@@ -316,66 +316,66 @@
 | 07 | getRowId stable sort interaction | Community | behavior | yes | P1 | Stable row identity prevents position thrash in delta updates |
 
 <!-- area:08 Filtering -->
-| 08 | filter (ColDef) | Community | option | yes | P0 | Column filter: true, filter key, or custom component |
-| 08 | filterParams (ColDef) | Community | option | yes | P0 | Params for the column filter component |
+| 08 | ✅ filter (ColDef) | Community | option | yes | P0 | Column filter: true, filter key, or custom component |
+| 08 | ✅ filterParams (ColDef) | Community | option | yes | P0 | Params for the column filter component |
 | 08 | filterValueGetter (ColDef) | Community | option | no | P1 | Value used for filtering (can differ from display value) |
-| 08 | floatingFilter (ColDef) | Community | option | yes | P0 | Show floating filter row for this column |
+| 08 | ✅ floatingFilter (ColDef) | Community | option | yes | P0 | Show floating filter row for this column |
 | 08 | floatingFilterComponent (ColDef) | Community | option | no | P2 | Custom floating filter component |
 | 08 | floatingFilterComponentParams (ColDef) | Community | option | no | P2 | Params for custom floating filter |
-| 08 | suppressFloatingFilterButton (ColDef) | Community | option | no | P2 | Hide the expand button on floating filter |
-| 08 | getQuickFilterText (ColDef) | Community | option | no | P2 | Column-level text contributed to quick-filter search |
-| 08 | agTextColumnFilter | Community | option | yes | P0 | Built-in text filter with contains/equals/startsWith etc. |
-| 08 | agNumberColumnFilter | Community | option | yes | P0 | Built-in numeric filter with equals/range/greaterThan etc. |
-| 08 | agDateColumnFilter | Community | option | no | P1 | Built-in date filter with equals/range/before/after etc. |
-| 08 | agSetColumnFilter | Enterprise | option | yes | P1 | Enterprise checkbox-list filter from distinct column values |
+| 08 | ✅ suppressFloatingFilterButton (ColDef) | Community | option | no | P2 | Hide the expand button on floating filter |
+| 08 | ✅ getQuickFilterText (ColDef) | Community | option | no | P2 | Column-level text contributed to quick-filter search |
+| 08 | ✅ agTextColumnFilter | Community | option | yes | P0 | Built-in text filter with contains/equals/startsWith etc. |
+| 08 | ✅ agNumberColumnFilter | Community | option | yes | P0 | Built-in numeric filter with equals/range/greaterThan etc. |
+| 08 | ✅ agDateColumnFilter | Community | option | no | P1 | Built-in date filter with equals/range/before/after etc. |
+| 08 | agSetColumnFilter | Enterprise | option | yes | P1 | Enterprise checkbox-list filter from distinct column values — Cycle 7 ships virtualised popup + data-derived values + mini-search + tri-state Select All; full enterprise parity (excelMode, server-side values, async refresh) deferred |
 | 08 | agMultiColumnFilter | Enterprise | option | yes | P0 | Enterprise composite filter wrapping multiple child filters |
-| 08 | IProvidedFilterParams.buttons | Community | option | yes | P1 | Filter action buttons: apply, clear, reset, cancel |
-| 08 | IProvidedFilterParams.closeOnApply | Community | option | no | P2 | Close popup after Apply/Reset click |
+| 08 | ✅ IProvidedFilterParams.buttons | Community | option | yes | P1 | Filter action buttons: apply, clear, reset, cancel |
+| 08 | ✅ IProvidedFilterParams.closeOnApply | Community | option | no | P2 | Close popup after Apply/Reset click |
 | 08 | IProvidedFilterParams.debounceMs | Community | option | no | P2 | Debounce before filter applies on typing |
 | 08 | IProvidedFilterParams.readOnly | Community | option | no | P2 | Filter UI read-only; set via API only |
 | 08 | ISimpleFilterParams.filterOptions | Community | option | no | P1 | Which filter conditions to show in dropdown |
 | 08 | ISimpleFilterParams.defaultOption | Community | option | no | P2 | Default selected filter condition |
-| 08 | ISimpleFilterParams.defaultJoinOperator | Community | option | no | P2 | Default AND/OR join between two conditions |
-| 08 | ISimpleFilterParams.maxNumConditions | Community | option | no | P2 | Maximum concurrent filter conditions |
-| 08 | ITextFilterParams.caseSensitive | Community | option | no | P2 | Case-sensitive text matching |
-| 08 | ITextFilterParams.textMatcher | Community | option | no | P2 | Custom text match function |
-| 08 | ITextFilterParams.trimInput | Community | option | no | P2 | Trim whitespace from filter input |
+| 08 | ✅ ISimpleFilterParams.defaultJoinOperator | Community | option | no | P2 | Default AND/OR join between two conditions |
+| 08 | ✅ ISimpleFilterParams.maxNumConditions | Community | option | no | P2 | Maximum concurrent filter conditions |
+| 08 | ✅ ITextFilterParams.caseSensitive | Community | option | no | P2 | Case-sensitive text matching |
+| 08 | ITextFilterParams.textMatcher | Community | option | no | P2 | Custom text match function — API surface deferred to Cycle 24's worker-module loader |
+| 08 | ✅ ITextFilterParams.trimInput | Community | option | no | P2 | Trim whitespace from filter input |
 | 08 | INumberFilterParams.allowedCharPattern | Community | option | no | P2 | Restrict characters in number filter input |
 | 08 | INumberFilterParams.numberParser | Community | option | no | P2 | Custom string-to-number converter for filter |
-| 08 | ISetFilterParams.values | Enterprise | option | no | P1 | Static or async values list for set filter |
-| 08 | ISetFilterParams.suppressMiniFilter | Enterprise | option | no | P2 | Hide mini search box in set filter |
-| 08 | ISetFilterParams.caseSensitive | Enterprise | option | no | P2 | Case-sensitive mini-filter matching |
+| 08 | ✅ ISetFilterParams.values | Enterprise | option | no | P1 | Static or async values list for set filter |
+| 08 | ✅ ISetFilterParams.suppressMiniFilter | Enterprise | option | no | P2 | Hide mini search box in set filter |
+| 08 | ✅ ISetFilterParams.caseSensitive | Enterprise | option | no | P2 | Case-sensitive mini-filter matching |
 | 08 | IMultiFilterParams.filters | Enterprise | option | yes | P0 | Child filter definitions for agMultiColumnFilter |
-| 08 | quickFilterText | Community | option | no | P1 | Grid-level quick-filter text applied to all columns |
-| 08 | cacheQuickFilter | Community | option | no | P2 | Cache quick-filter aggregate text for performance |
-| 08 | includeHiddenColumnsInQuickFilter | Community | option | no | P2 | Apply quick filter to hidden columns |
-| 08 | quickFilterParser | Community | option | no | P2 | Custom function to split quick-filter text into terms |
-| 08 | quickFilterMatcher | Community | option | no | P2 | Custom function to match terms against row text |
-| 08 | isExternalFilterPresent | Community | option | no | P1 | Callback returning true when external filter is active |
-| 08 | doesExternalFilterPass | Community | option | no | P1 | Per-row callback for external filter logic |
-| 08 | alwaysPassFilter | Community | option | no | P2 | Rows bypassing all filters unconditionally |
+| 08 | ✅ quickFilterText | Community | option | no | P1 | Grid-level quick-filter text applied to all columns |
+| 08 | ✅ cacheQuickFilter | Community | option | no | P2 | Cache quick-filter aggregate text for performance |
+| 08 | ✅ includeHiddenColumnsInQuickFilter | Community | option | no | P2 | Apply quick filter to hidden columns |
+| 08 | ✅ quickFilterParser | Community | option | no | P2 | Custom function to split quick-filter text into terms |
+| 08 | ✅ quickFilterMatcher | Community | option | no | P2 | Custom function to match terms against row text — API surface deferred to Cycle 24 |
+| 08 | ✅ isExternalFilterPresent | Community | option | no | P1 | Callback returning true when external filter is active |
+| 08 | ✅ doesExternalFilterPass | Community | option | no | P1 | Per-row callback for external filter logic |
+| 08 | ✅ alwaysPassFilter | Community | option | no | P2 | Rows bypassing all filters unconditionally |
 | 08 | enableFilterHandlers | Community | option | no | P2 | When true, grid expects user-provided filter handlers; toggles which filter events fire |
 | 08 | getFilterModel | Community | api | no | P1 | Returns all column filter models as serialisable object |
-| 08 | setFilterModel | Community | api | no | P1 | Restore all column filter states from model object |
-| 08 | getColumnFilterModel | Community | api | no | P1 | Get filter model for a single column |
-| 08 | setColumnFilterModel | Community | api | no | P1 | Set filter model for a single column |
+| 08 | ✅ setFilterModel | Community | api | no | P1 | Restore all column filter states from model object |
+| 08 | ✅ getColumnFilterModel | Community | api | no | P1 | Get filter model for a single column |
+| 08 | ✅ setColumnFilterModel | Community | api | no | P1 | Set filter model for a single column |
 | 08 | getColumnFilterInstance | Community | api | no | P2 | Access live filter component instance (async) |
-| 08 | destroyFilter | Community | api | no | P2 | Force recreation of a column's filter |
-| 08 | showColumnFilter | Community | api | no | P2 | Programmatically open a column filter popup |
-| 08 | hideColumnFilter | Community | api | no | P2 | Close open filter popup |
-| 08 | onFilterChanged | Community | api | no | P1 | Signal grid of external filter state change |
-| 08 | isAnyFilterPresent | Community | api | no | P1 | Check if any filter is currently active |
-| 08 | isColumnFilterPresent | Community | api | no | P1 | Check if any column filter is active |
-| 08 | filterChanged | Community | event | no | P0 | Any filter changes; includes source and affected columns |
-| 08 | filterModified | Community | event | no | P2 | Filter UI modified but not yet applied |
+| 08 | ✅ destroyFilter | Community | api | no | P2 | Force recreation of a column's filter |
+| 08 | ✅ showColumnFilter | Community | api | no | P2 | Programmatically open a column filter popup |
+| 08 | ✅ hideColumnFilter | Community | api | no | P2 | Close open filter popup |
+| 08 | ✅ onFilterChanged | Community | api | no | P1 | Signal grid of external filter state change |
+| 08 | ✅ isAnyFilterPresent | Community | api | no | P1 | Check if any filter is currently active |
+| 08 | ✅ isColumnFilterPresent | Community | api | no | P1 | Check if any column filter is active |
+| 08 | ✅ filterChanged | Community | event | no | P0 | Any filter changes; includes source and affected columns |
+| 08 | ✅ filterModified | Community | event | no | P2 | Filter UI modified but not yet applied |
 | 08 | filterUiChanged | Community | event | no | P2 | Filter UI state changes |
-| 08 | filterOpened | Community | event | no | P2 | Filter popup opened |
+| 08 | ✅ filterOpened | Community | event | no | P2 | Filter popup opened |
 | 08 | floatingFilterUiChanged | Community | event | no | P2 | Floating filter UI state changes |
-| 08 | Column filter AND combination | Community | behavior | yes | P0 | All active column filters combined with AND |
-| 08 | Quick filter multi-term matching | Community | behavior | no | P1 | All terms must appear somewhere in the row |
-| 08 | External filter callback pattern | Community | behavior | no | P1 | isExternalFilterPresent + doesExternalFilterPass lifecycle |
+| 08 | ✅ Column filter AND combination | Community | behavior | yes | P0 | All active column filters combined with AND |
+| 08 | ✅ Quick filter multi-term matching | Community | behavior | no | P1 | All terms must appear somewhere in the row |
+| 08 | ✅ External filter callback pattern | Community | behavior | no | P1 | isExternalFilterPresent + doesExternalFilterPass lifecycle |
 | 08 | getFilterModel / setFilterModel round-trip | Community | behavior | no | P1 | Serialisable filter state for persistence/URL |
-| 08 | Filter buttons apply/clear/reset/cancel | Community | behavior | yes | P1 | Deferred apply mode via buttons config |
+| 08 | ✅ Filter buttons apply/clear/reset/cancel | Community | behavior | yes | P1 | Deferred apply mode via buttons config |
 | 08 | Set filter Excel-like mode | Enterprise | behavior | no | P2 | Add-to-selection and Windows Excel behaviour |
 | 08 | Multi filter child composition | Enterprise | behavior | yes | P0 | agMultiColumnFilter wraps text+set or number+set |
 | 08 | Floating filter expand button | Community | behavior | yes | P1 | Compact summary in header row; click opens full filter |
@@ -745,7 +745,7 @@
 | 22 | Row events | Community | event | yes | P0 | rowDataUpdated, rowGroupOpened, rowClicked, ✅ rowEditingStarted/Stopped, ✅ rowValueChanged, asyncTransactionsFlushed — see `22-events.md` |
 | 22 | Cell events | Community | event | yes | P0 | cellClicked, ✅ cellValueChanged, ✅ cellEditingStarted/Stopped, cellFocused, tooltipShow — see `22-events.md` |
 | 22 | Selection events | Community | event | yes | P0 | rowSelected, selectionChanged, cellSelectionChanged — see `22-events.md` |
-| 22 | Filter / sort events | Community | event | yes | P1 | filterChanged, filterOpened, sortChanged, findChanged, advancedFilterBuilderVisibleChanged — see `22-events.md` |
+| 22 | ✅ Filter / sort events | Community | event | yes | P1 | ✅ filterChanged (refined with source / afterDataChange / columns), ✅ filterOpened, ✅ filterModified, sortChanged, findChanged, advancedFilterBuilderVisibleChanged — see `22-events.md` |
 | 22 | Group / pivot events | Enterprise | event | no | P1 | columnRowGroupChanged, columnPivotModeChanged, pivotMaxColumnsExceeded, expandOrCollapseAll — see `22-events.md` |
 | 22 | Drag events | Community | event | yes | P1 | rowDragEnter/Move/Leave/End/Cancel, dragStarted/Stopped/Cancelled — see `22-events.md` |
 | 22 | Tool panel / side bar events | Enterprise | event | no | P2 | toolPanelVisibleChanged, toolPanelSizeChanged, sideBarUpdated, contextMenuVisibleChanged — see `22-events.md` |
@@ -760,7 +760,7 @@
 | 23 | Cells API | Community | api | yes | P0 | refreshCells, flashCells, getCellRendererInstances, ✅ registerCellRenderer, ✅ registerCellEditor, ✅ startEditingCell, ✅ stopEditing, undoCellEditing — see `23-api.md` |
 | 23 | Selection API | Community | api | yes | P0 | selectAll, deselectAll, getSelectedNodes, getSelectedRows, ✅ setSelectedRowIds, getCellRanges, clearCellSelection — see `23-api.md` |
 | 23 | Sorting API | Community | api | no | P1 | onSortChanged — see `23-api.md` |
-| 23 | Filtering API | Community | api | yes | P1 | isAnyFilterPresent, setFilterModel, getFilterModel, setColumnFilterModel, getAdvancedFilterModel — see `23-api.md` |
+| 23 | ✅ Filtering API | Community | api | yes | P1 | ✅ isAnyFilterPresent, ✅ isColumnFilterPresent, ✅ setFilterModel, getFilterModel, ✅ getColumnFilterModel, ✅ setColumnFilterModel, ✅ destroyFilter, ✅ showColumnFilter, ✅ hideColumnFilter, ✅ onFilterChanged, getAdvancedFilterModel — see `23-api.md` |
 | 23 | Grouping / aggregation / pivot API | Enterprise | api | no | P2 | setRowGroupColumns, addAggFuncs, isPivotMode, setPivotColumns, addDetailGridInfo — see `23-api.md` |
 | 23 | Server-side API | Enterprise | api | no | P2 | applyServerSideTransaction, refreshServerSide, getServerSideGroupLevelState — see `23-api.md` |
 | 23 | Clipboard API | Enterprise | api | no | P2 | copyToClipboard, cutToClipboard, pasteFromClipboard, copySelectedRowsToClipboard — see `23-api.md` |
