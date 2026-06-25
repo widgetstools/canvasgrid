@@ -44,6 +44,24 @@ export interface CGridLike {
   /** Total row count after filter/sort. */
   totalRowCount(): number;
   resizeColumn(colId: string, deltaPx: number): void;
+  /** Cycle 6 / Task 1 — drag-reorder commit point. Resolves a legal drop
+   *  index against `lockPosition` + `marryChildren` before mutating the
+   *  column order. `source` distinguishes UI drag (`'uiColumnDragged'`)
+   *  from the imperative API (`'api'`) for the `columnMoved` event. */
+  reorderColumn(
+    colId: string,
+    toIndex: number,
+    source: 'uiColumnDragged' | 'api',
+  ): void;
+  /** Cycle 6 / Task 1 — feature-side lookup for `suppressMovable` /
+   *  `lockPosition`. Returns `undefined` for unknown colIds. */
+  getColDef(colId: string): { suppressMovable: boolean; lockPosition: 'left' | 'right' | null } | undefined;
+  /** Left edge of `colId` in the canvas's coordinate space (CSS px),
+   *  or `null` when the column is not currently in the viewport. */
+  columnLeftOf(colId: string): number | null;
+  /** Width of `colId` in CSS px, or `null` when the column is not
+   *  currently in the viewport. */
+  columnWidthOf(colId: string): number | null;
   cycleSort(colId: string): void;
   toggleColumnGroup(groupId: string): void;
   scrollBy(dx: number, dy: number): void;

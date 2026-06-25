@@ -47,7 +47,11 @@ export function createPositionsGrid(
 ): CGrid<Position> {
   const options: CGridOptions<Position> = {
     columnDefs: [
-      { field: 'positionId',     headerName: 'Position ID',  width: 150, pinned: 'left' },
+      // Cycle 6 / Task 1: positionId opts out of drag-reorder. Pinned-left
+      // is already a strong visual signal that this column shouldn't move;
+      // suppressMovable enforces it for the UI without binding the
+      // imperative moveColumnByIndex API.
+      { field: 'positionId',     headerName: 'Position ID',  width: 150, pinned: 'left', suppressMovable: true },
       // Cycle 5 Task 2: cusip carries the text-editor E2E coverage now that
       // ticker hosts the select editor.
       { field: 'cusip',          headerName: 'CUSIP',         width: 110, pinned: 'left', editable: true },
@@ -60,11 +64,15 @@ export function createPositionsGrid(
       },
       // Cycle 5 Task 2: notionalAmount exercises the 'number' editor; min/precision
       // enforce non-negative two-decimal commits.
+      // Cycle 6 / Task 1: lockPosition: 'right' pins notionalAmount to the
+      // end of the flat visible-leaf order. A drag-attempt that would push
+      // it earlier clamps to the last index instead of throwing.
       {
         field: 'notionalAmount', headerName: 'Notional', type: 'number', width: 130, aggFunc: 'sum',
         editable: true,
         cellEditor: 'number',
         cellEditorParams: { min: 0, precision: 2 },
+        lockPosition: 'right',
       },
       { field: 'marketValue',    headerName: 'Market Value',  type: 'number', width: 130, aggFunc: 'sum' },
       { field: 'currentPrice',   headerName: 'Price',         type: 'number', width: 100, aggFunc: 'avg' },

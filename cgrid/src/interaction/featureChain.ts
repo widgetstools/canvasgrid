@@ -18,6 +18,7 @@
 import { Feature, type CGridLike, type CGridEventCtx } from './feature';
 import { OnHover } from './features/onHover';
 import { ColumnResizing } from './features/columnResizing';
+import { ColumnDrag } from './features/columnDrag';
 import { CellSelection } from './features/cellSelection';
 import { KeyPaging } from './features/keyPaging';
 import { HeaderClick } from './features/headerClick';
@@ -41,6 +42,7 @@ export class FeatureChain {
   constructor(private grid: CGridLike) {
     this.head = new ColumnResizing();
     this.head
+      .append(new ColumnDrag())
       .append(new EditTrigger())
       .append(new CellSelection())
       .append(new HeaderClick())

@@ -60,6 +60,11 @@ export interface ResolvedColDef<TRow = any> {
    *  the parent column group is in that state. Resolved by
    *  `resolveVisibleLeaves` in `core/columnGroupState.ts`. */
   columnGroupShow: 'open' | 'closed' | null;
+  /** See `CColDef.suppressMovable`. Resolved to `false` when unset. */
+  suppressMovable: boolean;
+  /** See `CColDef.lockPosition`. `null` for free; `'left'` / `'right'`
+   *  pin the leaf to the start / end of the flat visible-leaf order. */
+  lockPosition: 'left' | 'right' | null;
 }
 
 export interface ApplyCellPropsInput {
@@ -153,5 +158,11 @@ export function resolveColDef<TRow>(
     autoHeight: merged.autoHeight,
     wrapText: merged.wrapText,
     columnGroupShow: merged.columnGroupShow ?? null,
+    suppressMovable: merged.suppressMovable ?? false,
+    lockPosition: merged.lockPosition === true || merged.lockPosition === 'left'
+      ? 'left'
+      : merged.lockPosition === 'right'
+        ? 'right'
+        : null,
   };
 }

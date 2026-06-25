@@ -239,6 +239,19 @@ export interface CColDef<TRow = any, TValue = any> {
    * Honored once column groups land (Cycle 4 Task 3).
    */
   columnGroupShow?: 'open' | 'closed' | null;
+  /**
+   * When true, the user cannot drag this column to a new position. The
+   * imperative `moveColumnByIndex` API still works — locks alone bind
+   * UI-driven reorders. Pair with `lockPosition` to also reject API moves.
+   * Cycle 6 / Task 1.
+   */
+  suppressMovable?: boolean;
+  /**
+   * Pin this column's index. `true` / `'left'` lock the column to index 0
+   * of the flat visible-leaf order; `'right'` locks to the end. The lock
+   * binds both drag-reorder and the imperative move API. Cycle 6 / Task 1.
+   */
+  lockPosition?: boolean | 'left' | 'right';
 }
 
 /**
@@ -423,6 +436,19 @@ export type CGridEvent =
   | { type: 'sortChanged'; sortModel: SortModel }
   | { type: 'filterChanged'; filterModel: FilterModel }
   | { type: 'columnResized'; colId: string; width: number }
+  /** Fires after a column changes its index in the flat visible-leaf order.
+   *  `toIndex` is the resolved final index AFTER `lockPosition` /
+   *  `marryChildren` clamping; it may differ from the drag's drop target
+   *  or the imperative API's requested index. `source` distinguishes
+   *  drag (`'uiColumnDragged'`) from API (`'api'`) and (Cycle 6 / Task 2)
+   *  column-state apply (`'columnState'`). The `colIds` array shape is
+   *  shared with the multi-column move API landing in Cycle 6 / Task 5. */
+  | {
+      type: 'columnMoved';
+      toIndex: number;
+      colIds: string[];
+      source: 'uiColumnDragged' | 'api' | 'columnState';
+    }
   | { type: 'asyncTransactionsFlushed'; results: TransactionResult[] }
   | { type: 'aggregationChanged'; totals: Record<string, number | null> }
   | { type: 'columnGroupOpened'; groupId: string; open: boolean }
@@ -526,10 +552,23 @@ export interface CGridApi {
     handler: (event: Extract<CGridEvent, { type: K }>) => void,
   ): void;
 
+  /** Move the leaf at `fromIndex` to `toIndex` in the flat visible-leaf
+   *  order. No-op when `fromIndex === toIndex` or either index is out of
+   *  range. Honors `lockPosition` + `marryChildren` — illegal moves clamp
+   *  to the nearest legal index, NOT throw. Fires `columnMoved` with
+   *  `source: 'api'`. Cycle 6 / Task 1. */
+  moveColumnByIndex(fromIndex: number, toIndex: number): void;
+
   /** Returns the on-screen pixel bounds of the cell at (`rowIndex`, `colId`)
    *  in the canvas's coordinate space. Returns `null` when the cell is not
    *  in the current viewport. Used by E2E to position synthetic clicks. */
   getCellBoundsAt(rowIndex: number, colId: string): { x: number; y: number; w: number; h: number } | null;
+  /** Returns the on-screen pixel bounds of the leaf header at `colId`,
+   *  or `null` when the column is not currently in the viewport. The
+   *  rectangle spans the column's full leaf-header band — y is the leaf
+   *  header's top, h is the leaf header's height. Used by Cycle 6 E2Es
+   *  to position synthetic drag gestures. */
+  getHeaderBoundsAt(colId: string): { x: number; y: number; w: number; h: number } | null;
   /** Returns the vertical pixel bounds (top + height) of the data row at
    *  `rowIndex`. `null` when the row isn't currently visible. Useful for
    *  asserting variable-height row layouts in E2E without a per-column

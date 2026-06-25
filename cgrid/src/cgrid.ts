@@ -7,8 +7,13 @@ import type {
 } from './types';
 import { TypedEventEmitter } from './core/eventEmitter';
 import { type ResolvedColDef } from './core/propertyChain';
-import { resolveColumnTree, type ColumnTree } from './core/columnTree';
+import { resolveColumnTree, isColGroupDef, type ColumnTree } from './core/columnTree';
 import { ColumnGroupState, resolveVisibleLeaves } from './core/columnGroupState';
+import {
+  applyReorder, resolveLegalDropIndex,
+  type ColumnOrderConstraints,
+} from './core/columnOrder';
+import type { CColDef, CColGroupDef } from './types';
 import {
   INITIAL_ONLY_OPTIONS, applyRuntimeOption, isRuntimeOption,
   type RuntimeOptionTarget,
@@ -64,6 +69,54 @@ export function inferRowIdField<T>(getRowId: (row: T) => string): string {
     throw new Error('[cgrid] Foundation cycle only supports top-level `row => row.<field>` getRowId — nested accessors like `row.meta.id` are deferred to a follow-up cycle');
   }
   return matches[0]![1]!;
+}
+
+/** Rewrite a `columnDefs` tree so its flat leaf order matches `newLeafOrder`,
+ *  preserving group structure. Leaves only reorder within their enclosing
+ *  scope (top-level for ungrouped, group-local for grouped). At each level,
+ *  siblings re-sort by the position of their earliest contained leaf in
+ *  `newLeafOrder` so a leaf moving to a different index pulls its enclosing
+ *  group with it. Leaves not mentioned in `newLeafOrder` are pushed to the
+ *  tail (defensive — the caller passes a permutation in practice). Cycle 6 /
+ *  Task 1. */
+function rebuildColumnDefsByLeafOrder<TRow>(
+  defs: (CColDef<TRow> | CColGroupDef<TRow>)[],
+  newLeafOrder: string[],
+): (CColDef<TRow> | CColGroupDef<TRow>)[] {
+  const posOf = new Map<string, number>();
+  newLeafOrder.forEach((id, i) => posOf.set(id, i));
+  return reorderDefs(defs, posOf);
+}
+
+function reorderDefs<TRow>(
+  defs: (CColDef<TRow> | CColGroupDef<TRow>)[],
+  posOf: Map<string, number>,
+): (CColDef<TRow> | CColGroupDef<TRow>)[] {
+  const next = defs.map((d) => {
+    if (isColGroupDef(d)) {
+      return { ...d, children: reorderDefs(d.children, posOf) } as CColGroupDef<TRow>;
+    }
+    return d;
+  });
+  next.sort((a, b) => minLeafPos(a, posOf) - minLeafPos(b, posOf));
+  return next;
+}
+
+function minLeafPos<TRow>(
+  node: CColDef<TRow> | CColGroupDef<TRow>,
+  posOf: Map<string, number>,
+): number {
+  if (isColGroupDef(node)) {
+    let m = Number.POSITIVE_INFINITY;
+    for (const child of node.children) {
+      const p = minLeafPos(child, posOf);
+      if (p < m) m = p;
+    }
+    return m;
+  }
+  const id = (node.colId ?? (node.field as string | undefined)) ?? '';
+  const p = posOf.get(id);
+  return p === undefined ? Number.POSITIVE_INFINITY : p;
 }
 
 export class CGrid<TRow = any> {
@@ -289,6 +342,21 @@ export class CGrid<TRow = any> {
       allColIds: () => this.columnOrder.map((c) => c.colId),
       totalRowCount: () => this.rowCount,
       resizeColumn: (colId, dx) => this.resizeColumn(colId, dx),
+      reorderColumn: (colId, toIndex, source) => this.reorderColumn(colId, toIndex, source),
+      getColDef: (colId) => {
+        const def = this.columnDefsMap.get(colId);
+        return def
+          ? { suppressMovable: def.suppressMovable, lockPosition: def.lockPosition }
+          : undefined;
+      },
+      columnLeftOf: (colId) => {
+        const col = this.viewport.visibleColumns.find((c) => c.colId === colId);
+        return col ? col.left : null;
+      },
+      columnWidthOf: (colId) => {
+        const col = this.viewport.visibleColumns.find((c) => c.colId === colId);
+        return col ? col.width : null;
+      },
       cycleSort: (colId) => this.cycleSort(colId),
       toggleColumnGroup: (groupId) => this.toggleColumnGroup(groupId),
       scrollBy: (dx, dy) => this.scroller.scrollBy({ left: dx, top: dy, behavior: 'auto' }),
@@ -943,7 +1011,9 @@ export class CGrid<TRow = any> {
       off: (t, h) => this.off(t as CGridEvent['type'], h as any),
       addEventListener: (t, h) => this.addEventListener(t as CGridEvent['type'], h as any),
       removeEventListener: (t, h) => this.removeEventListener(t as CGridEvent['type'], h as any),
+      moveColumnByIndex: (f, t) => this.moveColumnByIndex(f, t),
       getCellBoundsAt: (r, c) => this.getCellBoundsAt(r, c),
+      getHeaderBoundsAt: (c) => this.getHeaderBoundsAt(c),
       getRowBoundsAt: (r) => this.getRowBoundsAt(r),
       getCellValue: (r, c) => this.getCellValue(r, c),
     };
@@ -1383,6 +1453,87 @@ export class CGrid<TRow = any> {
     this.events.emit({ type: 'columnResized', colId, width: newW });
   }
 
+  /** Move `colId` to `toIndex` in the flat visible-leaf order. The legal
+   *  landing slot is resolved against `lockPosition` + `marryChildren` —
+   *  illegal requests clamp to the nearest legal index rather than throw.
+   *  Cross-group moves are not honored: leaves can only be reordered
+   *  within their enclosing scope (top-level for ungrouped, group-local
+   *  for grouped). This matches the Task-1 worklog's "walk the tree,
+   *  reorder leaves inside their nearest enclosing group" guidance.
+   *  Emits `columnMoved` with the resolved final index + the originating
+   *  `source`. Cycle 6 / Task 1. */
+  private reorderColumn(
+    colId: string,
+    toIndex: number,
+    source: 'uiColumnDragged' | 'api' | 'columnState',
+  ): void {
+    if (!this.columnDefsMap.has(colId)) return;
+    const currentOrder = this.columnOrder.map((c) => c.colId);
+    const currentIndex = currentOrder.indexOf(colId);
+    if (currentIndex < 0) return;
+    const constraints = this.buildColumnOrderConstraints();
+    const legalTarget = resolveLegalDropIndex(
+      currentOrder,
+      { colId, toIndex },
+      constraints,
+    );
+    if (legalTarget === currentIndex) return;
+    const newOrder = applyReorder(currentOrder, { colId, toIndex: legalTarget });
+    const newDefs = rebuildColumnDefsByLeafOrder(this.options.columnDefs, newOrder);
+    this.options.columnDefs = newDefs;
+    this.rebuildColumns({ defaultColDef: this.options.defaultColDef });
+    this.workerClient.updateColumns(this.workerColumns())
+      .then(({ visibleCount }) => {
+        this.rowCount = visibleCount;
+        this.recomputeViewport();
+        this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
+        this.events.emit({ type: 'displayedColumnsChanged', source: 'columnDefsChanged' });
+        this.requestViewport();
+      })
+      .catch((err) => { if (!this.destroyed) console.error('[cgrid] reorderColumn:', err); });
+    this.events.emit({ type: 'columnMoved', toIndex: legalTarget, colIds: [colId], source });
+  }
+
+  /** Move the leaf at `fromIndex` to `toIndex` in the flat visible-leaf
+   *  order. No-op when indices are out of range or equal. Honors
+   *  `lockPosition` + `marryChildren`. Cycle 6 / Task 1. */
+  moveColumnByIndex(fromIndex: number, toIndex: number): void {
+    const ids = this.columnOrder.map((c) => c.colId);
+    if (fromIndex < 0 || fromIndex >= ids.length) return;
+    if (toIndex < 0 || toIndex >= ids.length) return;
+    if (fromIndex === toIndex) return;
+    const colId = ids[fromIndex]!;
+    this.reorderColumn(colId, toIndex, 'api');
+  }
+
+  /** Build the per-leaf lock + marryChildren constraints used by Task-1's
+   *  `resolveLegalDropIndex`. Pulls `lockPosition` from `columnDefsMap`
+   *  and walks `columnTree.groupById` to find the nearest marryChildren
+   *  ancestor for each leaf. */
+  private buildColumnOrderConstraints(): ColumnOrderConstraints {
+    return {
+      lockOf: (id) => {
+        const def = this.columnDefsMap.get(id);
+        return def ? def.lockPosition : null;
+      },
+      marryGroupOf: (id) => this.findMarryGroupForLeaf(id),
+      leafIdsOfGroup: (groupId) => {
+        const g = this.columnTree.groupById.get(groupId);
+        return g ? g.leafColIds : [];
+      },
+    };
+  }
+
+  /** Find the nearest enclosing marryChildren group for the leaf, or
+   *  `null` when the leaf is ungrouped / has no marryChildren ancestor. */
+  private findMarryGroupForLeaf(leafColId: string): string | null {
+    for (const group of this.columnTree.groupById.values()) {
+      if (!group.marryChildren) continue;
+      if (group.leafColIds.includes(leafColId)) return group.groupId;
+    }
+    return null;
+  }
+
   /** Resolve `colDef.cellEditor` into a registry name. Strings look up
    *  directly. Constructors are interned under a synthetic name keyed by the
    *  colId so the registry stays the single source of truth at edit time.
@@ -1795,6 +1946,22 @@ export class CGrid<TRow = any> {
     );
     if (!col || !row) return null;
     return { x: col.left, y: row.top, w: col.width, h: row.height };
+  }
+
+  /** Pixel bounds of the leaf header for `colId` in the canvas's
+   *  coordinate space. The y-band covers the leaf-header row (the one
+   *  directly above the data rows), NOT any column-group rows stacked
+   *  above it. Returns `null` when the column isn't currently in the
+   *  viewport. Cycle 6 / Task 1 — used by E2E to position synthetic
+   *  drag gestures. */
+  getHeaderBoundsAt(colId: string): { x: number; y: number; w: number; h: number } | null {
+    const col = this.viewport.visibleColumns.find((c) => c.colId === colId);
+    if (!col) return null;
+    const leafHeaderRow = this.viewport.visibleRows.find(
+      (r) => !r.subgrid.isData && !('getGroupIdAt' in r.subgrid),
+    );
+    if (!leafHeaderRow) return null;
+    return { x: col.left, y: leafHeaderRow.top, w: col.width, h: leafHeaderRow.height };
   }
 
   /** Pixel bounds of the data row at `rowIndex` (vertical band spanning the
