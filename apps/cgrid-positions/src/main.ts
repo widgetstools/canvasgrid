@@ -60,3 +60,23 @@ document.getElementById('theme')?.addEventListener('click', () => {
   host.classList.toggle('cg-theme-quartz', !darkTheme);
   host.classList.toggle('cg-theme-quartz-dark', darkTheme);
 });
+
+// Cycle 6 / Task 2 — Save / Restore / Reset column-layout buttons. The
+// state round-trips through localStorage so a page reload exercises the
+// real persistence path. Reset replays the construction-time snapshot.
+const LAYOUT_KEY = 'cg-layout';
+document.getElementById('save-layout')?.addEventListener('click', () => {
+  const api = grid as unknown as { getColumnState: () => unknown };
+  localStorage.setItem(LAYOUT_KEY, JSON.stringify(api.getColumnState()));
+});
+document.getElementById('restore-layout')?.addEventListener('click', () => {
+  const raw = localStorage.getItem(LAYOUT_KEY);
+  if (!raw) return;
+  const api = grid as unknown as { applyColumnState: (p: unknown) => boolean };
+  api.applyColumnState({ state: JSON.parse(raw), applyOrder: true });
+});
+document.getElementById('reset-layout')?.addEventListener('click', () => {
+  const api = grid as unknown as { resetColumnState: () => void };
+  api.resetColumnState();
+});
+

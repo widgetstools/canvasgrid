@@ -255,6 +255,169 @@ describe('CGrid integration', () => {
     });
   });
 
+  describe('column state round-trip (Cycle 6 / Task 2)', () => {
+    function buildBareGrid<T extends { id: string }>(rows: T[], cols: any[]) {
+      const container = document.createElement('div');
+      container.style.cssText = 'width:800px; height:600px;';
+      container.className = 'cg-theme-quartz';
+      document.body.appendChild(container);
+      const grid = new CGrid<T>(container, {
+        columnDefs: cols,
+        getRowId: (r) => r.id,
+        rowData: rows,
+      });
+      // Drive the fake worker's `ready` so init resolves.
+      const w = (grid as any).workerClient.worker;
+      w.listeners.forEach((cb: any) => cb({ data: { id: 1, type: 'ready' } }));
+      return { grid, container };
+    }
+
+    it('getColumnState returns one entry per leaf in declaration order including hidden leaves', () => {
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number }>(
+        [],
+        [
+          { field: 'id', width: 100 },
+          { field: 'a', width: 150, hide: true },
+          { field: 'b', width: 200 },
+        ],
+      );
+      const state = grid.getColumnState();
+      expect(state.map((s) => s.colId)).toEqual(['id', 'a', 'b']);
+      const aState = state.find((s) => s.colId === 'a')!;
+      expect(aState.hide).toBe(true);
+      grid.destroy();
+    });
+
+    it('applyColumnState triggers exactly one recomputeViewport invocation', () => {
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number }>(
+        [],
+        [{ field: 'id' }, { field: 'a' }, { field: 'b' }],
+      );
+      const spy = vi.spyOn(grid as any, 'recomputeViewport');
+      spy.mockClear();
+      grid.applyColumnState({
+        state: [
+          { colId: 'a', width: 300 },
+          { colId: 'b', width: 250 },
+        ],
+      });
+      expect(spy).toHaveBeenCalledTimes(1);
+      grid.destroy();
+    });
+
+    it('applyColumnState with hide:true filters the column out of the visible-leaf order', () => {
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number }>(
+        [],
+        [{ field: 'id' }, { field: 'a' }, { field: 'b' }],
+      );
+      grid.applyColumnState({ state: [{ colId: 'a', hide: true }] });
+      const visibleIds = ((grid as any).columnOrder as Array<{ colId: string }>).map((c) => c.colId);
+      expect(visibleIds).toEqual(['id', 'b']);
+      // But getColumnState still reports the hidden column.
+      const state = grid.getColumnState();
+      expect(state.find((s) => s.colId === 'a')?.hide).toBe(true);
+      grid.destroy();
+    });
+
+    it('lockVisible silently rejects a hide mutation', () => {
+      const { grid } = buildBareGrid<{ id: string; a: number }>(
+        [],
+        [{ field: 'id' }, { field: 'a', lockVisible: true }],
+      );
+      const ok = grid.applyColumnState({ state: [{ colId: 'a', hide: true }] });
+      expect(ok).toBe(true);
+      // `a` remains visible because lockVisible vetoed the hide flip.
+      const visibleIds = ((grid as any).columnOrder as Array<{ colId: string }>).map((c) => c.colId);
+      expect(visibleIds).toEqual(['id', 'a']);
+      grid.destroy();
+    });
+
+    it('lockPinned silently rejects a pinned mutation', () => {
+      const { grid } = buildBareGrid<{ id: string; a: number }>(
+        [],
+        [{ field: 'id' }, { field: 'a', pinned: 'left', lockPinned: true }],
+      );
+      const events: any[] = [];
+      grid.on('columnPinned', (e) => events.push(e));
+      grid.applyColumnState({ state: [{ colId: 'a', pinned: null }] });
+      // Resolved pinned untouched.
+      expect((grid as any).columnDefsMap.get('a').pinned).toBe('left');
+      expect(events).toEqual([]);
+      grid.destroy();
+    });
+
+    it('defaultState applies to leaves not mentioned in state', () => {
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number }>(
+        [],
+        [{ field: 'id' }, { field: 'a' }, { field: 'b' }],
+      );
+      grid.applyColumnState({
+        state: [{ colId: 'id', hide: false }],
+        defaultState: { hide: true },
+      });
+      const visibleIds = ((grid as any).columnOrder as Array<{ colId: string }>).map((c) => c.colId);
+      expect(visibleIds).toEqual(['id']);
+      grid.destroy();
+    });
+
+    it('resetColumnState restores the construction-time snapshot and fires columnsReset', async () => {
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number }>(
+        [],
+        [
+          { field: 'id', width: 100 },
+          { field: 'a', width: 150 },
+          { field: 'b', width: 200 },
+        ],
+      );
+      // Mutate first — hide `a`, widen `b`.
+      grid.applyColumnState({
+        state: [{ colId: 'a', hide: true }, { colId: 'b', width: 500 }],
+      });
+      const events: string[] = [];
+      grid.on('columnsReset', () => events.push('columnsReset'));
+      grid.on('columnVisible', () => events.push('columnVisible'));
+      grid.on('columnResized', () => events.push('columnResized'));
+      grid.resetColumnState();
+      expect(events[0]).toBe('columnsReset');
+      // After reset, `a` is visible again and `b` is back to its initial width.
+      expect((grid as any).columnDefsMap.get('a').hide).toBe(false);
+      expect((grid as any).columnDefsMap.get('b').width).toBe(200);
+      grid.destroy();
+    });
+
+    it('applyColumnState with applyOrder: true rewrites the visible leaf order', () => {
+      const { grid } = buildBareGrid<{ id: string; a: number; b: number; c: number }>(
+        [],
+        [{ field: 'id' }, { field: 'a' }, { field: 'b' }, { field: 'c' }],
+      );
+      const initial = grid.getColumnState().map((s) => s.colId);
+      expect(initial).toEqual(['id', 'a', 'b', 'c']);
+      grid.applyColumnState({
+        state: [
+          { colId: 'id' },
+          { colId: 'c' },
+          { colId: 'b' },
+          { colId: 'a' },
+        ],
+        applyOrder: true,
+      });
+      const after = grid.getColumnState().map((s) => s.colId);
+      expect(after).toEqual(['id', 'c', 'b', 'a']);
+    });
+
+    it('applyColumnState returns false when one or more colIds are unknown', () => {
+      const { grid } = buildBareGrid<{ id: string; a: number }>(
+        [],
+        [{ field: 'id' }, { field: 'a' }],
+      );
+      const ok = grid.applyColumnState({
+        state: [{ colId: 'a', width: 250 }, { colId: 'does-not-exist', hide: true }],
+      });
+      expect(ok).toBe(false);
+      grid.destroy();
+    });
+  });
+
   it('accepts a CColGroupDef in columnDefs and resolves leaves in declaration order', async () => {
     const container = document.createElement('div');
     container.style.cssText = 'width:800px; height:600px;';

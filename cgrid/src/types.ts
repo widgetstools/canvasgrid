@@ -252,6 +252,41 @@ export interface CColDef<TRow = any, TValue = any> {
    * binds both drag-reorder and the imperative move API. Cycle 6 / Task 1.
    */
   lockPosition?: boolean | 'left' | 'right';
+  /**
+   * When true, the column is excluded from the flat visible-leaf order
+   * (header + body + layout + hit-test). Hidden columns remain in
+   * `columnDefsMap` so `getColumnState()` keeps reporting them — the
+   * round-trip is symmetric. Cycle 6 / Task 2.
+   */
+  hide?: boolean;
+  /**
+   * Applied only on first construction. `applyColumnState` and the
+   * imperative API ignore this field — they read `hide` instead. Cycle 6 /
+   * Task 2.
+   */
+  initialHide?: boolean;
+  /**
+   * Applied only on first construction. The grid honors this when no
+   * matching `pinned` value is provided. Cycle 6 / Task 2.
+   */
+  initialPinned?: boolean | 'left' | 'right';
+  /**
+   * Applied only on first construction. The grid honors this when no
+   * matching `width` value is provided. Cycle 6 / Task 2.
+   */
+  initialWidth?: number;
+  /**
+   * When true, `applyColumnState` + `setColumnsVisible` (Task 5) silently
+   * drop any mutation that would flip this column's `hide` state.
+   * Cycle 6 / Task 2.
+   */
+  lockVisible?: boolean;
+  /**
+   * When true, `applyColumnState` + `setColumnsPinned` (Task 5) silently
+   * drop any mutation that would change this column's `pinned` state.
+   * Cycle 6 / Task 2.
+   */
+  lockPinned?: boolean;
 }
 
 /**
@@ -327,6 +362,53 @@ export interface CValueSetterParams<TRow = any, TValue = any> {
 
 export interface SortModelEntry { colId: string; direction: 'asc' | 'desc' }
 export type SortModel = SortModelEntry[];
+
+/**
+ * Serialisable per-leaf column state. Returned in current-visible-leaf
+ * order from `getColumnState`, including hidden leaves so the round-trip
+ * is symmetric. `undefined` on any optional slot is treated as
+ * "don't change" by `applyColumnState`. Cycle 6 / Task 2.
+ */
+export interface CColumnState {
+  colId: string;
+  /** Resolved column width in pixels. `undefined` when the leaf is flex-only. */
+  width?: number;
+  /** Flex weight. `null` clears any flex; `undefined` leaves it untouched. */
+  flex?: number | null;
+  /** `true` / `false` (explicit). `undefined` round-trips as "don't change". */
+  hide?: boolean;
+  /** `'left'` / `'right'` / `null` (unpinned). `undefined` = "don't change". */
+  pinned?: 'left' | 'right' | null;
+  /** `'asc'` / `'desc'` / `null` (unsorted). `undefined` = "don't change". */
+  sort?: 'asc' | 'desc' | null;
+  /** Position in a multi-column sort. `null` = unsorted. */
+  sortIndex?: number | null;
+  /** Reserved for Cycle 14. Round-trips opaquely until then. */
+  rowGroup?: boolean;
+  rowGroupIndex?: number | null;
+  /** Reserved for Cycle 17. Round-trips opaquely until then. */
+  pivot?: boolean;
+  pivotIndex?: number | null;
+  /** Reserved for Cycle 13. Round-trips opaquely until then. */
+  aggFunc?: string | null;
+}
+
+/**
+ * Parameters for `CGridApi.applyColumnState`. Cycle 6 / Task 2.
+ *
+ * - `state` — per-leaf restore entries; matched by `colId`. Leaves not
+ *   mentioned fall back to `defaultState` (if provided) or stay unchanged.
+ * - `applyOrder` — when true, the column order from `state` defines the
+ *   new flat-leaf order (Task 1's locks + `marryChildren` still bind).
+ * - `defaultState` — applied to every leaf not mentioned in `state`. Pair
+ *   with a sparse `state` to "reset everything else + restore these few"
+ *   in a single call.
+ */
+export interface CApplyColumnStateParams {
+  state?: CColumnState[];
+  applyOrder?: boolean;
+  defaultState?: Omit<CColumnState, 'colId'>;
+}
 
 export type FilterModelEntry =
   | { type: 'text'; op: 'contains' | 'equals' | 'startsWith'; value: string }
@@ -435,7 +517,31 @@ export type CGridEvent =
   | { type: 'modelUpdated'; visibleRowCount: number }
   | { type: 'sortChanged'; sortModel: SortModel }
   | { type: 'filterChanged'; filterModel: FilterModel }
-  | { type: 'columnResized'; colId: string; width: number }
+  | { type: 'columnResized'; colId: string; width: number; source?: 'columnState' | 'ui' | 'api' }
+  /** Fires when one or more columns have changed visibility. `source`
+   *  distinguishes a column-state restore (`'columnState'`) from a future
+   *  Task-5 imperative call (`'api'`). Cycle 6 / Task 2 — emitted by
+   *  `applyColumnState` / `resetColumnState`. */
+  | {
+      type: 'columnVisible';
+      visible: boolean;
+      colIds: string[];
+      source: 'columnState' | 'api';
+    }
+  /** Fires when one or more columns have changed pinning. `pinned: null`
+   *  for unpinned columns. Cycle 6 / Task 2 — emitted by
+   *  `applyColumnState` / `resetColumnState`. */
+  | {
+      type: 'columnPinned';
+      pinned: 'left' | 'right' | null;
+      colIds: string[];
+      source: 'columnState' | 'api';
+    }
+  /** Fires once after `resetColumnState` restores the construction-time
+   *  snapshot, BEFORE the per-slot change events fan out (`columnMoved`
+   *  / `columnVisible` / `columnPinned` / `columnResized` / `sortChanged`).
+   *  Cycle 6 / Task 2. */
+  | { type: 'columnsReset' }
   /** Fires after a column changes its index in the flat visible-leaf order.
    *  `toIndex` is the resolved final index AFTER `lockPosition` /
    *  `marryChildren` clamping; it may differ from the drag's drop target
@@ -558,6 +664,26 @@ export interface CGridApi {
    *  to the nearest legal index, NOT throw. Fires `columnMoved` with
    *  `source: 'api'`. Cycle 6 / Task 1. */
   moveColumnByIndex(fromIndex: number, toIndex: number): void;
+
+  /** Serialisable snapshot of every leaf's mutable state (width, hide,
+   *  pinned, sort, sortIndex, flex, plus reserved rowGroup / pivot /
+   *  aggFunc slots) in the current flat-leaf order — hidden leaves
+   *  included. Pair with `applyColumnState` for layout persistence.
+   *  Cycle 6 / Task 2. */
+  getColumnState(): CColumnState[];
+  /** Restore column state. Returns `true` when every `state[].colId`
+   *  matched a known leaf; `false` when at least one entry was dropped.
+   *  Mutates `columnDefsMap` in place through a single re-layout +
+   *  repaint cycle. Honors `lockVisible` / `lockPinned` — locked
+   *  mutations are silently dropped. Fires `columnMoved` /
+   *  `columnVisible` / `columnPinned` / `columnResized` / `sortChanged`
+   *  with `source: 'columnState'` for each changed slot. Cycle 6 /
+   *  Task 2. */
+  applyColumnState(params: CApplyColumnStateParams): boolean;
+  /** Restore the construction-time column-state snapshot. Fires
+   *  `columnsReset`, then the per-slot change events with
+   *  `source: 'columnState'`. Cycle 6 / Task 2. */
+  resetColumnState(): void;
 
   /** Returns the on-screen pixel bounds of the cell at (`rowIndex`, `colId`)
    *  in the canvas's coordinate space. Returns `null` when the cell is not

@@ -65,6 +65,25 @@ export interface ResolvedColDef<TRow = any> {
   /** See `CColDef.lockPosition`. `null` for free; `'left'` / `'right'`
    *  pin the leaf to the start / end of the flat visible-leaf order. */
   lockPosition: 'left' | 'right' | null;
+  /** See `CColDef.hide`. `true` excludes the leaf from the visible-leaf
+   *  order. `false` (default) keeps it visible. Mutated in place by
+   *  `applyColumnState`. Cycle 6 / Task 2. */
+  hide: boolean;
+  /** See `CColDef.lockVisible`. When true, `applyColumnState` +
+   *  `setColumnsVisible` silently drop any mutation that would flip
+   *  `hide`. Cycle 6 / Task 2. */
+  lockVisible: boolean;
+  /** See `CColDef.lockPinned`. When true, `applyColumnState` +
+   *  `setColumnsPinned` silently drop any mutation that would change
+   *  `pinned`. Cycle 6 / Task 2. */
+  lockPinned: boolean;
+  /** Reserved Cycle-13/14/17 slots. Round-trip opaquely through
+   *  `getColumnState` / `applyColumnState` until those cycles wire the
+   *  model logic. */
+  rowGroup?: boolean;
+  rowGroupIndex?: number | null;
+  pivot?: boolean;
+  pivotIndex?: number | null;
 }
 
 export interface ApplyCellPropsInput {
@@ -127,15 +146,27 @@ export function resolveColDef<TRow>(
 
   const type = merged.type ?? 'text';
 
+  // initial* fields apply only when the non-initial counterpart is unset.
+  // `applyColumnState` / `setColumnsVisible` / `setColumnsPinned` then read
+  // the resolved `width` / `pinned` / `hide` slots — they never re-read the
+  // `initial*` keys, so we collapse them here at resolve time.
+  const resolvedWidth = merged.width ?? merged.initialWidth;
+  const initialPinned = merged.initialPinned;
+  const initialPinnedResolved: 'left' | 'right' | undefined =
+    initialPinned === true || initialPinned === 'left' ? 'left'
+    : initialPinned === 'right' ? 'right' : undefined;
+  const resolvedPinned = merged.pinned ?? initialPinnedResolved;
+  const resolvedHide = merged.hide ?? merged.initialHide ?? false;
+
   return {
     colId,
     field: merged.field,
     headerName: merged.headerName ?? String(merged.field ?? colId),
-    width: merged.width,
+    width: resolvedWidth,
     flex: merged.flex,
     minWidth: merged.minWidth ?? 30,
     maxWidth: merged.maxWidth ?? Number.POSITIVE_INFINITY,
-    pinned: merged.pinned,
+    pinned: resolvedPinned,
     type,
     valueGetter: merged.valueGetter as ResolvedColDef<TRow>['valueGetter'],
     valueFormatter: merged.valueFormatter as ResolvedColDef<TRow>['valueFormatter'],
@@ -164,5 +195,8 @@ export function resolveColDef<TRow>(
       : merged.lockPosition === 'right'
         ? 'right'
         : null,
+    hide: resolvedHide,
+    lockVisible: merged.lockVisible ?? false,
+    lockPinned: merged.lockPinned ?? false,
   };
 }

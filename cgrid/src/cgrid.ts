@@ -10,9 +10,14 @@ import { type ResolvedColDef } from './core/propertyChain';
 import { resolveColumnTree, isColGroupDef, type ColumnTree } from './core/columnTree';
 import { ColumnGroupState, resolveVisibleLeaves } from './core/columnGroupState';
 import {
-  applyReorder, resolveLegalDropIndex,
+  applyReorder, resolveLegalDropIndex, reorderLeavesByList,
   type ColumnOrderConstraints,
 } from './core/columnOrder';
+import {
+  snapshotState, applyStateToTree, cloneStateForReset,
+  type SnapshotLocks, type ChangeRecord,
+} from './core/columnState';
+import type { CColumnState, CApplyColumnStateParams } from './types';
 import type { CColDef, CColGroupDef } from './types';
 import {
   INITIAL_ONLY_OPTIONS, applyRuntimeOption, isRuntimeOption,
@@ -102,6 +107,18 @@ function reorderDefs<TRow>(
   return next;
 }
 
+/** Diff two flat-leaf orders and return the colIds whose index changed.
+ *  Used by Cycle 6 / Task 2 to fan out `columnMoved` events from a
+ *  `applyColumnState({ applyOrder: true })` call. */
+function collectMovedColIds(oldOrder: string[], newOrder: string[]): string[] {
+  const out: string[] = [];
+  for (let i = 0; i < newOrder.length; i++) {
+    const id = newOrder[i]!;
+    if (oldOrder[i] !== id) out.push(id);
+  }
+  return out;
+}
+
 function minLeafPos<TRow>(
   node: CColDef<TRow> | CColGroupDef<TRow>,
   posOf: Map<string, number>,
@@ -182,6 +199,10 @@ export class CGrid<TRow = any> {
   private destroyed = false;
   private selectionUnsubscribe: () => void = () => {};
   private sortModel: SortModel = [];
+  /** Snapshot of every leaf's mutable state taken after the column tree
+   *  resolves at construction. `resetColumnState` replays it to restore
+   *  the "as-coded" layout. Cycle 6 / Task 2. */
+  private initialColumnStateSnapshot: CColumnState[] = [];
   /** Last bounds we emitted `gridSizeChanged` for. `null` until the initial
    *  setBounds lands — that first call records but does not emit, so external
    *  listeners only see real post-mount size changes. */
@@ -614,6 +635,17 @@ export class CGrid<TRow = any> {
       this.events.emit({ type: 'selectionChanged', selectedRowIds: this.getSelectedRowIds() });
       this.updateA11y();
     });
+
+    // Cycle 6 / Task 2 — capture the construction-time column state so
+    // `resetColumnState` can replay the as-coded layout. Snapshotted now
+    // (after the initial `columnLayout` resolves) so hidden / pinned /
+    // width / sort all round-trip on reset, including `initial*` field
+    // defaults that propertyChain already folded into the resolved slots.
+    this.initialColumnStateSnapshot = snapshotState(
+      this.columnTree,
+      this.columnLayout,
+      this.sortModel,
+    );
   }
 
   // --- Public API -----------------------------------------------------------
@@ -1021,6 +1053,9 @@ export class CGrid<TRow = any> {
       addEventListener: (t, h) => this.addEventListener(t as CGridEvent['type'], h as any),
       removeEventListener: (t, h) => this.removeEventListener(t as CGridEvent['type'], h as any),
       moveColumnByIndex: (f, t) => this.moveColumnByIndex(f, t),
+      getColumnState: () => this.getColumnState(),
+      applyColumnState: (p) => this.applyColumnState(p),
+      resetColumnState: () => this.resetColumnState(),
       getCellBoundsAt: (r, c) => this.getCellBoundsAt(r, c),
       getHeaderBoundsAt: (c) => this.getHeaderBoundsAt(c),
       getRowBoundsAt: (r) => this.getRowBoundsAt(r),
@@ -1034,10 +1069,17 @@ export class CGrid<TRow = any> {
 
   /** Map `resolveVisibleLeaves` (colIds) back to ResolvedColDefs. Hidden
    *  leaves stay in `columnDefsMap`, so a later toggle picks them up without
-   *  re-resolving. */
+   *  re-resolving.
+   *
+   *  Cycle 6 / Task 2 — additionally filters out leaves with `hide: true`
+   *  so column-state mutations remove them from the visible-leaf order
+   *  (header + body + layout + hit-test). Hidden leaves still ride
+   *  `getColumnState()` so the round-trip is symmetric. */
   private computeVisibleColumnOrder(): ResolvedColDef<TRow>[] {
     const ids = resolveVisibleLeaves(this.columnTree, this.columnGroupState);
-    return ids.map((id) => this.columnDefsMap.get(id)!);
+    return ids
+      .map((id) => this.columnDefsMap.get(id)!)
+      .filter((def) => !def.hide);
   }
 
   private workerColumns(): WorkerColumn[] {
@@ -1513,6 +1555,168 @@ export class CGrid<TRow = any> {
     if (fromIndex === toIndex) return;
     const colId = ids[fromIndex]!;
     this.reorderColumn(colId, toIndex, 'api');
+  }
+
+  /** Cycle 6 / Task 2 — serialisable snapshot of every leaf's mutable
+   *  state in declaration order (hidden leaves included). */
+  getColumnState(): CColumnState[] {
+    return snapshotState(this.columnTree, this.columnLayout, this.sortModel);
+  }
+
+  /** Cycle 6 / Task 2 — restore column state through a single re-layout +
+   *  repaint cycle. Mutates `columnDefsMap` (the same ResolvedColDef
+   *  objects referenced by `columnTree.leafById`) in place, then fans the
+   *  matching events out with `source: 'columnState'`. Returns `false`
+   *  when one or more `state[].colId` entries did not match a known
+   *  leaf. */
+  applyColumnState(params: CApplyColumnStateParams): boolean {
+    return this.applyColumnStateInternal(params, /* emitReset */ false);
+  }
+
+  /** Cycle 6 / Task 2 — restore the construction-time snapshot. Fires
+   *  `columnsReset` BEFORE the per-slot change events. */
+  resetColumnState(): void {
+    this.applyColumnStateInternal(
+      { state: cloneStateForReset(this.initialColumnStateSnapshot), applyOrder: true },
+      /* emitReset */ true,
+    );
+  }
+
+  /** Engine entry-point shared by `applyColumnState` and `resetColumnState`.
+   *  Single re-layout: mutates resolved slots → optionally rebuilds the
+   *  column tree → re-runs the visible-column-order + width pass →
+   *  recomputeViewport + requestRepaint → drains the event queue → posts
+   *  the worker column-metadata refresh. */
+  private applyColumnStateInternal(
+    params: CApplyColumnStateParams,
+    emitReset: boolean,
+  ): boolean {
+    let allFound = true;
+    if (params.state) {
+      for (const entry of params.state) {
+        if (!this.columnDefsMap.has(entry.colId)) { allFound = false; break; }
+      }
+    }
+
+    const locks: SnapshotLocks = {
+      lockVisibleOf: (id) => this.columnDefsMap.get(id)?.lockVisible ?? false,
+      lockPinnedOf: (id) => this.columnDefsMap.get(id)?.lockPinned ?? false,
+    };
+
+    const oldOrder = this.columnOrder.map((c) => c.colId);
+    const result = applyStateToTree(this.columnTree, params, locks);
+
+    let newDefs = this.options.columnDefs;
+    let leafOrderChanged = false;
+    if (result.newOrder) {
+      // Honor Task-1 locks + marryChildren during the reorder.
+      const constraints = this.buildColumnOrderConstraints();
+      const finalOrder = reorderLeavesByList(this.columnTree, result.newOrder, constraints);
+      const current = Array.from(this.columnTree.leafById.keys());
+      leafOrderChanged = finalOrder.length !== current.length
+        || finalOrder.some((id, i) => id !== current[i]);
+      if (leafOrderChanged) {
+        newDefs = rebuildColumnDefsByLeafOrder(this.options.columnDefs, finalOrder);
+        this.options.columnDefs = newDefs;
+      }
+    }
+
+    if (leafOrderChanged) {
+      this.rebuildColumns({ defaultColDef: this.options.defaultColDef });
+    } else {
+      // Mutations on existing ResolvedColDef slots — recompute the visible
+      // column order so a `hide` flip lights up immediately, then rerun
+      // the width pass + viewport.
+      this.columnOrder = this.computeVisibleColumnOrder();
+      this.columnLayout = resolveColumnWidths(
+        this.columnOrder,
+        this.canvasBounds.width || this.scroller.clientWidth || 800,
+      );
+      this.recomputeViewport();
+      this.cgridCanvas?.requestRepaint();
+    }
+
+    // Drain the change queue into typed events. Deterministic order:
+    // columnsReset → columnMoved → columnVisible → columnPinned →
+    // columnResized → sortChanged.
+    if (emitReset) this.events.emit({ type: 'columnsReset' });
+
+    if (leafOrderChanged) {
+      const newOrder = this.columnOrder.map((c) => c.colId);
+      const moved = collectMovedColIds(oldOrder, newOrder);
+      for (const colId of moved) {
+        const toIndex = newOrder.indexOf(colId);
+        this.events.emit({
+          type: 'columnMoved', toIndex, colIds: [colId], source: 'columnState',
+        });
+      }
+    }
+
+    const visibleChanges = result.changes.filter((c) => c.kind === 'hide');
+    if (visibleChanges.length > 0) {
+      // Group by the new visible boolean (CColumnState.hide is the
+      // "should be hidden" flag; the event reports the visible boolean).
+      const shown = visibleChanges.filter((c) => c.newValue === false).map((c) => c.colId);
+      const hidden = visibleChanges.filter((c) => c.newValue === true).map((c) => c.colId);
+      if (shown.length) {
+        this.events.emit({
+          type: 'columnVisible', visible: true, colIds: shown, source: 'columnState',
+        });
+      }
+      if (hidden.length) {
+        this.events.emit({
+          type: 'columnVisible', visible: false, colIds: hidden, source: 'columnState',
+        });
+      }
+    }
+
+    const pinnedChanges = result.changes.filter((c) => c.kind === 'pinned');
+    if (pinnedChanges.length > 0) {
+      const byBucket = new Map<'left' | 'right' | null, string[]>();
+      for (const c of pinnedChanges) {
+        const key = c.newValue as 'left' | 'right' | null;
+        const arr = byBucket.get(key) ?? [];
+        arr.push(c.colId);
+        byBucket.set(key, arr);
+      }
+      for (const [pinned, colIds] of byBucket.entries()) {
+        this.events.emit({
+          type: 'columnPinned', pinned, colIds, source: 'columnState',
+        });
+      }
+    }
+
+    for (const c of result.changes.filter((c) => c.kind === 'width')) {
+      this.events.emit({
+        type: 'columnResized', colId: c.colId, width: c.newValue as number,
+        source: 'columnState',
+      });
+    }
+
+    const sortChanges = result.changes.filter((c) => c.kind === 'sort');
+    if (sortChanges.length > 0) {
+      const next: SortModel = sortChanges
+        .map((c) => c.newValue as { direction: 'asc' | 'desc' | null; index: number | null })
+        .filter((s) => s.direction !== null)
+        .map((s, i) => ({ colId: sortChanges[i]!.colId, direction: s.direction as 'asc' | 'desc' }))
+        .filter(Boolean);
+      this.sortModel = next;
+      this.events.emit({ type: 'sortChanged', sortModel: next });
+    }
+
+    // Push column metadata + visible-set change to the worker so a freshly
+    // hidden column stops getting chunked, and a freshly shown column gets
+    // populated on the next viewport fetch.
+    this.workerClient?.updateColumns(this.workerColumns())
+      .then(({ visibleCount }) => {
+        this.rowCount = visibleCount;
+        this.recomputeViewport();
+        this.events.emit({ type: 'displayedColumnsChanged', source: 'columnDefsChanged' });
+        this.requestViewport();
+      })
+      .catch((err) => { if (!this.destroyed) console.error('[cgrid] applyColumnState:', err); });
+
+    return allFound;
   }
 
   /** Build the per-leaf lock + marryChildren constraints used by Task-1's
