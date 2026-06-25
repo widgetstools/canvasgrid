@@ -134,7 +134,7 @@
   box-sizing: border-box;
   padding: 0 22px 0 8px;
   border: 1px solid var(--cg-floating-filter-border);
-  border-radius: 4px;
+  border-radius: 0;
   background: var(--cg-floating-filter-bg);
   color: var(--cg-fg-color);
   font-family: var(--cg-font-family);
@@ -163,7 +163,7 @@
   margin: 0;
   padding: 0;
   border: 0;
-  border-radius: 3px;
+  border-radius: 0;
   background: transparent;
   color: var(--cg-floating-filter-placeholder);
   font-family: var(--cg-font-family);
