@@ -1,5 +1,5 @@
 import 'cgrid/style.css';
-import { createPositionsGrid } from './positionsGrid';
+import { createPositionsGrid, setPositiveOnlyFilter } from './positionsGrid';
 import { connectStomp } from './stomp';
 
 const host = document.getElementById('grid');
@@ -117,6 +117,18 @@ document.getElementById('imp-reset-widths')?.addEventListener('click', () => {
     { key: 'marketValue', newWidth: 130 },
   ]);
 });
+
+// Cycle 7 / Task 8 — toolbar "Positive P&L only" checkbox toggles the
+// demo's external filter. The grid's `isExternalFilterPresent` reads
+// the module-level flag inside positionsGrid; flipping it triggers
+// `onFilterChanged('externalFilter')` which fires the worker round-trip.
+// `change` event (not `click`) so keyboard activations also fire.
+const positivePnlCheckbox = document.getElementById('ext-positive-pnl') as HTMLInputElement | null;
+if (positivePnlCheckbox) {
+  positivePnlCheckbox.addEventListener('change', () => {
+    setPositiveOnlyFilter(grid, positivePnlCheckbox.checked);
+  });
+}
 
 // Cycle 7 / Task 7 — cross-column quick filter. Input drives
 // `setGridOption('quickFilterText', value)` after a short trailing

@@ -188,6 +188,31 @@ export interface CGridOptions<TRow = any> {
    *  `console.warn`. The matcher must be a PURE function — it must not
    *  close over external scope. Cycle 7 / Task 7. */
   quickFilterMatcher?: (parts: string[], rowAggregateText: string) => boolean;
+  /** Cycle 7 / Task 8 — app-provided gate for external filtering. Called
+   *  before every filter pass; when it returns `true`, the worker pauses
+   *  the pipeline mid-flight and pushes the candidate rowIds to main, then
+   *  awaits the survivor subset before completing. When this returns
+   *  `false` (or is undefined) the round-trip is skipped entirely and
+   *  `doesExternalFilterPass` is never called. Apps re-trigger by calling
+   *  `api.onFilterChanged('externalFilter')` after mutating any state the
+   *  predicate closes over. */
+  isExternalFilterPresent?: () => boolean;
+  /** Cycle 7 / Task 8 — per-row predicate that runs on the main thread
+   *  for each rowId in the worker's candidate set. Return `true` to keep
+   *  the row in the visible set, `false` to drop it. Called once per
+   *  candidate row per `onFilterChanged` trigger; runs in addition to
+   *  (and after) column + quick filters. Rows where `alwaysPassFilter`
+   *  returns `true` bypass this predicate. */
+  doesExternalFilterPass?: (params: { data: TRow; rowId: string }) => boolean;
+  /** Cycle 7 / Task 8 — per-row "always include" predicate. Rows for
+   *  which this returns `true` bypass every filter (column / quick /
+   *  external) and are unconditionally part of the visible set, even
+   *  when their data would otherwise be filtered out. Useful for pinned
+   *  summary rows or locked reference rows that must always be visible
+   *  regardless of filter state. Main runs the predicate against its
+   *  row-data cache on every `setRowData` / `applyTransaction` and ships
+   *  the resolved rowId set to the worker. */
+  alwaysPassFilter?: (params: { data: TRow; rowId: string }) => boolean;
   /**
    * Full-row edit mode. When `'fullRow'`, triggering an edit on any cell in
    * a row opens an editor for every editable column in that row
@@ -290,8 +315,11 @@ export interface CColDef<TRow = any, TValue = any> {
   /** Per-column filter UI parameters. Tasks 3-6 + 9 each consume the
    *  relevant subset (`buttons` / `closeOnApply` are honored by every
    *  popup; type-specific knobs like `caseSensitive` arrive with Task
-   *  5's text-filter popup). Cycle 7 / Task 3. */
-  filterParams?: CFilterParams;
+   *  5's text-filter popup). Widened to accept `CTextFilterParams` so
+   *  text-filtered columns can pass `caseSensitive` / `trimInput` /
+   *  `textFormatter` / `showCaseSensitiveToggle` without a cast. Cycle
+   *  7 / Task 3 (+ Task 8 type widening). */
+  filterParams?: CFilterParams | CTextFilterParams;
   /** Per-column override of `CGridOptions.floatingFilter`. When set on a
    *  column, the column joins (or opts out of) the floating-filter row
    *  regardless of the grid-wide default. Cycle 7 / Task 1. */
@@ -1000,6 +1028,19 @@ export interface CGridApi {
   showColumnFilter(colId: string): void;
   /** Close any open filter popup. Idempotent. Cycle 7 / Task 3. */
   hideColumnFilter(): void;
+
+  /** Cycle 7 / Task 8 — re-run the filter pipeline. Use after mutating
+   *  any state that `options.isExternalFilterPresent` /
+   *  `options.doesExternalFilterPass` close over (e.g. a toolbar
+   *  checkbox toggling "show only USD"). `source` rides through to the
+   *  `filterChanged` event so apps can correlate the trigger:
+   *  - `'api'` (default) — programmatic re-trigger
+   *  - `'columnFilter'` — per-column model mutation
+   *  - `'quickFilter'` — `quickFilterText` change
+   *  - `'externalFilter'` — external-filter predicate state changed
+   *  Returns once the worker round-trip lands; the `filterChanged`
+   *  event fires with the resolved per-column model. */
+  onFilterChanged(source?: 'api' | 'quickFilter' | 'columnFilter' | 'externalFilter'): void;
 
   /** Scroll the row with the given ID into view. Resolves once the worker
    *  has resolved the rowId → current index (filter + sort applied). Resolves
