@@ -17,7 +17,7 @@ export interface WorkerColumn {
   field?: string;                // dot-path supported
   type: 'text' | 'number';
   aggFunc?: 'sum' | 'avg' | 'min' | 'max' | 'count';
-  filter?: 'text' | 'number';
+  filter?: 'text' | 'number' | 'date' | 'set';
   /** Cycle 5 / Task 8 — column opted into autoHeight measurement. When true,
    *  the worker measures wrapped-text height for every visible row in this
    *  column and contributes the result into the row's resolved height. */

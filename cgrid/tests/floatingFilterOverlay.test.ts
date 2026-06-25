@@ -125,9 +125,9 @@ describe('FloatingFilterOverlay', () => {
     const price  = host.querySelector('input[data-cg-col-id="price"]') as HTMLInputElement;
     expect(text.placeholder).toBe('');
     // Explicit `filter: 'number'` lights up the placeholder.
-    expect(qty.placeholder).toBe('>100, 1,2,3, 100-150');
+    expect(qty.placeholder).toBe('>100, 1,2,3, 100..200');
     // `cellDataType: 'number'` is the fallback signal when `filter` is unset.
-    expect(price.placeholder).toBe('>100, 1,2,3, 100-150');
+    expect(price.placeholder).toBe('>100, 1,2,3, 100..200');
     // Resolved filter type also lands as a data-* attribute.
     expect(qty.getAttribute('data-cg-filter-type')).toBe('number');
     expect(price.getAttribute('data-cg-filter-type')).toBe('number');
@@ -197,7 +197,7 @@ describe('FloatingFilterOverlay', () => {
     overlay.destroy();
   });
 
-  it('syncInputValue sets the input value from a CFilterModelEntry', () => {
+  it('syncInputValue sets the input value from a simple v2 entry', () => {
     const overlay = new FloatingFilterOverlay(host, makeDeps());
     const vp = makeViewport([
       { colId: 'a', index: 0, left: 0, right: 100, width: 100 },
@@ -206,8 +206,106 @@ describe('FloatingFilterOverlay', () => {
     overlay.syncInputValue('a', { filterType: 'text', type: 'contains', filter: 'POS' });
     const input = host.querySelector('input[data-cg-col-id="a"]') as HTMLInputElement;
     expect(input.value).toBe('POS');
+    overlay.destroy();
+  });
+
+  it('syncInputValue with null leaves the input alone (protects in-flight user typing)', () => {
+    const overlay = new FloatingFilterOverlay(host, makeDeps());
+    const vp = makeViewport([
+      { colId: 'a', index: 0, left: 0, right: 100, width: 100 },
+    ]);
+    overlay.repositionAll(vp);
+    const input = host.querySelector('input[data-cg-col-id="a"]') as HTMLInputElement;
+    input.value = 'user-typed-unparseable';
     overlay.syncInputValue('a', null);
-    expect(input.value).toBe('');
+    expect(input.value).toBe('user-typed-unparseable');
+    overlay.destroy();
+  });
+
+  it('syncInputValue with a multi-condition entry leaves the input alone', () => {
+    const overlay = new FloatingFilterOverlay(host, makeDeps());
+    const vp = makeViewport([
+      { colId: 'a', index: 0, left: 0, right: 100, width: 100 },
+    ]);
+    overlay.repositionAll(vp);
+    const input = host.querySelector('input[data-cg-col-id="a"]') as HTMLInputElement;
+    input.value = '>100 and <200';
+    overlay.syncInputValue('a', {
+      filterType: 'multi', operator: 'AND',
+      conditions: [
+        { filterType: 'number', type: 'greaterThan', filter: 100 },
+        { filterType: 'number', type: 'lessThan', filter: 200 },
+      ],
+    });
+    expect(input.value).toBe('>100 and <200');
+    overlay.destroy();
+  });
+
+  it('typing >100 on a number column produces the parsed v2 number entry', () => {
+    const setColumnFilterModel = vi.fn();
+    const overlay = new FloatingFilterOverlay(host, makeDeps({
+      setColumnFilterModel,
+      debounceMs: 50,
+      getColDef: () => ({ floatingFilter: true, filter: 'number' }),
+    }));
+    const vp = makeViewport([
+      { colId: 'qty', index: 0, left: 0, right: 100, width: 100 },
+    ]);
+    overlay.repositionAll(vp);
+    const input = host.querySelector('input[data-cg-col-id="qty"]') as HTMLInputElement;
+    input.value = '>100';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    vi.advanceTimersByTime(100);
+    expect(setColumnFilterModel).toHaveBeenCalledWith('qty', {
+      filterType: 'number', type: 'greaterThan', filter: 100,
+    });
+    overlay.destroy();
+  });
+
+  it('typing a CSV on a number column produces a multi-OR-of-equals entry', () => {
+    const setColumnFilterModel = vi.fn();
+    const overlay = new FloatingFilterOverlay(host, makeDeps({
+      setColumnFilterModel,
+      debounceMs: 50,
+      getColDef: () => ({ floatingFilter: true, filter: 'number' }),
+    }));
+    const vp = makeViewport([
+      { colId: 'qty', index: 0, left: 0, right: 100, width: 100 },
+    ]);
+    overlay.repositionAll(vp);
+    const input = host.querySelector('input[data-cg-col-id="qty"]') as HTMLInputElement;
+    input.value = '12,20,33';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    vi.advanceTimersByTime(100);
+    expect(setColumnFilterModel).toHaveBeenCalledWith('qty', {
+      filterType: 'multi', operator: 'OR',
+      conditions: [
+        { filterType: 'number', type: 'equals', filter: 12 },
+        { filterType: 'number', type: 'equals', filter: 20 },
+        { filterType: 'number', type: 'equals', filter: 33 },
+      ],
+    });
+    overlay.destroy();
+  });
+
+  it('typing unparseable input on a number column clears the filter (null)', () => {
+    const setColumnFilterModel = vi.fn();
+    const overlay = new FloatingFilterOverlay(host, makeDeps({
+      setColumnFilterModel,
+      debounceMs: 50,
+      getColDef: () => ({ floatingFilter: true, filter: 'number' }),
+    }));
+    const vp = makeViewport([
+      { colId: 'qty', index: 0, left: 0, right: 100, width: 100 },
+    ]);
+    overlay.repositionAll(vp);
+    const input = host.querySelector('input[data-cg-col-id="qty"]') as HTMLInputElement;
+    input.value = 'not-a-number';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    vi.advanceTimersByTime(100);
+    expect(setColumnFilterModel).toHaveBeenCalledWith('qty', null);
+    // Crucially, the typed text stays in the input so the user can correct it.
+    expect(input.value).toBe('not-a-number');
     overlay.destroy();
   });
 

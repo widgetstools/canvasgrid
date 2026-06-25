@@ -246,7 +246,11 @@ export interface CColDef<TRow = any, TValue = any> {
    */
   cellRendererSelector?: CCellRendererSelector<TRow, TValue>;
   comparator?: (a: TValue, b: TValue, ar: TRow, br: TRow) => number;
-  filter?: 'text' | 'number';
+  /** Filter type for the column. `'text'` / `'number'` / `'date'` route
+   *  the floating-filter input through the matching parser grammar.
+   *  `'set'` is reserved for Task 9's checkbox popup. When unset, the
+   *  overlay falls back to `cellDataType`. */
+  filter?: 'text' | 'number' | 'date' | 'set';
   /** Per-column override of `CGridOptions.floatingFilter`. When set on a
    *  column, the column joins (or opts out of) the floating-filter row
    *  regardless of the grid-wide default. Cycle 7 / Task 1. */
@@ -580,21 +584,85 @@ export type FilterModelEntryLegacy =
   | { type: 'text'; op: 'contains' | 'equals' | 'startsWith'; value: string }
   | { type: 'number'; op: 'eq' | 'gt' | 'lt' | 'between'; value: number; value2?: number };
 
-/** Forward-compatible v2 text-filter entry. Cycle 7 / Task 1 introduces the
- *  shape so the floating-filter overlay can emit it; Cycle 7 / Task 2
- *  widens this to the full ag-grid `CFilterModelEntry` discriminated union
- *  (text / number / date / set / multi). The current single-variant form
- *  is intentional — only `contains` is wired through the floating-filter
- *  row in Task 1. */
+/** Cycle 7 / Task 1 (parser enhancement) — ag-grid-compatible text
+ *  operator names. The floating-filter input parser only emits
+ *  `contains` today; Task 5's text-filter popup adds the rest. */
+export type CTextFilterOp =
+  | 'contains' | 'notContains'
+  | 'equals'   | 'notEqual'
+  | 'startsWith' | 'endsWith'
+  | 'blank' | 'notBlank';
+
+/** Cycle 7 / Task 1 (parser enhancement) — ag-grid-compatible number
+ *  operator names. The floating-filter parser emits the comparison
+ *  variants + `inRange`; `blank` / `notBlank` land with Task 3's popup. */
+export type CNumberFilterOp =
+  | 'equals' | 'notEqual'
+  | 'lessThan' | 'lessThanOrEqual'
+  | 'greaterThan' | 'greaterThanOrEqual'
+  | 'inRange'
+  | 'blank' | 'notBlank';
+
+/** Cycle 7 / Task 1 (parser enhancement) — date filter operators mirror
+ *  the number set; comparisons run on ISO date strings. */
+export type CDateFilterOp = CNumberFilterOp;
+
+/** Forward-compatible v2 text-filter entry. The floating-filter parser
+ *  emits `contains` for bare text and combines via
+ *  `CMultiConditionFilterModel` for CSV / AND / OR. Task 5's popup
+ *  widens the operator usage to the full `CTextFilterOp` surface. */
 export interface CTextFilterModel {
   filterType: 'text';
-  type: 'contains';
+  type: CTextFilterOp;
   filter?: string;
+  /** Case-sensitive comparison (defaults to false). Reserved by Task 1;
+   *  honoured fully by Task 5's text-filter popup. */
+  caseSensitive?: boolean;
 }
 
-/** Cycle 7 type alias for a single column's filter entry. Currently a
- *  one-member union; Task 2 widens it. */
-export type CFilterModelEntry = CTextFilterModel;
+/** v2 number-filter entry. `inRange` activates the `filterTo` upper
+ *  bound (inclusive). The floating-filter parser emits these directly
+ *  via the `> 100`, `100..200`, `>=100`, etc. syntaxes. */
+export interface CNumberFilterModel {
+  filterType: 'number';
+  type: CNumberFilterOp;
+  filter?: number;
+  /** Required when `type === 'inRange'`; inclusive upper bound. */
+  filterTo?: number;
+}
+
+/** v2 date-filter entry. `filter` / `filterTo` carry ISO strings
+ *  (`YYYY-MM-DD` or full timestamp). Floating-filter parser supports
+ *  comparison + CSV; range via `..` requires both sides to parse as
+ *  dates. */
+export interface CDateFilterModel {
+  filterType: 'date';
+  type: CDateFilterOp;
+  filter?: string;
+  filterTo?: string;
+}
+
+/** Cycle 7 / Task 1 (parser enhancement) — multi-condition entry. Used
+ *  by the floating-filter parser to compose CSV / AND / OR expressions.
+ *  Conditions evaluate left-to-right and short-circuit. Task 6's popup
+ *  surfaces the same shape with a maxNumConditions=2 constraint; the
+ *  parser-generated form is uncapped (a five-element CSV produces a
+ *  five-element conditions array). */
+export interface CMultiConditionFilterModel {
+  filterType: 'multi';
+  operator: 'AND' | 'OR';
+  conditions: Array<CTextFilterModel | CNumberFilterModel | CDateFilterModel>;
+}
+
+/** Cycle 7 type alias for a single column's filter entry. Discriminated
+ *  by `filterType`; consumers should switch on that. Set filter
+ *  (`{filterType:'set', values:[...]}`) lands in Task 9 — for now
+ *  CSV inputs compose as multi-condition OR. */
+export type CFilterModelEntry =
+  | CTextFilterModel
+  | CNumberFilterModel
+  | CDateFilterModel
+  | CMultiConditionFilterModel;
 
 export type FilterModelEntry = FilterModelEntryLegacy | CFilterModelEntry;
 export type FilterModel = Record<string, FilterModelEntry>;

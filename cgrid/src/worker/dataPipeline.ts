@@ -1,12 +1,17 @@
-import type { TransactionResult, FilterModel, FilterModelEntry, FilterModelEntryLegacy, SortModel } from '../types';
+import type {
+  TransactionResult, FilterModel, FilterModelEntry, FilterModelEntryLegacy,
+  CFilterModelEntry, CTextFilterModel, CNumberFilterModel, CDateFilterModel,
+  CMultiConditionFilterModel,
+  SortModel,
+} from '../types';
 
 /**
- * Cycle 7 / Task 1 — the worker's `FilterPass` matcher only speaks the
- * Cycle 4 / 5 legacy entry shape. cgrid.ts converts any v2 entries the
- * floating-filter overlay emits (`{ filterType, type, filter }`) into
- * the legacy form (`{ type, op, value }`) before shipping the model to
- * the worker. Cycle 7 / Task 2 widens the matcher to accept v2 entries
- * natively and removes this narrowing.
+ * Cycle 7 / Task 1 — the worker's `FilterPass` matcher speaks both the
+ * Cycle 4 / 5 legacy entry shape AND the ag-grid-compatible v2
+ * discriminated union (`{ filterType: 'text' | 'number' | 'date' |
+ * 'multi', ... }`). The floating-filter overlay emits v2 directly via
+ * the inline operator parser; cgrid.ts forwards v2 entries to the
+ * worker unchanged.
  */
 type WorkerFilterModelEntry = FilterModelEntryLegacy;
 import type { WorkerColumn, ViewportRequest, ViewportChunk } from './protocol';
@@ -316,14 +321,15 @@ export class FilterPass<TRow = any> {
       for (const [colId, rawEntry] of entries) {
         const col = this.colIndex.get(colId);
         if (!col || !col.field) continue;
-        // Cycle 7 / Task 1 — the floating-filter overlay emits v2-shape
-        // entries; cgrid.ts converts them to legacy before sending, but a
-        // direct `setFilterModel({})` caller may still ship a v2 entry.
-        // Skip those here — Task 2 widens the matcher to evaluate them.
-        if ('filterType' in rawEntry) continue;
-        const entry = rawEntry as WorkerFilterModelEntry;
         const value = (row as Record<string, unknown>)[col.field];
-        if (!matches(entry, value)) { pass = false; break; }
+        // v2 entries (`filterType` discriminator) go through matchesV2;
+        // legacy entries through `matches`. Worker accepts both for the
+        // duration of Cycle 7 — Task 2 will remove the legacy branch
+        // once all callers migrate.
+        const ok = 'filterType' in rawEntry
+          ? matchesV2(rawEntry as CFilterModelEntry, value)
+          : matches(rawEntry as WorkerFilterModelEntry, value);
+        if (!ok) { pass = false; break; }
       }
       if (pass) out.push(this.store.getRowId(row));
     }
@@ -347,6 +353,115 @@ function matches(entry: WorkerFilterModelEntry, raw: unknown): boolean {
   if (entry.op === 'lt') return n <  entry.value;
   if (entry.op === 'between') return n >= entry.value && n <= (entry.value2 ?? entry.value);
   return false;
+}
+
+/** v2 matcher — handles `CTextFilterModel` / `CNumberFilterModel` /
+ *  `CDateFilterModel` / `CMultiConditionFilterModel` (recursive). Used
+ *  by `FilterPass.apply` whenever an entry carries the `filterType`
+ *  discriminator. Cycle 7 / Task 1 (parser enhancement). */
+function matchesV2(entry: CFilterModelEntry, raw: unknown): boolean {
+  if (entry.filterType === 'multi') {
+    return matchesMulti(entry, raw);
+  }
+  if (entry.filterType === 'text') {
+    return matchesText(entry, raw);
+  }
+  if (entry.filterType === 'number') {
+    return matchesNumber(entry, raw);
+  }
+  if (entry.filterType === 'date') {
+    return matchesDate(entry, raw);
+  }
+  return false;
+}
+
+function matchesMulti(entry: CMultiConditionFilterModel, raw: unknown): boolean {
+  // Empty conditions array is treated as "no constraint" — `null`-shaped
+  // entries don't reach the worker (cgrid drops them in
+  // setColumnFilterModel), so this is purely defensive.
+  if (entry.conditions.length === 0) return true;
+  if (entry.operator === 'AND') {
+    for (const c of entry.conditions) {
+      if (!matchesV2(c, raw)) return false;
+    }
+    return true;
+  }
+  // OR — short-circuit on the first pass.
+  for (const c of entry.conditions) {
+    if (matchesV2(c, raw)) return true;
+  }
+  return false;
+}
+
+function matchesText(entry: CTextFilterModel, raw: unknown): boolean {
+  const cs = entry.caseSensitive === true;
+  const haystack = cs ? String(raw ?? '') : String(raw ?? '').toLowerCase();
+  const needle = entry.filter == null ? ''
+    : cs ? entry.filter : entry.filter.toLowerCase();
+  switch (entry.type) {
+    case 'contains':    return haystack.includes(needle);
+    case 'notContains': return !haystack.includes(needle);
+    case 'equals':      return haystack === needle;
+    case 'notEqual':    return haystack !== needle;
+    case 'startsWith':  return haystack.startsWith(needle);
+    case 'endsWith':    return haystack.endsWith(needle);
+    case 'blank':       return haystack === '';
+    case 'notBlank':    return haystack !== '';
+  }
+  return false;
+}
+
+function matchesNumber(entry: CNumberFilterModel, raw: unknown): boolean {
+  if (entry.type === 'blank')    return raw == null || raw === '';
+  if (entry.type === 'notBlank') return raw != null && raw !== '';
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (Number.isNaN(n)) return false;
+  const a = entry.filter;
+  if (a == null) return false;
+  switch (entry.type) {
+    case 'equals':              return n === a;
+    case 'notEqual':            return n !== a;
+    case 'lessThan':            return n <  a;
+    case 'lessThanOrEqual':     return n <= a;
+    case 'greaterThan':         return n >  a;
+    case 'greaterThanOrEqual':  return n >= a;
+    case 'inRange':             return entry.filterTo != null
+      && n >= a && n <= entry.filterTo;
+  }
+  return false;
+}
+
+/** Date matcher — compares ISO strings via `Date.parse`. Returns false
+ *  when either side fails to parse so an invalid date entry never
+ *  silently includes rows. */
+function matchesDate(entry: CDateFilterModel, raw: unknown): boolean {
+  if (entry.type === 'blank')    return raw == null || raw === '';
+  if (entry.type === 'notBlank') return raw != null && raw !== '';
+  const r = parseDateMs(raw);
+  if (r === null) return false;
+  const a = entry.filter == null ? null : parseDateMs(entry.filter);
+  if (a === null) return false;
+  switch (entry.type) {
+    case 'equals':              return r === a;
+    case 'notEqual':            return r !== a;
+    case 'lessThan':            return r <  a;
+    case 'lessThanOrEqual':     return r <= a;
+    case 'greaterThan':         return r >  a;
+    case 'greaterThanOrEqual':  return r >= a;
+    case 'inRange': {
+      const b = entry.filterTo == null ? null : parseDateMs(entry.filterTo);
+      return b !== null && r >= a && r <= b;
+    }
+  }
+  return false;
+}
+
+function parseDateMs(raw: unknown): number | null {
+  if (raw == null) return null;
+  const s = String(raw);
+  if (s === '') return null;
+  const t = Date.parse(s);
+  return Number.isNaN(t) ? null : t;
 }
 
 export class SortPass<TRow = any> {

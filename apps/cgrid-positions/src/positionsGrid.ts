@@ -158,12 +158,17 @@ export function createPositionsGrid(
       // in the demo. The fields are not sent by STOMP — they start empty and
       // persist user edits via the default valueSetter path.
       {
+        // Cycle 7 / Task 1 (parser enhancement) — `filter: 'date'` routes
+        // the floating-filter input through the date-aware parser
+        // (>YYYY-MM-DD, A..B, CSV, AND/OR).
         field: 'tradeDate', headerName: 'Trade Date', width: 120, editable: true,
         cellEditor: 'dateString',
+        filter: 'date',
       },
       {
         field: 'expiryDate', headerName: 'Expiry', width: 120, editable: true,
         cellEditor: 'date',
+        filter: 'date',
       },
       // Cycle 5 / Task 8 — autoHeight target. main.ts seeds ~1 in 3 rows
       // with a long synthetic description so the worker's measure pass has

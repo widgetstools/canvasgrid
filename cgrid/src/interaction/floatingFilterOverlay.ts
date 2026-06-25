@@ -1,5 +1,6 @@
 import type { ViewportState } from '../core/viewport';
 import type { CFilterModelEntry } from '../types';
+import { parseFloatingFilterInput, type FilterColumnType } from './floatingFilterParser';
 
 /**
  * Resolved per-column metadata the overlay reads to decide whether to mount
@@ -103,16 +104,34 @@ export class FloatingFilterOverlay {
     }
   }
 
-  /** Reflect `model` into the pooled input for `colId`. No-op when the
-   *  column has no input yet — `repositionAll` will pick up the latest
-   *  filter model when the column next enters the visible set.
+  /** Reflect `model` into the pooled input for `colId`. Used by
+   *  programmatic `setColumnFilterModel` callers so the visible input
+   *  tracks the active filter. No-op when the column has no input yet —
+   *  `repositionAll` will pick up the latest filter model when the
+   *  column next enters the visible set.
+   *
+   *  Behaviour by entry shape:
+   *  - simple v2 entry with a `.filter` field → show that value as a string
+   *  - `null` / multi-condition / set / complex entries → leave the
+   *    input alone. Null in particular preserves the user's in-flight
+   *    typing when the parser couldn't make sense of it — the row set
+   *    returns to its unfiltered state but the user keeps the text
+   *    they were composing so they can correct it. Programmatic
+   *    callers who want to wipe the input should set the value
+   *    directly via `getScroller()` / DOM access; that's an
+   *    intentional asymmetry to protect user input.
    *
    *  Cycle 7 / Task 1.
    */
   syncInputValue(colId: string, model: CFilterModelEntry | null): void {
     const input = this.pool.get(colId);
     if (!input) return;
-    input.value = model && model.filter != null ? model.filter : '';
+    if (model === null) return;
+    if (model.filterType === 'text' || model.filterType === 'number' || model.filterType === 'date') {
+      const v = model.filter;
+      if (v != null) input.value = String(v);
+    }
+    // multi-condition / set: leave input.value untouched.
   }
 
   /** Tear down — remove every pooled input from the DOM and cancel any
@@ -138,20 +157,22 @@ export class FloatingFilterOverlay {
     input.setAttribute('data-cg-floating-filter', '');
     input.setAttribute('data-cg-col-id', colId);
     // Resolved filter type: explicit `filter:` wins, else fall back to
-    // `cellDataType` (every column has one). Number/date columns hint
-    // the eventual operator surface; the floating-filter input does a
-    // text-contains match in Task 1 — the operator parsing (>N, N-M,
-    // comma-set) lands in Tasks 2 / 3 / 9.
-    const resolvedFilter = def.filter ?? def.cellDataType;
+    // `cellDataType` (every column has one). The overlay's inline
+    // parser uses this to route the user's typed expression to the
+    // right grammar (text-contains for text columns, comparison +
+    // range + CSV + AND/OR for number / date columns).
+    const resolvedFilter = resolveFilterType(def);
     if (resolvedFilter) input.setAttribute('data-cg-filter-type', resolvedFilter);
-    if (resolvedFilter === 'number' || resolvedFilter === 'date') {
-      input.placeholder = '>100, 1,2,3, 100-150';
-    }
+    input.placeholder = placeholderFor(resolvedFilter);
     input.style.cssText =
       'position:absolute;left:0;top:0;box-sizing:border-box;pointer-events:auto;';
     input.addEventListener('input', () => this.onInputChanged(colId, input));
     const initial = this.deps.getColumnFilterModel(colId);
-    if (initial && initial.filter != null) input.value = initial.filter;
+    if (initial
+        && (initial.filterType === 'text' || initial.filterType === 'number' || initial.filterType === 'date')
+        && initial.filter != null) {
+      input.value = String(initial.filter);
+    }
     this.host.appendChild(input);
     this.pool.set(colId, input);
     return input;
@@ -165,9 +186,13 @@ export class FloatingFilterOverlay {
       this.debouncers.delete(colId);
       if (this.destroyed) return;
       const raw = input.value;
-      const model: CFilterModelEntry | null = raw === ''
-        ? null
-        : { filterType: 'text', type: 'contains', filter: raw };
+      const def = this.deps.getColDef(colId);
+      const columnType = resolveFilterType(def) ?? 'text';
+      // Parser returns null for empty / unparseable input — both clear
+      // the column filter. The input text itself is preserved (the
+      // overlay never mutates `input.value` here) so the user sees what
+      // they typed and can correct it without losing their edit.
+      const model = parseFloatingFilterInput(raw, columnType);
       this.deps.setColumnFilterModel(colId, model);
     };
     if (debounceMs <= 0) {
@@ -176,4 +201,30 @@ export class FloatingFilterOverlay {
     }
     this.debouncers.set(colId, setTimeout(apply, debounceMs));
   }
+}
+
+/** Resolved filter column type — `filter:` wins, else `cellDataType`,
+ *  else `undefined`. The parser defaults to `'text'` when this returns
+ *  undefined so an unannotated column still gets contains semantics. */
+function resolveFilterType(def: FloatingFilterColDef | undefined): FilterColumnType | undefined {
+  if (!def) return undefined;
+  // `filter` may be a popup name ('set') that has no parser column type
+  // — fall back to cellDataType for those. Only the three parser types
+  // (text/number/date) are valid here.
+  if (def.filter === 'text' || def.filter === 'number' || def.filter === 'date') {
+    return def.filter;
+  }
+  if (def.cellDataType === 'text' || def.cellDataType === 'number') {
+    return def.cellDataType;
+  }
+  return undefined;
+}
+
+/** Per-type placeholder hint. Each line previews the syntax the parser
+ *  accepts for that column type. Kept short so it fits inside narrow
+ *  columns (truncates gracefully when the column is < ~150 px). */
+function placeholderFor(type: FilterColumnType | undefined): string {
+  if (type === 'number') return '>100, 1,2,3, 100..200';
+  if (type === 'date')   return '>2026-01-01, A..B';
+  return '';
 }

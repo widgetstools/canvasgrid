@@ -56,7 +56,9 @@ export const CGRID_VERSION = '0.0.0';
 export type {
   CGridOptions, CColDef, CColGroupDef, CGridEvent, CGridApi, Tx, TransactionResult,
   SortModel, SortModelEntry, FilterModel, FilterModelEntry, FilterModelEntryLegacy,
-  CFilterModelEntry, CTextFilterModel, GroupModel,
+  CFilterModelEntry, CTextFilterModel, CNumberFilterModel, CDateFilterModel,
+  CMultiConditionFilterModel, CTextFilterOp, CNumberFilterOp, CDateFilterOp,
+  GroupModel,
   CValueGetterParams, CValueFormatterParams,
   CCellRendererSelector, CCellRendererSelectorParams, CCellRendererSelectorResult,
   ColCellOverrides,
@@ -828,27 +830,25 @@ export class CGrid<TRow = any> {
   }
 
   /** Cycle 7 / Task 1 — apply a per-column filter mutation. Updates the
-   *  canonical v2 map, ships the composed legacy `FilterModel` to the
-   *  worker for re-evaluation, then mirrors the new value back into the
-   *  floating-filter input so a programmatic call keeps the UI in sync.
-   *  Passing `model: null` clears the column. */
+   *  canonical v2 map and ships the composed `FilterModel` to the
+   *  worker for re-evaluation. The worker accepts both legacy and v2
+   *  shapes (v2 entries flow through unchanged), so the parser's
+   *  full operator surface — comparison / range / CSV / AND / OR —
+   *  reaches the matcher without lossy conversion. Passing `model: null`
+   *  clears the column. */
   setColumnFilterModel(colId: string, model: CFilterModelEntry | null): void {
     if (model) this.columnFilterModels.set(colId, model);
     else this.columnFilterModels.delete(colId);
-    const legacy: FilterModel = {};
+    const combined: FilterModel = {};
     for (const [id, entry] of this.columnFilterModels) {
-      // v2-text-contains → legacy-text-contains. The worker still speaks
-      // the Cycle 4 / 5 legacy shape until Task 2 widens its matcher.
-      if (entry.filterType === 'text' && entry.type === 'contains' && entry.filter != null) {
-        legacy[id] = { type: 'text', op: 'contains', value: entry.filter };
-      }
+      combined[id] = entry;
     }
-    this.workerClient.setFilterModel(legacy).then(({ visibleCount }) => {
+    this.workerClient.setFilterModel(combined).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
       this.rowHeightIndex = null;
       this.recomputeViewport();
       this.rebuildSelectionFromPersistentIds();
-      this.events.emit({ type: 'filterChanged', filterModel: legacy });
+      this.events.emit({ type: 'filterChanged', filterModel: combined });
       this.requestViewport();
       this.floatingFilterOverlay.syncInputValue(colId, model);
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });

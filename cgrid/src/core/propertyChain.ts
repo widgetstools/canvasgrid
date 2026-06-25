@@ -41,7 +41,7 @@ export interface ResolvedColDef<TRow = any> {
   /** Per-cell renderer selector (see `CCellRendererSelector`). */
   cellRendererSelector?: CCellRendererSelector<TRow>;
   comparator?: (a: unknown, b: unknown, ar: TRow, br: TRow) => number;
-  filter?: 'text' | 'number';
+  filter?: 'text' | 'number' | 'date' | 'set';
   /** Per-column override of `CGridOptions.floatingFilter`. `undefined` means
    *  inherit the grid-level value at `rebuildSubgridStack` time. The
    *  floating-filter overlay reads this on every `repositionAll`; explicit
