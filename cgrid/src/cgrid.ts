@@ -37,6 +37,7 @@ import { PopupHost } from './interaction/editors/popupHost';
 import { FilterPopupHost } from './interaction/filters/filterPopupHost';
 import { NumberFilterPopup } from './interaction/filters/numberFilter';
 import { DateFilterPopup } from './interaction/filters/dateFilter';
+import { TextFilterPopup, applyTrimInputToModel } from './interaction/filters/textFilter';
 import { CGridCanvas } from './core/canvas';
 import { CssReader, type ResolvedTheme } from './theming/cssReader';
 import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell, type CellPainter } from './renderer/cellRenderers/registry';
@@ -880,7 +881,20 @@ export class CGrid<TRow = any> {
    *  for evaluation. Tasks 3-6 + 9 (popup UIs) will sync inputs
    *  explicitly when they need to. */
   setColumnFilterModel(colId: string, model: CFilterModelEntry | null): void {
-    if (model) this.columnFilterModels.set(colId, model);
+    // Cycle 7 / Task 5 — main-side `trimInput` honored before storage.
+    // Strips leading/trailing whitespace from the text filter value so a
+    // user typing "  POS  " hits the worker as "POS". Distinct from the
+    // column-level `textFormatter: 'trim'`, which trims on every row
+    // comparison; trimInput trims once at setModel time.
+    let effective = model;
+    if (effective && effective.filterType === 'text') {
+      const def = this.columnDefsMap.get(colId);
+      const params = def?.filterParams as import('./types').CTextFilterParams | undefined;
+      if (params?.trimInput === true) {
+        effective = applyTrimInputToModel(effective, true) as CFilterModelEntry | null;
+      }
+    }
+    if (effective) this.columnFilterModels.set(colId, effective);
     else this.columnFilterModels.delete(colId);
     const combined: FilterModel = {};
     for (const [id, entry] of this.columnFilterModels) {
@@ -959,8 +973,25 @@ export class CGrid<TRow = any> {
         closeOnApply: params.closeOnApply ?? true,
       });
       this.filterPopupHost.open(colId, { cellBounds: anchorCell, viewportBounds }, popup);
+    } else if (filterType === 'text') {
+      // Cycle 7 / Task 5 — text-filter popup. Reads `caseSensitive` /
+      // `showCaseSensitiveToggle` from filterParams; the
+      // `textFormatter` / `trimInput` knobs land on the worker
+      // (textFormatter) or main-side setColumnFilterModel (trimInput).
+      const params = (def.filterParams ?? {}) as import('./types').CTextFilterParams;
+      const initial = this.getColumnFilterModel(colId);
+      const initialText = initial && initial.filterType === 'text' ? initial : null;
+      const popup = new TextFilterPopup({
+        initialModel: initialText,
+        onApply: (model) => this.setColumnFilterModel(colId, model),
+        onClose: () => this.hideColumnFilter(),
+        buttons: params.buttons,
+        closeOnApply: params.closeOnApply ?? true,
+        showCaseSensitiveToggle: params.showCaseSensitiveToggle,
+      });
+      this.filterPopupHost.open(colId, { cellBounds: anchorCell, viewportBounds }, popup);
     }
-    // Tasks 5 / 6 / 9 add 'text' / 'multi' / 'set'.
+    // Tasks 6 / 9 add 'multi' / 'set'.
   }
 
   /** Cycle 7 / Task 3 — close the active filter popup. Idempotent. */
@@ -1337,6 +1368,13 @@ export class CGrid<TRow = any> {
         aggFunc: c.aggFunc,
         filter: c.filter,
       };
+      // Cycle 7 / Task 5 — forward the text-filter `textFormatter`
+      // so the worker's matchesText can normalise both the cell value
+      // AND the filter value before the operator comparison fires.
+      if (c.filter === 'text') {
+        const fp = c.filterParams as import('./types').CTextFilterParams | undefined;
+        if (fp?.textFormatter) base.textFormatter = fp.textFormatter;
+      }
       // Cycle 5 / Task 8 — forward autoHeight metadata so the worker can
       // measure wrapped text without re-walking the column tree. Width is
       // the inner text width (column width minus the cell horizontal

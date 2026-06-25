@@ -38,6 +38,13 @@ export interface WorkerColumn {
   /** Vertical padding to add above + below the wrapped text (so a single
    *  short line still resolves to roughly the grid row height). */
   autoHeightPadding?: number;
+  /** Cycle 7 / Task 5 — text-filter pre-comparison normaliser. Runs on
+   *  BOTH the cell value AND the filter value before the operator
+   *  comparison fires. Built-in formatters this cycle ships:
+   *  `'lowercase'` / `'uppercase'` / `'trim'`. Arbitrary closures wait
+   *  for Cycle 24's worker-module loader. Only meaningful when
+   *  `filter === 'text'`. */
+  textFormatter?: 'lowercase' | 'uppercase' | 'trim';
 }
 
 export interface ViewportRequest {
