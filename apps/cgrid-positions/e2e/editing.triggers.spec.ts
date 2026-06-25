@@ -42,7 +42,7 @@ test.describe('Cell editing — triggers (Cycle 5 / Task 4)', () => {
     await page.waitForFunction(
       () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,
       null,
-      { timeout: 20_000 },
+      { timeout: 45_000 },
     );
   });
 

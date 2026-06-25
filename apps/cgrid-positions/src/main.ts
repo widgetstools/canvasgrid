@@ -1,6 +1,6 @@
 import 'cgrid/style.css';
 import { createPositionsGrid, setPositiveOnlyFilter } from './positionsGrid';
-import { connectStomp } from './stomp';
+import { connectStomp, STOMP_PUBLISH_RATE_PER_SEC } from './stomp';
 
 const host = document.getElementById('grid');
 if (!host) throw new Error('grid host not found');
@@ -9,9 +9,17 @@ if (!host) throw new Error('grid host not found');
 // edit mode without changing the default single-cell flow. The E2E
 // targeting full-row navigates with this query param; other E2Es keep
 // the default.
-const editTypeParam = new URLSearchParams(window.location.search).get('editType');
+//
+// `?variableHeights=1` / `?autoHeight=1` re-enable the Cycle 5 / Task 6
+// + Task 8 variant features the variableHeights / autoHeight / wrapText
+// E2E specs need. Default demo is uniform-height, no per-row variance.
+const search = new URLSearchParams(window.location.search);
+const editTypeParam = search.get('editType');
 const editType = editTypeParam === 'fullRow' ? 'fullRow' as const : undefined;
-const grid = createPositionsGrid(host, { editType });
+const variableHeights = search.get('variableHeights') === '1';
+const autoHeight = search.get('autoHeight') === '1';
+const cellClassDemo = search.get('cellClassDemo') === '1';
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo });
 
 // E2E hooks: expose the grid + a readiness flag so Playwright tests can wait
 // for first-data-rendered and call api helpers (`getCellBoundsAt`,
@@ -41,17 +49,63 @@ grid.on('gridReady', () => {
   console.log('[cgrid] ready');
   connectStomp({
     onSnapshot: (rows) => {
-      for (const r of rows) {
-        if (r.notes == null || r.notes === '') r.notes = autoHeightDescription(r.positionId);
+      // Only seed synthetic descriptions when the autoHeight demo is
+      // opted in (otherwise the default uniform-row demo would render
+      // "autoHeight wrap demo ..." in 1-of-3 notes cells for no
+      // visible reason).
+      if (autoHeight) {
+        for (const r of rows) {
+          if (r.notes == null || r.notes === '') r.notes = autoHeightDescription(r.positionId);
+        }
       }
       grid.setRowData(rows);
     },
-    onLiveUpdate: (updates) => grid.applyTransactionAsync({ update: updates }),
+    onLiveUpdate: (updates) => {
+      grid.applyTransactionAsync({ update: updates });
+      recordUpdates(updates.length);
+    },
     onPhase: (phase) => console.log('[stomp] phase:', phase),
   });
 });
 
 grid.on('modelUpdated', (e) => console.log('[cgrid] modelUpdated, visible:', e.visibleRowCount));
+
+// ───────────────────────────────────────────────────────────────────
+// Status pill — row count + updates/sec. The row count reflects the
+// grid's current displayed-row count (post-filter); updates/sec is a
+// 1-second sliding window over the STOMP onLiveUpdate batches that
+// arrive via `recordUpdates(n)`.
+// ───────────────────────────────────────────────────────────────────
+const rowsEl = document.querySelector('[data-testid="status-rows"]');
+const upsProcessedEl = document.querySelector('[data-testid="status-ups-processed"]');
+const upsPublishedEl = document.querySelector('[data-testid="status-ups-published"]');
+type UpdateSample = { t: number; n: number };
+const updateSamples: UpdateSample[] = [];
+function recordUpdates(n: number): void {
+  if (n <= 0) return;
+  updateSamples.push({ t: performance.now(), n });
+}
+function refreshStatus(): void {
+  if (rowsEl) {
+    const api = grid as unknown as { getDisplayedRowCount?: () => number };
+    const count = api.getDisplayedRowCount?.() ?? 0;
+    rowsEl.textContent = `Rows: ${count.toLocaleString()}`;
+  }
+  if (upsProcessedEl) {
+    // Drop samples older than 1 second.
+    const cutoff = performance.now() - 1000;
+    while (updateSamples.length > 0 && updateSamples[0]!.t < cutoff) {
+      updateSamples.shift();
+    }
+    const sum = updateSamples.reduce((s, x) => s + x.n, 0);
+    upsProcessedEl.textContent = sum.toLocaleString();
+  }
+  if (upsPublishedEl) {
+    upsPublishedEl.textContent = STOMP_PUBLISH_RATE_PER_SEC.toLocaleString();
+  }
+}
+setInterval(refreshStatus, 250);
+refreshStatus();
 
 let darkTheme = true;
 document.getElementById('theme')?.addEventListener('click', () => {
