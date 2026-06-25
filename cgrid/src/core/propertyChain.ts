@@ -17,7 +17,14 @@ export interface ResolvedColDef<TRow = any> {
   minWidth: number;
   maxWidth: number;
   pinned?: 'left' | 'right';
-  type: 'text' | 'number';
+  /**
+   * Resolved cell data type — `'text'` or `'number'`. Drives the default
+   * `cellRenderer` + the default halign. Cycle 6 / Task 6 replaces the
+   * previous `type: 'text' | 'number'` slot with this canonical field;
+   * `CColDef.type` is now `string | string[]` referring to
+   * `CGridOptions.columnTypes` bundle names.
+   */
+  cellDataType: 'text' | 'number';
   valueGetter?: (params: CValueGetterParams<TRow>) => unknown;
   valueFormatter?: (params: CValueFormatterParams<TRow, unknown>) => string;
   cellRenderer: string;
@@ -128,7 +135,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
     : (cs?.fg ?? ctx.theme.fg);
   target.bg = ctx.rowBg;
   target.borderColor = ctx.theme.gridLineColor;
-  target.halign = cs?.halign ?? (ctx.colDef.type === 'number' ? 'right' : 'left');
+  target.halign = cs?.halign ?? (ctx.colDef.cellDataType === 'number' ? 'right' : 'left');
   target.prefillColor = ctx.prefillColor;
   target.isFocused = ctx.isFocused;
   target.isSelected = ctx.isSelected;
@@ -143,15 +150,41 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
 export function resolveColDef<TRow>(
   colDef: CColDef<TRow>,
   defaultColDef: Partial<CColDef<TRow>> = {},
+  columnTypes: Record<string, Partial<CColDef<TRow>>> = {},
 ): ResolvedColDef<TRow> {
-  const merged: CColDef<TRow> = { ...defaultColDef, ...colDef };
+  // Cycle 6 / Task 6 — apply columnTypes bundles in order, then defaultColDef,
+  // then the column itself. Spread order matters: later objects overwrite
+  // earlier keys, so the column always wins, defaultColDef beats any type
+  // bundle, and types resolve left-to-right (the last bundle named in a
+  // `type: [a, b]` array beats earlier ones).
+  let typeBundle: Partial<CColDef<TRow>> = {};
+  const typeNames: string[] = Array.isArray(colDef.type)
+    ? colDef.type
+    : typeof colDef.type === 'string' ? [colDef.type] : [];
+  for (const name of typeNames) {
+    const bundle = columnTypes[name];
+    if (bundle) {
+      typeBundle = { ...typeBundle, ...bundle };
+      continue;
+    }
+    // Deprecation alias: a legacy `type: 'text' | 'number'` value that does
+    // not match any `columnTypes` entry collapses into `cellDataType`. Any
+    // other unknown name is a typo or stale reference — fail loudly.
+    if (name === 'text' || name === 'number') {
+      typeBundle = { ...typeBundle, cellDataType: name };
+      continue;
+    }
+    throw new Error(`[cgrid] unknown column type '${name}' (not declared in CGridOptions.columnTypes)`);
+  }
+
+  const merged: CColDef<TRow> = { ...typeBundle, ...defaultColDef, ...colDef };
 
   const colId = merged.colId ?? merged.field;
   if (!colId) {
     throw new Error('[cgrid] ColDef must have colId or field');
   }
 
-  const type = merged.type ?? 'text';
+  const cellDataType: 'text' | 'number' = merged.cellDataType ?? 'text';
 
   // initial* fields apply only when the non-initial counterpart is unset.
   // `applyColumnState` / `setColumnsVisible` / `setColumnsPinned` then read
@@ -174,12 +207,12 @@ export function resolveColDef<TRow>(
     minWidth: merged.minWidth ?? 30,
     maxWidth: merged.maxWidth ?? Number.POSITIVE_INFINITY,
     pinned: resolvedPinned,
-    type,
+    cellDataType,
     valueGetter: merged.valueGetter as ResolvedColDef<TRow>['valueGetter'],
     valueFormatter: merged.valueFormatter as ResolvedColDef<TRow>['valueFormatter'],
     valueParser: merged.valueParser as ResolvedColDef<TRow>['valueParser'],
     valueSetter: merged.valueSetter as ResolvedColDef<TRow>['valueSetter'],
-    cellRenderer: merged.cellRenderer ?? (merged.wrapText ? 'text-wrap' : type),
+    cellRenderer: merged.cellRenderer ?? (merged.wrapText ? 'text-wrap' : cellDataType),
     cellRendererParams: merged.cellRendererParams,
     cellRendererSelector: merged.cellRendererSelector as ResolvedColDef<TRow>['cellRendererSelector'],
     comparator: merged.comparator as ResolvedColDef<TRow>['comparator'],

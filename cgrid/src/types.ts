@@ -15,6 +15,20 @@ export interface ColCellOverrides {
 export interface CGridOptions<TRow = any> {
   columnDefs: (CColDef<TRow> | CColGroupDef<TRow>)[];
   defaultColDef?: Partial<CColDef<TRow>>;
+  /**
+   * Named `Partial<CColDef>` bundles. Reference by `CColDef.type` (single
+   * string or string array). The merge order applied at resolve time is
+   * `{ ...columnTypes[name1], ...columnTypes[name2], ...defaultColDef,
+   *    ...colDef }` — types merge left-to-right, then defaultColDef, then
+   * the column itself (column always wins).
+   *
+   * Deprecation alias: a column whose `type` is `'text'` or `'number'` and
+   * for which `columnTypes` carries no entry of that name collapses the
+   * value into `cellDataType` so legacy callers keep working.
+   *
+   * Cycle 6 / Task 6.
+   */
+  columnTypes?: Record<string, Partial<CColDef<TRow>>>;
   rowData?: TRow[];
   getRowId: (row: TRow) => string;
   rowHeight?: number;
@@ -134,7 +148,28 @@ export interface CColDef<TRow = any, TValue = any> {
   minWidth?: number;
   maxWidth?: number;
   pinned?: 'left' | 'right';
-  type?: 'text' | 'number';
+  /**
+   * Named column type(s) declared in `CGridOptions.columnTypes`. Each named
+   * entry is a `Partial<CColDef>` bundle; the resolved column merges the
+   * bundles left-to-right, then `defaultColDef`, then this column's own
+   * fields — the column's own properties always win.
+   *
+   * Deprecation alias: when `type` is `'text'` or `'number'` AND
+   * `columnTypes` carries no entry of that name, the value collapses into
+   * `cellDataType`. New code should prefer `cellDataType` for the cell
+   * data type and reserve `type` for shared property bundles.
+   *
+   * Cycle 6 / Task 6.
+   */
+  type?: string | string[];
+  /**
+   * Cell data type. Drives the default cell renderer + default halign when
+   * `cellRenderer` is unset (`'text'` → left-align text; `'number'` →
+   * right-align numeric). Replaces the old `type: 'text' | 'number'`
+   * literal-union usage — that shape still works via a deprecation alias
+   * (see `type`). Cycle 6 / Task 6.
+   */
+  cellDataType?: 'text' | 'number';
   valueGetter?: (params: CValueGetterParams<TRow>) => TValue;
   valueFormatter?: (params: CValueFormatterParams<TRow, TValue>) => string;
   cellRenderer?: string;

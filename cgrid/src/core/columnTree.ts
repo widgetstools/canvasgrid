@@ -63,6 +63,7 @@ export function isColGroupDef<TRow>(
 export function resolveColumnTree<TRow>(
   defs: (CColDef<TRow> | CColGroupDef<TRow>)[],
   defaultColDef?: Partial<CColDef<TRow>>,
+  columnTypes?: Record<string, Partial<CColDef<TRow>>>,
 ): ColumnTree {
   const leaves: ResolvedColDef[] = [];
   const leafById = new Map<string, ResolvedColDef>();
@@ -109,7 +110,7 @@ export function resolveColumnTree<TRow>(
       return groupNode;
     }
 
-    const resolved = resolveColDef<TRow>(node, defaultColDef);
+    const resolved = resolveColDef<TRow>(node, defaultColDef, columnTypes);
     if (leafById.has(resolved.colId)) {
       throw new Error(`[cgrid] duplicate colId '${resolved.colId}'`);
     }

@@ -258,7 +258,7 @@ export class CGrid<TRow = any> {
     // so collapsing a group hides its 'open'-only children (and vice-versa).
     // `columnDefsMap` keeps every leaf (including currently-hidden ones) so
     // toggling a group back open can rehydrate without re-resolving defs.
-    this.columnTree = resolveColumnTree(options.columnDefs, options.defaultColDef);
+    this.columnTree = resolveColumnTree(options.columnDefs, options.defaultColDef, options.columnTypes);
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
     this.columnGroupState = new ColumnGroupState(this.columnTree);
     this.columnOrder = this.computeVisibleColumnOrder();
@@ -960,7 +960,7 @@ export class CGrid<TRow = any> {
    *  visible column list, refresh layout, and rebuild the subgrid stack so
    *  any change in group depth lands a matching number of header rows. */
   private rebuildColumns({ defaultColDef }: { defaultColDef?: Partial<any> }): void {
-    this.columnTree = resolveColumnTree(this.options.columnDefs, defaultColDef ?? this.options.defaultColDef);
+    this.columnTree = resolveColumnTree(this.options.columnDefs, defaultColDef ?? this.options.defaultColDef, this.options.columnTypes);
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
     this.columnGroupState.setTree(this.columnTree);
     this.columnOrder = this.computeVisibleColumnOrder();
@@ -1098,7 +1098,7 @@ export class CGrid<TRow = any> {
       const base: WorkerColumn = {
         colId: c.colId,
         field: c.field as string | undefined,
-        type: c.type,
+        type: c.cellDataType,
         aggFunc: c.aggFunc,
         filter: c.filter,
       };

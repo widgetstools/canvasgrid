@@ -45,7 +45,29 @@ export function createPositionsGrid(
   container: HTMLElement,
   opts: PositionsGridOptions = {},
 ): CGrid<Position> {
+  // Cycle 6 / Task 6 — named column-type bundle. Columns referencing
+  // `type: 'money'` pick up the numeric cellDataType (drives the default
+  // right-aligned halign) plus a shared currency formatter so the two
+  // dollar-valued columns render identically without each one repeating
+  // the formatter on the column def.
+  const moneyFormatter = new Intl.NumberFormat('en-US', {
+    style: 'currency',
+    currency: 'USD',
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
+  const columnTypes: NonNullable<CGridOptions<Position>['columnTypes']> = {
+    money: {
+      cellDataType: 'number',
+      valueFormatter: ({ value }) =>
+        value == null || Number.isNaN(Number(value))
+          ? ''
+          : moneyFormatter.format(Number(value)),
+    },
+  };
+
   const options: CGridOptions<Position> = {
+    columnTypes,
     columnDefs: [
       // Cycle 6 / Task 1: positionId opts out of drag-reorder. Pinned-left
       // is already a strong visual signal that this column shouldn't move;
@@ -73,14 +95,18 @@ export function createPositionsGrid(
       // Cycle 6 / Task 1: lockPosition: 'right' pins notionalAmount to the
       // end of the flat visible-leaf order. A drag-attempt that would push
       // it earlier clamps to the last index instead of throwing.
+      // Cycle 6 / Task 6 — shared `money` columnTypes bundle (declared
+      // above) supplies cellDataType + valueFormatter, so both
+      // dollar-valued columns format identically without repeating the
+      // formatter per col-def.
       {
-        field: 'notionalAmount', headerName: 'Notional', type: 'number', width: 130, aggFunc: 'sum',
+        field: 'notionalAmount', headerName: 'Notional', type: 'money', width: 130, aggFunc: 'sum',
         editable: true,
         cellEditor: 'number',
         cellEditorParams: { min: 0, precision: 2 },
         lockPosition: 'right',
       },
-      { field: 'marketValue',    headerName: 'Market Value',  type: 'number', width: 130, aggFunc: 'sum' },
+      { field: 'marketValue',    headerName: 'Market Value',  type: 'money', width: 130, aggFunc: 'sum' },
       { field: 'currentPrice',   headerName: 'Price',         type: 'number', width: 100, aggFunc: 'avg' },
       {
         groupId: 'pnl', headerName: 'P&L',
