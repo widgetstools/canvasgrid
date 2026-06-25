@@ -9,6 +9,7 @@
  *  4. Function-form cellStyle overrides class-driven variants (highest precedence).
  *  5. headerClass applies the header variant to the header row.
  *  6. Unknown class name produces no override (falls through silently).
+ *  7. CColGroupDef.headerClass wired for group-header paint (fix-pass).
  */
 import { describe, it, expect } from 'vitest';
 import { resolveColDef, applyCellProps } from '../src/core/propertyChain';
@@ -252,6 +253,92 @@ describe('headerClass — applies header variant to header row', () => {
 
     expect(config.bg).toBe('#e0e7ff');
     expect(config.fg).toBe('#1e3a8a');
+  });
+});
+
+describe('CColGroupDef.headerClass — wired for group-header paint (fix-pass)', () => {
+  it('static string headerClass on a group applies the header variant', () => {
+    const stickyVariant: ColCellOverrides = { bg: '#f0f4ff', fg: '#1e3a8a' };
+    const theme = makeTheme(
+      new Map(),
+      new Map([['sticky', stickyVariant]]),
+    );
+
+    // Simulate the group-header paint path: applyCellProps is called with
+    // groupHeaderClassNames pre-resolved from the group's headerClassStatic.
+    const colDef = resolveColDef({ field: 'ticker' }); // leaf colDef — no headerClass
+    const config = makeConfig();
+
+    applyCellProps(config, {
+      theme,
+      colDef,
+      value: 'Group Header',
+      valueFormatted: 'Group Header',
+      x: 0, y: 0, w: 200, h: 32,
+      rowBg: theme.headerBg,
+      prefillColor: theme.headerBg,
+      isFocused: false,
+      isSelected: false,
+      isHovered: false,
+      isHeader: true,
+      rowData: undefined,
+      // Group's pre-resolved headerClass names (as produced by byRows.ts via groupDef.headerClassStatic)
+      groupHeaderClassNames: ['sticky'],
+    });
+
+    expect(config.bg).toBe('#f0f4ff');
+    expect(config.fg).toBe('#1e3a8a');
+  });
+
+  it('function-form headerClass on a group resolves class names per colId', () => {
+    const highlightVariant: ColCellOverrides = { bg: '#fffbe6' };
+    const theme = makeTheme(
+      new Map(),
+      new Map([['highlight', highlightVariant]]),
+    );
+
+    // Function-form: returns 'highlight' only for colId 'X'
+    const colDef = resolveColDef({ field: 'ticker' });
+    const config = makeConfig();
+
+    // Simulate byRows resolving groupDef.headerClassFn({ colId: 'X' }) → ['highlight']
+    applyCellProps(config, {
+      theme,
+      colDef,
+      value: 'Group',
+      valueFormatted: 'Group',
+      x: 0, y: 0, w: 200, h: 32,
+      rowBg: theme.headerBg,
+      prefillColor: theme.headerBg,
+      isFocused: false,
+      isSelected: false,
+      isHovered: false,
+      isHeader: true,
+      rowData: undefined,
+      groupHeaderClassNames: ['highlight'], // resolved from fn({ colId: 'X' })
+    });
+
+    expect(config.bg).toBe('#fffbe6');
+
+    // When fn returns empty (non-matching colId), no override should apply.
+    const config2 = makeConfig();
+    applyCellProps(config2, {
+      theme,
+      colDef,
+      value: 'Group',
+      valueFormatted: 'Group',
+      x: 0, y: 0, w: 200, h: 32,
+      rowBg: theme.headerBg,
+      prefillColor: theme.headerBg,
+      isFocused: false,
+      isSelected: false,
+      isHovered: false,
+      isHeader: true,
+      rowData: undefined,
+      groupHeaderClassNames: [], // fn returned undefined/empty for colId 'Y'
+    });
+
+    expect(config2.bg).toBe(theme.headerBg); // no variant applied
   });
 });
 

@@ -176,6 +176,15 @@ export interface ApplyCellPropsInput {
    * params; defaults to `0` when omitted (header use). Cycle 6 / Task 7.
    */
   rowIndex?: number;
+  /**
+   * Pre-resolved class names from the *group*'s `headerClass` field. When
+   * present and `isHeader === true`, these are looked up in
+   * `theme.headerClassVariants` instead of the leaf col's
+   * `headerClassStatic` / `headerClassFn`. Lets the group-header paint path
+   * carry group styling without touching the leaf col's header class.
+   * Cycle 6 / Task 7 (fix-pass).
+   */
+  groupHeaderClassNames?: string[];
 }
 
 /** Apply a `ColCellOverrides` patch onto the mutable slots of `target`.
@@ -243,9 +252,15 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   };
 
   if (ctx.isHeader) {
-    // Header path: resolve headerClass → headerClassVariants.
+    // Header path: group-header cells supply groupHeaderClassNames (from the
+    // group's pre-resolved headerClass); leaf header cells fall back to the
+    // leaf colDef's headerClassStatic / headerClassFn. Group wins; leaf is skipped
+    // when groupHeaderClassNames is provided. Cycle 6 / Task 7 (fix-pass).
     let headerClassNames: string[] | undefined;
-    if (colDef.headerClassStatic) {
+    if (ctx.groupHeaderClassNames !== undefined) {
+      // Group-header paint path: use the group's pre-resolved class names.
+      headerClassNames = ctx.groupHeaderClassNames.length > 0 ? ctx.groupHeaderClassNames : undefined;
+    } else if (colDef.headerClassStatic) {
       headerClassNames = colDef.headerClassStatic;
     } else if (colDef.headerClassFn) {
       const result = colDef.headerClassFn({ colId: colDef.colId });

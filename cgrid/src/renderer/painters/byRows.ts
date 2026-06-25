@@ -182,6 +182,20 @@ function paintBand(
           const w = lastCol.right - col.left;
           const cell = row.subgrid.getCell(0, col.colId);
           const text = cell?.valueFormatted ?? '';
+          // Resolve the group's headerClass into class names for applyCellProps.
+          const groupDef = (row.subgrid as HeaderGroupSubgrid).getGroupDef(col.colId);
+          let groupHeaderClassNames: string[] | undefined;
+          if (groupDef) {
+            if (groupDef.headerClassStatic) {
+              groupHeaderClassNames = groupDef.headerClassStatic;
+            } else if (groupDef.headerClassFn) {
+              const result = groupDef.headerClassFn({ colId: col.colId });
+              const arr = result === undefined ? [] : Array.isArray(result) ? result : [result];
+              groupHeaderClassNames = arr.filter(Boolean) as string[];
+            } else {
+              groupHeaderClassNames = []; // signal: group path, no class names
+            }
+          }
           applyCellProps(config, {
             theme,
             colDef: def,
@@ -193,6 +207,7 @@ function paintBand(
             isFocused: false, isSelected: false, isHovered: false, isHeader: true,
             iconColor: theme.focusRingColor,
             rowData: undefined,
+            groupHeaderClassNames,
           });
           cellRenderers.get('header').paint(gc, config);
         }

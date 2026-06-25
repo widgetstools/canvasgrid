@@ -109,6 +109,12 @@ export class HeaderGroupSubgrid implements Subgrid {
     return this.groupForLeaf(colId)?.groupId ?? null;
   }
 
+  /** Returns the resolved group def at this subgrid's depth for `colId`, or null.
+   *  Used by the painter to access pre-compiled headerClass fields. Cycle 6 / Task 7 (fix-pass). */
+  getGroupDef(colId: string): ResolvedColGroupDef | null {
+    return this.groupForLeaf(colId);
+  }
+
   private groupForLeaf(colId: string): ResolvedColGroupDef | null {
     const path = this.getLeafGroupPath(colId);
     if (this.depth >= path.length) return null;
