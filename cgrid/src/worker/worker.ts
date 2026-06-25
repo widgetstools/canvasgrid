@@ -4,7 +4,7 @@ import type {
 import { collectViewportTransferables } from './protocol';
 import {
   RowStore, FilterPass, SortPass, AggPass, ViewportSlicer, TransactionQueue,
-  QuickFilterPass,
+  QuickFilterPass, DistinctValuesPass,
 } from './dataPipeline';
 import type { TransactionResult } from '../types';
 import type { WorkerColumn } from './protocol';
@@ -36,6 +36,10 @@ interface State {
    *  returns `null` when no terms are set so the buildVisible composer
    *  can short-circuit and skip the intersection. */
   quickFilter: QuickFilterPass;
+  /** Cycle 7 / Task 9 — distinct-value derivation for the set-filter
+   *  popup. Cached per-colId; invalidated through the same transaction
+   *  hook `QuickFilterPass.invalidateRows` plugs into. */
+  distinct: DistinctValuesPass;
   sort: SortPass;
   agg: AggPass;
   slicer: ViewportSlicer;
@@ -179,6 +183,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
         for (const x of r.remove) touched.add(x.rowId);
       }
       state!.quickFilter.invalidateRows(touched);
+      state!.distinct.invalidateRows(touched);
       // Drop removed rows from the alwaysPass set so the worker never
       // tries to surface a row that no longer exists.
       if (state!.alwaysPassIds.size > 0) {
@@ -202,6 +207,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       store,
       filter:      new FilterPass(store, payload.columns),
       quickFilter: new QuickFilterPass(store, payload.columns),
+      distinct:    new DistinctValuesPass(store, payload.columns),
       sort:        new SortPass(store, payload.columns),
       agg:         new AggPass(store, payload.columns),
       slicer:      new ViewportSlicer(store, payload.columns),
@@ -382,6 +388,10 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             // re-computes and ships a fresh set via `setAlwaysPassRowIds`
             // when it follows up with `setRowData`.
             state.alwaysPassIds.clear();
+            // Cycle 7 / Task 9 — a full data replace also invalidates
+            // the per-column distinct caches; the previous row set has
+            // no relationship to the new one.
+            state.distinct.invalidateRows([]);
             state.visibleCache = null;
             const visibleCount = await invalidateAndCount();
             post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount });
@@ -402,6 +412,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
               for (const u of results.update) touched.add(u.rowId);
               for (const x of results.remove) touched.add(x.rowId);
               state.quickFilter.invalidateRows(touched);
+              state.distinct.invalidateRows(touched);
               // Drop removed rows from the alwaysPass set so the worker
               // never surfaces a row that no longer exists.
               if (state.alwaysPassIds.size > 0 && remove) {
@@ -441,6 +452,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             state.columns = cols;
             state.filter.setColumns(cols);
             state.quickFilter.setColumns(cols);
+            state.distinct.setColumns(cols);
             state.sort.setColumns(cols);
             state.agg.setColumns(cols);
             state.slicer.setColumns(cols);
@@ -497,6 +509,16 @@ export function createWorkerHost(post: PostFn): WorkerHost {
               resolver(surviving);
             }
             post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: state.visibleCache?.length ?? 0 });
+            break;
+          }
+
+          case 'getDistinctValues': {
+            // Cycle 7 / Task 9 — derive (or read the cached) distinct
+            // stringified value set for `colId`. One-pass hash over
+            // `store.rows()` per colId; cached until a transaction
+            // invalidates. Backs the set-filter popup's checkbox list.
+            const values = state.distinct.getValues(req.payload.colId);
+            post({ id: req.id, type: 'distinctValuesResult', values });
             break;
           }
 
