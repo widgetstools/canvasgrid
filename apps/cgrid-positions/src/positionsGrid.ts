@@ -147,6 +147,11 @@ export function createPositionsGrid(
               positive: (p: { value: unknown }) => typeof p.value === 'number' && p.value > 0,
               negative: (p: { value: unknown }) => typeof p.value === 'number' && p.value < 0,
             },
+            // Cycle 7 / Task 6 — multi-condition popup. Two condition rows
+            // joined by AND / OR. Demonstrates expressions like
+            // "greaterThan 0 OR lessThan -1000".
+            filter: 'number',
+            filterParams: { maxNumConditions: 2, defaultJoinOperator: 'AND' },
           },
           // cellRendererSelector: positive → pnlPill, negative or zero →
           // default 'number' renderer. Demonstrates the per-cell override.

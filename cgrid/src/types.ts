@@ -694,6 +694,16 @@ export interface CFilterParams {
   closeOnApply?: boolean;
   debounceMs?: number;
   readOnly?: boolean;
+  /** Cycle 7 / Task 6 — caps the total condition rows the popup will
+   *  show. Defaults to 2. When set to 1 the popup keeps the existing
+   *  single-condition behaviour (no join radio, no second row). */
+  maxNumConditions?: number;
+  /** How many condition rows are mounted on initial open. Defaults to
+   *  1; the remaining rows reveal as the user fills the previous one. */
+  numAlwaysVisibleConditions?: number;
+  /** Seed value for the join-operator radio between condition rows.
+   *  Defaults to `'AND'`. */
+  defaultJoinOperator?: 'AND' | 'OR';
 }
 
 /** Cycle 7 / Task 5 — text-filter specific parameters. Extends the
