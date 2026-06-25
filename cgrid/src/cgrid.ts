@@ -835,7 +835,16 @@ export class CGrid<TRow = any> {
    *  shapes (v2 entries flow through unchanged), so the parser's
    *  full operator surface — comparison / range / CSV / AND / OR —
    *  reaches the matcher without lossy conversion. Passing `model: null`
-   *  clears the column. */
+   *  clears the column.
+   *
+   *  Note: this does NOT round-trip the model back into the floating
+   *  filter input. The user's typed expression often doesn't round-trip
+   *  losslessly (`>100` parses to `{type:'greaterThan', filter:100}`
+   *  whose canonical string form is `100`), so writing that back would
+   *  clobber the visible operator. The floating input is the source of
+   *  truth for what the user typed; the v2 model is the source of truth
+   *  for evaluation. Tasks 3-6 + 9 (popup UIs) will sync inputs
+   *  explicitly when they need to. */
   setColumnFilterModel(colId: string, model: CFilterModelEntry | null): void {
     if (model) this.columnFilterModels.set(colId, model);
     else this.columnFilterModels.delete(colId);
@@ -850,7 +859,6 @@ export class CGrid<TRow = any> {
       this.rebuildSelectionFromPersistentIds();
       this.events.emit({ type: 'filterChanged', filterModel: combined });
       this.requestViewport();
-      this.floatingFilterOverlay.syncInputValue(colId, model);
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
   }
 

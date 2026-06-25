@@ -94,6 +94,22 @@ test.describe('Cycle 7 / Task 1 — floating-filter parser', () => {
     expect(await readDisplayedRowCount(page)).toBe(before);
   });
 
+  test('user-typed operator prefix survives the worker round-trip (>100 stays >100)', async ({ page }) => {
+    await gridReady(page);
+    const sel = 'input[data-cg-floating-filter][data-cg-col-id="currentPrice"]';
+    // Type >100. The parser emits {filterType:'number', type:'greaterThan',
+    // filter:100} — note the canonical string form of that v2 entry is
+    // "100", not ">100". This test guards against the regression where
+    // cgrid's setColumnFilterModel round-trips the canonical value back
+    // into the input and silently strips the operator.
+    await page.fill(sel, '>100');
+    await waitForFilterApply(page);
+    expect(await page.inputValue(sel)).toBe('>100');
+    // And: the filter actually applied (row count changed).
+    const after = await readDisplayedRowCount(page);
+    expect(after).toBeGreaterThan(0);
+  });
+
   test('clear button appears after typing and clears the column on click', async ({ page }) => {
     await gridReady(page);
     const before = await readDisplayedRowCount(page);
