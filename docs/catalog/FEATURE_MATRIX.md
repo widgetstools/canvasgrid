@@ -48,12 +48,12 @@
 | 02 | valueFormatter | Community | option | yes | P0 | Formats raw value to display string |
 | 02 | ✅ valueSetter | Community | option | no | P2 | Writes edited value back to row data |
 | 02 | ✅ valueParser | Community | option | no | P2 | Parses string edit value before valueSetter |
-| 02 | type (columnTypes) | Community | option | yes | P1 | Named column type templates for property reuse |
-| 02 | cellDataType | Community | option | no | P1 | Infers/declares data type for filtering and formatting |
-| 02 | headerClass | Community | option | no | P1 | CSS class(es) on header cell |
-| 02 | cellClass | Community | option | yes | P1 | CSS class(es) on body cells |
-| 02 | cellClassRules | Community | option | no | P1 | Predicate-driven CSS class map for body cells |
-| 02 | cellStyle | Community | option | yes | P1 | Inline style object for body cells |
+| 02 | ✅ type (columnTypes) | Community | option | yes | P1 | Named column type templates for property reuse |
+| 02 | ✅ cellDataType | Community | option | no | P1 | Infers/declares data type for filtering and formatting |
+| 02 | ✅ headerClass | Community | option | no | P1 | CSS class(es) on header cell |
+| 02 | ✅ cellClass | Community | option | yes | P1 | CSS class(es) on body cells |
+| 02 | ✅ cellClassRules | Community | option | no | P1 | Predicate-driven CSS class map for body cells |
+| 02 | ✅ cellStyle | Community | option | yes | P1 | Inline style object for body cells; function form returns ColCellOverrides |
 | 02 | tooltipField | Community | option | no | P2 | Data field value shown as cell tooltip |
 | 02 | tooltipValueGetter | Community | option | no | P2 | Callback returning tooltip string |
 | 02 | cellRenderer | Community | option | yes | P0 | Custom cell renderer component or function |
@@ -62,16 +62,17 @@
 | 02 | enableCellChangeFlash | Community | option | yes | P1 | Flash cell on value change |
 | 02 | ✅ autoHeight | Community | option | yes | P2 | Row height expands to fit this column's content |
 | 02 | ✅ wrapText | Community | option | no | P2 | Enables text wrap inside cell |
-| 02 | width / initialWidth | Community | option | yes | P0 | Column pixel width |
+| 02 | ✅ width / initialWidth | Community | option | yes | P0 | Column pixel width; initialWidth applies on first construction only |
 | 02 | minWidth / maxWidth | Community | option | yes | P0 | Column width constraints |
 | 02 | flex | Community | option | yes | P0 | Proportional width allocation; overrides explicit width |
 | 02 | resizable | Community | option | yes | P1 | User can resize column by dragging header edge |
-| 02 | suppressSizeToFit | Community | option | no | P1 | Exclude from sizeColumnsToFit() |
-| 02 | hide / initialHide | Community | option | yes | P0 | Column visibility |
-| 02 | lockVisible / lockPosition | Community | option | no | P2 | Prevent UI visibility/position changes |
-| 02 | suppressMovable | Community | option | no | P2 | Prevent user column reordering |
-| 02 | pinned / initialPinned | Community | option | yes | P1 | Pin column to left or right frozen pane |
-| 02 | lockPinned | Community | option | no | P2 | Prevent user pin changes |
+| 02 | ✅ suppressSizeToFit | Community | option | no | P1 | Exclude from sizeColumnsToFit() |
+| 02 | ✅ suppressAutoSize | Community | option | no | P2 | Exclude from autoSizeColumns()/autoSizeAllColumns() |
+| 02 | ✅ hide / initialHide | Community | option | yes | P0 | Column visibility; initialHide applies on first construction only |
+| 02 | ✅ lockVisible / lockPosition | Community | option | no | P2 | Prevent UI visibility/position changes; lockPosition: true/'left'/'right' |
+| 02 | ✅ suppressMovable | Community | option | no | P2 | Prevent user column reordering |
+| 02 | ✅ pinned / initialPinned | Community | option | yes | P1 | Pin column to left or right frozen pane; initialPinned applies on first construction only |
+| 02 | ✅ lockPinned | Community | option | no | P2 | Prevent user pin changes |
 | 02 | suppressNavigable | Community | option | no | P2 | Exclude cell from keyboard tab navigation |
 | 02 | ✅ suppressKeyboardEvent | Community | option | no | P2 | Block specific keyboard events in cell |
 | 02 | ✅ ColGroupDef.children | Community | option | yes | P0 | Children of a column group |
@@ -83,25 +84,26 @@
 | 02 | ✅ getColumnGroupState | Community | api | no | P1 | Snapshot of `{ groupId, open }[]` for column groups |
 | 02 | ✅ setColumnGroupState | Community | api | no | P1 | Restore column-group open/closed state from snapshot |
 | 02 | ✅ resetColumnGroupState | Community | api | no | P2 | Reset column-group state to definition defaults |
-| 02 | getColumnState | Community | api | no | P1 | Serialisable snapshot of column state |
-| 02 | applyColumnState | Community | api | no | P1 | Restores column state from snapshot |
-| 02 | resetColumnState | Community | api | no | P2 | Resets column state to definition defaults |
-| 02 | setColumnsVisible | Community | api | no | P1 | Show/hide specified columns |
-| 02 | setColumnsPinned | Community | api | no | P1 | Set pinned state for columns |
-| 02 | setColumnWidths | Community | api | no | P1 | Set pixel widths for columns |
-| 02 | moveColumns | Community | api | no | P2 | Reorder columns programmatically |
-| 02 | sizeColumnsToFit | Community | api | no | P1 | Fit columns to available grid width |
-| 02 | autoSizeColumns | Community | api | no | P2 | Auto-size columns to cell contents |
-| 02 | autoSizeAllColumns | Community | api | no | P2 | Auto-size all displayed columns |
-| 02 | columnVisible | Community | event | no | P1 | Column(s) shown or hidden |
-| 02 | columnPinned | Community | event | no | P1 | Column(s) pinned or unpinned |
-| 02 | columnResized | Community | event | no | P1 | Column width changed |
-| 02 | columnMoved | Community | event | no | P2 | Column(s) reordered |
-| 02 | displayedColumnsChanged | Community | event | no | P1 | Displayed column set changes |
-| 02 | virtualColumnsChanged | Community | event | no | P1 | Virtually rendered column set changes |
+| 02 | ✅ getColumnState | Community | api | no | P1 | Serialisable snapshot of column state |
+| 02 | ✅ applyColumnState | Community | api | no | P1 | Restores column state from snapshot |
+| 02 | ✅ resetColumnState | Community | api | no | P2 | Resets column state to definition defaults; fires columnsReset |
+| 02 | ✅ setColumnsVisible | Community | api | no | P1 | Show/hide specified columns |
+| 02 | ✅ setColumnsPinned | Community | api | no | P1 | Set pinned state for columns |
+| 02 | ✅ setColumnWidths | Community | api | no | P1 | Set pixel widths for columns; emits columnResized with finished flag |
+| 02 | ✅ moveColumns / moveColumnByIndex | Community | api | no | P2 | Reorder columns programmatically; honors lockPosition + marryChildren |
+| 02 | ✅ sizeColumnsToFit | Community | api | no | P1 | Fit columns to available grid width |
+| 02 | ✅ autoSizeColumns | Community | api | no | P2 | Auto-size columns to cell contents (worker measureText pass) |
+| 02 | ✅ autoSizeAllColumns | Community | api | no | P2 | Auto-size all displayed columns |
+| 02 | ✅ columnVisible | Community | event | no | P1 | Column(s) shown or hidden; source: api/columnState |
+| 02 | ✅ columnPinned | Community | event | no | P1 | Column(s) pinned or unpinned; source: api/columnState |
+| 02 | ✅ columnResized | Community | event | no | P1 | Column width changed; finished flag distinguishes drag-tick from commit |
+| 02 | ✅ columnMoved | Community | event | no | P2 | Column(s) reordered; source: uiColumnDragged/api/columnState |
+| 02 | ✅ displayedColumnsChanged | Community | event | no | P1 | Displayed column set changes; source widened to include columnVisible/Pinned/Moved/columnsReset |
+| 02 | ✅ virtualColumnsChanged | Community | event | no | P1 | Virtually rendered column set changes; afterScroll flag distinguishes scroll-driven from mutation-driven |
+| 02 | ✅ columnsReset | Community | event | no | P2 | Fires once after resetColumnState before per-slot change events |
 | 02 | Flex sizing algorithm | Community | behavior | yes | P0 | Proportional width from remaining free space |
 | 02 | valueGetter / valueFormatter / cellRenderer separation | Community | behavior | yes | P0 | Three-layer pipeline; sort/filter use valueGetter only |
-| 02 | Column state round-trip | Community | behavior | no | P1 | getColumnState/applyColumnState for persistence |
+| 02 | ✅ Column state round-trip | Community | behavior | no | P1 | getColumnState/applyColumnState for persistence |
 | 02 | defaultColDef merging | Community | behavior | yes | P0 | Column-level props win over defaultColDef |
 | 02 | Column group open/close | Community | behavior | no | P2 | Animated width change when group expands/collapses |
 
@@ -207,7 +209,7 @@
 | 05 | viewportChanged | Community | event | no | P0 | Visible row range changed due to scroll |
 | 05 | firstDataRendered | Community | event | no | P0 | First rows in DOM |
 | 05 | virtualRowRemoved | Community | event | no | P1 | Row removed from DOM by virtualisation |
-| 05 | virtualColumnsChanged | Community | event | no | P1 | Virtually rendered column set changes |
+| 05 | ✅ virtualColumnsChanged | Community | event | no | P1 | Virtually rendered column set changes; afterScroll flag distinguishes scroll-driven from mutation-driven |
 | 05 | bodyScroll | Community | event | no | P1 | Scroll event on grid body |
 | 05 | bodyScrollEnd | Community | event | no | P1 | Scroll stopped |
 | 05 | Row virtualisation render window | Community | behavior | no | P0 | viewport_rows + 2*rowBuffer rows in DOM |
@@ -628,8 +630,8 @@
 | 15 | Group state restoration | Enterprise | behavior | no | P2 | Capture expansion via getServerSideGroupLevelState; restore with setRowNodeExpanded |
 
 <!-- area:16 Pinning & layout -->
-| 16 | ColDef.pinned / initialPinned / lockPinned | Community | config | yes | P1 | Left/right column pinning; lockPinned prevents user change |
-| 16 | setColumnsPinned | Community | api | no | P1 | Programmatically pin/unpin columns |
+| 16 | ✅ ColDef.pinned / initialPinned / lockPinned | Community | config | yes | P1 | Left/right column pinning; lockPinned prevents user change |
+| 16 | ✅ setColumnsPinned | Community | api | no | P1 | Programmatically pin/unpin columns |
 | 16 | isPinning / isPinningLeft / isPinningRight | Community | api | no | P2 | Query whether any column is currently pinned |
 | 16 | getDisplayedLeftColumns / getDisplayedRightColumns | Community | api | no | P1 | Retrieve columns in pinned panes |
 | 16 | pinnedTopRowData / pinnedBottomRowData | Community | config | no | P1 | Static data rows frozen above/below scrollable body |
@@ -642,7 +644,7 @@
 | 16 | pivotHeaderHeight / pivotGroupHeaderHeight | Community | config | no | P2 | Header heights in pivot mode |
 | 16 | isFullWidthRow / fullWidthCellRenderer | Community | config | no | P2 | Full-width rows spanning all column panes |
 | 16 | processUnpinnedColumns | Community | config | no | P2 | Callback when viewport too narrow for pinned columns |
-| 16 | columnPinned event | Community | event | no | P1 | Fires when a column is pinned or unpinned |
+| 16 | ✅ columnPinned event | Community | event | no | P1 | Fires when a column is pinned or unpinned |
 | 16 | isRowPinnable | Community | config | no | P2 | Callback to prevent specific row from being pinned by user |
 | 16 | pinnedRowDataChanged / pinnedRowsChanged | Community | event | no | P2 | Fires when pinned row data changes |
 
@@ -732,14 +734,14 @@
 | 21 | styleNonce | Community | config | no | P3 | CSP nonce for injected style elements |
 | 21 | themeStyleContainer | Community | config | no | P2 | Element to receive theme style tags; supports shadow DOM |
 | 21 | --ag-* CSS variables (spacing, accentColor, rowHeight, etc.) | Community | config | no | P1 | Low-level CSS variable overrides for theme params |
-| 21 | cellClass / cellClassRules / cellStyle | Community | config | yes | P1 | Per-cell styling; precedence order class→rules→style |
+| 21 | ✅ cellClass / cellClassRules / cellStyle | Community | config | yes | P1 | Per-cell styling; precedence order class→rules→style; canvas variant: theme-driven --cg-cell-class-* CSS vars resolve class names to ColCellOverrides patches |
 | 21 | Dark mode via withParams({...}, 'dark') | Community | config | no | P2 | Conditional params for dark color scheme |
 | 21 | updateGridOptions({ theme }) | Community | api | no | P1 | Switch theme at runtime; updates style injection immediately |
 | 21 | refreshCells (re-evaluate cellClassRules) | Community | api | yes | P1 | Force re-draw and re-evaluation of cell style callbacks |
 
 <!-- area:22 Events -->
 | 22 | Grid lifecycle events | Community | event | yes | P0 | gridReady, ✅ gridPreDestroyed, ✅ gridSizeChanged, ✅ firstDataRendered, modelUpdated, stateUpdated — see `22-events.md` |
-| 22 | Column events | Community | event | yes | P1 | columnMoved, columnVisible, columnResized, ✅ displayedColumnsChanged (partial — fires on group open; column-state changes land in Cycle 6), ✅ columnGroupOpened, columnHeaderClicked, etc. — see `22-events.md` |
+| 22 | ✅ Column events | Community | event | yes | P1 | ✅ columnMoved, ✅ columnVisible, ✅ columnPinned, ✅ columnResized (finished flag), ✅ displayedColumnsChanged (source widened: columnGroupOpened/columnDefsChanged/columnVisible/columnPinned/columnMoved/columnsReset), ✅ virtualColumnsChanged, ✅ columnsReset, ✅ columnGroupOpened, columnHeaderClicked — see `22-events.md` |
 | 22 | Row events | Community | event | yes | P0 | rowDataUpdated, rowGroupOpened, rowClicked, ✅ rowEditingStarted/Stopped, ✅ rowValueChanged, asyncTransactionsFlushed — see `22-events.md` |
 | 22 | Cell events | Community | event | yes | P0 | cellClicked, ✅ cellValueChanged, ✅ cellEditingStarted/Stopped, cellFocused, tooltipShow — see `22-events.md` |
 | 22 | Selection events | Community | event | yes | P0 | rowSelected, selectionChanged, cellSelectionChanged — see `22-events.md` |
@@ -753,7 +755,7 @@
 <!-- area:23 API -->
 | 23 | Lifecycle API | Community | api | yes | P0 | getGridId, destroy, ✅ setGridOption, ✅ updateGridOptions, getState, setState, ✅ addEventListener / removeEventListener / on / off — see `23-api.md` |
 | 23 | Data API | Community | api | yes | P0 | applyTransaction, applyTransactionAsync, flushAsyncTransactions, refreshClientSideRowModel, setRowCount — see `23-api.md` |
-| 23 | Columns API | Community | api | yes | P0 | getColumnDefs, getColumn, applyColumnState, getColumnState, setColumnsVisible, sizeColumnsToFit, autoSizeColumns — see `23-api.md` |
+| 23 | ✅ Columns API | Community | api | yes | P0 | getColumnDefs, getColumn, ✅ applyColumnState, ✅ getColumnState, ✅ resetColumnState, ✅ setColumnsVisible, ✅ setColumnsPinned, ✅ setColumnWidths, ✅ moveColumns, ✅ moveColumnByIndex, ✅ sizeColumnsToFit, ✅ autoSizeColumns, ✅ autoSizeAllColumns, ✅ getHeaderBoundsAt — see `23-api.md` |
 | 23 | Rows API | Community | api | yes | P0 | getRowNode, getDisplayedRowCount, forEachNode, redrawRows, expandAll, collapseAll, getPinnedTopRow — see `23-api.md` |
 | 23 | Cells API | Community | api | yes | P0 | refreshCells, flashCells, getCellRendererInstances, ✅ registerCellRenderer, ✅ registerCellEditor, ✅ startEditingCell, ✅ stopEditing, undoCellEditing — see `23-api.md` |
 | 23 | Selection API | Community | api | yes | P0 | selectAll, deselectAll, getSelectedNodes, getSelectedRows, ✅ setSelectedRowIds, getCellRanges, clearCellSelection — see `23-api.md` |

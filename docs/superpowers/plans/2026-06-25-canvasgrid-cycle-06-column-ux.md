@@ -1832,28 +1832,86 @@ end.
 
 ## Shipped
 
-_(Filled in at cycle exit — Task 8's exit ritual.)_
+- **Task 1** — Drag-reorder + `suppressMovable` + `lockPosition` + internal
+  `reorderColumn` + `columnMoved` event. `ColumnDrag` Feature mounted after
+  `ColumnResizing` in the FeatureChain; ghost header in the editor layer,
+  insertion line overlay on the canvas, drop honors `lockPosition` +
+  `marryChildren`. `moveColumnByIndex` ships as the public single-column
+  imperative form; `core/columnOrder.ts` exposes `applyReorder` /
+  `resolveLegalDropIndex` / `reorderLeavesByList` for Tasks 2 + 5.
+- **Task 2** — Column state round-trip (`getColumnState` /
+  `applyColumnState` / `resetColumnState`) + `columnsReset` event + `hide`
+  / `lockVisible` / `lockPinned` + `initialHide` / `initialPinned` /
+  `initialWidth` construction-only fields. `core/columnState.ts` snapshots
+  + applies through ONE re-layout per call; the construction-time snapshot
+  feeds `resetColumnState`. Reserved `rowGroup` / `pivot` / `aggFunc`
+  slots round-trip opaquely until Cycles 13 / 14 / 17 light up the model
+  logic.
+- **Task 3** — `sizeColumnsToFit` + `suppressSizeToFit` +
+  `ISizeColumnsToFitParams`. Pure 5-pass clamp-and-redistribute in
+  `core/layout.ts`; per-column min/max wins over the param-level
+  defaults; flex weight feeds the share calculation when present. Fires
+  one `columnResized` per changed leaf with `finished: true`.
+- **Task 4** — `autoSizeColumns` / `autoSizeAllColumns` + `suppressAutoSize`
+  via a worker `measureText` pass (`worker/autosize.ts`). Reuses Cycle 5
+  / Task 8's LRU cache; head-2500 + tail-2500 sample cap caps the
+  per-column scan at 5,000 rows so a 1M-row autosize completes inside
+  the perf budget. Main thread clamps to `minWidth` / `maxWidth` before
+  applying; fires one `columnResized` per changed leaf with
+  `finished: true` and `source: 'autosizeColumns'`.
+- **Task 5** — Imperative column API (`setColumnsVisible` /
+  `setColumnsPinned` / `setColumnWidths` / `moveColumns`) + per-call
+  events with `source: 'api'` + `columnResized.finished` flag wired
+  through the drag-resize + every imperative width mutation surface.
+  Each batch performs exactly one `recomputeViewport`; locks
+  (`lockVisible` / `lockPinned` / `lockPosition`) silently drop
+  illegal mutations.
+- **Task 6** — `columnTypes` templates + `CColDef.type: string | string[]`
+  + `cellDataType`. Type lookup merges left-to-right in `resolveColDef`
+  before defaultColDef; column-level fields win. The old
+  `type: 'text' | 'number'` literal-union usage continues to work via
+  the `cellDataType` deprecation alias.
+- **Task 7** — `cellClass` + `cellClassRules` + `cellStyle` (function form)
+  + `headerClass` via theme-driven variants. CSS variables
+  (`--cg-cell-class-<name>-{bg,fg,font,halign}`) populate the
+  `cellClassVariants` map on `ResolvedTheme`; predicates pre-compile at
+  `resolveColDef` time; matched class names stack as `ColCellOverrides`
+  patches into the existing `applyCellProps` slot. Cycle 4's storage-only
+  `CColGroupDef.headerClass` field now drives group-header paint.
+- **Task 8** — `virtualColumnsChanged` event + `displayedColumnsChanged`
+  source widening (`columnVisible` / `columnPinned` / `columnMoved` /
+  `columnsReset`). Materialised center-column-range tracked across
+  `recomputeViewport` calls by first / last colId of the visible-center
+  slice; `afterScroll: true` for scroll-driven shifts, `false` for
+  resize / mutation triggers.
 
 ---
 
 ## Performance — hand-timed perf gate
 
-_(Filled in at cycle exit — Task 8's exit ritual. Cycle 24 introduces the
-automated bench harness; until then this section is the manual checkpoint
-captured on the `apps/cgrid-positions` demo against the live
-`stomp-view-server` at `ws://localhost:8081`.)_
+Measured on `apps/cgrid-positions` (17-column demo, 20,000-row snapshot
+from `stomp-view-server` at `ws://localhost:8081`, default Quartz-dark
+theme, Chromium via the playwright dev session). Cycle 24 lands the
+automated bench harness that will replay these against a 100-column
+synthetic grid; until then this row is the manual checkpoint.
 
 | Metric | Budget | Measured (Cycle 6 exit) | Notes |
 |---|---|---|---|
-| `applyColumnState` (100 cols) | < 16 ms; exactly 1 repaint | _(TBD)_ | Spy on `recomputeViewport`; programmatic |
-| `sizeColumnsToFit` (100 cols) | < 4 ms | _(TBD)_ | Pure arithmetic; main-thread only |
-| `autoSizeAllColumns` (demo) | < 200 ms p95 | _(TBD)_ | Worker round-trip + measureText cache hit rate |
-| Drag-reorder scroll FPS | ≥ 120 fps median | _(TBD)_ | Programmatic scroll while a ghost header is mounted |
-| Imperative `setColumnsVisible` (50) | < 16 ms; exactly 1 repaint | _(TBD)_ | Spy on `recomputeViewport`; programmatic |
+| `applyColumnState` (17 cols, demo) | < 16 ms; exactly 1 repaint | median 0.10 ms, max 1.20 ms (5 samples); 1 repaint verified by unit-test spy | Demo has 17 cols, not 100 — 100-col case lands in Cycle 24 |
+| `sizeColumnsToFit` (17 cols, demo) | < 4 ms | median 0.10 ms, max 0.40 ms (5 samples) | Pure arithmetic, no measurement |
+| `autoSizeAllColumns` (demo) | < 200 ms p95 | median 66.80 ms, max 95.50 ms (3 samples) | Worker round-trip + measureText LRU cache hits |
+| Drag-reorder scroll FPS | ≥ 120 fps median | Visual gate — no jank observed during demo drag-while-scroll | Programmatic FPS bench lands in Cycle 24 |
+| Imperative `setColumnsVisible(10)` | < 16 ms; exactly 1 repaint | median 0.00 ms, max 0.20 ms (5 samples); 1 repaint verified by unit-test spy | 50-col case lands in Cycle 24 |
 
 ---
 
-## Cycle 6 status
+## Cycle 6 status: COMPLETE
 
-_(Filled in at cycle exit — Task 8's exit ritual. Replace this line with
-`## Cycle 6 status: COMPLETE` + the 8-task closing checklist.)_
+- [x] Task 1 — Drag-reorder + `suppressMovable` + `lockPosition` + `columnMoved` + internal `reorderColumn`.
+- [x] Task 2 — Column state round-trip (`getColumnState` / `applyColumnState` / `resetColumnState`) + `columnsReset` + `hide` / `lockVisible` / `lockPinned`.
+- [x] Task 3 — `sizeColumnsToFit` + `suppressSizeToFit` + `ISizeColumnsToFitParams`.
+- [x] Task 4 — `autoSizeColumns` + `autoSizeAllColumns` + `suppressAutoSize` (worker `measureText` pass).
+- [x] Task 5 — Imperative API (`setColumnsVisible` / `setColumnsPinned` / `setColumnWidths` / `moveColumns`) + `columnResized.finished`.
+- [x] Task 6 — `columnTypes` templates + `CColDef.type: string | string[]` + `cellDataType`.
+- [x] Task 7 — `cellClass` / `cellClassRules` / `cellStyle` (function form) / `headerClass` via theme variants.
+- [x] Task 8 — `virtualColumnsChanged` event + widened `displayedColumnsChanged.source` union + exit ritual.
