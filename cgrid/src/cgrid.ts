@@ -36,6 +36,7 @@ import { FloatingFilterOverlay } from './interaction/floatingFilterOverlay';
 import { PopupHost } from './interaction/editors/popupHost';
 import { FilterPopupHost } from './interaction/filters/filterPopupHost';
 import { NumberFilterPopup } from './interaction/filters/numberFilter';
+import { DateFilterPopup } from './interaction/filters/dateFilter';
 import { CGridCanvas } from './core/canvas';
 import { CssReader, type ResolvedTheme } from './theming/cssReader';
 import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell, type CellPainter } from './renderer/cellRenderers/registry';
@@ -946,8 +947,20 @@ export class CGrid<TRow = any> {
         closeOnApply: params.closeOnApply ?? true,
       });
       this.filterPopupHost.open(colId, { cellBounds: anchorCell, viewportBounds }, popup);
+    } else if (filterType === 'date') {
+      const params = (def.filterParams ?? {}) as import('./types').CFilterParams;
+      const initial = this.getColumnFilterModel(colId);
+      const initialDate = initial && initial.filterType === 'date' ? initial : null;
+      const popup = new DateFilterPopup({
+        initialModel: initialDate,
+        onApply: (model) => this.setColumnFilterModel(colId, model),
+        onClose: () => this.hideColumnFilter(),
+        buttons: params.buttons,
+        closeOnApply: params.closeOnApply ?? true,
+      });
+      this.filterPopupHost.open(colId, { cellBounds: anchorCell, viewportBounds }, popup);
     }
-    // Tasks 4 / 5 / 6 / 9 add 'date' / 'text' / 'multi' / 'set'.
+    // Tasks 5 / 6 / 9 add 'text' / 'multi' / 'set'.
   }
 
   /** Cycle 7 / Task 3 — close the active filter popup. Idempotent. */
