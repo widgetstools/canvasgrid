@@ -106,14 +106,19 @@ export function createPositionsGrid(
       // dollar-valued columns format identically without repeating the
       // formatter per col-def.
       {
+        // Cycle 7 / Task 3 — explicit `filter: 'number'` lights up the
+        // number-filter popup behind the floating-filter expand button.
+        // `filterParams.buttons` / `closeOnApply` keep the default surface
+        // (Apply / Clear / Reset, close-on-apply: true).
         field: 'notionalAmount', headerName: 'Notional', type: 'money', width: 130, aggFunc: 'sum',
         editable: true,
         cellEditor: 'number',
         cellEditorParams: { min: 0, precision: 2 },
         lockPosition: 'right',
+        filter: 'number',
       },
-      { field: 'marketValue',    headerName: 'Market Value',  type: 'money', width: 130, aggFunc: 'sum' },
-      { field: 'currentPrice',   headerName: 'Price',         type: 'number', width: 100, aggFunc: 'avg' },
+      { field: 'marketValue',    headerName: 'Market Value',  type: 'money', width: 130, aggFunc: 'sum', filter: 'number' },
+      { field: 'currentPrice',   headerName: 'Price',         type: 'number', width: 100, aggFunc: 'avg', filter: 'number' },
       {
         groupId: 'pnl', headerName: 'P&L',
         children: [

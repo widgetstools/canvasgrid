@@ -251,6 +251,11 @@ export interface CColDef<TRow = any, TValue = any> {
    *  `'set'` is reserved for Task 9's checkbox popup. When unset, the
    *  overlay falls back to `cellDataType`. */
   filter?: 'text' | 'number' | 'date' | 'set';
+  /** Per-column filter UI parameters. Tasks 3-6 + 9 each consume the
+   *  relevant subset (`buttons` / `closeOnApply` are honored by every
+   *  popup; type-specific knobs like `caseSensitive` arrive with Task
+   *  5's text-filter popup). Cycle 7 / Task 3. */
+  filterParams?: CFilterParams;
   /** Per-column override of `CGridOptions.floatingFilter`. When set on a
    *  column, the column joins (or opts out of) the floating-filter row
    *  regardless of the grid-wide default. Cycle 7 / Task 1. */
@@ -667,6 +672,30 @@ export type CFilterModelEntry =
 export type FilterModelEntry = FilterModelEntryLegacy | CFilterModelEntry;
 export type FilterModel = Record<string, FilterModelEntry>;
 
+/** Shared filter-popup UI parameters. Tasks 3-9 each read the relevant
+ *  subset; this base shape is the contract every per-type filter
+ *  (number/date/text/multi/set) honours. Mirrors ag-grid's
+ *  `IProvidedFilterParams`. Cycle 7 / Task 3.
+ *
+ *  - `buttons` — which action buttons render in the popup footer.
+ *    Defaults to `['apply', 'clear', 'reset']`. `'cancel'` is opt-in;
+ *    `'apply'` is required for the popup to commit anything when
+ *    `closeOnApply` is also off (otherwise the user has no way to
+ *    surface their model).
+ *  - `closeOnApply` — when true (default for Task 3+) the popup closes
+ *    after Apply. When false, the popup stays open so the user can
+ *    tweak the filter without re-opening.
+ *  - `debounceMs` — reserved for Task 5's text-filter popup that
+ *    auto-applies as the user types. Tasks 3 / 4 commit only via
+ *    Apply.
+ *  - `readOnly` — reserved for Task 9; non-interactive popup. */
+export interface CFilterParams {
+  buttons?: Array<'apply' | 'clear' | 'reset' | 'cancel'>;
+  closeOnApply?: boolean;
+  debounceMs?: number;
+  readOnly?: boolean;
+}
+
 export interface GroupModel { rowGroupCols: string[] }
 
 export interface Tx<TRow = any> {
@@ -868,6 +897,15 @@ export interface CGridApi {
   setSortModel(s: SortModel): void;
   setFilterModel(f: FilterModel): void;
   setGroupModel(g: GroupModel): void;
+
+  /** Open the filter popup for `colId`. No-op when the column has no
+   *  resolved filter, the column isn't currently in the viewport, or
+   *  the popup is already open for the same column. The popup mounts
+   *  beneath the column's floating-filter cell anchored via
+   *  `getHeaderBoundsAt`. Cycle 7 / Task 3. */
+  showColumnFilter(colId: string): void;
+  /** Close any open filter popup. Idempotent. Cycle 7 / Task 3. */
+  hideColumnFilter(): void;
 
   /** Scroll the row with the given ID into view. Resolves once the worker
    *  has resolved the rowId → current index (filter + sort applied). Resolves

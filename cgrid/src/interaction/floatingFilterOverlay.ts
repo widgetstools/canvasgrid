@@ -53,13 +53,15 @@ export interface FloatingFilterOverlayDeps {
 
 /** A pool entry — one per column that's ever been mounted. Each entry
  *  groups the wrapper cell (positioned via transform on every
- *  `repositionAll`), the input, and the clear button. Tasks 3-9 will
- *  add a popup-expand button as a fourth slot inside the same wrapper.
- *  Cycle 7 / Task 1. */
+ *  `repositionAll`), the input, the clear button, and (for columns
+ *  that have a resolved popup-capable filter and aren't opted out via
+ *  `suppressFloatingFilterButton`) the expand button that opens the
+ *  full filter popup. Cycle 7 / Task 1 + Task 3. */
 interface PoolEntry {
   wrapper: HTMLDivElement;
   input: HTMLInputElement;
   clearBtn: HTMLButtonElement;
+  expandBtn: HTMLButtonElement | null;
 }
 
 /**
@@ -192,7 +194,32 @@ export class FloatingFilterOverlay {
     clearBtn.tabIndex = -1;
     clearBtn.textContent = '×';
 
-    const entry: PoolEntry = { wrapper, input, clearBtn };
+    // Cycle 7 / Task 3 — popup-expand button. Only mounted for columns
+    // whose resolved filter type maps to a popup (text/number/date/set)
+    // AND that don't opt out via `suppressFloatingFilterButton`. The
+    // overlay doesn't know how to open the popup — it forwards the
+    // click to `deps.openColumnFilter(colId)` which cgrid wires to
+    // `showColumnFilter(colId)`.
+    let expandBtn: HTMLButtonElement | null = null;
+    if (!def.suppressFloatingFilterButton && hasPopupFilter(def)) {
+      expandBtn = document.createElement('button');
+      expandBtn.type = 'button';
+      expandBtn.className = 'cg-floating-filter-expand';
+      expandBtn.setAttribute('data-cg-floating-filter-expand', '');
+      expandBtn.setAttribute('data-cg-col-id', colId);
+      expandBtn.setAttribute('aria-label', 'Open filter');
+      expandBtn.tabIndex = -1;
+      // Three-line hamburger icon — keeps the popup-entry visually
+      // distinct from the clear `×` even at narrow column widths.
+      expandBtn.textContent = '☰';
+      expandBtn.addEventListener('mousedown', (e) => {
+        // Same rationale as clearBtn — don't blur the input on mousedown.
+        e.preventDefault();
+      });
+      expandBtn.addEventListener('click', () => this.deps.openColumnFilter(colId));
+    }
+
+    const entry: PoolEntry = { wrapper, input, clearBtn, expandBtn };
 
     input.addEventListener('input', () => {
       this.updateHasValueClass(entry);
@@ -216,6 +243,7 @@ export class FloatingFilterOverlay {
 
     wrapper.appendChild(input);
     wrapper.appendChild(clearBtn);
+    if (expandBtn) wrapper.appendChild(expandBtn);
     this.host.appendChild(wrapper);
     this.pool.set(colId, entry);
     return entry;
@@ -294,4 +322,19 @@ function placeholderFor(type: FilterColumnType | undefined): string {
   if (type === 'number') return '>100, 1,2,3, 100..200';
   if (type === 'date')   return '>2026-01-01, A..B';
   return '';
+}
+
+/** True when the column has a resolved filter type that maps to one of
+ *  the per-type popups (Tasks 3-6 + 9). Used to decide whether to
+ *  mount the expand button on the floating-filter cell. A column with
+ *  no `filter:` set but a numeric `cellDataType` also qualifies for
+ *  the number popup. Cycle 7 / Task 3. */
+function hasPopupFilter(def: FloatingFilterColDef): boolean {
+  if (def.filter === 'text' || def.filter === 'number' || def.filter === 'date' || def.filter === 'set') {
+    return true;
+  }
+  if (def.cellDataType === 'number' || def.cellDataType === 'text') {
+    return true;
+  }
+  return false;
 }

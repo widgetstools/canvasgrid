@@ -33,6 +33,9 @@ import { RowHeightIndex } from './core/rowHeightIndex';
 import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, type Subgrid } from './core/subgrid';
 import { FloatingFilterSubgrid } from './core/floatingFilterSubgrid';
 import { FloatingFilterOverlay } from './interaction/floatingFilterOverlay';
+import { PopupHost } from './interaction/editors/popupHost';
+import { FilterPopupHost } from './interaction/filters/filterPopupHost';
+import { NumberFilterPopup } from './interaction/filters/numberFilter';
 import { CGridCanvas } from './core/canvas';
 import { CssReader, type ResolvedTheme } from './theming/cssReader';
 import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell, type CellPainter } from './renderer/cellRenderers/registry';
@@ -147,6 +150,23 @@ function minLeafPos<TRow>(
   return p === undefined ? Number.POSITIVE_INFINITY : p;
 }
 
+/** Cycle 7 / Task 3 — pick the popup filter type for a column. `filter:`
+ *  wins (explicit popup name); else fall back to `cellDataType`. Returns
+ *  `null` when the column has no filterable type (e.g. a checkbox column
+ *  with no `filter:` and `cellDataType: 'text'` still gets text). */
+function resolveFilterType(
+  def: ResolvedColDef<any> | undefined,
+): 'text' | 'number' | 'date' | 'set' | null {
+  if (!def) return null;
+  if (def.filter === 'text' || def.filter === 'number'
+      || def.filter === 'date' || def.filter === 'set') {
+    return def.filter;
+  }
+  if (def.cellDataType === 'number') return 'number';
+  if (def.cellDataType === 'text') return 'text';
+  return null;
+}
+
 export class CGrid<TRow = any> {
   private events = new TypedEventEmitter<CGridEvent>();
   private columnTree!: ColumnTree;
@@ -191,6 +211,10 @@ export class CGrid<TRow = any> {
    *  floating-filter row. Mounts onto the same `editorContainer` host so
    *  it stacks above the canvas; positions per `transform: translate`. */
   private floatingFilterOverlay: FloatingFilterOverlay;
+  /** Cycle 7 / Task 3 — orchestrates per-column filter popups (number /
+   *  date / text / multi / set). Owns its own PopupHost instance so it
+   *  can mount + unmount independently of the editor's popup. */
+  private filterPopupHost: FilterPopupHost;
   /** Cycle 7 / Task 1 — canonical per-column v2 filter model state. Drives
    *  `getColumnFilterModel`; `setColumnFilterModel` updates this map and
    *  fans the resulting full model out to the worker via `setFilterModel`
@@ -479,10 +503,19 @@ export class CGrid<TRow = any> {
           suppressFloatingFilterButton: def.suppressFloatingFilterButton,
         } : undefined;
       },
-      openColumnFilter: (_colId) => { /* Wired in Tasks 3-6 + 9. */ },
+      openColumnFilter: (colId) => this.showColumnFilter(colId),
       getRowTop: () => this.viewport.floatingFilterRowTop ?? 0,
       getRowHeight: () => this.viewport.floatingFilterRowHeight ?? (this.options.floatingFilterHeight ?? 28),
     });
+    // Cycle 7 / Task 3 — per-column filter popup orchestration. Mounts
+    // into the editor overlay container (same stacking context as the
+    // editor and the floating-filter overlay). Owns its own PopupHost so
+    // the editor's popup-editor mode and the filter popup can coexist
+    // without fighting over a shared host slot.
+    this.filterPopupHost = new FilterPopupHost(
+      this.editorContainer,
+      new PopupHost(this.editorContainer),
+    );
     this.a11y = new A11yOverlay(this.root);
 
     // 9. Worker
@@ -868,6 +901,61 @@ export class CGrid<TRow = any> {
    *  but not part of the public API surface. */
   getScroller(): HTMLElement { return this.scroller; }
 
+  /** Cycle 7 / Task 3 — open the per-column filter popup for `colId`.
+   *  Resolves the column's filter type, instantiates the matching popup,
+   *  and mounts it via FilterPopupHost anchored under the column's
+   *  leaf-header rect. No-op when:
+   *  - the column id is unknown
+   *  - the column has no resolved filter / cellDataType
+   *  - the column is not currently in the viewport
+   *  - the popup is already open for the same column
+   *
+   *  Task 3 implements the number filter; tasks 4 (date) / 5 (text) /
+   *  6 (multi) / 9 (set) extend the type switch.
+   */
+  showColumnFilter(colId: string): void {
+    if (this.destroyed) return;
+    if (this.filterPopupHost.openColId() === colId) return;
+    const def = this.columnDefsMap.get(colId);
+    if (!def) return;
+    const filterType = resolveFilterType(def);
+    if (!filterType) return;
+    const headerBounds = this.getHeaderBoundsAt(colId);
+    if (!headerBounds) return;
+    // Anchor sits BELOW the floating-filter row when one is visible —
+    // that's where the user just clicked. Falls back to the leaf header
+    // when no floating row is active (column-API-only filter UI).
+    const floatingTop = this.viewport.floatingFilterRowTop;
+    const floatingH = this.viewport.floatingFilterRowHeight;
+    const anchorCell = floatingTop != null && floatingH != null
+      ? { x: headerBounds.x, y: floatingTop, w: headerBounds.w, h: floatingH }
+      : headerBounds;
+    const viewportBounds = {
+      width: this.canvasBounds.width || this.scroller.clientWidth || 0,
+      height: this.canvasBounds.height || this.scroller.clientHeight || 0,
+    };
+    if (filterType === 'number') {
+      const params = (def.filterParams ?? {}) as import('./types').CFilterParams;
+      const initial = this.getColumnFilterModel(colId);
+      const initialNumber = initial && initial.filterType === 'number' ? initial : null;
+      const popup = new NumberFilterPopup({
+        initialModel: initialNumber,
+        onApply: (model) => this.setColumnFilterModel(colId, model),
+        onClose: () => this.hideColumnFilter(),
+        buttons: params.buttons,
+        closeOnApply: params.closeOnApply ?? true,
+      });
+      this.filterPopupHost.open(colId, { cellBounds: anchorCell, viewportBounds }, popup);
+    }
+    // Tasks 4 / 5 / 6 / 9 add 'date' / 'text' / 'multi' / 'set'.
+  }
+
+  /** Cycle 7 / Task 3 — close the active filter popup. Idempotent. */
+  hideColumnFilter(): void {
+    if (this.destroyed) return;
+    this.filterPopupHost.close();
+  }
+
   /** Cycle 7 / Task 1 — current displayed (post-filter) row count. Backs
    *  the floating-filter E2E that asserts typing reduces the visible
    *  rows. Identical to the value last shipped via `modelUpdated`. */
@@ -1147,6 +1235,7 @@ export class CGrid<TRow = any> {
     this.editor.close();
     this.rowEdit.close();
     this.floatingFilterOverlay.destroy();
+    this.filterPopupHost.destroy();
     this.root.parentElement?.removeChild(this.root);
     this.events.destroy();
   }
@@ -1162,6 +1251,8 @@ export class CGrid<TRow = any> {
       setSortModel: (s) => this.setSortModel(s),
       setFilterModel: (f) => this.setFilterModel(f),
       setGroupModel: (g) => this.setGroupModel(g),
+      showColumnFilter: (c) => this.showColumnFilter(c),
+      hideColumnFilter: () => this.hideColumnFilter(),
       ensureRowVisible: (id, pos) => this.ensureRowVisible(id, pos),
       ensureColumnVisible: (id, pos) => this.ensureColumnVisible(id, pos),
       ensureColumnGroupVisible: (id, pos) => this.ensureColumnGroupVisible(id, pos),

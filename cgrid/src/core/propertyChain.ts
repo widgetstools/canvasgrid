@@ -47,8 +47,13 @@ export interface ResolvedColDef<TRow = any> {
    *  floating-filter overlay reads this on every `repositionAll`; explicit
    *  `false` collapses to "no input for this column". Cycle 7 / Task 1. */
   floatingFilter?: boolean;
-  /** See `CColDef.suppressFloatingFilterButton`. Reserved by Task 1; the
-   *  expand-button mounts in Tasks 3-6 + 9. Cycle 7 / Task 1. */
+  /** Filter popup UI params (buttons / closeOnApply / debounceMs /
+   *  readOnly). Tasks 3-9 each consume the relevant subset. Cycle 7 /
+   *  Task 3. */
+  filterParams?: import('../types').CFilterParams;
+  /** See `CColDef.suppressFloatingFilterButton`. Cycle 7 / Task 1
+   *  reserved the field; Task 3 starts honouring it to suppress the
+   *  expand button on the floating-filter cell. */
   suppressFloatingFilterButton: boolean;
   aggFunc?: 'sum' | 'avg' | 'min' | 'max' | 'count';
   sortable: boolean;
@@ -444,6 +449,7 @@ export function resolveColDef<TRow>(
     comparator: merged.comparator as ResolvedColDef<TRow>['comparator'],
     filter: merged.filter,
     floatingFilter: merged.floatingFilter,
+    filterParams: merged.filterParams,
     suppressFloatingFilterButton: merged.suppressFloatingFilterButton ?? false,
     aggFunc: merged.aggFunc,
     sortable: merged.sortable ?? true,

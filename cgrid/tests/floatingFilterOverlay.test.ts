@@ -439,6 +439,48 @@ describe('FloatingFilterOverlay', () => {
     overlay.destroy();
   });
 
+  it('mounts an expand button on popup-capable columns (Task 3)', () => {
+    const overlay = new FloatingFilterOverlay(host, makeDeps({
+      getColDef: () => ({ floatingFilter: true, filter: 'number' }),
+    }));
+    const vp = makeViewport([
+      { colId: 'qty', index: 0, left: 0, right: 100, width: 100 },
+    ]);
+    overlay.repositionAll(vp);
+    const expand = host.querySelector('button[data-cg-floating-filter-expand][data-cg-col-id="qty"]');
+    expect(expand).not.toBeNull();
+    overlay.destroy();
+  });
+
+  it('suppressFloatingFilterButton: true hides the expand button (Task 3)', () => {
+    const overlay = new FloatingFilterOverlay(host, makeDeps({
+      getColDef: () => ({ floatingFilter: true, filter: 'number', suppressFloatingFilterButton: true }),
+    }));
+    const vp = makeViewport([
+      { colId: 'qty', index: 0, left: 0, right: 100, width: 100 },
+    ]);
+    overlay.repositionAll(vp);
+    const expand = host.querySelector('button[data-cg-floating-filter-expand][data-cg-col-id="qty"]');
+    expect(expand).toBeNull();
+    overlay.destroy();
+  });
+
+  it('clicking the expand button calls deps.openColumnFilter(colId) (Task 3)', () => {
+    const openColumnFilter = vi.fn();
+    const overlay = new FloatingFilterOverlay(host, makeDeps({
+      openColumnFilter,
+      getColDef: () => ({ floatingFilter: true, filter: 'number' }),
+    }));
+    const vp = makeViewport([
+      { colId: 'qty', index: 0, left: 0, right: 100, width: 100 },
+    ]);
+    overlay.repositionAll(vp);
+    const expand = host.querySelector('button[data-cg-floating-filter-expand][data-cg-col-id="qty"]') as HTMLButtonElement;
+    expand.click();
+    expect(openColumnFilter).toHaveBeenCalledWith('qty');
+    overlay.destroy();
+  });
+
   it('syncInputValue with a simple v2 entry also toggles .has-value', () => {
     const overlay = new FloatingFilterOverlay(host, makeDeps());
     const vp = makeViewport([
