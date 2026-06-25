@@ -319,7 +319,7 @@ export interface CColDef<TRow = any, TValue = any> {
    *  text-filtered columns can pass `caseSensitive` / `trimInput` /
    *  `textFormatter` / `showCaseSensitiveToggle` without a cast. Cycle
    *  7 / Task 3 (+ Task 8 type widening). */
-  filterParams?: CFilterParams | CTextFilterParams;
+  filterParams?: CFilterParams | CTextFilterParams | CSetFilterParams;
   /** Per-column override of `CGridOptions.floatingFilter`. When set on a
    *  column, the column joins (or opts out of) the floating-filter row
    *  regardless of the grid-wide default. Cycle 7 / Task 1. */
@@ -735,15 +735,25 @@ export interface CMultiConditionFilterModel {
   conditions: Array<CTextFilterModel | CNumberFilterModel | CDateFilterModel>;
 }
 
+/** Cycle 7 / Task 9 — set-filter entry. `values` is the user's
+ *  checked subset of the column's distinct values; a row passes when
+ *  `String(value)` is in the set. An empty `values` array means
+ *  "deselect all" — every row drops (matches ag-grid). Apps that want
+ *  to clear the filter entirely should ship `null` to
+ *  `setColumnFilterModel` rather than an empty set. */
+export interface CSetFilterModel {
+  filterType: 'set';
+  values: string[];
+}
+
 /** Cycle 7 type alias for a single column's filter entry. Discriminated
- *  by `filterType`; consumers should switch on that. Set filter
- *  (`{filterType:'set', values:[...]}`) lands in Task 9 — for now
- *  CSV inputs compose as multi-condition OR. */
+ *  by `filterType`; consumers should switch on that. */
 export type CFilterModelEntry =
   | CTextFilterModel
   | CNumberFilterModel
   | CDateFilterModel
-  | CMultiConditionFilterModel;
+  | CMultiConditionFilterModel
+  | CSetFilterModel;
 
 export type FilterModelEntry = FilterModelEntryLegacy | CFilterModelEntry;
 export type FilterModel = Record<string, FilterModelEntry>;
@@ -806,6 +816,25 @@ export interface CTextFilterParams extends CFilterParams {
   textFormatter?: 'lowercase' | 'uppercase' | 'trim';
   trimInput?: boolean;
   showCaseSensitiveToggle?: boolean;
+}
+
+/** Cycle 7 / Task 9 — set-filter (`agSetColumnFilter` parity) params.
+ *
+ *  - `values` overrides the data-derived distinct-value list. Cycle 7
+ *    only honours the data-derived path; the static-array variant is
+ *    reserved for Cycle 18's SSRM, which needs server-provided values.
+ *  - `caseSensitive` toggles the mini-search comparison (the on-popup
+ *    text input that narrows the checkbox list). Distinct from any
+ *    cell-level case handling — the checked values are stored
+ *    verbatim from the distinct set, so case is preserved on commit
+ *    regardless of this flag.
+ *  - `suppressMiniFilter` hides the inline search box.
+ *  - `suppressSelectAll` hides the tri-state "Select All" checkbox. */
+export interface CSetFilterParams extends CFilterParams {
+  values?: string[];
+  caseSensitive?: boolean;
+  suppressMiniFilter?: boolean;
+  suppressSelectAll?: boolean;
 }
 
 export interface GroupModel { rowGroupCols: string[] }
@@ -919,7 +948,28 @@ export type CGridEvent =
        *  `'externalFilter'` is reserved for Task 8. Optional for
        *  back-compat — Tasks 1-6 emit without it. Cycle 7 / Task 7. */
       source?: 'api' | 'quickFilter' | 'columnFilter' | 'externalFilter';
+      /** Cycle 7 / Task 9 — true when the change was triggered by a
+       *  data update (a transaction landed and the worker re-evaluated
+       *  the model against new rows) rather than a model mutation.
+       *  Apps that distinguish "user changed the filter" from "data
+       *  changed under an existing filter" branch on this. Optional —
+       *  unset is equivalent to `false`. */
+      afterDataChange?: boolean;
+      /** Cycle 7 / Task 9 — colIds whose per-column filter state
+       *  actually changed in this event. Empty / unset when the event
+       *  isn't column-driven (e.g. a quickFilter / externalFilter
+       *  trigger). */
+      columns?: string[];
     }
+  /** Cycle 7 / Task 9 — fired every time a filter popup mounts. The
+   *  payload is the colId whose popup is opening; an app can watch
+   *  this to drive analytics or a sibling UI panel. Fires AFTER the
+   *  popup DOM is in the document. */
+  | { type: 'filterOpened'; colId: string }
+  /** Cycle 7 / Task 9 — fired on every popup-internal mutation BEFORE
+   *  Apply commits. Apps use this to power "filter dirty" indicators
+   *  without polling the popup's UI state. */
+  | { type: 'filterModified'; colId: string }
   | {
       type: 'columnResized';
       colId: string;
@@ -1019,6 +1069,36 @@ export interface CGridApi {
   setSortModel(s: SortModel): void;
   setFilterModel(f: FilterModel): void;
   setGroupModel(g: GroupModel): void;
+
+  /** Cycle 7 / Task 9 — read the v2 per-column filter entry for
+   *  `colId`. Returns `null` when the column is unfiltered or
+   *  unknown. The generic parameter lets callers narrow to a
+   *  specific entry shape — `getColumnFilterModel<CTextFilterModel>(
+   *  'cusip')` — without an external cast. */
+  getColumnFilterModel<TModel extends CFilterModelEntry = CFilterModelEntry>(
+    colId: string,
+  ): TModel | null;
+  /** Cycle 7 / Task 9 — apply a per-column filter mutation. Updates
+   *  the canonical v2 map and ships the composed `FilterModel` to the
+   *  worker. Passing `model: null` clears the column. Returns a
+   *  Promise that resolves once the worker round-trip lands and the
+   *  resulting `filterChanged` event has fired. */
+  setColumnFilterModel(
+    colId: string,
+    model: CFilterModelEntry | null,
+  ): Promise<void>;
+  /** Cycle 7 / Task 9 — `true` when ANY filter source is active:
+   *  per-column filter, quick filter, external filter, or alwaysPass
+   *  (which is technically inverse but is still "filter state
+   *  diverging from raw rows"). */
+  isAnyFilterPresent(): boolean;
+  /** Cycle 7 / Task 9 — `true` when at least one per-column filter
+   *  entry is set. Does NOT consider quick / external filters. */
+  isColumnFilterPresent(): boolean;
+  /** Cycle 7 / Task 9 — clear the column's filter and any cached
+   *  popup state (closes the popup if it's open on `colId`).
+   *  Idempotent. */
+  destroyFilter(colId: string): void;
 
   /** Open the filter popup for `colId`. No-op when the column has no
    *  resolved filter, the column isn't currently in the viewport, or

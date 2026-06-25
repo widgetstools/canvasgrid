@@ -57,6 +57,11 @@ export interface TextFilterPopupDeps {
   maxNumConditions?: number;
   numAlwaysVisibleConditions?: number;
   defaultJoinOperator?: MultiConditionJoin;
+  /** Cycle 7 / Task 9 — fires on every popup-internal mutation
+   *  (operator change, value typed, caseSensitive toggled, multi-row
+   *  added). Wires to the `filterModified` event on `CGridApi`.
+   *  Optional. */
+  onModified?: () => void;
 }
 
 const OPERATOR_OPTIONS: ReadonlyArray<{ value: CTextFilterOp; label: string }> = [
@@ -97,18 +102,24 @@ export class TextFilterPopup implements FilterPopupFactory {
       const initial = this.normalizeInitial();
       this.wrapper = new MultiConditionWrapper(root, {
         buildConditionRow: (rowInitial, onChange) => {
-          const ctl = this.buildConditionRow(rowInitial as CTextFilterModel | null, onChange);
+          const wrapped = (next: CTextFilterModel | null): void => {
+            onChange(next);
+            this.deps.onModified?.();
+          };
+          const ctl = this.buildConditionRow(rowInitial as CTextFilterModel | null, wrapped);
           this.rowControllers.push(ctl);
           return ctl.el;
         },
         initial,
         maxNumConditions: maxConditions,
         numAlwaysVisibleConditions: this.deps.numAlwaysVisibleConditions ?? 1,
-        onChange: () => { /* live state tracked via row controllers */ },
+        onChange: () => { this.deps.onModified?.(); },
       });
     } else {
       const initialSingle = this.singleInitialModel();
-      this.singleRow = this.buildConditionRow(initialSingle, () => { /* read at apply */ });
+      this.singleRow = this.buildConditionRow(initialSingle, () => {
+        this.deps.onModified?.();
+      });
       root.appendChild(this.singleRow.el);
     }
 

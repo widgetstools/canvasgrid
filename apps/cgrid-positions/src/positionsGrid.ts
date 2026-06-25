@@ -119,10 +119,15 @@ export function createPositionsGrid(
       },
       // Cycle 5 Task 2: ticker exercises the 'select' editor; the values list
       // is fixed for the demo so the E2E can pick a known entry.
+      // Cycle 7 / Task 9 — ticker is the demo's only stable categorical
+      // column (tradeDate / expiryDate / notes / confirmed are
+      // user-edited synthetic fields; cusip uses filter: 'text'), so it
+      // hosts the set-filter popup demo.
       {
         field: 'ticker', headerName: 'Ticker', width: 100, editable: true,
         cellEditor: 'select',
         cellEditorParams: { values: ['AAPL', 'MSFT', 'GOOG', 'AMZN', 'NVDA', 'TSLA', 'META'] },
+        filter: 'set',
       },
       // Cycle 5 Task 2: notionalAmount exercises the 'number' editor; min/precision
       // enforce non-negative two-decimal commits.

@@ -317,3 +317,43 @@
   filter: brightness(1.1);
   background: var(--cg-focus-ring-color);
 }
+
+/* Cycle 7 / Task 9 — set-filter popup body. The inner virtualised list
+ * needs an explicit overflow:auto + a sized height so VirtualList has a
+ * concrete viewport to read clientHeight from. */
+.cg-filter-popup-set {
+  min-width: 220px;
+}
+.cg-set-filter-search {
+  width: 100%;
+  padding: 4px 6px;
+  background: var(--cg-bg-color);
+  color: var(--cg-fg-color);
+  border: 1px solid var(--cg-border-color);
+  border-radius: 2px;
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  box-sizing: border-box;
+}
+.cg-set-filter-select-all {
+  margin: 0;
+}
+.cg-set-filter-list {
+  border: 1px solid var(--cg-border-color);
+  border-radius: 2px;
+  background: var(--cg-bg-color);
+  /* VirtualList sets overflow:auto on its host; this CSS class is the
+   * styling layer the popup uses on the same element. */
+}
+.cg-set-filter-row {
+  cursor: pointer;
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  /* line-height matches VirtualList's fixed 24px rowHeight so the
+   * checkbox + label sit vertically centred inside the row band. */
+  line-height: 24px;
+  box-sizing: border-box;
+}
+.cg-set-filter-row:hover {
+  background: var(--cg-row-hover-bg);
+}

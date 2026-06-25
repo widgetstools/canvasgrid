@@ -41,6 +41,11 @@ export interface NumberFilterPopupDeps {
   initialModel: CNumberFilterModel | CMultiConditionFilterModel | null;
   onApply: (model: CNumberFilterModel | CMultiConditionFilterModel | null) => void;
   onClose: () => void;
+  /** Cycle 7 / Task 9 — invoked on every popup-internal mutation
+   *  (operator change, value typed, multi-condition row added /
+   *  cleared, join radio flipped). Wires to the `filterModified`
+   *  event on `CGridApi`. Optional. */
+  onModified?: () => void;
   buttons?: NumberFilterButton[];
   closeOnApply?: boolean;
   maxNumConditions?: number;
@@ -104,18 +109,24 @@ export class NumberFilterPopup implements FilterPopupFactory {
       const initial = this.normalizeInitial();
       this.wrapper = new MultiConditionWrapper(root, {
         buildConditionRow: (rowInitial, onChange) => {
-          const ctl = this.buildConditionRow(rowInitial as CNumberFilterModel | null, onChange);
+          const wrapped = (next: CNumberFilterModel | null): void => {
+            onChange(next);
+            this.deps.onModified?.();
+          };
+          const ctl = this.buildConditionRow(rowInitial as CNumberFilterModel | null, wrapped);
           this.rowControllers.push(ctl);
           return ctl.el;
         },
         initial,
         maxNumConditions: maxConditions,
         numAlwaysVisibleConditions: this.deps.numAlwaysVisibleConditions ?? 1,
-        onChange: () => { /* live state tracked via row controllers */ },
+        onChange: () => { this.deps.onModified?.(); },
       });
     } else {
       const initialSingle = this.singleInitialModel();
-      this.singleRow = this.buildConditionRow(initialSingle, () => { /* read at apply */ });
+      this.singleRow = this.buildConditionRow(initialSingle, () => {
+        this.deps.onModified?.();
+      });
       root.appendChild(this.singleRow.el);
     }
 

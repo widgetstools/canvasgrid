@@ -32,8 +32,11 @@ export interface FloatingFilterOverlayDeps {
    *  `setFilterModel` round-trip. */
   getColumnFilterModel: (colId: string) => CFilterModelEntry | null;
   /** Apply a filter mutation. Called by the overlay after the typing
-   *  debounce; `model: null` clears the column's filter. */
-  setColumnFilterModel: (colId: string, model: CFilterModelEntry | null) => void;
+   *  debounce; `model: null` clears the column's filter. Cycle 7 /
+   *  Task 9 widened the return type to `Promise<void> | void` so cgrid
+   *  can await the worker round-trip from `CGridApi.setColumnFilterModel`
+   *  callers while the overlay continues to fire-and-forget. */
+  setColumnFilterModel: (colId: string, model: CFilterModelEntry | null) => Promise<void> | void;
   /** Resolved per-column floating-filter metadata. Returning `undefined`
    *  collapses to "no input" for that column. */
   getColDef: (colId: string) => FloatingFilterColDef | undefined;

@@ -1,7 +1,7 @@
 import type {
   TransactionResult, FilterModel, FilterModelEntry, FilterModelEntryLegacy,
   CFilterModelEntry, CTextFilterModel, CNumberFilterModel, CDateFilterModel,
-  CMultiConditionFilterModel,
+  CMultiConditionFilterModel, CSetFilterModel,
   SortModel,
 } from '../types';
 
@@ -456,6 +456,76 @@ export class QuickFilterPass<TRow = any> {
   }
 }
 
+/**
+ * Cycle 7 / Task 9 — DistinctValuesPass.
+ *
+ * Computes the unique set of column values across `store.rows()` for the
+ * set-filter popup. One-pass hash per `getValues(colId)` call; the result
+ * is cached per colId so a popup that re-opens (or scrolls the
+ * virtualised list) doesn't re-walk the store. Cache entries expire when
+ * `invalidateRows` runs (called from the worker's transaction hook —
+ * same shape `QuickFilterPass.invalidateRows` uses) and when `setColumns`
+ * replaces the column metadata.
+ *
+ * Stringifies each value via `String(value)` so a numeric column's
+ * distinct set is reachable from the popup's checkbox list (which speaks
+ * `string[]`). Null / undefined values are dropped from the result —
+ * "(blank)" handling is a follow-up cycle once the catalog ships
+ * `excelMode` parity.
+ */
+export class DistinctValuesPass<TRow = any> {
+  private cache = new Map<string, string[]>();
+  private colIndex = new Map<string, WorkerColumn>();
+
+  constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
+    this.setColumns(columns);
+  }
+
+  setColumns(columns: WorkerColumn[]): void {
+    this.colIndex.clear();
+    for (const col of columns) this.colIndex.set(col.colId, col);
+    // Column metadata changed — every cached distinct set is potentially
+    // stale (a field swap or a removed colId both flip the answer).
+    this.cache.clear();
+  }
+
+  /** Returns the distinct stringified values for `colId` in insertion
+   *  order — the iteration order of the underlying `Set<string>`, which
+   *  matches the first-seen row order. Returns an empty array for
+   *  unknown / field-less columns. */
+  getValues(colId: string): string[] {
+    const cached = this.cache.get(colId);
+    if (cached !== undefined) return cached;
+    const col = this.colIndex.get(colId);
+    if (!col || !col.field) {
+      this.cache.set(colId, []);
+      return [];
+    }
+    const field = col.field;
+    const seen = new Set<string>();
+    const out: string[] = [];
+    for (const row of this.store.rows()) {
+      const v = (row as Record<string, unknown>)[field];
+      if (v == null) continue;
+      const s = String(v);
+      if (seen.has(s)) continue;
+      seen.add(s);
+      out.push(s);
+    }
+    this.cache.set(colId, out);
+    return out;
+  }
+
+  /** Drop every cached distinct set so the next `getValues` call
+   *  re-derives. `rowIds` is ignored — we cache per-column, not per-row,
+   *  and a single mutation can change any column's distinct set. The
+   *  argument shape mirrors `QuickFilterPass.invalidateRows` so the
+   *  worker's transaction hook can call both with the same payload. */
+  invalidateRows(_rowIds: Iterable<string>): void {
+    this.cache.clear();
+  }
+}
+
 export class FilterPass<TRow = any> {
   private model: FilterModel = {};
   private colIndex = new Map<string, WorkerColumn>();
@@ -541,7 +611,28 @@ function matchesV2(entry: CFilterModelEntry, raw: unknown, col?: WorkerColumn): 
   if (entry.filterType === 'date') {
     return matchesDate(entry, raw);
   }
+  if (entry.filterType === 'set') {
+    return matchesSet(entry, raw);
+  }
   return false;
+}
+
+/** Cycle 7 / Task 9 — set-filter matcher. An entry with an empty
+ *  `values` array is treated as "everything filtered out" (matches
+ *  ag-grid's deselect-all behaviour); a `null` raw value matches only
+ *  when `null` is explicitly part of the values set (currently it isn't
+ *  because DistinctValuesPass drops nulls — a future cycle wires the
+ *  "(blank)" sentinel). The Set lookup is built once per entry call —
+ *  the worker re-runs matches on every pipeline pass so the constant
+ *  factor per row matters less than the matcher returning fast. */
+function matchesSet(entry: CSetFilterModel, raw: unknown): boolean {
+  // Materialise the Set once per call. Building it inside the matcher
+  // (rather than caching on the entry object) is fine because
+  // FilterPass.apply iterates rows per entry; future cycles can lift
+  // this into a per-entry pre-build if profiling demands it.
+  const allow = new Set(entry.values);
+  if (raw == null) return false;
+  return allow.has(String(raw));
 }
 
 function matchesMulti(

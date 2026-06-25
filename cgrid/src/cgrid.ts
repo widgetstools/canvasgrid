@@ -38,6 +38,7 @@ import { FilterPopupHost } from './interaction/filters/filterPopupHost';
 import { NumberFilterPopup } from './interaction/filters/numberFilter';
 import { DateFilterPopup } from './interaction/filters/dateFilter';
 import { TextFilterPopup, applyTrimInputToModel } from './interaction/filters/textFilter';
+import { SetFilterPopup } from './interaction/filters/setFilter';
 import { CGridCanvas } from './core/canvas';
 import { CssReader, type ResolvedTheme } from './theming/cssReader';
 import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell, type CellPainter } from './renderer/cellRenderers/registry';
@@ -62,7 +63,9 @@ export type {
   CGridOptions, CColDef, CColGroupDef, CGridEvent, CGridApi, Tx, TransactionResult,
   SortModel, SortModelEntry, FilterModel, FilterModelEntry, FilterModelEntryLegacy,
   CFilterModelEntry, CTextFilterModel, CNumberFilterModel, CDateFilterModel,
-  CMultiConditionFilterModel, CTextFilterOp, CNumberFilterOp, CDateFilterOp,
+  CMultiConditionFilterModel, CSetFilterModel,
+  CFilterParams, CTextFilterParams, CSetFilterParams,
+  CTextFilterOp, CNumberFilterOp, CDateFilterOp,
   GroupModel,
   CValueGetterParams, CValueFormatterParams,
   CCellRendererSelector, CCellRendererSelectorParams, CCellRendererSelectorResult,
@@ -98,6 +101,45 @@ export function inferRowIdField<T>(getRowId: (row: T) => string): string {
  *  Apps override via `CGridOptions.quickFilterParser`. */
 function defaultQuickFilterParser(text: string): string[] {
   return text.split(/\s+/).filter((t) => t.length > 0);
+}
+
+/** Cycle 7 / Task 9 — shallow equality for v2 filter entries. Used by
+ *  `setColumnFilterModel` to decide whether the change is actually a
+ *  mutation. JSON.stringify is the cheapest correct comparison for the
+ *  small entry shapes we ship (max ~10 fields) and avoids hand-writing
+ *  a discriminator-aware deep-equal per filterType. Both sides null is
+ *  also equal. */
+function entriesEqual(
+  a: CFilterModelEntry | null,
+  b: CFilterModelEntry | null,
+): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+/** Cycle 7 / Task 9 — colIds whose per-column entry differs between the
+ *  current map and the incoming `next` model. Used by `setFilterModel`
+ *  to label the `filterChanged.columns` array so apps can correlate
+ *  bulk restores with per-column UI state. */
+function computeChangedColIds(
+  prev: Map<string, CFilterModelEntry>,
+  next: FilterModel,
+): string[] {
+  const out = new Set<string>();
+  const incomingV2 = new Map<string, CFilterModelEntry>();
+  for (const [id, entry] of Object.entries(next)) {
+    if ((entry as CFilterModelEntry & { filterType?: string }).filterType !== undefined) {
+      incomingV2.set(id, entry as CFilterModelEntry);
+    }
+  }
+  for (const id of prev.keys()) {
+    if (!entriesEqual(prev.get(id) ?? null, incomingV2.get(id) ?? null)) out.add(id);
+  }
+  for (const id of incomingV2.keys()) {
+    if (!prev.has(id)) out.add(id);
+  }
+  return Array.from(out);
 }
 
 /** Rewrite a `columnDefs` tree so its flat leaf order matches `newLeafOrder`,
@@ -987,7 +1029,16 @@ export class CGrid<TRow = any> {
     // v2 per-column map so a `setFilterModel({})` wipes any entries the
     // floating-filter overlay had set via `setColumnFilterModel`. Apps
     // calling `setFilterModel` should be passing the authoritative state.
+    // Cycle 7 / Task 9 — capture the colIds that actually changed so the
+    // `filterChanged` event can report them. Anything in the old map OR
+    // in the incoming model that isn't byte-equal counts.
+    const changedColIds = computeChangedColIds(this.columnFilterModels, f);
     this.columnFilterModels.clear();
+    for (const [id, entry] of Object.entries(f)) {
+      if ((entry as CFilterModelEntry & { filterType?: string }).filterType !== undefined) {
+        this.columnFilterModels.set(id, entry as CFilterModelEntry);
+      }
+    }
     this.workerClient.setFilterModel(f).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
       // Filter changes the visible row set — invalidate the Fenwick index so
@@ -999,7 +1050,12 @@ export class CGrid<TRow = any> {
       // `modelUpdated` push, so persistent selection indices need to be
       // rebuilt here against the freshly-filtered visible order.
       this.rebuildSelectionFromPersistentIds();
-      this.events.emit({ type: 'filterChanged', filterModel: f });
+      this.events.emit({
+        type: 'filterChanged',
+        filterModel: f,
+        source: 'api',
+        columns: changedColIds,
+      });
       this.requestViewport();
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
   }
@@ -1028,7 +1084,7 @@ export class CGrid<TRow = any> {
    *  truth for what the user typed; the v2 model is the source of truth
    *  for evaluation. Tasks 3-6 + 9 (popup UIs) will sync inputs
    *  explicitly when they need to. */
-  setColumnFilterModel(colId: string, model: CFilterModelEntry | null): void {
+  setColumnFilterModel(colId: string, model: CFilterModelEntry | null): Promise<void> {
     // Cycle 7 / Task 5 — main-side `trimInput` honored before storage.
     // Strips leading/trailing whitespace from the text filter value so a
     // user typing "  POS  " hits the worker as "POS". Distinct from the
@@ -1042,20 +1098,64 @@ export class CGrid<TRow = any> {
         effective = applyTrimInputToModel(effective, true) as CFilterModelEntry | null;
       }
     }
+    // Cycle 7 / Task 9 — track whether the per-column entry actually
+    // changed so the resulting `filterChanged.columns` array is
+    // truthful. A no-op set (same shape, same op, same value) suppresses
+    // the column from the emitted list.
+    const prev = this.columnFilterModels.get(colId) ?? null;
+    const changed = !entriesEqual(prev, effective);
     if (effective) this.columnFilterModels.set(colId, effective);
     else this.columnFilterModels.delete(colId);
     const combined: FilterModel = {};
     for (const [id, entry] of this.columnFilterModels) {
       combined[id] = entry;
     }
-    this.workerClient.setFilterModel(combined).then(({ visibleCount }) => {
+    return this.workerClient.setFilterModel(combined).then(({ visibleCount }) => {
+      if (this.destroyed) return;
       this.rowCount = visibleCount;
       this.rowHeightIndex = null;
       this.recomputeViewport();
       this.rebuildSelectionFromPersistentIds();
-      this.events.emit({ type: 'filterChanged', filterModel: combined });
+      this.events.emit({
+        type: 'filterChanged',
+        filterModel: combined,
+        source: 'columnFilter',
+        columns: changed ? [colId] : [],
+      });
       this.requestViewport();
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+  }
+
+  /** Cycle 7 / Task 9 — `true` when any filter source is active:
+   *  per-column, quick, external, or alwaysPass. Backs `CGridApi.isAnyFilterPresent`. */
+  isAnyFilterPresent(): boolean {
+    if (this.columnFilterModels.size > 0) return true;
+    if ((this.options.quickFilterText ?? '') !== '') return true;
+    if (this.options.isExternalFilterPresent?.() === true) return true;
+    if (this.options.alwaysPassFilter !== undefined) return true;
+    return false;
+  }
+
+  /** Cycle 7 / Task 9 — `true` when at least one per-column filter
+   *  entry is set. Independent of quick / external state. Backs
+   *  `CGridApi.isColumnFilterPresent`. */
+  isColumnFilterPresent(): boolean {
+    return this.columnFilterModels.size > 0;
+  }
+
+  /** Cycle 7 / Task 9 — clear the column's filter AND close the popup
+   *  if it's currently open for `colId`. Equivalent to
+   *  `setColumnFilterModel(colId, null)` plus a `hideColumnFilter()`
+   *  guard. The Promise from `setColumnFilterModel` is intentionally
+   *  not surfaced — `destroyFilter` is fire-and-forget per the
+   *  catalog. */
+  destroyFilter(colId: string): void {
+    if (this.destroyed) return;
+    if (this.filterPopupHost.openColId() === colId) {
+      this.filterPopupHost.close();
+    }
+    if (!this.columnFilterModels.has(colId)) return;
+    void this.setColumnFilterModel(colId, null);
   }
 
   /** Cycle 7 / Task 1 — debug accessor for E2E tests that need the
@@ -1233,15 +1333,17 @@ export class CGrid<TRow = any> {
         : null;
       const popup = new NumberFilterPopup({
         initialModel: initialEntry,
-        onApply: (model) => this.setColumnFilterModel(colId, model),
+        onApply: (model) => void this.setColumnFilterModel(colId, model),
         onClose: () => this.hideColumnFilter(),
         buttons: params.buttons,
         closeOnApply: params.closeOnApply ?? true,
         maxNumConditions: params.maxNumConditions,
         numAlwaysVisibleConditions: params.numAlwaysVisibleConditions,
         defaultJoinOperator: params.defaultJoinOperator,
+        onModified: () => this.events.emit({ type: 'filterModified', colId }),
       });
       this.filterPopupHost.open(colId, { cellBounds: anchorCell, viewportBounds }, popup);
+      this.events.emit({ type: 'filterOpened', colId });
     } else if (filterType === 'date') {
       const params = (def.filterParams ?? {}) as import('./types').CFilterParams;
       const initial = this.getColumnFilterModel(colId);
@@ -1250,15 +1352,17 @@ export class CGrid<TRow = any> {
         : null;
       const popup = new DateFilterPopup({
         initialModel: initialEntry,
-        onApply: (model) => this.setColumnFilterModel(colId, model),
+        onApply: (model) => void this.setColumnFilterModel(colId, model),
         onClose: () => this.hideColumnFilter(),
         buttons: params.buttons,
         closeOnApply: params.closeOnApply ?? true,
         maxNumConditions: params.maxNumConditions,
         numAlwaysVisibleConditions: params.numAlwaysVisibleConditions,
         defaultJoinOperator: params.defaultJoinOperator,
+        onModified: () => this.events.emit({ type: 'filterModified', colId }),
       });
       this.filterPopupHost.open(colId, { cellBounds: anchorCell, viewportBounds }, popup);
+      this.events.emit({ type: 'filterOpened', colId });
     } else if (filterType === 'text') {
       // Cycle 7 / Task 5 — text-filter popup. Reads `caseSensitive` /
       // `showCaseSensitiveToggle` from filterParams; the
@@ -1271,7 +1375,7 @@ export class CGrid<TRow = any> {
         : null;
       const popup = new TextFilterPopup({
         initialModel: initialEntry,
-        onApply: (model) => this.setColumnFilterModel(colId, model),
+        onApply: (model) => void this.setColumnFilterModel(colId, model),
         onClose: () => this.hideColumnFilter(),
         buttons: params.buttons,
         closeOnApply: params.closeOnApply ?? true,
@@ -1279,10 +1383,48 @@ export class CGrid<TRow = any> {
         maxNumConditions: params.maxNumConditions,
         numAlwaysVisibleConditions: params.numAlwaysVisibleConditions,
         defaultJoinOperator: params.defaultJoinOperator,
+        onModified: () => this.events.emit({ type: 'filterModified', colId }),
       });
       this.filterPopupHost.open(colId, { cellBounds: anchorCell, viewportBounds }, popup);
+      this.events.emit({ type: 'filterOpened', colId });
+    } else if (filterType === 'set') {
+      // Cycle 7 / Task 9 — set filter. Distinct values arrive via a
+      // worker round-trip first; the popup mounts after the values
+      // resolve so the checkbox list is rendered against real data
+      // (not flashed empty). Static-array `filterParams.values`
+      // overrides the data-derived path — useful for Cycle 18's SSRM
+      // where the server supplies values.
+      const params = (def.filterParams ?? {}) as import('./types').CSetFilterParams;
+      const initial = this.getColumnFilterModel(colId);
+      const initialEntry = initial && initial.filterType === 'set' ? initial : null;
+      const valuesPromise: Promise<string[]> = params.values !== undefined
+        ? Promise.resolve(params.values)
+        : this.workerClient.getDistinctValues(colId);
+      valuesPromise.then((values) => {
+        if (this.destroyed) return;
+        // Guard against a second `showColumnFilter` racing in before
+        // distinct values land — drop this open if a different popup
+        // has since taken over.
+        const openCol = this.filterPopupHost.openColId();
+        if (openCol !== null && openCol !== colId) return;
+        const popup = new SetFilterPopup({
+          values,
+          initialModel: initialEntry,
+          onApply: (model) => void this.setColumnFilterModel(colId, model),
+          onClose: () => this.hideColumnFilter(),
+          buttons: params.buttons,
+          closeOnApply: params.closeOnApply ?? true,
+          suppressMiniFilter: params.suppressMiniFilter,
+          suppressSelectAll: params.suppressSelectAll,
+          caseSensitive: params.caseSensitive,
+          onModified: () => this.events.emit({ type: 'filterModified', colId }),
+        });
+        this.filterPopupHost.open(colId, { cellBounds: anchorCell, viewportBounds }, popup);
+        this.events.emit({ type: 'filterOpened', colId });
+      }).catch((err) => {
+        if (!this.destroyed) console.error('[cgrid] getDistinctValues:', err);
+      });
     }
-    // Task 9 adds 'set'.
   }
 
   /** Cycle 7 / Task 3 — close the active filter popup. Idempotent. */
@@ -1590,6 +1732,12 @@ export class CGrid<TRow = any> {
       showColumnFilter: (c) => this.showColumnFilter(c),
       hideColumnFilter: () => this.hideColumnFilter(),
       onFilterChanged: (source) => this.onFilterChanged(source),
+      getColumnFilterModel: <TModel extends CFilterModelEntry = CFilterModelEntry>(c: string) =>
+        this.getColumnFilterModel(c) as TModel | null,
+      setColumnFilterModel: (c, m) => this.setColumnFilterModel(c, m),
+      isAnyFilterPresent: () => this.isAnyFilterPresent(),
+      isColumnFilterPresent: () => this.isColumnFilterPresent(),
+      destroyFilter: (c) => this.destroyFilter(c),
       ensureRowVisible: (id, pos) => this.ensureRowVisible(id, pos),
       ensureColumnVisible: (id, pos) => this.ensureColumnVisible(id, pos),
       ensureColumnGroupVisible: (id, pos) => this.ensureColumnGroupVisible(id, pos),

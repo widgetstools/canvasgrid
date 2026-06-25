@@ -47,6 +47,10 @@ export interface DateFilterPopupDeps {
   maxNumConditions?: number;
   numAlwaysVisibleConditions?: number;
   defaultJoinOperator?: MultiConditionJoin;
+  /** Cycle 7 / Task 9 — fires on every popup-internal mutation
+   *  (operator change, date typed, multi-condition row added). Wires
+   *  to the `filterModified` event on `CGridApi`. Optional. */
+  onModified?: () => void;
 }
 
 const OPERATOR_OPTIONS: ReadonlyArray<{ value: CDateFilterOp; label: string }> = [
@@ -88,18 +92,24 @@ export class DateFilterPopup implements FilterPopupFactory {
       const initial = this.normalizeInitial();
       this.wrapper = new MultiConditionWrapper(root, {
         buildConditionRow: (rowInitial, onChange) => {
-          const ctl = this.buildConditionRow(rowInitial as CDateFilterModel | null, onChange);
+          const wrapped = (next: CDateFilterModel | null): void => {
+            onChange(next);
+            this.deps.onModified?.();
+          };
+          const ctl = this.buildConditionRow(rowInitial as CDateFilterModel | null, wrapped);
           this.rowControllers.push(ctl);
           return ctl.el;
         },
         initial,
         maxNumConditions: maxConditions,
         numAlwaysVisibleConditions: this.deps.numAlwaysVisibleConditions ?? 1,
-        onChange: () => { /* live state tracked via row controllers */ },
+        onChange: () => { this.deps.onModified?.(); },
       });
     } else {
       const initialSingle = this.singleInitialModel();
-      this.singleRow = this.buildConditionRow(initialSingle, () => { /* read at apply */ });
+      this.singleRow = this.buildConditionRow(initialSingle, () => {
+        this.deps.onModified?.();
+      });
       root.appendChild(this.singleRow.el);
     }
 

@@ -156,6 +156,16 @@ export class WorkerClient {
     return this.send<{ visibleCount: number }>({ type: 'refilter', payload: {} });
   }
 
+  /** Cycle 7 / Task 9 — request the column's distinct stringified value
+   *  set. Cached worker-side per colId; invalidated whenever a
+   *  transaction lands on any column. Backs the set-filter popup's
+   *  checkbox list. */
+  getDistinctValues(colId: string): Promise<string[]> {
+    return this.send<{ values: string[] }>({
+      type: 'getDistinctValues', payload: { colId },
+    }).then((r) => r.values);
+  }
+
   /** Cycle 7 / Task 7 — ship parsed quick-filter terms (or `null` to
    *  clear) to the worker. `colIds` narrows the aggregate to a subset
    *  of worker columns (used to honor `includeHiddenColumnsInQuickFilter:

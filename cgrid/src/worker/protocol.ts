@@ -165,7 +165,14 @@ export type WorkerRequest =
    *  external-filter state (e.g. flipping a toolbar checkbox) so the
    *  grid re-evaluates without changing the column / quick / sort model.
    *  Resolves with the post-pipeline visible row count. */
-  | { id: ReqId; type: 'refilter'; payload: Record<string, never> };
+  | { id: ReqId; type: 'refilter'; payload: Record<string, never> }
+  /** Cycle 7 / Task 9 — request the column's distinct stringified value
+   *  set. Used by the set-filter popup to seed its checkbox list.
+   *  Cached worker-side per `colId`; the cache invalidates whenever
+   *  `applyTransaction` lands on the column (or any column — the cache
+   *  is wiped wholesale, matching how `QuickFilterPass` handles
+   *  invalidation). */
+  | { id: ReqId; type: 'getDistinctValues'; payload: { colId: string } };
 
 export type WorkerResponse =
   | { id: ReqId; type: 'ready' }
@@ -180,6 +187,10 @@ export type WorkerResponse =
    *  autosize widths. Widths are already `text + padding` clamped to the
    *  column's `minWidth` / `maxWidth`. */
   | { id: ReqId; type: 'autosizeResult';      widths: Record<string, number> }
+  /** Cycle 7 / Task 9 — distinct stringified values for a column.
+   *  Values are in store-iteration order; null / undefined cells are
+   *  dropped. */
+  | { id: ReqId; type: 'distinctValuesResult'; values: string[] }
   | { id: ReqId; type: 'error';               error: string };
 
 export type WorkerPush =
