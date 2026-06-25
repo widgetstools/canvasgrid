@@ -1,6 +1,6 @@
 import type {
   WorkerRequest, WorkerResponse, WorkerPush, WorkerInitPayload, ViewportRequest, ViewportChunk,
-  WorkerColumn, MeasureTextItem,
+  WorkerColumn, MeasureTextItem, AutosizeColumnRequest,
 } from './protocol';
 import type { TransactionResult, SortModel, FilterModel } from '../types';
 
@@ -126,6 +126,22 @@ export class WorkerClient {
     return this.send<{ rowId: string | null; data: unknown | null }>({
       type: 'getRowByIndex', payload: { rowIndex },
     }).then((r) => ({ rowId: r.rowId, data: r.data }));
+  }
+
+  /** Cycle 6 / Task 4 — autosize the listed columns. Resolves with the
+   *  measured widths (already padding-included and min/max-clamped). When
+   *  `skipHeader` is false (default) the header label is included in the
+   *  max. `maxSampleSize` overrides the worker's default head 2,500 +
+   *  tail 2,500 cap. */
+  autosizeColumns(
+    columns: AutosizeColumnRequest[],
+    skipHeader: boolean,
+    maxSampleSize?: number,
+  ): Promise<Record<string, number>> {
+    return this.send<{ widths: Record<string, number> }>({
+      type: 'autosize',
+      payload: { columns, skipHeader, maxSampleSize },
+    }).then((r) => r.widths);
   }
 
   /** Batched variant of `getRowIndexForId`. Returns one index per input id,

@@ -57,7 +57,10 @@ export function createPositionsGrid(
       { field: 'positionId',     headerName: 'Position ID',  width: 150, pinned: 'left', suppressMovable: true, suppressSizeToFit: true },
       // Cycle 5 Task 2: cusip carries the text-editor E2E coverage now that
       // ticker hosts the select editor.
-      { field: 'cusip',          headerName: 'CUSIP',         width: 110, pinned: 'left', editable: true },
+      // Cycle 6 / Task 4: suppressAutoSize holds cusip at its declared
+      // width during an Autosize-all pass — identifier columns shouldn't
+      // grow/shrink based on the sampled rows' content.
+      { field: 'cusip',          headerName: 'CUSIP',         width: 110, pinned: 'left', editable: true, suppressAutoSize: true },
       // Cycle 5 Task 2: ticker exercises the 'select' editor; the values list
       // is fixed for the demo so the E2E can pick a known entry.
       {

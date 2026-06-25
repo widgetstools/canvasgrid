@@ -81,6 +81,9 @@ export interface ResolvedColDef<TRow = any> {
    *  held during `sizeColumnsToFit` and the remaining columns absorb the
    *  container width. Cycle 6 / Task 3. */
   suppressSizeToFit: boolean;
+  /** See `CColDef.suppressAutoSize`. When true, `autoSizeColumns` /
+   *  `autoSizeAllColumns` skip this column. Cycle 6 / Task 4. */
+  suppressAutoSize: boolean;
   /** Reserved Cycle-13/14/17 slots. Round-trip opaquely through
    *  `getColumnState` / `applyColumnState` until those cycles wire the
    *  model logic. */
@@ -203,5 +206,6 @@ export function resolveColDef<TRow>(
     lockVisible: merged.lockVisible ?? false,
     lockPinned: merged.lockPinned ?? false,
     suppressSizeToFit: merged.suppressSizeToFit ?? false,
+    suppressAutoSize: merged.suppressAutoSize ?? false,
   };
 }

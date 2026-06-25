@@ -293,6 +293,12 @@ export interface CColDef<TRow = any, TValue = any> {
    * width. Cycle 6 / Task 3.
    */
   suppressSizeToFit?: boolean;
+  /**
+   * When true, `autoSizeColumns` / `autoSizeAllColumns` skip this column.
+   * Pair with a fixed `width` to opt a column out of any auto-fit pass.
+   * Cycle 6 / Task 4.
+   */
+  suppressAutoSize?: boolean;
 }
 
 /**
@@ -548,9 +554,9 @@ export type CGridEvent =
       width: number;
       /** False during a drag-resize tick. True on drag end + every
        *  imperative width mutation (including `sizeColumnsToFit`,
-       *  Cycle 6 / Task 3). */
+       *  Cycle 6 / Task 3, and `autoSizeColumns`, Cycle 6 / Task 4). */
       finished?: boolean;
-      source?: 'columnState' | 'ui' | 'api' | 'sizeColumnsToFit';
+      source?: 'columnState' | 'ui' | 'api' | 'sizeColumnsToFit' | 'autosizeColumns';
     }
   /** Fires when one or more columns have changed visibility. `source`
    *  distinguishes a column-state restore (`'columnState'`) from a future
@@ -727,6 +733,21 @@ export interface CGridApi {
    *  one `columnResized` per changed leaf with `finished: true` and
    *  `source: 'sizeColumnsToFit'`. Cycle 6 / Task 3. */
   sizeColumnsToFit(params?: ISizeColumnsToFitParams): void;
+
+  /** Resize the named columns to fit their widest visible content. Awaits
+   *  a worker round-trip — the worker walks the active chunk (sampling
+   *  head 2,500 + tail 2,500 rows when the row count exceeds 5,000),
+   *  measures every cell with the column's font, and returns the max
+   *  text width + per-cell padding. Main clamps to `minWidth` / `maxWidth`,
+   *  applies widths atomically, repaints once, and fires one
+   *  `columnResized` per changed leaf with `finished: true` and
+   *  `source: 'autosizeColumns'`. `suppressAutoSize: true` columns are
+   *  excluded. `skipHeader` defaults to false (header label is included
+   *  in the max). Cycle 6 / Task 4. */
+  autoSizeColumns(keys: string[], skipHeader?: boolean): Promise<void>;
+  /** Equivalent to `autoSizeColumns(allVisibleNonSuppressedColIds,
+   *  skipHeader)`. Cycle 6 / Task 4. */
+  autoSizeAllColumns(skipHeader?: boolean): Promise<void>;
 
   /** Returns the on-screen pixel bounds of the cell at (`rowIndex`, `colId`)
    *  in the canvas's coordinate space. Returns `null` when the cell is not

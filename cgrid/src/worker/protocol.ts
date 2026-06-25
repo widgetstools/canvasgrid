@@ -75,6 +75,19 @@ export interface MeasureTextItem {
   padding: number;
 }
 
+/** Cycle 6 / Task 4 — per-column metadata shipped with an `autosize`
+ *  request so the worker measures the same font + padding + min/max the
+ *  renderer paints. The worker looks up the `field` from its own
+ *  `state.columns` (a colId without a field measures only the header). */
+export interface AutosizeColumnRequest {
+  colId: string;
+  headerName: string;
+  font: string;
+  padding: number;
+  minWidth: number;
+  maxWidth: number;
+}
+
 export type WorkerRequest =
   | { id: ReqId; type: 'init';             payload: WorkerInitPayload }
   | { id: ReqId; type: 'setRowData';       payload: { rows: unknown[]; heightsByRowId?: Map<string, number> } }
@@ -87,7 +100,22 @@ export type WorkerRequest =
   | { id: ReqId; type: 'getRowIndexForId';    payload: { rowId: string } }
   | { id: ReqId; type: 'getRowIndicesForIds'; payload: { rowIds: string[] } }
   | { id: ReqId; type: 'getRowByIndex';       payload: { rowIndex: number } }
-  | { id: ReqId; type: 'measureTextResponse'; payload: { batchId: number; heights: Float32Array } };
+  | { id: ReqId; type: 'measureTextResponse'; payload: { batchId: number; heights: Float32Array } }
+  /** Cycle 6 / Task 4 — main asks the worker to autosize the listed
+   *  columns. Worker measures via the Cycle 5 `MeasureCache` LRU and
+   *  posts back an `autosizeResult` with `widths: Record<colId, number>`.
+   *  `skipHeader: false` (default) includes the header label. Worker
+   *  samples head 2,500 + tail 2,500 rows by default; main can override
+   *  via `maxSampleSize`. */
+  | {
+      id: ReqId;
+      type: 'autosize';
+      payload: {
+        columns: AutosizeColumnRequest[];
+        skipHeader: boolean;
+        maxSampleSize?: number;
+      };
+    };
 
 export type WorkerResponse =
   | { id: ReqId; type: 'ready' }
@@ -98,6 +126,10 @@ export type WorkerResponse =
   | { id: ReqId; type: 'rowIndices';          indices: Int32Array }
   | { id: ReqId; type: 'row';                 rowId: string | null; data: unknown | null }
   | { id: ReqId; type: 'measureTextAck' }
+  /** Cycle 6 / Task 4 — worker response carrying the resolved per-column
+   *  autosize widths. Widths are already `text + padding` clamped to the
+   *  column's `minWidth` / `maxWidth`. */
+  | { id: ReqId; type: 'autosizeResult';      widths: Record<string, number> }
   | { id: ReqId; type: 'error';               error: string };
 
 export type WorkerPush =

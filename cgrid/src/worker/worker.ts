@@ -10,6 +10,7 @@ import type { WorkerColumn } from './protocol';
 import {
   MeasureCache, measureKey, offscreenMeasurer, workerCanMeasure, wrapTextToHeight,
 } from './measureText';
+import { measureColumnWidths, type AutosizeColumnSpec } from './autosize';
 
 interface AutoHeightCol {
   colId: string;
@@ -365,6 +366,63 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             const rowStart = chunk.rowStart;
             const rowEnd = chunk.rowStart + chunk.rowCount;
             void runAutoHeightPass(visIds, rowStart, rowEnd);
+            break;
+          }
+
+          case 'autosize': {
+            // Cycle 6 / Task 4 — measure widest visible text per column.
+            // Uses the existing measureCache LRU so a previously-measured
+            // (font, text) re-uses the cached width even when the autosize
+            // pass is invoked back-to-back. Without OffscreenCanvas the
+            // measurer factory returns a measurer that yields text.length
+            // pixels per character — a coarse fallback that still produces
+            // monotonic results; the main-thread offers no synchronous
+            // alternative so a more accurate fallback would block the
+            // worker on a round-trip per cell.
+            const { columns, skipHeader, maxSampleSize } = req.payload;
+            const ids = visible();
+            const fieldByColId = new Map<string, string | undefined>();
+            for (const c of state.columns) fieldByColId.set(c.colId, c.field);
+            const measureFor = (font: string) => {
+              const off = offscreenMeasurer(font);
+              if (off) return off;
+              // Fallback when OffscreenCanvas.measureText is unavailable —
+              // approximate width using character count. Coarse but bounded;
+              // the alternative (round-tripping to main for every cell)
+              // would blow the per-cycle perf budget.
+              return (s: string) => s.length * 7;
+            };
+            const specs: AutosizeColumnSpec[] = columns.map((c) => {
+              const field = fieldByColId.get(c.colId);
+              return {
+                colId: c.colId,
+                headerName: c.headerName,
+                font: c.font,
+                padding: c.padding,
+                minWidth: c.minWidth,
+                maxWidth: c.maxWidth,
+                textOf: (rowIndex) => {
+                  if (!field) return '';
+                  const rowId = ids[rowIndex];
+                  if (rowId === undefined) return '';
+                  const row = state!.store.getById(rowId) as Record<string, unknown> | undefined;
+                  if (!row) return '';
+                  const raw = row[field];
+                  return raw == null ? '' : String(raw);
+                },
+              };
+            });
+            const widthsMap = measureColumnWidths({
+              cols: specs,
+              rowCount: ids.length,
+              skipHeader,
+              measureFor,
+              cache: state.measureCache,
+              maxSampleSize,
+            });
+            const widths: Record<string, number> = {};
+            for (const [colId, w] of widthsMap.entries()) widths[colId] = w;
+            post({ id: req.id, type: 'autosizeResult', widths });
             break;
           }
 

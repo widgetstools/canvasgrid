@@ -45,7 +45,7 @@ import type { CellEditorCtor, ICellEditor } from './interaction/editors/iCellEdi
 import { A11yOverlay } from './interaction/a11yOverlay';
 import { WorkerClient } from './worker/client';
 import { wrapTextToHeight } from './worker/measureText';
-import type { WorkerColumn, ViewportChunk } from './worker/protocol';
+import type { WorkerColumn, ViewportChunk, AutosizeColumnRequest } from './worker/protocol';
 import { decodeText } from './worker/chunkFormat';
 
 export const CGRID_VERSION = '0.0.0';
@@ -1060,6 +1060,8 @@ export class CGrid<TRow = any> {
       applyColumnState: (p) => this.applyColumnState(p),
       resetColumnState: () => this.resetColumnState(),
       sizeColumnsToFit: (p) => this.sizeColumnsToFit(p),
+      autoSizeColumns: (keys, skipHeader) => this.autoSizeColumns(keys, skipHeader),
+      autoSizeAllColumns: (skipHeader) => this.autoSizeAllColumns(skipHeader),
       getCellBoundsAt: (r, c) => this.getCellBoundsAt(r, c),
       getHeaderBoundsAt: (c) => this.getHeaderBoundsAt(c),
       getRowBoundsAt: (r) => this.getRowBoundsAt(r),
@@ -1622,6 +1624,81 @@ export class CGrid<TRow = any> {
         source: 'sizeColumnsToFit',
       });
     }
+  }
+
+  /** Cycle 6 / Task 4 — autosize the named visible leaves. Awaits the
+   *  worker's measure round-trip, clamps each result to per-column
+   *  `minWidth` / `maxWidth`, applies widths through ONE
+   *  `resolveColumnWidths + recomputeViewport + requestRepaint`, and
+   *  fires one `columnResized` per changed leaf with `finished: true`
+   *  and `source: 'autosizeColumns'`. Unknown / hidden / `suppressAutoSize`
+   *  columns are silently dropped. */
+  async autoSizeColumns(keys: string[], skipHeader: boolean = false): Promise<void> {
+    if (this.destroyed) return;
+    const padding = 16; // matches the inline-cell horizontal padding
+    const requests: AutosizeColumnRequest[] = [];
+    for (const key of keys) {
+      const def = this.columnDefsMap.get(key);
+      if (!def) continue;
+      if (def.hide) continue;
+      if (def.suppressAutoSize) continue;
+      const font = def.cellStyle?.font ?? this.theme.font;
+      requests.push({
+        colId: def.colId,
+        headerName: def.headerName,
+        font,
+        padding,
+        minWidth: def.minWidth,
+        maxWidth: Number.isFinite(def.maxWidth) ? def.maxWidth : Number.MAX_SAFE_INTEGER,
+      });
+    }
+    if (requests.length === 0) return;
+    let widths: Record<string, number>;
+    try {
+      widths = await this.workerClient.autosizeColumns(requests, skipHeader);
+    } catch (err) {
+      if (!this.destroyed) console.error('[cgrid] autoSizeColumns:', err);
+      return;
+    }
+    if (this.destroyed) return;
+    const changes: Array<{ colId: string; width: number }> = [];
+    for (const req of requests) {
+      const measured = widths[req.colId];
+      if (measured == null) continue;
+      // Worker already clamped to min/max; re-clamp defensively in case
+      // main-side bounds drifted while the round-trip was in flight.
+      const clamped = Math.max(req.minWidth, Math.min(req.maxWidth, Math.ceil(measured)));
+      const def = this.columnDefsMap.get(req.colId);
+      if (!def) continue;
+      if (def.width === clamped) continue;
+      def.width = clamped;
+      changes.push({ colId: req.colId, width: clamped });
+    }
+    if (changes.length === 0) return;
+    this.columnLayout = resolveColumnWidths(
+      this.columnOrder,
+      this.canvasBounds.width || this.scroller.clientWidth || 800,
+    );
+    this.recomputeViewport();
+    this.cgridCanvas?.requestRepaint();
+    for (const c of changes) {
+      this.events.emit({
+        type: 'columnResized',
+        colId: c.colId,
+        width: c.width,
+        finished: true,
+        source: 'autosizeColumns',
+      });
+    }
+  }
+
+  /** Cycle 6 / Task 4 — autosize every visible non-`suppressAutoSize`
+   *  leaf in the current column order. */
+  autoSizeAllColumns(skipHeader: boolean = false): Promise<void> {
+    const keys = this.columnOrder
+      .filter((c) => !c.suppressAutoSize && !c.hide)
+      .map((c) => c.colId);
+    return this.autoSizeColumns(keys, skipHeader);
   }
 
   /** Engine entry-point shared by `applyColumnState` and `resetColumnState`.

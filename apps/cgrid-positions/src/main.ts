@@ -88,3 +88,11 @@ document.getElementById('fit-columns')?.addEventListener('click', () => {
   api.sizeColumnsToFit();
 });
 
+// Cycle 6 / Task 4 — autosize every visible non-`suppressAutoSize` leaf
+// to its widest visible content. Awaits the worker measure pass; the
+// fire-and-forget Promise lets the button stay responsive.
+document.getElementById('autosize-all')?.addEventListener('click', () => {
+  const api = grid as unknown as { autoSizeAllColumns: (skipHeader?: boolean) => Promise<void> };
+  void api.autoSizeAllColumns();
+});
+
