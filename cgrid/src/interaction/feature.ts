@@ -62,6 +62,16 @@ export interface CGridLike {
   /** Width of `colId` in CSS px, or `null` when the column is not
    *  currently in the viewport. */
   columnWidthOf(colId: string): number | null;
+  /** Cycle 6 / Task 1 — DOM mount point for the column-drag ghost +
+   *  insertion line. The host is positioned over the canvas in the same
+   *  coordinate system (top:0 / left:0 == canvas top-left). Children must
+   *  be `pointer-events: none` so they don't steal hover/click. */
+  getOverlayHost(): HTMLElement;
+  /** Cycle 6 / Task 1 — text shown on the drag ghost. Returns the column's
+   *  resolved `headerName`. Returns `undefined` for unknown colIds. */
+  getHeaderName(colId: string): string | undefined;
+  /** Cycle 6 / Task 1 — leaf header height for ghost geometry. */
+  getLeafHeaderHeight(): number;
   cycleSort(colId: string): void;
   toggleColumnGroup(groupId: string): void;
   scrollBy(dx: number, dy: number): void;

@@ -357,6 +357,9 @@ export class CGrid<TRow = any> {
         const col = this.viewport.visibleColumns.find((c) => c.colId === colId);
         return col ? col.width : null;
       },
+      getOverlayHost: () => this.editorContainer,
+      getHeaderName: (colId) => this.columnDefsMap.get(colId)?.headerName,
+      getLeafHeaderHeight: () => this.options.headerHeight ?? this.theme.headerHeight,
       cycleSort: (colId) => this.cycleSort(colId),
       toggleColumnGroup: (groupId) => this.toggleColumnGroup(groupId),
       scrollBy: (dx, dy) => this.scroller.scrollBy({ left: dx, top: dy, behavior: 'auto' }),

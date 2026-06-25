@@ -9,19 +9,28 @@
 //   pressed → dragging  once movement passes the 4 px threshold
 //   *       → idle      on mouseup or external reset
 //
-// Threshold: the press-vs-drag promotion intentionally uses absolute
-// distance from the press point (not the current segment delta) so jitter
-// near the start doesn't accidentally promote.
+// Visual feedback (dragging state only):
+//   - Ghost header — absolutely-positioned DOM div in the overlay layer
+//     mirroring the moving header's size and translating with the cursor.
+//   - Insertion line — 2 px vertical bar at the resolved drop target's
+//     left edge (spans the canvas height). Both elements are
+//     `pointer-events: none` so hover and click flow through to the canvas.
 
 import { Feature, type CGridEventCtx } from '../feature';
 
 const DRAG_THRESHOLD_PX = 4;
+const GHOST_CLASS = 'cg-column-drag-ghost';
+const INSERTION_LINE_CLASS = 'cg-column-drag-insertion-line';
 
 interface PressedState {
   kind: 'pressed';
   colId: string;
   startX: number;
   startY: number;
+  /** Distance from the press X to the moving column's left edge — used
+   *  so the ghost stays anchored to the same point under the cursor
+   *  during drag, mirroring how the header looked at press time. */
+  grabOffsetX: number;
 }
 
 interface DraggingState {
@@ -30,6 +39,9 @@ interface DraggingState {
   startX: number;
   startY: number;
   currentX: number;
+  grabOffsetX: number;
+  ghost: HTMLDivElement | null;
+  insertionLine: HTMLDivElement | null;
 }
 
 type State = PressedState | DraggingState | null;
@@ -49,11 +61,13 @@ export class ColumnDrag extends Feature {
       super.handleMouseDown(ctx);
       return;
     }
+    const colLeft = ctx.grid.columnLeftOf(ctx.hit.colId);
     this.state = {
       kind: 'pressed',
       colId: ctx.hit.colId,
       startX: ctx.point.x,
       startY: ctx.point.y,
+      grabOffsetX: colLeft === null ? 0 : ctx.point.x - colLeft,
     };
     // Consume — don't forward. CellSelection treats header presses as a
     // no-op already, but consuming keeps focus stable while we wait for
@@ -77,12 +91,19 @@ export class ColumnDrag extends Feature {
         startX: this.state.startX,
         startY: this.state.startY,
         currentX: ctx.point.x,
+        grabOffsetX: this.state.grabOffsetX,
+        ghost: createGhost(ctx, this.state.colId),
+        insertionLine: createInsertionLine(ctx),
       };
       this.cursor = 'grabbing';
+      updateGhostPosition(this.state, ctx);
+      updateInsertionLinePosition(this.state, ctx);
       return;
     }
     // dragging — track pointer X for the drop-target computation
     this.state.currentX = ctx.point.x;
+    updateGhostPosition(this.state, ctx);
+    updateInsertionLinePosition(this.state, ctx);
   }
 
   override handleMouseUp(ctx: CGridEventCtx): void {
@@ -95,6 +116,8 @@ export class ColumnDrag extends Feature {
       super.handleMouseUp(ctx);
       return;
     }
+    state.ghost?.remove();
+    state.insertionLine?.remove();
     const target = computeDropTargetIndex(ctx, state.colId);
     if (target !== null) {
       ctx.grid.reorderColumn(state.colId, target, 'uiColumnDragged');
@@ -141,4 +164,92 @@ function computeDropTargetIndex(
     }
   }
   return bestIdx;
+}
+
+/** Build the ghost header div and append it to the overlay host. Returns
+ *  `null` when the overlay host isn't available (test mocks, headless
+ *  environments) — the drag still commits, just without the visual
+ *  affordance. */
+function createGhost(ctx: CGridEventCtx, colId: string): HTMLDivElement | null {
+  const host = ctx.grid.getOverlayHost?.();
+  if (!host || typeof document === 'undefined') return null;
+  const width = ctx.grid.columnWidthOf(colId) ?? 100;
+  const height = ctx.grid.getLeafHeaderHeight?.() ?? 30;
+  const ghost = document.createElement('div');
+  ghost.className = GHOST_CLASS;
+  ghost.textContent = ctx.grid.getHeaderName?.(colId) ?? colId;
+  ghost.style.cssText = [
+    'position:absolute',
+    'pointer-events:none',
+    'top:0',
+    'left:0',
+    `width:${width}px`,
+    `height:${height}px`,
+    'box-sizing:border-box',
+    'padding:0 8px',
+    'display:flex',
+    'align-items:center',
+    'opacity:0.7',
+    'background:var(--cg-header-bg)',
+    'color:var(--cg-header-fg)',
+    'font:var(--cg-font)',
+    'border:1px solid var(--cg-border-color)',
+    'box-shadow:0 2px 8px rgba(0,0,0,0.35)',
+    'z-index:5',
+    'white-space:nowrap',
+    'overflow:hidden',
+    'text-overflow:ellipsis',
+    'will-change:transform',
+  ].join(';');
+  host.appendChild(ghost);
+  return ghost;
+}
+
+/** Build the 2 px vertical insertion line and append it to the overlay
+ *  host. Spans full canvas height; X is set by `updateInsertionLinePosition`. */
+function createInsertionLine(ctx: CGridEventCtx): HTMLDivElement | null {
+  const host = ctx.grid.getOverlayHost?.();
+  if (!host || typeof document === 'undefined') return null;
+  const line = document.createElement('div');
+  line.className = INSERTION_LINE_CLASS;
+  line.style.cssText = [
+    'position:absolute',
+    'pointer-events:none',
+    'top:0',
+    'left:0',
+    'width:2px',
+    'height:100%',
+    'background:var(--cg-selected-cell-color, #3b82f6)',
+    'z-index:6',
+    'will-change:transform',
+  ].join(';');
+  host.appendChild(line);
+  return line;
+}
+
+/** Translate the ghost to follow the cursor — anchored so the click point
+ *  remains under the cursor. */
+function updateGhostPosition(state: DraggingState, ctx: CGridEventCtx): void {
+  if (!state.ghost) return;
+  const x = Math.round(ctx.point.x - state.grabOffsetX);
+  state.ghost.style.transform = `translate3d(${x}px, 0px, 0)`;
+}
+
+/** Position the insertion line at the LEFT edge of the column the moving
+ *  column would land on — or the RIGHT edge when the pointer is past
+ *  that column's center, so the user sees the column will end up *after*
+ *  the column they're hovering past. */
+function updateInsertionLinePosition(state: DraggingState, ctx: CGridEventCtx): void {
+  if (!state.insertionLine) return;
+  const targetIdx = computeDropTargetIndex(ctx, state.colId);
+  if (targetIdx === null) return;
+  const ids = ctx.grid.allColIds();
+  const targetId = ids[targetIdx];
+  if (!targetId) return;
+  const left = ctx.grid.columnLeftOf(targetId);
+  const width = ctx.grid.columnWidthOf(targetId);
+  if (left === null || width === null) return;
+  const center = left + width / 2;
+  const x = ctx.point.x >= center ? left + width - 1 : left;
+  state.insertionLine.style.transform = `translate3d(${Math.round(x)}px, 0px, 0)`;
 }

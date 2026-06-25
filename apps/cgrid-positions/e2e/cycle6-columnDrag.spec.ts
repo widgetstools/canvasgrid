@@ -148,6 +148,47 @@ test.describe('Cycle 6 / Task 1 — column drag-reorder', () => {
     expect(after[0]).toBe('positionId');
   });
 
+  test('drag shows a ghost header + insertion line while in flight', async ({ page }) => {
+    await gridReady(page);
+
+    const cusip = await page.evaluate(() => {
+      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      return grid.getHeaderBoundsAt('cusip');
+    });
+    expect(cusip).not.toBeNull();
+
+    const off = await canvasOffset(page);
+    const srcX = off.x + cusip!.x + cusip!.w / 2;
+    const srcY = off.y + cusip!.y + cusip!.h / 2;
+
+    await page.mouse.move(srcX, srcY);
+    await page.mouse.down();
+    // Mid-drag — past 4 px threshold; ghost + line should be mounted.
+    await page.mouse.move(srcX + 80, srcY, { steps: 6 });
+
+    const overlay = await page.evaluate(() => {
+      const ghost = document.querySelector('.cg-column-drag-ghost');
+      const line = document.querySelector('.cg-column-drag-insertion-line');
+      return {
+        ghostText: ghost ? (ghost.textContent ?? '') : null,
+        ghostHasTransform: ghost ? !!(ghost as HTMLElement).style.transform : false,
+        lineHasTransform: line ? !!(line as HTMLElement).style.transform : false,
+      };
+    });
+    expect(overlay.ghostText, 'ghost text matches the dragged column headerName').toBe('CUSIP');
+    expect(overlay.ghostHasTransform).toBe(true);
+    expect(overlay.lineHasTransform).toBe(true);
+
+    await page.mouse.up();
+
+    const afterDrop = await page.evaluate(() => ({
+      ghost: document.querySelector('.cg-column-drag-ghost'),
+      line: document.querySelector('.cg-column-drag-insertion-line'),
+    }));
+    expect(afterDrop.ghost).toBeNull();
+    expect(afterDrop.line).toBeNull();
+  });
+
   test('moveColumnByIndex API moves columns and fires columnMoved with source: "api"', async ({ page }) => {
     await gridReady(page);
     const before = await colIdsByDeclarationOrder(page);

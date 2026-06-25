@@ -9,6 +9,9 @@ interface MockGrid {
   allColIds: () => string[];
   columnLeftOf: (id: string) => number | null;
   columnWidthOf: (id: string) => number | null;
+  getOverlayHost: () => HTMLElement;
+  getHeaderName: (id: string) => string;
+  getLeafHeaderHeight: () => number;
 }
 
 function ctx(hit: Hit, point: { x: number; y: number }, grid: MockGrid): CGridEventCtx {
@@ -23,12 +26,17 @@ function ctx(hit: Hit, point: { x: number; y: number }, grid: MockGrid): CGridEv
 function makeGrid(overrides: Partial<MockGrid> = {}): MockGrid {
   const colWidths: Record<string, number> = { a: 100, b: 100, c: 100 };
   const colLefts: Record<string, number> = { a: 0, b: 100, c: 200 };
+  const host = document.createElement('div');
+  document.body.appendChild(host);
   return {
     reorderColumn: vi.fn(),
     getColDef: (id) => ({ suppressMovable: false, lockPosition: null }),
     allColIds: () => ['a', 'b', 'c'],
     columnLeftOf: (id) => colLefts[id] ?? null,
     columnWidthOf: (id) => colWidths[id] ?? null,
+    getOverlayHost: () => host,
+    getHeaderName: (id) => id.toUpperCase(),
+    getLeafHeaderHeight: () => 30,
     ...overrides,
   };
 }
@@ -95,6 +103,22 @@ describe('ColumnDrag', () => {
     f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
     f.handleMouseUp(ctx(hit, { x: 10, y: 8 }, grid));
     expect(grid.reorderColumn).not.toHaveBeenCalled();
+  });
+
+  it('mounts a ghost header + insertion line on drag, then removes them on drop', () => {
+    const f = new ColumnDrag();
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = makeGrid({ getOverlayHost: () => host });
+    const hit: Hit = { kind: 'header', colId: 'a' };
+    f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
+    expect(host.querySelector('.cg-column-drag-ghost')).toBeNull();
+    f.handleMouseDrag(ctx(hit, { x: 220, y: 8 }, grid));
+    expect(host.querySelector('.cg-column-drag-ghost')).not.toBeNull();
+    expect(host.querySelector('.cg-column-drag-insertion-line')).not.toBeNull();
+    f.handleMouseUp(ctx(hit, { x: 220, y: 8 }, grid));
+    expect(host.querySelector('.cg-column-drag-ghost')).toBeNull();
+    expect(host.querySelector('.cg-column-drag-insertion-line')).toBeNull();
   });
 
   it('does not start a drag on a cell hit', () => {
