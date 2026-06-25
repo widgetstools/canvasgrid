@@ -7,11 +7,16 @@
 import { Feature, type CGridEventCtx } from '../feature';
 
 export class ColumnResizing extends Feature {
-  private resizing: { colId: string; lastX: number } | null = null;
+  // `edge` records whether the drag started on the column's left or right
+  // edge. For left-edge drags (only legal on right-pinned columns) the
+  // delta is inverted before being passed to `resizeColumn`: dragging the
+  // cursor LEFT grows the column (because its right edge is anchored to
+  // the canvas right edge), and dragging RIGHT shrinks it.
+  private resizing: { colId: string; lastX: number; edge: 'left' | 'right' } | null = null;
 
   override handleMouseDown(ctx: CGridEventCtx): void {
     if (ctx.hit.kind === 'headerResizer') {
-      this.resizing = { colId: ctx.hit.colId, lastX: ctx.point.x };
+      this.resizing = { colId: ctx.hit.colId, lastX: ctx.point.x, edge: ctx.hit.edge };
       // Consume — do not forward; CellSelection must not steal focus.
       return;
     }
@@ -20,7 +25,8 @@ export class ColumnResizing extends Feature {
 
   override handleMouseDrag(ctx: CGridEventCtx): void {
     if (this.resizing) {
-      const dx = ctx.point.x - this.resizing.lastX;
+      const rawDx = ctx.point.x - this.resizing.lastX;
+      const dx = this.resizing.edge === 'left' ? -rawDx : rawDx;
       if (dx) {
         ctx.grid.resizeColumn(this.resizing.colId, dx);
         this.resizing.lastX = ctx.point.x;

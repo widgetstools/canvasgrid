@@ -59,7 +59,7 @@ describe('ColumnDrag', () => {
   it('does not start a drag on a headerResizer hit', () => {
     const f = new ColumnDrag();
     const grid = makeGrid();
-    const hit: Hit = { kind: 'headerResizer', colId: 'a' };
+    const hit: Hit = { kind: 'headerResizer', colId: 'a', edge: 'right' };
     f.handleMouseDown(ctx(hit, { x: 95, y: 8 }, grid));
     f.handleMouseDrag(ctx({ kind: 'header', colId: 'b' }, { x: 250, y: 8 }, grid));
     f.handleMouseUp(ctx({ kind: 'header', colId: 'b' }, { x: 250, y: 8 }, grid));
