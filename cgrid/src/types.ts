@@ -715,7 +715,28 @@ export type CGridEvent =
   | { type: 'asyncTransactionsFlushed'; results: TransactionResult[] }
   | { type: 'aggregationChanged'; totals: Record<string, number | null> }
   | { type: 'columnGroupOpened'; groupId: string; open: boolean }
-  | { type: 'displayedColumnsChanged'; source: 'columnGroupOpened' | 'columnDefsChanged' }
+  /** Fires when the set / order of displayed columns changes for any reason.
+   *  Cycle 4 wired the original `columnGroupOpened` + `columnDefsChanged`
+   *  sources; Cycle 6 / Task 8 widens the source union so listeners can
+   *  correlate this event with the specific column-mutation that drove it. */
+  | {
+      type: 'displayedColumnsChanged';
+      source:
+        | 'columnGroupOpened'
+        | 'columnDefsChanged'
+        | 'columnVisible'
+        | 'columnPinned'
+        | 'columnMoved'
+        | 'columnsReset';
+    }
+  /** Fires when the slice of columns materialised by horizontal virtualisation
+   *  changes — typically because the user scrolled horizontally and an
+   *  off-screen column slid into the body (or vice versa). Distinct from
+   *  `displayedColumnsChanged`, which fires when the SET of visible columns
+   *  changes (hide/pin/move/reset). `afterScroll: true` for scroll-driven
+   *  triggers; `false` for resize, layout, and column-mutation triggers that
+   *  also happen to shift the materialised range. Cycle 6 / Task 8. */
+  | { type: 'virtualColumnsChanged'; afterScroll: boolean }
   /** Fires synchronously inside `destroy()` BEFORE any DOM removal so apps
    *  can stash a state snapshot. `state` is `{}` until Cycle 22 wires the
    *  full state-snapshot API; the event surface is shipped now so apps can

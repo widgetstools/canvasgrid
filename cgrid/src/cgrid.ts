@@ -214,6 +214,13 @@ export class CGrid<TRow = any> {
   private lastEmittedBounds: { width: number; height: number } | null = null;
   /** Latches `firstDataRendered` to exactly once per grid instance. */
   private firstDataFired = false;
+  /** First / last colId of the materialised center-column slice — the
+   *  identity of the virtualisation window. `null` for "no center columns
+   *  visible". The outer ref is `null` until the first `recomputeViewport`
+   *  captures the baseline, so the construction-time recompute does NOT
+   *  emit `virtualColumnsChanged` and external listeners only see real
+   *  post-mount shifts. Cycle 6 / Task 8. */
+  private prevVirtualColRange: { first: string | null; last: string | null } | null = null;
 
   constructor(container: HTMLElement, private options: CGridOptions<TRow>) {
     if (!options.getRowId) throw new Error('[cgrid] options.getRowId is required');
@@ -1191,8 +1198,12 @@ export class CGrid<TRow = any> {
   }
 
   private computeCurrentViewport(): ViewportState {
-    const w = this.scroller.clientWidth || this.root.clientWidth || 800;
-    const h = this.scroller.clientHeight || this.root.clientHeight || 600;
+    // Use the canvas drawable width (which subtracts the scrollbar gutter on
+    // overlay-scrollbar platforms — see CGridCanvas.measureSize). Falling back
+    // to scroller.clientWidth would leave the rightmost right-pinned column
+    // extending into the gutter, clipped by the canvas right edge.
+    const w = this.canvasBounds.width || this.scroller.clientWidth || this.root.clientWidth || 800;
+    const h = this.canvasBounds.height || this.scroller.clientHeight || this.root.clientHeight || 600;
     return computeViewport({
       columnLayout: this.columnLayout,
       subgrids: this.subgrids,
@@ -1220,10 +1231,39 @@ export class CGrid<TRow = any> {
     this.sizer.style.height = `${Math.max(1, h)}px`;
   }
 
-  /** Reassign viewport AND re-sync the sizer so native scrollbars stay accurate. */
-  private recomputeViewport(): void {
+  /** Reassign viewport AND re-sync the sizer so native scrollbars stay accurate.
+   *  `afterScroll` flags scroll-driven recomputes so the `virtualColumnsChanged`
+   *  emission can report `afterScroll: true` in that case (every other caller
+   *  — resize, column mutation, group toggle — passes `false`). Cycle 6 / Task 8. */
+  private recomputeViewport(afterScroll: boolean = false): void {
     this.viewport = this.computeCurrentViewport();
     this.syncSizer();
+    this.detectVirtualColumnsChanged(afterScroll);
+  }
+
+  /** Compare the materialised center-column range against the previous
+   *  `recomputeViewport` and emit `virtualColumnsChanged` if it shifted.
+   *  Identifies the range by the first / last center colId since
+   *  `ViewportColumn.index` is a 0..N position within `visibleColumns` —
+   *  not a layout index — so it doesn't move when columns slide off-screen.
+   *  The first call after construction captures the baseline silently so
+   *  external listeners only see real post-mount changes. Cycle 6 / Task 8. */
+  private detectVirtualColumnsChanged(afterScroll: boolean): void {
+    let first: string | null = null;
+    let last: string | null = null;
+    for (const c of this.viewport.visibleColumns) {
+      if (c.pinned) continue;
+      if (first === null) first = c.colId;
+      last = c.colId;
+    }
+    const prev = this.prevVirtualColRange;
+    if (prev === null) {
+      this.prevVirtualColRange = { first, last };
+      return;
+    }
+    if (prev.first === first && prev.last === last) return;
+    this.prevVirtualColRange = { first, last };
+    this.events.emit({ type: 'virtualColumnsChanged', afterScroll });
   }
 
   /** Called by the scroller's native 'scroll' event. Idempotent — if the
@@ -1232,9 +1272,10 @@ export class CGrid<TRow = any> {
    */
   private onScrollerScroll(x: number, y: number): void {
     if (x === this.scrollLeft && y === this.scrollTop) return;
+    const horizontal = x !== this.scrollLeft;
     this.scrollLeft = x;
     this.scrollTop = y;
-    this.recomputeViewport();
+    this.recomputeViewport(/* afterScroll */ horizontal);
     this.events.emit({ type: 'viewportChanged', firstRow: this.viewport.firstRow, lastRow: this.viewport.lastRow });
     this.cgridCanvas.requestRepaint();
     this.requestViewport();
@@ -1571,7 +1612,7 @@ export class CGrid<TRow = any> {
         this.rowCount = visibleCount;
         this.recomputeViewport();
         this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
-        this.events.emit({ type: 'displayedColumnsChanged', source: 'columnDefsChanged' });
+        this.events.emit({ type: 'displayedColumnsChanged', source: 'columnMoved' });
         this.requestViewport();
       })
       .catch((err) => { if (!this.destroyed) console.error('[cgrid] reorderColumn:', err); });
@@ -1752,7 +1793,7 @@ export class CGrid<TRow = any> {
       .then(({ visibleCount }) => {
         this.rowCount = visibleCount;
         this.recomputeViewport();
-        this.events.emit({ type: 'displayedColumnsChanged', source: 'columnDefsChanged' });
+        this.events.emit({ type: 'displayedColumnsChanged', source: 'columnVisible' });
         this.requestViewport();
       })
       .catch((err) => { if (!this.destroyed) console.error('[cgrid] setColumnsVisible:', err); });
@@ -1779,6 +1820,7 @@ export class CGrid<TRow = any> {
     this.events.emit({
       type: 'columnPinned', pinned, colIds: changed, source: 'api',
     });
+    this.events.emit({ type: 'displayedColumnsChanged', source: 'columnPinned' });
   }
 
   /** Cycle 6 / Task 5 — set explicit widths in a batch. Each width is
@@ -1845,7 +1887,7 @@ export class CGrid<TRow = any> {
         this.rowCount = visibleCount;
         this.recomputeViewport();
         this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
-        this.events.emit({ type: 'displayedColumnsChanged', source: 'columnDefsChanged' });
+        this.events.emit({ type: 'displayedColumnsChanged', source: 'columnMoved' });
         this.requestViewport();
       })
       .catch((err) => { if (!this.destroyed) console.error('[cgrid] moveColumns:', err); });
@@ -2035,11 +2077,13 @@ export class CGrid<TRow = any> {
     // Push column metadata + visible-set change to the worker so a freshly
     // hidden column stops getting chunked, and a freshly shown column gets
     // populated on the next viewport fetch.
+    const displayedSource: 'columnsReset' | 'columnDefsChanged' =
+      emitReset ? 'columnsReset' : 'columnDefsChanged';
     this.workerClient?.updateColumns(this.workerColumns())
       .then(({ visibleCount }) => {
         this.rowCount = visibleCount;
         this.recomputeViewport();
-        this.events.emit({ type: 'displayedColumnsChanged', source: 'columnDefsChanged' });
+        this.events.emit({ type: 'displayedColumnsChanged', source: displayedSource });
         this.requestViewport();
       })
       .catch((err) => { if (!this.destroyed) console.error('[cgrid] applyColumnState:', err); });
