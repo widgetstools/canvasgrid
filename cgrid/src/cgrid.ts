@@ -952,25 +952,38 @@ export class CGrid<TRow = any> {
     if (filterType === 'number') {
       const params = (def.filterParams ?? {}) as import('./types').CFilterParams;
       const initial = this.getColumnFilterModel(colId);
-      const initialNumber = initial && initial.filterType === 'number' ? initial : null;
+      // Cycle 7 / Task 6 — both number and multi-shaped entries seed the
+      // popup. Single popups normalise a multi-shape to its first
+      // condition; multi popups hydrate the full conditions array.
+      const initialEntry = initial && (initial.filterType === 'number' || initial.filterType === 'multi')
+        ? initial
+        : null;
       const popup = new NumberFilterPopup({
-        initialModel: initialNumber,
+        initialModel: initialEntry,
         onApply: (model) => this.setColumnFilterModel(colId, model),
         onClose: () => this.hideColumnFilter(),
         buttons: params.buttons,
         closeOnApply: params.closeOnApply ?? true,
+        maxNumConditions: params.maxNumConditions,
+        numAlwaysVisibleConditions: params.numAlwaysVisibleConditions,
+        defaultJoinOperator: params.defaultJoinOperator,
       });
       this.filterPopupHost.open(colId, { cellBounds: anchorCell, viewportBounds }, popup);
     } else if (filterType === 'date') {
       const params = (def.filterParams ?? {}) as import('./types').CFilterParams;
       const initial = this.getColumnFilterModel(colId);
-      const initialDate = initial && initial.filterType === 'date' ? initial : null;
+      const initialEntry = initial && (initial.filterType === 'date' || initial.filterType === 'multi')
+        ? initial
+        : null;
       const popup = new DateFilterPopup({
-        initialModel: initialDate,
+        initialModel: initialEntry,
         onApply: (model) => this.setColumnFilterModel(colId, model),
         onClose: () => this.hideColumnFilter(),
         buttons: params.buttons,
         closeOnApply: params.closeOnApply ?? true,
+        maxNumConditions: params.maxNumConditions,
+        numAlwaysVisibleConditions: params.numAlwaysVisibleConditions,
+        defaultJoinOperator: params.defaultJoinOperator,
       });
       this.filterPopupHost.open(colId, { cellBounds: anchorCell, viewportBounds }, popup);
     } else if (filterType === 'text') {
@@ -980,18 +993,23 @@ export class CGrid<TRow = any> {
       // (textFormatter) or main-side setColumnFilterModel (trimInput).
       const params = (def.filterParams ?? {}) as import('./types').CTextFilterParams;
       const initial = this.getColumnFilterModel(colId);
-      const initialText = initial && initial.filterType === 'text' ? initial : null;
+      const initialEntry = initial && (initial.filterType === 'text' || initial.filterType === 'multi')
+        ? initial
+        : null;
       const popup = new TextFilterPopup({
-        initialModel: initialText,
+        initialModel: initialEntry,
         onApply: (model) => this.setColumnFilterModel(colId, model),
         onClose: () => this.hideColumnFilter(),
         buttons: params.buttons,
         closeOnApply: params.closeOnApply ?? true,
         showCaseSensitiveToggle: params.showCaseSensitiveToggle,
+        maxNumConditions: params.maxNumConditions,
+        numAlwaysVisibleConditions: params.numAlwaysVisibleConditions,
+        defaultJoinOperator: params.defaultJoinOperator,
       });
       this.filterPopupHost.open(colId, { cellBounds: anchorCell, viewportBounds }, popup);
     }
-    // Tasks 6 / 9 add 'multi' / 'set'.
+    // Task 9 adds 'set'.
   }
 
   /** Cycle 7 / Task 3 — close the active filter popup. Idempotent. */

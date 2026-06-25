@@ -17,10 +17,9 @@
  * - up to three buttons: Apply, Clear, Reset (configurable via
  *   `buttons` param — defaults to all three)
  *
- * Apply commits the resolved `CDateFilterModel` via `onApply` and,
- * when `closeOnApply: true`, also calls `onClose`. Clear empties the
- * inputs without committing. Reset empties the inputs AND commits
- * `null` (removes any active filter for the column).
+ * Cycle 7 / Task 6 — operator <select> + date inputs extracted into
+ * `buildConditionRow` so the popup either renders alone (default) or
+ * wraps inside `MultiConditionWrapper` when `maxNumConditions > 1`.
  *
  * The worker's `matchesDate` (in `worker/dataPipeline.ts`) already
  * parses both sides via `Date.parse` and compares numerically, so the
@@ -28,17 +27,26 @@
  * native `<input type="date">.value` produces (`YYYY-MM-DD`).
  */
 
-import type { CDateFilterModel, CDateFilterOp } from '../../types';
+import type {
+  CDateFilterModel,
+  CDateFilterOp,
+  CFilterModelEntry,
+  CMultiConditionFilterModel,
+} from '../../types';
 import type { FilterPopupFactory } from './filterPopupHost';
+import { MultiConditionWrapper, type MultiConditionJoin } from './multiCondition';
 
 export type DateFilterButton = 'apply' | 'clear' | 'reset' | 'cancel';
 
 export interface DateFilterPopupDeps {
-  initialModel: CDateFilterModel | null;
-  onApply: (model: CDateFilterModel | null) => void;
+  initialModel: CDateFilterModel | CMultiConditionFilterModel | null;
+  onApply: (model: CDateFilterModel | CMultiConditionFilterModel | null) => void;
   onClose: () => void;
   buttons?: DateFilterButton[];
   closeOnApply?: boolean;
+  maxNumConditions?: number;
+  numAlwaysVisibleConditions?: number;
+  defaultJoinOperator?: MultiConditionJoin;
 }
 
 const OPERATOR_OPTIONS: ReadonlyArray<{ value: CDateFilterOp; label: string }> = [
@@ -55,12 +63,19 @@ const OPERATOR_OPTIONS: ReadonlyArray<{ value: CDateFilterOp; label: string }> =
 
 const DEFAULT_OP: CDateFilterOp = 'equals';
 
+interface RowController {
+  el: HTMLElement;
+  getModel(): CDateFilterModel | null;
+  reset(): void;
+  clearInputs(): void;
+}
+
 export class DateFilterPopup implements FilterPopupFactory {
   private gui: HTMLDivElement | null = null;
-  private select!: HTMLSelectElement;
-  private primary!: HTMLInputElement;
-  private secondary!: HTMLInputElement;
   private destroyed = false;
+  private singleRow: RowController | null = null;
+  private rowControllers: RowController[] = [];
+  private wrapper: MultiConditionWrapper | null = null;
 
   constructor(private deps: DateFilterPopupDeps) {}
 
@@ -68,36 +83,25 @@ export class DateFilterPopup implements FilterPopupFactory {
     const root = document.createElement('div');
     root.className = 'cg-filter-popup cg-filter-popup-date';
 
-    const opRow = document.createElement('div');
-    opRow.className = 'cg-filter-popup-row';
-    const select = document.createElement('select');
-    select.className = 'cg-filter-popup-operator';
-    for (const { value, label } of OPERATOR_OPTIONS) {
-      const opt = document.createElement('option');
-      opt.value = value;
-      opt.textContent = label;
-      select.appendChild(opt);
+    const maxConditions = this.deps.maxNumConditions ?? 1;
+    if (maxConditions > 1) {
+      const initial = this.normalizeInitial();
+      this.wrapper = new MultiConditionWrapper(root, {
+        buildConditionRow: (rowInitial, onChange) => {
+          const ctl = this.buildConditionRow(rowInitial as CDateFilterModel | null, onChange);
+          this.rowControllers.push(ctl);
+          return ctl.el;
+        },
+        initial,
+        maxNumConditions: maxConditions,
+        numAlwaysVisibleConditions: this.deps.numAlwaysVisibleConditions ?? 1,
+        onChange: () => { /* live state tracked via row controllers */ },
+      });
+    } else {
+      const initialSingle = this.singleInitialModel();
+      this.singleRow = this.buildConditionRow(initialSingle, () => { /* read at apply */ });
+      root.appendChild(this.singleRow.el);
     }
-    select.value = this.deps.initialModel?.type ?? DEFAULT_OP;
-    opRow.appendChild(select);
-    root.appendChild(opRow);
-
-    const inputsRow = document.createElement('div');
-    inputsRow.className = 'cg-filter-popup-row cg-filter-popup-inputs';
-    const primary = document.createElement('input');
-    primary.type = 'date';
-    primary.className = 'cg-filter-popup-input';
-    primary.setAttribute('data-cg-filter-input', 'primary');
-    if (this.deps.initialModel?.filter != null) primary.value = this.deps.initialModel.filter;
-    inputsRow.appendChild(primary);
-
-    const secondary = document.createElement('input');
-    secondary.type = 'date';
-    secondary.className = 'cg-filter-popup-input';
-    secondary.setAttribute('data-cg-filter-input', 'secondary');
-    if (this.deps.initialModel?.filterTo != null) secondary.value = this.deps.initialModel.filterTo;
-    inputsRow.appendChild(secondary);
-    root.appendChild(inputsRow);
 
     const buttonsRow = document.createElement('div');
     buttonsRow.className = 'cg-filter-popup-row cg-filter-popup-buttons';
@@ -113,51 +117,152 @@ export class DateFilterPopup implements FilterPopupFactory {
     }
     root.appendChild(buttonsRow);
 
-    this.select = select;
-    this.primary = primary;
-    this.secondary = secondary;
     this.gui = root;
-
-    select.addEventListener('change', () => this.syncInputVisibility());
-    this.syncInputVisibility();
     return root;
   }
 
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.wrapper?.destroy();
+    this.wrapper = null;
+    this.rowControllers = [];
+    this.singleRow = null;
     this.gui = null;
   }
 
-  /** Show / hide the primary + secondary inputs based on the current
-   *  operator. `inRange` shows both; `blank` / `notBlank` hides both
-   *  (operator alone is the model); everything else shows only the
-   *  primary. The secondary stays in the DOM either way so the user's
-   *  typed `filterTo` survives a quick swap back to `inRange`. */
-  private syncInputVisibility(): void {
-    const op = this.select.value as CDateFilterOp;
-    const isBlank = op === 'blank' || op === 'notBlank';
-    const isRange = op === 'inRange';
-    this.primary.style.display = isBlank ? 'none' : '';
-    this.secondary.style.display = isRange ? '' : 'none';
+  private buildConditionRow(
+    initial: CDateFilterModel | null,
+    onChange: (next: CDateFilterModel | null) => void,
+  ): RowController {
+    const row = document.createElement('div');
+    row.className = 'cg-filter-popup-condition';
+
+    const opRow = document.createElement('div');
+    opRow.className = 'cg-filter-popup-row';
+    const select = document.createElement('select');
+    select.className = 'cg-filter-popup-operator';
+    for (const { value, label } of OPERATOR_OPTIONS) {
+      const opt = document.createElement('option');
+      opt.value = value;
+      opt.textContent = label;
+      select.appendChild(opt);
+    }
+    select.value = initial?.type ?? DEFAULT_OP;
+    opRow.appendChild(select);
+    row.appendChild(opRow);
+
+    const inputsRow = document.createElement('div');
+    inputsRow.className = 'cg-filter-popup-row cg-filter-popup-inputs';
+    const primary = document.createElement('input');
+    primary.type = 'date';
+    primary.className = 'cg-filter-popup-input';
+    primary.setAttribute('data-cg-filter-input', 'primary');
+    if (initial?.filter != null) primary.value = initial.filter;
+    inputsRow.appendChild(primary);
+
+    const secondary = document.createElement('input');
+    secondary.type = 'date';
+    secondary.className = 'cg-filter-popup-input';
+    secondary.setAttribute('data-cg-filter-input', 'secondary');
+    if (initial?.filterTo != null) secondary.value = initial.filterTo;
+    inputsRow.appendChild(secondary);
+    row.appendChild(inputsRow);
+
+    const syncInputVisibility = (): void => {
+      const op = select.value as CDateFilterOp;
+      const isBlank = op === 'blank' || op === 'notBlank';
+      const isRange = op === 'inRange';
+      primary.style.display = isBlank ? 'none' : '';
+      secondary.style.display = isRange ? '' : 'none';
+    };
+
+    const readModel = (): CDateFilterModel | null => {
+      const op = select.value as CDateFilterOp;
+      if (op === 'blank' || op === 'notBlank') {
+        return { filterType: 'date', type: op };
+      }
+      const primaryRaw = primary.value;
+      if (primaryRaw === '') return null;
+      if (op === 'inRange') {
+        const secondaryRaw = secondary.value;
+        if (secondaryRaw === '') return null;
+        return {
+          filterType: 'date', type: 'inRange',
+          filter: primaryRaw, filterTo: secondaryRaw,
+        };
+      }
+      return { filterType: 'date', type: op, filter: primaryRaw };
+    };
+
+    const fire = (): void => onChange(readModel());
+    select.addEventListener('change', () => {
+      syncInputVisibility();
+      fire();
+    });
+    primary.addEventListener('input', fire);
+    primary.addEventListener('change', fire);
+    secondary.addEventListener('input', fire);
+    secondary.addEventListener('change', fire);
+
+    syncInputVisibility();
+
+    return {
+      el: row,
+      getModel: readModel,
+      reset(): void {
+        primary.value = '';
+        secondary.value = '';
+        select.value = DEFAULT_OP;
+        syncInputVisibility();
+      },
+      clearInputs(): void {
+        primary.value = '';
+        secondary.value = '';
+      },
+    };
+  }
+
+  private normalizeInitial(): {
+    operator: MultiConditionJoin;
+    conditions: CFilterModelEntry[];
+  } {
+    const m = this.deps.initialModel;
+    const defaultJoin: MultiConditionJoin = this.deps.defaultJoinOperator ?? 'AND';
+    if (m && m.filterType === 'multi') {
+      return { operator: m.operator, conditions: m.conditions };
+    }
+    if (m && m.filterType === 'date') {
+      return { operator: defaultJoin, conditions: [m] };
+    }
+    return { operator: defaultJoin, conditions: [] };
+  }
+
+  private singleInitialModel(): CDateFilterModel | null {
+    const m = this.deps.initialModel;
+    if (!m) return null;
+    if (m.filterType === 'date') return m;
+    if (m.filterType === 'multi') {
+      const first = m.conditions[0];
+      return first && first.filterType === 'date' ? first : null;
+    }
+    return null;
   }
 
   private handleAction(kind: DateFilterButton): void {
     if (kind === 'apply') {
-      this.deps.onApply(this.buildModel());
+      this.deps.onApply(this.composeModel());
       if (this.deps.closeOnApply) this.deps.onClose();
       return;
     }
     if (kind === 'clear') {
-      this.primary.value = '';
-      this.secondary.value = '';
+      if (this.singleRow) this.singleRow.clearInputs();
+      for (const c of this.rowControllers) c.clearInputs();
       return;
     }
     if (kind === 'reset') {
-      this.primary.value = '';
-      this.secondary.value = '';
-      this.select.value = DEFAULT_OP;
-      this.syncInputVisibility();
+      if (this.singleRow) this.singleRow.reset();
+      for (const c of this.rowControllers) c.reset();
       this.deps.onApply(null);
       return;
     }
@@ -167,27 +272,23 @@ export class DateFilterPopup implements FilterPopupFactory {
     }
   }
 
-  /** Compose the v2 `CDateFilterModel` from the current UI state.
-   *  Returns `null` when the operator needs a date value but none was
-   *  picked (treating an empty Apply as "no filter"). Native
-   *  `<input type="date">.value` already returns the ISO `YYYY-MM-DD`
-   *  format the worker expects. */
-  private buildModel(): CDateFilterModel | null {
-    const op = this.select.value as CDateFilterOp;
-    if (op === 'blank' || op === 'notBlank') {
-      return { filterType: 'date', type: op };
+  private composeModel(): CDateFilterModel | CMultiConditionFilterModel | null {
+    if (!this.wrapper) {
+      return this.singleRow?.getModel() ?? null;
     }
-    const primaryRaw = this.primary.value;
-    if (primaryRaw === '') return null;
-    if (op === 'inRange') {
-      const secondaryRaw = this.secondary.value;
-      if (secondaryRaw === '') return null;
-      return {
-        filterType: 'date', type: 'inRange',
-        filter: primaryRaw, filterTo: secondaryRaw,
-      };
+    const models: CDateFilterModel[] = [];
+    for (const ctl of this.rowControllers) {
+      const m = ctl.getModel();
+      if (m) models.push(m);
     }
-    return { filterType: 'date', type: op, filter: primaryRaw };
+    if (models.length === 0) return null;
+    if (models.length === 1) return models[0]!;
+    const wrapperOp = this.wrapper.getValue().operator;
+    return {
+      filterType: 'multi',
+      operator: wrapperOp,
+      conditions: models,
+    };
   }
 }
 
