@@ -292,6 +292,32 @@ export class TransactionQueue<TRow = any> {
 }
 
 /**
+ * Cycle 7 / Task 7 — predicate shared between the worker's
+ * `QuickFilterPass` and the main-thread cell highlighter. Returns true
+ * when `value`'s lowercased string form contains AT LEAST ONE of the
+ * pre-lowercased `lowerTerms`. The cell highlighter applies OR
+ * semantics across terms (any matching cell contributed to the row
+ * passing the AND-across-terms row predicate), so this is the right
+ * primitive for both surfaces. Empty `lowerTerms` returns false — the
+ * caller is expected to early-out when no terms are active.
+ *
+ * Exported so the renderer can call it per visible cell at paint time
+ * without re-implementing the lowercase-and-includes loop.
+ */
+export function cellMatchesAnyQuickFilterTerm(
+  value: unknown,
+  lowerTerms: readonly string[],
+): boolean {
+  if (lowerTerms.length === 0) return false;
+  const lower = value == null ? '' : String(value).toLowerCase();
+  if (lower === '') return false;
+  for (let i = 0; i < lowerTerms.length; i++) {
+    if (lower.includes(lowerTerms[i]!)) return true;
+  }
+  return false;
+}
+
+/**
  * Cycle 7 / Task 7 — cross-column quick filter. Runs BEFORE `FilterPass`
  * in the worker pipeline. Each row produces an aggregate string of every
  * eligible column's stringified value joined with `'\n'`; a row passes

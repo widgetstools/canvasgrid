@@ -33,6 +33,12 @@ export interface RendererOpts {
    * Cycle 6 / Task 7.
    */
   rowDataSnapshotAt: (rowIndex: number) => Record<string, unknown>;
+  /**
+   * Cycle 7 / Task 7 — current pre-lowercased quick-filter terms (or `[]`
+   * when no quick filter is active). Forwarded into `PainterCtx` so the
+   * cell painter can tint matching cells with `theme.quickFilterMatchBg`.
+   */
+  getQuickFilterLowerTerms: () => readonly string[];
 }
 
 export class Renderer {
@@ -48,6 +54,7 @@ export class Renderer {
       selection: this.opts.getSelection(),
       sortModel: this.opts.getSortModel(),
       rowDataSnapshotAt: this.opts.rowDataSnapshotAt,
+      quickFilterLowerTerms: this.opts.getQuickFilterLowerTerms(),
     };
     // Fill the entire drawable area with theme bg as the FIRST instruction so
     // there's no transparent moment between the prior frame's pixels (or a

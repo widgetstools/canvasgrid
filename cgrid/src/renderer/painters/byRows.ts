@@ -4,10 +4,12 @@ import type { ViewportColumn, ViewportRow } from '../../core/viewport';
 import type { CellPaintConfig } from '../cellRenderers/registry';
 import { applyCellProps } from '../../core/propertyChain';
 import { HeaderGroupSubgrid } from '../../core/subgrid';
+import { cellMatchesAnyQuickFilterTerm } from '../../worker/dataPipeline';
 
 
 export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
-  const { viewport: vs, theme, columnDefs, cellRenderers, cellData, selection, sortModel, rowDataSnapshotAt } = p;
+  const { viewport: vs, theme, columnDefs, cellRenderers, cellData, selection, sortModel, rowDataSnapshotAt, quickFilterLowerTerms } = p;
+  const quickFilterActive = quickFilterLowerTerms.length > 0;
 
   // 1. Compute the right edge of the painted area (mirrors gridLinesPainter).
   const rightEdge = vs.visibleColumns.length === 0
@@ -118,13 +120,13 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
 
     paintBand(gc, sb.rows, leftPinned,
               0, vs.bodyLeft, sgTop, sgBottom,
-              /*clip*/ isDataBand, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt);
+              /*clip*/ isDataBand, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms);
     paintBand(gc, sb.rows, center,
               vs.bodyLeft, vs.bodyRight, sgTop, sgBottom,
-              /*clip*/ true, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt);
+              /*clip*/ true, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms);
     paintBand(gc, sb.rows, rightPinned,
               vs.bodyRight, rightEdge, sgTop, sgBottom,
-              /*clip*/ isDataBand, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt);
+              /*clip*/ isDataBand, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms);
   }
 }
 
@@ -146,6 +148,8 @@ function paintBand(
   selection: PainterCtx['selection'],
   theme: PainterCtx['theme'],
   rowDataSnapshotAt: PainterCtx['rowDataSnapshotAt'],
+  quickFilterActive: boolean,
+  quickFilterLowerTerms: readonly string[],
 ): void {
   if (cols.length === 0 || rows.length === 0) return;
   if (clip) {
@@ -286,6 +290,22 @@ function paintBand(
         rowData,
         rowIndex: row.subgrid.isData ? row.localRowIndex : 0,
       });
+
+      // Cycle 7 / Task 7 — quick-filter cell highlight. Tints any data
+      // cell whose value contains an active search term with the theme's
+      // `quickFilterMatchBg`. Skipped on header rows (which never participate
+      // in row filtering) and on selected rows (the selection bg already
+      // signals "this row matters"; doubling up would fight the focus ring).
+      // Cells get the override after the cellClassRules pass so the highlight
+      // doesn't get clobbered by a class-driven bg.
+      if (
+        quickFilterActive
+        && row.subgrid.isData
+        && !config.isSelected
+        && cellMatchesAnyQuickFilterTerm(value, quickFilterLowerTerms)
+      ) {
+        config.bg = theme.quickFilterMatchBg;
+      }
 
       // Per-cell clip — adjacent columns share the same band clip, so a value
       // wider than its column (long Position ID, fat number) would otherwise

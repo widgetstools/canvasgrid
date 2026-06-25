@@ -15,6 +15,10 @@ export interface ResolvedTheme {
   focusRingWidth: number;
   flashFromColor: string;
   flashToColor: string;
+  /** Cycle 7 / Task 7 — background fill applied behind any cell whose
+   *  value contains an active quick-filter term. Resolved from
+   *  `--cg-quick-filter-match-bg`. */
+  quickFilterMatchBg: string;
   rowHeight: number;
   headerHeight: number;
   resizerHotZone: number;
@@ -128,6 +132,7 @@ export class CssReader {
       focusRingWidth: px('--cg-focus-ring-width', 2),
       flashFromColor: get('--cg-flash-from-color') || '#fef3c7',
       flashToColor: get('--cg-flash-to-color') || 'rgba(254,243,199,0)',
+      quickFilterMatchBg: get('--cg-quick-filter-match-bg') || '#fff3b8',
       rowHeight: px('--cg-row-height', 30),
       headerHeight: px('--cg-header-height', 32),
       resizerHotZone: px('--cg-resizer-hot-zone', 4),

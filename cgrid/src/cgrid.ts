@@ -351,6 +351,7 @@ export class CGrid<TRow = any> {
       getCanvasWidth: () => this.canvasBounds.width,
       getCanvasHeight: () => this.canvasBounds.height,
       rowDataSnapshotAt: (rowIndex) => this.rowDataSnapshotAt(rowIndex),
+      getQuickFilterLowerTerms: () => this.quickFilterLowerTerms,
     });
 
     // 7. Canvas wrapper — owns the <canvas>, gc cache, RAF + resize polling.
@@ -972,6 +973,13 @@ export class CGrid<TRow = any> {
     // join the worker payload.
     const colIds = includeHidden ? null : this.columnOrder.map((c) => c.colId);
     const cacheQuickFilter = this.options.cacheQuickFilter === true;
+    // Cache the lowercased terms on the grid so the renderer can tint
+    // matching cells without re-lowering per cell per frame. Empty array
+    // = no highlight (renderer's `quickFilterActive` short-circuits the
+    // per-cell `includes` check).
+    this.quickFilterLowerTerms = terms === null
+      ? []
+      : terms.map((t) => t.toLowerCase());
     this.workerClient.setQuickFilter({ terms, cacheQuickFilter, colIds })
       .then(({ visibleCount }) => {
         this.rowCount = visibleCount;
@@ -994,6 +1002,13 @@ export class CGrid<TRow = any> {
 
   /** One-shot warning latch for `quickFilterMatcher`. Cycle 7 / Task 7. */
   private warnedQuickFilterMatcher = false;
+
+  /** Cycle 7 / Task 7 — pre-lowercased active quick-filter terms. Empty
+   *  when no filter is active. Read by the renderer on every paint to
+   *  tint matching cells with `theme.quickFilterMatchBg`. Kept in sync
+   *  with `applyQuickFilter` so the highlight set always matches the
+   *  worker's visible row set. */
+  private quickFilterLowerTerms: readonly string[] = [];
 
   /** Cycle 7 / Task 3 — open the per-column filter popup for `colId`.
    *  Resolves the column's filter type, instantiates the matching popup,
