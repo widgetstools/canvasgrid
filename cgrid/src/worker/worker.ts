@@ -48,6 +48,21 @@ interface State {
    *  back the matching `measureTextResponse`. */
   pendingFallbacks: Map<number, (heights: Float32Array) => void>;
   nextBatchId: number;
+  /** Cycle 7 / Task 8 — when true, `buildVisibleAsync` pauses after
+   *  applying column + quick filters to push the candidate rowIds to
+   *  main, then resumes with the surviving subset. When false the
+   *  pipeline runs end-to-end synchronously. */
+  externalFilterPresent: boolean;
+  /** Cycle 7 / Task 8 — rowIds that bypass every filter (column / quick /
+   *  external). Main computes the set by running `alwaysPassFilter`
+   *  against its row-data cache and ships via `setAlwaysPassRowIds`. */
+  alwaysPassIds: Set<string>;
+  /** Cycle 7 / Task 8 — pending external-filter round-trips keyed by
+   *  `callId`. The promise resolves when main posts back
+   *  `externalFilterResult` for the same callId. */
+  pendingExternalFilters: Map<number, (surviving: string[]) => void>;
+  /** Cycle 7 / Task 8 — monotonic counter for external-filter callIds. */
+  nextExternalFilterCallId: number;
 }
 
 type Postable = WorkerResponse | WorkerPush;
@@ -60,7 +75,7 @@ export interface WorkerHost {
 export function createWorkerHost(post: PostFn): WorkerHost {
   let state: State | null = null;
 
-  function buildVisible(): string[] {
+  function buildCandidates(): string[] {
     if (!state) return [];
     // Cycle 7 / Task 7 — QuickFilterPass runs BEFORE FilterPass. A null
     // return means no quick-filter constraint, so we skip the intersection
@@ -71,21 +86,72 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       const allow = new Set(quickIds);
       ids = ids.filter((id) => allow.has(id));
     }
+    return ids;
+  }
+
+  /** Cycle 7 / Task 8 — runs the external-filter round-trip when
+   *  `state.externalFilterPresent` is set. `candidates` is the
+   *  post-column-filter, post-quick-filter survivor set MINUS any
+   *  alwaysPass rows (those bypass external filter too). The promise
+   *  resolves once main posts back `externalFilterResult` for the
+   *  matching callId. Resolves immediately when there are no candidates
+   *  so empty inputs don't trip a needless round-trip. */
+  function runExternalFilter(candidates: string[]): Promise<string[]> {
+    if (!state) return Promise.resolve([]);
+    if (candidates.length === 0) return Promise.resolve([]);
+    const callId = state.nextExternalFilterCallId++;
+    return new Promise<string[]>((resolve) => {
+      state!.pendingExternalFilters.set(callId, resolve);
+      post({ type: 'externalFilterCandidates', callId, rowIds: candidates });
+    });
+  }
+
+  async function buildVisibleAsync(): Promise<string[]> {
+    if (!state) return [];
+    let ids = buildCandidates();
+    const alwaysPass = state.alwaysPassIds;
+    if (state.externalFilterPresent) {
+      // Subtract alwaysPass from the candidate set the main thread
+      // evaluates — alwaysPass rows bypass the external predicate too
+      // (per catalog docs: "Allows specific rows to bypass all filters
+      // unconditionally").
+      const filteredCandidates: string[] = alwaysPass.size === 0
+        ? ids
+        : ids.filter((id) => !alwaysPass.has(id));
+      const surviving = await runExternalFilter(filteredCandidates);
+      const merged = new Set<string>(surviving);
+      if (alwaysPass.size > 0) {
+        // Restore alwaysPass rows; they survive every filter pass.
+        for (const id of alwaysPass) {
+          // Only include alwaysPass rows that still exist in the store —
+          // a stale row that's been removed would otherwise leak in.
+          if (state.store.getById(id) !== undefined) merged.add(id);
+        }
+      }
+      ids = Array.from(merged);
+    } else if (alwaysPass.size > 0) {
+      // No external filter — alwaysPass still trumps column + quick.
+      const merged = new Set<string>(ids);
+      for (const id of alwaysPass) {
+        if (state.store.getById(id) !== undefined) merged.add(id);
+      }
+      ids = Array.from(merged);
+    }
     ids = state.sort.apply(ids);
     return ids;
   }
 
-  function visible(): string[] {
+  async function visibleAsync(): Promise<string[]> {
     if (!state) return [];
     if (!state.visibleCache) {
-      state.visibleCache = buildVisible();
+      state.visibleCache = await buildVisibleAsync();
     }
     return state.visibleCache;
   }
 
-  function invalidateAndCount(): number {
+  async function invalidateAndCount(): Promise<number> {
     if (!state) return 0;
-    state.visibleCache = buildVisible();
+    state.visibleCache = await buildVisibleAsync();
     return state.visibleCache.length;
   }
 
@@ -113,8 +179,22 @@ export function createWorkerHost(post: PostFn): WorkerHost {
         for (const x of r.remove) touched.add(x.rowId);
       }
       state!.quickFilter.invalidateRows(touched);
+      // Drop removed rows from the alwaysPass set so the worker never
+      // tries to surface a row that no longer exists.
+      if (state!.alwaysPassIds.size > 0) {
+        for (const tx of txs) {
+          if (!tx.remove) continue;
+          for (const id of tx.remove) state!.alwaysPassIds.delete(id);
+        }
+      }
       state!.visibleCache = null;
-      post({ type: 'modelUpdated', visibleCount: invalidateAndCount() });
+      // Async transaction flush: the modelUpdated push lands one
+      // microtask later once `buildVisibleAsync` resolves. Cycle 7 / Task 8
+      // — when an external filter is active the await also covers the
+      // candidates ↔ result round-trip with main.
+      void invalidateAndCount().then((visibleCount) => {
+        post({ type: 'modelUpdated', visibleCount });
+      });
       return all;
     });
 
@@ -131,6 +211,10 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       measureCache: new MeasureCache(1024),
       pendingFallbacks: new Map(),
       nextBatchId: 1,
+      externalFilterPresent: false,
+      alwaysPassIds: new Set(),
+      pendingExternalFilters: new Map(),
+      nextExternalFilterCallId: 1,
     };
 
     post({ id, type: 'ready' });
@@ -267,6 +351,18 @@ export function createWorkerHost(post: PostFn): WorkerHost {
 
   return {
     handle(req: WorkerRequest): void {
+      // Cycle 7 / Task 8 — the request pipeline is async because the
+      // external filter round-trip (main runs the predicate, ships
+      // survivors back) is interleaved into `buildVisibleAsync`.
+      // `host.handle` stays fire-and-forget at the call site; errors
+      // post through the same `error` envelope.
+      void handleAsync(req).catch((err) => {
+        post({ id: (req as { id: number }).id, type: 'error', error: String((err as Error).message ?? err) });
+      });
+    },
+  };
+
+  async function handleAsync(req: WorkerRequest): Promise<void> {
       try {
         if (req.type === 'init') {
           initHost(req.payload, req.id);
@@ -281,8 +377,13 @@ export function createWorkerHost(post: PostFn): WorkerHost {
         switch (req.type) {
           case 'setRowData': {
             state.store.setAll(req.payload.rows as any[], req.payload.heightsByRowId);
+            // Cycle 7 / Task 8 — a full data replace invalidates any
+            // alwaysPass set computed against the previous data. Main
+            // re-computes and ships a fresh set via `setAlwaysPassRowIds`
+            // when it follows up with `setRowData`.
+            state.alwaysPassIds.clear();
             state.visibleCache = null;
-            const visibleCount = invalidateAndCount();
+            const visibleCount = await invalidateAndCount();
             post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount });
             break;
           }
@@ -301,9 +402,14 @@ export function createWorkerHost(post: PostFn): WorkerHost {
               for (const u of results.update) touched.add(u.rowId);
               for (const x of results.remove) touched.add(x.rowId);
               state.quickFilter.invalidateRows(touched);
+              // Drop removed rows from the alwaysPass set so the worker
+              // never surfaces a row that no longer exists.
+              if (state.alwaysPassIds.size > 0 && remove) {
+                for (const id of remove) state.alwaysPassIds.delete(id);
+              }
               state.visibleCache = null;
               post({ id: req.id, type: 'transactionFlushed', results });
-              post({ type: 'modelUpdated', visibleCount: invalidateAndCount() });
+              post({ type: 'modelUpdated', visibleCount: await invalidateAndCount() });
             }
             break;
           }
@@ -311,20 +417,20 @@ export function createWorkerHost(post: PostFn): WorkerHost {
           case 'setSortModel': {
             state.sort.setModel(req.payload);
             state.visibleCache = null;
-            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: invalidateAndCount() });
+            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await invalidateAndCount() });
             break;
           }
 
           case 'setFilterModel': {
             state.filter.setModel(req.payload);
             state.visibleCache = null;
-            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: invalidateAndCount() });
+            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await invalidateAndCount() });
             break;
           }
 
           case 'setGroupModel': {
             // Foundation scope: no real grouping — respond with current counts only.
-            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: visible().length });
+            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: (await visibleAsync()).length });
             break;
           }
 
@@ -339,7 +445,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             state.agg.setColumns(cols);
             state.slicer.setColumns(cols);
             state.visibleCache = null;
-            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: invalidateAndCount() });
+            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await invalidateAndCount() });
             break;
           }
 
@@ -349,19 +455,71 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             state.quickFilter.setColIds(colIds);
             state.quickFilter.setTerms(terms);
             state.visibleCache = null;
-            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: invalidateAndCount() });
+            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await invalidateAndCount() });
+            break;
+          }
+
+          case 'setExternalFilterPresent': {
+            // Cycle 7 / Task 8 — flip the round-trip on or off and
+            // re-evaluate. The post-toggle visible count rides back on
+            // the reply so the main thread can update `rowCount` in one
+            // round-trip.
+            state.externalFilterPresent = req.payload.present === true;
+            state.visibleCache = null;
+            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await invalidateAndCount() });
+            break;
+          }
+
+          case 'setAlwaysPassRowIds': {
+            // Cycle 7 / Task 8 — replace the alwaysPass set wholesale.
+            // Main runs `options.alwaysPassFilter` against its row-data
+            // cache and ships the resolved id list whenever data changes.
+            state.alwaysPassIds = new Set(req.payload.rowIds);
+            state.visibleCache = null;
+            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await invalidateAndCount() });
+            break;
+          }
+
+          case 'externalFilterResult': {
+            // Cycle 7 / Task 8 — main has run the per-row predicate over
+            // the candidate set and is shipping the surviving ids back.
+            // Resolve the in-flight pipeline promise keyed by callId.
+            // No reply envelope; the original pipeline request's reply
+            // (rowCount / transactionFlushed / etc.) lands once the
+            // awaiting handler resumes. We still post a no-op reply
+            // because every WorkerRequest carries an id the client's
+            // `send` is waiting on — otherwise the pending Map would
+            // leak.
+            const { callId, surviving } = req.payload;
+            const resolver = state.pendingExternalFilters.get(callId);
+            if (resolver) {
+              state.pendingExternalFilters.delete(callId);
+              resolver(surviving);
+            }
+            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: state.visibleCache?.length ?? 0 });
+            break;
+          }
+
+          case 'refilter': {
+            // Cycle 7 / Task 8 — re-run the pipeline against the current
+            // model without changing column / quick / sort state. Wired
+            // to `api.onFilterChanged(source)` so apps can re-trigger
+            // after mutating external-filter state (e.g. a toolbar
+            // checkbox).
+            state.visibleCache = null;
+            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await invalidateAndCount() });
             break;
           }
 
           case 'getRowIndexForId': {
-            const ids = visible();
+            const ids = await visibleAsync();
             const idx = ids.indexOf(req.payload.rowId);
             post({ id: req.id, type: 'rowIndex', index: idx });
             break;
           }
 
           case 'getRowByIndex': {
-            const ids = visible();
+            const ids = await visibleAsync();
             const { rowIndex } = req.payload;
             if (rowIndex < 0 || rowIndex >= ids.length) {
               post({ id: req.id, type: 'row', rowId: null, data: null });
@@ -377,7 +535,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             // Build a one-shot lookup table so an N-id batch is O(visible + N)
             // instead of O(visible * N). Critical when the selection set is
             // large (e.g. selectAll over a million rows).
-            const ids = visible();
+            const ids = await visibleAsync();
             const lookup = new Map<string, number>();
             for (let i = 0; i < ids.length; i++) lookup.set(ids[i]!, i);
             const requested = req.payload.rowIds;
@@ -391,7 +549,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
           }
 
           case 'getViewport': {
-            const visIds = visible();
+            const visIds = await visibleAsync();
             const chunk = state.slicer.slice(visIds, req.payload);
             // Wire AggPass: compute grand-total aggregations over all visible rows.
             const aggResult = state.agg.apply(visIds);
@@ -422,7 +580,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             // alternative so a more accurate fallback would block the
             // worker on a round-trip per cell.
             const { columns, skipHeader, maxSampleSize } = req.payload;
-            const ids = visible();
+            const ids = await visibleAsync();
             const fieldByColId = new Map<string, string | undefined>();
             for (const c of state.columns) fieldByColId.set(c.colId, c.field);
             const measureFor = (font: string) => {
@@ -484,8 +642,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       } catch (err) {
         post({ id: (req as { id: number }).id, type: 'error', error: String((err as Error).message ?? err) });
       }
-    },
-  };
+  }
 }
 
 // ---------------------------------------------------------------------------

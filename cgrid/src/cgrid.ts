@@ -558,6 +558,11 @@ export class CGrid<TRow = any> {
       },
       onHeightsChanged: (rowIds, heights) => this.onHeightsChanged(rowIds, heights),
       onMeasureTextRequest: (batchId, items) => this.onMeasureTextRequest(batchId, items),
+      // Cycle 7 / Task 8 — worker pushed the candidate rowIds (post
+      // column + quick filters, minus alwaysPass rows) up for main-side
+      // `doesExternalFilterPass` evaluation. Run the predicate against
+      // the cached row data and reply with the surviving subset.
+      onExternalFilterCandidates: (rowIds, callId) => this.runExternalFilterCandidates(rowIds, callId),
       onError: (msg) => console.error('[cgrid] worker error:', msg),
     });
 
@@ -565,7 +570,18 @@ export class CGrid<TRow = any> {
       rowIdField: inferRowIdField(options.getRowId),
       columns: this.workerColumns(),
       rowHeight: this.options.rowHeight ?? this.theme.rowHeight,
-    }).then(() => {
+    }).then(async () => {
+      // Cycle 7 / Task 8 — register the external-filter round-trip BEFORE
+      // gridReady fires so the first setRowData runs against a worker
+      // whose flag matches the app's current intent. Only push when the
+      // predicate currently returns true — flagging it on for a
+      // toggle-style filter that's off would force every pipeline pass
+      // through a no-op round-trip. The setting flips later via
+      // `onFilterChanged('externalFilter')` once the app toggles state.
+      const initialPresent = this.options.isExternalFilterPresent?.() === true;
+      if (initialPresent) {
+        await this.workerClient.setExternalFilterPresent(true).catch(() => {});
+      }
       this.events.emit({ type: 'gridReady', api: this.makeApi() });
       if (options.rowData) this.setRowData(options.rowData);
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
@@ -752,36 +768,159 @@ export class CGrid<TRow = any> {
 
   setRowData(rows: TRow[]): void {
     const heightsByRowId = this.resolveHeightsForRows(rows);
+    // Cycle 7 / Task 8 — refresh the main-side row cache so the external
+    // filter + alwaysPass predicates evaluate against current data.
+    // setRowData is a full replace, so wipe the cache first.
+    this.rowDataById.clear();
+    for (const row of rows) {
+      try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip bad rowId */ }
+    }
     this.workerClient.setRowData(rows, heightsByRowId).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
       this.recomputeViewport();
       this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
       this.requestViewport();
+      // alwaysPass is computed AFTER setRowData so the worker's data
+      // store and the alwaysPass set land in the same logical step. The
+      // refresh triggers a second worker round-trip; that's the cost of
+      // the alwaysPass feature being opt-in (it's a no-op when no
+      // predicate is set).
+      this.recomputeAlwaysPass();
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
   }
 
   applyTransaction(t: Tx<TRow>): TransactionResult {
     // Foundation: async only. For sync semantics, callers use the worker's sync path via separate cycle.
     const heightsByRowId = this.resolveHeightsForRows([...(t.add ?? []), ...(t.update ?? [])]);
+    this.updateRowDataCache(t);
     this.workerClient.applyTransaction({
       add: t.add as unknown[],
       update: t.update as unknown[],
       remove: (t.remove as TRow[] | undefined)?.map((r) => this.options.getRowId(r)),
       async: false,
       heightsByRowId,
-    }).catch((err) => { if (!this.destroyed) console.error('[cgrid] applyTransaction:', err); });
+    }).then(() => this.recomputeAlwaysPass())
+      .catch((err) => { if (!this.destroyed) console.error('[cgrid] applyTransaction:', err); });
     return { add: [], update: [], remove: [] };
   }
 
   applyTransactionAsync(t: Tx<TRow>): void {
     const heightsByRowId = this.resolveHeightsForRows([...(t.add ?? []), ...(t.update ?? [])]);
+    this.updateRowDataCache(t);
     this.workerClient.applyTransaction({
       add: t.add as unknown[],
       update: t.update as unknown[],
       remove: (t.remove as TRow[] | undefined)?.map((r) => this.options.getRowId(r)),
       async: true,
       heightsByRowId,
-    }).catch((err) => { if (!this.destroyed) console.error('[cgrid] applyTransaction:', err); });
+    }).then(() => this.recomputeAlwaysPass())
+      .catch((err) => { if (!this.destroyed) console.error('[cgrid] applyTransaction:', err); });
+  }
+
+  /** Cycle 7 / Task 8 — keep `rowDataById` in sync with a transaction.
+   *  add / update both write the row in place; remove drops the entry.
+   *  Same `getRowId` derivation the worker uses so the keys line up
+   *  across the two caches. Errors in `getRowId` skip the row silently. */
+  private updateRowDataCache(t: Tx<TRow>): void {
+    if (t.add) {
+      for (const row of t.add) {
+        try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip */ }
+      }
+    }
+    if (t.update) {
+      for (const row of t.update) {
+        try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip */ }
+      }
+    }
+    if (t.remove) {
+      for (const row of t.remove) {
+        try { this.rowDataById.delete(this.options.getRowId(row)); } catch { /* skip */ }
+      }
+    }
+  }
+
+  /** Cycle 7 / Task 8 — run `options.alwaysPassFilter` against the cached
+   *  row set and ship the resolved rowId list to the worker. No-op when
+   *  the predicate isn't configured; the worker treats an empty set as
+   *  "no alwaysPass rows" so the round-trip is essentially free in the
+   *  common case. */
+  private recomputeAlwaysPass(): void {
+    if (this.destroyed) return;
+    const predicate = this.options.alwaysPassFilter;
+    if (typeof predicate !== 'function') return;
+    const ids: string[] = [];
+    for (const [rowId, data] of this.rowDataById) {
+      try {
+        if (predicate({ data, rowId })) ids.push(rowId);
+      } catch { /* predicate threw — drop the row from alwaysPass */ }
+    }
+    this.workerClient.setAlwaysPassRowIds(ids).then(({ visibleCount }) => {
+      if (this.destroyed) return;
+      this.rowCount = visibleCount;
+      this.recomputeViewport();
+      this.requestViewport();
+    }).catch((err) => { if (!this.destroyed) console.error('[cgrid] alwaysPass:', err); });
+  }
+
+  /** Cycle 7 / Task 8 — main-side reply to the worker's
+   *  `externalFilterCandidates` push. Runs `options.doesExternalFilterPass`
+   *  for each rowId against `rowDataById` and ships the surviving subset
+   *  back. Rows missing from the cache (added via the worker only — not
+   *  the supported path) drop silently. */
+  private runExternalFilterCandidates(rowIds: string[], callId: number): void {
+    const predicate = this.options.doesExternalFilterPass;
+    if (typeof predicate !== 'function') {
+      // Misconfigured: external filter was activated but no predicate
+      // supplied. Pass everything through so the grid doesn't silently
+      // hide every row.
+      this.workerClient.externalFilterResult(callId, rowIds).catch(() => {});
+      return;
+    }
+    const surviving: string[] = [];
+    for (const rowId of rowIds) {
+      const data = this.rowDataById.get(rowId);
+      if (data === undefined) continue;
+      try {
+        if (predicate({ data, rowId })) surviving.push(rowId);
+      } catch { /* predicate threw — drop the row */ }
+    }
+    this.workerClient.externalFilterResult(callId, surviving).catch((err) => {
+      if (!this.destroyed) console.error('[cgrid] externalFilterResult:', err);
+    });
+  }
+
+  /** Cycle 7 / Task 8 — re-run the filter pipeline. Used after mutating
+   *  any state the external-filter predicate closes over (e.g. a toolbar
+   *  checkbox). Resolves the current value of
+   *  `options.isExternalFilterPresent` and forwards via
+   *  `setExternalFilterPresent` — that one call atomically updates the
+   *  worker's flag AND triggers a refilter, with the post-pipeline
+   *  visible count riding back on the reply. Stale-reply guard mirrors
+   *  `applyQuickFilter` — a second `onFilterChanged` call before the
+   *  first round-trip lands bumps `externalFilterReqId` and the first
+   *  reply drops on arrival. */
+  onFilterChanged(source: 'api' | 'quickFilter' | 'columnFilter' | 'externalFilter' = 'api'): void {
+    if (!this.workerClient) return;
+    // alwaysPass may close over the same state the external predicate
+    // does (e.g. a toggle that flips both at once); refresh it before
+    // the refilter so the worker sees a consistent set on the next pass.
+    this.recomputeAlwaysPass();
+    const present = this.options.isExternalFilterPresent?.() === true;
+    const reqId = ++this.externalFilterReqId;
+    this.workerClient.setExternalFilterPresent(present).then(({ visibleCount }) => {
+      if (this.destroyed) return;
+      // Drop stale survivors when a newer onFilterChanged superseded
+      // this round-trip mid-flight.
+      if (reqId !== this.externalFilterReqId) return;
+      this.rowCount = visibleCount;
+      this.rowHeightIndex = null;
+      this.recomputeViewport();
+      this.rebuildSelectionFromPersistentIds();
+      const combined: FilterModel = {};
+      for (const [id, entry] of this.columnFilterModels) combined[id] = entry;
+      this.events.emit({ type: 'filterChanged', filterModel: combined, source });
+      this.requestViewport();
+    }).catch((err) => { if (!this.destroyed) console.error('[cgrid] onFilterChanged:', err); });
   }
 
   /** Run the user-provided `getRowHeight` callback over `rows` and collect
@@ -1026,6 +1165,22 @@ export class CGrid<TRow = any> {
    *  worker's visible row set. */
   private quickFilterLowerTerms: readonly string[] = [];
 
+  /** Cycle 7 / Task 8 — main-side cache of every row that's been shipped
+   *  to the worker. Keyed by rowId. Kept in sync by `setRowData` and
+   *  `applyTransaction(Async)` so the external-filter and alwaysPass
+   *  predicates have data to evaluate against. Without this cache the
+   *  worker would have to ship every candidate row's data up alongside
+   *  its rowId, doubling the protocol traffic for an external filter
+   *  pass. The cache lives as long as the grid; entries drop on
+   *  `applyTransaction.remove` and are wiped on every `setRowData`. */
+  private rowDataById: Map<string, TRow> = new Map();
+  /** Cycle 7 / Task 8 — monotonic request id for in-flight `refilter`
+   *  round-trips. Bumped at the head of every `onFilterChanged` /
+   *  external-filter trigger; stale replies (id mismatch) are dropped
+   *  on arrival so a rapid sequence of toggles doesn't flicker the
+   *  visible set back to an earlier survivor list. Same shape as
+   *  `quickFilterReqId`. */
+  private externalFilterReqId = 0;
   /** Cycle 7 / Task 7 — monotonic request id for in-flight `setQuickFilter`
    *  worker round-trips. Each `applyQuickFilter` bumps it and captures the
    *  value; the worker `.then` callback bails when the captured id no
@@ -1434,6 +1589,7 @@ export class CGrid<TRow = any> {
       setGroupModel: (g) => this.setGroupModel(g),
       showColumnFilter: (c) => this.showColumnFilter(c),
       hideColumnFilter: () => this.hideColumnFilter(),
+      onFilterChanged: (source) => this.onFilterChanged(source),
       ensureRowVisible: (id, pos) => this.ensureRowVisible(id, pos),
       ensureColumnVisible: (id, pos) => this.ensureColumnVisible(id, pos),
       ensureColumnGroupVisible: (id, pos) => this.ensureColumnGroupVisible(id, pos),

@@ -16,6 +16,15 @@ export interface WorkerClientHandlers {
    *  Main runs the wrap algorithm against a real `<canvas>` context and posts
    *  back via `WorkerClient.measureTextResponse(batchId, heights)`. */
   onMeasureTextRequest?: (batchId: number, items: MeasureTextItem[]) => void;
+  /** Cycle 7 / Task 8 — worker has reached the external-filter step of its
+   *  pipeline and is shipping the candidate rowIds (post-column-filter,
+   *  post-quick-filter, minus alwaysPass rows) up for the main thread to
+   *  evaluate against `options.doesExternalFilterPass`. Reply with the
+   *  surviving subset via `WorkerClient.externalFilterResult(callId, surviving)`.
+   *  The worker holds the rest of the pipeline open on `callId` until the
+   *  result lands; firing twice with different callIds is OK (each pipeline
+   *  request gets its own callId). */
+  onExternalFilterCandidates?: (rowIds: string[], callId: number) => void;
 }
 
 export interface WorkerLike {
@@ -49,6 +58,8 @@ export class WorkerClient {
       this.handlers.onHeightsChanged?.(msg.rowStart, msg.heights);
     } else if (msg.type === 'measureTextRequest') {
       this.handlers.onMeasureTextRequest?.(msg.batchId, msg.items);
+    } else if (msg.type === 'externalFilterCandidates') {
+      this.handlers.onExternalFilterCandidates?.(msg.rowIds, msg.callId);
     }
   }
 
@@ -97,6 +108,52 @@ export class WorkerClient {
 
   setFilterModel(f: FilterModel): Promise<{ visibleCount: number }> {
     return this.send<{ visibleCount: number }>({ type: 'setFilterModel', payload: f });
+  }
+
+  /** Cycle 7 / Task 8 — toggle the external-filter round-trip. When
+   *  `present: true`, every subsequent pipeline pass (setFilterModel,
+   *  setQuickFilter, applyTransaction, refilter, …) pauses between
+   *  column+quick filters and sort to push candidate rowIds to main via
+   *  `onExternalFilterCandidates` and waits for `externalFilterResult`
+   *  to deliver the survivors. Resolves with the post-toggle visible
+   *  row count. */
+  setExternalFilterPresent(present: boolean): Promise<{ visibleCount: number }> {
+    return this.send<{ visibleCount: number }>({
+      type: 'setExternalFilterPresent', payload: { present },
+    });
+  }
+
+  /** Cycle 7 / Task 8 — replace the worker's alwaysPass rowId set wholesale.
+   *  Rows in this set bypass every filter (column / quick / external) and
+   *  are unconditionally included in the visible set. Main computes the
+   *  set by running `options.alwaysPassFilter` against its row-data cache
+   *  and reships after every data mutation. Resolves with the post-update
+   *  visible row count. */
+  setAlwaysPassRowIds(rowIds: string[]): Promise<{ visibleCount: number }> {
+    return this.send<{ visibleCount: number }>({
+      type: 'setAlwaysPassRowIds', payload: { rowIds },
+    });
+  }
+
+  /** Cycle 7 / Task 8 — main-side reply to `onExternalFilterCandidates`.
+   *  `callId` must echo the value the worker pushed; `surviving` is the
+   *  rowIds that passed `options.doesExternalFilterPass`. The worker
+   *  matches `callId` to the in-flight pipeline and resumes. Returns a
+   *  Promise that resolves once the worker acknowledges the result
+   *  (the original pipeline reply lands separately on the original
+   *  request's promise). */
+  externalFilterResult(callId: number, surviving: string[]): Promise<void> {
+    return this.send<{ visibleCount: number }>({
+      type: 'externalFilterResult', payload: { callId, surviving },
+    }).then(() => {});
+  }
+
+  /** Cycle 7 / Task 8 — re-run the filter pipeline against the current
+   *  model. Used by `CGridApi.onFilterChanged(source)` after the app
+   *  mutates external-filter state without changing the column / quick /
+   *  sort model. Resolves with the post-pipeline visible row count. */
+  refilter(): Promise<{ visibleCount: number }> {
+    return this.send<{ visibleCount: number }>({ type: 'refilter', payload: {} });
   }
 
   /** Cycle 7 / Task 7 — ship parsed quick-filter terms (or `null` to

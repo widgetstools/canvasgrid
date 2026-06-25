@@ -19,3 +19,5 @@ header h1 { margin: 0; color: #e2e8f0; font-size: 18px; font-weight: 600; }
 }
 button { padding: 6px 12px; border: 1px solid #334155; background: #1e293b; color: #e2e8f0; border-radius: 4px; cursor: pointer; }
 button:hover { background: #283549; }
+.toolbar-checkbox { display: inline-flex; align-items: center; gap: 4px; color: #e2e8f0; font-size: 13px; user-select: none; }
+.toolbar-checkbox input { margin: 0; }

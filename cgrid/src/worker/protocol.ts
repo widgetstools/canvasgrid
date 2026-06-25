@@ -137,7 +137,35 @@ export type WorkerRequest =
         skipHeader: boolean;
         maxSampleSize?: number;
       };
-    };
+    }
+  /** Cycle 7 / Task 8 — toggle the external-filter round-trip on the worker.
+   *  When `present: true`, the worker's filter pipeline suspends after
+   *  applying column + quick filters and pushes the candidate rowIds to
+   *  main via `externalFilterCandidates`; it then awaits an
+   *  `externalFilterResult` for the same `callId` before completing.
+   *  When `present: false`, the pipeline runs synchronously end-to-end
+   *  and no candidates push fires. Resolves with the post-toggle visible
+   *  row count. `alwaysPassFilter` rows are subtracted from the candidate
+   *  set and added back unconditionally to the final visible set. */
+  | { id: ReqId; type: 'setExternalFilterPresent'; payload: { present: boolean } }
+  /** Cycle 7 / Task 8 — replace the worker's alwaysPass rowId set. Main
+   *  computes the set from `options.alwaysPassFilter` against its own
+   *  row-data cache and pushes after every data mutation. The worker
+   *  stores it verbatim and consults it on every filter pass. Resolves
+   *  with the post-update visible row count. */
+  | { id: ReqId; type: 'setAlwaysPassRowIds'; payload: { rowIds: string[] } }
+  /** Cycle 7 / Task 8 — main-side reply to an `externalFilterCandidates`
+   *  push. The worker matches `callId` to the in-flight pipeline and
+   *  resumes with `surviving` as the post-external-filter set.
+   *  One-way: no reply envelope; the original pipeline request's reply
+   *  fires once the worker resumes and finishes its post-sort emit. */
+  | { id: ReqId; type: 'externalFilterResult'; payload: { callId: number; surviving: string[] } }
+  /** Cycle 7 / Task 8 — re-run the filter pipeline against the current
+   *  model. Used by `api.onFilterChanged(source)` after the app mutates
+   *  external-filter state (e.g. flipping a toolbar checkbox) so the
+   *  grid re-evaluates without changing the column / quick / sort model.
+   *  Resolves with the post-pipeline visible row count. */
+  | { id: ReqId; type: 'refilter'; payload: Record<string, never> };
 
 export type WorkerResponse =
   | { id: ReqId; type: 'ready' }
@@ -167,7 +195,15 @@ export type WorkerPush =
    *  `OffscreenCanvas.measureText` (Safari 15.4–16.3, Firefox 100–104), it
    *  batches measurement items here and awaits a `measureTextResponse`
    *  carrying the resolved per-item pixel heights. */
-  | { type: 'measureTextRequest';        batchId: number; items: MeasureTextItem[] };
+  | { type: 'measureTextRequest';        batchId: number; items: MeasureTextItem[] }
+  /** Cycle 7 / Task 8 — pushed mid-pipeline when `isExternalFilterPresent`
+   *  is active. `rowIds` is the post-column-filter, post-quick-filter
+   *  candidate set MINUS any rows in the worker's alwaysPass set (those
+   *  bypass every filter and are added back unconditionally to the
+   *  final visible set). Main runs `doesExternalFilterPass` for each id
+   *  against its row-data cache and replies with `externalFilterResult`
+   *  carrying the same `callId` and the surviving subset. */
+  | { type: 'externalFilterCandidates';  callId: number; rowIds: string[] };
 
 /** Build the transfer list for a viewport response. */
 export function collectViewportTransferables(chunk: ViewportChunk): ArrayBufferLike[] {

@@ -41,6 +41,24 @@ export interface PositionsGridOptions {
   editType?: 'fullRow';
 }
 
+/** Cycle 7 / Task 8 — toolbar-driven external filter state. The
+ *  `isExternalFilterPresent` / `doesExternalFilterPass` callbacks close
+ *  over this module-level toggle so flipping it via
+ *  `setPositiveOnlyFilter(true)` activates the worker round-trip on the
+ *  next `grid.onFilterChanged('externalFilter')`. Module-scoped (rather
+ *  than per-grid) because the demo only ever creates one grid; a more
+ *  permissive shape lands when Cycle 22 introduces the option-bag
+ *  builder. */
+let positiveOnlyExternalFilter = false;
+
+/** Cycle 7 / Task 8 — flip the demo's "show only positive P&L" filter
+ *  and re-trigger the pipeline. Exposed so the toolbar checkbox in
+ *  main.ts can drive the grid without reaching into private state. */
+export function setPositiveOnlyFilter(grid: CGrid<Position>, value: boolean): void {
+  positiveOnlyExternalFilter = value;
+  grid.onFilterChanged('externalFilter');
+}
+
 export function createPositionsGrid(
   container: HTMLElement,
   opts: PositionsGridOptions = {},
@@ -245,6 +263,15 @@ export function createPositionsGrid(
     // opens N editors at once; Tab cycles within the row, Enter commits
     // all, Esc cancels all.
     ...(opts.editType ? { editType: opts.editType } : {}),
+    // Cycle 7 / Task 8 — external filter wiring. The "show only positive
+    // P&L" toolbar checkbox flips the module-level `positiveOnlyExternalFilter`
+    // toggle via `setPositiveOnlyFilter`; on the next
+    // `onFilterChanged('externalFilter')` the worker pushes the candidate
+    // rowIds back to main, where this predicate filters on the pnl field.
+    // Always present even when the toggle is off — `isExternalFilterPresent`
+    // returning false short-circuits the round-trip without re-registering.
+    isExternalFilterPresent: () => positiveOnlyExternalFilter,
+    doesExternalFilterPass: ({ data }) => typeof data.pnl === 'number' && data.pnl > 0,
   };
   const grid = new CGrid<Position>(container, options);
   grid.registerCellRenderer('pnlPill', pnlPill);
