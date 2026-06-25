@@ -189,6 +189,55 @@ test.describe('Cycle 6 / Task 1 — column drag-reorder', () => {
     expect(afterDrop.line).toBeNull();
   });
 
+  test('a drag does NOT fire sortChanged on the dragged column (click after drag is swallowed)', async ({ page }) => {
+    await gridReady(page);
+    const cusip = await page.evaluate(() => {
+      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      return grid.getHeaderBoundsAt('cusip');
+    });
+    const ticker = await page.evaluate(() => {
+      const grid = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      return grid.getHeaderBoundsAt('ticker');
+    });
+    expect(cusip).not.toBeNull();
+    expect(ticker).not.toBeNull();
+
+    // Subscribe BEFORE the drag so we catch any sortChanged the drag may fire.
+    await page.evaluate(() => {
+      const grid = (window as unknown as {
+        __cgrid: GridApiSurface & {
+          on: (
+            type: 'sortChanged',
+            handler: (e: { type: 'sortChanged'; sortModel: unknown }) => void,
+          ) => () => void;
+        };
+      }).__cgrid;
+      (window as unknown as { __sortEvents: unknown[] }).__sortEvents = [];
+      grid.on('sortChanged', (e) => {
+        (window as unknown as { __sortEvents: unknown[] }).__sortEvents.push(e.sortModel);
+      });
+    });
+
+    const off = await canvasOffset(page);
+    await page.mouse.move(off.x + cusip!.x + cusip!.w / 2, off.y + cusip!.y + cusip!.h / 2);
+    await page.mouse.down();
+    await page.mouse.move(off.x + ticker!.x + ticker!.w * 0.75, off.y + ticker!.y + ticker!.h / 2, { steps: 10 });
+    await page.mouse.up();
+    // Settle so any spurious click → sort would fire.
+    await page.evaluate(
+      () => new Promise<void>((res) => {
+        let n = 0;
+        const tick = () => (++n >= 4 ? res() : requestAnimationFrame(tick));
+        requestAnimationFrame(tick);
+      }),
+    );
+
+    const events = await page.evaluate(
+      () => (window as unknown as { __sortEvents: unknown[] }).__sortEvents,
+    );
+    expect(events).toEqual([]);
+  });
+
   test('moveColumnByIndex API moves columns and fires columnMoved with source: "api"', async ({ page }) => {
     await gridReady(page);
     const before = await colIdsByDeclarationOrder(page);

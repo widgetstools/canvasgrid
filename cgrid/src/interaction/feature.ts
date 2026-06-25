@@ -72,6 +72,12 @@ export interface CGridLike {
   getHeaderName(colId: string): string | undefined;
   /** Cycle 6 / Task 1 — leaf header height for ghost geometry. */
   getLeafHeaderHeight(): number;
+  /** Cycle 6 / Task 1 — Y of the leaf header row's top in the canvas's
+   *  coordinate space. Non-zero when column groups are present (group
+   *  header rows stack above the leaf header). The drag ghost mounts at
+   *  this Y so it visually replaces the leaf header instead of floating
+   *  above the group header. */
+  getLeafHeaderTop(): number;
   cycleSort(colId: string): void;
   toggleColumnGroup(groupId: string): void;
   scrollBy(dx: number, dy: number): void;

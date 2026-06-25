@@ -48,8 +48,18 @@ type State = PressedState | DraggingState | null;
 
 export class ColumnDrag extends Feature {
   private state: State = null;
+  /** Set on mouseup at the end of a real drag. The browser fires a
+   *  `click` event after a drag if the cursor is still over the same
+   *  element — which would otherwise hit HeaderClick and cycle the
+   *  sort on the just-reordered column. Cleared on the next click
+   *  (consumed) or on the next mousedown (defensive). */
+  private suppressNextClick = false;
 
   override handleMouseDown(ctx: CGridEventCtx): void {
+    // A fresh press starts a new gesture. Clear any stale suppression
+    // flag from a previous drag whose click event never fired (rare,
+    // but possible if the cursor left the canvas between up and click).
+    this.suppressNextClick = false;
     if (ctx.hit.kind !== 'header') {
       super.handleMouseDown(ctx);
       return;
@@ -122,8 +132,19 @@ export class ColumnDrag extends Feature {
     if (target !== null) {
       ctx.grid.reorderColumn(state.colId, target, 'uiColumnDragged');
     }
-    // Drag completed — do NOT forward to downstream features so a drop on
-    // a header doesn't trigger HeaderClick's sort cycle.
+    // Drag completed — swallow the follow-up click event that the browser
+    // dispatches after mouseup, so HeaderClick doesn't cycle sort on the
+    // just-dragged column. Also do NOT forward mouseup to downstream
+    // features for the same reason.
+    this.suppressNextClick = true;
+  }
+
+  override handleClick(ctx: CGridEventCtx): void {
+    if (this.suppressNextClick) {
+      this.suppressNextClick = false;
+      return; // consume — the click is the tail of a drag, not a sort cycle
+    }
+    super.handleClick(ctx);
   }
 
   override handleMouseMove(ctx: CGridEventCtx): void {
@@ -175,13 +196,20 @@ function createGhost(ctx: CGridEventCtx, colId: string): HTMLDivElement | null {
   if (!host || typeof document === 'undefined') return null;
   const width = ctx.grid.columnWidthOf(colId) ?? 100;
   const height = ctx.grid.getLeafHeaderHeight?.() ?? 30;
+  // Mount at the leaf-header row's Y, not 0. With column groups present
+  // (the demo has the P&L group), the leaf header sits BELOW the group
+  // header rows; mounting at 0 would float the ghost above the wrong band.
+  const top = ctx.grid.getLeafHeaderTop?.() ?? 0;
   const ghost = document.createElement('div');
   ghost.className = GHOST_CLASS;
   ghost.textContent = ctx.grid.getHeaderName?.(colId) ?? colId;
+  // Background opacity lives on the background-color via color-mix so the
+  // text stays fully opaque (an element-level `opacity` would fade the
+  // headerName too, making it hard to read mid-drag).
   ghost.style.cssText = [
     'position:absolute',
     'pointer-events:none',
-    'top:0',
+    `top:${top}px`,
     'left:0',
     `width:${width}px`,
     `height:${height}px`,
@@ -189,12 +217,11 @@ function createGhost(ctx: CGridEventCtx, colId: string): HTMLDivElement | null {
     'padding:0 8px',
     'display:flex',
     'align-items:center',
-    'opacity:0.7',
-    'background:var(--cg-header-bg)',
+    'background:color-mix(in srgb, var(--cg-header-bg) 70%, transparent)',
     'color:var(--cg-header-fg)',
     'font:var(--cg-font)',
     'border:1px solid var(--cg-border-color)',
-    'box-shadow:0 2px 8px rgba(0,0,0,0.35)',
+    'box-shadow:0 4px 12px rgba(0,0,0,0.45)',
     'z-index:5',
     'white-space:nowrap',
     'overflow:hidden',

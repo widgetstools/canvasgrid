@@ -12,6 +12,7 @@ interface MockGrid {
   getOverlayHost: () => HTMLElement;
   getHeaderName: (id: string) => string;
   getLeafHeaderHeight: () => number;
+  getLeafHeaderTop: () => number;
 }
 
 function ctx(hit: Hit, point: { x: number; y: number }, grid: MockGrid): CGridEventCtx {
@@ -37,6 +38,7 @@ function makeGrid(overrides: Partial<MockGrid> = {}): MockGrid {
     getOverlayHost: () => host,
     getHeaderName: (id) => id.toUpperCase(),
     getLeafHeaderHeight: () => 30,
+    getLeafHeaderTop: () => 30,
     ...overrides,
   };
 }
@@ -109,16 +111,52 @@ describe('ColumnDrag', () => {
     const f = new ColumnDrag();
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = makeGrid({ getOverlayHost: () => host });
+    const grid = makeGrid({ getOverlayHost: () => host, getLeafHeaderTop: () => 30 });
     const hit: Hit = { kind: 'header', colId: 'a' };
     f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
     expect(host.querySelector('.cg-column-drag-ghost')).toBeNull();
     f.handleMouseDrag(ctx(hit, { x: 220, y: 8 }, grid));
-    expect(host.querySelector('.cg-column-drag-ghost')).not.toBeNull();
+    const ghost = host.querySelector('.cg-column-drag-ghost') as HTMLElement | null;
+    expect(ghost).not.toBeNull();
+    // Ghost mounts at the leaf-header Y (30 in the mock), NOT at top:0.
+    // With column groups present, top:0 would float the ghost above the
+    // group header instead of replacing the leaf header.
+    expect(ghost!.style.top).toBe('30px');
     expect(host.querySelector('.cg-column-drag-insertion-line')).not.toBeNull();
     f.handleMouseUp(ctx(hit, { x: 220, y: 8 }, grid));
     expect(host.querySelector('.cg-column-drag-ghost')).toBeNull();
     expect(host.querySelector('.cg-column-drag-insertion-line')).toBeNull();
+  });
+
+  it('swallows the click event that follows a drag so HeaderClick does not sort the dragged column', () => {
+    const f = new ColumnDrag();
+    const grid = makeGrid();
+    const downstream = vi.fn();
+    // Wire a fake downstream feature to detect whether handleClick
+    // reached past ColumnDrag.
+    f.next = { handleClick: downstream } as never;
+    const hit: Hit = { kind: 'header', colId: 'a' };
+    f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
+    f.handleMouseDrag(ctx(hit, { x: 220, y: 8 }, grid));
+    f.handleMouseUp(ctx(hit, { x: 220, y: 8 }, grid));
+    f.handleClick(ctx(hit, { x: 220, y: 8 }, grid));
+    expect(downstream).not.toHaveBeenCalled();
+    // The NEXT click (after a fresh gesture or no gesture) is not suppressed.
+    f.handleClick(ctx(hit, { x: 220, y: 8 }, grid));
+    expect(downstream).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not swallow the click after a press without movement (no drag)', () => {
+    const f = new ColumnDrag();
+    const grid = makeGrid();
+    const downstream = vi.fn();
+    // Stub both mouseup + click; the no-drag flow forwards mouseup.
+    f.next = { handleClick: downstream, handleMouseUp: vi.fn() } as never;
+    const hit: Hit = { kind: 'header', colId: 'a' };
+    f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
+    f.handleMouseUp(ctx(hit, { x: 10, y: 8 }, grid));
+    f.handleClick(ctx(hit, { x: 10, y: 8 }, grid));
+    expect(downstream).toHaveBeenCalledTimes(1);
   });
 
   it('does not start a drag on a cell hit', () => {
