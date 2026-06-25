@@ -29,4 +29,12 @@ export interface PainterCtx {
    * row has not been chunked yet. Cycle 6 / Task 7.
    */
   rowDataSnapshotAt: (rowIndex: number) => Record<string, unknown>;
+  /**
+   * Cycle 7 / Task 7 — pre-lowercased quick-filter terms. Empty when no
+   * quick filter is active. Painter calls `cellMatchesAnyQuickFilterTerm`
+   * per visible data cell and overrides `bg` with `theme.quickFilterMatchBg`
+   * on a hit. Reading lowercased upfront avoids re-lowering the term per
+   * cell per frame.
+   */
+  quickFilterLowerTerms: readonly string[];
 }

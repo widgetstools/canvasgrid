@@ -40,6 +40,10 @@
   --cg-floating-filter-bg: #ffffff;
   --cg-floating-filter-border: #d5dbe0;
   --cg-floating-filter-placeholder: #94a3b8;
+  /* Cycle 7 / Task 7 — background tint applied behind any cell whose
+   * value contains an active quick-filter term. Warm pale yellow keeps
+   * legible contrast with --cg-fg-color (#1a1f24) on light theme. */
+  --cg-quick-filter-match-bg: #fff3b8;
 }
 
 .cg-theme-quartz-dark {
@@ -69,6 +73,10 @@
   --cg-floating-filter-bg: transparent;
   --cg-floating-filter-border: #38507a;
   --cg-floating-filter-placeholder: #64748b;
+  /* Cycle 7 / Task 7 — muted amber tint so the highlight stays
+   * legible against --cg-fg-color (#cbd5e1) on dark theme without
+   * over-saturating. */
+  --cg-quick-filter-match-bg: #5a3a0e;
 }
 
 /* Native scrollbar styling (Chromium/WebKit) — visible thumb on dark track. */

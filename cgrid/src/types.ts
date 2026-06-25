@@ -152,6 +152,42 @@ export interface CGridOptions<TRow = any> {
   /** Pixel height of the floating-filter row. Defaults to `28`. Forwarded
    *  to `FloatingFilterSubgrid` + `FloatingFilterOverlay`. Cycle 7 / Task 1. */
   floatingFilterHeight?: number;
+  /** Cross-column quick filter text. When non-empty, the grid evaluates a
+   *  worker-side `QuickFilterPass` BEFORE the per-column `FilterPass`: the
+   *  text is split into terms by `quickFilterParser` (defaults to
+   *  whitespace) and a row passes only when every term is `includes`-matched
+   *  against the row's aggregate column text. Mutating this option at
+   *  runtime (`setGridOption('quickFilterText', value)`) re-runs the pass
+   *  and fires `filterChanged` with `source: 'quickFilter'`. Pass `''` or
+   *  `undefined` to clear. Cycle 7 / Task 7. */
+  quickFilterText?: string;
+  /** When `true`, the worker caches each row's aggregate quick-filter text
+   *  and reuses it across subsequent `quickFilterText` changes, so a hot
+   *  type-as-you-search loop reads from the cache instead of re-coercing
+   *  every cell value per keystroke. Invalidated when the column set
+   *  changes or when a transaction lands. Defaults to `false`. Cycle 7 /
+   *  Task 7. */
+  cacheQuickFilter?: boolean;
+  /** When `true`, hidden columns contribute to each row's aggregate
+   *  quick-filter text. When `false` (default) only visible columns
+   *  contribute. Cycle 7 / Task 7. */
+  includeHiddenColumnsInQuickFilter?: boolean;
+  /** Splits the quick-filter text into search terms. Runs on the main
+   *  thread once per `quickFilterText` change; the resulting `string[]`
+   *  ships to the worker. Defaults to
+   *  `text.split(/\s+/).filter(t => t.length > 0)`. Cycle 7 / Task 7. */
+  quickFilterParser?: (text: string) => string[];
+  /** Overrides the default match. The default — case-insensitive
+   *  `parts.every(p => agg.includes(p))` — runs on the worker, which lets
+   *  the per-row aggregate text never cross the main↔worker boundary.
+   *  Cycle 7 ships the API surface; arbitrary closures wait for Cycle
+   *  24's worker-module loader. When this is supplied in Cycle 7 the
+   *  function source is serialized via `Function.prototype.toString` and
+   *  reconstructed on the worker via `new Function(...)`; CSP-restricted
+   *  hosts that disallow `new Function` fall back to the default with a
+   *  `console.warn`. The matcher must be a PURE function — it must not
+   *  close over external scope. Cycle 7 / Task 7. */
+  quickFilterMatcher?: (parts: string[], rowAggregateText: string) => boolean;
   /**
    * Full-row edit mode. When `'fullRow'`, triggering an edit on any cell in
    * a row opens an editor for every editable column in that row
@@ -265,6 +301,18 @@ export interface CColDef<TRow = any, TValue = any> {
    *  for this column. Task 1 reserves the field; popups land in Tasks
    *  3-6 + 9. Cycle 7 / Task 1. */
   suppressFloatingFilterButton?: boolean;
+  /** Contributes a custom string to the row's quick-filter aggregate for
+   *  this column. The return value replaces the default `String(value)`
+   *  contribution. Useful when the cell value is an object / array whose
+   *  default coercion (`[object Object]`) carries no signal. Cycle 7 ships
+   *  the API surface; the callback runs on the main thread once per
+   *  `quickFilterText` change and the resulting per-row aggregate ships
+   *  to the worker as part of the column metadata. Arbitrary closures
+   *  wait for Cycle 24's worker-module loader — Cycle 7 serializes the
+   *  function via `Function.prototype.toString` and reconstructs on the
+   *  worker via `new Function(...)`; CSP-restricted hosts fall back to
+   *  `String(value)` with a `console.warn`. Cycle 7 / Task 7. */
+  getQuickFilterText?: (params: { value: TValue; data: TRow; colId: string }) => string;
   aggFunc?: 'sum' | 'avg' | 'min' | 'max' | 'count';
   sortable?: boolean;
   resizable?: boolean;
@@ -833,7 +881,17 @@ export type CGridEvent =
   | { type: 'viewportChanged'; firstRow: number; lastRow: number }
   | { type: 'modelUpdated'; visibleRowCount: number }
   | { type: 'sortChanged'; sortModel: SortModel }
-  | { type: 'filterChanged'; filterModel: FilterModel }
+  | {
+      type: 'filterChanged';
+      filterModel: FilterModel;
+      /** Labels the trigger so apps can correlate the event with the user
+       *  action that drove it. `'api'` is the default (a `setFilterModel`
+       *  call); `'columnFilter'` fires from a per-column model mutation;
+       *  `'quickFilter'` fires from `setGridOption('quickFilterText', ...)`.
+       *  `'externalFilter'` is reserved for Task 8. Optional for
+       *  back-compat — Tasks 1-6 emit without it. Cycle 7 / Task 7. */
+      source?: 'api' | 'quickFilter' | 'columnFilter' | 'externalFilter';
+    }
   | {
       type: 'columnResized';
       colId: string;

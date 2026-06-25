@@ -4,6 +4,7 @@ import type {
 import { collectViewportTransferables } from './protocol';
 import {
   RowStore, FilterPass, SortPass, AggPass, ViewportSlicer, TransactionQueue,
+  QuickFilterPass,
 } from './dataPipeline';
 import type { TransactionResult } from '../types';
 import type { WorkerColumn } from './protocol';
@@ -31,6 +32,10 @@ interface PendingMeasure {
 interface State {
   store: RowStore;
   filter: FilterPass;
+  /** Cycle 7 / Task 7 — runs before `filter` in the pipeline. `apply()`
+   *  returns `null` when no terms are set so the buildVisible composer
+   *  can short-circuit and skip the intersection. */
+  quickFilter: QuickFilterPass;
   sort: SortPass;
   agg: AggPass;
   slicer: ViewportSlicer;
@@ -57,7 +62,15 @@ export function createWorkerHost(post: PostFn): WorkerHost {
 
   function buildVisible(): string[] {
     if (!state) return [];
+    // Cycle 7 / Task 7 — QuickFilterPass runs BEFORE FilterPass. A null
+    // return means no quick-filter constraint, so we skip the intersection
+    // entirely.
+    const quickIds = state.quickFilter.apply();
     let ids = state.filter.apply();
+    if (quickIds !== null) {
+      const allow = new Set(quickIds);
+      ids = ids.filter((id) => allow.has(id));
+    }
     ids = state.sort.apply(ids);
     return ids;
   }
@@ -89,7 +102,17 @@ export function createWorkerHost(post: PostFn): WorkerHost {
 
     queue.setFlushFn((txs) => {
       const all: TransactionResult[] = [];
-      for (const tx of txs) all.push(store.apply(tx));
+      const touched = new Set<string>();
+      for (const tx of txs) {
+        const r = store.apply(tx);
+        all.push(r);
+        // Aggregate cache must drop any row that just mutated so the next
+        // QuickFilterPass.apply rebuilds against current values.
+        for (const a of r.add)    touched.add(a.rowId);
+        for (const u of r.update) touched.add(u.rowId);
+        for (const x of r.remove) touched.add(x.rowId);
+      }
+      state!.quickFilter.invalidateRows(touched);
       state!.visibleCache = null;
       post({ type: 'modelUpdated', visibleCount: invalidateAndCount() });
       return all;
@@ -97,10 +120,11 @@ export function createWorkerHost(post: PostFn): WorkerHost {
 
     state = {
       store,
-      filter: new FilterPass(store, payload.columns),
-      sort:   new SortPass(store, payload.columns),
-      agg:    new AggPass(store, payload.columns),
-      slicer: new ViewportSlicer(store, payload.columns),
+      filter:      new FilterPass(store, payload.columns),
+      quickFilter: new QuickFilterPass(store, payload.columns),
+      sort:        new SortPass(store, payload.columns),
+      agg:         new AggPass(store, payload.columns),
+      slicer:      new ViewportSlicer(store, payload.columns),
       queue,
       columns: payload.columns,
       visibleCache: null,
@@ -270,6 +294,13 @@ export function createWorkerHost(post: PostFn): WorkerHost {
               post({ id: req.id, type: 'transactionFlushed', results: { add: [], update: [], remove: [] } });
             } else {
               const results = state.store.apply({ add: add as any[], update: update as any[], remove, heightsByRowId });
+              // Cycle 7 / Task 7 — sync transactions also need the quick
+              // filter aggregate cache invalidated for the touched rows.
+              const touched = new Set<string>();
+              for (const a of results.add)    touched.add(a.rowId);
+              for (const u of results.update) touched.add(u.rowId);
+              for (const x of results.remove) touched.add(x.rowId);
+              state.quickFilter.invalidateRows(touched);
               state.visibleCache = null;
               post({ id: req.id, type: 'transactionFlushed', results });
               post({ type: 'modelUpdated', visibleCount: invalidateAndCount() });
@@ -303,9 +334,20 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             const cols = req.payload.columns;
             state.columns = cols;
             state.filter.setColumns(cols);
+            state.quickFilter.setColumns(cols);
             state.sort.setColumns(cols);
             state.agg.setColumns(cols);
             state.slicer.setColumns(cols);
+            state.visibleCache = null;
+            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: invalidateAndCount() });
+            break;
+          }
+
+          case 'setQuickFilter': {
+            const { terms, cacheQuickFilter, colIds } = req.payload;
+            state.quickFilter.setCacheEnabled(cacheQuickFilter);
+            state.quickFilter.setColIds(colIds);
+            state.quickFilter.setTerms(terms);
             state.visibleCache = null;
             post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: invalidateAndCount() });
             break;

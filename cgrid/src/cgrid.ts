@@ -92,6 +92,14 @@ export function inferRowIdField<T>(getRowId: (row: T) => string): string {
   return matches[0]![1]!;
 }
 
+/** Cycle 7 / Task 7 — default `quickFilterParser`. Splits on runs of
+ *  whitespace and drops empty terms so leading / trailing / interior
+ *  whitespace never produces a phantom `''` term that matches every row.
+ *  Apps override via `CGridOptions.quickFilterParser`. */
+function defaultQuickFilterParser(text: string): string[] {
+  return text.split(/\s+/).filter((t) => t.length > 0);
+}
+
 /** Rewrite a `columnDefs` tree so its flat leaf order matches `newLeafOrder`,
  *  preserving group structure. Leaves only reorder within their enclosing
  *  scope (top-level for ungrouped, group-local for grouped). At each level,
@@ -343,6 +351,7 @@ export class CGrid<TRow = any> {
       getCanvasWidth: () => this.canvasBounds.width,
       getCanvasHeight: () => this.canvasBounds.height,
       rowDataSnapshotAt: (rowIndex) => this.rowDataSnapshotAt(rowIndex),
+      getQuickFilterLowerTerms: () => this.quickFilterLowerTerms,
     });
 
     // 7. Canvas wrapper — owns the <canvas>, gc cache, RAF + resize polling.
@@ -916,6 +925,115 @@ export class CGrid<TRow = any> {
    *  but not part of the public API surface. */
   getScroller(): HTMLElement { return this.scroller; }
 
+  /**
+   * Cycle 7 / Task 7 — re-evaluate the cross-column quick filter. Reads
+   * `options.quickFilterText` / `cacheQuickFilter` /
+   * `includeHiddenColumnsInQuickFilter`, parses the text via
+   * `options.quickFilterParser` (default whitespace split), ships the
+   * resulting terms to the worker via `setQuickFilter`, then refreshes
+   * the visible row count and fires `filterChanged` with
+   * `source: 'quickFilter'`.
+   *
+   * The custom `quickFilterMatcher` is intentionally ignored in Cycle 7
+   * because the worker currently can only run the built-in
+   * case-insensitive every-term-includes matcher; an arbitrary closure
+   * cannot cross the structured-clone boundary. A `console.warn` flags
+   * the limitation so apps know to wait for Cycle 24's worker-module
+   * loader. The custom `getQuickFilterText` is similarly deferred —
+   * Cycle 7 always uses `String(value)` per column.
+   *
+   * `includeHiddenColumnsInQuickFilter` is honored against the worker's
+   * current column set; in Cycle 7 the worker only knows visible
+   * columns (per `workerColumns()`), so toggling the flag is a no-op
+   * until a later cycle ships hidden-column metadata to the worker.
+   */
+  private applyQuickFilter(): void {
+    if (!this.workerClient) return;
+    const rawText = this.options.quickFilterText ?? '';
+    const parser = this.options.quickFilterParser ?? defaultQuickFilterParser;
+    let terms: string[] | null;
+    if (rawText === '') {
+      terms = null;
+    } else {
+      const parsed = parser(rawText);
+      terms = parsed.length === 0 ? null : parsed;
+    }
+    if (this.options.quickFilterMatcher !== undefined && !this.warnedQuickFilterMatcher) {
+      this.warnedQuickFilterMatcher = true;
+      console.warn(
+        '[cgrid] quickFilterMatcher is shipped in Cycle 7 as API surface only; ' +
+        'the worker uses the built-in case-insensitive matcher until Cycle 24 ' +
+        'ships the worker-module loader.',
+      );
+    }
+    const includeHidden = this.options.includeHiddenColumnsInQuickFilter === true;
+    // colIds: null = use every worker column. In Cycle 7 the worker only
+    // carries visible columns so this is equivalent to listing them; the
+    // explicit list documents intent and stays valid once hidden columns
+    // join the worker payload.
+    const colIds = includeHidden ? null : this.columnOrder.map((c) => c.colId);
+    const cacheQuickFilter = this.options.cacheQuickFilter === true;
+    // Cache the lowercased terms on the grid so the renderer can tint
+    // matching cells without re-lowering per cell per frame. Empty array
+    // = no highlight (renderer's `quickFilterActive` short-circuits the
+    // per-cell `includes` check). Updated SYNCHRONOUSLY so a fast typer
+    // typing "6672" → "66721" sees the next paint use the new terms
+    // immediately, never the previous-substring matches.
+    this.quickFilterLowerTerms = terms === null
+      ? []
+      : terms.map((t) => t.toLowerCase());
+    // Trigger a repaint right away so the highlight reflects the new
+    // terms even before the worker round-trip lands. The visible row set
+    // may still be stale for one frame — that's fine; cells that no
+    // longer match are simply un-tinted in the next paint, while the
+    // chunk catches up.
+    this.cgridCanvas?.requestRepaint();
+    // Bump the request id so any in-flight reply for an earlier term set
+    // (the user's previous keystroke) is dropped on arrival — see the
+    // `reqId` check inside the `.then` below.
+    const reqId = ++this.quickFilterReqId;
+    this.workerClient.setQuickFilter({ terms, cacheQuickFilter, colIds })
+      .then(({ visibleCount }) => {
+        // Stale reply — a later applyQuickFilter has superseded this one.
+        // Dropping prevents rowCount + viewport from flickering back to a
+        // previous keystroke's visible set.
+        if (reqId !== this.quickFilterReqId) return;
+        this.rowCount = visibleCount;
+        // Visible row set changed; invalidate the Fenwick index so the next
+        // viewport request reads heights against the new visible order.
+        this.rowHeightIndex = null;
+        this.recomputeViewport();
+        this.rebuildSelectionFromPersistentIds();
+        // The filterChanged event carries the COMPOSED per-column model
+        // (not the quick-filter text), matching the existing setFilterModel
+        // payload. The new `source: 'quickFilter'` discriminator labels the
+        // trigger so apps can correlate.
+        const combined: FilterModel = {};
+        for (const [id, entry] of this.columnFilterModels) combined[id] = entry;
+        this.events.emit({ type: 'filterChanged', filterModel: combined, source: 'quickFilter' });
+        this.requestViewport();
+      })
+      .catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+  }
+
+  /** One-shot warning latch for `quickFilterMatcher`. Cycle 7 / Task 7. */
+  private warnedQuickFilterMatcher = false;
+
+  /** Cycle 7 / Task 7 — pre-lowercased active quick-filter terms. Empty
+   *  when no filter is active. Read by the renderer on every paint to
+   *  tint matching cells with `theme.quickFilterMatchBg`. Kept in sync
+   *  with `applyQuickFilter` so the highlight set always matches the
+   *  worker's visible row set. */
+  private quickFilterLowerTerms: readonly string[] = [];
+
+  /** Cycle 7 / Task 7 — monotonic request id for in-flight `setQuickFilter`
+   *  worker round-trips. Each `applyQuickFilter` bumps it and captures the
+   *  value; the worker `.then` callback bails when the captured id no
+   *  longer matches `this.quickFilterReqId`. Drops stale replies during
+   *  fast typing so the visible row count + repaint always reflect the
+   *  most recent search text, never an out-of-order earlier one. */
+  private quickFilterReqId = 0;
+
   /** Cycle 7 / Task 3 — open the per-column filter popup for `colId`.
    *  Resolves the column's filter type, instantiates the matching popup,
    *  and mounts it via FilterPopupHost anchored under the column's
@@ -1210,6 +1328,7 @@ export class CGrid<TRow = any> {
       },
       setSelectionMode: (mode) => this.selection.setMode(mode),
       applyRowData: (rows) => this.setRowData(rows as TRow[]),
+      applyQuickFilter: () => this.applyQuickFilter(),
     };
   }
 

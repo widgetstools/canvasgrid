@@ -51,6 +51,8 @@ describe('Renderer', () => {
       getSortModel: () => [],
       getCanvasWidth: () => 800,
       getCanvasHeight: () => 600,
+      rowDataSnapshotAt: () => ({}),
+      getQuickFilterLowerTerms: () => [],
     });
     r.paint(gc);
     // The very first fillRect call must be the full-canvas bg fill — this is
