@@ -60,6 +60,22 @@ export class RangeSelection extends Feature {
     }
     const e = ctx.raw as MouseEvent;
     const sel = ctx.grid.selection;
+    // Cycle 9 patch / Task 1 — right-click on a cell INSIDE the current
+    // range MUST preserve the range so the context menu's Copy serialises
+    // the visible block (not a 1×1 collapsed at the click). Focus still
+    // moves to the clicked cell so the menu's actions read the clicked
+    // cell. Right-clicks OUTSIDE the range fall through to the plain-anchor
+    // path below — the menu still gets a fresh 1×1 to act on.
+    //
+    // No `super.handleMouseDown` here: CellSelection's mousedown would call
+    // `selectSingle` which clears row selection. The matching CellSelection
+    // guard (right-click on a selected row) handles the OUTSIDE-the-range
+    // case downstream.
+    if (e.button === 2 && sel.isInsideAnyRange(ctx.hit.rowIndex, ctx.hit.colId)) {
+      sel.setFocus(ctx.hit.rowIndex, ctx.hit.colId);
+      this.state = null;
+      return;
+    }
     // Shift-click: discrete extend of the last range. Falls back to a fresh
     // 1x1 anchor when no range exists yet so the first shift-click of a
     // session still gives the user something to extend from. No drag state

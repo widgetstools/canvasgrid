@@ -231,6 +231,21 @@ export class SelectionModel {
     return this._state.ranges.slice();
   }
 
+  /** True when `(rowIndex, colId)` falls inside any rect in `state.ranges`.
+   *  Used by mousedown handlers to decide whether a right-click should
+   *  preserve the existing range (click landed INSIDE) or replace it
+   *  (click landed OUTSIDE). Cycle 9 patch / Task 1. */
+  isInsideAnyRange(rowIndex: number, colId: string): boolean {
+    const ranges = this._state.ranges;
+    for (let i = 0; i < ranges.length; i++) {
+      const r = ranges[i]!;
+      if (rowIndex >= r.rowStart && rowIndex <= r.rowEnd && r.colIds.includes(colId)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   /** API path: set focus by rowId. Caller resolves the index via the worker
    *  (or passes -1 / null when the row is unknown). The persistent id is
    *  kept even when the index is unresolved so a later rebuild can restore
