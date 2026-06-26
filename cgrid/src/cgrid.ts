@@ -6,6 +6,7 @@ import type {
   CGridOptions, CGridEvent, CGridApi, Tx, TransactionResult, SortModel, FilterModel,
   CFilterModelEntry, GroupModel, FlashCellsParams, SelectionRange,
 } from './types';
+import type { ToolPanel } from './interaction/toolPanels/types';
 import { TypedEventEmitter } from './core/eventEmitter';
 import { type ResolvedColDef, applyCellProps } from './core/propertyChain';
 import { resolveColumnTree, isColGroupDef, type ColumnTree } from './core/columnTree';
@@ -2579,6 +2580,25 @@ export class CGrid<TRow = any> {
 
   refresh(): void { this.cgridCanvas.requestRepaint(); }
 
+  /** Cycle 11 / Task 5 — re-render a mounted tool panel. Forwards to
+   *  the live instance's `refresh()`; silent no-op when no side bar
+   *  is configured, `id` is unknown, or the panel has never been
+   *  opened (panels instantiate on open, destroy on close, so an
+   *  unopened panel has no instance for `refresh()` to fire on). */
+  refreshToolPanel(id: string): void {
+    this.sideBar?.getInstance(id)?.refresh();
+  }
+
+  /** Cycle 11 / Task 5 — the live `ToolPanel` instance for `id`, or
+   *  `null` when no side bar is configured, `id` is unknown, or the
+   *  panel is registered but not currently mounted (e.g. user hasn't
+   *  opened the tab yet, or just closed it). Built-in IDs
+   *  (`agColumnsToolPanel`, `agFiltersToolPanel`) and custom IDs from
+   *  `CGridOptions.components` are both reachable through this surface. */
+  getToolPanelInstance(id: string): ToolPanel | null {
+    return this.sideBar?.getInstance(id) ?? null;
+  }
+
   /** Cycle 11 / Task 2 — adjust the canvas region's left/right gutter
    *  to make room for the side bar. Called by `SideBarHost` on mount,
    *  open, close, position toggle, hide/show, and at the end of a
@@ -2857,6 +2877,8 @@ export class CGrid<TRow = any> {
       getColumnGroupState: () => this.columnGroupState.getState(),
       setColumnGroupState: (s) => { this.columnGroupState.apply(s); },
       resetColumnGroupState: () => this.columnGroupState.reset(),
+      refreshToolPanel: (id) => this.refreshToolPanel(id),
+      getToolPanelInstance: (id) => this.getToolPanelInstance(id),
       getGridOption: (k) => this.getGridOption(k as keyof CGridOptions<TRow>) as any,
       setGridOption: (k, v) => this.setGridOption(k as keyof CGridOptions<TRow>, v as any),
       updateGridOptions: (p) => this.updateGridOptions(p as Partial<CGridOptions<TRow>>),

@@ -682,6 +682,147 @@ describe('CGrid integration', () => {
       grid.destroy();
     });
   });
+
+  // Cycle 11 / Task 5 — refreshToolPanel + getToolPanelInstance API.
+  //
+  // Both methods reach through the SideBarHost. The built-in Columns +
+  // Filters panel ctors expect a full ResolvedColDef map at init, which
+  // construction-time tests don't have set up cleanly — instead these
+  // tests override the built-ins via `CGridOptions.components` with a
+  // recording stub that just bumps a refresh counter on each call. That
+  // also doubles as the custom-panel test: registering `'demoPanel'`
+  // and `'agColumnsToolPanel'` in the same `components` map exercises
+  // both the built-in-override path and the custom-id path through one
+  // surface.
+  describe('refreshToolPanel + getToolPanelInstance (Cycle 11 / Task 5)', () => {
+    class RecordingPanel {
+      refreshCount = 0;
+      destroyCount = 0;
+      readonly gui = document.createElement('div');
+      init(): void { this.gui.className = 'cg-recording-panel'; }
+      getGui(): HTMLElement { return this.gui; }
+      refresh(): void { this.refreshCount += 1; }
+      destroy(): void { this.destroyCount += 1; }
+    }
+
+    function makeGrid() {
+      const container = document.createElement('div');
+      container.style.cssText = 'width:800px; height:600px;';
+      container.className = 'cg-theme-quartz';
+      document.body.appendChild(container);
+      const grid = new CGrid<{ id: string; a: number }>(container, {
+        columnDefs: [{ field: 'id' }, { field: 'a' }],
+        getRowId: (r) => r.id,
+        components: {
+          // Override both built-ins with the recording stub so init() is
+          // cheap (no column-state read, no filter-type lookup).
+          agColumnsToolPanel: RecordingPanel as unknown as new () => RecordingPanel,
+          agFiltersToolPanel: RecordingPanel as unknown as new () => RecordingPanel,
+          demoPanel: RecordingPanel as unknown as new () => RecordingPanel,
+        },
+        sideBar: {
+          toolPanels: [
+            { id: 'agColumnsToolPanel', labelDefault: 'Columns', toolPanel: 'agColumnsToolPanel' },
+            { id: 'agFiltersToolPanel', labelDefault: 'Filters', toolPanel: 'agFiltersToolPanel' },
+            { id: 'demoPanel', labelDefault: 'Demo', toolPanel: 'demoPanel' },
+          ],
+        },
+      });
+      return { grid, container };
+    }
+
+    it('refreshToolPanel(id) is a silent no-op when the panel is registered but not yet mounted', () => {
+      const { grid } = makeGrid();
+      const api = (grid as any).makeApi();
+      // No panel opened yet — no instance to refresh against. Must NOT
+      // throw; SideBarHost.getInstance returns null for an unmounted slot.
+      expect(() => api.refreshToolPanel('agColumnsToolPanel')).not.toThrow();
+      expect(() => api.refreshToolPanel('demoPanel')).not.toThrow();
+      grid.destroy();
+    });
+
+    it('refreshToolPanel(id) is a silent no-op for unknown ids', () => {
+      const { grid } = makeGrid();
+      const api = (grid as any).makeApi();
+      expect(() => api.refreshToolPanel('does-not-exist')).not.toThrow();
+      grid.destroy();
+    });
+
+    it('refreshToolPanel(id) calls the live instance refresh() once per call', () => {
+      const { grid } = makeGrid();
+      const api = (grid as any).makeApi();
+      // Open the built-in panel so an instance exists.
+      (grid as any).sideBar.openPanel('agColumnsToolPanel');
+      const instance = api.getToolPanelInstance('agColumnsToolPanel') as RecordingPanel;
+      expect(instance).not.toBeNull();
+      expect(instance.refreshCount).toBe(0);
+      api.refreshToolPanel('agColumnsToolPanel');
+      expect(instance.refreshCount).toBe(1);
+      api.refreshToolPanel('agColumnsToolPanel');
+      api.refreshToolPanel('agColumnsToolPanel');
+      expect(instance.refreshCount).toBe(3);
+      grid.destroy();
+    });
+
+    it('refreshToolPanel(id) works for custom (app-supplied) panel ids too', () => {
+      const { grid } = makeGrid();
+      const api = (grid as any).makeApi();
+      (grid as any).sideBar.openPanel('demoPanel');
+      const instance = api.getToolPanelInstance('demoPanel') as RecordingPanel;
+      expect(instance).not.toBeNull();
+      expect(instance.refreshCount).toBe(0);
+      api.refreshToolPanel('demoPanel');
+      expect(instance.refreshCount).toBe(1);
+      grid.destroy();
+    });
+
+    it('getToolPanelInstance(id) returns null when no panel for that id is mounted', () => {
+      const { grid } = makeGrid();
+      const api = (grid as any).makeApi();
+      // Nothing opened yet — every slot starts with `instance: null`.
+      expect(api.getToolPanelInstance('agColumnsToolPanel')).toBeNull();
+      expect(api.getToolPanelInstance('demoPanel')).toBeNull();
+      grid.destroy();
+    });
+
+    it('getToolPanelInstance(id) returns null for unknown ids', () => {
+      const { grid } = makeGrid();
+      const api = (grid as any).makeApi();
+      expect(api.getToolPanelInstance('does-not-exist')).toBeNull();
+      grid.destroy();
+    });
+
+    it('getToolPanelInstance(id) returns the live instance after openPanel and null again after close', () => {
+      const { grid } = makeGrid();
+      const api = (grid as any).makeApi();
+      (grid as any).sideBar.openPanel('agFiltersToolPanel');
+      const live = api.getToolPanelInstance('agFiltersToolPanel') as RecordingPanel;
+      expect(live).not.toBeNull();
+      expect(live.gui.className).toBe('cg-recording-panel');
+      // Close — host calls destroy() and drops the reference. The next
+      // lookup returns null even though the slot is still registered.
+      (grid as any).sideBar.closePanel();
+      expect(live.destroyCount).toBe(1);
+      expect(api.getToolPanelInstance('agFiltersToolPanel')).toBeNull();
+      grid.destroy();
+    });
+
+    it('both methods are silent no-ops when no side bar is configured', () => {
+      const container = document.createElement('div');
+      container.style.cssText = 'width:800px; height:600px;';
+      container.className = 'cg-theme-quartz';
+      document.body.appendChild(container);
+      const grid = new CGrid<{ id: string }>(container, {
+        columnDefs: [{ field: 'id' }],
+        getRowId: (r) => r.id,
+        // No `sideBar` option — `this.sideBar` stays null on CGrid.
+      });
+      const api = (grid as any).makeApi();
+      expect(() => api.refreshToolPanel('agColumnsToolPanel')).not.toThrow();
+      expect(api.getToolPanelInstance('agColumnsToolPanel')).toBeNull();
+      grid.destroy();
+    });
+  });
 });
 
 describe('inferRowIdField', () => {
