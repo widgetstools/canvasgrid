@@ -20,3 +20,9 @@ apps/*/package-lock.json
 # Playwright artifacts
 test-results/
 playwright-report/
+
+# Autonomous task runner logs (one file per task per run)
+.runner-logs/
+
+# Local-only: chrome-devtools-mcp scratch screenshots
+.playwright-mcp/
