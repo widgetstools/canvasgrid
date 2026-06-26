@@ -1679,6 +1679,13 @@ export interface CGridApi {
    *  included. Pair with `applyColumnState` for layout persistence.
    *  Cycle 6 / Task 2. */
   getColumnState(): CColumnState[];
+  /** Returns the resolved `headerName` for `colId`, or `undefined` when
+   *  the column is unknown or has no `headerName` set. Mirrors ag-grid's
+   *  `getDisplayNameForColumn` for the labelling needs of the side-bar
+   *  tool panels (Cycle 11 / Task 3) without forcing them to crack open
+   *  the internal `columnDefsMap`. Hidden leaves still resolve — the
+   *  Columns panel lists hidden columns with their headerName intact. */
+  getColumnHeaderName(colId: string): string | undefined;
   /** Restore column state. Returns `true` when every `state[].colId`
    *  matched a known leaf; `false` when at least one entry was dropped.
    *  Mutates `columnDefsMap` in place through a single re-layout +
