@@ -16,6 +16,7 @@ import type {
 type WorkerFilterModelEntry = FilterModelEntryLegacy;
 import type { WorkerColumn, ViewportRequest, ViewportChunk } from './protocol';
 import { encodeText } from './chunkFormat';
+import { ComparatorRegistry } from './comparatorRegistry';
 
 /** Source-of-truth row storage in the worker. Keyed by rowIdField on each row. */
 export class RowStore<TRow = any> {
@@ -749,9 +750,19 @@ function parseDateMs(raw: unknown): number | null {
 export class SortPass<TRow = any> {
   private model: SortModel = [];
   private colIndex = new Map<string, WorkerColumn>();
+  private comparators: ComparatorRegistry;
 
-  constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
+  /** `comparators` is optional so existing callers (tests, demos) don't have
+   *  to thread a registry through every construction. When omitted the
+   *  pass behaves exactly as it did pre-Cycle 8 — every column uses the
+   *  built-in text/number `compare()`. Cycle 8 / Task 3. */
+  constructor(
+    private store: RowStore<TRow>,
+    columns: WorkerColumn[],
+    comparators?: ComparatorRegistry,
+  ) {
     this.setColumns(columns);
+    this.comparators = comparators ?? new ComparatorRegistry();
   }
 
   setModel(model: SortModel): void { this.model = model; }
@@ -764,16 +775,24 @@ export class SortPass<TRow = any> {
   apply(inputIds: string[]): string[] {
     if (this.model.length === 0) return inputIds;
     const sorted = inputIds.slice();
+    // Pre-resolve the comparator function per sort-model entry so we don't
+    // re-walk the registry inside the hot N log N comparator. Unknown names
+    // (registration race, dropped registration) fall back to the built-in
+    // compare so the sort never crashes mid-pipeline.
+    const resolved = this.model.map((entry) => {
+      const col = this.colIndex.get(entry.colId);
+      const fn = col?.comparator ? this.comparators.get(col.comparator) : undefined;
+      return { entry, col, fn };
+    });
     sorted.sort((aId, bId) => {
       const aRow = this.store.getById(aId);
       const bRow = this.store.getById(bId);
       if (!aRow || !bRow) return 0;
-      for (const entry of this.model) {
-        const col = this.colIndex.get(entry.colId);
+      for (const { entry, col, fn } of resolved) {
         if (!col || !col.field) continue;
         const av = (aRow as Record<string, unknown>)[col.field];
         const bv = (bRow as Record<string, unknown>)[col.field];
-        const cmp = compare(av, bv, col.type);
+        const cmp = fn ? fn(av, bv) : compare(av, bv, col.type);
         if (cmp !== 0) return entry.direction === 'asc' ? cmp : -cmp;
       }
       return 0;

@@ -1,5 +1,5 @@
 import 'cgrid/style.css';
-import { createPositionsGrid, setPositiveOnlyFilter } from './positionsGrid';
+import { createPositionsGrid, setPositiveOnlyFilter, setPinSelectedToTop } from './positionsGrid';
 import { connectStomp, STOMP_PUBLISH_RATE_PER_SEC } from './stomp';
 
 const host = document.getElementById('grid');
@@ -181,6 +181,18 @@ const positivePnlCheckbox = document.getElementById('ext-positive-pnl') as HTMLI
 if (positivePnlCheckbox) {
   positivePnlCheckbox.addEventListener('change', () => {
     setPositiveOnlyFilter(grid, positivePnlCheckbox.checked);
+  });
+}
+
+// Cycle 8 / Task 4 — toolbar "Pin selected to top" checkbox. Toggling on
+// snapshots the current selection into the demo's pin set; the
+// `postSortRows` callback then moves those rows to the top regardless
+// of the active sort. Toggling off clears the pin set. The toggle
+// re-applies the current sort model to fire the post-sort hook.
+const pinSelectedCheckbox = document.getElementById('pin-selected-top') as HTMLInputElement | null;
+if (pinSelectedCheckbox) {
+  pinSelectedCheckbox.addEventListener('change', () => {
+    setPinSelectedToTop(grid, pinSelectedCheckbox.checked);
   });
 }
 

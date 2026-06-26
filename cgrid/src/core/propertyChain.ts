@@ -40,7 +40,12 @@ export interface ResolvedColDef<TRow = any> {
   cellRendererParams?: unknown;
   /** Per-cell renderer selector (see `CCellRendererSelector`). */
   cellRendererSelector?: CCellRendererSelector<TRow>;
-  comparator?: (a: unknown, b: unknown, ar: TRow, br: TRow) => number;
+  /** Either a registered comparator name (string — preferred, runs
+   *  worker-side) or an inline closure (throws at `setSortModel` time
+   *  because closures don't cross `postMessage`). Cycle 8 / Task 3
+   *  widened the field; the original closure shape is preserved so the
+   *  surface only widens, never narrows. */
+  comparator?: string | ((a: unknown, b: unknown, ar: TRow, br: TRow) => number);
   filter?: 'text' | 'number' | 'date' | 'set';
   /** Per-column override of `CGridOptions.floatingFilter`. `undefined` means
    *  inherit the grid-level value at `rebuildSubgridStack` time. The

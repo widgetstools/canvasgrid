@@ -53,6 +53,13 @@ export interface WorkerColumn {
    *  for Cycle 24's worker-module loader. Only meaningful when
    *  `filter === 'text'`. */
   textFormatter?: 'lowercase' | 'uppercase' | 'trim';
+  /** Cycle 8 / Task 3 — name of a comparator registered with the worker
+   *  via `registerComparator`. When set, `SortPass.apply` looks the name
+   *  up in the worker's `ComparatorRegistry` and dispatches the cell
+   *  compare through the registered function. Unknown names fall back
+   *  to the built-in compare so a registration race never crashes the
+   *  pipeline. */
+  comparator?: string;
 }
 
 export interface ViewportRequest {
@@ -194,7 +201,28 @@ export type WorkerRequest =
    *  silently dropped. Empty colIds means "every column with a field
    *  in this rowId" — the worker expands. The flash actually
    *  appears in the next `getViewport` reply's `flashMask`. */
-  | { id: ReqId; type: 'flashCells'; payload: { rowIds: string[]; colIds: string[] } };
+  | { id: ReqId; type: 'flashCells'; payload: { rowIds: string[]; colIds: string[] } }
+  /** Cycle 8 / Task 3 — register a custom comparator under `name`.
+   *  `source` is the `Function.prototype.toString()` form of the app's
+   *  comparator function; the worker reconstructs the callable via
+   *  `new Function("return (" + source + ")")()`. The function MUST
+   *  be pure and may not close over external scope (the reconstruction
+   *  is a fresh function in the worker's global scope). Re-registering
+   *  overwrites. */
+  | { id: ReqId; type: 'registerComparator'; payload: { name: string; source: string } }
+  /** Cycle 8 / Task 4 — toggle the post-sort round-trip on the worker.
+   *  When `present: true`, `buildVisibleAsync` pauses after `SortPass.apply`
+   *  and before viewport slicing to push the sorted rowIds to main via
+   *  `postSortRowsRequest`; it then awaits a `postSortRowsResult` for the
+   *  same `callId` before resuming. When `present: false`, the pipeline
+   *  runs end-to-end with zero round-trip overhead. Resolves with the
+   *  post-toggle visible row count. */
+  | { id: ReqId; type: 'setPostSortRowsPresent'; payload: { present: boolean } }
+  /** Cycle 8 / Task 4 — main-side reply to a `postSortRowsRequest` push.
+   *  The worker matches `callId` to the in-flight pipeline and resumes
+   *  with `reordered` as the post-sort row order. The original pipeline
+   *  request's reply fires once the worker resumes and finishes. */
+  | { id: ReqId; type: 'postSortRowsResult'; payload: { callId: number; reordered: string[] } };
 
 export type WorkerResponse =
   | { id: ReqId; type: 'ready' }
@@ -236,7 +264,13 @@ export type WorkerPush =
    *  final visible set). Main runs `doesExternalFilterPass` for each id
    *  against its row-data cache and replies with `externalFilterResult`
    *  carrying the same `callId` and the surviving subset. */
-  | { type: 'externalFilterCandidates';  callId: number; rowIds: string[] };
+  | { type: 'externalFilterCandidates';  callId: number; rowIds: string[] }
+  /** Cycle 8 / Task 4 — pushed mid-pipeline when `postSortRowsPresent` is
+   *  active. `rowIds` is the post-SortPass row order. Main runs
+   *  `options.postSortRows({ rowIds, getData })` against its row-data cache
+   *  and replies with `postSortRowsResult` carrying the same `callId` and
+   *  the (possibly re-ordered) array. */
+  | { type: 'postSortRowsRequest';       callId: number; rowIds: string[] };
 
 /** Build the transfer list for a viewport response. */
 export function collectViewportTransferables(chunk: ViewportChunk): ArrayBufferLike[] {

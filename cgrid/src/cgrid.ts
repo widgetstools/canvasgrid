@@ -665,6 +665,11 @@ export class CGrid<TRow = any> {
       // `doesExternalFilterPass` evaluation. Run the predicate against
       // the cached row data and reply with the surviving subset.
       onExternalFilterCandidates: (rowIds, callId) => this.runExternalFilterCandidates(rowIds, callId),
+      // Cycle 8 / Task 4 — worker pushed the post-SortPass rowId order
+      // up for main-side `postSortRows` evaluation. Run the hook against
+      // the cached row data and reply with the (possibly re-ordered)
+      // array.
+      onPostSortRowsCandidates: (rowIds, callId) => this.runPostSortRowsCandidates(rowIds, callId),
       onError: (msg) => console.error('[cgrid] worker error:', msg),
     });
 
@@ -695,6 +700,13 @@ export class CGrid<TRow = any> {
       // column) the round-trip is skipped entirely.
       if (this.sortModel.length > 0) {
         await this.workerClient.setSortModel(this.sortModel).catch(() => {});
+      }
+      // Cycle 8 / Task 4 — when `postSortRows` is configured, register
+      // the round-trip BEFORE the first setRowData so the very first
+      // visible-build runs the hook. Skipped when the option is absent;
+      // the worker's pipeline then runs end-to-end with zero overhead.
+      if (typeof this.options.postSortRows === 'function') {
+        await this.workerClient.setPostSortRowsPresent(true).catch(() => {});
       }
       this.events.emit({ type: 'gridReady', api: this.makeApi() });
       if (options.rowData) this.setRowData(options.rowData);
@@ -1003,6 +1015,42 @@ export class CGrid<TRow = any> {
     });
   }
 
+  /** Cycle 8 / Task 4 — main-side reply to the worker's
+   *  `postSortRowsRequest` push. Runs `options.postSortRows` against the
+   *  cached row map and ships the (possibly re-ordered) array back. When
+   *  the hook isn't configured or throws, the original sorted order is
+   *  echoed back so the worker resumes with no change. The
+   *  `getData(rowId)` accessor reads from `rowDataById` so the hook can
+   *  resolve full row records without ferrying the map across the
+   *  worker boundary. */
+  private runPostSortRowsCandidates(rowIds: string[], callId: number): void {
+    const hook = this.options.postSortRows as
+      | ((p: { rowIds: string[]; getData: (id: string) => TRow | undefined }) => string[])
+      | undefined;
+    if (typeof hook !== 'function') {
+      this.workerClient.postSortRowsResult(callId, rowIds).catch(() => {});
+      return;
+    }
+    let reordered: string[];
+    try {
+      const result = hook({ rowIds, getData: (id) => this.rowDataById.get(id) });
+      // Guard against bad hook returns. A non-array (or one with mismatched
+      // length / unknown ids) would silently corrupt the visible set —
+      // fall back to the input order instead.
+      if (Array.isArray(result) && result.length === rowIds.length) {
+        reordered = result;
+      } else {
+        reordered = rowIds;
+      }
+    } catch (err) {
+      if (!this.destroyed) console.error('[cgrid] postSortRows hook threw:', err);
+      reordered = rowIds;
+    }
+    this.workerClient.postSortRowsResult(callId, reordered).catch((err) => {
+      if (!this.destroyed) console.error('[cgrid] postSortRowsResult:', err);
+    });
+  }
+
   /** Cycle 7 / Task 8 — re-run the filter pipeline. Used after mutating
    *  any state the external-filter predicate closes over (e.g. a toolbar
    *  checkbox). Resolves the current value of
@@ -1063,7 +1111,32 @@ export class CGrid<TRow = any> {
 
   flushAsyncTransactions(): void { /* Foundation: deferred — relies on worker's setTimeout */ }
 
+  /** Cycle 8 / Task 4 — read the active sort model. Mirrors the api
+   *  object's `getSortModel` so callers that hold a CGrid reference (e.g.
+   *  app-side helpers driving a toolbar button) don't need to stash the
+   *  api separately. Returns a copy so callers can mutate freely. */
+  getSortModel(): SortModel {
+    return this.sortModel.slice();
+  }
+
   setSortModel(s: SortModel): void {
+    // Cycle 8 / Task 3 — reject inline-closure comparators at the
+    // setSortModel boundary. Closures can't ride `postMessage` to the
+    // worker (functions aren't structured-cloneable), so a column with
+    // `comparator: (a, b) => …` would silently fall back to the default
+    // text/number compare on the worker — surprising and hard to debug.
+    // Throwing here points the app at `registerComparator`, which round-
+    // trips a serialised function through `new Function` on the worker.
+    for (const entry of s) {
+      const col = this.columnDefsMap.get(entry.colId);
+      if (col && typeof col.comparator === 'function') {
+        throw new Error(
+          `[cgrid] column '${entry.colId}' has an inline-closure comparator; ` +
+          `sort runs worker-side and closures don't cross postMessage. ` +
+          `Use api.registerComparator(name, fn) and set comparator: name on the col def.`,
+        );
+      }
+    }
     this.sortModel = s;
     this.workerClient.setSortModel(s).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
@@ -1893,6 +1966,8 @@ export class CGrid<TRow = any> {
       updateGridOptions: (p) => this.updateGridOptions(p as Partial<CGridOptions<TRow>>),
       registerCellRenderer: (n, p) => this.registerCellRenderer(n, p),
       registerCellEditor: (n, c) => this.registerCellEditor(n, c),
+      registerComparator: <TValue = unknown>(n: string, f: (a: TValue, b: TValue) => number) =>
+        this.registerComparator<TValue>(n, f),
       startEditingCell: (r, c) => this.openEditor(r, c),
       stopEditing: (cancel) => this.stopEditing(cancel),
       on: (t, h) => this.on(t as CGridEvent['type'], h as any),
@@ -1952,6 +2027,13 @@ export class CGrid<TRow = any> {
       if (c.filter === 'text') {
         const fp = c.filterParams as import('./types').CTextFilterParams | undefined;
         if (fp?.textFormatter) base.textFormatter = fp.textFormatter;
+      }
+      // Cycle 8 / Task 3 — forward the registered comparator NAME only.
+      // Inline closures don't cross `postMessage`; they're rejected at
+      // setSortModel time with a clear error pointing the app at
+      // `registerComparator`.
+      if (typeof c.comparator === 'string') {
+        base.comparator = c.comparator;
       }
       // Cycle 5 / Task 8 — forward autoHeight metadata so the worker can
       // measure wrapped text without re-walking the column tree. Width is
@@ -3397,6 +3479,21 @@ export class CGrid<TRow = any> {
    *  overridden by re-registering. */
   registerCellEditor(name: string, ctor: CellEditorCtor): void {
     this.cellEditorRegistry.register(name, ctor);
+  }
+
+  /** Cycle 8 / Task 3 — register a named comparator. String-serialises
+   *  the function via `Function.prototype.toString()` and ships it to
+   *  the worker, which reconstructs it via `new Function(...)`. Column
+   *  defs then reference it by string name (`comparator: 'name'`).
+   *  Returns a Promise that resolves once the worker acknowledges the
+   *  registration so the caller can await it before the first
+   *  `setSortModel` that depends on the comparator. */
+  registerComparator<TValue = unknown>(
+    name: string,
+    fn: (a: TValue, b: TValue) => number,
+  ): Promise<void> {
+    if (this.destroyed) return Promise.resolve();
+    return this.workerClient.registerComparator(name, fn.toString());
   }
 
   /** Subscribe to a typed grid event. Returns an unsubscribe. */

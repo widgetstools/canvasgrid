@@ -25,6 +25,14 @@ export interface WorkerClientHandlers {
    *  result lands; firing twice with different callIds is OK (each pipeline
    *  request gets its own callId). */
   onExternalFilterCandidates?: (rowIds: string[], callId: number) => void;
+  /** Cycle 8 / Task 4 — worker has reached the post-sort step and is
+   *  shipping the post-`SortPass` rowId order up for the main thread to
+   *  feed through `options.postSortRows`. Reply with the (possibly
+   *  re-ordered) rowId array via
+   *  `WorkerClient.postSortRowsResult(callId, reordered)`. The worker
+   *  holds the rest of the pipeline open on `callId` until the result
+   *  lands. */
+  onPostSortRowsCandidates?: (rowIds: string[], callId: number) => void;
 }
 
 export interface WorkerLike {
@@ -60,6 +68,8 @@ export class WorkerClient {
       this.handlers.onMeasureTextRequest?.(msg.batchId, msg.items);
     } else if (msg.type === 'externalFilterCandidates') {
       this.handlers.onExternalFilterCandidates?.(msg.rowIds, msg.callId);
+    } else if (msg.type === 'postSortRowsRequest') {
+      this.handlers.onPostSortRowsCandidates?.(msg.rowIds, msg.callId);
     }
   }
 
@@ -184,6 +194,43 @@ export class WorkerClient {
   flashCells(rowIds: string[], colIds: string[]): Promise<void> {
     return this.send<{ visibleCount: number }>({
       type: 'flashCells', payload: { rowIds, colIds },
+    }).then(() => {});
+  }
+
+  /** Cycle 8 / Task 3 — register a named comparator. `source` is the
+   *  function's `Function.prototype.toString()` form; the worker
+   *  reconstructs the callable via `new Function(...)`. Sort runs
+   *  worker-side so the registration MUST round-trip the worker before
+   *  the next `setSortModel` is honored. Resolves once the worker
+   *  acknowledges the registration. */
+  registerComparator(name: string, source: string): Promise<void> {
+    return this.send<{ visibleCount: number }>({
+      type: 'registerComparator', payload: { name, source },
+    }).then(() => {});
+  }
+
+  /** Cycle 8 / Task 4 — toggle the post-sort round-trip on the worker.
+   *  When `present: true`, every subsequent pipeline pass pauses after
+   *  the `SortPass` to push the sorted rowIds to main via
+   *  `onPostSortRowsCandidates` and waits for `postSortRowsResult` to
+   *  deliver the re-ordered array. When `false`, the pipeline runs
+   *  end-to-end with zero round-trip overhead. Resolves with the
+   *  post-toggle visible row count. */
+  setPostSortRowsPresent(present: boolean): Promise<{ visibleCount: number }> {
+    return this.send<{ visibleCount: number }>({
+      type: 'setPostSortRowsPresent', payload: { present },
+    });
+  }
+
+  /** Cycle 8 / Task 4 — main-side reply to `onPostSortRowsCandidates`.
+   *  `callId` must echo the value the worker pushed; `reordered` is the
+   *  rowIds in the order `options.postSortRows` returned. The worker
+   *  matches `callId` to the in-flight pipeline and resumes. The
+   *  original pipeline reply lands separately on the original request's
+   *  promise. */
+  postSortRowsResult(callId: number, reordered: string[]): Promise<void> {
+    return this.send<{ visibleCount: number }>({
+      type: 'postSortRowsResult', payload: { callId, reordered },
     }).then(() => {});
   }
 

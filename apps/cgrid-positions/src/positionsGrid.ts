@@ -73,6 +73,29 @@ export function setPositiveOnlyFilter(grid: CGrid<Position>, value: boolean): vo
   grid.onFilterChanged('externalFilter');
 }
 
+/** Cycle 8 / Task 4 — module-level state for the "Pin selected to top"
+ *  toolbar button. When `pinSelectedRowIds` is non-empty, the
+ *  `postSortRows` callback moves those ids to the head of the post-sort
+ *  order regardless of the active sort. The set is snapshotted from
+ *  `grid.getSelectedRowIds()` on toggle-on so a later selection change
+ *  doesn't shift the pin; toggle-off clears the set. */
+let pinSelectedRowIds: Set<string> = new Set();
+
+/** Cycle 8 / Task 4 — flip the demo's "Pin selected to top" mode and
+ *  re-trigger the sort pipeline. `value: true` snapshots the current
+ *  selection into `pinSelectedRowIds`; `value: false` clears it.
+ *  Re-applying the current sort model is the cheapest way to re-fire
+ *  `postSortRows` — `setSortModel` invalidates the worker's visible
+ *  cache, which awaits the post-sort hook on the next build. */
+export function setPinSelectedToTop(grid: CGrid<Position>, value: boolean): void {
+  if (value) {
+    pinSelectedRowIds = new Set(grid.getSelectedRowIds());
+  } else {
+    pinSelectedRowIds = new Set();
+  }
+  grid.setSortModel(grid.getSortModel());
+}
+
 export function createPositionsGrid(
   container: HTMLElement,
   opts: PositionsGridOptions = {},
@@ -142,6 +165,13 @@ export function createPositionsGrid(
         cellEditor: 'select',
         cellEditorParams: { values: ['AAPL', 'MSFT', 'GOOG', 'AMZN', 'NVDA', 'TSLA', 'META'] },
         filter: 'set',
+        // Cycle 8 / Task 3 — natural-order sort: chunks of digits compare
+        // numerically (so "TICK2" < "TICK10"), other runs lexicographically.
+        // The comparator function is registered on the worker via
+        // `grid.registerComparator('naturalOrder', fn)` below. Sorts via
+        // the registered name string instead of an inline closure so the
+        // function can round-trip postMessage to the worker.
+        comparator: 'naturalOrder',
       },
       // Cycle 5 Task 2: notionalAmount exercises the 'number' editor; min/precision
       // enforce non-negative two-decimal commits.
@@ -290,8 +320,56 @@ export function createPositionsGrid(
     // returning false short-circuits the round-trip without re-registering.
     isExternalFilterPresent: () => positiveOnlyExternalFilter,
     doesExternalFilterPass: ({ data }) => typeof data.pnl === 'number' && data.pnl > 0,
+    // Cycle 8 / Task 4 — postSortRows demo wiring. The "Pin selected to
+    // top" toolbar button snapshots the current selection into
+    // `pinSelectedRowIds` and re-triggers the sort; this callback then
+    // moves those ids to the head of the post-sort order, preserving
+    // the SortPass-resolved relative order within each bucket. When the
+    // pin set is empty, the input array is returned unchanged so the
+    // round-trip is a no-op.
+    postSortRows: ({ rowIds }) => {
+      if (pinSelectedRowIds.size === 0) return rowIds;
+      const pinned: string[] = [];
+      const rest: string[] = [];
+      for (const id of rowIds) {
+        if (pinSelectedRowIds.has(id)) pinned.push(id);
+        else rest.push(id);
+      }
+      return [...pinned, ...rest];
+    },
   };
   const grid = new CGrid<Position>(container, options);
   grid.registerCellRenderer('pnlPill', pnlPill);
+  // Cycle 8 / Task 3 — register a natural-order comparator so the ticker
+  // column sorts "TICK2" before "TICK10" instead of "TICK10" before
+  // "TICK2". The function string-serialises to the worker via
+  // `Function.prototype.toString()` and reconstructs through
+  // `new Function`, so it MUST be pure + may not close over external scope.
+  // For the demo's all-letter tickers (AAPL, MSFT, …) the result matches
+  // a lexicographic sort; the comparator is wired so apps that swap in
+  // numeric ticker IDs get the natural ordering for free.
+  grid.registerComparator('naturalOrder', (a, b) => {
+    const as = String(a ?? '');
+    const bs = String(b ?? '');
+    // Walk both strings in matched digit/non-digit chunks; numeric chunks
+    // compare numerically, alphabetic chunks compare via localeCompare.
+    const tokenize = (s: string) =>
+      s.match(/\d+|\D+/g) ?? [];
+    const at = tokenize(as);
+    const bt = tokenize(bs);
+    const n = Math.min(at.length, bt.length);
+    for (let i = 0; i < n; i++) {
+      const ai = at[i]!;
+      const bi = bt[i]!;
+      const an = Number(ai);
+      const bn = Number(bi);
+      if (!Number.isNaN(an) && !Number.isNaN(bn)) {
+        if (an !== bn) return an < bn ? -1 : 1;
+      } else if (ai !== bi) {
+        return ai < bi ? -1 : 1;
+      }
+    }
+    return at.length - bt.length;
+  }).catch(() => { /* worker terminated mid-init; harmless */ });
   return grid;
 }

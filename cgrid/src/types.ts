@@ -227,6 +227,27 @@ export interface CGridOptions<TRow = any> {
    *  row-data cache on every `setRowData` / `applyTransaction` and ships
    *  the resolved rowId set to the worker. */
   alwaysPassFilter?: (params: { data: TRow; rowId: string }) => boolean;
+  /** Cycle 8 / Task 4 — post-sort re-order hook. Runs on the main thread
+   *  after the worker's `SortPass.apply` and before `ViewportSlicer.slice`.
+   *  Receives the post-sort rowId array and a `getData(rowId)` accessor that
+   *  resolves the live row record from the grid's main-thread cache (so the
+   *  app can read full row data without ferrying the map across postMessage).
+   *  Return the (possibly re-ordered) rowId array. The worker resumes with
+   *  the returned order before slicing.
+   *
+   *  Use cases: pin selected rows to top regardless of sort, group siblings
+   *  together post-sort, stable secondary ordering rules that can't be
+   *  expressed as a comparator over a single column, etc.
+   *
+   *  No round-trip overhead when the hook isn't set — the worker pipeline
+   *  runs end-to-end synchronously. Apps re-trigger by calling
+   *  `setSortModel(getSortModel())` (or any other pipeline-invalidating
+   *  setter) after mutating any state the hook closes over (e.g. flipping
+   *  a "pin selected" toolbar toggle). */
+  postSortRows?: (params: {
+    rowIds: string[];
+    getData: (rowId: string) => TRow | undefined;
+  }) => string[];
   /**
    * Full-row edit mode. When `'fullRow'`, triggering an edit on any cell in
    * a row opens an editor for every editable column in that row
@@ -336,7 +357,14 @@ export interface CColDef<TRow = any, TValue = any> {
    * pair.
    */
   cellRendererSelector?: CCellRendererSelector<TRow, TValue>;
-  comparator?: (a: TValue, b: TValue, ar: TRow, br: TRow) => number;
+  /** Custom comparator. Either the NAME of a comparator registered with
+   *  the grid via `api.registerComparator(name, fn)` — preferred, because
+   *  the sort runs worker-side and registered comparators string-serialise
+   *  across the `postMessage` boundary — OR an inline closure. Inline
+   *  closures cannot cross the worker boundary and throw at
+   *  `setSortModel` time with a message that points at
+   *  `registerComparator`. Cycle 8 / Task 3. */
+  comparator?: string | ((a: TValue, b: TValue, ar: TRow, br: TRow) => number);
   /** Filter type for the column. `'text'` / `'number'` / `'date'` route
    *  the floating-filter input through the matching parser grammar.
    *  `'set'` is reserved for Task 9's checkbox popup. When unset, the
@@ -1216,6 +1244,22 @@ export interface CGridApi {
    *  names ('text' shipped in Cycle 5 Task 1; 'number' / 'date' / 'select' /
    *  'largeText' / 'checkbox' / 'dateString' in Task 2) can be overridden. */
   registerCellEditor(name: string, ctor: CellEditorCtor): void;
+
+  /** Register a custom comparator under `name`. Column defs reference the
+   *  registered comparator via `comparator: name`. The function
+   *  string-serialises through `Function.prototype.toString()` and
+   *  reconstructs on the worker via `new Function(...)` so the sort
+   *  stays off the main thread; the function MUST be pure and may not
+   *  close over external scope (closures don't survive the
+   *  reconstruction). Re-registering overwrites. Returns a Promise that
+   *  resolves once the worker acknowledges the registration; awaiting
+   *  it before the next `setSortModel` guarantees the sort uses the
+   *  registered comparator instead of falling back to the default
+   *  text/number compare. Cycle 8 / Task 3. */
+  registerComparator<TValue = unknown>(
+    name: string,
+    fn: (a: TValue, b: TValue) => number,
+  ): Promise<void>;
 
   /** Programmatically start editing the cell at `(rowIndex, colId)`.
    *  No-op when the cell is not editable or not in the current viewport. */

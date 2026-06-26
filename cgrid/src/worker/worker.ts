@@ -6,6 +6,7 @@ import {
   RowStore, FilterPass, SortPass, AggPass, ViewportSlicer, TransactionQueue,
   QuickFilterPass, DistinctValuesPass, diffRowFields,
 } from './dataPipeline';
+import { ComparatorRegistry } from './comparatorRegistry';
 import type { TransactionResult } from '../types';
 import type { WorkerColumn } from './protocol';
 import {
@@ -41,6 +42,11 @@ interface State {
    *  hook `QuickFilterPass.invalidateRows` plugs into. */
   distinct: DistinctValuesPass;
   sort: SortPass;
+  /** Cycle 8 / Task 3 — named comparators registered via
+   *  `registerComparator`. `SortPass.apply` looks up each sorted column's
+   *  `comparator` (a string name on the `WorkerColumn`) against this
+   *  registry; unknown names fall back to the built-in `compare()`. */
+  comparators: ComparatorRegistry;
   agg: AggPass;
   slicer: ViewportSlicer;
   queue: TransactionQueue;
@@ -67,6 +73,17 @@ interface State {
   pendingExternalFilters: Map<number, (surviving: string[]) => void>;
   /** Cycle 7 / Task 8 — monotonic counter for external-filter callIds. */
   nextExternalFilterCallId: number;
+  /** Cycle 8 / Task 4 — when true, `buildVisibleAsync` pauses after
+   *  `SortPass.apply` to push the sorted rowIds to main and awaits a
+   *  re-ordered array. When false, the pipeline runs end-to-end with
+   *  zero round-trip overhead. */
+  postSortRowsPresent: boolean;
+  /** Cycle 8 / Task 4 — pending post-sort round-trips keyed by `callId`.
+   *  The promise resolves when main posts back `postSortRowsResult` for
+   *  the same callId. */
+  pendingPostSortRows: Map<number, (reordered: string[]) => void>;
+  /** Cycle 8 / Task 4 — monotonic counter for post-sort callIds. */
+  nextPostSortRowsCallId: number;
   /** Cycle 4 / Task 11 (cell-flash patch) — when true, the worker
    *  computes per-row diffs on `applyTransaction.update` and stages
    *  the changed (rowId, field) pairs in `pendingFlashes`. Runtime-
@@ -155,7 +172,28 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       ids = Array.from(merged);
     }
     ids = state.sort.apply(ids);
+    // Cycle 8 / Task 4 — when `postSortRowsPresent`, ship the sorted ids
+    // up for the main-thread hook to re-order. Empty sets skip the
+    // round-trip (an empty array round-trip is just a waste of two
+    // postMessage calls). The hook can also reorder when no sort is
+    // active — the input is the post-SortPass order, which equals the
+    // pre-sort order when the sort model is empty.
+    if (state.postSortRowsPresent && ids.length > 0) {
+      ids = await runPostSortRows(ids);
+    }
     return ids;
+  }
+
+  /** Cycle 8 / Task 4 — runs the post-sort round-trip when
+   *  `state.postSortRowsPresent` is set. Returns the re-ordered rowId
+   *  array. */
+  function runPostSortRows(ids: string[]): Promise<string[]> {
+    if (!state) return Promise.resolve(ids);
+    const callId = state.nextPostSortRowsCallId++;
+    return new Promise<string[]>((resolve) => {
+      state!.pendingPostSortRows.set(callId, resolve);
+      post({ type: 'postSortRowsRequest', callId, rowIds: ids });
+    });
   }
 
   async function visibleAsync(): Promise<string[]> {
@@ -244,12 +282,14 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       return all;
     });
 
+    const comparators = new ComparatorRegistry();
     state = {
       store,
       filter:      new FilterPass(store, payload.columns),
       quickFilter: new QuickFilterPass(store, payload.columns),
       distinct:    new DistinctValuesPass(store, payload.columns),
-      sort:        new SortPass(store, payload.columns),
+      sort:        new SortPass(store, payload.columns, comparators),
+      comparators,
       agg:         new AggPass(store, payload.columns),
       slicer:      new ViewportSlicer(store, payload.columns),
       queue,
@@ -262,6 +302,9 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       alwaysPassIds: new Set(),
       pendingExternalFilters: new Map(),
       nextExternalFilterCallId: 1,
+      postSortRowsPresent: false,
+      pendingPostSortRows: new Map(),
+      nextPostSortRowsCallId: 1,
       enableCellChangeFlash: payload.enableCellChangeFlash === true,
       pendingFlashes: new Map(),
     };
@@ -546,6 +589,34 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             break;
           }
 
+          case 'setPostSortRowsPresent': {
+            // Cycle 8 / Task 4 — flip the post-sort round-trip on or off
+            // and re-evaluate. Mirrors `setExternalFilterPresent` —
+            // toggling forces a `buildVisibleAsync` so the next paint
+            // honors the new pipeline shape.
+            state.postSortRowsPresent = req.payload.present === true;
+            state.visibleCache = null;
+            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await invalidateAndCount() });
+            break;
+          }
+
+          case 'postSortRowsResult': {
+            // Cycle 8 / Task 4 — main has run `options.postSortRows`
+            // against its row-data cache and is shipping the re-ordered
+            // ids back. Resolve the in-flight pipeline promise keyed by
+            // callId; the awaiting `buildVisibleAsync` resumes and the
+            // original pipeline request's reply (rowCount /
+            // transactionFlushed / etc.) lands once it finishes.
+            const { callId, reordered } = req.payload;
+            const resolver = state.pendingPostSortRows.get(callId);
+            if (resolver) {
+              state.pendingPostSortRows.delete(callId);
+              resolver(reordered);
+            }
+            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: state.visibleCache?.length ?? 0 });
+            break;
+          }
+
           case 'externalFilterResult': {
             // Cycle 7 / Task 8 — main has run the per-row predicate over
             // the candidate set and is shipping the surviving ids back.
@@ -573,6 +644,47 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             state.enableCellChangeFlash = req.payload.enabled === true;
             if (!state.enableCellChangeFlash) state.pendingFlashes.clear();
             post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: state.visibleCache?.length ?? 0 });
+            break;
+          }
+
+          case 'registerComparator': {
+            // Cycle 8 / Task 3 — reconstruct the app's comparator from
+            // its `Function.prototype.toString()` form via `new Function`.
+            // Wrapping the source in `return ( ... )` lets the function be
+            // either a `function` expression or an arrow — `new Function`
+            // evaluates the expression and we capture the resulting
+            // callable. Strict mode is enabled inside the wrapper so the
+            // reconstructed function does not accidentally pick up sloppy
+            // semantics from the worker's global scope.
+            const { name, source } = req.payload;
+            let fn: unknown;
+            try {
+              fn = new Function(`"use strict"; return (${source});`)();
+            } catch (err) {
+              post({
+                id: req.id,
+                type: 'error',
+                error: `[cgrid] failed to deserialise comparator '${name}': ${
+                  String((err as Error).message ?? err)
+                }`,
+              });
+              break;
+            }
+            if (typeof fn !== 'function') {
+              post({
+                id: req.id,
+                type: 'error',
+                error: `[cgrid] comparator '${name}' did not deserialise to a function`,
+              });
+              break;
+            }
+            state.comparators.register(name, fn as (a: unknown, b: unknown) => number);
+            post({
+              id: req.id,
+              type: 'rowCount',
+              count: state.store.size(),
+              visibleCount: state.visibleCache?.length ?? 0,
+            });
             break;
           }
 
