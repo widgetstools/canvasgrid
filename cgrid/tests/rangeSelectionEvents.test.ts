@@ -183,6 +183,12 @@ interface MockGrid {
   getFillHandleDirection?: () => 'x' | 'y' | 'xy';
   getRangeBottomRight?: (range: SelectionRange) => { x: number; y: number } | null;
   commitFill?: (source: SelectionRange, target: SelectionRange) => void;
+  // Cycle 9 patch / Task 2 — auto-scroll surface. Default rect is generous
+  // so the drag points used in these tests stay comfortably inside the
+  // body and the rAF loop never kicks in.
+  getBodyRect?: () => { left: number; right: number; top: number; bottom: number };
+  scrollBy?: (dx: number, dy: number) => void;
+  hitTester?: { locate: (x: number, y: number) => Hit };
 }
 
 function makeMock(): MockGrid {
@@ -204,6 +210,9 @@ function makeMock(): MockGrid {
       return { x: (colIdx + 1) * 100, y: 32 + (range.rowEnd + 1) * 30 };
     },
     commitFill: vi.fn(),
+    getBodyRect: () => ({ left: 0, right: 1000, top: 0, bottom: 1000 }),
+    scrollBy: () => {},
+    hitTester: { locate: () => ({ kind: 'empty' }) },
   };
 }
 

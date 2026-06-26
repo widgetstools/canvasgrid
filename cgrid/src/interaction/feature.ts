@@ -136,6 +136,13 @@ export interface CGridLike {
   getMultiSortKey(): 'Shift' | 'Ctrl' | 'Alt' | null;
   toggleColumnGroup(groupId: string): void;
   scrollBy(dx: number, dy: number): void;
+  /** Cycle 9 patch / Task 2 — body rectangle in canvas-local CSS px. Read
+   *  by `RangeSelection` on each drag tick to detect when the pointer has
+   *  entered the ±20 px edge zone and auto-scrolling should kick in. Values
+   *  are sourced from `ViewportState` (`bodyLeft` / `bodyRight` / `bodyTop`
+   *  / `bodyBottom`) at call time so a resize mid-drag is reflected on the
+   *  next tick. */
+  getBodyRect(): { left: number; right: number; top: number; bottom: number };
   emitCellClicked(rowIndex: number, colId: string, e: MouseEvent): void;
   emitCellDoubleClicked(rowIndex: number, colId: string, e: MouseEvent): void;
 
