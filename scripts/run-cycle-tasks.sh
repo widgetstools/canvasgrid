@@ -92,7 +92,22 @@ in a fresh session."
 
   # Run the session. `acceptEdits` permission mode means Edit/Write/Bash all
   # auto-approve; truly dangerous operations still gate.
-  if ! timeout "$TASK_TIMEOUT_SEC" claude -p "$PROMPT" \
+  # Use `gtimeout` (brew install coreutils) or `timeout` if available;
+  # fall back to no wall-clock cap on macOS without coreutils (claude's
+  # own heartbeat still gates runaway sessions).
+  if command -v gtimeout >/dev/null 2>&1; then
+    TIMEOUT_CMD=(gtimeout "$TASK_TIMEOUT_SEC")
+  elif command -v timeout >/dev/null 2>&1; then
+    TIMEOUT_CMD=(timeout "$TASK_TIMEOUT_SEC")
+  else
+    TIMEOUT_CMD=()
+    if [[ "$TASK_N" == "$START_TASK" ]]; then
+      echo "[runner] note: no timeout(1) on PATH — claude sessions run uncapped." >&2
+      echo "[runner] note: install coreutils for wall-clock caps:  brew install coreutils" >&2
+    fi
+  fi
+
+  if ! "${TIMEOUT_CMD[@]}" claude -p "$PROMPT" \
       --permission-mode acceptEdits \
       --model "$MODEL" \
       --output-format text \
