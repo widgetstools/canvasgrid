@@ -149,6 +149,14 @@ export interface CGridOptions<TRow = any> {
    *  replacing it). Defaults to `'Shift'`. Set to `null` to disable
    *  multi-sort entirely (every header click replaces). Cycle 8 / Task 1. */
   multiSortKey?: 'Shift' | 'Ctrl' | 'Alt' | null;
+  /** Cycle order for `cycleSort`. Defaults to `['asc', 'desc', null]` —
+   *  unsorted → asc → desc → unsorted. Setting `['asc', 'desc']` keeps the
+   *  column always sorted (no unsorted stage; the third cycle wraps back
+   *  to asc). Any permutation of `'asc' | 'desc' | null` is honored;
+   *  values outside the cycle are treated as "start at index 0". Applies
+   *  to both plain-click (replace) and append (Shift+click) modes.
+   *  Cycle 8 / Task 2. */
+  sortingOrder?: Array<'asc' | 'desc' | null>;
 
   /** Grid-wide default for the floating-filter row. When `true`, every
    *  column with a default-resolved filter renders a floating-filter
@@ -508,6 +516,16 @@ export interface CColDef<TRow = any, TValue = any> {
    * matching `width` value is provided. Cycle 6 / Task 2.
    */
   initialWidth?: number;
+  /** Construction-time seed for the sort direction on this column.
+   *  Honored exactly once; subsequent `applyColumnState` reads `sort`
+   *  instead. When omitted, the column is unsorted on first paint.
+   *  Cycle 8 / Task 2. */
+  initialSort?: 'asc' | 'desc';
+  /** Construction-time seed for the column's position in a multi-column
+   *  sort. Columns without an index sort to the tail in their
+   *  declaration order. Honored exactly once alongside `initialSort`.
+   *  Cycle 8 / Task 2. */
+  initialSortIndex?: number;
   /**
    * When true, `applyColumnState` + `setColumnsVisible` (Task 5) silently
    * drop any mutation that would flip this column's `hide` state.

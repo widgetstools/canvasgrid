@@ -105,6 +105,23 @@ function defaultQuickFilterParser(text: string): string[] {
   return text.split(/\s+/).filter((t) => t.length > 0);
 }
 
+/** Cycle 8 / Task 2 — find the next stage in `sortingOrder` given the
+ *  column's current sort state. `null` means "not in the sort model"
+ *  (unsorted). When the current state isn't in the cycle (e.g. cycle is
+ *  `['asc', 'desc']` and the column was previously unsorted), the next
+ *  stage is the first entry — so an unsorted column always starts the
+ *  cycle at index 0. Wraps at the end so an `['asc', 'desc']` cycle
+ *  bounces between the two directions forever. */
+function nextSortStage(
+  current: 'asc' | 'desc' | null,
+  order: Array<'asc' | 'desc' | null>,
+): 'asc' | 'desc' | null {
+  if (order.length === 0) return null;
+  const idx = order.indexOf(current);
+  const pick = idx === -1 ? order[0] : order[(idx + 1) % order.length];
+  return pick ?? null;
+}
+
 /** Cycle 7 / Task 9 — shallow equality for v2 filter entries. Used by
  *  `setColumnFilterModel` to decide whether the change is actually a
  *  mutation. JSON.stringify is the cheapest correct comparison for the
@@ -375,6 +392,13 @@ export class CGrid<TRow = any> {
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
     this.columnGroupState = new ColumnGroupState(this.columnTree);
     this.columnOrder = this.computeVisibleColumnOrder();
+
+    // Cycle 8 / Task 2 — seed the sort model from per-column `initialSort` +
+    // `initialSortIndex`. Honored exactly once, at construction; subsequent
+    // `applyColumnState` reads `sort` instead. Worker setSortModel is fanned
+    // out below from the init().then() chain so the very first setRowData
+    // paints already sorted.
+    this.sortModel = this.computeInitialSortModel();
 
     // 4. Subgrid stack — group-header rows (one per tree depth) on top, then
     // the leaf header, then data. Rebuilt in place by `rebuildSubgridStack`
@@ -664,6 +688,13 @@ export class CGrid<TRow = any> {
       const initialPresent = this.options.isExternalFilterPresent?.() === true;
       if (initialPresent) {
         await this.workerClient.setExternalFilterPresent(true).catch(() => {});
+      }
+      // Cycle 8 / Task 2 — push the construction-time sort model to the
+      // worker BEFORE the first setRowData so the very first paint is
+      // already sorted. When the model is empty (no `initialSort` on any
+      // column) the round-trip is skipped entirely.
+      if (this.sortModel.length > 0) {
+        await this.workerClient.setSortModel(this.sortModel).catch(() => {});
       }
       this.events.emit({ type: 'gridReady', api: this.makeApi() });
       if (options.rowData) this.setRowData(options.rowData);
@@ -1051,40 +1082,66 @@ export class CGrid<TRow = any> {
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
   }
 
-  /** Cycle the sort state for a column: unsorted → asc → desc → unsorted.
+  /** Cycle the sort state for a column. The cycle order is taken from
+   *  `CGridOptions.sortingOrder` (default `['asc', 'desc', null]`):
+   *  setting `['asc', 'desc']` skips the unsorted stage so the column is
+   *  always sorted.
    *
    *  Cycle 8 / Task 1 — `opts.append` lets the caller APPEND to the
    *  existing sort model instead of replacing it. With append:
-   *  - column not in the model → append `{colId, direction:'asc'}` to the tail
-   *  - column already in the model → cycle its direction IN PLACE
-   *    (asc→desc, desc→remove). Never reorders other entries.
+   *  - column not in the model → append `{colId, direction: nextStage}` to the tail
+   *  - column already in the model → cycle its direction IN PLACE.
+   *    Never reorders other entries. When the next stage is `null`, the
+   *    column is dropped from the model.
    *
-   *  Without append (plain click), the model is replaced wholesale —
-   *  unsorted → asc → desc → unsorted on the clicked column. */
+   *  Without append (plain click), the model is replaced wholesale — the
+   *  clicked column either becomes the sole entry or the model clears,
+   *  according to the next stage in `sortingOrder`. Cycle 8 / Task 2. */
   private cycleSort(colId: string, opts?: { append?: boolean }): void {
     const append = opts?.append === true;
+    const order = this.options.sortingOrder ?? ['asc', 'desc', null];
     const existing = this.sortModel.find((e) => e.colId === colId);
+    const currentStage: 'asc' | 'desc' | null = existing?.direction ?? null;
+    const nextStage = nextSortStage(currentStage, order);
     let next: SortModel;
     if (append) {
-      if (!existing) {
-        next = [...this.sortModel, { colId, direction: 'asc' }];
-      } else if (existing.direction === 'asc') {
-        next = this.sortModel.map((e) =>
-          e.colId === colId ? { colId, direction: 'desc' as const } : e,
-        );
-      } else {
+      if (nextStage === null) {
         next = this.sortModel.filter((e) => e.colId !== colId);
+      } else if (!existing) {
+        next = [...this.sortModel, { colId, direction: nextStage }];
+      } else {
+        next = this.sortModel.map((e) =>
+          e.colId === colId ? { colId, direction: nextStage } : e,
+        );
       }
     } else {
-      if (!existing) {
-        next = [{ colId, direction: 'asc' }];
-      } else if (existing.direction === 'asc') {
-        next = [{ colId, direction: 'desc' }];
-      } else {
-        next = [];
-      }
+      next = nextStage === null ? [] : [{ colId, direction: nextStage }];
     }
     this.setSortModel(next);
+  }
+
+  /** Cycle 8 / Task 2 — collect the construction-time sort model from
+   *  every leaf's `initialSort` / `initialSortIndex`. Columns with an
+   *  explicit `initialSortIndex` come first (sorted ascending by index);
+   *  columns with an `initialSort` but no index trail behind in
+   *  declaration order. */
+  private computeInitialSortModel(): SortModel {
+    const indexed: Array<{ colId: string; direction: 'asc' | 'desc'; index: number }> = [];
+    const trailing: SortModel = [];
+    for (const [colId, leaf] of this.columnTree.leafById) {
+      const seed = leaf.initialSort;
+      if (seed !== 'asc' && seed !== 'desc') continue;
+      if (typeof leaf.initialSortIndex === 'number') {
+        indexed.push({ colId, direction: seed, index: leaf.initialSortIndex });
+      } else {
+        trailing.push({ colId, direction: seed });
+      }
+    }
+    indexed.sort((a, b) => a.index - b.index);
+    return [
+      ...indexed.map(({ colId, direction }) => ({ colId, direction })),
+      ...trailing,
+    ];
   }
 
   setFilterModel(f: FilterModel): void {

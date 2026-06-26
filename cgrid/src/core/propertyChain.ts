@@ -151,6 +151,13 @@ export interface ResolvedColDef<TRow = any> {
   /** See `CColDef.suppressAutoSize`. When true, `autoSizeColumns` /
    *  `autoSizeAllColumns` skip this column. Cycle 6 / Task 4. */
   suppressAutoSize: boolean;
+  /** See `CColDef.initialSort`. Resolved value is the column's
+   *  construction-time seed; the cgrid layer reads it once to build the
+   *  initial sort model and never re-reads it. Cycle 8 / Task 2. */
+  initialSort?: 'asc' | 'desc';
+  /** See `CColDef.initialSortIndex`. Read once at construction alongside
+   *  `initialSort`. Cycle 8 / Task 2. */
+  initialSortIndex?: number;
   /** Reserved Cycle-13/14/17 slots. Round-trip opaquely through
    *  `getColumnState` / `applyColumnState` until those cycles wire the
    *  model logic. */
@@ -497,5 +504,7 @@ export function resolveColDef<TRow>(
     lockPinned: merged.lockPinned ?? false,
     suppressSizeToFit: merged.suppressSizeToFit ?? false,
     suppressAutoSize: merged.suppressAutoSize ?? false,
+    initialSort: merged.initialSort,
+    initialSortIndex: merged.initialSortIndex,
   };
 }
