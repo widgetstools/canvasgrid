@@ -13,8 +13,12 @@
  * `clipboardSerialize` message handler with a `visIds`-backed row
  * accessor.
  */
-import { describe, it, expect } from 'vitest';
-import { serializeRanges, deserializeTsv } from '../src/worker/passes/clipboardPass';
+import { describe, it, expect, vi } from 'vitest';
+import {
+  serializeRanges,
+  deserializeTsv,
+  mapPasteCells,
+} from '../src/worker/passes/clipboardPass';
 import type { SelectionRange } from '../src/types';
 
 type Row = Record<string, unknown>;
@@ -254,6 +258,144 @@ describe('serializeRanges (Cycle 10 / Task 3)', () => {
     // case verifies the state machine doesn't bail when both special
     // chars land inside the same quoted cell.
     expect(deserializeTsv('"a\tb\nc"\tplain')).toEqual([['a\tb\nc', 'plain']]);
+  });
+
+  it('processCellForClipboard: invoked once per cell in range-row-major order', () => {
+    // Cycle 10 / Task 5 — `serializeRanges` accepts an optional
+    // `transformCell` callback that runs AFTER value resolution and
+    // BEFORE RFC-4180 quoting. The callback receives `{ value, node:
+    // { rowIndex, data }, column: { colId } }` — same shape as the
+    // public ag-grid surface (`CGridOptions.processCellForClipboard`).
+    const rows: Row[] = [
+      { a: 1, b: 2 },
+      { a: 3, b: 4 },
+    ];
+    const transform = vi.fn(({ value }: { value: unknown }) => `<${String(value)}>`);
+    const tsv = serializeRanges(
+      rows,
+      cols([['a', 'a'], ['b', 'b']]),
+      [{ rowStart: 0, rowEnd: 1, colIds: ['a', 'b'] }],
+      '\t',
+      transform,
+    );
+    expect(tsv).toBe('<1>\t<2>\n<3>\t<4>');
+    expect(transform).toHaveBeenCalledTimes(4);
+    // Callback receives the raw value + the rowIndex + the row data + colId.
+    expect(transform).toHaveBeenNthCalledWith(1, {
+      value: 1, node: { rowIndex: 0, data: rows[0] }, column: { colId: 'a' },
+    });
+    expect(transform).toHaveBeenNthCalledWith(4, {
+      value: 4, node: { rowIndex: 1, data: rows[1] }, column: { colId: 'b' },
+    });
+  });
+
+  it('processCellForClipboard: return value flows through RFC-4180 quoting', () => {
+    // When the transform returns a value containing the delimiter or a
+    // newline, the cell still gets quoted just like a raw value would.
+    const rows: Row[] = [{ a: 'plain' }];
+    const tsv = serializeRanges(
+      rows,
+      cols([['a', 'a']]),
+      [{ rowStart: 0, rowEnd: 0, colIds: ['a'] }],
+      '\t',
+      () => 'has\ttab',
+    );
+    expect(tsv).toBe('"has\ttab"');
+  });
+
+  it('processCellForClipboard: return value is null / undefined → empty string (like raw)', () => {
+    const rows: Row[] = [{ a: 'something' }];
+    const tsv = serializeRanges(
+      rows,
+      cols([['a', 'a']]),
+      [{ rowStart: 0, rowEnd: 0, colIds: ['a'] }],
+      '\t',
+      () => null,
+    );
+    expect(tsv).toBe('');
+  });
+
+  it('processCellForClipboard: undefined transform = legacy behaviour (raw value)', () => {
+    // Belt-and-braces: omitting `transformCell` reproduces the Task 3
+    // path bit-for-bit (no callback hop allocated, raw values flow through).
+    const rows: Row[] = [{ a: 'hello' }];
+    const tsv = serializeRanges(
+      rows,
+      cols([['a', 'a']]),
+      [{ rowStart: 0, rowEnd: 0, colIds: ['a'] }],
+    );
+    expect(tsv).toBe('hello');
+  });
+
+  it('processCellFromClipboard: mapPasteCells runs the callback per parsed cell', () => {
+    // `mapPasteCells` is the pure helper cgrid uses to apply the
+    // `processCellFromClipboard` transform between the worker's TSV
+    // parse and the `applyTransaction({ update })` commit.
+    const parsed = [
+      ['11', '12'],
+      ['21', '22'],
+    ];
+    const rowDataByIndex = new Map<number, unknown>([
+      [3, { a: 'old11', b: 'old12' }],
+      [4, { a: 'old21', b: 'old22' }],
+    ]);
+    const visibleColIds = ['a', 'b', 'c'];
+    const transform = vi.fn(({ value }: { value: string }) => Number(value));
+    const out = mapPasteCells(
+      parsed,
+      /* anchorRowIndex */ 3,
+      /* anchorColIndex */ 0,
+      visibleColIds,
+      rowDataByIndex,
+      transform,
+    );
+    expect(out).toEqual([
+      [11, 12],
+      [21, 22],
+    ]);
+    expect(transform).toHaveBeenCalledTimes(4);
+    expect(transform).toHaveBeenNthCalledWith(1, {
+      value: '11',
+      node: { rowIndex: 3, data: { a: 'old11', b: 'old12' } },
+      column: { colId: 'a' },
+    });
+    expect(transform).toHaveBeenNthCalledWith(4, {
+      value: '22',
+      node: { rowIndex: 4, data: { a: 'old21', b: 'old22' } },
+      column: { colId: 'b' },
+    });
+  });
+
+  it('mapPasteCells: respects the column anchor offset (paste into columns to the right)', () => {
+    // Anchoring at colIndex 1 → first parsed col lands in visibleColIds[1].
+    const parsed = [['x', 'y']];
+    const rowDataByIndex = new Map<number, unknown>([[0, {}]]);
+    const visibleColIds = ['a', 'b', 'c'];
+    const seen: string[] = [];
+    mapPasteCells(parsed, 0, 1, visibleColIds, rowDataByIndex, ({ column }) => {
+      seen.push(column.colId);
+      return '';
+    });
+    expect(seen).toEqual(['b', 'c']);
+  });
+
+  it('mapPasteCells: cells off the bottom or right edge survive as undefined (skipped by cgrid glue)', () => {
+    // Parsed grid extends past the rowDataByIndex band and the visible
+    // column count. Both edges drop without invoking the callback —
+    // the cgrid glue treats `undefined` as "skip the assignment".
+    const parsed = [
+      ['a', 'b', 'c'], // 3 cols against a 2-col anchor band
+      ['d', 'e', 'f'], // off the bottom
+    ];
+    const rowDataByIndex = new Map<number, unknown>([[0, { x: '' }]]); // only row 0 known
+    const visibleColIds = ['x', 'y']; // only 2 visible columns
+    const transform = vi.fn(() => 'TRANSFORMED');
+    const out = mapPasteCells(parsed, 0, 0, visibleColIds, rowDataByIndex, transform);
+    expect(out).toEqual([
+      ['TRANSFORMED', 'TRANSFORMED', undefined], // col 'c' off the right edge
+      [undefined, undefined, undefined],         // row off the bottom
+    ]);
+    expect(transform).toHaveBeenCalledTimes(2);
   });
 
   it('performance: 10k × 50 range serialises in well under the cycle\'s 50 ms budget', () => {

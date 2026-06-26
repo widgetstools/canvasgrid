@@ -203,6 +203,13 @@ export interface CGridLike {
    *  Cmd+V inside the keydown so the read is paired with an active
    *  user-gesture stack. Cycle 10 / Task 4. */
   pasteFromClipboard(): Promise<void>;
+
+  /** Cut the current ranges: copy to clipboard, then clear the source
+   *  cells via `applyTransaction({ update })`. Atomic — the clear only
+   *  runs when the copy succeeds. The `KeyboardShortcuts` feature
+   *  routes Ctrl+X / Cmd+X here inside the keydown so the clipboard
+   *  write sees an active gesture. Cycle 10 / Task 5. */
+  cutSelectedRanges(): Promise<void>;
 }
 
 export interface CGridEventCtx {

@@ -54,7 +54,9 @@ export type RuntimeOption =
   | 'fillOperation'
   | 'cellSelection'
   | 'getContextMenuItems'
-  | 'clipboardDelimiter';
+  | 'clipboardDelimiter'
+  | 'processCellForClipboard'
+  | 'processCellFromClipboard';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
  *  import on `CGrid` (cgrid.ts imports this module). */
@@ -168,6 +170,14 @@ export function applyRuntimeOption<TRow>(
     // `copySelectedRangesToClipboard` reads `options.clipboardDelimiter`
     // at copy time, so a runtime flip takes effect on the next Ctrl+C.
     case 'clipboardDelimiter':
+    // Cycle 10 / Task 5 — `processCellForClipboard` /
+    // `processCellFromClipboard` are storage-only at runtime.
+    // `copySelectedRangesToClipboard` / `cutSelectedRanges` /
+    // `pasteFromClipboard` read the callbacks at copy / paste time,
+    // so a runtime swap (or `undefined` to clear) takes effect on the
+    // next clipboard verb without further wiring.
+    case 'processCellForClipboard':
+    case 'processCellFromClipboard':
       // Storage-only: downstream cycles read directly from `options[key]`.
       return;
   }
@@ -190,4 +200,6 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'cellSelection',
   'getContextMenuItems',
   'clipboardDelimiter',
+  'processCellForClipboard',
+  'processCellFromClipboard',
 ]);

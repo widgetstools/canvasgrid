@@ -40,6 +40,20 @@ export interface SerializeColumnRef {
 }
 
 /**
+ * Cycle 10 / Task 5 — per-cell transform applied BEFORE RFC-4180 quoting.
+ * Mirrors `CGridOptions.processCellForClipboard` exactly so cgrid can
+ * pass the user callback through without an adapter. Runs ONCE per cell
+ * resolved during `serializeRanges` (range-row-major, then column order
+ * within each row). The returned value flows through `formatCell` like
+ * any raw value would.
+ */
+export type SerializeCellTransform = (params: {
+  value: unknown;
+  node: { rowIndex: number; data: unknown };
+  column: { colId: string };
+}) => unknown;
+
+/**
  * Serialize the supplied `ranges` into a single TSV / CSV string.
  *
  * `rows[rowIndex]` is the row at the given visible-order index — the
@@ -59,6 +73,11 @@ export function serializeRanges(
   columnsById: ReadonlyMap<string, SerializeColumnRef>,
   ranges: ReadonlyArray<SelectionRange>,
   delimiter: string = DEFAULT_DELIMITER,
+  /** Cycle 10 / Task 5 — optional per-cell transform. When set, runs
+   *  AFTER the raw value lookup and BEFORE RFC-4180 quoting. The
+   *  returned value flows through `formatCell` the same way a raw
+   *  value would. Mirrors ag-grid's `processCellForClipboard`. */
+  transformCell?: SerializeCellTransform,
 ): string {
   if (ranges.length === 0) return '';
 
@@ -79,12 +98,20 @@ export function serializeRanges(
     }
     const cellBuf: string[] = new Array(colIds.length);
     for (let r = 0; r < rowCount; r++) {
-      const row = rows[rowStart + r];
+      const rowIndex = rowStart + r;
+      const row = rows[rowIndex];
       for (let c = 0; c < colIds.length; c++) {
         const field = fields[c];
-        const value = (row !== undefined && field !== undefined)
+        const raw = (row !== undefined && field !== undefined)
           ? (row as Record<string, unknown>)[field]
           : undefined;
+        const value = transformCell
+          ? transformCell({
+              value: raw,
+              node: { rowIndex, data: row ?? {} },
+              column: { colId: colIds[c]! },
+            })
+          : raw;
         cellBuf[c] = formatCell(value, delimiter);
       }
       rowBuf[r] = cellBuf.join(delimiter);
@@ -200,6 +227,69 @@ export function deserializeTsv(
     rows.push(row);
   }
   return rows;
+}
+
+/**
+ * Cycle 10 / Task 5 — per-cell paste transform. Mirrors
+ * `CGridOptions.processCellFromClipboard` exactly. Runs ONCE per
+ * (parsed-cell × resolved-target-cell) tuple, in row-major order over
+ * the parsed grid, mapped onto the anchor band (focused cell, walking
+ * the visible column order rightward).
+ */
+export type PasteCellTransform = (params: {
+  value: string;
+  node: { rowIndex: number; data: unknown };
+  column: { colId: string };
+}) => unknown;
+
+/**
+ * Map the parsed `string[][]` (output of `deserializeTsv`) through
+ * `transform` for every cell that has a resolved target row + column.
+ *
+ * The shape mirrors what `pasteFromClipboard` needs: the parsed grid is
+ * anchored at `anchorRowIndex` × `anchorColIndex` and walks the visible
+ * column order to the right. `rowDataByIndex` is the snapshot of each
+ * row's PRE-paste data; cells off the bottom (`rowDataByIndex` lacks
+ * the index) or off the right edge of `visibleColIds` are dropped from
+ * the output — paste never inserts rows / columns.
+ *
+ * Returns the same shape as the input but with each cell value replaced
+ * by `transform`'s return value. Cells without a resolvable target row
+ * survive as `undefined`; the cgrid glue skips those when building the
+ * `applyTransaction({ update })` set.
+ *
+ * Pure function: tests pass plain Maps + arrays.
+ */
+export function mapPasteCells(
+  parsed: ReadonlyArray<ReadonlyArray<string>>,
+  anchorRowIndex: number,
+  anchorColIndex: number,
+  visibleColIds: ReadonlyArray<string>,
+  rowDataByIndex: ReadonlyMap<number, unknown>,
+  transform: PasteCellTransform,
+): Array<Array<unknown>> {
+  const out: Array<Array<unknown>> = new Array(parsed.length);
+  for (let r = 0; r < parsed.length; r++) {
+    const parsedRow = parsed[r]!;
+    const cells: unknown[] = new Array(parsedRow.length);
+    const targetRowIndex = anchorRowIndex + r;
+    const data = rowDataByIndex.get(targetRowIndex);
+    for (let c = 0; c < parsedRow.length; c++) {
+      const targetColIdx = anchorColIndex + c;
+      const colId = visibleColIds[targetColIdx];
+      if (colId === undefined || data === undefined) {
+        cells[c] = undefined;
+        continue;
+      }
+      cells[c] = transform({
+        value: parsedRow[c]!,
+        node: { rowIndex: targetRowIndex, data },
+        column: { colId },
+      });
+    }
+    out[r] = cells;
+  }
+  return out;
 }
 
 /** Coerce a single cell value to its TSV / CSV representation. `null` /

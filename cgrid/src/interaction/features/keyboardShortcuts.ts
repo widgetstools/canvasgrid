@@ -86,6 +86,28 @@ export class KeyboardShortcuts extends Feature {
       return;
     }
 
+    // Cycle 10 / Task 5 — Ctrl+X / Cmd+X → cut (copy + clear). Same
+    // selection gate as copy: an empty range set is a silent no-op so
+    // the browser keeps its default (which is also a no-op on a
+    // canvas). `cutSelectedRanges` writes to the clipboard FIRST and
+    // only proceeds to the clear `applyTransaction` if writeText
+    // resolves, so the user-gesture stack must be active here — the
+    // keydown handler runs inside it.
+    const isCut = e.key === 'x' || e.key === 'X' || e.code === 'KeyX';
+    if (isCut) {
+      const ranges = ctx.grid.selection.getRanges();
+      if (ranges.length === 0) {
+        super.handleKeyDown(ctx);
+        return;
+      }
+      e.preventDefault();
+      void ctx.grid.cutSelectedRanges().catch((err) => {
+        if (err instanceof Error && err.message === 'no-ranges') return;
+        console.warn('[cgrid] cutSelectedRanges:', err);
+      });
+      return;
+    }
+
     super.handleKeyDown(ctx);
   }
 }
