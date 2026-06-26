@@ -506,7 +506,10 @@ export class CGrid<TRow = any> {
         );
         return leaf ? leaf.top : 0;
       },
-      cycleSort: (colId) => this.cycleSort(colId),
+      cycleSort: (colId, opts) => this.cycleSort(colId, opts),
+      getMultiSortKey: () => this.options.multiSortKey === null
+        ? null
+        : (this.options.multiSortKey ?? 'Shift'),
       toggleColumnGroup: (groupId) => this.toggleColumnGroup(groupId),
       scrollBy: (dx, dy) => this.scroller.scrollBy({ left: dx, top: dy, behavior: 'auto' }),
       emitCellClicked: (rowIndex, colId, mouse) => {
@@ -1048,16 +1051,38 @@ export class CGrid<TRow = any> {
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
   }
 
-  /** Cycle the sort state for a column: unsorted → asc → desc → unsorted. */
-  private cycleSort(colId: string): void {
+  /** Cycle the sort state for a column: unsorted → asc → desc → unsorted.
+   *
+   *  Cycle 8 / Task 1 — `opts.append` lets the caller APPEND to the
+   *  existing sort model instead of replacing it. With append:
+   *  - column not in the model → append `{colId, direction:'asc'}` to the tail
+   *  - column already in the model → cycle its direction IN PLACE
+   *    (asc→desc, desc→remove). Never reorders other entries.
+   *
+   *  Without append (plain click), the model is replaced wholesale —
+   *  unsorted → asc → desc → unsorted on the clicked column. */
+  private cycleSort(colId: string, opts?: { append?: boolean }): void {
+    const append = opts?.append === true;
     const existing = this.sortModel.find((e) => e.colId === colId);
     let next: SortModel;
-    if (!existing) {
-      next = [{ colId, direction: 'asc' }];
-    } else if (existing.direction === 'asc') {
-      next = [{ colId, direction: 'desc' }];
+    if (append) {
+      if (!existing) {
+        next = [...this.sortModel, { colId, direction: 'asc' }];
+      } else if (existing.direction === 'asc') {
+        next = this.sortModel.map((e) =>
+          e.colId === colId ? { colId, direction: 'desc' as const } : e,
+        );
+      } else {
+        next = this.sortModel.filter((e) => e.colId !== colId);
+      }
     } else {
-      next = [];
+      if (!existing) {
+        next = [{ colId, direction: 'asc' }];
+      } else if (existing.direction === 'asc') {
+        next = [{ colId, direction: 'desc' }];
+      } else {
+        next = [];
+      }
     }
     this.setSortModel(next);
   }

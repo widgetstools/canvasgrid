@@ -235,12 +235,19 @@ function paintBand(
       let valueFormatted = '';
       let flashAlpha: number | undefined;
       let sortDirection: 'asc' | 'desc' | undefined;
+      let sortIndex: number | undefined;
+      let sortTotal: number | undefined;
 
       if (row.subgrid.isHeader) {
         value = def.headerName;
         valueFormatted = def.headerName;
         const sort = sortLookup.get(col.colId);
         sortDirection = sort?.direction;
+        // Cycle 8 / Task 1 — 1-index for the display badge; sortTotal
+        // mirrors the full sortModel length so the painter can decide
+        // whether to render the badge at all.
+        if (sort) sortIndex = sort.index + 1;
+        sortTotal = sortLookup.size;
       } else if (row.subgrid.isData) {
         const cell = cellData(row.localRowIndex, col.colId);
         value = cell?.value ?? '';
@@ -285,6 +292,8 @@ function paintBand(
         isHeader: row.subgrid.isHeader,
         iconColor: theme.focusRingColor,
         sortDirection,
+        sortIndex,
+        sortTotal,
         flashAlpha,
         params,
         rowData,

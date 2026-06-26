@@ -84,7 +84,12 @@ export interface CGridLike {
    *  this Y so it visually replaces the leaf header instead of floating
    *  above the group header. */
   getLeafHeaderTop(): number;
-  cycleSort(colId: string): void;
+  cycleSort(colId: string, opts?: { append?: boolean }): void;
+  /** Cycle 8 / Task 1 — resolved modifier key for multi-column sort
+   *  append. Returns `null` when multi-sort is disabled. Features check
+   *  the matching event modifier to decide whether to call `cycleSort`
+   *  with `{ append: true }`. */
+  getMultiSortKey(): 'Shift' | 'Ctrl' | 'Alt' | null;
   toggleColumnGroup(groupId: string): void;
   scrollBy(dx: number, dy: number): void;
   emitCellClicked(rowIndex: number, colId: string, e: MouseEvent): void;

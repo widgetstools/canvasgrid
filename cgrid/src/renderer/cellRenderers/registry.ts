@@ -24,6 +24,14 @@ export interface CellPaintConfig {
   // Header-only adornments (ignored by data renderers)
   iconColor?: string;
   sortDirection?: 'asc' | 'desc';
+  /** Cycle 8 / Task 1 — 1-indexed sort position when the cell's column
+   *  participates in a multi-column sort (e.g. `2` means "second sort
+   *  key"). `0` / `undefined` for single-column or unsorted columns. */
+  sortIndex?: number;
+  /** Cycle 8 / Task 1 — total number of columns in the current sort
+   *  model. Used by the header painter to decide whether to render the
+   *  badge at all (no badge for `sortTotal <= 1`). */
+  sortTotal?: number;
   // Flash overlay (Cycle 4 / Task 11 — `flashAlpha` is the per-cell
   // alpha drained from FlashRegistry; `flashFromColor` is the theme's
   // current --cg-flash-from-color so light + dark themes both paint
@@ -154,6 +162,34 @@ export const headerCell: CellPainter = {
         iconCx, cy, SORT_ICON_SIZE,
         { color: p.iconColor ?? p.fg, strokeWidth: 2 },
       );
+      // Cycle 8 / Task 1 — sort-order badge. Paints a tiny 1-indexed
+      // number to the LEFT of the chevron when the cell participates
+      // in a multi-column sort (sortTotal > 1). Drawn at 80% font size,
+      // 75% alpha so the chevron stays the primary marker.
+      if (p.sortTotal !== undefined && p.sortTotal > 1
+          && p.sortIndex !== undefined && p.sortIndex > 0) {
+        const badgeFont = scaleFontSize(p.font, 0.8);
+        const baseColor = p.iconColor ?? p.fg;
+        gc.cache.save();
+        gc.cache.globalAlpha = 0.75;
+        gc.cache.fillStyle = baseColor;
+        gc.cache.font = badgeFont;
+        gc.cache.textAlign = 'right';
+        gc.cache.textBaseline = 'middle';
+        const badgeX = p.bounds.x + p.bounds.w - SORT_ICON_PAD - SORT_ICON_SIZE - 2;
+        gc.fillText(String(p.sortIndex), badgeX, cy);
+        gc.cache.restore();
+      }
     }
   },
 };
+
+/** Scale the numeric `px` size of a CSS font string by `factor`.
+ *  Falls back to the original font when no `Npx` token is found —
+ *  defensive against custom theme fonts that already use shorthand. */
+function scaleFontSize(font: string, factor: number): string {
+  return font.replace(/(\d+(?:\.\d+)?)px/, (_, n) => {
+    const next = Math.max(8, Math.round(Number(n) * factor));
+    return `${next}px`;
+  });
+}

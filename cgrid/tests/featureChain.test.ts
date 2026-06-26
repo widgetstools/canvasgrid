@@ -59,6 +59,7 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
     resizeColumn,
     finishColumnResize,
     cycleSort,
+    getMultiSortKey: () => 'Shift' as const,
     toggleColumnGroup,
     scrollBy,
     emitCellClicked: emitClicked,
@@ -110,7 +111,15 @@ describe('FeatureChain — mouse', () => {
     const { canvas, cycleSort } = setup();
     // Header band is y < 32; pick a header cell well inside column 'a'.
     canvas.dispatchEvent(new MouseEvent('click', { clientX: 30, clientY: 10, bubbles: true }));
-    expect(cycleSort).toHaveBeenCalledWith('a');
+    expect(cycleSort).toHaveBeenCalledWith('a', { append: false });
+  });
+
+  it('header Shift+click cycles sort with append (multi-column)', () => {
+    const { canvas, cycleSort } = setup();
+    canvas.dispatchEvent(
+      new MouseEvent('click', { clientX: 30, clientY: 10, bubbles: true, shiftKey: true }),
+    );
+    expect(cycleSort).toHaveBeenCalledWith('a', { append: true });
   });
 
   it('column resize drag updates column width via resizeColumn', () => {

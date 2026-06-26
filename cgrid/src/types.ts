@@ -144,6 +144,12 @@ export interface CGridOptions<TRow = any> {
    *  When `false` (default) the mode is inert and arrow keys always
    *  behave like the input's native handler. */
   enableExcelEditing?: boolean;
+  /** Modifier key that turns a header click into a multi-column sort
+   *  append (Shift-click → append to the existing sort model instead of
+   *  replacing it). Defaults to `'Shift'`. Set to `null` to disable
+   *  multi-sort entirely (every header click replaces). Cycle 8 / Task 1. */
+  multiSortKey?: 'Shift' | 'Ctrl' | 'Alt' | null;
+
   /** Grid-wide default for the floating-filter row. When `true`, every
    *  column with a default-resolved filter renders a floating-filter
    *  `<input>` beneath the leaf-header row. Per-column

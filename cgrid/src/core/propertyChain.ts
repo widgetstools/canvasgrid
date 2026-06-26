@@ -174,6 +174,13 @@ export interface ApplyCellPropsInput {
   isHeader: boolean;
   iconColor?: string;
   sortDirection?: 'asc' | 'desc';
+  /** Cycle 8 / Task 1 — 1-indexed sort position; threaded into the
+   *  resulting `CellPaintConfig.sortIndex` so the header painter can
+   *  draw a multi-sort order badge. */
+  sortIndex?: number;
+  /** Cycle 8 / Task 1 — total entries in the current sort model. The
+   *  header painter skips the badge entirely when this is `<= 1`. */
+  sortTotal?: number;
   flashAlpha?: number;
   /** Resolved per-cell renderer params (see `CellPaintConfig.params`). */
   params?: unknown;
@@ -240,6 +247,8 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.isHeader = ctx.isHeader;
   target.iconColor = ctx.iconColor;
   target.sortDirection = ctx.sortDirection;
+  target.sortIndex = ctx.sortIndex;
+  target.sortTotal = ctx.sortTotal;
   target.flashAlpha = ctx.flashAlpha;
   // Cycle 4 / Task 11 — pipe the theme's resolved flash color through
   // so painters don't hard-code it. Read once per cell (constant per
