@@ -103,6 +103,11 @@ export class CGridCanvas {
   private dirty = false;
   private lastRepaintTime = 0;
   private destroyed = false;
+  /** Cycle 11 / Task 2 — top-left offset (in CSS px) the canvas should
+   *  sit at inside its host. Set by `setHostBounds` so a left-positioned
+   *  side bar can shift the canvas right by the side bar's reserved
+   *  width. Default {left:0, top:0}. */
+  private hostOffset = { left: 0, top: 0 };
 
   constructor(host: HTMLElement, component: PaintComponent, opts: CanvasOptions = {}) {
     this.host = host;
@@ -149,6 +154,20 @@ export class CGridCanvas {
     } finally {
       this.gc.cache.restore();
     }
+  }
+
+  /** Cycle 11 / Task 2 — shift the canvas element by `(left, top)` CSS
+   *  pixels inside the host. Used by `SideBarHost` so a left-positioned
+   *  side bar can vacate the leftmost gutter. `measureSize` is expected
+   *  to ALSO honor the gutter (typically by reading the scroller's
+   *  `clientWidth`, which the cgrid host has already shrunk to match).
+   *  Triggers an immediate `resize()` so the canvas re-fits + repaints
+   *  in the same call. */
+  setHostBounds(offset: { left: number; top: number }): void {
+    this.hostOffset = { left: offset.left, top: offset.top };
+    this.canvas.style.left = `${offset.left}px`;
+    this.canvas.style.top = `${offset.top}px`;
+    this.resize();
   }
 
   /** Re-measure host, re-fit canvas backing store + style, notify component, paint synchronously. */

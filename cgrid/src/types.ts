@@ -3,7 +3,7 @@
 
 import type { CellEditorCtor } from './interaction/editors/iCellEditor';
 import type { GetContextMenuItemsCallback, GetMainMenuItemsCallback } from './interaction/contextMenu/types';
-import type { ToolPanelComponent } from './interaction/toolPanels/types';
+import type { ToolPanelComponent, SideBarDef } from './interaction/toolPanels/types';
 
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
 // Cycle 10 / Task 1 — public context-menu surface. Re-exported from cgrid's
@@ -403,6 +403,14 @@ export interface CGridOptions<TRow = any> {
    *  new IDs that custom `SideBarDef.toolPanels` entries can reference
    *  via their `toolPanel` string. */
   components?: Record<string, ToolPanelComponent>;
+
+  /** Cycle 11 / Task 2 — side bar configuration. Accepts the canonical
+   *  `SideBarDef` object, the boolean shorthand `true` (= both built-in
+   *  panels at the default position), a single panel id string (`'columns'`
+   *  / `'filters'`), or an array of ids. Mirrors ag-grid's
+   *  `gridOptions.sideBar` acceptance shape. `false` / omitted disables
+   *  the side bar entirely (no DOM mount, no canvas gutter). */
+  sideBar?: SideBarDef | string | string[] | boolean;
 }
 
 /** Cycle 10 / Task 5 — params for `processCellForClipboard`. Mirrors
