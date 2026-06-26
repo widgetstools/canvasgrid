@@ -675,6 +675,25 @@ export interface SortModelEntry { colId: string; direction: 'asc' | 'desc' }
 export type SortModel = SortModelEntry[];
 
 /**
+ * A contiguous cell-range selection. Mirrors ag-grid's range shape:
+ * a rectangle spanning `rowStart..rowEnd` (inclusive, visible-order
+ * indices) by `colIds[]` (ordered left → right in render order).
+ *
+ * Disjoint selections are represented as multiple `SelectionRange`
+ * entries in `SelectionModel.state.ranges`. Column-band selections
+ * (header click) span `rowStart=0 → rowEnd=rowCount-1` with a single
+ * colId; full-row ranges span every visible colId. Cycle 9 / Task 1.
+ */
+export interface SelectionRange {
+  /** First row in the range (inclusive, current visible-order index). */
+  rowStart: number;
+  /** Last row in the range (inclusive, current visible-order index). */
+  rowEnd: number;
+  /** ColIds involved, in render order (left → right). */
+  colIds: string[];
+}
+
+/**
  * Serialisable per-leaf column state. Returned in current-visible-leaf
  * order from `getColumnState`, including hidden leaves so the round-trip
  * is symmetric. `undefined` on any optional slot is treated as

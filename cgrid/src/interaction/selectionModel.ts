@@ -1,14 +1,19 @@
+import type { SelectionRange } from '../types';
+
 export type SelectionMode = 'none' | 'single' | 'multiple';
 
 export interface SelectionState {
   focusedRowIndex: number | null;
   focusedColId: string | null;
   selectedRowIndices: Set<number>;
+  /** Cell-range selection. Disjoint ranges supported (matches ag-grid).
+   *  Cycle 9 / Task 1. */
+  ranges: SelectionRange[];
 }
 
 export class SelectionModel {
   private _state: SelectionState = {
-    focusedRowIndex: null, focusedColId: null, selectedRowIndices: new Set(),
+    focusedRowIndex: null, focusedColId: null, selectedRowIndices: new Set(), ranges: [],
   };
   // ID-keyed shadow state. The API-driven setters populate this directly; the
   // UI-driven setters (selectSingle / toggleMulti / range) leave it empty.
@@ -91,6 +96,48 @@ export class SelectionModel {
     this._state.selectedRowIndices.clear();
     this._selectedRowIds.clear();
     this.emit();
+  }
+
+  /** Replace the entire ranges list. Pass `[]` to clear. Fires onChange.
+   *  Cycle 9 / Task 1. */
+  setRanges(ranges: SelectionRange[]): void {
+    this._state.ranges = ranges.slice();
+    this.emit();
+  }
+
+  /** Append a range to the list. Fires onChange. Cycle 9 / Task 1. */
+  addRange(range: SelectionRange): void {
+    this._state.ranges.push(range);
+    this.emit();
+  }
+
+  /** Widen the LAST range to cover the new anchor:
+   *  rowEnd = max(rowEnd, rowIndex); colIds gains `colId` if not already
+   *  present. No-op (and no emit) when the ranges list is empty.
+   *  Cycle 9 / Task 1. */
+  extendRange(rowIndex: number, colId: string): void {
+    const ranges = this._state.ranges;
+    if (ranges.length === 0) return;
+    const last = ranges[ranges.length - 1]!;
+    const nextRowEnd = Math.max(last.rowEnd, rowIndex);
+    const hasCol = last.colIds.includes(colId);
+    const nextColIds = hasCol ? last.colIds : [...last.colIds, colId];
+    ranges[ranges.length - 1] = { rowStart: last.rowStart, rowEnd: nextRowEnd, colIds: nextColIds };
+    this.emit();
+  }
+
+  /** Drop every range. No-op (no emit) when already empty. Row selection
+   *  and focused cell are unaffected. Cycle 9 / Task 1. */
+  clearRanges(): void {
+    if (this._state.ranges.length === 0) return;
+    this._state.ranges = [];
+    this.emit();
+  }
+
+  /** Snapshot of the current ranges. Mutating the returned array does
+   *  not affect selection state. Cycle 9 / Task 1. */
+  getRanges(): SelectionRange[] {
+    return this._state.ranges.slice();
   }
 
   /** API path: set focus by rowId. Caller resolves the index via the worker
