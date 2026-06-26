@@ -2,7 +2,7 @@
 // See docs/superpowers/specs/2026-06-23-canvasgrid-foundation-design.md §9.
 
 import type { CellEditorCtor } from './interaction/editors/iCellEditor';
-import type { GetContextMenuItemsCallback } from './interaction/contextMenu/types';
+import type { GetContextMenuItemsCallback, GetMainMenuItemsCallback } from './interaction/contextMenu/types';
 
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
 // Cycle 10 / Task 1 — public context-menu surface. Re-exported from cgrid's
@@ -11,6 +11,8 @@ export type {
   MenuItem,
   GetContextMenuItemsParams,
   GetContextMenuItemsCallback,
+  GetMainMenuItemsParams,
+  GetMainMenuItemsCallback,
 } from './interaction/contextMenu/types';
 
 export interface ColCellOverrides {
@@ -311,6 +313,17 @@ export interface CGridOptions<TRow = any> {
    *  Read at event time so a runtime `setGridOption('getContextMenuItems',
    *  …)` takes effect on the next right-click. */
   getContextMenuItems?: GetContextMenuItemsCallback;
+
+  /** Cycle 10 (post-cycle patch) — resolve the right-click menu items for
+   *  a column HEADER hit. ag-grid calls this the "main menu" — distinct
+   *  from `getContextMenuItems`, which only fires for body-cell right-
+   *  clicks. Receives the colId under the cursor and the built-in
+   *  `defaultItems` list (populated by `buildDefaultMainMenuItems`).
+   *  Return an empty array to suppress the header menu without showing
+   *  the native browser menu. Read at event time so a runtime
+   *  `setGridOption('getMainMenuItems', …)` takes effect on the next
+   *  header right-click. */
+  getMainMenuItems?: GetMainMenuItemsCallback;
 
   /** Cycle 10 / Task 3 — character placed between cells when serialising
    *  a cell-range to the system clipboard. Defaults to `'\t'` (TSV,

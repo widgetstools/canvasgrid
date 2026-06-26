@@ -36,8 +36,9 @@ import { FloatingFilterOverlay } from './interaction/floatingFilterOverlay';
 import { PopupHost } from './interaction/editors/popupHost';
 import { FilterPopupHost } from './interaction/filters/filterPopupHost';
 import { ContextMenuHost } from './interaction/contextMenu/host';
-import type { MenuItem, GetContextMenuItemsParams } from './interaction/contextMenu/types';
+import type { MenuItem, GetContextMenuItemsParams, GetMainMenuItemsParams } from './interaction/contextMenu/types';
 import { buildDefaultMenuItems } from './interaction/contextMenu/defaults';
+import { buildDefaultMainMenuItems } from './interaction/contextMenu/mainMenuDefaults';
 import { NumberFilterPopup } from './interaction/filters/numberFilter';
 import { DateFilterPopup } from './interaction/filters/dateFilter';
 import { TextFilterPopup, applyTrimInputToModel } from './interaction/filters/textFilter';
@@ -1881,27 +1882,43 @@ export class CGrid<TRow = any> {
   }
 
   /** Cycle 10 / Task 1+2 — resolve the right-click menu items for `hit`.
-   *  Builds `GetContextMenuItemsParams` from the hit, current cell-range
-   *  snapshot, and the Task 2 default items list, then routes through
-   *  `CGridOptions.getContextMenuItems` when configured. Falls back to
-   *  the default list when no callback is set.
+   *  Routes by hit kind, matching ag-grid's split:
    *
-   *  Read at event time so a runtime `setGridOption('getContextMenuItems',
-   *  …)` takes effect on the next right-click without re-wiring the
-   *  feature chain. The `defaultItems` array is also rebuilt per right-
-   *  click so `params.colId` flows into per-column actions (Pin Column,
-   *  etc.) at the latest hit, not at construction. */
+   *  - `cell`         → cell context menu via `getContextMenuItems` +
+   *                     `buildDefaultMenuItems` (clipboard-heavy:
+   *                     Cut / Copy / Paste / Export / …).
+   *  - `header`       → main menu via `getMainMenuItems` +
+   *  - `headerGroup`    `buildDefaultMainMenuItems` (column-ops-heavy:
+   *                     Pin Column / Autosize / Reset). Header right-
+   *                     clicks have no cell-range context, so the
+   *                     clipboard items are deliberately omitted.
+   *  - other (empty / scrollbar) → no menu (returns []).
+   *
+   *  Read at event time so a runtime `setGridOption('getContextMenuItems'
+   *  / 'getMainMenuItems', …)` takes effect on the next right-click
+   *  without re-wiring the feature chain. The `defaultItems` array is
+   *  also rebuilt per right-click so the column the user actually
+   *  clicked flows into per-column actions (Pin Column, Autosize This
+   *  Column) at the latest hit. */
   resolveContextMenuItems(hit: import('./interaction/hitTester').Hit): MenuItem[] {
     if (this.destroyed) return [];
+
+    // Header / group-header right-click → main menu.
+    if (hit.kind === 'header' || hit.kind === 'headerGroup') {
+      const params: GetMainMenuItemsParams = { colId: hit.colId, defaultItems: [] };
+      const defaultItems = buildDefaultMainMenuItems(this, params);
+      params.defaultItems = defaultItems;
+      const callback = this.options.getMainMenuItems;
+      if (callback) return callback(params);
+      return defaultItems;
+    }
+
+    // Body-cell right-click → cell context menu. Other hit kinds
+    // (scrollbar, empty viewport) fall through this branch too with a
+    // null colId / rowIndex; the cell defaults handle that gracefully
+    // (Pin Column disables when colId is null).
     const rowIndex = hit.kind === 'cell' ? hit.rowIndex : null;
-    const colId = hit.kind === 'cell' ? hit.colId
-      : hit.kind === 'header' ? hit.colId
-      : hit.kind === 'headerGroup' ? hit.colId
-      : null;
-    // Seed params with an empty defaultItems slot so the registry can
-    // read `params.colId` while building (Pin Column needs it); then
-    // mutate the slot once the list exists so callback authors see the
-    // populated array.
+    const colId = hit.kind === 'cell' ? hit.colId : null;
     const params: GetContextMenuItemsParams = {
       rowIndex,
       colId,
@@ -1917,25 +1934,32 @@ export class CGrid<TRow = any> {
 
   /** Cycle 10 / Task 1+2 — mount the right-click menu at viewport coords
    *  `(x, y)` rendering `items`. Empty `items` is a no-op so callers can
-   *  always invoke this without the empty-list guard. The params passed
-   *  into item actions reuses the Task 2 defaults list so action callbacks
-   *  that read `params.defaultItems` see the same snapshot that
-   *  `getContextMenuItems(params)` saw on resolution. */
+   *  always invoke this without the empty-list guard. The params handed
+   *  to item actions matches the registry the menu was resolved from —
+   *  cell hits feed `GetContextMenuItemsParams`, header hits feed
+   *  `GetMainMenuItemsParams` — so custom action authors can rely on the
+   *  shape they registered against. */
   openContextMenu(items: MenuItem[], x: number, y: number, hit: import('./interaction/hitTester').Hit): void {
     if (this.destroyed) return;
     if (items.length === 0) return;
-    const rowIndex = hit.kind === 'cell' ? hit.rowIndex : null;
-    const colId = hit.kind === 'cell' ? hit.colId
-      : hit.kind === 'header' ? hit.colId
-      : hit.kind === 'headerGroup' ? hit.colId
-      : null;
-    const params: GetContextMenuItemsParams = {
-      rowIndex,
-      colId,
-      ranges: this.getCellRanges(),
-      defaultItems: [],
-    };
-    params.defaultItems = buildDefaultMenuItems(this, params);
+
+    let params: GetContextMenuItemsParams | GetMainMenuItemsParams;
+    if (hit.kind === 'header' || hit.kind === 'headerGroup') {
+      const p: GetMainMenuItemsParams = { colId: hit.colId, defaultItems: [] };
+      p.defaultItems = buildDefaultMainMenuItems(this, p);
+      params = p;
+    } else {
+      const rowIndex = hit.kind === 'cell' ? hit.rowIndex : null;
+      const colId = hit.kind === 'cell' ? hit.colId : null;
+      const p: GetContextMenuItemsParams = {
+        rowIndex,
+        colId,
+        ranges: this.getCellRanges(),
+        defaultItems: [],
+      };
+      p.defaultItems = buildDefaultMenuItems(this, p);
+      params = p;
+    }
     this.contextMenuHost.open(items, x, y, params);
   }
 

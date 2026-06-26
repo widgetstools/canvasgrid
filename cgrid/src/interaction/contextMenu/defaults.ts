@@ -69,13 +69,15 @@ export function buildDefaultMenuItems(
   const hasColumn = params.colId !== null;
   const colId = params.colId;
 
-  const pinAction = (pinned: 'left' | 'right' | null) => (p: GetContextMenuItemsParams) => {
-    // Prefer the colId from the live params at click time (matches ag-grid
-    // and lets apps re-anchor the menu by re-resolving params). Fall back
-    // to the closure capture only if a host invoked us without params.
-    const target = p?.colId ?? colId;
-    if (target === null) return;
-    grid.setColumnsPinned([target], pinned);
+  const pinAction = (pinned: 'left' | 'right' | null) => () => {
+    // The registry is rebuilt per right-click (see
+    // `CGrid.resolveContextMenuItems`), so the closure-captured `colId`
+    // is always the freshly-clicked column. `colId === null` happens
+    // when the right-click landed outside any column (the menu is
+    // already gated via `disabled: !hasColumn` so this is defence in
+    // depth for hosts that don't honour `disabled`).
+    if (colId === null) return;
+    grid.setColumnsPinned([colId], pinned);
   };
 
   return [
