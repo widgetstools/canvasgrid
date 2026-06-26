@@ -19,9 +19,11 @@
  *  - dragging the inner-edge resize handle widens the panel; the
  *    canvas region narrows correspondingly.
  *
- * The Task 2 stub panels render an empty `<div class="cg-tool-panel-stub">` —
- * Tasks 3 + 4 replace those with the real Columns / Filters panels.
- * This spec only verifies the SHELL behavior, not panel content.
+ * The Task 2 stub panels render an empty `<div class="cg-tool-panel-stub">`.
+ * Task 3 replaces the Columns stub with the real `.cg-columns-panel`; Task 4
+ * does the same for Filters. This spec only verifies the SHELL behaviour,
+ * not panel content — the panel-mount sentinel checks below assert
+ * against the live class for whichever tab is being exercised.
  */
 import { test, expect, Page } from '@playwright/test';
 
@@ -89,14 +91,16 @@ test.describe('Cycle 11 / Task 2 — side bar shell', () => {
     await waitForFrames(page, 3);
     await expect(columnsTab).toHaveAttribute('aria-pressed', 'true');
     await expect(filtersTab).toHaveAttribute('aria-pressed', 'false');
-    await expect(panel.locator('.cg-tool-panel-stub')).toHaveCount(1);
+    // Cycle 11 / Task 3 — the Columns tab now mounts the real
+    // `.cg-columns-panel` instead of the Task 1 `.cg-tool-panel-stub`.
+    await expect(panel.locator('.cg-columns-panel')).toHaveCount(1);
     await expect(panel).not.toHaveCSS('display', 'none');
 
     await columnsTab.click();
     await waitForFrames(page, 3);
     await expect(columnsTab).toHaveAttribute('aria-pressed', 'false');
     await expect(panel).toHaveCSS('display', 'none');
-    await expect(panel.locator('.cg-tool-panel-stub')).toHaveCount(0);
+    await expect(panel.locator('.cg-columns-panel')).toHaveCount(0);
   });
 
   test('clicking Filters while Columns is open switches panels (only one open at a time)', async ({ page }) => {

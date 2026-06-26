@@ -37,6 +37,7 @@ import { PopupHost } from './interaction/editors/popupHost';
 import { FilterPopupHost } from './interaction/filters/filterPopupHost';
 import { ContextMenuHost } from './interaction/contextMenu/host';
 import { ToolPanelRegistry } from './interaction/toolPanels/registry';
+import { ColumnsToolPanel } from './interaction/toolPanels/columnsPanel';
 import { SideBarHost, normalizeSideBarOption, type SideBarGridContext } from './interaction/sideBar/host';
 import type { MenuItem, GetContextMenuItemsParams, GetMainMenuItemsParams } from './interaction/contextMenu/types';
 import { buildDefaultMenuItems } from './interaction/contextMenu/defaults';
@@ -477,12 +478,14 @@ export class CGrid<TRow = any> {
     this.cellRenderers.register('text-wrap', wrapTextCell);
 
     // 2b. Tool-panel registry (Cycle 11 / Task 1). Seed the built-in
-    // IDs with stub implementations BEFORE merging any app-supplied
-    // `components` entries so the app can override built-ins by
-    // registering against the same key. Tasks 3 + 4 replace the
-    // built-in stubs with the real Columns / Filters panels.
+    // IDs first, then overwrite the Columns stub with the real
+    // ColumnsToolPanel implementation (Cycle 11 / Task 3 — Task 4
+    // replaces the Filters stub the same way). App-supplied
+    // `components` entries are merged last so apps can still override
+    // the built-in panels by registering against the same key.
     this.toolPanelRegistry = new ToolPanelRegistry();
     this.toolPanelRegistry.seedBuiltIns();
+    this.toolPanelRegistry.register('agColumnsToolPanel', ColumnsToolPanel);
     if (options.components) {
       for (const [id, ctor] of Object.entries(options.components)) {
         this.toolPanelRegistry.register(id, ctor);
@@ -2791,6 +2794,7 @@ export class CGrid<TRow = any> {
       removeEventListener: (t, h) => this.removeEventListener(t as CGridEvent['type'], h as any),
       moveColumnByIndex: (f, t) => this.moveColumnByIndex(f, t),
       getColumnState: () => this.getColumnState(),
+      getColumnHeaderName: (colId) => this.columnDefsMap.get(colId)?.headerName,
       applyColumnState: (p) => this.applyColumnState(p),
       resetColumnState: () => this.resetColumnState(),
       sizeColumnsToFit: (p) => this.sizeColumnsToFit(p),

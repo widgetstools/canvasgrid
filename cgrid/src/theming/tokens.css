@@ -553,3 +553,171 @@
 .cg-side-bar-resize:hover {
   background: var(--cg-focus-ring-color);
 }
+
+/* Cycle 11 / Task 3 — ColumnsToolPanel (built-in `agColumnsToolPanel`).
+ * Layout matches the user reference 2026-06-26 dark-theme target encoded
+ * in the worklog: Pivot Mode pill toggle on top, then search input, then
+ * the scrollable column list, then Row Groups + Σ Values drop-zone
+ * sections. The panel root is `display: flex; flex-direction: column;`
+ * so the list region expands to fill the remaining height and the
+ * section drop zones pin to the bottom. */
+.cg-columns-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--cg-bg-color);
+  color: var(--cg-fg-color);
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  overflow: hidden;
+}
+.cg-columns-panel-pivot-mode {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--cg-border-color);
+  flex: 0 0 auto;
+}
+.cg-columns-panel-toggle {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cg-fg-color) 30%, transparent);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  flex: 0 0 auto;
+  transition: background 120ms ease;
+}
+.cg-columns-panel-toggle[aria-pressed="true"] {
+  background: var(--cg-focus-ring-color);
+}
+.cg-columns-panel-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--cg-bg-color);
+  transition: transform 120ms ease;
+}
+.cg-columns-panel-toggle[aria-pressed="true"] .cg-columns-panel-toggle-knob {
+  transform: translateX(12px);
+}
+.cg-columns-panel-pivot-mode-label {
+  font-size: 13px;
+  line-height: 1;
+}
+.cg-columns-panel-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--cg-border-color);
+  flex: 0 0 auto;
+}
+.cg-columns-panel-search-icon {
+  font-size: 12px;
+  opacity: 0.7;
+  line-height: 1;
+}
+.cg-columns-panel-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  background: var(--cg-bg-color);
+  color: var(--cg-fg-color);
+  border: 1px solid var(--cg-border-color);
+  border-radius: 2px;
+  font-family: inherit;
+  font-size: 13px;
+}
+.cg-columns-panel-search input:focus {
+  outline: none;
+  border-color: var(--cg-focus-ring-color);
+}
+.cg-columns-panel-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0;
+}
+.cg-columns-panel-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 12px;
+  cursor: default;
+  user-select: none;
+}
+.cg-columns-panel-row:hover {
+  background: var(--cg-row-hover-bg);
+}
+.cg-columns-panel-row--dragging {
+  opacity: 0.7;
+  background: color-mix(in srgb, var(--cg-focus-ring-color) 18%, transparent);
+}
+.cg-columns-panel-row-checkbox {
+  flex: 0 0 auto;
+  margin: 0;
+  accent-color: var(--cg-focus-ring-color);
+  cursor: pointer;
+}
+.cg-columns-panel-row-handle {
+  display: inline-block;
+  width: 10px;
+  height: 14px;
+  flex: 0 0 auto;
+  cursor: grab;
+  opacity: 0.55;
+  background-image: radial-gradient(circle, currentColor 1.1px, transparent 1.4px);
+  background-size: 4px 4px;
+  background-position: 1px 1px;
+  background-repeat: repeat;
+}
+.cg-columns-panel-row-handle:active {
+  cursor: grabbing;
+}
+.cg-columns-panel-row-label {
+  flex: 1 1 auto;
+  font-size: 13px;
+  line-height: 1.4;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cg-columns-panel-section {
+  flex: 0 0 auto;
+  border-top: 1px solid var(--cg-border-color);
+  padding: 10px 12px;
+}
+.cg-columns-panel-section-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+.cg-columns-panel-section-header::before {
+  content: attr(data-icon);
+  font-weight: normal;
+  font-size: 13px;
+  opacity: 0.8;
+}
+.cg-columns-panel-drop-zone {
+  border: 1px dashed color-mix(in srgb, var(--cg-border-color) 80%, transparent);
+  border-radius: 4px;
+  padding: 12px;
+  text-align: center;
+  font-size: 12px;
+  opacity: 0.7;
+  background: transparent;
+}
