@@ -26,16 +26,19 @@ function makeGridStub(): {
   autoSize: ReturnType<typeof vi.fn>;
   reset: ReturnType<typeof vi.fn>;
   pinned: ReturnType<typeof vi.fn>;
+  copy: ReturnType<typeof vi.fn>;
 } {
   const autoSize = vi.fn();
   const reset = vi.fn();
   const pinned = vi.fn();
+  const copy = vi.fn().mockResolvedValue(undefined);
   const grid: DefaultMenuGrid = {
     autoSizeAllColumns: autoSize as unknown as DefaultMenuGrid['autoSizeAllColumns'],
     resetColumnState: reset as unknown as DefaultMenuGrid['resetColumnState'],
     setColumnsPinned: pinned as unknown as DefaultMenuGrid['setColumnsPinned'],
+    copySelectedRangesToClipboard: copy as unknown as DefaultMenuGrid['copySelectedRangesToClipboard'],
   };
-  return { grid, autoSize, reset, pinned };
+  return { grid, autoSize, reset, pinned, copy };
 }
 
 function makeParams(overrides: Partial<GetContextMenuItemsParams> = {}): GetContextMenuItemsParams {
@@ -82,7 +85,7 @@ describe('buildDefaultMenuItems', () => {
     expect(seps.length).toBe(2);
   });
 
-  it('Copy / Copy with Headers / Paste / Cut actions exist and do not throw (stubs)', () => {
+  it('Copy / Copy with Headers / Paste / Cut actions exist and do not throw', () => {
     const { grid } = makeGridStub();
     const items = buildDefaultMenuItems(grid, makeParams({ colId: 'a' }));
     const byName = new Map(items.map((i) => [i.name, i]));
@@ -91,9 +94,14 @@ describe('buildDefaultMenuItems', () => {
       expect(typeof it.action).toBe('function');
       expect(() => it.action!(makeParams({ colId: 'a' }))).not.toThrow();
     }
-    // Tasks 3-5 replace the stubs; until then, they emit a debug breadcrumb
-    // so a curious developer can see them fire.
-    expect(console.debug).toHaveBeenCalled();
+  });
+
+  it('Copy action routes to grid.copySelectedRangesToClipboard() (Cycle 10 / Task 3)', () => {
+    const { grid, copy } = makeGridStub();
+    const items = buildDefaultMenuItems(grid, makeParams({ colId: 'a' }));
+    const copyItem = items.find((i) => i.name === 'Copy')!;
+    copyItem.action!(makeParams({ colId: 'a' }));
+    expect(copy).toHaveBeenCalledTimes(1);
   });
 
   it('Export action exists and does not throw (stub)', () => {

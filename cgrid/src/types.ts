@@ -311,6 +311,14 @@ export interface CGridOptions<TRow = any> {
    *  Read at event time so a runtime `setGridOption('getContextMenuItems',
    *  …)` takes effect on the next right-click. */
   getContextMenuItems?: GetContextMenuItemsCallback;
+
+  /** Cycle 10 / Task 3 — character placed between cells when serialising
+   *  a cell-range to the system clipboard. Defaults to `'\t'` (TSV,
+   *  which Excel / Sheets / Numbers paste as a grid). Common override
+   *  is `','` for CSV, but any single character is legal. Read at copy
+   *  time so a runtime `setGridOption('clipboardDelimiter', ',')` takes
+   *  effect on the next Ctrl+C / menu Copy. */
+  clipboardDelimiter?: string;
 }
 
 /** Suppression flags for the cell-range selection pathways. Each flag
@@ -1357,6 +1365,24 @@ export interface CGridApi {
   ensureColumnGroupVisible(groupId: string, position?: 'auto' | 'start' | 'middle' | 'end'): void;
   getSelectedRowIds(): string[];
   setSelectedRowIds(ids: string[]): void;
+
+  /** Cycle 10 / Task 3 — serialise the current `getCellRanges()` to
+   *  TSV (or CSV when `clipboardDelimiter` overrides the default `\t`)
+   *  on the worker, then forward the encoded string to
+   *  `navigator.clipboard.writeText`. Resolves once the clipboard
+   *  write succeeds. Rejects when:
+   *  - no range is selected (no-op result; rejects with `'no-ranges'`)
+   *  - the Async Clipboard API is unavailable (e.g. insecure context
+   *    without a polyfill — the keyboard handler runs inside the user
+   *    gesture so this is the only realistic reject path)
+   *  - the clipboard write rejects (browser permission denial, no user
+   *    gesture stack — apps invoking this from a `setTimeout` should
+   *    expect this)
+   *
+   *  Backs both the Ctrl+C shortcut and the default `Copy` context-menu
+   *  item. Apps that ship their own clipboard layer set
+   *  `suppressClipboardApi: true` (Task 6) so this becomes a no-op. */
+  copySelectedRangesToClipboard(): Promise<void>;
 
   /** Snapshot of the currently-selected cell ranges. Returns a fresh
    *  array; mutating it does NOT affect grid state. Empty when no

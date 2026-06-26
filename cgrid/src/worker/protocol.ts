@@ -1,4 +1,4 @@
-import type { SortModel, FilterModel, GroupModel, TransactionResult } from '../types';
+import type { SortModel, FilterModel, GroupModel, TransactionResult, SelectionRange } from '../types';
 
 export type ReqId = number;
 
@@ -228,7 +228,20 @@ export type WorkerRequest =
    *  The worker matches `callId` to the in-flight pipeline and resumes
    *  with `reordered` as the post-sort row order. The original pipeline
    *  request's reply fires once the worker resumes and finishes. */
-  | { id: ReqId; type: 'postSortRowsResult'; payload: { callId: number; reordered: string[] } };
+  | { id: ReqId; type: 'postSortRowsResult'; payload: { callId: number; reordered: string[] } }
+  /** Cycle 10 / Task 3 — serialise the supplied cell ranges to TSV (or
+   *  CSV when `delimiter` overrides the default `\t`). The worker
+   *  resolves each `range.rowStart..rowEnd` against the visible row
+   *  order, reads per-cell values via the worker's `RowStore` +
+   *  `WorkerColumn.field`, and replies with the encoded string. Heavy
+   *  work (10k × 50 range fits inside the cycle's < 100 ms budget) runs
+   *  off the main thread; the main side only forwards the result to
+   *  `navigator.clipboard.writeText`. */
+  | {
+      id: ReqId;
+      type: 'clipboardSerialize';
+      payload: { ranges: SelectionRange[]; delimiter: string };
+    };
 
 export type WorkerResponse =
   | { id: ReqId; type: 'ready' }
@@ -247,6 +260,9 @@ export type WorkerResponse =
    *  Values are in store-iteration order; null / undefined cells are
    *  dropped. */
   | { id: ReqId; type: 'distinctValuesResult'; values: string[] }
+  /** Cycle 10 / Task 3 — encoded TSV / CSV for the supplied ranges. The
+   *  main thread forwards `tsv` to `navigator.clipboard.writeText`. */
+  | { id: ReqId; type: 'clipboardSerializeResult'; tsv: string }
   | { id: ReqId; type: 'error';               error: string };
 
 export type WorkerPush =
