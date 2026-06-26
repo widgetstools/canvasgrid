@@ -4,8 +4,58 @@ import {
   type CellPainter,
   type MenuItem,
   type GetContextMenuItemsParams,
+  type ToolPanel,
+  type ToolPanelParams,
 } from 'cgrid';
 import type { Position } from './stomp';
+
+/**
+ * Cycle 11 / Task 5 — demo custom tool panel. Registered via
+ * `CGridOptions.components: { demoCustomPanel: DemoCustomPanel }` only
+ * when the demo opts in (URL `?customPanel=1`), so the default demo's
+ * side bar still ships exactly two tabs (Columns + Filters) and the
+ * other Cycle 11 E2E specs remain untouched.
+ *
+ * The panel records every `init` / `refresh` / `destroy` call on its
+ * root element as `data-init-count` / `data-refresh-count` /
+ * `data-destroy-count`. The cycle11-customPanelApi spec reads those
+ * attributes through the DOM to verify both API methods (`refreshToolPanel`,
+ * `getToolPanelInstance`) drive the live instance.
+ */
+export class DemoCustomPanel implements ToolPanel {
+  private gui = document.createElement('div');
+  private initCount = 0;
+  private refreshCount = 0;
+  private destroyCount = 0;
+
+  init(params: ToolPanelParams): void {
+    this.initCount += 1;
+    this.gui.className = 'cg-demo-custom-panel';
+    this.gui.dataset.testid = 'demo-custom-panel';
+    this.gui.dataset.initCount = String(this.initCount);
+    this.gui.dataset.refreshCount = '0';
+    this.gui.dataset.destroyCount = '0';
+    // Surface the custom-panel id so the E2E can assert that
+    // `getToolPanelInstance('demoCustomPanel')` returns this very
+    // instance (the DOM node it exposes carries the matching marker).
+    this.gui.dataset.panelId = 'demoCustomPanel';
+    this.gui.textContent = `Cycle 11 / Task 5 — demo custom panel (api=${typeof params.api})`;
+  }
+
+  getGui(): HTMLElement {
+    return this.gui;
+  }
+
+  refresh(): void {
+    this.refreshCount += 1;
+    this.gui.dataset.refreshCount = String(this.refreshCount);
+  }
+
+  destroy(): void {
+    this.destroyCount += 1;
+    this.gui.dataset.destroyCount = String(this.destroyCount);
+  }
+}
 
 /**
  * `pnlPill` — custom painter registered via `grid.registerCellRenderer`.
@@ -59,6 +109,12 @@ export interface PositionsGridOptions {
   variableHeights?: boolean;
   autoHeight?: boolean;
   cellClassDemo?: boolean;
+  /** Cycle 11 / Task 5 — opt the demo into registering a third tool
+   *  panel (`DemoCustomPanel`) via `CGridOptions.components` plus an
+   *  extra entry in `sideBar.toolPanels`. Off by default so the other
+   *  Cycle 11 E2Es still see the canonical two-tab side bar; the
+   *  cycle11-customPanelApi spec opts in via `?customPanel=1`. */
+  customPanel?: boolean;
 }
 
 /** Cycle 7 / Task 8 — toolbar-driven external filter state. The
@@ -354,7 +410,22 @@ export function createPositionsGrid(
     // replace them with the real implementations). The default panel
     // stays closed at mount so the demo opens with the canvas at full
     // width; clicking a tab opens the matching panel.
-    sideBar: { toolPanels: ['columns', 'filters'] },
+    //
+    // Cycle 11 / Task 5 — when `?customPanel=1` opts in, the demo also
+    // registers a third panel (`demoCustomPanel`) via `components` and
+    // appends it to the tab strip. The cycle11-customPanelApi E2E uses
+    // this to exercise `refreshToolPanel` + `getToolPanelInstance` over
+    // a custom (non-built-in) id.
+    sideBar: opts.customPanel
+      ? {
+          toolPanels: [
+            'columns',
+            'filters',
+            { id: 'demoCustomPanel', labelDefault: 'Demo', toolPanel: 'demoCustomPanel' },
+          ],
+        }
+      : { toolPanels: ['columns', 'filters'] },
+    components: opts.customPanel ? { demoCustomPanel: DemoCustomPanel } : undefined,
     // Cycle 10 / Task 1 — sample `getContextMenuItems`. Keeps every
     // built-in default item (Copy / Paste / Cut / Export / Autosize /
     // Pin / Reset) AND appends one custom "Clear filters" entry so the

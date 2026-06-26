@@ -19,7 +19,12 @@ const editType = editTypeParam === 'fullRow' ? 'fullRow' as const : undefined;
 const variableHeights = search.get('variableHeights') === '1';
 const autoHeight = search.get('autoHeight') === '1';
 const cellClassDemo = search.get('cellClassDemo') === '1';
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo });
+// Cycle 11 / Task 5 — `?customPanel=1` registers the demo `DemoCustomPanel`
+// via `CGridOptions.components` and adds a third tab to the side bar so the
+// cycle11-customPanelApi E2E can exercise refreshToolPanel +
+// getToolPanelInstance against a custom id.
+const customPanel = search.get('customPanel') === '1';
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel });
 
 // E2E hooks: expose the grid + a readiness flag so Playwright tests can wait
 // for first-data-rendered and call api helpers (`getCellBoundsAt`,

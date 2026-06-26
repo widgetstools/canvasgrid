@@ -3,7 +3,7 @@
 
 import type { CellEditorCtor } from './interaction/editors/iCellEditor';
 import type { GetContextMenuItemsCallback, GetMainMenuItemsCallback } from './interaction/contextMenu/types';
-import type { ToolPanelComponent, SideBarDef } from './interaction/toolPanels/types';
+import type { ToolPanelComponent, SideBarDef, ToolPanel } from './interaction/toolPanels/types';
 
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
 // Cycle 10 / Task 1 — public context-menu surface. Re-exported from cgrid's
@@ -1564,6 +1564,31 @@ export interface CGridApi {
   getColumnGroupState(): { groupId: string; open: boolean }[];
   setColumnGroupState(state: { groupId: string; open: boolean }[]): void;
   resetColumnGroupState(): void;
+
+  /** Cycle 11 / Task 5 — call `refresh()` on the live `ToolPanel`
+   *  instance for `id`. Silent no-op when:
+   *  - `id` is unknown (not registered in `CGridOptions.components` and
+   *    not one of the built-in IDs);
+   *  - no side bar is configured;
+   *  - the matching panel is registered but not currently mounted
+   *    (i.e. the user has not opened it via `openToolPanel(id)` or a
+   *    tab click). Panels are only instantiated on open and destroyed
+   *    on close, so a panel that has never been opened has no
+   *    instance for `refresh()` to fire on.
+   *
+   *  Works for both built-in panels (`'agColumnsToolPanel'`,
+   *  `'agFiltersToolPanel'`) and app-supplied custom panels keyed by
+   *  the same `id` they registered under in `CGridOptions.components`. */
+  refreshToolPanel(id: string): void;
+  /** Cycle 11 / Task 5 — the live `ToolPanel` instance for `id`, or
+   *  `null` when no instance is currently mounted (panel never opened,
+   *  `id` unknown, or no side bar configured). Apps reach for this to
+   *  invoke panel-specific methods that aren't part of the `ToolPanel`
+   *  interface — e.g. a custom panel might expose `expandAll()` or
+   *  `selectColumn(colId)`. Treat the returned instance as a borrowed
+   *  reference: it stops being valid the moment the user closes the
+   *  panel (the host calls `destroy()` and drops the reference). */
+  getToolPanelInstance(id: string): ToolPanel | null;
 
   /** Read the current value of any grid option. */
   getGridOption<K extends keyof CGridOptions>(key: K): CGridOptions[K] | undefined;
