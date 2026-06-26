@@ -38,6 +38,7 @@ import { FilterPopupHost } from './interaction/filters/filterPopupHost';
 import { ContextMenuHost } from './interaction/contextMenu/host';
 import { ToolPanelRegistry } from './interaction/toolPanels/registry';
 import { ColumnsToolPanel } from './interaction/toolPanels/columnsPanel';
+import { FiltersToolPanel } from './interaction/toolPanels/filtersPanel';
 import { SideBarHost, normalizeSideBarOption, type SideBarGridContext } from './interaction/sideBar/host';
 import type { MenuItem, GetContextMenuItemsParams, GetMainMenuItemsParams } from './interaction/contextMenu/types';
 import { buildDefaultMenuItems } from './interaction/contextMenu/defaults';
@@ -486,6 +487,7 @@ export class CGrid<TRow = any> {
     this.toolPanelRegistry = new ToolPanelRegistry();
     this.toolPanelRegistry.seedBuiltIns();
     this.toolPanelRegistry.register('agColumnsToolPanel', ColumnsToolPanel);
+    this.toolPanelRegistry.register('agFiltersToolPanel', FiltersToolPanel);
     if (options.components) {
       for (const [id, ctor] of Object.entries(options.components)) {
         this.toolPanelRegistry.register(id, ctor);
@@ -1831,8 +1833,10 @@ export class CGrid<TRow = any> {
    *  - the column is not currently in the viewport
    *  - the popup is already open for the same column
    *
-   *  Task 3 implements the number filter; tasks 4 (date) / 5 (text) /
-   *  6 (multi) / 9 (set) extend the type switch.
+   *  Cycle 11 / Task 4 — the popup-factory construction is factored into
+   *  `buildFilterPopupFactory` so the FiltersToolPanel can reuse the
+   *  exact same per-type editor for its inline expand-row UI. The popup
+   *  path adds anchoring + host-mounting on top.
    */
   showColumnFilter(colId: string): void {
     if (this.destroyed) return;
@@ -1855,109 +1859,183 @@ export class CGrid<TRow = any> {
       width: this.canvasBounds.width || this.scroller.clientWidth || 0,
       height: this.canvasBounds.height || this.scroller.clientHeight || 0,
     };
+    void this.buildFilterPopupFactory(colId, {
+      onApply: (model) => void this.setColumnFilterModel(colId, model),
+      onClose: () => this.hideColumnFilter(),
+      onModified: () => this.events.emit({ type: 'filterModified', colId }),
+    }).then((popup) => {
+      if (!popup || this.destroyed) return;
+      // Guard against a second `showColumnFilter` racing in before the
+      // (potentially async, for set filter) factory resolves.
+      const openCol = this.filterPopupHost.openColId();
+      if (openCol !== null && openCol !== colId) return;
+      this.filterPopupHost.open(colId, { cellBounds: anchorCell, viewportBounds }, popup);
+      this.events.emit({ type: 'filterOpened', colId });
+    }).catch((err) => {
+      if (!this.destroyed) console.error('[cgrid] showColumnFilter:', err);
+    });
+  }
+
+  /** Cycle 11 / Task 4 — build the popup factory for `colId`. Returns a
+   *  Promise so the set-filter's distinct-values worker round-trip can
+   *  resolve before the factory is instantiated (all other filter types
+   *  resolve synchronously). Returns `null` when the column is unknown
+   *  or has no resolved filter type.
+   *
+   *  Both `showColumnFilter` (popup mode) and the FiltersToolPanel
+   *  (inline mode) call this, so per-type popup wiring lives in exactly
+   *  one place — a bug fixed in one path is fixed in both. */
+  private buildFilterPopupFactory(
+    colId: string,
+    callbacks: {
+      onApply: (model: CFilterModelEntry | null) => void;
+      onClose: () => void;
+      onModified?: () => void;
+    },
+  ): Promise<import('./interaction/filters/filterPopupHost').FilterPopupFactory | null> {
+    const def = this.columnDefsMap.get(colId);
+    if (!def) return Promise.resolve(null);
+    const filterType = resolveFilterType(def);
+    if (!filterType) return Promise.resolve(null);
+    const initial = this.getColumnFilterModel(colId);
+
     if (filterType === 'number') {
       const params = (def.filterParams ?? {}) as import('./types').CFilterParams;
-      const initial = this.getColumnFilterModel(colId);
       // Cycle 7 / Task 6 — both number and multi-shaped entries seed the
       // popup. Single popups normalise a multi-shape to its first
       // condition; multi popups hydrate the full conditions array.
       const initialEntry = initial && (initial.filterType === 'number' || initial.filterType === 'multi')
-        ? initial
+        ? initial as import('./types').CNumberFilterModel | import('./types').CMultiConditionFilterModel
         : null;
-      const popup = new NumberFilterPopup({
+      return Promise.resolve(new NumberFilterPopup({
         initialModel: initialEntry,
-        onApply: (model) => void this.setColumnFilterModel(colId, model),
-        onClose: () => this.hideColumnFilter(),
+        onApply: (model) => callbacks.onApply(model as CFilterModelEntry | null),
+        onClose: callbacks.onClose,
+        onModified: callbacks.onModified,
         buttons: params.buttons,
         closeOnApply: params.closeOnApply ?? true,
         maxNumConditions: params.maxNumConditions,
         numAlwaysVisibleConditions: params.numAlwaysVisibleConditions,
         defaultJoinOperator: params.defaultJoinOperator,
-        onModified: () => this.events.emit({ type: 'filterModified', colId }),
-      });
-      this.filterPopupHost.open(colId, { cellBounds: anchorCell, viewportBounds }, popup);
-      this.events.emit({ type: 'filterOpened', colId });
-    } else if (filterType === 'date') {
+      }));
+    }
+
+    if (filterType === 'date') {
       const params = (def.filterParams ?? {}) as import('./types').CFilterParams;
-      const initial = this.getColumnFilterModel(colId);
       const initialEntry = initial && (initial.filterType === 'date' || initial.filterType === 'multi')
-        ? initial
+        ? initial as import('./types').CDateFilterModel | import('./types').CMultiConditionFilterModel
         : null;
-      const popup = new DateFilterPopup({
+      return Promise.resolve(new DateFilterPopup({
         initialModel: initialEntry,
-        onApply: (model) => void this.setColumnFilterModel(colId, model),
-        onClose: () => this.hideColumnFilter(),
+        onApply: (model) => callbacks.onApply(model as CFilterModelEntry | null),
+        onClose: callbacks.onClose,
+        onModified: callbacks.onModified,
         buttons: params.buttons,
         closeOnApply: params.closeOnApply ?? true,
         maxNumConditions: params.maxNumConditions,
         numAlwaysVisibleConditions: params.numAlwaysVisibleConditions,
         defaultJoinOperator: params.defaultJoinOperator,
-        onModified: () => this.events.emit({ type: 'filterModified', colId }),
-      });
-      this.filterPopupHost.open(colId, { cellBounds: anchorCell, viewportBounds }, popup);
-      this.events.emit({ type: 'filterOpened', colId });
-    } else if (filterType === 'text') {
+      }));
+    }
+
+    if (filterType === 'text') {
       // Cycle 7 / Task 5 — text-filter popup. Reads `caseSensitive` /
       // `showCaseSensitiveToggle` from filterParams; the
       // `textFormatter` / `trimInput` knobs land on the worker
       // (textFormatter) or main-side setColumnFilterModel (trimInput).
       const params = (def.filterParams ?? {}) as import('./types').CTextFilterParams;
-      const initial = this.getColumnFilterModel(colId);
       const initialEntry = initial && (initial.filterType === 'text' || initial.filterType === 'multi')
-        ? initial
+        ? initial as import('./types').CTextFilterModel | import('./types').CMultiConditionFilterModel
         : null;
-      const popup = new TextFilterPopup({
+      return Promise.resolve(new TextFilterPopup({
         initialModel: initialEntry,
-        onApply: (model) => void this.setColumnFilterModel(colId, model),
-        onClose: () => this.hideColumnFilter(),
+        onApply: (model) => callbacks.onApply(model as CFilterModelEntry | null),
+        onClose: callbacks.onClose,
+        onModified: callbacks.onModified,
         buttons: params.buttons,
         closeOnApply: params.closeOnApply ?? true,
         showCaseSensitiveToggle: params.showCaseSensitiveToggle,
         maxNumConditions: params.maxNumConditions,
         numAlwaysVisibleConditions: params.numAlwaysVisibleConditions,
         defaultJoinOperator: params.defaultJoinOperator,
-        onModified: () => this.events.emit({ type: 'filterModified', colId }),
-      });
-      this.filterPopupHost.open(colId, { cellBounds: anchorCell, viewportBounds }, popup);
-      this.events.emit({ type: 'filterOpened', colId });
-    } else if (filterType === 'set') {
-      // Cycle 7 / Task 9 — set filter. Distinct values arrive via a
-      // worker round-trip first; the popup mounts after the values
-      // resolve so the checkbox list is rendered against real data
-      // (not flashed empty). Static-array `filterParams.values`
-      // overrides the data-derived path — useful for Cycle 18's SSRM
-      // where the server supplies values.
-      const params = (def.filterParams ?? {}) as import('./types').CSetFilterParams;
-      const initial = this.getColumnFilterModel(colId);
-      const initialEntry = initial && initial.filterType === 'set' ? initial : null;
-      const valuesPromise: Promise<string[]> = params.values !== undefined
-        ? Promise.resolve(params.values)
-        : this.workerClient.getDistinctValues(colId);
-      valuesPromise.then((values) => {
-        if (this.destroyed) return;
-        // Guard against a second `showColumnFilter` racing in before
-        // distinct values land — drop this open if a different popup
-        // has since taken over.
-        const openCol = this.filterPopupHost.openColId();
-        if (openCol !== null && openCol !== colId) return;
-        const popup = new SetFilterPopup({
-          values,
-          initialModel: initialEntry,
-          onApply: (model) => void this.setColumnFilterModel(colId, model),
-          onClose: () => this.hideColumnFilter(),
-          buttons: params.buttons,
-          closeOnApply: params.closeOnApply ?? true,
-          suppressMiniFilter: params.suppressMiniFilter,
-          suppressSelectAll: params.suppressSelectAll,
-          caseSensitive: params.caseSensitive,
-          onModified: () => this.events.emit({ type: 'filterModified', colId }),
-        });
-        this.filterPopupHost.open(colId, { cellBounds: anchorCell, viewportBounds }, popup);
-        this.events.emit({ type: 'filterOpened', colId });
-      }).catch((err) => {
-        if (!this.destroyed) console.error('[cgrid] getDistinctValues:', err);
-      });
+      }));
     }
+
+    // filterType === 'set'
+    // Cycle 7 / Task 9 — set filter. Distinct values arrive via a
+    // worker round-trip first; the popup mounts after the values
+    // resolve so the checkbox list is rendered against real data
+    // (not flashed empty). Static-array `filterParams.values`
+    // overrides the data-derived path — useful for Cycle 18's SSRM
+    // where the server supplies values.
+    const params = (def.filterParams ?? {}) as import('./types').CSetFilterParams;
+    const initialEntry = initial && initial.filterType === 'set'
+      ? initial as import('./types').CSetFilterModel
+      : null;
+    const valuesPromise: Promise<string[]> = params.values !== undefined
+      ? Promise.resolve(params.values)
+      : this.workerClient.getDistinctValues(colId);
+    return valuesPromise.then((values) => {
+      if (this.destroyed) return null;
+      return new SetFilterPopup({
+        values,
+        initialModel: initialEntry,
+        onApply: (model) => callbacks.onApply(model as CFilterModelEntry | null),
+        onClose: callbacks.onClose,
+        onModified: callbacks.onModified,
+        buttons: params.buttons,
+        closeOnApply: params.closeOnApply ?? true,
+        suppressMiniFilter: params.suppressMiniFilter,
+        suppressSelectAll: params.suppressSelectAll,
+        caseSensitive: params.caseSensitive,
+      });
+    }).catch((err) => {
+      if (!this.destroyed) console.error('[cgrid] getDistinctValues:', err);
+      return null;
+    });
+  }
+
+  /** Cycle 11 / Task 4 — the resolved popup-filter type for `colId`, or
+   *  `null` when the column is unknown or has no filter. Used by the
+   *  FiltersToolPanel to decide which columns get a collapsible row +
+   *  by apps that want to introspect filter wiring. Resolves through the
+   *  same `resolveFilterType` switch `showColumnFilter` uses, so the
+   *  panel's row list matches the popup's "is this filterable" check. */
+  getColumnFilterType(colId: string): 'text' | 'number' | 'date' | 'set' | null {
+    const def = this.columnDefsMap.get(colId);
+    return resolveFilterType(def);
+  }
+
+  /** Cycle 11 / Task 4 — build the filter editor for `colId` for inline
+   *  hosting (FiltersToolPanel). Returns a handle that owns the editor's
+   *  GUI element + a `destroy` callback for teardown. The returned GUI
+   *  must be appended to a DOM container by the caller.
+   *
+   *  Resolves `null` when the column has no filter, is unknown, or the
+   *  grid is destroyed before the async distinct-values fetch (set
+   *  filter) completes. Filter mutations propagate via the same
+   *  `setColumnFilterModel` path the popup uses, so the worker pipeline
+   *  is identical between popup and inline modes. */
+  buildColumnFilterEditor(colId: string): Promise<{
+    gui: HTMLElement;
+    destroy(): void;
+  } | null> {
+    return this.buildFilterPopupFactory(colId, {
+      onApply: (model) => void this.setColumnFilterModel(colId, model),
+      // No-op for inline mode — the editor stays mounted until the
+      // panel user explicitly collapses the row. The popup mode wires
+      // this to `hideColumnFilter` so Apply closes the popup; inline
+      // mode keeps the editor visible after a commit.
+      onClose: () => {},
+      onModified: () => this.events.emit({ type: 'filterModified', colId }),
+    }).then((factory) => {
+      if (!factory) return null;
+      const gui = factory.buildGui();
+      return {
+        gui,
+        destroy: () => factory.destroy(),
+      };
+    });
   }
 
   /** Cycle 7 / Task 3 — close the active filter popup. Idempotent. */
@@ -2795,6 +2873,8 @@ export class CGrid<TRow = any> {
       moveColumnByIndex: (f, t) => this.moveColumnByIndex(f, t),
       getColumnState: () => this.getColumnState(),
       getColumnHeaderName: (colId) => this.columnDefsMap.get(colId)?.headerName,
+      getColumnFilterType: (colId) => this.getColumnFilterType(colId),
+      buildColumnFilterEditor: (colId) => this.buildColumnFilterEditor(colId),
       applyColumnState: (p) => this.applyColumnState(p),
       resetColumnState: () => this.resetColumnState(),
       sizeColumnsToFit: (p) => this.sizeColumnsToFit(p),

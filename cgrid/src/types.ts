@@ -1686,6 +1686,22 @@ export interface CGridApi {
    *  the internal `columnDefsMap`. Hidden leaves still resolve — the
    *  Columns panel lists hidden columns with their headerName intact. */
   getColumnHeaderName(colId: string): string | undefined;
+  /** Cycle 11 / Task 4 — the resolved popup-filter type for `colId`, or
+   *  `null` when the column is unknown or has no filter. Used by the
+   *  FiltersToolPanel to decide which columns get a collapsible row. */
+  getColumnFilterType(colId: string): 'text' | 'number' | 'date' | 'set' | null;
+  /** Cycle 11 / Task 4 — build the filter editor for `colId` for inline
+   *  hosting (FiltersToolPanel). Returns a handle that owns the editor's
+   *  GUI element + a `destroy` callback for teardown. The caller mounts
+   *  the returned GUI element into its own DOM container. Resolves
+   *  `null` when the column has no filter, is unknown, or the grid is
+   *  destroyed before the async distinct-values fetch (set filter)
+   *  completes. Mutations propagate via the same
+   *  `setColumnFilterModel` path the popup uses. */
+  buildColumnFilterEditor(colId: string): Promise<{
+    gui: HTMLElement;
+    destroy(): void;
+  } | null>;
   /** Restore column state. Returns `true` when every `state[].colId`
    *  matched a known leaf; `false` when at least one entry was dropped.
    *  Mutates `columnDefsMap` in place through a single re-layout +

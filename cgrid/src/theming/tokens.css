@@ -721,3 +721,128 @@
   opacity: 0.7;
   background: transparent;
 }
+
+/* Cycle 11 / Task 4 — FiltersToolPanel.
+ *
+ * Mounted by the SideBarHost inside `.cg-side-bar-panel`. The panel
+ * ships a top-level search input, an expand-all button, and a scrollable
+ * list of collapsible column rows. The expanded-state editor mounts
+ * inline under the row header and reuses the SAME filter component
+ * `FilterPopupHost` mounts in popup mode, so the popup's body styling
+ * (`.cg-filter-popup`) flows through unchanged when nested under
+ * `.cg-filters-panel-row-editor`. */
+.cg-filters-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--cg-bg-color);
+  color: var(--cg-fg-color);
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  overflow: hidden;
+}
+.cg-filters-panel-search {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--cg-border-color);
+  flex: 0 0 auto;
+}
+.cg-filters-panel-search-icon {
+  font-size: 12px;
+  opacity: 0.7;
+  line-height: 1;
+}
+.cg-filters-panel-search input {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 6px;
+  background: var(--cg-bg-color);
+  color: var(--cg-fg-color);
+  border: 1px solid var(--cg-border-color);
+  border-radius: 2px;
+  font-family: inherit;
+  font-size: 13px;
+}
+.cg-filters-panel-search input:focus {
+  outline: none;
+  border-color: var(--cg-focus-ring-color);
+}
+.cg-filters-panel-expand-all {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--cg-border-color);
+  flex: 0 0 auto;
+}
+.cg-filters-panel-expand-all-btn {
+  background: transparent;
+  color: var(--cg-fg-color);
+  border: 1px solid var(--cg-border-color);
+  border-radius: 2px;
+  padding: 3px 8px;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0.85;
+}
+.cg-filters-panel-expand-all-btn:hover {
+  background: var(--cg-row-hover-bg);
+  opacity: 1;
+}
+.cg-filters-panel-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 4px 0;
+}
+.cg-filters-panel-empty {
+  padding: 24px 12px;
+  text-align: center;
+  font-size: 12px;
+  opacity: 0.6;
+}
+.cg-filters-panel-row {
+  border-bottom: 1px solid color-mix(in srgb, var(--cg-border-color) 50%, transparent);
+}
+.cg-filters-panel-row-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  cursor: pointer;
+  user-select: none;
+}
+.cg-filters-panel-row-header:hover {
+  background: var(--cg-row-hover-bg);
+}
+.cg-filters-panel-row-chevron {
+  flex: 0 0 auto;
+  width: 12px;
+  text-align: center;
+  font-size: 14px;
+  line-height: 1;
+  opacity: 0.7;
+  color: var(--cg-fg-color);
+}
+.cg-filters-panel-row[data-expanded="true"] .cg-filters-panel-row-chevron {
+  opacity: 1;
+}
+.cg-filters-panel-row-label {
+  flex: 1 1 auto;
+  font-size: 13px;
+  line-height: 1.4;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cg-filters-panel-row-editor {
+  margin: 0 8px 8px 8px;
+  padding: 8px;
+  background: color-mix(in srgb, var(--cg-bg-color) 90%, white 10%);
+  border: 1px solid var(--cg-border-color);
+  border-radius: 3px;
+}
