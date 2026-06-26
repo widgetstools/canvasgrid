@@ -109,8 +109,12 @@ in a fresh session."
 
   # `${arr[@]+...}` form is the safe expansion under `set -u` when the
   # array might be empty (no timeout command on PATH).
+  # `bypassPermissions` lets git/gh/npm/etc. run without prompts —
+  # the spawned session has no human to approve. The runner is meant
+  # for trusted automation against this repo's own scope; the
+  # acceptEdits mode would block on every git push / gh pr create.
   if ! ${TIMEOUT_CMD[@]+"${TIMEOUT_CMD[@]}"} claude -p "$PROMPT" \
-      --permission-mode acceptEdits \
+      --permission-mode bypassPermissions \
       --model "$MODEL" \
       --output-format text \
       2>&1 | tee "$TASK_LOG"; then

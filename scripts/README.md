@@ -51,9 +51,14 @@ RUNNER_MODEL=sonnet ./scripts/run-cycle-tasks.sh <worklog>
 
 ### Safety
 
-- Sessions run with `--permission-mode acceptEdits` — Edit/Write/Bash
-  auto-approve, but truly dangerous ops (force-push, rm -rf, etc.)
-  still gate. Don't run this against a repo with uncommitted work.
+- Sessions run with `--permission-mode bypassPermissions` — every file
+  edit AND every shell command auto-approve with no prompts. The
+  spawned session has no human to answer; `acceptEdits` (an earlier
+  attempt) stalled on every `git push` / `gh pr create`. The
+  trade-off: a hallucinated destructive command runs without a
+  guardrail. **Use against trusted repos only; never run on a
+  working tree with uncommitted work or a branch that diverges from
+  `main`.**
 - The runner verifies a commit lands between each task. A session
   that crashes mid-task or hangs past the timeout (`TASK_TIMEOUT_SEC`)
   exits the loop, leaving the partial work in place for human review.
