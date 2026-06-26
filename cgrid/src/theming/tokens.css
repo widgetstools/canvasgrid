@@ -50,6 +50,11 @@
    * icon to 50% global alpha, so this declared color renders at
    * ~24% effective opacity on light theme. */
   --cg-unsort-icon-color: rgba(26, 31, 36, 0.48);
+  /* Cycle 9 / Task 3 — translucent fill behind each active cell-range
+   * selection. Roughly 22% alpha of the focus ring color so the
+   * underlying cell content stays readable through the wash. */
+  --cg-range-fill-color: rgb(59 130 246 / 22%);
+  --cg-range-border-color: #3b82f6;
 }
 
 .cg-theme-quartz-dark {
@@ -88,6 +93,11 @@
    * --cg-header-bg (#0d1a33). The 50% painter alpha drops it to ~24%
    * effective opacity. */
   --cg-unsort-icon-color: rgba(203, 213, 225, 0.48);
+  /* Cycle 9 / Task 3 — dark-mode counterpart. Same translucent wash
+   * tuned against the dark surface; border matches the dark focus
+   * ring color. */
+  --cg-range-fill-color: rgb(96 165 250 / 22%);
+  --cg-range-border-color: #60a5fa;
 }
 
 /* Native scrollbar styling (Chromium/WebKit) — visible thumb on dark track. */

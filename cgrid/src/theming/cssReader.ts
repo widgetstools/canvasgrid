@@ -25,6 +25,12 @@ export interface ResolvedTheme {
    *  `--cg-unsort-icon-color`. Falls back to a 40%-alpha headerFg when
    *  the variable isn't declared. */
   unsortIconColor: string;
+  /** Cycle 9 / Task 3 — translucent wash painted behind each active
+   *  cell-range selection. Resolved from `--cg-range-fill-color`. */
+  rangeFillColor: string;
+  /** Cycle 9 / Task 3 — opaque border drawn around each active
+   *  cell-range selection rect. Resolved from `--cg-range-border-color`. */
+  rangeBorderColor: string;
   rowHeight: number;
   headerHeight: number;
   resizerHotZone: number;
@@ -140,6 +146,8 @@ export class CssReader {
       flashToColor: get('--cg-flash-to-color') || 'rgba(254,243,199,0)',
       quickFilterMatchBg: get('--cg-quick-filter-match-bg') || '#fff3b8',
       unsortIconColor: get('--cg-unsort-icon-color') || 'rgba(0, 0, 0, 0.4)',
+      rangeFillColor: get('--cg-range-fill-color') || 'rgba(59, 130, 246, 0.22)',
+      rangeBorderColor: get('--cg-range-border-color') || '#3b82f6',
       rowHeight: px('--cg-row-height', 30),
       headerHeight: px('--cg-header-height', 32),
       resizerHotZone: px('--cg-resizer-hot-zone', 4),
