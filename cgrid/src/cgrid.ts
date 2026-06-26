@@ -37,6 +37,7 @@ import { PopupHost } from './interaction/editors/popupHost';
 import { FilterPopupHost } from './interaction/filters/filterPopupHost';
 import { ContextMenuHost } from './interaction/contextMenu/host';
 import { ToolPanelRegistry } from './interaction/toolPanels/registry';
+import { SideBarHost, normalizeSideBarOption, type SideBarGridContext } from './interaction/sideBar/host';
 import type { MenuItem, GetContextMenuItemsParams, GetMainMenuItemsParams } from './interaction/contextMenu/types';
 import { buildDefaultMenuItems } from './interaction/contextMenu/defaults';
 import { buildDefaultMainMenuItems } from './interaction/contextMenu/mainMenuDefaults';
@@ -355,6 +356,18 @@ export class CGrid<TRow = any> {
    *  entries reference via `toolPanel`. The side-bar host (Task 2)
    *  reads this registry to instantiate panels on demand. */
   private toolPanelRegistry: ToolPanelRegistry;
+  /** Cycle 11 / Task 2 — side-bar host (the DOM panel on the right or
+   *  left edge that houses tool panels). `null` when `options.sideBar`
+   *  resolves to off. Reserves a left/right gutter on the canvas
+   *  region via `reserveSideBarSpace` so the canvas reflows when the
+   *  side bar opens / closes / position changes / resize-handle drag
+   *  finishes. */
+  private sideBar: SideBarHost | null = null;
+  /** Cycle 11 / Task 2 — currently reserved insets (CSS px) on the
+   *  canvas region's left + right edges, set by the side bar. The
+   *  scroller, editor overlay, and canvas position consume these so
+   *  the side bar visually replaces the matching gutter. */
+  private sideBarInsets = { left: 0, right: 0 };
   /** Cycle 4 / Task 11 (cell-flash patch) — per-cell flash tracker.
    *  Drained from each `getViewport` chunk's `flashMask` and queried
    *  by the painter's `cellData` callback to produce `flashAlpha`. */
@@ -587,6 +600,27 @@ export class CGrid<TRow = any> {
     // Stack editorContainer above the canvas (canvas was appended to root
     // by CGridCanvas, so editor goes on top).
     this.root.appendChild(this.editorContainer);
+
+    // Cycle 11 / Task 2 — side bar (DOM panel on the right or left edge
+    // hosting tool panels). Mounts when `options.sideBar` resolves to a
+    // non-null def via `normalizeSideBarOption`. Wires the geometry
+    // callback so the canvas reflows when the side bar opens / closes /
+    // changes position / finishes a resize-handle drag. The host attaches
+    // to `this.root` AFTER the canvas + editor overlay so its z-order
+    // sits above them naturally without explicit z-index plumbing.
+    const sideBarDef = normalizeSideBarOption(options.sideBar);
+    if (sideBarDef) {
+      const ctx: SideBarGridContext = {
+        registry: this.toolPanelRegistry,
+        // The API surface tool panels consume. Construction-time `makeApi`
+        // returns the same shape as the post-gridReady event's `api`, so
+        // panels can read column / filter state immediately — no need to
+        // wait for the worker init.
+        api: this.makeApi(),
+        setReservedSpace: (side, width) => this.reserveSideBarSpace(side, width),
+      };
+      this.sideBar = new SideBarHost(this.root, ctx, sideBarDef);
+    }
 
     // 8. Hit-test + input
     this.hitTester = new HitTester(
@@ -2464,6 +2498,34 @@ export class CGrid<TRow = any> {
 
   refresh(): void { this.cgridCanvas.requestRepaint(); }
 
+  /** Cycle 11 / Task 2 — adjust the canvas region's left/right gutter
+   *  to make room for the side bar. Called by `SideBarHost` on mount,
+   *  open, close, position toggle, hide/show, and at the end of a
+   *  resize-handle drag. Mutates the scroller's edge inset (so the
+   *  native scrollbar gutter stays inside the visible region), the
+   *  editor overlay's edge inset (so popups respect the canvas
+   *  region), and the canvas element's offset (so a LEFT side bar
+   *  shifts the canvas right by the gutter). One synchronous
+   *  `cgridCanvas.resize()` repaints the new region. */
+  private reserveSideBarSpace(side: 'left' | 'right', width: number): void {
+    if (this.sideBarInsets[side] === width) return;
+    this.sideBarInsets[side] = width;
+    const { left, right } = this.sideBarInsets;
+    this.scroller.style.left = `${left}px`;
+    this.scroller.style.right = `${right}px`;
+    this.editorContainer.style.left = `${left}px`;
+    this.editorContainer.style.right = `${right}px`;
+    // setHostBounds shifts the canvas element + triggers a resize() so
+    // the backing store re-fits to the new clientWidth and the renderer
+    // re-lays out columns + repaints in the same call. Skips when the
+    // canvas hasn't been constructed yet (mount-time reservation that
+    // lands before CGridCanvas finishes — guarded so a sideBar
+    // constructed pre-canvas doesn't crash).
+    if (this.cgridCanvas) {
+      this.cgridCanvas.setHostBounds({ left, top: 0 });
+    }
+  }
+
   /** Register a custom cell renderer. After registration, columns with
    *  `cellRenderer: name` (or whose `cellRendererSelector` returns
    *  `{ component: name }`) will dispatch to `painter`. Built-in names
@@ -2655,6 +2717,13 @@ export class CGrid<TRow = any> {
     this.floatingFilterOverlay.destroy();
     this.filterPopupHost.destroy();
     this.contextMenuHost.destroy();
+    // Cycle 11 / Task 2 — tear down the side bar AFTER the canvas (so a
+    // last reserveSideBarSpace(0) from sideBar.destroy doesn't try to
+    // resize a destroyed canvas). The sideBar.destroy already calls
+    // setReservedSpace to release its gutter, but the early guard in
+    // reserveSideBarSpace (this.cgridCanvas?.setHostBounds) bails out
+    // gracefully after cgridCanvas is destroyed.
+    this.sideBar?.destroy();
     // Cycle 4 / Task 11 (cell-flash patch) — cancel any in-flight
     // rAF tick + clear the registry so a late callback can't fire on
     // a destroyed grid.

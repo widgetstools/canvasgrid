@@ -454,3 +454,100 @@
   border: none;
   border-top: 1px solid var(--cg-border-color);
 }
+
+/* Cycle 11 / Task 2 — side bar shell. Mounts as a sibling of the
+ * canvas/scroller inside CGrid.root; positioned absolutely so it
+ * overlays the matching root edge while the grid's `reserveSideBarSpace`
+ * inset shifts the scroller + canvas region to make room. Layout uses
+ * flex so the tab strip pins to the OUTER edge (right edge when
+ * position=right, left edge when position=left) and the panel content
+ * fills the remaining space. `row-reverse` (right) puts tabs last in
+ * flex order → they render on the rightmost edge. */
+.cg-side-bar {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 0;
+  display: flex;
+  flex-direction: row-reverse;
+  background: var(--cg-bg-color);
+  border-left: 1px solid var(--cg-border-color);
+  color: var(--cg-fg-color);
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  z-index: 2;
+}
+.cg-side-bar[data-position="left"] {
+  right: auto;
+  left: 0;
+  flex-direction: row;
+  border-left: none;
+  border-right: 1px solid var(--cg-border-color);
+}
+.cg-side-bar-tabs {
+  display: flex;
+  flex-direction: column;
+  width: 28px;
+  background: var(--cg-header-bg);
+  border-left: 1px solid var(--cg-border-color);
+  flex: 0 0 auto;
+}
+.cg-side-bar[data-position="left"] .cg-side-bar-tabs {
+  border-left: none;
+  border-right: 1px solid var(--cg-border-color);
+}
+.cg-side-bar-tab {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 0;
+  min-height: 80px;
+  background: transparent;
+  color: var(--cg-fg-color);
+  border: none;
+  border-bottom: 1px solid var(--cg-border-color);
+  cursor: pointer;
+  writing-mode: vertical-rl;
+  font-family: inherit;
+  font-size: 12px;
+}
+.cg-side-bar-tab:hover {
+  background: color-mix(in srgb, var(--cg-focus-ring-color) 14%, transparent);
+}
+.cg-side-bar-tab[aria-pressed="true"] {
+  background: var(--cg-bg-color);
+  /* The pressed tab visually "joins" the open panel — drop the right
+   * border so the tab strip's border doesn't paint between the tab and
+   * the panel content. */
+  border-left: 1px solid var(--cg-bg-color);
+}
+.cg-side-bar[data-position="left"] .cg-side-bar-tab[aria-pressed="true"] {
+  border-left: none;
+  border-right: 1px solid var(--cg-bg-color);
+}
+.cg-side-bar-tab-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+.cg-side-bar-tab-label {
+  line-height: 1;
+}
+.cg-side-bar-panel {
+  flex: 0 0 auto;
+  min-width: var(--cg-side-bar-min-width, 100px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: var(--cg-bg-color);
+}
+.cg-side-bar-resize {
+  width: 3px;
+  cursor: col-resize;
+  background: transparent;
+  flex: 0 0 auto;
+}
+.cg-side-bar-resize:hover {
+  background: var(--cg-focus-ring-color);
+}

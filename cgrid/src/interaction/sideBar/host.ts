@@ -1,0 +1,419 @@
+/**
+ * Cycle 11 / Task 2 — SideBarHost.
+ *
+ * Owns the DOM panel that mounts on the right (or left) edge of the
+ * grid. The host renders three regions inside its root:
+ *
+ *   ┌──────────────────────────────────┬─┐
+ *   │                                  │T│
+ *   │      .cg-side-bar-panel          │a│  ← .cg-side-bar-tabs
+ *   │  (mounts the active panel's      │b│    (vertical strip; one
+ *   │   getGui() output)               │s│     button per ToolPanelDef)
+ *   │                                  │ │
+ *   └─[ .cg-side-bar-resize ]──────────┴─┘
+ *                ^
+ *                inner-edge drag handle (col-resize cursor)
+ *
+ * Only one tool panel is open at a time. Clicking a tab toggles its
+ * panel; clicking a different tab while one is open closes the old one
+ * and opens the new one. The host destroys the previous instance on
+ * close so panels don't leak listeners.
+ *
+ * The host knows nothing about the canvas. It reports its current
+ * reserved-edge width to the grid via `ctx.setReservedSpace(side,
+ * width)`; the grid is responsible for inset-shifting the scroller +
+ * canvas + editor overlay and calling `cgridCanvas.resize()` so the
+ * canvas region updates. `reservedWidth` = `tabsWidth` when no panel is
+ * open + `tabsWidth + panelWidth` when a panel is open.
+ *
+ * String shortcuts in `SideBarDef.toolPanels` (`'columns'` /
+ * `'filters'`) expand into the canonical `ToolPanelDef` shape so the
+ * default `sideBar: { toolPanels: ['columns', 'filters'] }` works out
+ * of the box.
+ *
+ * Mounting is intentionally tolerant under happy-dom (the vitest env):
+ * `getBoundingClientRect()` returns zeros so the resize-handle drag
+ * math falls back to a synthetic 280px panel + delta math.
+ */
+import { ToolPanelRegistry } from '../toolPanels/registry';
+import type { SideBarDef, ToolPanel, ToolPanelDef } from '../toolPanels/types';
+
+/** Width of the vertical tab strip in CSS px. Mirrors the value in
+ *  tokens.css (`.cg-side-bar-tabs { width: 28px }`). */
+const TABS_WIDTH = 28;
+
+/** Default panel width when neither `width` nor `defaultWidth` is set
+ *  on the ToolPanelDef. Mirrors ag-grid's default. */
+const DEFAULT_PANEL_WIDTH = 280;
+
+/** Default minWidth / maxWidth when not specified per panel. Keeps the
+ *  drag handle from collapsing the panel to zero or stretching it past
+ *  the host width. */
+const DEFAULT_MIN_WIDTH = 100;
+const DEFAULT_MAX_WIDTH = 800;
+
+/** Built-in icon glyphs. Inline unicode keeps Task 2 dependency-free;
+ *  Cycle 11.5 swaps these for proper SVG icons sourced from
+ *  `cgrid/src/theming/icons/`. */
+const BUILT_IN_ICONS: Record<string, string> = {
+  columns: '☰', // ☰
+  filter: '▼',  // ▼
+};
+
+/** Per-tool-panel slot — the resolved def + (when mounted) the live
+ *  instance + its DOM tab button. */
+interface PanelSlot {
+  def: ToolPanelDef;
+  tab: HTMLButtonElement;
+  instance: ToolPanel | null;
+}
+
+/** Context handed to SideBarHost by CGrid (or a test harness). Keeps
+ *  the host framework-agnostic: it can resolve panel ctors + thread
+ *  geometry changes back without importing CGrid directly. */
+export interface SideBarGridContext {
+  /** Registry that resolves panel-id strings to constructors. */
+  registry: ToolPanelRegistry;
+  /** Forwarded verbatim to each ToolPanel.init via `params.api`. */
+  api: unknown;
+  /** Called whenever the side bar geometry changes (mount, open, close,
+   *  setVisible, setPosition, resize-handle drag). `width === 0` means
+   *  the side bar is fully hidden — the grid should release the
+   *  reservation. */
+  setReservedSpace(side: 'left' | 'right', width: number): void;
+}
+
+export class SideBarHost {
+  private readonly root: HTMLElement;
+  /** The host element (`.cg-side-bar`) appended to the grid root. */
+  private readonly bar: HTMLDivElement;
+  private readonly tabsEl: HTMLDivElement;
+  private readonly panelEl: HTMLDivElement;
+  private readonly handleEl: HTMLDivElement;
+  private readonly ctx: SideBarGridContext;
+
+  /** Resolved (string-shortcuts-expanded) side bar def. */
+  private def: Required<Pick<SideBarDef, 'toolPanels' | 'position'>> & SideBarDef;
+  /** Resolved ToolPanelDef entries (after expanding `'columns'` /
+   *  `'filters'` shortcuts). Indexed by `id`. */
+  private slots: Map<string, PanelSlot> = new Map();
+  private openedId: string | null = null;
+  /** Current panel content width (excludes tab strip). Set per-open
+   *  from the panel's `ToolPanelDef.width`; mutated by the resize
+   *  handle. */
+  private panelWidth = DEFAULT_PANEL_WIDTH;
+  private visible: boolean;
+  private destroyed = false;
+
+  /** Active resize-handle drag state. `null` when no drag is in progress. */
+  private dragState: {
+    startClientX: number;
+    startPanelWidth: number;
+    minWidth: number;
+    maxWidth: number;
+  } | null = null;
+  private readonly onWindowMouseMove = (e: MouseEvent) => this.handleDragMove(e);
+  private readonly onWindowMouseUp = (e: MouseEvent) => this.handleDragEnd(e);
+
+  constructor(root: HTMLElement, ctx: SideBarGridContext, def: SideBarDef) {
+    this.root = root;
+    this.ctx = ctx;
+    this.def = resolveSideBarDef(def);
+    this.visible = !this.def.hiddenByDefault;
+
+    this.bar = document.createElement('div');
+    this.bar.className = 'cg-side-bar';
+    this.bar.dataset.position = this.def.position;
+
+    this.tabsEl = document.createElement('div');
+    this.tabsEl.className = 'cg-side-bar-tabs';
+    if (this.def.hideButtons) this.tabsEl.style.display = 'none';
+
+    this.panelEl = document.createElement('div');
+    this.panelEl.className = 'cg-side-bar-panel';
+    this.panelEl.style.display = 'none';
+    this.panelEl.style.width = `${this.panelWidth}px`;
+
+    this.handleEl = document.createElement('div');
+    this.handleEl.className = 'cg-side-bar-resize';
+    this.handleEl.addEventListener('mousedown', (e) => this.handleDragStart(e));
+
+    // Order of children inside .cg-side-bar:
+    //   resize-handle | panel | tabs
+    // The CSS rule `flex-direction: row-reverse` for right-positioned
+    // bars puts the tabs at the rightmost edge; `row` for left-positioned
+    // puts the tabs at the leftmost. The handle sits adjacent to the
+    // panel (inner edge of the side bar).
+    this.bar.appendChild(this.handleEl);
+    this.bar.appendChild(this.panelEl);
+    this.bar.appendChild(this.tabsEl);
+
+    // Build one tab per resolved ToolPanelDef.
+    for (const def of this.def.toolPanels) {
+      const tdef = def as ToolPanelDef;
+      const tab = this.buildTabButton(tdef);
+      this.tabsEl.appendChild(tab);
+      this.slots.set(tdef.id, { def: tdef, tab, instance: null });
+    }
+
+    if (!this.visible) this.bar.style.display = 'none';
+
+    this.root.appendChild(this.bar);
+
+    // Open the default panel — but only when the side bar is visible.
+    if (this.visible && this.def.defaultToolPanel) {
+      this.openPanel(this.def.defaultToolPanel);
+    } else {
+      // Initial reservation: tabs-only when visible, zero when hidden.
+      this.reserveSpace();
+    }
+  }
+
+  /** The resolved (string-shortcuts-expanded) side bar def. Exposed so
+   *  `api.getSideBar()` (Task 6) can return the live shape. */
+  getSideBarDef(): SideBarDef {
+    return this.def;
+  }
+
+  /** The id of the currently open panel, or `null` when none. */
+  getOpenedToolPanelId(): string | null {
+    return this.openedId;
+  }
+
+  /** The live ToolPanel instance for `id`, or `null` when not mounted. */
+  getInstance(id: string): ToolPanel | null {
+    return this.slots.get(id)?.instance ?? null;
+  }
+
+  /** Whether the side bar is visible (i.e. NOT in `display: none`). */
+  isVisible(): boolean {
+    return this.visible;
+  }
+
+  /** Current panel content width in CSS px (zero when no panel is open). */
+  getPanelWidth(): number {
+    return this.openedId !== null ? this.panelWidth : 0;
+  }
+
+  /** Total reserved width in CSS px (tabs + panel-when-open).
+   *  Matches the value passed to `ctx.setReservedSpace`. */
+  getReservedWidth(): number {
+    if (!this.visible) return 0;
+    let w = this.def.hideButtons ? 0 : TABS_WIDTH;
+    if (this.openedId !== null) w += this.panelWidth;
+    return w;
+  }
+
+  /** Open `id`. No-op when the id is unknown. Closes any previously-open
+   *  panel first (one-at-a-time). */
+  openPanel(id: string): void {
+    if (this.destroyed) return;
+    const slot = this.slots.get(id);
+    if (!slot) return;
+    if (this.openedId === id) return;
+    if (this.openedId !== null) this.closePanel();
+
+    const instance = this.ctx.registry.instantiate(slot.def.toolPanel, {
+      api: this.ctx.api,
+      toolPanelParams: slot.def.toolPanelParams,
+    });
+    if (!instance) return; // unknown component string — silent no-op
+
+    slot.instance = instance;
+    this.panelEl.appendChild(instance.getGui());
+    this.panelWidth = slot.def.width ?? DEFAULT_PANEL_WIDTH;
+    this.panelEl.style.width = `${this.panelWidth}px`;
+    this.panelEl.style.display = '';
+    slot.tab.setAttribute('aria-pressed', 'true');
+    this.openedId = id;
+    this.reserveSpace();
+  }
+
+  /** Close any open panel. Destroys the live instance + clears the DOM. */
+  closePanel(): void {
+    if (this.destroyed) return;
+    if (this.openedId === null) return;
+    const slot = this.slots.get(this.openedId);
+    if (slot) {
+      if (slot.instance) {
+        try { slot.instance.destroy(); } catch (e) { console.error(e); }
+        slot.instance = null;
+      }
+      slot.tab.setAttribute('aria-pressed', 'false');
+    }
+    this.panelEl.replaceChildren();
+    this.panelEl.style.display = 'none';
+    this.openedId = null;
+    this.reserveSpace();
+  }
+
+  /** Toggle whole-side-bar visibility (`display: none` when hidden). */
+  setVisible(show: boolean): void {
+    if (this.destroyed) return;
+    if (this.visible === show) return;
+    this.visible = show;
+    this.bar.style.display = show ? '' : 'none';
+    this.reserveSpace();
+  }
+
+  /** Switch the side bar to the opposite edge. Re-mounts the DOM as a
+   *  whole so CSS rules anchored on `[data-position]` apply, and tells
+   *  the host grid to release the old edge reservation + take the new
+   *  one. */
+  setPosition(pos: 'left' | 'right'): void {
+    if (this.destroyed) return;
+    if (this.def.position === pos) return;
+    const oldSide = this.def.position;
+    // Release the old edge.
+    this.ctx.setReservedSpace(oldSide, 0);
+    this.def = { ...this.def, position: pos };
+    this.bar.dataset.position = pos;
+    // Reserve on the new edge.
+    this.reserveSpace();
+  }
+
+  /** Tear down: destroys any mounted instance, removes the DOM, drops
+   *  window listeners. Safe to call multiple times. */
+  destroy(): void {
+    if (this.destroyed) return;
+    // Tear down any mounted panel BEFORE flipping the `destroyed` flag,
+    // since `closePanel` short-circuits when destroyed.
+    if (this.openedId !== null) this.closePanel();
+    this.destroyed = true;
+    window.removeEventListener('mousemove', this.onWindowMouseMove);
+    window.removeEventListener('mouseup', this.onWindowMouseUp);
+    this.ctx.setReservedSpace(this.def.position, 0);
+    this.bar.parentElement?.removeChild(this.bar);
+  }
+
+  // ---- internals ----------------------------------------------------
+
+  private buildTabButton(def: ToolPanelDef): HTMLButtonElement {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cg-side-bar-tab';
+    btn.setAttribute('aria-pressed', 'false');
+    btn.setAttribute('aria-label', def.labelDefault);
+    btn.dataset.id = def.id;
+
+    // Icon span (rotated content under writing-mode:vertical-rl on the
+    // button) + label span. Both render top-down on the vertical tab.
+    const icon = document.createElement('span');
+    icon.className = 'cg-side-bar-tab-icon';
+    icon.textContent = def.iconKey ? (BUILT_IN_ICONS[def.iconKey] ?? '') : '';
+    const label = document.createElement('span');
+    label.className = 'cg-side-bar-tab-label';
+    label.textContent = def.labelDefault;
+    btn.appendChild(icon);
+    btn.appendChild(label);
+
+    btn.addEventListener('click', () => {
+      if (this.openedId === def.id) this.closePanel();
+      else this.openPanel(def.id);
+    });
+    return btn;
+  }
+
+  private reserveSpace(): void {
+    this.ctx.setReservedSpace(this.def.position, this.getReservedWidth());
+  }
+
+  private handleDragStart(e: MouseEvent): void {
+    if (this.destroyed) return;
+    if (this.openedId === null) return; // No panel open — handle is inert
+    e.preventDefault();
+    const slot = this.slots.get(this.openedId);
+    const minWidth = slot?.def.minWidth ?? DEFAULT_MIN_WIDTH;
+    const maxWidth = slot?.def.maxWidth ?? DEFAULT_MAX_WIDTH;
+    this.dragState = {
+      startClientX: e.clientX,
+      startPanelWidth: this.panelWidth,
+      minWidth,
+      maxWidth,
+    };
+    window.addEventListener('mousemove', this.onWindowMouseMove);
+    window.addEventListener('mouseup', this.onWindowMouseUp);
+  }
+
+  private handleDragMove(e: MouseEvent): void {
+    const drag = this.dragState;
+    if (!drag) return;
+    // Right-positioned: dragging LEFT (negative dx) widens the panel,
+    // since the side bar's inner edge moves leftward into the canvas
+    // region. Left-positioned: dragging RIGHT (positive dx) widens.
+    const sign = this.def.position === 'right' ? -1 : 1;
+    const dx = (e.clientX - drag.startClientX) * sign;
+    let next = drag.startPanelWidth + dx;
+    if (next < drag.minWidth) next = drag.minWidth;
+    if (next > drag.maxWidth) next = drag.maxWidth;
+    this.panelWidth = next;
+    this.panelEl.style.width = `${next}px`;
+    this.reserveSpace();
+  }
+
+  private handleDragEnd(_e: MouseEvent): void {
+    if (this.dragState === null) return;
+    this.dragState = null;
+    window.removeEventListener('mousemove', this.onWindowMouseMove);
+    window.removeEventListener('mouseup', this.onWindowMouseUp);
+  }
+}
+
+/** Expand string shortcuts inside `SideBarDef.toolPanels`. Apps can pass
+ *  `'columns'` / `'filters'` shorthands for the built-ins; the host
+ *  materialises them into the canonical `ToolPanelDef` shape so the
+ *  rest of the pipeline only sees objects.
+ *
+ *  Also fills in a default `position` (`'right'`) so callers don't have
+ *  to repeat it. Mirrors ag-grid's resolution behaviour. */
+export function resolveSideBarDef(def: SideBarDef): Required<Pick<SideBarDef, 'toolPanels' | 'position'>> & SideBarDef {
+  const toolPanels: ToolPanelDef[] = def.toolPanels.map((entry) => {
+    if (typeof entry !== 'string') return entry;
+    return expandToolPanelShortcut(entry);
+  });
+  return {
+    ...def,
+    toolPanels,
+    position: def.position ?? 'right',
+  };
+}
+
+/** Convert one of the built-in shortcut strings (`'columns'` /
+ *  `'filters'`) into a full `ToolPanelDef`. Throws on unknown strings
+ *  so a typo surfaces loudly rather than silently dropping a tab. */
+function expandToolPanelShortcut(name: string): ToolPanelDef {
+  switch (name) {
+    case 'columns':
+      return {
+        id: 'agColumnsToolPanel',
+        labelDefault: 'Columns',
+        labelKey: 'columns',
+        iconKey: 'columns',
+        toolPanel: 'agColumnsToolPanel',
+      };
+    case 'filters':
+      return {
+        id: 'agFiltersToolPanel',
+        labelDefault: 'Filters',
+        labelKey: 'filters',
+        iconKey: 'filter',
+        toolPanel: 'agFiltersToolPanel',
+      };
+    default:
+      throw new Error(`[cgrid] unknown SideBarDef.toolPanels shortcut: '${name}' (expected 'columns' or 'filters')`);
+  }
+}
+
+/** Resolve `CGridOptions.sideBar` (which accepts loose shapes —
+ *  `boolean | string | string[] | SideBarDef`) into a canonical
+ *  `SideBarDef`, or `null` when the option is off. Mirrors ag-grid's
+ *  acceptance shape. */
+export function normalizeSideBarOption(
+  opt: boolean | string | string[] | SideBarDef | undefined,
+): SideBarDef | null {
+  if (opt == null || opt === false) return null;
+  if (opt === true) return { toolPanels: ['columns', 'filters'] };
+  if (typeof opt === 'string') return { toolPanels: [opt] };
+  if (Array.isArray(opt)) return { toolPanels: opt };
+  return opt;
+}

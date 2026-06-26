@@ -349,6 +349,12 @@ export function createPositionsGrid(
       }
       return [...pinned, ...rest];
     },
+    // Cycle 11 / Task 2 — side bar mount. Tabs render on the right edge,
+    // Columns + Filters tool panels available (stub UIs until Tasks 3 + 4
+    // replace them with the real implementations). The default panel
+    // stays closed at mount so the demo opens with the canvas at full
+    // width; clicking a tab opens the matching panel.
+    sideBar: { toolPanels: ['columns', 'filters'] },
     // Cycle 10 / Task 1 — sample `getContextMenuItems`. Keeps every
     // built-in default item (Copy / Paste / Cut / Export / Autosize /
     // Pin / Reset) AND appends one custom "Clear filters" entry so the
