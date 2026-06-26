@@ -45,6 +45,9 @@ export interface DefaultMenuGrid {
    *  `applyTransaction` rooted at the focused cell. The Paste
    *  default-menu item routes here. */
   pasteFromClipboard(): Promise<void>;
+  /** Cycle 10 / Task 5 — copy ranges then clear the source cells via
+   *  `applyTransaction`. The Cut default-menu item routes here. */
+  cutSelectedRanges(): Promise<void>;
 }
 
 /** Build the eight-item default list. `grid` carries the column-ops
@@ -107,7 +110,17 @@ export function buildDefaultMenuItems(
     {
       name: 'Cut',
       icon: '✂', // ✂ scissors
-      action: () => { console.debug('[clipboard] cut (stub — wired in Task 5)'); },
+      // Cycle 10 / Task 5 — same gesture-stack reasoning as Copy /
+      // Paste: the menu-item click is the active user gesture, so the
+      // `navigator.clipboard.writeText` inside `cutSelectedRanges`
+      // resolves. `no-ranges` rejections are swallowed (right-clicking
+      // without an active selection should be a silent no-op).
+      action: () => {
+        void grid.cutSelectedRanges().catch((err) => {
+          if (err instanceof Error && err.message === 'no-ranges') return;
+          console.warn('[cgrid] cutSelectedRanges:', err);
+        });
+      },
     },
     { name: '---' },
     {

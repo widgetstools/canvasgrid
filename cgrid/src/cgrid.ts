@@ -60,6 +60,12 @@ import { WorkerClient } from './worker/client';
 import { wrapTextToHeight } from './worker/measureText';
 import type { WorkerColumn, ViewportChunk, AutosizeColumnRequest } from './worker/protocol';
 import { decodeText } from './worker/chunkFormat';
+// Cycle 10 / Task 5 — main-side serialise + paste-cell map helpers used when
+// the app configures `processCellForClipboard` / `processCellFromClipboard`.
+import {
+  serializeRanges as serializeRangesPure,
+  mapPasteCells,
+} from './worker/passes/clipboardPass';
 
 export const CGRID_VERSION = '0.0.0';
 
@@ -663,6 +669,10 @@ export class CGrid<TRow = any> {
       // `applyTransaction` commit happen after but are still rooted
       // in the same gesture.
       pasteFromClipboard: () => this.pasteFromClipboard(),
+      // Cycle 10 / Task 5 — clipboard cut. Same gesture-stack reasoning
+      // as copy: the writeText fires inside the keydown handler before
+      // the clear `applyTransaction` follows.
+      cutSelectedRanges: () => this.cutSelectedRanges(),
     });
     this.cellEditorRegistry = new CellEditorRegistry();
     CellEditorRegistry.seed(this.cellEditorRegistry);
@@ -2063,7 +2073,16 @@ export class CGrid<TRow = any> {
     const ranges = this.getCellRanges();
     if (ranges.length === 0) throw new Error('no-ranges');
     const delimiter = this.options.clipboardDelimiter ?? '\t';
-    const tsv = await this.workerClient.clipboardSerialize(ranges, delimiter);
+    // Cycle 10 / Task 5 — `processCellForClipboard` must run on the
+    // main thread (apps reference DOM / domain state from the callback).
+    // When the option is set, fetch the source rows here and run
+    // `serializeRanges` main-side with the callback wired as
+    // `transformCell`. Without the option, the worker still owns the
+    // serialise hop (the perf-budgeted path).
+    const transform = this.options.processCellForClipboard;
+    const tsv = transform
+      ? await this.serializeRangesMainSide(ranges, delimiter, transform)
+      : await this.workerClient.clipboardSerialize(ranges, delimiter);
     // `navigator.clipboard.writeText` requires a user gesture in every
     // mainstream browser; the keyboard / menu handlers already run
     // inside one. Apps that invoke this from a `setTimeout` get a
@@ -2072,6 +2091,50 @@ export class CGrid<TRow = any> {
       throw new Error('clipboard-unavailable');
     }
     await navigator.clipboard.writeText(tsv);
+  }
+
+  /** Cycle 10 / Task 5 — main-side serialise used when
+   *  `processCellForClipboard` is configured. Batches `getRowByIndex`
+   *  for every unique row in `ranges` so the callback sees the row's
+   *  current `data` (matches ag-grid). Wraps the user callback in the
+   *  `SerializeCellTransform` shape (`{ value, node, column }`) and
+   *  hands off to the same pure `serializeRanges` the worker uses, so
+   *  RFC-4180 quoting + delimiter + disjoint-range layout stay in
+   *  exactly one place. */
+  private async serializeRangesMainSide(
+    ranges: SelectionRange[],
+    delimiter: string,
+    transform: NonNullable<CGridOptions<TRow>['processCellForClipboard']>,
+  ): Promise<string> {
+    // Collect every visible row index touched by any range; batch-fetch
+    // the rows in one Promise.all to keep the worker round-trips parallel.
+    const rowIndexSet = new Set<number>();
+    for (const range of ranges) {
+      for (let i = range.rowStart; i <= range.rowEnd; i++) rowIndexSet.add(i);
+    }
+    const indexArr = Array.from(rowIndexSet);
+    const fetched = await Promise.all(indexArr.map((rowIndex) =>
+      this.workerClient.getRowByIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
+    ));
+    if (this.destroyed) return '';
+    // Build the sparse `rows` array `serializeRanges` consumes — keyed
+    // by visible-row index, with `undefined` for rows past the bottom
+    // (the pure function treats those as a row of blank cells).
+    const rows: Array<Record<string, unknown> | undefined> = [];
+    for (const r of fetched) {
+      if (r.data != null) rows[r.rowIndex] = r.data as Record<string, unknown>;
+    }
+    const columnsById = new Map<string, { field?: string }>();
+    for (const def of this.columnOrder) {
+      columnsById.set(def.colId, { field: def.field as string | undefined });
+    }
+    return serializeRangesPure(rows, columnsById, ranges, delimiter, (params) =>
+      transform({
+        value: params.value,
+        node: { rowIndex: params.node.rowIndex, data: params.node.data as TRow },
+        column: { colId: params.column.colId },
+      }),
+    );
   }
 
   /** Cycle 10 / Task 4 — read the system clipboard, parse the payload on
@@ -2122,17 +2185,48 @@ export class CGrid<TRow = any> {
     );
     const results = await Promise.all(fetches);
     if (this.destroyed) return;
+    // Cycle 10 / Task 5 — `processCellFromClipboard` transforms each
+    // parsed string AFTER worker parse + BEFORE the per-cell write. Runs
+    // on the main thread for the same reason copy's transform does. We
+    // pre-compute the transformed values via the pure `mapPasteCells`
+    // helper so the loop below is a straight write per cell. Without the
+    // option, `transformedRows` is `null` and we use the raw parsed
+    // strings — keeps the no-callback path allocation-free.
+    const transform = this.options.processCellFromClipboard;
+    let transformedRows: Array<Array<unknown>> | null = null;
+    if (transform) {
+      const rowDataByIndex = new Map<number, unknown>();
+      for (const r of results) {
+        if (r.fetched.data != null) rowDataByIndex.set(r.rowIndex, r.fetched.data);
+      }
+      const visibleColIds = this.columnOrder.map((c) => c.colId);
+      transformedRows = mapPasteCells(
+        parsed,
+        focusedRowIndex,
+        focusedColIdx,
+        visibleColIds,
+        rowDataByIndex,
+        (params) => transform({
+          value: params.value,
+          node: { rowIndex: params.node.rowIndex, data: params.node.data as TRow },
+          column: { colId: params.column.colId },
+        }),
+      );
+    }
     const updates: TRow[] = [];
     for (let i = 0; i < results.length; i++) {
       const fetched = results[i]!.fetched;
       if (!fetched.rowId || fetched.data == null) continue;
       const rowData = fetched.data as Record<string, unknown>;
       const parsedRow = parsed[i]!;
+      const transformedRow = transformedRows?.[i];
       for (let c = 0; c < parsedRow.length; c++) {
         const targetColIdx = focusedColIdx + c;
         if (targetColIdx >= this.columnOrder.length) break;
         const def = this.columnOrder[targetColIdx]!;
-        const newValue = parsedRow[c]!;
+        const newValue: unknown = transformedRow !== undefined
+          ? transformedRow[c]
+          : parsedRow[c]!;
         if (def.valueSetter) {
           const field = def.field as string | undefined;
           const oldValue = field !== undefined ? rowData[field] : undefined;
@@ -2147,6 +2241,71 @@ export class CGrid<TRow = any> {
     }
     if (updates.length === 0) return;
     this.applyTransaction({ update: updates });
+  }
+
+  /** Cycle 10 / Task 5 — copy the current ranges to the system clipboard
+   *  and clear the source cells in a single follow-up transaction.
+   *  Atomicity: the copy fires first; only when its `writeText` resolves
+   *  does the clear `applyTransaction({ update })` follow. If copy
+   *  rejects (no ranges, clipboard unavailable, permission denied), the
+   *  source cells stay untouched — there is no partial-cut state.
+   *
+   *  Cleared cells go through `valueSetter` when the column defines one
+   *  (so apps with rich coercion see the empty string), falling back to
+   *  a direct field assignment of `''`. Rows touched by multiple ranges
+   *  are merged into one update entry per rowId so `applyTransaction`
+   *  sees each row at most once. */
+  async cutSelectedRanges(): Promise<void> {
+    if (this.destroyed) return;
+    const ranges = this.getCellRanges();
+    if (ranges.length === 0) throw new Error('no-ranges');
+    // Copy first — atomicity hinges on this resolving before we touch
+    // the data. Any rejection (`no-ranges`, `clipboard-unavailable`,
+    // browser permission denial) propagates and the clear never fires.
+    await this.copySelectedRangesToClipboard();
+    if (this.destroyed) return;
+    // Build the union of (rowIndex) across every range, fetch each row
+    // once, and apply the clear in a single transaction. Multiple
+    // ranges hitting the same row + different cols share the same row
+    // object so the column-iteration step accumulates cleared fields.
+    const rowIndexSet = new Set<number>();
+    for (const range of ranges) {
+      for (let i = range.rowStart; i <= range.rowEnd; i++) rowIndexSet.add(i);
+    }
+    const indexArr = Array.from(rowIndexSet);
+    const fetched = await Promise.all(indexArr.map((rowIndex) =>
+      this.workerClient.getRowByIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
+    ));
+    if (this.destroyed) return;
+    const byIndex = new Map<number, { rowId: string | null; data: unknown | null }>();
+    for (const r of fetched) byIndex.set(r.rowIndex, { rowId: r.rowId, data: r.data });
+    const updatesByRowId = new Map<string, TRow>();
+    for (const range of ranges) {
+      for (let ri = range.rowStart; ri <= range.rowEnd; ri++) {
+        const entry = byIndex.get(ri);
+        if (!entry || !entry.rowId || entry.data == null) continue;
+        // Reuse the already-mutated rowData for ranges that touch the
+        // same row — cleared fields accumulate across iterations.
+        const existing = updatesByRowId.get(entry.rowId);
+        const rowData = (existing ?? entry.data) as Record<string, unknown>;
+        for (const colId of range.colIds) {
+          const def = this.columnDefsMap.get(colId);
+          if (!def) continue;
+          if (def.valueSetter) {
+            const field = def.field as string | undefined;
+            const oldValue = field !== undefined ? rowData[field] : undefined;
+            def.valueSetter({
+              data: rowData as TRow, newValue: '', oldValue, colDef: def as any,
+            });
+          } else if (def.field) {
+            rowData[def.field as string] = '';
+          }
+        }
+        updatesByRowId.set(entry.rowId, rowData as TRow);
+      }
+    }
+    if (updatesByRowId.size === 0) return;
+    this.applyTransaction({ update: Array.from(updatesByRowId.values()) });
   }
 
   /** Cycle 9 / Task 7 — fan `rangeSelectionChanged` out to listeners and
@@ -2409,6 +2568,7 @@ export class CGrid<TRow = any> {
       clearCellRanges: () => this.clearCellRanges(),
       copySelectedRangesToClipboard: () => this.copySelectedRangesToClipboard(),
       pasteFromClipboard: () => this.pasteFromClipboard(),
+      cutSelectedRanges: () => this.cutSelectedRanges(),
       getFocusedCell: () => this.getFocusedCell(),
       setFocusedCell: (r, c) => this.setFocusedCell(r, c),
       refresh: () => this.refresh(),

@@ -319,7 +319,62 @@ export interface CGridOptions<TRow = any> {
    *  time so a runtime `setGridOption('clipboardDelimiter', ',')` takes
    *  effect on the next Ctrl+C / menu Copy. */
   clipboardDelimiter?: string;
+
+  /** Cycle 10 / Task 5 — per-cell transform applied on copy / cut BEFORE
+   *  serialisation. Receives the raw value, the row's `data` + visible
+   *  `rowIndex`, and the target `colId`. Return the value to ship to the
+   *  clipboard (any type — `String(...)` coercion happens after). Runs
+   *  on the main thread so apps can reference DOM / domain state from
+   *  the callback. Read at copy time so a runtime `setGridOption(
+   *  'processCellForClipboard', …)` takes effect on the next Ctrl+C /
+   *  Ctrl+X / menu Copy / menu Cut. */
+  processCellForClipboard?: ProcessCellForClipboardCallback<TRow>;
+
+  /** Cycle 10 / Task 5 — per-cell transform applied on paste BEFORE the
+   *  pasted value is written into the row. Receives the parsed string
+   *  from the clipboard payload (RFC-4180 already unwrapped), the row's
+   *  `data` + visible `rowIndex`, and the target `colId`. Return the
+   *  value to assign (any type). Runs on the main thread between the
+   *  worker's TSV parse and `applyTransaction({ update })`. Read at
+   *  paste time so a runtime `setGridOption('processCellFromClipboard',
+   *  …)` takes effect on the next Ctrl+V / menu Paste. */
+  processCellFromClipboard?: ProcessCellFromClipboardCallback<TRow>;
 }
+
+/** Cycle 10 / Task 5 — params for `processCellForClipboard`. Mirrors
+ *  ag-grid's shape (`value`, `node: { rowIndex, data }`, `column: { colId
+ *  }`). The callback fires once per (range cell × visible row), in
+ *  range-row-major order across the current `getCellRanges()` snapshot. */
+export interface ProcessCellForClipboardParams<TRow = any> {
+  /** Raw value read from the row's field. May be `null` / `undefined`
+   *  when the row lacks the field; the callback decides how to render. */
+  value: unknown;
+  /** Row data + visible row index at copy time. `data` is a snapshot of
+   *  the row's current values (the same object the `valueGetter` /
+   *  `valueFormatter` callbacks see). */
+  node: { rowIndex: number; data: TRow };
+  /** Target column — only the `colId` is guaranteed, mirroring ag-grid. */
+  column: { colId: string };
+}
+
+export type ProcessCellForClipboardCallback<TRow = any> =
+  (params: ProcessCellForClipboardParams<TRow>) => unknown;
+
+/** Cycle 10 / Task 5 — params for `processCellFromClipboard`. */
+export interface ProcessCellFromClipboardParams<TRow = any> {
+  /** Parsed cell value from the clipboard payload — always a string
+   *  (RFC-4180 unwrapping happens upstream). Apps coerce to the
+   *  column's domain type inside the callback. */
+  value: string;
+  /** Target row + its visible row index. `data` reflects the row's
+   *  PRE-paste state so apps can reference current values. */
+  node: { rowIndex: number; data: TRow };
+  /** Target column — only `colId` is guaranteed, mirroring ag-grid. */
+  column: { colId: string };
+}
+
+export type ProcessCellFromClipboardCallback<TRow = any> =
+  (params: ProcessCellFromClipboardParams<TRow>) => unknown;
 
 /** Suppression flags for the cell-range selection pathways. Each flag
  *  defaults to `false` when omitted — the matching gesture creates / updates
@@ -1400,6 +1455,20 @@ export interface CGridApi {
    *  gesture / permission denial / insecure context). Backs both the
    *  Ctrl+V shortcut and the default `Paste` context-menu item. */
   pasteFromClipboard(): Promise<void>;
+
+  /** Cycle 10 / Task 5 — combination of `copySelectedRangesToClipboard`
+   *  and a clear-update over the source cells. The clipboard write
+   *  fires first; only if it succeeds does the clear `applyTransaction`
+   *  follow. Resolves once both legs complete. Rejects when:
+   *  - no range is selected (`'no-ranges'`)
+   *  - `copySelectedRangesToClipboard` rejects (the source cells stay
+   *    untouched — no partial-cut state)
+   *
+   *  Cleared cells are written through `valueSetter` when the column
+   *  defines one, falling back to direct field assignment of `''`.
+   *  Backs both the Ctrl+X shortcut and the default `Cut` context-menu
+   *  item. */
+  cutSelectedRanges(): Promise<void>;
 
   /** Snapshot of the currently-selected cell ranges. Returns a fresh
    *  array; mutating it does NOT affect grid state. Empty when no
