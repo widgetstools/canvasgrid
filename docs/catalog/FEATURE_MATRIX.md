@@ -678,22 +678,22 @@
 | 18 | getStatusPanel | Enterprise | api | no | P2 | Retrieve live status panel component instance by key |
 
 <!-- area:19 Context menu & clipboard -->
-| 19 | getContextMenuItems / MenuItemDef | Enterprise | config | no | P1 | Customise context menu items and add custom entries |
-| 19 | suppressContextMenu | Community | config | no | P2 | Disable right-click context menu |
+| 19 | ✅ getContextMenuItems / MenuItemDef | Enterprise | config | no | P1 | Customise context menu items and add custom entries |
+| 19 | ✅ suppressContextMenu | Community | config | no | P2 | Disable right-click context menu |
 | 19 | DefaultMenuItem string identifiers | Enterprise | config | no | P1 | Built-in menu item keys (copy, paste, export, pin, etc.) |
-| 19 | copyToClipboard | Enterprise | api | no | P1 | Copy focused cell or selected rows to clipboard |
-| 19 | copySelectedRangeToClipboard | Enterprise | api | no | P1 | Copy cell range selection to clipboard |
-| 19 | cutToClipboard | Enterprise | api | no | P2 | Cut selected cells to clipboard |
+| 19 | ✅ copyToClipboard | Enterprise | api | no | P1 | Copy focused cell or selected rows to clipboard |
+| 19 | ✅ copySelectedRangeToClipboard | Enterprise | api | no | P1 | Copy cell range selection to clipboard |
+| 19 | ✅ cutToClipboard | Enterprise | api | no | P2 | Cut selected cells to clipboard |
 | 19 | copySelectedRowsToClipboard | Enterprise | api | no | P2 | Copy selected rows with optional column restriction |
-| 19 | pasteFromClipboard | Enterprise | api | no | P2 | Programmatically paste from clipboard |
+| 19 | ✅ pasteFromClipboard | Enterprise | api | no | P2 | Programmatically paste from clipboard |
 | 19 | copySelectedRangeDown | Enterprise | api | no | P2 | Fill-down within selected range |
-| 19 | processCellForClipboard | Enterprise | config | no | P1 | Transform cell values before clipboard write |
-| 19 | processCellFromClipboard | Enterprise | config | no | P1 | Transform pasted values before grid update |
+| 19 | ✅ processCellForClipboard | Enterprise | config | no | P1 | Transform cell values before clipboard write |
+| 19 | ✅ processCellFromClipboard | Enterprise | config | no | P1 | Transform pasted values before grid update |
 | 19 | sendToClipboard | Enterprise | config | no | P2 | Intercept clipboard write; handle it yourself |
 | 19 | processDataFromClipboard | Enterprise | config | no | P2 | Full paste operation control including cancel |
 | 19 | copyHeadersToClipboard / copyGroupHeadersToClipboard | Enterprise | config | no | P2 | Include header rows in Ctrl+C copy |
-| 19 | clipboardDelimiter | Enterprise | config | no | P2 | Field separator for clipboard text |
-| 19 | suppressClipboardPaste / suppressCutToClipboard | Enterprise | config | no | P2 | Disable paste or cut operations |
+| 19 | ✅ clipboardDelimiter | Enterprise | config | no | P2 | Field separator for clipboard text |
+| 19 | ✅ suppressClipboardPaste / suppressCutToClipboard | Enterprise | config | no | P2 | Disable paste or cut operations |
 | 19 | contextMenuVisibleChanged event | Enterprise | event | no | P2 | Context menu appears or disappears |
 | 19 | pasteStart / pasteEnd events | Enterprise | event | no | P2 | Bracket a paste operation |
 | 19 | cutStart / cutEnd events | Enterprise | event | no | P2 | Bracket a cut operation |

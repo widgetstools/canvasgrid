@@ -43,6 +43,15 @@
             />
             Pin selected to top
           </label>
+          <label class="toolbar-checkbox" for="clipboard-delimiter">
+            Clipboard:
+            <select id="clipboard-delimiter" data-testid="clipboard-delimiter">
+              <option value="tab" selected>TSV (tab)</option>
+              <option value=",">CSV (comma)</option>
+              <option value=";">SSV (semicolon)</option>
+              <option value="|">Pipe</option>
+            </select>
+          </label>
           <span class="status-pill" data-testid="status-pill">
             <span data-testid="status-rows">Rows: —</span>
             <span class="status-sep">·</span>

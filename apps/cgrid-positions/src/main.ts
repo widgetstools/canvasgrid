@@ -196,6 +196,24 @@ if (pinSelectedCheckbox) {
   });
 }
 
+// Cycle 10 / Task 3 — clipboard delimiter selector. Picking a value drives
+// `setGridOption('clipboardDelimiter', value)` so Ctrl+C / Ctrl+X land in
+// the chosen format on the next copy. `'tab'` maps to the default `'\t'`
+// (TSV — what Excel / Sheets paste as a grid); the others switch to CSV,
+// SSV (semicolon — common in European locales where `,` is decimal), or
+// pipe-separated for log-style consumers.
+const clipboardDelimiterSelect = document.getElementById('clipboard-delimiter') as HTMLSelectElement | null;
+if (clipboardDelimiterSelect) {
+  clipboardDelimiterSelect.addEventListener('change', () => {
+    const v = clipboardDelimiterSelect.value;
+    const delim = v === 'tab' ? '\t' : v;
+    const api = grid as unknown as {
+      setGridOption: (key: 'clipboardDelimiter', value: string) => void;
+    };
+    api.setGridOption('clipboardDelimiter', delim);
+  });
+}
+
 // Cycle 7 / Task 7 — cross-column quick filter. Input drives
 // `setGridOption('quickFilterText', value)` after a short trailing
 // debounce. Without it, a 5-char string would fire 5 worker round-trips
