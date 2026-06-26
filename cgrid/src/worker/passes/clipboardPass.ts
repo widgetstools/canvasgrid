@@ -95,6 +95,113 @@ export function serializeRanges(
   return rangeBlocks.join('\n\n');
 }
 
+/**
+ * Cycle 10 / Task 4 — inverse of `serializeRanges`. Parses a TSV / CSV
+ * string into a 2D `string[][]` array. RFC 4180–style quoting:
+ *
+ *   - cells wrapped in `"…"` may embed the delimiter, `\n`, or `"` (doubled
+ *     as `""`); the surrounding quotes are stripped on output
+ *   - the parser handles both `\n` and `\r\n` row terminators identically
+ *     (mixed line endings inside one payload also collapse)
+ *   - a single trailing newline does NOT produce an extra empty row, but
+ *     a fully-empty row mid-input (e.g. `a\n\nb`) does — it represents
+ *     a real empty row in the source
+ *
+ * State machine (no regex — see the per-cycle perf budget):
+ *
+ *   normal   — reading an unquoted cell; delimiter or newline ends it;
+ *              a leading `"` flips to `quoted` (only if at cell start).
+ *   quoted   — reading a quoted cell; `""` is an embedded literal `"`;
+ *              a single `"` followed by delimiter / newline / EOF closes
+ *              the cell.
+ *
+ * `delimiter` defaults to `\t`. Multi-char delimiters are not supported
+ * here (the serialize path is also one-character in practice) — this
+ * keeps the inner loop a simple charCode compare.
+ *
+ * Empty input → `[]`. A 1×1 unquoted cell → `[[cell]]`.
+ */
+export function deserializeTsv(
+  text: string,
+  delimiter: string = DEFAULT_DELIMITER,
+): string[][] {
+  if (text === '') return [];
+  const delim = delimiter.charCodeAt(0);
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = '';
+  let inQuoted = false;
+  let cellStarted = false; // true once any char (including the opening `"`) has been consumed for the current cell
+  const len = text.length;
+  for (let i = 0; i < len; i++) {
+    const ch = text.charCodeAt(i);
+    if (inQuoted) {
+      if (ch === 0x22 /* `"` */) {
+        // Doubled `""` inside a quoted cell → emit a single `"`.
+        if (i + 1 < len && text.charCodeAt(i + 1) === 0x22) {
+          cell += '"';
+          i++;
+          continue;
+        }
+        // Closing quote — fall back to normal state. The next char must
+        // be a delimiter, newline, or EOF (we don't enforce — anything
+        // else is appended to the cell as a tolerant fallback).
+        inQuoted = false;
+        continue;
+      }
+      cell += text[i];
+      continue;
+    }
+    // Unquoted state.
+    if (ch === delim) {
+      row.push(cell);
+      cell = '';
+      cellStarted = false;
+      continue;
+    }
+    if (ch === 0x0A /* \n */) {
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = '';
+      cellStarted = false;
+      continue;
+    }
+    if (ch === 0x0D /* \r */) {
+      // Treat \r\n and bare \r the same — the next iter's \n branch
+      // (if any) emits the row; here we just skip the \r so the cell
+      // text doesn't pick it up.
+      // If the next char isn't \n, we still need to emit the row (bare
+      // \r from classic-Mac payloads). Emit eagerly + don't double-emit
+      // on the following \n.
+      row.push(cell);
+      rows.push(row);
+      row = [];
+      cell = '';
+      cellStarted = false;
+      // Peek: a following \n is the CRLF pair — skip it.
+      if (i + 1 < len && text.charCodeAt(i + 1) === 0x0A) i++;
+      continue;
+    }
+    if (ch === 0x22 /* `"` */ && !cellStarted) {
+      inQuoted = true;
+      cellStarted = true;
+      continue;
+    }
+    cell += text[i];
+    cellStarted = true;
+  }
+  // Final cell — only emit a row when something is in the row OR the
+  // final cell holds content. A trailing-newline payload (`a\tb\n`)
+  // hits the \n branch above, leaves `row` empty + `cell` empty, and
+  // we don't add an empty row here.
+  if (cell.length > 0 || row.length > 0 || cellStarted || inQuoted) {
+    row.push(cell);
+    rows.push(row);
+  }
+  return rows;
+}
+
 /** Coerce a single cell value to its TSV / CSV representation. `null` /
  *  `undefined` render as the empty string; everything else flows through
  *  `String(...)`. The result is wrapped in `"…"` (with embedded `"` doubled)

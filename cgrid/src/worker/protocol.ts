@@ -241,6 +241,18 @@ export type WorkerRequest =
       id: ReqId;
       type: 'clipboardSerialize';
       payload: { ranges: SelectionRange[]; delimiter: string };
+    }
+  /** Cycle 10 / Task 4 — parse a TSV / CSV payload (`text`) into a
+   *  rectangular `string[][]` off the main thread. The main side
+   *  reads from `navigator.clipboard.readText`, ships the raw string
+   *  here, and uses the result as the source values for the focus-
+   *  anchored `applyTransaction({ update: [...] })`. Keeps the parse
+   *  state machine off the main thread so a 10k × 50 paste from Excel
+   *  doesn't stall the UI thread. */
+  | {
+      id: ReqId;
+      type: 'clipboardDeserialize';
+      payload: { text: string; delimiter: string };
     };
 
 export type WorkerResponse =
@@ -263,6 +275,11 @@ export type WorkerResponse =
   /** Cycle 10 / Task 3 — encoded TSV / CSV for the supplied ranges. The
    *  main thread forwards `tsv` to `navigator.clipboard.writeText`. */
   | { id: ReqId; type: 'clipboardSerializeResult'; tsv: string }
+  /** Cycle 10 / Task 4 — parsed `string[][]` for the supplied payload.
+   *  Rows are in source order; cells are raw strings (RFC-4180 quoting
+   *  already unwrapped). The main thread anchors the grid at the focused
+   *  cell + builds `applyTransaction({ update })` from this. */
+  | { id: ReqId; type: 'clipboardDeserializeResult'; rows: string[][] }
   | { id: ReqId; type: 'error';               error: string };
 
 export type WorkerPush =

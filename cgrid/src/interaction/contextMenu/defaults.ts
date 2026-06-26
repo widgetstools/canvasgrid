@@ -41,6 +41,10 @@ export interface DefaultMenuGrid {
   /** Cycle 10 / Task 3 — serialise the current range selection to the
    *  system clipboard. The Copy default-menu item routes here. */
   copySelectedRangesToClipboard(): Promise<void>;
+  /** Cycle 10 / Task 4 — read the system clipboard + apply via
+   *  `applyTransaction` rooted at the focused cell. The Paste
+   *  default-menu item routes here. */
+  pasteFromClipboard(): Promise<void>;
 }
 
 /** Build the eight-item default list. `grid` carries the column-ops
@@ -90,7 +94,15 @@ export function buildDefaultMenuItems(
     {
       name: 'Paste',
       icon: '\u{1F4CB}', // 📋 clipboard
-      action: () => { console.debug('[clipboard] paste (stub — wired in Task 4)'); },
+      // Same gesture-stack reasoning as Copy: the menu-item click is the
+      // active user gesture, so `navigator.clipboard.readText` inside
+      // `pasteFromClipboard` resolves. Errors (permission denied, no
+      // gesture if invoked programmatically) get a single warn line.
+      action: () => {
+        void grid.pasteFromClipboard().catch((err) => {
+          console.warn('[cgrid] pasteFromClipboard:', err);
+        });
+      },
     },
     {
       name: 'Cut',

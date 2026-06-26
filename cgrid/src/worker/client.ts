@@ -314,6 +314,18 @@ export class WorkerClient {
     }).then((r) => r.tsv);
   }
 
+  /** Cycle 10 / Task 4 — parse a TSV / CSV payload into a `string[][]`
+   *  off the main thread. `text` is the raw clipboard payload from
+   *  `navigator.clipboard.readText`; `delimiter` matches
+   *  `CGridOptions.clipboardDelimiter` (default `\t`). The main thread
+   *  uses the result to assemble a focus-anchored
+   *  `applyTransaction({ update: [...] })`. */
+  clipboardDeserialize(text: string, delimiter: string): Promise<string[][]> {
+    return this.send<{ rows: string[][] }>({
+      type: 'clipboardDeserialize', payload: { text, delimiter },
+    }).then((r) => r.rows);
+  }
+
   destroy(): void {
     this.worker.terminate();
     this.pending.forEach((p) => p.reject(new Error('worker terminated')));

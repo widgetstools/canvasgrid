@@ -657,6 +657,12 @@ export class CGrid<TRow = any> {
       // `navigator.clipboard.writeText` both run inside the keydown's
       // user-gesture stack.
       copySelectedRangesToClipboard: () => this.copySelectedRangesToClipboard(),
+      // Cycle 10 / Task 4 — clipboard paste. Ctrl+V calls into this
+      // method inside the keydown so `navigator.clipboard.readText`
+      // sees the active gesture; the worker parse + the
+      // `applyTransaction` commit happen after but are still rooted
+      // in the same gesture.
+      pasteFromClipboard: () => this.pasteFromClipboard(),
     });
     this.cellEditorRegistry = new CellEditorRegistry();
     CellEditorRegistry.seed(this.cellEditorRegistry);
@@ -2068,6 +2074,81 @@ export class CGrid<TRow = any> {
     await navigator.clipboard.writeText(tsv);
   }
 
+  /** Cycle 10 / Task 4 — read the system clipboard, parse the payload on
+   *  the worker, and apply via `applyTransaction({ update })` rooted at
+   *  the focused cell. Resolves quietly (no throw) when the paste is a
+   *  semantic no-op:
+   *  - no cell is focused
+   *  - clipboard is empty
+   *  - parsed grid covers no rows / cells
+   *
+   *  Rejects when `navigator.clipboard.readText` rejects (no gesture,
+   *  permission denied, insecure context without a polyfill).
+   *
+   *  Anchor algorithm: the parsed `string[][]` is positioned with its
+   *  (0, 0) cell at the focused cell. For each parsed row `r` we
+   *  resolve the target row at visible index `focusedRowIndex + r`
+   *  (via `workerClient.getRowByIndex`, mirroring Cycle 9 / Task 5's
+   *  fill handle); for each parsed cell `c` we write into the visible
+   *  column at index `focusedColIndex + c` in `this.columnOrder`. Rows
+   *  past the bottom or columns past the right edge are silently
+   *  dropped — paste never inserts rows / columns. */
+  async pasteFromClipboard(): Promise<void> {
+    if (this.destroyed) return;
+    const focusedRowIndex = this.selection.state.focusedRowIndex;
+    const focusedColId = this.selection.state.focusedColId;
+    if (focusedRowIndex === null || focusedColId === null) return;
+    if (typeof navigator === 'undefined' || !navigator.clipboard?.readText) {
+      throw new Error('clipboard-unavailable');
+    }
+    const text = await navigator.clipboard.readText();
+    if (text === '') return;
+    const delimiter = this.options.clipboardDelimiter ?? '\t';
+    const parsed = await this.workerClient.clipboardDeserialize(text, delimiter);
+    if (parsed.length === 0) return;
+    // Resolve the focused column's render-order index. When the focused
+    // column has been hidden between the focus event and the paste,
+    // we drop back to "no anchor" → no-op.
+    const focusedColIdx = this.columnOrder.findIndex((c) => c.colId === focusedColId);
+    if (focusedColIdx === -1) return;
+    // Fetch every target row via the worker so the update set ships full
+    // TRow objects (RowStore.apply REPLACES rows by id; the unchanged
+    // fields must be present on the update payload). Off-bottom rows
+    // (rowIndex >= rowCount) skip — the worker returns rowId === null.
+    const targetRowIndices: number[] = [];
+    for (let r = 0; r < parsed.length; r++) targetRowIndices.push(focusedRowIndex + r);
+    const fetches = targetRowIndices.map((rowIndex) =>
+      this.workerClient.getRowByIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
+    );
+    const results = await Promise.all(fetches);
+    if (this.destroyed) return;
+    const updates: TRow[] = [];
+    for (let i = 0; i < results.length; i++) {
+      const fetched = results[i]!.fetched;
+      if (!fetched.rowId || fetched.data == null) continue;
+      const rowData = fetched.data as Record<string, unknown>;
+      const parsedRow = parsed[i]!;
+      for (let c = 0; c < parsedRow.length; c++) {
+        const targetColIdx = focusedColIdx + c;
+        if (targetColIdx >= this.columnOrder.length) break;
+        const def = this.columnOrder[targetColIdx]!;
+        const newValue = parsedRow[c]!;
+        if (def.valueSetter) {
+          const field = def.field as string | undefined;
+          const oldValue = field !== undefined ? rowData[field] : undefined;
+          def.valueSetter({
+            data: rowData as TRow, newValue, oldValue, colDef: def as any,
+          });
+        } else if (def.field) {
+          rowData[def.field as string] = newValue;
+        }
+      }
+      updates.push(rowData as TRow);
+    }
+    if (updates.length === 0) return;
+    this.applyTransaction({ update: updates });
+  }
+
   /** Cycle 9 / Task 7 — fan `rangeSelectionChanged` out to listeners and
    *  drive the `cellSelectionChanged` debounce. Called from feature code
    *  (RangeSelection / FillHandle) at gesture start / mid / end, and from
@@ -2327,6 +2408,7 @@ export class CGrid<TRow = any> {
       addCellRange: (range) => this.addCellRange(range),
       clearCellRanges: () => this.clearCellRanges(),
       copySelectedRangesToClipboard: () => this.copySelectedRangesToClipboard(),
+      pasteFromClipboard: () => this.pasteFromClipboard(),
       getFocusedCell: () => this.getFocusedCell(),
       setFocusedCell: (r, c) => this.setFocusedCell(r, c),
       refresh: () => this.refresh(),

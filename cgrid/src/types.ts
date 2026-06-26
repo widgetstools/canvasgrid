@@ -1384,6 +1384,23 @@ export interface CGridApi {
    *  `suppressClipboardApi: true` (Task 6) so this becomes a no-op. */
   copySelectedRangesToClipboard(): Promise<void>;
 
+  /** Cycle 10 / Task 4 — read the system clipboard, parse the payload
+   *  (TSV by default; CSV when `clipboardDelimiter` overrides) on the
+   *  worker, and apply via `applyTransaction({ update: [...] })`
+   *  rooted at the focused cell. When the parsed grid extends past
+   *  the focused cell's column band, it pastes into the next visible
+   *  columns to the right and the next visible rows below.
+   *
+   *  No-op (resolves without writing) when:
+   *  - no cell is currently focused
+   *  - the clipboard payload is empty
+   *  - `suppressClipboardPaste === true` (Task 6 wires this gate)
+   *
+   *  Rejects when `navigator.clipboard.readText` rejects (no user
+   *  gesture / permission denial / insecure context). Backs both the
+   *  Ctrl+V shortcut and the default `Paste` context-menu item. */
+  pasteFromClipboard(): Promise<void>;
+
   /** Snapshot of the currently-selected cell ranges. Returns a fresh
    *  array; mutating it does NOT affect grid state. Empty when no
    *  range is active. Cycle 9 / Task 6. */

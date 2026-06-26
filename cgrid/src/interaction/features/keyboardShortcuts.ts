@@ -63,6 +63,29 @@ export class KeyboardShortcuts extends Feature {
       return;
     }
 
+    // Cycle 10 / Task 4 — Ctrl+V / Cmd+V → paste from system clipboard.
+    // The paste anchor is `selection.state.focusedRowIndex/Col` — when
+    // no cell is focused, the API returns without reading the clipboard
+    // (so the browser falls through to its default, which is a no-op
+    // on a canvas).
+    const isPaste = e.key === 'v' || e.key === 'V' || e.code === 'KeyV';
+    if (isPaste) {
+      const fr = ctx.grid.selection.state.focusedRowIndex;
+      const fc = ctx.grid.selection.state.focusedColId;
+      if (fr === null || fc === null) {
+        super.handleKeyDown(ctx);
+        return;
+      }
+      e.preventDefault();
+      // Same gesture-stack reasoning as copy — `navigator.clipboard.readText`
+      // is the gesture-gated call here, and it fires synchronously off the
+      // first turn of `pasteFromClipboard`.
+      void ctx.grid.pasteFromClipboard().catch((err) => {
+        console.warn('[cgrid] pasteFromClipboard:', err);
+      });
+      return;
+    }
+
     super.handleKeyDown(ctx);
   }
 }

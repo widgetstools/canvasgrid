@@ -196,6 +196,13 @@ export interface CGridLike {
    *  Async Clipboard API sees an active user-gesture stack. Cycle 10 /
    *  Task 3. */
   copySelectedRangesToClipboard(): Promise<void>;
+
+  /** Read from `navigator.clipboard.readText`, parse on the worker, and
+   *  apply as `applyTransaction({ update })` anchored at the focused
+   *  cell. The `KeyboardShortcuts` feature calls this from Ctrl+V /
+   *  Cmd+V inside the keydown so the read is paired with an active
+   *  user-gesture stack. Cycle 10 / Task 4. */
+  pasteFromClipboard(): Promise<void>;
 }
 
 export interface CGridEventCtx {
