@@ -3,11 +3,12 @@ import type { ResolvedColDef } from '../core/propertyChain';
 import type { ResolvedTheme } from '../theming/cssReader';
 import type { CellRendererRegistry } from './cellRenderers/registry';
 import type { CellDataLookup } from './painters/types';
-import type { SortModel } from '../types';
+import type { SortModel, SelectionRange } from '../types';
 import type { CachedContext2D } from './gc';
 import { paintCellsByRows } from './painters/byRows';
 import { paintGridLines } from './painters/gridLinesPainter';
 import { paintOverlay } from './painters/overlayPainter';
+import { paintRangeOverlay } from './painters/rangeOverlayPainter';
 
 export type { CellDataLookup };
 
@@ -21,6 +22,10 @@ export interface RendererOpts {
     focusedRowIndex: number | null;
     focusedColId: string | null;
     selectedRowIndices: Set<number>;
+    /** Cycle 9 / Task 3 — active cell-range selections from the
+     *  `SelectionModel`. Forwarded into `PainterCtx.selection` so the
+     *  rangeOverlayPainter can render the active ranges. */
+    ranges: SelectionRange[];
   };
   getSortModel: () => SortModel;
   /** Total drawable width in CSS px (matches CGridCanvas.bounds.width). */
@@ -69,5 +74,9 @@ export class Renderer {
     // seams. Overlay (focus ring) goes last so it sits above the gridlines.
     paintGridLines(gc, pctx);
     paintOverlay(gc, pctx);
+    // Cycle 9 / Task 3 — range overlay paints translucent fill + opaque
+    // border per active range. Runs after the focus-ring overlay so the
+    // range border doesn't cut into the focus ring of an interior cell.
+    paintRangeOverlay(gc, pctx);
   }
 }
