@@ -625,6 +625,15 @@ export class CGrid<TRow = any> {
         : (this.options.multiSortKey ?? 'Shift'),
       toggleColumnGroup: (groupId) => this.toggleColumnGroup(groupId),
       scrollBy: (dx, dy) => this.scroller.scrollBy({ left: dx, top: dy, behavior: 'auto' }),
+      // Cycle 9 patch / Task 2 — body rectangle for RangeSelection's edge-zone
+      // auto-scroll math. Read at event time so a container resize between
+      // drag ticks lands on the next compute.
+      getBodyRect: () => ({
+        left: this.viewport.bodyLeft,
+        right: this.viewport.bodyRight,
+        top: this.viewport.bodyTop,
+        bottom: this.viewport.bodyBottom,
+      }),
       emitCellClicked: (rowIndex, colId, mouse) => {
         const rowId = this.rowIdAt(rowIndex);
         if (rowId) this.events.emit({ type: 'cellClicked', rowId, colId, value: this.cellAt(rowIndex, colId)?.value, mouse });

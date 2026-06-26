@@ -1,5 +1,10 @@
 import { describe, it, expect, vi } from 'vitest';
-import { RangeSelection } from '../src/interaction/features/rangeSelection';
+import {
+  RangeSelection,
+  computeAutoScrollDelta,
+  EDGE_PX,
+  MAX_SCROLL_PX_PER_FRAME,
+} from '../src/interaction/features/rangeSelection';
 import { HeaderClick } from '../src/interaction/features/headerClick';
 import { SelectionModel } from '../src/interaction/selectionModel';
 import type { CGridEventCtx } from '../src/interaction/feature';
@@ -28,6 +33,20 @@ interface MockGrid {
    *  Mocks default to a no-op (event semantics tested in
    *  rangeSelectionEvents.test.ts). */
   emitRangeSelectionChanged?: (started: boolean, finished: boolean) => void;
+  /** Cycle 9 patch / Task 2 — body rectangle used by the auto-scroll
+   *  loop's edge-zone math. Default rect is generous (1000×1000) so the
+   *  existing drag tests' canvas-local points fall comfortably inside the
+   *  body and the auto-scroll loop never kicks in. Specs that exercise
+   *  the edge-zone path override it. */
+  getBodyRect?: () => { left: number; right: number; top: number; bottom: number };
+  /** Cycle 9 patch / Task 2 — `scrollBy` hook for the auto-scroll loop.
+   *  Default no-op so the existing drag tests don't need to thread one. */
+  scrollBy?: (dx: number, dy: number) => void;
+  /** Cycle 9 patch / Task 2 — `hitTester` surface used by the rAF tick
+   *  to re-hit-test at the captured pointer after a scroll. Default is
+   *  a stub that returns `{ kind: 'empty' }` so non-auto-scroll specs
+   *  don't need a real viewport. */
+  hitTester?: { locate: (x: number, y: number) => Hit };
 }
 
 function ctx(
@@ -50,6 +69,9 @@ function makeGrid(overrides: Partial<MockGrid> = {}): MockGrid {
     allColIds: () => ['cusip', 'ticker', 'price', 'qty'],
     getCellSelectionOptions: () => undefined,
     emitRangeSelectionChanged: () => {},
+    getBodyRect: () => ({ left: 0, right: 1000, top: 0, bottom: 1000 }),
+    scrollBy: () => {},
+    hitTester: { locate: () => ({ kind: 'empty' }) },
     ...overrides,
   };
 }
@@ -81,6 +103,9 @@ function makeFullGrid(
     toggleColumnGroup: () => {},
     getCellSelectionOptions: () => undefined,
     emitRangeSelectionChanged: () => {},
+    getBodyRect: () => ({ left: 0, right: 1000, top: 0, bottom: 1000 }),
+    scrollBy: () => {},
+    hitTester: { locate: () => ({ kind: 'empty' }) },
     ...overrides,
   };
   return Object.assign(grid, { cycleSort, selectColumnSpy });
@@ -455,5 +480,72 @@ describe('SelectionModel.selectColumnBand (Cycle 9 / Task 4)', () => {
     sel.selectColumnBand('nope', ['cusip', 'ticker'], 10, false);
     expect(sel.getRanges()).toEqual([]);
     expect(emits).toBe(0);
+  });
+});
+
+describe('computeAutoScrollDelta (Cycle 9 patch / Task 2) — edge-zone math', () => {
+  const body = { left: 100, right: 500, top: 50, bottom: 400 };
+
+  it('returns {0, 0} when the pointer is comfortably inside the body (away from any edge zone)', () => {
+    const center = { x: 300, y: 225 };
+    expect(computeAutoScrollDelta(center, body)).toEqual({ dx: 0, dy: 0 });
+  });
+
+  it('returns {0, 0} at the inside boundary of the edge zone (depth == 0 → no scroll yet)', () => {
+    // bodyRight - EDGE_PX = 480, so x=480 sits exactly at the inside edge.
+    expect(computeAutoScrollDelta({ x: body.right - EDGE_PX, y: 200 }, body)).toEqual({ dx: 0, dy: 0 });
+    expect(computeAutoScrollDelta({ x: body.left + EDGE_PX, y: 200 }, body)).toEqual({ dx: 0, dy: 0 });
+    expect(computeAutoScrollDelta({ x: 300, y: body.top + EDGE_PX }, body)).toEqual({ dx: 0, dy: 0 });
+    expect(computeAutoScrollDelta({ x: 300, y: body.bottom - EDGE_PX }, body)).toEqual({ dx: 0, dy: 0 });
+  });
+
+  it('scrolls right with depth = (point.x - (bodyRight - edgePx)) when the pointer enters the right edge zone', () => {
+    // x = bodyRight - 19 → depth = 1 → 1 px/frame.
+    expect(computeAutoScrollDelta({ x: body.right - 19, y: 200 }, body)).toEqual({ dx: 1, dy: 0 });
+    // x = bodyRight → depth = EDGE_PX = 20 → 20 px/frame.
+    expect(computeAutoScrollDelta({ x: body.right, y: 200 }, body)).toEqual({ dx: 20, dy: 0 });
+  });
+
+  it('scrolls left (negative dx) when the pointer enters the left edge zone', () => {
+    expect(computeAutoScrollDelta({ x: body.left + 19, y: 200 }, body)).toEqual({ dx: -1, dy: 0 });
+    expect(computeAutoScrollDelta({ x: body.left, y: 200 }, body)).toEqual({ dx: -20, dy: 0 });
+  });
+
+  it('scrolls up (negative dy) when the pointer enters the top edge zone', () => {
+    expect(computeAutoScrollDelta({ x: 300, y: body.top + 19 }, body)).toEqual({ dx: 0, dy: -1 });
+    expect(computeAutoScrollDelta({ x: 300, y: body.top }, body)).toEqual({ dx: 0, dy: -20 });
+  });
+
+  it('scrolls down (positive dy) when the pointer enters the bottom edge zone', () => {
+    expect(computeAutoScrollDelta({ x: 300, y: body.bottom - 19 }, body)).toEqual({ dx: 0, dy: 1 });
+    expect(computeAutoScrollDelta({ x: 300, y: body.bottom }, body)).toEqual({ dx: 0, dy: 20 });
+  });
+
+  it('caps the per-frame speed at MAX_SCROLL_PX_PER_FRAME regardless of how far past the body the pointer is', () => {
+    // 30 px past bodyRight → raw depth = 20 + 30 = 50 → capped at MAX_SCROLL_PX_PER_FRAME.
+    const cap = MAX_SCROLL_PX_PER_FRAME;
+    expect(computeAutoScrollDelta({ x: body.right + 30, y: 200 }, body)).toEqual({ dx: cap, dy: 0 });
+    // Mirror for the left side.
+    expect(computeAutoScrollDelta({ x: body.left - 30, y: 200 }, body)).toEqual({ dx: -cap, dy: 0 });
+    // And vertical.
+    expect(computeAutoScrollDelta({ x: 300, y: body.bottom + 50 }, body)).toEqual({ dx: 0, dy: cap });
+    expect(computeAutoScrollDelta({ x: 300, y: body.top - 50 }, body)).toEqual({ dx: 0, dy: -cap });
+  });
+
+  it('produces a diagonal delta when the pointer is in two perpendicular edge zones (corner drag)', () => {
+    // Bottom-right corner: x past bodyRight, y past bodyBottom.
+    const result = computeAutoScrollDelta(
+      { x: body.right + 5, y: body.bottom + 5 },
+      body,
+    );
+    // depth = 20 + 5 = 25 on each axis (within the 30 cap).
+    expect(result).toEqual({ dx: 25, dy: 25 });
+  });
+
+  it('honours the explicit edgePx / capPx overrides', () => {
+    // Wider edge zone (40 px), lower cap (10).
+    const r = computeAutoScrollDelta({ x: body.right + 5, y: 200 }, body, 40, 10);
+    // depth = 40 + 5 = 45 → capped at 10.
+    expect(r).toEqual({ dx: 10, dy: 0 });
   });
 });

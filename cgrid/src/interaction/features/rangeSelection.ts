@@ -23,12 +23,21 @@
 //   - mouseup with no drag in flight → no event (forwarded only)
 // The CGrid emitter handles the `cellSelectionChanged` debounce on top.
 //
+// Cycle 9 patch / Task 2 — auto-scroll while the pointer is in the body's
+// edge zone. When `handleMouseDrag` fires with a point inside ±EDGE_PX of
+// any body side, an rAF-paced loop calls `ctx.grid.scrollBy` proportional
+// to the depth past the edge (linear, capped at MAX_SCROLL_PX_PER_FRAME).
+// Each tick re-hit-tests at the LAST captured pointer position so the range
+// extends to newly-revealed cells. The loop self-terminates on the first
+// non-edge-zone drag tick OR on mouseup.
+//
 // Chain position: ahead of CellSelection. CellSelection consumes cell
 // mousedowns to set focus + row selection; placing RangeSelection earlier
 // lets us claim the range first, then forward via `super.handleMouseDown`
 // so focus + row selection still happen on the same press.
 
 import { Feature, type CGridEventCtx } from '../feature';
+import type { Hit } from '../hitTester';
 
 interface DragState {
   /** Row index hit at mousedown. The range's rowStart = min(anchor, current),
@@ -40,8 +49,68 @@ interface DragState {
   anchorColId: string;
 }
 
+/** Cycle 9 patch / Task 2 — width (CSS px) of the body's edge zone. When the
+ *  pointer enters this band on any side during a drag, `RangeSelection`
+ *  kicks the auto-scroll loop. 20 px matches Excel's "near the edge"
+ *  feel — small enough that an intentional click near the edge of a wide
+ *  cell doesn't trigger it, large enough that a drag toward off-screen
+ *  cells lands in it without overshooting. */
+export const EDGE_PX = 20;
+
+/** Cycle 9 patch / Task 2 — cap on auto-scroll speed (CSS px / frame). At
+ *  60 fps that's ~1800 px/sec — fast enough that a 5000-row grid scrolls
+ *  through in a few seconds, slow enough that the user can stop near a
+ *  target row. Linear ramp below the cap means depth=1 → 1 px/frame so
+ *  intentional edge-grazing only nudges the viewport. */
+export const MAX_SCROLL_PX_PER_FRAME = 30;
+
+/** Cycle 9 patch / Task 2 — pure edge-zone math. Returns the per-frame
+ *  scroll delta in CSS px for a pointer at `point` against a body rect
+ *  `bodyRect`. The four directions are independent (corner drag scrolls
+ *  diagonally). Each axis's delta is `min(cap, depth)` where
+ *  `depth = how far past the inside edge of the zone the pointer has
+ *  intruded`. Returns `{0, 0}` when the pointer is safely inside the body
+ *  (no axis in an edge zone). */
+export function computeAutoScrollDelta(
+  point: { x: number; y: number },
+  bodyRect: { left: number; right: number; top: number; bottom: number },
+  edgePx: number = EDGE_PX,
+  capPx: number = MAX_SCROLL_PX_PER_FRAME,
+): { dx: number; dy: number } {
+  let dx = 0;
+  let dy = 0;
+  // X axis. The inside edges of the left/right zones are at
+  // `bodyLeft + edgePx` and `bodyRight - edgePx`. Depth is how far past
+  // those inside edges the pointer has gone — positive means inside the
+  // zone (or past the body edge entirely).
+  if (point.x < bodyRect.left + edgePx) {
+    const depth = (bodyRect.left + edgePx) - point.x;
+    dx = -Math.min(capPx, depth);
+  } else if (point.x > bodyRect.right - edgePx) {
+    const depth = point.x - (bodyRect.right - edgePx);
+    dx = Math.min(capPx, depth);
+  }
+  if (point.y < bodyRect.top + edgePx) {
+    const depth = (bodyRect.top + edgePx) - point.y;
+    dy = -Math.min(capPx, depth);
+  } else if (point.y > bodyRect.bottom - edgePx) {
+    const depth = point.y - (bodyRect.bottom - edgePx);
+    dy = Math.min(capPx, depth);
+  }
+  return { dx, dy };
+}
+
 export class RangeSelection extends Feature {
   private state: DragState | null = null;
+  /** Cycle 9 patch / Task 2 — auto-scroll rAF id. Non-null only while a
+   *  drag's pointer is in an edge zone. Cancelled on the first
+   *  out-of-zone drag tick OR on mouseup. */
+  private autoScrollRafId: number | null = null;
+  /** Cycle 9 patch / Task 2 — last in-zone drag context. The rAF tick
+   *  reads `point` + `grid` from here and synthesises a fresh hit-test at
+   *  the same canvas-local point after the scroll, so the range follows
+   *  the newly-revealed cells. */
+  private lastDragCtx: CGridEventCtx | null = null;
 
   override handleMouseDown(ctx: CGridEventCtx): void {
     if (ctx.hit.kind !== 'cell') {
@@ -130,32 +199,35 @@ export class RangeSelection extends Feature {
       super.handleMouseDrag(ctx);
       return;
     }
-    // Drag tick outside the data area (pointer drifted into the header
-    // band, scrollbar gutter, or off the canvas) — keep the last range
-    // instead of clobbering it.
-    if (ctx.hit.kind !== 'cell') return;
+    // Extend the range from the current hit (if it lands in the data area).
+    this.extendRangeToHit(ctx);
 
-    const allCols = ctx.grid.allColIds();
-    const aColIdx = allCols.indexOf(this.state.anchorColId);
-    const bColIdx = allCols.indexOf(ctx.hit.colId);
-    // If either column is gone (mid-drag column removal), keep the last
-    // range. The next valid drag tick will resync.
-    if (aColIdx < 0 || bColIdx < 0) return;
-
-    const rowStart = Math.min(this.state.anchorRowIndex, ctx.hit.rowIndex);
-    const rowEnd = Math.max(this.state.anchorRowIndex, ctx.hit.rowIndex);
-    const colLo = Math.min(aColIdx, bColIdx);
-    const colHi = Math.max(aColIdx, bColIdx);
-    const colIds = allCols.slice(colLo, colHi + 1);
-
-    ctx.grid.selection.setRanges([{ rowStart, rowEnd, colIds }]);
-    // Mid-drag ping — started:false, finished:false. The
-    // cellSelectionChanged debounce inside CGrid drops this; only the
-    // raw rangeSelectionChanged listener sees it.
-    ctx.grid.emitRangeSelectionChanged(false, false);
+    // Auto-scroll detection. The kickoff is gated on the drag actually
+    // being in flight (state != null), so a hover near the edge does
+    // nothing. The cancel side is also bounded by `state` — `handleMouseUp`
+    // clears both.
+    const bodyRect = ctx.grid.getBodyRect();
+    const { dx, dy } = computeAutoScrollDelta(ctx.point, bodyRect);
+    if (dx === 0 && dy === 0) {
+      // Out of the edge zone — kill any active loop. Re-entering the zone
+      // later starts a fresh one (matches "ONE active loop at a time" in
+      // the worklog).
+      this.cancelAutoScroll();
+      return;
+    }
+    // In the edge zone. Remember this ctx so the rAF tick can replay the
+    // drag at the same canvas-local point after the scroll.
+    this.lastDragCtx = ctx;
+    if (this.autoScrollRafId === null) {
+      this.autoScrollRafId = requestAnimationFrame(this.tickAutoScroll);
+    }
   }
 
   override handleMouseUp(ctx: CGridEventCtx): void {
+    // Always kill the auto-scroll loop on mouseup — even if the drag never
+    // entered an edge zone, the conditional handles `state === null` below
+    // and a degenerate `lastDragCtx` reset here keeps invariants tidy.
+    this.cancelAutoScroll();
     if (this.state === null) {
       super.handleMouseUp(ctx);
       return;
@@ -167,5 +239,66 @@ export class RangeSelection extends Feature {
     // that drives the cellSelectionChanged fan-out.
     ctx.grid.emitRangeSelectionChanged(false, true);
     super.handleMouseUp(ctx);
+  }
+
+  /** Extract the range-extension body so the rAF tick can call it with a
+   *  freshly-synthesised hit at the same canvas-local point as the last
+   *  in-zone drag, picking up the newly-revealed cells after the scroll. */
+  private extendRangeToHit(ctx: CGridEventCtx): void {
+    // Drag tick outside the data area (pointer drifted into the header
+    // band, scrollbar gutter, or off the canvas) — keep the last range
+    // instead of clobbering it.
+    if (ctx.hit.kind !== 'cell') return;
+    const allCols = ctx.grid.allColIds();
+    const aColIdx = allCols.indexOf(this.state!.anchorColId);
+    const bColIdx = allCols.indexOf(ctx.hit.colId);
+    // If either column is gone (mid-drag column removal), keep the last
+    // range. The next valid drag tick will resync.
+    if (aColIdx < 0 || bColIdx < 0) return;
+
+    const rowStart = Math.min(this.state!.anchorRowIndex, ctx.hit.rowIndex);
+    const rowEnd = Math.max(this.state!.anchorRowIndex, ctx.hit.rowIndex);
+    const colLo = Math.min(aColIdx, bColIdx);
+    const colHi = Math.max(aColIdx, bColIdx);
+    const colIds = allCols.slice(colLo, colHi + 1);
+
+    ctx.grid.selection.setRanges([{ rowStart, rowEnd, colIds }]);
+    // Mid-drag ping — started:false, finished:false. The
+    // cellSelectionChanged debounce inside CGrid drops this; only the
+    // raw rangeSelectionChanged listener sees it.
+    ctx.grid.emitRangeSelectionChanged(false, false);
+  }
+
+  /** Each rAF tick: scroll, re-hit-test at the LAST captured pointer, extend
+   *  the range, and schedule the next frame if still in the edge zone.
+   *  Arrow-fn so `this` binds correctly when passed to `requestAnimationFrame`. */
+  private tickAutoScroll = (): void => {
+    this.autoScrollRafId = null;
+    if (this.state === null || this.lastDragCtx === null) return;
+    const ctx = this.lastDragCtx;
+    const bodyRect = ctx.grid.getBodyRect();
+    const { dx, dy } = computeAutoScrollDelta(ctx.point, bodyRect);
+    if (dx === 0 && dy === 0) {
+      // Pointer moved back into the body between the last drag tick and
+      // now — nothing to do.
+      return;
+    }
+    ctx.grid.scrollBy(dx, dy);
+    // Re-hit-test at the SAME canvas-local point. After the scroll, the
+    // cell at that point has changed, so the synthesised drag picks up the
+    // newly-revealed cell and the range extends.
+    const hit: Hit = ctx.grid.hitTester.locate(ctx.point.x, ctx.point.y);
+    this.extendRangeToHit({ ...ctx, hit });
+    // Continue the loop. The next tick will re-evaluate the edge-zone math
+    // against the (potentially updated) body rect.
+    this.autoScrollRafId = requestAnimationFrame(this.tickAutoScroll);
+  };
+
+  private cancelAutoScroll(): void {
+    if (this.autoScrollRafId !== null) {
+      cancelAnimationFrame(this.autoScrollRafId);
+      this.autoScrollRafId = null;
+    }
+    this.lastDragCtx = null;
   }
 }
