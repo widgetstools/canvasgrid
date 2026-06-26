@@ -51,7 +51,8 @@ export type RuntimeOption =
   | 'includeHiddenColumnsInQuickFilter'
   | 'enableFillHandle'
   | 'fillHandleDirection'
-  | 'fillOperation';
+  | 'fillOperation'
+  | 'cellSelection';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
  *  import on `CGrid` (cgrid.ts imports this module). */
@@ -151,6 +152,11 @@ export function applyRuntimeOption<TRow>(
     case 'enableFillHandle':
     case 'fillHandleDirection':
     case 'fillOperation':
+    // Cycle 9 / Task 6 — `cellSelection` is storage-only at runtime. The
+    // feature chain reads `options.cellSelection` at event time via
+    // `CGridLike.getCellSelectionOptions()`, so a flip lights up on the
+    // next pointer event without further wiring.
+    case 'cellSelection':
       // Storage-only: downstream cycles read directly from `options[key]`.
       return;
   }
@@ -170,4 +176,5 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'context', 'loading', 'debug', 'rowData',
   'quickFilterText', 'cacheQuickFilter', 'includeHiddenColumnsInQuickFilter',
   'enableFillHandle', 'fillHandleDirection', 'fillOperation',
+  'cellSelection',
 ]);

@@ -11,7 +11,7 @@
 import type { CGridCanvas } from '../core/canvas';
 import type { HitTester, Hit } from './hitTester';
 import type { SelectionModel } from './selectionModel';
-import type { SelectionRange } from '../types';
+import type { CCellSelectionOptions, SelectionRange } from '../types';
 
 /** Subset of `CGridOptions` consumed by the edit-trigger and keyboard
  *  features. Pulled into the chain via `CGridLike.getEditingFlags()`. */
@@ -92,6 +92,12 @@ export interface CGridLike {
    *  current span and `colId` in render order. Used by `HeaderClick` to
    *  route a non-sort header click into the cell-range model. */
   selectColumn(colId: string, opts?: { extend?: boolean }): void;
+  /** Cycle 9 / Task 6 — resolved `cellSelection` option bundle. Returns
+   *  `undefined` when no bundle is set (every gesture works with the
+   *  defaults). Features read this at EVENT time so a runtime
+   *  `setGridOption('cellSelection', …)` takes effect on the next
+   *  pointer event without re-wiring the feature chain. */
+  getCellSelectionOptions(): CCellSelectionOptions | undefined;
   /** Cycle 9 / Task 5 — resolved `enableFillHandle` flag. Read at event
    *  time (not at feature construction) so a runtime
    *  `setGridOption('enableFillHandle', true)` picks up on the next

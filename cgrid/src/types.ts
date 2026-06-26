@@ -284,6 +284,31 @@ export interface CGridOptions<TRow = any> {
    *  (linear extrapolation for numeric source values, repeat for text).
    *  Cycle 9 / Task 5. */
   fillOperation?: (params: FillOperationParams<TRow>) => unknown | false;
+
+  /** Cell-range selection knobs. When omitted, ranges work with the
+   *  Cycle 9 defaults (drag enabled, shift extend, ctrl disjoint,
+   *  header-click column band). Read at event time, so a runtime
+   *  `setGridOption('cellSelection', …)` takes effect on the next
+   *  pointer event without re-wiring the feature chain.
+   *  Cycle 9 / Task 6. */
+  cellSelection?: CCellSelectionOptions;
+}
+
+/** Suppression flags for the cell-range selection pathways. Each flag
+ *  defaults to `false` when omitted — the matching gesture creates / updates
+ *  ranges as usual. Cycle 9 / Task 6. */
+export interface CCellSelectionOptions {
+  /** When `true`, a click on a column header no longer selects the whole
+   *  column. Sort cycling on the same click is unaffected. */
+  suppressHeader?: boolean;
+  /** When `true`, a click on the row-header column (Cycle 14) no longer
+   *  selects the whole row range. Plumbed in Cycle 9 / Task 6; consumed
+   *  when row-header click ships in Cycle 14. */
+  suppressRow?: boolean;
+  /** When `true`, mouse drag (and the plain-click + shift-click + ctrl-click
+   *  pathways the drag feature owns) no longer creates or mutates ranges.
+   *  Focus + row selection on the same press still happen. */
+  suppressDrag?: boolean;
 }
 
 /** Params for `CGridOptions.fillOperation`. Mirrors ag-grid's `FillOperationParams`.
@@ -1287,6 +1312,18 @@ export interface CGridApi {
   ensureColumnGroupVisible(groupId: string, position?: 'auto' | 'start' | 'middle' | 'end'): void;
   getSelectedRowIds(): string[];
   setSelectedRowIds(ids: string[]): void;
+
+  /** Snapshot of the currently-selected cell ranges. Returns a fresh
+   *  array; mutating it does NOT affect grid state. Empty when no
+   *  range is active. Cycle 9 / Task 6. */
+  getCellRanges(): SelectionRange[];
+  /** Append a range to the current selection. Existing ranges stay —
+   *  this is the disjoint-add path, mirroring ctrl/cmd-click semantics.
+   *  Cycle 9 / Task 6. */
+  addCellRange(range: SelectionRange): void;
+  /** Drop every range. Row selection and the focused cell are
+   *  unaffected. No-op when no range is active. Cycle 9 / Task 6. */
+  clearCellRanges(): void;
 
   getFocusedCell(): { rowId: string; colId: string } | null;
   setFocusedCell(rowId: string, colId: string): void;
