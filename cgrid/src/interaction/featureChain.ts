@@ -39,6 +39,7 @@ import { HeaderClick } from './features/headerClick';
 import { EditTrigger } from './features/editTrigger';
 import { RangeSelection } from './features/rangeSelection';
 import { FillHandle } from './features/fillHandle';
+import { RightClick } from './features/rightClick';
 
 /** Idle gap (ms) after the last wheel event before the axis lock releases.
  *  ~150ms matches the natural pause between separate trackpad gestures while
@@ -65,6 +66,11 @@ export class FeatureChain {
       .append(new CellSelection())
       .append(new HeaderClick())
       .append(new KeyPaging())
+      // RightClick lives ahead of OnHover so the `contextmenu` event flows
+      // through the chain before the hover-only tail feature; OnHover does
+      // not implement handleContextMenu so the placement is cosmetic today,
+      // but matches the "tail-of-input-features" intent from the worklog.
+      .append(new RightClick())
       .append(new OnHover());
 
     const c = grid.canvas.canvas;
@@ -73,6 +79,7 @@ export class FeatureChain {
     c.addEventListener('mousemove', this.onMouseMove);
     c.addEventListener('click', this.onClick);
     c.addEventListener('dblclick', this.onDoubleClick);
+    c.addEventListener('contextmenu', this.onContextMenu);
     c.addEventListener('wheel', this.onWheel, { passive: false });
     c.addEventListener('keydown', this.onKeyDown);
   }
@@ -83,6 +90,7 @@ export class FeatureChain {
     c.removeEventListener('mousemove', this.onMouseMove);
     c.removeEventListener('click', this.onClick);
     c.removeEventListener('dblclick', this.onDoubleClick);
+    c.removeEventListener('contextmenu', this.onContextMenu);
     c.removeEventListener('wheel', this.onWheel);
     c.removeEventListener('keydown', this.onKeyDown);
     window.removeEventListener('mousemove', this.onWindowMouseMove);
@@ -140,6 +148,10 @@ export class FeatureChain {
 
   private onDoubleClick = (e: MouseEvent): void => {
     this.head.handleDoubleClick(this.buildCtx(e));
+  };
+
+  private onContextMenu = (e: MouseEvent): void => {
+    this.head.handleContextMenu(this.buildCtx(e));
   };
 
   private onWheel = (e: WheelEvent): void => {

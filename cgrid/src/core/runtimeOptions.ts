@@ -52,7 +52,8 @@ export type RuntimeOption =
   | 'enableFillHandle'
   | 'fillHandleDirection'
   | 'fillOperation'
-  | 'cellSelection';
+  | 'cellSelection'
+  | 'getContextMenuItems';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
  *  import on `CGrid` (cgrid.ts imports this module). */
@@ -157,6 +158,11 @@ export function applyRuntimeOption<TRow>(
     // `CGridLike.getCellSelectionOptions()`, so a flip lights up on the
     // next pointer event without further wiring.
     case 'cellSelection':
+    // Cycle 10 / Task 1 — `getContextMenuItems` is storage-only at runtime.
+    // CGrid.resolveContextMenuItems reads `options.getContextMenuItems`
+    // at event time, so a runtime flip lights up on the next
+    // right-click without further wiring.
+    case 'getContextMenuItems':
       // Storage-only: downstream cycles read directly from `options[key]`.
       return;
   }
@@ -177,4 +183,5 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'quickFilterText', 'cacheQuickFilter', 'includeHiddenColumnsInQuickFilter',
   'enableFillHandle', 'fillHandleDirection', 'fillOperation',
   'cellSelection',
+  'getContextMenuItems',
 ]);

@@ -12,6 +12,7 @@ import type { CGridCanvas } from '../core/canvas';
 import type { HitTester, Hit } from './hitTester';
 import type { SelectionModel } from './selectionModel';
 import type { CCellSelectionOptions, SelectionRange } from '../types';
+import type { MenuItem } from './contextMenu/types';
 
 /** Subset of `CGridOptions` consumed by the edit-trigger and keyboard
  *  features. Pulled into the chain via `CGridLike.getEditingFlags()`. */
@@ -172,6 +173,21 @@ export interface CGridLike {
     colId: string,
     direction: 'forward' | 'backward',
   ): { rowIndex: number; colId: string } | null;
+
+  // --- Context menu (Cycle 10 / Task 1) ---
+  /** Resolve the menu items for a right-click hit. Reads
+   *  `CGridOptions.getContextMenuItems(params)` and falls back to an empty
+   *  list when no callback is configured (Task 2 plugs the default registry
+   *  into this fallback). `hit` is the same `Hit` the feature already has —
+   *  the grid maps it to the `rowIndex` / `colId` slots in `params`. */
+  resolveContextMenuItems(hit: Hit): MenuItem[];
+  /** Mount the right-click menu at `(x, y)` (viewport-coords) rendering
+   *  `items`. No-op when `items` is empty so apps that suppress via
+   *  `getContextMenuItems({...}) => []` get no menu and no native menu
+   *  (the feature already called `preventDefault`). Cycle 10 / Task 1. */
+  openContextMenu(items: MenuItem[], x: number, y: number, hit: Hit): void;
+  /** Close any open context menu. Idempotent. Cycle 10 / Task 1. */
+  closeContextMenu(): void;
 }
 
 export interface CGridEventCtx {
@@ -203,6 +219,7 @@ export abstract class Feature {
   handleMouseDrag(ctx: CGridEventCtx): void { this.next?.handleMouseDrag(ctx); }
   handleClick(ctx: CGridEventCtx): void { this.next?.handleClick(ctx); }
   handleDoubleClick(ctx: CGridEventCtx): void { this.next?.handleDoubleClick(ctx); }
+  handleContextMenu(ctx: CGridEventCtx): void { this.next?.handleContextMenu(ctx); }
   handleKeyDown(ctx: CGridEventCtx): void { this.next?.handleKeyDown(ctx); }
   handleWheel(ctx: CGridEventCtx): void { this.next?.handleWheel(ctx); }
 

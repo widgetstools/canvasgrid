@@ -2,8 +2,16 @@
 // See docs/superpowers/specs/2026-06-23-canvasgrid-foundation-design.md §9.
 
 import type { CellEditorCtor } from './interaction/editors/iCellEditor';
+import type { GetContextMenuItemsCallback } from './interaction/contextMenu/types';
 
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
+// Cycle 10 / Task 1 — public context-menu surface. Re-exported from cgrid's
+// root index alongside the rest of the public API.
+export type {
+  MenuItem,
+  GetContextMenuItemsParams,
+  GetContextMenuItemsCallback,
+} from './interaction/contextMenu/types';
 
 export interface ColCellOverrides {
   font?: string;
@@ -292,6 +300,17 @@ export interface CGridOptions<TRow = any> {
    *  pointer event without re-wiring the feature chain.
    *  Cycle 9 / Task 6. */
   cellSelection?: CCellSelectionOptions;
+
+  /** Cycle 10 / Task 1 — resolve the right-click menu items for the
+   *  hit under the cursor. Receives the row / column the right-click
+   *  landed on (`null` for non-cell hits like the header or scrollbar),
+   *  the current cell-range snapshot, and the built-in `defaultItems`
+   *  list (populated by Task 2's `buildDefaultMenuItems`). Return an
+   *  empty array to suppress the menu without showing the native
+   *  browser menu (the feature already called `preventDefault`).
+   *  Read at event time so a runtime `setGridOption('getContextMenuItems',
+   *  …)` takes effect on the next right-click. */
+  getContextMenuItems?: GetContextMenuItemsCallback;
 }
 
 /** Suppression flags for the cell-range selection pathways. Each flag
