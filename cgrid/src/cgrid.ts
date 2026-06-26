@@ -531,6 +531,7 @@ export class CGrid<TRow = any> {
         return leaf ? leaf.top : 0;
       },
       cycleSort: (colId, opts) => this.cycleSort(colId, opts),
+      selectColumn: (colId, opts) => this.selectColumn(colId, opts),
       getMultiSortKey: () => this.options.multiSortKey === null
         ? null
         : (this.options.multiSortKey ?? 'Shift'),
@@ -1191,6 +1192,18 @@ export class CGrid<TRow = any> {
       next = nextStage === null ? [] : [{ colId, direction: nextStage }];
     }
     this.setSortModel(next);
+  }
+
+  /** Cycle 9 / Task 4 — header-click column-band selection. Routes the
+   *  click to `SelectionModel.selectColumnBand`, which writes a full-
+   *  height rect into the ranges list. With `extend: true` (header
+   *  shift-click), widens the last column band to cover every column
+   *  between its current span and `colId` in render order; otherwise
+   *  replaces the ranges with a single-column band. */
+  private selectColumn(colId: string, opts?: { extend?: boolean }): void {
+    const extend = opts?.extend === true;
+    const allCols = this.columnOrder.map((c) => c.colId);
+    this.selection.selectColumnBand(colId, allCols, this.rowCount, extend);
   }
 
   /** Cycle 8 / Task 2 — collect the construction-time sort model from

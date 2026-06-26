@@ -5,6 +5,14 @@
 // instead of replacing it. The grid resolves the configured key
 // via `getMultiSortKey()`; we read the matching DOM modifier off
 // the raw MouseEvent.
+//
+// Cycle 9 / Task 4 — every header click ALSO selects the whole column
+// via `grid.selectColumn(colId, { extend })`. Shift selects a column
+// band from the previous anchor through the clicked header (render
+// order); plain click replaces with a single full-column rect. Sort
+// cycling and column selection are additive — both fire on the same
+// click so existing keyboard-paged sort UX keeps working while range
+// users get the column band they expect.
 
 import { Feature, type CGridEventCtx } from '../feature';
 
@@ -24,6 +32,8 @@ export class HeaderClick extends Feature {
     if (ctx.hit.kind === 'header') {
       const append = isAppendClick(ctx.raw, ctx.grid.getMultiSortKey());
       ctx.grid.cycleSort(ctx.hit.colId, { append });
+      const extend = ctx.raw instanceof MouseEvent && ctx.raw.shiftKey;
+      ctx.grid.selectColumn(ctx.hit.colId, { extend });
       return;
     }
     if (ctx.hit.kind === 'headerGroup') {

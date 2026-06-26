@@ -126,6 +126,71 @@ export class SelectionModel {
     this.emit();
   }
 
+  /** Widen the LAST range so it covers the clicked cell as a contiguous
+   *  rect: `rowStart = min(last.rowStart, rowIndex)`,
+   *  `rowEnd = max(last.rowEnd, rowIndex)`, and colIds becomes the
+   *  contiguous render-order slice from the smallest to the largest of
+   *  the last range's first/last colId index + the clicked colId index.
+   *  No-op (no emit) when the ranges list is empty or `colId` isn't in
+   *  `allColIds`. Cycle 9 / Task 4 (shift-click extend). */
+  extendLastRangeToCell(
+    rowIndex: number,
+    colId: string,
+    allColIds: readonly string[],
+  ): void {
+    const ranges = this._state.ranges;
+    if (ranges.length === 0) return;
+    const clickedIdx = allColIds.indexOf(colId);
+    if (clickedIdx < 0) return;
+    const last = ranges[ranges.length - 1]!;
+    const firstIdx = allColIds.indexOf(last.colIds[0]!);
+    const lastIdx = allColIds.indexOf(last.colIds[last.colIds.length - 1]!);
+    const lo = Math.min(firstIdx, lastIdx, clickedIdx);
+    const hi = Math.max(firstIdx, lastIdx, clickedIdx);
+    const nextColIds = allColIds.slice(lo, hi + 1);
+    const nextRowStart = Math.min(last.rowStart, rowIndex);
+    const nextRowEnd = Math.max(last.rowEnd, rowIndex);
+    ranges[ranges.length - 1] = { rowStart: nextRowStart, rowEnd: nextRowEnd, colIds: nextColIds };
+    this.emit();
+  }
+
+  /** Select a whole column band: ranges become a single rect
+   *  `{rowStart: 0, rowEnd: rowCount-1, colIds: [colId]}`. When
+   *  `extend` is true AND the last range is already a full column
+   *  band (its row span covers every row), expand its colIds to
+   *  include every column between its existing span and `colId` in
+   *  render order. When `extend` is true but the last range is not a
+   *  full column band, falls through to the plain replacement so the
+   *  header click still produces a deterministic single-column band.
+   *  No-op (no emit) when `rowCount` is 0 or `colId` is unknown.
+   *  Cycle 9 / Task 4 (header-click whole-column + shift-extend). */
+  selectColumnBand(
+    colId: string,
+    allColIds: readonly string[],
+    rowCount: number,
+    extend: boolean,
+  ): void {
+    if (rowCount <= 0) return;
+    const clickedIdx = allColIds.indexOf(colId);
+    if (clickedIdx < 0) return;
+    const rowEnd = rowCount - 1;
+    const ranges = this._state.ranges;
+    const last = ranges.length > 0 ? ranges[ranges.length - 1]! : null;
+    const isColumnBand = last !== null && last.rowStart === 0 && last.rowEnd === rowEnd;
+    if (extend && isColumnBand && last) {
+      const firstIdx = allColIds.indexOf(last.colIds[0]!);
+      const lastIdx = allColIds.indexOf(last.colIds[last.colIds.length - 1]!);
+      const lo = Math.min(firstIdx, lastIdx, clickedIdx);
+      const hi = Math.max(firstIdx, lastIdx, clickedIdx);
+      const nextColIds = allColIds.slice(lo, hi + 1);
+      ranges[ranges.length - 1] = { rowStart: 0, rowEnd, colIds: nextColIds };
+      this.emit();
+      return;
+    }
+    this._state.ranges = [{ rowStart: 0, rowEnd, colIds: [colId] }];
+    this.emit();
+  }
+
   /** Drop every range. No-op (no emit) when already empty. Row selection
    *  and focused cell are unaffected. Cycle 9 / Task 1. */
   clearRanges(): void {

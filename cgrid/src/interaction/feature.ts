@@ -85,6 +85,12 @@ export interface CGridLike {
    *  above the group header. */
   getLeafHeaderTop(): number;
   cycleSort(colId: string, opts?: { append?: boolean }): void;
+  /** Cycle 9 / Task 4 — header-click column-band selection. Plain call
+   *  replaces ranges with a single full-column rect; `extend: true`
+   *  widens the last column band to include every column between its
+   *  current span and `colId` in render order. Used by `HeaderClick` to
+   *  route a non-sort header click into the cell-range model. */
+  selectColumn(colId: string, opts?: { extend?: boolean }): void;
   /** Cycle 8 / Task 1 — resolved modifier key for multi-column sort
    *  append. Returns `null` when multi-sort is disabled. Features check
    *  the matching event modifier to decide whether to call `cycleSort`
