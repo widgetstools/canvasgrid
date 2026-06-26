@@ -37,6 +37,7 @@ import { PopupHost } from './interaction/editors/popupHost';
 import { FilterPopupHost } from './interaction/filters/filterPopupHost';
 import { ContextMenuHost } from './interaction/contextMenu/host';
 import type { MenuItem, GetContextMenuItemsParams } from './interaction/contextMenu/types';
+import { buildDefaultMenuItems } from './interaction/contextMenu/defaults';
 import { NumberFilterPopup } from './interaction/filters/numberFilter';
 import { DateFilterPopup } from './interaction/filters/dateFilter';
 import { TextFilterPopup, applyTrimInputToModel } from './interaction/filters/textFilter';
@@ -1846,16 +1847,17 @@ export class CGrid<TRow = any> {
     this.filterPopupHost.close();
   }
 
-  /** Cycle 10 / Task 1 — resolve the right-click menu items for `hit`.
+  /** Cycle 10 / Task 1+2 — resolve the right-click menu items for `hit`.
    *  Builds `GetContextMenuItemsParams` from the hit, current cell-range
-   *  snapshot, and the default items list (empty until Task 2 plugs in
-   *  the registry), then routes through `CGridOptions.getContextMenuItems`
-   *  when configured. Falls back to the default list when no callback is
-   *  set.
+   *  snapshot, and the Task 2 default items list, then routes through
+   *  `CGridOptions.getContextMenuItems` when configured. Falls back to
+   *  the default list when no callback is set.
    *
    *  Read at event time so a runtime `setGridOption('getContextMenuItems',
    *  …)` takes effect on the next right-click without re-wiring the
-   *  feature chain. */
+   *  feature chain. The `defaultItems` array is also rebuilt per right-
+   *  click so `params.colId` flows into per-column actions (Pin Column,
+   *  etc.) at the latest hit, not at construction. */
   resolveContextMenuItems(hit: import('./interaction/hitTester').Hit): MenuItem[] {
     if (this.destroyed) return [];
     const rowIndex = hit.kind === 'cell' ? hit.rowIndex : null;
@@ -1863,22 +1865,29 @@ export class CGrid<TRow = any> {
       : hit.kind === 'header' ? hit.colId
       : hit.kind === 'headerGroup' ? hit.colId
       : null;
-    // Task 2 will replace this empty list with `buildDefaultMenuItems(...)`.
-    const defaultItems: MenuItem[] = [];
+    // Seed params with an empty defaultItems slot so the registry can
+    // read `params.colId` while building (Pin Column needs it); then
+    // mutate the slot once the list exists so callback authors see the
+    // populated array.
     const params: GetContextMenuItemsParams = {
       rowIndex,
       colId,
       ranges: this.getCellRanges(),
-      defaultItems,
+      defaultItems: [],
     };
+    const defaultItems = buildDefaultMenuItems(this, params);
+    params.defaultItems = defaultItems;
     const callback = this.options.getContextMenuItems;
     if (callback) return callback(params);
     return defaultItems;
   }
 
-  /** Cycle 10 / Task 1 — mount the right-click menu at viewport coords
+  /** Cycle 10 / Task 1+2 — mount the right-click menu at viewport coords
    *  `(x, y)` rendering `items`. Empty `items` is a no-op so callers can
-   *  always invoke this without the empty-list guard. */
+   *  always invoke this without the empty-list guard. The params passed
+   *  into item actions reuses the Task 2 defaults list so action callbacks
+   *  that read `params.defaultItems` see the same snapshot that
+   *  `getContextMenuItems(params)` saw on resolution. */
   openContextMenu(items: MenuItem[], x: number, y: number, hit: import('./interaction/hitTester').Hit): void {
     if (this.destroyed) return;
     if (items.length === 0) return;
@@ -1893,6 +1902,7 @@ export class CGrid<TRow = any> {
       ranges: this.getCellRanges(),
       defaultItems: [],
     };
+    params.defaultItems = buildDefaultMenuItems(this, params);
     this.contextMenuHost.open(items, x, y, params);
   }
 
