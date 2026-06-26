@@ -199,8 +199,16 @@ export class RangeSelection extends Feature {
       super.handleMouseDrag(ctx);
       return;
     }
-    // Extend the range from the current hit (if it lands in the data area).
-    this.extendRangeToHit(ctx);
+    // Extend the range from the current hit. When the raw hit isn't a cell
+    // (pointer drifted past the body's edge, into the header, scrollbar,
+    // or off the canvas), fall back to the cell nearest the clamped body
+    // interior — without this, a drag that overshoots a viewport edge
+    // would freeze the range at the anchor cell even though auto-scroll
+    // is moving the viewport underneath (the synthesised hit at the
+    // out-of-body point keeps returning `{kind: 'empty'}`). The result is
+    // Excel-style: the range tracks the nearest visible cell along the
+    // axis the user is overshooting.
+    this.extendRangeToHit(this.withClampedHit(ctx));
 
     // Auto-scroll detection. The kickoff is gated on the drag actually
     // being in flight (state != null), so a hover near the edge does
@@ -284,11 +292,15 @@ export class RangeSelection extends Feature {
       return;
     }
     ctx.grid.scrollBy(dx, dy);
-    // Re-hit-test at the SAME canvas-local point. After the scroll, the
-    // cell at that point has changed, so the synthesised drag picks up the
-    // newly-revealed cell and the range extends.
-    const hit: Hit = ctx.grid.hitTester.locate(ctx.point.x, ctx.point.y);
-    this.extendRangeToHit({ ...ctx, hit });
+    // Re-hit-test at the CLAMPED canvas-local point — the raw pointer is
+    // outside the body (that's why we're auto-scrolling), so a literal
+    // `locate(ctx.point.x, ctx.point.y)` would return `{kind: 'empty'}`
+    // and `extendRangeToHit` would bail without extending. Clamping into
+    // the body interior makes the synthesised hit land on the bottommost
+    // / topmost / rightmost / leftmost visible cell — the one that just
+    // scrolled into view along the overshoot axis — so the range follows
+    // the auto-scroll.
+    this.extendRangeToHit(this.withClampedHit(ctx));
     // Continue the loop. The next tick will re-evaluate the edge-zone math
     // against the (potentially updated) body rect.
     this.autoScrollRafId = requestAnimationFrame(this.tickAutoScroll);
@@ -300,5 +312,23 @@ export class RangeSelection extends Feature {
       this.autoScrollRafId = null;
     }
     this.lastDragCtx = null;
+  }
+
+  /** Return `ctx` unchanged when the pointer is over a body cell; otherwise
+   *  re-hit-test at the SAME pointer position clamped into the body
+   *  rectangle's interior, so a drag that overshoots an edge still resolves
+   *  to a cell (the bottommost / topmost / rightmost / leftmost visible row
+   *  or column along the overshoot axis). Used by `handleMouseDrag` (so the
+   *  first overshooting drag tick still extends the range to the edge
+   *  visible cell) and by `tickAutoScroll` (so each rAF tick after the
+   *  scroll picks up the newly-revealed cell). */
+  private withClampedHit(ctx: CGridEventCtx): CGridEventCtx {
+    if (ctx.hit.kind === 'cell') return ctx;
+    const body = ctx.grid.getBodyRect();
+    if (body.right <= body.left || body.bottom <= body.top) return ctx;
+    const cx = Math.max(body.left, Math.min(body.right - 1, ctx.point.x));
+    const cy = Math.max(body.top, Math.min(body.bottom - 1, ctx.point.y));
+    const hit = ctx.grid.hitTester.locate(cx, cy);
+    return { ...ctx, hit };
   }
 }

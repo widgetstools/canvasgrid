@@ -994,12 +994,27 @@ export class CGrid<TRow = any> {
       if (this.workerClient) this.requestViewport();
     });
 
-    // 11. Selection feedback
+    // 11. Selection feedback. `ensureRowIndexVisible` / `ensureColIdVisible`
+    // run only when the focused cell ACTUALLY changed since the last emit —
+    // not on every selection.onChange. Otherwise a range mutation that
+    // leaves focus untouched (e.g. a drag tick that extends rowEnd while
+    // the focused cell stays at the anchor) would re-scroll the viewport
+    // back to keep the unchanged focused cell visible, fighting the
+    // RangeSelection auto-scroll loop and freezing the viewport in place.
+    // Keyboard nav (Arrow / Tab / Home / End / Page*) goes through
+    // `setFocusAndCollapseRanges` which moves focus, so the visibility
+    // ensure still fires for those paths.
+    let lastFocusRow: number | null = null;
+    let lastFocusCol: string | null = null;
     this.selectionUnsubscribe = this.selection.onChange((state) => {
-      // Auto-scroll the focused cell into view so keyboard nav past the
-      // visible window keeps the focus in the rendered region.
-      if (state.focusedRowIndex !== null) this.ensureRowIndexVisible(state.focusedRowIndex);
-      if (state.focusedColId !== null) this.ensureColIdVisible(state.focusedColId);
+      const focusChanged =
+        state.focusedRowIndex !== lastFocusRow || state.focusedColId !== lastFocusCol;
+      if (focusChanged) {
+        if (state.focusedRowIndex !== null) this.ensureRowIndexVisible(state.focusedRowIndex);
+        if (state.focusedColId !== null) this.ensureColIdVisible(state.focusedColId);
+        lastFocusRow = state.focusedRowIndex;
+        lastFocusCol = state.focusedColId;
+      }
       this.cgridCanvas.requestRepaint();
       this.events.emit({ type: 'selectionChanged', selectedRowIds: this.getSelectedRowIds() });
       this.updateA11y();
