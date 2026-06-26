@@ -378,3 +378,79 @@
 .cg-set-filter-row:hover {
   background: var(--cg-row-hover-bg);
 }
+
+/* Cycle 10 — context menu. Mounted by ContextMenuHost as a DOM portal
+ * (positioned `fixed` at the cursor). Each row is a 3-column CSS grid
+ * (icon | label | shortcut-or-chevron) so labels align regardless of
+ * whether the row carries an icon. Sized to look like ag-grid's
+ * `docs/catalog/screenshots/19-context-menu-default.png`. */
+.cg-context-menu {
+  background: var(--cg-bg-color);
+  color: var(--cg-fg-color);
+  border: 1px solid var(--cg-border-color);
+  border-radius: 4px;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  padding: 4px 0;
+  min-width: 200px;
+  /* Reset any host-app button styling — the menu must look the same
+   * whether mounted into a slate-styled demo header or a stock body. */
+  user-select: none;
+}
+.cg-menu-item {
+  display: grid;
+  grid-template-columns: 28px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px 6px 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  /* Override any host `<button>` reset — the rows are <div role=menuitem>
+   * but a previous version used buttons and apps may have lingering
+   * styles. Belt-and-braces. */
+  background: transparent;
+  border: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+.cg-menu-item:hover,
+.cg-menu-item:focus-visible {
+  background: var(--cg-row-hover-bg);
+  outline: none;
+}
+.cg-menu-item[aria-disabled="true"] {
+  cursor: default;
+  opacity: 0.45;
+}
+.cg-menu-item[aria-disabled="true"]:hover {
+  background: transparent;
+}
+.cg-menu-item-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  font-size: 14px;
+  opacity: 0.8;
+}
+.cg-menu-item-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cg-menu-item-tail {
+  color: color-mix(in srgb, var(--cg-fg-color) 50%, transparent);
+  font-size: 12px;
+  padding-left: 16px;
+}
+.cg-menu-item-chevron {
+  font-size: 10px;
+  padding-left: 8px;
+}
+.cg-menu-separator {
+  margin: 4px 0;
+  border: none;
+  border-top: 1px solid var(--cg-border-color);
+}

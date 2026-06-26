@@ -69,15 +69,15 @@ describe('buildDefaultMenuItems', () => {
     vi.restoreAllMocks();
   });
 
-  it('returns 8 items + 2 separators in the documented order', () => {
+  it('returns 8 items + 2 separators in the documented order (matches docs/catalog/screenshots/19-context-menu-default.png — Cut/Copy/Copy-with-Headers/Paste/--/Export/--/Autosize/Pin Column ►/Reset)', () => {
     const { grid } = makeGridStub();
     const items = buildDefaultMenuItems(grid, makeParams({ colId: 'a' }));
     const labels = items.map(labelOf);
     expect(labels).toEqual([
+      'Cut',
       'Copy',
       'Copy with Headers',
       'Paste',
-      'Cut',
       '---',
       'Export',
       '---',
@@ -89,6 +89,15 @@ describe('buildDefaultMenuItems', () => {
     const seps = items.filter((i) => i.name === '---');
     expect(realItems.length).toBe(8);
     expect(seps.length).toBe(2);
+  });
+
+  it('Cut / Copy / Paste carry their Ctrl+X / Ctrl+C / Ctrl+V shortcut hints', () => {
+    const { grid } = makeGridStub();
+    const items = buildDefaultMenuItems(grid, makeParams({ colId: 'a' }));
+    const byName = new Map(items.map((i) => [i.name, i]));
+    expect(byName.get('Cut')!.shortcut).toBe('Ctrl+X');
+    expect(byName.get('Copy')!.shortcut).toBe('Ctrl+C');
+    expect(byName.get('Paste')!.shortcut).toBe('Ctrl+V');
   });
 
   it('Copy / Copy with Headers / Paste / Cut actions exist and do not throw', () => {
@@ -150,41 +159,41 @@ describe('buildDefaultMenuItems', () => {
     expect(reset).toHaveBeenCalledTimes(1);
   });
 
-  it('Pin Column opens a submenu with Left / Right / Clear', () => {
+  it('Pin Column opens a submenu with Pin Left / Pin Right / No Pin', () => {
     const { grid } = makeGridStub();
     const items = buildDefaultMenuItems(grid, makeParams({ colId: 'a' }));
     const pin = items.find((i) => i.name === 'Pin Column')!;
     expect(pin.subMenu).toBeDefined();
     const subLabels = pin.subMenu!.map(labelOf);
-    expect(subLabels).toEqual(['Left', 'Right', 'Clear']);
+    expect(subLabels).toEqual(['Pin Left', 'Pin Right', 'No Pin']);
   });
 
-  it('Pin Column → Left calls setColumnsPinned([colId], "left")', () => {
+  it('Pin Column → Pin Left calls setColumnsPinned([colId], "left")', () => {
     const { grid, pinned } = makeGridStub();
     const params = makeParams({ colId: 'price' });
     const items = buildDefaultMenuItems(grid, params);
     const pin = items.find((i) => i.name === 'Pin Column')!;
-    const left = pin.subMenu!.find((i) => i.name === 'Left')!;
+    const left = pin.subMenu!.find((i) => i.name === 'Pin Left')!;
     left.action!(params);
     expect(pinned).toHaveBeenCalledWith(['price'], 'left');
   });
 
-  it('Pin Column → Right calls setColumnsPinned([colId], "right")', () => {
+  it('Pin Column → Pin Right calls setColumnsPinned([colId], "right")', () => {
     const { grid, pinned } = makeGridStub();
     const params = makeParams({ colId: 'price' });
     const items = buildDefaultMenuItems(grid, params);
     const pin = items.find((i) => i.name === 'Pin Column')!;
-    const right = pin.subMenu!.find((i) => i.name === 'Right')!;
+    const right = pin.subMenu!.find((i) => i.name === 'Pin Right')!;
     right.action!(params);
     expect(pinned).toHaveBeenCalledWith(['price'], 'right');
   });
 
-  it('Pin Column → Clear calls setColumnsPinned([colId], null)', () => {
+  it('Pin Column → No Pin calls setColumnsPinned([colId], null)', () => {
     const { grid, pinned } = makeGridStub();
     const params = makeParams({ colId: 'price' });
     const items = buildDefaultMenuItems(grid, params);
     const pin = items.find((i) => i.name === 'Pin Column')!;
-    const clear = pin.subMenu!.find((i) => i.name === 'Clear')!;
+    const clear = pin.subMenu!.find((i) => i.name === 'No Pin')!;
     clear.action!(params);
     expect(pinned).toHaveBeenCalledWith(['price'], null);
   });
@@ -196,7 +205,7 @@ describe('buildDefaultMenuItems', () => {
     expect(pin.disabled).toBe(true);
     // Even if invoked manually, it's a no-op (no pin call) so accidental
     // hosting that doesn't honour `disabled` doesn't pin a phantom column.
-    pin.subMenu!.find((i) => i.name === 'Left')!.action!(makeParams({ colId: null }));
+    pin.subMenu!.find((i) => i.name === 'Pin Left')!.action!(makeParams({ colId: null }));
     expect(pinned).not.toHaveBeenCalled();
   });
 

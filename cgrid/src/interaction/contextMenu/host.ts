@@ -6,14 +6,28 @@
  * viewport so it never overflows the right or bottom edge. Outside-click
  * and Escape dismiss it; opening a second time replaces the first.
  *
- * The host is intentionally minimal — it owns DOM lifecycle and dismissal
- * only. `items` is the resolved `MenuItem[]` produced by
- * `getContextMenuItems(params)` (Task 1 ships the empty surface; Task 2
- * fills in the default registry). Each item renders as a button; the
- * literal `name === '---'` renders as `<hr>` (separator). Disabled items
- * render with `aria-disabled="true"` and skip the click action — but
- * leave the menu open so the user can keep choosing, matching native
- * platform menus.
+ * Rendering shape (per `docs/catalog/screenshots/19-context-menu-default.png`):
+ *   ┌──────────────────────────────────────────────┐
+ *   │  ✂   Cut                          Ctrl+X     │
+ *   │  ⎘   Copy                         Ctrl+C     │
+ *   │  📋  Paste                        Ctrl+V     │  ← dim when disabled
+ *   │  ────────────────────────────────────────    │  ← separator
+ *   │  ↓   Export                            ▶     │  ← chevron for subMenu
+ *   └──────────────────────────────────────────────┘
+ *
+ * Each row is a 3-column CSS grid: icon gutter (fixed width so labels
+ * align even when only some items carry icons) / label (flex-grow) /
+ * shortcut-or-chevron (right-aligned, dim). The literal `name === '---'`
+ * renders as a thin horizontal rule. Disabled items render with
+ * `aria-disabled="true"` and skip the click action — but leave the menu
+ * open so the user can keep choosing, matching native platform menus.
+ *
+ * Submenus render on `mouseenter` of a row that carries `subMenu`. The
+ * sub-popup mounts as a sibling under the same host (`pointer-events:
+ * auto` inherits), positioned at the parent row's right edge. Hovering
+ * away closes it; entering a different parent-row closes the old one
+ * and opens the new one. Submenus reuse the same render pipeline so
+ * deeper nesting works without special-casing.
  *
  * Mirrors `FilterPopupHost` for outside-click / Escape behaviour
  * (mousedown listener attached on `document` in capture phase so a click
@@ -32,8 +46,19 @@ const EMPTY_PARAMS: GetContextMenuItemsParams = {
   defaultItems: [],
 };
 
+interface MountedLevel {
+  root: HTMLElement;
+  /** The row in the parent level that owns this submenu (null for the
+   *  top-level menu). Used to close stale submenus when the user hovers
+   *  away from the parent row. */
+  parentRow: HTMLElement | null;
+}
+
 export class ContextMenuHost {
-  private current: { root: HTMLElement } | null = null;
+  /** Stack of mounted menu levels: index 0 is the top-level menu, index
+   *  1 is the first submenu, etc. Levels above the most recent one are
+   *  trimmed when a sibling row opens a different submenu. */
+  private levels: MountedLevel[] = [];
   private destroyed = false;
   private readonly onDocMouseDown = (ev: MouseEvent) => this.handleDocMouseDown(ev);
   private readonly onDocKeyDown = (ev: KeyboardEvent) => this.handleDocKeyDown(ev);
@@ -50,72 +75,16 @@ export class ContextMenuHost {
    *  `destroy()`. */
   open(items: MenuItem[], x: number, y: number, params: GetContextMenuItemsParams = EMPTY_PARAMS): void {
     if (this.destroyed) return;
-    if (this.current) this.closeInternal();
+    this.closeInternal();
 
-    const root = document.createElement('div');
-    root.className = 'cg-context-menu';
-    root.setAttribute('role', 'menu');
-    root.setAttribute('data-cg-context-menu-root', '');
+    const root = this.renderLevel(items, params);
     root.style.position = 'fixed';
-    // Initial paint at (x, y); we re-position below once the box has
-    // measured itself, so the clamp can subtract real width / height.
     root.style.left = `${x}px`;
     root.style.top = `${y}px`;
     root.style.zIndex = '10000';
-    // editorContainer carries `pointer-events: none` so the canvas under
-    // it stays interactive when the editor pool is mounted but empty.
-    // Children must opt back in — without this, clicks on menu buttons
-    // fall through to the canvas below.
-    root.style.pointerEvents = 'auto';
-
-    for (const item of items) {
-      if (item.name === '---') {
-        root.appendChild(document.createElement('hr'));
-        continue;
-      }
-      const btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = 'cg-menu-item';
-      btn.setAttribute('role', 'menuitem');
-      if (item.disabled) btn.setAttribute('aria-disabled', 'true');
-      // Icon slot first (HTML or unicode char), then label.
-      if (item.icon) {
-        const icon = document.createElement('span');
-        icon.className = 'cg-menu-item-icon';
-        icon.innerHTML = item.icon;
-        btn.appendChild(icon);
-      }
-      const label = document.createElement('span');
-      label.className = 'cg-menu-item-label';
-      label.textContent = item.name;
-      btn.appendChild(label);
-      btn.addEventListener('click', (ev) => {
-        ev.stopPropagation();
-        if (item.disabled) return;
-        // Run the action FIRST so it sees the still-open menu (some apps
-        // open a sub-popup anchored to the menu rect), then close.
-        try {
-          item.action?.(params);
-        } finally {
-          this.closeInternal();
-        }
-      });
-      root.appendChild(btn);
-    }
-
     this.host.appendChild(root);
-    this.current = { root };
-
-    // Viewport clamp: now that the menu is in the DOM, measure it and
-    // shift left / up so it doesn't overflow the right / bottom edges.
-    // This runs synchronously — `offsetWidth` / `offsetHeight` force a
-    // layout, which is what we want here.
-    const w = root.offsetWidth;
-    const h = root.offsetHeight;
-    const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
-    const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
-    if (vw > 0 && x + w > vw) root.style.left = `${Math.max(0, vw - w)}px`;
-    if (vh > 0 && y + h > vh) root.style.top = `${Math.max(0, vh - h)}px`;
+    this.levels.push({ root, parentRow: null });
+    this.clampToViewport(root, x, y);
   }
 
   /** Close the active menu (if any). Idempotent. */
@@ -123,7 +92,7 @@ export class ContextMenuHost {
     this.closeInternal();
   }
 
-  isOpen(): boolean { return this.current !== null; }
+  isOpen(): boolean { return this.levels.length > 0; }
 
   /** Tear down listeners + any active menu. Idempotent. After `destroy()`,
    *  subsequent `open(...)` calls no-op. */
@@ -135,22 +104,138 @@ export class ContextMenuHost {
     document.removeEventListener('keydown', this.onDocKeyDown, true);
   }
 
+  /** Render one menu level and return its root element. Caller positions
+   *  the root (top-level: at the cursor; submenu: at the parent row's
+   *  right edge). */
+  private renderLevel(items: MenuItem[], params: GetContextMenuItemsParams): HTMLElement {
+    const root = document.createElement('div');
+    root.className = 'cg-context-menu';
+    root.setAttribute('role', 'menu');
+    root.setAttribute('data-cg-context-menu-root', '');
+    // editorContainer (the typical host) carries `pointer-events: none`
+    // so the canvas under it stays interactive — children must opt back
+    // in or clicks fall through to the canvas.
+    root.style.pointerEvents = 'auto';
+
+    for (const item of items) {
+      if (item.name === '---') {
+        const hr = document.createElement('hr');
+        hr.className = 'cg-menu-separator';
+        root.appendChild(hr);
+        continue;
+      }
+      root.appendChild(this.renderRow(item, params));
+    }
+    return root;
+  }
+
+  private renderRow(item: MenuItem, params: GetContextMenuItemsParams): HTMLElement {
+    const row = document.createElement('div');
+    row.className = 'cg-menu-item';
+    row.setAttribute('role', 'menuitem');
+    row.setAttribute('tabindex', '-1');
+    if (item.disabled) row.setAttribute('aria-disabled', 'true');
+    if (item.subMenu && item.subMenu.length > 0) row.setAttribute('aria-haspopup', 'menu');
+
+    const iconSlot = document.createElement('span');
+    iconSlot.className = 'cg-menu-item-icon';
+    if (item.icon) iconSlot.innerHTML = item.icon;
+    row.appendChild(iconSlot);
+
+    const label = document.createElement('span');
+    label.className = 'cg-menu-item-label';
+    label.textContent = item.name;
+    row.appendChild(label);
+
+    const tail = document.createElement('span');
+    tail.className = 'cg-menu-item-tail';
+    if (item.subMenu && item.subMenu.length > 0) {
+      tail.textContent = '▶';
+      tail.classList.add('cg-menu-item-chevron');
+    } else if (item.shortcut) {
+      tail.textContent = item.shortcut;
+    }
+    row.appendChild(tail);
+
+    // Hover handling — opens submenus, closes sibling submenus.
+    row.addEventListener('mouseenter', () => {
+      this.handleRowHover(row, item, params);
+    });
+    row.addEventListener('click', (ev) => {
+      ev.stopPropagation();
+      if (item.disabled) return;
+      // Submenu parents don't fire `action` — hover already mounted the
+      // submenu and clicking the row keeps it open.
+      if (item.subMenu && item.subMenu.length > 0) return;
+      try {
+        item.action?.(params);
+      } finally {
+        this.closeInternal();
+      }
+    });
+    return row;
+  }
+
+  /** When the cursor enters a row, trim any submenu levels deeper than
+   *  this row's level (we hovered away from their parent) and, if the
+   *  row carries a submenu, mount it positioned at the row's right edge. */
+  private handleRowHover(row: HTMLElement, item: MenuItem, params: GetContextMenuItemsParams): void {
+    // Find the level this row belongs to so we can trim deeper levels.
+    const rowLevelIndex = this.levels.findIndex((lvl) => lvl.root.contains(row));
+    if (rowLevelIndex < 0) return;
+    // Trim everything deeper than the hovered row's level.
+    while (this.levels.length > rowLevelIndex + 1) {
+      const popped = this.levels.pop()!;
+      popped.root.remove();
+    }
+    if (!item.subMenu || item.subMenu.length === 0) return;
+    if (item.disabled) return;
+    // Mount the submenu at the parent row's right edge.
+    const sub = this.renderLevel(item.subMenu, params);
+    sub.style.position = 'fixed';
+    const rect = row.getBoundingClientRect();
+    sub.style.left = `${rect.right}px`;
+    sub.style.top = `${rect.top}px`;
+    sub.style.zIndex = '10001';
+    this.host.appendChild(sub);
+    this.levels.push({ root: sub, parentRow: row });
+    this.clampToViewport(sub, rect.right, rect.top);
+  }
+
+  /** Clamp a freshly-mounted level to the viewport so it doesn't overflow
+   *  the right / bottom edges. Forces a sync layout via `offsetWidth` /
+   *  `offsetHeight` — intentional; the alternative is a one-frame flicker. */
+  private clampToViewport(root: HTMLElement, x: number, y: number): void {
+    const w = root.offsetWidth;
+    const h = root.offsetHeight;
+    const vw = typeof window !== 'undefined' ? window.innerWidth : 0;
+    const vh = typeof window !== 'undefined' ? window.innerHeight : 0;
+    if (vw > 0 && x + w > vw) root.style.left = `${Math.max(0, vw - w)}px`;
+    if (vh > 0 && y + h > vh) root.style.top = `${Math.max(0, vh - h)}px`;
+  }
+
   private closeInternal(): void {
-    const c = this.current;
-    if (!c) return;
-    this.current = null;
-    c.root.parentElement?.removeChild(c.root);
+    while (this.levels.length > 0) {
+      const lvl = this.levels.pop()!;
+      lvl.root.remove();
+    }
   }
 
   private handleDocMouseDown(ev: MouseEvent): void {
-    if (!this.current) return;
+    if (this.levels.length === 0) return;
     const target = ev.target as Node | null;
-    if (target && this.current.root.contains(target)) return;
+    if (target) {
+      // A click inside ANY mounted level (top-level or a submenu) keeps
+      // the menu open — those clicks are handled by the row listeners.
+      for (const lvl of this.levels) {
+        if (lvl.root.contains(target)) return;
+      }
+    }
     this.closeInternal();
   }
 
   private handleDocKeyDown(ev: KeyboardEvent): void {
-    if (!this.current) return;
+    if (this.levels.length === 0) return;
     if (ev.key !== 'Escape') return;
     this.closeInternal();
   }
