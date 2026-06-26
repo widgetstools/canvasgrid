@@ -60,6 +60,12 @@ export interface WorkerColumn {
    *  to the built-in compare so a registration race never crashes the
    *  pipeline. */
   comparator?: string;
+  /** Cycle 8 / Task 5 — diacritic-aware string compare. When `true` and
+   *  the column resolves to `'text'`, `SortPass.compare` routes through
+   *  a lazy-cached `Intl.Collator(undefined, { sensitivity: 'variant'
+   *  })` instead of the default lexicographic compare. Honored only
+   *  when no registered `comparator` is set on the column. */
+  accentedSort?: boolean;
 }
 
 export interface ViewportRequest {

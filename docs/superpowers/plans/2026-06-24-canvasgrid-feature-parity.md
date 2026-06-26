@@ -281,11 +281,17 @@ for the dictionary; cycle 7 uses naïve `String.includes`).
 
 ## Cycle 8 — Sorting completeness
 
+**Status:** ✅ COMPLETE on 2026-06-25. Worklog at
+`docs/superpowers/plans/2026-06-25-canvasgrid-cycle-08-sorting.md`.
+
 **Goal:** Multi-column sort with modifier-click, initial sort state, sort
 order indicator (1, 2, 3 …) in header, post-sort callback hook, custom
 comparator integration polish, `accentedSort` and `unSortIcon` semantics.
 
-**FM rows covered:** Area 07 (~25 of 28 rows).
+**FM rows covered:** Area 07 — 18 of 28 rows flipped to ✅ (remaining rows
+sit out of Cycle 8 scope: per-column `sortingOrder`, `alwaysMultiSort`,
+`suppressMaintainUnsortedOrder`, `deltaSort`, the deprecated
+`unSortIcon` GridOptions alias, plus dependent behavior rows).
 
 **Depends on:** Cycle 4.
 

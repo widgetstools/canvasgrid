@@ -599,11 +599,74 @@ tasks yet; just write the worklog.
 
 ## Shipped
 
-_(Filled in at cycle exit — Task 5's exit ritual.)_
+- **Multi-column sort UX (Task 1)** — Shift-click on a header appends
+  the column to the sort model instead of replacing it. Plain click
+  still replaces. `multiSortKey?: 'Shift' | 'Ctrl' | 'Alt' | null` on
+  `CGridOptions` configures the modifier (`null` disables append
+  entirely). Header cells paint a small 1-indexed superscript badge to
+  the left of the chevron when `sortTotal > 1` so multi-sort precedence
+  is visible at a glance.
+- **`initialSort` + `initialSortIndex` per column (Task 2)** — Both
+  resolve at construction; the cgrid layer builds the initial sort
+  model from columns whose `initialSort` is set, ordered by
+  `initialSortIndex` with declaration order as the tiebreaker. Honored
+  exactly once — subsequent `applyColumnState` calls read the `sort`
+  field instead.
+- **Grid-level `sortingOrder` cycle (Task 2)** — `CGridOptions.sortingOrder:
+  Array<'asc' | 'desc' | null>` reshapes the `cycleSort` cycle. Default
+  is `['asc', 'desc', null]`; setting `['asc', 'desc']` keeps the column
+  always sorted (no unsorted stage).
+- **Per-column `comparator` via worker `ComparatorRegistry` (Task 3)** —
+  Apps register named comparators via `api.registerComparator(name, fn)`;
+  column defs reference them with `comparator: 'name'`. The function
+  string-serialises and reconstructs on the worker via `new Function(...)`
+  so sort stays off the main thread. Inline closures on a col def throw
+  at sort time with a clear error pointing apps at `registerComparator`.
+  Demo's `ticker` column wires a `naturalOrder` comparator so `TICK2 <
+  TICK10` instead of the lexicographic `TICK10 < TICK2`.
+- **`postSortRows` callback (Task 4)** — `CGridOptions.postSortRows`
+  runs after the worker's `SortPass` and before `ViewportSlicer`,
+  receiving the sorted rowId array + a row-data getter and returning the
+  re-ordered array. Reuses Cycle 7 / Task 8's candidate-rowIds round-trip
+  shape, so apps with no hook configured pay zero round-trip overhead.
+  Demo's "Pin selected to top" toolbar button uses it to keep selected
+  rows visible regardless of the active sort.
+- **`accentedSort` per column (Task 5)** — `CColDef.accentedSort: true`
+  on a text column routes its comparisons through a lazy
+  `Intl.Collator(undefined, { sensitivity: 'variant' })` so diacritics
+  slot into their natural alphabetic position (e.g. `Élise` lands
+  between `Ele` and `Em`). Ignored for numeric columns or when a
+  registered `comparator` already runs.
+- **`unSortIcon` per column (Task 5)** — `CColDef.unSortIcon: true`
+  paints a faint `chevrons-up-down` icon in the header at 50% global
+  alpha when the column is sortable but not currently sorted, so users
+  can see at a glance that the column accepts clicks. Slotted in the
+  same x position the active chevron occupies, so the icon doesn't
+  reflow when a sort lands. New theme token
+  `--cg-unsort-icon-color` (light + dark defaults) controls the color.
 
 ---
 
-## Cycle 8 status
+## Cycle 8 status: COMPLETE
 
-_(Filled in at cycle exit — Task 5's exit ritual. Replace this line
-with `## Cycle 8 status: COMPLETE` + the 5-task closing checklist.)_
+- [x] Task 1 — Multi-column sort + sort-order badge (commit `0018228`).
+- [x] Task 2 — `initialSort` / `initialSortIndex` / grid-level
+      `sortingOrder` (commit `1c61279`).
+- [x] Task 3 — Worker-side `ComparatorRegistry` + per-column `comparator`
+      (commit `0675913`, squashed with Task 4).
+- [x] Task 4 — `postSortRows` round-trip + demo toolbar button (commit
+      `0675913`, squashed with Task 3).
+- [x] Task 5 — `accentedSort` + `unSortIcon` + Cycle 8 exit ritual
+      (this commit).
+
+**Verification at cycle exit (Task 5):**
+- `npm run typecheck --workspaces` — all three workspaces clean.
+- `npm test --workspace=cgrid` — 76 files / 751 tests passing
+  (includes new `accentedSort.test.ts` (5) and 2 new `headerCell`
+  cases in `cellRenderers.test.ts`).
+- `cd apps/cgrid-positions && npx playwright test` — 121 specs
+  passing (full E2E suite, including all Cycle 7 + Cycle 8 specs).
+- FM Area 07 — 18 of 28 rows flipped to ✅. Unshipped slots
+  (`sortingOrder` per-column, `alwaysMultiSort`, `suppressMaintainUnsortedOrder`,
+  `deltaSort`, `unSortIcon` GridOptions deprecated alias, related
+  behavior rows) are out of Cycle 8 scope or pending other cycles.

@@ -32,6 +32,18 @@ export interface CellPaintConfig {
    *  model. Used by the header painter to decide whether to render the
    *  badge at all (no badge for `sortTotal <= 1`). */
   sortTotal?: number;
+  /** Cycle 8 / Task 5 — when `true` and `sortDirection` is unset, the
+   *  header painter draws a faint up/down chevron pair so the user can
+   *  see at a glance that the column is sortable. The color resolves
+   *  from `unSortIconColor` (theme's `--cg-unsort-icon-color`) and the
+   *  icon paints at 50% alpha so it never competes with the active
+   *  sort chevron on other columns. */
+  unSortIcon?: boolean;
+  /** Cycle 8 / Task 5 — resolved color for the faint chevron pair.
+   *  Threaded from `ResolvedTheme.unsortIconColor` (default: 40% alpha
+   *  black/white depending on the active theme). Only meaningful when
+   *  `unSortIcon === true`. */
+  unSortIconColor?: string;
   // Flash overlay (Cycle 4 / Task 11 — `flashAlpha` is the per-cell
   // alpha drained from FlashRegistry; `flashFromColor` is the theme's
   // current --cg-flash-from-color so light + dark themes both paint
@@ -180,6 +192,22 @@ export const headerCell: CellPainter = {
         gc.fillText(String(p.sortIndex), badgeX, cy);
         gc.cache.restore();
       }
+    } else if (p.unSortIcon) {
+      // Cycle 8 / Task 5 — faint up/down chevron pair on sortable
+      // columns that aren't currently sorted. Slotted in the same slot
+      // the active chevron would take so the icon never reflows when
+      // a sort lands on the column. Paints at 50% alpha so it stays a
+      // hint, not a focal point.
+      const iconCx = p.bounds.x + p.bounds.w - SORT_ICON_PAD - SORT_ICON_SIZE / 2;
+      gc.cache.save();
+      gc.cache.globalAlpha = 0.5;
+      drawIcon(
+        gc,
+        'chevrons-up-down',
+        iconCx, cy, SORT_ICON_SIZE,
+        { color: p.unSortIconColor ?? p.fg, strokeWidth: 2 },
+      );
+      gc.cache.restore();
     }
   },
 };

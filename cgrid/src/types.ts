@@ -401,6 +401,22 @@ export interface CColDef<TRow = any, TValue = any> {
   getQuickFilterText?: (params: { value: TValue; data: TRow; colId: string }) => string;
   aggFunc?: 'sum' | 'avg' | 'min' | 'max' | 'count';
   sortable?: boolean;
+  /** Diacritic-aware string sort. When `true`, `SortPass` orders this
+   *  column's values via `Intl.Collator(undefined, { sensitivity:
+   *  'variant' })` so accented characters slot between their unaccented
+   *  neighbours (e.g. `Élise` lands between `Ele` and `Em` instead of
+   *  after the entire ASCII alphabet). Honored only when `cellDataType`
+   *  resolves to `'text'`; ignored for numeric columns or when a
+   *  registered `comparator` runs instead. Cycle 8 / Task 5. */
+  accentedSort?: boolean;
+  /** When `true`, the header cell paints a faint up/down chevron pair
+   *  (`chevrons-up-down`) any time this column is sortable but not
+   *  currently in the sort model — a hint to the user that the column
+   *  can be clicked to sort. Has no effect when `sortable === false`.
+   *  The icon color resolves from the theme's `--cg-unsort-icon-color`
+   *  custom property and falls back to a 40% alpha headerFg. Cycle 8 /
+   *  Task 5. */
+  unSortIcon?: boolean;
   resizable?: boolean;
   /** Editable predicate. Pass `true` / `false` for a static answer, or a
    *  callback receiving `{ data, colId, rowIndex, value }`. */

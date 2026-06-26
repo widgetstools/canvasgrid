@@ -2035,6 +2035,14 @@ export class CGrid<TRow = any> {
       if (typeof c.comparator === 'string') {
         base.comparator = c.comparator;
       }
+      // Cycle 8 / Task 5 — forward the column's accentedSort opt-in so
+      // SortPass.compare can route this column's text comparisons
+      // through Intl.Collator without re-walking the col def. Only
+      // meaningful for text columns; the worker ignores it when a
+      // registered comparator is in play.
+      if (c.accentedSort === true) {
+        base.accentedSort = true;
+      }
       // Cycle 5 / Task 8 — forward autoHeight metadata so the worker can
       // measure wrapped text without re-walking the column tree. Width is
       // the inner text width (column width minus the cell horizontal

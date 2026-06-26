@@ -150,6 +150,36 @@ describe('headerCell', () => {
     }));
     expect((gc.stroke as any)).not.toHaveBeenCalled();
   });
+
+  it('draws the faint chevron pair when unSortIcon is true and no sortDirection', () => {
+    // Cycle 8 / Task 5 — `unSortIcon: true` makes the header paint a
+    // faint chevrons-up-down hint when the column is sortable but
+    // unsorted. The hint slots in the same x position the active
+    // chevron would; drawIcon calls gc.stroke() via Path2D.
+    const gc = makeGc();
+    headerCell.paint(gc, baseParams({
+      value: 'Name', valueFormatted: 'Name',
+      isHeader: true, sortDirection: undefined, unSortIcon: true,
+      bg: '#eee', prefillColor: '#fff',
+    }));
+    expect((gc.stroke as any)).toHaveBeenCalled();
+  });
+
+  it('unSortIcon path yields to an active sortDirection (no double-paint)', () => {
+    // When the column IS currently sorted, the active chevron wins —
+    // unSortIcon must NOT also paint underneath. We verify by counting
+    // gc.stroke invocations: one for the asc chevron, zero for the pair.
+    const gc = makeGc();
+    headerCell.paint(gc, baseParams({
+      value: 'Name', valueFormatted: 'Name',
+      isHeader: true, sortDirection: 'asc', unSortIcon: true,
+      bg: '#eee', prefillColor: '#fff',
+    }));
+    // `chevron-up` is a single Path2D stroke; `chevrons-up-down` is also
+    // a single Path2D stroke (the icon contains both glyphs in one path).
+    // We assert exactly one stroke so the else branch is provably dead.
+    expect((gc.stroke as any)).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe('CellRendererRegistry', () => {

@@ -779,9 +779,20 @@ export class SortPass<TRow = any> {
     // re-walk the registry inside the hot N log N comparator. Unknown names
     // (registration race, dropped registration) fall back to the built-in
     // compare so the sort never crashes mid-pipeline.
+    //
+    // Cycle 8 / Task 5 — when a text column opts into `accentedSort`,
+    // we hand the entry a cached `Intl.Collator.compare` so the hot loop
+    // pays one virtual dispatch per cell instead of constructing the
+    // collator per call. The collator stays in `accentedCollator` (lazy
+    // singleton on the pass) so multiple accented columns share one.
     const resolved = this.model.map((entry) => {
       const col = this.colIndex.get(entry.colId);
-      const fn = col?.comparator ? this.comparators.get(col.comparator) : undefined;
+      let fn: ((a: unknown, b: unknown) => number) | undefined;
+      if (col?.comparator) {
+        fn = this.comparators.get(col.comparator);
+      } else if (col?.accentedSort && col.type === 'text') {
+        fn = this.accentedCompare;
+      }
       return { entry, col, fn };
     });
     sorted.sort((aId, bId) => {
@@ -799,6 +810,19 @@ export class SortPass<TRow = any> {
     });
     return sorted;
   }
+
+  /** Cycle 8 / Task 5 — lazy `Intl.Collator` adapter for `accentedSort`.
+   *  The collator instance is constructed on first use and reused for the
+   *  lifetime of the pass; the bound `compare` survives `Number`
+   *  coercion of nullish values by stringifying first (matches the
+   *  default `compare()` semantics). */
+  private accentedCollator?: Intl.Collator;
+  private accentedCompare = (a: unknown, b: unknown): number => {
+    if (!this.accentedCollator) {
+      this.accentedCollator = new Intl.Collator(undefined, { sensitivity: 'variant' });
+    }
+    return this.accentedCollator.compare(String(a ?? ''), String(b ?? ''));
+  };
 }
 
 function compare(a: unknown, b: unknown, type: 'text' | 'number'): number {

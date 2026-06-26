@@ -286,34 +286,34 @@
 | 06 | Validation via getValidationErrors | Community | behavior | no | P2 | Editor returns errors; grid blocks commit when configured |
 
 <!-- area:07 Sorting -->
-| 07 | sortable (ColDef) | Community | option | yes | P0 | Enable/disable sorting for a column; defaultColDef sets true |
-| 07 | sort (ColDef) | Community | option | yes | P1 | Initial sort direction ('asc', 'desc', null) or SortDef |
-| 07 | initialSort (ColDef) | Community | option | no | P1 | Sort direction applied only on first column creation |
-| 07 | sortIndex (ColDef) | Community | option | no | P1 | Multi-sort position for this column |
-| 07 | initialSortIndex (ColDef) | Community | option | no | P1 | Multi-sort position applied on first creation only |
+| 07 | ✅ sortable (ColDef) | Community | option | yes | P0 | Enable/disable sorting for a column; defaultColDef sets true |
+| 07 | ✅ sort (ColDef) | Community | option | yes | P1 | Initial sort direction ('asc', 'desc', null) or SortDef |
+| 07 | ✅ initialSort (ColDef) | Community | option | no | P1 | Sort direction applied only on first column creation |
+| 07 | ✅ sortIndex (ColDef) | Community | option | yes | P1 | Multi-sort position for this column |
+| 07 | ✅ initialSortIndex (ColDef) | Community | option | no | P1 | Multi-sort position applied on first creation only |
 | 07 | sortingOrder (ColDef) | Community | option | no | P2 | Per-column sort cycle array |
-| 07 | comparator (ColDef) | Community | option | no | P1 | Custom sort comparator function or map by SortType |
-| 07 | unSortIcon (ColDef) | Community | option | no | P2 | Show unsorted icon when column has no active sort |
-| 07 | accentedSort | Community | option | no | P2 | Locale-aware sort distinguishing accented characters |
-| 07 | suppressMultiSort | Community | option | no | P2 | Disable multi-column sort |
+| 07 | ✅ comparator (ColDef) | Community | option | no | P1 | Custom sort comparator function or map by SortType |
+| 07 | ✅ unSortIcon (ColDef) | Community | option | no | P2 | Show unsorted icon when column has no active sort |
+| 07 | ✅ accentedSort | Community | option | no | P2 | Locale-aware sort distinguishing accented characters |
+| 07 | ✅ suppressMultiSort | Community | option | no | P2 | Disable multi-column sort — set `multiSortKey: null` for the same effect |
 | 07 | alwaysMultiSort | Community | option | no | P2 | Every click is a multi-sort click |
-| 07 | multiSortKey | Community | option | no | P2 | Change multi-sort modifier to Ctrl/Command |
+| 07 | ✅ multiSortKey | Community | option | no | P2 | Change multi-sort modifier to Ctrl/Command |
 | 07 | suppressMaintainUnsortedOrder | Community | option | no | P2 | Keep last sort order when sort is cleared |
 | 07 | deltaSort | Community | option | no | P1 | Re-sort only transaction-changed rows; see 04-data-updates.md |
-| 07 | postSortRows | Community | option | no | P2 | Post-sort callback to reorder rows arbitrarily |
-| 07 | sortingOrder (GridOptions) | Community | option | no | P2 | Deprecated v33. Grid-level sort cycle; use defaultColDef.sortingOrder |
+| 07 | ✅ postSortRows | Community | option | no | P2 | Post-sort callback to reorder rows arbitrarily |
+| 07 | ✅ sortingOrder (GridOptions) | Community | option | no | P2 | Grid-level sort cycle (default ['asc','desc',null]); drop null to skip the unsorted stage |
 | 07 | unSortIcon (GridOptions) | Community | option | no | P2 | Deprecated v33. Show unsorted icon globally; use defaultColDef.unSortIcon |
-| 07 | onSortChanged | Community | api | no | P1 | Notify grid of external sort-state change; triggers re-sort |
-| 07 | applyColumnState (sort) | Community | api | yes | P1 | Programmatically set sort/sortIndex via column state |
-| 07 | getColumnState (sort) | Community | api | no | P1 | Retrieve serialisable sort state for persistence |
-| 07 | sortChanged | Community | event | no | P0 | Sort direction changes; includes affected columns |
-| 07 | Multi-sort Shift-click mechanics | Community | behavior | no | P1 | sortIndex badges; Shift adds/removes column from composite sort |
-| 07 | Sort cycle (sortingOrder) | Community | behavior | yes | P1 | null→asc→desc→null default cycle per column |
-| 07 | Custom comparator contract | Community | behavior | no | P1 | Negative=A before B; do not negate based on isDescending |
-| 07 | accentedSort vs default comparator | Community | behavior | no | P2 | localeCompare with accent sensitivity; slower on large sets |
+| 07 | ✅ onSortChanged | Community | api | no | P1 | Triggered via `setSortModel` (which fires `sortChanged`); apps drive external sort state through the public API |
+| 07 | ✅ applyColumnState (sort) | Community | api | yes | P1 | Programmatically set sort/sortIndex via column state |
+| 07 | ✅ getColumnState (sort) | Community | api | no | P1 | Retrieve serialisable sort state for persistence |
+| 07 | ✅ sortChanged | Community | event | no | P0 | Sort direction changes; includes affected columns |
+| 07 | ✅ Multi-sort Shift-click mechanics | Community | behavior | no | P1 | sortIndex badges; Shift adds/removes column from composite sort |
+| 07 | ✅ Sort cycle (sortingOrder) | Community | behavior | yes | P1 | null→asc→desc→null default cycle per column; configurable via sortingOrder |
+| 07 | ✅ Custom comparator contract | Community | behavior | no | P1 | Negative=A before B; do not negate based on isDescending |
+| 07 | ✅ accentedSort vs default comparator | Community | behavior | no | P2 | Intl.Collator with sensitivity:'variant'; slower on large sets |
 | 07 | postSortRows disables deltaSort | Community | behavior | no | P2 | Full sort always runs when postSortRows is configured |
 | 07 | suppressMaintainUnsortedOrder semantics | Community | behavior | no | P2 | Cleared sort keeps last sorted order instead of original |
-| 07 | getRowId stable sort interaction | Community | behavior | yes | P1 | Stable row identity prevents position thrash in delta updates |
+| 07 | ✅ getRowId stable sort interaction | Community | behavior | yes | P1 | Stable row identity prevents position thrash in delta updates |
 
 <!-- area:08 Filtering -->
 | 08 | ✅ filter (ColDef) | Community | option | yes | P0 | Column filter: true, filter key, or custom component |

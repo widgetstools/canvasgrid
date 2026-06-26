@@ -44,6 +44,12 @@
    * value contains an active quick-filter term. Warm pale yellow keeps
    * legible contrast with --cg-fg-color (#1a1f24) on light theme. */
   --cg-quick-filter-match-bg: #fff3b8;
+  /* Cycle 8 / Task 5 — color for the faint up/down chevron pair that
+   * the header painter draws on `unSortIcon: true` columns that
+   * aren't currently sorted. The painter additionally clamps the
+   * icon to 50% global alpha, so this declared color renders at
+   * ~24% effective opacity on light theme. */
+  --cg-unsort-icon-color: rgba(26, 31, 36, 0.48);
 }
 
 .cg-theme-quartz-dark {
@@ -77,6 +83,11 @@
    * legible against --cg-fg-color (#cbd5e1) on dark theme without
    * over-saturating. */
   --cg-quick-filter-match-bg: #5a3a0e;
+  /* Cycle 8 / Task 5 — dark-mode counterpart of --cg-unsort-icon-color.
+   * Pale slate so the faint chevron pair stays barely visible against
+   * --cg-header-bg (#0d1a33). The 50% painter alpha drops it to ~24%
+   * effective opacity. */
+  --cg-unsort-icon-color: rgba(203, 213, 225, 0.48);
 }
 
 /* Native scrollbar styling (Chromium/WebKit) — visible thumb on dark track. */

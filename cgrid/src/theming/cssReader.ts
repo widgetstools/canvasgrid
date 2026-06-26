@@ -19,6 +19,12 @@ export interface ResolvedTheme {
    *  value contains an active quick-filter term. Resolved from
    *  `--cg-quick-filter-match-bg`. */
   quickFilterMatchBg: string;
+  /** Cycle 8 / Task 5 — color for the faint chevron pair that the
+   *  header painter draws on sortable columns whose `unSortIcon` is set
+   *  but which aren't currently sorted. Resolved from
+   *  `--cg-unsort-icon-color`. Falls back to a 40%-alpha headerFg when
+   *  the variable isn't declared. */
+  unsortIconColor: string;
   rowHeight: number;
   headerHeight: number;
   resizerHotZone: number;
@@ -133,6 +139,7 @@ export class CssReader {
       flashFromColor: get('--cg-flash-from-color') || '#fef3c7',
       flashToColor: get('--cg-flash-to-color') || 'rgba(254,243,199,0)',
       quickFilterMatchBg: get('--cg-quick-filter-match-bg') || '#fff3b8',
+      unsortIconColor: get('--cg-unsort-icon-color') || 'rgba(0, 0, 0, 0.4)',
       rowHeight: px('--cg-row-height', 30),
       headerHeight: px('--cg-header-height', 32),
       resizerHotZone: px('--cg-resizer-hot-zone', 4),

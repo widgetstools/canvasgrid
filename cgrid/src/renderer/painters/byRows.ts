@@ -237,6 +237,7 @@ function paintBand(
       let sortDirection: 'asc' | 'desc' | undefined;
       let sortIndex: number | undefined;
       let sortTotal: number | undefined;
+      let unSortIcon: boolean | undefined;
 
       if (row.subgrid.isHeader) {
         value = def.headerName;
@@ -248,6 +249,11 @@ function paintBand(
         // whether to render the badge at all.
         if (sort) sortIndex = sort.index + 1;
         sortTotal = sortLookup.size;
+        // Cycle 8 / Task 5 — only flag unSortIcon when the column is
+        // both opted in AND currently sortable AND not already sorted.
+        // The painter additionally guards on `sortDirection` so the
+        // flag is purely a "render hint" with no extra branching.
+        if (def.unSortIcon && def.sortable && !sort) unSortIcon = true;
       } else if (row.subgrid.isData) {
         const cell = cellData(row.localRowIndex, col.colId);
         value = cell?.value ?? '';
@@ -294,6 +300,8 @@ function paintBand(
         sortDirection,
         sortIndex,
         sortTotal,
+        unSortIcon,
+        unSortIconColor: theme.unsortIconColor,
         flashAlpha,
         params,
         rowData,

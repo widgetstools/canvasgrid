@@ -62,6 +62,14 @@ export interface ResolvedColDef<TRow = any> {
   suppressFloatingFilterButton: boolean;
   aggFunc?: 'sum' | 'avg' | 'min' | 'max' | 'count';
   sortable: boolean;
+  /** See `CColDef.accentedSort`. When `true`, the worker's `SortPass`
+   *  routes this column's text compares through `Intl.Collator`.
+   *  Cycle 8 / Task 5. */
+  accentedSort?: boolean;
+  /** See `CColDef.unSortIcon`. When `true`, the header painter draws a
+   *  faint up/down chevron pair on sortable columns that aren't
+   *  currently sorted. Cycle 8 / Task 5. */
+  unSortIcon?: boolean;
   resizable: boolean;
   editable: boolean | EditableCallback<TRow, unknown>;
   /** Per-column override of grid-level `singleClickEdit`. Undefined =
@@ -193,6 +201,15 @@ export interface ApplyCellPropsInput {
   /** Cycle 8 / Task 1 — total entries in the current sort model. The
    *  header painter skips the badge entirely when this is `<= 1`. */
   sortTotal?: number;
+  /** Cycle 8 / Task 5 — opt-in marker that the column wants a faint
+   *  up/down chevron pair painted in the header when no active sort
+   *  direction is set. Mirrors `CColDef.unSortIcon`. Threaded straight
+   *  into `CellPaintConfig.unSortIcon`. */
+  unSortIcon?: boolean;
+  /** Cycle 8 / Task 5 — resolved color for the faint `unSortIcon`
+   *  chevron pair (from `ResolvedTheme.unsortIconColor`). Threaded
+   *  straight into `CellPaintConfig.unSortIconColor`. */
+  unSortIconColor?: string;
   flashAlpha?: number;
   /** Resolved per-cell renderer params (see `CellPaintConfig.params`). */
   params?: unknown;
@@ -261,6 +278,8 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.sortDirection = ctx.sortDirection;
   target.sortIndex = ctx.sortIndex;
   target.sortTotal = ctx.sortTotal;
+  target.unSortIcon = ctx.unSortIcon;
+  target.unSortIconColor = ctx.unSortIconColor;
   target.flashAlpha = ctx.flashAlpha;
   // Cycle 4 / Task 11 — pipe the theme's resolved flash color through
   // so painters don't hard-code it. Read once per cell (constant per
@@ -478,6 +497,8 @@ export function resolveColDef<TRow>(
     suppressFloatingFilterButton: merged.suppressFloatingFilterButton ?? false,
     aggFunc: merged.aggFunc,
     sortable: merged.sortable ?? true,
+    accentedSort: merged.accentedSort,
+    unSortIcon: merged.unSortIcon,
     resizable: merged.resizable ?? true,
     editable: (merged.editable ?? false) as ResolvedColDef<TRow>['editable'],
     singleClickEdit: merged.singleClickEdit,
