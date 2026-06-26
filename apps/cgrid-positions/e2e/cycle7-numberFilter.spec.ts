@@ -18,11 +18,11 @@ interface GridApiSurface {
 }
 
 async function gridReady(page: import('@playwright/test').Page): Promise<void> {
-  await page.goto('/');
+  await page.goto('/?stress=light');
   await page.waitForFunction(
     () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,
     null,
-    { timeout: 45_000 },
+    { timeout: 20_000 },
   );
   await page.evaluate(
     () => new Promise<void>((res) => {

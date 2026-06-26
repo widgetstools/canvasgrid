@@ -39,11 +39,11 @@ test.describe('autoHeight column (Cycle 5 / Task 8)', () => {
     // Demo opts into autoHeight + wrapText on the notes column via
     // `?autoHeight=1` so the default demo can render uniform rows.
     // This spec MUST set the flag to exercise the worker measure pass.
-    await page.goto('/?autoHeight=1');
+    await page.goto('/?stress=light&autoHeight=1');
     await page.waitForFunction(
       () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,
       null,
-      { timeout: 45_000 },
+      { timeout: 20_000 },
     );
     // autoHeight runs out-of-band: the first chunk lands at fallback height,
     // then `heightsChanged` settles the row tops one rAF later. Wait a few

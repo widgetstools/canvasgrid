@@ -44,11 +44,11 @@ test.describe('wrapText column (Cycle 5 / Task 9)', () => {
     // Demo opts into autoHeight + wrapText on the notes column via
     // `?autoHeight=1` so the default demo can render uniform rows.
     // This spec MUST set the flag to exercise the wrapText paint pass.
-    await page.goto('/?autoHeight=1');
+    await page.goto('/?stress=light&autoHeight=1');
     await page.waitForFunction(
       () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,
       null,
-      { timeout: 45_000 },
+      { timeout: 20_000 },
     );
     // Same rAF settle as the autoHeight spec — measurement + Fenwick rebuild
     // + repaint must land before sampling.

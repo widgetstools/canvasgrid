@@ -31,7 +31,7 @@ async function waitForGridPopulated(page: Page, canvas: Locator) {
           }
           return set.size;
         }),
-      { timeout: 45_000, intervals: [500, 1000, 2000] },
+      { timeout: 20_000, intervals: [500, 1000, 2000] },
     )
     .toBeGreaterThan(10);
 }
@@ -66,7 +66,7 @@ async function pixelSig(canvas: Locator, x: number, y: number, w: number, h: num
 }
 
 test.beforeEach(async ({ page }) => {
-  await page.goto('/');
+  await page.goto('/?stress=light');
   await page.waitForSelector(GRID_SELECTOR, { state: 'visible' });
 });
 

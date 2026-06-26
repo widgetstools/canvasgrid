@@ -20,11 +20,11 @@ async function gridReady(page: import('@playwright/test').Page): Promise<void> {
   // `?cellClassDemo=1` so the default demo can render uncluttered
   // cells. This spec MUST set the flag to exercise the cellClassRules
   // (positive/negative bg on Total) + cellClass: 'warning' wiring.
-  await page.goto('/?cellClassDemo=1');
+  await page.goto('/?stress=light&cellClassDemo=1');
   await page.waitForFunction(
     () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,
     null,
-    { timeout: 45_000 },
+    { timeout: 20_000 },
   );
   // Wait several animation frames so the first chunk has been chunked and
   // painted — `getCellPaintedBg` relies on `cellAt` finding a cell in the

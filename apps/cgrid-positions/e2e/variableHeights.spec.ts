@@ -24,11 +24,11 @@ test.describe('Variable row heights (Cycle 5 / Task 6)', () => {
     // the default demo can render uniform rows for the screenshot
     // walkthrough. This spec MUST set the flag to exercise the
     // `getRowHeight` callback wiring.
-    await page.goto('/?variableHeights=1');
+    await page.goto('/?stress=light&variableHeights=1');
     await page.waitForFunction(
       () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,
       null,
-      { timeout: 45_000 },
+      { timeout: 20_000 },
     );
   });
 

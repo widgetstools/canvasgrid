@@ -13,10 +13,10 @@ import { test, expect } from '@playwright/test';
 
 test.describe('Cell editing — text editor (Cycle 5 / Task 1)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?stress=light');
     // __cgridReady is set by the `firstDataRendered` handler in main.ts
     // once the first non-empty viewport chunk has been painted.
-    await page.waitForFunction(() => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true, null, { timeout: 45_000 });
+    await page.waitForFunction(() => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true, null, { timeout: 20_000 });
   });
 
   test('double-click cusip cell opens text editor; Enter commits typed value', async ({ page }) => {

@@ -28,27 +28,47 @@ export interface StompCallbacks {
   onPhase: (phase: 'connecting' | 'snapshot' | 'live' | 'error' | 'disconnected') => void;
 }
 
+/** Heavy STOMP knobs — the default visual experience. 20 k row
+ *  snapshot + 10 000 updates/sec from the server. Server-side patch
+ *  `stomp-view-server/src/stomp/connection.ts` honors the
+ *  `updates-per-tick` header by packing N row mutations into each
+ *  MESSAGE so we can break Node's ~1 ms `setInterval` floor. The
+ *  grid's status pill shows both the published rate and the rate the
+ *  main thread actually processes (typically 5-7 k/sec on a dev
+ *  laptop — the gap is decode + worker round-trip + canvas repaint
+ *  per chunk; Cycle 24 perf-hardening narrows it). */
+const HEAVY_KNOBS = {
+  snapshotRows: 20_000,
+  rate: 200,
+  batchSize: 50,
+  updatesPerTick: 50,
+} as const;
+
+/** Light STOMP knobs — opted in via URL `?stress=light` for the E2E
+ *  suite. Keeps the snapshot small (3 k rows) and the tick rate low
+ *  (7 Hz) so `firstDataRendered` fires well inside Playwright's
+ *  per-test budget even when several workers + the dev chrome are
+ *  hitting the same server. */
+const LIGHT_KNOBS = {
+  snapshotRows: 3_000,
+  rate: 7,
+  batchSize: 50,
+  updatesPerTick: 1,
+} as const;
+
+const lightMode =
+  typeof window !== 'undefined' &&
+  new URLSearchParams(window.location.search).get('stress') === 'light';
+const KNOBS = lightMode ? LIGHT_KNOBS : HEAVY_KNOBS;
+
 const DEFAULTS = {
   wsUrl: 'ws://localhost:8081',
   clientId: 'TRADER001',
-  // 20k row snapshot — exercises the worker's chunk pipeline + paint
-  // throughput at the high end of the showcase target. The server
-  // (stomp-view-server) defaults to 20k via DEFAULT_SNAPSHOT_ROWS.
-  snapshotRows: 20_000,
-  // 200 ticks/sec × 50 updates/tick = 10,000 row updates/sec
-  // PUBLISHED by the server (verified via stomp-view-server logs).
-  // Server-side patch `stomp-view-server/src/stomp/connection.ts`
-  // honors the `updates-per-tick` header by packing N row mutations
-  // into each MESSAGE so we can break Node's ~1ms `setInterval`
-  // floor. The grid's status pill shows both the published rate and
-  // the rate the main thread actually processes (typically
-  // 5-7 k/sec on a dev laptop — the gap is decode + worker round-
-  // trip + canvas repaint per chunk; Cycle 24 perf-hardening
-  // narrows it).
-  rate: 200,
-  batchSize: 50,
+  snapshotRows: KNOBS.snapshotRows,
+  rate: KNOBS.rate,
+  batchSize: KNOBS.batchSize,
   sparse: true,
-  updatesPerTick: 50,
+  updatesPerTick: KNOBS.updatesPerTick,
 };
 
 /** Cycle 4 follow-up — expose the configured server publish rate

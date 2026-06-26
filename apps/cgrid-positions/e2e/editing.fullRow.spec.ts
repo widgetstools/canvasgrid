@@ -42,11 +42,11 @@ async function clickCell(page: import('@playwright/test').Page, row: number, col
 
 test.describe('Cell editing — full-row mode (Cycle 5 / Task 10)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/?editType=fullRow');
+    await page.goto('/?stress=light&editType=fullRow');
     await page.waitForFunction(
       () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,
       null,
-      { timeout: 45_000 },
+      { timeout: 20_000 },
     );
     // Park a sink for row-level events on window so tests can assert
     // they fired by the time the editor closes.
