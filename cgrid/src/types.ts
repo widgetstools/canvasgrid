@@ -3,6 +3,7 @@
 
 import type { CellEditorCtor } from './interaction/editors/iCellEditor';
 import type { GetContextMenuItemsCallback, GetMainMenuItemsCallback } from './interaction/contextMenu/types';
+import type { ToolPanelComponent } from './interaction/toolPanels/types';
 
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
 // Cycle 10 / Task 1 — public context-menu surface. Re-exported from cgrid's
@@ -14,6 +15,16 @@ export type {
   GetMainMenuItemsParams,
   GetMainMenuItemsCallback,
 } from './interaction/contextMenu/types';
+// Cycle 11 / Task 1 — public tool-panel + side-bar surface.
+export type {
+  ToolPanel,
+  ToolPanelComponent,
+  ToolPanelParams,
+  ToolPanelDef,
+  SideBarDef,
+  IToolPanelColumnCompParams,
+  IToolPanelFiltersCompParams,
+} from './interaction/toolPanels/types';
 
 export interface ColCellOverrides {
   font?: string;
@@ -383,6 +394,15 @@ export interface CGridOptions<TRow = any> {
    *  event / call time so a runtime flip lights up on the next
    *  invocation. */
   suppressClipboardPaste?: boolean;
+
+  /** Cycle 11 / Task 1 — registry of custom tool-panel components,
+   *  keyed by panel ID. Built-ins `'agColumnsToolPanel'` +
+   *  `'agFiltersToolPanel'` are pre-registered with stub
+   *  implementations at construction; entries here override the
+   *  stubs (and the real built-ins shipped in Tasks 3 + 4) or add
+   *  new IDs that custom `SideBarDef.toolPanels` entries can reference
+   *  via their `toolPanel` string. */
+  components?: Record<string, ToolPanelComponent>;
 }
 
 /** Cycle 10 / Task 5 — params for `processCellForClipboard`. Mirrors
