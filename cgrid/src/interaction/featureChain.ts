@@ -2,9 +2,15 @@
 // into it.
 //
 // Chain order (head → tail): ColumnResizing, ColumnDrag, EditTrigger,
-// RangeSelection, CellSelection, HeaderClick, KeyPaging, OnHover. setCursor
-// walks tail→head so the head's cursor wins when more than one feature sets
-// one in the same mousemove tick.
+// FillHandle, RangeSelection, CellSelection, HeaderClick, KeyPaging,
+// OnHover. setCursor walks tail→head so the head's cursor wins when more
+// than one feature sets one in the same mousemove tick.
+//
+// FillHandle sits ahead of RangeSelection because the 6×6 handle hit zone
+// overlaps the last range's bottom-right cell — without first-claim
+// priority the user would always get a fresh range drag instead of the
+// fill-extend gesture. FillHandle forwards via `super.handleMouseDown`
+// for every non-handle press so RangeSelection still sees normal clicks.
 //
 // EditTrigger sits ahead of CellSelection so its head-of-chain
 // `suppressKeyboardEvent` short-circuit covers every downstream feature,
@@ -32,6 +38,7 @@ import { KeyPaging } from './features/keyPaging';
 import { HeaderClick } from './features/headerClick';
 import { EditTrigger } from './features/editTrigger';
 import { RangeSelection } from './features/rangeSelection';
+import { FillHandle } from './features/fillHandle';
 
 /** Idle gap (ms) after the last wheel event before the axis lock releases.
  *  ~150ms matches the natural pause between separate trackpad gestures while
@@ -53,6 +60,7 @@ export class FeatureChain {
     this.head
       .append(new ColumnDrag())
       .append(new EditTrigger())
+      .append(new FillHandle())
       .append(new RangeSelection())
       .append(new CellSelection())
       .append(new HeaderClick())

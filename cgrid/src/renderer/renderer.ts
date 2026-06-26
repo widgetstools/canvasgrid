@@ -44,6 +44,13 @@ export interface RendererOpts {
    * cell painter can tint matching cells with `theme.quickFilterMatchBg`.
    */
   getQuickFilterLowerTerms: () => readonly string[];
+  /**
+   * Cycle 9 / Task 5 — when true, the range overlay painter draws a 6×6
+   * fill handle at the bottom-right of the last range. Sourced from
+   * `CGridOptions.enableFillHandle` per paint so a runtime
+   * `setGridOption('enableFillHandle', true)` lights up immediately.
+   */
+  getShowFillHandle: () => boolean;
 }
 
 export class Renderer {
@@ -60,6 +67,7 @@ export class Renderer {
       sortModel: this.opts.getSortModel(),
       rowDataSnapshotAt: this.opts.rowDataSnapshotAt,
       quickFilterLowerTerms: this.opts.getQuickFilterLowerTerms(),
+      showFillHandle: this.opts.getShowFillHandle(),
     };
     // Fill the entire drawable area with theme bg as the FIRST instruction so
     // there's no transparent moment between the prior frame's pixels (or a

@@ -41,4 +41,10 @@ export interface PainterCtx {
    * cell per frame.
    */
   quickFilterLowerTerms: readonly string[];
+  /**
+   * Cycle 9 / Task 5 — when true, the range painter draws a 6×6 fill
+   * handle at the bottom-right of the LAST range. Sourced from
+   * `CGridOptions.enableFillHandle` at the start of each paint.
+   */
+  showFillHandle: boolean;
 }

@@ -50,7 +50,7 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
   const openEditor = vi.fn();
   const stopEditing = vi.fn();
 
-  const grid: CGridLike = {
+  const grid = {
     canvas: cgridCanvas,
     selection: sel,
     hitTester: hit,
@@ -83,7 +83,14 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
     openEditor,
     stopEditing,
     nextEditableCell: () => null,
-  };
+    // Cycle 9 / Task 5 — fill-handle hooks. Off by default so the existing
+    // featureChain tests (which assert plain range-select / cell-select
+    // semantics) aren't disturbed by a fill claim.
+    getEnableFillHandle: () => false,
+    getFillHandleDirection: () => 'y' as const,
+    getRangeBottomRight: () => null,
+    commitFill: () => {},
+  } as unknown as CGridLike;
   const chain = new FeatureChain(grid);
   return { canvas, sel, chain, emitClicked, emitDoubleClicked, resizeColumn, cycleSort, scrollBy, openEditor, stopEditing };
 }

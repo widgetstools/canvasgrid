@@ -53,6 +53,7 @@ describe('Renderer', () => {
       getCanvasHeight: () => 600,
       rowDataSnapshotAt: () => ({}),
       getQuickFilterLowerTerms: () => [],
+      getShowFillHandle: () => false,
     });
     r.paint(gc);
     // The very first fillRect call must be the full-canvas bg fill — this is

@@ -11,6 +11,7 @@
 import type { CGridCanvas } from '../core/canvas';
 import type { HitTester, Hit } from './hitTester';
 import type { SelectionModel } from './selectionModel';
+import type { SelectionRange } from '../types';
 
 /** Subset of `CGridOptions` consumed by the edit-trigger and keyboard
  *  features. Pulled into the chain via `CGridLike.getEditingFlags()`. */
@@ -91,6 +92,26 @@ export interface CGridLike {
    *  current span and `colId` in render order. Used by `HeaderClick` to
    *  route a non-sort header click into the cell-range model. */
   selectColumn(colId: string, opts?: { extend?: boolean }): void;
+  /** Cycle 9 / Task 5 — resolved `enableFillHandle` flag. Read at event
+   *  time (not at feature construction) so a runtime
+   *  `setGridOption('enableFillHandle', true)` picks up on the next
+   *  mousedown without re-wiring the feature chain. */
+  getEnableFillHandle(): boolean;
+  /** Cycle 9 / Task 5 — resolved `fillHandleDirection`. Defaults to `'y'`
+   *  when the option is unset. */
+  getFillHandleDirection(): 'x' | 'y' | 'xy';
+  /** Cycle 9 / Task 5 — pixel position of the bottom-right corner of
+   *  `range` in canvas-local CSS px. Returns `null` when the range is
+   *  entirely off-screen (no visible row in the [rowStart, rowEnd] band
+   *  or no visible column whose colId is in the range). The fill handle
+   *  is a 6×6 square centered on this point. */
+  getRangeBottomRight(range: SelectionRange): { x: number; y: number } | null;
+  /** Cycle 9 / Task 5 — commit the fill: project source values onto the
+   *  rows in `target` that are NOT in `source`, build the update set,
+   *  and fire a single `applyTransaction({ update: [...] })`. Linear
+   *  extrapolation for numeric source values; repeat for text. Custom
+   *  override via `CGridOptions.fillOperation`. */
+  commitFill(source: SelectionRange, target: SelectionRange): void;
   /** Cycle 8 / Task 1 — resolved modifier key for multi-column sort
    *  append. Returns `null` when multi-sort is disabled. Features check
    *  the matching event modifier to decide whether to call `cycleSort`

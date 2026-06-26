@@ -267,6 +267,47 @@ export interface CGridOptions<TRow = any> {
    * chunk back as a `Float32Array`. Cycle 5 / Task 6.
    */
   getRowHeight?: (params: GetRowHeightParams<TRow>) => number | null | undefined;
+
+  /** Show the 6×6 fill-handle at the bottom-right of the focused range.
+   *  When `false` (default) the handle is suppressed and the bottom-right
+   *  corner of a range is treated as a regular cell — the next mousedown
+   *  there starts a new range drag instead of a fill-extend. Cycle 9 / Task 5. */
+  enableFillHandle?: boolean;
+  /** Axes the fill handle can extend along. `'y'` (default) extends
+   *  downward only; `'x'` extends rightward only; `'xy'` allows whichever
+   *  axis has the larger pointer delta from the source bottom-right.
+   *  Cycle 9 / Task 5. */
+  fillHandleDirection?: 'x' | 'y' | 'xy';
+  /** Per-target-cell override for the default extrapolation. Called once
+   *  per cell that the fill-handle commit will write. Return the new value
+   *  to commit (any type), or `false` to fall back to the built-in default
+   *  (linear extrapolation for numeric source values, repeat for text).
+   *  Cycle 9 / Task 5. */
+  fillOperation?: (params: FillOperationParams<TRow>) => unknown | false;
+}
+
+/** Params for `CGridOptions.fillOperation`. Mirrors ag-grid's `FillOperationParams`.
+ *  Cycle 9 / Task 5. */
+export interface FillOperationParams<TRow = any> {
+  /** The values from the source rect (the original selection before the
+   *  fill-handle drag), in source-row order, for the column being filled. */
+  values: unknown[];
+  /** The same as `values` — kept separate so a custom op that mutates the
+   *  accumulator over multiple target cells doesn't trample the initial
+   *  source list. */
+  initialValues: unknown[];
+  /** Index of the target cell within the target rect (0-based, in target-
+   *  row order). For a vertical fill that extends 3 rows below the source
+   *  this runs 0..2 for each column. */
+  currentIndex: number;
+  /** Best-effort partial of the target row. Synchronous read from the main-
+   *  thread chunk — may not include every field when the row is outside the
+   *  visible window. */
+  rowNode: { data: Partial<TRow>; rowIndex: number };
+  /** Resolved column definition for the cell being filled. */
+  colDef: { colId: string; field?: string };
+  /** Axis the fill extends along, decided by the drag's dominant delta. */
+  direction: 'up' | 'down' | 'left' | 'right';
 }
 
 /** Params for `CGridOptions.getRowHeight`. The row is identified by its
