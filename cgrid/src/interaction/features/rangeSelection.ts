@@ -43,6 +43,16 @@ export class RangeSelection extends Feature {
       super.handleMouseDown(ctx);
       return;
     }
+    // Cycle 9 / Task 6 — `cellSelection.suppressDrag` makes this feature
+    // a pass-through on cell presses: no plain/shift/ctrl range mutation,
+    // no drag state. Forwarding via `super` preserves focus + row-selection
+    // behavior on the same press. Read at event time so a runtime
+    // `setGridOption('cellSelection', …)` takes effect on the next press.
+    if (ctx.grid.getCellSelectionOptions()?.suppressDrag === true) {
+      this.state = null;
+      super.handleMouseDown(ctx);
+      return;
+    }
     const e = ctx.raw as MouseEvent;
     const sel = ctx.grid.selection;
     // Shift-click: discrete extend of the last range. Falls back to a fresh

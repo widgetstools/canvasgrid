@@ -90,6 +90,10 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
     getFillHandleDirection: () => 'y' as const,
     getRangeBottomRight: () => null,
     commitFill: () => {},
+    // Cycle 9 / Task 6 — `cellSelection` bundle. Undefined so the
+    // existing chain tests behave with Cycle 9 defaults (drag enabled,
+    // header click selects column band).
+    getCellSelectionOptions: () => undefined,
   } as unknown as CGridLike;
   const chain = new FeatureChain(grid);
   return { canvas, sel, chain, emitClicked, emitDoubleClicked, resizeColumn, cycleSort, scrollBy, openEditor, stopEditing };

@@ -16,6 +16,14 @@ interface MockGrid {
   cycleSort?: (colId: string, opts?: { append?: boolean }) => void;
   getMultiSortKey?: () => 'Shift' | 'Ctrl' | 'Alt' | null;
   toggleColumnGroup?: (groupId: string) => void;
+  /** Task 6 — `cellSelection` suppression. Features read this at event
+   *  time; mocks default to `undefined` (gestures behave with Cycle 9
+   *  defaults). */
+  getCellSelectionOptions?: () => {
+    suppressHeader?: boolean;
+    suppressRow?: boolean;
+    suppressDrag?: boolean;
+  } | undefined;
 }
 
 function ctx(
@@ -36,6 +44,7 @@ function makeGrid(overrides: Partial<MockGrid> = {}): MockGrid {
   return {
     selection: new SelectionModel('multiple'),
     allColIds: () => ['cusip', 'ticker', 'price', 'qty'],
+    getCellSelectionOptions: () => undefined,
     ...overrides,
   };
 }
@@ -65,6 +74,7 @@ function makeFullGrid(
     cycleSort,
     getMultiSortKey: () => 'Shift',
     toggleColumnGroup: () => {},
+    getCellSelectionOptions: () => undefined,
     ...overrides,
   };
   return Object.assign(grid, { cycleSort, selectColumnSpy });

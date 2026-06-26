@@ -32,8 +32,15 @@ export class HeaderClick extends Feature {
     if (ctx.hit.kind === 'header') {
       const append = isAppendClick(ctx.raw, ctx.grid.getMultiSortKey());
       ctx.grid.cycleSort(ctx.hit.colId, { append });
-      const extend = ctx.raw instanceof MouseEvent && ctx.raw.shiftKey;
-      ctx.grid.selectColumn(ctx.hit.colId, { extend });
+      // Cycle 9 / Task 6 — skip the column-band selection when
+      // `cellSelection.suppressHeader` is set. Sort cycling above still
+      // runs so apps that disable range selection don't lose sort UX.
+      // Read at event time so a runtime `setGridOption('cellSelection',
+      // …)` takes effect on the next click.
+      if (ctx.grid.getCellSelectionOptions()?.suppressHeader !== true) {
+        const extend = ctx.raw instanceof MouseEvent && ctx.raw.shiftKey;
+        ctx.grid.selectColumn(ctx.hit.colId, { extend });
+      }
       return;
     }
     if (ctx.hit.kind === 'headerGroup') {

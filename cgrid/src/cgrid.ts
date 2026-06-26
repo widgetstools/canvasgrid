@@ -561,6 +561,10 @@ export class CGrid<TRow = any> {
       },
       cycleSort: (colId, opts) => this.cycleSort(colId, opts),
       selectColumn: (colId, opts) => this.selectColumn(colId, opts),
+      // Cycle 9 / Task 6 — read at event time so runtime
+      // `setGridOption('cellSelection', …)` takes effect on the next
+      // mousedown without re-wiring the feature chain.
+      getCellSelectionOptions: () => this.options.cellSelection,
       // Cycle 9 / Task 5 — fill-handle plumbing. Read the option at event
       // time (not constructor time) so runtime setGridOption flips work
       // without re-wiring the feature chain.
@@ -1889,6 +1893,24 @@ export class CGrid<TRow = any> {
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid] setFocusedCell:', err); });
   }
 
+  /** Snapshot of the currently-selected cell ranges. Cycle 9 / Task 6. */
+  getCellRanges(): SelectionRange[] {
+    return this.selection.getRanges();
+  }
+
+  /** Append a range to the selection (disjoint-add). Cycle 9 / Task 6. */
+  addCellRange(range: SelectionRange): void {
+    if (this.destroyed) return;
+    this.selection.addRange(range);
+  }
+
+  /** Drop every range. Row selection + focused cell unaffected.
+   *  Cycle 9 / Task 6. */
+  clearCellRanges(): void {
+    if (this.destroyed) return;
+    this.selection.clearRanges();
+  }
+
   refresh(): void { this.cgridCanvas.requestRepaint(); }
 
   /** Register a custom cell renderer. After registration, columns with
@@ -2119,6 +2141,9 @@ export class CGrid<TRow = any> {
       ensureColumnGroupVisible: (id, pos) => this.ensureColumnGroupVisible(id, pos),
       getSelectedRowIds: () => this.getSelectedRowIds(),
       setSelectedRowIds: (ids) => this.setSelectedRowIds(ids),
+      getCellRanges: () => this.getCellRanges(),
+      addCellRange: (range) => this.addCellRange(range),
+      clearCellRanges: () => this.clearCellRanges(),
       getFocusedCell: () => this.getFocusedCell(),
       setFocusedCell: (r, c) => this.setFocusedCell(r, c),
       refresh: () => this.refresh(),
