@@ -123,6 +123,63 @@ describe('SelectionModel ranges (Cycle 9 / Task 1)', () => {
     expect(Array.from(m.state.selectedRowIndices)).toEqual([7]);
   });
 
+  describe('isInsideAnyRange (Cycle 9 patch / Task 1 — right-click preservation guard)', () => {
+    it('returns false when no ranges exist', () => {
+      const m = new SelectionModel('multiple');
+      expect(m.isInsideAnyRange(0, 'a')).toBe(false);
+    });
+
+    it('returns true for a cell strictly inside a single range', () => {
+      const m = new SelectionModel('multiple');
+      m.setRanges([range(2, 5, ['a', 'b', 'c'])]);
+      expect(m.isInsideAnyRange(3, 'b')).toBe(true);
+    });
+
+    it('returns true for cells on the range boundary (corners + edges)', () => {
+      const m = new SelectionModel('multiple');
+      m.setRanges([range(2, 5, ['a', 'b', 'c'])]);
+      expect(m.isInsideAnyRange(2, 'a')).toBe(true);
+      expect(m.isInsideAnyRange(5, 'c')).toBe(true);
+      expect(m.isInsideAnyRange(2, 'c')).toBe(true);
+      expect(m.isInsideAnyRange(5, 'a')).toBe(true);
+    });
+
+    it('returns false when the row is outside the range', () => {
+      const m = new SelectionModel('multiple');
+      m.setRanges([range(2, 5, ['a', 'b', 'c'])]);
+      expect(m.isInsideAnyRange(1, 'b')).toBe(false);
+      expect(m.isInsideAnyRange(6, 'b')).toBe(false);
+    });
+
+    it('returns false when the col is outside the range', () => {
+      const m = new SelectionModel('multiple');
+      m.setRanges([range(2, 5, ['a', 'b', 'c'])]);
+      expect(m.isInsideAnyRange(3, 'd')).toBe(false);
+      expect(m.isInsideAnyRange(3, 'z')).toBe(false);
+    });
+
+    it('returns true when ANY of multiple disjoint ranges contains the cell', () => {
+      const m = new SelectionModel('multiple');
+      m.setRanges([
+        range(0, 0, ['a']),
+        range(5, 7, ['b', 'c']),
+      ]);
+      expect(m.isInsideAnyRange(6, 'c')).toBe(true);
+      expect(m.isInsideAnyRange(0, 'a')).toBe(true);
+    });
+
+    it('returns false when none of the disjoint ranges contain the cell', () => {
+      const m = new SelectionModel('multiple');
+      m.setRanges([
+        range(0, 0, ['a']),
+        range(5, 7, ['b', 'c']),
+      ]);
+      expect(m.isInsideAnyRange(3, 'a')).toBe(false);
+      expect(m.isInsideAnyRange(6, 'a')).toBe(false);
+      expect(m.isInsideAnyRange(0, 'b')).toBe(false);
+    });
+  });
+
   describe('setFocusAndCollapseRanges (keyboard-nav helper)', () => {
     it('moves focus AND collapses an existing wide range to a 1×1 at the new cell in a single emit', () => {
       const m = new SelectionModel('multiple');

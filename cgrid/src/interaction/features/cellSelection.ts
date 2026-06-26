@@ -22,6 +22,17 @@ export class CellSelection extends Feature {
     const e = ctx.raw as MouseEvent;
     const prevFocus = sel.state.focusedRowIndex;
     sel.setFocus(ctx.hit.rowIndex, ctx.hit.colId);
+    // Cycle 9 patch / Task 1 — right-click on a row that's already part of
+    // the row selection set MUST preserve that selection so the context
+    // menu's row-scoped actions (Copy, Delete, etc.) see every selected
+    // row, not just the one under the cursor. Focus already moved (above);
+    // skip the `selectSingle` / `toggleMulti` branch that would clobber the
+    // multi-row selection. Right-clicks on rows NOT in the selection fall
+    // through to the existing behaviour (selectSingle picks the clicked
+    // row) so the menu still acts on the user's intended target.
+    if (e.button === 2 && sel.state.selectedRowIndices.has(ctx.hit.rowIndex)) {
+      return;
+    }
     if (e.shiftKey) {
       if (prevFocus != null) sel.range(prevFocus, ctx.hit.rowIndex);
     } else if (e.ctrlKey || e.metaKey) {
