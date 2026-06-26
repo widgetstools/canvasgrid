@@ -80,7 +80,7 @@ function makeVs(): ViewportState {
   };
 }
 
-function pctx(vs: ViewportState, ranges: SelectionRange[]) {
+function pctx(vs: ViewportState, ranges: SelectionRange[], showFillHandle = false) {
   return {
     viewport: vs,
     theme,
@@ -91,6 +91,7 @@ function pctx(vs: ViewportState, ranges: SelectionRange[]) {
     sortModel: [],
     rowDataSnapshotAt: () => ({}),
     quickFilterLowerTerms: [],
+    showFillHandle,
   };
 }
 
@@ -142,6 +143,33 @@ describe('paintRangeOverlay', () => {
     paintRangeOverlay(gc, pctx(makeVs(), [{ rowStart: 0, rowEnd: 2, colIds: ['notVisible'] }]));
     expect((gc.fillRect as any)).not.toHaveBeenCalled();
     expect((gc.strokeRect as any)).not.toHaveBeenCalled();
+  });
+
+  it('showFillHandle=true → paints an extra 6×6 fill at the bottom-right of the LAST range only', () => {
+    const gc = fakeGc();
+    paintRangeOverlay(gc, pctx(makeVs(), [
+      { rowStart: 0, rowEnd: 0, colIds: ['a'] },
+      { rowStart: 2, rowEnd: 4, colIds: ['b', 'c'] },
+    ], true));
+    // 2 range fills + 1 handle = 3 fillRects. 2 range strokes = 2 strokeRects.
+    expect((gc.fillRect as any).mock.calls.length).toBe(3);
+    expect((gc.strokeRect as any).mock.calls.length).toBe(2);
+    // Handle is the 3rd fillRect. Bottom-right of last range: x = c.right (300),
+    // y = row(local=4).bottom (182). Handle = (x-3, y-3, 6, 6) = (297, 179, 6, 6).
+    const handleCall = (gc.fillRect as any).mock.calls[2]!;
+    expect(handleCall).toEqual([297, 179, 6, 6]);
+  });
+
+  it('showFillHandle=false → paints NO handle even when ranges exist', () => {
+    const gc = fakeGc();
+    paintRangeOverlay(gc, pctx(makeVs(), [{ rowStart: 0, rowEnd: 0, colIds: ['a'] }], false));
+    expect((gc.fillRect as any).mock.calls.length).toBe(1);
+  });
+
+  it('showFillHandle=true with the last range entirely off-screen → no handle', () => {
+    const gc = fakeGc();
+    paintRangeOverlay(gc, pctx(makeVs(), [{ rowStart: 100, rowEnd: 110, colIds: ['a'] }], true));
+    expect((gc.fillRect as any)).not.toHaveBeenCalled();
   });
 
   it('paints fill with theme.rangeFillColor and stroke with theme.rangeBorderColor', () => {

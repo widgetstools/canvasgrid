@@ -48,7 +48,10 @@ export type RuntimeOption =
   | 'rowData'
   | 'quickFilterText'
   | 'cacheQuickFilter'
-  | 'includeHiddenColumnsInQuickFilter';
+  | 'includeHiddenColumnsInQuickFilter'
+  | 'enableFillHandle'
+  | 'fillHandleDirection'
+  | 'fillOperation';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
  *  import on `CGrid` (cgrid.ts imports this module). */
@@ -140,6 +143,14 @@ export function applyRuntimeOption<TRow>(
     case 'context':
     case 'loading':
     case 'debug':
+    // Cycle 9 / Task 5 — fill-handle options are storage-only at runtime.
+    // The feature reads `options.enableFillHandle` / `fillHandleDirection`
+    // / `fillOperation` at event time (mousedown), and the painter reads
+    // `options.enableFillHandle` per paint, so a flip lights up on the
+    // next interaction / frame without further wiring.
+    case 'enableFillHandle':
+    case 'fillHandleDirection':
+    case 'fillOperation':
       // Storage-only: downstream cycles read directly from `options[key]`.
       return;
   }
@@ -158,4 +169,5 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'asyncTransactionWaitMillis', 'rowBuffer',
   'context', 'loading', 'debug', 'rowData',
   'quickFilterText', 'cacheQuickFilter', 'includeHiddenColumnsInQuickFilter',
+  'enableFillHandle', 'fillHandleDirection', 'fillOperation',
 ]);

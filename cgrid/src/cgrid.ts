@@ -4,7 +4,7 @@
 import './theming/tokens.css';
 import type {
   CGridOptions, CGridEvent, CGridApi, Tx, TransactionResult, SortModel, FilterModel,
-  CFilterModelEntry, GroupModel, FlashCellsParams,
+  CFilterModelEntry, GroupModel, FlashCellsParams, SelectionRange,
 } from './types';
 import { TypedEventEmitter } from './core/eventEmitter';
 import { type ResolvedColDef, applyCellProps } from './core/propertyChain';
@@ -238,6 +238,30 @@ function resolveFilterType(
   return null;
 }
 
+/** Cycle 9 / Task 5 — default fill-handle extrapolation. Linear progression
+ *  for numeric source values (next-step = last + average step), repeat for
+ *  everything else. Empty source returns `undefined` so the caller leaves
+ *  the cell alone. `targetIndex` is 0-based into the EXTENDED rows (the
+ *  ones beyond the source rect). */
+export function defaultFillExtrapolate(sourceValues: unknown[], targetIndex: number): unknown {
+  if (sourceValues.length === 0) return undefined;
+  const allNumeric = sourceValues.every((v) => typeof v === 'number' && Number.isFinite(v));
+  if (allNumeric && sourceValues.length >= 2) {
+    const nums = sourceValues as number[];
+    let stepSum = 0;
+    for (let i = 1; i < nums.length; i++) stepSum += nums[i]! - nums[i - 1]!;
+    const step = stepSum / (nums.length - 1);
+    return nums[nums.length - 1]! + step * (targetIndex + 1);
+  }
+  if (allNumeric && sourceValues.length === 1) {
+    // Single numeric source — increment by 1 per step (matches ag-grid's
+    // default for a 1-cell source on a numeric column).
+    return (sourceValues[0] as number) + (targetIndex + 1);
+  }
+  // Repeat cycle for text / mixed: source[targetIndex % source.length].
+  return sourceValues[targetIndex % sourceValues.length];
+}
+
 export class CGrid<TRow = any> {
   private events = new TypedEventEmitter<CGridEvent>();
   private columnTree!: ColumnTree;
@@ -428,6 +452,11 @@ export class CGrid<TRow = any> {
       getCanvasHeight: () => this.canvasBounds.height,
       rowDataSnapshotAt: (rowIndex) => this.rowDataSnapshotAt(rowIndex),
       getQuickFilterLowerTerms: () => this.quickFilterLowerTerms,
+      // Cycle 9 / Task 5 — paint a 6×6 fill handle on the last range when
+      // enabled. Read per paint so a runtime setGridOption flip lights up
+      // on the next frame without re-wiring the renderer.
+      getShowFillHandle: () => this.options.enableFillHandle === true
+        && this.selection.state.ranges.length > 0,
     });
 
     // 7. Canvas wrapper — owns the <canvas>, gc cache, RAF + resize polling.
@@ -532,6 +561,13 @@ export class CGrid<TRow = any> {
       },
       cycleSort: (colId, opts) => this.cycleSort(colId, opts),
       selectColumn: (colId, opts) => this.selectColumn(colId, opts),
+      // Cycle 9 / Task 5 — fill-handle plumbing. Read the option at event
+      // time (not constructor time) so runtime setGridOption flips work
+      // without re-wiring the feature chain.
+      getEnableFillHandle: () => this.options.enableFillHandle === true,
+      getFillHandleDirection: () => this.options.fillHandleDirection ?? 'y',
+      getRangeBottomRight: (range) => this.getRangeBottomRight(range),
+      commitFill: (source, target) => this.commitFill(source, target),
       getMultiSortKey: () => this.options.multiSortKey === null
         ? null
         : (this.options.multiSortKey ?? 'Shift'),
@@ -1204,6 +1240,123 @@ export class CGrid<TRow = any> {
     const extend = opts?.extend === true;
     const allCols = this.columnOrder.map((c) => c.colId);
     this.selection.selectColumnBand(colId, allCols, this.rowCount, extend);
+  }
+
+  /** Cycle 9 / Task 5 — pixel position of the bottom-right corner of
+   *  `range` in canvas-local CSS px. The FillHandle feature hit-tests
+   *  pointer presses against this point; the rangeOverlayPainter paints
+   *  the 6×6 handle centered on it. Returns `null` when the range has
+   *  no on-screen footprint (no visible data row in the row span, or no
+   *  visible column whose colId is in the range). */
+  private getRangeBottomRight(range: SelectionRange): { x: number; y: number } | null {
+    let maxBottom = Number.NEGATIVE_INFINITY;
+    for (const row of this.viewport.visibleRows) {
+      if (!row.subgrid.isData) continue;
+      if (row.localRowIndex < range.rowStart || row.localRowIndex > range.rowEnd) continue;
+      if (row.bottom > maxBottom) maxBottom = row.bottom;
+    }
+    if (maxBottom === Number.NEGATIVE_INFINITY) return null;
+    let maxRight = Number.NEGATIVE_INFINITY;
+    for (const col of this.viewport.visibleColumns) {
+      if (range.colIds.indexOf(col.colId) === -1) continue;
+      if (col.right > maxRight) maxRight = col.right;
+    }
+    if (maxRight === Number.NEGATIVE_INFINITY) return null;
+    return { x: maxRight, y: maxBottom };
+  }
+
+  /** Cycle 9 / Task 5 — fill-handle commit. Project source values onto
+   *  the rows in `target` that are NOT in `source` and fire a single
+   *  `applyTransaction({ update })`. The worker `RowStore.apply` REPLACES
+   *  rows by id (no field-level merge), so each update row must be a full
+   *  TRow object — we fetch via `getRowByIndex` (worker round-trip), mutate
+   *  only the filled fields via valueSetter or direct field assignment,
+   *  then commit. Linear extrapolation for numeric source values; repeat
+   *  for text. Per-cell override via `options.fillOperation` — when the
+   *  callback returns `false`, the default extrapolation runs for that
+   *  cell. Fire-and-forget: the round-trip is awaited in the background,
+   *  so the calling mouseup returns immediately. */
+  private commitFill(source: SelectionRange, target: SelectionRange): void {
+    if (this.destroyed) return;
+    // Drop the source rect from the target rect — those rows already
+    // hold the source values; we only WRITE the newly-extended cells.
+    const sourceRows: number[] = [];
+    for (let r = source.rowStart; r <= source.rowEnd; r++) sourceRows.push(r);
+    const targetRows: number[] = [];
+    for (let r = target.rowStart; r <= target.rowEnd; r++) {
+      if (r < source.rowStart || r > source.rowEnd) targetRows.push(r);
+    }
+    if (targetRows.length === 0) return;
+    // Direction picked from the geometric delta. A pure column-extend
+    // (rows unchanged) commits `'right'`; otherwise `'down'`. Cycle 9
+    // only ships down/right paths; up/left land alongside fillHandleDirection
+    // negative deltas in a later cycle.
+    const direction: 'down' | 'right' =
+      target.rowEnd > source.rowEnd || target.rowStart < source.rowStart ? 'down' : 'right';
+    // For each filled column, snapshot the source values once. cellAt reads
+    // the visible chunk; source rows are guaranteed visible (the user just
+    // dragged from them), so this is a synchronous read.
+    const sourceValuesByCol = new Map<string, unknown[]>();
+    for (const colId of target.colIds) {
+      const values: unknown[] = [];
+      for (const r of sourceRows) {
+        const cell = this.cellAt(r, colId);
+        values.push(cell ? cell.value : null);
+      }
+      sourceValuesByCol.set(colId, values);
+    }
+    const fillOp = this.options.fillOperation;
+    // Fetch full row data for every target row in parallel. getRowByIndex
+    // hits the worker, which preserves every field — the update set we
+    // send back includes the unchanged fields so `RowStore.apply` doesn't
+    // drop anything.
+    const fetches = targetRows.map((rowIndex) =>
+      this.workerClient.getRowByIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
+    );
+    Promise.all(fetches).then((results) => {
+      if (this.destroyed) return;
+      const updates: TRow[] = [];
+      for (let i = 0; i < results.length; i++) {
+        const { rowIndex, fetched } = results[i]!;
+        if (!fetched.rowId || fetched.data == null) continue;
+        const rowData = fetched.data as Record<string, unknown>;
+        for (const colId of target.colIds) {
+          const def = this.columnDefsMap.get(colId);
+          if (!def) continue;
+          const sourceValues = sourceValuesByCol.get(colId) ?? [];
+          const customValue = fillOp
+            ? fillOp({
+                values: sourceValues,
+                initialValues: sourceValues,
+                currentIndex: i,
+                rowNode: { data: rowData as Partial<TRow>, rowIndex },
+                colDef: { colId, field: def.field as string | undefined },
+                direction,
+              })
+            : false;
+          const newValue = customValue !== false
+            ? customValue
+            : defaultFillExtrapolate(sourceValues, i);
+          // Skip undefined results — apps return `undefined` from
+          // fillOperation when the cell shouldn't change.
+          if (newValue === undefined) continue;
+          if (def.valueSetter) {
+            const field = def.field as string | undefined;
+            const oldValue = field !== undefined ? rowData[field] : undefined;
+            def.valueSetter({
+              data: rowData as TRow, newValue, oldValue, colDef: def as any,
+            });
+          } else if (def.field) {
+            rowData[def.field as string] = newValue;
+          }
+        }
+        updates.push(rowData as TRow);
+      }
+      if (updates.length === 0) return;
+      this.applyTransaction({ update: updates });
+    }).catch((err) => {
+      if (!this.destroyed) console.error('[cgrid] commitFill:', err);
+    });
   }
 
   /** Cycle 8 / Task 2 — collect the construction-time sort model from

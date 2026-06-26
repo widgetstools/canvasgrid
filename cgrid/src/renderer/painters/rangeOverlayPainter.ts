@@ -29,6 +29,10 @@ export function paintRangeOverlay(gc: CachedContext2D, p: PainterCtx): void {
   gc.cache.strokeStyle = theme.rangeBorderColor;
   gc.cache.lineWidth = 1;
 
+  // Track the LAST range's bottom-right so we can paint the fill handle
+  // on it after the per-range loop (the handle uses a different fillStyle).
+  let lastBottomRight: { x: number; y: number } | null = null;
+
   for (let i = 0; i < ranges.length; i++) {
     const range = ranges[i]!;
 
@@ -69,5 +73,20 @@ export function paintRangeOverlay(gc: CachedContext2D, p: PainterCtx): void {
     // Inset the border by 0.5px so the 1px stroke sits on the integer
     // pixel grid without anti-aliasing fuzz at canvas DPRs other than 1.
     gc.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+
+    if (i === ranges.length - 1) {
+      lastBottomRight = { x: maxRight, y: maxBottom };
+    }
+  }
+
+  // Cycle 9 / Task 5 — fill handle paint. 6×6 square centered on the
+  // bottom-right of the LAST range. The handle uses the opaque border
+  // color so it's visible against the translucent fill. Only painted
+  // when `showFillHandle` is true (cgrid host reads
+  // `options.enableFillHandle`) AND the last range has any on-screen
+  // footprint.
+  if (p.showFillHandle && lastBottomRight !== null) {
+    gc.cache.fillStyle = theme.rangeBorderColor;
+    gc.fillRect(lastBottomRight.x - 3, lastBottomRight.y - 3, 6, 6);
   }
 }

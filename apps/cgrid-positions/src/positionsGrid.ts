@@ -294,6 +294,12 @@ export function createPositionsGrid(
     // adjacent cell. F2, dblclick, single-click and api.startEditingCell
     // start in 'edit' mode so arrows still move the input caret.
     enableExcelEditing: true,
+    // Cycle 9 / Task 5 — fill handle. Drag the 6×6 square at the bottom-
+    // right of the focused range to extend the selection downward and
+    // commit a fill (linear extrapolation for numeric columns, repeat
+    // for text). Default direction = 'y' (down only).
+    enableFillHandle: true,
+    fillHandleDirection: 'y',
     // Default: uniform rows. `?variableHeights=1` re-enables the
     // Cycle 5 / Task 6 `getRowHeight` rule (56px for positionIds
     // whose last char-code is divisible by 4) so the
