@@ -118,6 +118,16 @@ export interface CGridLike {
    *  extrapolation for numeric source values; repeat for text. Custom
    *  override via `CGridOptions.fillOperation`. */
   commitFill(source: SelectionRange, target: SelectionRange): void;
+  /** Cycle 9 / Task 7 — emit `rangeSelectionChanged` from a feature.
+   *  Reads the current ranges off the SelectionModel and fans them out
+   *  with the supplied phase flags. The same call also runs the
+   *  `cellSelectionChanged` debounce (emits only when `finished` is
+   *  true AND the range set actually changed since the last finished
+   *  ping). Features call this at start (mousedown that begins a
+   *  drag), mid (each in-progress drag tick that moved the range), and
+   *  end (the mouseup that finalises a drag); single-step modifier
+   *  clicks (shift / ctrl) fire one call with both flags true. */
+  emitRangeSelectionChanged(started: boolean, finished: boolean): void;
   /** Cycle 8 / Task 1 — resolved modifier key for multi-column sort
    *  append. Returns `null` when multi-sort is disabled. Features check
    *  the matching event modifier to decide whether to call `cycleSort`

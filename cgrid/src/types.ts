@@ -1227,7 +1227,33 @@ export type CGridEvent =
   /** Fires exactly once per grid instance — the first non-empty viewport
    *  chunk has been received and a repaint scheduled. Use for analytics
    *  ("data was rendered"), autosize-on-mount, or to flip a loading flag. */
-  | { type: 'firstDataRendered' };
+  | { type: 'firstDataRendered' }
+  /** Cycle 9 / Task 7 — fires on every cell-range mutation: drag start,
+   *  drag mid-tick, drag end, and programmatic mutation. The split
+   *  between `started` / `finished` mirrors ag-grid so apps can branch
+   *  on the gesture phase. `ranges` is a fresh snapshot (mutating it
+   *  doesn't affect selection state). For the debounced sibling that
+   *  only fires once per real change, listen for `cellSelectionChanged`
+   *  instead. */
+  | {
+      type: 'rangeSelectionChanged';
+      ranges: SelectionRange[];
+      /** True for the initial mousedown that begins a drag, OR for a
+       *  single-step programmatic / modifier-click mutation that both
+       *  starts and finishes in the same instant. */
+      started: boolean;
+      /** True for the mouseup that finalizes a drag, OR for every
+       *  programmatic mutation (each instantaneous change is finished
+       *  by definition). False during the drag-in-progress ticks. */
+      finished: boolean;
+    }
+  /** Cycle 9 / Task 7 — debounced sibling of `rangeSelectionChanged`.
+   *  Fires only when a `finished: true` mutation actually changes the
+   *  set of ranges (drag mid-ticks are skipped; a finished mutation
+   *  that lands on the same ranges as before is also skipped). Useful
+   *  for "save selection state on change" without firing 30 times per
+   *  drag. */
+  | { type: 'cellSelectionChanged'; ranges: SelectionRange[] };
 
 export interface CGridApi {
   setRowData(rows: any[]): void;

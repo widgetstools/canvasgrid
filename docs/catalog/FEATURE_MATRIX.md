@@ -1,6 +1,6 @@
 # AG Grid Feature Matrix
 
-> Last verified: 2026-06-23 against AG Grid 35.3.1
+> Last verified: 2026-06-26 against AG Grid 35.3.1
 
 | Area | Feature | Tier | Surface | Showcase-uses? | Canvas-port priority | Notes |
 |------|---------|------|---------|----------------|----------------------|-------|
@@ -526,27 +526,27 @@
 | 12 | rowMultiSelectWithClick | Community | option | no | P3 | Deprecated v32.2; use rowSelection.enableSelectionWithoutKeys |
 | 12 | suppressRowDeselection | Community | option | no | P3 | Deprecated v32.2; use rowSelection.enableClickSelection |
 | 12 | suppressRowClickSelection | Community | option | no | P3 | Deprecated v32.2; use rowSelection.enableClickSelection: false |
-| 12 | cellSelection | Enterprise | option | no | P1 | Boolean or CellSelectionOptions; enables cell range selection |
+| 12 | ✅ cellSelection | Enterprise | option | no | P1 | Boolean or CellSelectionOptions; enables cell range selection |
 | 12 | cellSelection.suppressMultiRanges | Enterprise | option | no | P2 | Limit to one range at a time |
 | 12 | cellSelection.enableHeaderHighlight | Enterprise | option | no | P2 | Highlight column header when cells in it are in a range |
-| 12 | cellSelection.enableColumnSelection | Enterprise | option | no | P2 | Click column header to select entire column |
-| 12 | cellSelection.handle (fill mode) | Enterprise | option | no | P1 | Fill handle with direction and custom fill callback |
+| 12 | ✅ cellSelection.enableColumnSelection | Enterprise | option | no | P2 | Click column header to select entire column |
+| 12 | ✅ cellSelection.handle (fill mode) | Enterprise | option | no | P1 | Fill handle with direction and custom fill callback |
 | 12 | cellSelection.handle (range mode) | Enterprise | option | no | P2 | Range handle to extend selection by dragging |
 | 12 | enableRangeSelection | Enterprise | option | no | P3 | Deprecated v32.2; use cellSelection = true |
-| 12 | enableFillHandle | Enterprise | option | no | P3 | Deprecated v32.2; use cellSelection.handle = { mode: 'fill' } |
-| 12 | fillHandleDirection | Enterprise | option | no | P3 | Deprecated v32.2; use cellSelection.handle.direction |
+| 12 | ✅ enableFillHandle | Enterprise | option | no | P3 | Deprecated v32.2; use cellSelection.handle = { mode: 'fill' } |
+| 12 | ✅ fillHandleDirection | Enterprise | option | no | P3 | Deprecated v32.2; use cellSelection.handle.direction |
 | 12 | selectAll | Community | api | yes | P0 | Select all rows; optional mode param scopes to filtered/currentPage |
 | 12 | deselectAll | Community | api | yes | P0 | Deselect all rows |
 | 12 | getSelectedNodes | Community | api | yes | P0 | Returns list of selected IRowNode objects |
 | 12 | getSelectedRows | Community | api | yes | P0 | Returns list of selected row data objects |
-| 12 | getCellRanges | Enterprise | api | no | P1 | Returns current cell selection ranges |
-| 12 | addCellRange | Enterprise | api | no | P1 | Adds a cell range to the current selection |
-| 12 | clearCellSelection | Enterprise | api | no | P1 | Clears all cell selection ranges |
+| 12 | ✅ getCellRanges | Enterprise | api | no | P1 | Returns current cell selection ranges |
+| 12 | ✅ addCellRange | Enterprise | api | no | P1 | Adds a cell range to the current selection |
+| 12 | ✅ clearCellSelection | Enterprise | api | no | P1 | Clears all cell selection ranges (shipped as `clearCellRanges`) |
 | 12 | getServerSideSelectionState | Enterprise | api | no | P1 | Returns SSRM selection rule set |
 | 12 | setServerSideSelectionState | Enterprise | api | no | P1 | Restores SSRM selection state |
 | 12 | rowSelected | Community | event | yes | P0 | Fires per row when its selection state changes |
 | 12 | selectionChanged | Community | event | yes | P0 | Fires after bulk selection change completes |
-| 12 | cellSelectionChanged | Enterprise | event | no | P1 | Fires on cell range changes (started/finished flags) |
+| 12 | ✅ cellSelectionChanged | Enterprise | event | no | P1 | Fires on cell range changes (started/finished flags); paired with cgrid-specific `rangeSelectionChanged` for mid-drag ticks |
 | 12 | fillStart | Enterprise | event | no | P2 | User starts dragging fill handle |
 | 12 | fillEnd | Enterprise | event | no | P2 | User releases fill handle; carries initial and final ranges |
 | 12 | cellSelectionDeleteStart | Enterprise | event | no | P2 | Delete key begins clearing cell range |
@@ -554,7 +554,7 @@
 | 12 | Row selection mode behaviour | Community | behavior | yes | P0 | singleRow vs multiRow click/Shift/Ctrl semantics |
 | 12 | Group selection cascade | Community | behavior | yes | P1 | groupSelects: descendants/filteredDescendants checkbox indeterminate state |
 | 12 | SSRM selection rule-set | Enterprise | behavior | no | P1 | Selection stored as rules not row IDs; persist via getServerSideSelectionState |
-| 12 | Fill handle value progression | Enterprise | behavior | no | P2 | Numbers increment linearly; non-numbers copy; override with setFillValue |
+| 12 | ✅ Fill handle value progression | Enterprise | behavior | no | P2 | Numbers increment linearly; non-numbers copy; override with `options.fillOperation` |
 
 <!-- area:13 Master/Detail -->
 | 13 | masterDetail | Enterprise | option | no | P2 | Enables Master/Detail mode |

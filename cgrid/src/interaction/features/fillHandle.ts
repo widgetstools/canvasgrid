@@ -18,7 +18,14 @@
 //   - `'xy'`          — the axis with the larger pointer delta from the
 //                       handle wins, then locked for the rest of the drag.
 //
-// The rangeSelectionChanged event for fill-handle drags lands in Task 7.
+// Cycle 9 / Task 7 — the fill handle also emits `rangeSelectionChanged`:
+//   - mousedown that claims the handle → no event (range hasn't moved yet)
+//   - first drag tick that mutates the range → start (started:true)
+//   - subsequent drag ticks → mid (started:false, finished:false)
+//   - mouseup (if any drag happened) → end (started:false, finished:true)
+// The fill commit (`commitFill`) is independent — apps wanting per-cell
+// fill notifications listen for the existing `cellValueChanged` events
+// emitted by the transaction commit.
 
 import { Feature, type CGridEventCtx } from '../feature';
 import type { SelectionRange } from '../../types';
@@ -34,6 +41,12 @@ interface DragState {
   source: SelectionRange;
   /** Resolved drag axis. `'y'` extends rows; `'x'` extends columns. */
   axis: 'x' | 'y';
+  /** Cycle 9 / Task 7 — true once we've emitted the start of the
+   *  rangeSelectionChanged stream. Flipped on the first drag tick that
+   *  visibly changes the range; subsequent ticks emit mid, and mouseup
+   *  emits end. A claim without any drag never flips this, so no event
+   *  fires for click-and-release on the handle. */
+  emittedStart: boolean;
 }
 
 export class FillHandle extends Feature {
@@ -76,6 +89,7 @@ export class FillHandle extends Feature {
     this.state = {
       source: { rowStart: last.rowStart, rowEnd: last.rowEnd, colIds: [...last.colIds] },
       axis,
+      emittedStart: false,
     };
     // Consume — downstream features must not see the fill press as a
     // fresh range anchor.
@@ -94,6 +108,7 @@ export class FillHandle extends Feature {
       ctx.grid.selection.setRanges([{
         rowStart: src.rowStart, rowEnd: nextRowEnd, colIds: [...src.colIds],
       }]);
+      this.emitDragTick(ctx);
       return;
     }
     // axis === 'x' — extend colIds rightward in render order; rows frozen.
@@ -110,6 +125,20 @@ export class FillHandle extends Feature {
     ctx.grid.selection.setRanges([{
       rowStart: src.rowStart, rowEnd: src.rowEnd, colIds: nextColIds,
     }]);
+    this.emitDragTick(ctx);
+  }
+
+  /** Cycle 9 / Task 7 — first drag tick fires the start of the range-
+   *  selection event stream (started:true, finished:false); every
+   *  subsequent tick fires a mid (started:false, finished:false). */
+  private emitDragTick(ctx: CGridEventCtx): void {
+    const state = this.state!;
+    if (state.emittedStart) {
+      ctx.grid.emitRangeSelectionChanged(false, false);
+      return;
+    }
+    state.emittedStart = true;
+    ctx.grid.emitRangeSelectionChanged(true, false);
   }
 
   override handleMouseUp(ctx: CGridEventCtx): void {
@@ -130,6 +159,9 @@ export class FillHandle extends Feature {
       && target.colIds.length === src.colIds.length
       && target.colIds.every((c, i) => c === src.colIds[i]);
     if (noChange) return;
+    // End of the drag-stream — only fires when at least one mid-tick
+    // already emitted a start, so a claim-without-drag stays silent.
+    if (state.emittedStart) ctx.grid.emitRangeSelectionChanged(false, true);
     ctx.grid.commitFill(src, target);
   }
 }

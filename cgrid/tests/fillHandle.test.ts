@@ -12,6 +12,10 @@ interface MockGrid {
   getFillHandleDirection: () => 'x' | 'y' | 'xy';
   getRangeBottomRight: (range: SelectionRange) => { x: number; y: number } | null;
   commitFill: ReturnType<typeof vi.fn>;
+  /** Task 7 — features emit `rangeSelectionChanged` through this hook.
+   *  Mocks default to a no-op (event semantics tested in
+   *  rangeSelectionEvents.test.ts). */
+  emitRangeSelectionChanged: (started: boolean, finished: boolean) => void;
 }
 
 function ctx(
@@ -45,6 +49,7 @@ function makeGrid(overrides: Partial<MockGrid> = {}): MockGrid {
       return { x: (colIdx + 1) * 100, y: 32 + (range.rowEnd + 1) * 30 };
     },
     commitFill: vi.fn(),
+    emitRangeSelectionChanged: () => {},
     ...overrides,
   };
 }
