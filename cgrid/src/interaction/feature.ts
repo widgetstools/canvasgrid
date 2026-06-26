@@ -188,6 +188,14 @@ export interface CGridLike {
   openContextMenu(items: MenuItem[], x: number, y: number, hit: Hit): void;
   /** Close any open context menu. Idempotent. Cycle 10 / Task 1. */
   closeContextMenu(): void;
+
+  // --- Clipboard (Cycle 10 / Task 3) ---
+  /** Serialise the current cell-range selection on the worker and write
+   *  the result to `navigator.clipboard`. The `KeyboardShortcuts`
+   *  feature calls this from a Ctrl+C / Cmd+C keydown so the browser's
+   *  Async Clipboard API sees an active user-gesture stack. Cycle 10 /
+   *  Task 3. */
+  copySelectedRangesToClipboard(): Promise<void>;
 }
 
 export interface CGridEventCtx {

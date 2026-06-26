@@ -13,6 +13,7 @@ import {
   MeasureCache, measureKey, offscreenMeasurer, workerCanMeasure, wrapTextToHeight,
 } from './measureText';
 import { measureColumnWidths, type AutosizeColumnSpec } from './autosize';
+import { serializeRanges } from './passes/clipboardPass';
 
 interface AutoHeightCol {
   colId: string;
@@ -887,6 +888,34 @@ export function createWorkerHost(post: PostFn): WorkerHost {
               resolver(heights);
             }
             post({ id: req.id, type: 'measureTextAck' });
+            break;
+          }
+
+          case 'clipboardSerialize': {
+            // Cycle 10 / Task 3 — TSV / CSV encode the supplied ranges
+            // off the main thread. Resolve `visIds` once so per-range
+            // row lookups are O(1), then build a sparse `rows` array
+            // covering only the rowStart..rowEnd bands actually
+            // requested (avoids materialising the full visible set when
+            // the user is copying a small range out of a 1M-row grid).
+            const { ranges, delimiter } = req.payload;
+            const visIds = await visibleAsync();
+            const rows: Array<Record<string, unknown> | undefined> = [];
+            for (const r of ranges) {
+              const end = Math.min(r.rowEnd, visIds.length - 1);
+              for (let i = r.rowStart; i <= end; i++) {
+                if (i < 0) continue;
+                if (rows[i] !== undefined) continue;
+                const rowId = visIds[i];
+                if (rowId === undefined) continue;
+                const data = state.store.getById(rowId);
+                if (data !== undefined) rows[i] = data as Record<string, unknown>;
+              }
+            }
+            const colsById = new Map<string, { field?: string }>();
+            for (const c of state.columns) colsById.set(c.colId, { field: c.field });
+            const tsv = serializeRanges(rows, colsById, ranges, delimiter);
+            post({ id: req.id, type: 'clipboardSerializeResult', tsv });
             break;
           }
         }

@@ -2,7 +2,7 @@ import type {
   WorkerRequest, WorkerResponse, WorkerPush, WorkerInitPayload, ViewportRequest, ViewportChunk,
   WorkerColumn, MeasureTextItem, AutosizeColumnRequest,
 } from './protocol';
-import type { TransactionResult, SortModel, FilterModel } from '../types';
+import type { TransactionResult, SortModel, FilterModel, SelectionRange } from '../types';
 
 export interface WorkerClientHandlers {
   onModelUpdated: (visibleCount: number) => void;
@@ -300,6 +300,18 @@ export class WorkerClient {
     if (rowIds.length === 0) return Promise.resolve(new Int32Array(0));
     return this.send<{ indices: Int32Array }>({ type: 'getRowIndicesForIds', payload: { rowIds } })
       .then((r) => r.indices);
+  }
+
+  /** Cycle 10 / Task 3 — TSV / CSV encode the supplied cell ranges off
+   *  the main thread. The worker resolves `range.rowStart..rowEnd`
+   *  against its visible row order, reads cells via `RowStore` +
+   *  `WorkerColumn.field`, and returns a single string ready for
+   *  `navigator.clipboard.writeText`. `delimiter` overrides the default
+   *  tab (apps that ship `clipboardDelimiter: ','` get CSV). */
+  clipboardSerialize(ranges: SelectionRange[], delimiter: string): Promise<string> {
+    return this.send<{ tsv: string }>({
+      type: 'clipboardSerialize', payload: { ranges, delimiter },
+    }).then((r) => r.tsv);
   }
 
   destroy(): void {

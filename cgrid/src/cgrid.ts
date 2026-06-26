@@ -652,6 +652,11 @@ export class CGrid<TRow = any> {
       resolveContextMenuItems: (hit) => this.resolveContextMenuItems(hit),
       openContextMenu: (items, x, y, hit) => this.openContextMenu(items, x, y, hit),
       closeContextMenu: () => this.closeContextMenu(),
+      // Cycle 10 / Task 3 — clipboard copy. The KeyboardShortcuts feature
+      // routes Ctrl+C through this method so the worker round-trip + the
+      // `navigator.clipboard.writeText` both run inside the keydown's
+      // user-gesture stack.
+      copySelectedRangesToClipboard: () => this.copySelectedRangesToClipboard(),
     });
     this.cellEditorRegistry = new CellEditorRegistry();
     CellEditorRegistry.seed(this.cellEditorRegistry);
@@ -2034,6 +2039,35 @@ export class CGrid<TRow = any> {
     if (hadRanges) this.emitRangeSelectionChanged(false, true);
   }
 
+  /** Cycle 10 / Task 3 — TSV / CSV encode the current cell-range
+   *  selection on the worker and forward the result to
+   *  `navigator.clipboard.writeText`. Honors the runtime-mutable
+   *  `clipboardDelimiter` (default `'\t'`). Rejects with `'no-ranges'`
+   *  when nothing is selected; the keyboard handler swallows that
+   *  rejection so the user doesn't see a console error for a stray
+   *  Ctrl+C on an empty selection.
+   *
+   *  Resolves AFTER `clipboard.writeText` completes (so apps that await
+   *  this method can immediately read back via `clipboard.readText`).
+   *  Splits the work three ways: worker does the per-cell value lookup
+   *  + RFC-4180 quoting + buffer joins (off the main thread); main
+   *  does the clipboard write inside the caller's user-gesture stack. */
+  async copySelectedRangesToClipboard(): Promise<void> {
+    if (this.destroyed) return;
+    const ranges = this.getCellRanges();
+    if (ranges.length === 0) throw new Error('no-ranges');
+    const delimiter = this.options.clipboardDelimiter ?? '\t';
+    const tsv = await this.workerClient.clipboardSerialize(ranges, delimiter);
+    // `navigator.clipboard.writeText` requires a user gesture in every
+    // mainstream browser; the keyboard / menu handlers already run
+    // inside one. Apps that invoke this from a `setTimeout` get a
+    // rejected promise back — that's the expected platform behavior.
+    if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
+      throw new Error('clipboard-unavailable');
+    }
+    await navigator.clipboard.writeText(tsv);
+  }
+
   /** Cycle 9 / Task 7 — fan `rangeSelectionChanged` out to listeners and
    *  drive the `cellSelectionChanged` debounce. Called from feature code
    *  (RangeSelection / FillHandle) at gesture start / mid / end, and from
@@ -2292,6 +2326,7 @@ export class CGrid<TRow = any> {
       getCellRanges: () => this.getCellRanges(),
       addCellRange: (range) => this.addCellRange(range),
       clearCellRanges: () => this.clearCellRanges(),
+      copySelectedRangesToClipboard: () => this.copySelectedRangesToClipboard(),
       getFocusedCell: () => this.getFocusedCell(),
       setFocusedCell: (r, c) => this.setFocusedCell(r, c),
       refresh: () => this.refresh(),

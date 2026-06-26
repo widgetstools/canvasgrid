@@ -38,6 +38,9 @@ export interface DefaultMenuGrid {
   resetColumnState(): void;
   /** Cycle 6 / Task 5 — pin / unpin a batch of leaf columns. */
   setColumnsPinned(keys: string[], pinned: 'left' | 'right' | null): void;
+  /** Cycle 10 / Task 3 — serialise the current range selection to the
+   *  system clipboard. The Copy default-menu item routes here. */
+  copySelectedRangesToClipboard(): Promise<void>;
 }
 
 /** Build the eight-item default list. `grid` carries the column-ops
@@ -66,7 +69,18 @@ export function buildDefaultMenuItems(
     {
       name: 'Copy',
       icon: '⎘', // ⎘ — overlapping pages glyph
-      action: () => { console.debug('[clipboard] copy (stub — wired in Task 3)'); },
+      // Click handlers run in the user-gesture stack the menu-item
+      // click started — `navigator.clipboard.writeText` inside the
+      // API call sees an active gesture, so the async-clipboard call
+      // resolves. `no-ranges` rejections are swallowed (right-clicking
+      // without an active selection should be a silent no-op, not a
+      // console error).
+      action: () => {
+        void grid.copySelectedRangesToClipboard().catch((err) => {
+          if (err instanceof Error && err.message === 'no-ranges') return;
+          console.warn('[cgrid] copySelectedRangesToClipboard:', err);
+        });
+      },
     },
     {
       name: 'Copy with Headers',

@@ -53,7 +53,8 @@ export type RuntimeOption =
   | 'fillHandleDirection'
   | 'fillOperation'
   | 'cellSelection'
-  | 'getContextMenuItems';
+  | 'getContextMenuItems'
+  | 'clipboardDelimiter';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
  *  import on `CGrid` (cgrid.ts imports this module). */
@@ -163,6 +164,10 @@ export function applyRuntimeOption<TRow>(
     // at event time, so a runtime flip lights up on the next
     // right-click without further wiring.
     case 'getContextMenuItems':
+    // Cycle 10 / Task 3 — `clipboardDelimiter` is storage-only at runtime.
+    // `copySelectedRangesToClipboard` reads `options.clipboardDelimiter`
+    // at copy time, so a runtime flip takes effect on the next Ctrl+C.
+    case 'clipboardDelimiter':
       // Storage-only: downstream cycles read directly from `options[key]`.
       return;
   }
@@ -184,4 +189,5 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'enableFillHandle', 'fillHandleDirection', 'fillOperation',
   'cellSelection',
   'getContextMenuItems',
+  'clipboardDelimiter',
 ]);

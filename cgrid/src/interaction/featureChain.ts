@@ -40,6 +40,7 @@ import { EditTrigger } from './features/editTrigger';
 import { RangeSelection } from './features/rangeSelection';
 import { FillHandle } from './features/fillHandle';
 import { RightClick } from './features/rightClick';
+import { KeyboardShortcuts } from './features/keyboardShortcuts';
 
 /** Idle gap (ms) after the last wheel event before the axis lock releases.
  *  ~150ms matches the natural pause between separate trackpad gestures while
@@ -66,6 +67,13 @@ export class FeatureChain {
       .append(new CellSelection())
       .append(new HeaderClick())
       .append(new KeyPaging())
+      // KeyboardShortcuts handles Ctrl+C / Ctrl+V / Ctrl+X. It sits
+      // AFTER KeyPaging so navigation keys (PageDown/Home/...) claim
+      // first, but BEFORE the tail features (RightClick / OnHover) so
+      // the modifier-key combinations actually reach it. KeyPaging
+      // already ignores ctrl-modified printable keys (line 37) so
+      // there's no conflict.
+      .append(new KeyboardShortcuts())
       // RightClick lives ahead of OnHover so the `contextmenu` event flows
       // through the chain before the hover-only tail feature; OnHover does
       // not implement handleContextMenu so the placement is cosmetic today,
