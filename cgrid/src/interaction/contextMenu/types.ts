@@ -19,13 +19,20 @@ import type { SelectionRange } from '../../types';
 export interface MenuItem {
   /** Display label. The literal string `'---'` renders a horizontal rule. */
   name: string;
-  /** Icon HTML or unicode char. Optional. */
+  /** Icon HTML or unicode char. Optional. Rendered in a fixed-width left
+   *  gutter so labels align even when only some items carry icons. */
   icon?: string;
+  /** Right-aligned shortcut hint (e.g. `'Ctrl+C'`). Rendered dim so it
+   *  reads as metadata, not as a clickable element. Mutually exclusive
+   *  with `subMenu` (a submenu chevron replaces the shortcut column when
+   *  both are present, shortcut wins for the visual contract). */
+  shortcut?: string;
   /** Click handler. Skipped when `disabled === true` or when the item is a separator. */
   action?: (params: GetContextMenuItemsParams) => void;
   /** Disabled items render dim + skip the action. */
   disabled?: boolean;
-  /** Nested items render a submenu on hover. */
+  /** Nested items render a submenu on hover. When present, the row shows
+   *  a `▶` chevron in the shortcut slot. */
   subMenu?: MenuItem[];
 }
 

@@ -80,8 +80,25 @@ export function buildDefaultMenuItems(
 
   return [
     {
+      name: 'Cut',
+      icon: '✂',
+      shortcut: 'Ctrl+X',
+      // Cycle 10 / Task 5 — same gesture-stack reasoning as Copy /
+      // Paste: the menu-item click is the active user gesture, so the
+      // `navigator.clipboard.writeText` inside `cutSelectedRanges`
+      // resolves. `no-ranges` rejections are swallowed (right-clicking
+      // without an active selection should be a silent no-op).
+      action: () => {
+        void grid.cutSelectedRanges().catch((err) => {
+          if (err instanceof Error && err.message === 'no-ranges') return;
+          console.warn('[cgrid] cutSelectedRanges:', err);
+        });
+      },
+    },
+    {
       name: 'Copy',
-      icon: '⎘', // ⎘ — overlapping pages glyph
+      icon: '⎘',
+      shortcut: 'Ctrl+C',
       // Click handlers run in the user-gesture stack the menu-item
       // click started — `navigator.clipboard.writeText` inside the
       // API call sees an active gesture, so the async-clipboard call
@@ -102,7 +119,8 @@ export function buildDefaultMenuItems(
     },
     {
       name: 'Paste',
-      icon: '\u{1F4CB}', // 📋 clipboard
+      icon: '\u{1F4CB}',
+      shortcut: 'Ctrl+V',
       // Cycle 10 / Task 6 — when `suppressClipboardPaste` is on, the item
       // renders dim so users see the gate. We still wire the action so
       // hosts that don't honour `disabled` short-circuit via the
@@ -118,42 +136,31 @@ export function buildDefaultMenuItems(
         });
       },
     },
-    {
-      name: 'Cut',
-      icon: '✂', // ✂ scissors
-      // Cycle 10 / Task 5 — same gesture-stack reasoning as Copy /
-      // Paste: the menu-item click is the active user gesture, so the
-      // `navigator.clipboard.writeText` inside `cutSelectedRanges`
-      // resolves. `no-ranges` rejections are swallowed (right-clicking
-      // without an active selection should be a silent no-op).
-      action: () => {
-        void grid.cutSelectedRanges().catch((err) => {
-          if (err instanceof Error && err.message === 'no-ranges') return;
-          console.warn('[cgrid] cutSelectedRanges:', err);
-        });
-      },
-    },
     { name: '---' },
     {
       name: 'Export',
+      icon: '↓',
       action: () => { console.debug('[export] (stub — out of scope for Cycle 10)'); },
     },
     { name: '---' },
     {
       name: 'Autosize Columns',
+      icon: '↔',
       action: () => { void grid.autoSizeAllColumns(); },
     },
     {
       name: 'Pin Column',
+      icon: '📌',
       disabled: !hasColumn,
       subMenu: [
-        { name: 'Left', action: pinAction('left') },
-        { name: 'Right', action: pinAction('right') },
-        { name: 'Clear', action: pinAction(null) },
+        { name: 'Pin Left', action: pinAction('left') },
+        { name: 'Pin Right', action: pinAction('right') },
+        { name: 'No Pin', action: pinAction(null) },
       ],
     },
     {
       name: 'Reset Columns',
+      icon: '↺',
       action: () => { grid.resetColumnState(); },
     },
   ];
