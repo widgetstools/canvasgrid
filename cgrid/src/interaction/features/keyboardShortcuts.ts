@@ -37,6 +37,16 @@ export class KeyboardShortcuts extends Feature {
       super.handleKeyDown(ctx);
       return;
     }
+    // Cycle 10 / Task 6 — `suppressClipboardApi: true` removes the
+    // shortcut entirely. We forward via super (no `preventDefault`) so
+    // host pages that registered `addEventListener('copy' | 'paste' |
+    // 'cut', …)` on the document see the gesture and can drive their
+    // own clipboard surface. Read at event time so a runtime flip
+    // lights up on the next keypress.
+    if (ctx.grid.isClipboardApiSuppressed()) {
+      super.handleKeyDown(ctx);
+      return;
+    }
     // `KeyboardEvent.key` is the printable character — case varies with
     // shift state ('C' vs 'c'). `.code` is layout-stable ('KeyC'), so
     // we match both to cover every layout + caps-lock combination.
@@ -70,6 +80,13 @@ export class KeyboardShortcuts extends Feature {
     // on a canvas).
     const isPaste = e.key === 'v' || e.key === 'V' || e.code === 'KeyV';
     if (isPaste) {
+      // Cycle 10 / Task 6 — `suppressClipboardPaste: true` gates ONLY
+      // paste (copy / cut still fire). Forward via super with no
+      // `preventDefault` so host listeners still see the keypress.
+      if (ctx.grid.isClipboardPasteSuppressed()) {
+        super.handleKeyDown(ctx);
+        return;
+      }
       const fr = ctx.grid.selection.state.focusedRowIndex;
       const fc = ctx.grid.selection.state.focusedColId;
       if (fr === null || fc === null) {

@@ -48,6 +48,12 @@ export interface DefaultMenuGrid {
   /** Cycle 10 / Task 5 — copy ranges then clear the source cells via
    *  `applyTransaction`. The Cut default-menu item routes here. */
   cutSelectedRanges(): Promise<void>;
+  /** Cycle 10 / Task 6 — resolved `CGridOptions.suppressClipboardPaste`.
+   *  The default `Paste` item renders disabled when `true` so users see
+   *  the gate visually instead of hitting a silent no-op. Optional for
+   *  back-compat: registries built before Task 6 land continue to work
+   *  (`undefined` is treated as `false`). */
+  isClipboardPasteSuppressed?(): boolean;
 }
 
 /** Build the eight-item default list. `grid` carries the column-ops
@@ -97,6 +103,11 @@ export function buildDefaultMenuItems(
     {
       name: 'Paste',
       icon: '\u{1F4CB}', // 📋 clipboard
+      // Cycle 10 / Task 6 — when `suppressClipboardPaste` is on, the item
+      // renders dim so users see the gate. We still wire the action so
+      // hosts that don't honour `disabled` short-circuit via the
+      // API-side gate (`pasteFromClipboard` no-ops in the same case).
+      disabled: grid.isClipboardPasteSuppressed?.() === true,
       // Same gesture-stack reasoning as Copy: the menu-item click is the
       // active user gesture, so `navigator.clipboard.readText` inside
       // `pasteFromClipboard` resolves. Errors (permission denied, no

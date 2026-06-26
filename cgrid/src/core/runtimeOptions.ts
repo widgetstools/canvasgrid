@@ -56,7 +56,10 @@ export type RuntimeOption =
   | 'getContextMenuItems'
   | 'clipboardDelimiter'
   | 'processCellForClipboard'
-  | 'processCellFromClipboard';
+  | 'processCellFromClipboard'
+  | 'suppressContextMenu'
+  | 'suppressClipboardApi'
+  | 'suppressClipboardPaste';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
  *  import on `CGrid` (cgrid.ts imports this module). */
@@ -178,6 +181,17 @@ export function applyRuntimeOption<TRow>(
     // next clipboard verb without further wiring.
     case 'processCellForClipboard':
     case 'processCellFromClipboard':
+    // Cycle 10 / Task 6 — `suppressContextMenu` / `suppressClipboardApi`
+    // / `suppressClipboardPaste` are storage-only at runtime. RightClick
+    // reads `suppressContextMenu` on every contextmenu event;
+    // KeyboardShortcuts reads `suppressClipboardApi` / `suppressClipboardPaste`
+    // on every keydown; `cgrid.copySelectedRangesToClipboard` /
+    // `pasteFromClipboard` / `cutSelectedRanges` re-read the flags on
+    // every call. A `setGridOption` flip therefore lights up on the next
+    // event / invocation without any further wiring here.
+    case 'suppressContextMenu':
+    case 'suppressClipboardApi':
+    case 'suppressClipboardPaste':
       // Storage-only: downstream cycles read directly from `options[key]`.
       return;
   }
@@ -202,4 +216,7 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'clipboardDelimiter',
   'processCellForClipboard',
   'processCellFromClipboard',
+  'suppressContextMenu',
+  'suppressClipboardApi',
+  'suppressClipboardPaste',
 ]);

@@ -98,6 +98,13 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
     // hook. No-op here so the chain tests don't depend on the event
     // surface; event semantics are covered in rangeSelectionEvents.test.ts.
     emitRangeSelectionChanged: () => {},
+    // Cycle 10 / Task 6 — suppression flags default to `false` so the
+    // existing chain tests behave with the open clipboard / context-menu
+    // surface. Suppress-specific behaviour is exercised in
+    // clipboardSuppress.test.ts.
+    isContextMenuSuppressed: () => false,
+    isClipboardApiSuppressed: () => false,
+    isClipboardPasteSuppressed: () => false,
   } as unknown as CGridLike;
   const chain = new FeatureChain(grid);
   return { canvas, sel, chain, emitClicked, emitDoubleClicked, resizeColumn, cycleSort, scrollBy, openEditor, stopEditing };

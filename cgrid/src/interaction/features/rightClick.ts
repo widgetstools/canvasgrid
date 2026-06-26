@@ -33,10 +33,18 @@ export class RightClick extends Feature {
     }
     // Always preventDefault — once the user has installed a cgrid menu
     // surface (even an empty one via `() => []`), the native menu is
-    // never what they want. Apps that DO want the native menu set
-    // `suppressContextMenu: true`, which Task 6 wires to skip this
-    // feature outright.
+    // never what they want. Apps that want the cgrid menu OFF AND the
+    // native menu OFF set `suppressContextMenu: true`. Apps that want
+    // BOTH to fire don't have a knob — that's by design.
     raw.preventDefault();
+
+    // Cycle 10 / Task 6 — `suppressContextMenu` swallows the event
+    // entirely. We still call `preventDefault` (above) so the native
+    // browser menu doesn't fire either; the feature simply doesn't
+    // resolve / open the cgrid menu. Read at event time so a runtime
+    // `setGridOption('suppressContextMenu', true)` lights up on the
+    // next right-click.
+    if (ctx.grid.isContextMenuSuppressed()) return;
 
     const items = ctx.grid.resolveContextMenuItems(ctx.hit);
     if (items.length === 0) {

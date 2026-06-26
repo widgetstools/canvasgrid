@@ -339,6 +339,37 @@ export interface CGridOptions<TRow = any> {
    *  paste time so a runtime `setGridOption('processCellFromClipboard',
    *  …)` takes effect on the next Ctrl+V / menu Paste. */
   processCellFromClipboard?: ProcessCellFromClipboardCallback<TRow>;
+
+  /** Cycle 10 / Task 6 — when `true`, the `RightClick` feature swallows
+   *  every `contextmenu` event on the canvas. `event.preventDefault()`
+   *  still fires (so the native browser menu does NOT appear) but no
+   *  cgrid menu mounts — apps that ship their own menu surface use this
+   *  to take over the right-click without competing with the cgrid
+   *  popup. Read at event time so a runtime
+   *  `setGridOption('suppressContextMenu', true)` takes effect on the
+   *  next right-click. */
+  suppressContextMenu?: boolean;
+
+  /** Cycle 10 / Task 6 — when `true`, every clipboard API entry point
+   *  (`copySelectedRangesToClipboard`, `pasteFromClipboard`,
+   *  `cutSelectedRanges`) rejects with `Error('clipboard-suppressed')`
+   *  and logs a one-time `console.warn`. The `KeyboardShortcuts`
+   *  feature short-circuits Ctrl+C / Ctrl+V / Ctrl+X (forwards via the
+   *  chain instead of preventing default), so apps that ship their own
+   *  clipboard layer can register `addEventListener('copy', …)` /
+   *  `('paste', …)` / `('cut', …)` on the document and own the surface.
+   *  Read at event / call time so a runtime flip lights up on the next
+   *  invocation. */
+  suppressClipboardApi?: boolean;
+
+  /** Cycle 10 / Task 6 — when `true`, `pasteFromClipboard` resolves
+   *  without reading or writing anything (silent no-op), Ctrl+V short-
+   *  circuits at the keyboard handler, and the default `Paste`
+   *  context-menu item renders disabled. Copy and Cut are unaffected
+   *  (use `suppressClipboardApi` to gate every direction). Read at
+   *  event / call time so a runtime flip lights up on the next
+   *  invocation. */
+  suppressClipboardPaste?: boolean;
 }
 
 /** Cycle 10 / Task 5 — params for `processCellForClipboard`. Mirrors
