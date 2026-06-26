@@ -107,7 +107,9 @@ in a fresh session."
     fi
   fi
 
-  if ! "${TIMEOUT_CMD[@]}" claude -p "$PROMPT" \
+  # `${arr[@]+...}` form is the safe expansion under `set -u` when the
+  # array might be empty (no timeout command on PATH).
+  if ! ${TIMEOUT_CMD[@]+"${TIMEOUT_CMD[@]}"} claude -p "$PROMPT" \
       --permission-mode acceptEdits \
       --model "$MODEL" \
       --output-format text \
