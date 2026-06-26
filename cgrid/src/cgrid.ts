@@ -36,6 +36,7 @@ import { FloatingFilterOverlay } from './interaction/floatingFilterOverlay';
 import { PopupHost } from './interaction/editors/popupHost';
 import { FilterPopupHost } from './interaction/filters/filterPopupHost';
 import { ContextMenuHost } from './interaction/contextMenu/host';
+import { ToolPanelRegistry } from './interaction/toolPanels/registry';
 import type { MenuItem, GetContextMenuItemsParams, GetMainMenuItemsParams } from './interaction/contextMenu/types';
 import { buildDefaultMenuItems } from './interaction/contextMenu/defaults';
 import { buildDefaultMainMenuItems } from './interaction/contextMenu/mainMenuDefaults';
@@ -85,6 +86,9 @@ export type {
   CellClass, CellClassRules, CellStyleFunc, HeaderClass,
   // Cycle 10 / Task 1 — context-menu public types.
   MenuItem, GetContextMenuItemsParams, GetContextMenuItemsCallback,
+  // Cycle 11 / Task 1 — tool-panel + side-bar public types.
+  ToolPanel, ToolPanelComponent, ToolPanelParams, ToolPanelDef, SideBarDef,
+  IToolPanelColumnCompParams, IToolPanelFiltersCompParams,
 } from './types';
 export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/registry';
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
@@ -344,6 +348,13 @@ export class CGrid<TRow = any> {
    *  the canvas. The host is intentionally minimal — it owns DOM lifecycle
    *  + dismissal; item resolution lives in `resolveContextMenuItems`. */
   private contextMenuHost: ContextMenuHost;
+  /** Cycle 11 / Task 1 — tool-panel registry. Seeded with built-in IDs
+   *  (`agColumnsToolPanel`, `agFiltersToolPanel`) and then merged with
+   *  any `CGridOptions.components` overrides so apps can replace the
+   *  built-ins or add new IDs that custom `SideBarDef.toolPanels`
+   *  entries reference via `toolPanel`. The side-bar host (Task 2)
+   *  reads this registry to instantiate panels on demand. */
+  private toolPanelRegistry: ToolPanelRegistry;
   /** Cycle 4 / Task 11 (cell-flash patch) — per-cell flash tracker.
    *  Drained from each `getViewport` chunk's `flashMask` and queried
    *  by the painter's `cellData` callback to produce `flashAlpha`. */
@@ -451,6 +462,19 @@ export class CGrid<TRow = any> {
     this.cellRenderers.register('checkbox', checkboxCell);
     this.cellRenderers.register('header', headerCell);
     this.cellRenderers.register('text-wrap', wrapTextCell);
+
+    // 2b. Tool-panel registry (Cycle 11 / Task 1). Seed the built-in
+    // IDs with stub implementations BEFORE merging any app-supplied
+    // `components` entries so the app can override built-ins by
+    // registering against the same key. Tasks 3 + 4 replace the
+    // built-in stubs with the real Columns / Filters panels.
+    this.toolPanelRegistry = new ToolPanelRegistry();
+    this.toolPanelRegistry.seedBuiltIns();
+    if (options.components) {
+      for (const [id, ctor] of Object.entries(options.components)) {
+        this.toolPanelRegistry.register(id, ctor);
+      }
+    }
 
     // 3. Column model — resolve into a tree (groups + leaves), then derive
     // the visible-leaf ordering from the group open/closed state. Task 3
