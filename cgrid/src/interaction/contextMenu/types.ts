@@ -27,8 +27,14 @@ export interface MenuItem {
    *  with `subMenu` (a submenu chevron replaces the shortcut column when
    *  both are present, shortcut wins for the visual contract). */
   shortcut?: string;
-  /** Click handler. Skipped when `disabled === true` or when the item is a separator. */
-  action?: (params: GetContextMenuItemsParams) => void;
+  /** Click handler. Skipped when `disabled === true` or when the item is a
+   *  separator. The host passes the live params (cell or header) the menu
+   *  was resolved against — `unknown` here because the host renders both
+   *  `GetContextMenuItemsParams` and `GetMainMenuItemsParams` menus
+   *  through the same `MenuItem[]` shape. Default-item authors that need
+   *  the typed params close over them at build time
+   *  (`buildDefaultMenuItems` / `buildDefaultMainMenuItems`). */
+  action?: (params: unknown) => void;
   /** Disabled items render dim + skip the action. */
   disabled?: boolean;
   /** Nested items render a submenu on hover. When present, the row shows
@@ -54,3 +60,23 @@ export interface GetContextMenuItemsParams {
  *  `preventDefault`). */
 export type GetContextMenuItemsCallback =
   (params: GetContextMenuItemsParams) => MenuItem[];
+
+/** Params handed to `CGridOptions.getMainMenuItems`. The column menu has no
+ *  row context (right-click landed in the header band, not a body cell), so
+ *  `rowIndex` is dropped. `colId` is always populated — `getMainMenuItems`
+ *  only fires when the hit kind is `header` or `headerGroup`. */
+export interface GetMainMenuItemsParams {
+  /** Column the header / group header right-click landed on. Always
+   *  populated (the resolver routes only header / headerGroup hits here). */
+  colId: string;
+  /** The default item list — apps mix-and-match into a custom list with
+   *  `filter` / `concat` / spread, same pattern as `getContextMenuItems`. */
+  defaultItems: MenuItem[];
+}
+
+/** Resolution signature for `CGridOptions.getMainMenuItems`. Mirrors
+ *  ag-grid's split: cell right-clicks call `getContextMenuItems`, header
+ *  right-clicks call `getMainMenuItems`. Returning an empty array
+ *  suppresses the menu. */
+export type GetMainMenuItemsCallback =
+  (params: GetMainMenuItemsParams) => MenuItem[];

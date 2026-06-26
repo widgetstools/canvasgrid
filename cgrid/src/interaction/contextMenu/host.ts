@@ -34,7 +34,14 @@
  * anywhere outside our subtree closes the menu before the click reaches
  * its target).
  */
-import type { GetContextMenuItemsParams, MenuItem } from './types';
+import type { GetContextMenuItemsParams, GetMainMenuItemsParams, MenuItem } from './types';
+
+/** Params handed to `MenuItem.action` callbacks. The host threads the
+ *  object through without inspecting it — item authors cast (or close
+ *  over typed params in the registry builder) to the variant they
+ *  registered against (`GetContextMenuItemsParams` for cell-menu items,
+ *  `GetMainMenuItemsParams` for header-menu items). */
+type MenuItemActionParams = GetContextMenuItemsParams | GetMainMenuItemsParams;
 
 /** Empty params object reused when callers don't pass one (e.g. internal
  *  test fixtures). Matches the `null` defaults `RightClick` would feed
@@ -73,7 +80,7 @@ export class ContextMenuHost {
    *  each item's `action` callback so apps can read the hit-test +
    *  selection snapshot without a separate closure capture. No-op after
    *  `destroy()`. */
-  open(items: MenuItem[], x: number, y: number, params: GetContextMenuItemsParams = EMPTY_PARAMS): void {
+  open(items: MenuItem[], x: number, y: number, params: MenuItemActionParams = EMPTY_PARAMS): void {
     if (this.destroyed) return;
     this.closeInternal();
 
@@ -107,7 +114,7 @@ export class ContextMenuHost {
   /** Render one menu level and return its root element. Caller positions
    *  the root (top-level: at the cursor; submenu: at the parent row's
    *  right edge). */
-  private renderLevel(items: MenuItem[], params: GetContextMenuItemsParams): HTMLElement {
+  private renderLevel(items: MenuItem[], params: MenuItemActionParams): HTMLElement {
     const root = document.createElement('div');
     root.className = 'cg-context-menu';
     root.setAttribute('role', 'menu');
@@ -129,7 +136,7 @@ export class ContextMenuHost {
     return root;
   }
 
-  private renderRow(item: MenuItem, params: GetContextMenuItemsParams): HTMLElement {
+  private renderRow(item: MenuItem, params: MenuItemActionParams): HTMLElement {
     const row = document.createElement('div');
     row.className = 'cg-menu-item';
     row.setAttribute('role', 'menuitem');
@@ -179,7 +186,7 @@ export class ContextMenuHost {
   /** When the cursor enters a row, trim any submenu levels deeper than
    *  this row's level (we hovered away from their parent) and, if the
    *  row carries a submenu, mount it positioned at the row's right edge. */
-  private handleRowHover(row: HTMLElement, item: MenuItem, params: GetContextMenuItemsParams): void {
+  private handleRowHover(row: HTMLElement, item: MenuItem, params: MenuItemActionParams): void {
     // Find the level this row belongs to so we can trim deeper levels.
     const rowLevelIndex = this.levels.findIndex((lvl) => lvl.root.contains(row));
     if (rowLevelIndex < 0) return;
