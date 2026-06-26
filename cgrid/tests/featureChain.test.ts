@@ -44,6 +44,7 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
   const resizeColumn = vi.fn();
   const finishColumnResize = vi.fn();
   const cycleSort = vi.fn();
+  const selectColumn = vi.fn();
   const scrollBy = vi.fn();
   const toggleColumnGroup = vi.fn();
   const openEditor = vi.fn();
@@ -59,6 +60,7 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
     resizeColumn,
     finishColumnResize,
     cycleSort,
+    selectColumn,
     getMultiSortKey: () => 'Shift' as const,
     toggleColumnGroup,
     scrollBy,

@@ -5,9 +5,18 @@
 // commits — the range stays on the SelectionModel, the feature returns to
 // idle, and a follow-up drag with no preceding mousedown is a no-op.
 //
-// The plain-drag pathway lives here; Shift/Ctrl modifier semantics (extend
-// the last range, add a disjoint range) layer on top in Task 4. The
-// rangeSelectionChanged event lands in Task 7.
+// Cycle 9 / Task 4 layers two modifier semantics on the same mousedown:
+//   - Shift-click EXTENDS the last range from its existing rect to cover
+//     the clicked cell. No drag state is set — shift-click is a discrete
+//     extend, not a "drag from here" gesture. Falls back to plain-anchor
+//     when no range exists yet.
+//   - Ctrl/Cmd-click ADDS a new disjoint 1x1 range, preserving existing
+//     ranges. Mirrors ag-grid's "hold ctrl to add another rectangle."
+// In both modifier paths we still forward via `super.handleMouseDown` so
+// CellSelection runs its shift-range / ctrl-toggle row-selection logic on
+// the same press. Shift takes priority when both shift+ctrl are held.
+//
+// The rangeSelectionChanged event lands in Task 7.
 //
 // Chain position: ahead of CellSelection. CellSelection consumes cell
 // mousedowns to set focus + row selection; placing RangeSelection earlier
@@ -35,15 +44,39 @@ export class RangeSelection extends Feature {
       return;
     }
     const e = ctx.raw as MouseEvent;
-    // Task 4 layers Shift / Ctrl semantics on top. For plain drag (this
-    // task), only an unmodified click anchors a new range; modifier presses
-    // fall through to downstream features and will be picked up in Task 4.
-    if (e.shiftKey || e.ctrlKey || e.metaKey) {
+    const sel = ctx.grid.selection;
+    // Shift-click: discrete extend of the last range. Falls back to a fresh
+    // 1x1 anchor when no range exists yet so the first shift-click of a
+    // session still gives the user something to extend from. No drag state
+    // — a shift-mousedown is not a "drag from here" gesture.
+    if (e.shiftKey) {
+      if (sel.getRanges().length === 0) {
+        sel.setRanges([{
+          rowStart: ctx.hit.rowIndex,
+          rowEnd: ctx.hit.rowIndex,
+          colIds: [ctx.hit.colId],
+        }]);
+      } else {
+        sel.extendLastRangeToCell(ctx.hit.rowIndex, ctx.hit.colId, ctx.grid.allColIds());
+      }
+      this.state = null;
+      super.handleMouseDown(ctx);
+      return;
+    }
+    // Ctrl/Cmd-click: add a new disjoint 1x1 range. Existing ranges stay.
+    // No drag state — a follow-up drag here would clobber the disjoint set.
+    if (e.ctrlKey || e.metaKey) {
+      sel.addRange({
+        rowStart: ctx.hit.rowIndex,
+        rowEnd: ctx.hit.rowIndex,
+        colIds: [ctx.hit.colId],
+      });
+      this.state = null;
       super.handleMouseDown(ctx);
       return;
     }
     this.state = { anchorRowIndex: ctx.hit.rowIndex, anchorColId: ctx.hit.colId };
-    ctx.grid.selection.setRanges([{
+    sel.setRanges([{
       rowStart: ctx.hit.rowIndex,
       rowEnd: ctx.hit.rowIndex,
       colIds: [ctx.hit.colId],
