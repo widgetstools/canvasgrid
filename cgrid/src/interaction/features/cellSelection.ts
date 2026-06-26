@@ -62,19 +62,19 @@ export class CellSelection extends Feature {
 
     switch (e.key) {
       case 'ArrowDown':
-        sel.setFocus(fr == null ? 0 : Math.min(rowCount - 1, fr + 1), fc ?? cols[0]!);
+        sel.setFocusAndCollapseRanges(fr == null ? 0 : Math.min(rowCount - 1, fr + 1), fc ?? cols[0]!);
         e.preventDefault();
         return;
       case 'ArrowUp':
-        sel.setFocus(fr == null ? 0 : Math.max(0, fr - 1), fc ?? cols[0]!);
+        sel.setFocusAndCollapseRanges(fr == null ? 0 : Math.max(0, fr - 1), fc ?? cols[0]!);
         e.preventDefault();
         return;
       case 'ArrowRight':
-        sel.setFocus(fr ?? 0, cols[Math.min(cols.length - 1, ci + 1)]!);
+        sel.setFocusAndCollapseRanges(fr ?? 0, cols[Math.min(cols.length - 1, ci + 1)]!);
         e.preventDefault();
         return;
       case 'ArrowLeft':
-        sel.setFocus(fr ?? 0, cols[Math.max(0, ci - 1)]!);
+        sel.setFocusAndCollapseRanges(fr ?? 0, cols[Math.max(0, ci - 1)]!);
         e.preventDefault();
         return;
       case 'Tab': {
@@ -90,7 +90,7 @@ export class CellSelection extends Feature {
           nextCi = ci + 1;
           if (nextCi >= cols.length) { nextRow = Math.min(rowCount - 1, nextRow + 1); nextCi = 0; }
         }
-        sel.setFocus(nextRow, cols[nextCi]!);
+        sel.setFocusAndCollapseRanges(nextRow, cols[nextCi]!);
         e.preventDefault();
         return;
       }
@@ -102,10 +102,12 @@ export class CellSelection extends Feature {
         }
         break;
       case 'Escape':
-        // KeyPaging owns Esc while editing (cancel). When closed, Esc still
-        // clears the selection.
+        // KeyPaging owns Esc while editing (cancel). When closed, Esc clears
+        // both the row selection AND any active cell ranges so the user has
+        // a single "blank slate" gesture.
         if (ctx.grid.isEditing()) break;
         sel.clear();
+        sel.clearRanges();
         return;
     }
     super.handleKeyDown(ctx);

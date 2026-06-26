@@ -63,6 +63,32 @@ export class SelectionModel {
     this.emit();
   }
 
+  /** Move focus to (rowIndex, colId) AND collapse ranges to a 1×1 range at
+   *  the new focused cell — in a single emit, so the focus ring + range
+   *  overlay always paint at the same place. Used by every keyboard
+   *  navigation path (Arrow / Tab / Home / End / PageUp / PageDown /
+   *  Enter-nav). Mouse-driven focus moves keep `setFocus` so the multi-cell
+   *  range built by drag / shift-click survives the trailing `setFocus`
+   *  in `CellSelection.handleMouseDown`. */
+  setFocusAndCollapseRanges(rowIndex: number, colId: string): void {
+    const focusChanged = this._state.focusedRowIndex !== rowIndex
+      || this._state.focusedColId !== colId;
+    const current = this._state.ranges;
+    const alreadyCollapsed = current.length === 1
+      && current[0]!.rowStart === rowIndex
+      && current[0]!.rowEnd === rowIndex
+      && current[0]!.colIds.length === 1
+      && current[0]!.colIds[0] === colId;
+    if (!focusChanged && alreadyCollapsed) return;
+    this._state.focusedRowIndex = rowIndex;
+    this._state.focusedColId = colId;
+    this._focusedRowId = null;
+    if (!alreadyCollapsed) {
+      this._state.ranges = [{ rowStart: rowIndex, rowEnd: rowIndex, colIds: [colId] }];
+    }
+    this.emit();
+  }
+
   selectSingle(rowIndex: number): void {
     if (this.mode === 'none') return;
     this._state.selectedRowIndices.clear();
