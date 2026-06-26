@@ -35,11 +35,11 @@ interface GridApiSurface {
 }
 
 async function gridReady(page: import('@playwright/test').Page): Promise<void> {
-  await page.goto('/');
+  await page.goto('/?stress=light');
   await page.waitForFunction(
     () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,
     null,
-    { timeout: 45_000 },
+    { timeout: 20_000 },
   );
   // Settle frames.
   await page.evaluate(
@@ -69,7 +69,7 @@ test.describe('Cycle 6 / Task 2 — column state round-trip', () => {
     // `addInitScript` — the latter re-runs on every navigation including
     // `page.reload()`, which would wipe the saved layout the round-trip
     // test depends on.
-    await page.goto('/');
+    await page.goto('/?stress=light');
     await page.evaluate(() => localStorage.removeItem('cg-layout'));
   });
 
@@ -106,7 +106,7 @@ test.describe('Cycle 6 / Task 2 — column state round-trip', () => {
     await page.waitForFunction(
       () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,
       null,
-      { timeout: 45_000 },
+      { timeout: 20_000 },
     );
 
     // Confirm localStorage carried the expected order (debug aid).

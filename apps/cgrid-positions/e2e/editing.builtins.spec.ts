@@ -21,11 +21,11 @@ async function bounds(page: import('@playwright/test').Page, row: number, colId:
 
 test.describe('Cell editing — built-in editors (Cycle 5 / Task 2)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?stress=light');
     await page.waitForFunction(
       () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,
       null,
-      { timeout: 45_000 },
+      { timeout: 20_000 },
     );
   });
 

@@ -38,11 +38,11 @@ async function clickCell(page: import('@playwright/test').Page, row: number, col
 
 test.describe('Cell editing — triggers (Cycle 5 / Task 4)', () => {
   test.beforeEach(async ({ page }) => {
-    await page.goto('/');
+    await page.goto('/?stress=light');
     await page.waitForFunction(
       () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,
       null,
-      { timeout: 45_000 },
+      { timeout: 20_000 },
     );
   });
 
