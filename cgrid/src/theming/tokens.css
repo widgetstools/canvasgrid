@@ -518,14 +518,16 @@
 }
 .cg-side-bar-tab[aria-pressed="true"] {
   background: var(--cg-bg-color);
-  /* The pressed tab visually "joins" the open panel — drop the right
-   * border so the tab strip's border doesn't paint between the tab and
-   * the panel content. */
-  border-left: 1px solid var(--cg-bg-color);
+  /* User reference 2026-06-26 — active tab gets a 3 px blue
+   * left-border indicator, the most distinctive cue that "this panel
+   * is open". The border faces the open panel content (tab strip is
+   * at the RIGHT edge of the grid, so the border lives on the LEFT
+   * of the tab). Mirrored to the right for left-positioned side bars. */
+  border-left: 3px solid var(--cg-focus-ring-color);
 }
 .cg-side-bar[data-position="left"] .cg-side-bar-tab[aria-pressed="true"] {
   border-left: none;
-  border-right: 1px solid var(--cg-bg-color);
+  border-right: 3px solid var(--cg-focus-ring-color);
 }
 .cg-side-bar-tab-icon {
   font-size: 14px;

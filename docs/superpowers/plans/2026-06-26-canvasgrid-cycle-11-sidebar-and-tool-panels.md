@@ -353,7 +353,48 @@ one `cgridCanvas.resize()` so the canvas reflows.
 - Create: `cgrid/tests/sideBarHost.test.ts`.
 - Create: `apps/cgrid-positions/e2e/cycle11-sideBar.spec.ts`.
 
-**CSS required (matches the reference screenshots):**
+**Tab strip layout (user reference, 2026-06-26 — canonical for the
+collapsed state too):**
+
+```
+                        ┌──┐
+                        │  │  ← whole side bar is just the tab
+                        │  │     strip when no panel is open
+                        │📊│  ← Columns icon (table-with-side-rail
+                        │  │     glyph; SVG preferred over unicode)
+                        │C │  ← rotated label "Columns"
+                        │o │     reading top → bottom (writing-mode:
+                        │l │     vertical-rl)
+                        │u │
+                        │m │
+                        │n │
+                        │s │
+                        │  │
+                        │▽│  ← Filters icon (funnel glyph)
+                        │  │
+                        │F │
+                        │i │
+                        │l │
+                        │t │
+                        │e │
+                        │r │
+                        │s │
+                        └──┘
+```
+
+When a tab is ACTIVE (its panel is open), the tab gets:
+- A **3 px blue left border** (`border-left: 3px solid var(--cg-focus-ring-color)`)
+  flush against the panel content — this is the most distinctive
+  visual cue and MUST be present.
+- A slightly lifted background (`var(--cg-bg-color)` vs the strip's
+  `var(--cg-header-bg)`) so the active tab visually merges into the
+  open panel.
+
+Tab hover (non-active): background lifts to
+`color-mix(in srgb, var(--cg-header-bg) 80%, var(--cg-bg-color) 20%)`.
+
+**CSS required (matches the reference screenshots + the user's
+2026-06-26 tab-strip layout):**
 
 ```css
 .cg-side-bar {
@@ -386,6 +427,20 @@ one `cgridCanvas.resize()` so the canvas reflows.
 }
 .cg-side-bar-tab[aria-pressed="true"] {
   background: var(--cg-bg-color);
+  /* User reference 2026-06-26 — active tab gets a blue left-border
+   * indicator (3 px), the most distinctive cue that "this panel is
+   * open". Placed on the left because the tab strip sits at the
+   * RIGHT edge of the grid; the border faces the open panel. */
+  border-left: 3px solid var(--cg-focus-ring-color);
+}
+.cg-side-bar[data-position="left"] .cg-side-bar-tab[aria-pressed="true"] {
+  /* Mirror the border to the right edge when the side bar is on
+   * the LEFT side of the grid. */
+  border-left: none;
+  border-right: 3px solid var(--cg-focus-ring-color);
+}
+.cg-side-bar-tab:hover {
+  background: color-mix(in srgb, var(--cg-header-bg) 80%, var(--cg-bg-color) 20%);
 }
 .cg-side-bar-panel {
   flex: 1 1 auto;
@@ -484,25 +539,96 @@ Values, Column Labels (pivot). Search input filters the list by
 column name. Honors the suppress flags from `IToolPanelColumnCompParams`.
 
 **Read first:**
-- **REFERENCE SCREENSHOT (must be open before starting):**
-  `docs/catalog/screenshots/17-sidebar-columns-panel-open.png` — the
-  Pivot Mode toggle at top, search input with magnifier glyph,
-  checkbox column list with `⋮⋮` drag handles, "Row Groups" section
-  showing `[≡] Desk [×]` and `[≡] Region [×]` chips, "Values"
-  section showing `[≡] sum(Notional) [×]` and `[≡] sum(Market Value)
-  [×]` chips. Note the section headers are inline-rendered with
-  `Σ` / `=` icons. The currently-checked vs unchecked rows have
-  identical typography (no dimming on the unchecked rows beyond the
-  checkbox state).
+- **REFERENCE SCREENSHOTS (open before starting):**
+  - `docs/catalog/screenshots/17-sidebar-columns-panel-open.png` (the
+    legacy reference — uses a lighter teal-on-white theme; useful for
+    layout but the dark-theme spec below overrides colour choices).
+  - **User-supplied target (2026-06-26, dark theme):** described in
+    full ASCII layout below — the actual UI shape to ship.
 - `docs/catalog/17-side-bar-and-tool-panels.md` —
   `IToolPanelColumnCompParams` table for the seven suppress flags +
   `buttons`, `contractColumnSelection`, `suppressSyncLayoutWithGrid`.
-- ag-grid website fallback: `https://www.ag-grid.com/javascript-data-grid/tool-panel-columns/`
-  for the drop-zone hover state when a column is dragged into "Row
-  Groups" / "Values" (Cycle 11 ships the drop zones inert — drag-
-  into-zone is a no-op until Cycle 13 grouping lands).
+- ag-grid website fallback:
+  `https://www.ag-grid.com/javascript-data-grid/tool-panel-columns/`
+  for the drop-zone hover state and any sub-surface the screenshot
+  doesn't capture.
 - `cgrid/src/cgrid.ts` — `getColumnState()`, `applyColumnState()`,
   `setColumnVisible()`, `moveColumns()` from Cycle 6.
+
+**Target layout (user reference, 2026-06-26 — dark theme, the
+canonical UI for this task):**
+
+```
+┌─────────────────────────────────────────────┐ ┐
+│ ⬤━━━━  Pivot Mode                            │ │  Top section
+├─────────────────────────────────────────────┤ ┘
+│ 🔍  Search...                                │ ┐
+├─────────────────────────────────────────────┤ │  Column list
+│ ☑  ⋮⋮⋮  Athlete                              │ │  (scrollable
+│ ☑  ⋮⋮⋮  Age                                  │ │   region)
+│ ☑  ⋮⋮⋮  Country                              │ │
+│ ☑  ⋮⋮⋮  Year                                 │ │
+│ ☑  ⋮⋮⋮  Date                                 │ │
+│ ☑  ⋮⋮⋮  Gold                                 │ │
+│ ☑  ⋮⋮⋮  Silver                               │ │
+│ ☑  ⋮⋮⋮  Bronze                               │ │
+│ ☑  ⋮⋮⋮  Total                                │ │
+├─────────────────────────────────────────────┤ ┘
+│ ≡  Row Groups                                │ ┐
+│ ┌────────────────────────────────────────┐  │ │  Row Groups
+│ │ Drag here to set row groups            │  │ │  drop zone
+│ └────────────────────────────────────────┘  │ ┘  (dashed border)
+├─────────────────────────────────────────────┤
+│ Σ  Values                                    │ ┐
+│ ┌────────────────────────────────────────┐  │ │  Values
+│ │ Drag here to aggregate                 │  │ │  drop zone
+│ └────────────────────────────────────────┘  │ ┘  (dashed border)
+└─────────────────────────────────────────────┘
+```
+
+**Element-level requirements** (each MUST land in this task):
+
+1. **Pivot Mode toggle (top row):** A pill-shaped switch on the LEFT
+   of the row, label "Pivot Mode" on the right. Off state =
+   grey track with the knob on the left; on state = filled track
+   with the knob on the right. Click toggles. Hidden when
+   `suppressPivotMode: true`.
+2. **Search input:** Full-width text input with a magnifier icon
+   inside on the left. Placeholder "Search...". Typing filters the
+   column list below by colId / headerName substring (case-insensitive).
+   Hidden when `suppressColumnFilter: true`.
+3. **Column rows:** One row per visible column from `getColumnState()`.
+   Each row contains, left → right:
+   - A `<input type="checkbox">` reflecting the column's `hide`
+     state (checked = visible, unchecked = hidden). Toggle calls
+     `api.setColumnVisible(colId, show)`.
+   - A 6-dot drag handle (`⋮⋮⋮` rendered as 2 columns × 3 dots,
+     not the 2-dot ⋮⋮ glyph) for reorder. `cursor: grab` on hover,
+     `cursor: grabbing` during drag. Hidden when
+     `suppressColumnMove: true`.
+   - The column's `headerName` (or `colId` when no header name).
+4. **Row Groups section:** Section header `≡ Row Groups` (the icon
+   is the "horizontal lines" glyph U+2630 or an inline SVG). Below
+   the header, a drop zone container with `border: 1px dashed
+   var(--cg-border-color)`, `border-radius: 4px`, padding ~12 px,
+   centred placeholder text "Drag here to set row groups" in
+   muted colour. Cycle 11 ships the drop zone INERT — drop is a
+   no-op stub that logs `console.debug('[groups] drop (stub —
+   wired in Cycle 13)')`. Hidden when `suppressRowGroups: true`.
+5. **Values section:** Same structure as Row Groups but header is
+   `Σ Values` and placeholder text is "Drag here to aggregate".
+   Hidden when `suppressValues: true`.
+6. **No "Column Labels" / pivot section in Cycle 11.** The catalog
+   lists it but pivot lands in Cycle 16; ship Row Groups + Values
+   only to match the target screenshot.
+
+**Theme:** Dark — background `var(--cg-bg-color)` (which the demo
+resolves to the slate-navy), text `var(--cg-fg-color)` (off-white),
+border `var(--cg-border-color)`, drop-zone dashed border same colour
+at 60% opacity. The checkbox uses the existing
+`var(--cg-focus-ring-color)` blue when checked, hollow square when
+unchecked (system checkbox `accent-color: var(--cg-focus-ring-color)`
+is acceptable — no custom checkbox component).
 
 **Files:**
 - Create: `cgrid/src/interaction/toolPanels/columnsPanel.ts` —
@@ -591,25 +717,108 @@ parented inside the panel). Honors `suppressExpandAll`,
 `suppressFilterSearch`, `suppressSyncLayoutWithGrid`.
 
 **Read first:**
-- **REFERENCE SCREENSHOT (must be open before starting):**
-  `docs/catalog/screenshots/17-sidebar-filters-panel-open.png` —
-  search input at top, vertical list of every column with a `>`
-  chevron on the LEFT of each row indicating collapsed; expanding
-  rotates the chevron to `v`. The expanded row reveals the column's
-  filter editor INLINE (no popup). Note the alphabetical ordering
-  in the reference matches column definition order (no resort).
-- ag-grid website fallback: `https://www.ag-grid.com/javascript-data-grid/tool-panel-filters/`
-  for the expand-all chevron icon behavior + the empty-state
-  rendering when no columns have filters.
+- **REFERENCE SCREENSHOTS (open before starting):**
+  - `docs/catalog/screenshots/17-sidebar-filters-panel-open.png`
+    (legacy reference — useful for row layout).
+  - **User-supplied target (2026-06-26, dark theme):** described in
+    full ASCII layout below — the canonical UI for this task.
+- ag-grid website fallback:
+  `https://www.ag-grid.com/javascript-data-grid/tool-panel-filters/`
+  for expand-all chevron behaviour + empty-state when no columns
+  have filters.
 - `cgrid/src/interaction/filters/filterPopupHost.ts` — for the
-  filter-editor-mount pattern (reuse the existing editor
-  components, don't re-implement).
+  filter-editor-mount pattern. **REUSE** the existing editor
+  components — don't re-implement.
 - `cgrid/src/interaction/filters/setFilter.ts`,
   `cgrid/src/interaction/filters/textFilter.ts`,
   `cgrid/src/interaction/filters/numberFilter.ts`,
   `cgrid/src/interaction/filters/dateFilter.ts`,
   `cgrid/src/interaction/filters/multiCondition.ts` — the editor
   components themselves (Cycle 7 product).
+
+**Target layout (user reference, 2026-06-26 — dark theme,
+canonical UI):**
+
+Collapsed state (every row collapsed):
+```
+┌──────────────────────────────────────────┐
+│ 🔍  Search...                             │
+├──────────────────────────────────────────┤
+│ >  Athlete                                │
+│ >  Age                                    │
+│ >  Country                                │
+│ >  Year                                   │
+│ >  Date                                   │
+│ >  Gold                                   │
+│ >  Silver                                 │
+│ >  Bronze                                 │
+│ >  Total                                  │
+└──────────────────────────────────────────┘
+```
+
+One row expanded (e.g. Country, a set-filter column):
+```
+┌──────────────────────────────────────────┐
+│ 🔍  Search...                             │
+├──────────────────────────────────────────┤
+│ >  Athlete                                │
+│ >  Age                                    │
+│ v  Country                                │
+│ ┌────────────────────────────────────┐   │
+│ │ 🔍  Search...                       │   │  ← per-filter
+│ │ ☑  (Select All)                     │   │     search input
+│ │ ☑  Afghanistan                      │   │     (set-filter)
+│ │ ☑  Algeria                          │   │
+│ │ ☑  Argentina                        │   │
+│ │ ☑  Armenia                          │   │
+│ │ ☑  Australia                        │   │
+│ │ ... (scrollable)                    │   │
+│ └────────────────────────────────────┘   │
+│ >  Year                                   │
+│ >  Date                                   │
+└──────────────────────────────────────────┘
+```
+
+**Element-level requirements** (each MUST land in this task):
+
+1. **Top-level search input:** Magnifier glyph on the LEFT,
+   placeholder "Search...". Typing filters the column-row list by
+   `headerName` / `colId` substring (case-insensitive). Hidden when
+   `suppressFilterSearch: true`.
+2. **Column rows:** One row per FILTERABLE column from the column
+   model. Each row contains, left → right:
+   - A chevron — `>` when collapsed, `v` (or `⌄`) when expanded.
+     The chevron is the click target; clicking ANYWHERE on the row
+     also toggles. `cursor: pointer` on hover.
+   - The column's `headerName` (or `colId`).
+3. **Expanded state:** Below the chevron row, the column's existing
+   filter editor mounts INLINE inside a nested container with a
+   subtle border. The editor is the SAME component used by
+   `FilterPopupHost` — for set-filter columns this means a per-
+   filter search input + `(Select All)` checkbox + scrollable value
+   list with one checkbox per distinct value. For text/number/date
+   columns it's the matching condition + value inputs. Changes
+   propagate to `setFilterModel(colId, model)` exactly as the popup
+   editor does.
+4. **Expand-all button at top:** A small button between the search
+   input and the row list with the `≡` glyph or a "double chevron"
+   that toggles every row's expanded state. Hidden when
+   `suppressExpandAll: true`.
+5. **Empty state:** When NO column has a filter configured, the
+   panel renders centred placeholder text "No filterable columns"
+   in muted colour instead of an empty list.
+6. **Reuse the popup-editor factory.** Factor out
+   `FilterPopupHost`'s "build the filter component for colId" logic
+   into a `buildFilterComponent(colId, mountPoint)` helper if it
+   isn't already factored. Both the popup AND the panel call the
+   same helper so a bug fixed in one path is fixed in both.
+
+**Theme:** Dark — same tokens as Task 3 (Columns panel). The chevron
+uses `var(--cg-fg-color)` at 70% opacity (muted but legible). The
+expanded-editor container has `background:
+color-mix(in srgb, var(--cg-bg-color) 90%, white 10%)` (slightly
+lifted from the panel background) and a thin `var(--cg-border-color)`
+border.
 
 **Files:**
 - Create: `cgrid/src/interaction/toolPanels/filtersPanel.ts` —
