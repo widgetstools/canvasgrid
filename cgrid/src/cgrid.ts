@@ -35,6 +35,8 @@ import { FloatingFilterSubgrid } from './core/floatingFilterSubgrid';
 import { FloatingFilterOverlay } from './interaction/floatingFilterOverlay';
 import { PopupHost } from './interaction/editors/popupHost';
 import { FilterPopupHost } from './interaction/filters/filterPopupHost';
+import { ContextMenuHost } from './interaction/contextMenu/host';
+import type { MenuItem, GetContextMenuItemsParams } from './interaction/contextMenu/types';
 import { NumberFilterPopup } from './interaction/filters/numberFilter';
 import { DateFilterPopup } from './interaction/filters/dateFilter';
 import { TextFilterPopup, applyTrimInputToModel } from './interaction/filters/textFilter';
@@ -73,6 +75,8 @@ export type {
   CCellRendererSelector, CCellRendererSelectorParams, CCellRendererSelectorResult,
   ColCellOverrides,
   CellClass, CellClassRules, CellStyleFunc, HeaderClass,
+  // Cycle 10 / Task 1 — context-menu public types.
+  MenuItem, GetContextMenuItemsParams, GetContextMenuItemsCallback,
 } from './types';
 export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/registry';
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
@@ -327,6 +331,11 @@ export class CGrid<TRow = any> {
    *  date / text / multi / set). Owns its own PopupHost instance so it
    *  can mount + unmount independently of the editor's popup. */
   private filterPopupHost: FilterPopupHost;
+  /** Cycle 10 / Task 1 — right-click context menu portal. Mounts onto the
+   *  same editor-overlay host as the filter popup so menus stack above
+   *  the canvas. The host is intentionally minimal — it owns DOM lifecycle
+   *  + dismissal; item resolution lives in `resolveContextMenuItems`. */
+  private contextMenuHost: ContextMenuHost;
   /** Cycle 4 / Task 11 (cell-flash patch) — per-cell flash tracker.
    *  Drained from each `getViewport` chunk's `flashMask` and queried
    *  by the painter's `cellData` callback to produce `flashAlpha`. */
@@ -636,6 +645,12 @@ export class CGrid<TRow = any> {
       openEditor: (rowIndex, colId, charPress, mode) => this.openEditor(rowIndex, colId, charPress ?? null, mode ?? 'edit'),
       stopEditing: (cancel) => this.stopEditing(cancel),
       nextEditableCell: (rowIndex, colId, dir) => this.nextEditableCell(rowIndex, colId, dir),
+      // Cycle 10 / Task 1 — context-menu surface. RightClick resolves items
+      // here at event time (so a runtime setGridOption flip takes effect on
+      // the next right-click) and routes mount/close through the host.
+      resolveContextMenuItems: (hit) => this.resolveContextMenuItems(hit),
+      openContextMenu: (items, x, y, hit) => this.openContextMenu(items, x, y, hit),
+      closeContextMenu: () => this.closeContextMenu(),
     });
     this.cellEditorRegistry = new CellEditorRegistry();
     CellEditorRegistry.seed(this.cellEditorRegistry);
@@ -672,6 +687,10 @@ export class CGrid<TRow = any> {
       this.editorContainer,
       new PopupHost(this.editorContainer),
     );
+    // Cycle 10 / Task 1 — context menu portal. Mounts onto the editor
+    // overlay container so menus stack above the canvas + share the
+    // same DOM host as the editor and filter popup.
+    this.contextMenuHost = new ContextMenuHost(this.editorContainer);
 
     // Cycle 4 / Task 11 (cell-flash patch) — FlashRegistry tracks
     // active cell-flash animations. Deps are live-read closures so
@@ -1827,6 +1846,62 @@ export class CGrid<TRow = any> {
     this.filterPopupHost.close();
   }
 
+  /** Cycle 10 / Task 1 — resolve the right-click menu items for `hit`.
+   *  Builds `GetContextMenuItemsParams` from the hit, current cell-range
+   *  snapshot, and the default items list (empty until Task 2 plugs in
+   *  the registry), then routes through `CGridOptions.getContextMenuItems`
+   *  when configured. Falls back to the default list when no callback is
+   *  set.
+   *
+   *  Read at event time so a runtime `setGridOption('getContextMenuItems',
+   *  …)` takes effect on the next right-click without re-wiring the
+   *  feature chain. */
+  resolveContextMenuItems(hit: import('./interaction/hitTester').Hit): MenuItem[] {
+    if (this.destroyed) return [];
+    const rowIndex = hit.kind === 'cell' ? hit.rowIndex : null;
+    const colId = hit.kind === 'cell' ? hit.colId
+      : hit.kind === 'header' ? hit.colId
+      : hit.kind === 'headerGroup' ? hit.colId
+      : null;
+    // Task 2 will replace this empty list with `buildDefaultMenuItems(...)`.
+    const defaultItems: MenuItem[] = [];
+    const params: GetContextMenuItemsParams = {
+      rowIndex,
+      colId,
+      ranges: this.getCellRanges(),
+      defaultItems,
+    };
+    const callback = this.options.getContextMenuItems;
+    if (callback) return callback(params);
+    return defaultItems;
+  }
+
+  /** Cycle 10 / Task 1 — mount the right-click menu at viewport coords
+   *  `(x, y)` rendering `items`. Empty `items` is a no-op so callers can
+   *  always invoke this without the empty-list guard. */
+  openContextMenu(items: MenuItem[], x: number, y: number, hit: import('./interaction/hitTester').Hit): void {
+    if (this.destroyed) return;
+    if (items.length === 0) return;
+    const rowIndex = hit.kind === 'cell' ? hit.rowIndex : null;
+    const colId = hit.kind === 'cell' ? hit.colId
+      : hit.kind === 'header' ? hit.colId
+      : hit.kind === 'headerGroup' ? hit.colId
+      : null;
+    const params: GetContextMenuItemsParams = {
+      rowIndex,
+      colId,
+      ranges: this.getCellRanges(),
+      defaultItems: [],
+    };
+    this.contextMenuHost.open(items, x, y, params);
+  }
+
+  /** Cycle 10 / Task 1 — close any open context menu. Idempotent. */
+  closeContextMenu(): void {
+    if (this.destroyed) return;
+    this.contextMenuHost.close();
+  }
+
   /** Cycle 7 / Task 1 — current displayed (post-filter) row count. Backs
    *  the floating-filter E2E that asserts typing reduces the visible
    *  rows. Identical to the value last shipped via `modelUpdated`. */
@@ -2165,6 +2240,7 @@ export class CGrid<TRow = any> {
     this.rowEdit.close();
     this.floatingFilterOverlay.destroy();
     this.filterPopupHost.destroy();
+    this.contextMenuHost.destroy();
     // Cycle 4 / Task 11 (cell-flash patch) — cancel any in-flight
     // rAF tick + clear the registry so a late callback can't fire on
     // a destroyed grid.
