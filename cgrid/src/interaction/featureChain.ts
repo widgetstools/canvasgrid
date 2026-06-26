@@ -1,14 +1,22 @@
 // FeatureChain — builds the input chain and routes canvas + window DOM events
 // into it.
 //
-// Chain order (head → tail): ColumnResizing, EditTrigger, CellSelection,
-// HeaderClick, KeyPaging, OnHover. setCursor walks tail→head so the head's
-// cursor wins when more than one feature sets one in the same mousemove tick.
+// Chain order (head → tail): ColumnResizing, ColumnDrag, EditTrigger,
+// RangeSelection, CellSelection, HeaderClick, KeyPaging, OnHover. setCursor
+// walks tail→head so the head's cursor wins when more than one feature sets
+// one in the same mousemove tick.
 //
 // EditTrigger sits ahead of CellSelection so its head-of-chain
 // `suppressKeyboardEvent` short-circuit covers every downstream feature,
 // while its click / dblclick handlers call `super` first so focus is set
 // before the editor opens.
+//
+// RangeSelection sits between EditTrigger and CellSelection: it claims the
+// cell-range work on cell mousedown / drag, then forwards via `super` so
+// CellSelection still sets focus + row selection on the same press. Placing
+// it BEFORE CellSelection matters because CellSelection consumes cell
+// mousedowns (no `super` forward when the hit is a cell), so anything after
+// it would never see a cell press.
 //
 // Drag handling: on canvas mousedown, FeatureChain attaches window
 // mousemove/mouseup listeners so handleMouseDrag fires for every drag tick
@@ -23,6 +31,7 @@ import { CellSelection } from './features/cellSelection';
 import { KeyPaging } from './features/keyPaging';
 import { HeaderClick } from './features/headerClick';
 import { EditTrigger } from './features/editTrigger';
+import { RangeSelection } from './features/rangeSelection';
 
 /** Idle gap (ms) after the last wheel event before the axis lock releases.
  *  ~150ms matches the natural pause between separate trackpad gestures while
@@ -44,6 +53,7 @@ export class FeatureChain {
     this.head
       .append(new ColumnDrag())
       .append(new EditTrigger())
+      .append(new RangeSelection())
       .append(new CellSelection())
       .append(new HeaderClick())
       .append(new KeyPaging())
