@@ -210,6 +210,23 @@ export interface CGridLike {
    *  routes Ctrl+X / Cmd+X here inside the keydown so the clipboard
    *  write sees an active gesture. Cycle 10 / Task 5. */
   cutSelectedRanges(): Promise<void>;
+
+  // --- Suppression gates (Cycle 10 / Task 6) ---
+  /** Resolved `CGridOptions.suppressContextMenu` flag. Read by `RightClick`
+   *  on every `contextmenu` event so a runtime
+   *  `setGridOption('suppressContextMenu', true)` lights up on the next
+   *  right-click without re-wiring the feature chain. */
+  isContextMenuSuppressed(): boolean;
+  /** Resolved `CGridOptions.suppressClipboardApi` flag. Read by
+   *  `KeyboardShortcuts` on every Ctrl+C / Ctrl+V / Ctrl+X keydown so a
+   *  runtime flip lights up on the next keypress. When `true`, the
+   *  shortcut forwards via `super.handleKeyDown(ctx)` (no preventDefault)
+   *  so the host page's own clipboard listeners can take over. */
+  isClipboardApiSuppressed(): boolean;
+  /** Resolved `CGridOptions.suppressClipboardPaste` flag. Read by
+   *  `KeyboardShortcuts` on every Ctrl+V keydown. When `true`, the
+   *  shortcut forwards via super (no preventDefault). */
+  isClipboardPasteSuppressed(): boolean;
 }
 
 export interface CGridEventCtx {

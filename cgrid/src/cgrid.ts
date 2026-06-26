@@ -380,6 +380,12 @@ export class CGrid<TRow = any> {
   private a11y: A11yOverlay;
   private workerClient: WorkerClient;
   private destroyed = false;
+  /** Cycle 10 / Task 6 — methods that have already emitted a one-time
+   *  warn after being gated by `suppressClipboardApi`. Keeps the
+   *  console quiet for apps that repeatedly hit a suppressed entry
+   *  point (e.g. a Ctrl+C polling loop) while still surfacing the
+   *  first invocation so developers notice the gate. */
+  private clipboardSuppressedWarned = new Set<string>();
   private selectionUnsubscribe: () => void = () => {};
   private sortModel: SortModel = [];
   /** Snapshot of every leaf's mutable state taken after the column tree
@@ -673,6 +679,12 @@ export class CGrid<TRow = any> {
       // as copy: the writeText fires inside the keydown handler before
       // the clear `applyTransaction` follows.
       cutSelectedRanges: () => this.cutSelectedRanges(),
+      // Cycle 10 / Task 6 — suppression gates. Each is read at event /
+      // call time so a runtime `setGridOption` flip lights up on the
+      // next right-click / Ctrl+C / clipboard call without re-wiring.
+      isContextMenuSuppressed: () => this.options.suppressContextMenu === true,
+      isClipboardApiSuppressed: () => this.options.suppressClipboardApi === true,
+      isClipboardPasteSuppressed: () => this.options.suppressClipboardPaste === true,
     });
     this.cellEditorRegistry = new CellEditorRegistry();
     CellEditorRegistry.seed(this.cellEditorRegistry);
@@ -2070,6 +2082,16 @@ export class CGrid<TRow = any> {
    *  does the clipboard write inside the caller's user-gesture stack. */
   async copySelectedRangesToClipboard(): Promise<void> {
     if (this.destroyed) return;
+    // Cycle 10 / Task 6 — `suppressClipboardApi` rejects every clipboard
+    // entry point before any work happens. Apps that ship their own
+    // clipboard layer use this to take over without competing with the
+    // worker round-trip + writeText path here. A one-time warn surfaces
+    // the gate on first invocation (per method) so developers see the
+    // wiring; subsequent rejections are silent.
+    if (this.options.suppressClipboardApi === true) {
+      this.warnClipboardSuppressed('copySelectedRangesToClipboard');
+      throw new Error('clipboard-suppressed');
+    }
     const ranges = this.getCellRanges();
     if (ranges.length === 0) throw new Error('no-ranges');
     const delimiter = this.options.clipboardDelimiter ?? '\t';
@@ -2158,6 +2180,15 @@ export class CGrid<TRow = any> {
    *  dropped — paste never inserts rows / columns. */
   async pasteFromClipboard(): Promise<void> {
     if (this.destroyed) return;
+    // Cycle 10 / Task 6 — `suppressClipboardApi` rejects (apps own the
+    // surface); `suppressClipboardPaste` silently no-ops (paste is
+    // disabled but copy / cut still work). API wins over paste-only —
+    // an app gating both still gets the clearer rejection.
+    if (this.options.suppressClipboardApi === true) {
+      this.warnClipboardSuppressed('pasteFromClipboard');
+      throw new Error('clipboard-suppressed');
+    }
+    if (this.options.suppressClipboardPaste === true) return;
     const focusedRowIndex = this.selection.state.focusedRowIndex;
     const focusedColId = this.selection.state.focusedColId;
     if (focusedRowIndex === null || focusedColId === null) return;
@@ -2257,6 +2288,15 @@ export class CGrid<TRow = any> {
    *  sees each row at most once. */
   async cutSelectedRanges(): Promise<void> {
     if (this.destroyed) return;
+    // Cycle 10 / Task 6 — gate FIRST so the rejection error message is
+    // `clipboard-suppressed` (clearer than the downstream rejection
+    // `copySelectedRangesToClipboard` would emit with the same flag).
+    // The dedup logic on `warnClipboardSuppressed` keeps the console
+    // quiet when both paths fire back-to-back from a Ctrl+X loop.
+    if (this.options.suppressClipboardApi === true) {
+      this.warnClipboardSuppressed('cutSelectedRanges');
+      throw new Error('clipboard-suppressed');
+    }
     const ranges = this.getCellRanges();
     if (ranges.length === 0) throw new Error('no-ranges');
     // Copy first — atomicity hinges on this resolving before we touch
@@ -2306,6 +2346,24 @@ export class CGrid<TRow = any> {
     }
     if (updatesByRowId.size === 0) return;
     this.applyTransaction({ update: Array.from(updatesByRowId.values()) });
+  }
+
+  /** Cycle 10 / Task 6 — resolved `suppressClipboardPaste`. Reads the
+   *  option live so a runtime `setGridOption('suppressClipboardPaste',
+   *  true)` shows up immediately. Mirrors the boolean shape on
+   *  `DefaultMenuGrid`. */
+  isClipboardPasteSuppressed(): boolean {
+    return this.options.suppressClipboardPaste === true;
+  }
+
+  /** Cycle 10 / Task 6 — emit a one-time `console.warn` per clipboard
+   *  API method gated by `suppressClipboardApi`. Subsequent rejections
+   *  from the same method stay silent so a Ctrl+C polling loop or a
+   *  retry handler doesn't flood the console. */
+  private warnClipboardSuppressed(method: string): void {
+    if (this.clipboardSuppressedWarned.has(method)) return;
+    this.clipboardSuppressedWarned.add(method);
+    console.warn(`[cgrid] ${method} suppressed by suppressClipboardApi`);
   }
 
   /** Cycle 9 / Task 7 — fan `rangeSelectionChanged` out to listeners and
