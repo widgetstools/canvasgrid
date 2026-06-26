@@ -1,4 +1,10 @@
-import { CGrid, type CGridOptions, type CellPainter } from 'cgrid';
+import {
+  CGrid,
+  type CGridOptions,
+  type CellPainter,
+  type MenuItem,
+  type GetContextMenuItemsParams,
+} from 'cgrid';
 import type { Position } from './stomp';
 
 /**
@@ -343,6 +349,27 @@ export function createPositionsGrid(
       }
       return [...pinned, ...rest];
     },
+    // Cycle 10 / Task 1 — sample `getContextMenuItems`. Keeps every
+    // built-in default item (Copy / Paste / Cut / Export / Autosize /
+    // Pin / Reset) AND appends one custom "Clear filters" entry so the
+    // demo round-trips both the default-list mix-in pattern and a
+    // bespoke action. `params.defaultItems` is the registry list
+    // (`buildDefaultMenuItems` output); appending after it preserves
+    // separator placement.
+    getContextMenuItems: (params: GetContextMenuItemsParams): MenuItem[] => [
+      ...params.defaultItems,
+      { name: '---' },
+      {
+        name: 'Clear filters',
+        icon: '\u{1F9F9}', // 🧹 broom
+        action: () => {
+          const api = grid as unknown as {
+            setFilterModel: (model: unknown) => void;
+          };
+          api.setFilterModel(null);
+        },
+      },
+    ],
   };
   const grid = new CGrid<Position>(container, options);
   grid.registerCellRenderer('pnlPill', pnlPill);
