@@ -122,4 +122,48 @@ describe('SelectionModel ranges (Cycle 9 / Task 1)', () => {
     m.clearRanges();
     expect(Array.from(m.state.selectedRowIndices)).toEqual([7]);
   });
+
+  describe('setFocusAndCollapseRanges (keyboard-nav helper)', () => {
+    it('moves focus AND collapses an existing wide range to a 1×1 at the new cell in a single emit', () => {
+      const m = new SelectionModel('multiple');
+      m.setRanges([range(2, 5, ['cusip', 'ticker', 'price'])]);
+      m.setFocus(2, 'cusip');
+      const fn = vi.fn();
+      m.onChange(fn);
+      m.setFocusAndCollapseRanges(7, 'qty');
+      expect(m.state.focusedRowIndex).toBe(7);
+      expect(m.state.focusedColId).toBe('qty');
+      expect(m.getRanges()).toEqual([range(7, 7, ['qty'])]);
+      expect(fn).toHaveBeenCalledOnce();
+    });
+
+    it('is a no-op (no emit) when focus + ranges are already aligned to the target', () => {
+      const m = new SelectionModel('multiple');
+      m.setFocus(3, 'b');
+      m.setRanges([range(3, 3, ['b'])]);
+      const fn = vi.fn();
+      m.onChange(fn);
+      m.setFocusAndCollapseRanges(3, 'b');
+      expect(fn).not.toHaveBeenCalled();
+    });
+
+    it('collapses ranges even when only focus is already on the target cell', () => {
+      const m = new SelectionModel('multiple');
+      m.setFocus(3, 'b');
+      m.setRanges([range(0, 5, ['a', 'b', 'c'])]);
+      const fn = vi.fn();
+      m.onChange(fn);
+      m.setFocusAndCollapseRanges(3, 'b');
+      expect(m.getRanges()).toEqual([range(3, 3, ['b'])]);
+      expect(fn).toHaveBeenCalledOnce();
+    });
+
+    it('moves focus and creates a fresh 1×1 range when ranges started empty', () => {
+      const m = new SelectionModel('multiple');
+      m.setFocusAndCollapseRanges(0, 'a');
+      expect(m.state.focusedRowIndex).toBe(0);
+      expect(m.state.focusedColId).toBe('a');
+      expect(m.getRanges()).toEqual([range(0, 0, ['a'])]);
+    });
+  });
 });

@@ -53,7 +53,7 @@ export class KeyPaging extends Feature {
           ctx.grid.stopEditing(false);
           if (flags.enterNavigatesVerticallyAfterEdit && fr != null && fc != null) {
             const dir = e.shiftKey ? -1 : 1;
-            sel.setFocus(Math.max(0, Math.min(rowCount - 1, fr + dir)), fc);
+            sel.setFocusAndCollapseRanges(Math.max(0, Math.min(rowCount - 1, fr + dir)), fc);
           }
           e.preventDefault();
           return;
@@ -64,7 +64,7 @@ export class KeyPaging extends Feature {
             const dir = e.shiftKey ? 'backward' : 'forward';
             const next = ctx.grid.nextEditableCell(fr, fc, dir);
             if (next) {
-              sel.setFocus(next.rowIndex, next.colId);
+              sel.setFocusAndCollapseRanges(next.rowIndex, next.colId);
               if (!flags.suppressStartEditOnTab) {
                 ctx.grid.openEditor(next.rowIndex, next.colId, undefined, 'edit');
               }
@@ -87,7 +87,7 @@ export class KeyPaging extends Feature {
           if (fr == null || fc == null) break;
           if (flags.enterNavigatesVertically) {
             const dir = e.shiftKey ? -1 : 1;
-            sel.setFocus(Math.max(0, Math.min(rowCount - 1, fr + dir)), fc);
+            sel.setFocusAndCollapseRanges(Math.max(0, Math.min(rowCount - 1, fr + dir)), fc);
             e.preventDefault();
             return;
           }
@@ -104,22 +104,22 @@ export class KeyPaging extends Feature {
     switch (e.key) {
       case 'PageDown': {
         const page = Math.max(1, ctx.grid.visibleRowIndices().length);
-        sel.setFocus(Math.min(rowCount - 1, (fr ?? 0) + page), fc ?? cols[0]!);
+        sel.setFocusAndCollapseRanges(Math.min(rowCount - 1, (fr ?? 0) + page), fc ?? cols[0]!);
         e.preventDefault();
         return;
       }
       case 'PageUp': {
         const page = Math.max(1, ctx.grid.visibleRowIndices().length);
-        sel.setFocus(Math.max(0, (fr ?? 0) - page), fc ?? cols[0]!);
+        sel.setFocusAndCollapseRanges(Math.max(0, (fr ?? 0) - page), fc ?? cols[0]!);
         e.preventDefault();
         return;
       }
       case 'Home':
-        sel.setFocus(fr ?? 0, cols[0]!);
+        sel.setFocusAndCollapseRanges(fr ?? 0, cols[0]!);
         e.preventDefault();
         return;
       case 'End':
-        sel.setFocus(fr ?? 0, cols[cols.length - 1]!);
+        sel.setFocusAndCollapseRanges(fr ?? 0, cols[cols.length - 1]!);
         e.preventDefault();
         return;
     }

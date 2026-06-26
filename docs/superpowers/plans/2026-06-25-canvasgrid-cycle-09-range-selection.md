@@ -700,6 +700,44 @@ range set actually changed since the last finished ping.
 
 ---
 
+## Task 8 — patch: collapse ranges on keyboard focus moves
+
+**Symptom (reported visually):** After a drag-created range, pressing an
+arrow key moved the focus ring to the new cell but the range overlay
+stayed painting the old (wide) range. The user saw TWO blue rectangles
+on the same row — "there can't be two focused cells at the same time."
+
+**Root cause:** Every keyboard navigation handler called
+`SelectionModel.setFocus(...)` without touching ranges. Focus moved;
+ranges stayed. The two paint passes (`overlayPainter` for focus,
+`rangeOverlayPainter` for ranges) drew on different cells.
+
+**Fix:** Added `SelectionModel.setFocusAndCollapseRanges(rowIndex, colId)`
+which moves focus AND collapses ranges to a 1×1 at the new cell in a
+single emit. Every keyboard nav handler in `cellSelection.ts` (Arrow
+Up/Down/Left/Right + Tab) and `keyPaging.ts` (Enter-nav both edit-open
+and edit-closed, Tab-with-edit, Home, End, PageUp, PageDown) now uses
+the new helper. Mouse-driven `setFocus` calls (`CellSelection.handleMouseDown`,
+editor-open Tab) are untouched so multi-cell drag / shift-click ranges
+survive their trailing `setFocus`. Escape now also calls
+`sel.clearRanges()` so the "blank slate" gesture clears both row
+selection and the active range in one keystroke.
+
+- [x] Unit: `selectionRange.test.ts` adds 4 cases — collapse from wide,
+      no-op when already aligned, collapse when only ranges differ,
+      fresh seed from empty ranges. 853/853 unit tests pass.
+- [x] E2E: `cycle9-rangeFocusCollapse.spec.ts` — 4 specs covering
+      ArrowRight after a wide seeded range, ArrowDown / Home / End each
+      collapsing a multi-row × multi-column range, Escape clearing the
+      active range, and the inverse guard that programmatic setFocus
+      does NOT collapse (so multi-cell ranges survive non-keyboard
+      focus moves). All 128/128 Playwright specs pass.
+
+**Commit:** `fix(cgrid): collapse cell ranges on keyboard focus moves
+(two-focused-cells bug)`.
+
+---
+
 ## Cycle 9 status: COMPLETE
 
 Closed on 2026-06-26.
@@ -713,7 +751,9 @@ Closed on 2026-06-26.
 - [x] Task 5 — Fill handle (drag-to-extend + value commit) (PR #18).
 - [x] Task 6 — Range API + `cellSelection` options bundle (PR #19).
 - [x] Task 7 — `rangeSelectionChanged` + `cellSelectionChanged` events
-      + Cycle 9 exit ritual (this commit).
+      + Cycle 9 exit ritual.
+- [x] Task 8 — patch: collapse ranges on keyboard focus moves
+      (two-focused-cells bug).
 
 **Exit gates met:**
 - `npm run typecheck --workspaces` clean.
