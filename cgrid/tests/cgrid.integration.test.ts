@@ -628,6 +628,60 @@ describe('CGrid integration', () => {
     expect(tree.maxDepth).toBe(1);
     grid.destroy();
   });
+
+  describe('allColIds renders in zone order (left | center | right), not definition order', () => {
+    // Regression for the range-selection drag bug: defining columns as
+    // [center, center, right-pinned, center] used to make a horizontal
+    // drag from the first center column to the last center column pull
+    // the right-pinned column into the middle of the selection slice
+    // (because `allColIds` returned definition order). The fix sorts by
+    // pinned zone so the slice is always visually contiguous.
+    it('puts pinned-right columns AFTER all center columns', () => {
+      const container = document.createElement('div');
+      container.style.cssText = 'width:800px; height:600px;';
+      container.className = 'cg-theme-quartz';
+      document.body.appendChild(container);
+      const grid = new CGrid<{ id: string }>(container, {
+        columnDefs: [
+          { field: 'positionId', pinned: 'left' },
+          { field: 'cusip', pinned: 'left' },
+          { field: 'currentPrice' },
+          { field: 'pnl', pinned: 'right' }, // defined HERE (middle of array)
+          { field: 'dailyPnl' },
+          { field: 'unrealizedPnl' },
+        ],
+        getRowId: (r) => r.id,
+      });
+      const cols = (grid as any).allColIdsInRenderOrder();
+      expect(cols).toEqual([
+        // Left-pinned first (definition order within zone)
+        'positionId', 'cusip',
+        // Center next (definition order within zone) — `pnl` is NOT here
+        'currentPrice', 'dailyPnl', 'unrealizedPnl',
+        // Right-pinned last
+        'pnl',
+      ]);
+      grid.destroy();
+    });
+
+    it('returns the same array when nothing is pinned (no behavioural regression for plain grids)', () => {
+      const container = document.createElement('div');
+      container.style.cssText = 'width:800px; height:600px;';
+      container.className = 'cg-theme-quartz';
+      document.body.appendChild(container);
+      const grid = new CGrid<{ id: string }>(container, {
+        columnDefs: [
+          { field: 'a' },
+          { field: 'b' },
+          { field: 'c' },
+        ],
+        getRowId: (r) => r.id,
+      });
+      const cols = (grid as any).allColIdsInRenderOrder();
+      expect(cols).toEqual(['a', 'b', 'c']);
+      grid.destroy();
+    });
+  });
 });
 
 describe('inferRowIdField', () => {

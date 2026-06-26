@@ -577,7 +577,7 @@ export class CGrid<TRow = any> {
       visibleRowIndices: () => this.viewport.visibleRows
         .filter((r) => r.subgrid.isData)
         .map((r) => r.localRowIndex),
-      allColIds: () => this.columnOrder.map((c) => c.colId),
+      allColIds: () => this.allColIdsInRenderOrder(),
       totalRowCount: () => this.rowCount,
       resizeColumn: (colId, dx) => this.resizeColumn(colId, dx),
       finishColumnResize: (colId) => this.finishColumnResize(colId),
@@ -2708,6 +2708,34 @@ export class CGrid<TRow = any> {
     return ids
       .map((id) => this.columnDefsMap.get(id)!)
       .filter((def) => !def.hide);
+  }
+
+  /** Visible-leaf colIds in RENDER order: left-pinned first, then center,
+   *  then right-pinned. Within each zone the columns keep their definition
+   *  order. Used by interaction features (arrow-key nav, range selection,
+   *  header-click column band) so a horizontal drag in the center zone
+   *  produces a slice of CENTER columns, not a slice over the raw
+   *  definition array that interleaves pinned columns positioned earlier
+   *  in `columnDefs`.
+   *
+   *  Why this matters: `columnDefs` is authored top-to-bottom in the order
+   *  the data is shaped (e.g. `currentPrice` near the middle, `pnl` six
+   *  positions later but pinned-right). The visual layout pulls every
+   *  pinned-right column to the rightmost zone, so a drag from
+   *  `currentPrice` to `unrealizedPnl` should produce
+   *  `[currentPrice, dailyPnl, unrealizedPnl]` (visually contiguous), NOT
+   *  `[currentPrice, pnl, dailyPnl, unrealizedPnl]` (definition slice
+   *  that drags the right-pinned `pnl` into the middle of the rect). */
+  private allColIdsInRenderOrder(): string[] {
+    const left: string[] = [];
+    const center: string[] = [];
+    const right: string[] = [];
+    for (const c of this.columnOrder) {
+      if (c.pinned === 'left') left.push(c.colId);
+      else if (c.pinned === 'right') right.push(c.colId);
+      else center.push(c.colId);
+    }
+    return [...left, ...center, ...right];
   }
 
   private workerColumns(): WorkerColumn[] {
