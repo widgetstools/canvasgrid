@@ -14,7 +14,7 @@
  * accessor.
  */
 import { describe, it, expect } from 'vitest';
-import { serializeRanges } from '../src/worker/passes/clipboardPass';
+import { serializeRanges, deserializeTsv } from '../src/worker/passes/clipboardPass';
 import type { SelectionRange } from '../src/types';
 
 type Row = Record<string, unknown>;
@@ -155,6 +155,105 @@ describe('serializeRanges (Cycle 10 / Task 3)', () => {
       [{ rowStart: 0, rowEnd: 0, colIds: ['price', 'qty'] }],
     );
     expect(tsv).toBe('1234.5\t100');
+  });
+
+  it('round-trips a 2×2 TSV through serialize → deserialize → identical 2D array', () => {
+    const rows: Row[] = [
+      { a: 'a', b: 'b' },
+      { a: 'c', b: 'd' },
+    ];
+    const tsv = serializeRanges(
+      rows,
+      cols([['a', 'a'], ['b', 'b']]),
+      [{ rowStart: 0, rowEnd: 1, colIds: ['a', 'b'] }],
+    );
+    expect(deserializeTsv(tsv)).toEqual([
+      ['a', 'b'],
+      ['c', 'd'],
+    ]);
+  });
+
+  it('round-trips a quoted cell containing an embedded tab', () => {
+    const rows: Row[] = [{ a: 'has\ttab', b: 'plain' }];
+    const tsv = serializeRanges(
+      rows,
+      cols([['a', 'a'], ['b', 'b']]),
+      [{ rowStart: 0, rowEnd: 0, colIds: ['a', 'b'] }],
+    );
+    expect(deserializeTsv(tsv)).toEqual([['has\ttab', 'plain']]);
+  });
+
+  it('round-trips a quoted cell containing an embedded newline', () => {
+    const rows: Row[] = [{ a: 'line1\nline2', b: 'plain' }];
+    const tsv = serializeRanges(
+      rows,
+      cols([['a', 'a'], ['b', 'b']]),
+      [{ rowStart: 0, rowEnd: 0, colIds: ['a', 'b'] }],
+    );
+    expect(deserializeTsv(tsv)).toEqual([['line1\nline2', 'plain']]);
+  });
+
+  it('round-trips a quoted cell containing an embedded double-quote (RFC-4180 doubled)', () => {
+    const rows: Row[] = [{ a: 'she said "hi"' }];
+    const tsv = serializeRanges(
+      rows,
+      cols([['a', 'a']]),
+      [{ rowStart: 0, rowEnd: 0, colIds: ['a'] }],
+    );
+    expect(deserializeTsv(tsv)).toEqual([['she said "hi"']]);
+  });
+
+  it('parses both \\r\\n and \\n line endings identically', () => {
+    // The CRLF and LF inputs decode to the same 2D array. Mixed
+    // (\r\n between row 0 and 1, \n between row 1 and 2) also collapses
+    // — apps pasting from Windows + Unix sources hit this combo.
+    expect(deserializeTsv('a\tb\r\nc\td')).toEqual([['a', 'b'], ['c', 'd']]);
+    expect(deserializeTsv('a\tb\nc\td')).toEqual([['a', 'b'], ['c', 'd']]);
+    expect(deserializeTsv('a\tb\r\nc\td\ne\tf')).toEqual([
+      ['a', 'b'], ['c', 'd'], ['e', 'f'],
+    ]);
+  });
+
+  it('a single trailing newline does NOT produce an extra empty row', () => {
+    expect(deserializeTsv('a\tb\nc\td\n')).toEqual([['a', 'b'], ['c', 'd']]);
+    expect(deserializeTsv('a\tb\r\nc\td\r\n')).toEqual([['a', 'b'], ['c', 'd']]);
+  });
+
+  it('round-trips with a custom delimiter (CSV with comma)', () => {
+    const rows: Row[] = [
+      { a: 'a', b: 'b' },
+      { a: 'c,d', b: 'plain' },
+    ];
+    const tsv = serializeRanges(
+      rows,
+      cols([['a', 'a'], ['b', 'b']]),
+      [{ rowStart: 0, rowEnd: 1, colIds: ['a', 'b'] }],
+      ',',
+    );
+    expect(deserializeTsv(tsv, ',')).toEqual([
+      ['a', 'b'],
+      ['c,d', 'plain'],
+    ]);
+  });
+
+  it('parses an empty cell at the end of a row as an empty string slot', () => {
+    expect(deserializeTsv('a\t')).toEqual([['a', '']]);
+    expect(deserializeTsv('a\tb\n\td')).toEqual([['a', 'b'], ['', 'd']]);
+  });
+
+  it('returns an empty array for an empty input string', () => {
+    expect(deserializeTsv('')).toEqual([]);
+  });
+
+  it('handles a 1×1 unquoted cell', () => {
+    expect(deserializeTsv('hello')).toEqual([['hello']]);
+  });
+
+  it('parses a quoted cell that contains both delimiter and newline', () => {
+    // Excel pastes a multi-line cell as `"line1\nline2"`. The combined
+    // case verifies the state machine doesn't bail when both special
+    // chars land inside the same quoted cell.
+    expect(deserializeTsv('"a\tb\nc"\tplain')).toEqual([['a\tb\nc', 'plain']]);
   });
 
   it('performance: 10k × 50 range serialises in well under the cycle\'s 50 ms budget', () => {

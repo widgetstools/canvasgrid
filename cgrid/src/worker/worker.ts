@@ -13,7 +13,7 @@ import {
   MeasureCache, measureKey, offscreenMeasurer, workerCanMeasure, wrapTextToHeight,
 } from './measureText';
 import { measureColumnWidths, type AutosizeColumnSpec } from './autosize';
-import { serializeRanges } from './passes/clipboardPass';
+import { serializeRanges, deserializeTsv } from './passes/clipboardPass';
 
 interface AutoHeightCol {
   colId: string;
@@ -888,6 +888,20 @@ export function createWorkerHost(post: PostFn): WorkerHost {
               resolver(heights);
             }
             post({ id: req.id, type: 'measureTextAck' });
+            break;
+          }
+
+          case 'clipboardDeserialize': {
+            // Cycle 10 / Task 4 — TSV / CSV parse off the main thread.
+            // `text` is the raw payload from `navigator.clipboard.readText`;
+            // we hand back the parsed 2D array so the main thread can
+            // anchor it at the focused cell and build a single
+            // `applyTransaction({ update })`. The parse is a pure
+            // state-machine walk (no Worker-side state to read), so no
+            // pipeline awaits are needed before replying.
+            const { text, delimiter } = req.payload;
+            const rows = deserializeTsv(text, delimiter);
+            post({ id: req.id, type: 'clipboardDeserializeResult', rows });
             break;
           }
 

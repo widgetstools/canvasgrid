@@ -27,18 +27,21 @@ function makeGridStub(): {
   reset: ReturnType<typeof vi.fn>;
   pinned: ReturnType<typeof vi.fn>;
   copy: ReturnType<typeof vi.fn>;
+  paste: ReturnType<typeof vi.fn>;
 } {
   const autoSize = vi.fn();
   const reset = vi.fn();
   const pinned = vi.fn();
   const copy = vi.fn().mockResolvedValue(undefined);
+  const paste = vi.fn().mockResolvedValue(undefined);
   const grid: DefaultMenuGrid = {
     autoSizeAllColumns: autoSize as unknown as DefaultMenuGrid['autoSizeAllColumns'],
     resetColumnState: reset as unknown as DefaultMenuGrid['resetColumnState'],
     setColumnsPinned: pinned as unknown as DefaultMenuGrid['setColumnsPinned'],
     copySelectedRangesToClipboard: copy as unknown as DefaultMenuGrid['copySelectedRangesToClipboard'],
+    pasteFromClipboard: paste as unknown as DefaultMenuGrid['pasteFromClipboard'],
   };
-  return { grid, autoSize, reset, pinned, copy };
+  return { grid, autoSize, reset, pinned, copy, paste };
 }
 
 function makeParams(overrides: Partial<GetContextMenuItemsParams> = {}): GetContextMenuItemsParams {
@@ -102,6 +105,14 @@ describe('buildDefaultMenuItems', () => {
     const copyItem = items.find((i) => i.name === 'Copy')!;
     copyItem.action!(makeParams({ colId: 'a' }));
     expect(copy).toHaveBeenCalledTimes(1);
+  });
+
+  it('Paste action routes to grid.pasteFromClipboard() (Cycle 10 / Task 4)', () => {
+    const { grid, paste } = makeGridStub();
+    const items = buildDefaultMenuItems(grid, makeParams({ colId: 'a' }));
+    const pasteItem = items.find((i) => i.name === 'Paste')!;
+    pasteItem.action!(makeParams({ colId: 'a' }));
+    expect(paste).toHaveBeenCalledTimes(1);
   });
 
   it('Export action exists and does not throw (stub)', () => {
