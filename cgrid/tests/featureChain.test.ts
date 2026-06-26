@@ -94,6 +94,10 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
     // existing chain tests behave with Cycle 9 defaults (drag enabled,
     // header click selects column band).
     getCellSelectionOptions: () => undefined,
+    // Cycle 9 / Task 7 — features emit `rangeSelectionChanged` via this
+    // hook. No-op here so the chain tests don't depend on the event
+    // surface; event semantics are covered in rangeSelectionEvents.test.ts.
+    emitRangeSelectionChanged: () => {},
   } as unknown as CGridLike;
   const chain = new FeatureChain(grid);
   return { canvas, sel, chain, emitClicked, emitDoubleClicked, resizeColumn, cycleSort, scrollBy, openEditor, stopEditing };

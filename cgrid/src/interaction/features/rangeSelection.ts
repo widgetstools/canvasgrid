@@ -16,7 +16,12 @@
 // CellSelection runs its shift-range / ctrl-toggle row-selection logic on
 // the same press. Shift takes priority when both shift+ctrl are held.
 //
-// The rangeSelectionChanged event lands in Task 7.
+// Cycle 9 / Task 7 — every range-mutating path here also fans out the
+// `rangeSelectionChanged` event via `ctx.grid.emitRangeSelectionChanged`:
+//   - plain drag → start (mousedown), mid (each move tick), end (mouseup)
+//   - shift-click / ctrl-click → a single started+finished event
+//   - mouseup with no drag in flight → no event (forwarded only)
+// The CGrid emitter handles the `cellSelectionChanged` debounce on top.
 //
 // Chain position: ahead of CellSelection. CellSelection consumes cell
 // mousedowns to set focus + row selection; placing RangeSelection earlier
@@ -70,6 +75,9 @@ export class RangeSelection extends Feature {
         sel.extendLastRangeToCell(ctx.hit.rowIndex, ctx.hit.colId, ctx.grid.allColIds());
       }
       this.state = null;
+      // Shift-click is a single instantaneous extend — no drag state, so
+      // the event is both started and finished.
+      ctx.grid.emitRangeSelectionChanged(true, true);
       super.handleMouseDown(ctx);
       return;
     }
@@ -82,6 +90,7 @@ export class RangeSelection extends Feature {
         colIds: [ctx.hit.colId],
       });
       this.state = null;
+      ctx.grid.emitRangeSelectionChanged(true, true);
       super.handleMouseDown(ctx);
       return;
     }
@@ -91,6 +100,9 @@ export class RangeSelection extends Feature {
       rowEnd: ctx.hit.rowIndex,
       colIds: [ctx.hit.colId],
     }]);
+    // Drag start — emits started:true, finished:false. The mid-drag
+    // ticks land in handleMouseDrag and the end in handleMouseUp.
+    ctx.grid.emitRangeSelectionChanged(true, false);
     // Forward so CellSelection still sets focus + row selection on the
     // same press. CellSelection consumes the cell mousedown, so anything
     // after it won't see this event — that's fine; range work is done.
@@ -121,6 +133,10 @@ export class RangeSelection extends Feature {
     const colIds = allCols.slice(colLo, colHi + 1);
 
     ctx.grid.selection.setRanges([{ rowStart, rowEnd, colIds }]);
+    // Mid-drag ping — started:false, finished:false. The
+    // cellSelectionChanged debounce inside CGrid drops this; only the
+    // raw rangeSelectionChanged listener sees it.
+    ctx.grid.emitRangeSelectionChanged(false, false);
   }
 
   override handleMouseUp(ctx: CGridEventCtx): void {
@@ -131,6 +147,9 @@ export class RangeSelection extends Feature {
     // Commit-in-place: the last drag tick already wrote the final range
     // onto the SelectionModel. Returning to idle is the entire commit.
     this.state = null;
+    // Drag end — emits started:false, finished:true. This is the ping
+    // that drives the cellSelectionChanged fan-out.
+    ctx.grid.emitRangeSelectionChanged(false, true);
     super.handleMouseUp(ctx);
   }
 }

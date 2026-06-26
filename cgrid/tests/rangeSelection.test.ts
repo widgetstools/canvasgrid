@@ -24,6 +24,10 @@ interface MockGrid {
     suppressRow?: boolean;
     suppressDrag?: boolean;
   } | undefined;
+  /** Task 7 — features emit `rangeSelectionChanged` through this hook.
+   *  Mocks default to a no-op (event semantics tested in
+   *  rangeSelectionEvents.test.ts). */
+  emitRangeSelectionChanged?: (started: boolean, finished: boolean) => void;
 }
 
 function ctx(
@@ -45,6 +49,7 @@ function makeGrid(overrides: Partial<MockGrid> = {}): MockGrid {
     selection: new SelectionModel('multiple'),
     allColIds: () => ['cusip', 'ticker', 'price', 'qty'],
     getCellSelectionOptions: () => undefined,
+    emitRangeSelectionChanged: () => {},
     ...overrides,
   };
 }
@@ -75,6 +80,7 @@ function makeFullGrid(
     getMultiSortKey: () => 'Shift',
     toggleColumnGroup: () => {},
     getCellSelectionOptions: () => undefined,
+    emitRangeSelectionChanged: () => {},
     ...overrides,
   };
   return Object.assign(grid, { cycleSort, selectColumnSpy });

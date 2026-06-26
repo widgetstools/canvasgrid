@@ -186,6 +186,10 @@ interface MockGrid {
     suppressRow?: boolean;
     suppressDrag?: boolean;
   } | undefined;
+  /** Task 7 — features emit `rangeSelectionChanged` through this hook.
+   *  Mocks default to a no-op (event semantics tested in
+   *  rangeSelectionEvents.test.ts). */
+  emitRangeSelectionChanged?: (started: boolean, finished: boolean) => void;
 }
 
 function ctx(
@@ -219,6 +223,7 @@ function makeGrid(
     getMultiSortKey: () => 'Shift',
     toggleColumnGroup: () => {},
     getCellSelectionOptions: () => cellSelection,
+    emitRangeSelectionChanged: () => {},
   };
 }
 

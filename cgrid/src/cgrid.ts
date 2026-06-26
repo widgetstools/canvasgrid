@@ -243,6 +243,23 @@ function resolveFilterType(
  *  everything else. Empty source returns `undefined` so the caller leaves
  *  the cell alone. `targetIndex` is 0-based into the EXTENDED rows (the
  *  ones beyond the source rect). */
+/** Structural compare for two range lists. Used by Cycle 9 / Task 7 to
+ *  debounce `cellSelectionChanged` — a finished `rangeSelectionChanged`
+ *  that lands on the same set as before skips the cell event. */
+function rangesEqual(a: SelectionRange[], b: SelectionRange[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]!;
+    const y = b[i]!;
+    if (x.rowStart !== y.rowStart || x.rowEnd !== y.rowEnd) return false;
+    if (x.colIds.length !== y.colIds.length) return false;
+    for (let j = 0; j < x.colIds.length; j++) {
+      if (x.colIds[j] !== y.colIds[j]) return false;
+    }
+  }
+  return true;
+}
+
 export function defaultFillExtrapolate(sourceValues: unknown[], targetIndex: number): unknown {
   if (sourceValues.length === 0) return undefined;
   const allNumeric = sourceValues.every((v) => typeof v === 'number' && Number.isFinite(v));
@@ -366,6 +383,12 @@ export class CGrid<TRow = any> {
    *  emit `virtualColumnsChanged` and external listeners only see real
    *  post-mount shifts. Cycle 6 / Task 8. */
   private prevVirtualColRange: { first: string | null; last: string | null } | null = null;
+  /** Cycle 9 / Task 7 — snapshot of the range set as it stood at the last
+   *  `cellSelectionChanged` emission. Used to debounce: a finished
+   *  rangeSelectionChanged that lands on the same set as before skips
+   *  the cellSelectionChanged fan-out. Deep-cloned on store so a later
+   *  in-place mutation can't false-equal. */
+  private lastEmittedCellSelectionRanges: SelectionRange[] = [];
 
   constructor(container: HTMLElement, private options: CGridOptions<TRow>) {
     if (!options.getRowId) throw new Error('[cgrid] options.getRowId is required');
@@ -572,6 +595,8 @@ export class CGrid<TRow = any> {
       getFillHandleDirection: () => this.options.fillHandleDirection ?? 'y',
       getRangeBottomRight: (range) => this.getRangeBottomRight(range),
       commitFill: (source, target) => this.commitFill(source, target),
+      emitRangeSelectionChanged: (started, finished) =>
+        this.emitRangeSelectionChanged(started, finished),
       getMultiSortKey: () => this.options.multiSortKey === null
         ? null
         : (this.options.multiSortKey ?? 'Shift'),
@@ -1244,6 +1269,12 @@ export class CGrid<TRow = any> {
     const extend = opts?.extend === true;
     const allCols = this.columnOrder.map((c) => c.colId);
     this.selection.selectColumnBand(colId, allCols, this.rowCount, extend);
+    // Cycle 9 / Task 7 — header-click column-band is an instantaneous
+    // gesture, so the event pair fires with started + finished both
+    // true. Skip when selectColumnBand short-circuited (rowCount 0 /
+    // unknown colId) — the ranges-equal check inside the emit drops
+    // the cellSelectionChanged ping in that case.
+    this.emitRangeSelectionChanged(true, true);
   }
 
   /** Cycle 9 / Task 5 — pixel position of the bottom-right corner of
@@ -1902,13 +1933,44 @@ export class CGrid<TRow = any> {
   addCellRange(range: SelectionRange): void {
     if (this.destroyed) return;
     this.selection.addRange(range);
+    // Programmatic mutation = instantaneous; both started + finished true.
+    this.emitRangeSelectionChanged(true, true);
   }
 
   /** Drop every range. Row selection + focused cell unaffected.
    *  Cycle 9 / Task 6. */
   clearCellRanges(): void {
     if (this.destroyed) return;
+    const hadRanges = this.selection.getRanges().length > 0;
     this.selection.clearRanges();
+    // No emit when the call was a no-op (already empty). `started: false`
+    // because a clear is the END of a selection, not the START — there's
+    // no anchor to drag from.
+    if (hadRanges) this.emitRangeSelectionChanged(false, true);
+  }
+
+  /** Cycle 9 / Task 7 — fan `rangeSelectionChanged` out to listeners and
+   *  drive the `cellSelectionChanged` debounce. Called from feature code
+   *  (RangeSelection / FillHandle) at gesture start / mid / end, and from
+   *  the programmatic mutation paths (`addCellRange`, `clearCellRanges`,
+   *  `selectColumn`). The ranges snapshot is fresh on every call so
+   *  listeners that retain the payload don't see later mutations.
+   *  `cellSelectionChanged` fires only when `finished: true` AND the
+   *  range set is actually different from the last finished emission. */
+  private emitRangeSelectionChanged(started: boolean, finished: boolean): void {
+    if (this.destroyed) return;
+    const ranges = this.selection.getRanges();
+    this.events.emit({ type: 'rangeSelectionChanged', ranges, started, finished });
+    if (!finished) return;
+    if (rangesEqual(ranges, this.lastEmittedCellSelectionRanges)) return;
+    // Deep-clone so a later in-place mutation on the SelectionModel can't
+    // false-equal the snapshot and silently suppress a future event.
+    this.lastEmittedCellSelectionRanges = ranges.map((r) => ({
+      rowStart: r.rowStart,
+      rowEnd: r.rowEnd,
+      colIds: r.colIds.slice(),
+    }));
+    this.events.emit({ type: 'cellSelectionChanged', ranges: this.selection.getRanges() });
   }
 
   refresh(): void { this.cgridCanvas.requestRepaint(); }

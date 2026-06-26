@@ -312,6 +312,9 @@ no main-thread compute. Sort 1M rows × 3 cols < 200 ms.
 
 ## Cycle 9 — Range selection + fill handle
 
+**Status:** ✅ COMPLETE on 2026-06-26. Worklog at
+`docs/superpowers/plans/2026-06-25-canvasgrid-cycle-09-range-selection.md`.
+
 **Goal:** Cell range selection (click + drag, or click + shift-click), header
 & row selection, fill handle (drag bottom-right corner to extend value),
 range-selection events. Foundation for Cycle 10 (clipboard) and Cycle 20

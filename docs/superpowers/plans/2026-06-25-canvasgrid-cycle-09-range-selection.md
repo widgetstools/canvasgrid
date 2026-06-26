@@ -639,11 +639,91 @@ tasks yet; just write the worklog.
 
 ## Shipped
 
-_(Filled in at cycle exit — Task 7's exit ritual.)_
+**Cell-range selection model.** `SelectionRange = { rowStart, rowEnd,
+colIds[] }` sits alongside `selectedRowIndices` on `SelectionModel`.
+Disjoint ranges supported (matches ag-grid). Five mutators —
+`setRanges`, `addRange`, `extendRange`, `clearRanges`, `getRanges` —
+all fan out through the existing `onChange` notification.
+
+**Drag → range.** `RangeSelection` interaction feature anchors a range
+on mousedown, widens it on each mousemove tick (every row + every
+intermediate column in render order), commits on mouseup. Forwards via
+`super.handleMouseDown` so `CellSelection` still claims focus + row
+selection on the same press.
+
+**Range overlay paint.** `rangeOverlayPainter` paints one translucent
+fill + one opaque border per contiguous rect, after the existing
+overlay pass. Reads from main-side `SelectionModel.ranges` (no worker
+round-trip). Off-screen ranges contribute zero paint cost. Light + dark
+theme tokens (`--cg-range-fill-color`, `--cg-range-border-color`).
+
+**Modifier semantics.** Shift-click extends the last range to cover the
+clicked cell (rowStart/rowEnd clamp to min/max, colIds becomes the
+contiguous render-order slice). Ctrl/Cmd-click adds a new disjoint 1×1
+range. Shift wins over Ctrl when both are held. Header-click selects
+the whole column (`rowStart: 0, rowEnd: lastRow, colIds: [colId]`);
+header-shift-click extends the column band across the render-order
+range. `HeaderClick` still cycles sort on the same press.
+
+**Fill handle.** 6×6 px square painted at the bottom-right of the
+focused range. `FillHandle` feature claims the press when the pointer
+lands inside ±3 px of the corner; drag extends the last range (axis
+locked at mousedown for `'xy'`); release commits via a single
+`applyTransaction({ update })`. Linear extrapolation for numeric
+sources; repeat for text. Per-cell override via the
+`options.fillOperation` callback. Hidden when
+`options.enableFillHandle === false`. E2E spec
+`cycle9-fillHandle.spec.ts` covers drag-preview, value commit, and the
+suppression path.
+
+**Range API.** `CGridApi.getCellRanges()`, `addCellRange(range)`,
+`clearCellRanges()`. Returns / mutates the live SelectionModel.
+
+**`cellSelection` options bundle.** `suppressDrag` disables the drag
+range; `suppressHeader` disables the header-click column band (sort
+still cycles); `suppressRow` is plumbed for Cycle 14's row-header
+click. Read at event time so `setGridOption('cellSelection', ...)`
+takes effect on the next gesture.
+
+**`enableFillHandle` / `fillHandleDirection` / `fillOperation`.** Three
+fill-handle knobs. `fillHandleDirection: 'y'` (default — rowEnd grows),
+`'x'` (colIds grow rightward), `'xy'` (axis decided by the larger
+pointer delta at mousedown, then locked for the gesture).
+
+**`rangeSelectionChanged` + `cellSelectionChanged` events.**
+`rangeSelectionChanged` fires at gesture start (mousedown), mid (each
+in-progress drag tick), end (mouseup), and for every programmatic
+mutation (`addCellRange`, `clearCellRanges`, `selectColumn`). Payload
+carries `{ ranges, started, finished }`. `cellSelectionChanged` is the
+debounced sibling — fires only on `finished: true` AND only when the
+range set actually changed since the last finished ping.
 
 ---
 
-## Cycle 9 status
+## Cycle 9 status: COMPLETE
 
-_(Filled in at cycle exit — Task 7's exit ritual. Replace this line
-with `## Cycle 9 status: COMPLETE` + the 7-task closing checklist.)_
+Closed on 2026-06-26.
+
+- [x] Task 1 — `SelectionRange` model + `SelectionModel` range methods
+      (PR #15 family precursor, landed via the model-only branch).
+- [x] Task 2 — Range selection via drag (PR #15).
+- [x] Task 3 — Range overlay painter (PR #16).
+- [x] Task 4 — Shift-click extend + Ctrl-click disjoint + header-click
+      column band (PR #17).
+- [x] Task 5 — Fill handle (drag-to-extend + value commit) (PR #18).
+- [x] Task 6 — Range API + `cellSelection` options bundle (PR #19).
+- [x] Task 7 — `rangeSelectionChanged` + `cellSelectionChanged` events
+      + Cycle 9 exit ritual (this commit).
+
+**Exit gates met:**
+- `npm run typecheck --workspaces` clean.
+- All 850+ Vitest unit tests green.
+- Cycle 7 + Cycle 8 + Cycle 9 Playwright specs green (57 tests passed
+  against the live `apps/cgrid-positions` dev server).
+- FM Area 12 — 10 cell-range / fill-handle rows flipped to ✅
+  (`cellSelection`, `cellSelection.enableColumnSelection`,
+  `cellSelection.handle (fill mode)`, `enableFillHandle`,
+  `fillHandleDirection`, `getCellRanges`, `addCellRange`,
+  `clearCellSelection`, `cellSelectionChanged`, `Fill handle value
+  progression`).
+- Master plan Cycle 9 status updated.
