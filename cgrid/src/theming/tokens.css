@@ -495,53 +495,80 @@
   border-right: 1px solid var(--cg-border-color);
 }
 .cg-side-bar-tabs {
+  /* Wider strip (28 → 36 px) so the rotated caption has stroke-axis
+   * breathing room and the section feels considered rather than
+   * crammed against the grid edge. The background sits a hair darker
+   * than the panel via color-mix so the active tab — which uses the
+   * panel bg — visually lifts out of the strip without needing a
+   * divider rule. */
   display: flex;
   flex-direction: column;
-  width: 28px;
-  background: var(--cg-header-bg);
-  border-left: 1px solid var(--cg-border-color);
+  width: 36px;
+  background: color-mix(in srgb, var(--cg-bg-color) 80%, #000 20%);
+  border-left: 1px solid color-mix(in srgb, var(--cg-border-color) 60%, transparent);
   flex: 0 0 auto;
 }
 .cg-side-bar[data-position="left"] .cg-side-bar-tabs {
   border-left: none;
-  border-right: 1px solid var(--cg-border-color);
+  border-right: 1px solid color-mix(in srgb, var(--cg-border-color) 60%, transparent);
 }
 .cg-side-bar-tab {
+  /* `writing-mode: vertical-rl` rotates the inline axis to vertical;
+   * `padding-block` then maps to the horizontal screen axis (around
+   * the rotated stroke) and `padding-inline` maps to the vertical
+   * screen axis (above and below the caption — the user's explicit
+   * ask for "padding around the captions"). */
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 6px;
-  padding: 8px 0;
-  min-height: 80px;
+  gap: 10px;
+  padding-block: 8px;
+  padding-inline: 18px;
+  min-height: 112px;
   background: transparent;
-  color: var(--cg-fg-color);
+  color: color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
   border: none;
-  border-bottom: 1px solid var(--cg-border-color);
   cursor: pointer;
   writing-mode: vertical-rl;
   font-family: inherit;
-  font-size: 12px;
+  /* Industrial-label treatment: small, semibold, uppercase, generous
+   * tracking. Reads at a glance even when rotated and stays quiet next
+   * to the panel content. */
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transition: color 0.12s ease, background-color 0.12s ease;
 }
 .cg-side-bar-tab:hover {
-  background: color-mix(in srgb, var(--cg-focus-ring-color) 14%, transparent);
+  color: var(--cg-fg-color);
+  background: color-mix(in srgb, var(--cg-focus-ring-color) 6%, transparent);
+}
+.cg-side-bar-tab:focus-visible {
+  outline: 2px solid var(--cg-focus-ring-color);
+  outline-offset: -3px;
 }
 .cg-side-bar-tab[aria-pressed="true"] {
+  color: var(--cg-fg-color);
+  /* Active tab uses the panel bg so it visually merges with the panel
+   * it represents; the 3 px blue border on the OUTER edge (left when
+   * the bar is right-positioned, right when left-positioned) is the
+   * lone hierarchy cue. User-confirmed in Cycle 11. */
   background: var(--cg-bg-color);
-  /* User reference 2026-06-26 — active tab gets a 3 px blue
-   * left-border indicator, the most distinctive cue that "this panel
-   * is open". The border faces the open panel content (tab strip is
-   * at the RIGHT edge of the grid, so the border lives on the LEFT
-   * of the tab). Mirrored to the right for left-positioned side bars. */
   border-left: 3px solid var(--cg-focus-ring-color);
+  padding-inline-start: 15px;
 }
 .cg-side-bar[data-position="left"] .cg-side-bar-tab[aria-pressed="true"] {
   border-left: none;
   border-right: 3px solid var(--cg-focus-ring-color);
+  padding-inline-start: 18px;
+  padding-inline-end: 15px;
 }
 .cg-side-bar-tab-icon {
-  font-size: 14px;
+  font-size: 13px;
   line-height: 1;
+  opacity: 0.85;
 }
 .cg-side-bar-tab-label {
   line-height: 1;
@@ -702,19 +729,21 @@
 }
 .cg-columns-panel-section {
   flex: 0 0 auto;
-  border-top: 1px solid var(--cg-border-color);
-  padding: 10px 12px;
+  border-top: 1px solid color-mix(in srgb, var(--cg-border-color) 50%, transparent);
+  padding: 14px 14px 12px;
 }
 .cg-columns-panel-section-header {
+  /* Matches the side-bar tab label treatment so the panel reads as a
+   * coherent module: same weight, tracking, transform, hue. */
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
-  font-size: 12px;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.02em;
+  letter-spacing: 0.08em;
   text-transform: uppercase;
-  opacity: 0.8;
+  color: color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
 }
 .cg-columns-panel-section-header::before {
   content: attr(data-icon);
