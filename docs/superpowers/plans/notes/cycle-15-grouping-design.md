@@ -1609,3 +1609,237 @@ because:
 
 
 ---
+
+## Cycle 15.5 / Task 2 — Tool panel Row Groups drop zone + header context menu Group-by items
+
+**Brief recap:** Two more views over the same `rowGroupColumns`
+list. The Columns tool panel (`agColumnsToolPanel` — Cycle 11) gets
+its Row Groups SECTION upgraded from an inert stub to a live drop
+zone showing pills + accepting column drags from the column list.
+The column header context menu (Cycle 10) gets four new items —
+"Group by `<col>`", "Un-Group by `<col>`", "Expand All Groups",
+"Collapse All Groups" — each routing through the same primitive
+API (`addRowGroupColumn` / `removeRowGroupColumn` / `expandAll` /
+`collapseAll`) the row group panel and tool panel already use.
+
+### Drop zone position (in the tool panel)
+
+KEEP the existing baseline position: Row Groups SECTION sits BELOW
+the column list, above the Values section. Three reasons:
+
+1. **Cycle 11 already shipped this layout.** The section header
+   "Row Groups" with the `☰` icon and the dashed empty-state box
+   is already wired with `suppressRowGroups` gating and a
+   placeholder string. Users / tests / docs already know where it
+   lives. Task 2 makes the inert stub LIVE; it does not move the
+   stub.
+2. **Mirrors ag-grid's `agColumnsToolPanel`.** ag-grid puts Row
+   Groups below the column list in the same panel ordering for the
+   same reason — the column list is the primary surface, the drop
+   zones are secondary.
+3. **Primary action stays in view.** The column list's checkboxes
+   are the most-used control in the tool panel. Keeping the drop
+   zone below the list means a user opening the panel sees the
+   checkboxes first; a user wanting to drag-to-group scrolls into
+   the zone deliberately.
+
+### Pill style (in the tool panel zone)
+
+COMPACT variant of the Cycle 15 / Task 6 panel chip — same family,
+trimmed for the narrower sidebar footprint.
+
+| Property | Tool-panel zone | Row group panel (Task 6) | Why differ |
+|---|---|---|---|
+| Layout | VERTICAL stack (one chip per row) | HORIZONTAL strip with `›` separators | Sidebar is ~240px wide; horizontal strip would wrap awkwardly. Vertical stack reads as a list, matching the column-list above |
+| Chip height | 22px (same) | 22px | One chip height across views — visual recall |
+| Chip border + radius | `--cg-row-group-chip-border` + 4px | identical | Same vocabulary token |
+| Drag handle glyph | OMITTED | `≡` rendered | Tool-panel chip body itself is the click/drag target; the sidebar is narrow + the chips are stacked so the drag affordance reads from the cursor change (`grab`) without needing a glyph. Panel chips use the handle because the horizontal strip benefits from the explicit "grab me here" cue |
+| Sort indicator | OMITTED | Optional `↑` / `↓` | Sort lives on the row group panel chips. The tool panel is the column-management view — adding sort here would duplicate the affordance. Per Prompt 7 the tool panel is for grouping membership; sort decoration belongs on the panel |
+| Remove `×` | `✕` (kept) | `✕` (kept) | One remove affordance across views |
+| Label font-size | `11px` | `12px` | One px smaller — auxiliary inside a denser stack; the column-list labels above are also `11px` for consistency |
+| Background | transparent (hover tint via `color-mix`) | identical | Same |
+
+A pill in the zone reads as `[Athlete ✕]`, stacked one per row,
+with `4px` vertical gap. The whole pill body is the click target
+for the future drag-to-reorder gesture (deferred to a follow-up —
+Task 2 ships drag-IN from the column list + drag-OUT to remove,
+not within-zone reorder; that's symmetric with the row group
+panel reorder Task 1 shipped and is intentionally out of scope to
+keep Task 2 focused).
+
+### Empty-state placeholder
+
+KEEP "Drag here to set row groups" — already shipped in Cycle 11.
+The string is identical to the row group panel's empty-state, by
+design (one drop-zone vocabulary across the grid).
+
+When the zone has at least one pill, the placeholder is replaced
+by the pill stack. The dashed outline (`--cg-row-group-panel-drop-border`)
+stays — it reads as "this is a drop target" regardless of fill
+state, matching the row group panel.
+
+### Drop indicator during drag
+
+A `2px` HORIZONTAL insertion line that snaps to the gap nearest
+the cursor between pills (or above the first / below the last
+pill). Mirrors the panel's vertical line in vocabulary — same
+color (`--cg-row-group-panel-drop-border`), same width, same
+instant-update discipline (no animation; the line tracks at frame
+rate).
+
+Why horizontal in the zone (vs. vertical in the panel)? Pills are
+stacked vertically here; an insertion line that reads as "between
+two pills" must be perpendicular to the stack axis. The same drop
+verdict outline (`data-drop="accept" | "reject"`) paints the zone
+border the same color the panel uses.
+
+### Context menu items — icon + label
+
+| Item | Icon | Label format | Visibility |
+|---|---|---|---|
+| Group by | `☰` (U+2630 TRIGRAM FOR HEAVEN) | `Group by <headerName>` | `enableRowGroup === true` AND colId NOT in `rowGroupColumns` |
+| Un-Group by | `☰` | `Un-Group by <headerName>` | colId IS in `rowGroupColumns` |
+| Expand All Groups | `▾` (U+25BE BLACK DOWN-POINTING SMALL TRIANGLE) | `Expand All Groups` | `rowGroupColumns.length > 0` |
+| Collapse All Groups | `▸` (U+25B8 BLACK RIGHT-POINTING SMALL TRIANGLE) | `Collapse All Groups` | `rowGroupColumns.length > 0` |
+
+Icon-family reasoning:
+
+- **`☰` for Group/Un-Group.** The Cycle 11 sidebar Columns panel
+  uses `☰` as the Row Groups SECTION header icon. ONE icon for
+  "row group" across the grid. The same glyph that marks the
+  drop zone in the sidebar marks the menu item that adds to that
+  zone. The Cycle 15 / Task 6 panel chip drag handle is the
+  visually-similar `≡` (U+2261 IDENTICAL TO) — same family, used
+  in different roles (drag affordance vs. section identifier).
+  We could differentiate Un-Group with an outline variant, but
+  the verb in the label is unambiguous and adding a second glyph
+  would dilute the one-icon-for-row-group recall.
+- **`▾` / `▸` for Expand/Collapse All.** These match the Cycle 15
+  / Task 7 auto-group cell chevrons exactly. Same affordance
+  vocabulary: a `▾` says "this group is open"; a `▸` says "this
+  group is closed". Reusing the chevrons in the menu makes the
+  cause-effect link explicit — click the `▾` item, every group
+  shows the `▾` chevron afterward.
+
+### Context menu item ordering
+
+The default main menu currently ships (Cycle 10 + post-cycle patch):
+
+```
+Pin Column ►
+Autosize This Column
+Autosize All Columns
+─────────────
+Reset Columns
+```
+
+Task 2 appends a second separator + four group items at the end:
+
+```
+Pin Column ►
+Autosize This Column
+Autosize All Columns
+─────────────
+Reset Columns
+─────────────
+Group by <col>           ← when enableRowGroup && not grouped
+Un-Group by <col>        ← when grouped
+Expand All Groups        ← when grouping is active
+Collapse All Groups      ← when grouping is active
+```
+
+The group items live at the END because they operate on a
+different axis from the column-ops items above. Column-ops mutate
+the column's display state (pin / size); group items mutate the
+grid's data axis. Keeping them in distinct blocks separated by an
+`hr` reads as "two kinds of action this column can do."
+
+The trailing separator is OMITTED when ALL four group items are
+hidden (e.g. column has `enableRowGroup: false` AND no grouping
+is active). The separator-with-no-followers anti-pattern (an `hr`
+dangling at the bottom of the menu) is a small but real visual
+bug — guard against it.
+
+When a column is groupable but already grouped, "Group by" is
+hidden and "Un-Group by" is shown. Mutually exclusive — never
+both — keeps the menu compact + obvious.
+
+### Tokens (committed to `tokens.css`)
+
+```css
+.cg-columns-panel-rgz {
+  /* Added in 15.5 / Task 2 — tool-panel Row Groups ZONE-specific
+     tokens. Inherit from the row group panel chip family where
+     possible; trim where the compact context calls for it. */
+  --cg-columns-panel-rgz-chip-font-size: 11px;
+  --cg-columns-panel-rgz-chip-gap: 4px;
+  --cg-columns-panel-rgz-drop-line-thickness: 2px;
+}
+```
+
+The drop line color reuses `--cg-row-group-panel-drop-border` —
+one drop color across all drop zones.
+
+### What's deliberately NOT shipped in Task 2
+
+- **Drag-within-zone reorder.** The zone displays the pills in
+  `rowGroupColumns` order. Reordering happens via the row group
+  panel (Task 1) or programmatically — the tool-panel zone is a
+  read-mostly mirror with add (drag-IN from the column list) and
+  remove (`×` click on a pill). This keeps Task 2 small + focused
+  on the two surfaces Prompt 7 calls out.
+- **Drag-IN from the row group panel chip to the tool-panel zone.**
+  The two surfaces show the SAME list — dragging a chip from one
+  to the other would mean "move this column from the row group
+  panel to the row group zone" which is meaningless (it's already
+  in both). The drag sources Task 2 wires are the column-list rows
+  + the column-header drag (already wired in Cycle 15 / Task 6
+  + extended in Task 1).
+- **`allowDragFromColumnsToolPanel` end-to-end.** The OPTION
+  lands in `CGridOptions` so apps can flip it; the actual
+  "drag column out of the tool panel ONTO THE GRID body" path
+  (vs. into the zone) is a Cycle 16 follow-up — the Cycle 15.5
+  scope is the zone + the row group panel + the context menu.
+  This task ships the option declaration; runtime behaviour
+  treats the option as governing the column-list drag handle's
+  "can drag out of the panel" eligibility, which Task 2 needs
+  for drag-INTO-the-zone-within-the-same-panel.
+
+### Reused vocabulary
+
+- `☰` (Cycle 11 sidebar Row Groups SECTION header icon) — Task 2
+  uses it in the context menu Group/Un-Group items so the icon
+  family is consistent across surfaces.
+- `▾` / `▸` (Cycle 15 / Task 7 auto-group cell chevrons) — Task 2
+  uses them in the Expand/Collapse All Groups items.
+- `--cg-row-group-panel-drop-border` (Task 6) — one drop color
+  across the row group panel AND the tool-panel zone.
+- `--cg-row-group-chip-*` family (Task 6) — pill styling
+  vocabulary is shared; Task 2's compact variant overrides only
+  font-size and omits the drag handle glyph.
+
+### Risk taken
+
+**Same icon for `Group by` and `Un-Group by`.** The natural-
+language alternative is to use a "folder open" vs "folder close"
+icon — an `📁` for group and a `📂` for ungroup, or an outline
+variant of `☰`. I rejected that because:
+
+- The Cycle 11 sidebar already uses `☰` as the canonical Row
+  Groups icon. Introducing a second glyph for the "ungroup"
+  verb would mean Task 2 owns TWO new glyphs the rest of the
+  cycle has to thread through (Sidebar header? Drop zone
+  header? Pill drag handle?).
+- The verb in the label is unambiguous and the items are
+  mutually exclusive — a user never sees both at once. The
+  icon's job is to mark the menu row as "this is the row-group
+  action"; the label's job is to say "this adds" or "this
+  removes". Visual consistency in the gutter wins over a second
+  glyph carrying redundant information.
+- A follow-up cycle can introduce an outline variant of `☰`
+  for the ungroup verb without breaking the convention if it
+  turns out users want the distinction; reverting from two
+  icons to one is harder than adding a second later.
+
+
+---

@@ -255,7 +255,15 @@ describe('ColumnsToolPanel', () => {
     const api = makeApi();
     const { panel } = mountPanel(api, { suppressSyncLayoutWithGrid: true });
     hosts.push(panel);
-    expect(api.addEventListener).not.toHaveBeenCalled();
+    const subscribedTypes = (api.addEventListener as ReturnType<typeof vi.fn>).mock.calls.map((c) => c[0]);
+    // Cycle 15.5 / Task 2 — the Row Groups zone subscription
+    // (`columnRowGroupChanged`) is NOT gated by this flag: the flag's
+    // contract is about column LAYOUT, not grouping. The zone is a
+    // mirror by design; suppressing the sync would defeat the
+    // three-views-one-list invariant. Only the column-layout
+    // subscriptions are skipped.
+    expect(subscribedTypes).not.toContain('columnVisible');
+    expect(subscribedTypes).not.toContain('columnMoved');
   });
 
   it('Row Groups + Values drop zones render dashed-border containers with placeholder text', () => {

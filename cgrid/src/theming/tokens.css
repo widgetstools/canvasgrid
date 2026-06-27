@@ -876,6 +876,113 @@
   background: transparent;
 }
 
+/* Cycle 15.5 / Task 2 — Row Groups drop zone (live).
+ *
+ * The dashed-outline container doubles as the drop target for column-
+ * list drags. When a drag hovers and the column is groupable, the
+ * outline lights up in the focus-ring color (`accept`); when the
+ * column is not groupable or already grouped, the amber rejected
+ * variant lights up. The pill stack lives inside `.cg-columns-panel-
+ * rgz-content` so the dashed outline always wraps the stack +
+ * placeholder identically.
+ *
+ * Pills here are a COMPACT variant of the row group panel chip:
+ * vertical stack (sidebar is narrow), no drag handle glyph (the body
+ * cursor + the `grab` cursor are the affordance), no sort indicator
+ * (sort lives on the row group panel chip). Same height + radius +
+ * border family for visual recall across surfaces.
+ *
+ * Design plan:
+ *   docs/superpowers/plans/notes/cycle-15-grouping-design.md
+ *   § Cycle 15.5 / Task 2 — pill style + drop zone tokens. */
+.cg-columns-panel-rgz {
+  --cg-columns-panel-rgz-chip-font-size: 11px;
+  --cg-columns-panel-rgz-chip-gap: 4px;
+  --cg-columns-panel-rgz-drop-line-thickness: 2px;
+  /* When pills are present, swap to a left-aligned, list-shaped
+   * layout. The empty-state placeholder retains the original centered
+   * text via its own `text-align: center` rule below. */
+  padding: 6px;
+  opacity: 1;
+  text-align: left;
+  min-height: 40px;
+}
+.cg-columns-panel-rgz[data-drop="accept"] {
+  border-color: var(--cg-row-group-panel-drop-border,
+    var(--cg-focus-ring-color));
+  box-shadow: inset 0 0 0 1px var(--cg-row-group-panel-drop-border,
+    var(--cg-focus-ring-color));
+}
+.cg-columns-panel-rgz[data-drop="reject"] {
+  border-color: var(--cg-row-group-panel-drop-border-reject, #f59e0b);
+  box-shadow: inset 0 0 0 1px var(--cg-row-group-panel-drop-border-reject,
+    #f59e0b);
+}
+.cg-columns-panel-rgz-content {
+  display: flex;
+  flex-direction: column;
+  gap: var(--cg-columns-panel-rgz-chip-gap);
+}
+.cg-columns-panel-rgz-empty {
+  text-align: center;
+  font-size: 12px;
+  padding: 6px 4px;
+  opacity: 0.7;
+}
+.cg-columns-panel-rgz-pill {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: var(--cg-row-group-chip-height, 22px);
+  padding: 0 var(--cg-row-group-chip-padding-x, 6px);
+  gap: var(--cg-row-group-chip-gap, 4px);
+  border: 1px solid var(--cg-row-group-chip-border, var(--cg-border-color));
+  border-radius: var(--cg-row-group-chip-radius, 4px);
+  background: var(--cg-row-group-chip-bg, transparent);
+  color: var(--cg-row-group-chip-fg, var(--cg-fg-color));
+  font-size: var(--cg-columns-panel-rgz-chip-font-size, 11px);
+  line-height: 1;
+  cursor: grab;
+  white-space: nowrap;
+  user-select: none;
+}
+.cg-columns-panel-rgz-pill:hover {
+  background: var(--cg-row-group-chip-hover-bg,
+    color-mix(in srgb, var(--cg-header-bg) 92%, var(--cg-fg-color) 8%));
+}
+.cg-columns-panel-rgz-pill--dragging {
+  opacity: 0.6;
+  cursor: grabbing;
+}
+.cg-columns-panel-rgz-pill-label {
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-columns-panel-rgz-chip-font-size, 11px);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cg-columns-panel-rgz-pill-remove {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0 2px;
+  margin: 0;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+}
+.cg-columns-panel-rgz-pill-remove:hover {
+  opacity: 1;
+}
+.cg-columns-panel-rgz-pill-remove:focus-visible {
+  outline: 2px solid var(--cg-focus-ring-color);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
 /* Cycle 11 / Task 4 — FiltersToolPanel.
  *
  * Mounted by the SideBarHost inside `.cg-side-bar-panel`. The panel

@@ -628,6 +628,18 @@ export interface CGridOptions<TRow = any> {
    *  visibility-on-group/ungroup flags
    *  (`suppressGroupChangesColumnVisibility`). Default `false`. */
   suppressDragLeaveHidesColumns?: boolean;
+  /** Cycle 15.5 / Task 2 — governs whether a column-list row in the
+   *  Columns tool panel (`agColumnsToolPanel`) can act as a drag
+   *  source. When `true` (default), a drag started on the column
+   *  list's drag handle (or row body) can land in the Row Groups
+   *  drop zone in the same panel — `enableRowGroup` columns become
+   *  group levels, mirroring the ag-grid Enterprise behaviour. When
+   *  `false`, the column-list rows are static (visibility checkbox
+   *  only). The full drag-onto-grid-body path (e.g. drag a column
+   *  from the tool panel directly onto the grid) is a Cycle 16
+   *  follow-up; Cycle 15.5 ships only the in-panel
+   *  list-to-drop-zone path covered by this flag. */
+  allowDragFromColumnsToolPanel?: boolean;
   /** Cycle 15 / Task 8 — when `true` AND `rowSelection: 'multiple'`,
    *  each group row in the auto-group column paints a tri-state
    *  checkbox alongside the chevron + indent + value + (count).
@@ -1777,6 +1789,24 @@ export type CGridEvent =
    *  fans out the state. `expanded` is the target state every group
    *  was set to. */
   | { type: 'expandOrCollapseAll'; expanded: boolean }
+  /** Cycle 15.5 / Task 2 — fires whenever the `rowGroupColumns` list
+   *  or per-level sort entries mutate via the primitive API
+   *  (`setRowGroupColumns` / `addRowGroupColumn` /
+   *  `removeRowGroupColumn` / `moveRowGroupColumn` /
+   *  `setRowGroupColumnSort`). Carries the full ordered list AND the
+   *  verb that drove the change so subscribers (the columns tool
+   *  panel's Row Groups drop zone, the header context menu's
+   *  Group / Un-Group items, app-side analytics) can re-render or log
+   *  without having to diff a snapshot against their own last-known
+   *  copy. `source` mirrors the GroupingState verbs: `'set'` for the
+   *  whole-list replace, `'add'` / `'remove'` / `'move'` for the
+   *  single-column verbs, `'sort'` when only the per-level sort
+   *  decoration changed (the ordered list didn't move). */
+  | {
+      type: 'columnRowGroupChanged';
+      columns: string[];
+      source: 'set' | 'add' | 'remove' | 'move' | 'sort';
+    }
   /** Fires when the set / order of displayed columns changes for any reason.
    *  Cycle 4 wired the original `columnGroupOpened` + `columnDefsChanged`
    *  sources; Cycle 6 / Task 8 widens the source union so listeners can
@@ -2308,6 +2338,13 @@ export interface CGridApi {
    *  the internal `columnDefsMap`. Hidden leaves still resolve — the
    *  Columns panel lists hidden columns with their headerName intact. */
   getColumnHeaderName(colId: string): string | undefined;
+  /** Cycle 15.5 / Task 2 — `true` when the column's resolved colDef
+   *  carries `enableRowGroup: true`. Used by the columns tool panel's
+   *  Row Groups drop zone (decides which column-list rows offer a
+   *  drag-to-group affordance) AND by the header context menu (gates
+   *  the "Group by `<col>`" item visibility). Returns `false` for
+   *  unknown colIds. */
+  isColumnRowGroupEnabled(colId: string): boolean;
   /** Cycle 11 / Task 4 — the resolved popup-filter type for `colId`, or
    *  `null` when the column is unknown or has no filter. Used by the
    *  FiltersToolPanel to decide which columns get a collapsible row. */
