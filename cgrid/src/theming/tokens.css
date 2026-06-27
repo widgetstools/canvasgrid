@@ -519,28 +519,22 @@
    * to a 2 px focus-ring border on all four sides — the reference
    * pattern from the user's 2026-06-26 sidebar*.png screenshots.
    *
-   * `writing-mode: vertical-rl` on the chip means the LABEL inherits
-   * vertical text direction. The icon resets back to horizontal-tb
-   * so its glyph stays upright at the top of the chip.
-   *
-   * `padding-block` maps to the horizontal screen axis (sides of the
-   * stroke); `padding-inline` maps to the vertical screen axis
-   * (above and below the caption — the requested padding around the
-   * caption). */
+   * The CHIP keeps the normal horizontal-tb writing mode so flex
+   * layout still works the obvious way: column = vertical stack,
+   * justify-content: flex-start = icon at top, label below.
+   * Only the LABEL element rotates (writing-mode: vertical-rl). */
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: flex-start;
   gap: 12px;
-  padding-block: 10px;
-  padding-inline: 18px;
-  min-height: 124px;
+  padding: 14px 8px;
+  min-height: 140px;
   background: color-mix(in srgb, var(--cg-bg-color) 55%, var(--cg-header-bg) 45%);
   color: var(--cg-fg-color);
   border: 1.5px solid color-mix(in srgb, var(--cg-border-color) 65%, transparent);
   border-radius: 6px;
   cursor: pointer;
-  writing-mode: vertical-rl;
   font-family: inherit;
   font-size: 13px;
   font-weight: 400;
@@ -565,13 +559,9 @@
   background: color-mix(in srgb, var(--cg-bg-color) 45%, var(--cg-header-bg) 55%);
   /* Compensate for the 0.5 px border thickness change so the chip
    * doesn't shift when the active state flips. */
-  padding-block: 9.5px;
-  padding-inline: 17.5px;
+  padding: 13.5px 7.5px;
 }
 .cg-side-bar-tab-icon {
-  /* Reset to upright. Without this the icon glyph inherits the
-   * parent's vertical-rl writing mode and rotates 90° too. */
-  writing-mode: horizontal-tb;
   font-size: 16px;
   line-height: 1;
   opacity: 0.85;
@@ -581,6 +571,11 @@
   color: var(--cg-fg-color);
 }
 .cg-side-bar-tab-label {
+  /* Only the label rotates. Inside its own writing-mode the text
+   * flows top-to-bottom; padding-inline gives the requested padding
+   * around the caption. */
+  writing-mode: vertical-rl;
+  padding-block: 6px;
   line-height: 1;
 }
 .cg-side-bar-panel {
