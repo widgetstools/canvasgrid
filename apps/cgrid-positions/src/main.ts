@@ -41,7 +41,16 @@ const openColumns = search.get('openColumns') === '1';
 //                    demo exercises the custom-panel + getStatusPanel
 //                    API surface.
 const statusBar = search.get('statusBar');
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar });
+// Cycle 14 / Task 1 — `?totals=top|bottom` opts the demo into mounting
+// the pinned grand-totals row at the matching edge of the grid body.
+// Off by default so prior visual matrix cells (01–16) remain
+// byte-stable; the new cell `17-totals-row-bottom` opts in via the
+// `?totals=bottom` query, and the cycle-exit ritual in Task 7 flips
+// the demo default to `'bottom'`.
+const totalsRaw = search.get('totals');
+const totalsRowPosition: 'top' | 'bottom' | null =
+  totalsRaw === 'top' || totalsRaw === 'bottom' ? totalsRaw : null;
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition });
 
 // E2E hooks: expose the grid + a readiness flag so Playwright tests can wait
 // for first-data-rendered and call api helpers (`getCellBoundsAt`,

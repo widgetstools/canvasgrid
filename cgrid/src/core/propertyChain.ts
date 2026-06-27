@@ -192,6 +192,12 @@ export interface ApplyCellPropsInput {
   isSelected: boolean;
   isHovered: boolean;
   isHeader: boolean;
+  /** Cycle 14 / Task 1 — set to `true` when this cell sits on the
+   *  pinned totals row. Triggers the design-pass "lift" treatment:
+   *  fg = `theme.totalsFg`, font weight bumped to
+   *  `theme.totalsFontWeight` (default 500). Defaults to `false`.
+   *  Optional so legacy callers don't have to be updated. */
+  isTotals?: boolean;
   iconColor?: string;
   sortDirection?: 'asc' | 'desc';
   /** Cycle 8 / Task 1 — 1-indexed sort position; threaded into the
@@ -246,6 +252,23 @@ function applyOverridePatch(target: CellPaintConfig, patch: ColCellOverrides): v
   if (patch.halign !== undefined) target.halign = patch.halign;
 }
 
+/** Cycle 14 / Task 1 — prepend a font-weight to a CSS font shorthand.
+ *  CanvasRenderingContext2D.font accepts the same shorthand as CSS, so
+ *  `"500 13px JetBrains Mono"` paints a +1 weight stop without the
+ *  caller having to know the body weight. When `font` already carries a
+ *  weight token (e.g. `"600 13px Inter"`) we REPLACE it; otherwise we
+ *  prepend the weight. Defensive against custom theme fonts that ship
+ *  weights inline. The weight is a numeric (100–900) per CSS spec. */
+function withFontWeight(font: string, weight: number): string {
+  const cssWeight = String(Math.max(100, Math.min(900, Math.round(weight))));
+  // Detect a leading weight token: 100..900 (numeric) or one of the
+  // CSS keywords. Body face strings shipped by tokens.css are NEVER
+  // pre-weighted, so the common path replaces nothing and prepends.
+  const KEYWORDS = /^(normal|bold|bolder|lighter|[1-9]00)\s+/;
+  if (KEYWORDS.test(font)) return font.replace(KEYWORDS, `${cssWeight} `);
+  return `${cssWeight} ${font}`;
+}
+
 /** Repopulate `target` in place. The caller reuses a single config object
  * across the whole frame to keep paint allocation-free.
  *
@@ -292,6 +315,19 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.fg = ctx.isHeader ? theme.headerFg : theme.fg;
   target.bg = ctx.rowBg;
   target.halign = colDef.cellDataType === 'number' ? 'right' : 'left';
+
+  // Cycle 14 / Task 1 — totals-row "lift" treatment. Bumps the font
+  // weight by +1 stop (body 400 → totals 500 by default) and swaps
+  // fg to a one-stop-stronger colour so the lift carries on a glance.
+  // The bg is already painted via the row-bg bundle (theme.totalsBg)
+  // — we don't re-apply it here so per-cell cellStyle / cellClass
+  // overrides further down the chain can still tint individual cells.
+  // The polished `'totals'` renderer in Task 5 will add the em-dash
+  // placeholder + per-column halign-from-data overrides on top.
+  if (ctx.isTotals === true) {
+    target.fg = theme.totalsFg;
+    target.font = withFontWeight(theme.font, theme.totalsFontWeight);
+  }
 
   // ── 2. Static cellStyle object ─────────────────────────────────────────
   const staticCellStyle = colDef.cellStyle;

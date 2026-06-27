@@ -47,10 +47,24 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
     if (row.subgrid.isData) {
       if (row.bottom <= vs.bodyTop || row.bottom > vs.bodyBottom) continue;
     } else if (!row.subgrid.isHeader) {
-      continue; // totals/footer not yet wired
+      continue; // totals/footer skip the per-row gridline (totals draws its own border below)
     }
     const y = Math.round(row.bottom) - 1;
     gc.fillRect(0, y, rightEdge, 1);
+  }
+
+  // Cycle 14 / Task 1 — totals row top border. The single "hairline lift"
+  // signature from the design plan — 1px solid `theme.totalsBorderTop`
+  // painted at `Math.round(row.top) - 1`. Mirrors the bodyTop separator
+  // idiom further down, so the rule reads as part of the grid's visual
+  // grammar (not a one-off). Only the FIRST totals-row in stack gets a
+  // top border (a multi-row pinned totals subgrid is rare; if a future
+  // task ships one, this loop already handles it because every row's
+  // own top gets its rule).
+  for (const row of vs.visibleRows) {
+    if (!row.subgrid.isTotals) continue;
+    gc.cache.fillStyle = theme.totalsBorderTop;
+    gc.fillRect(0, Math.round(row.top) - 1, rightEdge, 1);
   }
 
   // Verticals — one band at a time so out-of-band column lines stay clipped.

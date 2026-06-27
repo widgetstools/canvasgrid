@@ -108,11 +108,28 @@ export function computeViewport(opts: ViewportInput): ViewportState {
   let floatingFilterRowTop: number | undefined;
   let floatingFilterRowHeight: number | undefined;
 
-  // Pass 1: header + floating-filter subgrids — both sit above the
-  // scrollable data region. Cycle 7 / Task 1 — the floating-filter row is
-  // non-scrolling like headers and contributes to bodyTop the same way.
-  for (const subgrid of opts.subgrids) {
-    if (!subgrid.isHeader && !subgrid.isFloatingFilter) continue;
+  // Classify each subgrid by its position relative to the data subgrid
+  // in stack order. Subgrids appearing BEFORE the first data subgrid pin
+  // at the top (contributing to bodyTop); the data subgrid scrolls; any
+  // subgrid AFTER the data subgrid stacks below the visible data rows.
+  // Cycle 14 / Task 1 — this ordering convention is what gives `'top'`
+  // vs `'bottom'` totals their pinned position: the stack order in
+  // `cgrid.ts` decides which side of `DataSubgrid` the totals subgrid
+  // lands on; viewport math honours it without an explicit position flag.
+  const dataIndex = opts.subgrids.findIndex((sg) => sg.isData);
+  const preDataSubgrids = dataIndex < 0
+    ? opts.subgrids
+    : opts.subgrids.slice(0, dataIndex);
+  const postDataSubgrids = dataIndex < 0
+    ? []
+    : opts.subgrids.slice(dataIndex + 1);
+
+  // Pass 1: every subgrid that sits BEFORE the data subgrid pins above
+  // the scrollable data region. Headers and the floating-filter row
+  // (Cycle 7 / Task 1) ride here by default. A top-pinned totals
+  // (Cycle 14 / Task 1) does too when its subgrid is stacked before
+  // the data subgrid in `cgrid.ts`.
+  for (const subgrid of preDataSubgrids) {
     const rows = subgrid.getRowCount();
     for (let local = 0; local < rows; local++) {
       const h = subgrid.getRowHeight(local);
@@ -209,10 +226,11 @@ export function computeViewport(opts: ViewportInput): ViewportState {
     yAfterData = Math.max(yAfterData, top);
   }
 
-  // Pass 3: totals/footer subgrids — stacked after the visible data rows.
+  // Pass 3: post-data subgrids — stacked after the visible data rows in
+  // the order they appear in the stack. Totals (bottom position) +
+  // future footer subgrids ride here.
   let y = yAfterData;
-  for (const subgrid of opts.subgrids) {
-    if (subgrid.isHeader || subgrid.isData) continue;
+  for (const subgrid of postDataSubgrids) {
     const rows = subgrid.getRowCount();
     for (let local = 0; local < rows; local++) {
       const h = subgrid.getRowHeight(local);
