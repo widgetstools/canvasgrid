@@ -70,6 +70,13 @@ const CHEVRON_SIZE = 12;
 const CHEVRON_GAP = 6;
 const COUNT_GAP = 4;
 const EMPTY_GLYPH = '—';
+/** Cycle 15 / Task 8 — tri-state checkbox geometry. Identical to the
+ *  existing `checkboxCell` painter's box size so a `confirmed`-column
+ *  checkbox and a group-row checkbox read as the same control. The
+ *  GAP below sits between the chevron's right edge and the checkbox's
+ *  left edge AND between the checkbox's right edge and the value text. */
+const CHECKBOX_SIZE = 14;
+const CHECKBOX_GAP = 6;
 
 /** Per-row group context threaded through `CellPaintConfig.value` for
  *  the auto-group column. Populated by `cgrid.cellAt()` from the
@@ -95,6 +102,13 @@ export interface GroupCellValue {
    *  down-pointing. `false` paints right-pointing. Data rows are
    *  always "expanded" (no chevron paints anyway). */
   readonly isExpanded: boolean;
+  /** Cycle 15 / Task 8 — when present, the renderer paints a tri-state
+   *  checkbox between the chevron and the value text. Three states
+   *  differentiated by interior shape only (empty / horizontal dash /
+   *  check √) — no color shift, no fill, no row-level chrome.
+   *  Omit (or `undefined`) to suppress the checkbox entirely; this is
+   *  the default when `groupSelectsChildren` is off. */
+  readonly selectionState?: 'none' | 'partial' | 'all';
 }
 
 /** Type-narrow `value` to a `GroupCellValue`. Defensive — the painter
@@ -189,6 +203,29 @@ export const groupCell: CellPainter = {
       { color: chevronColor, strokeWidth: 2 },
     );
 
+    // Cycle 15 / Task 8 — tri-state checkbox slot. Paints when
+    // `groupSelectsChildren` is on (cgrid.cellAt threads
+    // `selectionState`); omitted entirely otherwise. The chevron
+    // geometry above is load-bearing — cgrid.ts mirrors it for the
+    // chevron click hit-test (`computeChevronHit`). Drift the chevron
+    // x and the hit-test breaks; the checkbox slot sits AFTER the
+    // chevron so adding it doesn't disturb chevron geometry.
+    //
+    // Layout (with checkbox):
+    //   [indent: depth × indentUnit] [chevron 12] [GAP 6]
+    //   [checkbox 14] [GAP 6] [value] [GAP 4] [(count)]
+    //
+    // Layout (without checkbox — checkbox slot is zero width):
+    //   [indent: depth × indentUnit] [chevron 12] [GAP 6]
+    //   [value] [GAP 4] [(count)]
+    let textX = left + CHEVRON_SIZE + CHEVRON_GAP;
+    if (groupValue.selectionState !== undefined) {
+      const checkboxX = textX;
+      const checkboxY = cy - CHECKBOX_SIZE / 2;
+      paintTriStateCheckbox(gc, checkboxX, checkboxY, p, groupValue.selectionState);
+      textX = checkboxX + CHECKBOX_SIZE + CHECKBOX_GAP;
+    }
+
     // Value text. Empty / null renders the em-dash sentinel so a
     // group with a null key still paints chrome.
     //
@@ -202,7 +239,6 @@ export const groupCell: CellPainter = {
     // colour. Writing directly to the underlying ctx properties
     // sidesteps the stale comparison entirely.
     const valueText = groupValue.valueFormatted === '' ? EMPTY_GLYPH : groupValue.valueFormatted;
-    const textX = left + CHEVRON_SIZE + CHEVRON_GAP;
     gc.fillStyle = p.fg;
     gc.font = p.font;
     gc.textBaseline = 'middle';
@@ -220,3 +256,63 @@ export const groupCell: CellPainter = {
     }
   },
 };
+
+/**
+ * Cycle 15 / Task 8 — paint the tri-state checkbox at `(x, y)` (top-left
+ * of the 14×14 box). Three states share the same outlined box; interior
+ * shape carries the state distinction:
+ *   - `'none'`     → border only.
+ *   - `'partial'`  → border + horizontal dash through the middle.
+ *   - `'all'`      → border + check polyline (same √ as `checkboxCell`).
+ *
+ * Color comes from the per-cell `groupCheckboxColor` token (resolved
+ * from `--cg-group-checkbox-*-color` by `cssReader.ts`). Falls back to
+ * the body `fg` when the token isn't wired so an ad-hoc paint call
+ * (unit tests, custom themes that haven't declared the token) still
+ * produces a legible box.
+ */
+function paintTriStateCheckbox(
+  gc: CachedContext2D,
+  x: number,
+  y: number,
+  p: CellPaintConfig,
+  state: 'none' | 'partial' | 'all',
+): void {
+  const size = CHECKBOX_SIZE;
+  const borderColor = p.groupCheckboxBorderColor ?? p.fg;
+  const interiorColor = state === 'partial'
+    ? (p.groupCheckboxIndeterminateColor ?? p.fg)
+    : (p.groupCheckboxCheckColor ?? p.fg);
+  // Outlined box. Identical to `checkboxCell` — same `+ 0.5` half-pixel
+  // snap for crisp 1 px strokes on integer-aligned bounds. The optional
+  // fill paints first so the border sits on top.
+  const fill = p.groupCheckboxFill;
+  if (fill !== undefined && fill !== 'transparent') {
+    gc.cache.fillStyle = fill;
+    gc.fillRect(x, y, size, size);
+  }
+  gc.cache.strokeStyle = borderColor;
+  gc.cache.lineWidth = 1;
+  gc.strokeRect(x + 0.5, y + 0.5, size, size);
+  if (state === 'all') {
+    // Same √ polyline as `checkboxCell` — one checkmark vocabulary
+    // across every checkbox cell in the grid (Task 8 design).
+    gc.cache.strokeStyle = interiorColor;
+    gc.beginPath();
+    gc.moveTo(x + 3, y + size / 2);
+    gc.lineTo(x + size / 2 - 1, y + size - 3);
+    gc.lineTo(x + size - 2, y + 3);
+    gc.stroke();
+  } else if (state === 'partial') {
+    // Horizontal dash centered vertically — the universally-learned
+    // indeterminate vocabulary (Excel / macOS). Matches the check
+    // stroke weight so the box reads as "active in some way" without
+    // a fill or color shift.
+    gc.cache.strokeStyle = interiorColor;
+    gc.beginPath();
+    gc.moveTo(x + 3, y + size / 2 + 0.5);
+    gc.lineTo(x + size - 3, y + size / 2 + 0.5);
+    gc.stroke();
+  }
+  // 'none' → border only.
+}

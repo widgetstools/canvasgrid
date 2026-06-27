@@ -98,6 +98,19 @@
    * footers in Task 12. Design plan:
    * docs/superpowers/plans/notes/cycle-15-grouping-design.md § Task 5. */
   --cg-group-row-bg: #f1f5f9;
+  /* Cycle 15 / Task 8 — tri-state checkbox tokens for the auto-group
+   * column's group rows. All four default to var(--cg-fg-color) so
+   * the box reads exactly like the existing checkboxCell painter — one
+   * checkbox vocabulary across the grid. The indeterminate (partial)
+   * and 'all' states differentiate by interior SHAPE (horizontal dash
+   * vs check √), not by colour or fill. Apps that want a filled
+   * brand-accent checkbox override --cg-group-checkbox-fill plus
+   * --cg-group-checkbox-check-color together. Design plan:
+   * docs/superpowers/plans/notes/cycle-15-grouping-design.md § Task 8. */
+  --cg-group-checkbox-border-color: var(--cg-fg-color);
+  --cg-group-checkbox-check-color: var(--cg-fg-color);
+  --cg-group-checkbox-indeterminate-color: var(--cg-fg-color);
+  --cg-group-checkbox-fill: transparent;
 }
 
 .cg-theme-quartz-dark {
@@ -168,6 +181,13 @@
    * lighter than --cg-totals-bg (which carries the synthesis signature
    * in dark too). */
   --cg-group-row-bg: #11203a;
+  /* Cycle 15 / Task 8 — dark-mode tri-state checkbox tokens. Body fg
+   * (var(--cg-fg-color) ≈ #cbd5e1) keeps the outlined box visible
+   * against the dark surface; shape carries the state distinction. */
+  --cg-group-checkbox-border-color: var(--cg-fg-color);
+  --cg-group-checkbox-check-color: var(--cg-fg-color);
+  --cg-group-checkbox-indeterminate-color: var(--cg-fg-color);
+  --cg-group-checkbox-fill: transparent;
 }
 
 /* Native scrollbar styling (Chromium/WebKit) — always-visible thumb

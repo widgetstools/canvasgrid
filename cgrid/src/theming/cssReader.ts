@@ -104,6 +104,21 @@ export interface ResolvedTheme {
    *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md`
    *  § Task 5. */
   groupRowBg: string;
+  /** Cycle 15 / Task 8 — tri-state checkbox tokens for the auto-group
+   *  column's group rows. All four default to `var(--cg-fg-color)` so
+   *  the box reads exactly like the existing `checkboxCell` painter
+   *  (one checkbox vocabulary across the grid). Design plan:
+   *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md`
+   *  § Task 8. */
+  groupCheckboxBorderColor: string;
+  groupCheckboxCheckColor: string;
+  groupCheckboxIndeterminateColor: string;
+  /** `'transparent'` (default) renders the outlined-only box; any
+   *  other valid CSS color fills the box before the border + interior
+   *  glyph paint. Apps that want a filled brand-accent checkbox
+   *  override `--cg-group-checkbox-fill` + `--cg-group-checkbox-check-color`
+   *  together. */
+  groupCheckboxFill: string;
   rowHeight: number;
   headerHeight: number;
   resizerHotZone: number;
@@ -233,6 +248,11 @@ export class CssReader {
       groupCountColor: get('--cg-group-count-color') || get('--cg-totals-fg-muted') || '#475569',
       groupIndent: px('--cg-group-indent', 14),
       groupRowBg: get('--cg-group-row-bg') || get('--cg-row-alt-bg') || '#f1f5f9',
+      groupCheckboxBorderColor: get('--cg-group-checkbox-border-color') || get('--cg-fg-color') || '#1a1f24',
+      groupCheckboxCheckColor: get('--cg-group-checkbox-check-color') || get('--cg-fg-color') || '#1a1f24',
+      groupCheckboxIndeterminateColor:
+        get('--cg-group-checkbox-indeterminate-color') || get('--cg-fg-color') || '#1a1f24',
+      groupCheckboxFill: get('--cg-group-checkbox-fill') || 'transparent',
       rowHeight: px('--cg-row-height', 30),
       headerHeight: px('--cg-header-height', 32),
       resizerHotZone: px('--cg-resizer-hot-zone', 4),

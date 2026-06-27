@@ -615,6 +615,21 @@ export interface CGridOptions<TRow = any> {
    *  apps opting into chip sorting in a later cycle can suppress it
    *  per-grid). Default `false`. */
   rowGroupPanelSuppressSort?: boolean;
+  /** Cycle 15 / Task 8 — when `true` AND `rowSelection: 'multiple'`,
+   *  each group row in the auto-group column paints a tri-state
+   *  checkbox alongside the chevron + indent + value + (count).
+   *  Clicking the checkbox cascade-selects every descendant leaf row;
+   *  the group's checkbox renders empty / dash / check based on the
+   *  aggregate state of its descendants.
+   *
+   *  Default `false`. Has no effect when `rowSelection !== 'multiple'`
+   *  — cascading would violate the single-selection contract; the
+   *  renderer omits the checkbox entirely under `'single'` / `'none'`.
+   *
+   *  Design plan:
+   *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md`
+   *  § Task 8. */
+  groupSelectsChildren?: boolean;
 }
 
 /** Cycle 10 / Task 5 — params for `processCellForClipboard`. Mirrors
@@ -1837,6 +1852,18 @@ export interface CGridApi {
   ensureColumnGroupVisible(groupId: string, position?: 'auto' | 'start' | 'middle' | 'end'): void;
   getSelectedRowIds(): string[];
   setSelectedRowIds(ids: string[]): void;
+  /** Cycle 15 / Task 8 — aggregate selection state for `groupKey`
+   *  across every descendant leaf row:
+   *  - `'none'` — no descendant selected (or `groupSelectsChildren`
+   *    is off / the key is unknown).
+   *  - `'partial'` — some but not all descendants selected.
+   *  - `'all'` — every descendant selected.
+   *
+   *  Snapshot read; the value is recomputed on demand from the
+   *  persistent selected-rowId set and the worker's descendant cache.
+   *  Apps building custom group-row UIs can hide / show / disable
+   *  bulk-action menus based on this state. */
+  getGroupSelectionState(groupKey: string): 'none' | 'partial' | 'all';
 
   /** Cycle 13 / Task 2 — current displayed (post-filter) row count.
    *  Matches `getDisplayedRowCount()` on the underlying CGrid; exposed

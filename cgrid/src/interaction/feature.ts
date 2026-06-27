@@ -274,6 +274,28 @@ export interface CGridLike {
    *  `setExpanded` API path apps use, so a chevron click fires the
    *  `rowGroupOpened` event with `source: 'ui'`. */
   toggleGroupExpanded(groupKey: string): void;
+
+  // --- Group tri-state checkbox (Cycle 15 / Task 8) ---
+  /** Hit-test a canvas-local point against the tri-state checkbox of
+   *  an auto-group cell. Returns the composite group key + current
+   *  aggregate state when the point falls inside the checkbox hit
+   *  zone (box bbox + 4 px pad each side ≈ 22 × 22 px, vertical = full
+   *  row band). Returns `null` when the point is anywhere else,
+   *  including the chevron hit zone (which routes via
+   *  `hitTestGroupChevron`), data rows, body cells, headers, OR when
+   *  `groupSelectsChildren` is off / not under multi-selection mode.
+   *  Mirrors the chevron hit-test split-of-responsibilities — the
+   *  feature stays a thin click-router. */
+  hitTestGroupCheckbox(x: number, y: number): {
+    groupKey: string;
+    state: 'none' | 'partial' | 'all';
+  } | null;
+  /** Cascade-select / deselect every descendant leaf row under
+   *  `groupKey`. Routes through the SelectionModel's
+   *  `setGroupSelected` so the persistent id set carries the cascade
+   *  and a subsequent `getSelectedRowIds()` returns the new leaf list.
+   *  Fires `selectionChanged`. */
+  toggleGroupChildrenSelected(groupKey: string, selected: boolean): void;
 }
 
 export interface CGridEventCtx {

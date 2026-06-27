@@ -116,6 +116,10 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
     // never intercepted by GroupExpandFeature.
     hitTestGroupChevron: () => null,
     toggleGroupExpanded: () => {},
+    // Cycle 15 / Task 8 — same default for the tri-state checkbox
+    // hit-lane so chain tests stay on the data-cell path.
+    hitTestGroupCheckbox: () => null,
+    toggleGroupChildrenSelected: () => {},
   } as unknown as CGridLike;
   const chain = new FeatureChain(grid);
   return { canvas, sel, chain, emitClicked, emitDoubleClicked, resizeColumn, cycleSort, scrollBy, openEditor, stopEditing };

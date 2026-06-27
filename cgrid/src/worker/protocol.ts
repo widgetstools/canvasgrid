@@ -212,6 +212,13 @@ export type WorkerRequest =
    *  `getExpandedKeys()` snapshot when the main-side mirror is still
    *  at the "default = all expanded" sentinel). */
   | { id: ReqId; type: 'setExpandedKeys';  payload: { keys: string[] | null } }
+  /** Cycle 15 / Task 8 — toggle whether subsequent `groupKeysSnapshot`
+   *  replies carry the parallel `groupDescendants: string[][]` array.
+   *  Main flips this on when `groupSelectsChildren: true` lands so the
+   *  `GroupMembershipResolver` can cascade selection without firing a
+   *  per-click round-trip. Resolves with a fresh `groupKeysSnapshot`
+   *  so the toggle-on call also primes the descendant cache. */
+  | { id: ReqId; type: 'setEmitGroupDescendants'; payload: { enabled: boolean } }
   | { id: ReqId; type: 'getViewport';      payload: ViewportRequest }
   | { id: ReqId; type: 'updateColumns';    payload: { columns: WorkerColumn[] } }
   | { id: ReqId; type: 'getRowIndexForId';    payload: { rowId: string } }
@@ -360,13 +367,24 @@ export type WorkerResponse =
    *  that piggybacks on the existing rowCount channel but adds the list
    *  of CURRENT composite group keys so the main-thread mirror can
    *  materialise its `expandedKeys` snapshot for `getExpandedKeys()`.
-   *  Empty when grouping is bypassed (`rowGroupCols.length === 0`). */
+   *  Empty when grouping is bypassed (`rowGroupCols.length === 0`).
+   *
+   *  Cycle 15 / Task 8 — also carries an OPTIONAL `groupDescendants`
+   *  array (parallel to `groupKeys` — entry `i` is the descendant
+   *  string-rowId list for `groupKeys[i]`). Present only when the
+   *  worker has been asked to ship descendants (the `'tri-state' is
+   *  active' flag set via init or via a runtime `setEmitGroupDescendants`
+   *  message — currently always populated when grouping is active, the
+   *  payload size scales with `Σ descendantCount × groupCount`).
+   *  Apps that don't enable `groupSelectsChildren` see no extra
+   *  payload — main ignores the field. */
   | {
       id: ReqId;
       type: 'groupKeysSnapshot';
       count: number;
       visibleCount: number;
       groupKeys: string[];
+      groupDescendants?: string[][];
     }
   | { id: ReqId; type: 'viewport';            chunk: ViewportChunk }
   | { id: ReqId; type: 'transactionFlushed';  results: TransactionResult }

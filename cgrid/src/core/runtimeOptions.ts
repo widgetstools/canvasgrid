@@ -65,7 +65,8 @@ export type RuntimeOption =
   | 'aggFuncs'
   | 'suppressAggFuncInHeader'
   | 'rowGroupPanelShow'
-  | 'rowGroupPanelSuppressSort';
+  | 'rowGroupPanelSuppressSort'
+  | 'groupSelectsChildren';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
  *  import on `CGrid` (cgrid.ts imports this module). */
@@ -116,6 +117,12 @@ export interface RuntimeOptionTarget<TRow = any> {
    *  CGrid normalises the value (undefined / `'never'` → unmount;
    *  otherwise mount-or-update). */
   updateRowGroupPanelShow(value: 'always' | 'onlyWhenGrouping' | 'never' | undefined): void;
+  /** Cycle 15 / Task 8 — flip the `groupSelectsChildren` tri-state
+   *  selection feature. CGrid wires the SelectionModel's group
+   *  membership resolver, toggles the worker's per-snapshot descendant
+   *  emission, and triggers a paint refresh so the auto-group cells
+   *  re-render with / without checkboxes. */
+  updateGroupSelectsChildren(enabled: boolean): void;
 }
 
 /**
@@ -262,6 +269,14 @@ export function applyRuntimeOption<TRow>(
       // Cycle 15 — chips don't carry a sort indicator yet; the flag is
       // plumbed forward for Cycle 16+).
       return;
+    case 'groupSelectsChildren':
+      // Cycle 15 / Task 8 — flip the tri-state cascading. CGrid wires
+      // the SelectionModel's membership resolver, toggles the worker's
+      // descendant emission, and repaints. A runtime flip on a grid
+      // that is currently grouped lights up checkboxes (true) or hides
+      // them (false) on the next frame.
+      target.updateGroupSelectsChildren(value === true);
+      return;
   }
 }
 
@@ -293,4 +308,5 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'suppressAggFuncInHeader',
   'rowGroupPanelShow',
   'rowGroupPanelSuppressSort',
+  'groupSelectsChildren',
 ]);

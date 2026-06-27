@@ -59,6 +59,21 @@ interface State {
   /** Cycle 15 / Task 1 — last `GroupPass.apply` result. Recomputed on
    *  every `buildVisibleAsync`. `null` until the first build runs. */
   groupOutput: GroupPassOutput | null;
+  /** Cycle 15 / Task 8 — snapshot of the rowId array fed into the most
+   *  recent `GroupPass.apply` (the post-filter, pre-sort set). Captured
+   *  alongside `groupOutput` so we can translate a `GroupNode`'s
+   *  `childIndices` (indices into this array) back to string rowIds
+   *  without re-running the filter pipeline. Used by
+   *  `collectGroupDescendantRowIds` to populate the `groupKeysSnapshot`
+   *  reply's `groupDescendants` field for tri-state selection. */
+  groupInputIds: readonly string[] | null;
+  /** Cycle 15 / Task 8 — when true, every `groupKeysSnapshot` reply
+   *  carries the parallel `groupDescendants: string[][]` array
+   *  populated from the current `groupOutput` + `groupInputIds`. Off
+   *  by default to keep the reply small for the common case
+   *  (`groupSelectsChildren: false`). Main flips it on via
+   *  `setEmitGroupDescendants(true)` at init when the option lands. */
+  emitGroupDescendants: boolean;
   /** Cycle 15 / Task 7 — persistent expanded-key set the slicer + meta
    *  lookup honor. `null` is the "default = every group expanded"
    *  sentinel (matches the Task 4 mount behaviour). A non-null set is
@@ -207,6 +222,13 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     // 10's group-aware sort can read from it; for Task 1 the flat
     // `visibleCache` shape downstream consumers see is unchanged.
     state.groupOutput = state.group.apply(ids);
+    // Cycle 15 / Task 8 — capture the pre-sort, post-filter rowId
+    // array so descendant lookups (`collectGroupDescendantRowIds`) can
+    // translate a GroupNode's `childIndices` back to string rowIds
+    // without rerunning the filter pipeline. Stored as a frozen slice
+    // so a future `state.group.apply` doesn't mutate this snapshot
+    // behind a pending descendant request.
+    state.groupInputIds = state.groupOutput.bypassed ? null : ids.slice();
     ids = state.sort.apply(ids);
     // Cycle 8 / Task 4 — when `postSortRowsPresent`, ship the sorted ids
     // up for the main-thread hook to re-order. Empty sets skip the
@@ -279,6 +301,48 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     for (const e of state.groupOutput.flatOrder) {
       if (e.kind === 'group') out.push(e.key);
     }
+    return out;
+  }
+
+  /** Cycle 15 / Task 8 — collect the descendant leaf rowIds for every
+   *  composite group key in `currentGroupKeys()` order. Returns an
+   *  array parallel to `currentGroupKeys()` so the main thread can pair
+   *  them index-by-index in a `Map<groupKey, string[]>`. Returns an
+   *  empty array when grouping bypasses OR when `groupInputIds` is
+   *  missing (should never happen post-`buildVisibleAsync`).
+   *
+   *  Cost: O(totalDescendants × depth) — for the common case
+   *  (1 M rows × 3 group cols × ~450 leaf groups) the walk touches
+   *  every leaf index once across roughly `depth × groupCount`
+   *  recursive frames. Suitable for `setGroupModel` / `setExpandedKeys`
+   *  replies; not on the per-frame paint path. */
+  function collectGroupDescendantRowIds(): string[][] {
+    if (!state?.groupOutput || state.groupOutput.bypassed) return [];
+    const inputIds = state.groupInputIds;
+    if (!inputIds) return [];
+    const out: string[][] = [];
+    const collect = (node: GroupNode, into: string[]): void => {
+      if (node.childGroups.length > 0) {
+        for (const child of node.childGroups) collect(child, into);
+        return;
+      }
+      // Leaf — `childIndices` are positions into `inputIds`.
+      const idxs = node.childIndices;
+      for (let i = 0; i < idxs.length; i++) {
+        const idx = idxs[i]!;
+        const id = inputIds[idx];
+        if (id !== undefined) into.push(id);
+      }
+    };
+    const walk = (nodes: readonly GroupNode[]): void => {
+      for (const node of nodes) {
+        const descendants: string[] = [];
+        collect(node, descendants);
+        out.push(descendants);
+        if (node.childGroups.length > 0) walk(node.childGroups);
+      }
+    };
+    walk(state.groupOutput.roots);
     return out;
   }
 
@@ -415,6 +479,8 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       sort:        new SortPass(store, payload.columns, comparators),
       group:       new GroupPass(store, payload.columns),
       groupOutput: null,
+      groupInputIds: null,
+      emitGroupDescendants: false,
       expandedKeys: null,
       comparators,
       aggFuncs,
@@ -699,6 +765,9 @@ export function createWorkerHost(post: PostFn): WorkerHost {
               count: state.store.size(),
               visibleCount,
               groupKeys: currentGroupKeys(),
+              groupDescendants: state.emitGroupDescendants
+                ? collectGroupDescendantRowIds()
+                : undefined,
             });
             break;
           }
@@ -723,6 +792,33 @@ export function createWorkerHost(post: PostFn): WorkerHost {
               count: state.store.size(),
               visibleCount,
               groupKeys: currentGroupKeys(),
+              groupDescendants: state.emitGroupDescendants
+                ? collectGroupDescendantRowIds()
+                : undefined,
+            });
+            break;
+          }
+
+          case 'setEmitGroupDescendants': {
+            // Cycle 15 / Task 8 — toggle the descendant-shipment flag.
+            // When `true`, every `groupKeysSnapshot` reply carries the
+            // parallel `groupDescendants: string[][]` array so the
+            // main-thread `GroupMembershipResolver` can cascade
+            // selection + compute tri-state. Resolves with the current
+            // groupKeys + descendants so the toggle-on call itself
+            // primes the main-side cache (no follow-up
+            // `setGroupModel` needed). Idempotent — re-toggling to the
+            // same value is fine.
+            state.emitGroupDescendants = req.payload.enabled;
+            post({
+              id: req.id,
+              type: 'groupKeysSnapshot',
+              count: state.store.size(),
+              visibleCount: await invalidateAndCount(),
+              groupKeys: currentGroupKeys(),
+              groupDescendants: state.emitGroupDescendants
+                ? collectGroupDescendantRowIds()
+                : undefined,
             });
             break;
           }

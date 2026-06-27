@@ -625,6 +625,13 @@ export class CGrid<TRow = any> {
    *  default-all sentinel) and as the source of truth for
    *  `getExpandedKeys()`'s "everything's expanded" snapshot. */
   private knownGroupKeys: string[] = [];
+  /** Cycle 15 / Task 8 — `groupKey → descendant leaf rowIds` map
+   *  populated from every `groupKeysSnapshot` reply when the worker's
+   *  descendant emission is on. Backs the `GroupMembershipResolver`
+   *  the SelectionModel calls to cascade selection + recompute
+   *  tri-state. Empty when grouping bypasses OR when
+   *  `groupSelectsChildren` is off. */
+  private groupDescendantsByKey: Map<string, readonly string[]> = new Map();
 
   constructor(container: HTMLElement, private options: CGridOptions<TRow>) {
     if (!options.getRowId) throw new Error('[cgrid] options.getRowId is required');
@@ -1049,6 +1056,12 @@ export class CGrid<TRow = any> {
       // `source: 'ui'` distinct from imperative API toggles.
       hitTestGroupChevron: (x, y) => this.hitTestGroupChevron(x, y),
       toggleGroupExpanded: (key) => this.toggleGroupExpandedFromUi(key),
+      // Cycle 15 / Task 8 — tri-state checkbox hit-test + cascade
+      // toggle. Same geometry-on-grid / feature-stays-thin split as
+      // the chevron path above.
+      hitTestGroupCheckbox: (x, y) => this.computeCheckboxHit(x, y),
+      toggleGroupChildrenSelected: (key, selected) =>
+        this.cascadeGroupSelectionFromUi(key, selected),
     });
     this.cellEditorRegistry = new CellEditorRegistry();
     CellEditorRegistry.seed(this.cellEditorRegistry);
@@ -1128,6 +1141,19 @@ export class CGrid<TRow = any> {
         // remove group keys (e.g. a new ticker entered the dataset).
         // The worker only ships this when grouping is active.
         if (groupKeys !== undefined) this.knownGroupKeys = groupKeys;
+        // Cycle 15 / Task 8 — descendants may have shifted (new rows
+        // in a group, removed rows, new groups). The push doesn't
+        // ship them; refresh the cache via a follow-up
+        // `setEmitGroupDescendants(true)` round-trip when the feature
+        // is active. Cheap when the descendants haven't actually
+        // changed — the worker just re-serialises the same arrays.
+        if (
+          groupKeys !== undefined
+          && groupKeys.length > 0
+          && this.selection.isGroupSelectsChildren()
+        ) {
+          this.refreshGroupDescendantsCache();
+        }
         // Row order may have shifted (sort, filter, transaction add/remove) —
         // per-row heights live with row identity, not slot. Drop the index
         // and let the next chunk rebuild it (Cycle 5 / Task 7). The viewport
@@ -1209,6 +1235,15 @@ export class CGrid<TRow = any> {
       // standard sum / avg / min / max / count / first / last columns.
       if (this.options.aggFuncs && Object.keys(this.options.aggFuncs).length > 0) {
         this.forwardAggFuncs(this.options.aggFuncs);
+      }
+      // Cycle 15 / Task 8 — when `groupSelectsChildren: true` is set
+      // at construction, register the SelectionModel's membership
+      // resolver AND flip the worker's per-snapshot descendant
+      // emission BEFORE the first setRowData so the first paint after
+      // grouping is applied has the cascade machinery in place.
+      // Runtime swaps route through `applyGroupSelectsChildren`.
+      if (this.options.groupSelectsChildren === true) {
+        await this.applyGroupSelectsChildren(true);
       }
       this.events.emit({ type: 'gridReady', api: this.makeApi() });
       if (options.rowData) this.setRowData(options.rowData);
@@ -2486,9 +2521,10 @@ export class CGrid<TRow = any> {
     // reply ships back the full key list so the mirror can serve
     // `getExpandedKeys()` snapshots without a follow-up round-trip.
     this.expandedKeys = null;
-    this.workerClient.setGroupModel(this.groupModel).then(({ visibleCount, groupKeys }) => {
+    this.workerClient.setGroupModel(this.groupModel).then(({ visibleCount, groupKeys, groupDescendants }) => {
       if (this.destroyed) return;
       this.knownGroupKeys = groupKeys;
+      this.updateGroupDescendantsCache(groupKeys, groupDescendants);
       this.rowCount = visibleCount;
       this.rowHeightIndex = null;
       this.recomputeViewport();
@@ -2573,13 +2609,18 @@ export class CGrid<TRow = any> {
    *  set. Refreshes `knownGroupKeys` from the reply (a transaction
    *  that landed mid-flight could have added / removed groups) and
    *  drives the next viewport request so the chunk reflects the
-   *  collapsed / expanded set. */
+   *  collapsed / expanded set.
+   *
+   *  Cycle 15 / Task 8 — also refreshes the descendant cache from
+   *  `groupDescendants` when the worker is emitting them. The
+   *  selection model's membership resolver reads from this cache. */
   private shipExpandedKeys(keys: string[] | null): void {
     this.workerClient
       .setExpandedKeys(keys)
-      .then(({ visibleCount, groupKeys }) => {
+      .then(({ visibleCount, groupKeys, groupDescendants }) => {
         if (this.destroyed) return;
         this.knownGroupKeys = groupKeys;
+        this.updateGroupDescendantsCache(groupKeys, groupDescendants);
         this.rowCount = visibleCount;
         this.rowHeightIndex = null;
         this.recomputeViewport();
@@ -2587,6 +2628,89 @@ export class CGrid<TRow = any> {
         this.requestViewport();
       })
       .catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+  }
+
+  /** Cycle 15 / Task 8 — re-fetch the worker's descendant snapshot
+   *  without flipping the emission flag. Used after `modelUpdated`
+   *  pushes (data transactions / sort / filter) when
+   *  `groupSelectsChildren` is on, so the membership cache stays in
+   *  lockstep with the worker's tree. Fire-and-forget; a stale paint
+   *  for one frame is acceptable while the round-trip resolves. */
+  private refreshGroupDescendantsCache(): void {
+    this.workerClient
+      .setEmitGroupDescendants(true)
+      .then(({ groupKeys, groupDescendants }) => {
+        if (this.destroyed) return;
+        this.knownGroupKeys = groupKeys;
+        this.updateGroupDescendantsCache(groupKeys, groupDescendants);
+        this.cgridCanvas?.requestRepaint();
+      })
+      .catch((err) => {
+        if (!this.destroyed) console.error('[cgrid] refreshGroupDescendantsCache:', err);
+      });
+  }
+
+  /** Cycle 15 / Task 8 — apply a `groupKeysSnapshot` reply's parallel
+   *  `groupKeys` + `groupDescendants` arrays to the main-side cache the
+   *  `GroupMembershipResolver` reads from. An empty `groupDescendants`
+   *  array clears the cache (the worker isn't emitting descendants
+   *  right now — the resolver collapses to `'none'` for every key,
+   *  which is the correct paint default for "I don't know"). */
+  private updateGroupDescendantsCache(
+    groupKeys: readonly string[],
+    groupDescendants: readonly (readonly string[])[] | undefined,
+  ): void {
+    if (!groupDescendants || groupDescendants.length === 0) {
+      // Either grouping bypasses OR the worker isn't emitting
+      // descendants (Tasks 1-7 path); clear so the resolver returns
+      // empty arrays and the renderer defaults to 'none'.
+      if (this.groupDescendantsByKey.size > 0) this.groupDescendantsByKey.clear();
+      return;
+    }
+    const next = new Map<string, readonly string[]>();
+    for (let i = 0; i < groupKeys.length; i++) {
+      const key = groupKeys[i]!;
+      next.set(key, groupDescendants[i] ?? []);
+    }
+    this.groupDescendantsByKey = next;
+  }
+
+  /** Cycle 15 / Task 8 — toggle the tri-state cascading machinery.
+   *
+   *  Wiring:
+   *    1. Toggles the worker's per-snapshot descendant emission so
+   *       subsequent `setGroupModel` / `setExpandedKeys` replies carry
+   *       (or omit) the `groupDescendants` array.
+   *    2. The current snapshot reply primes the main-side cache.
+   *    3. Wires (or detaches) the SelectionModel's membership resolver
+   *       so its `setGroupSelected` / `getGroupSelectionState` paths
+   *       light up with cascade semantics.
+   *    4. Triggers a paint so auto-group cells re-render with the
+   *       new checkbox slot wide / hidden.
+   *
+   *  Resolves once the worker has acked the toggle so callers awaiting
+   *  the runtime swap know the first paint after the resolve carries
+   *  the new behaviour. */
+  private async applyGroupSelectsChildren(enabled: boolean): Promise<void> {
+    if (this.destroyed) return;
+    try {
+      const { groupKeys, groupDescendants } = await this.workerClient
+        .setEmitGroupDescendants(enabled);
+      if (this.destroyed) return;
+      this.knownGroupKeys = groupKeys;
+      this.updateGroupDescendantsCache(groupKeys, enabled ? groupDescendants : undefined);
+    } catch (err) {
+      if (!this.destroyed) console.error('[cgrid] setEmitGroupDescendants:', err);
+      return;
+    }
+    if (enabled) {
+      this.selection.setGroupSelectsChildren(true, {
+        getDescendantRowIds: (key) => this.groupDescendantsByKey.get(key) ?? [],
+      });
+    } else {
+      this.selection.setGroupSelectsChildren(false, null);
+    }
+    this.cgridCanvas?.requestRepaint();
   }
 
   /** Cycle 15 / Task 6 — append `colId` to `rowGroupCols`. Called
@@ -3412,6 +3536,7 @@ export class CGrid<TRow = any> {
         );
       },
       updateRowGroupPanelShow: (value) => this.updateRowGroupPanelShow(value),
+      updateGroupSelectsChildren: (enabled) => this.applyGroupSelectsChildren(enabled),
     };
   }
 
@@ -3731,6 +3856,7 @@ export class CGrid<TRow = any> {
       ensureColumnGroupVisible: (id, pos) => this.ensureColumnGroupVisible(id, pos),
       getSelectedRowIds: () => this.getSelectedRowIds(),
       setSelectedRowIds: (ids) => this.setSelectedRowIds(ids),
+      getGroupSelectionState: (key) => this.selection.getGroupSelectionState(key),
       getDisplayedRowCount: () => this.getDisplayedRowCount(),
       getTotalRowCount: () => this.getTotalRowCount(),
       getCellRanges: () => this.getCellRanges(),
@@ -3963,6 +4089,76 @@ export class CGrid<TRow = any> {
     return { groupKey };
   }
 
+  /** Cycle 15 / Task 8 — hit-test a canvas-local point against the
+   *  tri-state checkbox of an auto-group cell. Returns the composite
+   *  group key + current aggregate state when the point falls inside
+   *  the checkbox hit zone, `null` otherwise.
+   *
+   *  Geometry MUST agree with `renderer/cellRenderers/group.ts`:
+   *  PADDING + indent + chevron + chevron-gap + checkbox, with
+   *  HIT_PAD = 4 px each side. Mirrors the chevron hit-test pattern.
+   *  Returns `null` when `groupSelectsChildren` is off OR when the
+   *  row isn't a group row (data rows / non-auto-group columns / the
+   *  multipleColumns "other-depth" cells all fall here). */
+  private computeCheckboxHit(x: number, y: number): {
+    groupKey: string;
+    state: 'none' | 'partial' | 'all';
+  } | null {
+    if (!this.selection.isGroupSelectsChildren()) return null;
+    if (!this.chunk) return null;
+    const vs = this.viewport;
+    let row: ViewportRow | null = null;
+    for (const r of vs.visibleRows) {
+      if (y >= r.top && y < r.bottom) { row = r; break; }
+    }
+    if (!row || !row.subgrid.isData) return null;
+    let zone: 'left' | 'right' | 'center';
+    if (x < vs.bodyLeft) zone = 'left';
+    else if (x >= vs.bodyRight) zone = 'right';
+    else zone = 'center';
+    let col: ViewportColumn | null = null;
+    for (const c of vs.visibleColumns) {
+      const home = c.pinned ?? 'center';
+      if (home !== zone) continue;
+      if (x >= c.left && x < c.right) { col = c; break; }
+    }
+    if (!col || !isAutoGroupColumnId(col.colId)) return null;
+    const rowIndex = row.localRowIndex;
+    const localIndex = rowIndex - this.chunk.rowStart;
+    if (localIndex < 0 || localIndex >= this.chunk.rowCount) return null;
+    if ((this.chunk.rowKinds[localIndex] ?? 0) !== 1) return null;
+    const rowDepth = this.chunk.groupDepth[localIndex] ?? 0;
+    const colDepth = autoGroupColumnDepthFromId(col.colId);
+    if (colDepth !== null && colDepth !== rowDepth) return null;
+    // Constants mirrored from `renderer/cellRenderers/group.ts`. Any
+    // drift breaks the click target — the chevron's mirroring already
+    // documents the convention.
+    const PADDING = 6;
+    const CHEVRON_SIZE = 12;
+    const CHEVRON_GAP = 6;
+    const CHECKBOX_SIZE = 14;
+    const HIT_PAD = 4;
+    const INDENT_UNIT = 14;
+    const indentX = colDepth !== null ? 0 : rowDepth * INDENT_UNIT;
+    const checkboxLeft = col.left + PADDING + indentX + CHEVRON_SIZE + CHEVRON_GAP;
+    const checkboxRight = checkboxLeft + CHECKBOX_SIZE;
+    if (x < checkboxLeft - HIT_PAD || x > checkboxRight + HIT_PAD) return null;
+    const groupKey = this.chunk.groupKey?.[localIndex] ?? '';
+    if (groupKey === '') return null;
+    const state = this.selection.getGroupSelectionState(groupKey);
+    return { groupKey, state };
+  }
+
+  /** Cycle 15 / Task 8 — cascade select / deselect every leaf row under
+   *  `groupKey`. Routes through the SelectionModel; the persistent id
+   *  set carries the change so a later sort / filter / transaction
+   *  preserves the cascade. */
+  private cascadeGroupSelectionFromUi(groupKey: string, selected: boolean): void {
+    if (this.destroyed) return;
+    if (groupKey === '') return;
+    this.selection.setGroupSelected(groupKey, selected);
+  }
+
   /** Cycle 15 / Task 7 — toggle a group's expanded state in response
    *  to a chevron click. Mirrors `setExpanded(key, !current)` but
    *  fires `rowGroupOpened` with `source: 'ui'` so apps can tell a
@@ -4009,7 +4205,28 @@ export class CGrid<TRow = any> {
     const isExpanded = this.chunk.isExpanded
       ? (this.chunk.isExpanded[localIndex] ?? 0) !== 0
       : true;
-    return { kind: 'group', rowKind, depth, valueFormatted, childCount, isExpanded };
+    // Cycle 15 / Task 8 — thread tri-state selection state into the
+    // payload ONLY when `groupSelectsChildren` is on AND the row is a
+    // group row. Leaves it `undefined` otherwise so the renderer skips
+    // the checkbox slot entirely (the cell stays free of a hairline
+    // outlined box on data rows / single-mode grids).
+    let selectionState: 'none' | 'partial' | 'all' | undefined;
+    if (rowKind === 1 && this.selection.isGroupSelectsChildren()) {
+      const groupKeyArr = this.chunk.groupKey;
+      const groupKey = groupKeyArr ? (groupKeyArr[localIndex] ?? '') : '';
+      selectionState = groupKey === ''
+        ? 'none'
+        : this.selection.getGroupSelectionState(groupKey);
+    }
+    return {
+      kind: 'group',
+      rowKind,
+      depth,
+      valueFormatted,
+      childCount,
+      isExpanded,
+      selectionState,
+    };
   }
 
   /** Visible-leaf colIds in RENDER order: left-pinned first, then center,
