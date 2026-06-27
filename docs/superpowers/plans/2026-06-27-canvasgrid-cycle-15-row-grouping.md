@@ -174,13 +174,14 @@ adds Uint8Array / Uint32Array typed arrays (already in the project).
 | 3 | `GroupedRow` chunk format extension | no | yes | `cgrid/src/worker/chunkFormat.ts`, `protocol.ts`, `client.ts` | `chunkFormat.group.test.ts` (10 cases + ungrouped fixture round-trip) |
 | 4 | Auto-group column + `'group'` cell renderer | yes | no | `cgrid/src/core/autoGroupColumn.ts` (new), `cgrid/src/renderer/cellRenderers/group.ts` (new), `cgrid/src/renderer/cellRenderers/registry.ts`, `tokens.css` | `autoGroupColumn.test.ts` (12 cases) + visual cell `20-group-one-level.png` |
 | 5 | `groupDisplayType: 'multipleColumns' | 'groupRows' | 'custom'` | yes | no | `cgrid/src/cgrid.ts`, `cgrid/src/core/autoGroupColumn.ts` | `groupDisplayType.test.ts` (9 cases) + visual cell `21-group-three-level-multipleColumns.png` |
-| 6 | Expand/collapse interaction + API | yes | no | `cgrid/src/interaction/features/groupExpand.ts` (new), `cgrid/src/cgrid.ts`, `cgrid/src/worker/passes/groupPass.ts` | `groupExpand.test.ts` (15 cases) + visual cell `22-groups-all-collapsed.png` + E2E `cycle15-groupExpand.spec.ts` |
-| 7 | `groupSelectsChildren` + tri-state checkbox | yes | no | `cgrid/src/interaction/selectionModel.ts`, `cgrid/src/renderer/cellRenderers/group.ts`, `tokens.css` | `triStateSelection.test.ts` (13 cases) + visual cell `23-groupSelectsChildren-indeterminate.png` |
-| 8 | `groupDefaultExpanded` + `groupDefaultExpandedKeys` | no | partial (worker reads option on init) | `cgrid/src/cgrid.ts`, `cgrid/src/worker/passes/groupPass.ts` | `groupDefaultExpanded.test.ts` (7 cases) |
-| 9 | `showOpenedGroup` + `groupRemoveSingleChildren` | yes (polish) | yes | `cgrid/src/worker/passes/groupPass.ts`, `cgrid/src/renderer/cellRenderers/group.ts` | `groupElision.test.ts` (8 cases); visual cell 21 re-baselines if elision changes the demo |
-| 10 | Group-aware sort | no | yes | `cgrid/src/worker/passes/sortPass.ts` | `groupSort.test.ts` (10 cases) + `groupSort.perf.test.ts` (100 K ≤ 100 ms) |
-| 11 | Group totals (footer rows) | yes | yes | `cgrid/src/core/subgrid.ts` (extend `TotalsSubgrid`), `cgrid/src/worker/passes/aggPass.ts`, `cgrid/src/cgrid.ts`, `tokens.css` | `groupFooter.test.ts` (12 cases) + visual cell `24-group-footer-rows.png` |
-| 12 | Cycle 15 exit ritual | yes (demo wires grouping default) | no | worklog Shipped block, FM Area 09 + 10 flips, demo update | full suite green; FM 50/54 rows ✅ |
+| 6 | **Row group panel** (drop strip above headers) + drag-from-header + `rowGroupPanelShow` + `rowGroupPanelSuppressSort` + `enableRowGroup` | yes | no | `cgrid/src/interaction/rowGroupPanel/host.ts` (new), `cgrid/src/interaction/features/columnDrag.ts` (extend with row-group-panel drop target), `cgrid/src/cgrid.ts`, `tokens.css` | `rowGroupPanel.test.ts` (16 cases) + visual cells `22-rowGroupPanel-empty.png` + `23-rowGroupPanel-three-chips.png` + E2E `cycle15-dragColumnToRowGroupPanel.spec.ts` |
+| 7 | Expand/collapse interaction + API | yes | no | `cgrid/src/interaction/features/groupExpand.ts` (new), `cgrid/src/cgrid.ts`, `cgrid/src/worker/passes/groupPass.ts` | `groupExpand.test.ts` (15 cases) + visual cell `24-groups-all-collapsed.png` + E2E `cycle15-groupExpand.spec.ts` |
+| 8 | `groupSelectsChildren` + tri-state checkbox | yes | no | `cgrid/src/interaction/selectionModel.ts`, `cgrid/src/renderer/cellRenderers/group.ts`, `tokens.css` | `triStateSelection.test.ts` (13 cases) + visual cell `25-groupSelectsChildren-indeterminate.png` |
+| 9 | `groupDefaultExpanded` + `groupDefaultExpandedKeys` | no | partial (worker reads option on init) | `cgrid/src/cgrid.ts`, `cgrid/src/worker/passes/groupPass.ts` | `groupDefaultExpanded.test.ts` (7 cases) |
+| 10 | `showOpenedGroup` + `groupRemoveSingleChildren` | yes (polish) | yes | `cgrid/src/worker/passes/groupPass.ts`, `cgrid/src/renderer/cellRenderers/group.ts` | `groupElision.test.ts` (8 cases); visual cell 21 re-baselines if elision changes the demo |
+| 11 | Group-aware sort | no | yes | `cgrid/src/worker/passes/sortPass.ts` | `groupSort.test.ts` (10 cases) + `groupSort.perf.test.ts` (100 K ≤ 100 ms) |
+| 12 | Group totals (footer rows) | yes | yes | `cgrid/src/core/subgrid.ts` (extend `TotalsSubgrid`), `cgrid/src/worker/passes/aggPass.ts`, `cgrid/src/cgrid.ts`, `tokens.css` | `groupFooter.test.ts` (12 cases) + visual cell `26-group-footer-rows.png` |
+| 13 | Cycle 15 exit ritual | yes (demo wires grouping default) | no | worklog Shipped block, FM Area 09 + 10 flips, demo update | full suite green; FM 52/54 rows ✅ |
 
 ---
 
@@ -527,15 +528,157 @@ column and the `'group'` cell renderer.
 
 ---
 
-## Phase C — Interaction (Tasks 6–7)
+## Task 6 — Row group panel (drop strip above headers) + drag-from-header
 
-Group rows are rendering. Now they need to be clickable
-(expand/collapse) and the selection model needs to handle
+**Read first:**
+- This worklog's Architecture.
+- **`docs/catalog/screenshots/09-grouping-three-level-expanded.png`**
+  — pin open. The top strip shows three chips:
+  `≡ Desk ✕  ▸  ≡ Region ✕  ▸  ≡ Instrument Type ✕`. That's the
+  row group panel: one chip per `rowGroupCols[i]` in order, each
+  with a drag-handle glyph, the column header, and an ✕ to
+  remove the grouping. Empty-state shows placeholder text like
+  "Drag here to set row groups" (see also the side-bar Columns
+  panel's Row Groups drop zone shipped in Cycle 11 for vocabulary
+  reference).
+- `docs/catalog/09-row-grouping.md` — `rowGroupPanelShow`,
+  `rowGroupPanelSuppressSort`, `enableRowGroup` definitions.
+- `cgrid/src/interaction/features/columnDrag.ts` — existing
+  column-header drag wiring (Cycle 6). This task EXTENDS it
+  with a new drop target (the row group panel) rather than
+  reimplementing drag.
+- `cgrid/src/interaction/sideBar/host.ts` — the side bar mounts a
+  DOM strip on the right edge; the row group panel mounts a
+  horizontal strip on top. Same `setReservedSpace` channel
+  reserves the inset.
+- Memory: `feedback_ui_quality_bar.md` — **invoke `/frontend-design`
+  BEFORE writing CSS or DOM.** This task ships a NEW visual surface
+  (the panel + chips); non-negotiable.
+
+**Files:**
+- `cgrid/src/interaction/rowGroupPanel/host.ts` (new) —
+  `RowGroupPanelHost` class. Mounts a horizontal DOM strip
+  between the side bar's top edge and the column header row.
+  Renders one chip per `rowGroupCols[i]`. Accepts drop events
+  from the column-drag feature.
+- `cgrid/src/interaction/rowGroupPanel/types.ts` (new) — public
+  types: `RowGroupPanelShow` union, `RowGroupChipParams`.
+- `cgrid/src/interaction/features/columnDrag.ts` (extend) — when
+  the user drags a column header AND the row group panel is
+  visible AND the column has `enableRowGroup: true`, the panel
+  becomes a drop target. Drop appends the column to
+  `rowGroupCols` (or moves it within the chip strip when
+  dragging an existing chip).
+- `cgrid/src/cgrid.ts` — mount the host when `rowGroupPanelShow`
+  resolves to `'always'` or `'onlyWhenGrouping' AND
+  rowGroupCols.length > 0`. Reserve top-inset via the same
+  `setHostBounds` channel side bar / status bar use.
+- `cgrid/src/core/canvas.ts` — extend `setHostBounds` to also
+  accept a `top` inset (currently `top: 0` is hardcoded for the
+  header subgrid; the panel sits ABOVE that subgrid).
+- `cgrid/src/theming/tokens.css` — `.cg-row-group-panel`,
+  `.cg-row-group-chip`, `.cg-row-group-chip-handle`,
+  `.cg-row-group-chip-label`, `.cg-row-group-chip-remove`,
+  `.cg-row-group-panel-empty` rules. Designed per the
+  `/frontend-design` plan.
+- `cgrid/src/cgrid.ts` — `CGridOptions.rowGroupPanelShow:
+  'always' | 'onlyWhenGrouping' | 'never'` (default `'never'`),
+  `rowGroupPanelSuppressSort: boolean`, per-column
+  `enableRowGroup: boolean`.
+- `cgrid/src/types.ts` — public option types.
+- `cgrid/tests/rowGroupPanel.test.ts` (new) — 16 cases: mount /
+  hide when `rowGroupPanelShow: 'never'` /
+  `'onlyWhenGrouping'` mount on first chip / unmount on last
+  chip removed / `'always'` mount empty / chip order matches
+  `rowGroupCols` / chip × click removes column from grouping /
+  chip drag re-orders / drop from column header appends /
+  `enableRowGroup: false` column rejected at drop / chip click
+  toggles sort (when `rowGroupPanelSuppressSort: false`) /
+  `rowGroupPanelSuppressSort: true` hides sort indicator / panel
+  shrinks canvas top inset / empty-state placeholder text /
+  destroy unmounts cleanly / setOption mid-flight re-mounts /
+  multi-column rowGroupCols renders ordered chips.
+- `apps/cgrid-positions/e2e-visual/22-rowGroupPanel-empty.spec.ts`
+  (new) — seeds 50 rows, `rowGroupPanelShow: 'always'`, no
+  `rowGroupCols`, snapshots
+  `22-rowGroupPanel-empty.png` showing the empty-state strip.
+- `apps/cgrid-positions/e2e-visual/23-rowGroupPanel-three-chips.spec.ts`
+  (new) — seeds 200 rows, groups by 3 columns, snapshots
+  `23-rowGroupPanel-three-chips.png` matching the reference.
+- `apps/cgrid-positions/e2e/cycle15-dragColumnToRowGroupPanel.spec.ts`
+  (new) — E2E: drag a column header into the panel; assert
+  `rowGroupCols` updates AND grouping applies.
+
+**Steps:**
+
+1. **DESIGN PASS (MANDATORY).** Invoke `/frontend-design`
+   (`Skill` tool, skill name `frontend-design`) with this brief:
+   *"Design the row group panel for canvasgrid — a horizontal
+   drop strip ABOVE the column header row. It hosts one chip per
+   grouped column. Each chip: drag-handle glyph, column label,
+   × remove button. Empty state: placeholder text 'Drag here to
+   set row groups' (matches the side-bar Columns panel's
+   drop-zone vocabulary from Cycle 11 — keep the language
+   coherent). Reference:
+   `docs/catalog/screenshots/09-grouping-three-level-expanded.png`
+   (top strip). The panel is functional, not decorative — users
+   change grouping by dragging columns in / chips out. Decide:
+   chip border-radius (4 vs 6 vs pill?), chip horizontal
+   separator (› arrow vs no separator vs vertical rule?), drop
+   indicator (dashed outline on the whole panel? a vertical
+   insertion line between chips?), hover/active states for
+   chips, empty-state typography. Vocabulary continuity:
+   cycle-11 sidebar v2 chips + cycle-13 status-bar 'sandwich' —
+   does this panel match either, or is it its own thing? Argue
+   the choice."* Record the returned palette / type / layout
+   decisions in `docs/superpowers/plans/notes/cycle-15-grouping-design.md`
+   (append; the file was created in Task 4) and cite it in the
+   commit message.
+2. Implement `RowGroupPanelHost` mirroring `SideBarHost` /
+   `StatusBarHost` patterns.
+3. Extend `setHostBounds` for a `top` inset (currently
+   hardcoded 0).
+4. Extend `columnDrag.ts` with the row-group-panel drop target.
+   Reuse the existing drag-start / drag-move event flow; only
+   the drop handler is new.
+5. Wire option resolution in `cgrid.ts`. The panel mounts based
+   on the `rowGroupPanelShow` value and current
+   `rowGroupCols.length`.
+6. Build the 16-case test suite.
+7. Build BOTH visual cells (22 empty, 23 three chips).
+8. Build the E2E spec — drag a column from the header into the
+   panel.
+9. Visual review against the reference. If the chips look like
+   "rectangular labels with an x button" instead of considered
+   chip controls — **GO BACK TO STEP 1**.
+
+**Acceptance:**
+- Panel mounts per `rowGroupPanelShow`.
+- Chips render in `rowGroupCols` order.
+- Drag column from header onto panel appends to `rowGroupCols`.
+- Click chip × removes column from grouping.
+- Empty-state placeholder reads "Drag here to set row groups"
+  matching Cycle 11 vocabulary.
+- Visual cells 22 + 23 baselined.
+- E2E passes.
+- Design notes appended.
+
+**Commit:** `feat(cgrid): row group panel (drop strip above headers) + drag-from-header + rowGroupPanelShow / Suppress / enableRowGroup` — body MUST cite the design notes file.
+
+**Next session prompt:** "Read `docs/superpowers/plans/2026-06-27-canvasgrid-cycle-15-row-grouping.md` and execute Task 7."
+
+---
+
+## Phase C — Interaction (Tasks 6–8)
+
+Group rows are rendering. Add the **row group panel** that lets the
+user drag column headers to change the grouping, then make the group
+rows clickable (expand/collapse), then extend selection to handle
 hierarchical tri-state.
 
 ---
 
-## Task 6 — Expand/collapse interaction + API
+## Task 7 — Expand/collapse interaction + API
 
 **Read first:**
 - This worklog's Architecture.
@@ -560,9 +703,9 @@ hierarchical tri-state.
   `expandedKeys: Set<string>` from the protocol.
 - `cgrid/src/types.ts` — event payload types.
 - `cgrid/tests/groupExpand.test.ts` (new) — 15 cases.
-- `apps/cgrid-positions/e2e-visual/22-groups-all-collapsed.spec.ts`
+- `apps/cgrid-positions/e2e-visual/24-groups-all-collapsed.spec.ts`
   (new) — seeds 100 rows, groups by ticker, calls `collapseAll()`,
-  snapshots `22-groups-all-collapsed.png` (all groups closed,
+  snapshots `24-groups-all-collapsed.png` (all groups closed,
   chevron right-facing).
 - `apps/cgrid-positions/e2e/cycle15-groupExpand.spec.ts` (new) —
   E2E for the chevron click flow.
@@ -590,11 +733,11 @@ hierarchical tri-state.
 
 **Commit:** `feat(cgrid): group expand/collapse interaction + API`
 
-**Next session prompt:** "Read `docs/superpowers/plans/2026-06-27-canvasgrid-cycle-15-row-grouping.md` and execute Task 7."
+**Next session prompt:** "Read `docs/superpowers/plans/2026-06-27-canvasgrid-cycle-15-row-grouping.md` and execute Task 8."
 
 ---
 
-## Task 7 — `groupSelectsChildren` + tri-state checkbox
+## Task 8 — `groupSelectsChildren` + tri-state checkbox
 
 **Read first:**
 - This worklog's Architecture.
@@ -621,10 +764,10 @@ hierarchical tri-state.
 - `cgrid/src/cgrid.ts` — `CGridOptions.groupSelectsChildren:
   boolean` option.
 - `cgrid/tests/triStateSelection.test.ts` (new) — 13 cases.
-- `apps/cgrid-positions/e2e-visual/23-groupSelectsChildren-indeterminate.spec.ts`
+- `apps/cgrid-positions/e2e-visual/25-groupSelectsChildren-indeterminate.spec.ts`
   (new) — seeds 50 rows, groups by ticker, selects ~half the
   children of one group, snapshots
-  `23-groupSelectsChildren-indeterminate.png` (showing one
+  `25-groupSelectsChildren-indeterminate.png` (showing one
   group's checkbox in the indeterminate state).
 
 **Steps:**
@@ -649,18 +792,18 @@ hierarchical tri-state.
 
 **Commit:** `feat(cgrid): groupSelectsChildren + tri-state checkbox`
 
-**Next session prompt:** "Read `docs/superpowers/plans/2026-06-27-canvasgrid-cycle-15-row-grouping.md` and execute Task 8."
+**Next session prompt:** "Read `docs/superpowers/plans/2026-06-27-canvasgrid-cycle-15-row-grouping.md` and execute Task 9."
 
 ---
 
-## Phase D — Polish (Tasks 8–10)
+## Phase D — Polish (Tasks 9–11)
 
 These tasks refine behaviour around an existing surface; minimal new
 chrome.
 
 ---
 
-## Task 8 — `groupDefaultExpanded` + `groupDefaultExpandedKeys`
+## Task 9 — `groupDefaultExpanded` + `groupDefaultExpandedKeys`
 
 **Read first:** This worklog's Architecture; Task 6.
 
@@ -676,11 +819,11 @@ chrome.
 
 **Commit:** `feat(cgrid): groupDefaultExpanded + groupDefaultExpandedKeys`
 
-**Next session prompt:** "Read `docs/superpowers/plans/2026-06-27-canvasgrid-cycle-15-row-grouping.md` and execute Task 9."
+**Next session prompt:** "Read `docs/superpowers/plans/2026-06-27-canvasgrid-cycle-15-row-grouping.md` and execute Task 10."
 
 ---
 
-## Task 9 — `showOpenedGroup` + `groupRemoveSingleChildren`
+## Task 10 — `showOpenedGroup` + `groupRemoveSingleChildren`
 
 **Read first:** This worklog's Architecture; the ag-grid website's
 "grouping-opening-groups" page for `showOpenedGroup` behaviour.
@@ -701,11 +844,11 @@ changes the cell composition, briefly /frontend-design check.
 
 **Commit:** `feat(cgrid): showOpenedGroup + groupRemoveSingleChildren`
 
-**Next session prompt:** "Read `docs/superpowers/plans/2026-06-27-canvasgrid-cycle-15-row-grouping.md` and execute Task 10."
+**Next session prompt:** "Read `docs/superpowers/plans/2026-06-27-canvasgrid-cycle-15-row-grouping.md` and execute Task 11."
 
 ---
 
-## Task 10 — Group-aware sort
+## Task 11 — Group-aware sort
 
 **Read first:**
 - This worklog's Architecture (perf gate: 100 K rows ≤ 100 ms).
@@ -727,18 +870,18 @@ changes the cell composition, briefly /frontend-design check.
 
 **Commit:** `feat(cgrid): group-aware sort (within-bucket + group-level)`
 
-**Next session prompt:** "Read `docs/superpowers/plans/2026-06-27-canvasgrid-cycle-15-row-grouping.md` and execute Task 11."
+**Next session prompt:** "Read `docs/superpowers/plans/2026-06-27-canvasgrid-cycle-15-row-grouping.md` and execute Task 12."
 
 ---
 
-## Phase E — Group totals (Task 11)
+## Phase E — Group totals (Task 12)
 
 The aggregation feedback loop: per-group totals via the same
 `TotalsSubgrid` + `aggMath` modules.
 
 ---
 
-## Task 11 — Group totals (footer rows)
+## Task 12 — Group totals (footer rows)
 
 **Read first:**
 - This worklog's Architecture (reuse `TotalsSubgrid` +
@@ -765,10 +908,10 @@ The aggregation feedback loop: per-group totals via the same
   `.cg-totals-cell` to handle the per-group case (slightly less
   weight than the grand total).
 - `cgrid/tests/groupFooter.test.ts` (new) — 12 cases.
-- `apps/cgrid-positions/e2e-visual/24-group-footer-rows.spec.ts`
+- `apps/cgrid-positions/e2e-visual/26-group-footer-rows.spec.ts`
   (new) — seeds 100 rows, groups by ticker, enables
   `groupIncludeFooter: true`, snapshots
-  `24-group-footer-rows.png`.
+  `26-group-footer-rows.png`.
 
 **Steps:**
 
@@ -793,11 +936,11 @@ The aggregation feedback loop: per-group totals via the same
 
 **Commit:** `feat(cgrid): group totals (footer rows under each expanded group, hairline-lift vocabulary)` — body cites design notes.
 
-**Next session prompt:** "Read `docs/superpowers/plans/2026-06-27-canvasgrid-cycle-15-row-grouping.md` and execute Task 12."
+**Next session prompt:** "Read `docs/superpowers/plans/2026-06-27-canvasgrid-cycle-15-row-grouping.md` and execute Task 13."
 
 ---
 
-## Task 12 — Cycle 15 exit ritual
+## Task 13 — Cycle 15 exit ritual
 
 **Read first:**
 - This worklog (every prior task).
