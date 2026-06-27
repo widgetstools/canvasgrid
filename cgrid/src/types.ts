@@ -630,6 +630,41 @@ export interface CGridOptions<TRow = any> {
    *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md`
    *  § Task 8. */
   groupSelectsChildren?: boolean;
+  /** Cycle 15 / Task 9 — controls which groups are expanded the first
+   *  time `setGroupModel` produces a tree (and on every subsequent
+   *  `setGroupModel` swap that resets expansion state). Read once at
+   *  the worker init handshake AND on every model swap:
+   *
+   *  - `'all'` (default when the option is absent) — every group at
+   *    every depth starts expanded. Equivalent to the Task 7 / Task 8
+   *    behaviour shipped before this option existed.
+   *  - `N` where `N >= 0` — expand groups whose `depth <= N`. So
+   *    `N === 0` expands the top-level groups only (their immediate
+   *    child groups render as collapsed rows); `N === 1` expands two
+   *    levels; etc. Useful for "show the outline" defaults.
+   *  - `N` where `N < 0` — every group starts collapsed. Use any
+   *    negative integer (`-1` is the canonical "collapse all" form,
+   *    matching how ag-grid documents the same flag in inverse).
+   *
+   *  `groupDefaultExpandedKeys` (below), when supplied, takes
+   *  precedence over the depth-based rule — the explicit list is the
+   *  exact starting set. */
+  groupDefaultExpanded?: number | 'all';
+  /** Cycle 15 / Task 9 — explicit list of composite group keys to
+   *  start expanded. When supplied (including the empty array), this
+   *  OVERRIDES `groupDefaultExpanded` — the explicit list is the
+   *  starting expansion set verbatim. Composite keys use the
+   *  `GroupNode.key` format: `colId:value` at the top level,
+   *  `colId:value::colId:value` for nested levels (see
+   *  `cgrid/src/worker/passes/groupPass.ts` for the exact form).
+   *
+   *  An empty array `[]` is the canonical "start with everything
+   *  collapsed" form when paired with an unset
+   *  `groupDefaultExpanded`. Keys that don't match any composite key
+   *  in the current tree silently fall out (they neither error nor
+   *  expand a missing group); this keeps a stale option harmless
+   *  across columnDef changes. */
+  groupDefaultExpandedKeys?: string[];
 }
 
 /** Cycle 10 / Task 5 — params for `processCellForClipboard`. Mirrors

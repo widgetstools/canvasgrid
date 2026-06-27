@@ -18,6 +18,21 @@ export interface WorkerInitPayload {
    *  pay zero diff overhead. Runtime-mutable via the
    *  `setEnableCellChangeFlash` message. */
   enableCellChangeFlash?: boolean;
+  /** Cycle 15 / Task 9 — default-expansion rule applied the first
+   *  time `setGroupModel` produces a tree (and on every subsequent
+   *  swap). `'all'` (or absent) keeps the pre-Task-9 "every group
+   *  starts expanded" behaviour. A non-negative `N` expands groups
+   *  whose `depth <= N`; a negative `N` collapses everything. Stored
+   *  on `GroupPass` via `setDefaultExpansion` so the option re-seeds
+   *  expansion on every `setGroupModel` reply without main shipping
+   *  it again. */
+  groupDefaultExpanded?: number | 'all';
+  /** Cycle 15 / Task 9 — explicit composite-key list. When present
+   *  (including the empty array), overrides `groupDefaultExpanded`
+   *  on every model swap: the worker stores this list verbatim as
+   *  the starting `expandedKeys` set. Keys that don't match any
+   *  group in the current tree silently fall out. */
+  groupDefaultExpandedKeys?: string[];
 }
 
 export interface WorkerColumn {
@@ -385,6 +400,17 @@ export type WorkerResponse =
       visibleCount: number;
       groupKeys: string[];
       groupDescendants?: string[][];
+      /** Cycle 15 / Task 9 — present on `setGroupModel` replies that
+       *  re-seed the default expansion (when `groupDefaultExpanded` /
+       *  `groupDefaultExpandedKeys` resolves to anything other than
+       *  the all-expanded sentinel). The materialised explicit set
+       *  the worker just installed in `state.expandedKeys`; main
+       *  mirrors verbatim so `getExpandedKeys()` reads the same view
+       *  as the next viewport paint. `null` means "the worker is at
+       *  the default-all sentinel" (option absent or `'all'` AND no
+       *  explicit keys override). Absent on `setExpandedKeys` replies
+       *  (those carry the explicit set the caller just shipped). */
+      expandedKeys?: string[] | null;
     }
   | { id: ReqId; type: 'viewport';            chunk: ViewportChunk }
   | { id: ReqId; type: 'transactionFlushed';  results: TransactionResult }

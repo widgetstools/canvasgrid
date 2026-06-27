@@ -98,6 +98,16 @@ interface BuildBucket {
 export class GroupPass<TRow = any> {
   private model: GroupModel = { rowGroupCols: [] };
   private colIndex = new Map<string, WorkerColumn>();
+  /** Cycle 15 / Task 9 — default-expansion rule. `'all'` is the
+   *  "every group expanded" sentinel (the pre-Task-9 behaviour); any
+   *  non-negative number `N` expands groups whose `depth <= N`; a
+   *  negative number collapses everything. Read by
+   *  `computeDefaultExpandedKeys(roots)` on every model swap. */
+  private defaultExpanded: number | 'all' = 'all';
+  /** Cycle 15 / Task 9 — explicit composite-key list. When non-null
+   *  (including the empty array — the canonical "collapse all"
+   *  override), takes precedence over `defaultExpanded`. */
+  private defaultExpandedKeys: readonly string[] | null = null;
 
   constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
     this.setColumns(columns);
@@ -136,6 +146,61 @@ export class GroupPass<TRow = any> {
   /** Read-only access for tests + the slicer. */
   getModel(): GroupModel {
     return { rowGroupCols: this.model.rowGroupCols.slice() };
+  }
+
+  /** Cycle 15 / Task 9 — install the default-expansion rule. Called
+   *  on worker init from the `groupDefaultExpanded` /
+   *  `groupDefaultExpandedKeys` payload fields; callers pass
+   *  `expanded: undefined` to revert to the all-expanded sentinel
+   *  and `keys: undefined` to clear the explicit override.
+   *
+   *  `keys` (when supplied) is stored as a frozen-shape internal
+   *  slice so a downstream mutation on the caller's array can't
+   *  silently rewrite the next default. */
+  setDefaultExpansion(opts: {
+    expanded?: number | 'all';
+    keys?: readonly string[];
+  }): void {
+    this.defaultExpanded = opts.expanded ?? 'all';
+    this.defaultExpandedKeys = opts.keys === undefined ? null : opts.keys.slice();
+  }
+
+  /** Cycle 15 / Task 9 — compute the starting `expandedKeys` set for
+   *  the supplied roots under the current default rule.
+   *
+   *  Resolution order:
+   *    1. `defaultExpandedKeys !== null` → explicit list wins; return
+   *       a fresh `Set` of those keys. Stale keys (not present in
+   *       `roots`) ride along unchanged — the slicer ignores keys
+   *       that don't match any group, so a stale entry is harmless.
+   *    2. `defaultExpanded === 'all'` (or option absent) → return
+   *       `null`, the sentinel that maps to "every group expanded".
+   *       The worker stores `state.expandedKeys = null` so
+   *       `effectiveExpandedKeys()` derives the all-keys set on
+   *       demand; this keeps the cheap-default path allocation-free.
+   *    3. `defaultExpanded` is a non-negative number `N` → walk the
+   *       tree, include every group whose `depth <= N`.
+   *    4. `defaultExpanded` is a negative number → return an empty
+   *       `Set`. The set is non-null so the slicer treats it as an
+   *       explicit "no groups expanded" set instead of the
+   *       all-expanded sentinel. */
+  computeDefaultExpandedKeys(roots: readonly GroupNode[]): Set<string> | null {
+    if (this.defaultExpandedKeys !== null) {
+      return new Set(this.defaultExpandedKeys);
+    }
+    const expanded = this.defaultExpanded;
+    if (expanded === 'all') return null;
+    const set = new Set<string>();
+    if (expanded < 0) return set;
+    const maxDepth = expanded;
+    const walk = (nodes: readonly GroupNode[]): void => {
+      for (const node of nodes) {
+        if (node.depth <= maxDepth) set.add(node.key);
+        if (node.childGroups.length > 0) walk(node.childGroups);
+      }
+    };
+    walk(roots);
+    return set;
   }
 
   /** Build the group tree off `inputIds`. The bypass branch allocates
