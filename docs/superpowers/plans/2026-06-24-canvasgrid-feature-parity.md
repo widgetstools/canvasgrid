@@ -56,7 +56,7 @@ These extend the constraints from Cycle 2/3. New ones marked **NEW**.
 - **API parity, not API mimicry.** Where ag-grid spells a field one way and that spelling causes no perf cost, cgrid spells it identically (verbatim field names like `columnDefs`, `defaultColDef`, `valueGetter`, `pinned`, `flex`, `aggFunc`). Top-level type names keep the `C` prefix (`CColDef`, `CGridOptions`, `CGridApi`) to avoid namespace collisions in apps that import both. String identifiers drop the `ag` prefix (`'text'` not `'agTextCellEditor'`). The internal model may diverge freely (no `RowNode`, no event bus polymorphism, no Vue/React adapters) — only the **public surface** mirrors.
 - **Enterprise = Community.** Every feature behind an ag-grid enterprise license ships in cgrid Community. No license keys, no module gates, no nag overlays.
 - **Worker-first.** Any computation that touches >1k rows runs on the worker. Main thread is for paint, hit-test, and input dispatch. New features default to a worker pass unless paint-only.
-- **Off-main-thread paint candidate.** Cycle 24 explores `OffscreenCanvas` + worker paint. Main-thread paint stays the supported default; OffscreenCanvas is an opt-in performance mode.
+- **Off-main-thread paint candidate.** Cycle 25 explores `OffscreenCanvas` + worker paint. Main-thread paint stays the supported default; OffscreenCanvas is an opt-in performance mode.
 - **Allocation discipline.** Hot paths (per-cell paint, per-frame layout, per-message worker dispatch) must be allocation-free or pool-backed. New code added to a hot path requires a benchmark.
 - **Backwards compatibility.** Once a feature ships under a cycle's exit criteria, it is supported indefinitely. Breaking renames require a deprecation shim with the old name aliased for ≥2 cycles.
 - **Documentation as you go.** Every public option / API / event added requires (a) a TSDoc block on the type, (b) a row added to `docs/catalog/FEATURE_MATRIX.md` marked ✅ shipped, (c) a one-line entry in the per-cycle worklog's "Shipped" list, and (d) — for non-obvious behavior — a section in the corresponding `docs/catalog/NN-*.md` area file.
@@ -67,7 +67,7 @@ These extend the constraints from Cycle 2/3. New ones marked **NEW**.
 ## Performance Budget (the "many times more performant" gate)
 
 These are the **non-negotiable performance targets**. Cycles must not regress past
-these thresholds. Cycle 24 dedicates itself to lowering them further.
+these thresholds. Cycle 25 dedicates itself to lowering them further.
 
 | Metric | Target | Notes |
 |---|---|---|
@@ -90,7 +90,7 @@ Our targets are roughly **10×** on memory-per-row, **2-3×** on scroll/streamin
 **2×** on bundle size.
 
 **Every cycle's exit criteria includes:** "perf benchmark run, no regression past
-the relevant target". Cycle 24 introduces the benchmark harness; until then,
+the relevant target". Cycle 25 introduces the benchmark harness; until then,
 cycles record current numbers and watch for drift.
 
 ---
@@ -111,22 +111,23 @@ at cycle exit when the matrix is updated.
 | 9 | Range selection + fill handle | Cell ranges, fill drag, header/row selection | ~30 | Cycle 4 | 7 |
 | 10 | Clipboard + context menu | Copy/paste/cut, default + custom menu | ~25 | Cycle 9 | 6 |
 | 11 | Tool-panel framework + side bar | Panel host, columns panel, filters panel, custom panel API | ~30 | Cycle 6, 7 | 8 |
-| 12 | Status bar | Status bar host, built-in panels, custom panels | ~15 | Cycle 11 | 5 |
-| 13 | Aggregation UI | TotalsSubgrid, custom aggFunc, suppressAggFuncInHeader, totals events | ~25 | Cycle 5 | 6 |
-| 14 | Row grouping (Enterprise feature) | GroupPass on worker, group rows, collapse/expand, groupSelectsChildren | ~55 | Cycle 13 | 11 |
-| 15 | Master/Detail | Detail subgrid, nested CGrid, expand/collapse, detail params | ~25 | Cycle 5 | 7 |
-| 16 | Tree data | getDataPath, auto-group column, tree filter/sort | ~25 | Cycle 14 | 6 |
-| 17 | Pivoting | Pivot model on worker, pivot column synthesis, pivot panel | ~45 | Cycle 14 | 9 |
-| 18 | Server-Side Row Model | SSRM datasource API, block cache, lazy group expand, infinite scroll | ~30 | Cycle 14 | 10 |
-| 19 | Export | CSV + Excel writers (in worker), print mode, processCell callbacks | ~35 | Cycle 14 | 7 |
-| 20 | Charts + sparklines | Sparkline cell renderer, AG Charts integration, chart range API | ~30 | Cycle 9 | 8 |
-| 21 | Theming completeness | All CSS variables, density modes, theme parameter API, prefers-color-scheme | ~25 | Cycle 4 | 6 |
-| 22 | Events + state | ~50 remaining events, getState/setState round-trip, stateUpdated | ~35 | Cycle 11 | 7 |
-| 23 | Accessibility + keyboard | Full WCAG 2.1 AA, keyboard matrix, screen reader, high-contrast | ~30 | Cycle 22 | 8 |
-| 24 | Performance hardening | OffscreenCanvas paint mode, perf CI, varint chunks, dict-coded text | n/a | Cycle 23 | 10 |
-| 25 | 1.0 release | Bundle audit, API docs site, migration guide, full FM verification, NPM publish | n/a | Cycle 24 | 8 |
+| 12 | Regression prevention (infra) | `getVisibleCellBounds` helper + Playwright visual snapshot matrix; no FM flips | 0 | Cycle 11 | 6 |
+| 13 | Status bar | Status bar host, built-in panels, custom panels | ~15 | Cycle 11 | 5 |
+| 14 | Aggregation UI | TotalsSubgrid, custom aggFunc, suppressAggFuncInHeader, totals events | ~25 | Cycle 5 | 6 |
+| 15 | Row grouping (Enterprise feature) | GroupPass on worker, group rows, collapse/expand, groupSelectsChildren | ~55 | Cycle 14 | 11 |
+| 16 | Master/Detail | Detail subgrid, nested CGrid, expand/collapse, detail params | ~25 | Cycle 5 | 7 |
+| 17 | Tree data | getDataPath, auto-group column, tree filter/sort | ~25 | Cycle 15 | 6 |
+| 18 | Pivoting | Pivot model on worker, pivot column synthesis, pivot panel | ~45 | Cycle 15 | 9 |
+| 19 | Server-Side Row Model | SSRM datasource API, block cache, lazy group expand, infinite scroll | ~30 | Cycle 15 | 10 |
+| 20 | Export | CSV + Excel writers (in worker), print mode, processCell callbacks | ~35 | Cycle 15 | 7 |
+| 21 | Charts + sparklines | Sparkline cell renderer, AG Charts integration, chart range API | ~30 | Cycle 9 | 8 |
+| 22 | Theming completeness | All CSS variables, density modes, theme parameter API, prefers-color-scheme | ~25 | Cycle 4 | 6 |
+| 23 | Events + state | ~50 remaining events, getState/setState round-trip, stateUpdated | ~35 | Cycle 11 | 7 |
+| 24 | Accessibility + keyboard | Full WCAG 2.1 AA, keyboard matrix, screen reader, high-contrast | ~30 | Cycle 23 | 8 |
+| 25 | Performance hardening | OffscreenCanvas paint mode, perf CI, varint chunks, dict-coded text | n/a | Cycle 24 | 10 |
+| 26 | 1.0 release | Bundle audit, API docs site, migration guide, full FM verification, NPM publish | n/a | Cycle 25 | 8 |
 
-**Total estimated tasks across cycles 4-25:** ~180-200. Wall-clock is open
+**Total estimated tasks across cycles 4-26:** ~186-206. Wall-clock is open
 (time is not a constraint per the project intent), but cycles are sized for
 1-3 weeks each when worked steadily.
 
@@ -164,7 +165,7 @@ linearly with group depth.
 8. **Custom cell renderer + `cellRendererParams`** — Public API: `cgrid.registerCellRenderer(name, painter)`. `CColDef.cellRendererParams` flows into the `CellPaintConfig` as `config.params`. Files: `renderer/cellRenderers/registry.ts`, `cgrid.ts`, `types.ts`.
 9. **`valueSetter` + `valueParser` + commit-back** — Editor commit invokes `valueParser` (if defined) on the raw string, then `valueSetter` (if defined) — falls back to `data[field] = parsed`. Commit fires `applyTransaction({ update: [row] })` so the worker re-runs pipeline. Files: `interaction/editorOverlay.ts`, `cgrid.ts`, `worker/index.ts`.
 10. **Lifecycle events** — Wire `gridPreDestroyed` (fires inside `destroy()` before teardown, with state snapshot), `gridSizeChanged` (fires when host bounds change, from `CGridCanvas.setBounds`), `firstDataRendered` (fires once on first non-empty viewport paint). Files: `cgrid.ts`, `types.ts`.
-11. **(PATCH) Cell flash: FlashRegistry + worker `flashMask` producer + `api.flashCells` + theme color** — *Single-task addendum, separate worklog at `docs/superpowers/plans/2026-06-25-canvasgrid-cycle-04-cell-flash-patch.md`. Originally elided from Task 10; surfaced when Cycle 7 noticed Cycles 23 + 24 both presume flash works. Must land BEFORE Cycle 23 (reduced-motion opt-out) or Cycle 24 (GPU overlay) start.* Files: `core/flashRegistry.ts` (new), `worker/dataPipeline.ts`, `worker/worker.ts`, `worker/protocol.ts`, `worker/client.ts`, `theming/cssReader.ts`, `renderer/cellRenderers/registry.ts`, `renderer/cellRenderers/wrapText.ts`, `cgrid.ts`, `types.ts`, `apps/cgrid-positions/src/positionsGrid.ts`.
+11. **(PATCH) Cell flash: FlashRegistry + worker `flashMask` producer + `api.flashCells` + theme color** — *Single-task addendum, separate worklog at `docs/superpowers/plans/2026-06-25-canvasgrid-cycle-04-cell-flash-patch.md`. Originally elided from Task 10; surfaced when Cycle 7 noticed Cycles 24 + 25 both presume flash works. Must land BEFORE Cycle 24 (reduced-motion opt-out) or Cycle 25 (GPU overlay) start.* Files: `core/flashRegistry.ts` (new), `worker/dataPipeline.ts`, `worker/worker.ts`, `worker/protocol.ts`, `worker/client.ts`, `theming/cssReader.ts`, `renderer/cellRenderers/registry.ts`, `renderer/cellRenderers/wrapText.ts`, `cgrid.ts`, `types.ts`, `apps/cgrid-positions/src/positionsGrid.ts`.
 
 **Exit criteria:**
 - All 10 tasks committed, reviewed clean.
@@ -260,7 +261,7 @@ floating filters live in their own header subgrid (`FloatingFilterSubgrid`),
 no tool panel needed.
 
 **Performance gate:** Filter pipeline runs on worker; main thread doesn't
-block. Quick filter uses dictionary-coded text columns (deferred to Cycle 24
+block. Quick filter uses dictionary-coded text columns (deferred to Cycle 25
 for the dictionary; cycle 7 uses naïve `String.includes`).
 
 **Tasks (9):**
@@ -317,7 +318,7 @@ no main-thread compute. Sort 1M rows × 3 cols < 200 ms.
 
 **Goal:** Cell range selection (click + drag, or click + shift-click), header
 & row selection, fill handle (drag bottom-right corner to extend value),
-range-selection events. Foundation for Cycle 10 (clipboard) and Cycle 20
+range-selection events. Foundation for Cycle 10 (clipboard) and Cycle 21
 (chart range).
 
 **FM rows covered:** Area 12 (selection completeness, ~30 of 46 rows).
@@ -333,7 +334,7 @@ applies as a single transaction.
 1. **`SelectionRange` model** — Multi-rectangle range selection: `Set<Range>` where `Range = { rowStart, rowEnd, colIds[] }`. Selection model gains `ranges: Range[]` alongside the row-selection set. Files: `interaction/selectionModel.ts`.
 2. **Range selection via drag** — `RangeSelection` feature: mousedown on cell + drag = range; shift-click = extend range; ctrl-click = add disjoint range. Files: `interaction/features/rangeSelection.ts` (new).
 3. **Range overlay painter** — New paint pass after `paintOverlay` (or extend overlay): draws range fill (translucent) + range border per contiguous rect. Files: `renderer/painters/rangeOverlayPainter.ts` (new), `renderer/renderer.ts`.
-4. **Header & row click selection** — Click column header = select entire column range; click row header (Cycle 14 introduces row-header column for groups; for now: click row's first pinned cell with ctrl) = select entire row. `cellSelection: { suppressHeader, suppressRow }` options. Files: `interaction/features/cellSelection.ts`.
+4. **Header & row click selection** — Click column header = select entire column range; click row header (Cycle 15 introduces row-header column for groups; for now: click row's first pinned cell with ctrl) = select entire row. `cellSelection: { suppressHeader, suppressRow }` options. Files: `interaction/features/cellSelection.ts`.
 5. **Fill handle** — Bottom-right of the focused cell / range gets a square handle; drag extends selection vertically; release fills new cells with linear-extrapolated values (numbers) or repeated values (text). Files: `interaction/features/fillHandle.ts` (new), `renderer/painters/rangeOverlayPainter.ts`.
 6. **Range API** — `getCellRanges()`, `clearRangeSelection()`, `addCellRange(opts)`. Files: `cgrid.ts`, `types.ts`.
 7. **`rangeSelectionChanged` event** — Fires on range start/end/clear; carries `ranges: Range[]` + `started/finished` flags. Files: `cgrid.ts`.
@@ -398,7 +399,46 @@ state shrinks the canvas region by the panel width and triggers one
 
 ---
 
-## Cycle 12 — Status bar
+## Cycle 12 — Regression prevention (band-clip helper + visual snapshot matrix)
+
+**Goal:** Close the regression class behind every patch in the Cycles 10–11
+tail (scrollbar gutter, editor over header, focus ring leaking into pinned
+bands, floating-filter input bleeding into CUSIP). Ship two interlocking
+systems: a single `getVisibleCellBounds` primitive that the four overlays
+(focus ring, range overlay, DOM editor, floating-filter input) all call
+instead of each reimplementing the band math; and a Playwright
+visual-regression matrix that gates merges on pixel diffs against committed
+baselines.
+
+**FM rows covered:** none — this is infrastructure. Future cycles flip
+rows faster because the gate catches their regressions.
+
+**Depends on:** Cycle 11.
+
+**Performance gate:** `npm run test:visual` runs in ≤ 60 s on CI hardware.
+The `getVisibleCellBounds` primitive is hot-path on every paint frame for
+overlays — it must be allocation-free and O(visibleColumns).
+
+**Tasks (6):**
+
+1. **`getVisibleCellBounds` helper + 12 unit tests** — Add to `CGrid` as a sibling of `getCellBoundsAt`; returns `null` when the cell exits its column's band (center / pinned-left / pinned-right) or the body region. Files: `cgrid/src/cgrid.ts`, `cgrid/tests/visibleCellBounds.test.ts` (new).
+2. **Refactor focus ring + range overlay** — Both painters delegate to `getVisibleCellBounds` via `PainterCtx`. Removes the inlined band-clip rects from `overlayPainter.ts` and `rangeOverlayPainter.ts`.
+3. **Refactor DOM editor + floating-filter overlay** — `syncOpenEditorPosition` shrinks to a 7-line "ask the helper, reposition or commit" body. `FloatingFilterOverlay.repositionAll` takes the helper as a new dep and uses it for the visibility check.
+4. **Playwright visual-regression infrastructure** — `playwright-visual.config.ts` (Chromium, 1440×900, forced colour scheme, bundled font, 0.5 % tolerance) + `e2e-visual/_setup.ts` + smoke spec. Files: `apps/cgrid-positions/playwright-visual.config.ts` (new), `apps/cgrid-positions/e2e-visual/` (new directory).
+5. **12-snapshot regression matrix** — One spec per canonical state, each cell mapping to at least one regression commit it catches: fresh / scrolled-vertical / scrolled-horizontal / editor-center-column / editor-pinned-column / range-across-viewports / sidebar-columns-open / sidebar-filters-open / sidebar-position-left / empty-grid / dense-grid-light-theme / context-menu-open. Files: `apps/cgrid-positions/e2e-visual/01-12-*.spec.ts` + `__snapshots__/*.png`.
+6. **Cycle 12 exit ritual** — Worklog close-out, README mention of `npm run test:visual`, no FM flips (infra cycle).
+
+**Exit criteria:**
+- `getVisibleCellBounds` is the single source of truth for band visibility; no inlined band math remains in the four overlay sites.
+- 12 baseline PNGs committed; `npm run test:visual` runs to green in ≤ 60 s.
+- A sabotage test (revert one of the recent fix commits temporarily) fails the matching visual spec.
+- 1056 + 12 = 1068 Vitest tests pass; existing Playwright functional suite stays green.
+
+**Per-cycle worklog:** `docs/superpowers/plans/2026-06-27-canvasgrid-cycle-12-regression-prevention.md`.
+
+---
+
+## Cycle 13 — Status bar
 
 **Goal:** Bottom status bar with built-in panels (aggregation summary, total
 row count, filtered row count, selected row count) + custom panel
@@ -423,12 +463,12 @@ repaints of the body canvas.
 
 ---
 
-## Cycle 13 — Aggregation UI
+## Cycle 14 — Aggregation UI
 
 **Goal:** Surface the worker's existing aggregation pipeline. `TotalsSubgrid`
 that renders pinned at top or bottom showing totals across all rows or per
 group. Custom `aggFunc` registration. `suppressAggFuncInHeader`. Group
-footer rows (placeholder — full row grouping arrives Cycle 14).
+footer rows (placeholder — full row grouping arrives Cycle 15).
 
 **FM rows covered:** Area 10 (~25 of 26 rows).
 
@@ -451,7 +491,7 @@ distinct heights).
 
 ---
 
-## Cycle 14 — Row grouping (Enterprise feature, ships in Community)
+## Cycle 15 — Row grouping (Enterprise feature, ships in Community)
 
 **Goal:** Hierarchical row grouping — group by one or more columns,
 collapse/expand groups, group-row selection (`groupSelectsChildren`),
@@ -459,7 +499,7 @@ group-row rendering with chevron + count, auto-group column.
 
 **FM rows covered:** Area 09 (~50 of 54 rows).
 
-**Depends on:** Cycle 13 (TotalsSubgrid pattern reused for group-footer rows).
+**Depends on:** Cycle 14 (TotalsSubgrid pattern reused for group-footer rows).
 
 **Performance gate:** Grouping 1M rows by 3 columns < 300 ms on worker.
 Collapsed groups skip rendering entirely (`getRowCount` returns visible count
@@ -483,7 +523,7 @@ only).
 
 ---
 
-## Cycle 15 — Master/Detail
+## Cycle 16 — Master/Detail
 
 **Goal:** Each row can expand to reveal a nested CGrid (or arbitrary DOM).
 The nested grid renders inside an expanded "detail" row whose height is
@@ -491,7 +531,7 @@ configurable + per-row.
 
 **FM rows covered:** Area 13 (~20 of 21 rows).
 
-**Depends on:** Cycle 5 (variable row heights) + Cycle 14 (subgrid stack
+**Depends on:** Cycle 5 (variable row heights) + Cycle 15 (subgrid stack
 extension pattern reused).
 
 **Performance gate:** Expanded detail grids don't block the main grid's
@@ -513,7 +553,7 @@ grid (configurable cache).
 
 ---
 
-## Cycle 16 — Tree data
+## Cycle 17 — Tree data
 
 **Goal:** Hierarchical data (each row supplies its tree path) rendered as
 expandable tree. Similar to row grouping but the tree is data-defined, not
@@ -521,7 +561,7 @@ group-defined.
 
 **FM rows covered:** Area 14 (~16 of 18 rows).
 
-**Depends on:** Cycle 14 (auto-group column + expand/collapse + group cell
+**Depends on:** Cycle 15 (auto-group column + expand/collapse + group cell
 renderer all reused).
 
 **Performance gate:** 100k-node tree (10-deep, branching factor 4) — initial
@@ -540,7 +580,7 @@ build < 250 ms; expand single node < 1 frame.
 
 ---
 
-## Cycle 17 — Pivoting
+## Cycle 18 — Pivoting
 
 **Goal:** Pivot row-grouped data: chosen columns become column headers, agg
 measures become cell values. Pivot column synthesis on worker; multi-level
@@ -548,7 +588,7 @@ column headers via Cycle 4's HeaderGroupSubgrid.
 
 **FM rows covered:** Area 11 (~40 of 42 rows).
 
-**Depends on:** Cycle 14 (row grouping) + Cycle 13 (aggregation) + Cycle 4 (column groups).
+**Depends on:** Cycle 15 (row grouping) + Cycle 14 (aggregation) + Cycle 4 (column groups).
 
 **Performance gate:** Pivot 100k rows × 5 row-group cols × 3 pivot cols ×
 3 measures < 800 ms. Column count growth is bounded by `pivotMaxGeneratedColumns`.
@@ -569,7 +609,7 @@ column headers via Cycle 4's HeaderGroupSubgrid.
 
 ---
 
-## Cycle 18 — Server-Side Row Model (SSRM)
+## Cycle 19 — Server-Side Row Model (SSRM)
 
 **Goal:** A second row-model where data comes from the server in blocks,
 not pre-loaded. The worker becomes a caching layer; SSRM data source is the
@@ -577,7 +617,7 @@ authoritative model. Lazy group expansion, infinite scroll, paginated fetch.
 
 **FM rows covered:** Area 15 (~28 of 28 rows) + Area 03 SSRM-specific rows.
 
-**Depends on:** Cycle 14 (row grouping) — SSRM groups expand on demand by
+**Depends on:** Cycle 15 (row grouping) — SSRM groups expand on demand by
 fetching from the server.
 
 **Performance gate:** Scrolling through 10M-row server-side dataset stays at
@@ -601,7 +641,7 @@ the boundary at typical scroll speeds.
 
 ---
 
-## Cycle 19 — Export
+## Cycle 20 — Export
 
 **Goal:** CSV + Excel (XLSX) export, both running on the worker (no main-thread
 blocking). Print mode (`domLayout: 'print'`). processCell/processRow callbacks
@@ -609,7 +649,7 @@ for transformation.
 
 **FM rows covered:** Area 25 (~32 of 34 rows) + Area 16 (`domLayout: 'print'`).
 
-**Depends on:** Cycle 14 (export respects current grouping/aggregation).
+**Depends on:** Cycle 15 (export respects current grouping/aggregation).
 
 **Performance gate:** Export 1M rows × 30 cols to CSV < 3 s on worker.
 XLSX < 10 s.
@@ -628,7 +668,7 @@ XLSX < 10 s.
 
 ---
 
-## Cycle 20 — Charts + sparklines
+## Cycle 21 — Charts + sparklines
 
 **Goal:** Inline sparkline cell renderer (line / column / area / bar /
 pie variants) and AG-Charts-style range-charting from selected cell ranges.
@@ -661,7 +701,7 @@ app brings AG Charts as a peer dep; cgrid wires it).
 
 ---
 
-## Cycle 21 — Theming completeness
+## Cycle 22 — Theming completeness
 
 **Goal:** Every CSS variable AG Grid exposes is exposed by cgrid (or
 documented why omitted). Density modes. Theme-parameter API (runtime theme
@@ -687,7 +727,7 @@ overrides without class swaps). `prefers-color-scheme` auto-detect.
 
 ---
 
-## Cycle 22 — Events + state
+## Cycle 23 — Events + state
 
 **Goal:** Wire every event in Area 22 + the `getState`/`setState` snapshot
 API that Cycles 23+ (a11y, persistence demos) depend on.
@@ -713,7 +753,7 @@ API that Cycles 23+ (a11y, persistence demos) depend on.
 
 ---
 
-## Cycle 23 — Accessibility + keyboard
+## Cycle 24 — Accessibility + keyboard
 
 **Goal:** WCAG 2.1 AA compliance, full keyboard navigation matrix
 (ag-grid parity + better), screen-reader narration via the existing
@@ -721,7 +761,7 @@ API that Cycles 23+ (a11y, persistence demos) depend on.
 
 **FM rows covered:** Area 20 (~19 of 19 rows).
 
-**Depends on:** Cycle 22 (state events feed a11y announcements).
+**Depends on:** Cycle 23 (state events feed a11y announcements).
 
 **Performance gate:** A11y overlay updates batched per frame; key handler
 < 1 ms.
@@ -741,7 +781,7 @@ API that Cycles 23+ (a11y, persistence demos) depend on.
 
 ---
 
-## Cycle 24 — Performance hardening
+## Cycle 25 — Performance hardening
 
 **Goal:** Hit and exceed the Performance Budget targets. Introduces a
 benchmark harness (perf CI), explores OffscreenCanvas paint mode,
@@ -750,7 +790,7 @@ cell flash. This is the "many times more performant than ag-grid" cycle.
 
 **FM rows covered:** Area 26 (~36 of 38 rows).
 
-**Depends on:** Cycle 23 (a11y must not regress).
+**Depends on:** Cycle 24 (a11y must not regress).
 
 **Performance gate:** All targets in the Performance Budget table met or
 exceeded. Benchmark harness runs in CI; PRs cannot regress past published
@@ -773,7 +813,7 @@ numbers.
 
 ---
 
-## Cycle 25 — 1.0 release
+## Cycle 26 — 1.0 release
 
 **Goal:** Ship cgrid 1.0. Bundle audit, generated API reference site,
 migration guide for AG Grid users, final FM verification (every row marked
@@ -782,7 +822,7 @@ npm publish.
 
 **FM rows covered:** All remaining ⚠️/❌ rows audited and resolved.
 
-**Depends on:** Cycle 24.
+**Depends on:** Cycle 25.
 
 **Performance gate:** All perf budgets hold; no regression in any cycle's
 benchmarks.
