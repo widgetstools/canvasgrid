@@ -442,7 +442,7 @@ export function createPositionsGrid(
       // drop verdict reads `'accept'` for these three (the rest stay
       // off — visual cell 22-empty exercises the rejection path
       // separately via the body painter).
-      ...(opts.groupMultipleColumns || opts.rowGroupPanelThreeChips
+      ...(opts.groupMultipleColumns || opts.rowGroupPanelThreeChips || opts.rowGroupPanelAlways
         ? [
             { field: 'sector' as const,    headerName: 'Sector',     width: 110, filter: 'set' as const, enableRowGroup: true as const },
             { field: 'subSector' as const, headerName: 'Sub Sector', width: 110, filter: 'set' as const, enableRowGroup: true as const },
