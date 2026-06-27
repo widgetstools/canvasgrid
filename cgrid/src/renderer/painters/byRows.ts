@@ -2,13 +2,39 @@ import type { PainterCtx } from './types';
 import type { CachedContext2D } from '../gc';
 import type { ViewportColumn, ViewportRow } from '../../core/viewport';
 import type { CellPaintConfig } from '../cellRenderers/registry';
+import type { ResolvedColDef } from '../../core/propertyChain';
 import { applyCellProps } from '../../core/propertyChain';
 import { HeaderGroupSubgrid } from '../../core/subgrid';
 import { cellMatchesAnyQuickFilterTerm } from '../../worker/dataPipeline';
 
+/** Cycle 14 / Task 4 — decorate a leaf-column header with its aggFunc
+ *  prefix when the column declares `aggFunc` AND the suppress flag is
+ *  off. Returns `sum(Notional)` for `aggFunc: 'sum'`, the array's first
+ *  entry's name for `aggFunc: ['sum', 'avg']` (per the design plan,
+ *  decision 6 — first entry wins as the visible label), and the raw
+ *  `headerName` otherwise. Column-level `suppressAggFuncInHeader`
+ *  (when explicitly set) wins over the grid-level value; an unset
+ *  per-column flag defers to the grid-level option.
+ *
+ *  Pure + sync; called once per leaf header per paint. The decorated
+ *  string flows through the existing header cell renderer's right-
+ *  side ellipsification, so a narrow column renders `sum(Noti...)` —
+ *  the verb sits on the LEFT and survives natural truncation. */
+export function decorateHeader(def: ResolvedColDef, gridSuppress: boolean): string {
+  const headerName = def.headerName;
+  const colSuppress = def.suppressAggFuncInHeader;
+  const suppressed = colSuppress !== undefined ? colSuppress : gridSuppress;
+  if (suppressed) return headerName;
+  const aggFunc = def.aggFunc;
+  if (!aggFunc) return headerName;
+  const aggName = Array.isArray(aggFunc) ? aggFunc[0] : aggFunc;
+  if (!aggName) return headerName;
+  return `${aggName}(${headerName})`;
+}
+
 
 export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
-  const { viewport: vs, theme, columnDefs, cellRenderers, cellData, selection, sortModel, rowDataSnapshotAt, quickFilterLowerTerms } = p;
+  const { viewport: vs, theme, columnDefs, cellRenderers, cellData, selection, sortModel, rowDataSnapshotAt, quickFilterLowerTerms, suppressAggFuncInHeader } = p;
   const quickFilterActive = quickFilterLowerTerms.length > 0;
 
   // 1. Compute the right edge of the painted area (mirrors gridLinesPainter).
@@ -132,13 +158,13 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
 
     paintBand(gc, sb.rows, leftPinned,
               0, vs.bodyLeft, sgTop, sgBottom,
-              /*clip*/ isDataBand, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms);
+              /*clip*/ isDataBand, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader);
     paintBand(gc, sb.rows, center,
               vs.bodyLeft, vs.bodyRight, sgTop, sgBottom,
-              /*clip*/ true, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms);
+              /*clip*/ true, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader);
     paintBand(gc, sb.rows, rightPinned,
               vs.bodyRight, rightEdge, sgTop, sgBottom,
-              /*clip*/ isDataBand, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms);
+              /*clip*/ isDataBand, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader);
   }
 }
 
@@ -162,6 +188,7 @@ function paintBand(
   rowDataSnapshotAt: PainterCtx['rowDataSnapshotAt'],
   quickFilterActive: boolean,
   quickFilterLowerTerms: readonly string[],
+  suppressAggFuncInHeader: boolean,
 ): void {
   if (cols.length === 0 || rows.length === 0) return;
   if (clip) {
@@ -252,8 +279,15 @@ function paintBand(
       let unSortIcon: boolean | undefined;
 
       if (row.subgrid.isHeader) {
-        value = def.headerName;
-        valueFormatted = def.headerName;
+        // Cycle 14 / Task 4 — leaf-column headers decorate to
+        // `sum(Notional)` when the column declares an aggFunc AND the
+        // suppress toggle (grid-level OR per-column override) is off.
+        // Group headers are handled above via `HeaderGroupSubgrid` and
+        // skip this path; per the design plan, group cells carry no
+        // aggFunc of their own.
+        const headerText = decorateHeader(def, suppressAggFuncInHeader);
+        value = headerText;
+        valueFormatted = headerText;
         const sort = sortLookup.get(col.colId);
         sortDirection = sort?.direction;
         // Cycle 8 / Task 1 — 1-index for the display badge; sortTotal

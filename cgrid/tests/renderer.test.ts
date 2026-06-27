@@ -54,7 +54,8 @@ describe('Renderer', () => {
       rowDataSnapshotAt: () => ({}),
       getQuickFilterLowerTerms: () => [],
       getShowFillHandle: () => false,
-    });
+      getSuppressAggFuncInHeader: () => false,
+    } as any);
     r.paint(gc);
     // The very first fillRect call must be the full-canvas bg fill — this is
     // the prerequisite for no-flicker resize (no transparent gap between

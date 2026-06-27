@@ -536,6 +536,27 @@ export interface CGridOptions<TRow = any> {
    *  worker resolves the function and applies it to the per-column
    *  filtered values, producing one entry in `chunk.totals[colId]`. */
   aggFuncs?: Record<string, IAggFunc>;
+
+  /** Cycle 14 / Task 4 — hide the `aggFuncName(headerName)` decoration
+   *  on column headers. Default `false` (decoration shows). When `true`,
+   *  every header reads its raw `headerName` and the aggregated context
+   *  lives only in the bottom totals row (see `totalsRowPosition`).
+   *
+   *  Per-column override: `CColDef.suppressAggFuncInHeader` (when set)
+   *  wins over this grid-level value, so apps can keep the prefix on
+   *  most columns while suppressing it on noisy ones (or the inverse).
+   *
+   *  Runtime-mutable via `setGridOption('suppressAggFuncInHeader', …)`
+   *  — the painter reads the option per paint, so a flip lights up on
+   *  the next rAF without re-resolving the column tree.
+   *
+   *  Decoration format (per the design plan): lowercase verb + parens,
+   *  no spaces — `sum(Notional)`, `avg(Price)`. Same weight and color
+   *  as the column name. Array-form `aggFunc: ['sum', 'avg']` uses the
+   *  FIRST entry as the visible prefix. Design plan:
+   *  `docs/superpowers/plans/notes/cycle-14-aggregation-design.md` §
+   *  Task 4. */
+  suppressAggFuncInHeader?: boolean;
 }
 
 /** Cycle 10 / Task 5 — params for `processCellForClipboard`. Mirrors
@@ -753,6 +774,13 @@ export interface CColDef<TRow = any, TValue = any> {
    *  cell empty. An array form (`['sum', 'avg']`) uses the FIRST entry
    *  that resolves; subsequent entries serve as fallbacks. */
   aggFunc?: string | string[];
+  /** Cycle 14 / Task 4 — per-column override of
+   *  `CGridOptions.suppressAggFuncInHeader`. When set, this column's
+   *  header decoration follows the column-level flag regardless of the
+   *  grid-level value. Unset (`undefined`) defers to the grid-level
+   *  option (default `false` → show `sum(Notional)`). Has no visible
+   *  effect when the column declares no `aggFunc`. */
+  suppressAggFuncInHeader?: boolean;
   sortable?: boolean;
   /** Diacritic-aware string sort. When `true`, `SortPass` orders this
    *  column's values via `Intl.Collator(undefined, { sensitivity:

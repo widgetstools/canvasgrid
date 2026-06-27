@@ -669,6 +669,12 @@ export class CGrid<TRow = any> {
       // on the next frame without re-wiring the renderer.
       getShowFillHandle: () => this.options.enableFillHandle === true
         && this.selection.state.ranges.length > 0,
+      // Cycle 14 / Task 4 — header decoration toggle. Read per paint so a
+      // runtime `setGridOption('suppressAggFuncInHeader', …)` flip lights
+      // up on the next frame. Per-column overrides live on each
+      // `ResolvedColDef` and win when set — `byRows.ts` resolves the pair
+      // at the header-text path.
+      getSuppressAggFuncInHeader: () => this.options.suppressAggFuncInHeader === true,
       getVisibleCellBounds: (rowIndex, colId) => this.getVisibleCellBounds(rowIndex, colId),
     });
 

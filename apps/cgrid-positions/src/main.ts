@@ -57,7 +57,14 @@ const totalsRowPosition: 'top' | 'bottom' | null =
 const pinnedRaw = search.get('pinned');
 const pinnedTop = pinnedRaw === 'top' || pinnedRaw === 'both';
 const pinnedBottom = pinnedRaw === 'bottom' || pinnedRaw === 'both';
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom });
+// Cycle 14 / Task 4 — `?suppressAggHeader=1` flips the grid-level
+// `suppressAggFuncInHeader` flag. Off by default (header reads as
+// `sum(Notional)`) so visual cells 01–18 stay byte-stable; visual
+// cell 19-aggfunc-in-header opens BOTH snapshots — default-off
+// (`?totals=bottom`) and toggled-on (`?totals=bottom&suppressAggHeader=1`)
+// — through this single switch.
+const suppressAggHeader = search.get('suppressAggHeader') === '1';
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader });
 
 // E2E hooks: expose the grid + a readiness flag so Playwright tests can wait
 // for first-data-rendered and call api helpers (`getCellBoundsAt`,
