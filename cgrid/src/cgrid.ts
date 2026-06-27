@@ -3239,6 +3239,25 @@ export class CGrid<TRow = any> {
     this.events.emit({ type: 'viewportChanged', firstRow: this.viewport.firstRow, lastRow: this.viewport.lastRow });
     this.cgridCanvas.requestRepaint();
     this.requestViewport();
+    this.syncOpenEditorPosition();
+  }
+
+  /** Keep an open inline / popup editor anchored to its cell when the
+   *  grid scrolls. Closes the editor (commit) when the cell scrolls
+   *  entirely outside the viewport so the input doesn't float over
+   *  unrelated cells. No-op when no editor is open. */
+  private syncOpenEditorPosition(): void {
+    if (!this.activeEdit) return;
+    if (!this.editor.isOpen()) return;
+    const { rowIndex, colId } = this.activeEdit;
+    const bounds = this.getCellBoundsAt(rowIndex, colId);
+    if (!bounds) {
+      // Cell scrolled out of the rendered viewport — commit and close so
+      // the editor doesn't drift over an unrelated cell.
+      this.editor.commit();
+      return;
+    }
+    this.editor.reposition(bounds);
   }
 
   private setScroll(x: number, y: number): void {
