@@ -863,6 +863,20 @@ export function createPositionsGrid(
     // a single query param. Default off so visual cells 01–26 stay
     // byte-stable.
     ...(opts.groupingDemo ? { groupIncludeFooter: true as const, groupIncludeTotalFooter: true as const } : {}),
+    // Live "Row group panel" toolbar toggle (`?rowGroupPanel=always`)
+    // is the user-facing grouping experience. Surface every Cycle 15
+    // feature by default so the toggle reveals — not hides — what the
+    // cycle shipped: groups start COLLAPSED so the user drives expansion,
+    // each expanded group gets a `Total ${groupValue}` footer row, and a
+    // grand-total footer caps the body. Explicit URL flags above still
+    // win for byte-stable visual baselines.
+    ...(opts.rowGroupPanelAlways
+      ? {
+          groupDefaultExpanded: 0 as const,
+          groupIncludeFooter: true as const,
+          groupIncludeTotalFooter: true as const,
+        }
+      : {}),
   };
   const grid = new CGrid<Position>(container, options);
   grid.registerCellRenderer('pnlPill', pnlPill);
