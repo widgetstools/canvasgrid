@@ -24,7 +24,13 @@ const cellClassDemo = search.get('cellClassDemo') === '1';
 // cycle11-customPanelApi E2E can exercise refreshToolPanel +
 // getToolPanelInstance against a custom id.
 const customPanel = search.get('customPanel') === '1';
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel });
+// Cycle 11 / Task 9 — `?openColumns=1` sets
+// `sideBar.defaultToolPanel: 'agColumnsToolPanel'` so the Columns panel
+// opens at mount. The polished default-panel experience is opt-in to
+// keep the prior Cycle 11 E2Es (which assert "no tab pressed at mount")
+// green against the default URL.
+const openColumns = search.get('openColumns') === '1';
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns });
 
 // E2E hooks: expose the grid + a readiness flag so Playwright tests can wait
 // for first-data-rendered and call api helpers (`getCellBoundsAt`,
