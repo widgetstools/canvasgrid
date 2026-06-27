@@ -781,6 +781,16 @@ export interface CColDef<TRow = any, TValue = any> {
    *  option (default `false` → show `sum(Notional)`). Has no visible
    *  effect when the column declares no `aggFunc`. */
   suppressAggFuncInHeader?: boolean;
+  /** Cycle 14 / Task 5 — override the cell renderer used for this
+   *  column's cell on the totals row. Defaults to the built-in
+   *  `'totals'` renderer (subtle muted em-dash for empty, value
+   *  formatted via the column's `valueFormatter`). Set to any
+   *  registered renderer name (e.g. `'text'`, `'number'`, or a custom
+   *  renderer registered via `api.registerCellRenderer`) to opt the
+   *  column out of the polished totals treatment for this single
+   *  column. Has no effect when the grid has no totals row mounted
+   *  (`CGridOptions.totalsRowPosition` is `null` / unset). */
+  totalsCellRenderer?: string;
   sortable?: boolean;
   /** Diacritic-aware string sort. When `true`, `SortPass` orders this
    *  column's values via `Intl.Collator(undefined, { sensitivity:

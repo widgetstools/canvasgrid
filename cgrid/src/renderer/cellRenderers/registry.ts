@@ -51,6 +51,15 @@ export interface CellPaintConfig {
   flashAlpha?: number;
   flashFromColor?: string;
   /**
+   * Cycle 14 / Task 5 — muted foreground used by the polished `'totals'`
+   * renderer when the cell value is empty / null / undefined. Populated by
+   * `applyCellProps` from `theme.totalsFgMuted` only when `ctx.isTotals ===
+   * true`; left undefined for data and header cells so non-totals renderers
+   * never accidentally pick up a muted color. The totals renderer falls
+   * back to `fg` when this is unset.
+   */
+  emptyFg?: string;
+  /**
    * Opaque per-cell params forwarded by the painter. Set from either the
    * resolved column's static `cellRendererParams` or — when a column has a
    * `cellRendererSelector` that returned `{ params }` — that per-cell

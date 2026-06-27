@@ -1104,21 +1104,26 @@
   padding: 0 0.5ch;
 }
 
-/* Cycle 14 / Task 1 — totals (grand-total) row.
+/* Cycle 14 / Task 1 + Task 5 — totals (grand-total) row.
  *
  * Canvasgrid paints to canvas, NOT DOM, so these selectors do NOT
- * receive any rendered cells. They exist as anchors for Task 5's
- * polished `'totals'` cell renderer (which will read CSS variables
- * via the same mechanism `cellClassVariants` uses) AND as a stable
- * theming surface apps can override.
+ * receive any rendered cells. They exist as anchors apps can override
+ * (e.g. a per-app theme can scope `.cg-totals-row { --cg-totals-bg:
+ * ...; }` to retint the row without touching the global token).
  *
- * The painter actually consumes the `--cg-totals-*` variables via
- * `cssReader.ts → ResolvedTheme` and writes them into the canvas. */
+ * The painter consumes the `--cg-totals-*` variables via
+ * `cssReader.ts → ResolvedTheme` and writes them into the canvas.
+ * Task 5's polished `'totals'` renderer (`cellRenderers/totals.ts`)
+ * reads `totalsFg` (text) and `totalsFgMuted` (em-dash placeholder
+ * for empty cells) through this same path. */
 .cg-totals-row {
-  /* placeholder — Task 5 renderer reads tokens via cssReader. */
+  /* Anchor for app-level overrides. The runtime reads the listed
+   * `--cg-totals-*` variables via cssReader. */
 }
 .cg-totals-cell {
-  /* placeholder — per-cell polish lands in Task 5. */
+  /* Anchor for app-level per-cell overrides; the renderer paints to
+   * canvas using the resolved theme so DOM rules are not applied
+   * directly to cells, only to the variable values they read. */
 }
 
 /* Cycle 14 / Task 2 — pinned-row anchors. Like the totals selectors

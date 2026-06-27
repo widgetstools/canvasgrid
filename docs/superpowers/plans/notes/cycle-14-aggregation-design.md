@@ -457,3 +457,141 @@ synthesis vocabulary on the header row.**
   `sortStability: 'stable'` cueing the user that a sort is stable),
   it should follow the same rule: structural marker (icon, badge,
   parens) on the header row, weight / color on the totals row.
+
+---
+
+## Task 5 — Totals cell renderer (leaf polish)
+
+**Brief recap:** The polished `'totals'` cell renderer that finishes
+the Task 1 chrome at the leaf level. Default for cells in
+`TotalsSubgrid` unless a column overrides `cellRenderer`. Renderer is
+responsible ONLY for the value layer — text fill, alignment, padding,
+and the placeholder for empty cells. The row's bg / top border /
++1 weight stop are already painted by upstream paths (`applyCellProps`,
+`gridLinesPainter`, the row-bg pass).
+
+### Subject pin
+
+Same trader at the same financial positions grid. The job of the
+leaf cell is to *land the right glyph at the right pixel column*: a
+sum at the bottom of the Notional column must align decimally with
+every value above it, and a column with no aggregation must read as
+"intentionally absent" — not "missing data."
+
+### Default rejected
+
+Three AI defaults cluster here for "summary row leaf":
+
+- **"NaN" / "—" / "" inconsistency** — let the formatter return
+  whatever it returns; the cell renders raw. Trader sees "NaN" or
+  empty space inconsistently across no-aggFunc columns and parses
+  every one as a question. Wrong: the empty cell is a deliberate
+  signal, not garbage.
+- **Bold every numeric** — push weight to 600/700 so the totals
+  row "obviously belongs to the row above." Wrong: the +1 weight
+  stop (500) was already chosen in Task 1 precisely because 600+
+  reads as bold-for-emphasis, not bold-for-synthesis. Task 5 must
+  NOT override that decision.
+- **Decorate the row label cell** — add an icon, a chip, a
+  background tint to the leftmost cell to label the row "Total".
+  Wrong: the row label, if present, is just text data — the cycle's
+  consistent grammar is that label semantics live in column data,
+  not in the renderer.
+
+All three trade pixel discipline for noise.
+
+### Risk taken
+
+**Em-dash for empty, column-halign always, zero new typography.** The
+renderer is the smallest possible delta from `numberCell` /
+`textCell`: it adds ONE conditional (empty → em-dash in muted fg) and
+inherits everything else. The risk is "this looks too plain" — but
+plainness IS the design. The +1 weight stop + top border + tint were
+the boldness; the leaf does not add to them.
+
+### Decisions
+
+| # | Question | Choice | Why |
+|---|---|---|---|
+| 1 | Font weight delta | **500** (no change — confirmed from Task 1) | Mono families step 400 → 500 → 600 → 700. 500 is a +1 stop; 600 reads as bold-for-emphasis and would compete with the tint+border lift. 450 is non-standard and falls back to 400 on JetBrains Mono. The renderer does NOT override the font — `applyCellProps` already substituted weight 500 via `withFontWeight` for `isTotals` rows. |
+| 2 | Number alignment | **Inherit column halign** (right for numerics, left for text, center for explicitly center-aligned columns) | A sum that doesn't decimally line up under its column above is broken. The renderer reads `p.halign` directly — same path as `numberCell` / `textCell`. ag-grid does the same; financial-screen "always right" is wrong because text columns' empty placeholders would land in the wrong reading position. |
+| 3 | Null / empty placeholder | **Em-dash `—` (U+2014) in `totalsFgMuted`** | Em-dash is industry vocabulary for "intentional absence" (hyphen `-` reads as "missing minus sign"; "N/A" verbose; blank reads as broken). `totalsFgMuted` already carved out in Task 1 (`#475569` light / `#94a3b8` dark) for exactly this. NOT lower alpha — alpha multiplication on canvas reads as "rendered then faded"; the em-dash IS muted, not faded. |
+| 4 | Empty placeholder alignment | Same as the column's halign — em-dash lands right-aligned in a numeric column, left-aligned in a text column | The empty cell sits in the natural reading position for that column; the trader's eye never has to cross the cell to find it. |
+| 5 | Overflow behaviour | **Cell-clip only** (no ellipsis, no truncation) — matches body cells exactly | The body's idiom is that values wider than the column get clipped on the right (the per-cell clip rect in `byRows.ts` lines 406–409 already handles this). Adding ellipsis to totals would visually diverge from data above — and the trader's "the sum is wider than its column" cue is the same one that triggers on a data cell. Consistency wins. |
+| 6 | Hover state | **None** | Totals row is non-interactive in Cycle 14. The painter does not pass `isHovered: true` for totals; the renderer ignores `p.isHovered` regardless. |
+| 7 | Cell padding | **6px** (identical to `textCell` / `numberCell`'s `PADDING`) | Pixel alignment between totals and data is non-negotiable for the "confirm the sum" job. A right-aligned value at `bounds.x + bounds.w - 6` lands at exactly the same x as the data cell above it. |
+| 8 | Flash overlay | **Passthrough** — renderer calls `paintBackground` which already handles flash via `flashAlpha + flashFromColor`. The `FlashRegistry` does NOT currently mark totals cells dirty on chunk updates, so `flashAlpha` is undefined in practice and nothing paints. | Future cycle can add totals-flash semantics (e.g. flash a sum cell when the sum value changes between chunks) by extending FlashRegistry to track totals; this renderer rides whatever upstream contract provides. No defensive special-case. |
+| 9 | Per-cell `cellStyle`/`cellClass` overrides | **Honoured** — `applyCellProps` already mutated `target.fg/bg/font/halign` for static + class-driven overrides BEFORE the renderer runs. The renderer reads `target.fg` (not `theme.totalsFg` directly), so a `cellClassRules` that paints negative sums in red just works. | Standard cgrid renderer contract; no special handling needed. |
+| 10 | Row label cell | **No special rendering** — a column whose totals value is a literal string (e.g. `"Total"` returned by a custom aggFunc) reads at full `totalsFg` weight 500. Apps wanting a muted label use `cellClassRules` to override fg to a muted token. | Task 1's design notes mentioned `totalsFgMuted` "for the row label column"; in practice the renderer can't infer label-vs-value semantics without a marker. Keep the renderer simple; the muting path lives in apps' cellClassRules. |
+| 11 | New theme tokens | **None.** The renderer reuses `totalsFg` (set on `target.fg` by `applyCellProps`) and `totalsFgMuted` (threaded via a new optional `emptyFg?` field on `CellPaintConfig` populated by `applyCellProps` when `isTotals`). | Task 1 already exposed every token this renderer needs. A new `emptyFg?` field on the config is the standard plumbing pattern (mirrors `flashFromColor`, added in Cycle 4 the same way). |
+
+### Painter integration (canvasgrid specifics)
+
+1. `CellPaintConfig` gains one optional field: `emptyFg?: string`. The
+   field is populated by `applyCellProps` ONLY when `ctx.isTotals ===
+   true`, set to `theme.totalsFgMuted`. For all other cells the field
+   is undefined (no allocation pressure — the field is a string
+   reference, not a per-cell object).
+2. `cellRenderers/totals.ts` (new) registers the `'totals'` painter:
+   ```
+   paint(gc, p) {
+     paintBackground(gc, p);          // bg + flash (passthrough)
+     gc.cache.font = p.font;          // weight 500 already substituted
+     gc.cache.textBaseline = 'middle';
+     const empty = isEmpty(p.valueFormatted, p.value);
+     gc.cache.fillStyle = empty ? (p.emptyFg ?? p.fg) : p.fg;
+     const align: CanvasTextAlign = resolveAlign(p.halign);
+     gc.cache.textAlign = align;
+     const text = empty ? '—' : p.valueFormatted;
+     const cy = p.bounds.y + p.bounds.h / 2;
+     const x = align === 'right' ? p.bounds.x + p.bounds.w - PADDING
+             : align === 'center' ? p.bounds.x + p.bounds.w / 2
+             : p.bounds.x + PADDING;
+     gc.fillText(text, x, cy);
+   }
+   ```
+3. `cgrid.ts` registers the painter on construction:
+   `this.cellRenderers.register('totals', totalsCell);`.
+4. `byRows.ts` renderer-resolution branch: for `row.subgrid.isTotals`
+   rows, the renderer name defaults to `'totals'` UNLESS the column
+   defines its own `cellRenderer` (in which case the column's choice
+   wins — same precedence rule as data rows).
+5. Helper `isEmpty(formatted, value)` is module-local in `totals.ts`.
+   "Empty" means: `value === null || value === undefined || value ===
+   '' || formatted === '' || formatted === undefined`. This catches
+   columns without aggFunc (chunk returns null) AND columns with an
+   aggFunc that produced no value (empty filter result → NaN/undefined
+   → muted em-dash).
+
+### What's explicitly NOT shipped in Task 5
+
+- No new theme tokens (uses Task 1's `totalsFg` and `totalsFgMuted`).
+- No ellipsis / truncation logic — cell-clip handles overflow.
+- No hover, focus, or selection treatment.
+- No row-label column detection — apps wanting muted labels ride
+  `cellClassRules`.
+- No flash-on-sum-change wiring — FlashRegistry doesn't track totals
+  cells today; renderer is passthrough.
+- No animation when a totals value changes — the next paint reads the
+  new chunk and renders the new string.
+- No group-footer totals (Cycle 15).
+- No multi-line totals (the renderer is single-line; if a value's
+  formatted form contains newlines they pass through `fillText` as
+  visible whitespace — same behavior as `textCell`).
+
+### One-line summary
+
+**Em-dash for empty in muted fg, column-halign always, 6px padding,
+weight inherited. Smallest possible delta from `numberCell` —
+boldness already lives upstream.**
+
+### Vocabulary handed to subsequent tasks
+
+- The `emptyFg` field on `CellPaintConfig` is the established pattern
+  for "renderer-specific theme color threaded through the shared
+  config." Future renderers (e.g. a `'footer'` renderer in Cycle 15)
+  can add their own optional `*Fg` fields the same way.
+- The "renderer is a leaf, chrome is upstream" split is now firm. Any
+  Cycle 15 footer-row work follows the same shape: chrome (border +
+  bg + weight) lives in `applyCellProps` + `gridLinesPainter`; the
+  leaf renderer ONLY draws the value.
