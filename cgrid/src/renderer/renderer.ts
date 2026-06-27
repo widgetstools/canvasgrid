@@ -51,6 +51,15 @@ export interface RendererOpts {
    * `setGridOption('enableFillHandle', true)` lights up immediately.
    */
   getShowFillHandle: () => boolean;
+  /**
+   * Cycle 12 / Task 2 — band-aware cell bounds resolver shared by every
+   * overlay painter. Returns `null` whenever the cell straddles or has
+   * scrolled outside its column's band, so painters never need to
+   * reimplement the band-clip math. Backed by
+   * `CGrid.getVisibleCellBounds`.
+   */
+  getVisibleCellBounds: (rowIndex: number, colId: string) =>
+    { x: number; y: number; w: number; h: number } | null;
 }
 
 export class Renderer {
@@ -68,6 +77,7 @@ export class Renderer {
       rowDataSnapshotAt: this.opts.rowDataSnapshotAt,
       quickFilterLowerTerms: this.opts.getQuickFilterLowerTerms(),
       showFillHandle: this.opts.getShowFillHandle(),
+      getVisibleCellBounds: this.opts.getVisibleCellBounds,
     };
     // Fill the entire drawable area with theme bg as the FIRST instruction so
     // there's no transparent moment between the prior frame's pixels (or a

@@ -546,6 +546,7 @@ export class CGrid<TRow = any> {
       // on the next frame without re-wiring the renderer.
       getShowFillHandle: () => this.options.enableFillHandle === true
         && this.selection.state.ranges.length > 0,
+      getVisibleCellBounds: (rowIndex, colId) => this.getVisibleCellBounds(rowIndex, colId),
     });
 
     // 7. Canvas wrapper — owns the <canvas>, gc cache, RAF + resize polling.

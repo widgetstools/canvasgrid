@@ -47,4 +47,9 @@ export interface PainterCtx {
    * `CGridOptions.enableFillHandle` at the start of each paint.
    */
   showFillHandle: boolean;
+  /** Returns visible (band-clipped) bounds for the cell, or null when
+   *  the cell straddles or has scrolled out of its column's band.
+   *  Sourced from CGrid.getVisibleCellBounds (Cycle 12 / Task 1). */
+  getVisibleCellBounds: (rowIndex: number, colId: string) =>
+    { x: number; y: number; w: number; h: number } | null;
 }

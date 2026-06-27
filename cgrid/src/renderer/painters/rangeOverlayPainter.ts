@@ -11,9 +11,13 @@ import type { CachedContext2D } from '../gc';
  * window (no overlapping data row OR no overlapping column) contribute
  * zero paint cost: the per-range loop bails before touching `gc`.
  *
- * The painter is allocation-free on the scroll path. `fillStyle` /
- * `strokeStyle` / `lineWidth` are set once before the loop; each visible
- * range emits a single `fillRect` + `strokeRect`.
+ * Cycle 12 / Task 2 — band-clip math now lives behind
+ * `PainterCtx.getVisibleCellBounds`. The painter resolves the visible
+ * top-left + bottom-right corners of each range through the helper, so a
+ * cell that has scrolled into a foreign band (center → pinned-left, etc.)
+ * or out of `[bodyTop, bodyBottom]` is treated as not visible and the
+ * range is skipped. No `bodyLeft / bodyRight` reads or `gc.clip` calls
+ * remain.
  */
 export function paintRangeOverlay(gc: CachedContext2D, p: PainterCtx): void {
   const ranges = p.selection.ranges;
@@ -22,22 +26,6 @@ export function paintRangeOverlay(gc: CachedContext2D, p: PainterCtx): void {
   const vs = p.viewport;
   const theme = p.theme;
 
-  // Clip every range fill / border to the scrollable body region so a
-  // partially-scrolled range can't paint over the header (top) or
-  // below the body bottom edge. Horizontally we clip to bodyLeft /
-  // bodyRight so a center-column range can't leak into the
-  // pinned-left / pinned-right zones during horizontal scroll. (A
-  // range that targets pinned columns would itself sit inside the
-  // pinned band; we accept that the clip suppresses such ranges —
-  // pinned-column range selection isn't part of the demo today, so
-  // this is the simpler, safer choice.) `save` + `restore` brackets
-  // the loop because the clip applies to all ranges plus the
-  // fill-handle paint below.
-  gc.save();
-  gc.beginPath();
-  gc.rect(vs.bodyLeft, vs.bodyTop, vs.bodyRight - vs.bodyLeft, vs.bodyBottom - vs.bodyTop);
-  gc.clip();
-
   // Set draw state once. The painter doesn't save/restore between
   // ranges because every property it touches is unconditionally
   // rewritten on the next paint pass that needs them.
@@ -45,45 +33,53 @@ export function paintRangeOverlay(gc: CachedContext2D, p: PainterCtx): void {
   gc.cache.strokeStyle = theme.rangeBorderColor;
   gc.cache.lineWidth = 1;
 
-  // Track the LAST range's bottom-right so we can paint the fill handle
-  // on it after the per-range loop (the handle uses a different fillStyle).
+  // Track the LAST range's band-aware bottom-right so the fill handle
+  // hides when the bottom-right cell scrolled out of its band.
   let lastBottomRight: { x: number; y: number } | null = null;
 
   for (let i = 0; i < ranges.length; i++) {
     const range = ranges[i]!;
+    const colIds = range.colIds;
 
-    // Resolve the visible row band. We walk `visibleRows` looking for
-    // data rows whose `localRowIndex` falls inside [rowStart, rowEnd].
-    // The bounding rect uses the min top + max bottom across hits so
-    // partially-visible ranges still paint a single contiguous strip.
-    let minTop = Number.POSITIVE_INFINITY;
-    let maxBottom = Number.NEGATIVE_INFINITY;
+    // Find leftmost + rightmost columns of this range present in the
+    // visible window, in display order. `.indexOf` per column is fine
+    // here — colIds is small (typically 1..20).
+    let leftColId: string | null = null;
+    let rightColId: string | null = null;
+    for (let c = 0; c < vs.visibleColumns.length; c++) {
+      const col = vs.visibleColumns[c]!;
+      if (colIds.indexOf(col.colId) === -1) continue;
+      if (leftColId === null) leftColId = col.colId;
+      rightColId = col.colId;
+    }
+    if (leftColId === null || rightColId === null) continue;
+
+    // Find topmost + bottommost data rows of this range present in the
+    // visible window. Walks `visibleRows` in order, so the first
+    // matching row is the topmost and the last is the bottommost.
+    let topRowLocal = -1;
+    let bottomRowLocal = -1;
     for (let r = 0; r < vs.visibleRows.length; r++) {
       const row = vs.visibleRows[r]!;
       if (!row.subgrid.isData) continue;
       if (row.localRowIndex < range.rowStart || row.localRowIndex > range.rowEnd) continue;
-      if (row.top < minTop) minTop = row.top;
-      if (row.bottom > maxBottom) maxBottom = row.bottom;
+      if (topRowLocal === -1) topRowLocal = row.localRowIndex;
+      bottomRowLocal = row.localRowIndex;
     }
-    if (minTop === Number.POSITIVE_INFINITY) continue;
+    if (topRowLocal === -1) continue;
 
-    // Resolve the visible column band. `colIds` is small (typically 1..20)
-    // so the inner `.indexOf` is fine; we avoid building a Set per frame.
-    let minLeft = Number.POSITIVE_INFINITY;
-    let maxRight = Number.NEGATIVE_INFINITY;
-    const colIds = range.colIds;
-    for (let c = 0; c < vs.visibleColumns.length; c++) {
-      const col = vs.visibleColumns[c]!;
-      if (colIds.indexOf(col.colId) === -1) continue;
-      if (col.left < minLeft) minLeft = col.left;
-      if (col.right > maxRight) maxRight = col.right;
-    }
-    if (minLeft === Number.POSITIVE_INFINITY) continue;
+    // Resolve band-clipped corner bounds via the helper. When either
+    // corner has scrolled out of its band (center → pinned zone, or
+    // straddling the body's top/bottom edge), treat the range as having
+    // no on-screen footprint and skip the paint.
+    const topLeft = p.getVisibleCellBounds(topRowLocal, leftColId);
+    const bottomRight = p.getVisibleCellBounds(bottomRowLocal, rightColId);
+    if (!topLeft || !bottomRight) continue;
 
-    const x = minLeft;
-    const y = minTop;
-    const w = maxRight - minLeft;
-    const h = maxBottom - minTop;
+    const x = topLeft.x;
+    const y = topLeft.y;
+    const w = bottomRight.x + bottomRight.w - topLeft.x;
+    const h = bottomRight.y + bottomRight.h - topLeft.y;
 
     gc.fillRect(x, y, w, h);
     // Inset the border by 0.5px so the 1px stroke sits on the integer
@@ -91,7 +87,10 @@ export function paintRangeOverlay(gc: CachedContext2D, p: PainterCtx): void {
     gc.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
 
     if (i === ranges.length - 1) {
-      lastBottomRight = { x: maxRight, y: maxBottom };
+      lastBottomRight = {
+        x: bottomRight.x + bottomRight.w,
+        y: bottomRight.y + bottomRight.h,
+      };
     }
   }
 
@@ -99,12 +98,10 @@ export function paintRangeOverlay(gc: CachedContext2D, p: PainterCtx): void {
   // bottom-right of the LAST range. The handle uses the opaque border
   // color so it's visible against the translucent fill. Only painted
   // when `showFillHandle` is true (cgrid host reads
-  // `options.enableFillHandle`) AND the last range has any on-screen
-  // footprint.
+  // `options.enableFillHandle`) AND the last range's bottom-right cell
+  // is band-visible.
   if (p.showFillHandle && lastBottomRight !== null) {
     gc.cache.fillStyle = theme.rangeBorderColor;
     gc.fillRect(lastBottomRight.x - 3, lastBottomRight.y - 3, 6, 6);
   }
-
-  gc.restore();
 }
