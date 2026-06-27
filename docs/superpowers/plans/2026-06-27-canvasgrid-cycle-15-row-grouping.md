@@ -1031,4 +1031,257 @@ review is 10× the cost of catching it now.
 
 ## Shipped
 
-(Filled in by Task 12 once every PR has merged.)
+**`GroupPass` on worker (tree build + flat ordering).** A new pipeline
+stage (`cgrid/src/worker/passes/groupPass.ts`) runs between `FilterPass`
+and `SortPass`, walks the post-filter row set once, and produces a tree
+of `GroupNode { key, value, depth, colId, childIndices, childGroups,
+childCount }` together with a `flatOrder: Array<{ kind: 'group' | 'row'
+| 'footer', key?, rowIndex?, depth }>` for the slicer. The pass bypasses
+cleanly with zero allocations when `groupModel.rowGroupCols.length === 0`
+so existing single-flat-list paths stay byte-stable. The protocol
+gained a `setGroupModel(model)` message + `setExpandedKeys(Set<string>)`
+companion for downstream wiring. Eighteen Vitest cases cover empty
+input, multi-level nesting, null / numeric group values, case
+sensitivity, the bypass path, and the `setGroupModel` re-emit contract;
+the perf gate (`groupPass.perf.test.ts`) holds the 1 M × 3 group-col
+budget on CI hardware. Slots before `SortPass` so Task 11's group-aware
+sort can reorder buckets without re-building the tree.
+
+**Group-aware `ViewportSlicer` (collapse-skip walk).** The slicer
+(`cgrid/src/worker/viewportSlicer.ts`) walks `GroupPass.flatOrder`
+honouring `expandedKeys: Set<string>` to produce visible row indices
+interleaved with virtual group / footer rows. Collapsed groups skip
+their descendant entries up to the next sibling so `getRowCount()`
+reflects "visible row count post-collapse" — chunk emission ships
+exactly the rows the body subgrid will paint, no more. Fourteen Vitest
+cases cover the bypass path, all-expanded / all-collapsed / mixed
+expansion, deeply nested trees, `firstRow / lastRow` windowing into a
+grouped tree, overscan anchored to the natural group boundary, and the
+`getRowIndexFor(groupKey)` lookup. Pure-fn output keyed only on inputs
+so swap-in for Cycle 17 (Tree data) is one constructor call.
+
+**`GroupedRow` chunk format extension (append-only).** The chunk
+(`cgrid/src/worker/chunkFormat.ts`) grew five parallel arrays —
+`rowKind: Uint8Array` (0 = data, 1 = group, 2 = subtotal, 3 = footer),
+`groupDepth: Uint8Array`, `groupValue: string[]`, `groupChildCount:
+Uint32Array`, `isExpanded: Uint8Array` — written after the existing
+fields so Cycle 4 readers continue working against current data.
+`tests/fixtures/ungrouped-cycle4-snapshot.bin` captures an ungrouped
+chunk from a pre-Cycle-15 path; the chunk-format Vitest round-trip
+suite (ten cases) deserialises that fixture through the new readers
+and asserts default fill-in (`rowKind: 0`, `groupDepth: 0`,
+`isExpanded: 1`) so the regression guard against breaking the append-
+only contract is mechanical. Protocol version bumped additively;
+client decoder absorbs the new fields with zero-cost no-grouping path.
+
+**Auto-group column + `'group'` cell renderer.** A synthesised column
+(`cgrid/src/core/autoGroupColumn.ts`, id `ag-Grid-AutoColumn`)
+inserts at index 0 of the visible-leaf order when grouping is active
+AND `groupDisplayType !== 'multipleColumns'`. The `'group'` cell
+renderer (`cgrid/src/renderer/cellRenderers/group.ts`) reads `chunk
+.rowKind / .groupDepth / .groupValue / .groupChildCount / .isExpanded`
+and paints: indent (one chevron-width per depth level), chevron (▶
+collapsed / ▼ expanded), the group value (formatted via the source
+column's `valueFormatter`), and an optional `(count)` suffix in the
+muted token (`--cg-group-count-fg`). Visual cell 20
+(`20-group-one-level.png`) baselines one-level grouping; design notes
+in `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 4
+record the chevron/indent/typography decisions (chevron = unicode ▶/▼
+@ 70% opacity, indent unit = 16px, count typography = muted weight in
+parens). Twelve Vitest cases cover the insertion logic + paint
+contract.
+
+**`groupDisplayType: 'singleColumn' | 'multipleColumns' | 'groupRows' |
+'custom'`.** `'singleColumn'` (default) sinks every group level into
+one auto-column; `'multipleColumns'` synthesises one auto-group column
+per `rowGroupCols` entry, each `cellRendererParams.groupColumnDepth`
+matching the row's depth so each chevron + value + (count) routes to
+its own column; `'groupRows'` paints a full-row group strip (no
+auto-column); `'custom'` defers to `CGridOptions.groupRowRenderer`.
+Visual cell 21 (`21-group-three-level-multipleColumns.png`) baselines
+the three-level multipleColumns variant per the canonical screenshot.
+Nine Vitest cases cover all four modes + their layout edge cases.
+
+**Row group panel + drag-from-header + `rowGroupPanelShow` /
+`rowGroupPanelSuppressSort` / `enableRowGroup`.** A horizontal drop
+strip (`cgrid/src/interaction/rowGroupPanel/host.ts`) mounts above the
+column header row, renders one chip per `rowGroupCols[i]` (drag
+handle + label + ✕), and reuses the column-drag feature's drag-start
+flow to accept column-header drops. `enableRowGroup: true` on a column
+def makes its header a valid drag source; the drop appends to
+`rowGroupCols` and re-applies the group model. The chip ✕ removes a
+column from grouping; chip drag re-orders within the strip. Three
+panel modes — `'always'` / `'onlyWhenGrouping'` / `'never'` — drive
+the empty-state ("Drag here to set row groups" — same vocabulary as
+Cycle 11's Columns side-bar drop zone). `setHostBounds` extends with
+a `top` inset so the panel shares the side-bar reservation channel.
+Visual cells 22 (`22-rowGroupPanel-empty.png`) + 23
+(`23-rowGroupPanel-three-chips.png`) baseline both states. E2E
+(`cycle15-dragColumnToRowGroupPanel.spec.ts`) covers the drag-from-
+header round-trip end-to-end. Sixteen Vitest cases cover mount /
+unmount / chip ordering / drop verdict / runtime mid-flight re-mounts.
+
+**Expand/collapse interaction + API.** `GroupExpandFeature`
+(`cgrid/src/interaction/features/groupExpand.ts`) hit-tests on the
+chevron region of an auto-group cell, toggles the row's expansion in
+`expandedKeys`, and ships the new set to the worker via
+`workerClient.setExpandedKeys`. APIs on `CGrid`: `expandAll()` (sets
+the model marker to "all keys" so future-added groups inherit;
+fires `expandOrCollapseAll: { expanded: true }`), `collapseAll()`
+(empty explicit set; fires the same event with `expanded: false`),
+`setExpanded(groupKey, expanded)` (single-group toggle; fires
+`rowGroupOpened`), `getExpandedKeys(): Set<string>`. Visual cell 24
+(`24-groups-all-collapsed.png`) baselines the all-collapsed state
+(chevron right-facing, group rows visible but children hidden). E2E
+(`cycle15-groupExpand.spec.ts`) covers the chevron-click flow.
+Fifteen Vitest cases cover the API surface + event payloads.
+
+**`groupSelectsChildren` + tri-state checkbox.** The selection model
+(`cgrid/src/interaction/selectionModel.ts`) extends with
+`setRowSelected` cascading to all descendant leaf rows when the
+target is a group AND `groupSelectsChildren` is on. A new
+`getGroupSelectionState(groupKey): 'none' | 'partial' | 'all'` powers
+the auto-group cell's tri-state checkbox: dash-inside-box for
+`'partial'` (the Excel/macOS-familiar indeterminate visual rendered
+via the `--cg-checkbox-indeterminate-*` tokens). `getSelectedRowIds()`
+returns leaf-only ids so downstream consumers (clipboard, status
+panel) read coherent data. Visual cell 25
+(`25-groupSelectsChildren-indeterminate.png`) baselines a partial
+selection on one group with the indeterminate dash painted. Thirteen
+Vitest cases cover cascade-down, roll-up to fully-selected, partial
+roll-up to indeterminate.
+
+**`groupDefaultExpanded` + `groupDefaultExpandedKeys`.** Init-only
+seeding: `groupDefaultExpanded: number | 'all'` (numeric = expand to
+depth ≤ N; `'all'` expands every group key); `groupDefaultExpandedKeys:
+string[]` (explicit list, overrides the depth rule). `GroupPass.apply`
+reads the options on init and seeds the `expandedKeys` set
+accordingly. Seven Vitest cases cover the depth-cap, the `'all'`
+sentinel, the explicit-keys override, and the post-init contract
+(subsequent `setExpanded` / `expandAll` calls win cleanly).
+
+**`showOpenedGroup` + `groupRemoveSingleChildren`.** Two group-
+elision polish flags. `groupRemoveSingleChildren: true` elides any
+group whose `childCount === 1`; the lone child renders directly
+under the parent group's parent, collapsing the redundant nesting
+level. `showOpenedGroup: true` makes an expanded group's value
+"follow" its children — the value re-paints in each descendant data
+row's auto-group cell, so the user always reads the group context
+without scrolling back to the group header. Both compose with the
+expand/collapse model from Task 7; eight Vitest cases pin the
+elision behaviour + the follow-through repaint.
+
+**Group-aware sort.** `SortPass` (`cgrid/src/worker/passes/sortPass.ts`)
+gains an `applyGrouped` path that, when `rowGroupCols.length > 0`,
+sorts within each leaf bucket independently (faster than a global
+sort then re-bucket) AND sorts the group-level rows by their group
+value (or by `CColDef.sortComparator` if provided; `sortGroupRowsByKey:
+boolean` per-column lets apps opt into a different ordering for the
+group label vs the leaf rows). The flatOrder rebuilds in place; the
+viewport slicer reads the same shape it always has so no downstream
+change is needed. Ten Vitest cases cover within-bucket + group-level
+sort; `groupSort.perf.test.ts` holds the 100 K × 2-group-col ≤ 100 ms
+budget on CI hardware.
+
+**Group totals (footer rows under each expanded group).** Per-group
+footers + a grand-total companion. `AggPass.applyGroups` walks the
+group tree bottom-up using the SAME `AggFuncRegistry` (Cycle 13 /
+Task 3 + Cycle 14 / Task 3) the grand-total row uses — single source
+of truth for sum / avg / min / max / count, so a grouped grid can
+never silently diverge from its ungrouped grand total on (e.g.) null
+handling. Footers ship via `chunk.groupTotals: Record<groupKey,
+Record<colId, value>>`; the new `'groupFooter'` cell renderer reads
+that map keyed by the row's `parentGroupKey`. `TotalsSubgrid` extends
+(per task spec) with a `parentGroupKey: string` thread through the
+`TotalsCellLookup` — empty key (default) preserves Cycle 14 grand-
+total shape; non-empty key resolves through `chunk.groupTotals[key]`.
+The footer rows are INLINE rowKinds (rowKind === 3) inside the data
+subgrid's chunk window so they share the same scroll surface as data
+rows. Options: `groupIncludeFooter: boolean` (per-group footer at the
+bottom of each expanded group) + `groupIncludeTotalFooter: boolean`
+(single grand-total footer at depth 0 at the end of the body); both
+default off. Visual cell 26 (`26-group-footer-rows.png`) baselines
+the per-group + grand-total stack inheriting the Cycle 14 hairline-
+lift vocabulary (no new tint; same +1 weight stop; same 1px structural
+border). Twelve Vitest cases cover the per-group totals, the grand-
+total companion, and the elision when no `aggFunc` columns exist.
+
+**Demo wires `?grouping=demo` showcase mode + visual matrix coverage.**
+The demo (`apps/cgrid-positions/src/main.ts` + `positionsGrid.ts`)
+exposes a single `?grouping=demo` query param that composes one-level
+grouping by `ticker` AND per-group footer rows AND the grand-total
+footer — a polished read of the full grouped + aggregated surface in
+one URL. Default off so visual cells 01–26 stay byte-stable; the
+README's grouping deep-link sets it. Demo also exposes
+`?grouping=ticker`, `?grouping=multipleColumns`, `?rowGroupPanel=`
+(empty / threeChips / always), `?groupSelectsChildren=1`,
+`?groupIncludeFooter=1`, and `?groupIncludeTotalFooter=1` — each
+corresponding to one or more Cycle 15 visual matrix cells. Seven new
+visual cells (20–26) baseline the grouping surface end-to-end.
+
+**Per-task PRs (all merged on `main`):**
+
+- [x] Task 1 — `GroupPass` on worker (tree build + flat ordering)
+      (PR #65, `59be75a`).
+- [x] Task 2 — Group-aware `ViewportSlicer` (collapse-skip walk over
+      `GroupPass.flatOrder`) (PR #66, merge `2144293` / branch tip
+      `1e7b5b2`).
+- [x] Task 3 — `GroupedRow` chunk format extension (append-only,
+      Cycle 4 fixture round-trips) (PR #67, `207685c`).
+- [x] Task 4 — Auto-group column + `'group'` cell renderer
+      [visual-baseline-new — cell 20] (PR #68, `9c6bf3b`).
+- [x] Task 5 — `groupDisplayType` (singleColumn / multipleColumns /
+      groupRows / custom) [visual-baseline-new — cell 21]
+      (PR #69, `e7a56ca`).
+- [x] Task 6 — Row group panel + drag-from-header +
+      `rowGroupPanelShow` / Suppress / `enableRowGroup`
+      [visual-baseline-new — cells 22 + 23] (PR #70, `4b805db`).
+- [x] Task 7 — Group expand/collapse interaction + API
+      [visual-baseline-new — cell 24] (PR #71, `bf7d5c4`).
+- [x] Task 8 — `groupSelectsChildren` + tri-state checkbox
+      [visual-baseline-new — cell 25] (PR #72, `d0d86b4`).
+- [x] Task 9 — `groupDefaultExpanded` + `groupDefaultExpandedKeys`
+      (PR #73, `92bb8a2`).
+- [x] Task 10 — `showOpenedGroup` + `groupRemoveSingleChildren`
+      (PR #74, `4aa261b`).
+- [x] Task 11 — Group-aware sort (within-bucket + group-level)
+      (PR #75, `6fc88ae`).
+- [x] Task 12 — Group totals (footer rows under each expanded group,
+      hairline-lift vocabulary) [visual-baseline-new — cell 26]
+      (PR #76, `c6ac5a0`).
+- [x] Task 13 — Cycle 15 exit ritual: worklog `## Shipped` block,
+      demo `?grouping=demo` showcase wiring, FM Area 09 + 10 flips
+      (this PR).
+
+**FM coverage:** Area 09 = 50/54 ✅. The 4 deferred rows are all
+hierarchy / sticky-specific: `groupHierarchy (ColDef)`,
+`rowGroupingHierarchy (ColDef)` (deprecated), `groupHierarchyConfig`
+— all three are Tree data (Cycle 17) territory; the fourth, Sticky
+group headers, defers to the sticky-rows polish cycle. Area 10 =
+26/26 ✅. The two group-footer-dependent rows from Cycle 14
+(`IAggFuncParams.aggregatedChildren` for the nested re-aggregation
+feed, and the per-group counterpart to `Group total and grand total
+rows`) finally land via Task 12's `AggPass.applyGroups`; the
+remaining GUI value-tool-panel + filter-interaction rows tick via
+option recognition + the registry single-source-of-truth contract
+(actual GUI value-tool-panel ships in a later cycle once the side-
+bar Values drop zone exists).
+
+**Notes for future cycles:**
+
+- Cycle 16 (Master/Detail) reads the same `chunk.rowKind` channel —
+  detail rows slot in alongside group / footer rows as a new `rowKind`
+  value (4 = detail) so the slicer + chunk format don't need a second
+  extension.
+- Cycle 17 (Tree data) replaces the grouping engine's "bucket by
+  column value" step with "bucket by parent reference" — the
+  `GroupNode` tree + slicer + chunk format are the same shape
+  downstream, so the tree-data work is scoped to a single new
+  `treePass.ts` swap-in.
+- Cycle 18 (Pivot) reads the same `GroupPass` output as a row-axis
+  grouping AND adds a column-axis `pivotPass.ts`; the auto-group
+  column synthesis path extends to also synthesise pivot leaf
+  columns from the column-axis tree.
+- The hierarchy-specific 4 Area 09 rows deferred this cycle
+  (`groupHierarchy` / `rowGroupingHierarchy` / `groupHierarchyConfig`
+  / Sticky group headers) flip when Cycle 17 ships.

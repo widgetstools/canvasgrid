@@ -79,6 +79,13 @@ const groupByTicker = search.get('grouping') === 'ticker';
 // with `?grouping=ticker` — the same query param selects ONE grouping
 // demo.
 const groupMultipleColumns = search.get('grouping') === 'multipleColumns';
+// Cycle 15 / Task 13 — `?grouping=demo` is the cycle-exit showcase: one-
+// level grouping by `ticker` AND per-group footer rows on, so a single
+// query param surfaces the full grouped + aggregated reading (auto-group
+// column, chevron + indent + (count), Total ${ticker} footer per group,
+// grand-total footer at the end). Off by default so visual cells 01–26
+// stay byte-stable; users land here from the README's grouping deep-link.
+const groupingDemo = search.get('grouping') === 'demo';
 // Cycle 15 / Task 6 — `?rowGroupPanel=empty` mounts the row group
 // panel with no chips so the dashed empty-state placeholder paints
 // (visual cell 22). `?rowGroupPanel=threeChips` mounts it
@@ -114,7 +121,7 @@ const groupIncludeTotalFooter = search.get('groupIncludeTotalFooter') === '1';
 // + lets deep-links pin a feature combo.
 const pinning      = search.get('pinning')      === 'on';
 const columnGroups = search.get('columnGroups') === 'on';
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, groupSelectsChildren, groupIncludeFooter, groupIncludeTotalFooter, pinning, columnGroups });
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, groupingDemo, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, groupSelectsChildren, groupIncludeFooter, groupIncludeTotalFooter, pinning, columnGroups });
 
 // Toolbar feature-toggle checkboxes. Toggling reloads the page with
 // the matching URL flag set / unset because the structural changes

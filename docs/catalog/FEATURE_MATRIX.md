@@ -381,88 +381,88 @@
 | 08 | Floating filter expand button | Community | behavior | yes | P1 | Compact summary in header row; click opens full filter |
 
 <!-- area:09 Row grouping -->
-| 09 | rowGroup (ColDef) | Enterprise | option | yes | P0 | Groups rows by this column's value; requires RowGroupingModule |
-| 09 | initialRowGroup (ColDef) | Enterprise | option | no | P1 | rowGroup applied on first column creation only |
-| 09 | rowGroupIndex (ColDef) | Enterprise | option | yes | P0 | Position of this column in the multi-level group hierarchy |
-| 09 | initialRowGroupIndex (ColDef) | Enterprise | option | no | P1 | rowGroupIndex applied on first column creation only |
-| 09 | enableRowGroup (ColDef) | Enterprise | option | yes | P1 | Allows user to drag column into row-group panel via GUI |
-| 09 | showRowGroup (ColDef) | Enterprise | option | no | P2 | Displays grouped-column value in a custom group column cell |
+| 09 | ✅ rowGroup (ColDef) | Enterprise | option | yes | P0 | Groups rows by this column's value; requires RowGroupingModule |
+| 09 | ✅ initialRowGroup (ColDef) | Enterprise | option | no | P1 | rowGroup applied on first column creation only |
+| 09 | ✅ rowGroupIndex (ColDef) | Enterprise | option | yes | P0 | Position of this column in the multi-level group hierarchy |
+| 09 | ✅ initialRowGroupIndex (ColDef) | Enterprise | option | no | P1 | rowGroupIndex applied on first column creation only |
+| 09 | ✅ enableRowGroup (ColDef) | Enterprise | option | yes | P1 | Allows user to drag column into row-group panel via GUI |
+| 09 | ✅ showRowGroup (ColDef) | Enterprise | option | no | P2 | Displays grouped-column value in a custom group column cell |
 | 09 | groupHierarchy (ColDef) | Enterprise | option | no | P2 | Declares virtual sub-columns for date-part or custom hierarchies |
 | 09 | rowGroupingHierarchy (ColDef) | Enterprise | option | no | P3 | Deprecated — use groupHierarchy instead |
-| 09 | groupDisplayType | Enterprise | option | yes | P0 | Controls group-column layout: singleColumn / multipleColumns / groupRows / custom |
-| 09 | groupDefaultExpanded | Enterprise | option | yes | P0 | Levels expanded on load; -1 expands all |
-| 09 | autoGroupColumnDef | Enterprise | option | yes | P0 | ColDef overrides for auto-generated group column(s) |
-| 09 | groupMaintainOrder | Enterprise | option | no | P1 | Prevents value-column sorts from reordering groups |
-| 09 | groupLockGroupColumns | Enterprise | option | no | P2 | Number of leading group columns locked from reorder/hide |
-| 09 | groupAggFiltering | Enterprise | option | no | P2 | Applies filters to group-level aggregated values |
-| 09 | groupTotalRow | Enterprise | option | yes | P0 | Inserts aggregate total row inside each expanded group |
-| 09 | grandTotalRow | Enterprise | option | yes | P0 | Inserts grid-level aggregate total row |
-| 09 | suppressStickyTotalRow | Enterprise | option | no | P2 | Disables sticky behaviour of total rows |
-| 09 | groupSuppressBlankHeader | Enterprise | option | no | P2 | Hides blank group header cell when aggregate would jump |
-| 09 | showOpenedGroup | Enterprise | option | no | P2 | Shows opened-group value in group column for child rows |
-| 09 | groupHideOpenParents | Enterprise | option | no | P2 | Hides parent rows when expanded; children surface at top |
-| 09 | groupHideColumnsUntilExpanded | Enterprise | option | no | P2 | Hides deeper group columns until parent level is expanded |
-| 09 | groupHideParentOfSingleChild | Enterprise | option | no | P2 | Replaces single-child group with the child row inline |
-| 09 | groupRemoveSingleChildren | Enterprise | option | no | P3 | Deprecated v33 — use groupHideParentOfSingleChild |
-| 09 | groupRemoveLowestSingleChildren | Enterprise | option | no | P3 | Deprecated v33 — use groupHideParentOfSingleChild: 'leafGroupsOnly' |
-| 09 | groupAllowUnbalanced | Enterprise | option | no | P2 | Prevents (Blanks) group for rows without a group-column value |
-| 09 | rowGroupPanelShow | Enterprise | option | yes | P1 | Visibility of drag-and-drop row group panel |
-| 09 | rowGroupPanelSuppressSort | Enterprise | option | no | P2 | Hides sort controls in row group panel |
-| 09 | groupRowRenderer | Enterprise | option | no | P2 | Custom renderer for groupRows display-type group rows |
-| 09 | groupRowRendererParams | Enterprise | option | no | P2 | Params for groupRowRenderer |
-| 09 | suppressGroupRowsSticky | Enterprise | option | no | P2 | Prevents group rows sticking at grid top while scrolling |
+| 09 | ✅ groupDisplayType | Enterprise | option | yes | P0 | Controls group-column layout: singleColumn / multipleColumns / groupRows / custom |
+| 09 | ✅ groupDefaultExpanded | Enterprise | option | yes | P0 | Levels expanded on load; -1 expands all |
+| 09 | ✅ autoGroupColumnDef | Enterprise | option | yes | P0 | ColDef overrides for auto-generated group column(s) |
+| 09 | ✅ groupMaintainOrder | Enterprise | option | no | P1 | Prevents value-column sorts from reordering groups |
+| 09 | ✅ groupLockGroupColumns | Enterprise | option | no | P2 | Number of leading group columns locked from reorder/hide |
+| 09 | ✅ groupAggFiltering | Enterprise | option | no | P2 | Applies filters to group-level aggregated values |
+| 09 | ✅ groupTotalRow | Enterprise | option | yes | P0 | Inserts aggregate total row inside each expanded group |
+| 09 | ✅ grandTotalRow | Enterprise | option | yes | P0 | Inserts grid-level aggregate total row |
+| 09 | ✅ suppressStickyTotalRow | Enterprise | option | no | P2 | Disables sticky behaviour of total rows |
+| 09 | ✅ groupSuppressBlankHeader | Enterprise | option | no | P2 | Hides blank group header cell when aggregate would jump |
+| 09 | ✅ showOpenedGroup | Enterprise | option | no | P2 | Shows opened-group value in group column for child rows |
+| 09 | ✅ groupHideOpenParents | Enterprise | option | no | P2 | Hides parent rows when expanded; children surface at top |
+| 09 | ✅ groupHideColumnsUntilExpanded | Enterprise | option | no | P2 | Hides deeper group columns until parent level is expanded |
+| 09 | ✅ groupHideParentOfSingleChild | Enterprise | option | no | P2 | Replaces single-child group with the child row inline |
+| 09 | ✅ groupRemoveSingleChildren | Enterprise | option | no | P3 | Deprecated v33 — use groupHideParentOfSingleChild |
+| 09 | ✅ groupRemoveLowestSingleChildren | Enterprise | option | no | P3 | Deprecated v33 — use groupHideParentOfSingleChild: 'leafGroupsOnly' |
+| 09 | ✅ groupAllowUnbalanced | Enterprise | option | no | P2 | Prevents (Blanks) group for rows without a group-column value |
+| 09 | ✅ rowGroupPanelShow | Enterprise | option | yes | P1 | Visibility of drag-and-drop row group panel |
+| 09 | ✅ rowGroupPanelSuppressSort | Enterprise | option | no | P2 | Hides sort controls in row group panel |
+| 09 | ✅ groupRowRenderer | Enterprise | option | no | P2 | Custom renderer for groupRows display-type group rows |
+| 09 | ✅ groupRowRendererParams | Enterprise | option | no | P2 | Params for groupRowRenderer |
+| 09 | ✅ suppressGroupRowsSticky | Enterprise | option | no | P2 | Prevents group rows sticking at grid top while scrolling |
 | 09 | groupHierarchyConfig | Enterprise | option | no | P2 | Registers custom hierarchy types for colDef.groupHierarchy |
-| 09 | initialGroupOrderComparator | Enterprise | option | no | P2 | Callback for initial ordering of group nodes |
-| 09 | groupSelectsChildren | Enterprise | option | no | P2 | Deprecated v32.2 — use rowSelection.groupSelects; see 12-selection.md |
-| 09 | groupSelectsFiltered | Enterprise | option | no | P3 | Deprecated v32.2 — use rowSelection.groupSelects configuration instead. When true with groupSelectsChildren, only filtered descendants selected. |
-| 09 | setRowGroupColumns | Enterprise | api | no | P0 | Replaces current row-group columns |
-| 09 | addRowGroupColumns | Enterprise | api | no | P0 | Adds columns to the row-group hierarchy |
-| 09 | removeRowGroupColumns | Enterprise | api | no | P0 | Removes columns from the row-group hierarchy |
-| 09 | moveRowGroupColumn | Enterprise | api | no | P1 | Reorders row-group columns by index |
-| 09 | getRowGroupColumns | Enterprise | api | no | P1 | Returns current row-group columns |
-| 09 | expandAll | Community | api | yes | P0 | Expands all group nodes — primarily used with row grouping (Enterprise) |
-| 09 | collapseAll | Community | api | yes | P0 | Collapses all group nodes — primarily used with row grouping (Enterprise) |
-| 09 | setRowNodeExpanded | Community | api | no | P1 | Sets expanded state on a specific group node — primarily used with row grouping (Enterprise) |
-| 09 | onGroupExpandedOrCollapsed | Community | api | no | P1 | Signals grid that expansion state was mutated externally — primarily used with row grouping (Enterprise) |
-| 09 | rowGroupOpened | Community | event | no | P0 | Group row expanded or collapsed; event is core, row-group context needs RowGroupingModule (Enterprise) |
-| 09 | columnRowGroupChanged | Enterprise | event | no | P1 | Column added to or removed from group hierarchy |
-| 09 | groupDisplayType singleColumn mode | Enterprise | behavior | yes | P0 | All group levels share one auto column with indent |
-| 09 | groupDisplayType multipleColumns mode | Enterprise | behavior | no | P1 | One auto column generated per group level |
-| 09 | groupDisplayType groupRows mode | Enterprise | behavior | no | P2 | Full-width group row replaces group header column |
-| 09 | groupDisplayType custom mode | Enterprise | behavior | no | P2 | Developer supplies group columns via showRowGroup |
+| 09 | ✅ initialGroupOrderComparator | Enterprise | option | no | P2 | Callback for initial ordering of group nodes |
+| 09 | ✅ groupSelectsChildren | Enterprise | option | no | P2 | Deprecated v32.2 — use rowSelection.groupSelects; see 12-selection.md |
+| 09 | ✅ groupSelectsFiltered | Enterprise | option | no | P3 | Deprecated v32.2 — use rowSelection.groupSelects configuration instead. When true with groupSelectsChildren, only filtered descendants selected. |
+| 09 | ✅ setRowGroupColumns | Enterprise | api | no | P0 | Replaces current row-group columns |
+| 09 | ✅ addRowGroupColumns | Enterprise | api | no | P0 | Adds columns to the row-group hierarchy |
+| 09 | ✅ removeRowGroupColumns | Enterprise | api | no | P0 | Removes columns from the row-group hierarchy |
+| 09 | ✅ moveRowGroupColumn | Enterprise | api | no | P1 | Reorders row-group columns by index |
+| 09 | ✅ getRowGroupColumns | Enterprise | api | no | P1 | Returns current row-group columns |
+| 09 | ✅ expandAll | Community | api | yes | P0 | Expands all group nodes — primarily used with row grouping (Enterprise) |
+| 09 | ✅ collapseAll | Community | api | yes | P0 | Collapses all group nodes — primarily used with row grouping (Enterprise) |
+| 09 | ✅ setRowNodeExpanded | Community | api | no | P1 | Sets expanded state on a specific group node — primarily used with row grouping (Enterprise) |
+| 09 | ✅ onGroupExpandedOrCollapsed | Community | api | no | P1 | Signals grid that expansion state was mutated externally — primarily used with row grouping (Enterprise) |
+| 09 | ✅ rowGroupOpened | Community | event | no | P0 | Group row expanded or collapsed; event is core, row-group context needs RowGroupingModule (Enterprise) |
+| 09 | ✅ columnRowGroupChanged | Enterprise | event | no | P1 | Column added to or removed from group hierarchy |
+| 09 | ✅ groupDisplayType singleColumn mode | Enterprise | behavior | yes | P0 | All group levels share one auto column with indent |
+| 09 | ✅ groupDisplayType multipleColumns mode | Enterprise | behavior | no | P1 | One auto column generated per group level |
+| 09 | ✅ groupDisplayType groupRows mode | Enterprise | behavior | no | P2 | Full-width group row replaces group header column |
+| 09 | ✅ groupDisplayType custom mode | Enterprise | behavior | no | P2 | Developer supplies group columns via showRowGroup |
 | 09 | Sticky group headers | Enterprise | behavior | no | P1 | Group row sticks to top while children scroll through viewport |
-| 09 | Group expansion depth control | Enterprise | behavior | yes | P0 | groupDefaultExpanded + expandAll/collapseAll API |
-| 09 | Group total and grand total rows | Enterprise | behavior | yes | P0 | groupTotalRow/grandTotalRow insert aggregate rows |
-| 09 | Unbalanced groups | Enterprise | behavior | no | P2 | groupAllowUnbalanced prevents synthetic (Blanks) node |
-| 09 | autoGroupColumnDef customisation | Enterprise | behavior | yes | P0 | Any ColDef property except colId applied to auto group column |
+| 09 | ✅ Group expansion depth control | Enterprise | behavior | yes | P0 | groupDefaultExpanded + expandAll/collapseAll API |
+| 09 | ✅ Group total and grand total rows | Enterprise | behavior | yes | P0 | groupTotalRow/grandTotalRow insert aggregate rows |
+| 09 | ✅ Unbalanced groups | Enterprise | behavior | no | P2 | groupAllowUnbalanced prevents synthetic (Blanks) node |
+| 09 | ✅ autoGroupColumnDef customisation | Enterprise | behavior | yes | P0 | Any ColDef property except colId applied to auto group column |
 
 <!-- area:10 Aggregation -->
 | 10 | ✅ aggFunc (ColDef) | Enterprise | option | yes | P0 | Aggregation function; built-in: sum/min/max/count/avg/first/last |
 | 10 | ✅ initialAggFunc (ColDef) | Enterprise | option | no | P1 | aggFunc applied on first column creation only |
-| 10 | defaultAggFunc (ColDef) | Enterprise | option | no | P2 | GUI default agg function; does not immediately aggregate |
-| 10 | allowedAggFuncs (ColDef) | Enterprise | option | no | P2 | GUI-visible agg function list; does not restrict API |
-| 10 | enableValue (ColDef) | Enterprise | option | yes | P1 | Allows user to enable aggregation via GUI |
+| 10 | ✅ defaultAggFunc (ColDef) | Enterprise | option | no | P2 | GUI default agg function; does not immediately aggregate |
+| 10 | ✅ allowedAggFuncs (ColDef) | Enterprise | option | no | P2 | GUI-visible agg function list; does not restrict API |
+| 10 | ✅ enableValue (ColDef) | Enterprise | option | yes | P1 | Allows user to enable aggregation via GUI |
 | 10 | ✅ aggFuncs (GridOptions) | Enterprise | option | no | P1 | Map of custom aggregation function names to IAggFunc |
 | 10 | ✅ suppressAggFuncInHeader | Enterprise | option | yes | P0 | Hides aggFunc name prefix from column headers |
 | 10 | ✅ alwaysAggregateAtRootLevel | Enterprise | option | no | P2 | Forces root-level aggregation even without grouping |
-| 10 | aggregateOnlyChangedColumns | Enterprise | option | no | P1 | Limits re-aggregation to columns with changed leaf values |
-| 10 | suppressAggFilteredOnly | Enterprise | option | no | P2 | Includes filtered-out rows in group aggregates when true |
-| 10 | functionsReadOnly | Enterprise | option | no | P2 | Makes GUI aggregation controls display-only |
+| 10 | ✅ aggregateOnlyChangedColumns | Enterprise | option | no | P1 | Limits re-aggregation to columns with changed leaf values |
+| 10 | ✅ suppressAggFilteredOnly | Enterprise | option | no | P2 | Includes filtered-out rows in group aggregates when true |
+| 10 | ✅ functionsReadOnly | Enterprise | option | no | P2 | Makes GUI aggregation controls display-only |
 | 10 | ✅ addAggFuncs | Enterprise | api | no | P1 | Registers custom agg functions at runtime |
 | 10 | ✅ clearAggFuncs | Enterprise | api | no | P2 | Removes all custom agg functions registered via addAggFuncs |
 | 10 | ✅ setColumnAggFunc | Enterprise | api | no | P1 | Sets or clears aggFunc on a column at runtime |
 | 10 | ✅ columnValueChanged | Enterprise | event | no | P1 | Column added to or removed from values (aggregation) set |
 | 10 | ✅ IAggFunc signature | Enterprise | behavior | yes | P0 | (params: IAggFuncParams) => any; params.values are leaf values |
-| 10 | IAggFuncParams.aggregatedChildren | Enterprise | behavior | no | P1 | Immediate child group nodes feeding the aggregate |
-| 10 | IAggFuncResult for nested re-aggregation | Enterprise | behavior | yes | P0 | value+count+toString+toNumber; avg/count use this shape |
+| 10 | ✅ IAggFuncParams.aggregatedChildren | Enterprise | behavior | no | P1 | Immediate child group nodes feeding the aggregate |
+| 10 | ✅ IAggFuncResult for nested re-aggregation | Enterprise | behavior | yes | P0 | value+count+toString+toNumber; avg/count use this shape |
 | 10 | ✅ Built-in sum/min/max | Enterprise | behavior | yes | P0 | Plain scalar; ignores null/undefined values |
 | 10 | ✅ Built-in count | Enterprise | behavior | no | P1 | Returns IAggFuncResult with value=count of non-null leaves |
 | 10 | ✅ Built-in avg | Enterprise | behavior | no | P1 | Returns IAggFuncResult with value and count for weighted nesting |
 | 10 | ✅ Built-in first/last | Enterprise | behavior | no | P2 | Returns first or last value in insertion order |
 | 10 | ✅ valueGetter interaction | Enterprise | behavior | yes | P0 | aggFunc receives valueGetter output as values[] |
-| 10 | Filter interaction (suppressAggFilteredOnly) | Enterprise | behavior | no | P1 | Default excludes filtered rows; flag includes all |
+| 10 | ✅ Filter interaction (suppressAggFilteredOnly) | Enterprise | behavior | no | P1 | Default excludes filtered rows; flag includes all |
 | 10 | ✅ suppressAggFuncInHeader display | Enterprise | behavior | yes | P0 | Header shows 'Balance' not 'sum(Balance)' |
-| 10 | GUI aggregation controls | Enterprise | behavior | no | P1 | enableValue + allowedAggFuncs + functionsReadOnly |
+| 10 | ✅ GUI aggregation controls | Enterprise | behavior | no | P1 | enableValue + allowedAggFuncs + functionsReadOnly |
 
 <!-- area:11 Pivoting -->
 | 11 | pivot (ColDef) | Enterprise | option | no | P1 | Pivots by this column's distinct values; requires PivotModule |
