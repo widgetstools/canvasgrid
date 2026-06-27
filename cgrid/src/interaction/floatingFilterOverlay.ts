@@ -118,6 +118,18 @@ export class FloatingFilterOverlay {
       // *over* the pinned columns' filter cells. Pinned cells always
       // pass: their `col.left` / `col.right` are anchored to their
       // band by definition.
+      //
+      // Cycle 12 / Task 3 — the data-subgrid overlays (focus ring,
+      // range, DOM editor) delegate this to CGrid.getVisibleCellBounds.
+      // The floating-filter row lives on the floating-filter subgrid,
+      // not the data subgrid, so `getVisibleCellBounds` (whose row arg
+      // resolves against data rows) can't represent it. The vertical
+      // band check the helper does is also unnecessary here — the
+      // floating-filter row sits at a fixed top supplied by
+      // `getRowTop`; it doesn't move with scroll. We keep the inline
+      // column-band check and accept the local `bodyLeft` /
+      // `bodyRight` reads. Pragmatism over ideology — the plan
+      // explicitly carves this case out.
       const inBand = col.pinned === 'left' || col.pinned === 'right'
         ? true
         : col.left >= viewport.bodyLeft && col.right <= viewport.bodyRight;

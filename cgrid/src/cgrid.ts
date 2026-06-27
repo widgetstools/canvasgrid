@@ -3245,40 +3245,20 @@ export class CGrid<TRow = any> {
 
   /** Keep an open inline / popup editor anchored to its cell when the
    *  grid scrolls. Closes the editor (commit) when the cell scrolls
-   *  entirely outside the viewport so the input doesn't float over
-   *  unrelated cells. No-op when no editor is open. */
+   *  out of its column's band or out of the body's vertical band —
+   *  the DOM-based editor lives on an unclipped host (shared with
+   *  filter popups + context menus, which must NOT be clipped), so
+   *  the close is what keeps the input from rendering over the header
+   *  or sliding into a foreign pinned band. The band-clip rule is
+   *  delegated to `getVisibleCellBounds` (Cycle 12 / Task 1) so this
+   *  method, the focus ring, and the range overlay all share one
+   *  source of truth. No-op when no editor is open. */
   private syncOpenEditorPosition(): void {
     if (!this.activeEdit) return;
     if (!this.editor.isOpen()) return;
     const { rowIndex, colId } = this.activeEdit;
-    const bounds = this.getCellBoundsAt(rowIndex, colId);
+    const bounds = this.getVisibleCellBounds(rowIndex, colId);
     if (!bounds) {
-      // Cell scrolled out of the rendered viewport — commit and close so
-      // the editor doesn't drift over an unrelated cell.
-      this.editor.commit();
-      return;
-    }
-    // Cell straddles or has scrolled past the band — commit so the
-    // editor input doesn't render over the header (top) or below the
-    // body bottom edge, AND so a center-column editor can't slide
-    // horizontally into the pinned-left / pinned-right zones.
-    // The canvas focus ring already self-clips; the DOM-based editor
-    // needs an explicit close because the editor host container isn't
-    // clipped (it also hosts filter popups + context menus, which
-    // should NOT be clipped).
-    const vs = this.viewport;
-    if (bounds.y < vs.bodyTop || bounds.y + bounds.h > vs.bodyBottom) {
-      this.editor.commit();
-      return;
-    }
-    const col = vs.visibleColumns.find((c) => c.colId === colId);
-    const xL = col?.pinned === 'left' ? 0
-      : col?.pinned === 'right' ? vs.bodyRight
-      : vs.bodyLeft;
-    const xR = col?.pinned === 'left' ? vs.bodyLeft
-      : col?.pinned === 'right' ? Number.POSITIVE_INFINITY
-      : vs.bodyRight;
-    if (bounds.x < xL || bounds.x + bounds.w > xR) {
       this.editor.commit();
       return;
     }
