@@ -56,6 +56,7 @@ import { CGridCanvas } from './core/canvas';
 import { CssReader, type ResolvedTheme } from './theming/cssReader';
 import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell, type CellPainter } from './renderer/cellRenderers/registry';
 import { wrapTextCell } from './renderer/cellRenderers/wrapText';
+import { totalsCell } from './renderer/cellRenderers/totals';
 import { Renderer } from './renderer/renderer';
 import { HitTester } from './interaction/hitTester';
 import { SelectionModel } from './interaction/selectionModel';
@@ -580,6 +581,7 @@ export class CGrid<TRow = any> {
     this.cellRenderers.register('checkbox', checkboxCell);
     this.cellRenderers.register('header', headerCell);
     this.cellRenderers.register('text-wrap', wrapTextCell);
+    this.cellRenderers.register('totals', totalsCell);
 
     // 2b. Tool-panel registry (Cycle 11 / Task 1). Seed the built-in
     // IDs first, then overwrite the Columns stub with the real

@@ -330,14 +330,20 @@ function paintBand(
       }
 
       // Resolve the renderer per cell: header rows always go to 'header';
-      // data rows ask the column's cellRendererSelector (if any) and fall
-      // back to the static cellRenderer + cellRendererParams. The selector
-      // is the only per-cell hook here — keep it cheap.
+      // totals rows default to the polished `'totals'` renderer (Cycle 14
+      // / Task 5) unless the column declares an explicit
+      // `totalsCellRenderer` override. Data rows ask the column's
+      // cellRendererSelector (if any) and fall back to the static
+      // cellRenderer + cellRendererParams. The selector is the only
+      // per-cell hook here — keep it cheap.
       let rendererName: string;
       let params: unknown;
       if (row.subgrid.isHeader) {
         rendererName = 'header';
         params = undefined;
+      } else if (row.subgrid.isTotals) {
+        rendererName = def.totalsCellRenderer ?? 'totals';
+        params = def.cellRendererParams;
       } else if (def.cellRendererSelector) {
         const selected = def.cellRendererSelector({ value, colId: col.colId, data: null });
         rendererName = selected?.component ?? def.cellRenderer;

@@ -68,6 +68,10 @@ export interface ResolvedColDef<TRow = any> {
    *  grid-level `CGridOptions.suppressAggFuncInHeader`; explicit `true`
    *  / `false` wins regardless of the grid-level value. Cycle 14 / Task 4. */
   suppressAggFuncInHeader?: boolean;
+  /** See `CColDef.totalsCellRenderer`. Per-column override of the cell
+   *  renderer used for this column's cell on the totals row. `undefined`
+   *  falls through to the built-in `'totals'` renderer. Cycle 14 / Task 5. */
+  totalsCellRenderer?: string;
   sortable: boolean;
   /** See `CColDef.accentedSort`. When `true`, the worker's `SortPass`
    *  routes this column's text compares through `Intl.Collator`.
@@ -334,6 +338,10 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   if (ctx.isTotals === true) {
     target.fg = theme.totalsFg;
     target.font = withFontWeight(theme.font, theme.totalsFontWeight);
+    // Cycle 14 / Task 5 — thread the muted fg through to the polished
+    // `'totals'` renderer so its em-dash placeholder paints in a muted
+    // tone without the renderer reaching into the theme directly.
+    target.emptyFg = theme.totalsFgMuted;
   }
 
   // ── 2. Static cellStyle object ─────────────────────────────────────────
@@ -540,6 +548,7 @@ export function resolveColDef<TRow>(
     suppressFloatingFilterButton: merged.suppressFloatingFilterButton ?? false,
     aggFunc: merged.aggFunc,
     suppressAggFuncInHeader: merged.suppressAggFuncInHeader,
+    totalsCellRenderer: merged.totalsCellRenderer,
     sortable: merged.sortable ?? true,
     accentedSort: merged.accentedSort,
     unSortIcon: merged.unSortIcon,
