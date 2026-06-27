@@ -242,6 +242,14 @@ export interface PositionsGridOptions {
    *  produces the tree and the auto-group column synthesizes at index
    *  0 of the visible-leaf order. */
   groupByTicker?: boolean;
+  /** Cycle 15 / Task 5 — opt the demo into a three-level multipleColumns
+   *  group view (`ticker` → `sector` → `subSector`). Off by default;
+   *  visual cell 21-group-three-level-multipleColumns opts in via
+   *  `?grouping=multipleColumns`. Sets `groupDisplayType: 'multipleColumns'`
+   *  AND `setGroupModel({ rowGroupCols: ['ticker', 'sector', 'subSector'] })`
+   *  so three synthesized auto-group columns appear at the leftmost
+   *  leaves, each showing chrome at its own group depth. */
+  groupMultipleColumns?: boolean;
 }
 
 /** Cycle 14 / Task 2 — deterministic seed for the demo pinned reference
@@ -386,6 +394,21 @@ export function createPositionsGrid(
         // function can round-trip postMessage to the worker.
         comparator: 'naturalOrder',
       },
+      // Cycle 15 / Task 5 — synthetic `sector` + `subSector` columns
+      // for the three-level multipleColumns visual cell (cell 21). Only
+      // added to the def list when `?grouping=multipleColumns` is set
+      // so visual cells 01–20 (including the side-bar Columns / Filters
+      // panel cells that list every column by name) stay byte-stable.
+      // The seed in `e2e-visual/_setup.ts` derives the values from the
+      // ticker via deterministic per-ticker maps, but the field
+      // assignments are silently dropped at the worker boundary when
+      // no column declares the field.
+      ...(opts.groupMultipleColumns
+        ? [
+            { field: 'sector' as const,    headerName: 'Sector',     width: 110, filter: 'set' as const },
+            { field: 'subSector' as const, headerName: 'Sub Sector', width: 110, filter: 'set' as const },
+          ]
+        : []),
       // Cycle 5 Task 2: notionalAmount exercises the 'number' editor; min/precision
       // enforce non-negative two-decimal commits.
       // Cycle 6 / Task 1: lockPosition: 'right' pins notionalAmount to the
@@ -698,6 +721,12 @@ export function createPositionsGrid(
         },
       },
     ],
+    // Cycle 15 / Task 5 — opt the demo into `'multipleColumns'` grouping
+    // display when `?grouping=multipleColumns` is set. Drives visual
+    // cell 21-group-three-level-multipleColumns. `setGroupModel` lands
+    // post-construction below so the worker pipeline picks up the
+    // three-level model AFTER the columns are wired.
+    ...(opts.groupMultipleColumns ? { groupDisplayType: 'multipleColumns' as const } : {}),
   };
   const grid = new CGrid<Position>(container, options);
   grid.registerCellRenderer('pnlPill', pnlPill);
@@ -741,6 +770,16 @@ export function createPositionsGrid(
   // synthesis runs on the main thread immediately).
   if (opts.groupByTicker) {
     grid.setGroupModel({ rowGroupCols: ['ticker'] });
+  }
+  // Cycle 15 / Task 5 — three-level multipleColumns row group. Fired
+  // post-construction once the worker has the visible columns wired so
+  // GroupPass validates `['ticker', 'sector', 'subSector']` against the
+  // live column set. The auto-group columns synthesize at the start of
+  // the visible-leaf order; the painter routes each chevron + value +
+  // (count) to the column whose `cellRendererParams.groupColumnDepth`
+  // matches the row's depth.
+  if (opts.groupMultipleColumns) {
+    grid.setGroupModel({ rowGroupCols: ['ticker', 'sector', 'subSector'] });
   }
   return grid;
 }

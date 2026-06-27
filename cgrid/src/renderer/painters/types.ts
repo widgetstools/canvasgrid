@@ -2,6 +2,7 @@ import type { ViewportState } from '../../core/viewport';
 import type { ResolvedTheme } from '../../theming/cssReader';
 import type { ResolvedColDef } from '../../core/propertyChain';
 import type { CellRendererRegistry } from '../cellRenderers/registry';
+import type { GroupCellValue } from '../cellRenderers/group';
 import type { SortModel, SelectionRange } from '../../types';
 
 export type CellDataLookup = (
@@ -62,4 +63,28 @@ export interface PainterCtx {
    *  Sourced from CGrid.getVisibleCellBounds (Cycle 12 / Task 1). */
   getVisibleCellBounds: (rowIndex: number, colId: string) =>
     { x: number; y: number; w: number; h: number } | null;
+  /**
+   * Cycle 15 / Task 5 — group-row "full-row strip" mode. Non-null when
+   * `groupDisplayType` resolves to `'groupRows'` or `'custom'`. In that
+   * mode the body painter:
+   *   - replaces the data row's bg with `theme.groupRowBg` on any data
+   *     row whose `lookup(rowIndex)` returns a non-null group context;
+   *   - skips per-cell painting on those rows (the strip is full-width,
+   *     not per-column);
+   *   - invokes the strip `renderer` once per strip row with bounds
+   *     spanning the full visible band so the chevron + value + (count)
+   *     read as a continuous label across left-pinned + center +
+   *     right-pinned columns.
+   *
+   * `renderer` is the cellRenderer key the painter looks up via the
+   * registry — defaults to `'group'` from cgrid.ts; apps override via
+   * `CGridOptions.groupRowRenderer` for `'custom'` display type.
+   *
+   * Design plan:
+   *   `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 5.
+   */
+  groupRowStrip: {
+    renderer: string;
+    lookup: (rowIndex: number) => GroupCellValue | null;
+  } | null;
 }

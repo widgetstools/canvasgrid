@@ -230,3 +230,226 @@ grid reads as one page.**
   Two-tier hierarchy with no third color introduced.
 
 ---
+
+## Task 5 — `groupDisplayType: 'multipleColumns' | 'groupRows' | 'custom'`
+
+**Brief recap:** Three alternatives to Task 4's `'singleColumn'` default —
+one auto-group column per level, no auto-group column at all (full-row
+strip), or fully app-owned. Same chevron family, same indent unit, same
+muted slate split where it makes sense. The shapes diverge in WHERE the
+structural cue lives — one column, N columns, or a strip — but the
+visual atoms are reused so a user moving between modes recognises the
+same grammar.
+
+### Subject pin
+
+A PM scanning a three-level grouped positions grid (`ticker` → `sector`
+→ `subSector`). She picks the display mode that lets her current task
+read best: collapse-and-scan a single spine (singleColumn, Task 4), see
+every level at a glance (multipleColumns), or scan group LABELS without
+column noise (groupRows). The display mode is a layout choice; the
+content vocabulary stays constant.
+
+### Variant 1 — `'multipleColumns'`
+
+**What:** Synthesize one auto-group column per `rowGroupCols[i]`, in
+order. Each column "owns" one group depth. Cells light up ONLY when the
+row's depth matches that column's slot AND `rowKind === 1`.
+
+**Indent: 0 within each column.** The column ORDER (column 1 = depth 0,
+column 2 = depth 1, …) carries the hierarchy. A per-column indent of
+`depth × 14px` would only ever pad uniformly within a column (because
+that column always sees its own depth), so the indent would degrade to
+"every cell padded by depth-of-this-column" — visual noise without
+information. Each column's chevron sits flush at PADDING (6px) from the
+left edge instead.
+
+**Width per column:** ~140px each (`AUTO_GROUP_DEFAULT_WIDTH / 1.5`
+rounded). A three-level grid produces 3×140 = 420px of group spine,
+vs. 200px in singleColumn — wider because three values need to fit,
+and each carries its own chevron. Apps override via
+`autoGroupColumnDef.width` (applied uniformly to every synthesized
+column when `'multipleColumns'`).
+
+**Empty cells (data rows under leaf groups, group rows at OTHER
+depths):** paint nothing — same rule as Task 4 data rows. Bg only.
+Asked in the brief: do we tint the matching column to hint "this is
+the active level"? **No.** The chrome IS the signal. Tinting would
+fight the focus ring + selection bg and add a row-level visual that
+the Task 4 plan deliberately rejected. The fact that exactly ONE auto-
+group column carries chrome on each group row is the unambiguous level
+hint.
+
+**Vocabulary continuity:** same chevron glyph, same 12px size, same
+muted slate, same em-dash for null values, same `(${count})`
+formatting, same body fg / muted-slate split. Only the indent rule
+differs (0 instead of `depth × 14px`).
+
+| Token | Reuse | Reason |
+|---|---|---|
+| `--cg-group-chevron-color` | unchanged from Task 4 | One chevron family across the cycle |
+| `--cg-group-count-color` | unchanged | Same muted-metadata role |
+| `--cg-group-indent` | unused in this variant | Each column owns one depth |
+
+**Width default rationale:** A trader's `ticker` value is ~4 chars; a
+`sector` value is ~10 chars; a `subSector` value is ~14 chars. 140px
+fits ~14 chars of monospace 13px + chevron + (count) without
+truncation on the typical case. Wider levels (long sector names) get
+ellipsified — the column is `resizable: true` so a drag fixes it.
+
+### Variant 2 — `'groupRows'`
+
+**What:** No auto-group column. Group rows render as a single
+**full-row strip** spanning every band (left-pinned + center +
+right-pinned). Data rows render normally with their per-column cells.
+
+**Departure from Task 4's "spine, not strip" rule.** Task 4's
+no-row-chrome bet held because the auto-group column carried the
+signal and every other cell in a group row was empty. In `'groupRows'`
+mode there ARE NO per-column cells, so "every other cell is empty"
+disappears as a signal. The strip needs SOME structural cue —
+otherwise group rows would blend into data rows above and below.
+
+**Treatment:** a subtle row-bg shift via the new
+`--cg-group-row-bg` token. Far lighter than the Cycle 14 totals
+"hairline lift" (totals: 3% slate bg + top border + weight +1; group
+rows: ~1.5% slate bg only, no border, no weight). Reserving the full
+totals signature for per-group footer rows (Task 12) so the
+synthesis-vs-navigation distinction lands cleanly.
+
+| Token | Light | Dark | Why |
+|---|---|---|---|
+| `--cg-group-row-bg` | `#f1f5f9` | `#1e293b` | ~1.5% slate cast in light, paler slate in dark. Lighter than totals (`#f8fafc` / `#1e293b` per Cycle 14) so synthesis rows still read as the heaviest stripe in the column. |
+
+**Strip composition:**
+- Chevron at PADDING + `depth × 14px` from the row's left edge — SAME
+  indent unit as Task 4. Nested groups indent visibly, matching the
+  singleColumn vocabulary.
+- Group value text at body weight, body fg.
+- `(${count})` suffix in muted slate, body weight.
+- NO top or bottom border (those belong to totals / footer).
+- NO weight bump on the value (chevron + indent + bg shift = three
+  cumulative cues; weight would be a fourth that fights).
+
+**Span across bands:** the strip writes across all three bands
+(left-pinned + center + right-pinned). The group row's bg + chevron +
+value flow as one continuous strip; per-band clips do NOT subdivide
+the strip's text. Selection bg on data rows DOES NOT apply to group
+rows in this mode — `groupRowBg` wins because the row's "groupness"
+takes precedence over data-row selection state.
+
+**Alignment with data rows:** the chevron sits at PADDING (6px) from
+the row's left edge — the same x-coordinate the leftmost data column's
+first character would land at. Visually, the chevron column "is" the
+data column's left padding for the strip. The user reads down a left
+column of cells and sees chevrons interleaved at the same indent.
+
+### Variant 3 — `'custom'`
+
+**What:** Defers to `CGridOptions.groupRowRenderer` — a registered
+cell-renderer NAME (e.g. `'myAppGroupRow'`) the app pre-registers in
+the `CellRendererRegistry`. Cgrid:
+1. Allocates the full-row strip bounds (same as `groupRows`).
+2. Sets the cell paint config with the `GroupCellValue` payload.
+3. Calls the custom renderer for the strip.
+
+**Treatment:** **fully transparent** — no row-bg shift from cgrid. The
+custom renderer owns every pixel inside the strip. The motivation:
+apps with bespoke group-row designs (icon + multi-line label, custom
+expand affordance, embedded actions) need to control the full surface;
+a cgrid-imposed bg would compete with their paint.
+
+**Fallback:** when `groupDisplayType === 'custom'` AND no
+`groupRowRenderer` is registered, the renderer falls back to the
+default `'group'` renderer in groupRows mode (variant 2). This means a
+half-configured app gets a sensible group-row strip instead of a
+crash, and the per-grid setOption to swap renderers later works
+without a transient broken paint.
+
+**Why expose `'custom'` even before Task 12+ apps need it:** the
+groupDisplayType union is publicly typed in `CGridOptions`; shipping
+`'custom'` as a no-op in Task 4 and only wiring it in Task 12 would
+mean apps that opt in early would see broken paint. Wiring the renderer
+chain now keeps the surface coherent.
+
+### Shared rules across all three variants (and singleColumn)
+
+| Atom | Rule |
+|---|---|
+| Chevron glyph | Lucide `chevron-right` / `chevron-down`, 12px |
+| Chevron color | `--cg-group-chevron-color` (muted slate) |
+| Count format | `(${count.toLocaleString()})`, omit at `count === 0` |
+| Count color | `--cg-group-count-color` (muted slate) |
+| Value color | body `fg` |
+| Em-dash placeholder | `'—'` for null / empty group values |
+| Row height | `var(--cg-row-height)` (32px) — no inflation for group rows |
+| Sortable | `false` on synthesized columns (Task 11 lands sort) |
+
+### Mode-by-mode comparison
+
+| Property | `singleColumn` (Task 4) | `multipleColumns` | `groupRows` | `custom` |
+|---|---|---|---|---|
+| Auto-group columns | 1 at index 0 | N, one per `rowGroupCols[i]` | 0 | 0 |
+| Row bg shift | none | none | `--cg-group-row-bg` | none |
+| Indent unit | `depth × 14px` within the column | 0 (column owns one depth) | `depth × 14px` from row left | renderer-defined |
+| Full-row strip | no | no | yes | yes |
+| Data row chrome on auto-cols | blank | blank (N times) | n/a | n/a |
+| Chevron family | Lucide chevron-right/down | same | same | renderer-defined |
+| Vocabulary | spine | N spines | strip | open |
+
+### Why this design avoids the AI default
+
+The AI default for "multi-level grouping display" defaults to:
+1. Heavy bolded group rows with bg shift in every variant (ag-grid's
+   stock look).
+2. A "tree view" affordance with explicit lines drawn between
+   parent/child (the file-tree control look).
+3. A horizontal pill bar per group level (the "Discord channel
+   header" look).
+
+All three put the structural cue in the row's chrome, fighting the
+data cells' weight. The Task 4 plan rejected this in singleColumn;
+Task 5 keeps the rejection where possible (multipleColumns, custom
+default) and accepts the MINIMUM departure (groupRows: subtle bg
+shift only) where the geometry FORCES it.
+
+### What's explicitly NOT shipped in Task 5
+
+- No tint on the active multipleColumns column.
+- No top / bottom border on the groupRows strip.
+- No weight bump on group values (any variant).
+- No chevron hover hint (Task 7 — `groupExpand`).
+- No tri-state checkbox in the strip / per-level columns (Task 8 —
+  `groupSelectsChildren`).
+- No ancestor-value display in multipleColumns (the chunk format
+  doesn't carry ancestor values; Task 5 ships the "own-depth-only"
+  shape). A future cycle can extend the chunk to carry ancestors if
+  apps need that read.
+- No per-group footer rows in any variant (Task 12).
+
+### One-line summary
+
+**Three modes, one vocabulary. The spine becomes N spines (multipleColumns),
+a strip (groupRows), or an open canvas (custom) — chevron + indent +
+value + (count) stay constant.**
+
+### Vocabulary handed to subsequent tasks
+
+- **`--cg-group-row-bg` token** — the ONE additional token Task 5
+  introduces. Reused by Task 7 if a group-row hover hint lands at row
+  level; reused by Task 10 if `showOpenedGroup` paints the expanded
+  group's value on data rows under it.
+- **"Own-depth-only" rule** for multipleColumns — the cleanest
+  default given the current chunk format. Tasks 9 (`groupDefaultExpanded`)
+  and 10 (`showOpenedGroup` / `groupRemoveSingleChildren`) inherit the
+  rule unchanged.
+- **Custom renderer fallback to `'group'` in groupRows mode** — the
+  pattern for any future `'<role>RowRenderer'` option in cgrid:
+  named-renderer lookup, fallback to the canonical default. Keeps
+  half-configured grids from crashing.
+- **groupRows DEPARTS from "spine, not strip"** by necessity, NOT
+  preference. The departure is sized as small as possible (bg only,
+  no border / weight) so the cycle's grammar still reads as one piece
+  with a single conscious exception.
+
+---

@@ -34,7 +34,7 @@ export function decorateHeader(def: ResolvedColDef, gridSuppress: boolean): stri
 
 
 export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
-  const { viewport: vs, theme, columnDefs, cellRenderers, cellData, selection, sortModel, rowDataSnapshotAt, quickFilterLowerTerms, suppressAggFuncInHeader } = p;
+  const { viewport: vs, theme, columnDefs, cellRenderers, cellData, selection, sortModel, rowDataSnapshotAt, quickFilterLowerTerms, suppressAggFuncInHeader, groupRowStrip } = p;
   const quickFilterActive = quickFilterLowerTerms.length > 0;
 
   // 1. Compute the right edge of the painted area (mirrors gridLinesPainter).
@@ -49,11 +49,34 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
     sortLookup.set(entry.colId, { direction: entry.direction, index: i });
   }
 
+  // Cycle 15 / Task 5 — pre-compute the per-row group-strip context for
+  // `'groupRows'` / `'custom'` modes. Indexed by visible-row position
+  // (matches `rowBgs`); `null` entries are data rows that paint per-cell
+  // as usual. Lookup runs once per data row; `null` entries skip the
+  // per-row override below + the strip-paint loop further down.
+  const groupStripRows: (import('../cellRenderers/group').GroupCellValue | null)[] =
+    new Array(vs.visibleRows.length).fill(null);
+  if (groupRowStrip) {
+    for (let r = 0; r < vs.visibleRows.length; r++) {
+      const row = vs.visibleRows[r]!;
+      if (!row.subgrid.isData) continue;
+      const ctx = groupRowStrip.lookup(row.localRowIndex);
+      if (ctx !== null && ctx.rowKind === 1) groupStripRows[r] = ctx;
+    }
+  }
+
   // 2. Resolve rowBg per visible row (one pass).
   const { selectedRowIndices } = selection;
   const rowBgs: string[] = new Array(vs.visibleRows.length);
   for (let r = 0; r < vs.visibleRows.length; r++) {
     const row = vs.visibleRows[r]!;
+    // Cycle 15 / Task 5 — group-row strip mode wins over selection /
+    // alt-row bg. The row IS a group label, not a data row; the strip's
+    // `groupRowBg` carries the structural signal.
+    if (groupStripRows[r]) {
+      rowBgs[r] = theme.groupRowBg;
+      continue;
+    }
     if (row.subgrid.isHeader) {
       rowBgs[r] = theme.headerBg;
     } else if (row.subgrid.isData) {
@@ -158,13 +181,66 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
 
     paintBand(gc, sb.rows, leftPinned,
               0, vs.bodyLeft, sgTop, sgBottom,
-              /*clip*/ isDataBand, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader);
+              /*clip*/ isDataBand, rowBgs, groupStripRows, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader);
     paintBand(gc, sb.rows, center,
               vs.bodyLeft, vs.bodyRight, sgTop, sgBottom,
-              /*clip*/ true, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader);
+              /*clip*/ true, rowBgs, groupStripRows, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader);
     paintBand(gc, sb.rows, rightPinned,
               vs.bodyRight, rightEdge, sgTop, sgBottom,
-              /*clip*/ isDataBand, rowBgs, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader);
+              /*clip*/ isDataBand, rowBgs, groupStripRows, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader);
+  }
+
+  // Cycle 15 / Task 5 — group-row strip content (chevron + value + count).
+  // Painted AFTER the per-band loops so the strip is unclipped — the
+  // value text can flow across the full visible width (left-pinned +
+  // center + right-pinned) without per-band clip rects subdividing it.
+  // Per-cell painting on strip rows was already skipped inside `paintBand`
+  // so there's nothing to over-paint. The strip's bg was painted via the
+  // row-bg bundle (`theme.groupRowBg` selected in step 2).
+  if (groupRowStrip) {
+    const stripPainter = cellRenderers.get(groupRowStrip.renderer);
+    for (let r = 0; r < vs.visibleRows.length; r++) {
+      const ctx = groupStripRows[r];
+      if (!ctx) continue;
+      const row = vs.visibleRows[r]!;
+      // Clip the strip to the body band so an overscan group row whose
+      // top is < vs.bodyTop (vertical scroll) can't paint over the
+      // header row above.
+      const topClip = Math.max(row.top, vs.bodyTop);
+      const bottomClip = Math.min(row.bottom, vs.bodyBottom);
+      if (bottomClip <= topClip) continue;
+      gc.cache.save();
+      gc.beginPath();
+      gc.rect(0, topClip, rightEdge, bottomClip - topClip);
+      gc.clip();
+      sharedConfig.value = ctx;
+      sharedConfig.valueFormatted = ctx.valueFormatted;
+      sharedConfig.bounds.x = 0;
+      sharedConfig.bounds.y = row.top;
+      sharedConfig.bounds.w = rightEdge;
+      sharedConfig.bounds.h = row.height;
+      sharedConfig.font = theme.font;
+      sharedConfig.fg = theme.fg;
+      sharedConfig.bg = theme.groupRowBg;
+      sharedConfig.borderColor = theme.gridLineColor;
+      sharedConfig.halign = 'left';
+      sharedConfig.prefillColor = theme.groupRowBg;
+      sharedConfig.isFocused = false;
+      sharedConfig.isSelected = false;
+      sharedConfig.isHovered = false;
+      sharedConfig.isHeader = false;
+      sharedConfig.flashAlpha = undefined;
+      sharedConfig.flashFromColor = theme.flashFromColor;
+      sharedConfig.groupChevronColor = theme.groupChevronColor;
+      sharedConfig.groupCountColor = theme.groupCountColor;
+      sharedConfig.groupIndent = theme.groupIndent;
+      // Strip mode is signalled by the renderer reading the value's
+      // groupCellValue payload + the absence of a `groupColumnDepth`
+      // param. Custom renderers may interpret the value differently.
+      sharedConfig.params = undefined;
+      stripPainter.paint(gc, sharedConfig);
+      gc.cache.restore();
+    }
   }
 }
 
@@ -178,6 +254,7 @@ function paintBand(
   yBottom: number,
   clip: boolean,
   rowBgs: string[],
+  groupStripRows: (import('../cellRenderers/group').GroupCellValue | null)[],
   config: CellPaintConfig,
   sortLookup: Map<string, { direction: 'asc' | 'desc'; index: number }>,
   columnDefs: PainterCtx['columnDefs'],
@@ -202,6 +279,11 @@ function paintBand(
     const row = rows[ri]!;
     const r = row.rowIndex;
     const rowBg = rowBgs[r]!;
+    // Cycle 15 / Task 5 — strip-mode group rows skip per-cell painting
+    // entirely. The full-row strip paints in `paintCellsByRows` after the
+    // band loop with the row's `groupRowBg` and the strip renderer
+    // owning the full visible width.
+    if (groupStripRows[r] !== null) continue;
 
     // HeaderGroupSubgrid: walk columns left→right, merging adjacent leaves
     // that resolve to the same group at this row's depth. One rect per group;

@@ -60,8 +60,7 @@ import { wrapTextCell } from './renderer/cellRenderers/wrapText';
 import { totalsCell } from './renderer/cellRenderers/totals';
 import { groupCell, type GroupCellValue } from './renderer/cellRenderers/group';
 import {
-  AUTO_GROUP_COLUMN_ID, buildAutoGroupColumn, resolveGroupDisplayType,
-  shouldInsertAutoGroupColumn,
+  isAutoGroupColumnId, resolveGroupDisplayType, synthesizeAutoGroupColumns,
 } from './core/autoGroupColumn';
 import { Renderer } from './renderer/renderer';
 import { HitTester } from './interaction/hitTester';
@@ -565,13 +564,26 @@ export class CGrid<TRow = any> {
    *  column insertion (this task) + worker `setGroupModel` dispatch
    *  (Task 1). The empty model bypasses every group-aware pass cleanly. */
   private groupModel: GroupModel = { rowGroupCols: [] };
-  /** Cycle 15 / Task 4 — synthesized auto-group column. Non-null when
-   *  grouping is active AND `groupDisplayType` resolves to
-   *  `'singleColumn'`. Inserted at index 0 of the visible-leaf order
-   *  by `computeVisibleColumnOrder`; rebuilt on every
-   *  `setGroupModel` / `setGridOption('groupDisplayType', …)` /
+  /** Cycle 15 / Task 4 + Task 5 — synthesized auto-group column(s).
+   *  Length depends on `groupDisplayType`:
+   *    - `'singleColumn'` + grouping active → one column.
+   *    - `'multipleColumns'` + grouping active → one per `rowGroupCols`.
+   *    - `'groupRows'` / `'custom'` / no grouping → empty.
+   *  Inserted at the start of the visible-leaf order by
+   *  `computeVisibleColumnOrder`; rebuilt on every `setGroupModel` /
+   *  `setGridOption('groupDisplayType', …)` /
    *  `setGridOption('autoGroupColumnDef', …)` call. */
-  private autoGroupColumn: ResolvedColDef<TRow> | null = null;
+  private autoGroupColumns: ResolvedColDef<TRow>[] = [];
+  /** Cycle 15 / Task 5 — non-null when `groupDisplayType` resolves to
+   *  `'groupRows'` or `'custom'`. The body painter reads this every
+   *  frame to detect group rows + paint full-row strips spanning the
+   *  visible width. The `lookup` takes a DATA row index (matches
+   *  `cellAt(rowIndex, …)`'s row argument) and returns the
+   *  `GroupCellValue` payload on a group row, `null` on a data row. */
+  private groupRowStripCtx: {
+    renderer: string;
+    lookup: (rowIndex: number) => GroupCellValue | null;
+  } | null = null;
 
   constructor(container: HTMLElement, private options: CGridOptions<TRow>) {
     if (!options.getRowId) throw new Error('[cgrid] options.getRowId is required');
@@ -709,6 +721,13 @@ export class CGrid<TRow = any> {
       // at the header-text path.
       getSuppressAggFuncInHeader: () => this.options.suppressAggFuncInHeader === true,
       getVisibleCellBounds: (rowIndex, colId) => this.getVisibleCellBounds(rowIndex, colId),
+      // Cycle 15 / Task 5 — full-row group-strip lookup for `groupRows` /
+      // `custom` display types. Returns `null` for singleColumn /
+      // multipleColumns / no-grouping so the byRows painter skips the
+      // strip code path with zero overhead. The renderer key defaults to
+      // `'group'`; apps override via `CGridOptions.groupRowRenderer` for
+      // `'custom'` mode.
+      getGroupRowStrip: () => this.groupRowStripCtx,
     });
 
     // 7. Canvas wrapper — owns the <canvas>, gc cache, RAF + resize polling.
@@ -3470,51 +3489,78 @@ export class CGrid<TRow = any> {
     const visible = ids
       .map((id) => this.columnDefsMap.get(id)!)
       .filter((def) => !def.hide);
-    // Cycle 15 / Task 4 — when grouping is active AND the auto-group
-    // column has been synthesized (singleColumn display type), insert
-    // it at index 0 of the visible-leaf order so it appears as the
-    // leftmost column. Pinned-left wins over this in the band
-    // resolution at paint time; the column itself is unpinned by
-    // default so it sits in the leftmost CENTER slot, but apps can
-    // pin it via `autoGroupColumnDef: { pinned: 'left' }`.
-    if (this.autoGroupColumn) {
-      return [this.autoGroupColumn, ...visible];
+    // Cycle 15 / Task 4 + Task 5 — when grouping is active AND auto-group
+    // column(s) have been synthesized (singleColumn → 1 column;
+    // multipleColumns → N columns, one per rowGroupCols entry), insert
+    // them at the start of the visible-leaf order so they appear as the
+    // leftmost columns. Pinned-left wins over this in the band
+    // resolution at paint time; the columns are unpinned by default so
+    // they sit in the leftmost CENTER slot, but apps can pin via
+    // `autoGroupColumnDef: { pinned: 'left' }`. `'groupRows'` /
+    // `'custom'` modes synthesize zero columns — the strip paints
+    // row-level chrome in the body painter instead.
+    if (this.autoGroupColumns.length > 0) {
+      return [...this.autoGroupColumns, ...visible];
     }
     return visible;
   }
 
-  /** Cycle 15 / Task 4 — re-resolve `autoGroupColumn` against the
-   *  current `groupModel` + grid options. The column synthesizes when:
-   *    - `groupModel.rowGroupCols.length > 0`, AND
-   *    - resolved `groupDisplayType === 'singleColumn'`.
+  /** Cycle 15 / Task 4 + Task 5 — re-resolve `autoGroupColumns` against
+   *  the current `groupModel` + grid options. The set of synthesized
+   *  columns depends on the resolved `groupDisplayType`:
+   *    - `'singleColumn'` (default) → 1 column at index 0 IF grouping
+   *      is active.
+   *    - `'multipleColumns'` → N columns (one per `rowGroupCols[i]`) at
+   *      indices 0..N-1, each carrying `cellRendererParams.groupColumnDepth`
+   *      so the `'group'` renderer's own-depth filter activates.
+   *    - `'groupRows'` / `'custom'` → no columns; the body painter
+   *      renders group rows as a full-row strip via `groupRowStripCtx`.
    *
-   *  Otherwise the field is set to `null` and `computeVisibleColumnOrder`
-   *  emits the leaf order unchanged. Called by `setGroupModel` and by
-   *  the construction-time auto-group resolution. Task 5 will extend
-   *  this to handle `'multipleColumns'`. */
+   *  Also stamps `groupRowStripCtx` for the strip modes, or clears it
+   *  for the column modes. Called by `setGroupModel` and by the
+   *  construction-time auto-group resolution.
+   */
   private rebuildAutoGroupColumn(): void {
     const displayType = resolveGroupDisplayType(this.options.groupDisplayType);
-    const insert = shouldInsertAutoGroupColumn(this.groupModel, displayType);
-    if (!insert) {
-      this.autoGroupColumn = null;
-      this.columnDefsMap.delete(AUTO_GROUP_COLUMN_ID);
+    // Drop any previously-synthesized auto-group columns from the
+    // columnDefsMap before re-synthesizing — switching display types
+    // (e.g. singleColumn → multipleColumns) renames the columns and
+    // leaves stale entries that would shadow the new ones at lookup.
+    for (const col of this.autoGroupColumns) {
+      this.columnDefsMap.delete(col.colId);
+    }
+    const synth = synthesizeAutoGroupColumns<TRow>({
+      groupModel: this.groupModel,
+      groupDisplayType: displayType,
+      override: this.options.autoGroupColumnDef as Partial<CColDef<TRow>> | undefined,
+      headerNames: this.groupModel.rowGroupCols.map((colId) =>
+        this.columnTree.leafById.get(colId)?.headerName),
+    });
+    this.autoGroupColumns = synth.columns;
+    // Mirror the synthesized defs into `columnDefsMap` so the painter's
+    // per-cell lookup resolves the synthesized columns identically to
+    // any other leaf. `columnTree.leafById` doesn't carry synthesized
+    // entries; we maintain them here for the lifetime of the active
+    // group model.
+    for (const col of this.autoGroupColumns) {
+      this.columnDefsMap.set(col.colId, col);
+    }
+    // Cycle 15 / Task 5 — wire the full-row strip lookup for
+    // `'groupRows'` / `'custom'` modes. The `'group'` renderer is the
+    // default strip painter; apps swap it via
+    // `CGridOptions.groupRowRenderer` (e.g. for `'custom'`).
+    if (synth.fullRowStrip) {
+      const renderer = this.options.groupRowRenderer ?? 'group';
+      this.groupRowStripCtx = {
+        renderer,
+        lookup: (rowIndex) => this.groupCellContextAt(rowIndex),
+      };
     } else {
-      this.autoGroupColumn = buildAutoGroupColumn<TRow>({
-        override: this.options.autoGroupColumnDef as Partial<CColDef<TRow>> | undefined,
-      });
-      // Cycle 15 / Task 4 — the renderer reads col defs via
-      // `columnDefsMap.get(colId)` per cell; the synthesized auto-group
-      // column needs an entry there too or the painter silently skips
-      // every cell in the column (no chevron, no value, no count). The
-      // original `columnTree.leafById` doesn't include synthesized
-      // columns, so we mirror the entry in `columnDefsMap` for the
-      // lifetime of the active group model. Cleared above when grouping
-      // bypasses or the display type switches to multipleColumns.
-      this.columnDefsMap.set(AUTO_GROUP_COLUMN_ID, this.autoGroupColumn);
+      this.groupRowStripCtx = null;
     }
     // Re-resolve the visible-leaf order so the next paint reflects the
-    // (now updated) auto-group column slot. Layout reflows in the same
-    // turn so the new column gets a width before the next viewport
+    // (now updated) auto-group slot(s). Layout reflows in the same
+    // turn so the new column(s) get a width before the next viewport
     // request fires.
     this.columnOrder = this.computeVisibleColumnOrder();
     this.columnLayout = resolveColumnWidths(
@@ -3522,6 +3568,29 @@ export class CGrid<TRow = any> {
       this.canvasBounds.width || this.scroller.clientWidth || 800,
     );
     this.recomputeViewport();
+  }
+
+  /** Cycle 15 / Task 5 — read the per-row group context from the
+   *  current chunk. Returns the `GroupCellValue` payload that the
+   *  `'group'` cell renderer downcasts and uses, or `null` when the
+   *  row is not currently chunked. Shared by the multipleColumns
+   *  per-cell path (`cellAt` for an auto-group column) and the
+   *  groupRows full-row strip lookup. */
+  private groupCellContextAt(rowIndex: number): GroupCellValue | null {
+    if (!this.chunk) return null;
+    const localIndex = rowIndex - this.chunk.rowStart;
+    if (localIndex < 0 || localIndex >= this.chunk.rowCount) return null;
+    const rowKind = this.chunk.rowKinds[localIndex] ?? 0;
+    const depth = this.chunk.groupDepth[localIndex] ?? 0;
+    const groupValueArr = this.chunk.groupValue;
+    const valueFormatted = groupValueArr ? (groupValueArr[localIndex] ?? '') : '';
+    const childCount = this.chunk.groupChildCount
+      ? (this.chunk.groupChildCount[localIndex] ?? 0)
+      : 0;
+    const isExpanded = this.chunk.isExpanded
+      ? (this.chunk.isExpanded[localIndex] ?? 0) !== 0
+      : true;
+    return { kind: 'group', rowKind, depth, valueFormatted, childCount, isExpanded };
   }
 
   /** Visible-leaf colIds in RENDER order: left-pinned first, then center,
@@ -4105,32 +4174,21 @@ export class CGrid<TRow = any> {
     const numericRowId = this.chunk.rowIds[localIndex]!;
     const flashAlpha = this.flashRegistry.getAlpha(numericRowId, colId, performance.now());
     const flash = flashAlpha > 0 ? flashAlpha : undefined;
-    // Cycle 15 / Task 4 — auto-group column reads per-row group context
-    // (rowKind / depth / value / childCount / isExpanded) from the
-    // chunk's parallel arrays. Returns a typed `GroupCellValue` payload
-    // that the `'group'` cell renderer downcasts and uses. Data rows
-    // return a payload with `rowKind: 0` so the renderer's
-    // short-circuit kicks in and paints nothing.
-    if (colId === AUTO_GROUP_COLUMN_ID) {
-      const rowKind = this.chunk.rowKinds[localIndex] ?? 0;
-      const depth = this.chunk.groupDepth[localIndex] ?? 0;
-      const groupValueArr = this.chunk.groupValue;
-      const valueFormatted = groupValueArr ? (groupValueArr[localIndex] ?? '') : '';
-      const childCount = this.chunk.groupChildCount
-        ? (this.chunk.groupChildCount[localIndex] ?? 0)
-        : 0;
-      const isExpanded = this.chunk.isExpanded
-        ? (this.chunk.isExpanded[localIndex] ?? 0) !== 0
-        : true;
-      const payload: GroupCellValue = {
-        kind: 'group',
-        rowKind,
-        depth,
-        valueFormatted,
-        childCount,
-        isExpanded,
-      };
-      return { value: payload, valueFormatted, flashAlpha: flash };
+    // Cycle 15 / Task 4 + Task 5 — auto-group column reads per-row group
+    // context (rowKind / depth / value / childCount / isExpanded) from
+    // the chunk's parallel arrays. Returns a typed `GroupCellValue`
+    // payload that the `'group'` cell renderer downcasts and uses. Data
+    // rows return a payload with `rowKind: 0` so the renderer's
+    // short-circuit kicks in and paints nothing. In `'multipleColumns'`
+    // mode (Task 5) each per-level auto-group column carries a colId
+    // suffixed with the depth (e.g. `ag-Grid-AutoColumn-1`); the
+    // renderer reads the depth slot from `cellRendererParams` and
+    // filters per-row. Either way `cellAt` returns the same shape;
+    // the renderer handles the own-depth filter.
+    if (isAutoGroupColumnId(colId)) {
+      const payload = this.groupCellContextAt(rowIndex);
+      if (payload === null) return { value: '', valueFormatted: '', flashAlpha: flash };
+      return { value: payload, valueFormatted: payload.valueFormatted, flashAlpha: flash };
     }
     const numeric = this.chunk.numericCols[colId];
     if (numeric) {

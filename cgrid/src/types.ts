@@ -570,18 +570,33 @@ export interface CGridOptions<TRow = any> {
    *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md`
    *  § Task 4. */
   autoGroupColumnDef?: Partial<CColDef<TRow>>;
-  /** Cycle 15 / Task 4 — how grouped rows render in the column header.
+  /** Cycle 15 / Task 4 + Task 5 — how grouped rows render in the body.
    *  - `'singleColumn'` (default): one auto-group column at index 0
    *    that shows chevron + indent + value + (count).
    *  - `'multipleColumns'`: one auto-group column per `rowGroupCols`
-   *    entry (Task 5).
-   *  - `'groupRows'`: the group label spans the full row instead of
-   *    sitting in one column (Task 5).
-   *  - `'custom'`: defers to the app's `groupRowRenderer` (Task 5).
-   *  Only `'singleColumn'` ships in Task 4; the other modes are
-   *  accepted at the type level so apps can author the option now
-   *  without a follow-up signature change. */
+   *    entry. Each column carries its own chevron + value + (count) for
+   *    rows whose depth matches the column's slot; other rows show
+   *    blank cells in that column.
+   *  - `'groupRows'`: NO auto-group columns. Group rows render as a
+   *    full-row strip (chevron + indent + value + count spanning every
+   *    visible band) on top of a subtle `--cg-group-row-bg` shift.
+   *  - `'custom'`: same full-row strip allocation as `'groupRows'` but
+   *    the strip's painter is the renderer named in
+   *    `groupRowRenderer`. The app owns every pixel inside the strip
+   *    (no cgrid-imposed bg shift).
+   *  Design plan:
+   *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 5. */
   groupDisplayType?: 'singleColumn' | 'multipleColumns' | 'groupRows' | 'custom';
+  /** Cycle 15 / Task 5 — registered cell-renderer name used to paint
+   *  group rows when `groupDisplayType === 'custom'`. The renderer is
+   *  invoked once per group row with bounds spanning every visible
+   *  band (left-pinned + center + right-pinned) and the row's
+   *  `GroupCellValue` payload threaded onto `CellPaintConfig.value`.
+   *  Falls back to `'group'` (the built-in groupRows full-row painter)
+   *  when undefined OR when the named renderer isn't registered —
+   *  apps get a sensible default without explicit wiring. Design plan:
+   *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 5. */
+  groupRowRenderer?: string;
 }
 
 /** Cycle 10 / Task 5 — params for `processCellForClipboard`. Mirrors
