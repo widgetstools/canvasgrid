@@ -540,7 +540,7 @@ export function createPositionsGrid(
           ...(opts.statusBar === 'customDemo' ? { demoCustomStatusPanel: DemoCustomStatusPanel } : {}),
         }
       : undefined,
-    // Cycle 13 / Task 1+2+3+4 — `?statusBar=<mode>`:
+    // Cycle 13 / Task 1+2+3+4+6 — `?statusBar=<mode>`:
     //   - `'mounted'`    → empty bar (visual cell 14)
     //   - `'counts'`     → four built-in count panels in the right zone
     //                      (visual cell 15)
@@ -553,6 +553,17 @@ export function createPositionsGrid(
     //                      `agTotalAndFilteredRowCountComponent` on the
     //                      right. Exercises the Task 4 custom-panel +
     //                      getStatusPanel(key) API surface end-to-end.
+    //   - default (no query) → same shape as `'full'`: the polished
+    //                      out-of-the-box experience that ships with the
+    //                      demo. Cycle 13 / Task 6 promoted the bar to a
+    //                      default-on surface so every existing visual
+    //                      matrix cell (01–13) gets a status bar at the
+    //                      bottom edge, mirroring the FM Area 18 exit. The
+    //                      agg panel hides itself when there's no
+    //                      selection (decision 4 in the design notes), so
+    //                      the default render still reads as "right-loaded
+    //                      glance" — only the two count panels are
+    //                      visible. A new selection wakes the left zone.
     statusBar: opts.statusBar === 'mounted'
       ? { statusPanels: [] }
       : opts.statusBar === 'counts'
@@ -564,22 +575,24 @@ export function createPositionsGrid(
               { key: 'agTotalAndFilteredRowCountComponent', statusPanel: 'agTotalAndFilteredRowCountComponent' },
             ],
           }
-        : opts.statusBar === 'full'
+        : opts.statusBar === 'customDemo'
           ? {
+              statusPanels: [
+                { key: 'demoCustomStatusPanel', statusPanel: 'demoCustomStatusPanel', align: 'left' },
+                { key: 'agTotalAndFilteredRowCountComponent', statusPanel: 'agTotalAndFilteredRowCountComponent', align: 'right' },
+              ],
+            }
+          : {
+              // `opts.statusBar === 'full'` and the default (no query) share
+              // the same canonical shape — the demo always ships the agg +
+              // counts layout unless the URL explicitly opts into an empty
+              // / counts-only / custom variant.
               statusPanels: [
                 { key: 'agAggregationComponent', statusPanel: 'agAggregationComponent', align: 'left' },
                 { key: 'agTotalAndFilteredRowCountComponent', statusPanel: 'agTotalAndFilteredRowCountComponent', align: 'right' },
                 { key: 'agSelectedRowCountComponent', statusPanel: 'agSelectedRowCountComponent', align: 'right' },
               ],
-            }
-          : opts.statusBar === 'customDemo'
-            ? {
-                statusPanels: [
-                  { key: 'demoCustomStatusPanel', statusPanel: 'demoCustomStatusPanel', align: 'left' },
-                  { key: 'agTotalAndFilteredRowCountComponent', statusPanel: 'agTotalAndFilteredRowCountComponent', align: 'right' },
-                ],
-              }
-            : undefined,
+            },
     // Cycle 10 / Task 1 — sample `getContextMenuItems`. Keeps every
     // built-in default item (Copy / Paste / Cut / Export / Autosize /
     // Pin / Reset) AND appends one custom "Clear filters" entry so the

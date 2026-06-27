@@ -668,14 +668,14 @@
 | 17 | allowDragFromColumnsToolPanel | Enterprise | config | no | P2 | Drag columns from tool panel into grid — deferred to Cycle 13 (drag-to-grid integration) |
 
 <!-- area:18 Status bar -->
-| 18 | statusBar config (StatusPanelDef, align) | Enterprise | config | yes | P1 | Configure status bar panels with left/center/right alignment |
-| 18 | agTotalRowCountComponent | Enterprise | config | no | P2 | Built-in total row count panel |
-| 18 | agFilteredRowCountComponent | Enterprise | config | no | P2 | Built-in filtered row count panel |
-| 18 | agSelectedRowCountComponent | Enterprise | config | no | P2 | Built-in selected row count panel |
-| 18 | agTotalAndFilteredRowCountComponent | Enterprise | config | no | P2 | Built-in combined total/filtered count panel |
-| 18 | agAggregationComponent (IAggregationStatusPanelParams) | Enterprise | config | yes | P1 | Aggregation panel showing count/sum/min/max/avg for selection |
-| 18 | Custom IStatusPanelComp | Enterprise | config | yes | P1 | Custom status bar panel component |
-| 18 | getStatusPanel | Enterprise | api | no | P2 | Retrieve live status panel component instance by key |
+| 18 | ✅ statusBar config (StatusPanelDef, align) | Enterprise | config | yes | P1 | Configure status bar panels with left/center/right alignment |
+| 18 | ✅ agTotalRowCountComponent | Enterprise | config | no | P2 | Built-in total row count panel |
+| 18 | ✅ agFilteredRowCountComponent | Enterprise | config | no | P2 | Built-in filtered row count panel |
+| 18 | ✅ agSelectedRowCountComponent | Enterprise | config | no | P2 | Built-in selected row count panel |
+| 18 | ✅ agTotalAndFilteredRowCountComponent | Enterprise | config | no | P2 | Built-in combined total/filtered count panel |
+| 18 | ✅ agAggregationComponent (IAggregationStatusPanelParams) | Enterprise | config | yes | P1 | Aggregation panel showing count/sum/min/max/avg for selection |
+| 18 | ✅ Custom IStatusPanelComp | Enterprise | config | yes | P1 | Custom status bar panel component |
+| 18 | ✅ getStatusPanel | Enterprise | api | no | P2 | Retrieve live status panel component instance by key |
 
 <!-- area:19 Context menu & clipboard -->
 | 19 | ✅ getContextMenuItems / MenuItemDef | Enterprise | config | no | P1 | Customise context menu items and add custom entries |
@@ -766,7 +766,7 @@
 | 23 | Clipboard API | Enterprise | api | no | P2 | copyToClipboard, cutToClipboard, pasteFromClipboard, copySelectedRowsToClipboard — see `23-api.md` |
 | 23 | Charts API | Enterprise | api | no | P3 | createRangeChart, createPivotChart, getChartModels, updateChart, restoreChart — see `23-api.md` |
 | 23 | Export API | Community | api | no | P2 | getDataAsCsv, exportDataAsCsv, exportDataAsExcel, exportMultipleSheetsAsExcel — see `23-api.md` |
-| 23 | Status bar / side bar API | Enterprise | api | no | P2 | getStatusPanel, isSideBarVisible, openToolPanel, getToolPanelInstance — see `23-api.md` |
+| 23 | ✅ Status bar / side bar API | Enterprise | api | no | P2 | ✅ getStatusPanel (Cycle 13 / Task 4), ✅ isSideBarVisible, ✅ openToolPanel, ✅ getToolPanelInstance — see `23-api.md` |
 | 23 | Misc API | Community | api | yes | P1 | getFocusedCell, ✅ setFocusedCell, ✅ ensureColumnVisible, ✅ ensureColumnGroupVisible, ✅ ensureRowVisible (by rowId), ensureIndexVisible, paginationGoToPage — see `23-api.md` |
 
 <!-- area:24 Charts & sparklines -->
