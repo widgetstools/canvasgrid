@@ -437,31 +437,31 @@
 | 09 | autoGroupColumnDef customisation | Enterprise | behavior | yes | P0 | Any ColDef property except colId applied to auto group column |
 
 <!-- area:10 Aggregation -->
-| 10 | aggFunc (ColDef) | Enterprise | option | yes | P0 | Aggregation function; built-in: sum/min/max/count/avg/first/last |
-| 10 | initialAggFunc (ColDef) | Enterprise | option | no | P1 | aggFunc applied on first column creation only |
+| 10 | ✅ aggFunc (ColDef) | Enterprise | option | yes | P0 | Aggregation function; built-in: sum/min/max/count/avg/first/last |
+| 10 | ✅ initialAggFunc (ColDef) | Enterprise | option | no | P1 | aggFunc applied on first column creation only |
 | 10 | defaultAggFunc (ColDef) | Enterprise | option | no | P2 | GUI default agg function; does not immediately aggregate |
 | 10 | allowedAggFuncs (ColDef) | Enterprise | option | no | P2 | GUI-visible agg function list; does not restrict API |
 | 10 | enableValue (ColDef) | Enterprise | option | yes | P1 | Allows user to enable aggregation via GUI |
-| 10 | aggFuncs (GridOptions) | Enterprise | option | no | P1 | Map of custom aggregation function names to IAggFunc |
-| 10 | suppressAggFuncInHeader | Enterprise | option | yes | P0 | Hides aggFunc name prefix from column headers |
-| 10 | alwaysAggregateAtRootLevel | Enterprise | option | no | P2 | Forces root-level aggregation even without grouping |
+| 10 | ✅ aggFuncs (GridOptions) | Enterprise | option | no | P1 | Map of custom aggregation function names to IAggFunc |
+| 10 | ✅ suppressAggFuncInHeader | Enterprise | option | yes | P0 | Hides aggFunc name prefix from column headers |
+| 10 | ✅ alwaysAggregateAtRootLevel | Enterprise | option | no | P2 | Forces root-level aggregation even without grouping |
 | 10 | aggregateOnlyChangedColumns | Enterprise | option | no | P1 | Limits re-aggregation to columns with changed leaf values |
 | 10 | suppressAggFilteredOnly | Enterprise | option | no | P2 | Includes filtered-out rows in group aggregates when true |
 | 10 | functionsReadOnly | Enterprise | option | no | P2 | Makes GUI aggregation controls display-only |
-| 10 | addAggFuncs | Enterprise | api | no | P1 | Registers custom agg functions at runtime |
-| 10 | clearAggFuncs | Enterprise | api | no | P2 | Removes all custom agg functions registered via addAggFuncs |
-| 10 | setColumnAggFunc | Enterprise | api | no | P1 | Sets or clears aggFunc on a column at runtime |
-| 10 | columnValueChanged | Enterprise | event | no | P1 | Column added to or removed from values (aggregation) set |
-| 10 | IAggFunc signature | Enterprise | behavior | yes | P0 | (params: IAggFuncParams) => any; params.values are leaf values |
+| 10 | ✅ addAggFuncs | Enterprise | api | no | P1 | Registers custom agg functions at runtime |
+| 10 | ✅ clearAggFuncs | Enterprise | api | no | P2 | Removes all custom agg functions registered via addAggFuncs |
+| 10 | ✅ setColumnAggFunc | Enterprise | api | no | P1 | Sets or clears aggFunc on a column at runtime |
+| 10 | ✅ columnValueChanged | Enterprise | event | no | P1 | Column added to or removed from values (aggregation) set |
+| 10 | ✅ IAggFunc signature | Enterprise | behavior | yes | P0 | (params: IAggFuncParams) => any; params.values are leaf values |
 | 10 | IAggFuncParams.aggregatedChildren | Enterprise | behavior | no | P1 | Immediate child group nodes feeding the aggregate |
 | 10 | IAggFuncResult for nested re-aggregation | Enterprise | behavior | yes | P0 | value+count+toString+toNumber; avg/count use this shape |
-| 10 | Built-in sum/min/max | Enterprise | behavior | yes | P0 | Plain scalar; ignores null/undefined values |
-| 10 | Built-in count | Enterprise | behavior | no | P1 | Returns IAggFuncResult with value=count of non-null leaves |
-| 10 | Built-in avg | Enterprise | behavior | no | P1 | Returns IAggFuncResult with value and count for weighted nesting |
-| 10 | Built-in first/last | Enterprise | behavior | no | P2 | Returns first or last value in insertion order |
-| 10 | valueGetter interaction | Enterprise | behavior | yes | P0 | aggFunc receives valueGetter output as values[] |
+| 10 | ✅ Built-in sum/min/max | Enterprise | behavior | yes | P0 | Plain scalar; ignores null/undefined values |
+| 10 | ✅ Built-in count | Enterprise | behavior | no | P1 | Returns IAggFuncResult with value=count of non-null leaves |
+| 10 | ✅ Built-in avg | Enterprise | behavior | no | P1 | Returns IAggFuncResult with value and count for weighted nesting |
+| 10 | ✅ Built-in first/last | Enterprise | behavior | no | P2 | Returns first or last value in insertion order |
+| 10 | ✅ valueGetter interaction | Enterprise | behavior | yes | P0 | aggFunc receives valueGetter output as values[] |
 | 10 | Filter interaction (suppressAggFilteredOnly) | Enterprise | behavior | no | P1 | Default excludes filtered rows; flag includes all |
-| 10 | suppressAggFuncInHeader display | Enterprise | behavior | yes | P0 | Header shows 'Balance' not 'sum(Balance)' |
+| 10 | ✅ suppressAggFuncInHeader display | Enterprise | behavior | yes | P0 | Header shows 'Balance' not 'sum(Balance)' |
 | 10 | GUI aggregation controls | Enterprise | behavior | no | P1 | enableValue + allowedAggFuncs + functionsReadOnly |
 
 <!-- area:11 Pivoting -->

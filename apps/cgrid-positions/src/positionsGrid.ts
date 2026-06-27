@@ -210,11 +210,13 @@ export interface PositionsGridOptions {
    *  Anything else (and null) leaves the bar disabled, preserving the
    *  default demo experience for the rest of the visual matrix. */
   statusBar?: string | null;
-  /** Cycle 14 / Task 1 — opt the demo into mounting the pinned grand-
-   *  totals row at the top or bottom edge of the grid body. `null` /
-   *  omitted leaves the row off, preserving cells 01–16's baselines.
-   *  Drives visual cell 17 via the `?totals=bottom` query string; the
-   *  Task 7 exit ritual flips the demo default to `'bottom'`. */
+  /** Cycle 14 / Task 1 + 7 — controls the pinned grand-totals row. The
+   *  demo default (when `main.ts` reads no `?totals=` query) is
+   *  `'bottom'` — the totals row mounts at the bottom edge of the body
+   *  so every matrix cell picks up the cycle's headline surface.
+   *  Explicit values: `'top'` mounts at the top, `'bottom'` at the
+   *  bottom, `null` (driven by `?totals=off`) turns the row off for
+   *  layouts that need the prior body-only chrome. */
   totalsRowPosition?: 'top' | 'bottom' | null;
   /** Cycle 14 / Task 2 — opt the demo into mounting a sample pinned-
    *  top reference row (an "Index Benchmark" anchor). Drives visual
@@ -639,14 +641,16 @@ export function createPositionsGrid(
                 { key: 'agSelectedRowCountComponent', statusPanel: 'agSelectedRowCountComponent', align: 'right' },
               ],
             },
-    // Cycle 14 / Task 1 — pinned grand-totals row. `null` / undefined
-    // leaves the row off; `'top'` / `'bottom'` mounts a single non-
-    // scrolling row at the matching edge of the grid body that reads
-    // `chunk.totals[colId]` for every column with an `aggFunc` declared
-    // on its colDef. The demo's `notionalAmount`, `marketValue`,
-    // `currentPrice`, `pnl`, `dailyPnl`, `unrealizedPnl`, `yield`,
-    // `spread`, `dv01`, `pv01` columns all carry aggFuncs so the
-    // pinned row reads with values across the visible width.
+    // Cycle 14 / Task 1 + 7 — pinned grand-totals row. The Cycle 14 /
+    // Task 7 exit ritual promoted the row to a default-on surface; the
+    // demo entry (`main.ts`) defaults `totalsRowPosition` to `'bottom'`
+    // unless the URL carries `?totals=off`. `null` here turns the row
+    // off entirely for direct callers of `createPositionsGrid` that
+    // need the prior body-only layout. The demo's `notionalAmount`,
+    // `marketValue`, `currentPrice`, `pnl`, `dailyPnl`,
+    // `unrealizedPnl`, `yield`, `spread`, `dv01`, `pv01` columns all
+    // carry aggFuncs so the pinned row reads with values across the
+    // visible width.
     totalsRowPosition: opts.totalsRowPosition ?? null,
     // Cycle 14 / Task 2 — sample pinned reference rows. The demo seeds
     // a single "Index Benchmark" row covering the numeric columns the

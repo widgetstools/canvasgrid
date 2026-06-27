@@ -41,15 +41,19 @@ const openColumns = search.get('openColumns') === '1';
 //                    demo exercises the custom-panel + getStatusPanel
 //                    API surface.
 const statusBar = search.get('statusBar');
-// Cycle 14 / Task 1 — `?totals=top|bottom` opts the demo into mounting
-// the pinned grand-totals row at the matching edge of the grid body.
-// Off by default so prior visual matrix cells (01–16) remain
-// byte-stable; the new cell `17-totals-row-bottom` opts in via the
-// `?totals=bottom` query, and the cycle-exit ritual in Task 7 flips
-// the demo default to `'bottom'`.
+// Cycle 14 / Task 1 + 7 — `?totals=top|bottom|off` flips the pinned
+// grand-totals row. Cycle 14 / Task 7 promoted the row to a default-on
+// surface: with no query string, the demo mounts the totals row at the
+// BOTTOM of the body, mirroring the FM Area 10 exit. The existing
+// `?totals=bottom` opt-in (visual cell 17) keeps the same shape; the
+// new `?totals=off` opt-OUT lets specs that need the prior body-only
+// layout (none in cells 01–16 — those got re-baselined in this PR) opt
+// out without removing the query channel.
 const totalsRaw = search.get('totals');
 const totalsRowPosition: 'top' | 'bottom' | null =
-  totalsRaw === 'top' || totalsRaw === 'bottom' ? totalsRaw : null;
+  totalsRaw === 'off' ? null
+  : totalsRaw === 'top' || totalsRaw === 'bottom' ? totalsRaw
+  : 'bottom';
 // Cycle 14 / Task 2 — `?pinned=top|bottom|both` opts the demo into
 // mounting a sample static pinned row (a "Benchmark" reference row) at
 // the matching edge. Off by default so visual cells 01–17 stay byte-
