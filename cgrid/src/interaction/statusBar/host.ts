@@ -49,11 +49,19 @@ import type {
 const BAR_HEIGHT = 28;
 
 /** Per-status-panel slot — the resolved def + the live instance + the
- *  zone the instance is mounted into. */
+ *  zone the instance is mounted into. `originalRefresh` is the panel's
+ *  un-wrapped `refresh` bound to the instance; captured before
+ *  `mountPanel` swaps `instance.refresh` with the rAF-batching shim
+ *  (Cycle 13 / Task 5) so synchronous fan-outs (`host.refresh()`,
+ *  flushes from `flushPending()`) keep their direct semantics while
+ *  panel-side `this.refresh()` calls from event handlers collapse to
+ *  one per frame. `null` when the slot is empty (unknown component
+ *  string at mount time). */
 interface PanelSlot {
   def: StatusPanelDef;
   align: StatusPanelAlign;
   instance: IStatusPanelComp | null;
+  originalRefresh: (() => void) | null;
 }
 
 /** Context handed to StatusBarHost by CGrid (or a test harness). Keeps
@@ -86,6 +94,19 @@ export class StatusBarHost {
   private slots: Map<string, PanelSlot> = new Map();
   private visible: boolean;
   private destroyed = false;
+
+  /** Cycle 13 / Task 5 — rAF-batched refresh dispatcher state.
+   *  `pendingSlots` is the set of slots whose `originalRefresh` will
+   *  run on the next animation-frame flush; `rafHandle` is the
+   *  outstanding `requestAnimationFrame` handle (or `null` when no
+   *  flush is queued). The dispatcher exists so a burst of grid
+   *  events (selection / filter / rowData changes) collapses to one
+   *  panel refresh per frame instead of N synchronous refreshes per
+   *  burst. Status updates write only DOM text + the `hidden` flag —
+   *  they MUST NOT call `cgridCanvas.requestRepaint`, so the canvas
+   *  paint loop is untouched regardless of event volume. */
+  private pendingSlots: Set<PanelSlot> = new Set();
+  private rafHandle: number | null = null;
 
   constructor(root: HTMLElement, ctx: StatusBarGridContext, def: StatusBarDef) {
     this.root = root;
@@ -184,14 +205,20 @@ export class StatusBarHost {
 
   /** Fan out a refresh() to every live panel instance. Tolerant: a
    *  panel that throws inside `refresh()` does NOT prevent siblings
-   *  from refreshing. Task 5 wraps this in an rAF-batched dispatcher
-   *  so selection / filter bursts collapse to one call per frame; for
-   *  Task 1 the synchronous version is the test surface. */
+   *  from refreshing.
+   *
+   *  Cycle 13 / Task 5 — the per-instance `refresh` is swapped at
+   *  mount time with an rAF scheduler so panel-side calls collapse to
+   *  one per frame. `host.refresh()` is the synchronous fan-out path
+   *  callers reach for when they want every panel refreshed *now*
+   *  (e.g. an integration test asserting on rendered text without
+   *  waiting on a frame), so it bypasses the shim by invoking each
+   *  slot's captured `originalRefresh` directly. */
   refresh(): void {
     if (this.destroyed) return;
     for (const slot of this.slots.values()) {
-      if (!slot.instance) continue;
-      try { slot.instance.refresh(); } catch (e) { console.error(e); }
+      if (!slot.instance || !slot.originalRefresh) continue;
+      try { slot.originalRefresh(); } catch (e) { console.error(e); }
     }
   }
 
@@ -201,6 +228,10 @@ export class StatusBarHost {
    *  call lands cleanly. */
   setStatusBarDef(def: StatusBarDef): void {
     if (this.destroyed) return;
+    // Cancel any pending refresh — the slots they target are about to
+    // be destroyed. Without this, a queued rAF flush could call
+    // `originalRefresh()` against a torn-down panel.
+    this.cancelPendingRefresh();
     // Tear down existing panels.
     for (const slot of this.slots.values()) {
       if (slot.instance) {
@@ -230,6 +261,7 @@ export class StatusBarHost {
    *  releases the canvas inset. Safe to call multiple times. */
   destroy(): void {
     if (this.destroyed) return;
+    this.cancelPendingRefresh();
     for (const slot of this.slots.values()) {
       if (slot.instance) {
         try { slot.instance.destroy(); } catch (e) { console.error(e); }
@@ -254,10 +286,18 @@ export class StatusBarHost {
   /** Resolve + instantiate one panel def and mount it into the matching
    *  zone. Unknown component keys leave `slot.instance: null` so the def
    *  is still visible to `getInstance(key)` (returns `null`) and so
-   *  Tasks 2/3 can fill in by registering ctors later. */
+   *  Tasks 2/3 can fill in by registering ctors later.
+   *
+   *  Cycle 13 / Task 5 — after `init()` returns we swap the instance's
+   *  `refresh` with the rAF scheduler. The original is captured first
+   *  so `host.refresh()` and the rAF flush still drive the real work
+   *  synchronously. `init()` itself runs through the registry BEFORE
+   *  the swap, so any synchronous `this.refresh()` inside `init()`
+   *  (built-in count + agg panels both do this to paint initial state)
+   *  bypasses batching and renders immediately. */
   private mountPanel(def: StatusPanelDef): void {
     const align: StatusPanelAlign = def.align ?? 'right';
-    const slot: PanelSlot = { def, align, instance: null };
+    const slot: PanelSlot = { def, align, instance: null, originalRefresh: null };
     this.slots.set(def.key, slot);
     const instance = this.ctx.registry.instantiate(def.statusPanel, {
       api: this.ctx.api,
@@ -265,7 +305,60 @@ export class StatusBarHost {
     });
     if (!instance) return; // unknown component string — silent no-op
     slot.instance = instance;
+    slot.originalRefresh = instance.refresh.bind(instance);
+    instance.refresh = () => this.scheduleRefresh(slot);
     this.zones[align].appendChild(instance.getGui());
+  }
+
+  /** Cycle 13 / Task 5 — enqueue `slot` for the next rAF flush.
+   *  Idempotent for already-pending slots (one entry per slot per
+   *  frame). Schedules the rAF callback exactly once per frame; the
+   *  same callback drains the whole pending set. When the host has
+   *  been destroyed the call is a no-op. When `requestAnimationFrame`
+   *  is missing (some Node-only test envs), we flush synchronously —
+   *  matches the cell-flash loop's fallback in `cgrid.ts`. */
+  private scheduleRefresh(slot: PanelSlot): void {
+    if (this.destroyed) return;
+    if (!slot.instance || !slot.originalRefresh) return;
+    this.pendingSlots.add(slot);
+    if (this.rafHandle !== null) return;
+    if (typeof requestAnimationFrame !== 'function') {
+      this.flushPending();
+      return;
+    }
+    this.rafHandle = requestAnimationFrame(() => this.flushPending());
+  }
+
+  /** Cycle 13 / Task 5 — drain the pending set. Each slot's
+   *  `originalRefresh` runs inside its own try/catch so a thrower
+   *  panel does NOT block its neighbours' refresh. Safe to call
+   *  manually from `cancelPendingRefresh` (the rAF handle is
+   *  reset first so a re-entrant `scheduleRefresh` during the flush
+   *  queues a fresh frame instead of being lost). */
+  private flushPending(): void {
+    this.rafHandle = null;
+    if (this.destroyed) {
+      this.pendingSlots.clear();
+      return;
+    }
+    const slots = Array.from(this.pendingSlots);
+    this.pendingSlots.clear();
+    for (const slot of slots) {
+      if (!slot.instance || !slot.originalRefresh) continue;
+      try { slot.originalRefresh(); } catch (e) { console.error(e); }
+    }
+  }
+
+  /** Cycle 13 / Task 5 — drop any queued flush. Called from
+   *  `setStatusBarDef` (slots about to be torn down) and `destroy`. */
+  private cancelPendingRefresh(): void {
+    if (this.rafHandle !== null) {
+      if (typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(this.rafHandle);
+      }
+      this.rafHandle = null;
+    }
+    this.pendingSlots.clear();
   }
 
   private reserveSpace(): void {
