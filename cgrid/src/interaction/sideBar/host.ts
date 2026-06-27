@@ -38,9 +38,19 @@
 import { ToolPanelRegistry } from '../toolPanels/registry';
 import type { SideBarDef, ToolPanel, ToolPanelDef } from '../toolPanels/types';
 
-/** Width of the vertical tab strip in CSS px. Mirrors the value in
- *  tokens.css (`.cg-side-bar-tabs { width: 28px }`). */
+/** Width of the vertical tab strip in CSS px. Mirrors
+ *  `.cg-side-bar-tabs { width: 28px }` in tokens.css. Used only as a
+ *  fallback in `getReservedWidth` when `getBoundingClientRect()`
+ *  returns 0 (jsdom). */
 const TABS_WIDTH = 28;
+
+/** Width of the `.cg-side-bar` border-left in CSS px. Same fallback
+ *  use as `TABS_WIDTH` — the live path measures the bar directly. */
+const BAR_BORDER_WIDTH = 1;
+
+/** Width of the resize handle in CSS px. Mirrors
+ *  `.cg-side-bar-resize { width: 3px }`. Fallback use only. */
+const HANDLE_WIDTH = 3;
 
 /** Default panel width when neither `width` nor `defaultWidth` is set
  *  on the ToolPanelDef. Mirrors ag-grid's default. */
@@ -180,6 +190,10 @@ export class SideBarHost {
     this.handleEl = document.createElement('div');
     this.handleEl.className = 'cg-side-bar-resize';
     this.handleEl.addEventListener('mousedown', (e) => this.handleDragStart(e));
+    // The resize handle is inert when no panel is open (see handleDragStart)
+    // and would otherwise eat 3 px of visual space next to the tab strip,
+    // pushing the sidebar past the scroller's reserved gutter.
+    this.handleEl.style.display = 'none';
 
     // Order of children inside .cg-side-bar:
     //   resize-handle | panel | tabs
@@ -242,11 +256,27 @@ export class SideBarHost {
   }
 
   /** Total reserved width in CSS px (tabs + panel-when-open).
-   *  Matches the value passed to `ctx.setReservedSpace`. */
+   *  Matches the value passed to `ctx.setReservedSpace`.
+   *
+   *  Prefers the actual rendered footprint of `this.bar` (via
+   *  `getBoundingClientRect`) so the reservation includes the sidebar's
+   *  1 px border-left and (when a panel is open) the 3 px resize handle.
+   *  Summing constants alone leaves ~4 px of canvas under the sidebar's
+   *  z-index:2 overlay, hiding the rightmost edge of the vertical
+   *  scrollbar — the regression flagged on 2026-06-26.
+   *
+   *  Falls back to constant-summed math when `getBoundingClientRect`
+   *  returns 0 (jsdom under unit tests, pre-layout calls during mount). */
   getReservedWidth(): number {
     if (!this.visible) return 0;
+    if (this.def.hideButtons && this.openedId === null) return 0;
+    const measured = Math.ceil(this.bar.getBoundingClientRect().width);
+    if (measured > 0) return measured;
+    // Fallback: tabs (28) + sidebar border-left (1) + when-panel-open
+    // (resize handle 3 + panelWidth).
     let w = this.def.hideButtons ? 0 : TABS_WIDTH;
-    if (this.openedId !== null) w += this.panelWidth;
+    if (w > 0) w += BAR_BORDER_WIDTH;
+    if (this.openedId !== null) w += HANDLE_WIDTH + this.panelWidth;
     return w;
   }
 
@@ -277,6 +307,7 @@ export class SideBarHost {
     this.panelWidth = slot.def.width ?? DEFAULT_PANEL_WIDTH;
     this.panelEl.style.width = `${this.panelWidth}px`;
     this.panelEl.style.display = '';
+    this.handleEl.style.display = '';
     slot.tab.setAttribute('aria-pressed', 'true');
     this.openedId = id;
     this.reserveSpace();
@@ -306,6 +337,7 @@ export class SideBarHost {
     }
     this.panelEl.replaceChildren();
     this.panelEl.style.display = 'none';
+    this.handleEl.style.display = 'none';
     this.openedId = null;
     this.reserveSpace();
     this.ctx.emit?.({
