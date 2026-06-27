@@ -257,6 +257,23 @@ export interface CGridLike {
    *  when the drop was rejected (the drag feature can then re-order
    *  within the header band as if the drop hadn't been attempted). */
   commitRowGroupPanelDrop(colId: string): boolean;
+
+  // --- Group expand / collapse (Cycle 15 / Task 7) ---
+  /** Hit-test a canvas-local point against the chevron rect of an
+   *  auto-group cell. Returns the composite group key when the point
+   *  falls inside the chevron hit zone of a group row, `null`
+   *  otherwise — including for data rows, body cells, headers, and
+   *  group cells in `'multipleColumns'` mode whose column doesn't own
+   *  the row's depth. The hit zone matches the chevron's painted
+   *  bounding box expanded by 4 px on every side (≈ 20 × 20 px),
+   *  vertical = full row band; see `cycle-15-grouping-design.md`
+   *  § Task 7. Reading the row's chunk fields here lives on the grid
+   *  side so the feature stays a thin click-router. */
+  hitTestGroupChevron(x: number, y: number): { groupKey: string } | null;
+  /** Toggle the expanded state of `groupKey`. Routes through the same
+   *  `setExpanded` API path apps use, so a chevron click fires the
+   *  `rowGroupOpened` event with `source: 'ui'`. */
+  toggleGroupExpanded(groupKey: string): void;
 }
 
 export interface CGridEventCtx {

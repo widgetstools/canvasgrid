@@ -450,8 +450,13 @@ describe('GroupPass — worker round-trip', () => {
       ] },
     });
     const reply = await w.send({ id: 0, type: 'setGroupModel', payload: { rowGroupCols: ['desk'] } });
-    expect(reply.type).toBe('rowCount');
-    if (reply.type === 'rowCount') {
+    // Cycle 15 / Task 7 — setGroupModel reply switched from `rowCount`
+    // to `groupKeysSnapshot` so the main-thread mirror can populate
+    // `knownGroupKeys` for the `getExpandedKeys()` API surface
+    // without a follow-up round-trip. The `count` + `visibleCount`
+    // fields ride the new envelope unchanged.
+    expect(reply.type).toBe('groupKeysSnapshot');
+    if (reply.type === 'groupKeysSnapshot') {
       expect(reply.count).toBe(3);
       // Cycle 15 / Task 4 — when grouping is active, the visible count
       // includes group rows alongside data rows (the slicer emits both
@@ -459,6 +464,10 @@ describe('GroupPass — worker round-trip', () => {
       // 3 data rows = 5 visible. Tasks 7+9 will let collapsed groups
       // reduce this; for Task 4 every group ships expanded.
       expect(reply.visibleCount).toBe(5);
+      // Cycle 15 / Task 7 — groupKeys lists every composite key in
+      // the freshly-built tree. Two desks → two keys, sorted by the
+      // GroupPass's deterministic ordering.
+      expect([...reply.groupKeys].sort()).toEqual(['desk:APAC', 'desk:EMEA']);
     }
   });
 

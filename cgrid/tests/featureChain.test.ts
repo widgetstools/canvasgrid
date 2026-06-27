@@ -105,6 +105,17 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
     isContextMenuSuppressed: () => false,
     isClipboardApiSuppressed: () => false,
     isClipboardPasteSuppressed: () => false,
+    // Cycle 15 / Task 6 — row-group panel hooks default to "no panel"
+    // so existing chain tests behave identically (drag never sees a
+    // drop target).
+    isPointInRowGroupPanel: () => false,
+    setRowGroupPanelDragHover: () => {},
+    commitRowGroupPanelDrop: () => false,
+    // Cycle 15 / Task 7 — chevron hit-test defaults to "no group
+    // anywhere" so existing chain tests' mousedown / click flow is
+    // never intercepted by GroupExpandFeature.
+    hitTestGroupChevron: () => null,
+    toggleGroupExpanded: () => {},
   } as unknown as CGridLike;
   const chain = new FeatureChain(grid);
   return { canvas, sel, chain, emitClicked, emitDoubleClicked, resizeColumn, cycleSort, scrollBy, openEditor, stopEditing };

@@ -754,3 +754,67 @@ expression — read left to right.**
   vocabulary (header-bg + hairline border + 28–32px height).
 
 ---
+
+## Task 7 — Expand/collapse interaction
+
+**Brief recap:** The auto-group column (Task 4) paints chevron +
+indent + value + (count). Task 7 makes the chevron click-toggle a
+group's expanded state. Three axes to decide: hit zone, hover state,
+animation. Subject pin is the same trader / PM scanning the universe
+from Task 4 — a power-user tool, not a polished consumer demo.
+
+### Default rejected
+
+The generic AI default for "tree-node expand" is the full bundle:
+200 ms chevron rotate, faint bg-tint hover, `cursor:pointer` on the
+whole cell, sometimes a focus ring on the chevron. It reads as
+"polished web app." Three problems for canvasgrid:
+
+1. **Full-cell hit zone collides with text selection.** The group
+   value text in the cell would be unreachable for copy / range-select
+   gestures because every click would toggle. Power users expect to
+   click data; chevron-click for toggle is a separate intent.
+2. **Bg-tint hover breaks Task 4's risk.** Task 4 ships a
+   deliberately quiet group row — no bg shift, no border, no weight
+   bump. A hover bg tint reintroduces row chrome on every
+   mousemove and erases that signal.
+3. **Per-row canvas repaints are expensive.** Hover color bumps and
+   200 ms rotations both require per-frame chunk walks on a canvas
+   grid. The cost compounds as the user scans (mousemove on every
+   group row).
+
+### Decisions
+
+| Axis | Pick | Why |
+|---|---|---|
+| **Hit zone** | chevron bbox + 4 px pad each side (≈ 20 × 20 px), vertical = full row height | Bigger than the 12 px glyph (Fitts's law friendly), still bounded so the value text + indent space stay non-interactive. Indent space is breathing room, not a click target. |
+| **Hover** | `cursor: pointer` over the hit zone only. No color bump. No bg tint. | The cursor signals interactivity globally; the chevron glyph itself signals it per cell. No canvas repaint on mousemove — hit-test runs in the existing `onHover` chain and only the DOM cursor changes. Preserves the Task 4 "no row chrome" risk. |
+| **Animation** | None. Instant glyph flip + instant row reflow. | Matches the trader's mental model: click = section opens NOW. A 200 ms rotate would force per-frame canvas paints across every toggling group; an instant flip costs one paint. Reduce-motion is honored by default (there is no motion to suppress). |
+
+### Risk taken
+
+The pure-instant flip with no chevron-hover state is the louder
+risk. Every modern UI library tints chevrons on hover and animates
+the rotate. The bet: in a canvas grid built for power users, the
+cursor change alone IS the affordance. A trader who's already
+filtered, sorted, and grouped a million rows doesn't need a 200 ms
+animation telling them "good job, the section opened." They need
+the section to open.
+
+### Reusable vocabulary
+
+- **Hit zones around glyphs** = glyph bbox + 4 px pad each side. Future
+  affordances (Task 8's tri-state checkbox, Cycle 16's master/detail
+  expand) inherit this default size.
+- **`cursor: pointer` is the canonical hover affordance for
+  click-only zones.** Bg tint reserved for selection / focus / data
+  rows; cursor reserved for "this glyph is a control."
+- **No animation by default in canvasgrid.** Instant state flip is
+  the house style. Future toggle / expand affordances start from
+  the same null-animation baseline; animations are added only when
+  a specific subject demands them.
+- **Hit-test lives in a feature** (`GroupExpandFeature` in the chain).
+  It runs ahead of `EditTrigger` / `CellSelection` so a click on
+  the chevron doesn't open the editor or change the selection.
+
+---

@@ -139,6 +139,16 @@ export interface ViewportChunk {
    *  (data rows / "expanded" groups; an ungrouped chunk's group cells
    *  never paint, so the value is harmless). */
   isExpanded?: Uint8Array;
+  /** Cycle 15 / Task 7 — composite group key for each group row, empty
+   *  string for data rows. Length === `rowCount` when present. The
+   *  chevron click hit-test on main reads this to translate a row
+   *  index back to the composite key the `setExpanded` /
+   *  `rowGroupOpened` API + event surface speaks in. Absent on chunks
+   *  produced before Task 7 — decoder fills empties as a defensive
+   *  default (the hit-test silently no-ops when the key is empty,
+   *  matching its behaviour for a data row). Not part of the binary
+   *  format — this field rides the structured-clone path only. */
+  groupKey?: string[];
 }
 
 /** Cycle 5 / Task 8 — items batched into a single `measureTextRequest`
@@ -186,6 +196,22 @@ export type WorkerRequest =
       };
     }
   | { id: ReqId; type: 'setGroupModel';    payload: GroupModel }
+  /** Cycle 15 / Task 7 — replace the worker's persistent expanded-keys
+   *  set. `keys === null` reverts to the "all groups expanded" default
+   *  (the same view Task 4 shipped before any explicit toggle); `keys: []`
+   *  collapses everything; any other array is the explicit set of
+   *  expanded composite group keys.
+   *
+   *  The chunk a subsequent `getViewport` produces walks the
+   *  collapse-aware visible order against this set — collapsed
+   *  descendants drop out, `isExpanded[i]` flips per group row's
+   *  membership. `visibleCount` in the reply uses the same set.
+   *
+   *  Also resolves with the FULL list of current composite group keys
+   *  so main can materialise its own mirror (needed for the
+   *  `getExpandedKeys()` snapshot when the main-side mirror is still
+   *  at the "default = all expanded" sentinel). */
+  | { id: ReqId; type: 'setExpandedKeys';  payload: { keys: string[] | null } }
   | { id: ReqId; type: 'getViewport';      payload: ViewportRequest }
   | { id: ReqId; type: 'updateColumns';    payload: { columns: WorkerColumn[] } }
   | { id: ReqId; type: 'getRowIndexForId';    payload: { rowId: string } }
@@ -319,7 +345,29 @@ export type WorkerRequest =
 
 export type WorkerResponse =
   | { id: ReqId; type: 'ready' }
-  | { id: ReqId; type: 'rowCount';            count: number; visibleCount: number }
+  | {
+      id: ReqId;
+      type: 'rowCount';
+      count: number;
+      visibleCount: number;
+      /** Cycle 15 / Task 7 — present when grouping is active. Lets
+       *  main keep `knownGroupKeys` in lockstep with the worker's
+       *  tree without a follow-up round-trip. Absent for ungrouped
+       *  grids so the reply stays small on the cheap path. */
+      groupKeys?: string[];
+    }
+  /** Cycle 15 / Task 7 — reply to `setGroupModel` AND `setExpandedKeys`
+   *  that piggybacks on the existing rowCount channel but adds the list
+   *  of CURRENT composite group keys so the main-thread mirror can
+   *  materialise its `expandedKeys` snapshot for `getExpandedKeys()`.
+   *  Empty when grouping is bypassed (`rowGroupCols.length === 0`). */
+  | {
+      id: ReqId;
+      type: 'groupKeysSnapshot';
+      count: number;
+      visibleCount: number;
+      groupKeys: string[];
+    }
   | { id: ReqId; type: 'viewport';            chunk: ViewportChunk }
   | { id: ReqId; type: 'transactionFlushed';  results: TransactionResult }
   | { id: ReqId; type: 'rowIndex';            index: number }
@@ -345,7 +393,18 @@ export type WorkerResponse =
   | { id: ReqId; type: 'error';               error: string };
 
 export type WorkerPush =
-  | { type: 'modelUpdated';              visibleCount: number }
+  | {
+      type: 'modelUpdated';
+      visibleCount: number;
+      /** Cycle 15 / Task 7 — current composite group keys when
+       *  grouping is active. Absent when grouping bypasses
+       *  (`rowGroupCols.length === 0`) so the push stays
+       *  zero-allocation for the common ungrouped grid. Main uses it
+       *  to keep `knownGroupKeys` in lockstep after a transaction
+       *  adds / removes groups — critical so `getExpandedKeys()`
+       *  doesn't drift from the worker's tree. */
+      groupKeys?: string[];
+    }
   | { type: 'asyncTransactionsFlushed';  results: TransactionResult[] }
   /** Cycle 5 / Task 8 — worker pushes updated row heights after the
    *  autoHeight pass measures a visible chunk. Main applies the deltas to
@@ -406,7 +465,7 @@ export function collectViewportTransferables(chunk: ViewportChunk): ArrayBufferL
  *  three fields are present after normalization, so the `'group'`
  *  renderer never has to check `?? defaults`. */
 export function normalizeViewportChunk(chunk: ViewportChunk): ViewportChunk {
-  if (chunk.groupValue && chunk.groupChildCount && chunk.isExpanded) {
+  if (chunk.groupValue && chunk.groupChildCount && chunk.isExpanded && chunk.groupKey) {
     return chunk;
   }
   const rowCount = chunk.rowCount;
@@ -417,5 +476,6 @@ export function normalizeViewportChunk(chunk: ViewportChunk): ViewportChunk {
     isExpanded = new Uint8Array(rowCount);
     isExpanded.fill(1);
   }
-  return { ...chunk, groupValue, groupChildCount, isExpanded };
+  const groupKey = chunk.groupKey ?? new Array<string>(rowCount).fill('');
+  return { ...chunk, groupValue, groupChildCount, isExpanded, groupKey };
 }

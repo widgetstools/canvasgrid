@@ -154,12 +154,17 @@ export function sliceGroupedViewport<TRow>(
   const groupChildCount = new Uint32Array(count);
   const isExpanded = new Uint8Array(count);
   isExpanded.fill(1);
+  // Cycle 15 / Task 7 — composite group key per group row. The chevron
+  // click hit-test on main reads this back to drive `setExpanded` +
+  // `rowGroupOpened`; data rows hold the empty-string sentinel.
+  const groupKey: string[] = new Array<string>(count).fill('');
 
   for (let i = 0; i < count; i++) {
     const entry = visibleOrder[rowStart + i]!;
     groupDepth[i] = entry.depth;
     if (entry.kind === 'group') {
       rowKinds[i] = 1;
+      groupKey[i] = entry.key;
       const meta = groupMeta?.(entry.key);
       if (meta) {
         groupValue[i] = meta.value;
@@ -263,5 +268,6 @@ export function sliceGroupedViewport<TRow>(
     groupValue,
     groupChildCount,
     isExpanded,
+    groupKey,
   };
 }

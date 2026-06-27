@@ -30,7 +30,12 @@ import {
   resolveColumnWidths, sizeColumnsToFit as computeSizeColumnsToFit,
   type ColumnLayout,
 } from './core/layout';
-import { computeViewport, type ViewportState } from './core/viewport';
+import {
+  computeViewport,
+  type ViewportColumn,
+  type ViewportRow,
+  type ViewportState,
+} from './core/viewport';
 import { RowHeightIndex } from './core/rowHeightIndex';
 import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, TotalsSubgrid, PinnedRowsSubgrid, type Subgrid, type SubgridCell } from './core/subgrid';
 import { FloatingFilterSubgrid } from './core/floatingFilterSubgrid';
@@ -65,6 +70,7 @@ import { wrapTextCell } from './renderer/cellRenderers/wrapText';
 import { totalsCell } from './renderer/cellRenderers/totals';
 import { groupCell, type GroupCellValue } from './renderer/cellRenderers/group';
 import {
+  autoGroupColumnDepthFromId,
   isAutoGroupColumnId, resolveGroupDisplayType, synthesizeAutoGroupColumns,
 } from './core/autoGroupColumn';
 import { Renderer } from './renderer/renderer';
@@ -601,6 +607,24 @@ export class CGrid<TRow = any> {
     renderer: string;
     lookup: (rowIndex: number) => GroupCellValue | null;
   } | null = null;
+  /** Cycle 15 / Task 7 — main-thread mirror of the worker's persistent
+   *  expanded-keys set.
+   *    - `null` is the "every group expanded by default" sentinel:
+   *      `expandAll()` resets to it; `setGroupModel` lands in it; a
+   *      freshly mounted grouped grid starts in it.
+   *    - Non-null is the explicit set (`collapseAll()` => empty;
+   *      `setExpanded(key, false)` materialises against
+   *      `knownGroupKeys` before mutating).
+   *  Drives the `getExpandedKeys()` snapshot. */
+  private expandedKeys: Set<string> | null = null;
+  /** Cycle 15 / Task 7 — list of every composite group key currently
+   *  alive in the worker's tree. Refreshed off each `setGroupModel` /
+   *  `setExpandedKeys` reply. Used to materialise `expandedKeys`
+   *  from `null` when the API needs an explicit set (e.g.
+   *  `setExpanded(key, false)` while the mirror is still at the
+   *  default-all sentinel) and as the source of truth for
+   *  `getExpandedKeys()`'s "everything's expanded" snapshot. */
+  private knownGroupKeys: string[] = [];
 
   constructor(container: HTMLElement, private options: CGridOptions<TRow>) {
     if (!options.getRowId) throw new Error('[cgrid] options.getRowId is required');
@@ -1018,6 +1042,13 @@ export class CGrid<TRow = any> {
         this.rowGroupPanel?.setDragHover(colId, x, y);
       },
       commitRowGroupPanelDrop: (colId) => this.rowGroupPanel?.handleColumnDrop(colId) ?? false,
+      // Cycle 15 / Task 7 — chevron hit-test + toggle. The grid owns
+      // both because (a) hit geometry requires column bounds + chunk
+      // group fields the feature shouldn't reach into, and (b) the
+      // toggle path needs to fire the `rowGroupOpened` event with
+      // `source: 'ui'` distinct from imperative API toggles.
+      hitTestGroupChevron: (x, y) => this.hitTestGroupChevron(x, y),
+      toggleGroupExpanded: (key) => this.toggleGroupExpandedFromUi(key),
     });
     this.cellEditorRegistry = new CellEditorRegistry();
     CellEditorRegistry.seed(this.cellEditorRegistry);
@@ -1090,8 +1121,13 @@ export class CGrid<TRow = any> {
     const workerUrl = options.worker?.url ?? new URL('./worker.js', import.meta.url).toString();
     const worker = new Worker(workerUrl as unknown as URL, { type: 'module' });
     this.workerClient = new WorkerClient(worker as unknown as import('./worker/client').WorkerLike, {
-      onModelUpdated: (visibleCount) => {
+      onModelUpdated: (visibleCount, groupKeys) => {
         this.rowCount = visibleCount;
+        // Cycle 15 / Task 7 — keep the main-side mirror in lockstep
+        // with the worker's tree across transactions that add or
+        // remove group keys (e.g. a new ticker entered the dataset).
+        // The worker only ships this when grouping is active.
+        if (groupKeys !== undefined) this.knownGroupKeys = groupKeys;
         // Row order may have shifted (sort, filter, transaction add/remove) —
         // per-row heights live with row identity, not slot. Drop the index
         // and let the next chunk rebuild it (Cycle 5 / Task 7). The viewport
@@ -1382,8 +1418,13 @@ export class CGrid<TRow = any> {
     for (const row of rows) {
       try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip bad rowId */ }
     }
-    this.workerClient.setRowData(rows, heightsByRowId).then(({ visibleCount }) => {
+    this.workerClient.setRowData(rows, heightsByRowId).then(({ visibleCount, groupKeys }) => {
       this.rowCount = visibleCount;
+      // Cycle 15 / Task 7 — setRowData may have grown the set of
+      // group keys (data flowing into a grouped grid for the first
+      // time). The worker rides them back on the reply so the mirror
+      // for `getExpandedKeys()` populates before the next UI tick.
+      if (groupKeys !== undefined) this.knownGroupKeys = groupKeys;
       this.recomputeViewport();
       this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
       // Cycle 14 / Task 6 — full row-set replace re-aggregates totals;
@@ -2440,14 +2481,112 @@ export class CGrid<TRow = any> {
     this.groupModel = { rowGroupCols: [...g.rowGroupCols] };
     this.rebuildAutoGroupColumn();
     this.rowGroupPanel?.setRowGroupCols(this.groupModel.rowGroupCols);
-    this.workerClient.setGroupModel(this.groupModel).then(({ visibleCount }) => {
+    // Cycle 15 / Task 7 — fresh model resets expansion to the
+    // default-all sentinel; the worker does the same on its side. The
+    // reply ships back the full key list so the mirror can serve
+    // `getExpandedKeys()` snapshots without a follow-up round-trip.
+    this.expandedKeys = null;
+    this.workerClient.setGroupModel(this.groupModel).then(({ visibleCount, groupKeys }) => {
       if (this.destroyed) return;
+      this.knownGroupKeys = groupKeys;
       this.rowCount = visibleCount;
       this.rowHeightIndex = null;
       this.recomputeViewport();
       this.cgridCanvas.requestRepaint();
       this.requestViewport();
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+  }
+
+  /** Cycle 15 / Task 7 — flip every group to expanded. Ships the
+   *  "default = all" sentinel to the worker so the slicer derives
+   *  the all-keys set itself; fires `expandOrCollapseAll` once with
+   *  `expanded: true`. No-op when grouping bypasses
+   *  (`rowGroupCols.length === 0`) — the event still fires so apps
+   *  with a "toggle grouping" UX don't have to special-case the
+   *  ungrouped grid. */
+  expandAll(): void {
+    if (this.destroyed) return;
+    this.expandedKeys = null;
+    this.shipExpandedKeys(null);
+    this.events.emit({ type: 'expandOrCollapseAll', expanded: true });
+  }
+
+  /** Cycle 15 / Task 7 — flip every group to collapsed. The mirror
+   *  holds an empty Set (the canonical "explicit, with no expanded
+   *  keys" state); the worker mirrors. Fires `expandOrCollapseAll`
+   *  with `expanded: false`. */
+  collapseAll(): void {
+    if (this.destroyed) return;
+    this.expandedKeys = new Set();
+    this.shipExpandedKeys([]);
+    this.events.emit({ type: 'expandOrCollapseAll', expanded: false });
+  }
+
+  /** Cycle 15 / Task 7 — toggle a specific group's expanded state.
+   *  When the mirror is at the default-all sentinel AND the call
+   *  collapses a single group, we materialise against
+   *  `knownGroupKeys` first so the worker receives an explicit set
+   *  (otherwise the worker would interpret the null sentinel as
+   *  "expand everything" and clobber the toggle). Idempotent — no
+   *  event fires when the state didn't change. Unknown keys (a
+   *  stale key from a prior model) no-op AFTER the materialisation
+   *  attempt; this preserves the lossless mirror in either
+   *  direction. */
+  setExpanded(groupKey: string, expanded: boolean): void {
+    if (this.destroyed) return;
+    // Materialise the mirror if we're entering explicit mode from
+    // the default-all sentinel. The materialised set holds every
+    // currently-known group key so the next ship-to-worker is a
+    // complete picture.
+    let next: Set<string>;
+    if (this.expandedKeys === null) {
+      if (expanded) return; // already expanded under the default
+      next = new Set(this.knownGroupKeys);
+    } else {
+      next = new Set(this.expandedKeys);
+    }
+    const wasExpanded = next.has(groupKey);
+    if (wasExpanded === expanded) return;
+    if (expanded) next.add(groupKey);
+    else next.delete(groupKey);
+    this.expandedKeys = next;
+    this.shipExpandedKeys(Array.from(next));
+    this.events.emit({
+      type: 'rowGroupOpened',
+      key: groupKey,
+      expanded,
+      source: 'api',
+    });
+  }
+
+  /** Cycle 15 / Task 7 — snapshot of the currently-expanded composite
+   *  group key set. Returns a fresh `Set` each call (mutations don't
+   *  affect grid state). When the mirror is at the default-all
+   *  sentinel we materialise via `knownGroupKeys` so the snapshot is
+   *  honest about which keys are open. */
+  getExpandedKeys(): Set<string> {
+    if (this.expandedKeys === null) return new Set(this.knownGroupKeys);
+    return new Set(this.expandedKeys);
+  }
+
+  /** Cycle 15 / Task 7 — internal ship-to-worker for the expanded-keys
+   *  set. Refreshes `knownGroupKeys` from the reply (a transaction
+   *  that landed mid-flight could have added / removed groups) and
+   *  drives the next viewport request so the chunk reflects the
+   *  collapsed / expanded set. */
+  private shipExpandedKeys(keys: string[] | null): void {
+    this.workerClient
+      .setExpandedKeys(keys)
+      .then(({ visibleCount, groupKeys }) => {
+        if (this.destroyed) return;
+        this.knownGroupKeys = groupKeys;
+        this.rowCount = visibleCount;
+        this.rowHeightIndex = null;
+        this.recomputeViewport();
+        this.cgridCanvas.requestRepaint();
+        this.requestViewport();
+      })
+      .catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
   }
 
   /** Cycle 15 / Task 6 — append `colId` to `rowGroupCols`. Called
@@ -3573,6 +3712,10 @@ export class CGrid<TRow = any> {
       setSortModel: (s) => this.setSortModel(s),
       setFilterModel: (f) => this.setFilterModel(f),
       setGroupModel: (g) => this.setGroupModel(g),
+      expandAll: () => this.expandAll(),
+      collapseAll: () => this.collapseAll(),
+      setExpanded: (k, e) => this.setExpanded(k, e),
+      getExpandedKeys: () => this.getExpandedKeys(),
       showColumnFilter: (c) => this.showColumnFilter(c),
       hideColumnFilter: () => this.hideColumnFilter(),
       onFilterChanged: (source) => this.onFilterChanged(source),
@@ -3746,6 +3889,104 @@ export class CGrid<TRow = any> {
       this.canvasBounds.width || this.scroller.clientWidth || 800,
     );
     this.recomputeViewport();
+  }
+
+  /** Cycle 15 / Task 7 — hit-test the chevron region of an auto-group
+   *  cell. Returns the composite group key when the canvas-local point
+   *  falls inside the chevron's hit zone of a group row, `null`
+   *  otherwise. The hit zone matches the chevron's painted bbox
+   *  expanded by 4 px on every axis (see Task 7 design notes);
+   *  vertical = full row band.
+   *
+   *  Resolves the column / row via the active viewport state (matches
+   *  `HitTester`'s zone partitioning so a right-pinned auto-group
+   *  column is hit-testable too). Reads the row's depth + composite
+   *  key off the current chunk. The result silently bails when:
+   *  - no chunk is loaded yet (initial mount)
+   *  - point falls outside the data body band (header / totals row)
+   *  - resolved cell is not in an auto-group column
+   *  - resolved row is not a group row (rowKind !== 1)
+   *  - in multipleColumns mode the column's depth doesn't match the
+   *    row's depth
+   *  - point is outside the chevron's 4 px-padded hit rect
+   */
+  private hitTestGroupChevron(x: number, y: number): { groupKey: string } | null {
+    if (!this.chunk) return null;
+    if (this.groupModel.rowGroupCols.length === 0) return null;
+    const vs = this.viewport;
+    if (y < vs.bodyTop || y >= vs.bodyBottom) return null;
+    let row: ViewportRow | null = null;
+    for (const r of vs.visibleRows) {
+      if (y >= r.top && y < r.bottom) { row = r; break; }
+    }
+    if (!row || !row.subgrid.isData) return null;
+    // Mirror HitTester's zone partitioning so the cursor only ever
+    // picks a column whose home zone matches the X-band the click
+    // landed in (center columns extending past `bodyRight` shouldn't
+    // win when the cursor is in the pinned-right zone).
+    let zone: 'left' | 'right' | 'center';
+    if (x < vs.bodyLeft) zone = 'left';
+    else if (x >= vs.bodyRight) zone = 'right';
+    else zone = 'center';
+    let col: ViewportColumn | null = null;
+    for (const c of vs.visibleColumns) {
+      const home = c.pinned ?? 'center';
+      if (home !== zone) continue;
+      if (x >= c.left && x < c.right) { col = c; break; }
+    }
+    if (!col || !isAutoGroupColumnId(col.colId)) return null;
+    const rowIndex = row.localRowIndex;
+    const localIndex = rowIndex - this.chunk.rowStart;
+    if (localIndex < 0 || localIndex >= this.chunk.rowCount) return null;
+    if ((this.chunk.rowKinds[localIndex] ?? 0) !== 1) return null;
+    const rowDepth = this.chunk.groupDepth[localIndex] ?? 0;
+    // multipleColumns: each per-level column owns exactly one depth.
+    // Chevrons only live on the column whose depth matches the row's.
+    const colDepth = autoGroupColumnDepthFromId(col.colId);
+    if (colDepth !== null && colDepth !== rowDepth) return null;
+    // Chevron geometry must agree with `renderer/cellRenderers/group.ts`.
+    // PADDING + CHEVRON_SIZE + indent unit live as constants in both
+    // files; if either drifts the chevron paints in one place and is
+    // hit-tested in another — visual quality bar would catch it but
+    // these constants are explicitly mirrored to make the agreement
+    // load-bearing.
+    const PADDING = 6;
+    const CHEVRON_SIZE = 12;
+    const HIT_PAD = 4;
+    const INDENT_UNIT = 14;
+    const indentX = colDepth !== null ? 0 : rowDepth * INDENT_UNIT;
+    const left = col.left + PADDING + indentX;
+    const right = left + CHEVRON_SIZE;
+    if (x < left - HIT_PAD || x > right + HIT_PAD) return null;
+    const groupKey = this.chunk.groupKey?.[localIndex] ?? '';
+    if (groupKey === '') return null;
+    return { groupKey };
+  }
+
+  /** Cycle 15 / Task 7 — toggle a group's expanded state in response
+   *  to a chevron click. Mirrors `setExpanded(key, !current)` but
+   *  fires `rowGroupOpened` with `source: 'ui'` so apps can tell a
+   *  user-driven toggle from an imperative API call. */
+  private toggleGroupExpandedFromUi(groupKey: string): void {
+    if (this.destroyed) return;
+    if (groupKey === '') return;
+    const currentlyExpanded = this.expandedKeys === null
+      ? true
+      : this.expandedKeys.has(groupKey);
+    const next = !currentlyExpanded;
+    const materialised = this.expandedKeys === null
+      ? new Set(this.knownGroupKeys)
+      : new Set(this.expandedKeys);
+    if (next) materialised.add(groupKey);
+    else materialised.delete(groupKey);
+    this.expandedKeys = materialised;
+    this.shipExpandedKeys(Array.from(materialised));
+    this.events.emit({
+      type: 'rowGroupOpened',
+      key: groupKey,
+      expanded: next,
+      source: 'ui',
+    });
   }
 
   /** Cycle 15 / Task 5 — read the per-row group context from the
