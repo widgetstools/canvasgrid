@@ -11,13 +11,14 @@ import type { CachedContext2D } from '../gc';
  * window (no overlapping data row OR no overlapping column) contribute
  * zero paint cost: the per-range loop bails before touching `gc`.
  *
- * Cycle 12 / Task 2 — band-clip math now lives behind
- * `PainterCtx.getVisibleCellBounds`. The painter resolves the visible
- * top-left + bottom-right corners of each range through the helper, so a
- * cell that has scrolled into a foreign band (center → pinned-left, etc.)
- * or out of `[bodyTop, bodyBottom]` is treated as not visible and the
- * range is skipped. No `bodyLeft / bodyRight` reads or `gc.clip` calls
- * remain.
+ * Cycle 12 / Task 2 + fix: the band-aware corner-cell approach broke
+ * partial ranges (a range whose top row had scrolled into overscan
+ * above `bodyTop` was skipped entirely even though its middle rows
+ * were on-screen). We walk EVERY visible data row inside the range
+ * to compute the bounding box from raw `row.top` / `row.bottom`, then
+ * wrap the paint in a band clip rect so the bounding box still can't
+ * leak into the header (top), below body (bottom), or into pinned
+ * zones (when the range's columns belong to the center band).
  */
 export function paintRangeOverlay(gc: CachedContext2D, p: PainterCtx): void {
   const ranges = p.selection.ranges;
@@ -33,75 +34,86 @@ export function paintRangeOverlay(gc: CachedContext2D, p: PainterCtx): void {
   gc.cache.strokeStyle = theme.rangeBorderColor;
   gc.cache.lineWidth = 1;
 
-  // Track the LAST range's band-aware bottom-right so the fill handle
-  // hides when the bottom-right cell scrolled out of its band.
+  // Track the LAST range's bottom-right (in raw coords) so the fill
+  // handle paints on top after the loop. The handle's own band clip
+  // is the range's clip, so a handle on a center column won't bleed
+  // into pinned zones either.
   let lastBottomRight: { x: number; y: number } | null = null;
+  let lastClip: { xL: number; xR: number } | null = null;
 
   for (let i = 0; i < ranges.length; i++) {
     const range = ranges[i]!;
     const colIds = range.colIds;
 
-    // Find leftmost + rightmost columns of this range present in the
-    // visible window, in display order. `.indexOf` per column is fine
-    // here — colIds is small (typically 1..20).
-    let leftColId: string | null = null;
-    let rightColId: string | null = null;
+    // Walk visible columns in display order. Track the band of the
+    // FIRST matching column — every column in a range shares a pinned
+    // status by construction (you can't drag a range across the
+    // center↔pinned boundary), so one column's band defines the
+    // horizontal clip for the whole range.
+    let minLeft = Number.POSITIVE_INFINITY;
+    let maxRight = Number.NEGATIVE_INFINITY;
+    let rangePinned: 'left' | 'right' | undefined;
+    let sawCol = false;
     for (let c = 0; c < vs.visibleColumns.length; c++) {
       const col = vs.visibleColumns[c]!;
       if (colIds.indexOf(col.colId) === -1) continue;
-      if (leftColId === null) leftColId = col.colId;
-      rightColId = col.colId;
+      if (!sawCol) { rangePinned = col.pinned; sawCol = true; }
+      if (col.left < minLeft) minLeft = col.left;
+      if (col.right > maxRight) maxRight = col.right;
     }
-    if (leftColId === null || rightColId === null) continue;
+    if (!sawCol) continue;
 
-    // Find topmost + bottommost data rows of this range present in the
-    // visible window. Walks `visibleRows` in order, so the first
-    // matching row is the topmost and the last is the bottommost.
-    let topRowLocal = -1;
-    let bottomRowLocal = -1;
+    // Walk visible data rows for the range, using raw row.top /
+    // row.bottom (the helper rejects overscan rows whose top is
+    // above bodyTop, which would otherwise skip a partial range).
+    let minTop = Number.POSITIVE_INFINITY;
+    let maxBottom = Number.NEGATIVE_INFINITY;
     for (let r = 0; r < vs.visibleRows.length; r++) {
       const row = vs.visibleRows[r]!;
       if (!row.subgrid.isData) continue;
       if (row.localRowIndex < range.rowStart || row.localRowIndex > range.rowEnd) continue;
-      if (topRowLocal === -1) topRowLocal = row.localRowIndex;
-      bottomRowLocal = row.localRowIndex;
+      if (row.top < minTop) minTop = row.top;
+      if (row.bottom > maxBottom) maxBottom = row.bottom;
     }
-    if (topRowLocal === -1) continue;
+    if (minTop === Number.POSITIVE_INFINITY) continue;
 
-    // Resolve band-clipped corner bounds via the helper. When either
-    // corner has scrolled out of its band (center → pinned zone, or
-    // straddling the body's top/bottom edge), treat the range as having
-    // no on-screen footprint and skip the paint.
-    const topLeft = p.getVisibleCellBounds(topRowLocal, leftColId);
-    const bottomRight = p.getVisibleCellBounds(bottomRowLocal, rightColId);
-    if (!topLeft || !bottomRight) continue;
+    // Per-range band clip. Matches the band rule the focus ring
+    // uses: pinned-left → [0, bodyLeft], pinned-right → [bodyRight,
+    // ∞], center → [bodyLeft, bodyRight]. Vertical clip is always
+    // [bodyTop, bodyBottom].
+    const xL = rangePinned === 'left' ? 0
+      : rangePinned === 'right' ? vs.bodyRight
+      : vs.bodyLeft;
+    const xR = rangePinned === 'left' ? vs.bodyLeft
+      : rangePinned === 'right' ? 1e6
+      : vs.bodyRight;
 
-    const x = topLeft.x;
-    const y = topLeft.y;
-    const w = bottomRight.x + bottomRight.w - topLeft.x;
-    const h = bottomRight.y + bottomRight.h - topLeft.y;
-
-    gc.fillRect(x, y, w, h);
+    gc.save();
+    gc.beginPath();
+    gc.rect(xL, vs.bodyTop, xR - xL, vs.bodyBottom - vs.bodyTop);
+    gc.clip();
+    gc.fillRect(minLeft, minTop, maxRight - minLeft, maxBottom - minTop);
     // Inset the border by 0.5px so the 1px stroke sits on the integer
     // pixel grid without anti-aliasing fuzz at canvas DPRs other than 1.
-    gc.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+    gc.strokeRect(minLeft + 0.5, minTop + 0.5, maxRight - minLeft - 1, maxBottom - minTop - 1);
+    gc.restore();
 
     if (i === ranges.length - 1) {
-      lastBottomRight = {
-        x: bottomRight.x + bottomRight.w,
-        y: bottomRight.y + bottomRight.h,
-      };
+      lastBottomRight = { x: maxRight, y: maxBottom };
+      lastClip = { xL, xR };
     }
   }
 
   // Cycle 9 / Task 5 — fill handle paint. 6×6 square centered on the
-  // bottom-right of the LAST range. The handle uses the opaque border
-  // color so it's visible against the translucent fill. Only painted
-  // when `showFillHandle` is true (cgrid host reads
-  // `options.enableFillHandle`) AND the last range's bottom-right cell
-  // is band-visible.
-  if (p.showFillHandle && lastBottomRight !== null) {
+  // bottom-right of the LAST range, clipped to the range's band so a
+  // center-range handle can't bleed into a pinned zone.
+  if (p.showFillHandle && lastBottomRight !== null && lastClip !== null) {
+    gc.save();
+    gc.beginPath();
+    gc.rect(lastClip.xL, vs.bodyTop, lastClip.xR - lastClip.xL, vs.bodyBottom - vs.bodyTop);
+    gc.clip();
     gc.cache.fillStyle = theme.rangeBorderColor;
     gc.fillRect(lastBottomRight.x - 3, lastBottomRight.y - 3, 6, 6);
+    gc.restore();
   }
 }
