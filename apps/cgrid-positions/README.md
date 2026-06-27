@@ -16,6 +16,30 @@ npm run dev:positions
 
 Opens at http://localhost:5175.
 
+## Visual regression (Cycle 12)
+
+A pinned-Chromium, fixed-viewport Playwright suite under `e2e-visual/` diffs
+the demo against committed PNG baselines so layout / overlay regressions fail
+the merge gate before they reach the user. Run it from this package:
+
+```bash
+npm run test:visual
+```
+
+The harness starts (or reuses) the Vite dev server on port 5175 and uses a
+1440×900 viewport at DPR 1 with the dark theme forced. To regenerate baselines
+after an intentional visual change, run:
+
+```bash
+npm run test:visual -- --update-snapshots
+```
+
+PRs that ship new or updated baselines MUST title themselves with the
+`[visual-baseline-update]` marker so reviewers know to compare the regenerated
+PNGs against the prior frame. Baselines live in
+`apps/cgrid-positions/e2e-visual/__snapshots__/` and ship in git as binary
+(`.gitattributes` enforces this).
+
 ## Clipboard + context menu (Cycle 10)
 
 - **Right-click** any body cell — the cgrid context menu opens with the
