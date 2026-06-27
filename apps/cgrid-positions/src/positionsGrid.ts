@@ -259,6 +259,14 @@ export interface PositionsGridOptions {
    *  so three synthesized auto-group columns appear at the leftmost
    *  leaves, each showing chrome at its own group depth. */
   groupMultipleColumns?: boolean;
+  /** Cycle 15 / Task 13 — cycle-exit showcase mode (`?grouping=demo`).
+   *  Flips on one-level grouping by `ticker` AND `groupIncludeFooter:
+   *  true` so a single query param surfaces the full grouped + aggregated
+   *  reading (auto-group column, chevron + indent + `(count)`, per-group
+   *  `Total ${ticker}` footer row, grand-total footer at the end). Off
+   *  by default so visual cells 01–26 stay byte-stable; the README's
+   *  grouping deep-link sets it. */
+  groupingDemo?: boolean;
   /** Cycle 15 / Task 6 — `'always'` mounts the row group panel even
    *  when no chips are present so the empty-state placeholder
    *  ("Drag here to set row groups") is visible. Off by default;
@@ -849,6 +857,26 @@ export function createPositionsGrid(
     // baseline the synthesis stripe vocabulary.
     ...(opts.groupIncludeFooter ? { groupIncludeFooter: true as const } : {}),
     ...(opts.groupIncludeTotalFooter ? { groupIncludeTotalFooter: true as const } : {}),
+    // Cycle 15 / Task 13 — cycle-exit showcase mode. `?grouping=demo`
+    // composes the per-group footer signature with the 1-level ticker
+    // group below, surfacing the full grouped + aggregated reading from
+    // a single query param. Default off so visual cells 01–26 stay
+    // byte-stable.
+    ...(opts.groupingDemo ? { groupIncludeFooter: true as const, groupIncludeTotalFooter: true as const } : {}),
+    // Live "Row group panel" toolbar toggle (`?rowGroupPanel=always`)
+    // is the user-facing grouping experience. Surface every Cycle 15
+    // feature by default so the toggle reveals — not hides — what the
+    // cycle shipped: groups start COLLAPSED so the user drives expansion,
+    // each expanded group gets a `Total ${groupValue}` footer row, and a
+    // grand-total footer caps the body. Explicit URL flags above still
+    // win for byte-stable visual baselines.
+    ...(opts.rowGroupPanelAlways
+      ? {
+          groupDefaultExpanded: 0 as const,
+          groupIncludeFooter: true as const,
+          groupIncludeTotalFooter: true as const,
+        }
+      : {}),
   };
   const grid = new CGrid<Position>(container, options);
   grid.registerCellRenderer('pnlPill', pnlPill);
@@ -915,6 +943,14 @@ export function createPositionsGrid(
   // the panel shows a single chip the user can remove + drop more
   // columns into.
   if (opts.rowGroupPanelAlways) {
+    grid.setGroupModel({ rowGroupCols: ['ticker'] });
+  }
+  // Cycle 15 / Task 13 — cycle-exit showcase: seed the 1-level ticker
+  // grouping post-construction so the per-group footer flag (set above
+  // in the options object) finds rows to total. Composed alongside
+  // groupIncludeFooter + groupIncludeTotalFooter for the polished
+  // grouped reading.
+  if (opts.groupingDemo) {
     grid.setGroupModel({ rowGroupCols: ['ticker'] });
   }
   return grid;
