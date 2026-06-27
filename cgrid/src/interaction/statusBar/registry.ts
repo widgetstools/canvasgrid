@@ -9,15 +9,19 @@
  * `ToolPanelRegistry` so a single `CGridOptions.components` channel feeds
  * both surfaces.
  *
- * Task 1 ships the built-ins as inert stubs (empty `<div>` GUI, no-op
- * `refresh` / `destroy`) so the registry surface is testable end-to-end
- * before Tasks 2 + 3 replace them with the real count + aggregation
- * implementations.
+ * Task 2 wires the real count-panel ctors into the four
+ * `agTotal/agFiltered/agSelected/agTotalAndFiltered…` keys; the
+ * aggregation key keeps the inert stub until Task 3 lands its real
+ * implementation.
  */
+import { COUNT_PANEL_CONSTRUCTORS } from './panels/counts';
 import type { IStatusPanelComp, StatusPanelComponent, StatusPanelParams } from './types';
 
-/** Built-in stub panel. The class itself is the contract that Tasks 2 + 3
- *  replace via `register(key, RealCtor)`. */
+/** Built-in stub panel. Used for any built-in key that doesn't yet
+ *  have a real implementation registered (Cycle 13 / Task 2 leaves
+ *  only `agAggregationComponent` on the stub until Task 3 ships the
+ *  real ctor). Renders an empty `<div>`; no events, no refresh side
+ *  effects. */
 class StubBuiltInStatusPanel implements IStatusPanelComp {
   private gui: HTMLDivElement = document.createElement('div');
   init(_params: StatusPanelParams): void {
@@ -71,15 +75,20 @@ export class StatusPanelRegistry {
     return instance;
   }
 
-  /** Seed the built-in keys with stub implementations. Called once at
+  /** Seed the built-in keys with their real implementations (or the
+   *  inert stub when a real ctor hasn't shipped yet). Called once at
    *  CGrid construction BEFORE merging `CGridOptions.components`, so
-   *  app-supplied entries can override the stubs (and the future real
-   *  implementations from Tasks 2 + 3). */
+   *  app-supplied entries can still override either the real built-in
+   *  or the stub by registering against the same key.
+   *
+   *  Task 2 — `agTotal/agFiltered/agSelected/agTotalAndFiltered…`
+   *  resolve to the count-panel ctors from `panels/counts.ts`. Task 3
+   *  will swap `agAggregationComponent` off the stub. */
   seedBuiltIns(): void {
     for (const key of BUILT_IN_STATUS_PANEL_KEYS) {
-      if (!this.components.has(key)) {
-        this.components.set(key, StubBuiltInStatusPanel);
-      }
+      if (this.components.has(key)) continue;
+      const ctor = (COUNT_PANEL_CONSTRUCTORS as Record<string, StatusPanelComponent | undefined>)[key];
+      this.components.set(key, ctor ?? StubBuiltInStatusPanel);
     }
   }
 
