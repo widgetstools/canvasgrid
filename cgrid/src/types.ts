@@ -947,6 +947,23 @@ export interface CColDef<TRow = any, TValue = any> {
    *  custom property and falls back to a 40% alpha headerFg. Cycle 8 /
    *  Task 5. */
   unSortIcon?: boolean;
+  /** Cycle 15 / Task 11 — when this column is one of the
+   *  `rowGroupCols` AND the active `SortModel` targets the column,
+   *  force the group-level sort to compare composite group keys
+   *  (cheap, string-lexicographic) instead of running the column's
+   *  registered `comparator` / accented collator over the raw group
+   *  `.value`. Useful when the value-aware comparator is expensive
+   *  (date parse, locale-aware fold) and the cheap key string
+   *  produces the same order.
+   *
+   *  When `false` / unset, the group-level sort uses the column's
+   *  registered `comparator` (or accented collator for text columns
+   *  opted into `accentedSort`) over the raw `.value`. Falls back to
+   *  the composite-key compare when neither is configured.
+   *
+   *  No effect on within-bucket (leaf-row) sorting — that always
+   *  honours the row's data and the column's registered comparator. */
+  sortGroupRowsByKey?: boolean;
   resizable?: boolean;
   /** Editable predicate. Pass `true` / `false` for a static answer, or a
    *  callback receiving `{ data, colId, rowIndex, value }`. */

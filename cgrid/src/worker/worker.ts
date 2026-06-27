@@ -227,8 +227,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     // Cycle 15 / Task 1 — GroupPass slot. Runs against the post-filter
     // (post-quick / post-external / post-alwaysPass) row set and BEFORE
     // SortPass. The output is stored on state so Task 2's slicer + Task
-    // 10's group-aware sort can read from it; for Task 1 the flat
-    // `visibleCache` shape downstream consumers see is unchanged.
+    // 11's group-aware sort can read from it.
     state.groupOutput = state.group.apply(ids);
     // Cycle 15 / Task 8 — capture the pre-sort, post-filter rowId
     // array so descendant lookups (`collectGroupDescendantRowIds`) can
@@ -237,7 +236,19 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     // so a future `state.group.apply` doesn't mutate this snapshot
     // behind a pending descendant request.
     state.groupInputIds = state.groupOutput.bypassed ? null : ids.slice();
-    ids = state.sort.apply(ids);
+    // Cycle 15 / Task 11 — group-aware sort. When grouping is active,
+    // sort happens inside the group tree (within-bucket child indices +
+    // per-level group ordering), NOT across the flat post-filter array.
+    // The `flatOrder` we ship to the slicer carries the sorted order;
+    // the flat `ids` array stays in its pre-sort post-filter order so
+    // `flatOrder[i].rowIndex` continues to address it correctly. When
+    // grouping is bypassed, fall back to the pre-Task-11 flat global
+    // sort — `ids` becomes the sorted order the flat slicer reads.
+    if (!state.groupOutput.bypassed) {
+      state.groupOutput = state.sort.applyGrouped(state.groupOutput, ids);
+    } else {
+      ids = state.sort.apply(ids);
+    }
     // Cycle 8 / Task 4 — when `postSortRowsPresent`, ship the sorted ids
     // up for the main-thread hook to re-order. Empty sets skip the
     // round-trip (an empty array round-trip is just a waste of two
