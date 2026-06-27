@@ -100,16 +100,14 @@
   --cg-range-border-color: #60a5fa;
 }
 
-/* Native scrollbar styling (Chromium/WebKit) — always-visible thumb.
- * `overflow-y: scroll` + `-webkit-appearance: none` is the macOS-safe
- * pattern: `scroll` (not `auto`) reserves the track even when not needed,
- * and `appearance: none` enables Safari's custom-styling path. Without
- * both, macOS uses overlay scrollbars that take 0 px of layout width and
- * only flash on scroll (regression flagged on 2026-06-26). */
-.cg-scroller {
-  overflow-y: scroll;
-  overflow-x: scroll;
-}
+/* Native scrollbar styling (Chromium/WebKit) — always-visible thumb
+ * when the content actually overflows. `overflow: auto` (set inline on
+ * the scroller element) hides the tracks when nothing scrolls — the
+ * fix for "scrollbars appear even when the grid has no data".
+ *
+ * `-webkit-appearance: none` is what makes the visible scrollbar honour
+ * our 12 px width on macOS instead of falling back to a 0-width overlay
+ * that only flashes on scroll (regression flagged on 2026-06-26). */
 .cg-scroller::-webkit-scrollbar {
   width: 12px;
   height: 12px;
