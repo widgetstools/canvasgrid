@@ -129,6 +129,15 @@ export function sliceGroupedViewport<TRow>(
   visibleOrder: readonly VisibleRowEntry[],
   req: ViewportRequest,
   pendingFlashes?: Map<string, Set<string>>,
+  /** Cycle 15 / Task 3 — accessor for the group-row metadata the chunk
+   *  needs (formatted value, descendant count, expansion state). The
+   *  slicer doesn't own the `GroupNode` tree; the caller passes a thin
+   *  resolver keyed by `groupKey`. When omitted, group rows ship with
+   *  empty value, zero count, and `isExpanded = 1` (defensive default —
+   *  the renderer still keys off `rowKinds[i] === 1` for the indent +
+   *  chevron paint, so missing metadata won't crash; just produces a
+   *  visually incomplete group row). */
+  groupMeta?: (key: string) => { value: string; childCount: number; isExpanded: boolean } | undefined,
 ): ViewportChunk {
   const rowStart = Math.max(0, req.rowStart);
   const rowEnd = Math.min(visibleOrder.length, req.rowEnd);
@@ -138,12 +147,25 @@ export function sliceGroupedViewport<TRow>(
   const rowKinds = new Uint8Array(count);
   const groupDepth = new Uint8Array(count);
   const heights = new Float32Array(count);
+  // Cycle 15 / Task 3 — group-row parallel arrays. Group entries
+  // populate via the `groupMeta` resolver; data entries stay at
+  // defaults (`''` / 0 / 1 = always-visible).
+  const groupValue: string[] = new Array<string>(count).fill('');
+  const groupChildCount = new Uint32Array(count);
+  const isExpanded = new Uint8Array(count);
+  isExpanded.fill(1);
 
   for (let i = 0; i < count; i++) {
     const entry = visibleOrder[rowStart + i]!;
     groupDepth[i] = entry.depth;
     if (entry.kind === 'group') {
       rowKinds[i] = 1;
+      const meta = groupMeta?.(entry.key);
+      if (meta) {
+        groupValue[i] = meta.value;
+        groupChildCount[i] = meta.childCount;
+        isExpanded[i] = meta.isExpanded ? 1 : 0;
+      }
       continue;
     }
     const rowId = postFilterIds[entry.rowIndex];
@@ -238,5 +260,8 @@ export function sliceGroupedViewport<TRow>(
     numericCols,
     textCols,
     flashMask,
+    groupValue,
+    groupChildCount,
+    isExpanded,
   };
 }

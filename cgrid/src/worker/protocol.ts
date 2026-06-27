@@ -83,6 +83,21 @@ export interface ViewportRequest {
   includeFlashMask?: boolean;
 }
 
+/** Wire-format version tag for `ViewportChunk` payloads.
+ *  - `1` = Cycle 4 era (no group fields).
+ *  - `2` = Cycle 15 / Task 3 — appends `groupValue / groupChildCount /
+ *          isExpanded` parallel arrays for the `'group'` cell renderer.
+ *  Append-only: new versions never reorder or resize existing fields.
+ *  The binary serializer in `chunkFormat.ts` writes the version in the
+ *  header byte; readers fall back to defaults for fields absent in
+ *  older versions. */
+export type ChunkFormatVersion = 1 | 2;
+
+/** Current chunk format version emitted by the worker post-Task-3.
+ *  Bumping this is a coordinated change: serializer, slicer, and the
+ *  main-thread `normalizeViewportChunk` decoder all read this constant. */
+export const CHUNK_FORMAT_VERSION: ChunkFormatVersion = 2;
+
 export interface ViewportChunk {
   rowStart: number;
   rowCount: number;
@@ -104,6 +119,26 @@ export interface ViewportChunk {
    * fallback main-side". Cycle 5 / Task 6 — variable row heights.
    */
   heights: Float32Array;
+  /** Cycle 15 / Task 3 — formatted group value for each visible row, in
+   *  the same order as `rowIds`. Empty string for data rows (the
+   *  `'group'` cell renderer keys off `rowKinds[i] === 1`); the
+   *  group-level label for group rows. Length === `rowCount` when
+   *  present. Absent (or empty array) on v1 chunks — the main-thread
+   *  decoder substitutes per-row `''`. */
+  groupValue?: string[];
+  /** Cycle 15 / Task 3 — descendant leaf-row count for each group row,
+   *  zero for data rows. Length === `rowCount` when present. Absent on
+   *  v1 chunks — main-thread decoder fills zeros. */
+  groupChildCount?: Uint32Array;
+  /** Cycle 15 / Task 3 — paint-side expansion state for group rows
+   *  (1 = expanded, 0 = collapsed). Data rows always 1 (their visibility
+   *  is implied by being in the slicer's output). Duplicates the
+   *  client's `expandedKeys: Set<string>` so the renderer paints the
+   *  chevron without looking up the set per row. Length === `rowCount`
+   *  when present. Absent on v1 chunks — main-thread decoder fills 1
+   *  (data rows / "expanded" groups; an ungrouped chunk's group cells
+   *  never paint, so the value is harmless). */
+  isExpanded?: Uint8Array;
 }
 
 /** Cycle 5 / Task 8 — items batched into a single `measureTextRequest`
@@ -348,5 +383,39 @@ export function collectViewportTransferables(chunk: ViewportChunk): ArrayBufferL
     out.push(tc.offsets.buffer, tc.bytes.buffer);
   }
   if (chunk.flashMask) out.push(chunk.flashMask.buffer);
+  // Cycle 15 / Task 3 — group-field buffers ride along when present.
+  // `groupValue` is a string[] (not a buffer), so it transfers via the
+  // structured clone path; only the typed-array companions are listed
+  // here. Absent fields (v1 chunks) are simply skipped.
+  if (chunk.groupChildCount) out.push(chunk.groupChildCount.buffer);
+  if (chunk.isExpanded) out.push(chunk.isExpanded.buffer);
   return out;
+}
+
+/** Cycle 15 / Task 3 — normalize an incoming `ViewportChunk` so the main
+ *  thread can read the new group fields uniformly regardless of which
+ *  worker version produced it. Returns the original object reference when
+ *  every field is already present (zero-allocation v2 fast path);
+ *  otherwise returns a shallow copy with default fields filled in
+ *  (v1 → v2 upgrade path):
+ *    - `groupValue` → `Array(rowCount).fill('')`
+ *    - `groupChildCount` → `new Uint32Array(rowCount)` (all zeros)
+ *    - `isExpanded` → `Uint8Array(rowCount)` filled with `1`
+ *
+ *  Callers downstream of `WorkerClient.getViewport` are guaranteed all
+ *  three fields are present after normalization, so the `'group'`
+ *  renderer never has to check `?? defaults`. */
+export function normalizeViewportChunk(chunk: ViewportChunk): ViewportChunk {
+  if (chunk.groupValue && chunk.groupChildCount && chunk.isExpanded) {
+    return chunk;
+  }
+  const rowCount = chunk.rowCount;
+  const groupValue = chunk.groupValue ?? new Array<string>(rowCount).fill('');
+  const groupChildCount = chunk.groupChildCount ?? new Uint32Array(rowCount);
+  let isExpanded = chunk.isExpanded;
+  if (!isExpanded) {
+    isExpanded = new Uint8Array(rowCount);
+    isExpanded.fill(1);
+  }
+  return { ...chunk, groupValue, groupChildCount, isExpanded };
 }

@@ -2,6 +2,7 @@ import type {
   WorkerRequest, WorkerResponse, WorkerPush, WorkerInitPayload, ViewportRequest, ViewportChunk,
   WorkerColumn, MeasureTextItem, AutosizeColumnRequest,
 } from './protocol';
+import { normalizeViewportChunk } from './protocol';
 import type { TransactionResult, SortModel, FilterModel, GroupModel, SelectionRange } from '../types';
 
 export interface WorkerClientHandlers {
@@ -274,7 +275,8 @@ export class WorkerClient {
   }
 
   getViewport(req: ViewportRequest): Promise<ViewportChunk> {
-    return this.send<{ chunk: ViewportChunk }>({ type: 'getViewport', payload: req }).then((r) => r.chunk);
+    return this.send<{ chunk: ViewportChunk }>({ type: 'getViewport', payload: req })
+      .then((r) => normalizeViewportChunk(r.chunk));
   }
 
   /** Push updated column metadata into the worker so filter/sort/agg/slicer

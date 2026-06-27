@@ -74,6 +74,25 @@ export interface ResolvedTheme {
    *  a SINGLE color source — pinned and totals share the same body-edge
    *  hairline. Resolved from `--cg-pinned-row-border`. */
   pinnedRowBorder: string;
+  /** Cycle 15 / Task 4 — chevron color for the auto-group column's
+   *  group rows. Aliased to `--cg-totals-fg-muted` in the shipped
+   *  themes — the muted slate the totals renderer uses for empty
+   *  placeholders. The painter additionally honours the column's
+   *  resolved `fg` if this token isn't declared (defensive). Resolved
+   *  from `--cg-group-chevron-color`. Design plan:
+   *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md`
+   *  § Task 4. */
+  groupChevronColor: string;
+  /** Cycle 15 / Task 4 — `(count)` suffix color for the auto-group
+   *  column's group rows. Same muted slate family as `groupChevronColor`
+   *  by default; the count is metadata, visually subordinate to the
+   *  value. Resolved from `--cg-group-count-color`. */
+  groupCountColor: string;
+  /** Cycle 15 / Task 4 — indent unit in CSS px. One chevron-width per
+   *  depth level so the chevron "stacks" cleanly under nested groups.
+   *  Resolved from `--cg-group-indent`. Defaults to `14` (the design
+   *  plan's canonical chevron width) when the variable isn't declared. */
+  groupIndent: number;
   rowHeight: number;
   headerHeight: number;
   resizerHotZone: number;
@@ -199,6 +218,9 @@ export class CssReader {
       pinnedRowBg: get('--cg-pinned-row-bg') || '#fbf8f3',
       pinnedRowFg: get('--cg-pinned-row-fg') || get('--cg-fg-color') || '#1a1f24',
       pinnedRowBorder: get('--cg-pinned-row-border') || get('--cg-totals-border-top') || '#cbd5e1',
+      groupChevronColor: get('--cg-group-chevron-color') || get('--cg-totals-fg-muted') || '#475569',
+      groupCountColor: get('--cg-group-count-color') || get('--cg-totals-fg-muted') || '#475569',
+      groupIndent: px('--cg-group-indent', 14),
       rowHeight: px('--cg-row-height', 30),
       headerHeight: px('--cg-header-height', 32),
       resizerHotZone: px('--cg-resizer-hot-zone', 4),

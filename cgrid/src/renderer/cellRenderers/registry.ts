@@ -60,6 +60,19 @@ export interface CellPaintConfig {
    */
   emptyFg?: string;
   /**
+   * Cycle 15 / Task 4 — auto-group column theme tokens, threaded straight
+   * onto every cell config so the `'group'` cell renderer reads chevron
+   * color, count suffix color, and the indent unit without reaching into
+   * the theme directly. Populated by `applyCellProps` from
+   * `theme.groupChevronColor / groupCountColor / groupIndent`. Other
+   * renderers (text / number / totals / header) ignore them at zero
+   * runtime cost. Design plan:
+   * `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 4.
+   */
+  groupChevronColor?: string;
+  groupCountColor?: string;
+  groupIndent?: number;
+  /**
    * Opaque per-cell params forwarded by the painter. Set from either the
    * resolved column's static `cellRendererParams` or — when a column has a
    * `cellRendererSelector` that returned `{ params }` — that per-cell

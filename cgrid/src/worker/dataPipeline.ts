@@ -910,6 +910,14 @@ export class ViewportSlicer<TRow = any> {
     // ride alongside the explicit getRowHeight value via the store's
     // `effectiveShippedHeight` aggregation. Cycle 5 / Task 8.
     const heights = new Float32Array(count);
+    // Cycle 15 / Task 3 — group-row parallel arrays. The ungrouped
+    // slicer is the data-only path: groupValue is `''` per slot,
+    // groupChildCount is 0, isExpanded is 1 (slot is always visible —
+    // no group hierarchy to collapse on this code path).
+    const groupValue: string[] = new Array<string>(count).fill('');
+    const groupChildCount = new Uint32Array(count);
+    const isExpanded = new Uint8Array(count);
+    isExpanded.fill(1);
 
     for (let i = 0; i < count; i++) {
       const id = visibleIds[rowStart + i]!;
@@ -988,6 +996,9 @@ export class ViewportSlicer<TRow = any> {
       numericCols,
       textCols,
       flashMask,
+      groupValue,
+      groupChildCount,
+      isExpanded,
     };
   }
 }

@@ -68,7 +68,11 @@ const pinnedBottom = pinnedRaw === 'bottom' || pinnedRaw === 'both';
 // (`?totals=bottom`) and toggled-on (`?totals=bottom&suppressAggHeader=1`)
 // — through this single switch.
 const suppressAggHeader = search.get('suppressAggHeader') === '1';
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader });
+// Cycle 15 / Task 4 — `?grouping=ticker` opts the demo into a one-level
+// row group so the auto-group column + 'group' cell renderer light up in
+// the live demo. Off by default so visual cells 01–19 stay byte-stable.
+const groupByTicker = search.get('grouping') === 'ticker';
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker });
 
 // E2E hooks: expose the grid + a readiness flag so Playwright tests can wait
 // for first-data-rendered and call api helpers (`getCellBoundsAt`,
@@ -134,34 +138,39 @@ function recordUpdates(n: number): void {
   if (n <= 0) return;
   updateSamples.push({ t: performance.now(), n });
 }
+const liveDotEl = document.querySelector<HTMLElement>('.live-dot');
 function refreshStatus(): void {
   if (rowsEl) {
     const api = grid as unknown as { getDisplayedRowCount?: () => number };
     const count = api.getDisplayedRowCount?.() ?? 0;
-    rowsEl.textContent = `Rows: ${count.toLocaleString()}`;
+    rowsEl.textContent = count.toLocaleString();
   }
-  if (upsProcessedEl) {
-    // Drop samples older than 1 second.
-    const cutoff = performance.now() - 1000;
-    while (updateSamples.length > 0 && updateSamples[0]!.t < cutoff) {
-      updateSamples.shift();
-    }
-    const sum = updateSamples.reduce((s, x) => s + x.n, 0);
-    upsProcessedEl.textContent = sum.toLocaleString();
+  // Drop samples older than 1 second so the rate is a rolling 1s window.
+  const cutoff = performance.now() - 1000;
+  while (updateSamples.length > 0 && updateSamples[0]!.t < cutoff) {
+    updateSamples.shift();
   }
-  if (upsPublishedEl) {
-    upsPublishedEl.textContent = STOMP_PUBLISH_RATE_PER_SEC.toLocaleString();
-  }
+  const sum = updateSamples.reduce((s, x) => s + x.n, 0);
+  if (upsProcessedEl) upsProcessedEl.textContent = sum.toLocaleString();
+  if (upsPublishedEl) upsPublishedEl.textContent = STOMP_PUBLISH_RATE_PER_SEC.toLocaleString();
+  // Live-dot pulses green while data is flowing (any sample in the last
+  // second), otherwise it sits idle grey. Single accent surface — every
+  // other control stays neutral.
+  if (liveDotEl) liveDotEl.dataset.state = sum > 0 ? 'live' : 'idle';
 }
 setInterval(refreshStatus, 250);
 refreshStatus();
 
 let darkTheme = true;
+const appShell = document.querySelector<HTMLElement>('.app');
 document.getElementById('theme')?.addEventListener('click', () => {
   darkTheme = !darkTheme;
   grid.setTheme(darkTheme ? 'cg-theme-quartz-dark' : 'cg-theme-quartz');
   host.classList.toggle('cg-theme-quartz', !darkTheme);
   host.classList.toggle('cg-theme-quartz-dark', darkTheme);
+  // Flip the page-chrome theme alongside the grid so the wordmark,
+  // toolbar, and inputs read the matching token set.
+  if (appShell) appShell.dataset.theme = darkTheme ? 'dark' : 'light';
 });
 
 // Cycle 6 / Task 2 — Save / Restore / Reset column-layout buttons. The

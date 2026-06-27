@@ -234,6 +234,14 @@ export interface PositionsGridOptions {
    *  snapshot in visual cell 19-aggfunc-in-header via
    *  `?totals=bottom&suppressAggHeader=1`. */
   suppressAggHeader?: boolean;
+  /** Cycle 15 / Task 4 — opt the demo into mounting a one-level row
+   *  group by `ticker`. Off by default so visual cells 01–19 stay
+   *  byte-stable; visual cell 20-group-one-level opts in via
+   *  `?grouping=ticker`. The demo calls `grid.setGroupModel({ rowGroupCols:
+   *  ['ticker'] })` once the grid is ready so the worker's GroupPass
+   *  produces the tree and the auto-group column synthesizes at index
+   *  0 of the visible-leaf order. */
+  groupByTicker?: boolean;
 }
 
 /** Cycle 14 / Task 2 — deterministic seed for the demo pinned reference
@@ -724,5 +732,15 @@ export function createPositionsGrid(
     }
     return at.length - bt.length;
   }).catch(() => { /* worker terminated mid-init; harmless */ });
+  // Cycle 15 / Task 4 — opt the demo into a one-level row group by
+  // `ticker` when the URL carries `?grouping=ticker`. The auto-group
+  // column synthesizes at index 0 of the visible-leaf order and
+  // paints chevron + indent + value + (count) per group row. Fired
+  // post-construction (the worker accepts setGroupModel before init
+  // completes via its request queue, but the auto-group column
+  // synthesis runs on the main thread immediately).
+  if (opts.groupByTicker) {
+    grid.setGroupModel({ rowGroupCols: ['ticker'] });
+  }
   return grid;
 }
