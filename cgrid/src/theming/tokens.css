@@ -1009,3 +1009,58 @@
 .cg-status-panel-count-value {
   color: var(--cg-status-bar-fg);
 }
+
+/* Cycle 13 / Task 3 — agAggregationComponent.
+ *
+ * Five stats inline separated by `·` (the middle-dot Task 1 declared +
+ * Task 2 reserved for this family). Inherits Tasks 1 + 2's vocabulary
+ * verbatim — no new tokens, just six new class rules and the empty-
+ * state contract that inverts the count panels' "never collapse" rule.
+ *
+ * Empty-selection: the panel root sets `hidden = true` from JS; this
+ * stylesheet makes that visible via `[hidden] { display: none }`. The
+ * inversion is justified in cycle-13-statusbar-design.md § Task 3 by
+ * the cadence distinction (count = ambient updates → never collapse;
+ * agg = user-triggered updates → hide on empty). */
+.cg-status-panel-agg {
+  display: inline-flex;
+  align-items: baseline;
+  /* The separator owns all inter-stat spacing via its own padding;
+   * a flex gap here would double-count the space around `·`. */
+  gap: 0;
+  /* Hard cap at the zone width. At very narrow viewports the trailing
+   * stat (canonical order puts Avg last) truncates via ellipsis. Apps
+   * that need every stat visible at narrow widths restrict via
+   * `statusPanelParams: { aggFuncs: ['count', 'sum'] }`. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;
+}
+.cg-status-panel-agg[hidden] {
+  /* Browsers default to `display: none` for `[hidden]` but the
+   * `display: inline-flex` rule above wins the cascade without this
+   * explicit override. Honour the attribute so the empty-state
+   * contract holds. */
+  display: none;
+}
+.cg-status-panel-agg-stat {
+  display: inline-flex;
+  align-items: baseline;
+  /* Mirrors the count family's intra-pair gap so the agg + count
+   * panels share kerning when the user reads across the bar. */
+  gap: 1ch;
+}
+.cg-status-panel-agg-label {
+  color: var(--cg-status-bar-fg-muted);
+}
+.cg-status-panel-agg-value {
+  color: var(--cg-status-bar-fg);
+}
+.cg-status-panel-agg-separator {
+  /* Separator is chrome, not data — same muted tone as labels. */
+  color: var(--cg-status-bar-fg-muted);
+  /* 1ch total around the `·` — 0.5ch on each side. Matches Task 1's
+   * declared `.cg-status-panel-separator` vocabulary. */
+  padding: 0 0.5ch;
+}

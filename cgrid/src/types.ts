@@ -37,6 +37,13 @@ export type {
   StatusBarDef,
   StatusBarPosition,
 } from './interaction/statusBar/types';
+// Cycle 13 / Task 3 — `agAggregationComponent` public params + the
+// `AggFunc` union. Apps that restrict the agg panel via
+// `statusPanelParams.aggFuncs` or supply a custom `valueFormatter`
+// import these. The panel implementation lives at
+// `interaction/statusBar/panels/aggregation.ts`.
+export type { IAggregationStatusPanelParams } from './interaction/statusBar/panels/aggregation';
+export type { AggFunc } from './interaction/statusBar/aggMath';
 
 export interface ColCellOverrides {
   font?: string;

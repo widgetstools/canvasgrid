@@ -9,11 +9,13 @@
  * `ToolPanelRegistry` so a single `CGridOptions.components` channel feeds
  * both surfaces.
  *
- * Task 2 wires the real count-panel ctors into the four
- * `agTotal/agFiltered/agSelected/agTotalAndFiltered…` keys; the
- * aggregation key keeps the inert stub until Task 3 lands its real
- * implementation.
+ * Task 2 wired the real count-panel ctors into the four
+ * `agTotal/agFiltered/agSelected/agTotalAndFiltered…` keys. Task 3
+ * (this update) wires `agAggregationComponent` to `AgAggregationPanel`,
+ * so every built-in key now resolves to a real implementation and the
+ * stub is reserved for any future built-in that lands in flight.
  */
+import { AgAggregationPanel } from './panels/aggregation';
 import { COUNT_PANEL_CONSTRUCTORS } from './panels/counts';
 import type { IStatusPanelComp, StatusPanelComponent, StatusPanelParams } from './types';
 
@@ -47,6 +49,15 @@ export const BUILT_IN_STATUS_PANEL_KEYS = [
   'agTotalAndFilteredRowCountComponent',
   'agAggregationComponent',
 ] as const;
+
+/** Single source-of-truth map from built-in key → real implementation.
+ *  Merges the count-panel map (Task 2) with `agAggregationComponent →
+ *  AgAggregationPanel` (Task 3). Any key NOT present here falls through
+ *  to `StubBuiltInStatusPanel` inside `seedBuiltIns()`. */
+const BUILT_IN_STATUS_PANEL_CTORS: Record<string, StatusPanelComponent | undefined> = {
+  ...(COUNT_PANEL_CONSTRUCTORS as Record<string, StatusPanelComponent>),
+  agAggregationComponent: AgAggregationPanel,
+};
 
 export class StatusPanelRegistry {
   private components = new Map<string, StatusPanelComponent>();
@@ -82,12 +93,16 @@ export class StatusPanelRegistry {
    *  or the stub by registering against the same key.
    *
    *  Task 2 — `agTotal/agFiltered/agSelected/agTotalAndFiltered…`
-   *  resolve to the count-panel ctors from `panels/counts.ts`. Task 3
-   *  will swap `agAggregationComponent` off the stub. */
+   *  resolve to the count-panel ctors from `panels/counts.ts`.
+   *  Task 3 — `agAggregationComponent` resolves to `AgAggregationPanel`
+   *  from `panels/aggregation.ts`. With both tasks landed, every
+   *  built-in key resolves to a real implementation; the stub remains
+   *  as a fallback for unforeseen additions to
+   *  `BUILT_IN_STATUS_PANEL_KEYS`. */
   seedBuiltIns(): void {
     for (const key of BUILT_IN_STATUS_PANEL_KEYS) {
       if (this.components.has(key)) continue;
-      const ctor = (COUNT_PANEL_CONSTRUCTORS as Record<string, StatusPanelComponent | undefined>)[key];
+      const ctor = BUILT_IN_STATUS_PANEL_CTORS[key];
       this.components.set(key, ctor ?? StubBuiltInStatusPanel);
     }
   }

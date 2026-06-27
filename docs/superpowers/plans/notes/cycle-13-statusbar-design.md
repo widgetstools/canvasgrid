@@ -314,3 +314,258 @@ separated by spaces" and the design pass needs another iteration.
   `Intl.NumberFormat` with `statusPanelParams.numberFormatter`
   escape hatch, separation grammar (16px / 2ch / `·`) codified.
   Cleared to start implementation.
+
+---
+
+## Task 3 — agAggregationComponent
+
+> Five stats (`Count` / `Sum` / `Min` / `Max` / `Avg`) jammed inline
+> into a single panel. Cashes in the `·` separator Task 1 reserved
+> and Task 2 codified the grammar for. Zero new design tokens, six
+> new CSS rules (one is a modifier). The work this design pass had
+> to do was *not* the visual — Tasks 1 + 2 already locked the type,
+> colour, and separator — but the *empty-selection contract*, which
+> is the one place the agg family must diverge from the count
+> family's "never collapse" rule.
+
+### Decisions
+
+1. **Inherit Task 2's stat shape verbatim.** Each stat is a
+   `Label: value` pair using `display: inline-flex; gap: 1ch;
+   align-items: baseline;` — identical kerning to the count
+   panels. Label colour `--cg-status-bar-fg-muted`, value colour
+   `--cg-status-bar-fg`. The user already learned this hierarchy
+   in the count family two zones away; reusing it means the agg
+   panel doesn't ask for a second pattern-load.
+
+2. **The middle-dot lands here.** `·` U+00B7 between stats, in a
+   `<span class="cg-status-panel-agg-separator">` carrying
+   `padding: 0 0.5ch` (1ch total around the dot) and the muted
+   colour (it's chrome, not data). Flex container gap stays at
+   `0` — the separator's own padding owns all inter-stat spacing.
+   This is the Task 1 grammar rule cashing in: only the agg family
+   uses the `·`, and that scarcity is what makes it parse as
+   "structural mark" rather than "decorative bullet".
+
+3. **Canonical stat order, regardless of `aggFuncs` input order.**
+   `Count → Sum → Min → Max → Avg`. If the app passes
+   `aggFuncs: ['avg', 'count']` the panel renders `Count: N · Avg:
+   N`, not `Avg: N · Count: N`. Reason: a trader who configures
+   one grid with the default set and another with `['sum', 'avg']`
+   should find "Sum" in the same relative position in both — like
+   reading hours-then-minutes on a digital clock. Visual stability
+   across configurations beats honouring caller-passed order
+   (which is a syntactic accident of how the array literal was
+   written, not a design statement).
+
+4. **Empty selection → panel hides.** When `getCellRanges()` is
+   empty AND row selection is empty, the panel root sets
+   `hidden = true` (CSS: `display: none`). This INVERTS Task 2's
+   "never collapse" rule for the count panels, and the inversion
+   is the single risk this design pass takes. The defence:
+
+   - **Cadence is different.** Count panels react to *ambient*
+     events (`modelUpdated`, `filterChanged`) — updates the user
+     did not directly trigger. A panel disappearing-then-
+     reappearing under ambient updates yanks attention to chrome
+     that has no business asking for it. The agg panel only
+     updates on `cellSelectionChanged` / `selectionChanged` —
+     events that are, by definition, the *direct consequence of
+     user input*. The user is already looking at the area they
+     just touched; the panel appearing is feedback for the
+     action, not unrelated chrome moving.
+   - **Information density is different.** A `Selected: 0`
+     count is one fact saying "no current selection". An idle
+     agg panel showing `Count: 0 · Sum: — · Min: — · Max: — ·
+     Avg: —` is five facts saying nothing. The em-dashes occupy
+     ~80 px of bar real estate communicating absence; they read
+     as visual noise, exactly the opposite of the "no decorative
+     chrome" anti-default Task 1 wrote. Hiding the panel reclaims
+     the space for *meaningful* facts in neighbouring zones.
+   - **Semantic is different.** Zero rows is a value; "no
+     summary" is the *absence of subject*. The mathematical
+     truth is that `min/max/avg` of an empty set are undefined,
+     not zero. Pretending to render them with em-dashes is a
+     polite lie.
+
+5. **N/A inside a single stat → em-dash `—` U+2014.** When the
+   selection has rows but the column type can't aggregate (string
+   ticker column, boolean flag), Count is still defined but
+   Sum/Min/Max/Avg are NaN. Render `—` for the NaN stats only —
+   the row stays structurally stable so the user can see "Count:
+   17 is fine, but the numerics don't apply here". Reason em-
+   dash (not em-space, not "N/A", not blank): the dash is one
+   character wide enough to read as "deliberate placeholder",
+   short enough not to dominate. Same rationale as accounting
+   tables.
+
+6. **Mixed-type selection: aggregate over the numerics, ignore
+   the rest, no warning surface.** If a 10-cell range covers 7
+   numbers and 3 strings, `Count: 10` (every cell counted),
+   `Sum/Min/Max/Avg` operate on the 7 numbers. NaN / Infinity /
+   null cells are silently skipped from the numeric aggregates
+   but DO count toward `Count`. The catalog spec's
+   `valueFormatter` escape hatch covers apps that need a
+   different policy. No banner, no asterisk — the design notes
+   anti-default rules out chrome that announces edge cases.
+
+7. **`white-space: nowrap; overflow: hidden; text-overflow:
+   ellipsis` on the panel root.** At a status-bar zone narrower
+   than ~400 px, 5 stats will overflow. The chosen failure mode
+   is "right-truncate the last stat" because the canonical
+   order puts Avg last — and Avg is the most derived stat, the
+   one most easily reconstructed mentally from the others
+   (`Avg = Sum / Count`). Documented escape hatch: apps that
+   need every stat visible at narrow widths restrict via
+   `statusPanelParams: { aggFuncs: ['count', 'sum'] }` per the
+   catalog spec. This is a deliberate cliff, not a graceful
+   degradation: a half-rendered "Avg: 12…" would be a wrong
+   number, and a wrong number is worse than a missing one.
+
+8. **Refresh triggers: `cellSelectionChanged` + `selectionChanged`.**
+   NOT `rangeSelectionChanged` (the mid-drag firehose). The
+   debounced sibling matches the user's mental model:
+   the agg updates when the selection *settles*, not on every
+   drag tick. Task 5's rAF dispatcher will collapse multi-event
+   bursts to one refresh per frame on top of this; for Task 3
+   the two-event subscription is the contract.
+
+9. **No icon, no badge, no hover, no tooltip.** Inherits every
+   "no chrome" decision from Tasks 1 + 2. The agg panel is the
+   densest cell in the strip; it earns its real estate by being
+   useful, not by announcing itself.
+
+10. **Number formatting.** `Intl.NumberFormat('en-US', {
+    maximumFractionDigits: 2 })` as the default. Differs from
+    Task 2's "no fraction digits" only because Sum/Min/Max/Avg
+    of prices, P&L, and yields routinely have fractions — a
+    `Min: 12` for a column showing `12.4567` would be a wrong
+    number. The catalog spec's `IAggregationStatusPanelParams.
+    valueFormatter(params)` overrides this per-panel.
+
+### Anti-defaults rejected for this task
+
+| Generic move | Why rejected |
+|---|---|
+| Math glyphs as labels (`Σ` for sum, `⌀` for avg, `x̄` for mean) | Industrial / spreadsheet-clone vibe. The text labels are already short (3–5 chars); icons would add a glyph-disambiguation hop and break the type-only vocabulary Task 1 set. |
+| Coloured pills around each stat | Bar is achromatic. Pills would compete with the body's range-fill colour and signal "alert", which agg is not. |
+| Render every stat always; show `0` for empty sum / min / max / avg of empty set | A wrong number (0) is worse than a missing one. Em-dash is the honest mark for "undefined", and the panel hides entirely when the *selection* is undefined (decision 4). |
+| Show panel with `Count: 0 · Sum: — · Min: — · Max: — · Avg: —` when no selection | Five em-dashes saying nothing. Reclaim the space — see decision 4's defence. |
+| Animate stat values when they change | Calls attention to the bar. Trader scans peripheral vision. Same anti-default as Task 1's "no live pulse". |
+| Render in caller-passed `aggFuncs` order | Caller-passed order is a syntactic accident, not a design statement. Canonical order means "Sum" always sits in the same slot — decision 3. |
+| Vertical separator (`|`) between stats instead of `·` | Heavier visual weight, reads as table-rule chrome. The middle-dot is a typographic mark (lighter, baseline-aligned, narrower); it's the right granularity for in-panel separation per Task 2's codified grammar. |
+| Tooltip on hover explaining "Sum of selected numeric cells" | Documentation chrome inside the bar. The label IS the documentation (Task 2 decision 8). Apps that need explanatory tooltips for non-default `aggFuncs` configurations can wrap the panel via the custom-panel path (Task 4). |
+
+### Signature for this task
+
+**The empty-state inversion.**
+
+The single most opinionated move in this design is that the agg
+panel *disappears* when there's nothing to summarise — and the
+count panels next to it *don't*. That asymmetry is the
+signature, and the reason it works:
+
+| Family | Update cadence | Empty contract | Why |
+|---|---|---|---|
+| Count panels (Task 2) | Ambient (model / filter events) | Never collapse — `Selected: 0` | Disappearing under ambient updates yanks attention to chrome the user did not request. |
+| Agg panel (Task 3) | User-triggered (selection events) | Hides on empty | Appearing in response to a user action IS the feedback. Showing five em-dashes at idle is noise, not information. |
+
+The bar's rule becomes: **chrome that updates on ambient events
+holds its space; chrome that updates on user action takes only
+the space it needs.** Across cycles this rule is self-policing:
+any future panel categorises into one bucket or the other based
+on what fires its refresh.
+
+### Tokens reused (no new ones)
+
+| Concern | Token | Source |
+|---|---|---|
+| Label colour | `--cg-status-bar-fg-muted` | Task 1 |
+| Value colour | `--cg-status-bar-fg` | Task 1 |
+| Separator colour | `--cg-status-bar-fg-muted` | Task 1 (chrome, not data) |
+| Font | `--cg-font-family` (inherited from `.cg-status-bar`) | Task 1 |
+| Size | `--cg-status-bar-font-size` (inherited) | Task 1 |
+| Inter-stat spacing | `0.5ch` padding on the `·` separator | Task 1 (per the Class vocabulary block at line 151) |
+| Intra-stat (label → value) spacing | `1ch` flex gap | Task 2 |
+
+Zero new design tokens. Six new class rules (one is a modifier).
+
+### Class vocabulary (Task 3)
+
+```css
+.cg-status-panel-agg {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0;                  /* the separator owns all inter-stat
+                              spacing via its own padding. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 100%;         /* hard cap inside the zone — past the
+                              zone's flex basis, ellipsis truncates
+                              the trailing stat. */
+}
+.cg-status-panel-agg[hidden] { display: none; }  /* empty-selection contract */
+.cg-status-panel-agg-stat {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1ch;                /* mirrors Task 2's intra-pair gap so
+                              the agg + count families share
+                              kerning when read across the bar. */
+}
+.cg-status-panel-agg-label { color: var(--cg-status-bar-fg-muted); }
+.cg-status-panel-agg-value { color: var(--cg-status-bar-fg); }
+.cg-status-panel-agg-separator {
+  color: var(--cg-status-bar-fg-muted);
+  padding: 0 0.5ch;        /* 1ch total around the · */
+  /* aria-hidden in markup — the separator is presentational; a
+     screen reader should hear "Count: 5, Sum: 1,234" not "Count:
+     5 middle dot Sum: 1,234". */
+}
+```
+
+### Empty-bar acceptance criterion (Task 3 cell)
+
+`16-status-bar-aggregation.png` must show:
+
+1. A 10-row range selected across 2 numeric columns is active in
+   the body (the trigger condition for the panel to be visible).
+2. The agg panel is mounted in the LEFT zone (per the demo wiring
+   in Task 6, but for cell 16 the left zone is the natural
+   home — gives the panel runway and visually separates it from
+   the right-loaded counts).
+3. Five stats render in canonical order with `·` separators. The
+   label/value colour contrast is the same step-down established
+   in Task 2 (muted label, full-strength value).
+4. The trailing `Avg:` stat does NOT truncate — the demo zone
+   width must comfortably hold all 5 stats so the baseline cell
+   tests the canonical case, not the cliff case. (The cliff case
+   gets its own cell in a future cycle if it ever becomes a
+   regression target — Cycle 13 doesn't ship one.)
+5. The count panels in the right zone are also present (because
+   the demo `?statusBar=full` mode mounts both), and the
+   separation grammar reads correctly: dots inside the agg, gap
+   between panels.
+
+If the rendered cell shows five em-dashes (empty-selection
+contract broken), or the agg + count panels touch (inter-panel
+gap collapsed), or the `·` reads as a heavier mark than the
+text around it (separator colour regression), **the design
+pass failed**: rebuild from this notes file before
+re-baselining.
+
+### Decision log — Task 3
+
+- 2026-06-27 — Decided canonical stat order (Count/Sum/Min/Max/
+  Avg) regardless of `aggFuncs` input order; empty-selection
+  hides the panel (the one inversion of Task 2's never-collapse
+  rule, defended by the ambient-vs-user cadence distinction); em-
+  dash `—` for per-stat N/A in mixed-type selections; mixed-type
+  selection aggregates numerics only with no warning surface;
+  `cellSelectionChanged` + `selectionChanged` are the refresh
+  triggers (NOT the mid-drag `rangeSelectionChanged` firehose);
+  `Intl.NumberFormat('en-US', { maximumFractionDigits: 2 })`
+  default with `valueFormatter` override; zero new tokens, six
+  new CSS rules. Signature is the empty-state inversion + the
+  rule it codifies for future panel families. Cleared to start
+  implementation.
