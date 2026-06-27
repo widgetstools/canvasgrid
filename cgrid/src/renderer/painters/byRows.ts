@@ -40,6 +40,13 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
       // gives the totals row its visual signature without competing
       // with the data above. The top border lands in gridLinesPainter.
       rowBgs[r] = theme.totalsBg;
+    } else if (row.subgrid.isPinned) {
+      // Cycle 14 / Task 2 — warm tint for pinned reference rows. Same
+      // luminosity lift as totals but the opposite temperature so the
+      // trader can tell "static reference" (warm) from "computed
+      // summary" (slate) at a glance. The structural border at the
+      // body-side edge of the pinned stack lands in gridLinesPainter.
+      rowBgs[r] = theme.pinnedRowBg;
     } else {
       // footer / unknown — neutral default
       rowBgs[r] = theme.headerBg;
@@ -272,6 +279,15 @@ function paintBand(
         // bg + top border still apply, so the row reads as part of the
         // summary even with empty cells). Task 5's polished `'totals'`
         // renderer overrides this with an em-dash placeholder.
+        const cell = row.subgrid.getCell(row.localRowIndex, col.colId);
+        value = cell?.value ?? '';
+        valueFormatted = cell?.valueFormatted ?? '';
+      } else if (row.subgrid.isPinned) {
+        // Cycle 14 / Task 2 — read the pinned row's value via the
+        // subgrid's `getCell`, which proxies to the caller-owned row
+        // data array. The lookup runs the column's `valueFormatter` so
+        // a moneyFormatter-decorated column reads identically in a
+        // data row and a pinned reference row.
         const cell = row.subgrid.getCell(row.localRowIndex, col.colId);
         value = cell?.value ?? '';
         valueFormatted = cell?.valueFormatted ?? '';

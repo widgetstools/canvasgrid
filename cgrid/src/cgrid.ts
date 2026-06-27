@@ -31,7 +31,7 @@ import {
 } from './core/layout';
 import { computeViewport, type ViewportState } from './core/viewport';
 import { RowHeightIndex } from './core/rowHeightIndex';
-import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, TotalsSubgrid, type Subgrid } from './core/subgrid';
+import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, TotalsSubgrid, PinnedRowsSubgrid, type Subgrid, type SubgridCell } from './core/subgrid';
 import { FloatingFilterSubgrid } from './core/floatingFilterSubgrid';
 import { FloatingFilterOverlay } from './interaction/floatingFilterOverlay';
 import { PopupHost } from './interaction/editors/popupHost';
@@ -2898,6 +2898,14 @@ export class CGrid<TRow = any> {
           if (!this.destroyed) console.error('[cgrid] setEnableCellChangeFlash:', err);
         });
       },
+      rebuildSubgrids: () => {
+        // Cycle 14 / Task 2 — re-mount the subgrid stack so pinned-row
+        // array changes (pinnedTopRowData / pinnedBottomRowData) take
+        // effect without re-resolving the column tree.
+        this.rebuildSubgridStack();
+        this.recomputeViewport();
+        this.cgridCanvas?.requestRepaint();
+      },
     };
   }
 
@@ -2944,17 +2952,22 @@ export class CGrid<TRow = any> {
       () => this.options.floatingFilterHeight ?? 28,
       () => this.isFloatingFilterEnabled(),
     ));
-    // Cycle 14 / Task 1 — totals row at top, before the data subgrid.
-    // The viewport math (computeViewport, pass 3) actually positions
-    // non-header non-data subgrids AFTER the visible data rows
-    // regardless of stack order, so `'top'` placement requires the
-    // viewport math to handle this. For Task 1 we ship `'bottom'`
-    // by stacking AFTER the data subgrid below; `'top'` placement
-    // routes through the same subgrid but reordered by computeViewport
-    // (extended in this task to honour an `isTotals && position==='top'`
-    // hint via a new helper on the subgrid instance).
+    // Cycle 14 / Task 1 + 2 — stack order for the body-edge band:
+    //   pre-data  : header → floating filter → totals-top → pinned-top → data
+    //   post-data : data → pinned-bottom → totals-bottom
+    // Totals sit OUTERMOST (closest to the chrome edge — header or status
+    // bar); pinned rows sit INNERMOST (closest to actual data). The design
+    // plan justifies the order: totals are most distinct from data (slate
+    // tint, +1 weight), pinned rows are closer to "data-like" (warm tint,
+    // body weight), so the body↔pinned↔totals transition reads as a smooth
+    // step-out from synthesis-adjacent → synthesis. See
+    // `docs/superpowers/plans/notes/cycle-14-aggregation-design.md`
+    // § Task 2 — Coexistence — pinned + totals.
     if (this.options.totalsRowPosition === 'top') {
       stack.push(this.makeTotalsSubgrid('top'));
+    }
+    if (this.pinnedRowsArray('top').length > 0) {
+      stack.push(this.makePinnedRowsSubgrid('top'));
     }
     stack.push(new DataSubgrid(
       () => this.rowCount,
@@ -2965,12 +2978,62 @@ export class CGrid<TRow = any> {
       (local) => this.rowHeightAt(local),
       (rowIndex, colId) => this.cellAt(rowIndex, colId),
     ));
-    // Cycle 14 / Task 1 — totals row at bottom (default position when
-    // `totalsRowPosition === 'bottom'`).
+    if (this.pinnedRowsArray('bottom').length > 0) {
+      stack.push(this.makePinnedRowsSubgrid('bottom'));
+    }
     if (this.options.totalsRowPosition === 'bottom') {
       stack.push(this.makeTotalsSubgrid('bottom'));
     }
     this.subgrids = stack;
+  }
+
+  /** Cycle 14 / Task 2 — read the pinned-rows array for `position`. Returns
+   *  an empty array when the option is null / undefined so callers can
+   *  uniformly check `.length > 0` to decide whether to mount the subgrid. */
+  private pinnedRowsArray(position: 'top' | 'bottom'): readonly TRow[] {
+    const raw = position === 'top'
+      ? this.options.pinnedTopRowData
+      : this.options.pinnedBottomRowData;
+    return Array.isArray(raw) ? (raw as TRow[]) : [];
+  }
+
+  /** Cycle 14 / Task 2 — factory for a static pinned-rows subgrid. Each
+   *  entry in `pinnedTopRowData` / `pinnedBottomRowData` becomes one
+   *  non-scrolling row at the matching body edge. The row height
+   *  inherits the grid's body row height (per the Task 2 design notes —
+   *  "Row height: var(--cg-row-height) — Cycle-wide constraint"). The
+   *  cell lookup resolves `row[field ?? colId]` and runs the column's
+   *  `valueFormatter` so a moneyFormatter-decorated column reads the
+   *  same in a pinned reference row and a data row. */
+  private makePinnedRowsSubgrid(position: 'top' | 'bottom'): PinnedRowsSubgrid<TRow> {
+    return new PinnedRowsSubgrid<TRow>(
+      () => this.pinnedRowsArray(position),
+      () => this.options.rowHeight ?? this.theme.rowHeight,
+      (row, colId) => this.pinnedCellLookup(row, colId),
+    );
+  }
+
+  /** Cycle 14 / Task 2 — resolve a single (row × column) cell value for a
+   *  pinned subgrid. Honours `field` (with `colId` as fallback) and runs
+   *  the column's `valueFormatter` when declared. Unknown columns produce
+   *  empty cells (not null) so the row chrome paints across the full
+   *  width even when the data only covers a subset of columns. */
+  private pinnedCellLookup(row: TRow, colId: string): SubgridCell {
+    const def = this.columnDefsMap.get(colId);
+    if (!def) return { value: '', valueFormatted: '' };
+    const field = def.field ?? (colId as keyof TRow & string);
+    const value = (row as Record<string, unknown>)[field];
+    let valueFormatted: string;
+    if (def.valueFormatter) {
+      valueFormatted = def.valueFormatter({ data: row, value, colId });
+    } else if (value == null) {
+      valueFormatted = '';
+    } else if (typeof value === 'string') {
+      valueFormatted = value;
+    } else {
+      valueFormatted = String(value);
+    }
+    return { value, valueFormatted };
   }
 
   /** Cycle 14 / Task 1 — factory for the grand-totals subgrid. The

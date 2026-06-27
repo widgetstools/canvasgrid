@@ -463,6 +463,31 @@ export interface CGridOptions<TRow = any> {
    *  renderer ship in Tasks 5 (`docs/superpowers/plans/2026-06-27-canvasgrid-cycle-14-aggregation-ui.md`).
    *  Cycle 14 / Task 1. */
   totalsRowPosition?: 'top' | 'bottom' | null;
+
+  /** Cycle 14 / Task 2 — pinned-top static rows. Each array entry mounts
+   *  as a non-scrolling row at the TOP of the grid body (between the
+   *  header band and the scrollable data). Unlike `totalsRowPosition`
+   *  the values are CALLER-OWNED, not worker-computed — typical use is
+   *  reference rows ("Index Benchmark", "Trader Target") that should
+   *  stay visible while the user scrolls the data. The grid reads each
+   *  cell via `row[col.field ?? colId]` and runs the column's
+   *  `valueFormatter` so apps get the same rendering as a data row.
+   *  `null` / omitted / empty array suppresses the subgrid.
+   *
+   *  Runtime mutation via `setGridOption('pinnedTopRowData', …)` re-
+   *  mounts the subgrid cleanly. Design plan:
+   *  `docs/superpowers/plans/notes/cycle-14-aggregation-design.md`. */
+  pinnedTopRowData?: TRow[] | null;
+
+  /** Cycle 14 / Task 2 — pinned-bottom static rows. Mirrors
+   *  `pinnedTopRowData` but mounts at the BOTTOM of the grid body
+   *  (between the scrollable data and any totals / status bar below).
+   *  When both `pinnedBottomRowData` AND `totalsRowPosition: 'bottom'`
+   *  are set, the pinned rows sit ABOVE the totals row — the order is
+   *  data → pinned-bottom → totals → status bar. The design plan's
+   *  chrome decisions make the two row types visually distinguishable
+   *  (warm tint vs slate tint). */
+  pinnedBottomRowData?: TRow[] | null;
 }
 
 /** Cycle 10 / Task 5 — params for `processCellForClipboard`. Mirrors

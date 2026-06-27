@@ -216,6 +216,39 @@ export interface PositionsGridOptions {
    *  Drives visual cell 17 via the `?totals=bottom` query string; the
    *  Task 7 exit ritual flips the demo default to `'bottom'`. */
   totalsRowPosition?: 'top' | 'bottom' | null;
+  /** Cycle 14 / Task 2 — opt the demo into mounting a sample pinned-
+   *  top reference row (an "Index Benchmark" anchor). Drives visual
+   *  cell 18-pinned-top-row via the `?pinned=top` query string. */
+  pinnedTop?: boolean;
+  /** Cycle 14 / Task 2 — opt the demo into mounting a sample pinned-
+   *  bottom reference row. Off by default; available via `?pinned=bottom`
+   *  or `?pinned=both` for manual smoke testing of the coexistence
+   *  layout with the totals row. */
+  pinnedBottom?: boolean;
+}
+
+/** Cycle 14 / Task 2 — deterministic seed for the demo pinned reference
+ *  row. Returns a single Position-shaped row representing an "Index
+ *  Benchmark" anchor. The numeric values are flat reference numbers a
+ *  trader scans positions against (mid-of-book notional, neutral PnL).
+ *  Strings on the row are blank so the painter just shows the warm tint
+ *  + structural border across the non-numeric columns. */
+function buildBenchmarkPinnedRows(): Position[] {
+  return [{
+    positionId: 'BENCHMARK',
+    cusip: '',
+    ticker: '',
+    notionalAmount: 50_000,
+    marketValue: 25_000_000,
+    currentPrice: 500,
+    pnl: 0,
+    dailyPnl: 0,
+    unrealizedPnl: 0,
+    yield: 5,
+    spread: 50,
+    dv01: 50,
+    pv01: 50,
+  } as Position];
 }
 
 /** Cycle 7 / Task 8 — toolbar-driven external filter state. The
@@ -608,6 +641,14 @@ export function createPositionsGrid(
     // `spread`, `dv01`, `pv01` columns all carry aggFuncs so the
     // pinned row reads with values across the visible width.
     totalsRowPosition: opts.totalsRowPosition ?? null,
+    // Cycle 14 / Task 2 — sample pinned reference rows. The demo seeds
+    // a single "Index Benchmark" row covering the numeric columns the
+    // trader compares positions against; visual cell 18-pinned-top-row
+    // uses this via `?pinned=top`. The string positionId / cusip /
+    // ticker columns inherit empty values (the demo doesn't fabricate
+    // labels for reference rows — only the numeric reference matters).
+    pinnedTopRowData: opts.pinnedTop ? buildBenchmarkPinnedRows() : null,
+    pinnedBottomRowData: opts.pinnedBottom ? buildBenchmarkPinnedRows() : null,
     // Cycle 10 / Task 1 — sample `getContextMenuItems`. Keeps every
     // built-in default item (Copy / Paste / Cut / Export / Autosize /
     // Pin / Reset) AND appends one custom "Clear filters" entry so the

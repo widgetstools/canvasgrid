@@ -56,6 +56,24 @@ export interface ResolvedTheme {
    *  into the cell's `font` string when the row is `isTotals`.
    *  Resolved from `--cg-totals-font-weight`. */
   totalsFontWeight: number;
+  /** Cycle 14 / Task 2 — pinned-row background. Warm 3-5% tint over
+   *  body bg that gives static pinned rows their "anchored" reading
+   *  (vs the cool slate `totalsBg` which reads "computed"). Painted by
+   *  the row-bg pass for any `isPinned` row. Resolved from
+   *  `--cg-pinned-row-bg`. Design plan:
+   *  `docs/superpowers/plans/notes/cycle-14-aggregation-design.md`
+   *  § Task 2. */
+  pinnedRowBg: string;
+  /** Cycle 14 / Task 2 — pinned-row foreground. Inherits body fg (no
+   *  +1 stop) — the +1 weight is reserved for synthesis (totals).
+   *  Resolved from `--cg-pinned-row-fg`. */
+  pinnedRowFg: string;
+  /** Cycle 14 / Task 2 — pinned-row structural border at the body-side
+   *  edge of the pinned stack. CSS-aliased to `--cg-totals-border-top`
+   *  so the boundary between "scrolling body" and "everything else" is
+   *  a SINGLE color source — pinned and totals share the same body-edge
+   *  hairline. Resolved from `--cg-pinned-row-border`. */
+  pinnedRowBorder: string;
   rowHeight: number;
   headerHeight: number;
   resizerHotZone: number;
@@ -178,6 +196,9 @@ export class CssReader {
       totalsBorderTop: get('--cg-totals-border-top') || '#cbd5e1',
       totalsFgMuted: get('--cg-totals-fg-muted') || '#475569',
       totalsFontWeight: px('--cg-totals-font-weight', 500),
+      pinnedRowBg: get('--cg-pinned-row-bg') || '#fbf8f3',
+      pinnedRowFg: get('--cg-pinned-row-fg') || get('--cg-fg-color') || '#1a1f24',
+      pinnedRowBorder: get('--cg-pinned-row-border') || get('--cg-totals-border-top') || '#cbd5e1',
       rowHeight: px('--cg-row-height', 30),
       headerHeight: px('--cg-header-height', 32),
       resizerHotZone: px('--cg-resizer-hot-zone', 4),

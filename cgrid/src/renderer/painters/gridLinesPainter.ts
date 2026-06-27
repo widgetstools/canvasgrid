@@ -41,12 +41,16 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
   // Horizontals — one per visible row bottom for BOTH header and data rows.
   // The bottom of group-header rows visually separates depth levels above the
   // leaf header. Skip data rows whose bottom lands outside the body region
-  // (overscan rows above/below).
+  // (overscan rows above/below). Pinned rows (Cycle 14 / Task 2) paint
+  // gridlines too so multi-pinned stacks read as connected member rows; the
+  // structural border pass below overpaints the body-side edge with
+  // `pinnedRowBorder` so the transition between the pinned stack and the
+  // scrollable body reads as a single deliberate hairline.
   gc.cache.fillStyle = theme.gridLineColor;
   for (const row of vs.visibleRows) {
     if (row.subgrid.isData) {
       if (row.bottom <= vs.bodyTop || row.bottom > vs.bodyBottom) continue;
-    } else if (!row.subgrid.isHeader) {
+    } else if (!row.subgrid.isHeader && !row.subgrid.isPinned) {
       continue; // totals/footer skip the per-row gridline (totals draws its own border below)
     }
     const y = Math.round(row.bottom) - 1;
@@ -112,6 +116,28 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
   if (vs.bodyTop > 0) {
     gc.cache.fillStyle = theme.borderColor;
     gc.fillRect(0, Math.round(vs.bodyTop) - 1, rightEdge, 1);
+  }
+
+  // Cycle 14 / Task 2 — pinned stack ↔ data structural border. Painted
+  // LAST so it overpaints both the per-row gridline (laid down in the
+  // horizontals pass above) AND the bodyTop separator (when pinned-top
+  // pushes bodyTop down to the bottom of the pinned stack). This keeps
+  // BOTH pinned↔data boundaries — top stack ↔ data and data ↔ bottom
+  // stack — at the same `theme.pinnedRowBorder` hairline color, matching
+  // the design plan's "same border color on both pinned and totals".
+  // The pinned↔totals transition is intentionally NOT drawn here: the
+  // totals row paints its own top border above, which is the body-edge
+  // boundary for that pair.
+  for (let r = 0; r < vs.visibleRows.length; r++) {
+    const a = vs.visibleRows[r]!;
+    const b = vs.visibleRows[r + 1];
+    if (!b) continue;
+    const aPinned = a.subgrid.isPinned === true;
+    const bPinned = b.subgrid.isPinned === true;
+    if (aPinned === bPinned) continue;
+    if (!(a.subgrid.isData || b.subgrid.isData)) continue;
+    gc.cache.fillStyle = theme.pinnedRowBorder;
+    gc.fillRect(0, Math.round(a.bottom) - 1, rightEdge, 1);
   }
 }
 

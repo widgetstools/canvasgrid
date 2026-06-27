@@ -140,3 +140,190 @@ stays body.**
   decisions. Tasks 2–6 extend it as needed (Task 2 may add
   `--cg-pinned-row-*` siblings; Task 5 may add `--cg-totals-fg-empty`
   for the em-dash).
+
+---
+
+## Task 2 — Pinned-row chrome
+
+**Brief recap:** Static rows mounted at the top or bottom of the body
+via `pinnedTopRowData` / `pinnedBottomRowData`. The trader's mental
+model for these is "reference rows" — Index Benchmark, Trader Target,
+watchlist anchor — NOT summary rows. Multi-pinned (3 rows at top) must
+read as a coherent stack.
+
+### Subject pin
+
+Same trader at the same financial positions grid as Task 1, except the
+job has shifted. Where the totals row's job is *confirm the sum*, the
+pinned row's job is *anchor a comparison*. The trader reads a pinned
+row sideways at the data above/below it (am I above the benchmark? is
+my position closer to target than yesterday?). It is a comparison
+target, not a glance target.
+
+### Default rejected
+
+The lazy answer is "reuse the totals chrome verbatim." That conflates
+two distinct cognitive operations:
+
+- **Synthesis** (totals): a computed projection of the body — the
+  values *belong to* the data above.
+- **Reference** (pinned): a static row parallel to the body — the
+  values are *adjacent to* the data, not derived from it.
+
+Wearing identical chrome trains the trader to treat them as the same
+class of row, which is wrong. If a pinned "Index Benchmark" row picks
+up the +1 weight bump that says "this is computed," the trader sees a
+fake synthesis where none exists.
+
+### Risk taken
+
+**Same lift idiom, different tint hue, no weight bump.**
+
+- Same 1px structural border (single `--cg-totals-border-top` reused)
+  — the boundary between "scrolling body" and "everything else" is one
+  shape, one color, one source. Reusing the border preserves the
+  cycle-14 grammar at the structural level.
+- **Tint hue flips warm.** Totals is slate (cool, mechanical, "the
+  machine computed this"). Pinned is cream (warm, intentional, "a
+  human pinned this"). Same luminosity lift (3% on light, ~5% on dark)
+  so the contrast budget is identical; only the temperature differs.
+- **Font weight stays at body 400.** The +1 weight stop is reserved
+  for synthesis (totals). Pinned rows match body weight because they
+  ARE body content, just non-scrolling. A weight bump on pinned would
+  mis-signal computed emphasis.
+- **Stack reads as a unit.** When 3 rows are pinned at top, the warm
+  tint paints across all three; the structural border lands ONCE at
+  the body-side edge of the stack (not between rows); standard
+  gridlines separate the member rows. The visual "lift" is owned by
+  the stack collectively, not row-by-row.
+
+### Tokens (committed to `tokens.css`)
+
+**Light theme `:root`:**
+| Token | Value | Why |
+|---|---|---|
+| `--cg-pinned-row-bg` | `#fbf8f3` | 3% warm cream tint over body `#ffffff` — same luminosity lift as `--cg-totals-bg` (`#f7f9fb`), opposite temperature |
+| `--cg-pinned-row-fg` | `var(--cg-fg)` | Inherit body fg — no synthesis emphasis |
+| `--cg-pinned-row-border` | `var(--cg-totals-border-top)` (`#cbd5e1`) | SAME color as totals border. Single source for "outside body" boundary |
+| `--cg-pinned-row-font-weight` | `400` | Inherit body weight. +1 stop is reserved for totals synthesis |
+
+**Dark theme `.cg-theme-dark`:**
+| Token | Value | Why |
+|---|---|---|
+| `--cg-pinned-row-bg` | `#241e16` | 5% upward from body `#0a1428` with an amber shift — warm cast survives the theme flip |
+| `--cg-pinned-row-fg` | `var(--cg-fg)` | Inherit |
+| `--cg-pinned-row-border` | `var(--cg-totals-border-top)` (`#4a6391`) | Same body-edge boundary |
+
+**Placeholders:**
+```css
+.cg-pinned-row  { /* placeholder — Task 5 polished renderer may extend */ }
+.cg-pinned-cell { /* placeholder — per-column override hook lands later */ }
+```
+
+### Layout — pinned vs totals comparison
+
+| Property | Pinned | Totals (Task 1) |
+|---|---|---|
+| Row height | `var(--cg-row-height)` (32px) | `var(--cg-row-height)` (32px) |
+| BG tint | warm 3% / 5% | slate 3% / 5% |
+| FG | inherit body | one stop darker |
+| Font weight | 400 (body) | 500 (+1) |
+| Structural border (body-side edge) | 1px `--cg-pinned-row-border` | 1px `--cg-totals-border-top` (same color) |
+| Between-row divider (multi-pinned) | `--cg-gridline` (standard row divider) | N/A — totals is a single row |
+| Per-cell halign | inherit column | inherit column |
+| Cell renderer | column's default | column's default (Task 5 swaps in `'totals'` for the totals row only) |
+
+### Multi-pinned reading
+
+A 3-row pinned-top stack paints as:
+
+```
+[ header band ]
+[ pinned row 1 ]  ← warm tint
+[ gridline      ]  ← standard divider
+[ pinned row 2 ]  ← warm tint
+[ gridline      ]  ← standard divider
+[ pinned row 3 ]  ← warm tint
+[ structural border ]  ← 1px --cg-pinned-row-border
+[ data band ]
+```
+
+ONE warm zone, ONE body-side boundary, member rows still individually
+legible via the standard gridline.
+
+### Coexistence — pinned + totals (both bottom)
+
+```
+[ data band ]
+[ pinned-bottom rows ]  ← warm tint
+[ structural border ]   ← 1px --cg-pinned-row-border (top edge of pinned stack)
+[ totals row ]          ← slate tint
+[ structural border ]   ← 1px --cg-totals-border-top (top edge of totals)
+```
+
+Two distinct tints + two boundaries make "pinned" and "totals"
+instantly tellable apart. Both borders use the same color (single
+source) but each owns its position via the subgrid above it.
+
+### Painter integration (canvasgrid specifics)
+
+1. `cssReader.ts` exposes `pinnedRowBg`, `pinnedRowFg`, and
+   `pinnedRowBorder` on `ResolvedTheme`. The border value is read from
+   `--cg-pinned-row-border` which CSS-aliases to
+   `--cg-totals-border-top`; we expose it as a separate field so the
+   painter doesn't reach across token families.
+2. `byRows.ts` row-bg pass paints `theme.pinnedRowBg` for `isPinned`
+   rows (new flag on `Subgrid` mirroring `isTotals` / `isFloatingFilter`).
+3. `byRows.ts` cell-paint pass: for `isPinned` rows, call
+   `row.subgrid.getCell(local, colId)` and render via the column's
+   default cellRenderer — same path as data rows. No `isTotals` cue
+   passed to `applyCellProps` so no +1 weight bump fires.
+4. `gridLinesPainter.ts` paints the structural border at the
+   body-side edge of the pinned stack — top edge for `pinnedBottomRowData`,
+   bottom edge for `pinnedTopRowData`. The painter detects the stack
+   edge by walking adjacent rows: a border lands where `isPinned`
+   transitions to a non-pinned subgrid. Between two `isPinned` rows
+   the standard gridline paints (no special-case).
+
+### States
+
+| State | Treatment | Why |
+|---|---|---|
+| Default | warm tint + body-side border + body weight | The whole signature |
+| Hover | NONE (Task 2) | Pinned rows aren't interactive in Task 2 |
+| Focus | NEVER | Pinned rows are outside the rangefocus model |
+| Empty cell | bg + border still apply; cell empty | Column-default rendering, no special placeholder |
+| Multi-pinned member | warm tint continues; gridline divider above | Stack reads as a unit |
+
+### What's explicitly NOT shipped in Task 2
+
+- No icon / chip on the row.
+- No alternating tint within the pinned stack.
+- No box-shadow under the stack.
+- No accent color.
+- No hover / focus / selection on pinned rows.
+- No per-row override for height (uses grid row height — variable-row
+  heights via Cycle 5 are out-of-scope for static pinned data; can be
+  revisited in a later cycle if pinned-row use cases demand it).
+- No special "pinned-row label column" treatment (a column showing
+  "Index Benchmark" as the first cell uses the column's normal
+  renderer — no bespoke styling).
+- No per-column `pinnedRowCellRenderer` override (Task 5 introduces
+  the `'totals'` cell renderer; per-column pinned overrides can land
+  with that work if the cycle exit reveals a need).
+
+### One-line summary
+
+**Same lift structure as totals, opposite temperature, no weight bump.
+Stack reads as a unit, member rows readable via the standard gridline.**
+
+### Vocabulary handed to subsequent tasks
+
+- The `--cg-pinned-row-*` family is committed and may be extended by
+  Task 5 if a per-column pinned override surfaces.
+- The structural border color `--cg-totals-border-top` is now a SHARED
+  token used by both pinned and totals chrome — treat it as a
+  cycle-14 primitive.
+- The temperature contrast (slate = computed, cream = anchored) is
+  established. Future cycles adding new subgrid types (footer, etc.)
+  pick a tint temperature that matches the row's cognitive role.
