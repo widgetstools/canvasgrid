@@ -999,3 +999,11 @@ export class ViewportSlicer<TRow = any> {
 // (`import { AggPass } from '.../dataPipeline'`) keep working without
 // a churn-only rename.
 export { AggPass } from './passes/aggPass';
+
+// Cycle 15 / Task 1 — GroupPass lives alongside the other passes in
+// `worker/passes/`. Re-exported here for the same reason: existing
+// `import { ... } from '.../dataPipeline'` ergonomics. `GroupPass` slots
+// between `FilterPass` (post-quick / post-external / post-alwaysPass)
+// and `SortPass`; see the file header for the build algorithm.
+export { GroupPass } from './passes/groupPass';
+export type { GroupNode, GroupPassOutput, FlatOrderEntry } from './passes/groupPass';
