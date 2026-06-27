@@ -21,6 +21,7 @@ button { padding: 6px 12px; border: 1px solid #334155; background: #1e293b; colo
 button:hover { background: #283549; }
 .toolbar-checkbox { display: inline-flex; align-items: center; gap: 4px; color: #e2e8f0; font-size: 13px; user-select: none; }
 .toolbar-checkbox input { margin: 0; }
+.toolbar-divider { color: #475569; font-size: 13px; margin: 0 4px; }
 .status-pill {
   display: inline-flex;
   align-items: center;
