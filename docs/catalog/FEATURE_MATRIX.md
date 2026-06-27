@@ -649,23 +649,23 @@
 | 16 | pinnedRowDataChanged / pinnedRowsChanged | Community | event | no | P2 | Fires when pinned row data changes |
 
 <!-- area:17 Side bar & tool panels -->
-| 17 | sideBar (shorthand: 'columns', 'filters', true) | Enterprise | config | yes | P1 | Quick-configure side bar with built-in panels |
-| 17 | SideBarDef (position, defaultToolPanel, hiddenByDefault, hideButtons) | Enterprise | config | yes | P1 | Full side bar configuration object |
-| 17 | ToolPanelDef (id, iconKey, minWidth, maxWidth, width) | Enterprise | config | yes | P1 | Individual tool panel registration and sizing |
-| 17 | agColumnsToolPanel | Enterprise | config | yes | P1 | Built-in column visibility and grouping panel |
-| 17 | IToolPanelColumnCompParams (suppressColumnMove, suppressRowGroups, buttons) | Enterprise | config | yes | P2 | Columns tool panel params |
-| 17 | agFiltersToolPanel | Enterprise | config | yes | P1 | Built-in per-column filter panel |
-| 17 | IToolPanelFiltersCompParams | Enterprise | config | no | P2 | Filters tool panel params |
-| 17 | Custom IToolPanelComp | Enterprise | config | no | P2 | Custom tool panel component interface |
-| 17 | openToolPanel / closeToolPanel | Enterprise | api | no | P1 | Open or close a specific panel programmatically |
-| 17 | getOpenedToolPanel / isToolPanelShowing | Enterprise | api | no | P2 | Query open panel state |
-| 17 | isSideBarVisible / setSideBarVisible | Enterprise | api | no | P2 | Show or hide the side bar |
-| 17 | setSideBarPosition | Enterprise | api | no | P2 | Move side bar to left or right |
-| 17 | refreshToolPanel | Enterprise | api | no | P2 | Trigger refresh on the active tool panel |
-| 17 | getToolPanelInstance | Enterprise | api | no | P2 | Access custom tool panel component instance |
-| 17 | toolPanelVisibleChanged event | Enterprise | event | no | P2 | Fires when panel opens, closes, or switches |
-| 17 | toolPanelSizeChanged event | Enterprise | event | no | P2 | Fires while user drags panel resize handle |
-| 17 | allowDragFromColumnsToolPanel | Enterprise | config | no | P2 | Drag columns from tool panel into grid |
+| 17 | ✅ sideBar (shorthand: 'columns', 'filters', true) | Enterprise | config | yes | P1 | Quick-configure side bar with built-in panels |
+| 17 | ✅ SideBarDef (position, defaultToolPanel, hiddenByDefault, hideButtons) | Enterprise | config | yes | P1 | Full side bar configuration object |
+| 17 | ✅ ToolPanelDef (id, iconKey, minWidth, maxWidth, width) | Enterprise | config | yes | P1 | Individual tool panel registration and sizing |
+| 17 | ✅ agColumnsToolPanel | Enterprise | config | yes | P1 | Built-in column visibility and grouping panel |
+| 17 | ✅ IToolPanelColumnCompParams (suppressColumnMove, suppressRowGroups, buttons) | Enterprise | config | yes | P2 | Columns tool panel params |
+| 17 | ✅ agFiltersToolPanel | Enterprise | config | yes | P1 | Built-in per-column filter panel |
+| 17 | ✅ IToolPanelFiltersCompParams | Enterprise | config | no | P2 | Filters tool panel params |
+| 17 | ✅ Custom IToolPanelComp | Enterprise | config | no | P2 | Custom tool panel component interface |
+| 17 | ✅ openToolPanel / closeToolPanel | Enterprise | api | no | P1 | Open or close a specific panel programmatically |
+| 17 | ✅ getOpenedToolPanel / isToolPanelShowing | Enterprise | api | no | P2 | Query open panel state |
+| 17 | ✅ isSideBarVisible / setSideBarVisible | Enterprise | api | no | P2 | Show or hide the side bar |
+| 17 | ✅ setSideBarPosition | Enterprise | api | no | P2 | Move side bar to left or right |
+| 17 | ✅ refreshToolPanel | Enterprise | api | no | P2 | Trigger refresh on the active tool panel |
+| 17 | ✅ getToolPanelInstance | Enterprise | api | no | P2 | Access custom tool panel component instance |
+| 17 | ✅ toolPanelVisibleChanged event | Enterprise | event | no | P2 | Fires when panel opens, closes, or switches |
+| 17 | toolPanelSizeChanged event | Enterprise | event | no | P2 | Fires while user drags panel resize handle — deferred (resize handle ships in Cycle 11 but the size-change event lands later) |
+| 17 | allowDragFromColumnsToolPanel | Enterprise | config | no | P2 | Drag columns from tool panel into grid — deferred to Cycle 13 (drag-to-grid integration) |
 
 <!-- area:18 Status bar -->
 | 18 | statusBar config (StatusPanelDef, align) | Enterprise | config | yes | P1 | Configure status bar panels with left/center/right alignment |

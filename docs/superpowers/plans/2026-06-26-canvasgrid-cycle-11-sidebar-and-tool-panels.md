@@ -1213,10 +1213,175 @@ Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>
 
 ## Shipped
 
-_(populated by Task 9)_
+**`ToolPanel` interface + registry.** A `ToolPanel = { init / getGui /
+refresh / destroy }` contract mirrors ag-grid's `IToolPanelComp`
+verbatim. `ToolPanelRegistry` maps panel `id` → constructor; built-in
+ids `'agColumnsToolPanel'` and `'agFiltersToolPanel'` register at
+CGrid construction. `CGridOptions.components: Record<string,
+ToolPanelComponent>` lets apps register custom panels or override the
+built-ins, and the registry resolves the user-supplied entry last so
+overrides always win. `ToolPanelDef` and `SideBarDef` ship as exported
+types with the catalog field names verbatim (`id`, `labelDefault`,
+`labelKey`, `iconKey`, `toolPanel`, `toolPanelParams`, `minWidth`,
+`maxWidth`, `width` / `toolPanels`, `defaultToolPanel`,
+`hiddenByDefault`, `position`, `hideButtons`).
+
+**Side bar shell.** `SideBarHost` mounts a `.cg-side-bar` DOM panel as
+a sibling of the canvas inside `CGrid.root`. The shell is three
+regions — a 28 px-wide vertical tab strip (`.cg-side-bar-tabs`), a
+flex-grown panel host (`.cg-side-bar-panel`), and a 3 px resize handle
+(`.cg-side-bar-resize`) — laid out with CSS flex
+(`flex-direction: row-reverse` for right-edge mount, `row` for left).
+Tab buttons render an icon glyph above a rotated label
+(`writing-mode: vertical-rl`); the active tab gets the canonical 3 px
+blue left border (`border-left: 3px solid var(--cg-focus-ring-color)`,
+mirrored to the right when `position: 'left'`). The resize handle
+hovers blue and drags the panel width between
+`minWidth` / `maxWidth`. Opening, closing, switching, or
+resize-dragging the panel each triggers exactly one
+`cgridCanvas.resize()` via `setHostBounds()`, so the canvas reflows in
+sync with the shrunk drawable region. `hiddenByDefault: true` starts
+the bar collapsed; `defaultToolPanel: <id>` opens that panel on mount.
+
+**Columns tool panel (`agColumnsToolPanel`).** Dark-themed panel with
+a top "Pivot Mode" pill toggle, a full-width search input (magnifier
+glyph + placeholder), a scrollable column list, and two drop-zone
+sections (Row Groups, Values) at the bottom. Each column row is a
+checkbox (visibility, wired through `api.setColumnVisible`), a 6-dot
+drag handle (reorder, wired through `api.moveColumns`), and the
+header label. The search input filters the list by `headerName` /
+`colId` substring. `refresh()` walks the row list in-place to preserve
+scroll position. All seven `IToolPanelColumnCompParams` suppress flags
+work (`suppressColumnMove`, `suppressRowGroups`, `suppressValues`,
+`suppressPivots`, `suppressPivotMode`, `suppressColumnFilter`,
+`suppressSyncLayoutWithGrid`). Row Groups + Values drop zones render
+the dashed-border container with their placeholder copy — the drop
+action is a `console.debug` stub until Cycle 13 wires the grouping
+data path. The Pivot Mode toggle flips its `aria-pressed` attribute
+correctly; the underlying `api.setPivotMode` wiring is stubbed for
+Cycle 16.
+
+**Filters tool panel (`agFiltersToolPanel`).** Dark-themed panel with
+a top search input + expand/collapse-all button, then one
+collapsible row per filterable column. Collapsed rows show a
+right-chevron + header label; clicking anywhere on the row toggles
+`data-expanded` and mounts the column's existing filter editor
+inline. The editor is the same component `FilterPopupHost` opens for
+the popup path — a `buildFilterComponent(colId, mountPoint)` factory
+serves both surfaces so a bug fixed in one path is fixed in both.
+For set-filter columns the editor brings its per-filter search +
+`(Select All)` + scrollable value list; for text/number/date columns
+it brings the matching condition + value inputs. Changes propagate
+through `setFilterModel(colId, model)` identically to the popup. The
+empty state ("No filterable columns") renders when no column declares
+a filter. `suppressFilterSearch` and `suppressExpandAll` work.
+
+**Custom panel API.** `refreshToolPanel(id)` calls `refresh()` on the
+live `ToolPanel` instance for `id`, silent no-op when the panel is
+not currently mounted (because the side bar destroys panels on
+close to keep the DOM tree small). `getToolPanelInstance(id)` returns
+the live `ToolPanel` instance — same object the host mounted into
+the panel region — or `null` when no panel for `id` is open. Both
+methods work for built-in and app-registered ids uniformly; the
+`SideBarHost` owns the `id → instance` map and the CGrid API forwards
+through it. Calling either method on a grid with no side bar
+configured is also a silent no-op.
+
+**Side bar state API.** Seven methods on `CGridApi` for programmatic
+control: `isSideBarVisible()`, `setSideBarVisible(show)`,
+`setSideBarPosition(pos: 'left' | 'right')`, `openToolPanel(id)`,
+`closeToolPanel()`, `getOpenedToolPanel()` (returns the id of the
+open panel or `null`), and `getSideBar()` (returns the resolved
+`SideBarDef` or `undefined`). All seven are silent no-ops when no
+side bar is configured — apps can call `setSideBarVisible(true)` on a
+no-side-bar grid without a throw. `setSideBarPosition` re-mounts the
+shell on the opposite edge in place; `getSideBar()` returns the LIVE
+def (position mutations from `setSideBarPosition` show up in the
+returned object), and `getOpenedToolPanel()` reflects the actual
+mounted-panel state including auto-opens triggered by
+`defaultToolPanel`.
+
+**Side bar events.** Two new union members on `CGridEvent`:
+`toolPanelVisibleChanged { source, key, visible }` fires when a panel
+opens or closes; `sideBarVisibleChanged { source, visible }` fires
+when the whole bar shows or hides. The `source` tag is one of
+`'api'` (programmatic call), `'sideBarButtonClicked'` (tab click), or
+(for `toolPanelVisibleChanged` only) `'sideBarInitializing'` (the
+mount-time auto-open from `defaultToolPanel`). Switching panels
+emits TWO `toolPanelVisibleChanged` events in order (close-old,
+open-new) so listeners can track the transition cleanly. No events
+fire when no side bar is configured.
+
+**DOM-canvas coexistence audit.** A regression matrix
+(`cycle11-sideBarCoexistence.spec.ts`) exercises every interaction
+surface — cell click, range drag, edge-zone auto-scroll, wheel
+scroll, context menu mount, filter popup mount, and the resize-handle
+drag itself — against BOTH side-bar-closed AND side-bar-open. The
+audit confirmed pointer routing already worked correctly through
+`canvas.getBoundingClientRect()` (it returns the shrunk drawable
+width when the side bar is open, so cell coordinates stay correct
+without any feature-chain patch), the Cycle 9 edge-zone auto-scroll
+fires at the new shrunk right edge (not the absolute canvas right
+edge), and the side bar's resize-handle drag doesn't bleed into the
+feature chain (the handle's `pointer-events: auto` keeps the event
+captured DOM-side).
+
+**Demo polish.** `apps/cgrid-positions` ships the side bar wired into
+`positionsGrid.ts` with `sideBar: { toolPanels: ['columns',
+'filters'] }`. Two new URL flags showcase the registration + default
+surfaces without breaking the existing E2E suite: `?customPanel=1`
+registers a `DemoCustomPanel` (lifecycle-counter side channel for the
+`refreshToolPanel` / `getToolPanelInstance` E2Es) via
+`CGridOptions.components` and appends a third "Demo" tab;
+`?openColumns=1` adds `defaultToolPanel: 'agColumnsToolPanel'` so the
+Columns panel opens at mount. Default URL preserves the "no tab
+pressed at mount" surface every prior Cycle 11 spec asserts against.
+
+**Performance.** Opening, closing, switching, and resize-dragging the
+side bar each trigger exactly one `cgridCanvas.resize()` per gesture —
+verified against the coexistence regression matrix. The side bar
+mounts pure main-thread DOM, no worker round-trip on any panel
+interaction. The Columns panel's `refresh()` walks the row list in
+place instead of rebuilding the tree, preserving scroll position
+when the underlying column model mutates from outside. No scroll-FPS
+impact measured with both panels open.
+
+**Test sweep (recorded against the Task 9 branch):**
+- `npm run typecheck --workspaces`: clean (cgrid, cgrid-positions,
+  showcase).
+- `npm run test:cgrid`: 92 files, 1056 unit tests, 100% pass.
+- `npx playwright test`: 207 E2E specs, 100% pass (including the
+  6 new `cycle11-*.spec.ts` files — sideBar, columnsPanel,
+  filtersPanel, customPanelApi, sideBarEvents,
+  sideBarCoexistence).
 
 ---
 
-## Cycle 11 status: IN PROGRESS
+## Cycle 11 status: COMPLETE
 
-_(flipped to `COMPLETE` by Task 9)_
+Closed on 2026-06-26.
+
+- [x] Task 1 — `ToolPanel` interface + registry + `components` option
+      (PR #35).
+- [x] Task 2 — Side bar shell: DOM mount, tab strip, panel host,
+      resize handle, position toggle (PR #36).
+- [x] Task 3 — Columns tool panel: visibility, reorder, sections,
+      search, all suppress flags (PR #37).
+- [x] Task 4 — Filters tool panel: collapsible rows + inline filter
+      editors (shared `buildFilterComponent` factory) (PR #38).
+- [x] Task 5 — `refreshToolPanel` + `getToolPanelInstance` API
+      (PR #39).
+- [x] Task 6 — Side bar state API: `isSideBarVisible`,
+      `setSideBarVisible`, `setSideBarPosition`, `openToolPanel`,
+      `closeToolPanel`, `getOpenedToolPanel`, `getSideBar` (PR #40).
+- [x] Task 7 — `toolPanelVisibleChanged` + `sideBarVisibleChanged`
+      events (PR #41).
+- [x] Task 8 — DOM-canvas coexistence audit (PR #42).
+- [x] Task 9 — Cycle 11 exit ritual: FM Area 17 flips + demo polish
+      (`?openColumns=1`) + worklog `## Shipped` + status close.
+
+**FM coverage:** Area 17 — 15 of 17 rows flipped to ✅ (88%). Deferred:
+`toolPanelSizeChanged` event (the resize handle ships in Cycle 11 but
+the size-change emission lands later) and `allowDragFromColumnsToolPanel`
+(drag-from-panel-to-grid integration lands in Cycle 13 alongside the
+grouping data path).

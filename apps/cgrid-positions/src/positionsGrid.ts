@@ -115,6 +115,15 @@ export interface PositionsGridOptions {
    *  Cycle 11 E2Es still see the canonical two-tab side bar; the
    *  cycle11-customPanelApi spec opts in via `?customPanel=1`. */
   customPanel?: boolean;
+  /** Cycle 11 / Task 9 — demo polish opt-in. Sets
+   *  `sideBar.defaultToolPanel: 'agColumnsToolPanel'` so the Columns
+   *  panel opens at mount. Off by default — every prior Cycle 11 E2E
+   *  (cycle11-sideBar / sideBarEvents / sideBarCoexistence /
+   *  customPanelApi / columnsPanel / filtersPanel) was written against
+   *  the no-default-panel surface and asserts "no tab pressed at mount".
+   *  Flipping the default would regress those specs, so the polished
+   *  demo experience is gated behind `?openColumns=1`. */
+  openColumns?: boolean;
 }
 
 /** Cycle 7 / Task 8 — toolbar-driven external filter state. The
@@ -416,15 +425,22 @@ export function createPositionsGrid(
     // appends it to the tab strip. The cycle11-customPanelApi E2E uses
     // this to exercise `refreshToolPanel` + `getToolPanelInstance` over
     // a custom (non-built-in) id.
-    sideBar: opts.customPanel
-      ? {
-          toolPanels: [
+    //
+    // Cycle 11 / Task 9 — `?openColumns=1` opts the demo into
+    // `defaultToolPanel: 'agColumnsToolPanel'` so the Columns panel
+    // opens at mount, showcasing the polished out-of-the-box experience
+    // an app would ship with. Existing Cycle 11 E2Es assert "no tab
+    // pressed at mount" against the default URL, so this stays opt-in.
+    sideBar: {
+      toolPanels: opts.customPanel
+        ? [
             'columns',
             'filters',
             { id: 'demoCustomPanel', labelDefault: 'Demo', toolPanel: 'demoCustomPanel' },
-          ],
-        }
-      : { toolPanels: ['columns', 'filters'] },
+          ]
+        : ['columns', 'filters'],
+      ...(opts.openColumns ? { defaultToolPanel: 'agColumnsToolPanel' } : {}),
+    },
     components: opts.customPanel ? { demoCustomPanel: DemoCustomPanel } : undefined,
     // Cycle 10 / Task 1 — sample `getContextMenuItems`. Keeps every
     // built-in default item (Copy / Paste / Cut / Export / Autosize /
