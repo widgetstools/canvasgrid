@@ -2828,6 +2828,25 @@ export class CGrid<TRow = any> {
     return this.groupingState.getRowGroupColumns();
   }
 
+  /** Cycle 15.5 / Task 2 — class-level mirror of the public-API getter.
+   *  Lives here too (not just on `makeApi()`) so the default main-menu
+   *  registry — which receives `this` as its `DefaultMainMenuGrid`
+   *  surface — can resolve header names without round-tripping through
+   *  the API surface. Mirrors the `getColumnHeaderName` API entry. */
+  getColumnHeaderName(colId: string): string | undefined {
+    return this.columnDefsMap.get(colId)?.headerName;
+  }
+
+  /** Cycle 15.5 / Task 2 — class-level mirror of the public-API getter.
+   *  Lives here too (not just on `makeApi()`) so the default main-menu
+   *  registry — which receives `this` as its `DefaultMainMenuGrid`
+   *  surface — can decide whether to render the "Group by `<col>`"
+   *  item without round-tripping through the API surface. Mirrors the
+   *  `isColumnRowGroupEnabled` API entry. */
+  isColumnRowGroupEnabled(colId: string): boolean {
+    return this.columnDefsMap.get(colId)?.enableRowGroup === true;
+  }
+
   /** Cycle 15 / Task 6 — runtime swap of `rowGroupPanelShow`. When
    *  the option mutates via `setGridOption`, this method either
    *  mounts a fresh host (transition from `'never'`), unmounts the
@@ -2895,6 +2914,16 @@ export class CGrid<TRow = any> {
         this.setGroupModel({ rowGroupCols: [...e.rowGroupColumns] });
       }
     }
+    // Cycle 15.5 / Task 2 — fan the change out as a public event so
+    // the columns tool panel's Row Groups drop zone (and any other
+    // subscriber) re-renders. The event carries the same source verb
+    // GroupingState emitted so subscribers can branch (e.g. ignore
+    // pure sort decoration when they only mirror membership).
+    this.events.emit({
+      type: 'columnRowGroupChanged',
+      columns: [...e.rowGroupColumns],
+      source: e.source,
+    });
   }
 
   /** Resolve `rowId` to its current visible-row index via the worker, then
@@ -4050,7 +4079,8 @@ export class CGrid<TRow = any> {
       removeEventListener: (t, h) => this.removeEventListener(t as CGridEvent['type'], h as any),
       moveColumnByIndex: (f, t) => this.moveColumnByIndex(f, t),
       getColumnState: () => this.getColumnState(),
-      getColumnHeaderName: (colId) => this.columnDefsMap.get(colId)?.headerName,
+      getColumnHeaderName: (colId) => this.getColumnHeaderName(colId),
+      isColumnRowGroupEnabled: (colId) => this.isColumnRowGroupEnabled(colId),
       getColumnFilterType: (colId) => this.getColumnFilterType(colId),
       buildColumnFilterEditor: (colId) => this.buildColumnFilterEditor(colId),
       applyColumnState: (p) => this.applyColumnState(p),
