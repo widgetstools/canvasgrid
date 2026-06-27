@@ -31,6 +31,31 @@ export interface ResolvedTheme {
   /** Cycle 9 / Task 3 — opaque border drawn around each active
    *  cell-range selection rect. Resolved from `--cg-range-border-color`. */
   rangeBorderColor: string;
+  /** Cycle 14 / Task 1 — totals (grand-total) row background. The 3%
+   *  slate tint over body bg that gives the row its "lift". Painted by
+   *  the row-bg pass for any `isTotals` row. Resolved from
+   *  `--cg-totals-bg`. Design plan: cycle-14-aggregation-design.md. */
+  totalsBg: string;
+  /** Cycle 14 / Task 1 — totals row foreground. One stop darker than
+   *  body fg (light) / one stop brighter (dark) so the +1 weight stop
+   *  carries the lift. Resolved from `--cg-totals-fg`. */
+  totalsFg: string;
+  /** Cycle 14 / Task 1 — totals row top border colour. A hairline
+   *  weighted between `gridLineColor` and `borderColor` so it reads as
+   *  the row's only visual lift. Painted as a 1px `fillRect` at
+   *  `Math.round(row.top) - 1` by `gridLinesPainter`. Resolved from
+   *  `--cg-totals-border-top`. */
+  totalsBorderTop: string;
+  /** Cycle 14 / Task 1 — muted foreground used by the Task 5 polished
+   *  `'totals'` renderer for the empty-cell em-dash and the label
+   *  column (when present). Resolved from `--cg-totals-fg-muted`. */
+  totalsFgMuted: string;
+  /** Cycle 14 / Task 1 — font-weight for totals cells. Body is `400`;
+   *  totals is `500` (+1 stop only — the row's lift comes from the
+   *  rule above + tint, NOT from typography inflation). Substituted
+   *  into the cell's `font` string when the row is `isTotals`.
+   *  Resolved from `--cg-totals-font-weight`. */
+  totalsFontWeight: number;
   rowHeight: number;
   headerHeight: number;
   resizerHotZone: number;
@@ -148,6 +173,11 @@ export class CssReader {
       unsortIconColor: get('--cg-unsort-icon-color') || 'rgba(0, 0, 0, 0.4)',
       rangeFillColor: get('--cg-range-fill-color') || 'rgba(59, 130, 246, 0.22)',
       rangeBorderColor: get('--cg-range-border-color') || '#3b82f6',
+      totalsBg: get('--cg-totals-bg') || '#f7f9fb',
+      totalsFg: get('--cg-totals-fg') || '#0f172a',
+      totalsBorderTop: get('--cg-totals-border-top') || '#cbd5e1',
+      totalsFgMuted: get('--cg-totals-fg-muted') || '#475569',
+      totalsFontWeight: px('--cg-totals-font-weight', 500),
       rowHeight: px('--cg-row-height', 30),
       headerHeight: px('--cg-header-height', 32),
       resizerHotZone: px('--cg-resizer-hot-zone', 4),

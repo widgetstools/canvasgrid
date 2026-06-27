@@ -210,6 +210,12 @@ export interface PositionsGridOptions {
    *  Anything else (and null) leaves the bar disabled, preserving the
    *  default demo experience for the rest of the visual matrix. */
   statusBar?: string | null;
+  /** Cycle 14 / Task 1 — opt the demo into mounting the pinned grand-
+   *  totals row at the top or bottom edge of the grid body. `null` /
+   *  omitted leaves the row off, preserving cells 01–16's baselines.
+   *  Drives visual cell 17 via the `?totals=bottom` query string; the
+   *  Task 7 exit ritual flips the demo default to `'bottom'`. */
+  totalsRowPosition?: 'top' | 'bottom' | null;
 }
 
 /** Cycle 7 / Task 8 — toolbar-driven external filter state. The
@@ -593,6 +599,15 @@ export function createPositionsGrid(
                 { key: 'agSelectedRowCountComponent', statusPanel: 'agSelectedRowCountComponent', align: 'right' },
               ],
             },
+    // Cycle 14 / Task 1 — pinned grand-totals row. `null` / undefined
+    // leaves the row off; `'top'` / `'bottom'` mounts a single non-
+    // scrolling row at the matching edge of the grid body that reads
+    // `chunk.totals[colId]` for every column with an `aggFunc` declared
+    // on its colDef. The demo's `notionalAmount`, `marketValue`,
+    // `currentPrice`, `pnl`, `dailyPnl`, `unrealizedPnl`, `yield`,
+    // `spread`, `dv01`, `pv01` columns all carry aggFuncs so the
+    // pinned row reads with values across the visible width.
+    totalsRowPosition: opts.totalsRowPosition ?? null,
     // Cycle 10 / Task 1 — sample `getContextMenuItems`. Keeps every
     // built-in default item (Copy / Paste / Cut / Export / Autosize /
     // Pin / Reset) AND appends one custom "Clear filters" entry so the

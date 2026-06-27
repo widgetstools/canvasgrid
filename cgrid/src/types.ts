@@ -449,6 +449,20 @@ export interface CGridOptions<TRow = any> {
    *  `agAggregationComponent`) land in Cycle 13 Tasks 2 + 3; until then
    *  a bar with built-in keys renders the inert stubs. */
   statusBar?: StatusBarDef | boolean;
+
+  /** Cycle 14 / Task 1 — pinned grand-totals row. When set, a single
+   *  non-scrolling row mounts at the grid body's `'top'` or `'bottom'`
+   *  edge and displays the worker-computed `chunk.totals` for every
+   *  column with an `aggFunc` declared on its column def. `null` or
+   *  omitted suppresses the row entirely (no subgrid mounted, no
+   *  body-region inset).
+   *
+   *  The row reads totals from the chunk that the existing data pass
+   *  emits — it triggers ZERO additional worker round-trips on scroll.
+   *  Per-column row-height override + the polished `'totals'` cell
+   *  renderer ship in Tasks 5 (`docs/superpowers/plans/2026-06-27-canvasgrid-cycle-14-aggregation-ui.md`).
+   *  Cycle 14 / Task 1. */
+  totalsRowPosition?: 'top' | 'bottom' | null;
 }
 
 /** Cycle 10 / Task 5 — params for `processCellForClipboard`. Mirrors

@@ -35,8 +35,13 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
       rowBgs[r] = selectedRowIndices.has(dataIdx)
         ? theme.rowSelectedBg
         : (dataIdx % 2 === 1 ? theme.rowAltBg : theme.bg);
+    } else if (row.subgrid.isTotals) {
+      // Cycle 14 / Task 1 — the "hairline lift": a 3% slate tint that
+      // gives the totals row its visual signature without competing
+      // with the data above. The top border lands in gridLinesPainter.
+      rowBgs[r] = theme.totalsBg;
     } else {
-      // totals/footer — use headerBg as a neutral default
+      // footer / unknown — neutral default
       rowBgs[r] = theme.headerBg;
     }
   }
@@ -259,8 +264,19 @@ function paintBand(
         value = cell?.value ?? '';
         valueFormatted = cell?.valueFormatted ?? '';
         flashAlpha = cell?.flashAlpha;
+      } else if (row.subgrid.isTotals) {
+        // Cycle 14 / Task 1 — read the totals value through the
+        // subgrid's `getCell`, which proxies to the current chunk's
+        // `totals[colId]` map (already worker-computed). Returns null
+        // for columns with no aggFunc — paint the cell empty (the row
+        // bg + top border still apply, so the row reads as part of the
+        // summary even with empty cells). Task 5's polished `'totals'`
+        // renderer overrides this with an em-dash placeholder.
+        const cell = row.subgrid.getCell(row.localRowIndex, col.colId);
+        value = cell?.value ?? '';
+        valueFormatted = cell?.valueFormatted ?? '';
       } else {
-        continue; // totals/footer not yet wired
+        continue; // footer not yet wired
       }
 
       // Resolve the renderer per cell: header rows always go to 'header';
@@ -289,13 +305,16 @@ function paintBand(
         x: col.left, y: row.top, w: col.width, h: row.height,
         rowBg,
         prefillColor: rowBg,
-        isFocused: !row.subgrid.isHeader
+        isFocused: row.subgrid.isData
           && selection.focusedRowIndex === row.localRowIndex
           && selection.focusedColId === col.colId,
-        isSelected: !row.subgrid.isHeader
+        isSelected: row.subgrid.isData
           && selection.selectedRowIndices.has(row.localRowIndex),
         isHovered: false,
         isHeader: row.subgrid.isHeader,
+        // Cycle 14 / Task 1 — totals rows trigger the "lift" treatment
+        // in `applyCellProps`: +1 font-weight stop + totalsFg.
+        isTotals: row.subgrid.isTotals,
         iconColor: theme.focusRingColor,
         sortDirection,
         sortIndex,

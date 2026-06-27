@@ -170,3 +170,51 @@ export class DataSubgrid implements Subgrid {
     return this.cellAt(local, colId);
   }
 }
+
+/** Lookup the totals value for a single column. Returns `null` when the
+ *  current chunk doesn't carry a totals entry for `colId` (column has no
+ *  `aggFunc`, or no chunk has arrived yet). The single-row subgrid below
+ *  wraps this in a `SubgridCell` and threads the column's `valueFormatter`
+ *  through `formatValue`. Cycle 14 / Task 1. */
+export type TotalsCellLookup = (
+  colId: string,
+) => { value: unknown; valueFormatted: string } | null;
+
+/**
+ * Grand-totals row. Pinned at the top OR bottom of the grid body —
+ * `cgrid.ts` picks the slot based on `options.totalsRowPosition`. The
+ * row reads `chunk.totals[colId]` from the already-computed worker
+ * aggregation; the totals row triggers ZERO additional worker
+ * round-trips on scroll. Cycle 14 / Task 1.
+ *
+ * Rendered as ONE row by default (`getRowCount` returns 1). Per-row
+ * height defaults to the grid's body row height; pass an explicit
+ * `getHeight` to override (e.g. for a slightly taller totals row).
+ * Cycle 5's variable-row-height index does not cover this subgrid —
+ * the row is non-scrolling and its height is constant per render
+ * frame, so the index isn't needed.
+ *
+ * `getCell` returns `null` when the lookup function reports no totals
+ * entry for `colId` — the painter then skips text for that cell while
+ * still painting the row chrome (bg + top border).
+ */
+export class TotalsSubgrid implements Subgrid {
+  readonly type = 'totals' as const;
+  readonly isHeader = false;
+  readonly isData = false;
+  readonly isTotals = true;
+  readonly isFooter = false;
+
+  constructor(
+    private getHeight: () => number,
+    private lookup: TotalsCellLookup,
+  ) {}
+
+  getRowCount(): number { return 1; }
+  getRowHeight(_local: number): number { return this.getHeight(); }
+  getCell(_local: number, colId: string): SubgridCell | null {
+    const entry = this.lookup(colId);
+    if (entry === null) return null;
+    return { value: entry.value, valueFormatted: entry.valueFormatted };
+  }
+}

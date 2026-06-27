@@ -55,6 +55,17 @@
    * underlying cell content stays readable through the wash. */
   --cg-range-fill-color: rgb(59 130 246 / 22%);
   --cg-range-border-color: #3b82f6;
+  /* Cycle 14 / Task 1 — totals (grand-total) row tokens.
+   * Design plan: docs/superpowers/plans/notes/cycle-14-aggregation-design.md
+   * The "hairline lift" signature: 3% tint over body, +1 weight stop,
+   * 1px rule above. Nothing else. The token family is consumed by
+   * cssReader → ResolvedTheme → byRows/gridLines painters (Task 1)
+   * and the polished `'totals'` cell renderer (Task 5). */
+  --cg-totals-bg: #f7f9fb;
+  --cg-totals-fg: #0f172a;
+  --cg-totals-border-top: #cbd5e1;
+  --cg-totals-fg-muted: #475569;
+  --cg-totals-font-weight: 500;
 }
 
 .cg-theme-quartz-dark {
@@ -98,6 +109,14 @@
    * ring color. */
   --cg-range-fill-color: rgb(96 165 250 / 22%);
   --cg-range-border-color: #60a5fa;
+  /* Cycle 14 / Task 1 — dark-mode totals tokens. The same hairline lift
+   * tuned for the dark body: a 5% upward shift in lightness with no
+   * temperature change, rule color between gridline and header border. */
+  --cg-totals-bg: #0f1d36;
+  --cg-totals-fg: #e2e8f0;
+  --cg-totals-border-top: #4a6391;
+  --cg-totals-fg-muted: #94a3b8;
+  --cg-totals-font-weight: 500;
 }
 
 /* Native scrollbar styling (Chromium/WebKit) — always-visible thumb
@@ -1063,4 +1082,21 @@
   /* 1ch total around the `·` — 0.5ch on each side. Matches Task 1's
    * declared `.cg-status-panel-separator` vocabulary. */
   padding: 0 0.5ch;
+}
+
+/* Cycle 14 / Task 1 — totals (grand-total) row.
+ *
+ * Canvasgrid paints to canvas, NOT DOM, so these selectors do NOT
+ * receive any rendered cells. They exist as anchors for Task 5's
+ * polished `'totals'` cell renderer (which will read CSS variables
+ * via the same mechanism `cellClassVariants` uses) AND as a stable
+ * theming surface apps can override.
+ *
+ * The painter actually consumes the `--cg-totals-*` variables via
+ * `cssReader.ts → ResolvedTheme` and writes them into the canvas. */
+.cg-totals-row {
+  /* placeholder — Task 5 renderer reads tokens via cssReader. */
+}
+.cg-totals-cell {
+  /* placeholder — per-cell polish lands in Task 5. */
 }

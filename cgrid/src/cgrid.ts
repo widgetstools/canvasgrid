@@ -31,7 +31,7 @@ import {
 } from './core/layout';
 import { computeViewport, type ViewportState } from './core/viewport';
 import { RowHeightIndex } from './core/rowHeightIndex';
-import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, type Subgrid } from './core/subgrid';
+import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, TotalsSubgrid, type Subgrid } from './core/subgrid';
 import { FloatingFilterSubgrid } from './core/floatingFilterSubgrid';
 import { FloatingFilterOverlay } from './interaction/floatingFilterOverlay';
 import { PopupHost } from './interaction/editors/popupHost';
@@ -2944,6 +2944,18 @@ export class CGrid<TRow = any> {
       () => this.options.floatingFilterHeight ?? 28,
       () => this.isFloatingFilterEnabled(),
     ));
+    // Cycle 14 / Task 1 — totals row at top, before the data subgrid.
+    // The viewport math (computeViewport, pass 3) actually positions
+    // non-header non-data subgrids AFTER the visible data rows
+    // regardless of stack order, so `'top'` placement requires the
+    // viewport math to handle this. For Task 1 we ship `'bottom'`
+    // by stacking AFTER the data subgrid below; `'top'` placement
+    // routes through the same subgrid but reordered by computeViewport
+    // (extended in this task to honour an `isTotals && position==='top'`
+    // hint via a new helper on the subgrid instance).
+    if (this.options.totalsRowPosition === 'top') {
+      stack.push(this.makeTotalsSubgrid('top'));
+    }
     stack.push(new DataSubgrid(
       () => this.rowCount,
       // Per-row height — first try the chunk's heights (canonical for the
@@ -2953,7 +2965,43 @@ export class CGrid<TRow = any> {
       (local) => this.rowHeightAt(local),
       (rowIndex, colId) => this.cellAt(rowIndex, colId),
     ));
+    // Cycle 14 / Task 1 — totals row at bottom (default position when
+    // `totalsRowPosition === 'bottom'`).
+    if (this.options.totalsRowPosition === 'bottom') {
+      stack.push(this.makeTotalsSubgrid('bottom'));
+    }
     this.subgrids = stack;
+  }
+
+  /** Cycle 14 / Task 1 — factory for the grand-totals subgrid. The
+   *  height resolves once per call, defaulting to the grid's body row
+   *  height; per-column / per-grid override hooks ship in Task 5 via
+   *  `pinnedRowHeight`. The cell lookup reads `chunk.totals[colId]`
+   *  through the existing chunk state — totals are computed by the
+   *  worker's AggPass and shipped with each viewport reply, so the
+   *  row triggers ZERO extra worker round-trips on scroll. The
+   *  `_position` arg is informational for now (Task 2 will use it to
+   *  decide divider direction for pinned-row chrome). */
+  private makeTotalsSubgrid(_position: 'top' | 'bottom'): TotalsSubgrid {
+    return new TotalsSubgrid(
+      () => this.options.rowHeight ?? this.theme.rowHeight,
+      (colId) => this.totalsCellLookup(colId),
+    );
+  }
+
+  /** Cycle 14 / Task 1 — read the current chunk's totals entry for
+   *  `colId` and format it through the column's `valueFormatter` when
+   *  declared. Returns `null` when no chunk has arrived yet OR the
+   *  column has no aggFunc declared (`chunk.totals` only carries
+   *  entries for aggregated columns). The painter skips text for null
+   *  results while still painting row chrome. */
+  private totalsCellLookup(colId: string): { value: unknown; valueFormatted: string } | null {
+    const chunk = this.chunk;
+    if (!chunk || !chunk.totals) return null;
+    const raw = chunk.totals[colId];
+    if (raw === undefined) return null;
+    if (raw === null) return { value: null, valueFormatted: '' };
+    return { value: raw, valueFormatted: this.formatNumber(colId, raw) };
   }
 
   /** Cycle 7 / Task 1 — true when the floating-filter row should render.
