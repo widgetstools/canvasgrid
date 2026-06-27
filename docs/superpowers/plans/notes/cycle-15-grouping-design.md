@@ -1160,3 +1160,236 @@ muted echo at the leaf indent.**
   tokens — the muted family stays one colour.
 
 ---
+
+## Task 12 — Group totals (footer rows)
+
+**Brief recap:** Per-group footer rows render under each EXPANDED group. They
+aggregate that group's descendant leaf rows via the same `AggPass` +
+`AggFuncRegistry` the grand-total subgrid uses (Cycle 14 / Task 1), and they
+INHERIT the Cycle 14 totals signature ("hairline lift": 3% slate tint + 1 px
+top rule + +1 font-weight stop) so the user reads the same vocabulary across
+data → group spine → footer → grand total. The auto-group cell on a footer
+row paints `Total ${groupValue}` at the parent group's indent depth — anchor
+so the eye can trace the synthesis back to its bucket.
+
+### Subject pin
+
+The same fixed-income trader from Tasks 4 / 8 / 11. She's grouped positions
+by `Desk` → `Region` → `Instrument Type`, expanded `Rates → APAC`, and is
+scanning P&L per instrument type. Three things she needs to read at once,
+without flipping mental contexts:
+
+1. **The per-instrument-type P&L** (data rows).
+2. **The APAC region's aggregated P&L** (Total APAC — the row directly under
+   APAC's children).
+3. **The Rates desk's aggregated P&L** (Total Rates — the row directly
+   under all regions of Rates), and the grand total at the very bottom.
+
+The footer rows are the load-bearing element. Their job is to surface the
+"$X for THIS bucket" answer in the same column-aligned position the data
+rows surface "$X for ONE instrument" — so the trader scans down a column
+and reads data values plus their rolled-up bucket totals in one column-scan
+gesture.
+
+### Default rejected
+
+AI defaults for "per-group footer row" cluster on three looks:
+
+1. **Bold inverted strip** — heavy gray bg across the full row, bold white
+   text. Reads "section marker" rather than "computed summary"; clashes
+   with the grand-total row (which also wants a synthesis signature).
+2. **Indented mini-totals** — bg matches the group row (lighter), label
+   says "subtotal," numbers in body weight. Reads as "another data row
+   with a label" — the trader can't tell at a glance that it's a
+   synthesis vs a real instrument named "subtotal."
+3. **Right-aligned totals chip** — numbers floated in a chip in the
+   auto-group cell instead of column-aligned. Breaks column scanning —
+   the trader has to move her eyes off the P&L column to find the
+   group total.
+
+All three either fight the existing Cycle 14 totals vocabulary
+(option 1, 3) or fail to differentiate footers from data rows
+(option 2).
+
+### Risk taken
+
+**Per-group footers get the FULL totals signature** — same 3% slate
+bg, same 1 px top rule, same +1 font-weight stop, same `totalsFg`
+color. The grand-total row stays distinguishable not via heavier
+chrome but via POSITION (always last, never inside an expanded
+group) and via the auto-group cell's label (just `Total`, no group
+value suffix).
+
+This is the louder risk. Most design systems differentiate "group
+total" from "grand total" by stepping up the chrome weight (group
+= medium, grand = heavy). I'm shipping them visually identical and
+relying on POSITION + LABEL to distinguish. The bet: in the canvas
+grid where the column-scan is the primary reading gesture, having
+the SAME visual stripe at every synthesis level lets the trader
+read down a column once and know "this stripe is always a
+synthesis" — no need to learn "heavy stripe means grand vs medium
+stripe means group." The label + position carry the granularity.
+
+The Cycle 14 "lift" already includes a top hairline rule, so two
+footer rows in a row (e.g. Total APAC followed by another region's
+expansion) read as separate synthesis rows because each carries
+its own top rule. The visual rhythm is "data data data data ━━
+footer ━━ footer ━━ footer" with the rule acting as both opener
+and divider — same way the totals row works in an ungrouped grid.
+
+### Auto-group cell label composition
+
+```
+[indent: parentDepth × 14px] [label: 'Total ' + parentGroupValue]
+```
+
+| Slot | Treatment |
+|---|---|
+| Indent | `(parentDepth + 1 - 1) × 14px = parentDepth × 14px` — the label sits at the SAME x-position as the parent group's value, so the eye traces parent → children → footer in one column-scan. |
+| Label | `Total ${parentGroupValue}` — verbatim from the ag-grid screenshot vocabulary. Defaults to just `Total` when the parent value is empty (grand-total case). |
+| Font weight | `--cg-group-footer-font-weight` (default 500 — same as totals). |
+| Font color | `--cg-group-footer-fg` (default `--cg-totals-fg`). |
+| Italic? | **No.** ag-grid italicises group totals; canvasgrid doesn't have italic in its monospace stack and adding it would require a font-family swap. The weight bump + bg lift carry the synthesis cue without the italic. |
+| Chevron / checkbox | **Omitted.** The footer is NOT a toggle target (the group above it owns expansion) and NOT a selection target (selecting the footer doesn't have well-defined semantics — it doesn't represent a single row). The auto-group cell paints label-only. |
+
+### Data column composition
+
+Each data column on a footer row paints `chunk.groupTotals[groupKey][colId]`
+through the SAME `'totals'` cell renderer the grand-total row uses
+(Cycle 14 / Task 5). The renderer's em-dash placeholder for empty
+cells (`'—'`) carries over verbatim — a column without an aggFunc
+paints the em-dash; a column with `aggFunc: 'sum'` paints the formatted
+sum; etc. Column halign follows the data column's halign (right for
+numeric, left for text), so a P&L column with right-aligned numbers
+stays right-aligned in the footer.
+
+### Tokens (committed to `tokens.css`)
+
+| Token | Default | Why |
+|---|---|---|
+| `--cg-group-footer-bg` | `var(--cg-totals-bg)` | Inherit the totals tint; apps that want a lighter footer can override without touching grand-total chrome. |
+| `--cg-group-footer-fg` | `var(--cg-totals-fg)` | Same as bg — inherit then optionally diverge. |
+| `--cg-group-footer-border-top` | `var(--cg-totals-border-top)` | One hairline rule color across both synthesis row types by default. |
+| `--cg-group-footer-font-weight` | `500` (matches totals) | Same weight family as totals. Apps that want a lighter footer override to 450 or 400. |
+
+All four tokens default to the totals values so the SHIPPED look is
+"footer === grand total in visual stripe; differentiated by label
++ position." Apps that want to break the parity (e.g. footer 2 %
+tint, grand total 4 %) override the four tokens and keep the
+`--cg-totals-*` tokens untouched.
+
+### Grand-total footer (when `groupIncludeTotalFooter: true`)
+
+A single footer entry at the very end of `flatOrder`, sitting OUTSIDE
+any group's collapsible scope (its `depth = 0` so the skip-depth
+logic never drops it). The auto-group cell paints just `Total` (no
+group-value suffix because the grand total isn't a group's child).
+
+The grand-total footer EXISTS IN ADDITION TO the `TotalsSubgrid`
+mechanism — `groupIncludeTotalFooter: true` does not conflict with
+`totalsRowPosition: 'bottom'`. Apps that want a single grand-total
+row pick ONE of the two channels; using both renders two grand totals
+(which may or may not be the app's intent — cgrid doesn't guard).
+Recommendation: `groupIncludeTotalFooter` for grids that ALREADY
+have grouping active (so the footer aligns with the per-group
+footers' visual rhythm); `totalsRowPosition: 'bottom'` for ungrouped
+grids (pinned at the bottom of the scroll body).
+
+### Behaviour with collapse / expand
+
+When a group collapses, its descendant data rows drop out of the
+visible order — and so does its footer (the footer's `depth` is
+strictly greater than the parent group's `depth`, so the
+skip-depth logic in `viewportSlicer` skips it naturally). When the
+group re-expands, the footer comes back. No special handling needed
+in the slicer's expansion logic beyond the depth assignment.
+
+When `groupRemoveSingleChildren` (Task 10) elides a group, its
+footer ALSO elides — a group whose single child has been
+short-circuited shouldn't carry a "Total" row that just repeats the
+single child's value. The `walk()` function in `GroupPass.apply`
+skips both the group entry AND the footer entry for the elided
+group.
+
+### Behaviour with `showOpenedGroup` (Task 10)
+
+`showOpenedGroup` paints a muted echo of the leaf-parent's value on
+each data row's auto-group cell. The footer row is NOT a data row
+(`rowKind === 3`), so the `showOpenedGroup` slicer logic skips it.
+The footer's auto-group cell paints its own `Total ${groupValue}`
+label via the new footer cell renderer, NOT the muted leaf-parent
+echo. The two features compose without conflict.
+
+### Renderer path
+
+A new `'groupFooter'` cell renderer registers under that key. It's
+a thin wrapper around `totalsCell` (Cycle 14 / Task 5):
+
+- For the auto-group column (colId starts with the
+  `'ag-Grid-AutoColumn'` prefix): paint `Total ${parentValue}` at
+  the parent depth's indent.
+- For every other column: delegate to `totalsCell` so the formatted
+  value + em-dash placeholder + right-alignment + lift treatment
+  apply uniformly.
+
+The renderer reads `chunk.groupTotals[groupKey][colId]` indirectly:
+`cgrid.cellAt(rowIndex, colId)` resolves the lookup and returns
+the formatted value. The renderer itself doesn't reach into the
+chunk; it consumes the same `CellPaintConfig` shape every renderer
+gets.
+
+### applyCellProps integration
+
+`ApplyCellPropsInput` grows a `isGroupFooter?: boolean` flag. When
+set, the lift treatment fires the same way as `isTotals === true`
+but reads from the `--cg-group-footer-*` token family instead. The
+two flags are mutually exclusive — a row is either a footer
+(rowKind === 3) or a grand total (in `TotalsSubgrid`), never both.
+
+The row-bg pass in `byRows.ts` checks the chunk's
+`rowKinds[localIndex] === 3` for any DataSubgrid row and paints
+`theme.groupFooterBg` instead of the data-row bg. The
+`gridLinesPainter` paints the top hairline rule under the same
+condition (chunk rowKind 3 in a data row).
+
+### What's explicitly NOT shipped in Task 12
+
+- No per-row hover state for footer rows (matches the totals row —
+  totals don't react to hover either; the synthesis stripe is
+  read-only).
+- No focus / selection on footer rows (matches totals).
+- No `groupIncludeFooter` per-group override (apps that want
+  selective per-group footers can post-process via a custom
+  `aggFunc` that returns null for groups they want to suppress).
+- No collapse animation for footers (cycle's "no animation" rule
+  from Task 7 — instant flip).
+- No keyboard nav across footers (Cycle 16+ a11y task).
+- No right-click context menu on footers (Cycle 16+ context-menu task).
+
+### One-line summary
+
+**Per-group footers inherit the totals signature; the auto-group cell
+label says `Total ${groupValue}` at parent depth indent; the grand
+total sits at the bottom with label `Total` at depth 0. Same stripe,
+different position + label.**
+
+### Vocabulary handed to subsequent tasks
+
+- **`--cg-group-footer-*` token family** — extensibility hook for
+  apps that want footers visually distinct from grand totals.
+  Defaults preserve visual parity.
+- **`rowKind === 3` is the canonical "inline synthesis row" signal**
+  for DataSubgrid. Cycle 18 (pivot) reuses the same rowKind for
+  pivot subtotal rows; Cycle 17 (tree data) reuses it for tree-level
+  totals.
+- **The "label + position" differentiation pattern** — instead of
+  inflating chrome per synthesis level, lean on label text +
+  position-in-stack to convey hierarchy. Future synthesis variants
+  (pivot subtotal at depth N, tree-level total) follow the same
+  rule.
+- **Footer entries live in `flatOrder` at depth `parent.depth + 1`**
+  so the existing skip-depth logic drops them naturally on collapse.
+  A new `FlatOrderEntry` `kind: 'footer'` keeps the slicer + tests
+  type-safe.
+
+---

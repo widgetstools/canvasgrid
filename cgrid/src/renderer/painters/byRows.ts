@@ -68,6 +68,22 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
   // 2. Resolve rowBg per visible row (one pass).
   const { selectedRowIndices } = selection;
   const rowBgs: string[] = new Array(vs.visibleRows.length);
+  // Cycle 15 / Task 12 — pre-resolve per-row "is footer row" lookup
+  // via the painter ctx's `rowKindAt` probe (mirrors the chunk's
+  // `rowKinds[localIndex]` array). Reading once per visible row
+  // (rather than per cell × N) keeps the bg-bundle + per-cell route
+  // synchronised without paying for redundant chunk reads.
+  const isFooterRow: boolean[] = new Array(vs.visibleRows.length).fill(false);
+  // Tests that build a partial PainterCtx may omit `rowKindAt` — guard
+  // defensively so the per-row check never crashes existing harnesses.
+  const rowKindAt = p.rowKindAt;
+  if (rowKindAt) {
+    for (let r = 0; r < vs.visibleRows.length; r++) {
+      const row = vs.visibleRows[r]!;
+      if (!row.subgrid.isData) continue;
+      if (rowKindAt(row.localRowIndex) === 3) isFooterRow[r] = true;
+    }
+  }
   for (let r = 0; r < vs.visibleRows.length; r++) {
     const row = vs.visibleRows[r]!;
     // Cycle 15 / Task 5 — group-row strip mode wins over selection /
@@ -75,6 +91,14 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
     // `groupRowBg` carries the structural signal.
     if (groupStripRows[r]) {
       rowBgs[r] = theme.groupRowBg;
+      continue;
+    }
+    // Cycle 15 / Task 12 — footer rows get the totals "lift" bg via
+    // `theme.groupFooterBg`. Paint it BEFORE the data-row selection /
+    // alt-row branch so a footer inside a selected group still reads
+    // as a footer (selection chrome belongs to data rows only).
+    if (isFooterRow[r]) {
+      rowBgs[r] = theme.groupFooterBg;
       continue;
     }
     if (row.subgrid.isHeader) {
@@ -181,13 +205,13 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
 
     paintBand(gc, sb.rows, leftPinned,
               0, vs.bodyLeft, sgTop, sgBottom,
-              /*clip*/ isDataBand, rowBgs, groupStripRows, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader);
+              /*clip*/ isDataBand, rowBgs, groupStripRows, isFooterRow, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader);
     paintBand(gc, sb.rows, center,
               vs.bodyLeft, vs.bodyRight, sgTop, sgBottom,
-              /*clip*/ true, rowBgs, groupStripRows, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader);
+              /*clip*/ true, rowBgs, groupStripRows, isFooterRow, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader);
     paintBand(gc, sb.rows, rightPinned,
               vs.bodyRight, rightEdge, sgTop, sgBottom,
-              /*clip*/ isDataBand, rowBgs, groupStripRows, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader);
+              /*clip*/ isDataBand, rowBgs, groupStripRows, isFooterRow, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader);
   }
 
   // Cycle 15 / Task 5 — group-row strip content (chevron + value + count).
@@ -262,6 +286,7 @@ function paintBand(
   clip: boolean,
   rowBgs: string[],
   groupStripRows: (import('../cellRenderers/group').GroupCellValue | null)[],
+  isFooterRow: boolean[],
   config: CellPaintConfig,
   sortLookup: Map<string, { direction: 'asc' | 'desc'; index: number }>,
   columnDefs: PainterCtx['columnDefs'],
@@ -421,10 +446,12 @@ function paintBand(
       // Resolve the renderer per cell: header rows always go to 'header';
       // totals rows default to the polished `'totals'` renderer (Cycle 14
       // / Task 5) unless the column declares an explicit
-      // `totalsCellRenderer` override. Data rows ask the column's
-      // cellRendererSelector (if any) and fall back to the static
-      // cellRenderer + cellRendererParams. The selector is the only
-      // per-cell hook here — keep it cheap.
+      // `totalsCellRenderer` override. Cycle 15 / Task 12 — per-group
+      // footer rows (`isFooterRow[r]`) inside the DataSubgrid route
+      // through the new `'groupFooter'` renderer. Data rows ask the
+      // column's cellRendererSelector (if any) and fall back to the
+      // static cellRenderer + cellRendererParams. The selector is the
+      // only per-cell hook here — keep it cheap.
       let rendererName: string;
       let params: unknown;
       if (row.subgrid.isHeader) {
@@ -432,6 +459,9 @@ function paintBand(
         params = undefined;
       } else if (row.subgrid.isTotals) {
         rendererName = def.totalsCellRenderer ?? 'totals';
+        params = def.cellRendererParams;
+      } else if (row.subgrid.isData && isFooterRow[r]) {
+        rendererName = 'groupFooter';
         params = def.cellRendererParams;
       } else if (def.cellRendererSelector) {
         const selected = def.cellRendererSelector({ value, colId: col.colId, data: null });
@@ -451,15 +481,23 @@ function paintBand(
         rowBg,
         prefillColor: rowBg,
         isFocused: row.subgrid.isData
+          && !isFooterRow[r]
           && selection.focusedRowIndex === row.localRowIndex
           && selection.focusedColId === col.colId,
         isSelected: row.subgrid.isData
+          && !isFooterRow[r]
           && selection.selectedRowIndices.has(row.localRowIndex),
         isHovered: false,
         isHeader: row.subgrid.isHeader,
         // Cycle 14 / Task 1 — totals rows trigger the "lift" treatment
         // in `applyCellProps`: +1 font-weight stop + totalsFg.
         isTotals: row.subgrid.isTotals,
+        // Cycle 15 / Task 12 — per-group footer rows trigger the same
+        // shape lift but via the `--cg-group-footer-*` token family.
+        // Mutually exclusive with isTotals (the input contract on
+        // `ApplyCellPropsInput` documents this; the `else if` in
+        // `applyCellProps` enforces it).
+        isGroupFooter: row.subgrid.isData && isFooterRow[r],
         iconColor: theme.focusRingColor,
         sortDirection,
         sortIndex,

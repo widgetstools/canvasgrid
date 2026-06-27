@@ -289,6 +289,17 @@ export interface PositionsGridOptions {
    *  seeds a partial selection so the indeterminate dash paints on
    *  one group. */
   groupSelectsChildren?: boolean;
+  /** Cycle 15 / Task 12 — opts the demo into per-group footer rows
+   *  (`groupIncludeFooter: true`). Each expanded group gets one footer
+   *  row at its bottom carrying the per-group aggregate. Drives visual
+   *  cell 26-group-footer-rows. Off by default so visual cells 01–25
+   *  stay byte-stable. */
+  groupIncludeFooter?: boolean;
+  /** Cycle 15 / Task 12 — opts the demo into the grand-total footer
+   *  companion (`groupIncludeTotalFooter: true`). Only meaningful when
+   *  `groupIncludeFooter` is on; appends a single grand-total row at
+   *  the very end of the body using the same totals signature. */
+  groupIncludeTotalFooter?: boolean;
 }
 
 /** Cycle 14 / Task 2 — deterministic seed for the demo pinned reference
@@ -830,6 +841,14 @@ export function createPositionsGrid(
     // paint a tri-state checkbox alongside the chevron. Used by
     // visual cell 25 to show the indeterminate state.
     ...(opts.groupSelectsChildren ? { groupSelectsChildren: true as const } : {}),
+    // Cycle 15 / Task 12 — opt into per-group footer rows when
+    // `?groupIncludeFooter=1` is set. Each expanded group's children
+    // get a `Total ${groupValue}` row at the bottom carrying the
+    // per-group aggregations. The grand-total companion lights up via
+    // `?groupIncludeTotalFooter=1` on top. Used by visual cell 26 to
+    // baseline the synthesis stripe vocabulary.
+    ...(opts.groupIncludeFooter ? { groupIncludeFooter: true as const } : {}),
+    ...(opts.groupIncludeTotalFooter ? { groupIncludeTotalFooter: true as const } : {}),
   };
   const grid = new CGrid<Position>(container, options);
   grid.registerCellRenderer('pnlPill', pnlPill);

@@ -146,6 +146,17 @@ export class SortPass<TRow = any> {
   applyGrouped(
     groupOutput: GroupPassOutput,
     postFilterIds: readonly string[],
+    /** Cycle 15 / Task 12 — flatOrder shape options. Mirror the
+     *  GroupPass-level flags so the rebuilt flatOrder keeps the same
+     *  contract (footer entries per non-elided group, optional
+     *  grand-total footer at the end, elision of single-child funnels).
+     *  Defaults match the pre-Task-12 behaviour so existing callers
+     *  don't have to be updated. */
+    options: {
+      includeFooter?: boolean;
+      includeTotalFooter?: boolean;
+      removeSingleChildren?: boolean;
+    } = {},
   ): GroupPassOutput {
     if (groupOutput.bypassed || groupOutput.roots.length === 0) {
       return groupOutput;
@@ -191,8 +202,18 @@ export class SortPass<TRow = any> {
 
     // Rebuild flatOrder DFS — preserves the GroupPass contract: each
     // group entry rides at its node `depth`; row entries ride at
-    // `rowDepth = depth-of-deepest-group + 1`.
-    const flatOrder = rebuildFlatOrder(roots);
+    // `rowDepth = depth-of-deepest-group + 1`. Task 12 — when the
+    // upstream GroupPass had `includeFooter` on, the rebuilt flatOrder
+    // re-emits footer entries per non-elided group so the slicer can
+    // route them to footer chunk slots. Likewise the optional
+    // grand-total footer (`includeTotalFooter`) and the elision rule
+    // (`removeSingleChildren`) ride through.
+    const flatOrder = rebuildFlatOrder(
+      roots,
+      options.includeFooter === true,
+      options.includeTotalFooter === true,
+      options.removeSingleChildren === true,
+    );
     return { roots, flatOrder, bypassed: false };
   }
 
@@ -408,7 +429,12 @@ function compare(a: unknown, b: unknown, type: 'text' | 'number'): number {
  *  cleanly skips a collapsed group's whole subtree). Module-scope so
  *  the cycle 15 / task 11 perf test can exercise the standalone walk
  *  if a regression triggers. */
-function rebuildFlatOrder(roots: readonly GroupNode[]): FlatOrderEntry[] {
+function rebuildFlatOrder(
+  roots: readonly GroupNode[],
+  includeFooter: boolean = false,
+  includeTotalFooter: boolean = false,
+  removeSingleChildren: boolean = false,
+): FlatOrderEntry[] {
   const flatOrder: FlatOrderEntry[] = [];
   let maxGroupDepth = -1;
   const seedMax = (nodes: readonly GroupNode[]): void => {
@@ -421,7 +447,10 @@ function rebuildFlatOrder(roots: readonly GroupNode[]): FlatOrderEntry[] {
   const rowDepth = maxGroupDepth + 1;
   const walk = (nodes: readonly GroupNode[]): void => {
     for (const n of nodes) {
-      flatOrder.push({ kind: 'group', key: n.key, depth: n.depth });
+      const skipGroupEntry = removeSingleChildren && n.childCount === 1;
+      if (!skipGroupEntry) {
+        flatOrder.push({ kind: 'group', key: n.key, depth: n.depth });
+      }
       if (n.childGroups.length > 0) {
         walk(n.childGroups);
       } else {
@@ -430,8 +459,19 @@ function rebuildFlatOrder(roots: readonly GroupNode[]): FlatOrderEntry[] {
           flatOrder.push({ kind: 'row', rowIndex: idxs[i]!, depth: rowDepth });
         }
       }
+      // Cycle 15 / Task 12 — per-group footer entry. Mirrors the
+      // GroupPass.apply walk: skipped when the group was elided AND
+      // when includeFooter is off. The footer's depth is one deeper
+      // than the parent group's so the slicer's skip-depth logic
+      // drops it on collapse without any special handling.
+      if (includeFooter && !skipGroupEntry) {
+        flatOrder.push({ kind: 'footer', key: n.key, depth: n.depth + 1 });
+      }
     }
   };
   walk(roots);
+  if (includeFooter && includeTotalFooter && roots.length > 0) {
+    flatOrder.push({ kind: 'footer', key: '', depth: 0 });
+  }
   return flatOrder;
 }

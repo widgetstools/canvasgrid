@@ -245,7 +245,16 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     // grouping is bypassed, fall back to the pre-Task-11 flat global
     // sort — `ids` becomes the sorted order the flat slicer reads.
     if (!state.groupOutput.bypassed) {
-      state.groupOutput = state.sort.applyGrouped(state.groupOutput, ids);
+      // Cycle 15 / Task 12 — thread the GroupPass-level flatOrder
+      // options (footer emission + elision) through SortPass so the
+      // rebuilt flatOrder re-emits footer entries / honors elision.
+      // Without this, sorting strips the footer entries the
+      // GroupPass-emitted flatOrder carries.
+      state.groupOutput = state.sort.applyGrouped(state.groupOutput, ids, {
+        includeFooter: state.group.getIncludeFooter(),
+        includeTotalFooter: state.group.getIncludeTotalFooter(),
+        removeSingleChildren: state.group.getRemoveSingleChildren(),
+      });
     } else {
       ids = state.sort.apply(ids);
     }
@@ -509,6 +518,19 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     // Task 9 default-expansion pattern (no runtime mutation surface).
     if (payload.groupRemoveSingleChildren === true) {
       group.setRemoveSingleChildren(true);
+    }
+    // Cycle 15 / Task 12 — install the per-group footer flags before
+    // the first `setGroupModel` so the very first tree-build's
+    // flatOrder carries footer entries. Both default off; init-only
+    // mutation surface matches Task 9 / 10. `groupIncludeTotalFooter`
+    // is meaningful only as a companion to `groupIncludeFooter` (the
+    // GroupPass guards). Wiring both here so the worker doesn't have
+    // to plumb a separate setter through.
+    if (payload.groupIncludeFooter === true || payload.groupIncludeTotalFooter === true) {
+      group.setIncludeFooter(
+        payload.groupIncludeFooter === true,
+        payload.groupIncludeTotalFooter === true,
+      );
     }
     state = {
       store,
@@ -1249,6 +1271,30 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             const aggResult = state.agg.apply(visIds);
             if (Object.keys(aggResult.totals).length > 0) {
               chunk.totals = aggResult.totals;
+            }
+            // Cycle 15 / Task 12 — per-group totals. Computed only when
+            // grouping is active AND `groupIncludeFooter` is on (the
+            // GroupPass flag mirrors the worker init payload). Reuses
+            // the `state.groupInputIds` snapshot captured by
+            // `buildVisibleAsync` so the `GroupNode.childIndices` ↔
+            // rowId mapping stays consistent with the tree shape the
+            // slicer just walked. `applyGroups` returns an empty
+            // record on the bypass path (grouping inactive) so the
+            // guard here is purely a perf shortcut — skip the call
+            // entirely when there's nothing to compute.
+            if (
+              isGroupingActive()
+              && state.group.getIncludeFooter()
+              && state.groupInputIds !== null
+              && state.groupOutput !== null
+            ) {
+              const groupAggResult = state.agg.applyGroups(
+                state.groupInputIds,
+                state.groupOutput,
+              );
+              if (Object.keys(groupAggResult.groupTotals).length > 0) {
+                chunk.groupTotals = groupAggResult.groupTotals;
+              }
             }
             post(
               { id: req.id, type: 'viewport', chunk },

@@ -68,7 +68,20 @@ export interface GroupNode {
 
 export type FlatOrderEntry =
   | { kind: 'group'; key: string; depth: number }
-  | { kind: 'row'; rowIndex: number; depth: number };
+  | { kind: 'row'; rowIndex: number; depth: number }
+  /** Cycle 15 / Task 12 — per-group footer row marker. Emitted at the
+   *  END of a group's child traversal when `includeFooter` is on (and
+   *  the group hasn't been elided by `removeSingleChildren`). `key` is
+   *  the parent group's composite key — the same key `chunk.groupKey[i]`
+   *  carries on the footer row so main can look up the per-group totals.
+   *  `depth = parent.depth + 1` so the slicer's skip-depth logic drops
+   *  the footer entry alongside the group's descendants on collapse
+   *  (the parent group at `depth = D` collapses → skipDepth = D →
+   *  entries with `depth > D` skip → footer skips). Also enables a
+   *  grand-total footer (depth = 0, key = '') at the very end of
+   *  `flatOrder` when `includeTotalFooter` is on — it sits OUTSIDE any
+   *  group's collapsible scope so the skip-depth logic never drops it. */
+  | { kind: 'footer'; key: string; depth: number };
 
 export interface GroupPassOutput {
   /** Root group nodes (one per top-level distinct value). */
@@ -117,6 +130,22 @@ export class GroupPass<TRow = any> {
    *  non-elided group; only the depth-first flat traversal changes.
    *  Off by default; read by `apply()` on every call. */
   private removeSingleChildren = false;
+  /** Cycle 15 / Task 12 — `groupIncludeFooter` flag. When `true`, the
+   *  flatOrder build appends a `kind: 'footer'` entry at the END of
+   *  each non-elided group's child traversal. The footer's `key` is
+   *  the parent group's composite key; the slicer reads the same key
+   *  back via `chunk.groupKey[i]` and main looks up per-group totals
+   *  by it. Footers carry `depth = parent.depth + 1` so the existing
+   *  skip-depth logic drops them naturally on collapse. Off by default. */
+  private includeFooter = false;
+  /** Cycle 15 / Task 12 — `groupIncludeTotalFooter` flag. When `true`
+   *  AND `includeFooter` is true (the flag is meaningless on its own —
+   *  it ADDS the grand-total row to the per-group footers' visual
+   *  rhythm), `apply()` appends ONE final footer entry at the very end
+   *  of `flatOrder` with `key: ''` and `depth: 0`. Sits outside any
+   *  group's collapsible scope so it never drops on collapse. Off by
+   *  default. */
+  private includeTotalFooter = false;
 
   constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
     this.setColumns(columns);
@@ -191,6 +220,29 @@ export class GroupPass<TRow = any> {
    *  paints). */
   getRemoveSingleChildren(): boolean {
     return this.removeSingleChildren;
+  }
+
+  /** Cycle 15 / Task 12 — toggle per-group footer emission + the
+   *  grand-total footer companion. Both default off. Flipping
+   *  `includeFooter` on means every non-elided group's traversal ends
+   *  with a `kind: 'footer'` entry; `includeTotalFooter` additionally
+   *  appends a single grand-total footer at the very end (empty key,
+   *  depth 0). `includeTotalFooter` with `includeFooter: false` is a
+   *  no-op — the flag is meaningful only as a companion to per-group
+   *  footers (apps that want just a grand total use
+   *  `totalsRowPosition: 'bottom'` instead). */
+  setIncludeFooter(includeFooter: boolean, includeTotalFooter: boolean): void {
+    this.includeFooter = includeFooter;
+    this.includeTotalFooter = includeTotalFooter;
+  }
+
+  /** Cycle 15 / Task 12 — read-only access. Used by `worker.ts` to
+   *  decide whether to compute per-group totals during the agg pass. */
+  getIncludeFooter(): boolean {
+    return this.includeFooter;
+  }
+  getIncludeTotalFooter(): boolean {
+    return this.includeTotalFooter;
   }
 
   /** Cycle 15 / Task 9 — compute the starting `expandedKeys` set for
@@ -372,6 +424,7 @@ export class GroupPass<TRow = any> {
     const flatOrder: FlatOrderEntry[] = [];
     const rowDepth = cols.length;
     const elide = this.removeSingleChildren;
+    const footers = this.includeFooter;
     const walk = (nodes: readonly GroupNode[]): void => {
       for (const n of nodes) {
         const skipGroupEntry = elide && n.childCount === 1;
@@ -386,9 +439,28 @@ export class GroupPass<TRow = any> {
             flatOrder.push({ kind: 'row', rowIndex: idxs[i]!, depth: rowDepth });
           }
         }
+        // Cycle 15 / Task 12 — per-group footer entry. Skipped when
+        // the group itself was elided (a single-child funnel doesn't
+        // earn a footer — the lone child IS the only value) AND when
+        // `includeFooter` is off. The footer's depth is one deeper
+        // than the parent group's so the slicer's skip-depth logic
+        // drops it on collapse without any special handling.
+        if (footers && !skipGroupEntry) {
+          flatOrder.push({ kind: 'footer', key: n.key, depth: n.depth + 1 });
+        }
       }
     };
     walk(roots);
+
+    // Cycle 15 / Task 12 — grand-total footer entry. Sits OUTSIDE any
+    // group's collapsible scope (depth 0 is never > any group's
+    // skip-depth) so it always emits. Empty key signals "this is the
+    // grand total, not a per-group footer" — main resolves the lookup
+    // through `chunk.totals` (same path the standard TotalsSubgrid
+    // uses) instead of `chunk.groupTotals[key]`.
+    if (footers && this.includeTotalFooter && roots.length > 0) {
+      flatOrder.push({ kind: 'footer', key: '', depth: 0 });
+    }
 
     return { roots, flatOrder, bypassed: false };
   }
