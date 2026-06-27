@@ -1407,7 +1407,40 @@ export type CGridEvent =
    *  that lands on the same ranges as before is also skipped). Useful
    *  for "save selection state on change" without firing 30 times per
    *  drag. */
-  | { type: 'cellSelectionChanged'; ranges: SelectionRange[] };
+  | { type: 'cellSelectionChanged'; ranges: SelectionRange[] }
+  /** Cycle 11 / Task 7 — fires every time a tool panel opens or closes.
+   *  Hiding the WHOLE side bar via `setSideBarVisible(false)` does NOT
+   *  fire this — the panel state stays intact behind the hidden bar; use
+   *  `sideBarVisibleChanged` for that. Switching panels emits TWO events
+   *  in close→open order, both with the same `source` (e.g. clicking a
+   *  different tab while one is open produces a `visible: false` for the
+   *  old panel + `visible: true` for the new, both tagged
+   *  `'sideBarButtonClicked'`).
+   *
+   *  `source` values:
+   *  - `'api'` — programmatic `openToolPanel` / `closeToolPanel` calls.
+   *  - `'sideBarButtonClicked'` — user clicked a tab button.
+   *  - `'sideBarInitializing'` — mount-time auto-open driven by
+   *    `SideBarDef.defaultToolPanel`. Fires at most once per grid
+   *    construction (never when no `defaultToolPanel` is set or the bar
+   *    started under `hiddenByDefault: true`). */
+  | {
+      type: 'toolPanelVisibleChanged';
+      key: string | null;
+      visible: boolean;
+      source: 'api' | 'sideBarButtonClicked' | 'sideBarInitializing';
+    }
+  /** Cycle 11 / Task 7 — fires when the WHOLE side bar shows or hides
+   *  (i.e. `display: none` flips). Setting visibility to the current
+   *  state is a no-op and does not emit. `source` is `'api'` for
+   *  `setSideBarVisible` calls; `'sideBarButtonClicked'` is reserved
+   *  for a future toggle button on the tab strip — Cycle 11 ships only
+   *  the API path. */
+  | {
+      type: 'sideBarVisibleChanged';
+      visible: boolean;
+      source: 'api' | 'sideBarButtonClicked';
+    };
 
 export interface CGridApi {
   setRowData(rows: any[]): void;

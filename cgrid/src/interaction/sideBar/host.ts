@@ -68,6 +68,43 @@ interface PanelSlot {
   instance: ToolPanel | null;
 }
 
+/** Cycle 11 / Task 7 — source tag carried on `toolPanelVisibleChanged`.
+ *  Mirrors ag-grid's `ToolPanelVisibleChangedEvent.source`:
+ *  - `'api'` — programmatic `openToolPanel` / `closeToolPanel` /
+ *    direct host calls without an explicit source.
+ *  - `'sideBarButtonClicked'` — the user clicked a tab button.
+ *  - `'sideBarInitializing'` — the mount-time auto-open driven by
+ *    `SideBarDef.defaultToolPanel`. Fires exactly once per host
+ *    construction (or zero times when no `defaultToolPanel` is set or
+ *    `hiddenByDefault: true`). */
+export type ToolPanelVisibleSource = 'api' | 'sideBarButtonClicked' | 'sideBarInitializing';
+
+/** Cycle 11 / Task 7 — source tag carried on `sideBarVisibleChanged`.
+ *  Only `'api'` and `'sideBarButtonClicked'` are valid; there is no
+ *  initialisation event for the bar itself (the mount happens
+ *  synchronously inside the constructor and apps that want to react to
+ *  it use `gridReady` + `isSideBarVisible()`). */
+export type SideBarVisibleSource = 'api' | 'sideBarButtonClicked';
+
+/** Cycle 11 / Task 7 — emit payloads the host hands off to its grid
+ *  context. CGrid pipes these straight through `this.events.emit` so
+ *  apps subscribe via `grid.on('toolPanelVisibleChanged', ...)` /
+ *  `grid.on('sideBarVisibleChanged', ...)` like any other event. */
+export type SideBarHostEmittedEvent =
+  | {
+      type: 'toolPanelVisibleChanged';
+      /** ID of the panel whose visibility changed. Never `null` in
+       *  practice today, but typed `| null` to mirror the catalog. */
+      key: string | null;
+      visible: boolean;
+      source: ToolPanelVisibleSource;
+    }
+  | {
+      type: 'sideBarVisibleChanged';
+      visible: boolean;
+      source: SideBarVisibleSource;
+    };
+
 /** Context handed to SideBarHost by CGrid (or a test harness). Keeps
  *  the host framework-agnostic: it can resolve panel ctors + thread
  *  geometry changes back without importing CGrid directly. */
@@ -81,6 +118,12 @@ export interface SideBarGridContext {
    *  the side bar is fully hidden — the grid should release the
    *  reservation. */
   setReservedSpace(side: 'left' | 'right', width: number): void;
+  /** Cycle 11 / Task 7 — optional emit hook the host calls on every
+   *  panel-visibility or side-bar-visibility change. CGrid forwards into
+   *  its typed event emitter; tests can pin a recording stub here to
+   *  assert payloads in isolation. Absent → the host runs without
+   *  emitting (e.g. for unit-test setups that don't care about events). */
+  emit?(event: SideBarHostEmittedEvent): void;
 }
 
 export class SideBarHost {
@@ -162,7 +205,10 @@ export class SideBarHost {
 
     // Open the default panel — but only when the side bar is visible.
     if (this.visible && this.def.defaultToolPanel) {
-      this.openPanel(this.def.defaultToolPanel);
+      // Cycle 11 / Task 7 — the mount-time auto-open is tagged
+      // 'sideBarInitializing' so apps can distinguish "the bar booted
+      // up with a panel already open" from a later API or click open.
+      this.openPanel(this.def.defaultToolPanel, 'sideBarInitializing');
     } else {
       // Initial reservation: tabs-only when visible, zero when hidden.
       this.reserveSpace();
@@ -205,13 +251,20 @@ export class SideBarHost {
   }
 
   /** Open `id`. No-op when the id is unknown. Closes any previously-open
-   *  panel first (one-at-a-time). */
-  openPanel(id: string): void {
+   *  panel first (one-at-a-time). The optional `source` defaults to
+   *  `'api'`; the internal close that fires before the new panel mounts
+   *  carries the same source so `toolPanelVisibleChanged` emits travel
+   *  as a paired close/open with one consistent origin tag. */
+  openPanel(id: string, source: ToolPanelVisibleSource = 'api'): void {
     if (this.destroyed) return;
     const slot = this.slots.get(id);
     if (!slot) return;
     if (this.openedId === id) return;
-    if (this.openedId !== null) this.closePanel();
+    // When switching from one panel to another, the close fires under
+    // the SAME source as the open — a tab click that switches panels
+    // produces two 'sideBarButtonClicked' events, an API switch produces
+    // two 'api' events, etc.
+    if (this.openedId !== null) this.closePanel(source);
 
     const instance = this.ctx.registry.instantiate(slot.def.toolPanel, {
       api: this.ctx.api,
@@ -227,12 +280,22 @@ export class SideBarHost {
     slot.tab.setAttribute('aria-pressed', 'true');
     this.openedId = id;
     this.reserveSpace();
+    this.ctx.emit?.({
+      type: 'toolPanelVisibleChanged',
+      key: id,
+      visible: true,
+      source,
+    });
   }
 
-  /** Close any open panel. Destroys the live instance + clears the DOM. */
-  closePanel(): void {
+  /** Close any open panel. Destroys the live instance + clears the DOM.
+   *  The optional `source` defaults to `'api'`; pass
+   *  `'sideBarButtonClicked'` from a tab handler that's toggling its
+   *  panel off. */
+  closePanel(source: ToolPanelVisibleSource = 'api'): void {
     if (this.destroyed) return;
     if (this.openedId === null) return;
+    const closedKey = this.openedId;
     const slot = this.slots.get(this.openedId);
     if (slot) {
       if (slot.instance) {
@@ -245,15 +308,29 @@ export class SideBarHost {
     this.panelEl.style.display = 'none';
     this.openedId = null;
     this.reserveSpace();
+    this.ctx.emit?.({
+      type: 'toolPanelVisibleChanged',
+      key: closedKey,
+      visible: false,
+      source,
+    });
   }
 
-  /** Toggle whole-side-bar visibility (`display: none` when hidden). */
-  setVisible(show: boolean): void {
+  /** Toggle whole-side-bar visibility (`display: none` when hidden). The
+   *  optional `source` defaults to `'api'`. Hiding the bar leaves the
+   *  open panel intact in host state — no `toolPanelVisibleChanged`
+   *  fires; only `sideBarVisibleChanged` does. */
+  setVisible(show: boolean, source: SideBarVisibleSource = 'api'): void {
     if (this.destroyed) return;
     if (this.visible === show) return;
     this.visible = show;
     this.bar.style.display = show ? '' : 'none';
     this.reserveSpace();
+    this.ctx.emit?.({
+      type: 'sideBarVisibleChanged',
+      visible: show,
+      source,
+    });
   }
 
   /** Switch the side bar to the opposite edge. Re-mounts the DOM as a
@@ -308,8 +385,11 @@ export class SideBarHost {
     btn.appendChild(label);
 
     btn.addEventListener('click', () => {
-      if (this.openedId === def.id) this.closePanel();
-      else this.openPanel(def.id);
+      // Cycle 11 / Task 7 — tab clicks emit toolPanelVisibleChanged
+      // with source='sideBarButtonClicked'. Switching tabs produces a
+      // close + open pair, both tagged with the same source.
+      if (this.openedId === def.id) this.closePanel('sideBarButtonClicked');
+      else this.openPanel(def.id, 'sideBarButtonClicked');
     });
     return btn;
   }
