@@ -4,7 +4,7 @@
 import type { CellEditorCtor } from './interaction/editors/iCellEditor';
 import type { GetContextMenuItemsCallback, GetMainMenuItemsCallback } from './interaction/contextMenu/types';
 import type { ToolPanelComponent, SideBarDef, ToolPanel } from './interaction/toolPanels/types';
-import type { StatusBarDef } from './interaction/statusBar/types';
+import type { StatusBarDef, StatusPanelComponent, IStatusPanelComp } from './interaction/statusBar/types';
 
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
 // Cycle 10 / Task 1 — public context-menu surface. Re-exported from cgrid's
@@ -414,14 +414,22 @@ export interface CGridOptions<TRow = any> {
    *  invocation. */
   suppressClipboardPaste?: boolean;
 
-  /** Cycle 11 / Task 1 — registry of custom tool-panel components,
-   *  keyed by panel ID. Built-ins `'agColumnsToolPanel'` +
-   *  `'agFiltersToolPanel'` are pre-registered with stub
-   *  implementations at construction; entries here override the
-   *  stubs (and the real built-ins shipped in Tasks 3 + 4) or add
-   *  new IDs that custom `SideBarDef.toolPanels` entries can reference
-   *  via their `toolPanel` string. */
-  components?: Record<string, ToolPanelComponent>;
+  /** Cycle 11 / Task 1 + Cycle 13 / Task 4 — registry of custom
+   *  components, keyed by string id. Feeds BOTH the tool-panel registry
+   *  (entries referenced via `SideBarDef.toolPanels[].toolPanel`) AND
+   *  the status-panel registry (entries referenced via
+   *  `StatusBarDef.statusPanels[].statusPanel`). Built-in ids
+   *  (`'agColumnsToolPanel'`, `'agFiltersToolPanel'`,
+   *  `'agTotalRowCountComponent'`, `'agFilteredRowCountComponent'`,
+   *  `'agSelectedRowCountComponent'`,
+   *  `'agTotalAndFilteredRowCountComponent'`, `'agAggregationComponent'`)
+   *  are pre-registered at construction; entries here override them
+   *  or add new ids. The two registries share this channel because
+   *  the `ToolPanel` and `IStatusPanelComp` lifecycles are
+   *  structurally identical (`init` / `getGui` / `refresh` / `destroy`),
+   *  so a single id can serve either surface — whichever def
+   *  (`SideBarDef` vs `StatusBarDef`) references the id wins at mount. */
+  components?: Record<string, ToolPanelComponent | StatusPanelComponent>;
 
   /** Cycle 11 / Task 2 — side bar configuration. Accepts the canonical
    *  `SideBarDef` object, the boolean shorthand `true` (= both built-in
@@ -1705,6 +1713,26 @@ export interface CGridApi {
    *  the LIVE def — `setSideBarPosition` mutations are observable
    *  via the `position` field on subsequent reads. */
   getSideBar(): SideBarDef | undefined;
+
+  /** Cycle 13 / Task 4 — the live `IStatusPanelComp` instance for
+   *  `key`, or `undefined` when no status bar is configured, `key`
+   *  is unknown, or the matching panel never resolved a ctor (the
+   *  `statusPanel` string referenced an unregistered component). The
+   *  generic parameter `T` lets apps narrow the return to a custom
+   *  panel's concrete class to call panel-specific methods that
+   *  aren't on the `IStatusPanelComp` interface — e.g. a custom
+   *  panel might expose `getSnapshot()` or `setRange(r)`. Treat the
+   *  returned instance as a borrowed reference: it stops being valid
+   *  the moment the status bar is destroyed or replaced via
+   *  `setStatusBarDef` (the host calls `destroy()` and drops the
+   *  reference).
+   *
+   *  Built-in keys (`'agTotalRowCountComponent'`,
+   *  `'agFilteredRowCountComponent'`, `'agSelectedRowCountComponent'`,
+   *  `'agTotalAndFilteredRowCountComponent'`, `'agAggregationComponent'`)
+   *  and custom keys registered via `CGridOptions.components` are
+   *  both reachable through this surface. */
+  getStatusPanel<T extends IStatusPanelComp = IStatusPanelComp>(key: string): T | undefined;
 
   /** Read the current value of any grid option. */
   getGridOption<K extends keyof CGridOptions>(key: K): CGridOptions[K] | undefined;
