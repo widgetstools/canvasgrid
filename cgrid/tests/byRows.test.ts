@@ -740,12 +740,23 @@ describe('paintGridLines', () => {
 // ─── paintOverlay tests (carried over verbatim) ───────────────────────────────
 
 describe('paintOverlay', () => {
+  // Cycle 12 / Task 2 — straight-through stub: every cell in vsGridLines
+  // sits fully inside its band, so the helper just returns the cell
+  // geometry. paintOverlay reads bounds exclusively from the helper now.
+  const visibleBoundsStub = (rowIndex: number, colId: string) => {
+    const col = vsGridLines.visibleColumns.find((c) => c.colId === colId);
+    const row = vsGridLines.visibleRows.find((r) => r.subgrid.isData && r.localRowIndex === rowIndex);
+    if (!col || !row) return null;
+    return { x: col.left, y: row.top, w: col.width, h: row.height };
+  };
+
   it('draws focus ring when focused cell is set', () => {
     const c = fakeGc();
     paintOverlay(c, {
       viewport: vsGridLines, theme, columnDefs: cols, cellRenderers: makeReg(), cellData,
       selection: { focusedRowIndex: 0, focusedColId: 'b', selectedRowIndices: new Set() },
       sortModel: [],
+      getVisibleCellBounds: visibleBoundsStub,
     });
     expect((c.strokeRect as any)).toHaveBeenCalled();
   });
@@ -756,6 +767,21 @@ describe('paintOverlay', () => {
       viewport: vsGridLines, theme, columnDefs: cols, cellRenderers: makeReg(), cellData,
       selection: selectionEmpty,
       sortModel: [],
+      getVisibleCellBounds: visibleBoundsStub,
+    });
+    expect((c.strokeRect as any)).not.toHaveBeenCalled();
+  });
+
+  it('skips the focus ring when the resolver returns null (cell scrolled out of its band)', () => {
+    // Cycle 12 / Task 2 — regression guard for commits 01fb141, d06d703.
+    // When the focused cell has scrolled into a foreign band, the resolver
+    // returns null and the painter must not stroke anything.
+    const c = fakeGc();
+    paintOverlay(c, {
+      viewport: vsGridLines, theme, columnDefs: cols, cellRenderers: makeReg(), cellData,
+      selection: { focusedRowIndex: 0, focusedColId: 'b', selectedRowIndices: new Set() },
+      sortModel: [],
+      getVisibleCellBounds: () => null,
     });
     expect((c.strokeRect as any)).not.toHaveBeenCalled();
   });

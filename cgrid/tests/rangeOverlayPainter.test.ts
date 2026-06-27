@@ -80,6 +80,19 @@ function makeVs(): ViewportState {
   };
 }
 
+// Cycle 12 / Task 2 — straight-through stub for the band-aware resolver.
+// Test viewports place every cell fully inside its band, so the helper
+// just returns the cell's geometry from the viewport state. Tests that
+// need to assert band-clipping behaviour stub this directly inline.
+function makeGetVisibleCellBounds(vs: ViewportState) {
+  return (rowIndex: number, colId: string) => {
+    const col = vs.visibleColumns.find((c) => c.colId === colId);
+    const row = vs.visibleRows.find((r) => r.subgrid.isData && r.localRowIndex === rowIndex);
+    if (!col || !row) return null;
+    return { x: col.left, y: row.top, w: col.width, h: row.height };
+  };
+}
+
 function pctx(vs: ViewportState, ranges: SelectionRange[], showFillHandle = false) {
   return {
     viewport: vs,
@@ -92,6 +105,7 @@ function pctx(vs: ViewportState, ranges: SelectionRange[], showFillHandle = fals
     rowDataSnapshotAt: () => ({}),
     quickFilterLowerTerms: [],
     showFillHandle,
+    getVisibleCellBounds: makeGetVisibleCellBounds(vs),
   };
 }
 
@@ -128,6 +142,26 @@ describe('paintRangeOverlay', () => {
     ]));
     expect((gc.fillRect as any).mock.calls.length).toBe(2);
     expect((gc.strokeRect as any).mock.calls.length).toBe(2);
+  });
+
+  it('range whose row span extends beyond the visible window emits exactly one fillRect for the visible slice', () => {
+    // Cycle 12 / Task 2 — regression guard for commit 1a9870a (range drag
+    // across viewports). Range rowEnd=100 is below the visible window
+    // (visible localRows = 0..4); the painter should still emit exactly
+    // one fillRect bounded by the visible slice, not skip the range.
+    const gc = fakeGc();
+    paintRangeOverlay(gc, pctx(makeVs(), [{ rowStart: 0, rowEnd: 100, colIds: ['a', 'b'] }]));
+    const fillCalls = (gc.fillRect as any).mock.calls as number[][];
+    const strokeCalls = (gc.strokeRect as any).mock.calls as number[][];
+    expect(fillCalls.length).toBe(1);
+    expect(strokeCalls.length).toBe(1);
+    const [fx, fy, fw, fh] = fillCalls[0]!;
+    // Visible slice: topmost data row local 0 (top=32), bottommost local 4
+    // (bottom=182). Columns a..b: left=0, right=200. → (0, 32, 200, 150).
+    expect(fx).toBe(0);
+    expect(fy).toBe(32);
+    expect(fw).toBe(200);
+    expect(fh).toBe(150);
   });
 
   it('range whose rows are entirely outside the visible window contributes zero paint', () => {
