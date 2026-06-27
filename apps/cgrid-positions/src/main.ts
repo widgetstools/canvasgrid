@@ -93,7 +93,39 @@ const rowGroupPanelMode = search.get('rowGroupPanel');
 const rowGroupPanelEmpty = rowGroupPanelMode === 'empty';
 const rowGroupPanelThreeChips = rowGroupPanelMode === 'threeChips';
 const rowGroupPanelAlways = rowGroupPanelMode === 'always';
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways });
+// Cycle 15 / Task 8 — `?groupSelectsChildren=1` opts the demo into
+// tri-state cascading selection. Off by default so visual cells
+// 01–24 stay byte-stable; visual cell 25 turns it on AND seeds a
+// partial selection so the indeterminate dash paints on one group.
+const groupSelectsChildren = search.get('groupSelectsChildren') === '1';
+// Feature toggles wired to the toolbar checkboxes. Default OFF so the
+// demo opens with a CLEAN grid (no pinned columns, no header groups).
+// User opts each surface in via the header checkbox; the URL flag
+// (`?pinning=on` / `?columnGroups=on`) keeps the choice across reloads
+// + lets deep-links pin a feature combo.
+const pinning      = search.get('pinning')      === 'on';
+const columnGroups = search.get('columnGroups') === 'on';
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, groupSelectsChildren, pinning, columnGroups });
+
+// Toolbar feature-toggle checkboxes. Toggling reloads the page with
+// the matching URL flag set / unset because the structural changes
+// (column defs differ when pinning / groups flip; rowGroupCols seeds
+// at construction) re-apply cleanly on a fresh mount. Pre-check
+// reflects the current URL state.
+function wireFeatureToggle(id: string, flagName: string, flagOnValue: string, isOn: boolean): void {
+  const el = document.getElementById(id) as HTMLInputElement | null;
+  if (!el) return;
+  el.checked = isOn;
+  el.addEventListener('change', () => {
+    const url = new URL(location.href);
+    if (el.checked) url.searchParams.set(flagName, flagOnValue);
+    else url.searchParams.delete(flagName);
+    location.href = url.toString();
+  });
+}
+wireFeatureToggle('toggle-pinning',         'pinning',       'on',     pinning);
+wireFeatureToggle('toggle-column-groups',   'columnGroups',  'on',     columnGroups);
+wireFeatureToggle('toggle-row-group-panel', 'rowGroupPanel', 'always', rowGroupPanelAlways);
 
 // E2E hooks: expose the grid + a readiness flag so Playwright tests can wait
 // for first-data-rendered and call api helpers (`getCellBoundsAt`,

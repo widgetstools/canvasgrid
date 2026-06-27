@@ -179,6 +179,15 @@ export interface PositionsGridOptions {
    *  Cycle 11 E2Es still see the canonical two-tab side bar; the
    *  cycle11-customPanelApi spec opts in via `?customPanel=1`. */
   customPanel?: boolean;
+  /** Feature-toggle: opts the demo into pinning Position ID + CUSIP
+   *  left and pnl + notionalAmount right. Off by default — a clean
+   *  demo doesn't presume the user wants pinned columns. Driven by
+   *  the toolbar "Pinned cols" checkbox AND `?pinning=on`. */
+  pinning?: boolean;
+  /** Feature-toggle: wraps the pnl / dailyPnl / unrealizedPnl cols in
+   *  a `P&L` header group. Off by default. Driven by the toolbar
+   *  "Column groups" checkbox AND `?columnGroups=on`. */
+  columnGroups?: boolean;
   /** Cycle 11 / Task 9 — demo polish opt-in. Sets
    *  `sideBar.defaultToolPanel: 'agColumnsToolPanel'` so the Columns
    *  panel opens at mount. Off by default — every prior Cycle 11 E2E
@@ -273,6 +282,13 @@ export interface PositionsGridOptions {
    *  Not used by any visual cell — exists for human exploration of
    *  the panel before Task 13 ships the cycle default. */
   rowGroupPanelAlways?: boolean;
+  /** Cycle 15 / Task 8 — opts the demo into tri-state cascading
+   *  selection (`groupSelectsChildren: true`). The auto-group cells
+   *  paint a tri-state checkbox between the chevron and the value.
+   *  Visual cell 25-groupSelectsChildren-indeterminate sets this AND
+   *  seeds a partial selection so the indeterminate dash paints on
+   *  one group. */
+  groupSelectsChildren?: boolean;
 }
 
 /** Cycle 14 / Task 2 — deterministic seed for the demo pinned reference
@@ -381,7 +397,7 @@ export function createPositionsGrid(
       // Cycle 6 / Task 3: suppressSizeToFit holds positionId at its
       // declared width during a Fit-columns pass — the identifier column
       // shouldn't shrink to absorb container width.
-      { field: 'positionId',     headerName: 'Position ID',  width: 150, pinned: 'left', suppressMovable: true, suppressSizeToFit: true },
+      { field: 'positionId',     headerName: 'Position ID',  width: 150, ...(opts.pinning ? { pinned: 'left' as const } : {}), suppressMovable: true, suppressSizeToFit: true },
       // Cycle 5 Task 2: cusip carries the text-editor E2E coverage now that
       // ticker hosts the select editor.
       // Cycle 6 / Task 4: suppressAutoSize holds cusip at its declared
@@ -393,7 +409,7 @@ export function createPositionsGrid(
       // textFormatter unset — cusips already arrive case-stable from the
       // STOMP server, no normalisation needed.
       {
-        field: 'cusip', headerName: 'CUSIP', width: 110, pinned: 'left',
+        field: 'cusip', headerName: 'CUSIP', width: 110, ...(opts.pinning ? { pinned: 'left' as const } : {}),
         editable: true, suppressAutoSize: true,
         filter: 'text',
         filterParams: { caseSensitive: false, trimInput: true },
@@ -478,54 +494,73 @@ export function createPositionsGrid(
         editable: true,
         cellEditor: 'number',
         cellEditorParams: { min: 0, precision: 2 },
-        lockPosition: 'right',
+        ...(opts.pinning ? { lockPosition: 'right' as const } : {}),
         filter: 'number',
       },
       { field: 'marketValue',    headerName: 'Market Value',  type: 'money', width: 130, aggFunc: 'sum', filter: 'number' },
       { field: 'currentPrice',   headerName: 'Price',         type: 'number', width: 100, aggFunc: 'avg', filter: 'number' },
-      {
-        groupId: 'pnl', headerName: 'P&L',
-        children: [
-          // Total uses the pnlPill renderer for its pill-shaped fill.
-          // The cell background stays at the theme default — the pill
-          // colour already encodes positive/negative.
-          {
-            field: 'pnl', headerName: 'Total', type: 'number', width: 110, pinned: 'right',
-            aggFunc: 'sum',
-            cellRenderer: 'pnlPill',
-            cellRendererParams: { padX: 4 },
-            // Cycle 6 / Task 7 — cellClassRules opt-in: positive →
-            // pale-green bg, negative → pale-red bg. Off by default;
-            // `?cellClassDemo=1` re-enables.
-            ...(opts.cellClassDemo ? {
-              cellClassRules: {
-                positive: (p: { value: unknown }) => typeof p.value === 'number' && p.value > 0,
-                negative: (p: { value: unknown }) => typeof p.value === 'number' && p.value < 0,
+      // P&L children — wrapped in a header group when `opts.columnGroups`
+      // is on (toolbar "Column groups" checkbox / `?columnGroups=on`),
+      // otherwise flattened into the top-level list so the default demo
+      // shows Total / Daily / Unrealized as plain sibling columns.
+      ...(opts.columnGroups
+        ? [{
+            groupId: 'pnl', headerName: 'P&L',
+            children: [
+              {
+                field: 'pnl', headerName: 'Total', type: 'number', width: 110,
+                ...(opts.pinning ? { pinned: 'right' as const } : {}),
+                aggFunc: 'sum',
+                cellRenderer: 'pnlPill',
+                cellRendererParams: { padX: 4 },
+                ...(opts.cellClassDemo ? {
+                  cellClassRules: {
+                    positive: (p: { value: unknown }) => typeof p.value === 'number' && p.value > 0,
+                    negative: (p: { value: unknown }) => typeof p.value === 'number' && p.value < 0,
+                  },
+                } : {}),
+                filter: 'number',
+                filterParams: { maxNumConditions: 2, defaultJoinOperator: 'AND' },
               },
-            } : {}),
-            // Cycle 7 / Task 6 — multi-condition popup. Two condition rows
-            // joined by AND / OR. Demonstrates expressions like
-            // "greaterThan 0 OR lessThan -1000".
-            filter: 'number',
-            filterParams: { maxNumConditions: 2, defaultJoinOperator: 'AND' },
-          },
-          // cellRendererSelector: positive → pnlPill, negative or zero →
-          // default 'number' renderer. Demonstrates the per-cell override.
-          {
-            field: 'dailyPnl', headerName: 'Daily', type: 'number', width: 110,
-            aggFunc: 'sum',
-            // Cycle 6 / Task 7 — static `cellClass: 'warning'` opt-in
-            // (pale-yellow bg). Off by default; `?cellClassDemo=1`
-            // re-enables.
-            ...(opts.cellClassDemo ? { cellClass: 'warning' } : {}),
-            cellRendererSelector: (p) => {
-              const n = typeof p.value === 'number' ? p.value : Number(p.value);
-              return Number.isFinite(n) && n > 0 ? { component: 'pnlPill' } : undefined;
+              {
+                field: 'dailyPnl', headerName: 'Daily', type: 'number', width: 110,
+                aggFunc: 'sum',
+                ...(opts.cellClassDemo ? { cellClass: 'warning' } : {}),
+                cellRendererSelector: (p) => {
+                  const n = typeof p.value === 'number' ? p.value : Number(p.value);
+                  return Number.isFinite(n) && n > 0 ? { component: 'pnlPill' } : undefined;
+                },
+              },
+              { field: 'unrealizedPnl', headerName: 'Unrealized', type: 'number', width: 110, aggFunc: 'sum' },
+            ],
+          }]
+        : [
+            {
+              field: 'pnl', headerName: 'Total', type: 'number', width: 110,
+              ...(opts.pinning ? { pinned: 'right' as const } : {}),
+              aggFunc: 'sum',
+              cellRenderer: 'pnlPill',
+              cellRendererParams: { padX: 4 },
+              ...(opts.cellClassDemo ? {
+                cellClassRules: {
+                  positive: (p: { value: unknown }) => typeof p.value === 'number' && p.value > 0,
+                  negative: (p: { value: unknown }) => typeof p.value === 'number' && p.value < 0,
+                },
+              } : {}),
+              filter: 'number',
+              filterParams: { maxNumConditions: 2, defaultJoinOperator: 'AND' },
             },
-          },
-          { field: 'unrealizedPnl', headerName: 'Unrealized', type: 'number', width: 110, aggFunc: 'sum' },
-        ],
-      },
+            {
+              field: 'dailyPnl', headerName: 'Daily', type: 'number', width: 110,
+              aggFunc: 'sum',
+              ...(opts.cellClassDemo ? { cellClass: 'warning' } : {}),
+              cellRendererSelector: (p) => {
+                const n = typeof p.value === 'number' ? p.value : Number(p.value);
+                return Number.isFinite(n) && n > 0 ? { component: 'pnlPill' } : undefined;
+              },
+            },
+            { field: 'unrealizedPnl', headerName: 'Unrealized', type: 'number', width: 110, aggFunc: 'sum' },
+          ]),
       { field: 'yield',  headerName: 'Yield',  type: 'number', width: 90,  aggFunc: 'avg' },
       { field: 'spread', headerName: 'Spread', type: 'number', width: 90,  aggFunc: 'avg' },
       { field: 'dv01',   headerName: 'DV01',   type: 'number', width: 100, aggFunc: 'sum' },
@@ -790,6 +825,11 @@ export function createPositionsGrid(
     ...(opts.rowGroupPanelEmpty || opts.rowGroupPanelThreeChips || opts.rowGroupPanelAlways
       ? { rowGroupPanelShow: 'always' as const }
       : {}),
+    // Cycle 15 / Task 8 — opt into tri-state cascading selection
+    // when `?groupSelectsChildren=1` is set. The auto-group cells
+    // paint a tri-state checkbox alongside the chevron. Used by
+    // visual cell 25 to show the indeterminate state.
+    ...(opts.groupSelectsChildren ? { groupSelectsChildren: true as const } : {}),
   };
   const grid = new CGrid<Position>(container, options);
   grid.registerCellRenderer('pnlPill', pnlPill);
