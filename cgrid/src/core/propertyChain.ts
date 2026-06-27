@@ -64,6 +64,10 @@ export interface ResolvedColDef<TRow = any> {
    *  union to `string | string[]` so custom registry names (and the
    *  array fallback form) flow through to the worker. */
   aggFunc?: string | string[];
+  /** See `CColDef.suppressAggFuncInHeader`. `undefined` means inherit the
+   *  grid-level `CGridOptions.suppressAggFuncInHeader`; explicit `true`
+   *  / `false` wins regardless of the grid-level value. Cycle 14 / Task 4. */
+  suppressAggFuncInHeader?: boolean;
   sortable: boolean;
   /** See `CColDef.accentedSort`. When `true`, the worker's `SortPass`
    *  routes this column's text compares through `Intl.Collator`.
@@ -535,6 +539,7 @@ export function resolveColDef<TRow>(
     filterParams: merged.filterParams,
     suppressFloatingFilterButton: merged.suppressFloatingFilterButton ?? false,
     aggFunc: merged.aggFunc,
+    suppressAggFuncInHeader: merged.suppressAggFuncInHeader,
     sortable: merged.sortable ?? true,
     accentedSort: merged.accentedSort,
     unSortIcon: merged.unSortIcon,

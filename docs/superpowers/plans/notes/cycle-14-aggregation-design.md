@@ -327,3 +327,133 @@ Stack reads as a unit, member rows readable via the standard gridline.**
 - The temperature contrast (slate = computed, cream = anchored) is
   established. Future cycles adding new subgrid types (footer, etc.)
   pick a tint temperature that matches the row's cognitive role.
+
+---
+
+## Task 4 — aggFunc-in-header typography
+
+**Brief recap:** When a column carries `aggFunc: 'sum' | 'avg' | …` AND
+`suppressAggFuncInHeader` is `false` (the default), the header cell
+renders as `sum(Notional)` instead of `Notional`. The toggle flips
+per-grid (`CGridOptions.suppressAggFuncInHeader`) AND per-column
+(`CColDef.suppressAggFuncInHeader`), the column override winning.
+When suppressed, the aggregated context lives only in the totals row.
+
+### Subject pin
+
+Same trader at the same financial positions grid. Headers are
+micro-glance signposts read in the 200-ms gaps between scanning data
+rows. The aggFunc prefix tells the trader, in those 200ms, "this
+column has a synthesis below" without forcing a glance to the totals
+row. It is a context cue, not a focus target.
+
+### Default rejected
+
+Three AI defaults cluster here:
+
+- **Allcaps prefix** (`SUM(Notional)`): shouts at body header weight
+  600. Stress + emphasis is the wrong cue for metadata.
+- **Lighter weight prefix** (400 inside a 600 column): reads as a
+  font-loading bug, not as demoted metadata. The 200pt weight delta
+  in adjacent characters breaks the band's typographic rhythm.
+- **Match column casing** (`Sum(Notional)`): strips the function-call
+  signal that lowercase + parens carry together as a pair.
+
+All three trade legibility for a differentiation the parens already
+supply for free.
+
+### Risk taken
+
+**Same weight, same color, lowercase verb, no spaces, parens.** The
+structural differentiator IS the parens — `sum(...)` reads as a
+function-call signature before the eye parses the characters. Adding
+a weight delta to the band already at 600 would read as a font bug.
+Adding a color delta to a band already differentiated by `headerBg`
++ headerBottomBorder would crowd the contrast budget for the actual
+sortable / hover cues.
+
+The deliberate aesthetic choice is the **lowercase verb**. Lowercase
+says "this is a function." Uppercase says "this is emphasis." We want
+the former.
+
+### Decisions
+
+| # | Question | Choice | Why |
+|---|---|---|---|
+| 1 | Weight + color of the prefix | Same as the column name (headerFg, header font weight) | Single fillText pass per header. Parens carry the structural cue. Weight delta inside a 600 band reads as a font bug. |
+| 2 | Casing of the verb | Lowercase (`sum`, `avg`, `min`, `max`, `count`, `first`, `last`) | Matches ag-grid screenshot + trader's existing mental model. Allcaps shouts; small caps requires a font feature not always available. Function-call semantics demand lowercase. |
+| 3 | Whitespace | No space — `sum(Notional)` | Compact. Parens read as function-call. A space (`sum( Notional )`) breaks the function-call signal. |
+| 4 | Per-column override | `CColDef.suppressAggFuncInHeader: boolean` wins over `CGridOptions.suppressAggFuncInHeader`; per-column `undefined` defers to the grid-level flag (default `false`). | Column-level wins is the standard cgrid override pattern (matches `floatingFilter`, `cellRenderer`, etc.). |
+| 5 | Truncation | Right-side ellipsification of the whole decorated string (no special verb-preserving logic). The verb sits on the LEFT so it survives naturally; the column name + closing paren on the RIGHT truncates first. | Per the screenshot (`sum(Noti...)`, `avg(...)`). No extra measurement code in the painter. |
+| 6 | Array-form aggFunc (`['sum', 'avg']`) | Use the FIRST entry as the visible prefix. Subsequent entries are fallback registry lookups (per `CColDef.aggFunc` spec), NOT visible alternates. | The header is a single label; showing `sum/avg(...)` would muddle the synthesis cue. |
+| 7 | Columns WITHOUT aggFunc | No decoration; render `headerName` raw. | The toggle is a no-op for columns where there's no agg to suppress. |
+| 8 | Group headers | Unchanged — the decoration applies to leaf-column headers only. Group headers carry no `aggFunc` of their own. | Cycle 14 doesn't add agg semantics to groups; that lands with the Cycle 15 row-grouping work. |
+
+### Painter integration (canvasgrid specifics)
+
+1. `byRows.ts` — the existing header-text path (`if (row.subgrid.isHeader)
+   { value = def.headerName; valueFormatted = def.headerName; }`)
+   becomes the application point of a small pure helper
+   `decorateHeader(def, gridSuppress)` that returns:
+     - `def.headerName ?? def.colId` when the column has no `aggFunc`,
+       OR the resolved suppress flag is `true`.
+     - `${aggFuncName}(${def.headerName ?? def.colId})` otherwise,
+       where `aggFuncName` is `def.aggFunc` (string form) or
+       `def.aggFunc[0]` (array form — first entry wins per decision 6).
+2. The helper lives in `byRows.ts` (not a new module) — single use
+   site, no shared dependency.
+3. The header cell renderer (`'header'` registry entry) sees the
+   decorated string in `value` / `valueFormatted`. Existing
+   right-side ellipsification handles truncation per decision 5.
+4. ZERO theme tokens added. ZERO CSS changes. The whole task is a
+   text-path decorator + an options type widening + a default.
+5. Runtime mutation via `setGridOption('suppressAggFuncInHeader',
+   …)` routes through the runtime-options table (storage-only — the
+   painter reads `this.options.suppressAggFuncInHeader` per paint,
+   so a flip lights up on the next rAF). Per-column flips ride
+   `updateGridOptions({ columnDefs })`, the existing column-mutation
+   path — no new runtime key needed at the column level.
+
+### States
+
+| State | Treatment |
+|---|---|
+| Default (grid `suppressAggFuncInHeader: false`, column has `aggFunc`) | `sum(Notional)` |
+| Grid `suppressAggFuncInHeader: true` | `Notional` |
+| Column `suppressAggFuncInHeader: true` (any grid value) | `Notional` |
+| Column `suppressAggFuncInHeader: false` AND grid `suppressAggFuncInHeader: true` | `sum(Notional)` (column wins) |
+| Column has no `aggFunc` | `Notional` (no decoration possible) |
+| Array-form `aggFunc: ['sum', 'avg']` | `sum(Notional)` (first entry wins) |
+| `aggFunc: 'customX'` (unknown to registry) | `customX(Notional)` — the decoration uses the string name regardless of registry resolution; the totals cell paints empty per Task 1 spec. |
+
+### What's explicitly NOT shipped in Task 4
+
+- No new CSS tokens.
+- No theme-level styling change.
+- No weight or color differentiation between the prefix and the
+  column name.
+- No special truncation logic (verb-preserving ellipsification rides
+  natural right-side truncation per decision 5).
+- No animated transition when the toggle flips at runtime — the
+  next paint reads the new value and renders the new string.
+- No group-header aggFunc decoration.
+- No "show all aggFuncs" mode for array-form `aggFunc` (only the
+  first entry decorates the header).
+
+### One-line summary
+
+**Same weight, same color, lowercase verb, no spaces, parens. The
+function-call signature carries the cue; weight stays out of the
+synthesis vocabulary on the header row.**
+
+### Vocabulary handed to subsequent tasks
+
+- The "synthesis cue lives in PARENS on the header row, in WEIGHT on
+  the totals row" split is now established. Task 5's `'totals'`
+  renderer reads from the same chunk.totals values the header points
+  at; the two cues (parens above, weight below) bracket the column
+  with synthesis context without redundancy.
+- If a future cycle adds a second column-level annotation (e.g.
+  `sortStability: 'stable'` cueing the user that a sort is stable),
+  it should follow the same rule: structural marker (icon, badge,
+  parens) on the header row, weight / color on the totals row.

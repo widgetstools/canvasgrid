@@ -52,6 +52,13 @@ export interface RendererOpts {
    */
   getShowFillHandle: () => boolean;
   /**
+   * Cycle 14 / Task 4 — grid-level `suppressAggFuncInHeader` flag.
+   * Read per paint so a runtime `setGridOption('suppressAggFuncInHeader',
+   * …)` lights up on the next rAF. Per-column overrides live on the
+   * resolved column def and win when set.
+   */
+  getSuppressAggFuncInHeader: () => boolean;
+  /**
    * Cycle 12 / Task 2 — band-aware cell bounds resolver shared by every
    * overlay painter. Returns `null` whenever the cell straddles or has
    * scrolled outside its column's band, so painters never need to
@@ -77,6 +84,7 @@ export class Renderer {
       rowDataSnapshotAt: this.opts.rowDataSnapshotAt,
       quickFilterLowerTerms: this.opts.getQuickFilterLowerTerms(),
       showFillHandle: this.opts.getShowFillHandle(),
+      suppressAggFuncInHeader: this.opts.getSuppressAggFuncInHeader(),
       getVisibleCellBounds: this.opts.getVisibleCellBounds,
     };
     // Fill the entire drawable area with theme bg as the FIRST instruction so

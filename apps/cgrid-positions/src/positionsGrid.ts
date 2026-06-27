@@ -225,6 +225,13 @@ export interface PositionsGridOptions {
    *  or `?pinned=both` for manual smoke testing of the coexistence
    *  layout with the totals row. */
   pinnedBottom?: boolean;
+  /** Cycle 14 / Task 4 — flip the grid-level
+   *  `suppressAggFuncInHeader` toggle. Off by default (headers read
+   *  as `sum(Notional)`); on flips every leaf column with an
+   *  `aggFunc` back to its raw `headerName`. Drives the second
+   *  snapshot in visual cell 19-aggfunc-in-header via
+   *  `?totals=bottom&suppressAggHeader=1`. */
+  suppressAggHeader?: boolean;
 }
 
 /** Cycle 14 / Task 2 — deterministic seed for the demo pinned reference
@@ -649,6 +656,15 @@ export function createPositionsGrid(
     // labels for reference rows — only the numeric reference matters).
     pinnedTopRowData: opts.pinnedTop ? buildBenchmarkPinnedRows() : null,
     pinnedBottomRowData: opts.pinnedBottom ? buildBenchmarkPinnedRows() : null,
+    // Cycle 14 / Task 4 — header decoration toggle. Default `false`
+    // keeps the canonical `sum(Notional)` / `avg(Price)` decoration
+    // on every aggFunc-declared column; `?suppressAggHeader=1`
+    // collapses every header back to its raw `headerName`. Per the
+    // design plan (decision 4), per-column `suppressAggFuncInHeader`
+    // wins over this grid-level value; the demo doesn't set any
+    // per-column overrides — that's exercised by the unit test
+    // suite (`suppressAggFuncInHeader.test.ts` cases 3 + 4).
+    suppressAggFuncInHeader: opts.suppressAggHeader === true,
     // Cycle 10 / Task 1 — sample `getContextMenuItems`. Keeps every
     // built-in default item (Copy / Paste / Cut / Export / Autosize /
     // Pin / Reset) AND appends one custom "Clear filters" entry so the

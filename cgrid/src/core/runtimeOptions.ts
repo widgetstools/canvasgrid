@@ -62,7 +62,8 @@ export type RuntimeOption =
   | 'suppressClipboardPaste'
   | 'pinnedTopRowData'
   | 'pinnedBottomRowData'
-  | 'aggFuncs';
+  | 'aggFuncs'
+  | 'suppressAggFuncInHeader';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
  *  import on `CGrid` (cgrid.ts imports this module). */
@@ -215,6 +216,15 @@ export function applyRuntimeOption<TRow>(
     case 'suppressClipboardPaste':
       // Storage-only: downstream cycles read directly from `options[key]`.
       return;
+    case 'suppressAggFuncInHeader':
+      // Cycle 14 / Task 4 — toggle header decoration. The painter reads
+      // `options.suppressAggFuncInHeader` per paint via the Renderer's
+      // `getSuppressAggFuncInHeader` callback, so a single repaint is
+      // enough to flip every leaf header's text. No worker round-trip
+      // (the aggFunc resolution stays worker-side; only the visible
+      // label changes).
+      target.refreshLayout();
+      return;
     case 'pinnedTopRowData':
     case 'pinnedBottomRowData':
       // Cycle 14 / Task 2 — re-mount the subgrid stack. The new array is
@@ -250,4 +260,5 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'pinnedTopRowData',
   'pinnedBottomRowData',
   'aggFuncs',
+  'suppressAggFuncInHeader',
 ]);

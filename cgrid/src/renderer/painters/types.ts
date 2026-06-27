@@ -47,6 +47,16 @@ export interface PainterCtx {
    * `CGridOptions.enableFillHandle` at the start of each paint.
    */
   showFillHandle: boolean;
+  /**
+   * Cycle 14 / Task 4 — grid-level `suppressAggFuncInHeader` flag. When
+   * `true`, leaf header text reads the raw `headerName`; when `false`
+   * (the default), columns with an `aggFunc` decorate to
+   * `${aggFuncName}(${headerName})`. Per-column overrides
+   * (`ResolvedColDef.suppressAggFuncInHeader`) win when set. Read per
+   * paint so a runtime `setGridOption('suppressAggFuncInHeader', …)`
+   * lights up on the next rAF.
+   */
+  suppressAggFuncInHeader: boolean;
   /** Returns visible (band-clipped) bounds for the cell, or null when
    *  the cell straddles or has scrolled out of its column's band.
    *  Sourced from CGrid.getVisibleCellBounds (Cycle 12 / Task 1). */
