@@ -250,6 +250,23 @@ export interface PositionsGridOptions {
    *  so three synthesized auto-group columns appear at the leftmost
    *  leaves, each showing chrome at its own group depth. */
   groupMultipleColumns?: boolean;
+  /** Cycle 15 / Task 6 — `'always'` mounts the row group panel even
+   *  when no chips are present so the empty-state placeholder
+   *  ("Drag here to set row groups") is visible. Off by default;
+   *  visual cell 22-rowGroupPanel-empty opts in via
+   *  `?rowGroupPanel=empty`. Pairs with `enableRowGroup: true` on
+   *  the `ticker` / `sector` / `subSector` / `desk` columns so the
+   *  drop verdict reads `'accept'` if a column header is dragged
+   *  in. */
+  rowGroupPanelEmpty?: boolean;
+  /** Cycle 15 / Task 6 — mounts the row group panel pre-populated
+   *  with three chips (`desk` → `region` → `instrumentType`) matching
+   *  the reference screenshot. Off by default; visual cell
+   *  23-rowGroupPanel-three-chips opts in via
+   *  `?rowGroupPanel=threeChips`. Sets the group model to the same
+   *  three columns so the chips and the auto-group column agree on
+   *  the active grouping. */
+  rowGroupPanelThreeChips?: boolean;
 }
 
 /** Cycle 14 / Task 2 — deterministic seed for the demo pinned reference
@@ -393,6 +410,14 @@ export function createPositionsGrid(
         // the registered name string instead of an inline closure so the
         // function can round-trip postMessage to the worker.
         comparator: 'naturalOrder',
+        // Cycle 15 / Task 6 — opt the ticker column INTO the row group
+        // panel's drop-acceptance set when either rowGroupPanel demo is
+        // on. The flag is column-local so visual cells without the row
+        // group panel demo stay byte-stable; with the panel mounted, the
+        // drop verdict for a ticker-header drag reads `'accept'`.
+        ...(opts.rowGroupPanelEmpty || opts.rowGroupPanelThreeChips
+          ? { enableRowGroup: true as const }
+          : {}),
       },
       // Cycle 15 / Task 5 — synthetic `sector` + `subSector` columns
       // for the three-level multipleColumns visual cell (cell 21). Only
@@ -403,10 +428,18 @@ export function createPositionsGrid(
       // ticker via deterministic per-ticker maps, but the field
       // assignments are silently dropped at the worker boundary when
       // no column declares the field.
-      ...(opts.groupMultipleColumns
+      //
+      // Cycle 15 / Task 6 — `rowGroupPanelThreeChips` also pulls in the
+      // sector + subSector columns so the panel chips
+      // (`ticker` → `sector` → `subSector`) read against real header
+      // names. The columns carry `enableRowGroup: true` so the panel's
+      // drop verdict reads `'accept'` for these three (the rest stay
+      // off — visual cell 22-empty exercises the rejection path
+      // separately via the body painter).
+      ...(opts.groupMultipleColumns || opts.rowGroupPanelThreeChips
         ? [
-            { field: 'sector' as const,    headerName: 'Sector',     width: 110, filter: 'set' as const },
-            { field: 'subSector' as const, headerName: 'Sub Sector', width: 110, filter: 'set' as const },
+            { field: 'sector' as const,    headerName: 'Sector',     width: 110, filter: 'set' as const, enableRowGroup: true as const },
+            { field: 'subSector' as const, headerName: 'Sub Sector', width: 110, filter: 'set' as const, enableRowGroup: true as const },
           ]
         : []),
       // Cycle 5 Task 2: notionalAmount exercises the 'number' editor; min/precision
@@ -727,6 +760,15 @@ export function createPositionsGrid(
     // post-construction below so the worker pipeline picks up the
     // three-level model AFTER the columns are wired.
     ...(opts.groupMultipleColumns ? { groupDisplayType: 'multipleColumns' as const } : {}),
+    // Cycle 15 / Task 6 — mount the row group panel when either
+    // rowGroupPanel demo is on. `'always'` keeps the panel visible
+    // even with no chips so the empty-state placeholder paints in
+    // visual cell 22; the threeChips demo opts in the same way and
+    // calls `setGroupModel` post-construction to populate the chip
+    // strip with `ticker` → `sector` → `subSector`.
+    ...(opts.rowGroupPanelEmpty || opts.rowGroupPanelThreeChips
+      ? { rowGroupPanelShow: 'always' as const }
+      : {}),
   };
   const grid = new CGrid<Position>(container, options);
   grid.registerCellRenderer('pnlPill', pnlPill);
@@ -779,6 +821,14 @@ export function createPositionsGrid(
   // (count) to the column whose `cellRendererParams.groupColumnDepth`
   // matches the row's depth.
   if (opts.groupMultipleColumns) {
+    grid.setGroupModel({ rowGroupCols: ['ticker', 'sector', 'subSector'] });
+  }
+  // Cycle 15 / Task 6 — populate the row group panel's chip strip
+  // with `ticker` → `sector` → `subSector` for visual cell 23. The
+  // chips read in nesting order; the auto-group column synthesizes
+  // alongside since `setGroupModel` activates the standard grouping
+  // pipeline.
+  if (opts.rowGroupPanelThreeChips) {
     grid.setGroupModel({ rowGroupCols: ['ticker', 'sector', 'subSector'] });
   }
   return grid;

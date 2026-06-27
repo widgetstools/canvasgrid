@@ -63,7 +63,9 @@ export type RuntimeOption =
   | 'pinnedTopRowData'
   | 'pinnedBottomRowData'
   | 'aggFuncs'
-  | 'suppressAggFuncInHeader';
+  | 'suppressAggFuncInHeader'
+  | 'rowGroupPanelShow'
+  | 'rowGroupPanelSuppressSort';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
  *  import on `CGrid` (cgrid.ts imports this module). */
@@ -109,6 +111,11 @@ export interface RuntimeOptionTarget<TRow = any> {
    *  The constructor's seed call leaves it `false` so the initial emit
    *  stays tagged `rowDataChanged` from the subsequent setRowData. */
   forwardAggFuncs(funcs: Record<string, unknown> | undefined, triggerRefresh?: boolean): void;
+  /** Cycle 15 / Task 6 — hand the runtime row-group-panel show mode
+   *  to CGrid so it can mount / unmount / setShowMode on the host.
+   *  CGrid normalises the value (undefined / `'never'` → unmount;
+   *  otherwise mount-or-update). */
+  updateRowGroupPanelShow(value: 'always' | 'onlyWhenGrouping' | 'never' | undefined): void;
 }
 
 /**
@@ -241,6 +248,20 @@ export function applyRuntimeOption<TRow>(
       // back and picks up / drops the PinnedRowsSubgrid accordingly.
       target.rebuildSubgrids();
       return;
+    case 'rowGroupPanelShow':
+      // Cycle 15 / Task 6 — runtime mount / unmount / show-mode swap.
+      // CGrid normalises `undefined` / `'never'` to "unmount"; any other
+      // valid value mounts (or updates an existing host).
+      target.updateRowGroupPanelShow(
+        value as 'always' | 'onlyWhenGrouping' | 'never' | undefined,
+      );
+      return;
+    case 'rowGroupPanelSuppressSort':
+      // Cycle 15 / Task 6 — storage-only at runtime. The chip painter
+      // reads `options.rowGroupPanelSuppressSort` per render (no-op in
+      // Cycle 15 — chips don't carry a sort indicator yet; the flag is
+      // plumbed forward for Cycle 16+).
+      return;
   }
 }
 
@@ -270,4 +291,6 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'pinnedBottomRowData',
   'aggFuncs',
   'suppressAggFuncInHeader',
+  'rowGroupPanelShow',
+  'rowGroupPanelSuppressSort',
 ]);
