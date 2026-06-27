@@ -6,7 +6,7 @@ import type {
   CGridOptions, CGridEvent, CGridApi, Tx, TransactionResult, SortModel, FilterModel,
   CFilterModelEntry, GroupModel, FlashCellsParams, SelectionRange,
 } from './types';
-import type { ToolPanel } from './interaction/toolPanels/types';
+import type { ToolPanel, SideBarDef } from './interaction/toolPanels/types';
 import { TypedEventEmitter } from './core/eventEmitter';
 import { type ResolvedColDef, applyCellProps } from './core/propertyChain';
 import { resolveColumnTree, isColGroupDef, type ColumnTree } from './core/columnTree';
@@ -2599,6 +2599,61 @@ export class CGrid<TRow = any> {
     return this.sideBar?.getInstance(id) ?? null;
   }
 
+  /** Cycle 11 / Task 6 — `true` when the side bar is mounted AND
+   *  visible (i.e. NOT in `display: none`). Returns `false` when no
+   *  side bar is configured at all, when `hiddenByDefault: true`, or
+   *  after `setSideBarVisible(false)`. */
+  isSideBarVisible(): boolean {
+    return this.sideBar?.isVisible() ?? false;
+  }
+
+  /** Cycle 11 / Task 6 — show or hide the whole side bar. Silent no-op
+   *  when no side bar is configured. Triggers one canvas reflow on
+   *  state change (the host's reserved-edge width drops to / restores
+   *  from zero, which fans out through `reserveSideBarSpace`). */
+  setSideBarVisible(show: boolean): void {
+    this.sideBar?.setVisible(show);
+  }
+
+  /** Cycle 11 / Task 6 — move the side bar to the left or right edge.
+   *  Silent no-op when no side bar is configured or when already on
+   *  that edge. The host releases the old edge reservation + claims
+   *  the new one in one synchronous resize. */
+  setSideBarPosition(pos: 'left' | 'right'): void {
+    this.sideBar?.setPosition(pos);
+  }
+
+  /** Cycle 11 / Task 6 — open the tool panel with the given id. Silent
+   *  no-op when no side bar is configured or `id` is unknown. Closes
+   *  any previously-open panel first (one-at-a-time). Built-in ids
+   *  (`agColumnsToolPanel`, `agFiltersToolPanel`) and custom ids from
+   *  `CGridOptions.components` both work. */
+  openToolPanel(id: string): void {
+    this.sideBar?.openPanel(id);
+  }
+
+  /** Cycle 11 / Task 6 — close whatever panel is currently open.
+   *  Silent no-op when no side bar is configured or no panel is open.
+   *  Destroys the live instance so panels don't leak listeners. */
+  closeToolPanel(): void {
+    this.sideBar?.closePanel();
+  }
+
+  /** Cycle 11 / Task 6 — the id of the currently open panel, or `null`
+   *  when no panel is open / no side bar is configured. */
+  getOpenedToolPanel(): string | null {
+    return this.sideBar?.getOpenedToolPanelId() ?? null;
+  }
+
+  /** Cycle 11 / Task 6 — the resolved `SideBarDef` (string shortcuts
+   *  expanded, `position` defaulted) currently driving the side bar,
+   *  or `undefined` when no side bar was configured. The returned
+   *  object reflects the LIVE def — `setSideBarPosition` mutations
+   *  show up here. */
+  getSideBar(): SideBarDef | undefined {
+    return this.sideBar?.getSideBarDef();
+  }
+
   /** Cycle 11 / Task 2 — adjust the canvas region's left/right gutter
    *  to make room for the side bar. Called by `SideBarHost` on mount,
    *  open, close, position toggle, hide/show, and at the end of a
@@ -2879,6 +2934,13 @@ export class CGrid<TRow = any> {
       resetColumnGroupState: () => this.columnGroupState.reset(),
       refreshToolPanel: (id) => this.refreshToolPanel(id),
       getToolPanelInstance: (id) => this.getToolPanelInstance(id),
+      isSideBarVisible: () => this.isSideBarVisible(),
+      setSideBarVisible: (show) => this.setSideBarVisible(show),
+      setSideBarPosition: (pos) => this.setSideBarPosition(pos),
+      openToolPanel: (id) => this.openToolPanel(id),
+      closeToolPanel: () => this.closeToolPanel(),
+      getOpenedToolPanel: () => this.getOpenedToolPanel(),
+      getSideBar: () => this.getSideBar(),
       getGridOption: (k) => this.getGridOption(k as keyof CGridOptions<TRow>) as any,
       setGridOption: (k, v) => this.setGridOption(k as keyof CGridOptions<TRow>, v as any),
       updateGridOptions: (p) => this.updateGridOptions(p as Partial<CGridOptions<TRow>>),
