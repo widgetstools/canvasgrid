@@ -4,6 +4,7 @@
 import type { CellEditorCtor } from './interaction/editors/iCellEditor';
 import type { GetContextMenuItemsCallback, GetMainMenuItemsCallback } from './interaction/contextMenu/types';
 import type { ToolPanelComponent, SideBarDef, ToolPanel } from './interaction/toolPanels/types';
+import type { StatusBarDef } from './interaction/statusBar/types';
 
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
 // Cycle 10 / Task 1 — public context-menu surface. Re-exported from cgrid's
@@ -25,6 +26,17 @@ export type {
   IToolPanelColumnCompParams,
   IToolPanelFiltersCompParams,
 } from './interaction/toolPanels/types';
+// Cycle 13 / Task 1 — public status-bar + status-panel surface.
+export type {
+  IStatusPanel,
+  IStatusPanelComp,
+  StatusPanelComponent,
+  StatusPanelParams,
+  StatusPanelDef,
+  StatusPanelAlign,
+  StatusBarDef,
+  StatusBarPosition,
+} from './interaction/statusBar/types';
 
 export interface ColCellOverrides {
   font?: string;
@@ -411,6 +423,17 @@ export interface CGridOptions<TRow = any> {
    *  `gridOptions.sideBar` acceptance shape. `false` / omitted disables
    *  the side bar entirely (no DOM mount, no canvas gutter). */
   sideBar?: SideBarDef | string | string[] | boolean;
+
+  /** Cycle 13 / Task 1 — status bar configuration. Accepts the canonical
+   *  `StatusBarDef` object or the boolean shorthand `true` (= empty bar
+   *  at the default `'bottom'` position, panels supplied later via
+   *  `setStatusBarDef`). `false` / omitted disables the status bar
+   *  entirely (no DOM mount, no canvas inset). Built-in panel keys
+   *  (`agTotalRowCountComponent`, `agFilteredRowCountComponent`,
+   *  `agSelectedRowCountComponent`, `agTotalAndFilteredRowCountComponent`,
+   *  `agAggregationComponent`) land in Cycle 13 Tasks 2 + 3; until then
+   *  a bar with built-in keys renders the inert stubs. */
+  statusBar?: StatusBarDef | boolean;
 }
 
 /** Cycle 10 / Task 5 — params for `processCellForClipboard`. Mirrors

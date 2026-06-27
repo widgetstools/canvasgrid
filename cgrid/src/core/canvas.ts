@@ -106,8 +106,13 @@ export class CGridCanvas {
   /** Cycle 11 / Task 2 — top-left offset (in CSS px) the canvas should
    *  sit at inside its host. Set by `setHostBounds` so a left-positioned
    *  side bar can shift the canvas right by the side bar's reserved
-   *  width. Default {left:0, top:0}. */
-  private hostOffset = { left: 0, top: 0 };
+   *  width. Cycle 13 / Task 1 — `bottom` carries the status bar's
+   *  reservation through the same channel; the canvas doesn't actually
+   *  reposition for a bottom inset (the scroller above it shrinks
+   *  upward, and `measureSize` returns the smaller height) so `bottom`
+   *  is stored but not applied to `canvas.style`. Default {left:0,
+   *  top:0, bottom:0}. */
+  private hostOffset = { left: 0, top: 0, bottom: 0 };
 
   constructor(host: HTMLElement, component: PaintComponent, opts: CanvasOptions = {}) {
     this.host = host;
@@ -162,9 +167,21 @@ export class CGridCanvas {
    *  to ALSO honor the gutter (typically by reading the scroller's
    *  `clientWidth`, which the cgrid host has already shrunk to match).
    *  Triggers an immediate `resize()` so the canvas re-fits + repaints
-   *  in the same call. */
-  setHostBounds(offset: { left: number; top: number }): void {
-    this.hostOffset = { left: offset.left, top: offset.top };
+   *  in the same call.
+   *
+   *  Cycle 13 / Task 1 — `bottom` carries the status bar's reserved
+   *  height through the same channel. The canvas does NOT reposition
+   *  for `bottom` (the scroller above it has already been shrunk by
+   *  the caller, so `measureSize` returns the smaller height); the
+   *  value is stored so debug tooling + tests can observe the active
+   *  reservation, and the call still triggers `resize()` so the
+   *  canvas re-fits to the freshly-shrunken scroller. */
+  setHostBounds(offset: { left: number; top: number; bottom?: number }): void {
+    this.hostOffset = {
+      left: offset.left,
+      top: offset.top,
+      bottom: offset.bottom ?? 0,
+    };
     this.canvas.style.left = `${offset.left}px`;
     this.canvas.style.top = `${offset.top}px`;
     this.resize();

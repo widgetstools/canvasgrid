@@ -30,7 +30,12 @@ const customPanel = search.get('customPanel') === '1';
 // keep the prior Cycle 11 E2Es (which assert "no tab pressed at mount")
 // green against the default URL.
 const openColumns = search.get('openColumns') === '1';
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns });
+// Cycle 13 / Task 1 — `?statusBar=mounted` opts the demo into mounting
+// the bottom status bar with zero panels. The visual matrix cell 14
+// uses this to snapshot the empty-bar chrome; Tasks 2 + 3 will add
+// `?statusBar=counts` / `?statusBar=full` flags that mount panels.
+const statusBar = search.get('statusBar');
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar });
 
 // E2E hooks: expose the grid + a readiness flag so Playwright tests can wait
 // for first-data-rendered and call api helpers (`getCellBoundsAt`,

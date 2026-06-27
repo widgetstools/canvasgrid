@@ -124,6 +124,15 @@ export interface PositionsGridOptions {
    *  Flipping the default would regress those specs, so the polished
    *  demo experience is gated behind `?openColumns=1`. */
   openColumns?: boolean;
+  /** Cycle 13 / Task 1 — `?statusBar=<mode>` mounts the bottom status
+   *  bar. Recognised modes:
+   *    - `'mounted'`: empty bar (zero panels) — used by visual cell 14
+   *      to assert the host chrome reads as intentional.
+   *  Tasks 2 + 3 will widen the recognised modes to `'counts'` /
+   *  `'full'` once the count + agg panels exist. Anything else (and
+   *  null) leaves the bar disabled, preserving the default demo
+   *  experience for the rest of the visual matrix. */
+  statusBar?: string | null;
 }
 
 /** Cycle 7 / Task 8 — toolbar-driven external filter state. The
@@ -442,6 +451,12 @@ export function createPositionsGrid(
       ...(opts.openColumns ? { defaultToolPanel: 'agColumnsToolPanel' } : {}),
     },
     components: opts.customPanel ? { demoCustomPanel: DemoCustomPanel } : undefined,
+    // Cycle 13 / Task 1 — `?statusBar=mounted` mounts an empty status
+    // bar pinned to the bottom edge. Other modes (`'counts'`, `'full'`)
+    // light up in Tasks 2 + 3 with the count + agg panels.
+    statusBar: opts.statusBar === 'mounted'
+      ? { statusPanels: [] }
+      : undefined,
     // Cycle 10 / Task 1 — sample `getContextMenuItems`. Keeps every
     // built-in default item (Copy / Paste / Cut / Export / Autosize /
     // Pin / Reset) AND appends one custom "Clear filters" entry so the
