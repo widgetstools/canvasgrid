@@ -175,6 +175,12 @@ export interface ResolvedColDef<TRow = any> {
   /** See `CColDef.suppressAutoSize`. When true, `autoSizeColumns` /
    *  `autoSizeAllColumns` skip this column. Cycle 6 / Task 4. */
   suppressAutoSize: boolean;
+  /** See `CColDef.enableRowGroup`. When `true`, the column header
+   *  can be dragged into the row group panel to append this column
+   *  to `rowGroupCols`. `false` (default) rejects the panel drop;
+   *  the imperative `setGroupModel` API still works regardless.
+   *  Cycle 15 / Task 6. */
+  enableRowGroup: boolean;
   /** See `CColDef.initialSort`. Resolved value is the column's
    *  construction-time seed; the cgrid layer reads it once to build the
    *  initial sort model and never re-reads it. Cycle 8 / Task 2. */
@@ -590,6 +596,7 @@ export function resolveColDef<TRow>(
     lockPinned: merged.lockPinned ?? false,
     suppressSizeToFit: merged.suppressSizeToFit ?? false,
     suppressAutoSize: merged.suppressAutoSize ?? false,
+    enableRowGroup: merged.enableRowGroup ?? false,
     initialSort: merged.initialSort,
     initialSortIndex: merged.initialSortIndex,
   };

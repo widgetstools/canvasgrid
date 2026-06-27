@@ -597,6 +597,24 @@ export interface CGridOptions<TRow = any> {
    *  apps get a sensible default without explicit wiring. Design plan:
    *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 5. */
   groupRowRenderer?: string;
+  /** Cycle 15 / Task 6 — controls when the row group panel (the
+   *  horizontal drop strip above the column headers) mounts.
+   *  - `'never'` (default): the panel never mounts.
+   *  - `'always'`: the panel mounts on construction and stays visible
+   *    even when `rowGroupCols.length === 0` (the empty state's
+   *    `Drag here to set row groups` placeholder replaces the chips).
+   *  - `'onlyWhenGrouping'`: the panel mounts only while
+   *    `rowGroupCols.length > 0`; it disappears (and releases its
+   *    top inset) the moment the last chip is removed.
+   *  Design plan:
+   *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 6. */
+  rowGroupPanelShow?: 'always' | 'onlyWhenGrouping' | 'never';
+  /** Cycle 15 / Task 6 — when `true`, the row group panel's chips do
+   *  not render a sort indicator (Cycle 15 ships chips without a sort
+   *  glyph today; this flag is plumbed for forward compatibility so
+   *  apps opting into chip sorting in a later cycle can suppress it
+   *  per-grid). Default `false`. */
+  rowGroupPanelSuppressSort?: boolean;
 }
 
 /** Cycle 10 / Task 5 — params for `processCellForClipboard`. Mirrors
@@ -1025,6 +1043,16 @@ export interface CColDef<TRow = any, TValue = any> {
    * Cycle 6 / Task 4.
    */
   suppressAutoSize?: boolean;
+  /** Cycle 15 / Task 6 — when `true`, the column header can be dragged
+   *  INTO the row group panel to append this column to `rowGroupCols`.
+   *  When `false` (default — mirrors ag-grid), the panel REJECTS a
+   *  drop of this column's header (the panel's drop indicator paints
+   *  in a muted "rejected" variant during the hover). The column can
+   *  still be added to `rowGroupCols` via the imperative
+   *  `setGroupModel` API regardless of this flag — it gates only the
+   *  UI drag-from-header gesture. Design plan:
+   *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 6. */
+  enableRowGroup?: boolean;
 }
 
 /**

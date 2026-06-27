@@ -453,3 +453,304 @@ value + (count) stay constant.**
   with a single conscious exception.
 
 ---
+
+## Task 6 — Row group panel (drop strip above headers)
+
+**Brief recap:** A horizontal DOM strip mounted ABOVE the column
+header row. Hosts one chip per `rowGroupCols[i]` in nesting order.
+Each chip: drag-handle `≡`, label, `×` remove button. Empty state
+reads `Drag here to set row groups` (verbatim from the Cycle 11
+sidebar Columns panel — same vocabulary). Users drag column headers
+INTO the panel to add a group level, drag chips OUT (or click `×`) to
+remove. The panel is functional, not decorative — it IS the
+grouping-control surface.
+
+### Subject pin
+
+A trader / PM running a grouped fixed-income positions grid. She has
+already decided to look at the universe by `Desk`. Now she wants to
+add `Region` below it. The row group panel is the surface where she
+makes that change without opening a dialog or context menu. The job
+of the strip: make the active grouping legible AT A GLANCE (the chip
+order IS the nesting order) and make the drop affordance obvious
+without competing for attention with the column header row directly
+below it.
+
+### Existing vocabularies considered
+
+Two prior surfaces could shape the row group panel:
+
+1. **Cycle 11 sidebar Columns panel — `.cg-columns-panel-drop-zone`**
+   - dashed border (`1px dashed border-color @ 80%`)
+   - 4px radius, 12px padding, centered text, opacity 0.7
+   - placeholder text `Drag here to set row groups` / `Drag here to aggregate`
+2. **Cycle 13 status-bar — `.cg-status-bar`**
+   - 28px height, three-zone flex layout
+   - header-bg, hairline border (top OR bottom)
+   - body text is `user-select: none`; the strip reports state
+
+**Does the row group panel match either? Partly. Mostly its own thing.**
+
+| Element | Inherits from | Why |
+|---|---|---|
+| Strip background | Status-bar `--cg-header-bg` | The panel is a controls strip in the same family — sandwich language |
+| Strip border-bottom | Status-bar's hairline rule | Separates from column headers below |
+| Empty-state dashed border | Sidebar drop-zone | "This surface accepts drops" reads consistently across surfaces |
+| Empty-state placeholder text | Sidebar drop-zone, verbatim | One drop-zone vocabulary — `Drag here to set row groups` |
+| Chip separator `›` | Task 4 chevron-right (Lucide) | One chevron family across the cycle |
+| 4px radii | Sidebar drop-zone + sort-arrow chip | One radius vocabulary for grid chrome |
+| Chip shape | NEW | Nothing else in the grid is a draggable label with a remove `×` |
+
+The chip is the new vocabulary. Nothing else in cgrid is a draggable
+label with a remove affordance — sidebar rows aren't draggable in the
+strip sense; status panels never carry interaction. Inventing a chip
+shape was unavoidable; everything around the chip cites prior art.
+
+### Default rejected
+
+AI defaults for "chip strip with drag-and-drop":
+
+1. **Filled pills** — solid-bg rounded chips with white text. Loud;
+   reads as a "tag input" or "search filter pills." Fights the
+   header chrome below it.
+2. **Material chips** — light gray bg, 8dp corners, drop shadow.
+   Carries Material-Design connotations cgrid doesn't ship.
+3. **Pure-text breadcrumb** — `Desk › Region › Type` as plain text,
+   each segment clickable. Drops the drag handle + remove affordance;
+   the user can't tell at a glance that this is interactive.
+
+All three either over-shout (filled / Material) or under-signal
+(text breadcrumb) the chip's INTERACTIVE nature. The chip needs to
+read as "this is a control I can grab and drop" without becoming
+the loudest thing on the page.
+
+### Risk taken
+
+**Outline chips, no fill.** 1px border, transparent bg, 4px radius.
+The default chip is a filled pill; I'm shipping outlined tokens.
+
+Why:
+- The strip carries 1–N chips in series. Filled chips at strip
+  density (≥3 chips visible) would stack as a wall of color blocks
+  in the header zone, fighting the actual column headers underneath.
+- Outlined chips read as **tokens in a sentence** — the user reads
+  `≡ Desk × › ≡ Region × › ≡ Type ×` as a single grammatical
+  phrase (the active grouping expression), with each chip as a token.
+  That mental model matches what the chip IS — an entry in the
+  grouping order.
+- Hover lifts the chip with a faint background tint (`color-mix`
+  header-bg toward fg @ 8%). The chip stays the same shape but
+  visibly activates — interaction signaled by elevation, not by
+  changing identity.
+
+The bet: outlined chips read as more disciplined, more spreadsheet-
+appropriate, and less Material than the default. If the strip looks
+like a search-filter pill bar — back to step 1.
+
+### Tokens (committed to `tokens.css`)
+
+```css
+.cg-row-group-panel {
+  --cg-row-group-panel-height: 32px;
+  --cg-row-group-panel-padding-x: 8px;
+  --cg-row-group-panel-gap: 6px;
+  --cg-row-group-chip-height: 22px;
+  --cg-row-group-chip-radius: 4px;
+  --cg-row-group-chip-padding-x: 6px;
+  --cg-row-group-chip-gap: 4px;
+  --cg-row-group-chip-bg: transparent;
+  --cg-row-group-chip-border: var(--cg-border-color);
+  --cg-row-group-chip-fg: var(--cg-fg-color);
+  --cg-row-group-chip-hover-bg:
+    color-mix(in srgb, var(--cg-header-bg) 92%, var(--cg-fg-color) 8%);
+  --cg-row-group-chip-active-bg:
+    color-mix(in srgb, var(--cg-header-bg) 85%, var(--cg-fg-color) 15%);
+  --cg-row-group-panel-empty-fg:
+    color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
+  --cg-row-group-panel-drop-border: var(--cg-focus-ring-color);
+}
+```
+
+`--cg-row-group-chip-separator-color` reuses `--cg-group-chevron-color`
+from Task 4 — one chevron family across the cycle.
+
+### Layout
+
+| Property | Value | Rationale |
+|---|---|---|
+| Panel height | `32px` | Matches body row height — same vertical rhythm as the data grid |
+| Panel padding-x | `8px` | Slight inset so chips don't kiss the edge |
+| Panel bg | `var(--cg-header-bg)` | Status-bar family — controls strip vocabulary |
+| Panel border-bottom | `1px solid var(--cg-border-color)` | Hairline rule separates from column headers below |
+| Panel gap (chip-to-chip) | `6px` | Enough breathing room that two chips don't kiss; tight enough that the `›` separator inside reads as belonging to the pair |
+| Chip height | `22px` | Header-zone control, not a data row — half-height of the row |
+| Chip radius | `4px` | Matches drop-zone radius + sidebar control radii |
+| Chip padding-x | `6px` | Matches body cell padding for vertical alignment with text below |
+| Chip internal gap | `4px` | Tight grouping: `≡` `label` `×` reads as one unit |
+| Chip border | `1px solid var(--cg-border-color)` | Hairline outline — quietest control affordance |
+| Chip bg default | `transparent` | OUTLINED tokens, not filled pills |
+| Chip bg hover | mix header-bg @ 92% + fg @ 8% | Faint tint lights up without changing identity |
+| Chip bg active | mix header-bg @ 85% + fg @ 15% | Slightly stronger during mousedown/drag |
+| Chip label font | `var(--cg-font-family)` | Same mono stack as body |
+| Chip label size | `12px` | Smaller than body (13px) — header-zone control |
+| Chip label weight | `400` | Same as body — color carries the chip's identity, not weight |
+| Separator `›` | reuse Task 4 chevron color, 10px size | One chevron family; smaller than group-cell chevron because here it's typographic punctuation |
+| Empty-state height | matches panel | Full-strip dashed outline reads as one drop target |
+| Empty-state border | `1px dashed`, inset 4px | Sidebar drop-zone vocabulary, scoped to panel interior |
+| Empty-state text | `12px`, opacity-60 | Placeholder — never reads as content |
+
+### Chip composition
+
+```
+┌───────────────────┐
+│ ≡  Desk        ×  │   ← chip at rest, 22px tall
+└───────────────────┘
+```
+
+| Slot | Glyph | Source | Why |
+|---|---|---|---|
+| Drag handle | `≡` (U+2261 IDENTICAL TO) | Unicode — same family as sidebar `'columns'` icon `☰` | Quietly signals "grab here"; same vocabulary as Cycle 11 |
+| Label | column's resolved `headerName` | grid columnDef | Matches what the user sees in the header below |
+| Remove | `✕` (U+2715 MULTIPLICATION X) | Unicode — crisper than `×` (U+00D7, a math sign) | One-stroke remove glyph; reuses the same `✕` used by Cycle 11 chips and dialog close buttons |
+
+The drag handle uses `cursor: grab` (transitions to `grabbing` while
+dragging). The `×` uses `cursor: pointer`. The label between them is
+inert (no cursor change) — only the affordances at the chip's edges
+respond to hover.
+
+### Chip separator (between adjacent chips)
+
+The separator is a `›` chevron painted BETWEEN chips, in the panel's
+gap. NOT inside the chip itself — that would make the chip read as
+"a label with a trailing arrow," conflating chip and separator. The
+`›` belongs to the GAP, not to either chip.
+
+| Property | Value | Rationale |
+|---|---|---|
+| Glyph | `›` (U+203A) — single-right-pointing angle quotation mark | Same chevron family as Task 4; lighter than `▶` so it reads as punctuation, not as a chevron control |
+| Size | `10px` | Smaller than group-cell chevron (12px) — typographic punctuation, not interactive |
+| Color | `--cg-group-chevron-color` (muted slate) | Reuses Task 4 token verbatim — one chevron family |
+| Margin | absorbed by panel gap | Doesn't add its own spacing — sits in the 6px gap centered |
+
+**Rejected alternatives:**
+- Vertical rule `|` — neutral but mute; doesn't carry the "ordered"
+  meaning the user needs to read from the chip sequence.
+- No separator — chips merge visually; the eye doesn't read the
+  sequence as nesting order, just as a set.
+- `▸` (U+25B8) — too solid; looks like a tree-control glyph, not
+  typographic punctuation.
+
+### Drop indicator (during column header drag)
+
+Two visual cues during a drag:
+
+1. **Panel-level dashed outline** — when the dragged column has
+   `enableRowGroup: true` AND its colId is NOT already in
+   `rowGroupCols`, the entire panel paints a `2px dashed
+   var(--cg-row-group-panel-drop-border)` outline (inset 2px). Signal:
+   "this surface accepts the drop."
+2. **Vertical insertion line** — at the position where the chip will
+   land. Reuses the same `.cg-column-drag-insertion-line` pattern
+   from Cycle 6 (2px wide, focus-ring color), but scoped to the
+   panel's vertical band. Painted between chips at the gap mid-point,
+   or at the panel's right edge when appending.
+
+**Rejected:** dashed outline alone (no precise drop point); insertion
+line alone (no "this whole strip accepts drops" signal); a third
+hover state on the panel bg (would compete with the chip hover state).
+
+When the dragged column has `enableRowGroup: false`, the panel paints
+the dashed outline in a MUTED variant (`--cg-fg-muted` @ 30%) — a
+visual rejection signal that's clearly NOT the focus-ring blue. The
+drop handler rejects the same colId, so the visual + behavioral
+signals agree.
+
+### Empty state
+
+When `rowGroupCols.length === 0` AND `rowGroupPanelShow === 'always'`
+(the only mode that shows the panel without grouping active), the
+panel renders a single full-strip placeholder:
+
+```
+┌─────────────────────────────────────────┐
+│ ┌── Drag here to set row groups ─────┐  │
+│ └────────────────────────────────────┘  │
+└─────────────────────────────────────────┘
+```
+
+| Property | Value |
+|---|---|
+| Border | `1px dashed color-mix(in srgb, var(--cg-border-color) 80%, transparent)` — same as sidebar drop-zone |
+| Border radius | `4px` |
+| Inset from panel edge | `4px` top/bottom, `8px` left/right (matches panel padding) |
+| Text | `Drag here to set row groups` — VERBATIM from sidebar |
+| Text alignment | centered |
+| Text size | `12px` |
+| Text color | `--cg-row-group-panel-empty-fg` (60% fg) |
+
+Vocabulary continuity is the goal: a user who has seen the sidebar's
+Row Groups drop zone recognises this strip as the same affordance,
+just inline at the top of the grid rather than docked to the right.
+
+### Mode-by-mode behaviour
+
+| `rowGroupPanelShow` | rowGroupCols empty | rowGroupCols non-empty |
+|---|---|---|
+| `'always'` | strip + empty-state placeholder | strip + chips |
+| `'onlyWhenGrouping'` | hidden (no reservation) | strip + chips |
+| `'never'` (default) | hidden | hidden |
+
+`rowGroupPanelSuppressSort: true` hides any sort indicator inside
+the chip (Cycle 16+ extension — Cycle 15 chips don't carry a sort
+indicator yet, so this flag is wired but no-op visually).
+
+`enableRowGroup` is a per-column flag. The default is `false`
+(matches ag-grid). When `false`, the chip's `×` removal still works
+(removing a column from `rowGroupCols` always succeeds), but the
+column header CAN'T be dragged INTO the panel — the drop handler
+rejects.
+
+### What's explicitly NOT shipped in Task 6
+
+- No chip sort indicator (`rowGroupPanelSuppressSort` is wired but
+  visually inert in Cycle 15 — the chip ships without a sort glyph).
+- No chip-internal reorder via drag (Cycle 15 ships chip
+  drag-OUT-to-remove + column-header drag-IN-to-append; chip-to-chip
+  reorder lands in a polish task).
+- No keyboard nav across chips (focus-management for the chip strip
+  is a Cycle 16+ a11y task; today the chip's `×` button is
+  keyboard-activatable but tab order isn't curated).
+- No animation on chip add/remove (insertion is instant — the
+  insertion line + drop-into-panel motion already shows where the
+  chip will appear; an animation would feel redundant).
+- No per-chip context menu (right-click on a chip is a no-op in
+  Cycle 15).
+
+### One-line summary
+
+**Outlined tokens in the header zone, chevron-separated, with a
+sidebar-vocabulary empty state. The chip is the grouping
+expression — read left to right.**
+
+### Vocabulary handed to subsequent tasks
+
+- **Outlined-chip pattern** — 4px radius, 1px border, transparent
+  bg, hover-tint via `color-mix`. Future Cycle 16+ surfaces (column
+  filter chips, pivot column chips, value chips) inherit this shape
+  so the grid speaks one chip language.
+- **`›` separator at panel gap, NOT inside chip** — applies to any
+  future ordered-token strip in the grid.
+- **Empty-state vocabulary** — verbatim `Drag here to set row groups`
+  (and the parallel `Drag here to aggregate` from sidebar) is the
+  canonical drop-zone copy. Future drop zones reuse the same phrasing.
+- **Dashed panel outline = "drop OK"; muted-dashed outline = "drop
+  rejected"** — applies to any drop-accepting surface added later.
+  Separates "this surface accepts drops" from "this specific drop
+  would fail" without a third color (rejection isn't red — it's
+  just unsaturated focus).
+- **Status-bar sandwich pattern extends** — the row group panel is
+  the second strip in the family (after the status bar). A future
+  "row drag panel" or "filter chip strip" would join the same
+  vocabulary (header-bg + hairline border + 28–32px height).
+
+---

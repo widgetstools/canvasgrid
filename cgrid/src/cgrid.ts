@@ -45,6 +45,11 @@ import { SideBarHost, normalizeSideBarOption, type SideBarGridContext } from './
 import { StatusBarHost, normalizeStatusBarOption, type StatusBarGridContext } from './interaction/statusBar/host';
 import { StatusPanelRegistry } from './interaction/statusBar/registry';
 import type { StatusBarDef, StatusBarPosition, IStatusPanelComp, StatusPanelComponent } from './interaction/statusBar/types';
+import {
+  RowGroupPanelHost,
+  normalizeRowGroupPanelShow,
+  type RowGroupPanelGridContext,
+} from './interaction/rowGroupPanel/host';
 import type { MenuItem, GetContextMenuItemsParams, GetMainMenuItemsParams } from './interaction/contextMenu/types';
 import { buildDefaultMenuItems } from './interaction/contextMenu/defaults';
 import { buildDefaultMainMenuItems } from './interaction/contextMenu/mainMenuDefaults';
@@ -481,6 +486,18 @@ export class CGrid<TRow = any> {
   /** Cycle 13 / Task 1 — currently reserved insets (CSS px) on the
    *  canvas region's top + bottom edges, set by the status bar. */
   private statusBarInsets: Record<StatusBarPosition, number> = { top: 0, bottom: 0 };
+  /** Cycle 15 / Task 6 — row group panel host (DOM strip ABOVE the
+   *  column header row that hosts one chip per `rowGroupCols[i]`).
+   *  `null` when `options.rowGroupPanelShow` resolves to off. Reserves
+   *  an additional top inset on the canvas region via
+   *  `reserveRowGroupPanelSpace`; sits BELOW any status bar pinned to
+   *  the top, ABOVE the column headers. */
+  private rowGroupPanel: RowGroupPanelHost | null = null;
+  /** Cycle 15 / Task 6 — reserved top inset (CSS px) contributed by
+   *  the row group panel. Combined with `statusBarInsets.top` when
+   *  applying the scroller's `top` style so a top status bar + row
+   *  group panel stack cleanly. */
+  private rowGroupPanelTopInset = 0;
   /** Cycle 4 / Task 11 (cell-flash patch) — per-cell flash tracker.
    *  Drained from each `getViewport` chunk's `flashMask` and queried
    *  by the painter's `cellData` callback to produce `flashAlpha`. */
@@ -832,6 +849,36 @@ export class CGrid<TRow = any> {
       this.statusBar = new StatusBarHost(this.root, ctx, statusBarDef);
     }
 
+    // Cycle 15 / Task 6 — row group panel (DOM strip ABOVE the
+    // column header row, hosting one chip per `rowGroupCols[i]` and
+    // accepting column-header drops). Mounts when `options.rowGroupPanelShow`
+    // resolves to `'always'` or `'onlyWhenGrouping'` (the latter only
+    // produces a visible reservation when grouping is active). Attaches
+    // to `this.root` AFTER the status bar so its z-order sits above
+    // the canvas + side bar + status bar without explicit z-index
+    // plumbing.
+    const rgShow = normalizeRowGroupPanelShow(options.rowGroupPanelShow);
+    if (rgShow !== null) {
+      const ctx: RowGroupPanelGridContext = {
+        setReservedSpace: (side, height) => this.reserveRowGroupPanelSpace(side, height),
+        getHeaderName: (colId) => this.columnDefsMap.get(colId)?.headerName,
+        isColumnRowGroupEnabled: (colId) =>
+          this.columnDefsMap.get(colId)?.enableRowGroup === true,
+        appendRowGroup: (colId) => this.appendRowGroupFromPanel(colId),
+        removeRowGroup: (colId) => this.removeRowGroupFromPanel(colId),
+      };
+      this.rowGroupPanel = new RowGroupPanelHost(
+        this.root,
+        ctx,
+        rgShow,
+        this.groupModel.rowGroupCols,
+      );
+      // Initial top offset = status bar's top inset (zero when no top
+      // status bar). The panel's own `style.top` is updated whenever
+      // the top status bar's inset changes.
+      this.setRowGroupPanelTop(this.statusBarInsets.top);
+    }
+
     // 8. Hit-test + input
     this.hitTester = new HitTester(
       () => this.viewport,
@@ -963,6 +1010,14 @@ export class CGrid<TRow = any> {
       isContextMenuSuppressed: () => this.options.suppressContextMenu === true,
       isClipboardApiSuppressed: () => this.options.suppressClipboardApi === true,
       isClipboardPasteSuppressed: () => this.options.suppressClipboardPaste === true,
+      // Cycle 15 / Task 6 — row group panel drop target. The drag
+      // feature dispatches hover + drop through these so the panel
+      // can paint its own outline + insertion line.
+      isPointInRowGroupPanel: (x, y) => this.rowGroupPanel?.isPointInPanel(x, y) === true,
+      setRowGroupPanelDragHover: (colId, x, y) => {
+        this.rowGroupPanel?.setDragHover(colId, x, y);
+      },
+      commitRowGroupPanelDrop: (colId) => this.rowGroupPanel?.handleColumnDrop(colId) ?? false,
     });
     this.cellEditorRegistry = new CellEditorRegistry();
     CellEditorRegistry.seed(this.cellEditorRegistry);
@@ -2375,11 +2430,16 @@ export class CGrid<TRow = any> {
    *  forwarded to the worker (Task 1 wired the dispatch), and used by
    *  Task 4's column-order resolution to insert the auto-group column
    *  when grouping is active. An empty `rowGroupCols` array clears
-   *  the auto-group column and bypasses the worker's group passes. */
+   *  the auto-group column and bypasses the worker's group passes.
+   *
+   *  Cycle 15 / Task 6 — also syncs the row group panel's chip
+   *  strip so a programmatic `setGroupModel` call from app code
+   *  flows into the visible chips. */
   setGroupModel(g: GroupModel): void {
     if (this.destroyed) return;
     this.groupModel = { rowGroupCols: [...g.rowGroupCols] };
     this.rebuildAutoGroupColumn();
+    this.rowGroupPanel?.setRowGroupCols(this.groupModel.rowGroupCols);
     this.workerClient.setGroupModel(this.groupModel).then(({ visibleCount }) => {
       if (this.destroyed) return;
       this.rowCount = visibleCount;
@@ -2388,6 +2448,66 @@ export class CGrid<TRow = any> {
       this.cgridCanvas.requestRepaint();
       this.requestViewport();
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+  }
+
+  /** Cycle 15 / Task 6 — append `colId` to `rowGroupCols`. Called
+   *  by the row group panel host when a column header drag drops
+   *  onto the panel. Idempotent — a column already in
+   *  `rowGroupCols` is left alone (the drop verdict in the host
+   *  already filtered, but this guard keeps a stray programmatic
+   *  re-add safe). */
+  private appendRowGroupFromPanel(colId: string): void {
+    if (this.destroyed) return;
+    if (this.groupModel.rowGroupCols.includes(colId)) return;
+    this.setGroupModel({
+      rowGroupCols: [...this.groupModel.rowGroupCols, colId],
+    });
+  }
+
+  /** Cycle 15 / Task 6 — remove `colId` from `rowGroupCols`. Called
+   *  by the row group panel host when a chip's `×` affordance is
+   *  clicked. Idempotent — a column not in `rowGroupCols` is a
+   *  no-op (the host shouldn't render a chip for it, but defensive). */
+  private removeRowGroupFromPanel(colId: string): void {
+    if (this.destroyed) return;
+    if (!this.groupModel.rowGroupCols.includes(colId)) return;
+    this.setGroupModel({
+      rowGroupCols: this.groupModel.rowGroupCols.filter((c) => c !== colId),
+    });
+  }
+
+  /** Cycle 15 / Task 6 — runtime swap of `rowGroupPanelShow`. When
+   *  the option mutates via `setGridOption`, this method either
+   *  mounts a fresh host (transition from `'never'`), unmounts the
+   *  current one (transition to `'never'`), or hands the new mode
+   *  to the existing host. */
+  private updateRowGroupPanelShow(show: 'always' | 'onlyWhenGrouping' | 'never' | undefined): void {
+    if (this.destroyed) return;
+    const next = normalizeRowGroupPanelShow(show);
+    if (next === null) {
+      this.rowGroupPanel?.destroy();
+      this.rowGroupPanel = null;
+      return;
+    }
+    if (this.rowGroupPanel) {
+      this.rowGroupPanel.setShowMode(next);
+      return;
+    }
+    const ctx: RowGroupPanelGridContext = {
+      setReservedSpace: (side, height) => this.reserveRowGroupPanelSpace(side, height),
+      getHeaderName: (colId) => this.columnDefsMap.get(colId)?.headerName,
+      isColumnRowGroupEnabled: (colId) =>
+        this.columnDefsMap.get(colId)?.enableRowGroup === true,
+      appendRowGroup: (colId) => this.appendRowGroupFromPanel(colId),
+      removeRowGroup: (colId) => this.removeRowGroupFromPanel(colId),
+    };
+    this.rowGroupPanel = new RowGroupPanelHost(
+      this.root,
+      ctx,
+      next,
+      this.groupModel.rowGroupCols,
+    );
+    this.setRowGroupPanelTop(this.statusBarInsets.top);
   }
 
   /** Resolve `rowId` to its current visible-row index via the worker, then
@@ -2943,7 +3063,14 @@ export class CGrid<TRow = any> {
     // current status-bar bottom reservation flows through the same
     // setHostBounds call so a side-bar reflow can't drop the bar inset.
     if (this.cgridCanvas) {
-      this.cgridCanvas.setHostBounds({ left, top: 0, bottom: this.statusBarInsets.bottom });
+      // Cycle 15 / Task 6 — fold the status-bar top + row-group-panel
+      // top contributions through the same call so a side-bar reflow
+      // doesn't drop either inset.
+      this.cgridCanvas.setHostBounds({
+        left,
+        top: this.statusBarInsets.top + this.rowGroupPanelTopInset,
+        bottom: this.statusBarInsets.bottom,
+      });
     }
   }
 
@@ -2954,11 +3081,39 @@ export class CGrid<TRow = any> {
    *  matching inset (so popups respect the canvas region) + calls
    *  `setHostBounds` so the canvas re-fits to the freshly-shrunken
    *  scroller. One synchronous `cgridCanvas.resize()` repaints the new
-   *  region — the status bar never triggers a separate body repaint. */
+   *  region — the status bar never triggers a separate body repaint.
+   *
+   *  Cycle 15 / Task 6 — folds in the row group panel's contribution
+   *  via `applyVerticalInsets` so a top-positioned status bar + a
+   *  row group panel stack cleanly. */
   private reserveStatusBarSpace(side: StatusBarPosition, height: number): void {
     if (this.statusBarInsets[side] === height) return;
     this.statusBarInsets[side] = height;
-    const { top, bottom } = this.statusBarInsets;
+    this.applyVerticalInsets();
+  }
+
+  /** Cycle 15 / Task 6 — adjust the canvas region's top inset to
+   *  make room for the row group panel (the drop strip ABOVE the
+   *  column headers). Called by `RowGroupPanelHost` on mount, show-
+   *  mode change, chip-count change, and destroy. Combines with the
+   *  status bar's top inset via `applyVerticalInsets`. */
+  private reserveRowGroupPanelSpace(side: 'top', height: number): void {
+    if (side !== 'top') return;
+    if (this.rowGroupPanelTopInset === height) return;
+    this.rowGroupPanelTopInset = height;
+    this.applyVerticalInsets();
+  }
+
+  /** Cycle 15 / Task 6 — recompute and apply the combined top +
+   *  bottom insets to the scroller, editor overlay, canvas host,
+   *  and the row group panel's own top offset. Top inset is the
+   *  sum of `statusBarInsets.top` + `rowGroupPanelTopInset` so the
+   *  row group panel sits BELOW any top-positioned status bar.
+   *  Bottom inset is `statusBarInsets.bottom` alone (no row group
+   *  panel contribution). */
+  private applyVerticalInsets(): void {
+    const top = this.statusBarInsets.top + this.rowGroupPanelTopInset;
+    const bottom = this.statusBarInsets.bottom;
     this.scroller.style.top = `${top}px`;
     this.scroller.style.bottom = `${bottom}px`;
     this.editorContainer.style.top = `${top}px`;
@@ -2970,6 +3125,22 @@ export class CGrid<TRow = any> {
         bottom,
       });
     }
+    // The row group panel itself sits at the status bar's top-inset
+    // (so a top status bar pushes the panel down by exactly its
+    // height) — the panel's own height is then the next contributor
+    // to the scroller's top. Keeps stacking deterministic.
+    if (this.rowGroupPanel) {
+      this.setRowGroupPanelTop(this.statusBarInsets.top);
+    }
+  }
+
+  /** Cycle 15 / Task 6 — set the row group panel's own `top`
+   *  style. Called from `applyVerticalInsets` whenever the status
+   *  bar's top inset changes (so the panel stays parked just below
+   *  the top status bar) and once at construction. */
+  private setRowGroupPanelTop(top: number): void {
+    const el = this.root.querySelector('.cg-row-group-panel') as HTMLElement | null;
+    if (el) el.style.top = `${top}px`;
   }
 
   /** Register a custom cell renderer. After registration, columns with
@@ -3101,6 +3272,7 @@ export class CGrid<TRow = any> {
           triggerRefresh === true,
         );
       },
+      updateRowGroupPanelShow: (value) => this.updateRowGroupPanelShow(value),
     };
   }
 
@@ -3372,6 +3544,12 @@ export class CGrid<TRow = any> {
     // reserveStatusBarSpace bails out gracefully if the host's release
     // call lands after cgridCanvas.destroy.
     this.statusBar?.destroy();
+    // Cycle 15 / Task 6 — release the row group panel's top inset
+    // + remove its DOM. The host's destroy() calls back into
+    // reserveRowGroupPanelSpace(0) which is canvas-destroy-safe via
+    // the same guard as the side / status bars.
+    this.rowGroupPanel?.destroy();
+    this.rowGroupPanel = null;
     // Cycle 4 / Task 11 (cell-flash patch) — cancel any in-flight
     // rAF tick + clear the registry so a late callback can't fire on
     // a destroyed grid.

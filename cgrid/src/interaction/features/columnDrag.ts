@@ -15,6 +15,15 @@
 //   - Insertion line — 2 px vertical bar at the resolved drop target's
 //     left edge (spans the canvas height). Both elements are
 //     `pointer-events: none` so hover and click flow through to the canvas.
+//
+// Cycle 15 / Task 6 — when the cursor crosses INTO the row group panel
+// (the horizontal drop strip above the column headers), the drag forwards
+// the column id + viewport coords to `grid.setRowGroupPanelDragHover`. The
+// panel host paints its own drop indicator (panel-level outline + vertical
+// insertion line at the chip-gap mid-point). On mouseup-over-panel, the
+// drag commits the drop via `grid.commitRowGroupPanelDrop`; the
+// column-reorder pathway is skipped so the column stays where it was in
+// the header band.
 
 import { Feature, type CGridEventCtx } from '../feature';
 
@@ -108,12 +117,14 @@ export class ColumnDrag extends Feature {
       this.cursor = 'grabbing';
       updateGhostPosition(this.state, ctx);
       updateInsertionLinePosition(this.state, ctx);
+      this.dispatchRowGroupPanelHover(ctx);
       return;
     }
     // dragging — track pointer X for the drop-target computation
     this.state.currentX = ctx.point.x;
     updateGhostPosition(this.state, ctx);
     updateInsertionLinePosition(this.state, ctx);
+    this.dispatchRowGroupPanelHover(ctx);
   }
 
   override handleMouseUp(ctx: CGridEventCtx): void {
@@ -128,6 +139,24 @@ export class ColumnDrag extends Feature {
     }
     state.ghost?.remove();
     state.insertionLine?.remove();
+    // Cycle 15 / Task 6 — if the drop landed inside the row group
+    // panel, commit the drop there instead of running the header
+    // reorder. The panel's drop verdict already filtered for
+    // `enableRowGroup`; a `reject` returns `false` and we fall back
+    // to a header reorder so the column doesn't disappear into a
+    // rejected drop.
+    const raw = ctx.raw;
+    if (raw instanceof MouseEvent) {
+      const droppedIntoPanel = ctx.grid.isPointInRowGroupPanel(raw.clientX, raw.clientY)
+        && ctx.grid.commitRowGroupPanelDrop(state.colId);
+      // Clear any drop-hover state regardless of accept/reject so the
+      // panel's outline + insertion line disappear on release.
+      ctx.grid.setRowGroupPanelDragHover(null, raw.clientX, raw.clientY);
+      if (droppedIntoPanel) {
+        this.suppressNextClick = true;
+        return;
+      }
+    }
     const target = computeDropTargetIndex(ctx, state.colId);
     if (target !== null) {
       ctx.grid.reorderColumn(state.colId, target, 'uiColumnDragged');
@@ -137,6 +166,22 @@ export class ColumnDrag extends Feature {
     // just-dragged column. Also do NOT forward mouseup to downstream
     // features for the same reason.
     this.suppressNextClick = true;
+  }
+
+  /** Cycle 15 / Task 6 — feed the row group panel host the current
+   *  drag state. The host hit-tests against its own DOM rect (viewport
+   *  coords) and paints the drop indicator + insertion line. When the
+   *  cursor is OUTSIDE the panel, this clears any prior hover. */
+  private dispatchRowGroupPanelHover(ctx: CGridEventCtx): void {
+    const state = this.state;
+    if (state === null || state.kind !== 'dragging') return;
+    const raw = ctx.raw;
+    if (!(raw instanceof MouseEvent)) return;
+    if (ctx.grid.isPointInRowGroupPanel(raw.clientX, raw.clientY)) {
+      ctx.grid.setRowGroupPanelDragHover(state.colId, raw.clientX, raw.clientY);
+    } else {
+      ctx.grid.setRowGroupPanelDragHover(null, raw.clientX, raw.clientY);
+    }
   }
 
   override handleClick(ctx: CGridEventCtx): void {

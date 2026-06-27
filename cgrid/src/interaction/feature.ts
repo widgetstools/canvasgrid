@@ -234,6 +234,29 @@ export interface CGridLike {
    *  `KeyboardShortcuts` on every Ctrl+V keydown. When `true`, the
    *  shortcut forwards via super (no preventDefault). */
   isClipboardPasteSuppressed(): boolean;
+
+  // --- Row group panel drop target (Cycle 15 / Task 6) ---
+  /** True when the row group panel is mounted AND the viewport-coord
+   *  point `(clientX, clientY)` falls inside its DOM rect. Read each
+   *  `mousemove` tick during a column-header drag so the drag feature
+   *  can paint the panel's drop indicator. Returns `false` when no
+   *  panel is mounted (`rowGroupPanelShow === 'never'` or unmounted). */
+  isPointInRowGroupPanel(clientX: number, clientY: number): boolean;
+  /** Inform the row group panel of an in-progress drag. The host
+   *  evaluates the drop verdict (`'accept'` / `'reject'` / `null`)
+   *  and paints the matching outline; the drag feature only needs
+   *  to forward the column id + viewport coords. Passing
+   *  `colId: null` clears any drop-hover state. */
+  setRowGroupPanelDragHover(
+    colId: string | null,
+    clientX: number,
+    clientY: number,
+  ): void;
+  /** Commit a column-header drop into the row group panel. Returns
+   *  `true` when the column was appended to `rowGroupCols`, `false`
+   *  when the drop was rejected (the drag feature can then re-order
+   *  within the header band as if the drop hadn't been attempted). */
+  commitRowGroupPanelDrop(colId: string): boolean;
 }
 
 export interface CGridEventCtx {

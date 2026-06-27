@@ -13,6 +13,13 @@ interface MockGrid {
   getHeaderName: (id: string) => string;
   getLeafHeaderHeight: () => number;
   getLeafHeaderTop: () => number;
+  /** Cycle 15 / Task 6 — drag dispatches into the row group panel
+   *  host via these. The default mock returns `false` from
+   *  `isPointInRowGroupPanel` so existing tests behave identically;
+   *  Task 6's dedicated drop-target tests override the trio. */
+  isPointInRowGroupPanel: (x: number, y: number) => boolean;
+  setRowGroupPanelDragHover: ReturnType<typeof vi.fn>;
+  commitRowGroupPanelDrop: ReturnType<typeof vi.fn>;
 }
 
 function ctx(hit: Hit, point: { x: number; y: number }, grid: MockGrid): CGridEventCtx {
@@ -39,6 +46,9 @@ function makeGrid(overrides: Partial<MockGrid> = {}): MockGrid {
     getHeaderName: (id) => id.toUpperCase(),
     getLeafHeaderHeight: () => 30,
     getLeafHeaderTop: () => 30,
+    isPointInRowGroupPanel: () => false,
+    setRowGroupPanelDragHover: vi.fn(),
+    commitRowGroupPanelDrop: vi.fn(),
     ...overrides,
   };
 }
@@ -167,5 +177,81 @@ describe('ColumnDrag', () => {
     f.handleMouseDrag(ctx(hit, { x: 250, y: 100 }, grid));
     f.handleMouseUp(ctx(hit, { x: 250, y: 100 }, grid));
     expect(grid.reorderColumn).not.toHaveBeenCalled();
+  });
+
+  // Cycle 15 / Task 6 — drag-into-row-group-panel dispatch tests.
+  it('drag dispatches hover into the row group panel each tick while pointer is over it', () => {
+    // Regression: while a drag is in flight AND the pointer is INSIDE
+    // the panel, `setRowGroupPanelDragHover` fires with the dragging
+    // colId and viewport coords on every drag tick. The host uses this
+    // to paint the dashed outline + insertion line.
+    const f = new ColumnDrag();
+    let panelHits = 0;
+    const grid = makeGrid({
+      isPointInRowGroupPanel: () => { panelHits += 1; return true; },
+    });
+    const hit: Hit = { kind: 'header', colId: 'a' };
+    f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
+    // Past 4 px threshold — promotes to dragging + fires first hover.
+    f.handleMouseDrag(ctx(hit, { x: 80, y: 8 }, grid));
+    // Subsequent drag ticks fire more hovers.
+    f.handleMouseDrag(ctx(hit, { x: 100, y: 8 }, grid));
+    f.handleMouseDrag(ctx(hit, { x: 140, y: 8 }, grid));
+    expect(grid.setRowGroupPanelDragHover).toHaveBeenCalledTimes(3);
+    // Each call carried the dragging colId.
+    const lastCall = grid.setRowGroupPanelDragHover.mock.calls.at(-1) as unknown[];
+    expect(lastCall[0]).toBe('a');
+    expect(panelHits).toBeGreaterThanOrEqual(3);
+  });
+
+  it('drop INSIDE the row group panel commits via commitRowGroupPanelDrop and skips column reorder', () => {
+    // Regression: when the mouseup lands inside the panel AND the
+    // panel accepts the drop (`commitRowGroupPanelDrop` returns
+    // `true`), the column-reorder pathway must be skipped — the
+    // column stays where it was in the header band. `reorderColumn`
+    // is NOT called.
+    const f = new ColumnDrag();
+    const grid = makeGrid({
+      isPointInRowGroupPanel: () => true,
+      commitRowGroupPanelDrop: vi.fn(() => true),
+    });
+    const hit: Hit = { kind: 'header', colId: 'a' };
+    f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
+    f.handleMouseDrag(ctx(hit, { x: 250, y: 8 }, grid));
+    f.handleMouseUp(ctx(hit, { x: 250, y: 8 }, grid));
+    expect(grid.commitRowGroupPanelDrop).toHaveBeenCalledWith('a');
+    expect(grid.reorderColumn).not.toHaveBeenCalled();
+  });
+
+  it('drop INSIDE the panel but REJECTED falls back to column reorder', () => {
+    // Regression: when `commitRowGroupPanelDrop` returns `false`
+    // (panel rejected because the column lacks `enableRowGroup`),
+    // the column-reorder pathway runs as usual so the column doesn't
+    // disappear into a refused drop.
+    const f = new ColumnDrag();
+    const grid = makeGrid({
+      isPointInRowGroupPanel: () => true,
+      commitRowGroupPanelDrop: vi.fn(() => false),
+    });
+    const hit: Hit = { kind: 'header', colId: 'a' };
+    f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
+    f.handleMouseDrag(ctx(hit, { x: 250, y: 8 }, grid));
+    f.handleMouseUp(ctx(hit, { x: 250, y: 8 }, grid));
+    expect(grid.commitRowGroupPanelDrop).toHaveBeenCalledWith('a');
+    expect(grid.reorderColumn).toHaveBeenCalled();
+  });
+
+  it('drop OUTSIDE the panel never asks the host to commit', () => {
+    // Regression: when the pointer is NOT in the panel at mouseup,
+    // the drag must not call `commitRowGroupPanelDrop` at all. The
+    // column-reorder pathway runs (the default behaviour).
+    const f = new ColumnDrag();
+    const grid = makeGrid({ isPointInRowGroupPanel: () => false });
+    const hit: Hit = { kind: 'header', colId: 'a' };
+    f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
+    f.handleMouseDrag(ctx(hit, { x: 250, y: 8 }, grid));
+    f.handleMouseUp(ctx(hit, { x: 250, y: 8 }, grid));
+    expect(grid.commitRowGroupPanelDrop).not.toHaveBeenCalled();
+    expect(grid.reorderColumn).toHaveBeenCalled();
   });
 });

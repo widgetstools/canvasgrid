@@ -79,7 +79,16 @@ const groupByTicker = search.get('grouping') === 'ticker';
 // with `?grouping=ticker` — the same query param selects ONE grouping
 // demo.
 const groupMultipleColumns = search.get('grouping') === 'multipleColumns';
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns });
+// Cycle 15 / Task 6 — `?rowGroupPanel=empty` mounts the row group
+// panel with no chips so the dashed empty-state placeholder paints
+// (visual cell 22). `?rowGroupPanel=threeChips` mounts it
+// pre-populated with `ticker` → `sector` → `subSector` chips
+// matching the reference screenshot (visual cell 23). Off by default
+// so visual cells 01–21 stay byte-stable.
+const rowGroupPanelMode = search.get('rowGroupPanel');
+const rowGroupPanelEmpty = rowGroupPanelMode === 'empty';
+const rowGroupPanelThreeChips = rowGroupPanelMode === 'threeChips';
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, rowGroupPanelEmpty, rowGroupPanelThreeChips });
 
 // E2E hooks: expose the grid + a readiness flag so Playwright tests can wait
 // for first-data-rendered and call api helpers (`getCellBoundsAt`,
