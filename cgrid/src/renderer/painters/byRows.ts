@@ -234,6 +234,13 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
       sharedConfig.groupChevronColor = theme.groupChevronColor;
       sharedConfig.groupCountColor = theme.groupCountColor;
       sharedConfig.groupIndent = theme.groupIndent;
+      // Cycle 15 / Task 8 — tri-state checkbox tokens for the
+      // groupRows strip path; the renderer omits the checkbox when
+      // selectionState is undefined on the cell payload.
+      sharedConfig.groupCheckboxBorderColor = theme.groupCheckboxBorderColor;
+      sharedConfig.groupCheckboxCheckColor = theme.groupCheckboxCheckColor;
+      sharedConfig.groupCheckboxIndeterminateColor = theme.groupCheckboxIndeterminateColor;
+      sharedConfig.groupCheckboxFill = theme.groupCheckboxFill;
       // Strip mode is signalled by the renderer reading the value's
       // groupCellValue payload + the absence of a `groupColumnDepth`
       // param. Custom renderers may interpret the value differently.

@@ -137,10 +137,18 @@ export class WorkerClient {
    *  mirror can materialise its `expandedKeys` snapshot for
    *  `getExpandedKeys()`. Empty when grouping bypasses
    *  (`rowGroupCols.length === 0`). */
-  setGroupModel(g: GroupModel): Promise<{ visibleCount: number; groupKeys: string[] }> {
-    return this.send<{ visibleCount: number; groupKeys?: string[] }>({
+  setGroupModel(g: GroupModel): Promise<{
+    visibleCount: number;
+    groupKeys: string[];
+    groupDescendants: string[][];
+  }> {
+    return this.send<{ visibleCount: number; groupKeys?: string[]; groupDescendants?: string[][] }>({
       type: 'setGroupModel', payload: g,
-    }).then((r) => ({ visibleCount: r.visibleCount, groupKeys: r.groupKeys ?? [] }));
+    }).then((r) => ({
+      visibleCount: r.visibleCount,
+      groupKeys: r.groupKeys ?? [],
+      groupDescendants: r.groupDescendants ?? [],
+    }));
   }
 
   /** Cycle 15 / Task 7 — replace the worker's persistent expanded-keys
@@ -148,11 +156,44 @@ export class WorkerClient {
    *  empty array collapses everything; any other array is the
    *  explicit set. Resolves with the post-set visible row count AND
    *  the full list of current composite group keys so the main-side
-   *  mirror can materialise / refresh its snapshot. */
-  setExpandedKeys(keys: string[] | null): Promise<{ visibleCount: number; groupKeys: string[] }> {
-    return this.send<{ visibleCount: number; groupKeys?: string[] }>({
+   *  mirror can materialise / refresh its snapshot.
+   *
+   *  Cycle 15 / Task 8 — also returns `groupDescendants` (parallel to
+   *  `groupKeys`) when the worker has been switched to emit them via
+   *  `setEmitGroupDescendants(true)`. Empty array when descendant
+   *  emission is off. */
+  setExpandedKeys(keys: string[] | null): Promise<{
+    visibleCount: number;
+    groupKeys: string[];
+    groupDescendants: string[][];
+  }> {
+    return this.send<{ visibleCount: number; groupKeys?: string[]; groupDescendants?: string[][] }>({
       type: 'setExpandedKeys', payload: { keys },
-    }).then((r) => ({ visibleCount: r.visibleCount, groupKeys: r.groupKeys ?? [] }));
+    }).then((r) => ({
+      visibleCount: r.visibleCount,
+      groupKeys: r.groupKeys ?? [],
+      groupDescendants: r.groupDescendants ?? [],
+    }));
+  }
+
+  /** Cycle 15 / Task 8 — flip the worker's per-snapshot descendant
+   *  emission. When `enabled: true`, every subsequent
+   *  `groupKeysSnapshot` reply carries `groupDescendants: string[][]`
+   *  parallel to `groupKeys` so main can populate the
+   *  `GroupMembershipResolver` for tri-state selection. Resolves with
+   *  a fresh snapshot so the toggle-on call itself primes the cache. */
+  setEmitGroupDescendants(enabled: boolean): Promise<{
+    visibleCount: number;
+    groupKeys: string[];
+    groupDescendants: string[][];
+  }> {
+    return this.send<{ visibleCount: number; groupKeys?: string[]; groupDescendants?: string[][] }>({
+      type: 'setEmitGroupDescendants', payload: { enabled },
+    }).then((r) => ({
+      visibleCount: r.visibleCount,
+      groupKeys: r.groupKeys ?? [],
+      groupDescendants: r.groupDescendants ?? [],
+    }));
   }
 
   /** Cycle 7 / Task 8 — toggle the external-filter round-trip. When

@@ -332,6 +332,14 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.groupChevronColor = theme.groupChevronColor;
   target.groupCountColor = theme.groupCountColor;
   target.groupIndent = theme.groupIndent;
+  // Cycle 15 / Task 8 — tri-state checkbox tokens for the auto-group
+  // column's group rows. Defaults match the existing `checkboxCell`
+  // painter (body fg) so the box reads as one checkbox vocabulary
+  // across the grid.
+  target.groupCheckboxBorderColor = theme.groupCheckboxBorderColor;
+  target.groupCheckboxCheckColor = theme.groupCheckboxCheckColor;
+  target.groupCheckboxIndeterminateColor = theme.groupCheckboxIndeterminateColor;
+  target.groupCheckboxFill = theme.groupCheckboxFill;
   target.params = ctx.params;
 
   // Theme defaults.

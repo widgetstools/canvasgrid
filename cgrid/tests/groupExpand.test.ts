@@ -60,6 +60,11 @@ beforeAll(() => {
 interface MockGrid {
   hitTestGroupChevron: (x: number, y: number) => { groupKey: string } | null;
   toggleGroupExpanded: ReturnType<typeof vi.fn>;
+  /** Cycle 15 / Task 8 — tri-state checkbox stubs. Default null
+   *  returns so existing Task 7 cases (chevron-only) keep their
+   *  behaviour; cases that want checkbox interactions override. */
+  hitTestGroupCheckbox?: (x: number, y: number) => { groupKey: string; state: 'none' | 'partial' | 'all' } | null;
+  toggleGroupChildrenSelected?: ReturnType<typeof vi.fn>;
 }
 
 function makeCtx(
@@ -68,10 +73,19 @@ function makeCtx(
   raw?: MouseEvent | KeyboardEvent | WheelEvent,
 ): CGridEventCtx {
   const hit: Hit = { kind: 'empty' };
+  // Cycle 15 / Task 8 — splice default `hitTestGroupCheckbox` /
+  // `toggleGroupChildrenSelected` stubs onto Task-7-era mocks that
+  // pre-date the checkbox hit-lane. Tests can still override either
+  // method by setting it explicitly on `grid`.
+  const augmented: MockGrid = {
+    hitTestGroupCheckbox: () => null,
+    toggleGroupChildrenSelected: vi.fn(),
+    ...grid,
+  };
   return {
     hit,
     point,
-    grid: grid as unknown as CGridLike,
+    grid: augmented as unknown as CGridLike,
     raw: raw ?? new MouseEvent('mousedown', { button: 0 }),
   };
 }
@@ -201,6 +215,94 @@ describe('GroupExpandFeature — chain semantics', () => {
     const raw = new MouseEvent('mousedown', { button: 1 });
     f.handleMouseDown(makeCtx(grid, { x: 12, y: 40 }, raw));
     expect(grid.toggleGroupExpanded).not.toHaveBeenCalled();
+  });
+
+  // Cycle 15 / Task 8 — checkbox hit-lane cases.
+
+  it('9. mousedown on the tri-state checkbox of a "none" group cascade-selects', () => {
+    // Click on an empty checkbox completes (selects all
+    // descendants). Mirrors Excel / ag-grid: 'none' → 'all' on first
+    // click. The feature must route to toggleGroupChildrenSelected
+    // with `selected: true` AND consume the event so no editor
+    // opens.
+    const toggle = vi.fn();
+    const grid: MockGrid = {
+      hitTestGroupChevron: () => null,
+      toggleGroupExpanded: vi.fn(),
+      hitTestGroupCheckbox: () => ({ groupKey: 'desk:APAC', state: 'none' }),
+      toggleGroupChildrenSelected: toggle,
+    };
+    const f = new GroupExpandFeature();
+    f.handleMouseDown(makeCtx(grid, { x: 40, y: 40 }));
+    expect(toggle).toHaveBeenCalledWith('desk:APAC', true);
+  });
+
+  it('10. mousedown on the tri-state checkbox of a "partial" group COMPLETES (true, not false)', () => {
+    // The crucial design rule from `cycle-15-grouping-design.md`
+    // § Task 8: a mixed group "completes" on first click. The
+    // alternative ('true → false on partial') would silently
+    // destroy the user's existing selection — a quietly hostile UX
+    // that the design pass explicitly rejected.
+    const toggle = vi.fn();
+    const grid: MockGrid = {
+      hitTestGroupChevron: () => null,
+      toggleGroupExpanded: vi.fn(),
+      hitTestGroupCheckbox: () => ({ groupKey: 'desk:APAC', state: 'partial' }),
+      toggleGroupChildrenSelected: toggle,
+    };
+    const f = new GroupExpandFeature();
+    f.handleMouseDown(makeCtx(grid, { x: 40, y: 40 }));
+    expect(toggle).toHaveBeenCalledWith('desk:APAC', true);
+  });
+
+  it('11. mousedown on the tri-state checkbox of an "all" group deselects (true → false)', () => {
+    // The 'all → none' transition. Click empties the cascade.
+    const toggle = vi.fn();
+    const grid: MockGrid = {
+      hitTestGroupChevron: () => null,
+      toggleGroupExpanded: vi.fn(),
+      hitTestGroupCheckbox: () => ({ groupKey: 'desk:APAC', state: 'all' }),
+      toggleGroupChildrenSelected: toggle,
+    };
+    const f = new GroupExpandFeature();
+    f.handleMouseDown(makeCtx(grid, { x: 40, y: 40 }));
+    expect(toggle).toHaveBeenCalledWith('desk:APAC', false);
+  });
+
+  it('12. mousemove over the checkbox sets cursor: pointer', () => {
+    // Mirrors the chevron's cursor affordance — Task 7's
+    // "cursor is the affordance" decision extends to the checkbox
+    // hit lane. No bg tint, no color bump; cursor alone signals
+    // interactivity.
+    const grid: MockGrid = {
+      hitTestGroupChevron: () => null,
+      toggleGroupExpanded: vi.fn(),
+      hitTestGroupCheckbox: () => ({ groupKey: 'desk:APAC', state: 'none' }),
+      toggleGroupChildrenSelected: vi.fn(),
+    };
+    const f = new GroupExpandFeature();
+    f.handleMouseMove(makeCtx(grid, { x: 40, y: 40 }));
+    expect(f.cursor).toBe('pointer');
+  });
+
+  it('13. chevron hit takes precedence over checkbox hit (both reported in the same gesture)', () => {
+    // Defensive case — the two hit zones are designed not to overlap
+    // (chevron is strictly left of the checkbox), but if a future
+    // refactor lets them overlap the chevron MUST win. Otherwise
+    // a click on the chevron would silently cascade-select instead
+    // of toggling expand state.
+    const toggleExpand = vi.fn();
+    const toggleSelect = vi.fn();
+    const grid: MockGrid = {
+      hitTestGroupChevron: () => ({ groupKey: 'desk:APAC' }),
+      toggleGroupExpanded: toggleExpand,
+      hitTestGroupCheckbox: () => ({ groupKey: 'desk:APAC', state: 'none' }),
+      toggleGroupChildrenSelected: toggleSelect,
+    };
+    const f = new GroupExpandFeature();
+    f.handleMouseDown(makeCtx(grid, { x: 12, y: 40 }));
+    expect(toggleExpand).toHaveBeenCalledWith('desk:APAC');
+    expect(toggleSelect).not.toHaveBeenCalled();
   });
 });
 

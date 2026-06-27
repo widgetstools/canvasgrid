@@ -73,6 +73,24 @@ export interface CellPaintConfig {
   groupCountColor?: string;
   groupIndent?: number;
   /**
+   * Cycle 15 / Task 8 — tri-state checkbox tokens for the `'group'`
+   * cell renderer. Threaded onto every cell config so the renderer
+   * reads colors without reaching into the theme. All four default to
+   * `var(--cg-fg-color)` so the box reads exactly like the existing
+   * `checkboxCell` painter (one checkbox vocabulary across the grid).
+   * Apps that want a filled brand-accent checkbox override
+   * `groupCheckboxFill + groupCheckboxCheckColor` via the theme.
+   * Design plan: `docs/superpowers/plans/notes/cycle-15-grouping-design.md`
+   * § Task 8.
+   */
+  groupCheckboxBorderColor?: string;
+  groupCheckboxCheckColor?: string;
+  groupCheckboxIndeterminateColor?: string;
+  /** When set to a non-`'transparent'` color string, the tri-state
+   *  checkbox fills its 14×14 box before painting the border + interior
+   *  glyph. Defaults to `'transparent'` (outlined-only). */
+  groupCheckboxFill?: string;
+  /**
    * Opaque per-cell params forwarded by the painter. Set from either the
    * resolved column's static `cellRendererParams` or — when a column has a
    * `cellRendererSelector` that returned `{ params }` — that per-cell

@@ -11,6 +11,34 @@ export interface SelectionState {
   ranges: SelectionRange[];
 }
 
+/** Cycle 15 / Task 8 — aggregate selection state across a group's
+ *  descendants. Drives the auto-group cell's tri-state checkbox:
+ *    - `'none'`      → empty checkbox
+ *    - `'partial'`   → horizontal dash inside checkbox
+ *    - `'all'`       → checkmark inside checkbox
+ *
+ *  Computed by `SelectionModel.getGroupSelectionState(groupKey)` by
+ *  intersecting the persistent selected-id set with the descendant
+ *  rowIds the membership resolver reports. */
+export type GroupSelectionState = 'none' | 'partial' | 'all';
+
+/** Cycle 15 / Task 8 — main-thread group membership resolver. The
+ *  selection model uses this to cascade selection on group-row
+ *  checkbox clicks AND to recompute a group's aggregate state for
+ *  paint.
+ *
+ *  cgrid.ts implements this on top of a `groupKey → descendant rowIds`
+ *  map populated from the worker's `groupKeysSnapshot` reply. Tests
+ *  stub it with a synthetic in-memory map.
+ *
+ *  Returning `[]` for an unknown / collapsed key is the canonical
+ *  "I don't know" answer — the selection model treats it as a group
+ *  with zero descendants (selection state collapses to `'none'`),
+ *  preserving a defensive paint instead of crashing. */
+export interface GroupMembershipResolver {
+  getDescendantRowIds(groupKey: string): readonly string[];
+}
+
 export class SelectionModel {
   private _state: SelectionState = {
     focusedRowIndex: null, focusedColId: null, selectedRowIndices: new Set(), ranges: [],
@@ -23,6 +51,15 @@ export class SelectionModel {
   private _selectedRowIds: Set<string> = new Set();
   private _focusedRowId: string | null = null;
   private listeners = new Set<(s: Readonly<SelectionState>) => void>();
+  /** Cycle 15 / Task 8 — tri-state cascading state. `false` (default)
+   *  treats `setGroupSelected` as a no-op and reports every group as
+   *  `'none'`; `true` enables the cascade + state computation against
+   *  the membership resolver. */
+  private _groupSelectsChildren = false;
+  /** Cycle 15 / Task 8 — main-thread descendant resolver. Non-null only
+   *  when cascading is enabled AND the host (cgrid.ts or a test) has
+   *  supplied a resolver. */
+  private _membership: GroupMembershipResolver | null = null;
 
   constructor(private mode: SelectionMode) {}
 
@@ -321,6 +358,100 @@ export class SelectionModel {
 
   /** Snapshot of the persistent selected-id set, in insertion order. */
   getPersistentSelectedRowIds(): string[] { return Array.from(this._selectedRowIds); }
+
+  /** Cycle 15 / Task 8 — enable or disable `groupSelectsChildren`
+   *  semantics. The membership resolver is consulted by
+   *  `setGroupSelected` to cascade selection and by
+   *  `getGroupSelectionState` to recompute the aggregate state for
+   *  paint.
+   *
+   *  Disabling does NOT clear the existing selected-id set — leaf rows
+   *  selected while cascading was on stay selected; the model just
+   *  reverts to plain leaf-row semantics for subsequent calls. This
+   *  mirrors the runtime contract of `setGridOption('rowSelection', …)`
+   *  (Cycle 4): runtime toggles preserve in-flight state where
+   *  possible. */
+  setGroupSelectsChildren(enabled: boolean, membership: GroupMembershipResolver | null): void {
+    this._groupSelectsChildren = enabled;
+    this._membership = enabled ? membership : null;
+  }
+
+  /** Cycle 15 / Task 8 — current `groupSelectsChildren` setting.
+   *  Used by tests + the auto-group renderer's `'checkbox visible'`
+   *  gate (the renderer omits the checkbox entirely when cascading
+   *  is off — there is no "leaf-row" auto-group cell in Cycle 15). */
+  isGroupSelectsChildren(): boolean { return this._groupSelectsChildren; }
+
+  /** Cycle 15 / Task 8 — cascade-select / deselect every descendant
+   *  leaf row under `groupKey`. No-op when cascading is off, when
+   *  membership isn't wired, or when the resolver reports zero
+   *  descendants (unknown / collapsed key).
+   *
+   *  Idempotent — if every descendant is already in the requested
+   *  state, the selected-id set is unchanged AND no emit fires.
+   *  Triggers a single `emit()` when the set actually mutates.
+   *
+   *  In `'single'` mode this is a no-op: a group click would imply
+   *  selecting many rows at once, which violates the "single" contract.
+   *  Callers in `'single'` mode should not surface group checkboxes
+   *  at all (`groupSelectsChildren` is meaningless under single
+   *  selection); the no-op here is purely a defensive guard. */
+  setGroupSelected(groupKey: string, selected: boolean): void {
+    if (!this._groupSelectsChildren) return;
+    if (this.mode !== 'multiple') return;
+    if (!this._membership) return;
+    const descendants = this._membership.getDescendantRowIds(groupKey);
+    if (descendants.length === 0) return;
+    const before = this._selectedRowIds.size;
+    if (selected) {
+      for (const id of descendants) this._selectedRowIds.add(id);
+    } else {
+      for (const id of descendants) this._selectedRowIds.delete(id);
+    }
+    if (this._selectedRowIds.size === before) {
+      // No-op: the set's count didn't change, which means every
+      // descendant was already in the requested state (or no
+      // descendant was in the opposite state). Skip the emit so a
+      // redundant cascade click doesn't churn paint.
+      //
+      // Edge case: a select-add where every descendant is already
+      // present AND a select-remove where no descendant is present
+      // both hit this branch. Both are correct no-ops.
+      return;
+    }
+    // Indices stay derived; cgrid.ts re-runs rebuildIndices on the
+    // next modelUpdated to refresh paint indices for the rows that
+    // landed under a different visible-row index after the cascade.
+    this.emit();
+  }
+
+  /** Cycle 15 / Task 8 — aggregate selection state across every
+   *  descendant of `groupKey`. Returns:
+   *    - `'none'` when no descendant is selected (OR when cascading is
+   *      off / membership isn't wired / the key is unknown — every
+   *      "I don't know" answer collapses to `'none'` so paint
+   *      defensively shows an empty checkbox).
+   *    - `'all'` when every descendant is in the persistent selected set.
+   *    - `'partial'` when at least one but not every descendant is
+   *      selected.
+   *
+   *  Reads from the persistent id set (not the index set) so the
+   *  computation is correct even when the grid is partially scrolled,
+   *  filtered, or collapsed — the descendants that aren't currently
+   *  visible still count. */
+  getGroupSelectionState(groupKey: string): GroupSelectionState {
+    if (!this._groupSelectsChildren) return 'none';
+    if (!this._membership) return 'none';
+    const descendants = this._membership.getDescendantRowIds(groupKey);
+    if (descendants.length === 0) return 'none';
+    let selectedCount = 0;
+    for (const id of descendants) {
+      if (this._selectedRowIds.has(id)) selectedCount++;
+    }
+    if (selectedCount === 0) return 'none';
+    if (selectedCount === descendants.length) return 'all';
+    return 'partial';
+  }
 
   /** The persistent focused rowId, or null when focus is index-only / cleared. */
   getPersistentFocusedRowId(): string | null { return this._focusedRowId; }

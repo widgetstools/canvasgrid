@@ -818,3 +818,208 @@ the section to open.
   the chevron doesn't open the editor or change the selection.
 
 ---
+
+## Task 8 — `groupSelectsChildren` + tri-state checkbox
+
+**Brief recap:** When the new `groupSelectsChildren: true` option is
+on, every group row in the auto-group column paints a tri-state
+checkbox alongside the existing chevron + indent + value + (count).
+Three states: `'none'` (no descendant selected) / `'all'` (every
+descendant selected) / `'partial'` (some but not all). Click toggles
+the group's effective state and cascades to descendants. Vocabulary
+must read distinctly across the three states at body-row font size
+(13 px) and the 14 px checkbox box used by the existing
+`checkboxCell` painter — without violating the Cycle 15 "spine, not
+strip" rule (no row chrome on group rows).
+
+### Subject pin
+
+The same trader / PM running a fixed-income positions grid grouped
+by `ticker`. She's pruning the universe to a curated set —
+clicking a few group checkboxes to "select all of AAPL + all of
+MSFT + just two TSLA positions." A few seconds later she'll
+right-click → "Export selected to CSV." The tri-state checkbox is
+her bulk-selection lever: she needs to see at a glance which groups
+are fully in, fully out, or mixed. The indeterminate state is the
+load-bearing signal here — it's the difference between "I already
+picked everything in this group" and "I picked some, and I need
+to dig in."
+
+### Default rejected
+
+AI defaults for "tri-state group checkbox" cluster on three looks:
+
+1. **Filled blue check + filled blue dash** — checked state fills
+   the box with brand-accent blue and paints a white check;
+   indeterminate uses the same fill with a white dash. Reads
+   confident but adds two new color stops to a grid that has so
+   far stayed two-tier (body fg + muted slate). The blue fill on
+   every selected group row competes with the data rows below
+   for visual weight.
+2. **Half-fill indeterminate** — bottom half (or top half) of the
+   box is filled. Reads as a progress meter, not as "mixed."
+   Universally confusing for the indeterminate case.
+3. **Different shape entirely** — a square inside a square, a
+   dot inside a circle, a diamond. Unrecognizable; users have to
+   re-learn what "mixed" means in this grid.
+
+All three either add color stops the cycle has deliberately avoided
+(option 1) or break vocabulary the user already knows (options 2 / 3).
+
+### Risk taken
+
+**The checkbox does NOT fill on 'all' — it uses the same outlined
+box as the existing `checkboxCell`, distinguishing the three states
+by SHAPE alone: empty / checkmark / horizontal dash.** Same stroke
+color in all three states (body fg).
+
+This is deliberately quieter than the standard "filled-accent on
+checked" pattern. The bet: the grouped grid already reads as one
+cohesive page; the checkbox is row-anchored chrome, not a data
+value. A filled blue box on every selected group row would
+reintroduce row chrome — exactly what Task 4 explicitly rejected.
+The outlined box (matching the existing `checkboxCell` painter
+verbatim) keeps the grid quiet AND reuses the visual vocabulary
+the user already learned in the `confirmed` column demo.
+
+The dash IS the indeterminate signal — universally learned from
+Excel + macOS Finder. A dash inside an outlined box reads as
+"mixed" with zero ambiguity, AND it costs zero new color tokens.
+
+### Layout — checkbox slots BETWEEN chevron and value
+
+```
+[indent: depth × 14] [chevron: 12] [gap: 6] [checkbox: 14] [gap: 6] [value] [gap: 4] (count)
+```
+
+Three layout positions were considered:
+
+| Option | Layout | Verdict |
+|---|---|---|
+| Before chevron | `[indent][checkbox][gap][chevron][gap][value]…` | Chevron geometry from Task 4 / Task 7 is load-bearing — `cgrid.ts:3953-3960` mirrors PADDING + CHEVRON_SIZE + INDENT_UNIT constants for the chevron-click hit-test. Drifting the chevron x-position requires parallel updates across painter + hit-tester. Rejected on coupling cost. |
+| Row left edge | `[checkbox][gap][indent][chevron][gap][value]…` | Decouples checkbox from depth — every group's checkbox lands at the same x-coord regardless of nesting. Breaks the "depth → toggle → select" left-to-right reading; user can't tell at a glance which depth a checkbox belongs to. Rejected. |
+| **Between chevron and value** | `[indent][chevron][gap][checkbox][gap][value]…` | **Chosen.** Preserves chevron geometry from Task 4/7 — no constants drift. Checkbox + chevron read as paired group controls (expand vs select), sitting next to each other but not sharing an affordance. Reads as "depth → toggle → select → identify" left to right. New checkbox hit zone (14 px box + 4 px pad each side ≈ 22 × 22) doesn't intrude on the chevron's existing 20 × 20 hit zone. |
+
+### Tokens (committed to `tokens.css`)
+
+| Token | Light | Dark | Why |
+|---|---|---|---|
+| `--cg-group-checkbox-size` | `14px` | `14px` | Identical to existing `checkboxCell` hard-coded 14 — one box vocabulary across the grid |
+| `--cg-group-checkbox-border-color` | `var(--cg-fg-color)` | `var(--cg-fg-color)` | Same border as existing `checkboxCell` — visual continuity |
+| `--cg-group-checkbox-fill` | `transparent` | `transparent` | Outlined, never filled — preserves "no row chrome" rule |
+| `--cg-group-checkbox-check-color` | `var(--cg-fg-color)` | `var(--cg-fg-color)` | Same as existing check stroke — one checkmark vocabulary |
+| `--cg-group-checkbox-indeterminate-color` | `var(--cg-fg-color)` | `var(--cg-fg-color)` | Same color as check; SHAPE carries the distinction (dash vs √) |
+| `--cg-group-checkbox-gap` | `6px` | `6px` | Matches `CHEVRON_GAP` from Task 4 — one gap rhythm |
+
+All five color tokens default to `var(--cg-fg-color)` deliberately —
+the indeterminate state is differentiated by SHAPE (horizontal dash
+vs check √), not by hue. This keeps the two-tier color hierarchy
+(body fg + muted slate) intact and matches the existing
+`checkboxCell` painter's "outlined, single color" treatment.
+
+Apps that want a brand-accent fill on the checked state override
+`--cg-group-checkbox-fill` + `--cg-group-checkbox-check-color`;
+nothing in cgrid forces the outlined look.
+
+### Box composition (per state)
+
+```
+'none'             'partial'          'all'
+┌──────┐           ┌──────┐           ┌──────┐
+│      │           │ ──── │           │   ╱  │
+│      │           │      │           │  ╱   │
+└──────┘           └──────┘           └─╱────┘
+```
+
+- Box: 14 × 14, 1 px stroke border in `--cg-group-checkbox-border-color`,
+  positioned via the same `cx + 0.5 / cy + 0.5` integer-pixel snap as
+  the existing `checkboxCell`.
+- 'all' check: same √ polyline as the existing `checkboxCell`
+  (`cx+3, cy+size/2 → cx+size/2-1, cy+size-3 → cx+size-2, cy+3`),
+  stroked at the same 1 px stroke. Same shape so a `confirmed` cell
+  and a fully-selected group cell carry the same checkmark glyph.
+- 'partial' dash: a single horizontal stroke from `cx + 3` to
+  `cx + size - 3` at `cy + size/2`, stroked at the same 1 px width.
+  Centered vertically; spans the box's interior width minus 3 px
+  on each side (matches the check's interior padding).
+- 'none': no interior paint. Border-only outlined box.
+
+The dash and check NEVER paint together — the renderer picks one
+or the other based on `groupValue.selectionState`.
+
+### Cascade behaviour (selection model contract)
+
+When `groupSelectsChildren: true` AND the user clicks a group
+checkbox:
+
+- `'none' → 'all'` — select every descendant leaf row.
+- `'all' → 'none'` — deselect every descendant leaf row.
+- `'partial' → 'all'` — top-up: select the descendants that
+  weren't already selected. Matches the Excel / macOS / ag-grid
+  convention (a mixed group "completes" on first click).
+
+The leaf-row toggle path (clicking a data row's selection
+checkbox, where one exists) does not cascade upward
+explicitly — the group's effective state is recomputed every
+paint from `selectionState = none / partial / all` against the
+descendant set. So deselecting one leaf row of a fully-selected
+group naturally flips the group to `'partial'` without any
+extra event plumbing.
+
+### Hit zone + interaction
+
+| Axis | Pick | Why |
+|---|---|---|
+| **Hit zone** | checkbox bbox + 4 px pad each side (≈ 22 × 22 px), vertical = full row height | Mirrors Task 7's chevron hit-zone rule (glyph bbox + 4 px pad). The vertical-full-row band catches near-misses without competing with the value text's selection target. |
+| **Hover** | `cursor: pointer` over the hit zone only. No color bump. No bg tint. | Mirrors Task 7 — the cursor is the affordance signal; no canvas repaint on mousemove. Preserves the "spine, not strip" rule. |
+| **Animation** | None. Instant state flip. | Mirrors Task 7. A 200 ms checkbox fill animation across N group rows would cost N per-frame repaints during a "select all" cascade. |
+
+The hit-test lives in the same `GroupExpandFeature` chain link
+that Task 7 wired — the feature inspects the click x to decide
+which control (chevron vs checkbox) was hit, falling through to
+the next feature when neither was hit. One feature owns all
+auto-group-cell click intent.
+
+### What's explicitly NOT shipped in Task 8
+
+- No focus ring on the checkbox glyph (Task 8 leaves the cell's
+  focus ring as the only focus indicator — adding a per-glyph ring
+  would double up).
+- No keyboard activation (space-bar to toggle a focused checkbox)
+  — Cycle 15 doesn't ship per-glyph keyboard nav inside cells.
+  Cycle 16+ a11y task.
+- No leaf-row checkbox renderer (group rows ONLY in Cycle 15 —
+  data-row checkboxSelection is a Cycle 16+ feature).
+- No animation on cascade — a "select all" of 10 000 descendants
+  flips the model state in one go; the next paint reflects it.
+- No "click anywhere on group row to select" — only the checkbox
+  hit zone toggles selection; the rest of the cell still
+  behaves per Task 7 (chevron hit + value selectable).
+
+### One-line summary
+
+**The group checkbox is the same outlined box as the existing
+checkbox cell — checkmark when 'all', horizontal dash when 'partial',
+empty when 'none' — slotted between the chevron and the value so
+depth → toggle → select → identify reads left to right.**
+
+### Vocabulary handed to subsequent tasks
+
+- **Tri-state-by-shape rule** — boolean and tri-state checkboxes in
+  this grid differentiate states by interior shape (empty / check /
+  dash), not by hue or fill. Cycle 16's leaf-row checkboxSelection
+  inherits the same outlined box.
+- **`--cg-group-checkbox-*` token family** — extensibility hook for
+  apps that want a themed checkbox; defaults preserve the outlined
+  vocabulary.
+- **Cascade math lives in the SelectionModel**, not the renderer —
+  the renderer reads `selectionState: 'none' | 'partial' | 'all'`
+  from the cell payload and paints. The model owns the
+  descendant-resolution + cascade logic.
+- **One hit-zone vocabulary for auto-group cells**:
+  `GroupExpandFeature` adds a checkbox hit lane next to the chevron
+  hit lane. Any future auto-group-cell glyph (Cycle 16 master /
+  detail expand, Cycle 18 pivot column reorder) plugs into the same
+  feature.
+
+---

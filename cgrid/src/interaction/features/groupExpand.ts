@@ -29,11 +29,15 @@ import { Feature, type CGridEventCtx } from '../feature';
 
 export class GroupExpandFeature extends Feature {
   override handleMouseMove(ctx: CGridEventCtx): void {
-    // Cursor: pointer when over a chevron hit zone. Reset to null
-    // otherwise so a previous-tick cursor doesn't leak; FeatureChain's
-    // tail-first `setCursor` walk applies the head's non-null value.
-    const hit = ctx.grid.hitTestGroupChevron(ctx.point.x, ctx.point.y);
-    this.cursor = hit !== null ? 'pointer' : null;
+    // Cursor: pointer when over EITHER a chevron OR a checkbox hit
+    // zone. Reset to null otherwise so a previous-tick cursor doesn't
+    // leak; FeatureChain's tail-first `setCursor` walk applies the
+    // head's non-null value.
+    const chevron = ctx.grid.hitTestGroupChevron(ctx.point.x, ctx.point.y);
+    const checkbox = chevron === null
+      ? ctx.grid.hitTestGroupCheckbox(ctx.point.x, ctx.point.y)
+      : null;
+    this.cursor = chevron !== null || checkbox !== null ? 'pointer' : null;
     super.handleMouseMove(ctx);
   }
 
@@ -44,24 +48,42 @@ export class GroupExpandFeature extends Feature {
       super.handleMouseDown(ctx);
       return;
     }
-    const hit = ctx.grid.hitTestGroupChevron(ctx.point.x, ctx.point.y);
-    if (hit === null) {
-      super.handleMouseDown(ctx);
+    // Chevron takes precedence over checkbox — its hit zone is
+    // strictly to the left, so they never overlap, but checking
+    // chevron first keeps the geometry assumption explicit.
+    const chevron = ctx.grid.hitTestGroupChevron(ctx.point.x, ctx.point.y);
+    if (chevron !== null) {
+      ctx.grid.toggleGroupExpanded(chevron.groupKey);
+      // CONSUME — chevron toggle must not also open an editor, start
+      // a range drag, or move focus.
       return;
     }
-    ctx.grid.toggleGroupExpanded(hit.groupKey);
-    // CONSUME — do NOT forward to downstream features. A chevron
-    // toggle must not also open an editor (EditTrigger),
-    // start a range drag (RangeSelection / FillHandle), or replace
-    // the focused cell (CellSelection).
+    // Cycle 15 / Task 8 — checkbox hit lane. Routes through the
+    // SelectionModel's cascade so the persistent rowId set carries the
+    // change. Toggle rule:
+    //   'none' / 'partial' → select all descendants (Excel / ag-grid
+    //     pattern: a mixed group "completes" on first click).
+    //   'all' → deselect all descendants.
+    const checkbox = ctx.grid.hitTestGroupCheckbox(ctx.point.x, ctx.point.y);
+    if (checkbox !== null) {
+      const nextSelected = checkbox.state !== 'all';
+      ctx.grid.toggleGroupChildrenSelected(checkbox.groupKey, nextSelected);
+      // CONSUME — selection toggle must not also start a range / open
+      // an editor / move focus to the auto-group cell.
+      return;
+    }
+    super.handleMouseDown(ctx);
   }
 
   override handleClick(ctx: CGridEventCtx): void {
-    // Consume the trailing click on a chevron hit zone so the grid
-    // doesn't fire `cellClicked` for the toggle gesture. Forward
-    // everything else.
-    const hit = ctx.grid.hitTestGroupChevron(ctx.point.x, ctx.point.y);
-    if (hit !== null) return;
+    // Consume trailing clicks on EITHER the chevron OR the checkbox
+    // hit zone so apps listening to `cellClicked` on the auto-group
+    // column don't see a spurious "the user clicked the group cell"
+    // event for what was really a toggle gesture.
+    const chevron = ctx.grid.hitTestGroupChevron(ctx.point.x, ctx.point.y);
+    if (chevron !== null) return;
+    const checkbox = ctx.grid.hitTestGroupCheckbox(ctx.point.x, ctx.point.y);
+    if (checkbox !== null) return;
     super.handleClick(ctx);
   }
 }
