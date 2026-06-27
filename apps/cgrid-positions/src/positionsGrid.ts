@@ -267,6 +267,12 @@ export interface PositionsGridOptions {
    *  three columns so the chips and the auto-group column agree on
    *  the active grouping. */
   rowGroupPanelThreeChips?: boolean;
+  /** Cycle 15 / Task 6 — live-demo mode (`?rowGroupPanel=always`).
+   *  Panel mounted with 1-level grouping by `ticker` seeded so the
+   *  user can drag columns in / chips out and watch grouping update.
+   *  Not used by any visual cell — exists for human exploration of
+   *  the panel before Task 13 ships the cycle default. */
+  rowGroupPanelAlways?: boolean;
 }
 
 /** Cycle 14 / Task 2 — deterministic seed for the demo pinned reference
@@ -411,11 +417,11 @@ export function createPositionsGrid(
         // function can round-trip postMessage to the worker.
         comparator: 'naturalOrder',
         // Cycle 15 / Task 6 — opt the ticker column INTO the row group
-        // panel's drop-acceptance set when either rowGroupPanel demo is
+        // panel's drop-acceptance set when any rowGroupPanel demo is
         // on. The flag is column-local so visual cells without the row
         // group panel demo stay byte-stable; with the panel mounted, the
         // drop verdict for a ticker-header drag reads `'accept'`.
-        ...(opts.rowGroupPanelEmpty || opts.rowGroupPanelThreeChips
+        ...(opts.rowGroupPanelEmpty || opts.rowGroupPanelThreeChips || opts.rowGroupPanelAlways
           ? { enableRowGroup: true as const }
           : {}),
       },
@@ -436,10 +442,22 @@ export function createPositionsGrid(
       // drop verdict reads `'accept'` for these three (the rest stay
       // off — visual cell 22-empty exercises the rejection path
       // separately via the body painter).
-      ...(opts.groupMultipleColumns || opts.rowGroupPanelThreeChips
+      ...(opts.groupMultipleColumns || opts.rowGroupPanelThreeChips || opts.rowGroupPanelAlways
         ? [
             { field: 'sector' as const,    headerName: 'Sector',     width: 110, filter: 'set' as const, enableRowGroup: true as const },
             { field: 'subSector' as const, headerName: 'Sub Sector', width: 110, filter: 'set' as const, enableRowGroup: true as const },
+          ]
+        : []),
+      // Cycle 15 / Task 6 — client-side categorical columns
+      // synthesized by `decorateWithCategoricals` in main.ts. Mounted
+      // only under `?rowGroupPanel=always` so existing visual cells
+      // (none of which declare these columns) stay byte-stable.
+      ...(opts.rowGroupPanelAlways
+        ? [
+            { field: 'desk' as const,     headerName: 'Desk',     width: 130, filter: 'set' as const, enableRowGroup: true as const },
+            { field: 'region' as const,   headerName: 'Region',   width: 110, filter: 'set' as const, enableRowGroup: true as const },
+            { field: 'currency' as const, headerName: 'Currency', width: 90,  filter: 'set' as const, enableRowGroup: true as const },
+            { field: 'trader' as const,   headerName: 'Trader',   width: 130, filter: 'set' as const, enableRowGroup: true as const },
           ]
         : []),
       // Cycle 5 Task 2: notionalAmount exercises the 'number' editor; min/precision
@@ -760,13 +778,16 @@ export function createPositionsGrid(
     // post-construction below so the worker pipeline picks up the
     // three-level model AFTER the columns are wired.
     ...(opts.groupMultipleColumns ? { groupDisplayType: 'multipleColumns' as const } : {}),
-    // Cycle 15 / Task 6 — mount the row group panel when either
+    // Cycle 15 / Task 6 — mount the row group panel when any
     // rowGroupPanel demo is on. `'always'` keeps the panel visible
     // even with no chips so the empty-state placeholder paints in
     // visual cell 22; the threeChips demo opts in the same way and
     // calls `setGroupModel` post-construction to populate the chip
-    // strip with `ticker` → `sector` → `subSector`.
-    ...(opts.rowGroupPanelEmpty || opts.rowGroupPanelThreeChips
+    // strip with `ticker` → `sector` → `subSector`. The `always`
+    // demo also opts in here AND seeds 1-level grouping by `ticker`
+    // post-construction below so a single chip is visible and the
+    // grid is grouped (live-demo mode).
+    ...(opts.rowGroupPanelEmpty || opts.rowGroupPanelThreeChips || opts.rowGroupPanelAlways
       ? { rowGroupPanelShow: 'always' as const }
       : {}),
   };
@@ -830,6 +851,12 @@ export function createPositionsGrid(
   // pipeline.
   if (opts.rowGroupPanelThreeChips) {
     grid.setGroupModel({ rowGroupCols: ['ticker', 'sector', 'subSector'] });
+  }
+  // Cycle 15 / Task 6 — live-demo mode: 1-level grouping by ticker so
+  // the panel shows a single chip the user can remove + drop more
+  // columns into.
+  if (opts.rowGroupPanelAlways) {
+    grid.setGroupModel({ rowGroupCols: ['ticker'] });
   }
   return grid;
 }

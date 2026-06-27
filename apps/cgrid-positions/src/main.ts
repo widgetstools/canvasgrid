@@ -83,12 +83,17 @@ const groupMultipleColumns = search.get('grouping') === 'multipleColumns';
 // panel with no chips so the dashed empty-state placeholder paints
 // (visual cell 22). `?rowGroupPanel=threeChips` mounts it
 // pre-populated with `ticker` → `sector` → `subSector` chips
-// matching the reference screenshot (visual cell 23). Off by default
-// so visual cells 01–21 stay byte-stable.
+// matching the reference screenshot (visual cell 23). `?rowGroupPanel=always`
+// is the live-demo mode: panel mounted + 1-level grouping by ticker
+// seeded so the user can drag columns in / chips out and see the
+// effect immediately (not used by any visual cell — exists only as a
+// quick-look during cycle development before Task 13's demo default).
+// Off by default so visual cells 01–21 stay byte-stable.
 const rowGroupPanelMode = search.get('rowGroupPanel');
 const rowGroupPanelEmpty = rowGroupPanelMode === 'empty';
 const rowGroupPanelThreeChips = rowGroupPanelMode === 'threeChips';
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, rowGroupPanelEmpty, rowGroupPanelThreeChips });
+const rowGroupPanelAlways = rowGroupPanelMode === 'always';
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways });
 
 // E2E hooks: expose the grid + a readiness flag so Playwright tests can wait
 // for first-data-rendered and call api helpers (`getCellBoundsAt`,
@@ -114,6 +119,35 @@ function autoHeightDescription(positionId: string): string {
   return `autoHeight wrap demo ${positionId}`;
 }
 
+// Cycle 15 / Task 6 — deterministic client-side decorator that adds
+// desk / region / currency / trader to STOMP-arriving rows. STOMP
+// doesn't carry these fields; values derive from a positionId hash so
+// they're stable across snapshots + updates (so grouping never sees a
+// row "move" between desks just because an update arrived). Unknown
+// fields are silently dropped at the worker boundary when no column
+// declares them, so the decorator is on by default — visual cells
+// without these columns stay byte-stable.
+const DESKS = ['Equities', 'Fixed Income', 'FX', 'Commodities'];
+const REGIONS = ['Americas', 'EMEA', 'APAC'];
+const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'CHF'];
+const TRADERS = ['A. Smith', 'B. Patel', 'C. Wong', 'D. Garcia', 'E. Rossi', 'F. Müller', 'G. Khan', 'H. Lopez'];
+function hash32(s: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function decorateWithCategoricals<T extends { positionId: string; desk?: string; region?: string; currency?: string; trader?: string }>(row: T): T {
+  const id = row.positionId;
+  if (row.desk == null)     row.desk     = DESKS[hash32(id + 'd') % DESKS.length];
+  if (row.region == null)   row.region   = REGIONS[hash32(id + 'r') % REGIONS.length];
+  if (row.currency == null) row.currency = CURRENCIES[hash32(id + 'c') % CURRENCIES.length];
+  if (row.trader == null)   row.trader   = TRADERS[hash32(id + 't') % TRADERS.length];
+  return row;
+}
+
 grid.on('gridReady', () => {
   console.log('[cgrid] ready');
   connectStomp({
@@ -127,9 +161,11 @@ grid.on('gridReady', () => {
           if (r.notes == null || r.notes === '') r.notes = autoHeightDescription(r.positionId);
         }
       }
+      for (const r of rows) decorateWithCategoricals(r);
       grid.setRowData(rows);
     },
     onLiveUpdate: (updates) => {
+      for (const u of updates) decorateWithCategoricals(u);
       grid.applyTransactionAsync({ update: updates });
       recordUpdates(updates.length);
     },

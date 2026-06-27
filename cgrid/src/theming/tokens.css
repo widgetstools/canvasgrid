@@ -1202,8 +1202,11 @@
   --cg-row-group-panel-empty-fg:
     color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
   --cg-row-group-panel-drop-border: var(--cg-focus-ring-color);
-  --cg-row-group-panel-drop-border-reject:
-    color-mix(in srgb, var(--cg-fg-color) 30%, transparent);
+  /* Cycle 15 / Task 6 follow-up — bumped from 30% fg-color (nearly
+   * invisible) to a warm amber so a user dragging a non-enableRowGroup
+   * column over the panel sees "this column won't be accepted" instead
+   * of "did I hover correctly?". Same hue, both themes. */
+  --cg-row-group-panel-drop-border-reject: #f59e0b;
 
   position: absolute;
   left: 0;
