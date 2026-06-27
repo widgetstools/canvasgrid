@@ -27,8 +27,36 @@ npm run test:visual
 ```
 
 The harness starts (or reuses) the Vite dev server on port 5175 and uses a
-1440×900 viewport at DPR 1 with the dark theme forced. To regenerate baselines
-after an intentional visual change, run:
+1440×900 viewport at DPR 1 with the dark theme forced. Tolerance is
+`maxDiffPixelRatio: 0.005` (0.5 % of pixels) at `threshold: 0.2` (per-pixel
+BT.601 distance) so a few-pixel drift on a focus ring or a stray DOM element
+in a pinned band fails the run. On the developer box the full matrix
+finishes well under the 60 s CI budget:
+
+```
+> cgrid-positions@0.0.0 test:visual
+> playwright test --config=playwright-visual.config.ts
+
+Running 13 tests using 7 workers
+
+  ✓ e2e-visual/_smoke.spec.ts:7:1 › demo mounts and exposes __cgrid hook
+  ✓ e2e-visual/01-fresh-grid.spec.ts:8:1 › fresh grid — 50 rows, dark theme, no overlays
+  ✓ e2e-visual/02-scrolled-vertical.spec.ts:12:1 › vertically scrolled grid — focus + body scroll past anchor row
+  ✓ e2e-visual/03-scrolled-horizontal.spec.ts:10:1 › horizontally scrolled grid — center column under pinned-left band
+  ✓ e2e-visual/04-editor-center-column.spec.ts:14:1 › editor open on center column (notionalAmount)
+  ✓ e2e-visual/05-editor-pinned-column.spec.ts:9:1 › editor open on pinned-left column (cusip)
+  ✓ e2e-visual/06-range-across-viewports.spec.ts:11:1 › range overlay across visible + non-visible rows
+  ✓ e2e-visual/07-sidebar-columns-open.spec.ts:9:1 › side bar — Columns panel open on the right
+  ✓ e2e-visual/08-sidebar-filters-open.spec.ts:8:1 › side bar — Filters panel open on the right
+  ✓ e2e-visual/09-sidebar-position-left.spec.ts:11:1 › side bar — Columns panel open on the left
+  ✓ e2e-visual/10-empty-grid.spec.ts:9:1 › empty grid — 0 rows, no phantom scrollbars
+  ✓ e2e-visual/11-dense-grid-light-theme.spec.ts:13:1 › dense grid — 200 rows, Quartz light theme
+  ✓ e2e-visual/12-context-menu-open.spec.ts:11:1 › context menu open on a body cell
+
+  13 passed (1.9s)
+```
+
+To regenerate baselines after an intentional visual change, run:
 
 ```bash
 npm run test:visual -- --update-snapshots
