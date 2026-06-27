@@ -1208,6 +1208,12 @@ export class CGrid<TRow = any> {
       // construction.
       groupDefaultExpanded: this.options.groupDefaultExpanded,
       groupDefaultExpandedKeys: this.options.groupDefaultExpandedKeys,
+      // Cycle 15 / Task 10 — forward the elision + opened-group flags
+      // so the very first `setGroupModel` reply / `getViewport` honor
+      // them. Init-only — `runtimeOptions.ts` rejects post-construction
+      // mutation; apps reset by rebuilding the grid.
+      groupRemoveSingleChildren: this.options.groupRemoveSingleChildren,
+      showOpenedGroup: this.options.showOpenedGroup,
     }).then(async () => {
       // Cycle 7 / Task 8 — register the external-filter round-trip BEFORE
       // gridReady fires so the first setRowData runs against a worker

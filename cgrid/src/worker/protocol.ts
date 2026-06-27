@@ -33,6 +33,24 @@ export interface WorkerInitPayload {
    *  the starting `expandedKeys` set. Keys that don't match any
    *  group in the current tree silently fall out. */
   groupDefaultExpandedKeys?: string[];
+  /** Cycle 15 / Task 10 — when `true`, the worker's `GroupPass`
+   *  elides any group whose recursive `childCount === 1` from the
+   *  flatOrder traversal. The tree shape is unchanged; only the
+   *  depth-first flat walk skips the group entry, so the lone leaf
+   *  row emits at its natural position with no preceding group
+   *  entries. Chains that funnel down to a single row collapse
+   *  entirely. Off by default. */
+  groupRemoveSingleChildren?: boolean;
+  /** Cycle 15 / Task 10 — when `true`, the worker's grouped slicer
+   *  populates every data row's `chunk.groupValue[i]` slot with its
+   *  leaf-parent group's formatted value. The `'group'` renderer
+   *  reads the slot and paints a muted echo of the parent's label
+   *  on the data row's auto-group cell so the user keeps the parent
+   *  group in view while scrolling inside an expanded group. Off
+   *  by default. Only affects `'singleColumn'` mode — the renderer's
+   *  multipleColumns own-depth filter returns early for data rows in
+   *  other display modes. */
+  showOpenedGroup?: boolean;
 }
 
 export interface WorkerColumn {

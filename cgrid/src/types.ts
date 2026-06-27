@@ -665,6 +665,37 @@ export interface CGridOptions<TRow = any> {
    *  expand a missing group); this keeps a stale option harmless
    *  across columnDef changes. */
   groupDefaultExpandedKeys?: string[];
+  /** Cycle 15 / Task 10 — when `true`, the worker elides any group
+   *  whose recursive `childCount === 1` from the visible row order.
+   *  Chains that funnel down to a single row collapse entirely (a
+   *  multi-level group whose deepest leaf has one row drops the
+   *  entire chain in favour of just the row).
+   *
+   *  No visual change in the renderer — elided rows paint as normal
+   *  data rows; only the spine shortens. Tree shape stays intact so
+   *  the per-group meta lookup keeps working for every non-elided
+   *  group.
+   *
+   *  Default `false`. Init-only — runtime mutation isn't supported
+   *  this cycle (matches the `groupDefaultExpanded` pattern; apps
+   *  that need it can rebuild the grid). */
+  groupRemoveSingleChildren?: boolean;
+  /** Cycle 15 / Task 10 — when `true` AND `groupDisplayType` resolves
+   *  to `'singleColumn'`, every data row's auto-group cell paints a
+   *  MUTED echo of its leaf-parent group's value (no chevron, no
+   *  checkbox, no count — just the label at the leaf group's indent).
+   *  Keeps the user oriented while scrolling inside a long expanded
+   *  group: row 482 of `APAC → Rates` still shows `Rates` in the
+   *  column spine.
+   *
+   *  Has no effect in `'multipleColumns'` / `'groupRows'` / `'custom'`
+   *  modes — each per-level column in `'multipleColumns'` already
+   *  owns one depth (echoing on data rows would conflict with
+   *  ownership); the strip modes don't paint per-cell on data rows.
+   *
+   *  Default `false`. Init-only this cycle. Design plan:
+   *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 10. */
+  showOpenedGroup?: boolean;
 }
 
 /** Cycle 10 / Task 5 — params for `processCellForClipboard`. Mirrors
