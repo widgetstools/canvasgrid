@@ -4612,6 +4612,37 @@ export class CGrid<TRow = any> {
     return { x: col.left, y: row.top, w: col.width, h: row.height };
   }
 
+  /** Pixel bounds of the cell at (rowIndex, colId) ONLY when the cell
+   *  is fully inside its column's band AND inside [bodyTop, bodyBottom].
+   *  Returns null when:
+   *    - the row or column isn't in the current viewport
+   *    - the cell's vertical band exits [bodyTop, bodyBottom]
+   *    - the cell's horizontal extent exits its column's band:
+   *        center        → [bodyLeft, bodyRight]
+   *        pinned-left   → [0, bodyLeft]
+   *        pinned-right  → [bodyRight, +∞)
+   *  Use this from any overlay that paints / mounts a DOM node at the
+   *  cell's coordinates; the looser getCellBoundsAt is for callers
+   *  that need bounds whenever the cell is in the viewport at all
+   *  (programmatic scroll math, hit-test).
+   */
+  getVisibleCellBounds(rowIndex: number, colId: string):
+    { x: number; y: number; w: number; h: number } | null {
+    const bounds = this.getCellBoundsAt(rowIndex, colId);
+    if (!bounds) return null;
+    const vs = this.viewport;
+    if (bounds.y < vs.bodyTop || bounds.y + bounds.h > vs.bodyBottom) return null;
+    const col = vs.visibleColumns.find((c) => c.colId === colId);
+    const xL = col?.pinned === 'left' ? 0
+      : col?.pinned === 'right' ? vs.bodyRight
+      : vs.bodyLeft;
+    const xR = col?.pinned === 'left' ? vs.bodyLeft
+      : col?.pinned === 'right' ? Number.POSITIVE_INFINITY
+      : vs.bodyRight;
+    if (bounds.x < xL || bounds.x + bounds.w > xR) return null;
+    return bounds;
+  }
+
   /** Pixel bounds of the leaf header for `colId` in the canvas's
    *  coordinate space. The y-band covers the leaf-header row (the one
    *  directly above the data rows), NOT any column-group rows stacked
