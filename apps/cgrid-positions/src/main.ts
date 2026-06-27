@@ -83,12 +83,17 @@ const groupMultipleColumns = search.get('grouping') === 'multipleColumns';
 // panel with no chips so the dashed empty-state placeholder paints
 // (visual cell 22). `?rowGroupPanel=threeChips` mounts it
 // pre-populated with `ticker` → `sector` → `subSector` chips
-// matching the reference screenshot (visual cell 23). Off by default
-// so visual cells 01–21 stay byte-stable.
+// matching the reference screenshot (visual cell 23). `?rowGroupPanel=always`
+// is the live-demo mode: panel mounted + 1-level grouping by ticker
+// seeded so the user can drag columns in / chips out and see the
+// effect immediately (not used by any visual cell — exists only as a
+// quick-look during cycle development before Task 13's demo default).
+// Off by default so visual cells 01–21 stay byte-stable.
 const rowGroupPanelMode = search.get('rowGroupPanel');
 const rowGroupPanelEmpty = rowGroupPanelMode === 'empty';
 const rowGroupPanelThreeChips = rowGroupPanelMode === 'threeChips';
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, rowGroupPanelEmpty, rowGroupPanelThreeChips });
+const rowGroupPanelAlways = rowGroupPanelMode === 'always';
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways });
 
 // E2E hooks: expose the grid + a readiness flag so Playwright tests can wait
 // for first-data-rendered and call api helpers (`getCellBoundsAt`,
