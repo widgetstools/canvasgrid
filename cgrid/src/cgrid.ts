@@ -624,6 +624,11 @@ export class CGrid<TRow = any> {
         // wait for the worker init.
         api: this.makeApi(),
         setReservedSpace: (side, width) => this.reserveSideBarSpace(side, width),
+        // Cycle 11 / Task 7 — fan side-bar lifecycle events into the
+        // grid's typed event emitter. The host's payload shape is the
+        // same as the CGridEvent union members for `toolPanelVisibleChanged`
+        // and `sideBarVisibleChanged`, so this is a straight pass-through.
+        emit: (event) => this.events.emit(event),
       };
       this.sideBar = new SideBarHost(this.root, ctx, sideBarDef);
     }
