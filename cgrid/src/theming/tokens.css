@@ -495,16 +495,16 @@
   border-right: 1px solid var(--cg-border-color);
 }
 .cg-side-bar-tabs {
-  /* Wider strip (28 → 36 px) so the rotated caption has stroke-axis
-   * breathing room and the section feels considered rather than
-   * crammed against the grid edge. The background sits a hair darker
-   * than the panel via color-mix so the active tab — which uses the
-   * panel bg — visually lifts out of the strip without needing a
-   * divider rule. */
+  /* Strip holds detached chip-style tabs. Outer padding gives the
+   * chips a small inset from the canvas edge; row-gap separates the
+   * chips so each one reads as its own control. */
   display: flex;
   flex-direction: column;
-  width: 36px;
-  background: color-mix(in srgb, var(--cg-bg-color) 80%, #000 20%);
+  align-items: stretch;
+  gap: 8px;
+  width: 52px;
+  padding: 8px 6px;
+  background: color-mix(in srgb, var(--cg-bg-color) 85%, #000 15%);
   border-left: 1px solid color-mix(in srgb, var(--cg-border-color) 60%, transparent);
   flex: 0 0 auto;
 }
@@ -513,62 +513,72 @@
   border-right: 1px solid color-mix(in srgb, var(--cg-border-color) 60%, transparent);
 }
 .cg-side-bar-tab {
-  /* `writing-mode: vertical-rl` rotates the inline axis to vertical;
-   * `padding-block` then maps to the horizontal screen axis (around
-   * the rotated stroke) and `padding-inline` maps to the vertical
-   * screen axis (above and below the caption — the user's explicit
-   * ask for "padding around the captions"). */
+  /* Chip-style tab: rounded rectangle with a visible border, icon
+   * upright at the top, rotated label below. Inactive chips carry a
+   * subtle border in the theme's border colour; active chips switch
+   * to a 2 px focus-ring border on all four sides — the reference
+   * pattern from the user's 2026-06-26 sidebar*.png screenshots.
+   *
+   * `writing-mode: vertical-rl` on the chip means the LABEL inherits
+   * vertical text direction. The icon resets back to horizontal-tb
+   * so its glyph stays upright at the top of the chip.
+   *
+   * `padding-block` maps to the horizontal screen axis (sides of the
+   * stroke); `padding-inline` maps to the vertical screen axis
+   * (above and below the caption — the requested padding around the
+   * caption). */
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding-block: 8px;
+  justify-content: flex-start;
+  gap: 12px;
+  padding-block: 10px;
   padding-inline: 18px;
-  min-height: 112px;
-  background: transparent;
-  color: color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
-  border: none;
+  min-height: 124px;
+  background: color-mix(in srgb, var(--cg-bg-color) 55%, var(--cg-header-bg) 45%);
+  color: var(--cg-fg-color);
+  border: 1.5px solid color-mix(in srgb, var(--cg-border-color) 65%, transparent);
+  border-radius: 6px;
   cursor: pointer;
   writing-mode: vertical-rl;
   font-family: inherit;
-  /* Industrial-label treatment: small, semibold, uppercase, generous
-   * tracking. Reads at a glance even when rotated and stays quiet next
-   * to the panel content. */
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  transition: color 0.12s ease, background-color 0.12s ease;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1;
+  transition: border-color 0.12s ease, background-color 0.12s ease,
+    box-shadow 0.12s ease;
 }
 .cg-side-bar-tab:hover {
-  color: var(--cg-fg-color);
-  background: color-mix(in srgb, var(--cg-focus-ring-color) 6%, transparent);
+  border-color: var(--cg-border-color);
+  background: color-mix(in srgb, var(--cg-bg-color) 35%, var(--cg-header-bg) 65%);
 }
 .cg-side-bar-tab:focus-visible {
-  outline: 2px solid var(--cg-focus-ring-color);
-  outline-offset: -3px;
+  outline: none;
+  border-color: var(--cg-focus-ring-color);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--cg-focus-ring-color) 40%, transparent);
 }
 .cg-side-bar-tab[aria-pressed="true"] {
-  color: var(--cg-fg-color);
-  /* Active tab uses the panel bg so it visually merges with the panel
-   * it represents; the 3 px blue border on the OUTER edge (left when
-   * the bar is right-positioned, right when left-positioned) is the
-   * lone hierarchy cue. User-confirmed in Cycle 11. */
-  background: var(--cg-bg-color);
-  border-left: 3px solid var(--cg-focus-ring-color);
-  padding-inline-start: 15px;
-}
-.cg-side-bar[data-position="left"] .cg-side-bar-tab[aria-pressed="true"] {
-  border-left: none;
-  border-right: 3px solid var(--cg-focus-ring-color);
-  padding-inline-start: 18px;
-  padding-inline-end: 15px;
+  /* Active chip: 2 px focus-ring border on all four sides + slightly
+   * lifted background. User-confirmed in Cycle 11; matches the
+   * 2026-06-26 sidebar1/2/3.png reference pattern. */
+  border: 2px solid var(--cg-focus-ring-color);
+  background: color-mix(in srgb, var(--cg-bg-color) 45%, var(--cg-header-bg) 55%);
+  /* Compensate for the 0.5 px border thickness change so the chip
+   * doesn't shift when the active state flips. */
+  padding-block: 9.5px;
+  padding-inline: 17.5px;
 }
 .cg-side-bar-tab-icon {
-  font-size: 13px;
+  /* Reset to upright. Without this the icon glyph inherits the
+   * parent's vertical-rl writing mode and rotates 90° too. */
+  writing-mode: horizontal-tb;
+  font-size: 16px;
   line-height: 1;
   opacity: 0.85;
+}
+.cg-side-bar-tab[aria-pressed="true"] .cg-side-bar-tab-icon {
+  opacity: 1;
+  color: var(--cg-fg-color);
 }
 .cg-side-bar-tab-label {
   line-height: 1;
@@ -729,27 +739,29 @@
 }
 .cg-columns-panel-section {
   flex: 0 0 auto;
-  border-top: 1px solid color-mix(in srgb, var(--cg-border-color) 50%, transparent);
+  border-top: 1px solid color-mix(in srgb, var(--cg-border-color) 60%, transparent);
   padding: 14px 14px 12px;
 }
 .cg-columns-panel-section-header {
-  /* Matches the side-bar tab label treatment so the panel reads as a
-   * coherent module: same weight, tracking, transform, hue. */
+  /* Sentence case + regular weight matches the 2026-06-26 sidebar2.png
+   * reference ("Row Groups", "Σ Values"). The icon sits inline to the
+   * left at the same size as the label so the pair reads as a phrase. */
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 10px;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--cg-fg-color);
 }
 .cg-columns-panel-section-header::before {
   content: attr(data-icon);
   font-weight: normal;
-  font-size: 13px;
-  opacity: 0.8;
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.85;
 }
 .cg-columns-panel-drop-zone {
   border: 1px dashed color-mix(in srgb, var(--cg-border-color) 80%, transparent);
