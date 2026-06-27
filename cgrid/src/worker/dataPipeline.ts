@@ -2,7 +2,6 @@ import type {
   TransactionResult, FilterModel, FilterModelEntry, FilterModelEntryLegacy,
   CFilterModelEntry, CTextFilterModel, CNumberFilterModel, CDateFilterModel,
   CMultiConditionFilterModel, CSetFilterModel,
-  SortModel,
 } from '../types';
 
 /**
@@ -16,7 +15,6 @@ import type {
 type WorkerFilterModelEntry = FilterModelEntryLegacy;
 import type { WorkerColumn, ViewportRequest, ViewportChunk } from './protocol';
 import { encodeText } from './chunkFormat';
-import { ComparatorRegistry } from './comparatorRegistry';
 
 /** Source-of-truth row storage in the worker. Keyed by rowIdField on each row. */
 export class RowStore<TRow = any> {
@@ -747,96 +745,12 @@ function parseDateMs(raw: unknown): number | null {
   return Number.isNaN(t) ? null : t;
 }
 
-export class SortPass<TRow = any> {
-  private model: SortModel = [];
-  private colIndex = new Map<string, WorkerColumn>();
-  private comparators: ComparatorRegistry;
-
-  /** `comparators` is optional so existing callers (tests, demos) don't have
-   *  to thread a registry through every construction. When omitted the
-   *  pass behaves exactly as it did pre-Cycle 8 — every column uses the
-   *  built-in text/number `compare()`. Cycle 8 / Task 3. */
-  constructor(
-    private store: RowStore<TRow>,
-    columns: WorkerColumn[],
-    comparators?: ComparatorRegistry,
-  ) {
-    this.setColumns(columns);
-    this.comparators = comparators ?? new ComparatorRegistry();
-  }
-
-  setModel(model: SortModel): void { this.model = model; }
-
-  setColumns(columns: WorkerColumn[]): void {
-    this.colIndex.clear();
-    for (const col of columns) this.colIndex.set(col.colId, col);
-  }
-
-  apply(inputIds: string[]): string[] {
-    if (this.model.length === 0) return inputIds;
-    const sorted = inputIds.slice();
-    // Pre-resolve the comparator function per sort-model entry so we don't
-    // re-walk the registry inside the hot N log N comparator. Unknown names
-    // (registration race, dropped registration) fall back to the built-in
-    // compare so the sort never crashes mid-pipeline.
-    //
-    // Cycle 8 / Task 5 — when a text column opts into `accentedSort`,
-    // we hand the entry a cached `Intl.Collator.compare` so the hot loop
-    // pays one virtual dispatch per cell instead of constructing the
-    // collator per call. The collator stays in `accentedCollator` (lazy
-    // singleton on the pass) so multiple accented columns share one.
-    const resolved = this.model.map((entry) => {
-      const col = this.colIndex.get(entry.colId);
-      let fn: ((a: unknown, b: unknown) => number) | undefined;
-      if (col?.comparator) {
-        fn = this.comparators.get(col.comparator);
-      } else if (col?.accentedSort && col.type === 'text') {
-        fn = this.accentedCompare;
-      }
-      return { entry, col, fn };
-    });
-    sorted.sort((aId, bId) => {
-      const aRow = this.store.getById(aId);
-      const bRow = this.store.getById(bId);
-      if (!aRow || !bRow) return 0;
-      for (const { entry, col, fn } of resolved) {
-        if (!col || !col.field) continue;
-        const av = (aRow as Record<string, unknown>)[col.field];
-        const bv = (bRow as Record<string, unknown>)[col.field];
-        const cmp = fn ? fn(av, bv) : compare(av, bv, col.type);
-        if (cmp !== 0) return entry.direction === 'asc' ? cmp : -cmp;
-      }
-      return 0;
-    });
-    return sorted;
-  }
-
-  /** Cycle 8 / Task 5 — lazy `Intl.Collator` adapter for `accentedSort`.
-   *  The collator instance is constructed on first use and reused for the
-   *  lifetime of the pass; the bound `compare` survives `Number`
-   *  coercion of nullish values by stringifying first (matches the
-   *  default `compare()` semantics). */
-  private accentedCollator?: Intl.Collator;
-  private accentedCompare = (a: unknown, b: unknown): number => {
-    if (!this.accentedCollator) {
-      this.accentedCollator = new Intl.Collator(undefined, { sensitivity: 'variant' });
-    }
-    return this.accentedCollator.compare(String(a ?? ''), String(b ?? ''));
-  };
-}
-
-function compare(a: unknown, b: unknown, type: 'text' | 'number'): number {
-  if (type === 'number') {
-    const an = Number(a), bn = Number(b);
-    if (Number.isNaN(an) && Number.isNaN(bn)) return 0;
-    if (Number.isNaN(an)) return  1;
-    if (Number.isNaN(bn)) return -1;
-    return an < bn ? -1 : an > bn ? 1 : 0;
-  }
-  const as = String(a ?? '');
-  const bs = String(b ?? '');
-  return as < bs ? -1 : as > bs ? 1 : 0;
-}
+// Cycle 15 / Task 11 — SortPass moved to `worker/passes/sortPass.ts`
+// so the new group-aware `applyGrouped` path can live alongside the
+// existing flat `apply` without inflating `dataPipeline.ts`. Re-exported
+// here for backwards compatibility with the existing import surface
+// (`import { SortPass } from '.../dataPipeline'`).
+export { SortPass } from './passes/sortPass';
 
 /**
  * Cycle 4 / Task 11 (cell-flash patch) — shallow diff between two row

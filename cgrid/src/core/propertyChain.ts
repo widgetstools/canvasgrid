@@ -81,6 +81,12 @@ export interface ResolvedColDef<TRow = any> {
    *  faint up/down chevron pair on sortable columns that aren't
    *  currently sorted. Cycle 8 / Task 5. */
   unSortIcon?: boolean;
+  /** See `CColDef.sortGroupRowsByKey`. When `true` AND this column is
+   *  one of the `rowGroupCols`, the group-level sort uses the cheap
+   *  composite-key string compare even when the column has a
+   *  registered `comparator` / `accentedSort`. Has no effect on
+   *  within-bucket (leaf-row) sorting. Cycle 15 / Task 11. */
+  sortGroupRowsByKey?: boolean;
   resizable: boolean;
   editable: boolean | EditableCallback<TRow, unknown>;
   /** Per-column override of grid-level `singleClickEdit`. Undefined =
@@ -573,6 +579,7 @@ export function resolveColDef<TRow>(
     sortable: merged.sortable ?? true,
     accentedSort: merged.accentedSort,
     unSortIcon: merged.unSortIcon,
+    sortGroupRowsByKey: merged.sortGroupRowsByKey,
     resizable: merged.resizable ?? true,
     editable: (merged.editable ?? false) as ResolvedColDef<TRow>['editable'],
     singleClickEdit: merged.singleClickEdit,

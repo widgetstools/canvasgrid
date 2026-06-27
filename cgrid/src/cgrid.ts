@@ -4315,6 +4315,14 @@ export class CGrid<TRow = any> {
       if (c.accentedSort === true) {
         base.accentedSort = true;
       }
+      // Cycle 15 / Task 11 — forward sortGroupRowsByKey so the
+      // group-aware sort can keep the cheap composite-key compare at
+      // this column's level (skips a registered comparator / accented
+      // collator over the raw group .value). Has no effect on
+      // within-bucket leaf-row sorting.
+      if (c.sortGroupRowsByKey === true) {
+        base.sortGroupRowsByKey = true;
+      }
       // Cycle 5 / Task 8 — forward autoHeight metadata so the worker can
       // measure wrapped text without re-walking the column tree. Width is
       // the inner text width (column width minus the cell horizontal

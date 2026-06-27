@@ -107,6 +107,12 @@ export interface WorkerColumn {
    *  })` instead of the default lexicographic compare. Honored only
    *  when no registered `comparator` is set on the column. */
   accentedSort?: boolean;
+  /** Cycle 15 / Task 11 — group-level sort override. When `true`, the
+   *  group-aware `SortPass.applyGrouped` keeps the composite-key
+   *  string compare at this column's level even if a `comparator` or
+   *  `accentedSort` is configured. Within-bucket (leaf-row) sort is
+   *  unaffected. Mirrors `CColDef.sortGroupRowsByKey`. */
+  sortGroupRowsByKey?: boolean;
 }
 
 export interface ViewportRequest {
