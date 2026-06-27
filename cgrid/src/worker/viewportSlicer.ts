@@ -138,6 +138,23 @@ export function sliceGroupedViewport<TRow>(
    *  chevron paint, so missing metadata won't crash; just produces a
    *  visually incomplete group row). */
   groupMeta?: (key: string) => { value: string; childCount: number; isExpanded: boolean } | undefined,
+  /** Cycle 15 / Task 10 — when `true`, every data row's `groupValue[i]`
+   *  slot is populated with its leaf-parent group's formatted value
+   *  (resolved through `groupMeta`). The auto-group `'group'` cell
+   *  renderer paints that label muted, no chevron / count / checkbox,
+   *  indented to the leaf group's depth so the user keeps the parent
+   *  group's name in view while scrolling inside an expanded group.
+   *  Off (the default) leaves data-row slots blank — the pre-Task-10
+   *  behaviour.
+   *
+   *  Resolution: we walk `visibleOrder` from index 0 up to the chunk's
+   *  end and track the most recent `kind: 'group'` entry seen. Because
+   *  `flatOrder` emits every group BEFORE its descendant data rows,
+   *  the most-recent group is always the data row's leaf parent in
+   *  the visible tree (an elided ancestor falls through naturally —
+   *  the most-recent group becomes the closest non-elided ancestor,
+   *  which is the right label to show). */
+  showOpenedGroup?: boolean,
 ): ViewportChunk {
   const rowStart = Math.max(0, req.rowStart);
   const rowEnd = Math.min(visibleOrder.length, req.rowEnd);
@@ -159,6 +176,23 @@ export function sliceGroupedViewport<TRow>(
   // `rowGroupOpened`; data rows hold the empty-string sentinel.
   const groupKey: string[] = new Array<string>(count).fill('');
 
+  // Cycle 15 / Task 10 — pre-walk visibleOrder up to `rowStart` so we
+  // know the most-recent group entry's key when the first data row in
+  // the chunk lands. Without the pre-walk a chunk slicing mid-list
+  // would emit empty opened-group labels for its leading data rows
+  // (the parent group entry sits BEFORE rowStart and we'd never see
+  // it). The walk is O(rowStart) — small relative to a typical chunk
+  // (rowStart is the visible-row index where the chunk begins). Skip
+  // entirely when `showOpenedGroup` is off — zero overhead for the
+  // common ungrouped / no-opened-label path.
+  let lastSeenGroupKey = '';
+  if (showOpenedGroup) {
+    for (let i = 0; i < rowStart; i++) {
+      const entry = visibleOrder[i]!;
+      if (entry.kind === 'group') lastSeenGroupKey = entry.key;
+    }
+  }
+
   for (let i = 0; i < count; i++) {
     const entry = visibleOrder[rowStart + i]!;
     groupDepth[i] = entry.depth;
@@ -171,12 +205,25 @@ export function sliceGroupedViewport<TRow>(
         groupChildCount[i] = meta.childCount;
         isExpanded[i] = meta.isExpanded ? 1 : 0;
       }
+      if (showOpenedGroup) lastSeenGroupKey = entry.key;
       continue;
     }
     const rowId = postFilterIds[entry.rowIndex];
     if (rowId === undefined) continue;
     rowIds[i] = store.getNumericId(rowId);
     heights[i] = store.effectiveShippedHeight(rowId);
+    // Cycle 15 / Task 10 — `showOpenedGroup` populates the data row's
+    // `groupValue[i]` slot with its leaf-parent's formatted value. The
+    // renderer reads the same slot for group rows; data rows leave it
+    // blank by default. `rowKinds[i]` stays 0 — the renderer's
+    // "rowKind 0 + non-empty value" branch distinguishes the opened-
+    // group label paint from the group-row paint. An empty
+    // `lastSeenGroupKey` (e.g. data rows before the first group is
+    // seen) silently no-ops.
+    if (showOpenedGroup && lastSeenGroupKey !== '') {
+      const meta = groupMeta?.(lastSeenGroupKey);
+      if (meta) groupValue[i] = meta.value;
+    }
   }
 
   const numericCols: Record<string, Float64Array> = {};

@@ -307,17 +307,47 @@ describe('groupCell renderer — chrome painting', () => {
     expect(calls[0]![0]).toBe('—');
   });
 
-  it('paints NO chrome for a data row (rowKind === 0) — only background', () => {
+  it('paints NO chrome for a data row (rowKind === 0) with empty valueFormatted — only background', () => {
     // Architecture rule: the auto-group column's data-row cells stay
-    // blank. The chunk's group-context payload for a data row carries
-    // `rowKind: 0`; the renderer's short-circuit must leave the cell
-    // empty so the user reads the grouped page as "tree spine + data,"
-    // not "tree spine + invisible chrome leaking into data."
+    // blank by default. The chunk's group-context payload for a data
+    // row carries `rowKind: 0` AND an empty `valueFormatted` (the
+    // worker only populates the value for data rows when
+    // `showOpenedGroup: true` lands — Cycle 15 / Task 10); the
+    // renderer's short-circuit must leave the cell empty so the user
+    // reads the grouped page as "tree spine + data," not "tree spine
+    // + invisible chrome leaking into data."
     const gc = makeGc();
     groupCell.paint(gc, baseParams({
-      value: makeGroupValue({ rowKind: 0 }),
+      value: makeGroupValue({ rowKind: 0, valueFormatted: '' }),
     }));
     expect((gc.fillText as unknown as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+    expect((gc.stroke as unknown as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
+  });
+
+  it('Task 10 / showOpenedGroup — data row with valueFormatted paints muted parent-group echo at leaf indent', () => {
+    // When `showOpenedGroup: true` is on, the worker populates the
+    // data row's `chunk.groupValue[i]` slot with its leaf-parent
+    // group's formatted value. The renderer keys off "rowKind 0 +
+    // non-empty valueFormatted" and paints a muted echo at the leaf
+    // group's indent (`(depth - 1) × indentUnit`) — no chevron, no
+    // count, no checkbox. The depth on the payload mirrors the
+    // chunk's `groupDepth[i]` for data rows (= `rowGroupCols.length`),
+    // so subtracting one lands at the leaf group's depth.
+    const gc = makeGc();
+    groupCell.paint(gc, baseParams({
+      value: makeGroupValue({ rowKind: 0, depth: 2, valueFormatted: 'Swap' }),
+    }));
+    const calls = (gc.fillText as unknown as ReturnType<typeof vi.fn>).mock.calls;
+    // Only ONE fillText — value, no count suffix.
+    expect(calls.length).toBe(1);
+    expect(calls[0]![0]).toBe('Swap');
+    // x = PADDING(6) + (depth - 1) × indentUnit(14) = 6 + 14 = 20.
+    // Sits at the leaf group's indent — one chevron-width earlier
+    // than a data row would land at its own depth.
+    expect(calls[0]![1]).toBe(6 + 14);
+    // No chevron — `stroke` (drawIcon's terminating call) must not
+    // fire. Data rows aren't toggle targets; painting a chevron
+    // would falsely suggest interactivity.
     expect((gc.stroke as unknown as ReturnType<typeof vi.fn>)).not.toHaveBeenCalled();
   });
 

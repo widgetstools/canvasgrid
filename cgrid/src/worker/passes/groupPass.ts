@@ -108,6 +108,15 @@ export class GroupPass<TRow = any> {
    *  (including the empty array — the canonical "collapse all"
    *  override), takes precedence over `defaultExpanded`. */
   private defaultExpandedKeys: readonly string[] | null = null;
+  /** Cycle 15 / Task 10 — `groupRemoveSingleChildren` flag. When `true`,
+   *  the flatOrder build skips group entries whose recursive
+   *  `childCount === 1` — chains that funnel down to a single leaf row
+   *  collapse away entirely (the lone row is emitted at its natural
+   *  position with no preceding group entries). The TREE shape stays
+   *  intact so the `groupMeta` lookup keeps working for every
+   *  non-elided group; only the depth-first flat traversal changes.
+   *  Off by default; read by `apply()` on every call. */
+  private removeSingleChildren = false;
 
   constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
     this.setColumns(columns);
@@ -163,6 +172,25 @@ export class GroupPass<TRow = any> {
   }): void {
     this.defaultExpanded = opts.expanded ?? 'all';
     this.defaultExpandedKeys = opts.keys === undefined ? null : opts.keys.slice();
+  }
+
+  /** Cycle 15 / Task 10 — toggle the single-child elision rule. Called
+   *  from the worker init handshake when `groupRemoveSingleChildren`
+   *  is set on `CGridOptions`. Off by default (preserves the
+   *  pre-Task-10 behaviour of emitting every group entry); flipping
+   *  on takes effect on the next `apply()`. */
+  setRemoveSingleChildren(enabled: boolean): void {
+    this.removeSingleChildren = enabled;
+  }
+
+  /** Cycle 15 / Task 10 — read-only access to the elision flag. Used
+   *  by the slicer + tests that need to mirror the elision rule on the
+   *  main thread (e.g. when threading `showOpenedGroup` data through
+   *  the chunk — an elided row's parent group's value should be the
+   *  highest non-elided ancestor's value, matching what the renderer
+   *  paints). */
+  getRemoveSingleChildren(): boolean {
+    return this.removeSingleChildren;
   }
 
   /** Cycle 15 / Task 9 — compute the starting `expandedKeys` set for
@@ -331,11 +359,25 @@ export class GroupPass<TRow = any> {
     // Build the depth-first flat ordering. Rows ride one depth deeper
     // than the deepest group so the slicer can use a depth comparison
     // to find the next sibling at the collapsed group's depth.
+    //
+    // Cycle 15 / Task 10 — when `removeSingleChildren` is on, a group
+    // with `childCount === 1` (only one descendant leaf in its subtree)
+    // is ELIDED from the traversal: we skip its `kind: 'group'` entry,
+    // recurse into its children regardless, and the lone leaf row gets
+    // emitted at its natural depth without a preceding group entry.
+    // The tree itself stays intact so the meta lookup still resolves
+    // every key — only the flat traversal changes. A chain of
+    // single-child groups (e.g. APAC → Rates → Swap → one row) all
+    // elide together because every level satisfies `childCount === 1`.
     const flatOrder: FlatOrderEntry[] = [];
     const rowDepth = cols.length;
+    const elide = this.removeSingleChildren;
     const walk = (nodes: readonly GroupNode[]): void => {
       for (const n of nodes) {
-        flatOrder.push({ kind: 'group', key: n.key, depth: n.depth });
+        const skipGroupEntry = elide && n.childCount === 1;
+        if (!skipGroupEntry) {
+          flatOrder.push({ kind: 'group', key: n.key, depth: n.depth });
+        }
         if (n.childGroups.length > 0) {
           walk(n.childGroups);
         } else {

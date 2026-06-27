@@ -82,6 +82,14 @@ interface State {
    *  protocol message; read by `effectiveExpandedKeys()` everywhere
    *  the pipeline needs to know what's visible. */
   expandedKeys: Set<string> | null;
+  /** Cycle 15 / Task 10 — `showOpenedGroup` option captured at init.
+   *  When `true`, the grouped slicer populates `groupValue[i]` for
+   *  data rows with their leaf-parent group's formatted value so the
+   *  `'group'` renderer can paint a muted echo. Off by default;
+   *  flipping mid-flight isn't supported (init-only — matches the
+   *  `groupDefaultExpanded` pattern). The flag is also read in the
+   *  `getViewport` handler so the slicer receives it per call. */
+  showOpenedGroup: boolean;
   /** Cycle 8 / Task 3 — named comparators registered via
    *  `registerComparator`. `SortPass.apply` looks up each sorted column's
    *  `comparator` (a string name on the `WorkerColumn`) against this
@@ -484,6 +492,13 @@ export function createWorkerHost(post: PostFn): WorkerHost {
         keys: payload.groupDefaultExpandedKeys,
       });
     }
+    // Cycle 15 / Task 10 — install the elision flag before any
+    // `setGroupModel` so the very first tree-build's flatOrder
+    // honors `groupRemoveSingleChildren`. Init-only; matches the
+    // Task 9 default-expansion pattern (no runtime mutation surface).
+    if (payload.groupRemoveSingleChildren === true) {
+      group.setRemoveSingleChildren(true);
+    }
     state = {
       store,
       filter:      new FilterPass(store, payload.columns),
@@ -514,6 +529,10 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       nextPostSortRowsCallId: 1,
       enableCellChangeFlash: payload.enableCellChangeFlash === true,
       pendingFlashes: new Map(),
+      // Cycle 15 / Task 10 — captured at init; threaded into
+      // `sliceGroupedViewport` on every `getViewport` so data-row
+      // `groupValue[i]` slots populate when the option is on.
+      showOpenedGroup: payload.showOpenedGroup === true,
     };
 
     post({ id, type: 'ready' });
@@ -1182,6 +1201,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
               chunk = sliceGroupedViewport(
                 state.store, colIndex, visIds, visibleOrder, req.payload, pending,
                 (key) => metaLookup.get(key),
+                state.showOpenedGroup,
               );
               // For flash drain below, we need the rowIds at each
               // emitted slot. Group slots carry no rowId — only data

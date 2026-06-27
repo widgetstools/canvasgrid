@@ -1023,3 +1023,140 @@ depth → toggle → select → identify reads left to right.**
   feature.
 
 ---
+
+## Task 10 — `showOpenedGroup` + `groupRemoveSingleChildren`
+
+**Brief recap:** Two polish flags on an existing surface. `groupRemoveSingleChildren`
+prunes single-descendant groups from the visible tree so a chain that
+funnels down to one row collapses away entirely. `showOpenedGroup` keeps
+the user oriented as they scroll inside a long expanded group: every
+DATA row's auto-group cell echoes its leaf-parent group's value (no
+chevron, no count — just the label) so the trader looking at row 482 of
+"APAC → Rates" still sees `Rates` in the column spine.
+
+### `groupRemoveSingleChildren` — pure worker concern, zero new chrome
+
+The elision is invisible to the renderer: an elided group's data row
+just doesn't get a preceding group entry in `flatOrder`. It paints as a
+normal data row at the row's natural slot — no chevron, no indent
+inside the auto-group column, no special bg. The user reads the spine
+as cleaner: chains that would have shown `APAC ▸ Rates ▸ Swap ▸ (1 row)`
+collapse to just the row.
+
+**Elision rule:** elide ANY group whose recursive `childCount === 1`.
+This matches the spec's literal reading and naturally handles chains
+— if every level above a singleton row also has childCount 1, the
+whole chain elides together. Multi-row groups stay (`childCount > 1`),
+and groups with multiple sub-groups stay (their childCount is the sum
+of all descendant leaves, > 1). No design pass needed: the only
+visual delta is "fewer rows on screen."
+
+### `showOpenedGroup` — cell composition DOES change, light design pass
+
+This is the design-touched bit. Data rows in the auto-group column
+have so far painted nothing (Task 4: "the chevron + indent IS the
+chrome; body cells stay empty"). `showOpenedGroup: true` reintroduces
+text on those data rows — the smallest possible reintroduction:
+
+**Layout for a data row under an expanded group:**
+
+```
+[indent: (depth − 1) × 14px] [value text, muted]
+```
+
+- **No chevron.** Data rows are not toggle targets; painting a chevron
+  glyph would falsely suggest interactivity. Reusing the chevron
+  vocabulary here would also collide with Task 7's chevron hit-zone.
+- **No (count).** The count is metadata about the group's
+  descendants — a data row IS one of those descendants; echoing the
+  count on every descendant reads as visual noise.
+- **No checkbox.** Tri-state belongs to the group row only (Task 8).
+  Data-row selection is a Cycle 16+ feature.
+- **Indent matches the leaf group's indent** (one chevron-width less
+  than the data row's nominal depth). The data row's "opened-group"
+  label visually sits where the leaf group's value sits — a vertical
+  echo, not a different column lane.
+- **Muted text color** — reuses `--cg-group-count-color` (the existing
+  muted slate). The label is metadata about the row's parent, not a
+  primary value; same color family as the chevron + count so the spine
+  reads as one vocabulary. No new token introduced.
+
+**Why muted, not body fg:** the data row's REAL data sits in the other
+columns and should remain the loudest thing on the row. Painting the
+opened-group label at body weight + body fg would make every data row
+shout the same group name down the column — exactly the visual noise
+the design wants to avoid. Muted text reads as "ambient orientation,"
+not as repeated data.
+
+**Multi-column / strip-mode interaction:** `showOpenedGroup` only
+paints in `'singleColumn'` mode. In `'multipleColumns'` each per-level
+column already carries its OWN depth's label on group rows; echoing
+the leaf group's value on data rows would conflict with the column
+ownership rule (Task 5 — "each column owns one depth"). In
+`'groupRows'` / `'custom'` modes there is no auto-group column at all,
+so there's nowhere to paint the echo. The renderer's existing
+`ownDepth !== null` check (Task 5) returns early for data rows in
+multipleColumns; the strip modes don't reach the per-cell renderer at
+all for data rows.
+
+**Worker-side support:** the slicer needs to know the parent group's
+formatted value for each data row in the chunk window. We piggyback
+on the existing `chunk.groupValue[i]` slot — currently empty for data
+rows, now populated with the most-recent-group value when
+`showOpenedGroup: true`. Implementation: walk visibleOrder up to the
+chunk's end tracking `lastSeenGroupKey`; for each data row, resolve
+its leaf-parent value via the existing `groupMeta` lookup. This
+naturally handles elision (a row promoted past an elided ancestor
+inherits the highest non-elided ancestor's label) and collapsed-window
+slicing (the walk starts from index 0 each call so a chunk mid-list
+sees the correct preceding group).
+
+### Decisions summary
+
+| Axis | `groupRemoveSingleChildren` | `showOpenedGroup` |
+|---|---|---|
+| Worker change | yes — `GroupPass.apply` skips group entries in flatOrder when `childCount === 1` | yes — slicer populates `groupValue[i]` for data rows |
+| Renderer change | none (elided rows paint as data rows) | yes — paints muted label on data rows with non-empty `groupValue` |
+| New token | none | none — reuses `--cg-group-count-color` |
+| Mode coverage | every display mode (purely tree-shape) | `'singleColumn'` only |
+| Hit-test change | none | none (label is non-interactive) |
+
+### What's explicitly NOT shipped in Task 10
+
+- `groupRemoveLowestSingleChildren` (the level-restricted variant).
+  Out of scope for Cycle 15; deferred to a follow-up cycle if the
+  feature matrix demands it.
+- `showOpenedGroup` in `'multipleColumns'` mode. Each column owns one
+  depth; echoing the leaf-parent's label on data rows would conflict
+  with the column ownership rule.
+- A separate `--cg-group-opened-fg` token. The opened-group label
+  reuses `--cg-group-count-color` so the muted-slate family stays a
+  single source for "metadata on a group row" colour decisions.
+- Runtime mutation of either option. Both are init-time options
+  (matches the Task 9 `groupDefaultExpanded` pattern); `setGridOption`
+  rejects post-construction swaps. Apps that need runtime control can
+  swap via `setGroupModel` + rebuild.
+
+### One-line summary
+
+**Elision tightens the spine; opened-group orients the eye.
+Both stay quiet — elision adds nothing visible, opened-group adds a
+muted echo at the leaf indent.**
+
+### Vocabulary handed to subsequent tasks
+
+- **Elision happens in `GroupPass.apply` (flatOrder build), NOT in
+  the tree shape.** Future polish flags (`groupRemoveLowestSingleChildren`,
+  pivot-row elision) follow the same pattern: keep the tree intact,
+  filter the flat traversal.
+- **"Data rows can borrow the auto-group cell"** — `showOpenedGroup`
+  is the first feature that paints anything on a data row's auto-
+  group cell. The renderer's `rowKind === 0` short-circuit now has a
+  `valueFormatted !== ''` escape hatch. Cycle 16+ master/detail
+  expand can reuse the same escape hatch (an expanded master row
+  could paint a detail-toggle glyph in the same slot).
+- **Reuse `--cg-group-count-color` for any muted, non-interactive
+  text on a group / data row.** Don't introduce per-feature mute
+  tokens — the muted family stays one colour.
+
+---

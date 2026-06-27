@@ -157,10 +157,6 @@ export const groupCell: CellPainter = {
     const groupValue = asGroupCellValue(p.value);
     // Data rows (no group context) — bg only, no chrome.
     if (groupValue === null) return;
-    // Defensive: render chrome ONLY for group rows. `rowKind` of 0
-    // (data) reaches here when cellAt synthesised a value for a data
-    // row inside a grouped grid — the auto-group cell stays blank.
-    if (groupValue.rowKind !== 1) return;
 
     // Cycle 15 / Task 5 — multipleColumns own-depth filter. A non-null
     // `groupColumnDepth` from `cellRendererParams` means this cell is
@@ -168,8 +164,30 @@ export const groupCell: CellPainter = {
     // the row's group depth matches this column's slot. Other group
     // rows (a deeper / shallower depth than this column owns) stay
     // blank — the column that owns THAT depth carries their chrome.
+    // The check sits BEFORE the rowKind branch so a data row in
+    // multipleColumns mode never paints the opened-group echo
+    // (each column owns one depth; echoing the leaf-parent's label
+    // across every column would compete with the column ownership
+    // rule — Task 10 design § showOpenedGroup).
     const ownDepth = readGroupColumnDepth(p.params);
     if (ownDepth !== null && ownDepth !== groupValue.depth) return;
+
+    // Cycle 15 / Task 10 — `showOpenedGroup`. Data rows (rowKind === 0)
+    // normally paint nothing; when the worker has populated
+    // `valueFormatted` for a data row (only happens when
+    // `showOpenedGroup: true` AND the row has a leaf-parent group
+    // entry preceding it in flatOrder), paint a MUTED echo of that
+    // value at the leaf group's indent. No chevron, no checkbox, no
+    // count — the data row is not a toggle target and the count is
+    // group metadata, not data-row metadata. Only paints in
+    // singleColumn mode; the ownDepth check above already returned for
+    // multipleColumns + data rows.
+    if (groupValue.rowKind !== 1) {
+      if (ownDepth !== null) return;
+      if (groupValue.valueFormatted === '') return;
+      paintOpenedGroupLabel(gc, p, groupValue);
+      return;
+    }
 
     // Theme tokens are threaded onto `CellPaintConfig` by `applyCellProps`
     // (see Cycle 15 / Task 4 design notes). Defensive defaults match the
@@ -315,4 +333,55 @@ function paintTriStateCheckbox(
     gc.stroke();
   }
   // 'none' → border only.
+}
+
+/**
+ * Cycle 15 / Task 10 — paint the muted opened-group label on a data
+ * row inside the auto-group column. Triggered when `showOpenedGroup: true`
+ * is on AND the worker has populated `valueFormatted` for the data row
+ * (its leaf-parent group's formatted value). Layout:
+ *
+ *   [indent: (depth − 1) × indentUnit] [value text, muted]
+ *
+ * - **Indent** mirrors the leaf group's indent — `(groupDepth − 1) × indentUnit`.
+ *   Data rows ride at `groupDepth = rowGroupCols.length` (one deeper
+ *   than the deepest group), so subtracting one lands at the leaf
+ *   group's depth. The echo sits at the same x-coordinate the leaf
+ *   group's value sits at, so the user reads down the column as a
+ *   vertical echo of the parent group's label.
+ * - **No chevron.** Data rows aren't toggle targets; painting a
+ *   chevron glyph would falsely suggest interactivity.
+ * - **No (count).** The count is metadata about the group's
+ *   descendants — a data row IS one of those descendants; echoing the
+ *   count on every descendant reads as visual noise.
+ * - **Muted color** — reuses `groupCountColor` (the shared muted
+ *   slate). The label is ambient orientation, not a primary value;
+ *   painting body fg + body weight on every data row would make the
+ *   group name shout down the column, exactly the visual noise the
+ *   design wants to avoid.
+ */
+function paintOpenedGroupLabel(
+  gc: CachedContext2D,
+  p: CellPaintConfig,
+  groupValue: GroupCellValue,
+): void {
+  const indentUnit = p.groupIndent ?? 14;
+  // Data rows ride at `rowGroupCols.length`; the leaf group's depth
+  // is one less. Clamp at 0 so a defensive payload with depth === 0
+  // (e.g. a synthesised value outside the standard pipeline) doesn't
+  // produce a negative indent.
+  const leafIndentDepth = Math.max(0, groupValue.depth - 1);
+  const indentX = leafIndentDepth * indentUnit;
+  const cy = p.bounds.y + p.bounds.h / 2;
+  const left = p.bounds.x + PADDING + indentX;
+  const mutedColor = p.groupCountColor ?? p.fg;
+  // Same `gc.cache` bypass as the group-row text path — drawIcon
+  // doesn't run here so the cache tracker stays in sync, but match
+  // the cell-renderer conventions for consistency with the existing
+  // path.
+  gc.fillStyle = mutedColor;
+  gc.font = p.font;
+  gc.textBaseline = 'middle';
+  gc.textAlign = 'left';
+  gc.fillText(groupValue.valueFormatted, left, cy);
 }
