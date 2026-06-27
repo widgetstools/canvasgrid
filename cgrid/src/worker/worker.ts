@@ -6,7 +6,11 @@ import {
   RowStore, FilterPass, SortPass, AggPass, GroupPass, ViewportSlicer, TransactionQueue,
   QuickFilterPass, DistinctValuesPass, diffRowFields,
 } from './dataPipeline';
-import type { GroupPassOutput } from './passes/groupPass';
+import type { GroupNode, GroupPassOutput } from './passes/groupPass';
+import {
+  computeGroupVisibleOrder, computeGroupVisibleRowCount, sliceGroupedViewport,
+  type VisibleRowEntry,
+} from './viewportSlicer';
 import { ComparatorRegistry } from './comparatorRegistry';
 import { AggFuncRegistry, type IAggFunc } from './aggFuncRegistry';
 import type { TransactionResult } from '../types';
@@ -228,9 +232,64 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     return state.visibleCache;
   }
 
+  /** Cycle 15 / Task 4 — true when the most recent `buildVisibleAsync`
+   *  produced a group tree the slicer should walk over (instead of
+   *  emitting the flat post-sort row order). Reads the latest
+   *  `state.groupOutput` set inside `buildVisibleAsync`. */
+  function isGroupingActive(): boolean {
+    return !!state?.groupOutput && !state.groupOutput.bypassed;
+  }
+
+  /** Cycle 15 / Task 4 — "all groups expanded" key set, derived from
+   *  the current `groupOutput.flatOrder`. Task 7 will replace this
+   *  with a persistent `state.expandedKeys` set driven by the
+   *  expand/collapse API; for now grouping mounts with every group
+   *  visible so the auto-group column reads with values from row 0. */
+  function allExpandedKeys(): Set<string> {
+    const out = new Set<string>();
+    if (!state?.groupOutput) return out;
+    for (const e of state.groupOutput.flatOrder) {
+      if (e.kind === 'group') out.add(e.key);
+    }
+    return out;
+  }
+
+  /** Cycle 15 / Task 4 — flatten the `GroupNode` tree into a `key →
+   *  { value, childCount }` lookup the slicer reads when packing the
+   *  chunk's group-row slots. Built once per viewport request — the
+   *  tree is small relative to the visible window and the cost is
+   *  swamped by the slice's column-data fill. */
+  function buildGroupMetaLookup(
+    roots: readonly GroupNode[],
+    columns: readonly WorkerColumn[],
+  ): Map<string, { value: string; childCount: number; isExpanded: boolean }> {
+    const map = new Map<string, { value: string; childCount: number; isExpanded: boolean }>();
+    const colTypeByColId = new Map<string, 'text' | 'number'>();
+    for (const c of columns) colTypeByColId.set(c.colId, c.type);
+    const walk = (nodes: readonly GroupNode[]): void => {
+      for (const node of nodes) {
+        const colType = colTypeByColId.get(node.colId);
+        const value = node.value;
+        let formatted: string;
+        if (value === null || value === undefined) formatted = '';
+        else if (colType === 'number' && typeof value === 'number') formatted = Number.isFinite(value) ? String(value) : '';
+        else formatted = String(value);
+        // Task 7 will populate isExpanded from a persistent set; Task 4
+        // mounts with every group expanded.
+        map.set(node.key, { value: formatted, childCount: node.childCount, isExpanded: true });
+        if (node.childGroups.length > 0) walk(node.childGroups);
+      }
+    };
+    walk(roots);
+    return map;
+  }
+
   async function invalidateAndCount(): Promise<number> {
     if (!state) return 0;
     state.visibleCache = await buildVisibleAsync();
+    if (isGroupingActive()) {
+      return computeGroupVisibleRowCount(state.groupOutput!.flatOrder, allExpandedKeys());
+    }
     return state.visibleCache.length;
   }
 
@@ -880,7 +939,41 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             // window) — flashes for off-window rows persist until those
             // rows are visible.
             const pending = state.enableCellChangeFlash ? state.pendingFlashes : undefined;
-            const chunk = state.slicer.slice(visIds, req.payload, pending);
+            // Cycle 15 / Task 4 — when grouping is active, walk the
+            // collapse-aware visible order and emit a group-aware
+            // chunk so the auto-group column reads chevron + value +
+            // count for every group row. When grouping bypasses
+            // (`rowGroupCols.length === 0`), fall through to the flat
+            // slicer — same shape as Cycle 4.
+            let chunk;
+            let visibleSliceIds: string[];
+            if (isGroupingActive()) {
+              const groupOutput = state.groupOutput!;
+              const expandedKeys = allExpandedKeys();
+              const visibleOrder: VisibleRowEntry[] = computeGroupVisibleOrder(
+                groupOutput.flatOrder, expandedKeys,
+              );
+              const colIndex = new Map<string, WorkerColumn>();
+              for (const c of state.columns) colIndex.set(c.colId, c);
+              const metaLookup = buildGroupMetaLookup(groupOutput.roots, state.columns);
+              chunk = sliceGroupedViewport(
+                state.store, colIndex, visIds, visibleOrder, req.payload, pending,
+                (key) => metaLookup.get(key),
+              );
+              // For flash drain below, we need the rowIds at each
+              // emitted slot. Group slots carry no rowId — only data
+              // entries do. Build a per-slot rowId array here so the
+              // flash drain works identically to the flat path.
+              visibleSliceIds = new Array<string>(chunk.rowCount);
+              for (let r = 0; r < chunk.rowCount; r++) {
+                const entry = visibleOrder[chunk.rowStart + r];
+                if (!entry || entry.kind !== 'row') { visibleSliceIds[r] = ''; continue; }
+                visibleSliceIds[r] = visIds[entry.rowIndex] ?? '';
+              }
+            } else {
+              chunk = state.slicer.slice(visIds, req.payload, pending);
+              visibleSliceIds = visIds.slice(chunk.rowStart, chunk.rowStart + chunk.rowCount);
+            }
             if (pending !== undefined && chunk.flashMask !== undefined) {
               // Drain: clear the (rowId, field) entries we just flashed.
               // For each visible row in the chunk window, remove the
@@ -890,7 +983,8 @@ export function createWorkerHost(post: PostFn): WorkerHost {
                 .map((colId) => s.columns.find((c) => c.colId === colId)?.field)
                 .filter((f): f is string => f !== undefined);
               for (let r = 0; r < chunk.rowCount; r++) {
-                const rowId = visIds[chunk.rowStart + r]!;
+                const rowId = visibleSliceIds[r];
+                if (!rowId) continue;
                 const set = pending.get(rowId);
                 if (!set) continue;
                 for (const f of colFields) set.delete(f);

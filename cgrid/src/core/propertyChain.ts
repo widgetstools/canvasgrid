@@ -319,6 +319,13 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   // so painters don't hard-code it. Read once per cell (constant per
   // theme); no perf hit.
   target.flashFromColor = theme.flashFromColor;
+  // Cycle 15 / Task 4 — auto-group column tokens, threaded onto every
+  // cell config so the `'group'` cell renderer can read chevron color
+  // + count suffix color + indent unit without reaching into the
+  // theme directly. Other renderers ignore these fields.
+  target.groupChevronColor = theme.groupChevronColor;
+  target.groupCountColor = theme.groupCountColor;
+  target.groupIndent = theme.groupIndent;
   target.params = ctx.params;
 
   // Theme defaults.

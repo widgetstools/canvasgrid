@@ -557,6 +557,31 @@ export interface CGridOptions<TRow = any> {
    *  `docs/superpowers/plans/notes/cycle-14-aggregation-design.md` §
    *  Task 4. */
   suppressAggFuncInHeader?: boolean;
+  /** Cycle 15 / Task 4 — partial column-def patch applied to the
+   *  synthesized auto-group column. When grouping is active AND
+   *  `groupDisplayType` resolves to `'singleColumn'` (the default),
+   *  cgrid inserts a single auto-group column at index 0 of the visible
+   *  leaf order. The synthesized def picks up `headerName: 'Group'`,
+   *  `width: 200`, `cellRenderer: 'group'`, `sortable: false` by
+   *  default; this option overlays those — set `width`, `headerName`,
+   *  `pinned`, `cellRendererParams`, etc. to taste. The `colId` field
+   *  is forced to `'ag-Grid-AutoColumn'` regardless of any override.
+   *  Design plan:
+   *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md`
+   *  § Task 4. */
+  autoGroupColumnDef?: Partial<CColDef<TRow>>;
+  /** Cycle 15 / Task 4 — how grouped rows render in the column header.
+   *  - `'singleColumn'` (default): one auto-group column at index 0
+   *    that shows chevron + indent + value + (count).
+   *  - `'multipleColumns'`: one auto-group column per `rowGroupCols`
+   *    entry (Task 5).
+   *  - `'groupRows'`: the group label spans the full row instead of
+   *    sitting in one column (Task 5).
+   *  - `'custom'`: defers to the app's `groupRowRenderer` (Task 5).
+   *  Only `'singleColumn'` ships in Task 4; the other modes are
+   *  accepted at the type level so apps can author the option now
+   *  without a follow-up signature change. */
+  groupDisplayType?: 'singleColumn' | 'multipleColumns' | 'groupRows' | 'custom';
 }
 
 /** Cycle 10 / Task 5 — params for `processCellForClipboard`. Mirrors

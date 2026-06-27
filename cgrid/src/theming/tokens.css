@@ -79,6 +79,18 @@
   --cg-pinned-row-bg: #fbf8f3;
   --cg-pinned-row-fg: var(--cg-fg-color);
   --cg-pinned-row-border: var(--cg-totals-border-top);
+  /* Cycle 15 / Task 4 — auto-group column tokens.
+   * Design plan: docs/superpowers/plans/notes/cycle-15-grouping-design.md
+   * § Task 4.
+   * The "spine, not strip" pattern — group rows carry chrome only in
+   * the auto-group cell (chevron + indent + value + count), never via
+   * a row-wide bg or border. The two colours alias to the muted slate
+   * the totals renderer reserves for empty / muted text; vocabulary
+   * continuity across cycles. The indent unit is one chevron-width
+   * (14 px) per depth level so the chevron stacks visually. */
+  --cg-group-chevron-color: var(--cg-totals-fg-muted);
+  --cg-group-count-color: var(--cg-totals-fg-muted);
+  --cg-group-indent: 14px;
 }
 
 .cg-theme-quartz-dark {
@@ -137,6 +149,13 @@
   --cg-pinned-row-bg: #241e16;
   --cg-pinned-row-fg: var(--cg-fg-color);
   --cg-pinned-row-border: var(--cg-totals-border-top);
+  /* Cycle 15 / Task 4 — dark-mode auto-group column tokens. Aliased to
+   * the muted totals foreground so chevron + count read as the same
+   * "metadata" tone the totals renderer uses for empty placeholders.
+   * Indent unit is theme-agnostic; declared once on the light theme. */
+  --cg-group-chevron-color: var(--cg-totals-fg-muted);
+  --cg-group-count-color: var(--cg-totals-fg-muted);
+  --cg-group-indent: 14px;
 }
 
 /* Native scrollbar styling (Chromium/WebKit) — always-visible thumb
