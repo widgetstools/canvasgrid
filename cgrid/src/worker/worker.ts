@@ -7,6 +7,7 @@ import {
   QuickFilterPass, DistinctValuesPass, diffRowFields,
 } from './dataPipeline';
 import { ComparatorRegistry } from './comparatorRegistry';
+import { AggFuncRegistry, type IAggFunc } from './aggFuncRegistry';
 import type { TransactionResult } from '../types';
 import type { WorkerColumn } from './protocol';
 import {
@@ -48,6 +49,11 @@ interface State {
    *  `comparator` (a string name on the `WorkerColumn`) against this
    *  registry; unknown names fall back to the built-in `compare()`. */
   comparators: ComparatorRegistry;
+  /** Cycle 14 / Task 3 — named column-aggregation registry. Built-ins
+   *  (`sum / avg / min / max / count / first / last`) pre-registered;
+   *  custom funcs arrive via `setAggFuncs`. Owned here so a `setAggFuncs`
+   *  message and the next `AggPass.apply` see the same Map instance. */
+  aggFuncs: AggFuncRegistry;
   agg: AggPass;
   slicer: ViewportSlicer;
   queue: TransactionQueue;
@@ -284,6 +290,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     });
 
     const comparators = new ComparatorRegistry();
+    const aggFuncs = new AggFuncRegistry();
     state = {
       store,
       filter:      new FilterPass(store, payload.columns),
@@ -291,7 +298,8 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       distinct:    new DistinctValuesPass(store, payload.columns),
       sort:        new SortPass(store, payload.columns, comparators),
       comparators,
-      agg:         new AggPass(store, payload.columns),
+      aggFuncs,
+      agg:         new AggPass(store, payload.columns, aggFuncs),
       slicer:      new ViewportSlicer(store, payload.columns),
       queue,
       columns: payload.columns,
@@ -645,6 +653,61 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             state.enableCellChangeFlash = req.payload.enabled === true;
             if (!state.enableCellChangeFlash) state.pendingFlashes.clear();
             post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: state.visibleCache?.length ?? 0 });
+            break;
+          }
+
+          case 'setAggFuncs': {
+            // Cycle 14 / Task 3 — replace the custom agg-func layer
+            // wholesale. Each entry's `source` is the original
+            // function's `Function.prototype.toString()` form; the
+            // worker rebuilds the callable via `new Function` in
+            // strict-mode (mirrors `registerComparator` below).
+            //
+            // Main-side already screened for closures (it rebuilt + ran
+            // the function against a probe input before shipping), so a
+            // `ReferenceError` here would be a genuine app bug — surface
+            // it as an error reply instead of silently dropping the
+            // entry, so misbehaving funcs are loud.
+            //
+            // Re-running the pipeline isn't needed: the AggPass reads
+            // through the registry on every `apply`, so the very next
+            // `getViewport` already picks up the new resolutions. We
+            // still bust `visibleCache` so a stale cached
+            // `chunk.totals` (e.g. from a viewport that landed mid-flip)
+            // doesn't paint — even though that's a defensive belt-and-
+            // braces gesture (`visibleCache` doesn't hold the totals).
+            const built: Record<string, IAggFunc> = {};
+            for (const entry of req.payload.funcs) {
+              let fn: unknown;
+              try {
+                fn = new Function(`"use strict"; return (${entry.source});`)();
+              } catch (err) {
+                post({
+                  id: req.id,
+                  type: 'error',
+                  error: `[cgrid] failed to deserialise aggFunc '${entry.name}': ${
+                    String((err as Error).message ?? err)
+                  }`,
+                });
+                return;
+              }
+              if (typeof fn !== 'function') {
+                post({
+                  id: req.id,
+                  type: 'error',
+                  error: `[cgrid] aggFunc '${entry.name}' did not deserialise to a function`,
+                });
+                return;
+              }
+              built[entry.name] = fn as IAggFunc;
+            }
+            state.aggFuncs.replaceCustom(built);
+            post({
+              id: req.id,
+              type: 'rowCount',
+              count: state.store.size(),
+              visibleCount: state.visibleCache?.length ?? 0,
+            });
             break;
           }
 

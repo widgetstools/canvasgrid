@@ -68,6 +68,7 @@ import { A11yOverlay } from './interaction/a11yOverlay';
 import { WorkerClient } from './worker/client';
 import { wrapTextToHeight } from './worker/measureText';
 import type { WorkerColumn, ViewportChunk, AutosizeColumnRequest } from './worker/protocol';
+import type { IAggFunc, IAggFuncParams } from './types';
 import { decodeText } from './worker/chunkFormat';
 // Cycle 10 / Task 5 — main-side serialise + paste-cell map helpers used when
 // the app configures `processCellForClipboard` / `processCellFromClipboard`.
@@ -100,6 +101,8 @@ export type {
   IStatusPanel, IStatusPanelComp, StatusPanelComponent, StatusPanelParams,
   StatusPanelDef, StatusPanelAlign, StatusBarDef, StatusBarPosition,
   IAggregationStatusPanelParams, AggFunc,
+  // Cycle 14 / Task 3 — custom column-aggregation registry.
+  IAggFunc, IAggFuncParams,
 } from './types';
 export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/registry';
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
@@ -130,6 +133,82 @@ export function inferRowIdField<T>(getRowId: (row: T) => string): string {
  *  Apps override via `CGridOptions.quickFilterParser`. */
 function defaultQuickFilterParser(text: string): string[] {
   return text.split(/\s+/).filter((t) => t.length > 0);
+}
+
+/**
+ * Cycle 14 / Task 3 — round-trip a custom aggFunc through
+ * `Function.toString()` + `new Function(...)` BEFORE it ships to the
+ * worker, and detect closures over outer scope as part of the trip.
+ *
+ * The worker reconstructs the function via the same `new Function(...)`
+ * call inside `setAggFuncs`. Doing the round-trip here first means:
+ *
+ * 1. **Closure capture surfaces synchronously**. The thrown error rides
+ *    out the `setGridOption` call (or the constructor) — apps see the
+ *    failure where they wrote the broken function, not on a delayed
+ *    worker `error` reply that they may or may not be listening for.
+ * 2. **The worker never sees a half-broken func**. If a closure-over-
+ *    outer-scope reference would throw inside the worker, this
+ *    detector throws first; the worker's `setAggFuncs` payload only
+ *    ever carries functions that round-trip cleanly.
+ *
+ * The detector probes with `{ values: [1, 2], colId: '__probe__' }` —
+ * arbitrary numeric input, just enough to evaluate the function body
+ * once. If the rebuilt copy throws on the probe AND the original DOES
+ * NOT, the source referenced something only available in the original's
+ * closure. If both versions return the same value (NaN-safe via
+ * `Object.is`), the function is pure and safe to ship. Returns the
+ * serialised `source` string the worker should rebuild from.
+ */
+function serializeAggFunc(name: string, fn: IAggFunc): string {
+  const source = fn.toString();
+  let rebuilt: IAggFunc;
+  try {
+    rebuilt = new Function(`"use strict"; return (${source});`)() as IAggFunc;
+  } catch (e) {
+    throw new Error(
+      `[cgrid] aggFunc '${name}' failed to serialise (syntax error in toString output): ${
+        String((e as Error).message ?? e)
+      }. Custom aggFuncs MUST be plain function expressions or arrows — no class methods.`,
+    );
+  }
+  if (typeof rebuilt !== 'function') {
+    throw new Error(
+      `[cgrid] aggFunc '${name}' did not deserialise to a function — check the function shape`,
+    );
+  }
+  const probe: IAggFuncParams = { values: [1, 2], colId: '__cgrid_probe__' };
+  let originalRes: unknown;
+  let originalThrew = false;
+  try { originalRes = fn(probe); } catch { originalThrew = true; }
+  let rebuiltRes: unknown;
+  let rebuiltErr: Error | null = null;
+  try { rebuiltRes = rebuilt(probe); } catch (e) { rebuiltErr = e as Error; }
+  if (rebuiltErr && !originalThrew) {
+    // Closure over outer scope — the rebuilt copy can't see the
+    // identifier the source referenced, so it throws ReferenceError
+    // (or TypeError on a closed-over object access). Point the app
+    // straight at the constraint.
+    throw new Error(
+      `[cgrid] aggFunc '${name}' closes over outer scope ` +
+      `(rebuilt copy threw '${rebuiltErr.message}' when invoked). ` +
+      `Custom aggFuncs MUST be pure — no references to variables, ` +
+      `imports, or this-bound state from the surrounding closure. ` +
+      `Pre-bake any external data into the values via a column ` +
+      `valueGetter instead.`,
+    );
+  }
+  if (!rebuiltErr && !originalThrew && !Object.is(originalRes, rebuiltRes)) {
+    // Both ran without throwing but produced different results — the
+    // source must reference an outer-scope value that the rebuilt copy
+    // resolved to a different binding (e.g. a global with the same
+    // name but different value). Same root cause: not pure.
+    throw new Error(
+      `[cgrid] aggFunc '${name}' produced different results pre- and post-serialisation ` +
+      `(probably closes over outer scope). Custom aggFuncs MUST be pure.`,
+    );
+  }
+  return source;
 }
 
 /** Cycle 8 / Task 2 — find the next stage in `sortingOrder` given the
@@ -967,6 +1046,16 @@ export class CGrid<TRow = any> {
       // the worker's pipeline then runs end-to-end with zero overhead.
       if (typeof this.options.postSortRows === 'function') {
         await this.workerClient.setPostSortRowsPresent(true).catch(() => {});
+      }
+      // Cycle 14 / Task 3 — push the construction-time aggFuncs map to
+      // the worker BEFORE the first setRowData so the very first
+      // viewport reply carries totals computed against the custom
+      // registry. Closure detection runs inside `forwardAggFuncs` so a
+      // broken function rejects at constructor time. Skipped when the
+      // option is absent / empty — the built-in registry is enough for
+      // standard sum / avg / min / max / count / first / last columns.
+      if (this.options.aggFuncs && Object.keys(this.options.aggFuncs).length > 0) {
+        this.forwardAggFuncs(this.options.aggFuncs);
       }
       this.events.emit({ type: 'gridReady', api: this.makeApi() });
       if (options.rowData) this.setRowData(options.rowData);
@@ -2906,7 +2995,53 @@ export class CGrid<TRow = any> {
         this.recomputeViewport();
         this.cgridCanvas?.requestRepaint();
       },
+      forwardAggFuncs: (funcs) => {
+        // Cycle 14 / Task 3 — serialise each entry (with closure
+        // detection) and ship the new map to the worker wholesale.
+        // `undefined` or `{}` clears the custom layer; built-ins
+        // remain available unchanged.
+        this.forwardAggFuncs(funcs as Record<string, IAggFunc> | undefined);
+      },
     };
+  }
+
+  /**
+   * Cycle 14 / Task 3 — serialise the `aggFuncs` map and dispatch
+   * `setAggFuncs` to the worker. Called from both the constructor
+   * (after `workerClient.init` resolves) and the runtime apply table
+   * (when `setGridOption('aggFuncs', …)` lands).
+   *
+   * Closure detection runs HERE on the main thread:
+   *   1. Round-trip the function through `Function.prototype.toString()`
+   *      + `new Function(...)` — the same path the worker will use.
+   *   2. Invoke the rebuilt copy on a small probe input. If it throws
+   *      with the original NOT throwing on the same input, the source
+   *      referenced an outer-scope identifier — reject with a clear
+   *      error pointing the app at the constraint. If both versions
+   *      return the same value (NaN-safe via `Object.is`), the function
+   *      is safe to ship.
+   *
+   * Keeping the screen on the main thread means the worker never sees a
+   * broken aggFunc; that simplifies the worker's error envelope and
+   * lets apps get the diagnostic synchronously inside the
+   * `setGridOption` call that triggered the swap.
+   */
+  private forwardAggFuncs(funcs: Record<string, IAggFunc> | undefined): void {
+    const entries: Array<{ name: string; source: string }> = [];
+    if (funcs) {
+      for (const [name, fn] of Object.entries(funcs)) {
+        if (typeof fn !== 'function') {
+          throw new Error(
+            `[cgrid] aggFuncs.${name} is not a function — ` +
+            `entries must be IAggFunc callables (received ${typeof fn})`,
+          );
+        }
+        entries.push({ name, source: serializeAggFunc(name, fn) });
+      }
+    }
+    this.workerClient.setAggFuncs(entries).catch((err) => {
+      if (!this.destroyed) console.error('[cgrid] setAggFuncs:', err);
+    });
   }
 
   /** Re-resolve the column tree from `options.columnDefs`, rebuild the
@@ -3064,7 +3199,15 @@ export class CGrid<TRow = any> {
     const raw = chunk.totals[colId];
     if (raw === undefined) return null;
     if (raw === null) return { value: null, valueFormatted: '' };
-    return { value: raw, valueFormatted: this.formatNumber(colId, raw) };
+    // Cycle 14 / Task 3 — custom aggFuncs may return non-numeric values
+    // (e.g. `'first'` returns whatever shape the column carries). Route
+    // numeric returns through the column's number formatter; fall back
+    // to `String(...)` for everything else so the totals row still
+    // paints text for custom funcs.
+    if (typeof raw === 'number') {
+      return { value: raw, valueFormatted: this.formatNumber(colId, raw) };
+    }
+    return { value: raw, valueFormatted: String(raw) };
   }
 
   /** Cycle 7 / Task 1 — true when the floating-filter row should render.

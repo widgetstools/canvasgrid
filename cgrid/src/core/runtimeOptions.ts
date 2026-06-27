@@ -61,7 +61,8 @@ export type RuntimeOption =
   | 'suppressClipboardApi'
   | 'suppressClipboardPaste'
   | 'pinnedTopRowData'
-  | 'pinnedBottomRowData';
+  | 'pinnedBottomRowData'
+  | 'aggFuncs';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
  *  import on `CGrid` (cgrid.ts imports this module). */
@@ -96,6 +97,11 @@ export interface RuntimeOptionTarget<TRow = any> {
    *  is cheaper than a `rebuildColumns` and skips the worker round-trip
    *  that the column path would trigger. */
   rebuildSubgrids(): void;
+  /** Cycle 14 / Task 3 — forward the runtime `aggFuncs` swap to the
+   *  worker so the AggFuncRegistry's custom layer reflects the new map.
+   *  Implementation in `cgrid.ts` serialises each function, screens for
+   *  closures, and calls `workerClient.setAggFuncs`. */
+  forwardAggFuncs(funcs: Record<string, unknown> | undefined): void;
 }
 
 /**
@@ -151,6 +157,13 @@ export function applyRuntimeOption<TRow>(
       // FlashRegistry reads `options.enableCellChangeFlash` live so no
       // additional wiring is needed there.
       target.forwardEnableCellChangeFlash(value === true);
+      return;
+    case 'aggFuncs':
+      // Cycle 14 / Task 3 — forward the new aggFuncs map to the worker
+      // wholesale. Main side serialises each function (with closure
+      // detection) and posts `setAggFuncs`. The forwarder accepts
+      // `undefined` to clear the custom layer.
+      target.forwardAggFuncs(value as Record<string, unknown> | undefined);
       return;
     case 'animateRows':
     case 'cellFlashDuration':
@@ -236,4 +249,5 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'suppressClipboardPaste',
   'pinnedTopRowData',
   'pinnedBottomRowData',
+  'aggFuncs',
 ]);

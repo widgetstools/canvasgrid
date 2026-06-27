@@ -45,6 +45,31 @@ export type {
 export type { IAggregationStatusPanelParams } from './interaction/statusBar/panels/aggregation';
 export type { AggFunc } from './interaction/statusBar/aggMath';
 
+/** Cycle 14 / Task 3 — params passed to a custom column aggFunc. Mirrors
+ *  ag-grid's `IAggFuncParams` shape so apps porting over keep the same
+ *  vocabulary. The `values` array carries the raw cell values for the
+ *  column being aggregated (post-filter, in row order). `colId` lets one
+ *  shared function dispatch between columns. `rowNode` is reserved for
+ *  group-footer totals (Cycle 15); for grand totals it is `undefined`. */
+export interface IAggFuncParams<TValue = unknown, TRow = any> {
+  values: TValue[];
+  colId: string;
+  rowNode?: { data?: TRow; key?: string };
+}
+
+/** Cycle 14 / Task 3 — custom column aggregation function. Reduces a
+ *  column's filtered values into a single totals-row entry. Runs on the
+ *  worker (the function body string-serialises via
+ *  `Function.prototype.toString()` and reconstructs via `new Function`),
+ *  so it MUST be pure — no closures over external scope. Apps that need
+ *  scope-bound state should pre-bake it into the values via a
+ *  `valueGetter` instead. Closures are rejected at `setGridOption`
+ *  /constructor time with a clear error that points at the failure mode.
+ *  Built-in names (`'sum' | 'avg' | 'min' | 'max' | 'count' | 'first' |
+ *  'last'`) bypass serialisation entirely. */
+export type IAggFunc<TValue = unknown, TResult = unknown, TRow = any> =
+  (params: IAggFuncParams<TValue, TRow>) => TResult;
+
 export interface ColCellOverrides {
   font?: string;
   fg?: string;
@@ -488,6 +513,29 @@ export interface CGridOptions<TRow = any> {
    *  chrome decisions make the two row types visually distinguishable
    *  (warm tint vs slate tint). */
   pinnedBottomRowData?: TRow[] | null;
+
+  /** Cycle 14 / Task 3 — custom column-aggregation functions, keyed by
+   *  the name a column's `aggFunc` references. Built-in names (`'sum' |
+   *  'avg' | 'min' | 'max' | 'count' | 'first' | 'last'`) are
+   *  pre-registered on the worker; entries here ADD to or OVERRIDE
+   *  those built-ins.
+   *
+   *  Functions string-serialise via `Function.prototype.toString()` and
+   *  reconstruct on the worker via `new Function(...)`, so they MUST be
+   *  pure: no closures over external scope, no calls to main-thread
+   *  globals. Closure capture is detected at registration time (the
+   *  function is rebuilt + invoked against a probe input on the main
+   *  thread; a mismatch / throw rejects the registration with an error
+   *  that points at this constraint).
+   *
+   *  Runtime-mutable via `setGridOption('aggFuncs', …)` — the new map
+   *  replaces the previous one wholesale and the worker re-runs the
+   *  aggregation pass.
+   *
+   *  Reading: the column's `aggFunc` field carries the lookup name; the
+   *  worker resolves the function and applies it to the per-column
+   *  filtered values, producing one entry in `chunk.totals[colId]`. */
+  aggFuncs?: Record<string, IAggFunc>;
 }
 
 /** Cycle 10 / Task 5 — params for `processCellForClipboard`. Mirrors
@@ -696,7 +744,15 @@ export interface CColDef<TRow = any, TValue = any> {
    *  worker via `new Function(...)`; CSP-restricted hosts fall back to
    *  `String(value)` with a `console.warn`. Cycle 7 / Task 7. */
   getQuickFilterText?: (params: { value: TValue; data: TRow; colId: string }) => string;
-  aggFunc?: 'sum' | 'avg' | 'min' | 'max' | 'count';
+  /** Cycle 14 / Task 3 — name of the column's totals aggregation.
+   *  Built-in names: `'sum' | 'avg' | 'min' | 'max' | 'count' | 'first'
+   *  | 'last'`. Custom names resolve against the registry passed via
+   *  `CGridOptions.aggFuncs` (or registered at runtime via
+   *  `api.setGridOption('aggFuncs', …)`). Unknown names produce an
+   *  `undefined` total for the column — the totals row paints the
+   *  cell empty. An array form (`['sum', 'avg']`) uses the FIRST entry
+   *  that resolves; subsequent entries serve as fallbacks. */
+  aggFunc?: string | string[];
   sortable?: boolean;
   /** Diacritic-aware string sort. When `true`, `SortPass` orders this
    *  column's values via `Intl.Collator(undefined, { sensitivity:
@@ -1422,7 +1478,7 @@ export type CGridEvent =
       source: 'uiColumnDragged' | 'api' | 'columnState';
     }
   | { type: 'asyncTransactionsFlushed'; results: TransactionResult[] }
-  | { type: 'aggregationChanged'; totals: Record<string, number | null> }
+  | { type: 'aggregationChanged'; totals: Record<string, unknown> }
   | { type: 'columnGroupOpened'; groupId: string; open: boolean }
   /** Fires when the set / order of displayed columns changes for any reason.
    *  Cycle 4 wired the original `columnGroupOpened` + `columnDefsChanged`

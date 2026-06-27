@@ -60,7 +60,10 @@ export interface ResolvedColDef<TRow = any> {
    *  reserved the field; Task 3 starts honouring it to suppress the
    *  expand button on the floating-filter cell. */
   suppressFloatingFilterButton: boolean;
-  aggFunc?: 'sum' | 'avg' | 'min' | 'max' | 'count';
+  /** See `CColDef.aggFunc`. Cycle 14 / Task 3 widened from the built-in
+   *  union to `string | string[]` so custom registry names (and the
+   *  array fallback form) flow through to the worker. */
+  aggFunc?: string | string[];
   sortable: boolean;
   /** See `CColDef.accentedSort`. When `true`, the worker's `SortPass`
    *  routes this column's text compares through `Intl.Collator`.

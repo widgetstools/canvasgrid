@@ -209,6 +209,22 @@ export class WorkerClient {
     }).then(() => {});
   }
 
+  /** Cycle 14 / Task 3 — replace the worker's custom agg-func registry
+   *  wholesale. Each entry's `source` is the original function's
+   *  `Function.prototype.toString()` form (main side has already
+   *  rebuilt + probed it to screen for closures over external scope
+   *  — see `cgrid.ts` `serializeAggFunc`). The worker rebuilds via
+   *  `new Function(...)`; built-in names (`sum / avg / …`) stay
+   *  pre-registered and remain visible unless an entry here shadows
+   *  them. AggPass reads through the registry on every viewport
+   *  request so the new resolutions take effect on the next paint
+   *  without a column-metadata reship. */
+  setAggFuncs(funcs: Array<{ name: string; source: string }>): Promise<void> {
+    return this.send<{ visibleCount: number }>({
+      type: 'setAggFuncs', payload: { funcs },
+    }).then(() => {});
+  }
+
   /** Cycle 8 / Task 4 — toggle the post-sort round-trip on the worker.
    *  When `present: true`, every subsequent pipeline pass pauses after
    *  the `SortPass` to push the sorted rowIds to main via
