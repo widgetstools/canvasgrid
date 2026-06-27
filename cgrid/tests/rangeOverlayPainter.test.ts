@@ -182,6 +182,7 @@ describe('paintRangeOverlay', () => {
       fillStyle: '', strokeStyle: '', font: '', textBaseline: '', textAlign: '',
       lineWidth: 1, globalAlpha: 1,
       save: vi.fn(), restore: vi.fn(),
+      beginPath: vi.fn(), rect: vi.fn(), clip: vi.fn(),
       fillRect: vi.fn(function () { fillStyleAtCall.push(ctx.fillStyle); }),
       strokeRect: vi.fn(function () { strokeStyleAtCall.push(ctx.strokeStyle); }),
     };

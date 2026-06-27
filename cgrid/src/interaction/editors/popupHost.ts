@@ -37,6 +37,7 @@ export interface PopupAnchor {
 
 export class PopupHost {
   private current: HTMLElement | null = null;
+  private anchor: PopupAnchor | null = null;
 
   constructor(private host: HTMLElement) {}
 
@@ -49,6 +50,7 @@ export class PopupHost {
     gui.style.pointerEvents = 'auto';
     this.host.appendChild(gui);
     this.current = gui;
+    this.anchor = anchor;
     // offsetWidth / offsetHeight are read AFTER the gui mounts so the browser
     // has laid it out. In jsdom/happy-dom both fall back to whatever the test
     // stubbed; in a real browser they're the measured natural dimensions.
@@ -58,10 +60,24 @@ export class PopupHost {
     gui.style.top = `${this.resolveTop(anchor, popupH)}px`;
   }
 
+  /** Re-anchor the open popup against a new cell bounds (the cell moved
+   *  because the grid scrolled). Position rule + viewport bounds are
+   *  reused from the original mount. No-op when nothing is mounted. */
+  reposition(update: { cellBounds: { x: number; y: number; w: number; h: number } }): void {
+    if (!this.current || !this.anchor) return;
+    const next: PopupAnchor = { ...this.anchor, cellBounds: update.cellBounds };
+    this.anchor = next;
+    const popupW = this.current.offsetWidth || 0;
+    const popupH = this.current.offsetHeight || 0;
+    this.current.style.left = `${this.resolveLeft(next, popupW)}px`;
+    this.current.style.top = `${this.resolveTop(next, popupH)}px`;
+  }
+
   unmount(): void {
     if (!this.current) return;
     this.current.remove();
     this.current = null;
+    this.anchor = null;
   }
 
   private resolveLeft(anchor: PopupAnchor, popupW: number): number {

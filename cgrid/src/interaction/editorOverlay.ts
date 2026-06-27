@@ -89,6 +89,24 @@ export class EditorOverlay {
     editor.afterGuiAttached?.();
   }
 
+  /** Move the open editor to follow its cell. Called by the host grid on
+   *  scroll / viewport change so an inline editor tracks the focused
+   *  cell as it moves. Popup editors are anchored independently and
+   *  re-anchored via the same call. No-op when no editor is open. */
+  reposition(bounds: { x: number; y: number; w: number; h: number }): void {
+    if (!this.current) return;
+    if (this.current.kind === 'inline') {
+      const s = this.current.wrapper.style;
+      s.left = `${bounds.x}px`;
+      s.top = `${bounds.y}px`;
+      s.width = `${bounds.w}px`;
+      s.height = `${bounds.h}px`;
+    } else {
+      // Popup mode re-anchors against the cell bounds via PopupHost.
+      this.current.popup.reposition?.({ cellBounds: bounds });
+    }
+  }
+
   /** Read getValue from the editor and dispatch onCommit. Host is responsible
    *  for routing through valueParser / valueSetter (cgrid.ts does that). */
   commit(): void {

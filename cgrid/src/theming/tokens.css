@@ -100,56 +100,64 @@
   --cg-range-border-color: #60a5fa;
 }
 
-/* Native scrollbar styling (Chromium/WebKit) — visible thumb on dark track. */
-.cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar {
-  width: 14px;
-  height: 14px;
+/* Native scrollbar styling (Chromium/WebKit) — always-visible thumb
+ * when the content actually overflows. `overflow: auto` (set inline on
+ * the scroller element) hides the tracks when nothing scrolls — the
+ * fix for "scrollbars appear even when the grid has no data".
+ *
+ * `-webkit-appearance: none` is what makes the visible scrollbar honour
+ * our 12 px width on macOS instead of falling back to a 0-width overlay
+ * that only flashes on scroll (regression flagged on 2026-06-26). */
+.cg-scroller::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+  -webkit-appearance: none;
 }
-.cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-track {
-  background: #0d1a33;
+.cg-scroller::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 6px;
+}
+.cg-scroller::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.08);
 }
 .cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-thumb {
-  background: #4a5b7a;
-  border: 3px solid #0d1a33;
-  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.32);
 }
 .cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-thumb:hover {
-  background: #6b7a99;
+  background: rgba(255, 255, 255, 0.48);
+}
+.cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
 }
 .cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-corner {
-  background: #0d1a33;
-}
-
-.cg-theme-quartz .cg-scroller::-webkit-scrollbar {
-  width: 14px;
-  height: 14px;
-}
-.cg-theme-quartz .cg-scroller::-webkit-scrollbar-track {
-  background: #eceff2;
+  background: rgba(255, 255, 255, 0.06);
 }
 .cg-theme-quartz .cg-scroller::-webkit-scrollbar-thumb {
-  background: #b5bdc6;
-  border: 3px solid #eceff2;
-  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.4);
 }
 .cg-theme-quartz .cg-scroller::-webkit-scrollbar-thumb:hover {
-  background: #8c97a3;
+  background: rgba(0, 0, 0, 0.55);
+}
+.cg-theme-quartz .cg-scroller::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.08);
 }
 .cg-theme-quartz .cg-scroller::-webkit-scrollbar-corner {
-  background: #eceff2;
+  background: rgba(0, 0, 0, 0.08);
 }
 
-/* Firefox + cross-browser: scrollbar-gutter:stable reserves the gutter
- * unconditionally so the macOS overlay scrollbar doesn't make the scrollbars
- * appear and disappear with system preferences. */
-.cg-scroller {
-  scrollbar-gutter: stable;
-}
-.cg-theme-quartz-dark .cg-scroller {
-  scrollbar-color: #4a5b7a #0d1a33;
-}
-.cg-theme-quartz .cg-scroller {
-  scrollbar-color: #b5bdc6 #eceff2;
+/* Firefox: scrollbar-color provides the equivalent of our
+ * ::-webkit-scrollbar-thumb / -track colours. Intentionally NOT applied
+ * to Chromium (Chrome 121+ silently disables ALL ::-webkit-scrollbar
+ * pseudo-element styling on any element that sets `scrollbar-color`,
+ * which reverts macOS to its 0-width overlay scrollbar). The @supports
+ * gate uses Firefox-only `-moz-appearance` so Chromium skips the block. */
+@supports (-moz-appearance: none) {
+  .cg-theme-quartz-dark .cg-scroller {
+    scrollbar-color: #4a5b7a #0d1a33;
+  }
+  .cg-theme-quartz .cg-scroller {
+    scrollbar-color: #b5bdc6 #eceff2;
+  }
 }
 
 /* Floating-filter row cells — Cycle 7 / Task 1. Each cell is an
@@ -485,55 +493,87 @@
   border-right: 1px solid var(--cg-border-color);
 }
 .cg-side-bar-tabs {
+  /* Strip holds detached chip-style tabs. Outer padding gives the
+   * chips a small inset from the canvas edge; row-gap separates the
+   * chips so each one reads as its own control. */
   display: flex;
   flex-direction: column;
-  width: 28px;
-  background: var(--cg-header-bg);
-  border-left: 1px solid var(--cg-border-color);
+  align-items: stretch;
+  gap: 8px;
+  width: 52px;
+  padding: 8px 6px;
+  background: color-mix(in srgb, var(--cg-bg-color) 85%, #000 15%);
+  border-left: 1px solid color-mix(in srgb, var(--cg-border-color) 60%, transparent);
   flex: 0 0 auto;
 }
 .cg-side-bar[data-position="left"] .cg-side-bar-tabs {
   border-left: none;
-  border-right: 1px solid var(--cg-border-color);
+  border-right: 1px solid color-mix(in srgb, var(--cg-border-color) 60%, transparent);
 }
 .cg-side-bar-tab {
+  /* Chip-style tab: rounded rectangle with a visible border, icon
+   * upright at the top, rotated label below. Inactive chips carry a
+   * subtle border in the theme's border colour; active chips switch
+   * to a 2 px focus-ring border on all four sides — the reference
+   * pattern from the user's 2026-06-26 sidebar*.png screenshots.
+   *
+   * The CHIP keeps the normal horizontal-tb writing mode so flex
+   * layout still works the obvious way: column = vertical stack,
+   * justify-content: flex-start = icon at top, label below.
+   * Only the LABEL element rotates (writing-mode: vertical-rl). */
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 8px 0;
-  min-height: 80px;
-  background: transparent;
+  justify-content: flex-start;
+  gap: 12px;
+  padding: 14px 8px;
+  min-height: 140px;
+  background: color-mix(in srgb, var(--cg-bg-color) 55%, var(--cg-header-bg) 45%);
   color: var(--cg-fg-color);
-  border: none;
-  border-bottom: 1px solid var(--cg-border-color);
+  border: 1.5px solid color-mix(in srgb, var(--cg-border-color) 65%, transparent);
+  border-radius: 6px;
   cursor: pointer;
-  writing-mode: vertical-rl;
   font-family: inherit;
-  font-size: 12px;
+  font-size: 13px;
+  font-weight: 400;
+  line-height: 1;
+  transition: border-color 0.12s ease, background-color 0.12s ease,
+    box-shadow 0.12s ease;
 }
 .cg-side-bar-tab:hover {
-  background: color-mix(in srgb, var(--cg-focus-ring-color) 14%, transparent);
+  border-color: var(--cg-border-color);
+  background: color-mix(in srgb, var(--cg-bg-color) 35%, var(--cg-header-bg) 65%);
+}
+.cg-side-bar-tab:focus-visible {
+  outline: none;
+  border-color: var(--cg-focus-ring-color);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--cg-focus-ring-color) 40%, transparent);
 }
 .cg-side-bar-tab[aria-pressed="true"] {
-  background: var(--cg-bg-color);
-  /* User reference 2026-06-26 — active tab gets a 3 px blue
-   * left-border indicator, the most distinctive cue that "this panel
-   * is open". The border faces the open panel content (tab strip is
-   * at the RIGHT edge of the grid, so the border lives on the LEFT
-   * of the tab). Mirrored to the right for left-positioned side bars. */
-  border-left: 3px solid var(--cg-focus-ring-color);
-}
-.cg-side-bar[data-position="left"] .cg-side-bar-tab[aria-pressed="true"] {
-  border-left: none;
-  border-right: 3px solid var(--cg-focus-ring-color);
+  /* Active chip: 2 px focus-ring border on all four sides + slightly
+   * lifted background. User-confirmed in Cycle 11; matches the
+   * 2026-06-26 sidebar1/2/3.png reference pattern. */
+  border: 2px solid var(--cg-focus-ring-color);
+  background: color-mix(in srgb, var(--cg-bg-color) 45%, var(--cg-header-bg) 55%);
+  /* Compensate for the 0.5 px border thickness change so the chip
+   * doesn't shift when the active state flips. */
+  padding: 13.5px 7.5px;
 }
 .cg-side-bar-tab-icon {
-  font-size: 14px;
+  font-size: 16px;
   line-height: 1;
+  opacity: 0.85;
+}
+.cg-side-bar-tab[aria-pressed="true"] .cg-side-bar-tab-icon {
+  opacity: 1;
+  color: var(--cg-fg-color);
 }
 .cg-side-bar-tab-label {
+  /* Only the label rotates. Inside its own writing-mode the text
+   * flows top-to-bottom; padding-inline gives the requested padding
+   * around the caption. */
+  writing-mode: vertical-rl;
+  padding-block: 6px;
   line-height: 1;
 }
 .cg-side-bar-panel {
@@ -692,25 +732,29 @@
 }
 .cg-columns-panel-section {
   flex: 0 0 auto;
-  border-top: 1px solid var(--cg-border-color);
-  padding: 10px 12px;
+  border-top: 1px solid color-mix(in srgb, var(--cg-border-color) 60%, transparent);
+  padding: 14px 14px 12px;
 }
 .cg-columns-panel-section-header {
+  /* Sentence case + regular weight matches the 2026-06-26 sidebar2.png
+   * reference ("Row Groups", "Σ Values"). The icon sits inline to the
+   * left at the same size as the label so the pair reads as a phrase. */
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 6px;
-  font-size: 12px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  opacity: 0.8;
+  gap: 10px;
+  margin-bottom: 10px;
+  font-size: 14px;
+  font-weight: 400;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--cg-fg-color);
 }
 .cg-columns-panel-section-header::before {
   content: attr(data-icon);
   font-weight: normal;
-  font-size: 13px;
-  opacity: 0.8;
+  font-size: 16px;
+  line-height: 1;
+  opacity: 0.85;
 }
 .cg-columns-panel-drop-zone {
   border: 1px dashed color-mix(in srgb, var(--cg-border-color) 80%, transparent);

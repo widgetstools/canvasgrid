@@ -457,7 +457,7 @@ export class CGrid<TRow = any> {
     // macOS overlay scrollbars otherwise disappear when idle and the user can't
     // see they're scrollable. The webkit-scrollbar styles in tokens.css then
     // theme the persistent track + thumb.
-    this.scroller.style.cssText = 'position:absolute; inset:0; overflow:scroll;';
+    this.scroller.style.cssText = 'position:absolute; inset:0; overflow:auto;';
     this.sizer = document.createElement('div');
     this.sizer.className = 'cg-sizer';
     this.sizer.style.cssText = 'width:1px; height:1px; pointer-events:none;';
@@ -3165,14 +3165,22 @@ export class CGrid<TRow = any> {
   }
 
   /** Size the invisible sizer to match the viewport's scrollable extent so the
-   * native scrollbars track the right range. clientWidth/Height excludes the
-   * scrollbar gutter, so adding maxScrollLeft/Top gives the browser exactly
-   * the overflow it needs to expose.
+   * native scrollbars track the right range. When an axis has no overflow
+   * (`maxScroll{Left,Top} === 0`) the sizer collapses to 1 px on that axis
+   * — NOT `clientArea + 0`. Reason: clientWidth/Height already excludes any
+   * existing scrollbar gutter, so setting the sizer equal to the current
+   * client extent puts scrollHeight right at the threshold. If the OTHER
+   * axis then needs a scrollbar (e.g. wide columns force horizontal
+   * scrolling), Chrome shrinks the cross-axis client extent by the gutter
+   * width, and `scrollHeight > new clientHeight` triggers a phantom vertical
+   * scrollbar even with zero rows.
    */
   private syncSizer(): void {
     if (!this.sizer) return; // happy-dom guard during early construction
-    const w = (this.scroller.clientWidth || this.root.clientWidth) + this.viewport.maxScrollLeft;
-    const h = (this.scroller.clientHeight || this.root.clientHeight) + this.viewport.maxScrollTop;
+    const baseW = this.scroller.clientWidth || this.root.clientWidth;
+    const baseH = this.scroller.clientHeight || this.root.clientHeight;
+    const w = this.viewport.maxScrollLeft > 0 ? baseW + this.viewport.maxScrollLeft : 1;
+    const h = this.viewport.maxScrollTop > 0 ? baseH + this.viewport.maxScrollTop : 1;
     this.sizer.style.width = `${Math.max(1, w)}px`;
     this.sizer.style.height = `${Math.max(1, h)}px`;
   }
@@ -3231,6 +3239,49 @@ export class CGrid<TRow = any> {
     this.events.emit({ type: 'viewportChanged', firstRow: this.viewport.firstRow, lastRow: this.viewport.lastRow });
     this.cgridCanvas.requestRepaint();
     this.requestViewport();
+    this.syncOpenEditorPosition();
+  }
+
+  /** Keep an open inline / popup editor anchored to its cell when the
+   *  grid scrolls. Closes the editor (commit) when the cell scrolls
+   *  entirely outside the viewport so the input doesn't float over
+   *  unrelated cells. No-op when no editor is open. */
+  private syncOpenEditorPosition(): void {
+    if (!this.activeEdit) return;
+    if (!this.editor.isOpen()) return;
+    const { rowIndex, colId } = this.activeEdit;
+    const bounds = this.getCellBoundsAt(rowIndex, colId);
+    if (!bounds) {
+      // Cell scrolled out of the rendered viewport — commit and close so
+      // the editor doesn't drift over an unrelated cell.
+      this.editor.commit();
+      return;
+    }
+    // Cell straddles or has scrolled past the band — commit so the
+    // editor input doesn't render over the header (top) or below the
+    // body bottom edge, AND so a center-column editor can't slide
+    // horizontally into the pinned-left / pinned-right zones.
+    // The canvas focus ring already self-clips; the DOM-based editor
+    // needs an explicit close because the editor host container isn't
+    // clipped (it also hosts filter popups + context menus, which
+    // should NOT be clipped).
+    const vs = this.viewport;
+    if (bounds.y < vs.bodyTop || bounds.y + bounds.h > vs.bodyBottom) {
+      this.editor.commit();
+      return;
+    }
+    const col = vs.visibleColumns.find((c) => c.colId === colId);
+    const xL = col?.pinned === 'left' ? 0
+      : col?.pinned === 'right' ? vs.bodyRight
+      : vs.bodyLeft;
+    const xR = col?.pinned === 'left' ? vs.bodyLeft
+      : col?.pinned === 'right' ? Number.POSITIVE_INFINITY
+      : vs.bodyRight;
+    if (bounds.x < xL || bounds.x + bounds.w > xR) {
+      this.editor.commit();
+      return;
+    }
+    this.editor.reposition(bounds);
   }
 
   private setScroll(x: number, y: number): void {
