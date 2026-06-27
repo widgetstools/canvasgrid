@@ -3,9 +3,10 @@ import type {
 } from './protocol';
 import { collectViewportTransferables } from './protocol';
 import {
-  RowStore, FilterPass, SortPass, AggPass, ViewportSlicer, TransactionQueue,
+  RowStore, FilterPass, SortPass, AggPass, GroupPass, ViewportSlicer, TransactionQueue,
   QuickFilterPass, DistinctValuesPass, diffRowFields,
 } from './dataPipeline';
+import type { GroupPassOutput } from './passes/groupPass';
 import { ComparatorRegistry } from './comparatorRegistry';
 import { AggFuncRegistry, type IAggFunc } from './aggFuncRegistry';
 import type { TransactionResult } from '../types';
@@ -44,6 +45,16 @@ interface State {
    *  hook `QuickFilterPass.invalidateRows` plugs into. */
   distinct: DistinctValuesPass;
   sort: SortPass;
+  /** Cycle 15 / Task 1 — hierarchical row grouping. Runs AFTER quick /
+   *  column / external / alwaysPass filters and BEFORE SortPass.
+   *  Stores the built tree on `groupOutput`; downstream consumers
+   *  (Task 2 slicer, Task 10 sort, Task 11 group totals) read from it.
+   *  When the model is empty the output's `bypassed: true` lets every
+   *  consumer short-circuit. */
+  group: GroupPass;
+  /** Cycle 15 / Task 1 — last `GroupPass.apply` result. Recomputed on
+   *  every `buildVisibleAsync`. `null` until the first build runs. */
+  groupOutput: GroupPassOutput | null;
   /** Cycle 8 / Task 3 — named comparators registered via
    *  `registerComparator`. `SortPass.apply` looks up each sorted column's
    *  `comparator` (a string name on the `WorkerColumn`) against this
@@ -178,6 +189,12 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       }
       ids = Array.from(merged);
     }
+    // Cycle 15 / Task 1 — GroupPass slot. Runs against the post-filter
+    // (post-quick / post-external / post-alwaysPass) row set and BEFORE
+    // SortPass. The output is stored on state so Task 2's slicer + Task
+    // 10's group-aware sort can read from it; for Task 1 the flat
+    // `visibleCache` shape downstream consumers see is unchanged.
+    state.groupOutput = state.group.apply(ids);
     ids = state.sort.apply(ids);
     // Cycle 8 / Task 4 — when `postSortRowsPresent`, ship the sorted ids
     // up for the main-thread hook to re-order. Empty sets skip the
@@ -297,6 +314,8 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       quickFilter: new QuickFilterPass(store, payload.columns),
       distinct:    new DistinctValuesPass(store, payload.columns),
       sort:        new SortPass(store, payload.columns, comparators),
+      group:       new GroupPass(store, payload.columns),
+      groupOutput: null,
       comparators,
       aggFuncs,
       agg:         new AggPass(store, payload.columns, aggFuncs),
@@ -546,8 +565,19 @@ export function createWorkerHost(post: PostFn): WorkerHost {
           }
 
           case 'setGroupModel': {
-            // Foundation scope: no real grouping — respond with current counts only.
-            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: (await visibleAsync()).length });
+            // Cycle 15 / Task 1 — replace the group model; reject
+            // unknown / duplicate colIds at the set-site so the worker
+            // surfaces malformed input as an `error` envelope instead
+            // of silently producing a malformed tree. Force a pipeline
+            // re-run so the next `getViewport` sees the fresh tree.
+            try {
+              state.group.setModel(req.payload);
+            } catch (err) {
+              post({ id: req.id, type: 'error', error: String((err as Error).message ?? err) });
+              break;
+            }
+            state.visibleCache = null;
+            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await invalidateAndCount() });
             break;
           }
 
@@ -560,6 +590,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             state.quickFilter.setColumns(cols);
             state.distinct.setColumns(cols);
             state.sort.setColumns(cols);
+            state.group.setColumns(cols);
             state.agg.setColumns(cols);
             state.slicer.setColumns(cols);
             state.visibleCache = null;

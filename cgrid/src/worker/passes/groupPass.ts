@@ -1,0 +1,292 @@
+/**
+ * Cycle 15 / Task 1 — `GroupPass` builds the hierarchical row-grouping
+ * tree off the worker's post-filter row set.
+ *
+ * **Pipeline slot.** GroupPass runs AFTER `FilterPass` (+ quick-filter,
+ * external filter, alwaysPass merge) and BEFORE `SortPass`. It consumes
+ * the surviving rowIds and produces:
+ *   - `roots: GroupNode[]` — the tree partitioned by `rowGroupCols`
+ *   - `flatOrder` — depth-first flattening (group entries interleaved
+ *     with their descendant row indices) that `ViewportSlicer` (Task 2)
+ *     walks honouring `expandedKeys`
+ *   - `bypassed: boolean` — `true` when `rowGroupCols.length === 0`, the
+ *     fast path that skips every allocation; downstream consumers
+ *     short-circuit too.
+ *
+ * **Implementation.** Single O(N) walk: for every input row we descend
+ * `cols.length` levels of the partially-built tree, hashing by the
+ * stringified group-column value at each level. Bucket maps are kept
+ * alongside the public `GroupNode` so the per-row insertion is O(1)
+ * per level — no per-row Map.get into a global hash. After the rows
+ * are placed we sort each level's children by composite key (so the
+ * tree's flat ordering is deterministic regardless of input order)
+ * and convert leaf `number[]` buckets to `Uint32Array`s. Total cost
+ * is O(N × depth + G log G) where G is the number of group nodes.
+ *
+ * **Composite key format.** Per-level: `${colId}:${stringValue}`. Nested
+ * keys join levels with `::` — `desk:APAC::region:Rates`. The key is
+ * the lookup vocabulary for `expandedKeys: Set<string>` (Task 6) so a
+ * client can address any node uniquely. `String(null ?? '')` collapses
+ * nullish values to `''`; the canonical "(Blanks)" handling is a
+ * follow-up cycle (ag-grid's `groupAllowUnbalanced`).
+ *
+ * **Validation.** `setModel` rejects unknown colIds and duplicate
+ * colIds (the closest analogue to ag-grid's "circular groupOrder")
+ * with a clear Error so the worker fails loudly instead of silently
+ * producing a malformed tree.
+ *
+ * **No module-level state.** Mutable state lives on the instance
+ * (`model`, `colIndex`), not module globals. `apply` is pure given the
+ * current state — calling it twice with the same input produces the
+ * same output.
+ */
+
+import type { RowStore } from '../dataPipeline';
+import type { WorkerColumn } from '../protocol';
+import type { GroupModel } from '../../types';
+
+export interface GroupNode {
+  /** Stable composite key — `${colId}:${value}` per level, joined by
+   *  `::` for nested levels. The vocabulary `expandedKeys` looks up. */
+  key: string;
+  /** The raw value of the grouping cell (pre-stringify). Null/undefined
+   *  round-trip as-is so a renderer can decide how to format them. */
+  value: unknown;
+  /** Depth in the tree, 0 = root group, increasing inward. */
+  depth: number;
+  /** Source column id that this group level partitions by. */
+  colId: string;
+  /** For a LEAF node (depth === rowGroupCols.length - 1): indices into
+   *  the post-filter row set that fall in this bucket. For a non-leaf
+   *  node: empty (the indices live at the leaves). */
+  childIndices: Uint32Array;
+  /** Nested groups one depth deeper. Empty at leaf depth. */
+  childGroups: GroupNode[];
+  /** Total descendant LEAF rows under this node (recursive). */
+  childCount: number;
+}
+
+export type FlatOrderEntry =
+  | { kind: 'group'; key: string; depth: number }
+  | { kind: 'row'; rowIndex: number; depth: number };
+
+export interface GroupPassOutput {
+  /** Root group nodes (one per top-level distinct value). */
+  roots: GroupNode[];
+  /** Depth-first flattening: each group node is emitted, then its
+   *  descendant rows (leaves) or recursive child groups. Rows carry
+   *  `depth = rowGroupCols.length` — one deeper than the deepest group
+   *  — so a slicer can use depth comparisons to find "next sibling at
+   *  the same or shallower depth" when honouring `expandedKeys`. */
+  flatOrder: FlatOrderEntry[];
+  /** `true` when `rowGroupCols.length === 0`. Downstream consumers
+   *  (slicer, sort, renderers) skip the group pipeline entirely. */
+  bypassed: boolean;
+}
+
+interface BuildBucket {
+  node: GroupNode;
+  /** Live child lookup during the single-pass build. Discarded after
+   *  the tree is finalised — only `node.childGroups` is part of the
+   *  public output. */
+  childByKey: Map<string, BuildBucket>;
+  /** Leaf-only mutable list, transferred into `node.childIndices` as
+   *  a `Uint32Array` once the build is complete. `null` for non-leaf. */
+  leafIndices: number[] | null;
+}
+
+export class GroupPass<TRow = any> {
+  private model: GroupModel = { rowGroupCols: [] };
+  private colIndex = new Map<string, WorkerColumn>();
+
+  constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
+    this.setColumns(columns);
+  }
+
+  /** Replace the group model. Validates colIds against the current
+   *  column metadata and rejects duplicates so a malformed model is
+   *  caught at the set-site (not deep inside `apply`). */
+  setModel(model: GroupModel): void {
+    const cols = model.rowGroupCols;
+    if (cols.length > 0) {
+      const seen = new Set<string>();
+      for (const colId of cols) {
+        if (!this.colIndex.has(colId)) {
+          throw new Error(`[cgrid] GroupPass: unknown column id '${colId}' in rowGroupCols`);
+        }
+        if (seen.has(colId)) {
+          throw new Error(
+            `[cgrid] GroupPass: duplicate column id '${colId}' in rowGroupCols (circular group order)`,
+          );
+        }
+        seen.add(colId);
+      }
+    }
+    this.model = { rowGroupCols: cols.slice() };
+  }
+
+  /** Swap column metadata in place. Preserves the current model — the
+   *  caller (worker.ts `updateColumns`) is responsible for re-validating
+   *  after a column swap if `rowGroupCols` referenced a removed column. */
+  setColumns(columns: WorkerColumn[]): void {
+    this.colIndex.clear();
+    for (const col of columns) this.colIndex.set(col.colId, col);
+  }
+
+  /** Read-only access for tests + the slicer. */
+  getModel(): GroupModel {
+    return { rowGroupCols: this.model.rowGroupCols.slice() };
+  }
+
+  /** Build the group tree off `inputIds`. The bypass branch allocates
+   *  nothing — the empty-model fast path is free. */
+  apply(inputIds: readonly string[]): GroupPassOutput {
+    const cols = this.model.rowGroupCols;
+    if (cols.length === 0) {
+      return { roots: [], flatOrder: [], bypassed: true };
+    }
+
+    // Pre-resolve column → field once. A grouping column without a
+    // `field` (synthesised column?) still produces a single "" bucket
+    // for every row at that level — defensive, matches how the
+    // viewport slicer / value-getter chain treats missing fields.
+    const fields = new Array<string | null>(cols.length);
+    const colIds = cols;
+    for (let d = 0; d < cols.length; d++) {
+      fields[d] = this.colIndex.get(cols[d]!)?.field ?? null;
+    }
+
+    const deepest = cols.length - 1;
+    // Synthetic root bucket — never emitted in the output; it just
+    // anchors the level-0 `childByKey` map during the build.
+    const root: BuildBucket = {
+      node: {
+        key: '',
+        value: null,
+        depth: -1,
+        colId: '',
+        childIndices: new Uint32Array(0),
+        childGroups: [],
+        childCount: 0,
+      },
+      childByKey: new Map(),
+      leafIndices: null,
+    };
+
+    // Hot path. Two perf-critical shapes:
+    //   (a) `childByKey` is keyed by the per-level stringified value
+    //       (e.g. `'APAC'`), NOT by the full composite key. Per-row
+    //       key construction (string concat) happens ONLY when a new
+    //       bucket is created — for a 1 M-row × 3-col tree with ~450
+    //       distinct leaf buckets, that's ~450 concats instead of 3 M.
+    //   (b) The numeric→string coercion uses `'' + raw` (faster than
+    //       `String(raw)` for the primitive case under V8 — saves the
+    //       function-call dispatch in the tight loop).
+    //
+    // Three small per-level Map.gets (~5-char keys) measured faster
+    // than one large per-row Map.get (~30-char joined key) on V8 —
+    // tiny maps with short keys are the sweet spot for `Map.get`.
+    const colCount = cols.length;
+    for (let i = 0; i < inputIds.length; i++) {
+      const rowId = inputIds[i]!;
+      const row = this.store.getById(rowId);
+      if (row === undefined) continue;
+
+      let parent: BuildBucket = root;
+      for (let d = 0; d < colCount; d++) {
+        const field = fields[d]!;
+        const colId = colIds[d]!;
+        const rawValue = field === null
+          ? undefined
+          : (row as Record<string, unknown>)[field];
+        const keyPart = rawValue == null ? '' : '' + rawValue;
+        const parentMap = parent.childByKey;
+        let bucket = parentMap.get(keyPart);
+        if (bucket === undefined) {
+          const parentKey = parent.node.key;
+          const myKey = parentKey === ''
+            ? colId + ':' + keyPart
+            : parentKey + '::' + colId + ':' + keyPart;
+          const isLeafLevel = d === deepest;
+          const node: GroupNode = {
+            key: myKey,
+            value: rawValue,
+            depth: d,
+            colId,
+            childIndices: new Uint32Array(0),
+            childGroups: [],
+            childCount: 0,
+          };
+          bucket = {
+            node,
+            childByKey: new Map(),
+            leafIndices: isLeafLevel ? [] : null,
+          };
+          parentMap.set(keyPart, bucket);
+          parent.node.childGroups.push(node);
+        }
+        if (d === deepest) {
+          bucket.leafIndices!.push(i);
+        }
+        parent = bucket;
+      }
+    }
+
+    // Post-process: deterministic ordering + typed-array conversion +
+    // childCount rollup. Walk the tree via the build-bucket structure
+    // (its `childByKey` is keyed by per-level value, NOT composite key
+    // — see the hot-loop comment above). The public `node.childGroups`
+    // array is sorted by composite key for deterministic emission, but
+    // finalisation order is independent so iterating the Map's values
+    // is correct.
+    const finalise = (bucket: BuildBucket): number => {
+      const node = bucket.node;
+      if (bucket.leafIndices !== null) {
+        // Leaf — materialise indices into a Uint32Array and report the
+        // count back up so the parent can roll it into childCount.
+        node.childIndices = Uint32Array.from(bucket.leafIndices);
+        node.childCount = bucket.leafIndices.length;
+        return node.childCount;
+      }
+      node.childGroups.sort(byKey);
+      let total = 0;
+      for (const childBucket of bucket.childByKey.values()) {
+        total += finalise(childBucket);
+      }
+      node.childCount = total;
+      return total;
+    };
+
+    root.node.childGroups.sort(byKey);
+    for (const childBucket of root.childByKey.values()) {
+      finalise(childBucket);
+    }
+    const roots = root.node.childGroups;
+
+    // Build the depth-first flat ordering. Rows ride one depth deeper
+    // than the deepest group so the slicer can use a depth comparison
+    // to find the next sibling at the collapsed group's depth.
+    const flatOrder: FlatOrderEntry[] = [];
+    const rowDepth = cols.length;
+    const walk = (nodes: readonly GroupNode[]): void => {
+      for (const n of nodes) {
+        flatOrder.push({ kind: 'group', key: n.key, depth: n.depth });
+        if (n.childGroups.length > 0) {
+          walk(n.childGroups);
+        } else {
+          const idxs = n.childIndices;
+          for (let i = 0; i < idxs.length; i++) {
+            flatOrder.push({ kind: 'row', rowIndex: idxs[i]!, depth: rowDepth });
+          }
+        }
+      }
+    };
+    walk(roots);
+
+    return { roots, flatOrder, bypassed: false };
+  }
+}
+
+function byKey(a: GroupNode, b: GroupNode): number {
+  return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+}

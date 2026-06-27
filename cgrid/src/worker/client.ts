@@ -2,7 +2,7 @@ import type {
   WorkerRequest, WorkerResponse, WorkerPush, WorkerInitPayload, ViewportRequest, ViewportChunk,
   WorkerColumn, MeasureTextItem, AutosizeColumnRequest,
 } from './protocol';
-import type { TransactionResult, SortModel, FilterModel, SelectionRange } from '../types';
+import type { TransactionResult, SortModel, FilterModel, GroupModel, SelectionRange } from '../types';
 
 export interface WorkerClientHandlers {
   onModelUpdated: (visibleCount: number) => void;
@@ -118,6 +118,15 @@ export class WorkerClient {
 
   setFilterModel(f: FilterModel): Promise<{ visibleCount: number }> {
     return this.send<{ visibleCount: number }>({ type: 'setFilterModel', payload: f });
+  }
+
+  /** Cycle 15 / Task 1 — replace the worker's row-group model. The
+   *  worker re-runs the pipeline (filter → group → sort) and resolves
+   *  with the new visible row count. Unknown / duplicate colIds in
+   *  `rowGroupCols` are rejected by the worker and surface as a
+   *  rejected promise. */
+  setGroupModel(g: GroupModel): Promise<{ visibleCount: number }> {
+    return this.send<{ visibleCount: number }>({ type: 'setGroupModel', payload: g });
   }
 
   /** Cycle 7 / Task 8 — toggle the external-filter round-trip. When
