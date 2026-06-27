@@ -1007,3 +1007,15 @@ export { AggPass } from './passes/aggPass';
 // and `SortPass`; see the file header for the build algorithm.
 export { GroupPass } from './passes/groupPass';
 export type { GroupNode, GroupPassOutput, FlatOrderEntry } from './passes/groupPass';
+
+// Cycle 15 / Task 2 — group-aware viewport helpers. Re-exported so the
+// worker's `getViewport` handler can stay rooted in `dataPipeline`'s
+// import surface; the actual collapse-skip walk + grouped slicer live
+// in `viewportSlicer.ts`.
+export {
+  computeGroupVisibleOrder,
+  computeGroupVisibleRowCount,
+  findVisibleIndexForGroup,
+  sliceGroupedViewport,
+} from './viewportSlicer';
+export type { VisibleRowEntry } from './viewportSlicer';
