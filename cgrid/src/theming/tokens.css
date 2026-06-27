@@ -66,6 +66,19 @@
   --cg-totals-border-top: #cbd5e1;
   --cg-totals-fg-muted: #475569;
   --cg-totals-font-weight: 500;
+  /* Cycle 14 / Task 2 — pinned-row tokens.
+   * Design plan: docs/superpowers/plans/notes/cycle-14-aggregation-design.md
+   * § Task 2.
+   * Shared structure with totals (1px structural border, same row
+   * height, same monospace) but a WARM 3% tint (vs totals' slate)
+   * and NO weight bump. The bg signals "static reference row" via
+   * temperature; the absence of a weight stop preserves the +1 weight
+   * cue as the totals-only marker of "this is a computed synthesis".
+   * Border color aliases to --cg-totals-border-top — single source for
+   * the "outside-the-scrolling-body" boundary. */
+  --cg-pinned-row-bg: #fbf8f3;
+  --cg-pinned-row-fg: var(--cg-fg-color);
+  --cg-pinned-row-border: var(--cg-totals-border-top);
 }
 
 .cg-theme-quartz-dark {
@@ -117,6 +130,13 @@
   --cg-totals-border-top: #4a6391;
   --cg-totals-fg-muted: #94a3b8;
   --cg-totals-font-weight: 500;
+  /* Cycle 14 / Task 2 — dark-mode pinned-row tokens. The warm cast
+   * survives the theme flip: body `#0a1428` (cool slate) → pinned
+   * `#241e16` (~5% upward + amber shift). Same structural border as
+   * totals via the aliased var. */
+  --cg-pinned-row-bg: #241e16;
+  --cg-pinned-row-fg: var(--cg-fg-color);
+  --cg-pinned-row-border: var(--cg-totals-border-top);
 }
 
 /* Native scrollbar styling (Chromium/WebKit) — always-visible thumb
@@ -1099,4 +1119,14 @@
 }
 .cg-totals-cell {
   /* placeholder — per-cell polish lands in Task 5. */
+}
+
+/* Cycle 14 / Task 2 — pinned-row anchors. Like the totals selectors
+ * these are canvas-painted and exist only as a theming surface apps
+ * can override (`--cg-pinned-row-*` variables resolved via cssReader). */
+.cg-pinned-row {
+  /* placeholder — runtime reads tokens via cssReader. */
+}
+.cg-pinned-cell {
+  /* placeholder — per-cell pinned override hook lands in a later cycle. */
 }

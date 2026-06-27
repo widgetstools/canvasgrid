@@ -50,7 +50,14 @@ const statusBar = search.get('statusBar');
 const totalsRaw = search.get('totals');
 const totalsRowPosition: 'top' | 'bottom' | null =
   totalsRaw === 'top' || totalsRaw === 'bottom' ? totalsRaw : null;
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition });
+// Cycle 14 / Task 2 — `?pinned=top|bottom|both` opts the demo into
+// mounting a sample static pinned row (a "Benchmark" reference row) at
+// the matching edge. Off by default so visual cells 01–17 stay byte-
+// stable; visual cell 18-pinned-top-row opts in via `?pinned=top`.
+const pinnedRaw = search.get('pinned');
+const pinnedTop = pinnedRaw === 'top' || pinnedRaw === 'both';
+const pinnedBottom = pinnedRaw === 'bottom' || pinnedRaw === 'both';
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom });
 
 // E2E hooks: expose the grid + a readiness flag so Playwright tests can wait
 // for first-data-rendered and call api helpers (`getCellBoundsAt`,

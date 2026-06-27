@@ -13,7 +13,7 @@ import type { ColumnTree, ColumnTreeNode, ResolvedColGroupDef } from './columnTr
  * `new TotalsSubgrid()` push — no painter or viewport change required.
  */
 
-export type SubgridType = 'header' | 'data' | 'totals' | 'footer' | 'floatingFilter';
+export type SubgridType = 'header' | 'data' | 'totals' | 'pinned' | 'footer' | 'floatingFilter';
 
 export interface SubgridCell {
   value: unknown;
@@ -31,6 +31,11 @@ export interface Subgrid {
    *  row uniformly without an instanceof check. Optional on the interface
    *  so existing subgrids don't have to declare it. */
   readonly isFloatingFilter?: boolean;
+  /** Cycle 14 / Task 2 — true only for `PinnedRowsSubgrid`. Distinguishes
+   *  static caller-owned pinned rows from totals (which look similar in
+   *  the stack but carry computed values + different chrome). Optional
+   *  so existing subgrids don't have to declare it. */
+  readonly isPinned?: boolean;
   /** Rows this subgrid contributes to the visible stack. */
   getRowCount(): number;
   /** Per-row height. Most subgrids return a constant. */
@@ -216,5 +221,58 @@ export class TotalsSubgrid implements Subgrid {
     const entry = this.lookup(colId);
     if (entry === null) return null;
     return { value: entry.value, valueFormatted: entry.valueFormatted };
+  }
+}
+
+/** Lookup the value for a single (row × column) inside a pinned subgrid.
+ *  The caller owns the row data so the lookup signature takes the row
+ *  object directly (not an index). Returns the same `{value, valueFormatted}`
+ *  shape as data cells so the painter path is uniform. Cycle 14 / Task 2. */
+export type PinnedCellLookup<TRow = unknown> = (
+  row: TRow,
+  colId: string,
+) => SubgridCell;
+
+/**
+ * Static caller-owned pinned rows. Each entry in the data array becomes
+ * one non-scrolling row at the top or bottom of the body — the position
+ * is determined by where `cgrid.ts` stacks this subgrid relative to the
+ * `DataSubgrid` (mirrors the totals positioning convention).
+ *
+ * Unlike `TotalsSubgrid`, the row data is owned by the main thread:
+ * there's no worker round-trip per scroll, and the values can be any
+ * `TRow` shape. The painter reads each cell via the column's normal
+ * `valueFormatter` channel — same rendering as a data row — so a
+ * formatted dollar value in a data cell renders identically when the
+ * same row appears as a pinned reference.
+ *
+ * Multiple PinnedRowsSubgrid instances can coexist (pinned-top + pinned-
+ * bottom, or pinned + totals); the design plan
+ * (`docs/superpowers/plans/notes/cycle-14-aggregation-design.md`)
+ * distinguishes them visually via tint hue (cream vs slate) so the
+ * trader can tell static reference rows from computed summaries at a
+ * glance. Cycle 14 / Task 2.
+ */
+export class PinnedRowsSubgrid<TRow = unknown> implements Subgrid {
+  readonly type = 'pinned' as const;
+  readonly isHeader = false;
+  readonly isData = false;
+  readonly isTotals = false;
+  readonly isFooter = false;
+  readonly isPinned = true;
+
+  constructor(
+    private getRows: () => readonly TRow[],
+    private getHeight: () => number,
+    private lookup: PinnedCellLookup<TRow>,
+  ) {}
+
+  getRowCount(): number { return this.getRows().length; }
+  getRowHeight(_local: number): number { return this.getHeight(); }
+  getCell(local: number, colId: string): SubgridCell | null {
+    const rows = this.getRows();
+    const row = rows[local];
+    if (row === undefined) return null;
+    return this.lookup(row, colId);
   }
 }

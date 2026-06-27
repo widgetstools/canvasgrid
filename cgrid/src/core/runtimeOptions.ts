@@ -59,7 +59,9 @@ export type RuntimeOption =
   | 'processCellFromClipboard'
   | 'suppressContextMenu'
   | 'suppressClipboardApi'
-  | 'suppressClipboardPaste';
+  | 'suppressClipboardPaste'
+  | 'pinnedTopRowData'
+  | 'pinnedBottomRowData';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
  *  import on `CGrid` (cgrid.ts imports this module). */
@@ -88,6 +90,12 @@ export interface RuntimeOptionTarget<TRow = any> {
    *  starts / stops on the next applyTransaction. Implementation in
    *  `cgrid.ts` calls `workerClient.setEnableCellChangeFlash`. */
   forwardEnableCellChangeFlash(enabled: boolean): void;
+  /** Cycle 14 / Task 2 — rebuild the subgrid stack (without re-resolving
+   *  the column tree) and recompute the viewport. The pinnedTopRowData /
+   *  pinnedBottomRowData runtime flips route through here: a re-mount
+   *  is cheaper than a `rebuildColumns` and skips the worker round-trip
+   *  that the column path would trigger. */
+  rebuildSubgrids(): void;
 }
 
 /**
@@ -194,6 +202,13 @@ export function applyRuntimeOption<TRow>(
     case 'suppressClipboardPaste':
       // Storage-only: downstream cycles read directly from `options[key]`.
       return;
+    case 'pinnedTopRowData':
+    case 'pinnedBottomRowData':
+      // Cycle 14 / Task 2 — re-mount the subgrid stack. The new array is
+      // already stored in `target.options[key]`; rebuildSubgrids reads it
+      // back and picks up / drops the PinnedRowsSubgrid accordingly.
+      target.rebuildSubgrids();
+      return;
   }
 }
 
@@ -219,4 +234,6 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'suppressContextMenu',
   'suppressClipboardApi',
   'suppressClipboardPaste',
+  'pinnedTopRowData',
+  'pinnedBottomRowData',
 ]);
