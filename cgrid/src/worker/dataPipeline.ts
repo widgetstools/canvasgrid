@@ -992,44 +992,10 @@ export class ViewportSlicer<TRow = any> {
   }
 }
 
-export class AggPass<TRow = any> {
-  private aggCols: Array<{ colId: string; field: string; func: NonNullable<WorkerColumn['aggFunc']> }> = [];
-
-  constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
-    this.setColumns(columns);
-  }
-
-  setColumns(columns: WorkerColumn[]): void {
-    this.aggCols = [];
-    for (const col of columns) {
-      if (col.aggFunc && col.field) {
-        this.aggCols.push({ colId: col.colId, field: col.field, func: col.aggFunc });
-      }
-    }
-  }
-
-  apply(inputIds: string[]): { totals: Record<string, number | null> } {
-    const totals: Record<string, number | null> = {};
-    for (const { colId, field, func } of this.aggCols) {
-      let sum = 0, count = 0, min = Number.POSITIVE_INFINITY, max = Number.NEGATIVE_INFINITY;
-      for (const id of inputIds) {
-        const row = this.store.getById(id);
-        if (!row) continue;
-        if (func === 'count') { count++; continue; }
-        const v = Number((row as Record<string, unknown>)[field]);
-        if (Number.isNaN(v)) continue;
-        sum += v;
-        count++;
-        if (v < min) min = v;
-        if (v > max) max = v;
-      }
-      if (func === 'sum')   totals[colId] = sum;
-      else if (func === 'count') totals[colId] = count;
-      else if (count === 0) totals[colId] = null;
-      else if (func === 'avg') totals[colId] = sum / count;
-      else if (func === 'min') totals[colId] = min;
-      else if (func === 'max') totals[colId] = max;
-    }
-    return { totals };
-  }
-}
+// Cycle 14 / Task 3 — AggPass moved to `worker/passes/aggPass.ts` so
+// the column-totals aggregation can resolve through the runtime
+// `AggFuncRegistry` (built-in + custom funcs) instead of a hardcoded
+// switch. Re-exported here so the existing test imports
+// (`import { AggPass } from '.../dataPipeline'`) keep working without
+// a churn-only rename.
+export { AggPass } from './passes/aggPass';

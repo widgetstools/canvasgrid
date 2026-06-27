@@ -24,7 +24,15 @@ export interface WorkerColumn {
   colId: string;
   field?: string;                // dot-path supported
   type: 'text' | 'number';
-  aggFunc?: 'sum' | 'avg' | 'min' | 'max' | 'count';
+  /** Cycle 14 / Task 3 — name (or ordered fallback list) of the
+   *  aggregation function to run over this column's filtered values.
+   *  Built-in names: `'sum' | 'avg' | 'min' | 'max' | 'count' | 'first'
+   *  | 'last'`. Unknown names resolve against the worker's
+   *  `AggFuncRegistry` (custom funcs shipped via `setAggFuncs`).
+   *  Array form picks the first entry that resolves. Unresolved →
+   *  the column gets no totals entry. Widened from the original
+   *  built-in-only union in Cycle 14 / Task 3. */
+  aggFunc?: string | string[];
   filter?: 'text' | 'number' | 'date' | 'set';
   /** Cycle 5 / Task 8 — column opted into autoHeight measurement. When true,
    *  the worker measures wrapped-text height for every visible row in this
@@ -84,7 +92,12 @@ export interface ViewportChunk {
   numericCols: Record<string, Float64Array>;
   textCols: Record<string, { offsets: Uint32Array; bytes: Uint8Array }>;
   flashMask?: Uint8Array;
-  totals?: Record<string, number | null>;    // grand-total aggregation results (undefined when no aggFunc columns)
+  /** Grand-total aggregation results (undefined when no aggFunc columns).
+   *  Widened from `number | null` in Cycle 14 / Task 3 because custom
+   *  aggFuncs may return strings, dates, or other primitives (e.g.
+   *  `'first'` returns whatever type the first row's cell is). The
+   *  totals cell renderer stringifies via the column's `valueFormatter`. */
+  totals?: Record<string, unknown>;
   /**
    * Per-row height in CSS px for each visible row in `rowIds` order. A value
    * of 0 means "row has no per-row height — substitute the global rowHeight
@@ -208,6 +221,20 @@ export type WorkerRequest =
    *  in this rowId" — the worker expands. The flash actually
    *  appears in the next `getViewport` reply's `flashMask`. */
   | { id: ReqId; type: 'flashCells'; payload: { rowIds: string[]; colIds: string[] } }
+  /** Cycle 14 / Task 3 — replace the worker's custom aggFunc registry
+   *  wholesale. Each entry carries `name` (the lookup key column defs
+   *  reference via `aggFunc: name`) and `source` (the function's
+   *  `Function.prototype.toString()` form). The worker reconstructs the
+   *  callable via `new Function('"use strict"; return (' + source + ')')()`.
+   *  Built-in names (`sum / avg / min / max / count / first / last`)
+   *  are pre-registered before this message arrives; entries here ADD
+   *  to or OVERRIDE the built-ins. Functions MUST be pure (no closures
+   *  over external scope); main-side serialisation already screened
+   *  for closures by re-executing the rebuilt function against a probe
+   *  input. After replacing the registry the worker re-runs the
+   *  aggregation pass on the next `getViewport`. Resolves with the
+   *  current visible row count. */
+  | { id: ReqId; type: 'setAggFuncs'; payload: { funcs: Array<{ name: string; source: string }> } }
   /** Cycle 8 / Task 3 — register a custom comparator under `name`.
    *  `source` is the `Function.prototype.toString()` form of the app's
    *  comparator function; the worker reconstructs the callable via

@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { AggPass, RowStore } from '../src/worker/dataPipeline';
+import { AggFuncRegistry } from '../src/worker/aggFuncRegistry';
 import type { WorkerColumn } from '../src/worker/protocol';
 
 const cols: WorkerColumn[] = [
@@ -22,7 +23,7 @@ function store() {
 
 describe('AggPass', () => {
   it('grand-total computes per aggFunc', () => {
-    const p = new AggPass(store(), cols);
+    const p = new AggPass(store(), cols, new AggFuncRegistry());
     const { totals } = p.apply(['1', '2', '3']);
     expect(totals.x).toBe(60);
     expect(totals.y).toBe(4);
@@ -32,7 +33,7 @@ describe('AggPass', () => {
   });
 
   it('empty input → null totals (avg/min/max) or 0 (sum/count)', () => {
-    const p = new AggPass(store(), cols);
+    const p = new AggPass(store(), cols, new AggFuncRegistry());
     const { totals } = p.apply([]);
     expect(totals.x).toBe(0);
     expect(totals.c).toBe(0);
