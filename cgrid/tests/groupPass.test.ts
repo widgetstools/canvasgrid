@@ -453,7 +453,12 @@ describe('GroupPass — worker round-trip', () => {
     expect(reply.type).toBe('rowCount');
     if (reply.type === 'rowCount') {
       expect(reply.count).toBe(3);
-      expect(reply.visibleCount).toBe(3);
+      // Cycle 15 / Task 4 — when grouping is active, the visible count
+      // includes group rows alongside data rows (the slicer emits both
+      // kinds in collapse-aware order). 2 desk groups (APAC, EMEA) +
+      // 3 data rows = 5 visible. Tasks 7+9 will let collapsed groups
+      // reduce this; for Task 4 every group ships expanded.
+      expect(reply.visibleCount).toBe(5);
     }
   });
 

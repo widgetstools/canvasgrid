@@ -58,6 +58,11 @@ import { CssReader, type ResolvedTheme } from './theming/cssReader';
 import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell, type CellPainter } from './renderer/cellRenderers/registry';
 import { wrapTextCell } from './renderer/cellRenderers/wrapText';
 import { totalsCell } from './renderer/cellRenderers/totals';
+import { groupCell, type GroupCellValue } from './renderer/cellRenderers/group';
+import {
+  AUTO_GROUP_COLUMN_ID, buildAutoGroupColumn, resolveGroupDisplayType,
+  shouldInsertAutoGroupColumn,
+} from './core/autoGroupColumn';
 import { Renderer } from './renderer/renderer';
 import { HitTester } from './interaction/hitTester';
 import { SelectionModel } from './interaction/selectionModel';
@@ -556,6 +561,17 @@ export class CGrid<TRow = any> {
    *  the cellSelectionChanged fan-out. Deep-cloned on store so a later
    *  in-place mutation can't false-equal. */
   private lastEmittedCellSelectionRanges: SelectionRange[] = [];
+  /** Cycle 15 / Task 4 — current row-group model. Drives auto-group
+   *  column insertion (this task) + worker `setGroupModel` dispatch
+   *  (Task 1). The empty model bypasses every group-aware pass cleanly. */
+  private groupModel: GroupModel = { rowGroupCols: [] };
+  /** Cycle 15 / Task 4 — synthesized auto-group column. Non-null when
+   *  grouping is active AND `groupDisplayType` resolves to
+   *  `'singleColumn'`. Inserted at index 0 of the visible-leaf order
+   *  by `computeVisibleColumnOrder`; rebuilt on every
+   *  `setGroupModel` / `setGridOption('groupDisplayType', …)` /
+   *  `setGridOption('autoGroupColumnDef', …)` call. */
+  private autoGroupColumn: ResolvedColDef<TRow> | null = null;
 
   constructor(container: HTMLElement, private options: CGridOptions<TRow>) {
     if (!options.getRowId) throw new Error('[cgrid] options.getRowId is required');
@@ -596,6 +612,7 @@ export class CGrid<TRow = any> {
     this.cellRenderers.register('header', headerCell);
     this.cellRenderers.register('text-wrap', wrapTextCell);
     this.cellRenderers.register('totals', totalsCell);
+    this.cellRenderers.register('group', groupCell);
 
     // 2b. Tool-panel registry (Cycle 11 / Task 1). Seed the built-in
     // IDs first, then overwrite the Columns stub with the real
@@ -2335,7 +2352,24 @@ export class CGrid<TRow = any> {
    *  no chunk walk. */
   getTotalRowCount(): number { return this.rowDataById.size; }
 
-  setGroupModel(_g: GroupModel): void { /* Out of scope for Foundation */ }
+  /** Cycle 15 — set the row-group model. Stored on the main thread,
+   *  forwarded to the worker (Task 1 wired the dispatch), and used by
+   *  Task 4's column-order resolution to insert the auto-group column
+   *  when grouping is active. An empty `rowGroupCols` array clears
+   *  the auto-group column and bypasses the worker's group passes. */
+  setGroupModel(g: GroupModel): void {
+    if (this.destroyed) return;
+    this.groupModel = { rowGroupCols: [...g.rowGroupCols] };
+    this.rebuildAutoGroupColumn();
+    this.workerClient.setGroupModel(this.groupModel).then(({ visibleCount }) => {
+      if (this.destroyed) return;
+      this.rowCount = visibleCount;
+      this.rowHeightIndex = null;
+      this.recomputeViewport();
+      this.cgridCanvas.requestRepaint();
+      this.requestViewport();
+    }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+  }
 
   /** Resolve `rowId` to its current visible-row index via the worker, then
    *  scroll it into view. No-op when the row is unknown / filtered out. */
@@ -3433,9 +3467,61 @@ export class CGrid<TRow = any> {
    *  `getColumnState()` so the round-trip is symmetric. */
   private computeVisibleColumnOrder(): ResolvedColDef<TRow>[] {
     const ids = resolveVisibleLeaves(this.columnTree, this.columnGroupState);
-    return ids
+    const visible = ids
       .map((id) => this.columnDefsMap.get(id)!)
       .filter((def) => !def.hide);
+    // Cycle 15 / Task 4 — when grouping is active AND the auto-group
+    // column has been synthesized (singleColumn display type), insert
+    // it at index 0 of the visible-leaf order so it appears as the
+    // leftmost column. Pinned-left wins over this in the band
+    // resolution at paint time; the column itself is unpinned by
+    // default so it sits in the leftmost CENTER slot, but apps can
+    // pin it via `autoGroupColumnDef: { pinned: 'left' }`.
+    if (this.autoGroupColumn) {
+      return [this.autoGroupColumn, ...visible];
+    }
+    return visible;
+  }
+
+  /** Cycle 15 / Task 4 — re-resolve `autoGroupColumn` against the
+   *  current `groupModel` + grid options. The column synthesizes when:
+   *    - `groupModel.rowGroupCols.length > 0`, AND
+   *    - resolved `groupDisplayType === 'singleColumn'`.
+   *
+   *  Otherwise the field is set to `null` and `computeVisibleColumnOrder`
+   *  emits the leaf order unchanged. Called by `setGroupModel` and by
+   *  the construction-time auto-group resolution. Task 5 will extend
+   *  this to handle `'multipleColumns'`. */
+  private rebuildAutoGroupColumn(): void {
+    const displayType = resolveGroupDisplayType(this.options.groupDisplayType);
+    const insert = shouldInsertAutoGroupColumn(this.groupModel, displayType);
+    if (!insert) {
+      this.autoGroupColumn = null;
+      this.columnDefsMap.delete(AUTO_GROUP_COLUMN_ID);
+    } else {
+      this.autoGroupColumn = buildAutoGroupColumn<TRow>({
+        override: this.options.autoGroupColumnDef as Partial<CColDef<TRow>> | undefined,
+      });
+      // Cycle 15 / Task 4 — the renderer reads col defs via
+      // `columnDefsMap.get(colId)` per cell; the synthesized auto-group
+      // column needs an entry there too or the painter silently skips
+      // every cell in the column (no chevron, no value, no count). The
+      // original `columnTree.leafById` doesn't include synthesized
+      // columns, so we mirror the entry in `columnDefsMap` for the
+      // lifetime of the active group model. Cleared above when grouping
+      // bypasses or the display type switches to multipleColumns.
+      this.columnDefsMap.set(AUTO_GROUP_COLUMN_ID, this.autoGroupColumn);
+    }
+    // Re-resolve the visible-leaf order so the next paint reflects the
+    // (now updated) auto-group column slot. Layout reflows in the same
+    // turn so the new column gets a width before the next viewport
+    // request fires.
+    this.columnOrder = this.computeVisibleColumnOrder();
+    this.columnLayout = resolveColumnWidths(
+      this.columnOrder,
+      this.canvasBounds.width || this.scroller.clientWidth || 800,
+    );
+    this.recomputeViewport();
   }
 
   /** Visible-leaf colIds in RENDER order: left-pinned first, then center,
@@ -4019,6 +4105,33 @@ export class CGrid<TRow = any> {
     const numericRowId = this.chunk.rowIds[localIndex]!;
     const flashAlpha = this.flashRegistry.getAlpha(numericRowId, colId, performance.now());
     const flash = flashAlpha > 0 ? flashAlpha : undefined;
+    // Cycle 15 / Task 4 — auto-group column reads per-row group context
+    // (rowKind / depth / value / childCount / isExpanded) from the
+    // chunk's parallel arrays. Returns a typed `GroupCellValue` payload
+    // that the `'group'` cell renderer downcasts and uses. Data rows
+    // return a payload with `rowKind: 0` so the renderer's
+    // short-circuit kicks in and paints nothing.
+    if (colId === AUTO_GROUP_COLUMN_ID) {
+      const rowKind = this.chunk.rowKinds[localIndex] ?? 0;
+      const depth = this.chunk.groupDepth[localIndex] ?? 0;
+      const groupValueArr = this.chunk.groupValue;
+      const valueFormatted = groupValueArr ? (groupValueArr[localIndex] ?? '') : '';
+      const childCount = this.chunk.groupChildCount
+        ? (this.chunk.groupChildCount[localIndex] ?? 0)
+        : 0;
+      const isExpanded = this.chunk.isExpanded
+        ? (this.chunk.isExpanded[localIndex] ?? 0) !== 0
+        : true;
+      const payload: GroupCellValue = {
+        kind: 'group',
+        rowKind,
+        depth,
+        valueFormatted,
+        childCount,
+        isExpanded,
+      };
+      return { value: payload, valueFormatted, flashAlpha: flash };
+    }
     const numeric = this.chunk.numericCols[colId];
     if (numeric) {
       const value = numeric[localIndex]!;
