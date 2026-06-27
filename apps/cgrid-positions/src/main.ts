@@ -98,6 +98,15 @@ const rowGroupPanelAlways = rowGroupPanelMode === 'always';
 // 01–24 stay byte-stable; visual cell 25 turns it on AND seeds a
 // partial selection so the indeterminate dash paints on one group.
 const groupSelectsChildren = search.get('groupSelectsChildren') === '1';
+// Cycle 15 / Task 12 — `?groupIncludeFooter=1` opts the demo into
+// per-group footer rows. Off by default so visual cells 01–25 stay
+// byte-stable; visual cell 26-group-footer-rows turns it on AND
+// pairs with `?grouping=ticker` so each ticker group's expanded
+// children get a `Total ${ticker}` footer row at the bottom. The
+// grand-total companion (`groupIncludeTotalFooter`) opts in via
+// `?groupIncludeTotalFooter=1` — typically toggled together.
+const groupIncludeFooter = search.get('groupIncludeFooter') === '1';
+const groupIncludeTotalFooter = search.get('groupIncludeTotalFooter') === '1';
 // Feature toggles wired to the toolbar checkboxes. Default OFF so the
 // demo opens with a CLEAN grid (no pinned columns, no header groups).
 // User opts each surface in via the header checkbox; the URL flag
@@ -105,7 +114,7 @@ const groupSelectsChildren = search.get('groupSelectsChildren') === '1';
 // + lets deep-links pin a feature combo.
 const pinning      = search.get('pinning')      === 'on';
 const columnGroups = search.get('columnGroups') === 'on';
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, groupSelectsChildren, pinning, columnGroups });
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, groupSelectsChildren, groupIncludeFooter, groupIncludeTotalFooter, pinning, columnGroups });
 
 // Toolbar feature-toggle checkboxes. Toggling reloads the page with
 // the matching URL flag set / unset because the structural changes

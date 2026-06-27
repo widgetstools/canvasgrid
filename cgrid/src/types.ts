@@ -696,6 +696,33 @@ export interface CGridOptions<TRow = any> {
    *  Default `false`. Init-only this cycle. Design plan:
    *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 10. */
   showOpenedGroup?: boolean;
+  /** Cycle 15 / Task 12 — when `true` AND grouping is active, the
+   *  worker emits a per-group footer row at the bottom of every
+   *  expanded group. Each footer row renders the same totals signature
+   *  the grand-total row uses (`--cg-totals-*` / `--cg-group-footer-*`
+   *  tokens — see the design notes for the override family) and shows
+   *  `Total ${groupValue}` in the auto-group cell aligned to the parent
+   *  group's depth indent. Per-group totals come from the same
+   *  `AggPass` + `AggFuncRegistry` the grand-total uses — single source
+   *  of truth for aggregation.
+   *
+   *  Default `false`. Init-only this cycle. Design plan:
+   *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 12. */
+  groupIncludeFooter?: boolean;
+  /** Cycle 15 / Task 12 — when `true` AND `groupIncludeFooter` is on,
+   *  the worker appends ONE grand-total footer row at the bottom of
+   *  all per-group footers (using `chunk.totals` for the column values
+   *  and a plain `Total` label in the auto-group cell). Gives a grouped
+   *  grid its grand total in the same visual rhythm as the per-group
+   *  footers without having to also mount a separate `totalsRowPosition:
+   *  'bottom'` subgrid.
+   *
+   *  Has no effect when `groupIncludeFooter` is off — apps that want a
+   *  standalone grand total use `totalsRowPosition: 'bottom'` instead.
+   *
+   *  Default `false`. Init-only this cycle. Design plan:
+   *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 12. */
+  groupIncludeTotalFooter?: boolean;
 }
 
 /** Cycle 10 / Task 5 — params for `processCellForClipboard`. Mirrors

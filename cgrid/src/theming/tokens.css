@@ -111,6 +111,19 @@
   --cg-group-checkbox-check-color: var(--cg-fg-color);
   --cg-group-checkbox-indeterminate-color: var(--cg-fg-color);
   --cg-group-checkbox-fill: transparent;
+  /* Cycle 15 / Task 12 — per-group footer row tokens. INHERIT the
+   * totals signature by default (same 3% slate tint, same +1 weight
+   * stop, same hairline rule color) so a grouped grid reads with one
+   * synthesis vocabulary across data → group spine → footer → grand
+   * total. Apps that want to break the parity (e.g. footer at 2%
+   * tint, grand total at 4%) override the four `--cg-group-footer-*`
+   * tokens and leave the `--cg-totals-*` tokens untouched. Design
+   * plan: docs/superpowers/plans/notes/cycle-15-grouping-design.md
+   * § Task 12. */
+  --cg-group-footer-bg: var(--cg-totals-bg);
+  --cg-group-footer-fg: var(--cg-totals-fg);
+  --cg-group-footer-border-top: var(--cg-totals-border-top);
+  --cg-group-footer-font-weight: var(--cg-totals-font-weight);
 }
 
 .cg-theme-quartz-dark {
@@ -188,6 +201,13 @@
   --cg-group-checkbox-check-color: var(--cg-fg-color);
   --cg-group-checkbox-indeterminate-color: var(--cg-fg-color);
   --cg-group-checkbox-fill: transparent;
+  /* Cycle 15 / Task 12 — dark-mode per-group footer tokens. Same
+   * inherit-from-totals pattern as the light theme; flipping the
+   * theme keeps the footer-vs-grand-total visual parity. */
+  --cg-group-footer-bg: var(--cg-totals-bg);
+  --cg-group-footer-fg: var(--cg-totals-fg);
+  --cg-group-footer-border-top: var(--cg-totals-border-top);
+  --cg-group-footer-font-weight: var(--cg-totals-font-weight);
 }
 
 /* Native scrollbar styling (Chromium/WebKit) — always-visible thumb
@@ -1185,6 +1205,21 @@
 }
 .cg-pinned-cell {
   /* placeholder — per-cell pinned override hook lands in a later cycle. */
+}
+
+/* Cycle 15 / Task 12 — group footer row anchors. The painter writes
+ * `theme.groupFooterBg` (resolved from `--cg-group-footer-bg`) behind
+ * any `chunk.rowKinds[i] === 3` row and overlays the hairline rule via
+ * `theme.groupFooterBorderTop`. Cells route through the polished
+ * `'groupFooter'` cell renderer which delegates to the `'totals'`
+ * painter for data columns and paints `Total ${groupValue}` for the
+ * auto-group column. Apps re-tint by scoping these selectors and
+ * setting the matching `--cg-group-footer-*` variable. */
+.cg-group-footer-row {
+  /* placeholder — runtime reads tokens via cssReader. */
+}
+.cg-group-footer-cell {
+  /* placeholder — per-cell override hook lands in a later cycle. */
 }
 
 /* Cycle 15 / Task 6 — row group panel.

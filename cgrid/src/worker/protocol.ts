@@ -51,6 +51,21 @@ export interface WorkerInitPayload {
    *  multipleColumns own-depth filter returns early for data rows in
    *  other display modes. */
   showOpenedGroup?: boolean;
+  /** Cycle 15 / Task 12 — when `true`, the worker's `GroupPass`
+   *  appends a `kind: 'footer'` flatOrder entry at the end of each
+   *  non-elided group's traversal, AND `AggPass.applyGroups` computes
+   *  the per-group totals shipped via `chunk.groupTotals`. Off by
+   *  default; init-only mutation surface (matches Task 9 / 10). */
+  groupIncludeFooter?: boolean;
+  /** Cycle 15 / Task 12 — when `true` AND `groupIncludeFooter` is on,
+   *  the worker appends a single grand-total footer entry at the very
+   *  end of `flatOrder` (empty key, depth 0) so the row reads as
+   *  "Total" with the rest of the data columns carrying the
+   *  grand-total values from `chunk.totals`. Off by default. Companion
+   *  to `groupIncludeFooter`; a `groupIncludeTotalFooter: true` with
+   *  `groupIncludeFooter: false` is silently ignored (no footer
+   *  emission path is active). */
+  groupIncludeTotalFooter?: boolean;
 }
 
 export interface WorkerColumn {
@@ -152,6 +167,18 @@ export interface ViewportChunk {
    *  `'first'` returns whatever type the first row's cell is). The
    *  totals cell renderer stringifies via the column's `valueFormatter`. */
   totals?: Record<string, unknown>;
+  /** Cycle 15 / Task 12 — per-group totals indexed by composite group
+   *  key (the same vocabulary `chunk.groupKey[i]` ships per row).
+   *  Populated by `AggPass.applyGroups` when grouping is active AND
+   *  `groupIncludeFooter: true` on the options. Each entry mirrors the
+   *  grand-total `totals` shape — one record per group whose
+   *  `chunk.rowKinds[i] === 3` footer row reads the column values.
+   *  Absent (undefined) when no group footers are enabled OR no
+   *  resolved agg columns exist; main treats undefined the same as
+   *  an empty record. Rides the structured-clone path (not the
+   *  transfer-buffer list) since the values may include strings /
+   *  custom shapes from non-numeric agg funcs. */
+  groupTotals?: Record<string, Record<string, unknown>>;
   /**
    * Per-row height in CSS px for each visible row in `rowIds` order. A value
    * of 0 means "row has no per-row height — substitute the global rowHeight

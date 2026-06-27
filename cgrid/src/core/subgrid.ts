@@ -180,9 +180,22 @@ export class DataSubgrid implements Subgrid {
  *  current chunk doesn't carry a totals entry for `colId` (column has no
  *  `aggFunc`, or no chunk has arrived yet). The single-row subgrid below
  *  wraps this in a `SubgridCell` and threads the column's `valueFormatter`
- *  through `formatValue`. Cycle 14 / Task 1. */
+ *  through `formatValue`.
+ *
+ *  Cycle 14 / Task 1 — original signature.
+ *
+ *  Cycle 15 / Task 12 — the optional second arg carries the parent
+ *  group's composite key for PER-GROUP totals lookups. Implementations
+ *  that don't care about per-group case ignore the arg (defaults to
+ *  empty-string sentinel = grand-total scope, matching the legacy
+ *  signature). Implementations that DO care (the per-group footer
+ *  surface main wires through `chunk.groupTotals[parentGroupKey]`)
+ *  read the arg to pick the right per-column record. The signature
+ *  extension is additive: every existing caller's `(colId)` form
+ *  still resolves to a grand-total lookup. */
 export type TotalsCellLookup = (
   colId: string,
+  parentGroupKey?: string,
 ) => { value: unknown; valueFormatted: string } | null;
 
 /**
@@ -202,6 +215,21 @@ export type TotalsCellLookup = (
  * `getCell` returns `null` when the lookup function reports no totals
  * entry for `colId` — the painter then skips text for that cell while
  * still painting the row chrome (bg + top border).
+ *
+ * Cycle 15 / Task 12 — the constructor takes an optional
+ * `parentGroupKey` which threads through to the `TotalsCellLookup` as
+ * its second argument. Used in two places:
+ *   1. Grand totals (default `parentGroupKey === ''`) — the legacy
+ *      shape; the lookup ignores the second arg and reads
+ *      `chunk.totals[colId]`.
+ *   2. Per-group footers — the lookup reads
+ *      `chunk.groupTotals[parentGroupKey][colId]`. Per-group footer
+ *      rows are emitted INLINE in `DataSubgrid` (as `rowKinds[i] === 3`),
+ *      not as a separate `TotalsSubgrid` instance — the inline
+ *      placement is needed so footers ride the same scroll surface as
+ *      data rows. The `parentGroupKey` field exists on `TotalsSubgrid`
+ *      so apps that want a SEPARATE per-group totals subgrid (pinned
+ *      under a specific group) can construct one explicitly.
  */
 export class TotalsSubgrid implements Subgrid {
   readonly type = 'totals' as const;
@@ -209,16 +237,26 @@ export class TotalsSubgrid implements Subgrid {
   readonly isData = false;
   readonly isTotals = true;
   readonly isFooter = false;
+  /** Cycle 15 / Task 12 — composite group key threaded into the
+   *  `TotalsCellLookup` as its second arg so the lookup can pick the
+   *  right per-group totals record. Empty string = grand-total scope
+   *  (the Cycle 14 default). Apps that want a per-group totals
+   *  subgrid pin a `TotalsSubgrid` constructed with the right
+   *  parentGroupKey. */
+  readonly parentGroupKey: string;
 
   constructor(
     private getHeight: () => number,
     private lookup: TotalsCellLookup,
-  ) {}
+    parentGroupKey: string = '',
+  ) {
+    this.parentGroupKey = parentGroupKey;
+  }
 
   getRowCount(): number { return 1; }
   getRowHeight(_local: number): number { return this.getHeight(); }
   getCell(_local: number, colId: string): SubgridCell | null {
-    const entry = this.lookup(colId);
+    const entry = this.lookup(colId, this.parentGroupKey);
     if (entry === null) return null;
     return { value: entry.value, valueFormatted: entry.valueFormatted };
   }

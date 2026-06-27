@@ -208,6 +208,28 @@ export function sliceGroupedViewport<TRow>(
       if (showOpenedGroup) lastSeenGroupKey = entry.key;
       continue;
     }
+    if (entry.kind === 'footer') {
+      // Cycle 15 / Task 12 — per-group footer row marker. `rowKinds[i] = 3`
+      // routes the row to the per-group totals lookup in `cgrid.cellAt`
+      // (which reads `chunk.groupTotals[groupKey[i]]`). The auto-group
+      // cell carries the parent group's formatted value so the cell
+      // renderer can paint `Total ${value}` at the parent depth's
+      // indent. Footer's `entry.depth` is one deeper than the parent
+      // group's; `groupDepth[i] = entry.depth - 1` makes the renderer
+      // paint the label at the parent group's indent column. The
+      // grand-total footer (key = '') resolves through `chunk.totals`
+      // instead; its `groupValue[i]` stays empty so the renderer
+      // paints just `Total`.
+      rowKinds[i] = 3;
+      groupKey[i] = entry.key;
+      const renderDepth = Math.max(0, entry.depth - 1);
+      groupDepth[i] = renderDepth;
+      if (entry.key !== '') {
+        const meta = groupMeta?.(entry.key);
+        if (meta) groupValue[i] = meta.value;
+      }
+      continue;
+    }
     const rowId = postFilterIds[entry.rowIndex];
     if (rowId === undefined) continue;
     rowIds[i] = store.getNumericId(rowId);
@@ -237,7 +259,9 @@ export function sliceGroupedViewport<TRow>(
       const arr = new Float64Array(count);
       for (let i = 0; i < count; i++) {
         const entry = visibleOrder[rowStart + i]!;
-        if (entry.kind === 'group') continue;
+        // Cycle 15 / Task 12 — footer entries carry no per-row data; the
+        // per-group totals lookup runs main-side via `chunk.groupTotals`.
+        if (entry.kind !== 'row') continue;
         const rowId = postFilterIds[entry.rowIndex];
         if (rowId === undefined) continue;
         const row = store.getById(rowId);
@@ -248,7 +272,11 @@ export function sliceGroupedViewport<TRow>(
       const values: string[] = new Array(count);
       for (let i = 0; i < count; i++) {
         const entry = visibleOrder[rowStart + i]!;
-        if (entry.kind === 'group') {
+        // Cycle 15 / Task 12 — group + footer entries leave the text
+        // slot blank; the renderer reads `chunk.groupTotals` (footer)
+        // or paints group-spine chrome (group) without touching the
+        // per-column text.
+        if (entry.kind !== 'row') {
           values[i] = '';
           continue;
         }

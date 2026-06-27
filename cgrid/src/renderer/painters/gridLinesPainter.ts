@@ -71,6 +71,24 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
     gc.fillRect(0, Math.round(row.top) - 1, rightEdge, 1);
   }
 
+  // Cycle 15 / Task 12 — per-group footer row top border. Same hairline
+  // lift signature as the grand-totals row but painted on inline footer
+  // rows (DataSubgrid rows whose `chunk.rowKinds[localIndex] === 3`).
+  // Reads `theme.groupFooterBorderTop` so apps can dial the per-group
+  // border independently of the grand-total. Painted AFTER the data-row
+  // gridline above (drawn at `row.top - 1` so it overpaints the gridline
+  // at the row immediately above the footer). Guarded for partial
+  // PainterCtx instances built by older tests (the probe is optional).
+  const rowKindAt = p.rowKindAt;
+  if (rowKindAt) {
+    for (const row of vs.visibleRows) {
+      if (!row.subgrid.isData) continue;
+      if (rowKindAt(row.localRowIndex) !== 3) continue;
+      gc.cache.fillStyle = theme.groupFooterBorderTop;
+      gc.fillRect(0, Math.round(row.top) - 1, rightEdge, 1);
+    }
+  }
+
   // Verticals — one band at a time so out-of-band column lines stay clipped.
   // Span from leafHeaderTop to bodyBottom so the leaf header + data rows get
   // column separators while group-header rows above stay merged.

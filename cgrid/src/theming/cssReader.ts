@@ -119,6 +119,26 @@ export interface ResolvedTheme {
    *  override `--cg-group-checkbox-fill` + `--cg-group-checkbox-check-color`
    *  together. */
   groupCheckboxFill: string;
+  /** Cycle 15 / Task 12 — per-group footer row background. Inherits the
+   *  totals tint (`--cg-totals-bg`) by default so a grouped grid reads
+   *  with one synthesis vocabulary across per-group footers and the
+   *  grand-total row. Apps that want to dial the footer down to a
+   *  lighter tint override `--cg-group-footer-bg` independently of
+   *  `--cg-totals-bg`. Resolved from `--cg-group-footer-bg`. */
+  groupFooterBg: string;
+  /** Cycle 15 / Task 12 — per-group footer row foreground. Defaults to
+   *  `--cg-totals-fg`. Used by `applyCellProps` when `isGroupFooter ===
+   *  true`. */
+  groupFooterFg: string;
+  /** Cycle 15 / Task 12 — per-group footer row top hairline rule color.
+   *  Defaults to `--cg-totals-border-top`. Painted by `gridLinesPainter`
+   *  above any row whose `chunk.rowKinds[i] === 3`. */
+  groupFooterBorderTop: string;
+  /** Cycle 15 / Task 12 — per-group footer row font weight. Defaults
+   *  to the totals weight (500) so footers and grand totals carry the
+   *  same +1 weight stop. Apps that want a lighter footer (e.g. 450)
+   *  override independently. */
+  groupFooterFontWeight: number;
   rowHeight: number;
   headerHeight: number;
   resizerHotZone: number;
@@ -253,6 +273,10 @@ export class CssReader {
       groupCheckboxIndeterminateColor:
         get('--cg-group-checkbox-indeterminate-color') || get('--cg-fg-color') || '#1a1f24',
       groupCheckboxFill: get('--cg-group-checkbox-fill') || 'transparent',
+      groupFooterBg: get('--cg-group-footer-bg') || get('--cg-totals-bg') || '#f7f9fb',
+      groupFooterFg: get('--cg-group-footer-fg') || get('--cg-totals-fg') || '#0f172a',
+      groupFooterBorderTop: get('--cg-group-footer-border-top') || get('--cg-totals-border-top') || '#cbd5e1',
+      groupFooterFontWeight: px('--cg-group-footer-font-weight', px('--cg-totals-font-weight', 500)),
       rowHeight: px('--cg-row-height', 30),
       headerHeight: px('--cg-header-height', 32),
       resizerHotZone: px('--cg-resizer-hot-zone', 4),

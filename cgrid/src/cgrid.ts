@@ -69,6 +69,7 @@ import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell, t
 import { wrapTextCell } from './renderer/cellRenderers/wrapText';
 import { totalsCell } from './renderer/cellRenderers/totals';
 import { groupCell, type GroupCellValue } from './renderer/cellRenderers/group';
+import { groupFooterCell } from './renderer/cellRenderers/groupFooter';
 import {
   autoGroupColumnDepthFromId,
   isAutoGroupColumnId, resolveGroupDisplayType, synthesizeAutoGroupColumns,
@@ -673,6 +674,7 @@ export class CGrid<TRow = any> {
     this.cellRenderers.register('text-wrap', wrapTextCell);
     this.cellRenderers.register('totals', totalsCell);
     this.cellRenderers.register('group', groupCell);
+    this.cellRenderers.register('groupFooter', groupFooterCell);
 
     // 2b. Tool-panel registry (Cycle 11 / Task 1). Seed the built-in
     // IDs first, then overwrite the Columns stub with the real
@@ -776,6 +778,18 @@ export class CGrid<TRow = any> {
       // `'group'`; apps override via `CGridOptions.groupRowRenderer` for
       // `'custom'` mode.
       getGroupRowStrip: () => this.groupRowStripCtx,
+      // Cycle 15 / Task 12 — per-row kind probe. Lets the byRows
+      // painter detect per-group footer rows (`rowKind === 3`) without
+      // peeking inside cgrid's chunk. Returns 0 (data) outside the
+      // current chunk window so the painter defaults gracefully when
+      // a paint frame outruns the chunk arrival.
+      getRowKindAt: (rowIndex) => {
+        const chunk = this.chunk;
+        if (!chunk) return 0;
+        const localIndex = rowIndex - chunk.rowStart;
+        if (localIndex < 0 || localIndex >= chunk.rowCount) return 0;
+        return chunk.rowKinds[localIndex] ?? 0;
+      },
     });
 
     // 7. Canvas wrapper — owns the <canvas>, gc cache, RAF + resize polling.
@@ -1214,6 +1228,12 @@ export class CGrid<TRow = any> {
       // mutation; apps reset by rebuilding the grid.
       groupRemoveSingleChildren: this.options.groupRemoveSingleChildren,
       showOpenedGroup: this.options.showOpenedGroup,
+      // Cycle 15 / Task 12 — forward the group-footer flags so the
+      // first `setGroupModel` produces flatOrder entries with footers
+      // AND the first `getViewport` reply ships `chunk.groupTotals`.
+      // Init-only this cycle.
+      groupIncludeFooter: this.options.groupIncludeFooter,
+      groupIncludeTotalFooter: this.options.groupIncludeTotalFooter,
     }).then(async () => {
       // Cycle 7 / Task 8 — register the external-filter round-trip BEFORE
       // gridReady fires so the first setRowData runs against a worker
@@ -3771,11 +3791,25 @@ export class CGrid<TRow = any> {
    *  declared. Returns `null` when no chunk has arrived yet OR the
    *  column has no aggFunc declared (`chunk.totals` only carries
    *  entries for aggregated columns). The painter skips text for null
-   *  results while still painting row chrome. */
-  private totalsCellLookup(colId: string): { value: unknown; valueFormatted: string } | null {
+   *  results while still painting row chrome.
+   *
+   *  Cycle 15 / Task 12 — when `parentGroupKey` is non-empty AND the
+   *  chunk carries `groupTotals[parentGroupKey]`, the lookup reads the
+   *  per-group record instead of the grand-total `chunk.totals` map.
+   *  An empty `parentGroupKey` (the default) preserves the grand-total
+   *  behaviour for the TotalsSubgrid + the grand-total footer row. */
+  private totalsCellLookup(colId: string, parentGroupKey: string = ''): { value: unknown; valueFormatted: string } | null {
     const chunk = this.chunk;
-    if (!chunk || !chunk.totals) return null;
-    const raw = chunk.totals[colId];
+    if (!chunk) return null;
+    let raw: unknown;
+    if (parentGroupKey !== '' && chunk.groupTotals) {
+      const groupRec = chunk.groupTotals[parentGroupKey];
+      if (groupRec === undefined) return null;
+      raw = groupRec[colId];
+    } else {
+      if (!chunk.totals) return null;
+      raw = chunk.totals[colId];
+    }
     if (raw === undefined) return null;
     if (raw === null) return { value: null, valueFormatted: '' };
     // Cycle 14 / Task 3 — custom aggFuncs may return non-numeric values
@@ -4860,6 +4894,21 @@ export class CGrid<TRow = any> {
       const payload = this.groupCellContextAt(rowIndex);
       if (payload === null) return { value: '', valueFormatted: '', flashAlpha: flash };
       return { value: payload, valueFormatted: payload.valueFormatted, flashAlpha: flash };
+    }
+    // Cycle 15 / Task 12 — footer rows (rowKind === 3) source their
+    // per-column values from the per-group totals map (or, for the
+    // grand-total footer with `groupKey === ''`, from the standard
+    // `chunk.totals` grand-total record). The lookup runs through the
+    // same `totalsCellLookup` the TotalsSubgrid uses so any column
+    // `valueFormatter` registered for totals applies uniformly. Footer
+    // cells in columns WITHOUT an `aggFunc` resolve to empty (the
+    // `'groupFooter'` cell renderer paints the em-dash placeholder,
+    // inheriting the Cycle 14 totals empty-cell vocabulary).
+    if ((this.chunk.rowKinds[localIndex] ?? 0) === 3) {
+      const groupKey = this.chunk.groupKey?.[localIndex] ?? '';
+      const entry = this.totalsCellLookup(colId, groupKey);
+      if (entry === null) return { value: '', valueFormatted: '', flashAlpha: flash };
+      return { value: entry.value, valueFormatted: entry.valueFormatted, flashAlpha: flash };
     }
     const numeric = this.chunk.numericCols[colId];
     if (numeric) {

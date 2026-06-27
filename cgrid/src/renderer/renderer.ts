@@ -84,6 +84,16 @@ export interface RendererOpts {
     renderer: string;
     lookup: (rowIndex: number) => GroupCellValue | null;
   } | null;
+  /**
+   * Cycle 15 / Task 12 — per-row kind probe. Mirrors `chunk.rowKinds[i]`
+   * for a global row index — `0` for ordinary data rows, `1` for group
+   * rows, `3` for per-group footer rows. The painter reads it once per
+   * visible data row to decide whether to paint the footer-row "lift"
+   * bg + route cells through the `'groupFooter'` renderer. Returns `0`
+   * when the row index is outside the current chunk window (defensive
+   * default — paints as data row, no footer chrome).
+   */
+  getRowKindAt: (rowIndex: number) => number;
 }
 
 export class Renderer {
@@ -104,6 +114,7 @@ export class Renderer {
       suppressAggFuncInHeader: this.opts.getSuppressAggFuncInHeader(),
       getVisibleCellBounds: this.opts.getVisibleCellBounds,
       groupRowStrip: this.opts.getGroupRowStrip(),
+      rowKindAt: this.opts.getRowKindAt,
     };
     // Fill the entire drawable area with theme bg as the FIRST instruction so
     // there's no transparent moment between the prior frame's pixels (or a

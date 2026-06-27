@@ -87,4 +87,23 @@ export interface PainterCtx {
     renderer: string;
     lookup: (rowIndex: number) => GroupCellValue | null;
   } | null;
+  /**
+   * Cycle 15 / Task 12 — per-row kind probe for the chunk's
+   * `rowKinds[localIndex]` array. Returns `0` for ordinary data rows
+   * (the default), `1` for group rows, `3` for per-group footer rows.
+   * The painter reads it once per visible data row to decide:
+   *   - whether to paint `theme.groupFooterBg` instead of the data-row
+   *     bg / alt-row / selection bg (rowKind === 3);
+   *   - whether to route cells through the `'groupFooter'` renderer
+   *     and flip `isGroupFooter: true` on `applyCellProps`.
+   *
+   * Returns `0` when no chunk is loaded yet OR when the row index is
+   * outside the current chunk window (defensive default — paints as
+   * data row). Cheap O(1) lookup; called once per visible data row,
+   * not per cell. Optional so test harnesses that build partial
+   * `PainterCtx` instances pre-Task-12 don't need to thread a stub
+   * through — the byRows painter falls back to "no footer rows" when
+   * the probe is absent.
+   */
+  rowKindAt?: (rowIndex: number) => number;
 }

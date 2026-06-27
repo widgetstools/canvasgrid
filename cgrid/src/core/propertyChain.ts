@@ -221,6 +221,15 @@ export interface ApplyCellPropsInput {
    *  `theme.totalsFontWeight` (default 500). Defaults to `false`.
    *  Optional so legacy callers don't have to be updated. */
   isTotals?: boolean;
+  /** Cycle 15 / Task 12 — set to `true` when this cell sits on a
+   *  per-group footer row (`chunk.rowKinds[i] === 3`). Same lift
+   *  treatment as `isTotals` but reads from the `--cg-group-footer-*`
+   *  token family, so apps can dial the per-group footer chrome down
+   *  independently of the grand-total row. Defaults to `false`.
+   *  Mutually exclusive with `isTotals` — a row is either a footer
+   *  inside the DataSubgrid (this flag) OR a grand total in
+   *  `TotalsSubgrid` (the existing flag), never both. */
+  isGroupFooter?: boolean;
   iconColor?: string;
   sortDirection?: 'asc' | 'desc';
   /** Cycle 8 / Task 1 — 1-indexed sort position; threaded into the
@@ -368,6 +377,18 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
     // Cycle 14 / Task 5 — thread the muted fg through to the polished
     // `'totals'` renderer so its em-dash placeholder paints in a muted
     // tone without the renderer reaching into the theme directly.
+    target.emptyFg = theme.totalsFgMuted;
+  }
+  // Cycle 15 / Task 12 — per-group footer lift. Same shape as totals
+  // (fg + weight + emptyFg) but routed through the
+  // `--cg-group-footer-*` tokens so apps can dial them independently.
+  // The row bg is laid down by the row-bg bundle in `byRows.ts` reading
+  // `theme.groupFooterBg`; this branch only handles the per-cell
+  // typography lift. `isTotals` and `isGroupFooter` are mutually
+  // exclusive per the input contract — the `else if` enforces it.
+  else if (ctx.isGroupFooter === true) {
+    target.fg = theme.groupFooterFg;
+    target.font = withFontWeight(theme.font, theme.groupFooterFontWeight);
     target.emptyFg = theme.totalsFgMuted;
   }
 
