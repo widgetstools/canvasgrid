@@ -136,18 +136,32 @@ export class WorkerClient {
    *  every composite group key in the new tree so the main-side
    *  mirror can materialise its `expandedKeys` snapshot for
    *  `getExpandedKeys()`. Empty when grouping bypasses
-   *  (`rowGroupCols.length === 0`). */
+   *  (`rowGroupCols.length === 0`).
+   *
+   *  Cycle 15 / Task 9 — `expandedKeys` carries the materialised
+   *  starting set the worker installed under
+   *  `groupDefaultExpanded` / `groupDefaultExpandedKeys`. `null`
+   *  means "the worker is at the default-all sentinel" (option
+   *  absent OR `'all'` AND no explicit keys override) — main treats
+   *  it as the existing all-expanded mirror state. */
   setGroupModel(g: GroupModel): Promise<{
     visibleCount: number;
     groupKeys: string[];
     groupDescendants: string[][];
+    expandedKeys: string[] | null;
   }> {
-    return this.send<{ visibleCount: number; groupKeys?: string[]; groupDescendants?: string[][] }>({
+    return this.send<{
+      visibleCount: number;
+      groupKeys?: string[];
+      groupDescendants?: string[][];
+      expandedKeys?: string[] | null;
+    }>({
       type: 'setGroupModel', payload: g,
     }).then((r) => ({
       visibleCount: r.visibleCount,
       groupKeys: r.groupKeys ?? [],
       groupDescendants: r.groupDescendants ?? [],
+      expandedKeys: r.expandedKeys ?? null,
     }));
   }
 

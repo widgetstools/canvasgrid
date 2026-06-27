@@ -471,13 +471,26 @@ export function createWorkerHost(post: PostFn): WorkerHost {
 
     const comparators = new ComparatorRegistry();
     const aggFuncs = new AggFuncRegistry();
+    const group = new GroupPass(store, payload.columns);
+    // Cycle 15 / Task 9 — seed the default-expansion rule before any
+    // `setGroupModel` lands so the very first model swap re-seeds
+    // `state.expandedKeys` from the option (instead of falling back
+    // to the all-expanded sentinel). Both fields are independently
+    // optional; `setDefaultExpansion` normalises `undefined` to the
+    // sentinel values internally.
+    if (payload.groupDefaultExpanded !== undefined || payload.groupDefaultExpandedKeys !== undefined) {
+      group.setDefaultExpansion({
+        expanded: payload.groupDefaultExpanded,
+        keys: payload.groupDefaultExpandedKeys,
+      });
+    }
     state = {
       store,
       filter:      new FilterPass(store, payload.columns),
       quickFilter: new QuickFilterPass(store, payload.columns),
       distinct:    new DistinctValuesPass(store, payload.columns),
       sort:        new SortPass(store, payload.columns, comparators),
-      group:       new GroupPass(store, payload.columns),
+      group,
       groupOutput: null,
       groupInputIds: null,
       emitGroupDescendants: false,
@@ -753,12 +766,31 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             // Cycle 15 / Task 7 — a fresh group model invalidates any
             // composite keys main was tracking (a depth or grouping-
             // column swap rewrites every key). Reset to the
-            // "default = all expanded" sentinel so the new tree mounts
-            // with every group open, then ship back the full key list
-            // so main's mirror materialises against the new tree.
+            // "default = all expanded" sentinel before the pipeline
+            // runs; Task 9 below re-seeds the explicit set off the
+            // freshly-built tree when the `groupDefaultExpanded` /
+            // `groupDefaultExpandedKeys` options demand it.
             state.expandedKeys = null;
             state.visibleCache = null;
-            const visibleCount = await invalidateAndCount();
+            // Build the visible cache (which populates `groupOutput`)
+            // before we ask GroupPass to compute the default expansion
+            // — Task 9's depth-bounded set needs the tree's roots.
+            const visibleCount0 = await invalidateAndCount();
+            // Cycle 15 / Task 9 — seed `state.expandedKeys` from the
+            // default-expansion rule. `null` keeps the all-expanded
+            // sentinel (cheap path); an explicit Set installs the
+            // depth-bounded / explicit-keys override. When the seed
+            // changes the set, a follow-up `invalidateAndCount()`
+            // recomputes the visible row count against the new
+            // collapsed view so main's `rowCount` mirror is honest
+            // about the post-default visible total.
+            const groupRoots = state.groupOutput?.roots ?? [];
+            const defaultExpandedKeys = state.group.computeDefaultExpandedKeys(groupRoots);
+            let visibleCount = visibleCount0;
+            if (defaultExpandedKeys !== null) {
+              state.expandedKeys = defaultExpandedKeys;
+              visibleCount = await invalidateAndCount();
+            }
             post({
               id: req.id,
               type: 'groupKeysSnapshot',
@@ -768,6 +800,14 @@ export function createWorkerHost(post: PostFn): WorkerHost {
               groupDescendants: state.emitGroupDescendants
                 ? collectGroupDescendantRowIds()
                 : undefined,
+              // Cycle 15 / Task 9 — when the default-expansion rule
+              // resolves to anything other than the all-expanded
+              // sentinel, ship the materialised set so main's mirror
+              // (`getExpandedKeys()` snapshot) reads the same view as
+              // the next paint. `null` means "default-all sentinel,
+              // no override" — the all-expanded path the
+              // pre-Task-9 reply implicitly carried.
+              expandedKeys: defaultExpandedKeys === null ? null : Array.from(defaultExpandedKeys),
             });
             break;
           }

@@ -1200,6 +1200,14 @@ export class CGrid<TRow = any> {
       // diffs to main. Runtime mutation via `setGridOption('enableCellChangeFlash', N)`
       // flows through `setEnableCellChangeFlash` later.
       enableCellChangeFlash: this.options.enableCellChangeFlash === true,
+      // Cycle 15 / Task 9 — forward the default-expansion rule so the
+      // first `setGroupModel` reply re-seeds `state.expandedKeys` from
+      // the option (and ships back the materialised set). Initial-only
+      // options — runtime mutation is rejected by `runtimeOptions.ts`;
+      // app code uses `setExpanded` / `expandAll` / `collapseAll` after
+      // construction.
+      groupDefaultExpanded: this.options.groupDefaultExpanded,
+      groupDefaultExpandedKeys: this.options.groupDefaultExpandedKeys,
     }).then(async () => {
       // Cycle 7 / Task 8 — register the external-filter round-trip BEFORE
       // gridReady fires so the first setRowData runs against a worker
@@ -2520,11 +2528,24 @@ export class CGrid<TRow = any> {
     // default-all sentinel; the worker does the same on its side. The
     // reply ships back the full key list so the mirror can serve
     // `getExpandedKeys()` snapshots without a follow-up round-trip.
+    //
+    // Cycle 15 / Task 9 — the reply ALSO carries the materialised
+    // `expandedKeys` set when `groupDefaultExpanded` /
+    // `groupDefaultExpandedKeys` is configured. Until the reply
+    // lands the mirror sits at the default-all sentinel (consistent
+    // with the worker's intermediate state before defaults are
+    // applied); the reply handler below overrides it with the
+    // explicit set when present.
     this.expandedKeys = null;
-    this.workerClient.setGroupModel(this.groupModel).then(({ visibleCount, groupKeys, groupDescendants }) => {
+    this.workerClient.setGroupModel(this.groupModel).then(({ visibleCount, groupKeys, groupDescendants, expandedKeys }) => {
       if (this.destroyed) return;
       this.knownGroupKeys = groupKeys;
       this.updateGroupDescendantsCache(groupKeys, groupDescendants);
+      // Cycle 15 / Task 9 — re-seed the mirror from the worker's
+      // materialised default. `null` keeps the all-expanded sentinel
+      // (`getExpandedKeys()` derives from `knownGroupKeys`); a
+      // non-null array installs the explicit starting set.
+      this.expandedKeys = expandedKeys === null ? null : new Set(expandedKeys);
       this.rowCount = visibleCount;
       this.rowHeightIndex = null;
       this.recomputeViewport();
