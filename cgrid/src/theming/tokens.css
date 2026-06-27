@@ -36,7 +36,7 @@
   --cg-flash-from-color: #fef3c7;
   --cg-flash-to-color: rgba(254, 243, 199, 0);
   --cg-resizer-hot-zone: 4px;
-  --cg-scrollbar-thickness: 14px;
+  --cg-scrollbar-thickness: 2px;
   --cg-floating-filter-bg: #ffffff;
   --cg-floating-filter-border: #d5dbe0;
   --cg-floating-filter-placeholder: #94a3b8;
@@ -123,7 +123,7 @@
   --cg-flash-from-color: #b45309;
   --cg-flash-to-color: rgba(180, 83, 9, 0);
   --cg-resizer-hot-zone: 4px;
-  --cg-scrollbar-thickness: 14px;
+  --cg-scrollbar-thickness: 2px;
   --cg-floating-filter-bg: transparent;
   --cg-floating-filter-border: #38507a;
   --cg-floating-filter-placeholder: #64748b;
@@ -179,13 +179,13 @@
  * our 12 px width on macOS instead of falling back to a 0-width overlay
  * that only flashes on scroll (regression flagged on 2026-06-26). */
 .cg-scroller::-webkit-scrollbar {
-  width: 12px;
-  height: 12px;
+  width: 2px;
+  height: 2px;
   -webkit-appearance: none;
 }
 .cg-scroller::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.4);
-  border-radius: 6px;
+  border-radius: 0;
 }
 .cg-scroller::-webkit-scrollbar-track {
   background: rgba(0, 0, 0, 0.08);
@@ -1165,4 +1165,180 @@
 }
 .cg-pinned-cell {
   /* placeholder — per-cell pinned override hook lands in a later cycle. */
+}
+
+/* Cycle 15 / Task 6 — row group panel.
+ *
+ * Mounted by RowGroupPanelHost as a sibling of the canvas, sitting
+ * ABOVE the column header row. Hosts one chip per `rowGroupCols[i]`
+ * (in nesting order) plus a `›` separator between adjacent chips.
+ * Empty state shows a dashed-border placeholder reading "Drag here
+ * to set row groups" — verbatim from the Cycle 11 sidebar Columns
+ * panel for vocabulary continuity.
+ *
+ * Design plan:
+ *   docs/superpowers/plans/notes/cycle-15-grouping-design.md § Task 6.
+ *
+ * Layout — the strip stretches edge-to-edge inside the grid root,
+ * absolutely positioned (`left: 0; right: 0; top: $statusBarTopInset`).
+ * Its height contributes to the canvas region's top inset via
+ * `reserveRowGroupPanelSpace` so the column header row + body shift
+ * down by exactly the strip height. */
+.cg-row-group-panel {
+  --cg-row-group-panel-height: 32px;
+  --cg-row-group-panel-padding-x: 8px;
+  --cg-row-group-panel-gap: 6px;
+  --cg-row-group-chip-height: 22px;
+  --cg-row-group-chip-radius: 4px;
+  --cg-row-group-chip-padding-x: 6px;
+  --cg-row-group-chip-gap: 4px;
+  --cg-row-group-chip-bg: transparent;
+  --cg-row-group-chip-border: var(--cg-border-color);
+  --cg-row-group-chip-fg: var(--cg-fg-color);
+  --cg-row-group-chip-hover-bg:
+    color-mix(in srgb, var(--cg-header-bg) 92%, var(--cg-fg-color) 8%);
+  --cg-row-group-chip-active-bg:
+    color-mix(in srgb, var(--cg-header-bg) 85%, var(--cg-fg-color) 15%);
+  --cg-row-group-panel-empty-fg:
+    color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
+  --cg-row-group-panel-drop-border: var(--cg-focus-ring-color);
+  --cg-row-group-panel-drop-border-reject:
+    color-mix(in srgb, var(--cg-fg-color) 30%, transparent);
+
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: var(--cg-row-group-panel-height);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--cg-row-group-panel-padding-x);
+  gap: var(--cg-row-group-panel-gap);
+  background: var(--cg-header-bg);
+  color: var(--cg-fg-color);
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  border-bottom: 1px solid var(--cg-border-color);
+  /* Panel reports state via its chips + outline — body text inside
+   * the chips is not a copy target. */
+  user-select: none;
+  /* z-index above the canvas + status bar so a drop indicator can
+   * never be occluded mid-drag by a late repaint. Below the editor
+   * overlay (z:2) so popups still render on top. */
+  z-index: 2;
+  box-sizing: border-box;
+}
+
+/* Drop-target outline — painted as an INSET box-shadow rather than a
+ * border so the panel's own height + chip layout doesn't shift when
+ * the outline lights up mid-drag. */
+.cg-row-group-panel[data-drop="accept"] {
+  box-shadow: inset 0 0 0 2px var(--cg-row-group-panel-drop-border);
+}
+.cg-row-group-panel[data-drop="reject"] {
+  box-shadow: inset 0 0 0 2px var(--cg-row-group-panel-drop-border-reject);
+}
+
+/* Vertical insertion line — 2 px wide bar painted between chips at
+ * the gap nearest the pointer. Mirrors the `.cg-column-drag-insertion-line`
+ * pattern from Cycle 6 but scoped to the panel's vertical band. */
+.cg-row-group-panel-insertion-line {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--cg-row-group-panel-drop-border);
+  pointer-events: none;
+  border-radius: 1px;
+}
+
+/* The chip — outlined token, 22px tall, 4px radius. The drag-handle
+ * `≡` + label + `×` remove button sit inside in that order. */
+.cg-row-group-panel-chip {
+  display: inline-flex;
+  align-items: center;
+  height: var(--cg-row-group-chip-height);
+  padding: 0 var(--cg-row-group-chip-padding-x);
+  gap: var(--cg-row-group-chip-gap);
+  border: 1px solid var(--cg-row-group-chip-border);
+  border-radius: var(--cg-row-group-chip-radius);
+  background: var(--cg-row-group-chip-bg);
+  color: var(--cg-row-group-chip-fg);
+  font-size: 12px;
+  line-height: 1;
+  cursor: grab;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+.cg-row-group-panel-chip:hover {
+  background: var(--cg-row-group-chip-hover-bg);
+}
+.cg-row-group-panel-chip:active {
+  background: var(--cg-row-group-chip-active-bg);
+  cursor: grabbing;
+}
+.cg-row-group-panel-chip-handle {
+  /* The `≡` (U+2261) drag-handle glyph. Quiet — the handle's job
+   * is to imply "grab here," not to compete with the label. */
+  opacity: 0.7;
+  font-size: 13px;
+  line-height: 1;
+}
+.cg-row-group-panel-chip-label {
+  font-family: var(--cg-font-family);
+  font-size: 12px;
+  font-weight: 400;
+}
+.cg-row-group-panel-chip-remove {
+  /* The `✕` (U+2715) remove glyph. Button so it's keyboard-focusable
+   * + announces as a button to AT. Bare-bones styling — the chip's
+   * border carries the shape; the × is just the glyph. */
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0 2px;
+  margin: 0;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  color: inherit;
+  opacity: 0.7;
+  cursor: pointer;
+}
+.cg-row-group-panel-chip-remove:hover {
+  opacity: 1;
+}
+.cg-row-group-panel-chip-remove:focus-visible {
+  outline: 2px solid var(--cg-focus-ring-color);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+/* Between-chip separator — `›` (U+203A). Lives in the gap, NOT
+ * inside the chip, so the chip reads as one token and the separator
+ * as punctuation between tokens. Inherits Task 4's chevron color
+ * token so the chevron family stays consistent across the cycle. */
+.cg-row-group-panel-separator {
+  color: var(--cg-group-chevron-color, color-mix(in srgb, var(--cg-fg-color) 55%, transparent));
+  font-size: 14px;
+  line-height: 1;
+  user-select: none;
+  flex: 0 0 auto;
+}
+
+/* Empty state — dashed-border placeholder spanning the full strip
+ * interior. Border vocabulary mirrors `.cg-columns-panel-drop-zone`
+ * (sidebar Columns panel) so the dropping affordance reads as the
+ * same across surfaces. */
+.cg-row-group-panel-empty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed color-mix(in srgb, var(--cg-border-color) 80%, transparent);
+  border-radius: var(--cg-row-group-chip-radius);
+  margin: 4px 0;
+  font-size: 12px;
+  color: var(--cg-row-group-panel-empty-fg);
+  text-align: center;
 }
