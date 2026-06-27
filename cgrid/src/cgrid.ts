@@ -2190,6 +2190,13 @@ export class CGrid<TRow = any> {
    *  rows. Identical to the value last shipped via `modelUpdated`. */
   getDisplayedRowCount(): number { return this.rowCount; }
 
+  /** Cycle 13 / Task 2 — total pre-filter row count. Reads off the
+   *  main-thread `rowDataById` cache (populated by `setRowData` +
+   *  maintained by `applyTransaction.add` / `.remove`), so it stays
+   *  cheap under a per-frame status-bar refresh — no worker round-trip,
+   *  no chunk walk. */
+  getTotalRowCount(): number { return this.rowDataById.size; }
+
   setGroupModel(_g: GroupModel): void { /* Out of scope for Foundation */ }
 
   /** Resolve `rowId` to its current visible-row index via the worker, then
@@ -2997,6 +3004,8 @@ export class CGrid<TRow = any> {
       ensureColumnGroupVisible: (id, pos) => this.ensureColumnGroupVisible(id, pos),
       getSelectedRowIds: () => this.getSelectedRowIds(),
       setSelectedRowIds: (ids) => this.setSelectedRowIds(ids),
+      getDisplayedRowCount: () => this.getDisplayedRowCount(),
+      getTotalRowCount: () => this.getTotalRowCount(),
       getCellRanges: () => this.getCellRanges(),
       addCellRange: (range) => this.addCellRange(range),
       clearCellRanges: () => this.clearCellRanges(),

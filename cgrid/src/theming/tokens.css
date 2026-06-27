@@ -973,3 +973,39 @@
 .cg-status-bar-zone--right {
   justify-content: flex-end;
 }
+
+/* Cycle 13 / Task 2 — built-in count status panels (Total / Filtered /
+ * Selected / TotalAndFiltered). Per the design notes Task 2 section,
+ * hierarchy is carried by COLOUR (label muted to 60% alpha, value at
+ * full strength), not by typographic weight — mono at 13px can't
+ * carry weight reliably. Inter-pair spacing inside the combined panel
+ * is a 2ch flex gap, NOT a typographic mark (the `·` separator is
+ * reserved for Task 3's agg panel where 4–5 stats need a dense
+ * inline mark). */
+.cg-status-panel-count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1ch;
+  /* Counts never wrap mid-value ("3,000" can't break across lines or
+   * the comma separator reads as part of the next datum). */
+  white-space: nowrap;
+}
+.cg-status-panel-count--combined {
+  /* Overrides the base 1ch gap so the two label-value pairs in
+   * agTotalAndFilteredRowCountComponent read as pair-pair, not as
+   * four loose tokens. */
+  gap: 2ch;
+}
+.cg-status-panel-count-pair {
+  display: inline-flex;
+  align-items: baseline;
+  /* Mirrors the single-fact panel's intra-pair gap so the kerning
+   * inside the combined panel matches a standalone count panel. */
+  gap: 1ch;
+}
+.cg-status-panel-count-label {
+  color: var(--cg-status-bar-fg-muted);
+}
+.cg-status-panel-count-value {
+  color: var(--cg-status-bar-fg);
+}

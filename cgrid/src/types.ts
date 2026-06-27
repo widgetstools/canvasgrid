@@ -1549,6 +1549,21 @@ export interface CGridApi {
   getSelectedRowIds(): string[];
   setSelectedRowIds(ids: string[]): void;
 
+  /** Cycle 13 / Task 2 — current displayed (post-filter) row count.
+   *  Matches `getDisplayedRowCount()` on the underlying CGrid; exposed
+   *  on the public API so status-bar count panels (and any custom
+   *  panel that wants the same number) can call it without reaching
+   *  into the grid instance. Equal to the `visibleRowCount` last
+   *  shipped via `modelUpdated`. */
+  getDisplayedRowCount(): number;
+  /** Cycle 13 / Task 2 — total pre-filter row count (the size of the
+   *  data the grid was last seeded with, plus any add / minus any
+   *  remove from `applyTransaction`). Powers
+   *  `agTotalRowCountComponent` + `agTotalAndFilteredRowCountComponent`.
+   *  Reads off the main-thread `rowDataById` cache, NOT a worker
+   *  round-trip, so it's cheap to call from a per-frame refresh. */
+  getTotalRowCount(): number;
+
   /** Cycle 10 / Task 3 — serialise the current `getCellRanges()` to
    *  TSV (or CSV when `clipboardDelimiter` overrides the default `\t`)
    *  on the worker, then forward the encoded string to

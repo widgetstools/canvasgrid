@@ -164,3 +164,153 @@ Tasks 2/3 should:
 - 2026-06-27 — Subject pinned, anti-defaults written, sandwich signature
   chosen, 8 tokens declared, three-zone flex layout fixed. Cleared to
   start implementation.
+
+---
+
+## Task 2 — count panels (Total / Filtered / Selected / TotalAndFiltered)
+
+> Adds five CSS rules and zero new design tokens. Re-uses Task 1's
+> status-bar tokens for every colour / size / spacing decision. The
+> count family is the most-scanned thing in the bar — a trader checks
+> "are there 3k or 30k rows?" dozens of times an hour, so hierarchy
+> has to land in < 250 ms without re-focusing.
+
+### Decisions
+
+1. **Hierarchy via colour, never weight.** Mono at 13px can't carry
+   weight (rejected in Task 1). Label = `--cg-status-bar-fg-muted`
+   (60% alpha), value = `--cg-status-bar-fg` (full strength). The
+   trader's eye lands on the value because it's the only saturated
+   mark on the strip. Tabular-nums come free from the mono family —
+   no `font-variant-numeric` declaration needed (Task 1 anti-default).
+
+2. **Label syntax: `Label:` (capitalised noun phrase + colon, no
+   trailing space).** The 1ch gap to the value is structural
+   (`display: inline-flex; gap: 1ch`), not whitespace inside the
+   markup. Survives any future text-wrap experiment without splitting
+   on the wrong space.
+
+3. **Built-in label texts** — sentence case, screenshot-parity:
+   - `agTotalRowCountComponent` → `Total Rows: N`
+   - `agFilteredRowCountComponent` → `Rows: N` (matches the
+     screenshot's filtered facet, NOT `Filtered: N` which adds
+     three chars for zero information gain)
+   - `agSelectedRowCountComponent` → `Selected: N`
+   - `agTotalAndFilteredRowCountComponent` → `Total Rows: T  Rows: F`
+     (single panel, two facts, 2ch flex gap between the two
+     label-value pairs — see decision 4)
+
+4. **Inter-pair spacing inside the combined panel: 2ch flex gap, NOT
+   a typographic separator.** Looking at
+   `18-status-bar-all-components.png`, the two facts in
+   `agTotalAndFilteredRowCountComponent` are separated by ~3 character
+   widths of whitespace, not by a mark. Honour the reference.
+   The `·` Task 1 reserved for inside-panel separation does NOT land
+   here — it lands in Task 3's agg panel, which crams 4–5 stats inline
+   and genuinely needs a typographic mark to keep them parseable.
+
+5. **Number formatting.** `new Intl.NumberFormat('en-US').format(n)`
+   for the default; `statusPanelParams.numberFormatter?: (n: number)
+   => string` escape hatch for non-US locales / accountancy-format
+   apps. No grouping override beyond en-US comma — matches the
+   screenshot and is the most-readable default for the trader
+   audience.
+
+6. **Empty-selection state shows `Selected: 0`, never collapses.**
+   Zero-flicker target rules. A panel that disappears + reappears as
+   the user clicks into a row would yank attention to the bar chrome
+   — exactly opposite the "scan in peripheral vision" goal. Showing
+   `Selected: 0` with the muted label colour reads as "no current
+   selection" without needing colour cue.
+
+7. **No hover state.** Count panels are non-interactive in Cycle 13.
+   No cursor change, no underline, no colour shift on hover.
+   Reserves the affordance for Cycle 14+ if a clickable count is ever
+   added.
+
+8. **No icon, no badge.** The label IS the icon — a short noun
+   phrase reads faster than icon + label disambiguation.
+
+### Anti-defaults rejected for this task
+
+| Generic move | Why rejected |
+|---|---|
+| Bold value, regular label (typographic weight hierarchy) | Mono at 13px can't carry weight (same lesson as Task 1). Colour does the lift. |
+| Green-on-non-zero accent for selected count | Bar is achromatic per Task 1. A green pulse here would compete with the body's range-fill colour. |
+| Uppercase labels (TOTAL ROWS / FILTERED) | Industrial / ag-grid-clone vibe Task 1 explicitly rejected. |
+| Hide the count panel when N == 0 | Zero-flicker target rules. A panel that disappears redirects attention. |
+| Comma- or dot-separating the two pairs in `agTotalAndFiltered…` | The screenshot uses whitespace. Punctuation between facts inside a panel is reserved for Task 3 (`·` between 4–5 stats); using it for two pairs would be premature. |
+
+### Signature for this task
+
+**The grammar of separation:**
+
+- **Between panels in the same zone** → 16px flex gap (Task 1).
+- **Between facts inside one panel (count family, 2 facts)** → 2ch flex gap.
+- **Between facts inside one panel (agg family, 4–5 facts)** → `·` typographic mark (Task 3).
+
+The user learns the grammar in one glance: more facts → tighter mark.
+Three separation widths total, each tied to the density of what's
+being separated. Across cycles, this rule is self-policing.
+
+### Tokens reused (no new ones)
+
+| Concern | Token | Source |
+|---|---|---|
+| Label colour | `--cg-status-bar-fg-muted` | Task 1 |
+| Value colour | `--cg-status-bar-fg` | Task 1 |
+| Font | `--cg-font-family` (inherited from `.cg-status-bar`) | Task 1 |
+| Size | `--cg-status-bar-font-size` (inherited) | Task 1 |
+| Inter-panel gap | `--cg-status-bar-gap` (16px, on `.cg-status-bar-zone`) | Task 1 |
+
+Zero new design tokens. Five new class rules (one is a modifier).
+
+### Class vocabulary (Task 2)
+
+```css
+.cg-status-panel-count {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1ch;                /* between label and value */
+  white-space: nowrap;     /* never wrap "Total Rows: 3,000" mid-value */
+}
+.cg-status-panel-count--combined {
+  gap: 2ch;                /* between the two label-value pairs in
+                              agTotalAndFilteredRowCountComponent.
+                              Wider than the intra-pair 1ch so the
+                              eye reads pair-pair, not pair-label. */
+}
+.cg-status-panel-count-pair {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 1ch;                /* mirrors the single-fact panel gap so
+                              both renderings share kerning. */
+}
+.cg-status-panel-count-label { color: var(--cg-status-bar-fg-muted); }
+.cg-status-panel-count-value { color: var(--cg-status-bar-fg); }
+```
+
+### Empty-bar acceptance criterion (Task 2 cell)
+
+`15-status-bar-count-panels.png` must show:
+
+1. All four count panels mounted into the right zone, stacking
+   horizontally in declaration order with 16px gaps between them.
+2. Label colour visibly muted relative to the value colour (the
+   60%-alpha mix in `--cg-status-bar-fg-muted` reads as a clear
+   tonal step down, not a "slightly off" near-black).
+3. In `agTotalAndFilteredRowCountComponent`, the inter-pair gap
+   reads as wider than the intra-pair gap — the two facts read as
+   a pair, not as four loose tokens.
+
+If any of those fails, the rendered cell is "labels and numbers
+separated by spaces" and the design pass needs another iteration.
+
+### Decision log — Task 2
+
+- 2026-06-27 — Decided colour-only hierarchy (no weight), `·`
+  reserved for Task 3's agg panel, "Rows:" matches screenshot,
+  "Selected: 0" shown for empty selection, en-US default
+  `Intl.NumberFormat` with `statusPanelParams.numberFormatter`
+  escape hatch, separation grammar (16px / 2ch / `·`) codified.
+  Cleared to start implementation.
