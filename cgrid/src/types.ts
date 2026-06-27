@@ -1401,6 +1401,27 @@ export interface RowValueChangedEvent<TRow = unknown> {
   data: TRow;
 }
 
+/** Cycle 14 / Task 6 — discriminator on `aggregationChanged` events that
+ *  identifies which mutation drove the recompute. Apps that listen for
+ *  this event correlate the source tag to their own state (e.g. a toast
+ *  that says "totals refreshed: filter applied" vs. "data updated"). The
+ *  set is closed — new sources land here as the API surface grows. */
+export type AggregationChangedSource =
+  | 'rowDataChanged'
+  | 'aggFuncChanged'
+  | 'filterChanged'
+  | 'columnAggFuncChanged'
+  | 'api';
+
+/** Cycle 14 / Task 6 — strongly-typed shape of the `aggregationChanged`
+ *  event. Exported so apps can declare typed listeners without reaching
+ *  into the `CGridEvent` union. */
+export interface AggregationChangedEvent {
+  type: 'aggregationChanged';
+  totals: Record<string, unknown>;
+  source: AggregationChangedSource;
+}
+
 export type CGridEvent =
   | { type: 'gridReady'; api: CGridApi }
   | { type: 'cellClicked'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
@@ -1516,7 +1537,22 @@ export type CGridEvent =
       source: 'uiColumnDragged' | 'api' | 'columnState';
     }
   | { type: 'asyncTransactionsFlushed'; results: TransactionResult[] }
-  | { type: 'aggregationChanged'; totals: Record<string, unknown> }
+  /** Fires when the aggregation totals have been recomputed against a
+   *  change the user can correlate to a cause. `source` tags the
+   *  triggering action — data mutation (`rowDataChanged`), filter pipeline
+   *  re-evaluation (`filterChanged`), runtime `aggFuncs` swap
+   *  (`aggFuncChanged`), per-column `aggFunc` change
+   *  (`columnAggFuncChanged`), or an explicit imperative trigger (`api`).
+   *  Cosmetic re-renders that don't change the totals — scroll, sort,
+   *  theme, column visibility / move / resize — do NOT fire this event;
+   *  apps that need the on-every-paint signal listen to `viewportChanged`
+   *  instead. `totals` is the per-column map keyed by `colId`. Cycle 14
+   *  / Task 6. */
+  | {
+      type: 'aggregationChanged';
+      totals: Record<string, unknown>;
+      source: AggregationChangedSource;
+    }
   | { type: 'columnGroupOpened'; groupId: string; open: boolean }
   /** Fires when the set / order of displayed columns changes for any reason.
    *  Cycle 4 wired the original `columnGroupOpened` + `columnDefsChanged`

@@ -5,6 +5,7 @@ import './theming/tokens.css';
 import type {
   CGridOptions, CGridEvent, CGridApi, Tx, TransactionResult, SortModel, FilterModel,
   CFilterModelEntry, GroupModel, FlashCellsParams, SelectionRange,
+  AggregationChangedSource,
 } from './types';
 import type { ToolPanel, SideBarDef } from './interaction/toolPanels/types';
 import { TypedEventEmitter } from './core/eventEmitter';
@@ -104,6 +105,8 @@ export type {
   IAggregationStatusPanelParams, AggFunc,
   // Cycle 14 / Task 3 — custom column-aggregation registry.
   IAggFunc, IAggFuncParams,
+  // Cycle 14 / Task 6 — `aggregationChanged` event polish.
+  AggregationChangedSource, AggregationChangedEvent,
 } from './types';
 export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/registry';
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
@@ -529,6 +532,17 @@ export class CGrid<TRow = any> {
   private lastEmittedBounds: { width: number; height: number } | null = null;
   /** Latches `firstDataRendered` to exactly once per grid instance. */
   private firstDataFired = false;
+  /** Cycle 14 / Task 6 — what triggered the in-flight aggregation
+   *  recompute. Set by `requestViewport(source)` at the call site that
+   *  caused the totals to need refreshing (data mutation, filter pass,
+   *  custom-aggFunc swap, column aggFunc change, explicit API). Read +
+   *  cleared by the viewport-response handler when emitting
+   *  `aggregationChanged`. Cosmetic re-renders — scroll, sort, theme,
+   *  column move / visible / pin / resize — call `requestViewport()`
+   *  with no source so this stays `null` and no event fires for those
+   *  paths. Most-recent-source wins when multiple data-affecting calls
+   *  coalesce on a single viewport fetch. */
+  private pendingAggSource: AggregationChangedSource | null = null;
   /** First / last colId of the materialised center-column slice — the
    *  identity of the virtualisation window. `null` for "no center columns
    *  visible". The outer ref is `null` until the first `recomputeViewport`
@@ -1000,7 +1014,11 @@ export class CGrid<TRow = any> {
         // rows the moment the user sorts.
         this.rebuildSelectionFromPersistentIds();
         this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
-        this.requestViewport();
+        // Cycle 14 / Task 6 — the worker pushes `modelUpdated` only after
+        // a transaction flush (sync or async). The visible set + totals
+        // both reflect the underlying data mutation, so tag the resulting
+        // aggregation event as `rowDataChanged`.
+        this.requestViewport('rowDataChanged');
       },
       onAsyncTransactionsFlushed: (results) => {
         this.events.emit({ type: 'asyncTransactionsFlushed', results });
@@ -1277,7 +1295,9 @@ export class CGrid<TRow = any> {
       this.rowCount = visibleCount;
       this.recomputeViewport();
       this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
-      this.requestViewport();
+      // Cycle 14 / Task 6 — full row-set replace re-aggregates totals;
+      // tag so the `aggregationChanged` listener can correlate.
+      this.requestViewport('rowDataChanged');
       // alwaysPass is computed AFTER setRowData so the worker's data
       // store and the alwaysPass set land in the same logical step. The
       // refresh triggers a second worker round-trip; that's the cost of
@@ -1356,7 +1376,9 @@ export class CGrid<TRow = any> {
       if (this.destroyed) return;
       this.rowCount = visibleCount;
       this.recomputeViewport();
-      this.requestViewport();
+      // Cycle 14 / Task 6 — alwaysPass evaluation is part of the filter
+      // pipeline; tagging as `filterChanged` so listeners can correlate.
+      this.requestViewport('filterChanged');
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid] alwaysPass:', err); });
   }
 
@@ -1453,7 +1475,8 @@ export class CGrid<TRow = any> {
       const combined: FilterModel = {};
       for (const [id, entry] of this.columnFilterModels) combined[id] = entry;
       this.events.emit({ type: 'filterChanged', filterModel: combined, source });
-      this.requestViewport();
+      // Cycle 14 / Task 6 — filter pipeline change → totals recompute.
+      this.requestViewport('filterChanged');
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid] onFilterChanged:', err); });
   }
 
@@ -1756,7 +1779,8 @@ export class CGrid<TRow = any> {
         source: 'api',
         columns: changedColIds,
       });
-      this.requestViewport();
+      // Cycle 14 / Task 6 — filter set replaced → totals recompute.
+      this.requestViewport('filterChanged');
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
   }
 
@@ -1822,7 +1846,8 @@ export class CGrid<TRow = any> {
         source: 'columnFilter',
         columns: changed ? [colId] : [],
       });
-      this.requestViewport();
+      // Cycle 14 / Task 6 — per-column filter changed → totals recompute.
+      this.requestViewport('filterChanged');
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
   }
 
@@ -1950,7 +1975,8 @@ export class CGrid<TRow = any> {
         const combined: FilterModel = {};
         for (const [id, entry] of this.columnFilterModels) combined[id] = entry;
         this.events.emit({ type: 'filterChanged', filterModel: combined, source: 'quickFilter' });
-        this.requestViewport();
+        // Cycle 14 / Task 6 — quick-filter changed → totals recompute.
+        this.requestViewport('filterChanged');
       })
       .catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
   }
@@ -2954,7 +2980,13 @@ export class CGrid<TRow = any> {
           this.recomputeViewport();
           this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
           this.events.emit({ type: 'displayedColumnsChanged', source: 'columnDefsChanged' });
-          this.requestViewport();
+          // Cycle 14 / Task 6 — `updateGridOptions({ columnDefs })` can
+          // change per-column `aggFunc` declarations as part of the swap.
+          // Tag as `columnAggFuncChanged` so listeners that care about
+          // aggregation-only changes can correlate, even though some
+          // swaps in this path are layout-only (column move / pin etc.
+          // route through dedicated APIs that pass `null` instead).
+          this.requestViewport('columnAggFuncChanged');
         })
         .catch((err) => { if (!this.destroyed) console.error('[cgrid] updateColumns:', err); });
     }
@@ -3003,12 +3035,18 @@ export class CGrid<TRow = any> {
         this.recomputeViewport();
         this.cgridCanvas?.requestRepaint();
       },
-      forwardAggFuncs: (funcs) => {
+      forwardAggFuncs: (funcs, triggerRefresh) => {
         // Cycle 14 / Task 3 — serialise each entry (with closure
         // detection) and ship the new map to the worker wholesale.
         // `undefined` or `{}` clears the custom layer; built-ins
         // remain available unchanged.
-        this.forwardAggFuncs(funcs as Record<string, IAggFunc> | undefined);
+        // Cycle 14 / Task 6 — when called from the runtime apply
+        // table (triggerRefresh = true) chain a viewport refresh
+        // tagged `aggFuncChanged` once the worker registry resolves.
+        this.forwardAggFuncs(
+          funcs as Record<string, IAggFunc> | undefined,
+          triggerRefresh === true,
+        );
       },
     };
   }
@@ -3034,7 +3072,10 @@ export class CGrid<TRow = any> {
    * lets apps get the diagnostic synchronously inside the
    * `setGridOption` call that triggered the swap.
    */
-  private forwardAggFuncs(funcs: Record<string, IAggFunc> | undefined): void {
+  private forwardAggFuncs(
+    funcs: Record<string, IAggFunc> | undefined,
+    triggerRefresh: boolean = false,
+  ): void {
     const entries: Array<{ name: string; source: string }> = [];
     if (funcs) {
       for (const [name, fn] of Object.entries(funcs)) {
@@ -3047,9 +3088,23 @@ export class CGrid<TRow = any> {
         entries.push({ name, source: serializeAggFunc(name, fn) });
       }
     }
-    this.workerClient.setAggFuncs(entries).catch((err) => {
+    const promise = this.workerClient.setAggFuncs(entries);
+    promise.catch((err) => {
       if (!this.destroyed) console.error('[cgrid] setAggFuncs:', err);
     });
+    // Cycle 14 / Task 6 — when the swap arrives via `setGridOption`
+    // / `updateGridOptions` at runtime, kick a viewport refresh so the
+    // totals row reflects the new aggregation semantics and the
+    // `aggregationChanged` event fires tagged `aggFuncChanged`. The
+    // constructor's call (which precedes the initial setRowData) passes
+    // `false` so the source tag on the first emit stays `rowDataChanged`
+    // — that's the cause the app expects to see.
+    if (triggerRefresh) {
+      promise.then(() => {
+        if (this.destroyed) return;
+        this.requestViewport('aggFuncChanged');
+      }).catch(() => { /* error already logged above */ });
+    }
   }
 
   /** Re-resolve the column tree from `options.columnDefs`, rebuild the
@@ -3775,7 +3830,17 @@ export class CGrid<TRow = any> {
     return path;
   }
 
-  private requestViewport(): void {
+  /** Fetch the next viewport chunk. `aggSource` (Cycle 14 / Task 6) tags the
+   *  triggering mutation so the `aggregationChanged` event the response
+   *  handler emits carries the correct cause. Pass `null` (default) for
+   *  cosmetic re-fetches that don't recompute totals — scroll, sort,
+   *  theme, column move / visible / pin / resize — so the response
+   *  handler can tell "the totals are the same; suppress the event"
+   *  apart from "data / filter / aggFuncs changed; emit". Most-recent-
+   *  source wins when multiple data-affecting calls coalesce on a single
+   *  in-flight fetch; null calls preserve any pending source. */
+  private requestViewport(aggSource: AggregationChangedSource | null = null): void {
+    if (aggSource !== null) this.pendingAggSource = aggSource;
     // Coalesce: while one fetch is in-flight, additional calls flip a queued
     // flag so a single follow-up runs after the current completes. Without
     // this, rapid resizes drop all but the first request — the chunk stays
@@ -3823,8 +3888,22 @@ export class CGrid<TRow = any> {
         this.recomputeViewport();
         this.cgridCanvas.requestRepaint();
         this.updateA11y();
-        if (chunk.totals) {
-          this.events.emit({ type: 'aggregationChanged', totals: chunk.totals });
+        // Cycle 14 / Task 6 — emit `aggregationChanged` ONLY when the
+        // mutation that drove this fetch actually changed the totals
+        // (data / filter / aggFuncs / column aggFunc / explicit API).
+        // Cosmetic re-fetches (scroll, sort, theme, column move /
+        // visible / pin / resize) call `requestViewport()` with no
+        // source so `pendingAggSource` stays null and we skip the
+        // event — listeners that want every paint subscribe to
+        // `viewportChanged` instead. Cleared on emit so a follow-up
+        // coalesced scroll fetch doesn't re-fire with the same source.
+        if (chunk.totals && this.pendingAggSource !== null) {
+          this.events.emit({
+            type: 'aggregationChanged',
+            totals: chunk.totals,
+            source: this.pendingAggSource,
+          });
+          this.pendingAggSource = null;
         }
         // firstDataRendered: latch once per grid instance, the first time a
         // non-empty chunk has landed and a repaint has been scheduled. Empty

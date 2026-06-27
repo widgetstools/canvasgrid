@@ -101,8 +101,14 @@ export interface RuntimeOptionTarget<TRow = any> {
   /** Cycle 14 / Task 3 — forward the runtime `aggFuncs` swap to the
    *  worker so the AggFuncRegistry's custom layer reflects the new map.
    *  Implementation in `cgrid.ts` serialises each function, screens for
-   *  closures, and calls `workerClient.setAggFuncs`. */
-  forwardAggFuncs(funcs: Record<string, unknown> | undefined): void;
+   *  closures, and calls `workerClient.setAggFuncs`.
+   *
+   *  Cycle 14 / Task 6 — `triggerRefresh: true` (the runtime-apply path
+   *  passes this) kicks a follow-up viewport fetch so the totals row
+   *  refreshes and `aggregationChanged` fires tagged `aggFuncChanged`.
+   *  The constructor's seed call leaves it `false` so the initial emit
+   *  stays tagged `rowDataChanged` from the subsequent setRowData. */
+  forwardAggFuncs(funcs: Record<string, unknown> | undefined, triggerRefresh?: boolean): void;
 }
 
 /**
@@ -164,7 +170,10 @@ export function applyRuntimeOption<TRow>(
       // wholesale. Main side serialises each function (with closure
       // detection) and posts `setAggFuncs`. The forwarder accepts
       // `undefined` to clear the custom layer.
-      target.forwardAggFuncs(value as Record<string, unknown> | undefined);
+      // Cycle 14 / Task 6 — pass `triggerRefresh: true` so the
+      // forwarder kicks a follow-up viewport fetch tagged
+      // `aggFuncChanged` after the worker registry updates.
+      target.forwardAggFuncs(value as Record<string, unknown> | undefined, true);
       return;
     case 'animateRows':
     case 'cellFlashDuration':
