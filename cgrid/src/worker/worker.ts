@@ -59,6 +59,14 @@ interface State {
   /** Cycle 15 / Task 1 — last `GroupPass.apply` result. Recomputed on
    *  every `buildVisibleAsync`. `null` until the first build runs. */
   groupOutput: GroupPassOutput | null;
+  /** Cycle 15 / Task 7 — persistent expanded-key set the slicer + meta
+   *  lookup honor. `null` is the "default = every group expanded"
+   *  sentinel (matches the Task 4 mount behaviour). A non-null set is
+   *  the explicit list of expanded composite group keys; anything not
+   *  in the set is collapsed. Mutated by the `setExpandedKeys`
+   *  protocol message; read by `effectiveExpandedKeys()` everywhere
+   *  the pipeline needs to know what's visible. */
+  expandedKeys: Set<string> | null;
   /** Cycle 8 / Task 3 — named comparators registered via
    *  `registerComparator`. `SortPass.apply` looks up each sorted column's
    *  `comparator` (a string name on the `WorkerColumn`) against this
@@ -240,12 +248,16 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     return !!state?.groupOutput && !state.groupOutput.bypassed;
   }
 
-  /** Cycle 15 / Task 4 — "all groups expanded" key set, derived from
-   *  the current `groupOutput.flatOrder`. Task 7 will replace this
-   *  with a persistent `state.expandedKeys` set driven by the
-   *  expand/collapse API; for now grouping mounts with every group
-   *  visible so the auto-group column reads with values from row 0. */
-  function allExpandedKeys(): Set<string> {
+  /** Cycle 15 / Task 7 — resolve the effective expanded-keys set for the
+   *  next pipeline pass. When `state.expandedKeys` is non-null the API
+   *  has been driven explicitly (collapseAll / setExpanded /
+   *  collapse-and-toggle); use it verbatim. When it is `null` the grid
+   *  is in the "default = every group expanded" mode (Task 4 mount,
+   *  Task 7 `expandAll`); derive the all-keys set from the current
+   *  `flatOrder` so the slicer + meta lookup paint with chevrons in
+   *  the down/expanded state for every group. */
+  function effectiveExpandedKeys(): Set<string> {
+    if (state?.expandedKeys) return state.expandedKeys;
     const out = new Set<string>();
     if (!state?.groupOutput) return out;
     for (const e of state.groupOutput.flatOrder) {
@@ -254,14 +266,36 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     return out;
   }
 
+  /** Cycle 15 / Task 7 — list of EVERY composite group key in the
+   *  current tree, in flatOrder traversal order. Shipped back with
+   *  `setGroupModel` / `setExpandedKeys` replies so the main-thread
+   *  mirror can materialise its `expandedKeys` snapshot (the
+   *  `getExpandedKeys()` API needs the all-keys set when the
+   *  main-side state is still at the "default = all expanded"
+   *  sentinel). Empty when grouping is bypassed. */
+  function currentGroupKeys(): string[] {
+    if (!state?.groupOutput) return [];
+    const out: string[] = [];
+    for (const e of state.groupOutput.flatOrder) {
+      if (e.kind === 'group') out.push(e.key);
+    }
+    return out;
+  }
+
   /** Cycle 15 / Task 4 — flatten the `GroupNode` tree into a `key →
-   *  { value, childCount }` lookup the slicer reads when packing the
-   *  chunk's group-row slots. Built once per viewport request — the
-   *  tree is small relative to the visible window and the cost is
-   *  swamped by the slice's column-data fill. */
+   *  { value, childCount, isExpanded }` lookup the slicer reads when
+   *  packing the chunk's group-row slots. Built once per viewport
+   *  request — the tree is small relative to the visible window and the
+   *  cost is swamped by the slice's column-data fill.
+   *
+   *  Cycle 15 / Task 7 — takes the effective expanded set so per-group
+   *  `isExpanded` paints the correct chevron (down for expanded, right
+   *  for collapsed). The slicer also clamps the chunk's `isExpanded[i]`
+   *  array against this value, so the renderer can read either source. */
   function buildGroupMetaLookup(
     roots: readonly GroupNode[],
     columns: readonly WorkerColumn[],
+    expandedKeys: ReadonlySet<string>,
   ): Map<string, { value: string; childCount: number; isExpanded: boolean }> {
     const map = new Map<string, { value: string; childCount: number; isExpanded: boolean }>();
     const colTypeByColId = new Map<string, 'text' | 'number'>();
@@ -274,9 +308,11 @@ export function createWorkerHost(post: PostFn): WorkerHost {
         if (value === null || value === undefined) formatted = '';
         else if (colType === 'number' && typeof value === 'number') formatted = Number.isFinite(value) ? String(value) : '';
         else formatted = String(value);
-        // Task 7 will populate isExpanded from a persistent set; Task 4
-        // mounts with every group expanded.
-        map.set(node.key, { value: formatted, childCount: node.childCount, isExpanded: true });
+        map.set(node.key, {
+          value: formatted,
+          childCount: node.childCount,
+          isExpanded: expandedKeys.has(node.key),
+        });
         if (node.childGroups.length > 0) walk(node.childGroups);
       }
     };
@@ -288,7 +324,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     if (!state) return 0;
     state.visibleCache = await buildVisibleAsync();
     if (isGroupingActive()) {
-      return computeGroupVisibleRowCount(state.groupOutput!.flatOrder, allExpandedKeys());
+      return computeGroupVisibleRowCount(state.groupOutput!.flatOrder, effectiveExpandedKeys());
     }
     return state.visibleCache.length;
   }
@@ -360,7 +396,11 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       // — when an external filter is active the await also covers the
       // candidates ↔ result round-trip with main.
       void invalidateAndCount().then((visibleCount) => {
-        post({ type: 'modelUpdated', visibleCount });
+        // Cycle 15 / Task 7 — when grouping is active, fan the
+        // current composite keys back so main's `knownGroupKeys`
+        // mirror tracks any group added / removed by this txn.
+        const groupKeys = isGroupingActive() ? currentGroupKeys() : undefined;
+        post({ type: 'modelUpdated', visibleCount, groupKeys });
       });
       return all;
     });
@@ -375,6 +415,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       sort:        new SortPass(store, payload.columns, comparators),
       group:       new GroupPass(store, payload.columns),
       groupOutput: null,
+      expandedKeys: null,
       comparators,
       aggFuncs,
       agg:         new AggPass(store, payload.columns, aggFuncs),
@@ -572,7 +613,13 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             state.pendingFlashes.clear();
             state.visibleCache = null;
             const visibleCount = await invalidateAndCount();
-            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount });
+            // Cycle 15 / Task 7 — a full data replace can change
+            // the set of group keys (new tickers, dropped tickers).
+            // Ride the groupKeys snapshot back on the same reply so
+            // `knownGroupKeys` stays in sync without an extra
+            // round-trip.
+            const groupKeys = isGroupingActive() ? currentGroupKeys() : undefined;
+            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount, groupKeys });
             break;
           }
 
@@ -604,7 +651,9 @@ export function createWorkerHost(post: PostFn): WorkerHost {
               }
               state.visibleCache = null;
               post({ id: req.id, type: 'transactionFlushed', results });
-              post({ type: 'modelUpdated', visibleCount: await invalidateAndCount() });
+              const visCount = await invalidateAndCount();
+              const groupKeys = isGroupingActive() ? currentGroupKeys() : undefined;
+              post({ type: 'modelUpdated', visibleCount: visCount, groupKeys });
             }
             break;
           }
@@ -635,8 +684,46 @@ export function createWorkerHost(post: PostFn): WorkerHost {
               post({ id: req.id, type: 'error', error: String((err as Error).message ?? err) });
               break;
             }
+            // Cycle 15 / Task 7 — a fresh group model invalidates any
+            // composite keys main was tracking (a depth or grouping-
+            // column swap rewrites every key). Reset to the
+            // "default = all expanded" sentinel so the new tree mounts
+            // with every group open, then ship back the full key list
+            // so main's mirror materialises against the new tree.
+            state.expandedKeys = null;
             state.visibleCache = null;
-            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await invalidateAndCount() });
+            const visibleCount = await invalidateAndCount();
+            post({
+              id: req.id,
+              type: 'groupKeysSnapshot',
+              count: state.store.size(),
+              visibleCount,
+              groupKeys: currentGroupKeys(),
+            });
+            break;
+          }
+
+          case 'setExpandedKeys': {
+            // Cycle 15 / Task 7 — replace the persistent expanded set.
+            // `null` means "revert to the all-expanded default" (used by
+            // `expandAll()`); an array is the explicit set. We do NOT
+            // validate keys against the current tree — stale keys from
+            // a prior model are harmless (they just don't match any
+            // group node and silently fall out). `visibleCache`
+            // doesn't need invalidation: the cached flat ids stay
+            // identical; only the group walk over `flatOrder` honours
+            // the new set.
+            state.expandedKeys = req.payload.keys === null
+              ? null
+              : new Set(req.payload.keys);
+            const visibleCount = await invalidateAndCount();
+            post({
+              id: req.id,
+              type: 'groupKeysSnapshot',
+              count: state.store.size(),
+              visibleCount,
+              groupKeys: currentGroupKeys(),
+            });
             break;
           }
 
@@ -949,13 +1036,13 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             let visibleSliceIds: string[];
             if (isGroupingActive()) {
               const groupOutput = state.groupOutput!;
-              const expandedKeys = allExpandedKeys();
+              const expandedKeys = effectiveExpandedKeys();
               const visibleOrder: VisibleRowEntry[] = computeGroupVisibleOrder(
                 groupOutput.flatOrder, expandedKeys,
               );
               const colIndex = new Map<string, WorkerColumn>();
               for (const c of state.columns) colIndex.set(c.colId, c);
-              const metaLookup = buildGroupMetaLookup(groupOutput.roots, state.columns);
+              const metaLookup = buildGroupMetaLookup(groupOutput.roots, state.columns, expandedKeys);
               chunk = sliceGroupedViewport(
                 state.store, colIndex, visIds, visibleOrder, req.payload, pending,
                 (key) => metaLookup.get(key),

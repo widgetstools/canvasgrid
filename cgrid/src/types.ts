@@ -1622,6 +1622,23 @@ export type CGridEvent =
       source: AggregationChangedSource;
     }
   | { type: 'columnGroupOpened'; groupId: string; open: boolean }
+  /** Cycle 15 / Task 7 — a single row-group's expanded state changed.
+   *  `key` is the composite group key (`${col}:${value}` per level,
+   *  joined by `::`); `expanded` is the new state. `source` tags the
+   *  trigger — `'ui'` for a chevron click, `'api'` for an imperative
+   *  `setExpanded(key, expanded)` call. The bulk `expandAll()` /
+   *  `collapseAll()` API does NOT fan out per-group events; listen
+   *  for `expandOrCollapseAll` for those. */
+  | {
+      type: 'rowGroupOpened';
+      key: string;
+      expanded: boolean;
+      source: 'ui' | 'api';
+    }
+  /** Cycle 15 / Task 7 — fires after `expandAll()` / `collapseAll()`
+   *  fans out the state. `expanded` is the target state every group
+   *  was set to. */
+  | { type: 'expandOrCollapseAll'; expanded: boolean }
   /** Fires when the set / order of displayed columns changes for any reason.
    *  Cycle 4 wired the original `columnGroupOpened` + `columnDefsChanged`
    *  sources; Cycle 6 / Task 8 widens the source union so listeners can
@@ -1726,6 +1743,26 @@ export interface CGridApi {
   setSortModel(s: SortModel): void;
   setFilterModel(f: FilterModel): void;
   setGroupModel(g: GroupModel): void;
+
+  /** Cycle 15 / Task 7 — expand every row group. Fires
+   *  `expandOrCollapseAll` with `expanded: true`. No-op when grouping
+   *  is bypassed (`rowGroupCols.length === 0`). */
+  expandAll(): void;
+  /** Cycle 15 / Task 7 — collapse every row group. Fires
+   *  `expandOrCollapseAll` with `expanded: false`. No-op when grouping
+   *  is bypassed. */
+  collapseAll(): void;
+  /** Cycle 15 / Task 7 — set a specific group's expanded state by
+   *  composite key (`${col}:${value}` per level, joined by `::`).
+   *  Idempotent — calling with the current state is a no-op. Fires
+   *  `rowGroupOpened` with `source: 'api'` when the state actually
+   *  changes. Unknown keys (a stale key from a prior group model)
+   *  silently no-op. */
+  setExpanded(groupKey: string, expanded: boolean): void;
+  /** Cycle 15 / Task 7 — snapshot of currently-expanded composite
+   *  group keys. Returns a fresh `Set` (mutations don't affect grid
+   *  state). Empty when grouping is bypassed. */
+  getExpandedKeys(): Set<string>;
 
   /** Cycle 7 / Task 9 — read the v2 per-column filter entry for
    *  `colId`. Returns `null` when the column is unfiltered or

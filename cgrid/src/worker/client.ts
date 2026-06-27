@@ -6,7 +6,12 @@ import { normalizeViewportChunk } from './protocol';
 import type { TransactionResult, SortModel, FilterModel, GroupModel, SelectionRange } from '../types';
 
 export interface WorkerClientHandlers {
-  onModelUpdated: (visibleCount: number) => void;
+  /** Cycle 15 / Task 7 — `groupKeys` is present when grouping is
+   *  active; carries the current composite-key set so main's mirror
+   *  for `getExpandedKeys()` stays in lockstep through transactions
+   *  that add / remove groups. Absent under ungrouped grids — main
+   *  ignores it on the cheap path. */
+  onModelUpdated: (visibleCount: number, groupKeys?: string[]) => void;
   onAsyncTransactionsFlushed: (results: TransactionResult[]) => void;
   onError: (error: string) => void;
   /** Cycle 5 / Task 8 — worker has measured a chunk of autoHeight rows and
@@ -61,7 +66,7 @@ export class WorkerClient {
       else                       pending.resolve(msg);
       return;
     }
-    if (msg.type === 'modelUpdated') this.handlers.onModelUpdated(msg.visibleCount);
+    if (msg.type === 'modelUpdated') this.handlers.onModelUpdated(msg.visibleCount, msg.groupKeys);
     else if (msg.type === 'asyncTransactionsFlushed') this.handlers.onAsyncTransactionsFlushed(msg.results);
     else if (msg.type === 'heightsChanged') {
       this.handlers.onHeightsChanged?.(msg.rowStart, msg.heights);
@@ -99,8 +104,8 @@ export class WorkerClient {
     return this.send<{ type: 'ready' }>({ type: 'init', payload }).then(() => {});
   }
 
-  setRowData(rows: unknown[], heightsByRowId?: Map<string, number>): Promise<{ count: number; visibleCount: number }> {
-    return this.send<{ count: number; visibleCount: number }>({
+  setRowData(rows: unknown[], heightsByRowId?: Map<string, number>): Promise<{ count: number; visibleCount: number; groupKeys?: string[] }> {
+    return this.send<{ count: number; visibleCount: number; groupKeys?: string[] }>({
       type: 'setRowData', payload: { rows, heightsByRowId },
     });
   }
@@ -125,9 +130,29 @@ export class WorkerClient {
    *  worker re-runs the pipeline (filter → group → sort) and resolves
    *  with the new visible row count. Unknown / duplicate colIds in
    *  `rowGroupCols` are rejected by the worker and surface as a
-   *  rejected promise. */
-  setGroupModel(g: GroupModel): Promise<{ visibleCount: number }> {
-    return this.send<{ visibleCount: number }>({ type: 'setGroupModel', payload: g });
+   *  rejected promise.
+   *
+   *  Cycle 15 / Task 7 — also resolves with `groupKeys`: the list of
+   *  every composite group key in the new tree so the main-side
+   *  mirror can materialise its `expandedKeys` snapshot for
+   *  `getExpandedKeys()`. Empty when grouping bypasses
+   *  (`rowGroupCols.length === 0`). */
+  setGroupModel(g: GroupModel): Promise<{ visibleCount: number; groupKeys: string[] }> {
+    return this.send<{ visibleCount: number; groupKeys?: string[] }>({
+      type: 'setGroupModel', payload: g,
+    }).then((r) => ({ visibleCount: r.visibleCount, groupKeys: r.groupKeys ?? [] }));
+  }
+
+  /** Cycle 15 / Task 7 — replace the worker's persistent expanded-keys
+   *  set. `keys === null` reverts to the all-expanded default; an
+   *  empty array collapses everything; any other array is the
+   *  explicit set. Resolves with the post-set visible row count AND
+   *  the full list of current composite group keys so the main-side
+   *  mirror can materialise / refresh its snapshot. */
+  setExpandedKeys(keys: string[] | null): Promise<{ visibleCount: number; groupKeys: string[] }> {
+    return this.send<{ visibleCount: number; groupKeys?: string[] }>({
+      type: 'setExpandedKeys', payload: { keys },
+    }).then((r) => ({ visibleCount: r.visibleCount, groupKeys: r.groupKeys ?? [] }));
   }
 
   /** Cycle 7 / Task 8 — toggle the external-filter round-trip. When

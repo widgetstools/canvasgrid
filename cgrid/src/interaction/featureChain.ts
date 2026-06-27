@@ -41,6 +41,7 @@ import { RangeSelection } from './features/rangeSelection';
 import { FillHandle } from './features/fillHandle';
 import { RightClick } from './features/rightClick';
 import { KeyboardShortcuts } from './features/keyboardShortcuts';
+import { GroupExpandFeature } from './features/groupExpand';
 
 /** Idle gap (ms) after the last wheel event before the axis lock releases.
  *  ~150ms matches the natural pause between separate trackpad gestures while
@@ -61,6 +62,13 @@ export class FeatureChain {
     this.head = new ColumnResizing();
     this.head
       .append(new ColumnDrag())
+      // Cycle 15 / Task 7 — GroupExpand sits ahead of EditTrigger /
+      // FillHandle / RangeSelection / CellSelection. A click on the
+      // chevron must not also open an editor, mutate the cell range,
+      // or replace focus. Outside the chevron hit zone the feature
+      // forwards via `super` so every downstream gesture keeps
+      // working in grouped + ungrouped grids alike.
+      .append(new GroupExpandFeature())
       .append(new EditTrigger())
       .append(new FillHandle())
       .append(new RangeSelection())
