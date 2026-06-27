@@ -823,6 +823,196 @@ describe('CGrid integration', () => {
       grid.destroy();
     });
   });
+
+  // Cycle 11 / Task 6 — Side bar state API.
+  //
+  // Seven CGridApi methods that wrap the live SideBarHost so apps can
+  // drive the side bar without poking at the host directly. Every method
+  // must (a) match the SideBarHost behaviour 1:1 when a side bar is
+  // configured AND (b) be a silent no-op (or a sensible default) when no
+  // side bar is configured. Reuses the RecordingPanel-stub trick from
+  // the Task 5 suite so panel init stays cheap.
+  describe('side bar state API (Cycle 11 / Task 6)', () => {
+    class RecordingPanel {
+      readonly gui = document.createElement('div');
+      init(): void { this.gui.className = 'cg-recording-panel'; }
+      getGui(): HTMLElement { return this.gui; }
+      refresh(): void {}
+      destroy(): void {}
+    }
+
+    function makeGrid(extra?: { hiddenByDefault?: boolean; defaultToolPanel?: string; position?: 'left' | 'right' }) {
+      const container = document.createElement('div');
+      container.style.cssText = 'width:800px; height:600px;';
+      container.className = 'cg-theme-quartz';
+      document.body.appendChild(container);
+      const grid = new CGrid<{ id: string; a: number }>(container, {
+        columnDefs: [{ field: 'id' }, { field: 'a' }],
+        getRowId: (r) => r.id,
+        components: {
+          agColumnsToolPanel: RecordingPanel as unknown as new () => RecordingPanel,
+          agFiltersToolPanel: RecordingPanel as unknown as new () => RecordingPanel,
+          demoPanel: RecordingPanel as unknown as new () => RecordingPanel,
+        },
+        sideBar: {
+          toolPanels: [
+            { id: 'agColumnsToolPanel', labelDefault: 'Columns', toolPanel: 'agColumnsToolPanel' },
+            { id: 'agFiltersToolPanel', labelDefault: 'Filters', toolPanel: 'agFiltersToolPanel' },
+            { id: 'demoPanel', labelDefault: 'Demo', toolPanel: 'demoPanel' },
+          ],
+          ...extra,
+        },
+      });
+      return { grid, container };
+    }
+
+    function makeGridNoSideBar() {
+      const container = document.createElement('div');
+      container.style.cssText = 'width:800px; height:600px;';
+      container.className = 'cg-theme-quartz';
+      document.body.appendChild(container);
+      const grid = new CGrid<{ id: string }>(container, {
+        columnDefs: [{ field: 'id' }],
+        getRowId: (r) => r.id,
+      });
+      return { grid, container };
+    }
+
+    it('isSideBarVisible() returns true after mount when no hiddenByDefault is set', () => {
+      const { grid } = makeGrid();
+      const api = (grid as any).makeApi();
+      expect(api.isSideBarVisible()).toBe(true);
+      grid.destroy();
+    });
+
+    it('isSideBarVisible() returns false when hiddenByDefault: true', () => {
+      const { grid } = makeGrid({ hiddenByDefault: true });
+      const api = (grid as any).makeApi();
+      expect(api.isSideBarVisible()).toBe(false);
+      grid.destroy();
+    });
+
+    it('setSideBarVisible(false) hides and setSideBarVisible(true) restores', () => {
+      const { grid } = makeGrid();
+      const api = (grid as any).makeApi();
+      expect(api.isSideBarVisible()).toBe(true);
+      api.setSideBarVisible(false);
+      expect(api.isSideBarVisible()).toBe(false);
+      api.setSideBarVisible(true);
+      expect(api.isSideBarVisible()).toBe(true);
+      grid.destroy();
+    });
+
+    it('setSideBarPosition(pos) flips the host position (read back through getSideBar)', () => {
+      const { grid } = makeGrid();
+      const api = (grid as any).makeApi();
+      // Default resolved position is 'right' (set by resolveSideBarDef).
+      expect(api.getSideBar()?.position).toBe('right');
+      api.setSideBarPosition('left');
+      expect(api.getSideBar()?.position).toBe('left');
+      api.setSideBarPosition('right');
+      expect(api.getSideBar()?.position).toBe('right');
+      grid.destroy();
+    });
+
+    it('openToolPanel(id) opens; getOpenedToolPanel() reflects it; closeToolPanel() clears it', () => {
+      const { grid } = makeGrid();
+      const api = (grid as any).makeApi();
+      expect(api.getOpenedToolPanel()).toBeNull();
+      api.openToolPanel('agColumnsToolPanel');
+      expect(api.getOpenedToolPanel()).toBe('agColumnsToolPanel');
+      // Switch directly to another panel — the host closes the first one
+      // and opens the second; getOpenedToolPanel reflects the new active.
+      api.openToolPanel('agFiltersToolPanel');
+      expect(api.getOpenedToolPanel()).toBe('agFiltersToolPanel');
+      api.closeToolPanel();
+      expect(api.getOpenedToolPanel()).toBeNull();
+      grid.destroy();
+    });
+
+    it('openToolPanel(id) for an unknown id is a silent no-op (does not throw, does not open)', () => {
+      const { grid } = makeGrid();
+      const api = (grid as any).makeApi();
+      expect(() => api.openToolPanel('does-not-exist')).not.toThrow();
+      expect(api.getOpenedToolPanel()).toBeNull();
+      grid.destroy();
+    });
+
+    it('openToolPanel(id) for a custom (app-supplied) id mounts the custom panel', () => {
+      const { grid } = makeGrid();
+      const api = (grid as any).makeApi();
+      api.openToolPanel('demoPanel');
+      expect(api.getOpenedToolPanel()).toBe('demoPanel');
+      const instance = api.getToolPanelInstance('demoPanel');
+      expect(instance).not.toBeNull();
+      grid.destroy();
+    });
+
+    it('getSideBar() returns the resolved SideBarDef (string shortcuts expanded, position defaulted)', () => {
+      const container = document.createElement('div');
+      container.style.cssText = 'width:800px; height:600px;';
+      container.className = 'cg-theme-quartz';
+      document.body.appendChild(container);
+      const grid = new CGrid<{ id: string }>(container, {
+        columnDefs: [{ field: 'id' }],
+        getRowId: (r) => r.id,
+        components: {
+          agColumnsToolPanel: RecordingPanel as unknown as new () => RecordingPanel,
+          agFiltersToolPanel: RecordingPanel as unknown as new () => RecordingPanel,
+        },
+        // Boolean shorthand `true` should normalise into a SideBarDef
+        // containing both built-in panels (string shortcuts expanded
+        // into full ToolPanelDef shape).
+        sideBar: true,
+      });
+      const api = (grid as any).makeApi();
+      const def = api.getSideBar();
+      expect(def).toBeDefined();
+      // Default position when none specified.
+      expect(def?.position).toBe('right');
+      // String shortcuts ['columns', 'filters'] expanded into objects.
+      expect(def?.toolPanels.length).toBe(2);
+      const ids = (def!.toolPanels as Array<{ id: string }>).map((p) => p.id);
+      expect(ids).toContain('agColumnsToolPanel');
+      expect(ids).toContain('agFiltersToolPanel');
+      grid.destroy();
+    });
+
+    it('defaultToolPanel + openToolPanel + getOpenedToolPanel round-trip across the API surface', () => {
+      const { grid } = makeGrid({ defaultToolPanel: 'agColumnsToolPanel' });
+      const api = (grid as any).makeApi();
+      // The default panel auto-opens at mount via SideBarHost.
+      expect(api.getOpenedToolPanel()).toBe('agColumnsToolPanel');
+      // Closing through the API tears the panel down.
+      api.closeToolPanel();
+      expect(api.getOpenedToolPanel()).toBeNull();
+      // Re-opening through the API mounts a fresh instance.
+      api.openToolPanel('agColumnsToolPanel');
+      expect(api.getOpenedToolPanel()).toBe('agColumnsToolPanel');
+      grid.destroy();
+    });
+
+    it('every method no-ops gracefully when no side bar is configured', () => {
+      const { grid } = makeGridNoSideBar();
+      const api = (grid as any).makeApi();
+      // Reads: isSideBarVisible → false; getOpenedToolPanel → null;
+      // getSideBar → undefined.
+      expect(api.isSideBarVisible()).toBe(false);
+      expect(api.getOpenedToolPanel()).toBeNull();
+      expect(api.getSideBar()).toBeUndefined();
+      // Writes: all silent no-ops, no throw.
+      expect(() => api.setSideBarVisible(true)).not.toThrow();
+      expect(() => api.setSideBarVisible(false)).not.toThrow();
+      expect(() => api.setSideBarPosition('left')).not.toThrow();
+      expect(() => api.setSideBarPosition('right')).not.toThrow();
+      expect(() => api.openToolPanel('agColumnsToolPanel')).not.toThrow();
+      expect(() => api.closeToolPanel()).not.toThrow();
+      // No side effects materialised.
+      expect(api.isSideBarVisible()).toBe(false);
+      expect(api.getOpenedToolPanel()).toBeNull();
+      grid.destroy();
+    });
+  });
 });
 
 describe('inferRowIdField', () => {

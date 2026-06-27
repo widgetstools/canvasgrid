@@ -1590,6 +1590,44 @@ export interface CGridApi {
    *  panel (the host calls `destroy()` and drops the reference). */
   getToolPanelInstance(id: string): ToolPanel | null;
 
+  /** Cycle 11 / Task 6 — `true` when the side bar is currently
+   *  visible (mounted AND not in `display: none`). Returns `false`
+   *  when no side bar is configured, when `SideBarDef.hiddenByDefault`
+   *  is `true`, or after `setSideBarVisible(false)`. */
+  isSideBarVisible(): boolean;
+  /** Cycle 11 / Task 6 — show or hide the whole side bar. Silent
+   *  no-op when no side bar is configured. Triggers one canvas
+   *  reflow on visibility change so the canvas region grows or
+   *  shrinks to fill the released / reclaimed gutter. */
+  setSideBarVisible(show: boolean): void;
+  /** Cycle 11 / Task 6 — move the side bar to the left or right edge.
+   *  Silent no-op when no side bar is configured. Releases the old
+   *  edge reservation + claims the new one in one synchronous resize.
+   *  The resolved position is observable through `getSideBar().position`. */
+  setSideBarPosition(pos: 'left' | 'right'): void;
+  /** Cycle 11 / Task 6 — open the tool panel with the given `id`.
+   *  Silent no-op when no side bar is configured or when `id` is not
+   *  one of the registered panels. Closes any previously-open panel
+   *  first — only one panel is open at a time. Works for built-in ids
+   *  (`agColumnsToolPanel`, `agFiltersToolPanel`) and app-supplied
+   *  custom ids from `CGridOptions.components`. */
+  openToolPanel(id: string): void;
+  /** Cycle 11 / Task 6 — close the currently open tool panel. Silent
+   *  no-op when no side bar is configured or no panel is open. The
+   *  host destroys the live `ToolPanel` instance so panels can't leak
+   *  listeners; `getToolPanelInstance(id)` returns `null` afterwards. */
+  closeToolPanel(): void;
+  /** Cycle 11 / Task 6 — the id of the currently open panel, or
+   *  `null` when no panel is open / no side bar is configured. */
+  getOpenedToolPanel(): string | null;
+  /** Cycle 11 / Task 6 — the resolved `SideBarDef` (string shortcuts
+   *  expanded into full `ToolPanelDef` objects, `position` defaulted
+   *  to `'right'` when not specified), or `undefined` when no side
+   *  bar was configured on this grid. The returned object reflects
+   *  the LIVE def — `setSideBarPosition` mutations are observable
+   *  via the `position` field on subsequent reads. */
+  getSideBar(): SideBarDef | undefined;
+
   /** Read the current value of any grid option. */
   getGridOption<K extends keyof CGridOptions>(key: K): CGridOptions[K] | undefined;
   /** Update a single runtime-mutable option. Throws on initial-only keys
