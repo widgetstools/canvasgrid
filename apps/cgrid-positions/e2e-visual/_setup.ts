@@ -80,6 +80,26 @@ export async function seedGrid(page: Page, rowCount: number): Promise<void> {
       'AAPL', 'MSFT', 'GOOG', 'AMZN', 'META', 'NVDA', 'TSLA', 'BRK', 'JPM', 'XOM',
       'JNJ',  'WMT',  'V',    'UNH',  'MA',   'HD',   'PG',   'KO',  'BAC', 'PFE',
     ];
+    // Cycle 15 / Task 5 — deterministic ticker → sector + subSector
+    // derivation. Seeds the multipleColumns visual cell (cell 21) +
+    // any future grouping-by-sector demo. Values are extra fields on
+    // each row object; they're silently ignored when no column declares
+    // them as `field`, so existing visual cells (which don't declare
+    // sector/subSector columns by default) remain byte-stable.
+    const SECTOR_BY_TICKER: Record<string, string> = {
+      AAPL: 'Tech', MSFT: 'Tech', GOOG: 'Tech', NVDA: 'Tech', META: 'Tech',
+      AMZN: 'Consumer', WMT: 'Consumer', HD: 'Consumer', KO: 'Consumer', PG: 'Consumer',
+      TSLA: 'Industrial', UNH: 'Health', JNJ: 'Health', PFE: 'Health',
+      BRK: 'Financial', JPM: 'Financial', BAC: 'Financial', V: 'Financial', MA: 'Financial',
+      XOM: 'Energy',
+    };
+    const SUBSECTOR_BY_TICKER: Record<string, string> = {
+      AAPL: 'Devices', MSFT: 'Software', GOOG: 'Software', NVDA: 'Semis', META: 'Internet',
+      AMZN: 'E-commerce', WMT: 'Retail', HD: 'Retail', KO: 'Beverage', PG: 'Goods',
+      TSLA: 'EV', UNH: 'Insurance', JNJ: 'Pharma', PFE: 'Pharma',
+      BRK: 'Holding', JPM: 'Banks', BAC: 'Banks', V: 'Payments', MA: 'Payments',
+      XOM: 'Integrated',
+    };
     const cusipFor = (i: number): string => {
       const hex = ((i * 0x9e3779b9) >>> 0).toString(16).toUpperCase().padStart(8, '0');
       return hex.slice(0, 9).padEnd(9, '0');
@@ -99,6 +119,8 @@ export async function seedGrid(page: Page, rowCount: number): Promise<void> {
         positionId: `POS-${String(i).padStart(6, '0')}`,
         cusip: cusipFor(i),
         ticker,
+        sector: SECTOR_BY_TICKER[ticker!] ?? 'Other',
+        subSector: SUBSECTOR_BY_TICKER[ticker!] ?? 'Other',
         notionalAmount: notional,
         marketValue,
         currentPrice: price,

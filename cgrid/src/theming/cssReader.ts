@@ -93,6 +93,17 @@ export interface ResolvedTheme {
    *  Resolved from `--cg-group-indent`. Defaults to `14` (the design
    *  plan's canonical chevron width) when the variable isn't declared. */
   groupIndent: number;
+  /** Cycle 15 / Task 4 — row-bg shift applied to group rows ONLY in
+   *  `'groupRows'` mode (and the `'custom'` fallback path). Subtle slate
+   *  cast — far lighter than the totals "hairline lift" (which is
+   *  reserved for synthesis rows in Task 12) so the strip reads as a
+   *  navigational marker, not as a computed summary. Resolved from
+   *  `--cg-group-row-bg`. Falls back to `--cg-row-alt-bg` when the
+   *  variable isn't declared (defensive — the strip still needs SOME
+   *  contrast against data rows). Design plan:
+   *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md`
+   *  § Task 5. */
+  groupRowBg: string;
   rowHeight: number;
   headerHeight: number;
   resizerHotZone: number;
@@ -221,6 +232,7 @@ export class CssReader {
       groupChevronColor: get('--cg-group-chevron-color') || get('--cg-totals-fg-muted') || '#475569',
       groupCountColor: get('--cg-group-count-color') || get('--cg-totals-fg-muted') || '#475569',
       groupIndent: px('--cg-group-indent', 14),
+      groupRowBg: get('--cg-group-row-bg') || get('--cg-row-alt-bg') || '#f1f5f9',
       rowHeight: px('--cg-row-height', 30),
       headerHeight: px('--cg-header-height', 32),
       resizerHotZone: px('--cg-resizer-hot-zone', 4),

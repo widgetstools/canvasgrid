@@ -91,6 +91,13 @@
   --cg-group-chevron-color: var(--cg-totals-fg-muted);
   --cg-group-count-color: var(--cg-totals-fg-muted);
   --cg-group-indent: 14px;
+  /* Cycle 15 / Task 5 — row-bg shift applied to group rows in
+   * `'groupRows'` / `'custom'` modes only. A ~1.5% slate cast — far
+   * lighter than --cg-totals-bg (3% lift + top border + weight bump)
+   * so the synthesis-row signature stays reserved for per-group
+   * footers in Task 12. Design plan:
+   * docs/superpowers/plans/notes/cycle-15-grouping-design.md § Task 5. */
+  --cg-group-row-bg: #f1f5f9;
 }
 
 .cg-theme-quartz-dark {
@@ -156,6 +163,11 @@
   --cg-group-chevron-color: var(--cg-totals-fg-muted);
   --cg-group-count-color: var(--cg-totals-fg-muted);
   --cg-group-indent: 14px;
+  /* Cycle 15 / Task 5 — dark-mode group-row strip bg. Pale slate cast
+   * over the dark body (#0a1428); same role as the light token — far
+   * lighter than --cg-totals-bg (which carries the synthesis signature
+   * in dark too). */
+  --cg-group-row-bg: #11203a;
 }
 
 /* Native scrollbar styling (Chromium/WebKit) — always-visible thumb

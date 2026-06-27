@@ -20,6 +20,12 @@ export interface Position {
   expiryDate?: Date;
   notes?: string;
   confirmed?: boolean;
+  // Cycle 15 / Task 5 — synthetic categorical fields derived from the
+  // ticker by the visual-regression seed (`e2e-visual/_setup.ts`). Drive
+  // the three-level multipleColumns visual cell (cell 21). Optional so
+  // STOMP snapshots that don't carry these fields still type-check.
+  sector?: string;
+  subSector?: string;
 }
 
 export interface StompCallbacks {

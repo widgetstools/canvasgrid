@@ -2,6 +2,7 @@ import type { ViewportState } from '../core/viewport';
 import type { ResolvedColDef } from '../core/propertyChain';
 import type { ResolvedTheme } from '../theming/cssReader';
 import type { CellRendererRegistry } from './cellRenderers/registry';
+import type { GroupCellValue } from './cellRenderers/group';
 import type { CellDataLookup } from './painters/types';
 import type { SortModel, SelectionRange } from '../types';
 import type { CachedContext2D } from './gc';
@@ -67,6 +68,22 @@ export interface RendererOpts {
    */
   getVisibleCellBounds: (rowIndex: number, colId: string) =>
     { x: number; y: number; w: number; h: number } | null;
+  /**
+   * Cycle 15 / Task 5 — group-row strip mode lookup. Returns the per-row
+   * group context for full-row strip rendering when `groupDisplayType`
+   * resolves to `'groupRows'` or `'custom'`; returns `null` for
+   * singleColumn / multipleColumns / bypassed-grouping so the painter
+   * skips the strip code path with zero overhead. The `lookup` takes a
+   * data-row index (matches `cellAt(rowIndex, …)`'s row argument) and
+   * returns the `GroupCellValue` payload on a group row, `null` on a
+   * data row. The `renderer` is the cellRenderer key the painter looks
+   * up via the registry — defaults to `'group'`; apps override via
+   * `CGridOptions.groupRowRenderer` for `'custom'` display type.
+   */
+  getGroupRowStrip: () => {
+    renderer: string;
+    lookup: (rowIndex: number) => GroupCellValue | null;
+  } | null;
 }
 
 export class Renderer {
@@ -86,6 +103,7 @@ export class Renderer {
       showFillHandle: this.opts.getShowFillHandle(),
       suppressAggFuncInHeader: this.opts.getSuppressAggFuncInHeader(),
       getVisibleCellBounds: this.opts.getVisibleCellBounds,
+      groupRowStrip: this.opts.getGroupRowStrip(),
     };
     // Fill the entire drawable area with theme bg as the FIRST instruction so
     // there's no transparent moment between the prior frame's pixels (or a

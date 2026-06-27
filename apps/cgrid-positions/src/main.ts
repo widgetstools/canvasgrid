@@ -72,7 +72,14 @@ const suppressAggHeader = search.get('suppressAggHeader') === '1';
 // row group so the auto-group column + 'group' cell renderer light up in
 // the live demo. Off by default so visual cells 01–19 stay byte-stable.
 const groupByTicker = search.get('grouping') === 'ticker';
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker });
+// Cycle 15 / Task 5 — `?grouping=multipleColumns` opts the demo into a
+// three-level (`ticker` → `sector` → `subSector`)
+// `groupDisplayType: 'multipleColumns'` view. Off by default; drives
+// visual cell 21-group-three-level-multipleColumns. Mutually exclusive
+// with `?grouping=ticker` — the same query param selects ONE grouping
+// demo.
+const groupMultipleColumns = search.get('grouping') === 'multipleColumns';
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns });
 
 // E2E hooks: expose the grid + a readiness flag so Playwright tests can wait
 // for first-data-rendered and call api helpers (`getCellBoundsAt`,

@@ -55,6 +55,7 @@ describe('Renderer', () => {
       getQuickFilterLowerTerms: () => [],
       getShowFillHandle: () => false,
       getSuppressAggFuncInHeader: () => false,
+      getGroupRowStrip: () => null,
     } as any);
     r.paint(gc);
     // The very first fillRect call must be the full-canvas bg fill — this is
