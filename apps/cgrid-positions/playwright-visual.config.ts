@@ -6,6 +6,12 @@ import { defineConfig } from '@playwright/test';
 // stays unchanged.
 export default defineConfig({
   testDir: './e2e-visual',
+  // Cycle 12 / Task 5 — all baselines live flat in `e2e-visual/__snapshots__/`
+  // (the worklog mandates a single committed PNG directory so the
+  // `[visual-baseline-update]` PR convention can list a small, reviewable
+  // set). Each `toHaveScreenshot('<name>.png')` writes to that one folder;
+  // collisions across specs surface as a Playwright error.
+  snapshotPathTemplate: '{testDir}/__snapshots__/{arg}{ext}',
   timeout: 30_000,
   expect: {
     timeout: 10_000,
