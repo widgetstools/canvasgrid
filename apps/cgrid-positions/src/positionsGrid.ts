@@ -124,16 +124,20 @@ export interface PositionsGridOptions {
    *  Flipping the default would regress those specs, so the polished
    *  demo experience is gated behind `?openColumns=1`. */
   openColumns?: boolean;
-  /** Cycle 13 / Task 1+2 — `?statusBar=<mode>` mounts the bottom status
-   *  bar. Recognised modes:
+  /** Cycle 13 / Task 1+2+3 — `?statusBar=<mode>` mounts the bottom
+   *  status bar. Recognised modes:
    *    - `'mounted'`: empty bar (zero panels) — used by visual cell 14
    *      to assert the host chrome reads as intentional.
    *    - `'counts'`: four built-in count panels in the right zone
    *      (Total / Filtered / Selected / TotalAndFiltered) — Cycle 13 /
    *      Task 2, drives visual cell 15.
-   *  Task 3 will add `'full'` once the agg panel exists. Anything
-   *  else (and null) leaves the bar disabled, preserving the default
-   *  demo experience for the rest of the visual matrix. */
+   *    - `'full'`: `agAggregationComponent` in the LEFT zone +
+   *      `agTotalAndFilteredRowCountComponent` and
+   *      `agSelectedRowCountComponent` in the RIGHT zone. Drives
+   *      visual cell 16 once the spec stages a range selection.
+   *      Cycle 13 / Task 3.
+   *  Anything else (and null) leaves the bar disabled, preserving the
+   *  default demo experience for the rest of the visual matrix. */
   statusBar?: string | null;
 }
 
@@ -453,11 +457,14 @@ export function createPositionsGrid(
       ...(opts.openColumns ? { defaultToolPanel: 'agColumnsToolPanel' } : {}),
     },
     components: opts.customPanel ? { demoCustomPanel: DemoCustomPanel } : undefined,
-    // Cycle 13 / Task 1+2 — `?statusBar=<mode>`:
+    // Cycle 13 / Task 1+2+3 — `?statusBar=<mode>`:
     //   - `'mounted'` → empty bar (visual cell 14)
     //   - `'counts'`  → four built-in count panels in the right zone
     //                   (visual cell 15)
-    // Task 3 will add the `'full'` mode with the agg panel on the left.
+    //   - `'full'`    → agAggregationComponent on the left zone
+    //                   (5 stats inline) + TotalAndFiltered + Selected
+    //                   count panels on the right zone (visual cell 16
+    //                   stages a 10-row range so the agg panel renders).
     statusBar: opts.statusBar === 'mounted'
       ? { statusPanels: [] }
       : opts.statusBar === 'counts'
@@ -469,7 +476,15 @@ export function createPositionsGrid(
               { key: 'agTotalAndFilteredRowCountComponent', statusPanel: 'agTotalAndFilteredRowCountComponent' },
             ],
           }
-        : undefined,
+        : opts.statusBar === 'full'
+          ? {
+              statusPanels: [
+                { key: 'agAggregationComponent', statusPanel: 'agAggregationComponent', align: 'left' },
+                { key: 'agTotalAndFilteredRowCountComponent', statusPanel: 'agTotalAndFilteredRowCountComponent', align: 'right' },
+                { key: 'agSelectedRowCountComponent', statusPanel: 'agSelectedRowCountComponent', align: 'right' },
+              ],
+            }
+          : undefined,
     // Cycle 10 / Task 1 — sample `getContextMenuItems`. Keeps every
     // built-in default item (Copy / Paste / Cut / Export / Autosize /
     // Pin / Reset) AND appends one custom "Clear filters" entry so the
