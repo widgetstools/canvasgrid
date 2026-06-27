@@ -3257,6 +3257,17 @@ export class CGrid<TRow = any> {
       this.editor.commit();
       return;
     }
+    // Cell straddles or has scrolled past the body band — commit so the
+    // editor input doesn't render over the header (top) or below the
+    // body bottom edge. The canvas focus ring already self-clips; the
+    // DOM-based editor needs an explicit close because the editor host
+    // container isn't clipped to the body region (it also hosts filter
+    // popups + context menus, which should NOT be clipped).
+    const vs = this.viewport;
+    if (bounds.y < vs.bodyTop || bounds.y + bounds.h > vs.bodyBottom) {
+      this.editor.commit();
+      return;
+    }
     this.editor.reposition(bounds);
   }
 
