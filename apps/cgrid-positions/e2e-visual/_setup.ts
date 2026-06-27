@@ -54,6 +54,22 @@ export async function gridReady(page: Page): Promise<void> {
   );
 }
 
+/** Navigate with a query string (e.g. `?statusBar=mounted`) so the demo
+ *  factory opts into the optional surface under test. Mirrors `gridReady`
+ *  semantics — waits for `window.__cgrid` to mount but NOT for
+ *  firstDataRendered. Cycle 13 / Task 1 — used by visual cell 14 to mount
+ *  the status bar (empty in Task 1; counts + agg panels populate in
+ *  Tasks 2 + 3). */
+export async function gridReadyWithQuery(page: Page, query: string): Promise<void> {
+  const path = query.startsWith('?') ? `/${query}` : `/?${query}`;
+  await page.goto(path);
+  await page.waitForFunction(
+    () => (window as unknown as { __cgrid?: unknown }).__cgrid != null,
+    undefined,
+    { timeout: 20_000 },
+  );
+}
+
 /** Push `rowCount` deterministic rows into the demo grid. Resolves once the
  *  rows are seeded — caller waits for paint completion separately. */
 export async function seedGrid(page: Page, rowCount: number): Promise<void> {

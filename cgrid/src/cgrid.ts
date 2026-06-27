@@ -41,6 +41,9 @@ import { ToolPanelRegistry } from './interaction/toolPanels/registry';
 import { ColumnsToolPanel } from './interaction/toolPanels/columnsPanel';
 import { FiltersToolPanel } from './interaction/toolPanels/filtersPanel';
 import { SideBarHost, normalizeSideBarOption, type SideBarGridContext } from './interaction/sideBar/host';
+import { StatusBarHost, normalizeStatusBarOption, type StatusBarGridContext } from './interaction/statusBar/host';
+import { StatusPanelRegistry } from './interaction/statusBar/registry';
+import type { StatusBarDef, StatusBarPosition, IStatusPanelComp } from './interaction/statusBar/types';
 import type { MenuItem, GetContextMenuItemsParams, GetMainMenuItemsParams } from './interaction/contextMenu/types';
 import { buildDefaultMenuItems } from './interaction/contextMenu/defaults';
 import { buildDefaultMainMenuItems } from './interaction/contextMenu/mainMenuDefaults';
@@ -371,6 +374,22 @@ export class CGrid<TRow = any> {
    *  scroller, editor overlay, and canvas position consume these so
    *  the side bar visually replaces the matching gutter. */
   private sideBarInsets = { left: 0, right: 0 };
+  /** Cycle 13 / Task 1 — status-bar registry. Seeded with the canonical
+   *  built-in keys (`agTotalRowCountComponent`, …) and then merged with
+   *  any `CGridOptions.components` overrides so apps can replace the
+   *  built-ins or add custom keys that `StatusBarDef.statusPanels`
+   *  entries reference via `statusPanel`. The status bar host reads
+   *  this registry to instantiate panels on demand. */
+  private statusPanelRegistry: StatusPanelRegistry;
+  /** Cycle 13 / Task 1 — status-bar host (DOM strip on the bottom or
+   *  top edge that houses status panels). `null` when `options.statusBar`
+   *  resolves to off. Reserves a top/bottom inset on the canvas region
+   *  via `reserveStatusBarSpace` so the canvas reflows when the bar
+   *  mounts / hides / position toggles / def changes. */
+  private statusBar: StatusBarHost | null = null;
+  /** Cycle 13 / Task 1 — currently reserved insets (CSS px) on the
+   *  canvas region's top + bottom edges, set by the status bar. */
+  private statusBarInsets: Record<StatusBarPosition, number> = { top: 0, bottom: 0 };
   /** Cycle 4 / Task 11 (cell-flash patch) — per-cell flash tracker.
    *  Drained from each `getViewport` chunk's `flashMask` and queried
    *  by the painter's `cellData` callback to produce `flashAlpha`. */
@@ -494,6 +513,16 @@ export class CGrid<TRow = any> {
         this.toolPanelRegistry.register(id, ctor);
       }
     }
+
+    // 2c. Status-panel registry (Cycle 13 / Task 1). Seed the canonical
+    // built-in keys with inert stubs (Tasks 2 + 3 register the real
+    // count + aggregation implementations against the same keys at
+    // construction). Cycle 13 / Task 4 widens `CGridOptions.components`
+    // to merge custom status-panel ctors through the same channel the
+    // tool-panel registry consumes; until then the registry only hosts
+    // the built-ins + anything Tasks 2/3 register.
+    this.statusPanelRegistry = new StatusPanelRegistry();
+    this.statusPanelRegistry.seedBuiltIns();
 
     // 3. Column model — resolve into a tree (groups + leaves), then derive
     // the visible-leaf ordering from the group open/closed state. Task 3
@@ -632,6 +661,23 @@ export class CGrid<TRow = any> {
         emit: (event) => this.events.emit(event),
       };
       this.sideBar = new SideBarHost(this.root, ctx, sideBarDef);
+    }
+
+    // Cycle 13 / Task 1 — status bar (DOM strip on the bottom or top
+    // edge hosting status panels). Mounts when `options.statusBar`
+    // resolves to a non-null def via `normalizeStatusBarOption`. Wires
+    // the geometry callback so the canvas reflows when the bar
+    // mounts / hides / changes position. Attaches to `this.root` AFTER
+    // the canvas + editor overlay so its z-order sits above them
+    // naturally without explicit z-index plumbing.
+    const statusBarDef = normalizeStatusBarOption(options.statusBar);
+    if (statusBarDef) {
+      const ctx: StatusBarGridContext = {
+        registry: this.statusPanelRegistry,
+        api: this.makeApi(),
+        setReservedSpace: (side, height) => this.reserveStatusBarSpace(side, height),
+      };
+      this.statusBar = new StatusBarHost(this.root, ctx, statusBarDef);
     }
 
     // 8. Hit-test + input
@@ -2682,9 +2728,36 @@ export class CGrid<TRow = any> {
     // re-lays out columns + repaints in the same call. Skips when the
     // canvas hasn't been constructed yet (mount-time reservation that
     // lands before CGridCanvas finishes — guarded so a sideBar
-    // constructed pre-canvas doesn't crash).
+    // constructed pre-canvas doesn't crash). Cycle 13 / Task 1 — the
+    // current status-bar bottom reservation flows through the same
+    // setHostBounds call so a side-bar reflow can't drop the bar inset.
     if (this.cgridCanvas) {
-      this.cgridCanvas.setHostBounds({ left, top: 0 });
+      this.cgridCanvas.setHostBounds({ left, top: 0, bottom: this.statusBarInsets.bottom });
+    }
+  }
+
+  /** Cycle 13 / Task 1 — adjust the canvas region's top or bottom inset
+   *  to make room for the status bar. Called by `StatusBarHost` on
+   *  mount, setVisible, setPosition, def change, and destroy. Mutates
+   *  the scroller's `top` / `bottom` style + the editor overlay's
+   *  matching inset (so popups respect the canvas region) + calls
+   *  `setHostBounds` so the canvas re-fits to the freshly-shrunken
+   *  scroller. One synchronous `cgridCanvas.resize()` repaints the new
+   *  region — the status bar never triggers a separate body repaint. */
+  private reserveStatusBarSpace(side: StatusBarPosition, height: number): void {
+    if (this.statusBarInsets[side] === height) return;
+    this.statusBarInsets[side] = height;
+    const { top, bottom } = this.statusBarInsets;
+    this.scroller.style.top = `${top}px`;
+    this.scroller.style.bottom = `${bottom}px`;
+    this.editorContainer.style.top = `${top}px`;
+    this.editorContainer.style.bottom = `${bottom}px`;
+    if (this.cgridCanvas) {
+      this.cgridCanvas.setHostBounds({
+        left: this.sideBarInsets.left,
+        top,
+        bottom,
+      });
     }
   }
 

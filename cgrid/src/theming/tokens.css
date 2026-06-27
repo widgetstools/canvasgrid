@@ -890,3 +890,86 @@
   border: 1px solid var(--cg-border-color);
   border-radius: 3px;
 }
+
+/* Cycle 13 / Task 1 — status bar shell. Mounts as a sibling of the
+ * canvas inside `CGrid.root`, pinned to the bottom (or top) edge.
+ *
+ * Design notes:
+ *   docs/superpowers/plans/notes/cycle-13-statusbar-design.md
+ *
+ * Signature choice — the bar reuses `--cg-header-bg` as its tonal tint
+ * so the body is visually sandwiched between two identical scaffolding
+ * surfaces (the header above + the status bar below) sharing the same
+ * `--cg-border-color`. Both themes inherit automatically because every
+ * status-bar token defaults off an existing canvasgrid token that
+ * already has a dark-theme override.
+ *
+ * Layout — three flex zones (left / center / right), each `flex: 1 1 0`
+ * with `min-width: 0`. Centre stays centred even when left + right have
+ * different widths; an empty zone holds its third so panels never jump
+ * when a count appears. */
+.cg-status-bar {
+  /* Tokens default off the existing canvasgrid palette so dark theme
+   * works without a parallel override block. Apps override any one of
+   * these on the .cg-theme-* root to retheme just the bar. */
+  --cg-status-bar-height: 28px;
+  --cg-status-bar-padding-x: 12px;
+  --cg-status-bar-gap: 16px;
+  --cg-status-bar-font-size: var(--cg-font-size);
+  --cg-status-bar-bg: var(--cg-header-bg);
+  --cg-status-bar-fg: var(--cg-fg-color);
+  --cg-status-bar-fg-muted: color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
+  --cg-status-bar-border: var(--cg-border-color);
+
+  position: absolute;
+  left: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  height: var(--cg-status-bar-height);
+  padding: 0 var(--cg-status-bar-padding-x);
+  background: var(--cg-status-bar-bg);
+  color: var(--cg-status-bar-fg);
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-status-bar-font-size);
+  /* Body text should not be selectable — the bar reports state, it's
+   * not a copy target. Specific panel cells can opt back in if needed. */
+  user-select: none;
+  /* z-index above the canvas so the strip's pixels can never be
+   * occluded by a paint that runs after a resize but before the
+   * scroller has fully reflowed. Below the editor overlay (z:2) so
+   * popups still render on top. */
+  z-index: 2;
+}
+.cg-status-bar[data-position="bottom"] {
+  bottom: 0;
+  border-top: 1px solid var(--cg-status-bar-border);
+}
+.cg-status-bar[data-position="top"] {
+  top: 0;
+  border-bottom: 1px solid var(--cg-status-bar-border);
+}
+
+/* Each zone is one third of the bar so the centre stays centred even
+ * when left + right have asymmetric content. `min-width: 0` prevents
+ * a long panel from pushing siblings off-screen. */
+.cg-status-bar-zone {
+  display: flex;
+  align-items: center;
+  gap: var(--cg-status-bar-gap);
+  flex: 1 1 0;
+  min-width: 0;
+  /* Panels inside a zone share a baseline so values with descenders
+   * (none today, but reserves the option for currency / signs in
+   * future agg renderers) sit on the same line as labels without
+   * lifting the row. */
+}
+.cg-status-bar-zone--left {
+  justify-content: flex-start;
+}
+.cg-status-bar-zone--center {
+  justify-content: center;
+}
+.cg-status-bar-zone--right {
+  justify-content: flex-end;
+}
