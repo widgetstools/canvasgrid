@@ -152,6 +152,62 @@ grid.on('firstDataRendered', () => {
   (window as unknown as { __cgridReady: boolean }).__cgridReady = true;
 });
 
+// Cycle 15.5 / Task 1 — Playwright harness for the row group panel's
+// pill reorder. Drives a pointerdown + pointermove sequence directly
+// at the DOM level so the screenshot can capture the panel mid-drag.
+// `pillReorderMidDrag` parks the pointer in the gap between pills 1
+// and 2; the insertion line + drag ghost mount as side effects. The
+// caller does NOT release the pointer — the test snapshots the panel
+// while the drag is still in flight, so the gesture is intentionally
+// "stuck" mid-flight.
+(window as unknown as {
+  __cgridPlaywright?: { pillReorderMidDrag: () => void };
+}).__cgridPlaywright = {
+  pillReorderMidDrag: () => {
+    const chips = document.querySelectorAll('.cg-row-group-panel-chip');
+    if (chips.length < 3) return;
+    const sourceChip = chips[chips.length - 1] as HTMLElement;
+    const target = chips[1] as HTMLElement;
+    const sourceRect = sourceChip.getBoundingClientRect();
+    const targetRect = target.getBoundingClientRect();
+    const downX = sourceRect.left + sourceRect.width / 2;
+    const downY = sourceRect.top + sourceRect.height / 2;
+    const overX = targetRect.left - 4;
+    const overY = targetRect.top + targetRect.height / 2;
+    class HarnessPointerEvent extends MouseEvent {
+      pointerId: number;
+      pointerType: string;
+      constructor(t: string, i: MouseEventInit) {
+        super(t, i);
+        this.pointerId = 1;
+        this.pointerType = 'mouse';
+      }
+    }
+    const dispatch = (
+      target: EventTarget,
+      type: 'pointerdown' | 'pointermove',
+      clientX: number,
+      clientY: number,
+    ): void => {
+      target.dispatchEvent(
+        new HarnessPointerEvent(type, {
+          bubbles: true,
+          cancelable: true,
+          clientX,
+          clientY,
+          button: 0,
+        }),
+      );
+    };
+    dispatch(sourceChip, 'pointerdown', downX, downY);
+    // Two pointermoves: the first crosses the 4 px threshold, the
+    // second parks at the target gap.
+    dispatch(window, 'pointermove', downX - 8, downY);
+    dispatch(window, 'pointermove', overX, overY);
+    // Deliberately NO pointerup — the test captures the panel mid-drag.
+  },
+};
+
 /** Synthetic multi-line description for the `notes` column so Cycle 5 /
  *  Task 8's autoHeight has real text to wrap + measure. Deterministic per
  *  positionId so the E2E can predict which rows go tall. ~1 in 3 rows
