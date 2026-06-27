@@ -876,3 +876,12 @@
 | 26 | Column virtualisation obsolete in canvas | Community | behavior | no | P0 | Canvas grid always virtualises columns; suppressColumnVirtualisation has no canvas analog |
 | 26 | rowBuffer → canvas overscan | Community | behavior | no | P0 | rowBuffer maps to overscan row count in canvas; offscreen tile pre-render on worker |
 | 26 | Dirty-region canvas repaint | Community | behavior | no | P0 | Canvas port can repaint only changed cell regions; finer than refreshCells |
+
+---
+
+[^visual-regression]: Visual regressions in Areas 17 (side bar) + shared
+overlays (focus ring, range overlay, DOM editor, floating-filter input) are
+gated by `npm run test:visual` since Cycle 12. A 12-snapshot Playwright matrix
+in `apps/cgrid-positions/e2e-visual/` diffs the demo against committed PNG
+baselines on every PR; drift fails the merge gate. Updating baselines requires
+the `[visual-baseline-update]` PR-title marker.

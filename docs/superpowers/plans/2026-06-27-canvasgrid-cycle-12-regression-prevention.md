@@ -599,4 +599,138 @@ getVisibleCellBounds(rowIndex: number, colId: string):
 
 ## Shipped
 
-(Filled in by Task 6 once every PR has merged.)
+**`getVisibleCellBounds` helper.** A new public method on `CGrid`
+returns the cell's pixel bounds *only* when the cell is fully inside
+both its column's band (center → `[bodyLeft, bodyRight]`, pinned-left
+→ `[0, bodyLeft]`, pinned-right → `[bodyRight, +∞)`) AND the vertical
+body region `[bodyTop, bodyBottom]`. Returns `null` otherwise — when
+the row or column isn't in the viewport, the cell straddles the
+header / footer edge, or the column scrolled into a foreign band. The
+looser `getCellBoundsAt` keeps its semantics for callers that need
+bounds whenever the cell is in the viewport at all (programmatic
+scroll math, hit-test). The helper sits directly under
+`getCellBoundsAt` in `cgrid/src/cgrid.ts` and is covered by 12 unit
+cases (`cgrid/tests/visibleCellBounds.test.ts`) — all four bands ×
+cell-in-band / cell-straddling-band / cell-fully-out — plus the
+off-viewport-row and unknown-colId guards.
+
+**Focus ring + range overlay refactor.** Both painters now delegate
+the band-clip to `getVisibleCellBounds`. `overlayPainter.ts` (focus
+ring) drops every inlined `bodyTop` / `bodyLeft` / `bodyRight` /
+`bodyBottom` read and the `gc.save / gc.clip / gc.restore` band-clip
+pair; the entire branch is "ask the resolver, paint or skip".
+`rangeOverlayPainter.ts` walks each range's visible columns + rows and
+slices the fill / border / fill-handle into per-band sub-rectangles via
+`getVisibleCellBounds(topRow, leftCol)` and `(bottomRow, rightCol)` —
+ranges that span the center + pinned bands paint two clean rectangles
+instead of one rectangle that bleeds across the band gutter. The
+resolver enters `PainterCtx` as a typed callback so painters never
+hold a `CGrid` reference. All existing painter tests pass with the
+stubbed resolver; the regression that shipped fixes for in commits
+`01fb141` (focus ring over header) + `d06d703` (focus ring leaking
+into pinned band) is now structurally impossible because both sites
+ask the same primitive that those commits taught.
+
+**Editor + floating-filter overlay refactor.** `syncOpenEditorPosition`
+in `cgrid.ts` collapses to a 7-line helper: ask
+`getVisibleCellBounds(row, colId)`, `commit()` the editor on `null`,
+`reposition(bounds)` otherwise. All the body-band + horizontal-band
+inline checks delete. `floatingFilterOverlay.ts` `repositionAll` does
+the same for each floating-filter cell — the input's wrapper hides
+when its column slides into a foreign band, and re-appears (with
+fresh top / left / width from the helper) when the column scrolls
+back into its native band. The `FloatingFilterOverlayDeps` interface
+takes `getVisibleCellBounds` as a constructor-injected dependency so
+the overlay never holds a `CGrid` reference. The shared regression
+source from commits `d302071` (editor floating over header),
+`d06d703` (editor leaking into pinned band), and `82bd786` (floating
+filter bleeding into CUSIP) collapses to one call site each.
+
+**Playwright visual-regression harness.** A pinned-Chromium,
+fixed-1440×900-viewport, DPR-1, dark-theme Playwright config
+(`apps/cgrid-positions/playwright-visual.config.ts`) gates pixel
+regressions on every PR. Tolerance is `maxDiffPixelRatio: 0.005`
+(0.5 % of pixels) and `threshold: 0.2` (per-pixel BT.601 distance) —
+a 4-pixel drift on a focus ring or a stray DOM element in a pinned
+band fails CI. Baselines live flat under
+`apps/cgrid-positions/e2e-visual/__snapshots__/` (via
+`snapshotPathTemplate`) so the `[visual-baseline-update]` PR marker
+review-set stays small. PNGs ship as binary (`.gitattributes`
+enforces `*.png binary`). A `_smoke.spec.ts` proves the harness
+mounts the demo and exposes `window.__cgrid` before any baselines
+exist; a shared `_setup.ts` `seedGrid(page, rowCount)` helper
+injects a deterministic dataset so STOMP absence doesn't break the
+matrix.
+
+**Visual regression matrix (12 canonical snapshots).** The matrix
+covers every layout / overlay regression the cycle prevents:
+
+- `01-fresh-grid` — 50 rows, dark theme, no overlays. Baseline for
+  the default render path.
+- `02-scrolled-vertical` — body scrolled past the anchor row.
+  Catches `01fb141` (focus ring leaking over header) + `d302071`
+  (editor floating over header).
+- `03-scrolled-horizontal` — center columns scrolled under the
+  pinned-left band. Catches `d06d703` (focus ring leaking into
+  pinned band) + `82bd786` (floating-filter input bleeding into
+  CUSIP).
+- `04-editor-center-column` — DOM editor open on a center column
+  (`notionalAmount`). Catches `0d0ce17` (editor not following its
+  cell on scroll) + `d302071`.
+- `05-editor-pinned-column` — DOM editor open on pinned-left
+  `cusip`. Catches the pinned-column edit variant of `d06d703`.
+- `06-range-across-viewports` — range overlay spanning visible +
+  non-visible rows. Catches `1a9870a` (range drag across viewports)
+  + `01fb141` (range overlay over header).
+- `07-sidebar-columns-open` — side bar on the right with the
+  Columns panel mounted.
+- `08-sidebar-filters-open` — side bar on the right with the
+  Filters panel mounted.
+- `09-sidebar-position-left` — side bar flipped to the left edge
+  with the Columns panel mounted.
+- `10-empty-grid` — 0-row grid. Catches `ef0a879` (phantom vertical
+  scrollbar with 0 rows).
+- `11-dense-grid-light-theme` — 200 rows on the Quartz light theme.
+  Proves the matrix isn't dark-theme-coupled.
+- `12-context-menu-open` — body-cell context menu mounted with
+  the default registry + the demo's custom `Clear filters` entry.
+
+The 7/8/9 side-bar trio also catches the side bar redesign saga
+(`f424c48`, `5d9e458`, `d1eff31`, `a1055c5`, `4226dc3`,
+`ea448b5`). Each `toHaveScreenshot('<name>.png')` diffs against a
+committed baseline; `--update-snapshots` + the
+`[visual-baseline-update]` PR-title marker is the only way to
+regenerate. Total runtime ≈ 2 s on the developer box, well under
+the ≤ 60 s CI budget.
+
+**Test sweep (recorded against the Task 6 branch):**
+- `npm run test:cgrid`: 93 files, 1070 unit tests, 100% pass (4.03 s).
+- `npx playwright test`: 207 functional E2E specs, 100% pass (1.3 m).
+- `npm run test:visual` (from `apps/cgrid-positions/`): 13 specs
+  (12 matrix + 1 smoke), 100% pass (1.9 s).
+
+---
+
+## Cycle 12 status: COMPLETE
+
+Closed on 2026-06-27.
+
+- [x] Task 1 — `getVisibleCellBounds` helper + 12 unit cases (PR #45,
+      `4b52772`).
+- [x] Task 2 — Focus ring + range overlay delegate band-clip to
+      `getVisibleCellBounds` (PR #46, `2a7290c`).
+- [x] Task 3 — DOM editor + floating-filter overlay delegate
+      band-clip to `getVisibleCellBounds` (PR #47, `34dcd21`).
+- [x] Task 4 — Playwright visual-regression harness + smoke spec
+      (PR #48, `3861da0`).
+- [x] Task 5 — 12-snapshot regression matrix covering layout +
+      overlay states (PR #49, `3b996ad`).
+- [x] Task 6 — Cycle 12 exit ritual: worklog `## Shipped` + status
+      close, README finalisation, FEATURE_MATRIX footnote.
+
+**FM coverage:** No row flips in this cycle — this is infrastructure
+work. Every existing FM row stays where it is; future cycles flip
+rows faster because the band-clip primitive prevents the regression
+class and the visual matrix catches any layout drift before merge.
+The FEATURE_MATRIX footnote records that Areas 17 (side bar) +
+shared overlays are now gated by `npm run test:visual`.
