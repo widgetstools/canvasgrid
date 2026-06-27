@@ -52,8 +52,8 @@ cd "$REPO_ROOT"
 LOG_DIR=".runner-logs"
 mkdir -p "$LOG_DIR"
 
-# Extract the cycle number from the worklog path (e.g. cycle-08 → 8).
-CYCLE_N="$(basename "$WORKLOG" | sed -nE 's/.*cycle-0?([0-9]+).*/\1/p')"
+# Extract the cycle number from the worklog path (e.g. cycle-08 → 8, cycle-15.5 → 15.5).
+CYCLE_N="$(basename "$WORKLOG" | sed -nE 's/.*cycle-0?([0-9]+(\.[0-9]+)?).*/\1/p')"
 CYCLE_N="${CYCLE_N:-X}"
 
 # Count total tasks via "^## Task N —" headings.
