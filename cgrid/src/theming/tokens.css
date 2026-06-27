@@ -100,56 +100,66 @@
   --cg-range-border-color: #60a5fa;
 }
 
-/* Native scrollbar styling (Chromium/WebKit) — visible thumb on dark track. */
-.cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar {
-  width: 14px;
-  height: 14px;
+/* Native scrollbar styling (Chromium/WebKit) — always-visible thumb.
+ * `overflow-y: scroll` + `-webkit-appearance: none` is the macOS-safe
+ * pattern: `scroll` (not `auto`) reserves the track even when not needed,
+ * and `appearance: none` enables Safari's custom-styling path. Without
+ * both, macOS uses overlay scrollbars that take 0 px of layout width and
+ * only flash on scroll (regression flagged on 2026-06-26). */
+.cg-scroller {
+  overflow-y: scroll;
+  overflow-x: scroll;
 }
-.cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-track {
-  background: #0d1a33;
+.cg-scroller::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+  -webkit-appearance: none;
+}
+.cg-scroller::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.4);
+  border-radius: 6px;
+}
+.cg-scroller::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.08);
 }
 .cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-thumb {
-  background: #4a5b7a;
-  border: 3px solid #0d1a33;
-  border-radius: 7px;
+  background: rgba(255, 255, 255, 0.32);
 }
 .cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-thumb:hover {
-  background: #6b7a99;
+  background: rgba(255, 255, 255, 0.48);
+}
+.cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
 }
 .cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-corner {
-  background: #0d1a33;
-}
-
-.cg-theme-quartz .cg-scroller::-webkit-scrollbar {
-  width: 14px;
-  height: 14px;
-}
-.cg-theme-quartz .cg-scroller::-webkit-scrollbar-track {
-  background: #eceff2;
+  background: rgba(255, 255, 255, 0.06);
 }
 .cg-theme-quartz .cg-scroller::-webkit-scrollbar-thumb {
-  background: #b5bdc6;
-  border: 3px solid #eceff2;
-  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.4);
 }
 .cg-theme-quartz .cg-scroller::-webkit-scrollbar-thumb:hover {
-  background: #8c97a3;
+  background: rgba(0, 0, 0, 0.55);
+}
+.cg-theme-quartz .cg-scroller::-webkit-scrollbar-track {
+  background: rgba(0, 0, 0, 0.08);
 }
 .cg-theme-quartz .cg-scroller::-webkit-scrollbar-corner {
-  background: #eceff2;
+  background: rgba(0, 0, 0, 0.08);
 }
 
-/* Firefox + cross-browser: scrollbar-gutter:stable reserves the gutter
- * unconditionally so the macOS overlay scrollbar doesn't make the scrollbars
- * appear and disappear with system preferences. */
-.cg-scroller {
-  scrollbar-gutter: stable;
-}
-.cg-theme-quartz-dark .cg-scroller {
-  scrollbar-color: #4a5b7a #0d1a33;
-}
-.cg-theme-quartz .cg-scroller {
-  scrollbar-color: #b5bdc6 #eceff2;
+/* Firefox: scrollbar-color provides the equivalent of our
+ * ::-webkit-scrollbar-thumb / -track colours. Intentionally NOT applied
+ * to Chromium (Chrome 121+ silently disables ALL ::-webkit-scrollbar
+ * pseudo-element styling on any element that sets `scrollbar-color`,
+ * which reverts macOS to its 0-width overlay scrollbar). The @supports
+ * gate uses Firefox-only `-moz-appearance` so Chromium skips the block. */
+@supports (-moz-appearance: none) {
+  .cg-theme-quartz-dark .cg-scroller {
+    scrollbar-color: #4a5b7a #0d1a33;
+  }
+  .cg-theme-quartz .cg-scroller {
+    scrollbar-color: #b5bdc6 #eceff2;
+  }
 }
 
 /* Floating-filter row cells — Cycle 7 / Task 1. Each cell is an
