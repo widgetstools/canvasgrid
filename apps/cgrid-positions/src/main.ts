@@ -30,10 +30,16 @@ const customPanel = search.get('customPanel') === '1';
 // keep the prior Cycle 11 E2Es (which assert "no tab pressed at mount")
 // green against the default URL.
 const openColumns = search.get('openColumns') === '1';
-// Cycle 13 / Task 1 — `?statusBar=mounted` opts the demo into mounting
-// the bottom status bar with zero panels. The visual matrix cell 14
-// uses this to snapshot the empty-bar chrome; Tasks 2 + 3 will add
-// `?statusBar=counts` / `?statusBar=full` flags that mount panels.
+// Cycle 13 / Task 1+2+3+4 — `?statusBar=<mode>` opts the demo into
+// mounting the bottom status bar:
+//   - `mounted`    → empty bar (visual cell 14)
+//   - `counts`     → four built-in count panels (visual cell 15)
+//   - `full`       → aggregation + count panels (visual cell 16)
+//   - `customDemo` → a custom `DemoCustomStatusPanel` registered via
+//                    `CGridOptions.components` (Cycle 13 / Task 4) +
+//                    the TotalAndFiltered count panel, so the live
+//                    demo exercises the custom-panel + getStatusPanel
+//                    API surface.
 const statusBar = search.get('statusBar');
 const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar });
 

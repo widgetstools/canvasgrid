@@ -6,6 +6,8 @@ import {
   type GetContextMenuItemsParams,
   type ToolPanel,
   type ToolPanelParams,
+  type IStatusPanelComp,
+  type StatusPanelParams,
 } from 'cgrid';
 import type { Position } from './stomp';
 
@@ -54,6 +56,68 @@ export class DemoCustomPanel implements ToolPanel {
   destroy(): void {
     this.destroyCount += 1;
     this.gui.dataset.destroyCount = String(this.destroyCount);
+  }
+}
+
+/**
+ * Cycle 13 / Task 4 — demo custom status panel. Registered via
+ * `CGridOptions.components: { demoCustomStatusPanel: DemoCustomStatusPanel }`
+ * only when the demo opts into `?statusBar=customDemo`, so the default
+ * demo's status bar still ships the canonical built-in panels (Cycle 13
+ * / Tasks 2 + 3) and the other Cycle 13 visual cells stay untouched.
+ *
+ * The panel renders a small label-value pill matching the count-panel
+ * vocabulary so the bar's typography stays consistent. It also stamps
+ * `data-init-count` / `data-refresh-count` / `data-destroy-count` /
+ * `data-panel-key` on its root element so E2E or downstream specs can
+ * verify the custom-panel + getStatusPanel API surface end-to-end
+ * (mirroring `DemoCustomPanel`'s test-attribute pattern for tool panels).
+ */
+export class DemoCustomStatusPanel implements IStatusPanelComp {
+  private gui = document.createElement('span');
+  private label = document.createElement('span');
+  private value = document.createElement('strong');
+  private initCount = 0;
+  private refreshCount = 0;
+  private destroyCount = 0;
+
+  init(_params: StatusPanelParams): void {
+    this.initCount += 1;
+    this.gui.className = 'cg-status-panel-count cg-demo-custom-status-panel';
+    this.gui.dataset.testid = 'demo-custom-status-panel';
+    this.gui.dataset.panelKey = 'demoCustomStatusPanel';
+    this.gui.dataset.initCount = String(this.initCount);
+    this.gui.dataset.refreshCount = '0';
+    this.gui.dataset.destroyCount = '0';
+    this.label.className = 'cg-status-panel-count-label';
+    this.label.textContent = 'Custom:';
+    this.value.className = 'cg-status-panel-count-value';
+    this.value.textContent = 'live';
+    this.gui.appendChild(this.label);
+    this.gui.appendChild(document.createTextNode(' '));
+    this.gui.appendChild(this.value);
+  }
+
+  getGui(): HTMLElement {
+    return this.gui;
+  }
+
+  refresh(): void {
+    this.refreshCount += 1;
+    this.gui.dataset.refreshCount = String(this.refreshCount);
+  }
+
+  destroy(): void {
+    this.destroyCount += 1;
+    this.gui.dataset.destroyCount = String(this.destroyCount);
+  }
+
+  /** Panel-specific method — apps narrow the `getStatusPanel<T>(key)`
+   *  return to this class to call methods that aren't on
+   *  `IStatusPanelComp`. Used by manual demo verification + a follow-up
+   *  E2E to assert the generic narrowing works end-to-end. */
+  getRefreshCount(): number {
+    return this.refreshCount;
   }
 }
 
@@ -124,7 +188,7 @@ export interface PositionsGridOptions {
    *  Flipping the default would regress those specs, so the polished
    *  demo experience is gated behind `?openColumns=1`. */
   openColumns?: boolean;
-  /** Cycle 13 / Task 1+2+3 — `?statusBar=<mode>` mounts the bottom
+  /** Cycle 13 / Task 1+2+3+4 — `?statusBar=<mode>` mounts the bottom
    *  status bar. Recognised modes:
    *    - `'mounted'`: empty bar (zero panels) — used by visual cell 14
    *      to assert the host chrome reads as intentional.
@@ -136,6 +200,13 @@ export interface PositionsGridOptions {
    *      `agSelectedRowCountComponent` in the RIGHT zone. Drives
    *      visual cell 16 once the spec stages a range selection.
    *      Cycle 13 / Task 3.
+   *    - `'customDemo'`: a custom `DemoCustomStatusPanel` registered
+   *      via `CGridOptions.components` mounted in the LEFT zone,
+   *      alongside the built-in `agTotalAndFilteredRowCountComponent`
+   *      in the RIGHT zone. Cycle 13 / Task 4 — exercises the custom
+   *      panel registration + `getStatusPanel(key)` API surface in
+   *      the live demo so manual checks (and any downstream E2E) hit
+   *      the same code path the unit tests cover.
    *  Anything else (and null) leaves the bar disabled, preserving the
    *  default demo experience for the rest of the visual matrix. */
   statusBar?: string | null;
@@ -456,15 +527,32 @@ export function createPositionsGrid(
         : ['columns', 'filters'],
       ...(opts.openColumns ? { defaultToolPanel: 'agColumnsToolPanel' } : {}),
     },
-    components: opts.customPanel ? { demoCustomPanel: DemoCustomPanel } : undefined,
-    // Cycle 13 / Task 1+2+3 — `?statusBar=<mode>`:
-    //   - `'mounted'` → empty bar (visual cell 14)
-    //   - `'counts'`  → four built-in count panels in the right zone
-    //                   (visual cell 15)
-    //   - `'full'`    → agAggregationComponent on the left zone
-    //                   (5 stats inline) + TotalAndFiltered + Selected
-    //                   count panels on the right zone (visual cell 16
-    //                   stages a 10-row range so the agg panel renders).
+    // The `components` channel feeds BOTH the tool-panel registry
+    // (`demoCustomPanel`) AND the status-panel registry
+    // (`demoCustomStatusPanel`) — Cycle 13 / Task 4 widened it so a
+    // single map covers either surface. The status-panel ctor is only
+    // included when the demo opts into `?statusBar=customDemo` so the
+    // canonical built-in keys stay the default registry surface and
+    // the existing visual matrix isn't perturbed.
+    components: (opts.customPanel || opts.statusBar === 'customDemo')
+      ? {
+          ...(opts.customPanel ? { demoCustomPanel: DemoCustomPanel } : {}),
+          ...(opts.statusBar === 'customDemo' ? { demoCustomStatusPanel: DemoCustomStatusPanel } : {}),
+        }
+      : undefined,
+    // Cycle 13 / Task 1+2+3+4 — `?statusBar=<mode>`:
+    //   - `'mounted'`    → empty bar (visual cell 14)
+    //   - `'counts'`     → four built-in count panels in the right zone
+    //                      (visual cell 15)
+    //   - `'full'`       → agAggregationComponent on the left zone
+    //                      (5 stats inline) + TotalAndFiltered + Selected
+    //                      count panels on the right zone (visual cell 16
+    //                      stages a 10-row range so the agg panel renders).
+    //   - `'customDemo'` → `demoCustomStatusPanel` (registered via
+    //                      `components` above) on the left zone +
+    //                      `agTotalAndFilteredRowCountComponent` on the
+    //                      right. Exercises the Task 4 custom-panel +
+    //                      getStatusPanel(key) API surface end-to-end.
     statusBar: opts.statusBar === 'mounted'
       ? { statusPanels: [] }
       : opts.statusBar === 'counts'
@@ -484,7 +572,14 @@ export function createPositionsGrid(
                 { key: 'agSelectedRowCountComponent', statusPanel: 'agSelectedRowCountComponent', align: 'right' },
               ],
             }
-          : undefined,
+          : opts.statusBar === 'customDemo'
+            ? {
+                statusPanels: [
+                  { key: 'demoCustomStatusPanel', statusPanel: 'demoCustomStatusPanel', align: 'left' },
+                  { key: 'agTotalAndFilteredRowCountComponent', statusPanel: 'agTotalAndFilteredRowCountComponent', align: 'right' },
+                ],
+              }
+            : undefined,
     // Cycle 10 / Task 1 — sample `getContextMenuItems`. Keeps every
     // built-in default item (Copy / Paste / Cut / Export / Autosize /
     // Pin / Reset) AND appends one custom "Clear filters" entry so the

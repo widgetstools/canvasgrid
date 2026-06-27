@@ -43,7 +43,7 @@ import { FiltersToolPanel } from './interaction/toolPanels/filtersPanel';
 import { SideBarHost, normalizeSideBarOption, type SideBarGridContext } from './interaction/sideBar/host';
 import { StatusBarHost, normalizeStatusBarOption, type StatusBarGridContext } from './interaction/statusBar/host';
 import { StatusPanelRegistry } from './interaction/statusBar/registry';
-import type { StatusBarDef, StatusBarPosition, IStatusPanelComp } from './interaction/statusBar/types';
+import type { StatusBarDef, StatusBarPosition, IStatusPanelComp, StatusPanelComponent } from './interaction/statusBar/types';
 import type { MenuItem, GetContextMenuItemsParams, GetMainMenuItemsParams } from './interaction/contextMenu/types';
 import { buildDefaultMenuItems } from './interaction/contextMenu/defaults';
 import { buildDefaultMainMenuItems } from './interaction/contextMenu/mainMenuDefaults';
@@ -96,6 +96,10 @@ export type {
   // Cycle 11 / Task 1 — tool-panel + side-bar public types.
   ToolPanel, ToolPanelComponent, ToolPanelParams, ToolPanelDef, SideBarDef,
   IToolPanelColumnCompParams, IToolPanelFiltersCompParams,
+  // Cycle 13 / Task 1+3+4 — status-bar + status-panel public types.
+  IStatusPanel, IStatusPanelComp, StatusPanelComponent, StatusPanelParams,
+  StatusPanelDef, StatusPanelAlign, StatusBarDef, StatusBarPosition,
+  IAggregationStatusPanelParams, AggFunc,
 } from './types';
 export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/registry';
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
@@ -514,15 +518,26 @@ export class CGrid<TRow = any> {
       }
     }
 
-    // 2c. Status-panel registry (Cycle 13 / Task 1). Seed the canonical
-    // built-in keys with inert stubs (Tasks 2 + 3 register the real
-    // count + aggregation implementations against the same keys at
-    // construction). Cycle 13 / Task 4 widens `CGridOptions.components`
-    // to merge custom status-panel ctors through the same channel the
-    // tool-panel registry consumes; until then the registry only hosts
-    // the built-ins + anything Tasks 2/3 register.
+    // 2c. Status-panel registry (Cycle 13 / Task 1 + Task 4). Seed the
+    // canonical built-in keys with their real implementations (Tasks 2 +
+    // 3 wired count + aggregation ctors through the registry's
+    // BUILT_IN_STATUS_PANEL_CTORS map). Cycle 13 / Task 4 — every entry
+    // in `options.components` is also registered here so the same
+    // channel feeds custom tool panels AND custom status panels. The
+    // two registries share the channel because `ToolPanel` and
+    // `IStatusPanelComp` lifecycles are structurally identical
+    // (`init / getGui / refresh / destroy`); whichever surface's def
+    // (`SideBarDef` vs `StatusBarDef`) references a given key wins at
+    // mount. An entry registered against a built-in status key (e.g.
+    // `agAggregationComponent`) overrides the built-in implementation —
+    // identical to how the tool-panel registry handles overrides.
     this.statusPanelRegistry = new StatusPanelRegistry();
     this.statusPanelRegistry.seedBuiltIns();
+    if (options.components) {
+      for (const [id, ctor] of Object.entries(options.components)) {
+        this.statusPanelRegistry.register(id, ctor as StatusPanelComponent);
+      }
+    }
 
     // 3. Column model — resolve into a tree (groups + leaves), then derive
     // the visible-leaf ordering from the group open/closed state. Task 3
@@ -2713,6 +2728,19 @@ export class CGrid<TRow = any> {
     return this.sideBar?.getSideBarDef();
   }
 
+  /** Cycle 13 / Task 4 — the live `IStatusPanelComp` instance for
+   *  `key`, or `undefined` when no status bar is configured, `key`
+   *  is not in the bar's `statusPanels`, or the matching panel's
+   *  `statusPanel` string never resolved to a registered component.
+   *  Reaches through `StatusBarHost.getInstance(key)`; converts the
+   *  host's `null` to `undefined` to match the public API surface
+   *  (mirrors `getSideBar()`'s undefined-when-absent shape). Built-in
+   *  keys (`agTotalRowCountComponent`, …) and custom keys registered
+   *  via `CGridOptions.components` are both reachable here. */
+  getStatusPanel<T extends IStatusPanelComp = IStatusPanelComp>(key: string): T | undefined {
+    return (this.statusBar?.getInstance(key) as T | null | undefined) ?? undefined;
+  }
+
   /** Cycle 11 / Task 2 — adjust the canvas region's left/right gutter
    *  to make room for the side bar. Called by `SideBarHost` on mount,
    *  open, close, position toggle, hide/show, and at the end of a
@@ -2966,6 +2994,14 @@ export class CGrid<TRow = any> {
     // reserveSideBarSpace (this.cgridCanvas?.setHostBounds) bails out
     // gracefully after cgridCanvas is destroyed.
     this.sideBar?.destroy();
+    // Cycle 13 / Task 4 — same teardown contract for the status bar.
+    // The host's destroy() fans out a destroy() call to every mounted
+    // panel (built-in + custom) so panel-owned listeners + DOM are
+    // released. Ordered after sideBar.destroy() for symmetry with the
+    // mount order; the canvas-already-destroyed guard in
+    // reserveStatusBarSpace bails out gracefully if the host's release
+    // call lands after cgridCanvas.destroy.
+    this.statusBar?.destroy();
     // Cycle 4 / Task 11 (cell-flash patch) — cancel any in-flight
     // rAF tick + clear the registry so a late callback can't fire on
     // a destroyed grid.
@@ -3029,6 +3065,8 @@ export class CGrid<TRow = any> {
       closeToolPanel: () => this.closeToolPanel(),
       getOpenedToolPanel: () => this.getOpenedToolPanel(),
       getSideBar: () => this.getSideBar(),
+      getStatusPanel: <T extends IStatusPanelComp = IStatusPanelComp>(key: string) =>
+        this.getStatusPanel<T>(key),
       getGridOption: (k) => this.getGridOption(k as keyof CGridOptions<TRow>) as any,
       setGridOption: (k, v) => this.setGridOption(k as keyof CGridOptions<TRow>, v as any),
       updateGridOptions: (p) => this.updateGridOptions(p as Partial<CGridOptions<TRow>>),
