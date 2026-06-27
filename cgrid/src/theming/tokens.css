@@ -1372,6 +1372,54 @@
   border-radius: 2px;
 }
 
+/* Cycle 15.5 / Task 1 — sort indicator. Renders `↑` (asc) / `↓`
+ * (desc) ONLY when the level carries a sort entry. The no-sort state
+ * omits the indicator span entirely so chip width matches the Task 6
+ * byte-stable baseline. Clicking the chip body cycles
+ * `null → asc → desc → null` (the indicator appears / disappears as
+ * the cycle advances). */
+.cg-row-group-panel-chip-sort {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0 2px;
+  margin: 0;
+  font: inherit;
+  font-size: var(--cg-row-group-chip-sort-size, 11px);
+  line-height: 1;
+  color: var(--cg-row-group-chip-sort-color, var(--cg-group-chevron-color, color-mix(in srgb, var(--cg-fg-color) 55%, transparent)));
+  opacity: 0.85;
+  cursor: pointer;
+  text-align: center;
+}
+.cg-row-group-panel-chip-sort:hover {
+  opacity: 1;
+}
+.cg-row-group-panel-chip-sort:focus-visible {
+  outline: 2px solid var(--cg-focus-ring-color);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+
+/* Cycle 15.5 / Task 1 — floating drag ghost. Lives on `document.body`,
+ * position: fixed, pointer-events: none. The chip-at-rest has a
+ * transparent bg; the ghost overrides to opaque header-bg so the chip
+ * reads cleanly against any underlying canvas / header content. */
+.cg-row-group-panel-chip.cg-row-group-panel-chip-ghost {
+  position: fixed;
+  pointer-events: none;
+  /* Above EVERY surface in the grid — panel + headers + popups. */
+  z-index: 2147483600;
+  background: var(--cg-row-group-chip-ghost-bg, var(--cg-header-bg));
+  border: 1px solid var(--cg-row-group-chip-border);
+  box-shadow: var(--cg-row-group-chip-ghost-shadow, 0 4px 8px rgba(0, 0, 0, 0.12));
+  opacity: var(--cg-row-group-chip-ghost-opacity, 0.92);
+  cursor: grabbing;
+  /* Reset `:hover` / `:active` chip styles so the ghost stays at
+   * rest visually regardless of pointer movement under it. */
+  margin: 0;
+}
+
 /* Between-chip separator — `›` (U+203A). Lives in the gap, NOT
  * inside the chip, so the chip reads as one token and the separator
  * as punctuation between tokens. Inherits Task 4's chevron color

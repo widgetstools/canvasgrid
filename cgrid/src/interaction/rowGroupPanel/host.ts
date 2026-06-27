@@ -1,19 +1,36 @@
 /**
- * Cycle 15 / Task 6 — RowGroupPanelHost.
+ * Cycle 15 / Task 6 + Cycle 15.5 / Task 1 — RowGroupPanelHost.
  *
  * Mounts a horizontal DOM strip ABOVE the column header row. Renders
- * one chip per `rowGroupCols[i]` (in nesting order) plus a `›`
- * separator between adjacent chips. When `rowGroupCols.length === 0`
+ * one chip per `rowGroupColumns[i]` (in nesting order) plus a `›`
+ * separator between adjacent chips. When `rowGroupColumns.length === 0`
  * and `rowGroupPanelShow === 'always'`, the strip shows a dashed
  * empty-state placeholder ("Drag here to set row groups" — verbatim
  * from the Cycle 11 sidebar Columns panel for vocabulary continuity).
  *
+ * Cycle 15.5 / Task 1 adds:
+ *   - pill drag-within-panel REORDER (mouse-down on a chip body →
+ *     drag with live insertion line + floating ghost → drop → host
+ *     calls `moveRowGroupColumn(from, to)`),
+ *   - per-pill SORT INDICATOR (`↑` / `↓` glyph between the label and
+ *     `×`; click toggles `none → asc → desc → none`),
+ *   - drag GHOST (DOM overlay on `document.body` following the cursor),
+ *   - LIVE INSERTION LINE extends the Task 6 column-header path; the
+ *     same `updateInsertionLine` helper drives both gestures so the
+ *     line snaps to the same gap algorithm regardless of drag source,
+ *   - ACCEPTANCE of drag-source IDs other than a column header (the
+ *     tool-panel Row Groups drop zone lands in Task 2; the panel's
+ *     drop-handler is already source-agnostic, so Task 2 just calls
+ *     `setDragHover` / `commitColumnDrop` with the same colId).
+ *
  * The host mirrors `SideBarHost` and `StatusBarHost` in shape: a
  * thin context object (`RowGroupPanelGridContext`) lets the host
- * report its reserved top inset back to the grid + emit add/remove
- * actions without importing `CGrid` directly. The grid wires its
- * `setHostBounds({ top })` channel from the reservation so the
- * scroller + editor overlay + canvas all shrink to make room.
+ * report its reserved top inset back to the grid + dispatch the
+ * primitive grouping API (`addRowGroupColumn`, `removeRowGroupColumn`,
+ * `moveRowGroupColumn`, `setRowGroupColumnSort`) without importing
+ * `CGrid` directly. The grid wires its `setHostBounds({ top })`
+ * channel from the reservation so the scroller + editor overlay +
+ * canvas all shrink to make room.
  *
  * Drop targets are owned here too — the column-drag feature
  * (Cycle 6 / `columnDrag.ts`) extends to call
@@ -24,9 +41,11 @@
  * feature only needs to delegate.
  *
  * Design plan:
- *   docs/superpowers/plans/notes/cycle-15-grouping-design.md § Task 6.
+ *   docs/superpowers/plans/notes/cycle-15-grouping-design.md
+ *   § Task 6 + § Cycle 15.5 / Task 1.
  */
 
+import type { GroupingSortEntry } from '../../core/groupingState';
 import type { RowGroupPanelShow, RowGroupPanelDropVerdict } from './types';
 
 /** Verbatim from `cgrid/src/interaction/toolPanels/columnsPanel.ts`'s
@@ -49,6 +68,26 @@ const REMOVE_GLYPH = '✕';
  *  `--cg-group-chevron-color`. */
 const SEPARATOR_GLYPH = '›';
 
+/** Sort indicator glyphs (Cycle 15.5 / Task 1). `↑` (U+2191) ascending,
+ *  `↓` (U+2193) descending. The glyph IS the click target — the click
+ *  routes through the indicator span so the affordance is visible. */
+const SORT_ASC_GLYPH = '↑';
+const SORT_DESC_GLYPH = '↓';
+
+/** Drag-commit threshold in CSS px. Pointer movement below this in
+ *  any direction is treated as a click candidate (not a drag), so the
+ *  user can click `×` / sort indicator inside a pill without
+ *  inadvertently starting a reorder gesture. Matches Cycle 6's column
+ *  drag threshold. */
+const DRAG_THRESHOLD_PX = 4;
+
+/** Pointer offset for the floating ghost relative to the cursor.
+ *  Right + below by 8px so the ghost sits OUT of the cursor's
+ *  direct overlap with the panel — the user can still see the
+ *  insertion line / drop verdict / chip targets clearly. */
+const GHOST_OFFSET_X = 8;
+const GHOST_OFFSET_Y = 8;
+
 /** Context handed to RowGroupPanelHost by CGrid (or a test harness).
  *  Keeps the host framework-agnostic — it can mutate the grouping
  *  model + report its reserved inset back without importing CGrid
@@ -65,15 +104,38 @@ export interface RowGroupPanelGridContext {
    *  time so a runtime `setGridOption('columnDefs', …)` flips the
    *  drop verdict on the next gesture without re-wiring the host. */
   isColumnRowGroupEnabled(colId: string): boolean;
-  /** Append `colId` to the grid's `rowGroupCols`. Called from a
+  /** Append `colId` to the grid's `rowGroupColumns`. Called from a
    *  drop on the empty panel OR from a drop at the trailing edge
-   *  of the chip strip. The grid is responsible for the
-   *  `setGroupModel` round-trip + the resulting viewport refresh. */
-  appendRowGroup(colId: string): void;
-  /** Remove `colId` from the grid's `rowGroupCols`. Called from a
+   *  of the chip strip. */
+  addRowGroupColumn(colId: string): void;
+  /** Remove `colId` from the grid's `rowGroupColumns`. Called from a
    *  click on the chip's `×` affordance. */
-  removeRowGroup(colId: string): void;
+  removeRowGroupColumn(colId: string): void;
+  /** Move the column at `from` to `to`. Called by the pill-reorder
+   *  drag on `pointerup` when the drop lands inside the panel. */
+  moveRowGroupColumn(from: number, to: number): void;
+  /** Toggle the sort entry for `colId`. Called from a click on the
+   *  chip's sort indicator. The host passes the NEXT direction
+   *  (`'asc' | 'desc' | null`) per the `none → asc → desc → none`
+   *  cycle. */
+  setRowGroupColumnSort(colId: string, direction: 'asc' | 'desc' | null): void;
 }
+
+/** Render-time options governing which decorations the host paints
+ *  on each chip. Read off `CGridOptions` on every chip-strip
+ *  re-render so `setGridOption('rowGroupPanelSuppressSort', true)`
+ *  silently drops the indicator the next time the strip rebuilds. */
+export interface RowGroupPanelRenderOptions {
+  /** When `true`, no sort indicator is rendered on any chip, AND
+   *  clicks on the chip body never toggle a sort. Mirrors
+   *  `CGridOptions.rowGroupPanelSuppressSort`. Default `false`. */
+  suppressSort: boolean;
+}
+
+/** Internal drag-state machine. `null` when no gesture is in flight. */
+type DragState =
+  | { kind: 'press'; colId: string; fromIndex: number; downX: number; downY: number; pillEl: HTMLElement; pointerId: number }
+  | { kind: 'drag'; colId: string; fromIndex: number; pillEl: HTMLElement; pointerId: number };
 
 export class RowGroupPanelHost {
   private readonly root: HTMLElement;
@@ -83,28 +145,68 @@ export class RowGroupPanelHost {
   private readonly ctx: RowGroupPanelGridContext;
 
   private show: RowGroupPanelShow;
-  private rowGroupCols: string[] = [];
+  private rowGroupColumns: string[] = [];
+  /** Parallel to `rowGroupColumns`; `null` at index i means no sort
+   *  applied at level i. Re-set by `setGroupingState` whenever the
+   *  GroupingState primitive emits. */
+  private perLevelSort: Array<GroupingSortEntry | null> = [];
+  /** Render-time options snapshot. Default reads `suppressSort: false`. */
+  private renderOptions: RowGroupPanelRenderOptions = { suppressSort: false };
   /** Current drop-indicator state. Painted as a panel-level dashed
    *  outline. `null` when no drag is in progress. */
   private dropVerdict: RowGroupPanelDropVerdict = null;
   /** Insertion-line element. Lazily created the first time the
    *  host sees an accepted drop hover; reused thereafter. */
   private insertionLine: HTMLDivElement | null = null;
+  /** Floating drag ghost. Lazily created on the first reorder-drag
+   *  threshold crossing; reused thereafter. Lives on `document.body`
+   *  (NOT the panel) so its `position: fixed` is screen-relative. */
+  private ghost: HTMLDivElement | null = null;
+  /** Pill-reorder drag state. Survives across pointer events for the
+   *  lifetime of the gesture. */
+  private dragState: DragState | null = null;
+  /** Cycle 15.5 / Task 1 — when a drag actually committed (threshold
+   *  crossed), the follow-up `click` event browsers synthesise after
+   *  pointerup is swallowed so the chip-body click handler doesn't
+   *  cycle sort as a side effect of the drag. Cleared on the next
+   *  click. */
+  private suppressNextChipClick = false;
+  /** Bound listeners — kept as instance fields so we can remove them
+   *  cleanly on `destroy`. */
+  private readonly onPointerMove: (e: PointerEvent) => void;
+  private readonly onPointerUp: (e: PointerEvent) => void;
+  private readonly onPointerCancel: (e: PointerEvent) => void;
   private destroyed = false;
 
   constructor(
     root: HTMLElement,
     ctx: RowGroupPanelGridContext,
     show: RowGroupPanelShow,
-    initialRowGroupCols: string[],
+    initialRowGroupColumns: string[],
+    initialPerLevelSort?: Array<GroupingSortEntry | null>,
+    renderOptions?: Partial<RowGroupPanelRenderOptions>,
   ) {
     this.root = root;
     this.ctx = ctx;
     this.show = show;
-    this.rowGroupCols = [...initialRowGroupCols];
+    this.rowGroupColumns = [...initialRowGroupColumns];
+    if (initialPerLevelSort && initialPerLevelSort.length === initialRowGroupColumns.length) {
+      this.perLevelSort = initialPerLevelSort.map((entry) =>
+        entry === null ? null : { direction: entry.direction },
+      );
+    } else {
+      this.perLevelSort = this.rowGroupColumns.map(() => null);
+    }
+    if (renderOptions?.suppressSort !== undefined) {
+      this.renderOptions = { suppressSort: renderOptions.suppressSort };
+    }
 
     this.panel = document.createElement('div');
     this.panel.className = 'cg-row-group-panel';
+
+    this.onPointerMove = (e) => this.handlePointerMove(e);
+    this.onPointerUp = (e) => this.handlePointerUp(e);
+    this.onPointerCancel = (e) => this.handlePointerCancel(e);
 
     this.root.appendChild(this.panel);
     this.applyVisibility();
@@ -126,18 +228,53 @@ export class RowGroupPanelHost {
   isVisible(): boolean {
     if (this.destroyed) return false;
     if (this.show === 'never') return false;
-    if (this.show === 'onlyWhenGrouping' && this.rowGroupCols.length === 0) return false;
+    if (this.show === 'onlyWhenGrouping' && this.rowGroupColumns.length === 0) return false;
     return true;
   }
 
-  /** Update the chip strip from a new `rowGroupCols` list. Called
+  /** Cycle 15.5 / Task 1 — receive a full state snapshot from the
+   *  grouping primitive. Re-renders the chip strip with the new
+   *  column order + per-level sort entries. Reservation flip
+   *  (`onlyWhenGrouping`) is honored. */
+  setGroupingState(rowGroupColumns: string[], perLevelSort: Array<GroupingSortEntry | null>): void {
+    if (this.destroyed) return;
+    this.rowGroupColumns = [...rowGroupColumns];
+    if (perLevelSort.length === rowGroupColumns.length) {
+      this.perLevelSort = perLevelSort.map((entry) =>
+        entry === null ? null : { direction: entry.direction },
+      );
+    } else {
+      this.perLevelSort = this.rowGroupColumns.map(() => null);
+    }
+    this.applyVisibility();
+  }
+
+  /** Update the chip strip from a new `rowGroupColumns` list. Called
    *  by the grid whenever `setGroupModel` resolves — the host
    *  re-renders chips in the new order. The reservation may flip
    *  (`'onlyWhenGrouping'` mode) so the host re-reports its
-   *  reserved height on every call. */
-  setRowGroupCols(rowGroupCols: string[]): void {
+   *  reserved height on every call.
+   *
+   *  Sort entries are CLEARED on this call — `setGroupModel` is a
+   *  full model swap, so the per-level sort entries don't carry
+   *  over. Callers wanting to preserve sort across a model swap use
+   *  `setGroupingState` instead. */
+  setRowGroupCols(rowGroupColumns: string[]): void {
     if (this.destroyed) return;
-    this.rowGroupCols = [...rowGroupCols];
+    this.rowGroupColumns = [...rowGroupColumns];
+    this.perLevelSort = this.rowGroupColumns.map(() => null);
+    this.applyVisibility();
+  }
+
+  /** Swap render-time options (currently just `suppressSort`) at
+   *  runtime. The strip re-renders on the next visibility pass. */
+  setRenderOptions(options: Partial<RowGroupPanelRenderOptions>): void {
+    if (this.destroyed) return;
+    const next: RowGroupPanelRenderOptions = {
+      suppressSort: options.suppressSort ?? this.renderOptions.suppressSort,
+    };
+    if (next.suppressSort === this.renderOptions.suppressSort) return;
+    this.renderOptions = next;
     this.applyVisibility();
   }
 
@@ -176,7 +313,7 @@ export class RowGroupPanelHost {
   /** Begin a drag-hover over the panel. `colId` is the column being
    *  dragged. The host evaluates the drop verdict (`'accept'` when
    *  the column has `enableRowGroup: true` AND isn't already in
-   *  `rowGroupCols` AND isn't the auto-group column itself;
+   *  `rowGroupColumns` AND isn't the auto-group column itself;
    *  `'reject'` otherwise) and paints the matching outline. */
   setDragHover(colId: string | null, clientX: number, clientY: number): void {
     if (this.destroyed) return;
@@ -209,13 +346,13 @@ export class RowGroupPanelHost {
   }
 
   /** Commit a drop. Returns `true` when the column was appended to
-   *  `rowGroupCols`, `false` when the drop was rejected (the
+   *  `rowGroupColumns`, `false` when the drop was rejected (the
    *  column-drag feature can keep the column where it was). */
   handleColumnDrop(colId: string): boolean {
     if (this.destroyed) return false;
     this.clearDragHover();
     if (this.computeDropVerdict(colId) !== 'accept') return false;
-    this.ctx.appendRowGroup(colId);
+    this.ctx.addRowGroupColumn(colId);
     return true;
   }
 
@@ -224,6 +361,7 @@ export class RowGroupPanelHost {
   destroy(): void {
     if (this.destroyed) return;
     this.destroyed = true;
+    this.cancelDrag();
     this.ctx.setReservedSpace('top', 0);
     this.panel.parentElement?.removeChild(this.panel);
   }
@@ -251,15 +389,15 @@ export class RowGroupPanelHost {
    *  the panel's children in one pass. */
   private renderContents(): void {
     this.panel.replaceChildren();
-    if (this.rowGroupCols.length === 0) {
+    if (this.rowGroupColumns.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'cg-row-group-panel-empty';
       empty.textContent = EMPTY_PLACEHOLDER;
       this.panel.appendChild(empty);
       return;
     }
-    for (let i = 0; i < this.rowGroupCols.length; i++) {
-      const colId = this.rowGroupCols[i]!;
+    for (let i = 0; i < this.rowGroupColumns.length; i++) {
+      const colId = this.rowGroupColumns[i]!;
       if (i > 0) {
         const sep = document.createElement('span');
         sep.className = 'cg-row-group-panel-separator';
@@ -271,15 +409,24 @@ export class RowGroupPanelHost {
     }
   }
 
-  /** Build one chip: drag-handle + label + `×` remove. The `×`
-   *  click handler invokes `ctx.removeRowGroup(colId)` directly;
-   *  the drag handle gets `cursor: grab` so the user reads "grab
-   *  here" without an explicit drag-out gesture wired in Cycle 15. */
+  /** Build one chip: drag-handle + label + (sort indicator) + `×`
+   *  remove. The `×` click handler invokes `ctx.removeRowGroupColumn`
+   *  directly; the sort-indicator click cycles
+   *  `none → asc → desc → none`. The chip body itself is the drag
+   *  source — a pointerdown anywhere outside the `×` / sort spans
+   *  starts the reorder gesture (committed once movement crosses
+   *  `DRAG_THRESHOLD_PX`). */
   private buildChip(colId: string, index: number): HTMLDivElement {
     const chip = document.createElement('div');
     chip.className = 'cg-row-group-panel-chip';
     chip.dataset.colId = colId;
     chip.dataset.index = String(index);
+    chip.setAttribute('role', 'button');
+    chip.setAttribute(
+      'aria-label',
+      `${this.ctx.getHeaderName(colId) ?? colId} group level ${index + 1}`,
+    );
+    chip.tabIndex = 0;
 
     const handle = document.createElement('span');
     handle.className = 'cg-row-group-panel-chip-handle';
@@ -292,6 +439,47 @@ export class RowGroupPanelHost {
     label.textContent = this.ctx.getHeaderName(colId) ?? colId;
     chip.appendChild(label);
 
+    // Cycle 15.5 / Task 1 — sort indicator. Suppressed entirely when
+    // `rowGroupPanelSuppressSort: true`. When a sort entry is present
+    // for this level, the indicator span renders showing `↑` (asc) /
+    // `↓` (desc); clicking it cycles `asc → desc → null`. When no
+    // sort entry is present (default Task 6 state), the indicator is
+    // OMITTED so chip width matches the byte-stable Task 6 baseline
+    // — the user starts a sort by either (a) clicking the chip body
+    // below the drag threshold (cycles `null → asc`), or (b) calling
+    // the primitive API (`api.setRowGroupColumnSort(colId, 'asc')`),
+    // or (c) the column-header context menu's Sort item (Task 2).
+    if (!this.renderOptions.suppressSort) {
+      const sortEntry = this.perLevelSort[index] ?? null;
+      if (sortEntry !== null) {
+        const sortBtn = document.createElement('button');
+        sortBtn.type = 'button';
+        sortBtn.className = 'cg-row-group-panel-chip-sort';
+        sortBtn.dataset.direction = sortEntry.direction;
+        const sortLabel = sortEntry.direction === 'asc'
+          ? `Sort ${this.ctx.getHeaderName(colId) ?? colId} descending`
+          : `Clear sort on ${this.ctx.getHeaderName(colId) ?? colId}`;
+        sortBtn.setAttribute('aria-label', sortLabel);
+        sortBtn.textContent = sortEntry.direction === 'asc'
+          ? SORT_ASC_GLYPH
+          : SORT_DESC_GLYPH;
+        sortBtn.addEventListener('click', (e) => {
+          e.stopPropagation();
+          const current = this.perLevelSort[index] ?? null;
+          const next: 'asc' | 'desc' | null = current === null
+            ? 'asc'
+            : current.direction === 'asc'
+              ? 'desc'
+              : null;
+          this.ctx.setRowGroupColumnSort(colId, next);
+        });
+        // Pointerdown on the sort button must NOT start a drag — stop it
+        // bubbling to the chip body's drag handler.
+        sortBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+        chip.appendChild(sortBtn);
+      }
+    }
+
     const remove = document.createElement('button');
     remove.type = 'button';
     remove.className = 'cg-row-group-panel-chip-remove';
@@ -302,9 +490,49 @@ export class RowGroupPanelHost {
     remove.textContent = REMOVE_GLYPH;
     remove.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.ctx.removeRowGroup(colId);
+      this.ctx.removeRowGroupColumn(colId);
     });
+    // Pointerdown on the remove button must NOT start a drag.
+    remove.addEventListener('pointerdown', (e) => e.stopPropagation());
     chip.appendChild(remove);
+
+    // Cycle 15.5 / Task 1 — drag source for pill reorder. Pointerdown
+    // captures the gesture; pointermove + pointerup are handled by
+    // window-level listeners so a drag survives a brief excursion
+    // outside the panel rect.
+    chip.addEventListener('pointerdown', (e) => this.handlePointerDown(e, colId, index, chip));
+    // Cycle 15.5 / Task 1 — chip-body click cycles sort
+    // (`null → asc → desc → null`). The click event only fires when
+    // the press → release sequence did NOT cross the drag threshold;
+    // a drag's `pointerup` is captured by the window-level listener
+    // before this click fires, and `cancelDrag` clears the gesture
+    // without emitting a click. Suppressed when
+    // `rowGroupPanelSuppressSort: true`.
+    chip.addEventListener('click', (e) => {
+      if (this.renderOptions.suppressSort) return;
+      // Drag-end synthesises a click that we want to swallow; the
+      // `suppressNextClick` flag is set on cancelDrag when a gesture
+      // committed.
+      if (this.suppressNextChipClick) {
+        this.suppressNextChipClick = false;
+        return;
+      }
+      // Click on the `×` / sort button already stopped propagation; we
+      // only see the chip-body click here.
+      e.stopPropagation();
+      const current = this.perLevelSort[index] ?? null;
+      const next: 'asc' | 'desc' | null = current === null
+        ? 'asc'
+        : current.direction === 'asc'
+          ? 'desc'
+          : null;
+      this.ctx.setRowGroupColumnSort(colId, next);
+    });
+    // Cycle 15.5 / Task 1 — keyboard reorder (Cmd+ArrowLeft /
+    // Cmd+ArrowRight). Modifier is required so plain arrow keys still
+    // navigate elsewhere; Cmd / Ctrl reorder the chip without
+    // requiring a drag gesture (a11y win for keyboard users).
+    chip.addEventListener('keydown', (e) => this.handleChipKeydown(e, colId, index));
 
     return chip;
   }
@@ -314,16 +542,24 @@ export class RowGroupPanelHost {
    *  grouped, or has a reserved id (the auto-group column). */
   private computeDropVerdict(colId: string): RowGroupPanelDropVerdict {
     if (colId.startsWith('ag-Grid-AutoColumn')) return 'reject';
-    if (this.rowGroupCols.includes(colId)) return 'reject';
+    if (this.rowGroupColumns.includes(colId)) return 'reject';
     if (!this.ctx.isColumnRowGroupEnabled(colId)) return 'reject';
     return 'accept';
   }
 
   /** Position the vertical insertion line at the chip-gap nearest
    *  to `clientX`. Lazily creates the element on first use. Lives
-   *  inside the panel so its absolute positioning is panel-local. */
-  private updateInsertionLine(clientX: number): void {
-    if (this.destroyed) return;
+   *  inside the panel so its absolute positioning is panel-local.
+   *  Returns the gap INDEX (0..rowGroupColumns.length) the line is
+   *  currently snapped to — used by the reorder drop to decide the
+   *  target slot.
+   *
+   *  Snap algorithm: walk the chip rects + the trailing edge of the
+   *  last chip; for each gap candidate, compute the distance from
+   *  `clientX` to the gap's mid-point; the closest gap wins. Empty
+   *  strip snaps to the middle of the panel. */
+  private updateInsertionLine(clientX: number): number {
+    if (this.destroyed) return 0;
     if (!this.insertionLine) {
       this.insertionLine = document.createElement('div');
       this.insertionLine.className = 'cg-row-group-panel-insertion-line';
@@ -331,38 +567,238 @@ export class RowGroupPanelHost {
     }
     this.insertionLine.style.display = '';
 
-    // Find the chip-gap nearest to clientX. The insertion point can
-    // be BEFORE the first chip, BETWEEN any two chips, or AFTER the
-    // last chip. Walk the chip rects and pick the gap whose center
-    // is closest to the pointer.
     const panelRect = this.panel.getBoundingClientRect();
     const chips = Array.from(
       this.panel.querySelectorAll('.cg-row-group-panel-chip'),
     ) as HTMLElement[];
     if (chips.length === 0) {
-      // Empty strip — drop in the middle so the line reads as "drop
-      // here." Otherwise the line would float at the left edge.
       const x = (panelRect.width - 2) / 2;
       this.insertionLine.style.left = `${x}px`;
-      return;
+      return 0;
     }
-    let bestX = chips[chips.length - 1]!.getBoundingClientRect().right - panelRect.left;
-    let bestDist = Math.abs(clientX - (bestX + panelRect.left));
-    for (let i = 0; i < chips.length; i++) {
-      const rect = chips[i]!.getBoundingClientRect();
-      // Candidate gap: just to the left of this chip.
-      const candidateX = rect.left - panelRect.left;
-      const dist = Math.abs(clientX - rect.left);
+    // Build the list of gap candidates: BEFORE chip[0], BETWEEN
+    // chip[i-1] and chip[i] for i ∈ [1, N), and AFTER chip[N-1].
+    // Each candidate carries its slot index + its center x in viewport
+    // coords; we pick the closest by abs(clientX - candidate.center).
+    const candidates: Array<{ slotIndex: number; centerX: number; panelLeftX: number }> = [];
+    // Before chip[0]: gap is BETWEEN panel-left-padding and chip[0]'s left.
+    const firstRect = chips[0]!.getBoundingClientRect();
+    candidates.push({
+      slotIndex: 0,
+      centerX: firstRect.left - 3,
+      panelLeftX: firstRect.left - panelRect.left - 3,
+    });
+    // Between consecutive chips: gap is BETWEEN chip[i-1].right and
+    // chip[i].left.
+    for (let i = 1; i < chips.length; i++) {
+      const left = chips[i - 1]!.getBoundingClientRect().right;
+      const right = chips[i]!.getBoundingClientRect().left;
+      const center = (left + right) / 2;
+      candidates.push({
+        slotIndex: i,
+        centerX: center,
+        panelLeftX: center - panelRect.left - 1,
+      });
+    }
+    // After chip[N-1]: gap is BETWEEN chip[N-1].right and panel right.
+    const lastRect = chips[chips.length - 1]!.getBoundingClientRect();
+    candidates.push({
+      slotIndex: chips.length,
+      centerX: lastRect.right + 3,
+      panelLeftX: lastRect.right - panelRect.left + 1,
+    });
+    // Pick the closest gap.
+    let best = candidates[0]!;
+    let bestDist = Math.abs(clientX - best.centerX);
+    for (let i = 1; i < candidates.length; i++) {
+      const candidate = candidates[i]!;
+      const dist = Math.abs(clientX - candidate.centerX);
       if (dist < bestDist) {
         bestDist = dist;
-        bestX = candidateX;
+        best = candidate;
       }
     }
-    this.insertionLine.style.left = `${Math.max(0, bestX - 1)}px`;
+    this.insertionLine.style.left = `${Math.max(0, best.panelLeftX)}px`;
+    return best.slotIndex;
   }
 
   private hideInsertionLine(): void {
     if (this.insertionLine) this.insertionLine.style.display = 'none';
+  }
+
+  // ---- pill reorder drag -------------------------------------------
+
+  /** Pointerdown on a chip body — captures the gesture but does NOT
+   *  yet start the drag. The drag commits once the pointer moves past
+   *  `DRAG_THRESHOLD_PX`. Window-level pointermove + pointerup
+   *  listeners drive the rest of the lifecycle. */
+  private handlePointerDown(
+    e: PointerEvent,
+    colId: string,
+    index: number,
+    pillEl: HTMLElement,
+  ): void {
+    if (this.destroyed) return;
+    // Left mouse / primary touch only — right-clicks open the column
+    // context menu (Cycle 10), middle-clicks are reserved.
+    if (e.button !== 0) return;
+    this.cancelDrag();
+    this.dragState = {
+      kind: 'press',
+      colId,
+      fromIndex: index,
+      downX: e.clientX,
+      downY: e.clientY,
+      pillEl,
+      pointerId: e.pointerId,
+    };
+    // Capture so a release outside the chip / panel still fires the
+    // matching pointerup on this listener.
+    try {
+      pillEl.setPointerCapture(e.pointerId);
+    } catch {
+      // setPointerCapture throws on browsers that don't track this
+      // pointer id (rare); the window-level listeners still drive the
+      // gesture, so swallow.
+    }
+    // Window-level so the drag survives going off the panel.
+    window.addEventListener('pointermove', this.onPointerMove);
+    window.addEventListener('pointerup', this.onPointerUp);
+    window.addEventListener('pointercancel', this.onPointerCancel);
+  }
+
+  private handlePointerMove(e: PointerEvent): void {
+    if (this.destroyed || this.dragState === null) return;
+    if (e.pointerId !== this.dragState.pointerId) return;
+    const state = this.dragState;
+    if (state.kind === 'press') {
+      const dx = e.clientX - state.downX;
+      const dy = e.clientY - state.downY;
+      if (Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+      this.dragState = {
+        kind: 'drag',
+        colId: state.colId,
+        fromIndex: state.fromIndex,
+        pillEl: state.pillEl,
+        pointerId: state.pointerId,
+      };
+      this.mountGhost(state.pillEl, e.clientX, e.clientY);
+    }
+    // We're in a drag.
+    this.positionGhost(e.clientX, e.clientY);
+    if (this.isPointInPanel(e.clientX, e.clientY)) {
+      // Reorder verdict is always 'accept' inside the panel — the
+      // column already lives in `rowGroupColumns`, so the verdict
+      // panes don't apply (those are for add-via-drop).
+      if (this.dropVerdict !== 'accept') {
+        this.dropVerdict = 'accept';
+        this.panel.dataset.drop = 'accept';
+      }
+      this.updateInsertionLine(e.clientX);
+    } else {
+      this.clearDragHover();
+    }
+  }
+
+  private handlePointerUp(e: PointerEvent): void {
+    if (this.destroyed || this.dragState === null) return;
+    if (e.pointerId !== this.dragState.pointerId) return;
+    const state = this.dragState;
+    if (state.kind === 'drag') {
+      // A drag committed (or didn't, if released outside the panel).
+      // Either way, the follow-up click event the browser synthesises
+      // from this pointerup must NOT cycle sort on the chip body.
+      this.suppressNextChipClick = true;
+      if (this.isPointInPanel(e.clientX, e.clientY)) {
+        const targetSlot = this.updateInsertionLine(e.clientX);
+        this.ctx.moveRowGroupColumn(state.fromIndex, targetSlot);
+      }
+    }
+    this.cancelDrag();
+  }
+
+  private handlePointerCancel(e: PointerEvent): void {
+    if (this.destroyed || this.dragState === null) return;
+    if (e.pointerId !== this.dragState.pointerId) return;
+    this.cancelDrag();
+  }
+
+  /** Tear down any in-flight drag state. Clears hover decorations, the
+   *  ghost, and the window-level listeners. Idempotent. */
+  private cancelDrag(): void {
+    const state = this.dragState;
+    if (state !== null) {
+      try {
+        state.pillEl.releasePointerCapture(state.pointerId);
+      } catch {
+        // pointer was never captured (rare browser path); swallow.
+      }
+    }
+    this.dragState = null;
+    window.removeEventListener('pointermove', this.onPointerMove);
+    window.removeEventListener('pointerup', this.onPointerUp);
+    window.removeEventListener('pointercancel', this.onPointerCancel);
+    this.clearDragHover();
+    this.unmountGhost();
+  }
+
+  // ---- drag ghost --------------------------------------------------
+
+  /** Mount the floating ghost element on `document.body`. Sized to
+   *  match the source chip; positioned by `positionGhost`. */
+  private mountGhost(sourceChip: HTMLElement, clientX: number, clientY: number): void {
+    if (this.destroyed) return;
+    if (this.ghost) this.unmountGhost();
+    const ghost = sourceChip.cloneNode(true) as HTMLDivElement;
+    ghost.classList.add('cg-row-group-panel-chip-ghost');
+    ghost.removeAttribute('data-col-id');
+    ghost.removeAttribute('data-index');
+    ghost.setAttribute('aria-hidden', 'true');
+    // Clones inherit the chip width via the inline-flex layout; pin
+    // the rendered width so `position: fixed` doesn't re-flow.
+    const rect = sourceChip.getBoundingClientRect();
+    ghost.style.width = `${rect.width}px`;
+    ghost.style.height = `${rect.height}px`;
+    document.body.appendChild(ghost);
+    this.ghost = ghost;
+    this.positionGhost(clientX, clientY);
+  }
+
+  private positionGhost(clientX: number, clientY: number): void {
+    if (this.ghost === null) return;
+    this.ghost.style.left = `${clientX + GHOST_OFFSET_X}px`;
+    this.ghost.style.top = `${clientY + GHOST_OFFSET_Y}px`;
+  }
+
+  private unmountGhost(): void {
+    if (this.ghost === null) return;
+    this.ghost.parentElement?.removeChild(this.ghost);
+    this.ghost = null;
+  }
+
+  // ---- keyboard reorder --------------------------------------------
+
+  /** Cmd+ArrowLeft / Cmd+ArrowRight reorders the chip without a drag.
+   *  Delete / Backspace removes the chip. Plain arrow keys don't
+   *  reorder so keyboard users can still tab-navigate normally. */
+  private handleChipKeydown(e: KeyboardEvent, colId: string, index: number): void {
+    if (this.destroyed) return;
+    if (e.key === 'Delete' || e.key === 'Backspace') {
+      e.preventDefault();
+      this.ctx.removeRowGroupColumn(colId);
+      return;
+    }
+    const modifier = e.metaKey || e.ctrlKey;
+    if (!modifier) return;
+    if (e.key === 'ArrowLeft' && index > 0) {
+      e.preventDefault();
+      this.ctx.moveRowGroupColumn(index, index - 1);
+    } else if (e.key === 'ArrowRight' && index < this.rowGroupColumns.length - 1) {
+      e.preventDefault();
+      // moveRowGroupColumn target is "insert at slot K"; moving right
+      // means inserting AFTER the next chip, i.e. slot index + 2.
+      this.ctx.moveRowGroupColumn(index, index + 2);
+    }
   }
 }
 

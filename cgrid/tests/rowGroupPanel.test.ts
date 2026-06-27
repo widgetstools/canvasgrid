@@ -25,6 +25,8 @@ interface RecordingContext extends RowGroupPanelGridContext {
   reserveCalls: Array<{ side: 'top'; height: number }>;
   appendCalls: string[];
   removeCalls: string[];
+  moveCalls: Array<{ from: number; to: number }>;
+  sortCalls: Array<{ colId: string; direction: 'asc' | 'desc' | null }>;
   enabledCols: Set<string>;
   headerNames: Map<string, string>;
 }
@@ -33,6 +35,8 @@ function makeContext(): RecordingContext {
   const reserveCalls: Array<{ side: 'top'; height: number }> = [];
   const appendCalls: string[] = [];
   const removeCalls: string[] = [];
+  const moveCalls: Array<{ from: number; to: number }> = [];
+  const sortCalls: Array<{ colId: string; direction: 'asc' | 'desc' | null }> = [];
   const enabledCols = new Set<string>(['ticker', 'sector', 'region', 'desk']);
   const headerNames = new Map<string, string>([
     ['ticker', 'Ticker'],
@@ -45,6 +49,8 @@ function makeContext(): RecordingContext {
     reserveCalls,
     appendCalls,
     removeCalls,
+    moveCalls,
+    sortCalls,
     enabledCols,
     headerNames,
     setReservedSpace(side, height) {
@@ -56,11 +62,17 @@ function makeContext(): RecordingContext {
     isColumnRowGroupEnabled(colId) {
       return enabledCols.has(colId);
     },
-    appendRowGroup(colId) {
+    addRowGroupColumn(colId) {
       appendCalls.push(colId);
     },
-    removeRowGroup(colId) {
+    removeRowGroupColumn(colId) {
       removeCalls.push(colId);
+    },
+    moveRowGroupColumn(from, to) {
+      moveCalls.push({ from, to });
+    },
+    setRowGroupColumnSort(colId, direction) {
+      sortCalls.push({ colId, direction });
     },
   };
 }

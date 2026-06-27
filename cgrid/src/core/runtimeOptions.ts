@@ -117,6 +117,10 @@ export interface RuntimeOptionTarget<TRow = any> {
    *  CGrid normalises the value (undefined / `'never'` → unmount;
    *  otherwise mount-or-update). */
   updateRowGroupPanelShow(value: 'always' | 'onlyWhenGrouping' | 'never' | undefined): void;
+  /** Cycle 15.5 / Task 1 — hand the runtime `rowGroupPanelSuppressSort`
+   *  flag to CGrid so the panel re-renders (with / without the sort
+   *  indicator) on the next frame. */
+  updateRowGroupPanelSuppressSort(suppress: boolean): void;
   /** Cycle 15 / Task 8 — flip the `groupSelectsChildren` tri-state
    *  selection feature. CGrid wires the SelectionModel's group
    *  membership resolver, toggles the worker's per-snapshot descendant
@@ -264,10 +268,11 @@ export function applyRuntimeOption<TRow>(
       );
       return;
     case 'rowGroupPanelSuppressSort':
-      // Cycle 15 / Task 6 — storage-only at runtime. The chip painter
-      // reads `options.rowGroupPanelSuppressSort` per render (no-op in
-      // Cycle 15 — chips don't carry a sort indicator yet; the flag is
-      // plumbed forward for Cycle 16+).
+      // Cycle 15.5 / Task 1 — re-render the chip strip without the
+      // sort indicator span when `true`. The flag toggles which DOM
+      // pieces the panel host renders + whether the click handlers
+      // are wired.
+      target.updateRowGroupPanelSuppressSort(value === true);
       return;
     case 'groupSelectsChildren':
       // Cycle 15 / Task 8 — flip the tri-state cascading. CGrid wires

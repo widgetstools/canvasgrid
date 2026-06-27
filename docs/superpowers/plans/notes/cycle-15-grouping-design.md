@@ -1393,3 +1393,219 @@ different position + label.**
   type-safe.
 
 ---
+
+## Cycle 15.5 / Task 1 — Row group panel completeness (pill reorder + sort indicator + live insertion + ghost)
+
+**Brief recap:** Cycle 15 / Task 6 shipped the chip strip with
+add-via-header-drag and `×`-click remove. Cycle 15.5 / Task 1 adds
+the four missing surfaces from Prompt 6 of the user-supplied spec:
+(1) drag a pill within the panel to reorder it (re-nests the group
+tree), (2) a per-pill sort indicator the user clicks to toggle that
+group level's sort, (3) a live vertical insertion line that tracks
+the pointer through the chip gaps during any drag, (4) a floating
+drag ghost that follows the cursor during the reorder gesture. The
+panel ALSO subscribes to a new `GroupingState` event so a mutation
+from another view (tool panel — Task 2; context menu — Task 2;
+programmatic API call from app code) re-renders the chips live.
+
+### Inheritance from Task 6
+
+The chip vocabulary stays exactly as Task 6 shipped it: outlined
+22px chip, `4px` radius, transparent bg, hover/active tints via
+`color-mix`. Drag handle `≡`, label, `×` remove. The strip's
+`32px` height, hairline border-bottom, status-bar-family
+background stay byte-stable. New design decisions LAYER on top of
+those tokens — none of the existing values move.
+
+### New design decisions
+
+#### Sort indicator glyph + position + size
+
+| Property | Value | Why |
+|---|---|---|
+| Glyph (asc) | `↑` (U+2191 UPWARDS ARROW) | One-stroke ascending; reads as "smaller → larger" from bottom |
+| Glyph (desc) | `↓` (U+2193 DOWNWARDS ARROW) | Mirrors asc; clear direction without occupying glyph space of a triangle |
+| Glyph (no sort) | indicator span NOT rendered | Chip width matches the byte-stable Task 6 baseline. Visual cells 22 / 23 (no-sort chips) stay pixel-identical to Cycle 15. The indicator appears as a side effect of the first sort click |
+| Position | between the label and `×` button | Reads as `Desk ↑ ×` — the sort sits next to the column it applies to, the `×` stays in its established right-edge slot |
+| Size | `11px` | One px smaller than the label (`12px`) — auxiliary metadata, never competes with the label |
+| Color | `--cg-group-chevron-color` | The one chevron family established by Cycle 15 Task 4 — used by the auto-group cell chevron AND the `›` separator |
+| Click region | (a) the indicator span when rendered; (b) the chip BODY when no indicator is rendered | The chip body becomes the "start a sort" click target; once a sort is active the indicator is the explicit toggle handle |
+| Cursor | `pointer` (indicator); `grab` (chip body, inherited from Task 6) | The chip body cursor stays `grab` so the drag affordance reads unchanged |
+
+Click semantics:
+- Chip has no sort (no indicator rendered) → click on the chip body
+  (movement below the 4 px drag threshold) sets `'asc'`. The
+  indicator appears as a side effect.
+- Indicator shows `↑` → click on the indicator sets `'desc'`.
+- Indicator shows `↓` → click on the indicator clears the sort
+  (indicator unmounts).
+
+This is the same `none → asc → desc → none` cycle ag-grid uses on
+its row-group-panel chips, plumbed through TWO click targets so the
+default (no-sort) chip layout matches Task 6 byte-exact. The unit
+suite asserts the three transitions explicitly so a future refactor
+can't silently flip the cycle direction.
+
+When `rowGroupPanelSuppressSort: true` (already plumbed in
+`CGridOptions` since Task 6), the indicator span is omitted AND the
+chip-body click handler short-circuits. The pill still drags +
+removes normally.
+
+**Drag-vs-click disambiguation.** A `pointerup` after a drag has
+crossed the 4 px threshold sets `suppressNextChipClick` so the
+browser-synthesised `click` event that follows is swallowed. A press
++ release WITHOUT crossing the threshold doesn't set the flag, so
+the `click` event flows through and cycles sort. The threshold-
+based gesture grammar is the same one Cycle 6's column drag uses;
+this task inherits the discipline.
+
+#### Insertion line — animation, color, width
+
+The existing line (Task 6) already paints at 2px wide,
+`top: 4px; bottom: 4px`, with the focus-ring color. Task 1's job is
+to extend it from "drop-from-header" to "drop-from-anywhere" AND to
+the pill-reorder gesture, AND to handle the BETWEEN-pills case
+(Task 6's logic snapped to the nearest chip's left edge; reorder
+also needs end-of-strip + just-before-current-position drop slots).
+
+| Decision | Value | Why |
+|---|---|---|
+| Width | keep `2px` | Same precision as Task 6 drop indicator; no need to differentiate "this is a reorder drop" from "this is an add drop" — the resulting action is the same |
+| Color | keep `--cg-row-group-panel-drop-border` (focus-ring) | One drop-color across all drag sources |
+| Animation | **NONE — instant position update** | A 200ms ease-out fade introduces visual lag at high mousemove rates; the line "tracks" the pointer at frame rate. A disciplined, instant indicator reads as precise; a lagged indicator reads as approximate |
+| Vertical inset | keep `top: 4px; bottom: 4px` | Already specced in Task 6 |
+| Z-index | inherits `.cg-row-group-panel` z-index (2) | Above the canvas + status bar, below the editor overlay — same stack as the rest of the panel |
+
+The line's `left` coordinate updates on every `setDragHover`
+tick. The decision to snap to "before chip[i]" vs. "after the last
+chip" uses the same midpoint rule for both column-drag (Task 6)
+and pill-reorder (this task) — one helper, one snap algorithm.
+This is enforced by routing the column-drag verdict path through
+the same `updateInsertionLine` method as the reorder path.
+
+#### Drag ghost — opacity + shadow + size
+
+The pill-reorder gesture mounts a DOM `.cg-row-group-panel-chip-ghost`
+that mirrors the chip the user is dragging. The ghost is positioned
+`fixed` at the pointer's location and pointer-events are disabled so
+it never blocks hit-tests against the panel beneath.
+
+| Property | Value | Why |
+|---|---|---|
+| Background | `var(--cg-header-bg)` (opaque) | The chip-at-rest has a transparent bg; the ghost overrides to opaque so the chip reads cleanly when floating over any underlying canvas or column-header content |
+| Border | `1px solid var(--cg-row-group-chip-border)` | Matches the at-rest chip border — the ghost is the chip in flight |
+| Box-shadow | `0 4px 8px rgba(0, 0, 0, 0.12)` | Subtle drop shadow; reads as "lifted off the page" without becoming a Material elevation card |
+| Opacity | `0.92` | Slightly translucent so the page beneath isn't fully occluded — the user can still see WHERE they're aiming |
+| Offset from pointer | `(+8px, +8px)` (right + below cursor) | Out of the cursor's direct overlap so the user can still see the chip's drop verdict + insertion line |
+| Z-index | `2147483600` (max-safe-ish) | Above EVERY surface in the grid — panel, header, popups. The ghost MUST be the topmost element until release |
+| Visual width | `auto` (matches the source chip's rendered width) | The ghost IS the chip — same width is honest about what's being moved |
+| Pointer events | `none` | Never blocks the drop-target's hit-test |
+
+The ghost mounts on `document.body` (NOT inside the panel) so its
+`fixed` positioning is screen-relative. It un-mounts on
+`pointerup` or `pointercancel`. If the user releases outside the
+panel, the ghost vanishes without committing a reorder (the
+chip's position in `rowGroupCols` stays put). If they release
+inside the panel at a valid drop slot, the host calls
+`groupingState.moveRowGroupColumn(fromIndex, toIndex)` and the
+ghost vanishes.
+
+#### Drag threshold
+
+Pointer-down on a pill starts a CANDIDATE drag. The drag actually
+commits (ghost mounts, insertion line lights up) only after the
+pointer moves more than `4px` from the down position. Below that
+threshold, a `pointerup` is treated as a click (no-op for the chip
+body; `×` and sort-indicator clicks still propagate via their own
+listeners). Above the threshold, the gesture is a drag and a
+subsequent `pointerup` commits the reorder.
+
+| Property | Value | Why |
+|---|---|---|
+| Threshold | `4px` (CSS px, computed via `hypot(dx, dy)`) | Standard "intentional drag" budget; below this, micro-movements during a click read as click intent (matches the column-drag threshold from Cycle 6) |
+| Capture | uses `setPointerCapture` on the pill element | Releases the capture on `pointerup` / `pointercancel` so a release outside the window doesn't lock the gesture |
+
+### Tokens (committed to `tokens.css`)
+
+```css
+.cg-row-group-panel {
+  /* Added in 15.5 / Task 1 */
+  --cg-row-group-chip-sort-color: var(--cg-group-chevron-color);
+  --cg-row-group-chip-sort-size: 11px;
+  --cg-row-group-chip-ghost-bg: var(--cg-header-bg);
+  --cg-row-group-chip-ghost-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+  --cg-row-group-chip-ghost-opacity: 0.92;
+}
+```
+
+The ghost shadow is hard-coded as `rgba(0, 0, 0, 0.12)` instead of
+a theme token because the shadow is the SAME small offset in both
+themes (dark backgrounds also get a hint of darker-than-bg shadow
+for "lifted" cue — `rgba(0,0,0,0.12)` reads as "deeper than
+ambient" against either theme).
+
+### Subscribe semantics
+
+`GroupingState` (new in `cgrid/src/core/groupingState.ts`) is the
+single source of truth for `rowGroupColumns` + `expandedRoutes` +
+`perLevelSort`. It exposes a primitive API (`setRowGroupColumns`,
+`addRowGroupColumn`, `removeRowGroupColumn`,
+`moveRowGroupColumn(from, to)`,
+`setRowGroupColumnSort(colId, direction)`) AND emits
+`groupingStateChanged` events to subscribers. The row group panel
+host subscribes on mount + unsubscribes on destroy.
+
+This is the THREE-UIs-SHARE-ONE-LIST invariant the worklog calls
+out as load-bearing. Task 2's tool-panel drop zone + context-menu
+items subscribe to the SAME event. Task 11's perf gate asserts
+that mutating via any one view triggers re-render in the others.
+
+### What's deliberately NOT shipped this task
+
+- **Drag-out-of-panel to ungroup** is intentionally not yet wired.
+  The `×` click remains the only remove gesture in Task 1. The
+  ag-grid "drag pill outside the panel to remove" gesture lands
+  later in the cycle (Task 7 alongside
+  `suppressDragLeaveHidesColumns` which gates the related
+  column-leaves-grid behavior).
+- **Animated chip enter/exit** when a pill is added or removed
+  programmatically. The chips appear / disappear immediately —
+  same as Task 6. A future cycle can layer in a 150ms fade if the
+  abruptness becomes a usability issue, but the perf gate
+  (Task 11) wants no DOM work in the scroll hot path; chip-list
+  re-renders happen off the scroll path, so the simplicity is
+  fine.
+
+### Reused vocabulary
+- `--cg-group-chevron-color` (Task 4) — the sort indicator hangs
+  off this family so all chevron-like glyphs in the cycle read as
+  one set.
+- `--cg-row-group-panel-drop-border` (Task 6) — both the
+  column-drag insertion line AND the pill-reorder insertion line
+  use this color.
+- Cycle 6 column-drag-ghost CSS pattern (`pointer-events: none`,
+  `position: fixed`, max z-index). The row-group ghost mirrors
+  the column-drag ghost in API surface; the only differences are
+  scale (smaller chip-sized ghost) + tint (header-bg, not
+  body-bg).
+
+### Risk taken
+
+**Click-to-toggle on the sort indicator (vs. drag-to-rearrange + click-anywhere-on-pill to sort).**
+A reasonable alternative is "click any part of the pill toggles
+sort; only the `≡` handle is the drag start." I rejected that
+because:
+- The sort indicator is the visible affordance for "this chip can
+  also be a sort control." Routing click-to-sort through the
+  GLYPH makes the affordance discoverable: the user sees `↑`,
+  clicks it, and gets the desired action. Routing click-to-sort
+  through the entire pill body would make the affordance invisible
+  ("how do I sort? I see a chip… do I click it?").
+- Drag also lives on the entire pill body (anywhere except the
+  `×` button and the sort indicator). If the pill body were ALSO
+  a click target, drag-vs-click disambiguation would need a
+  threshold AND a mode flag. Restricting click-to-sort to the
+  glyph dedupes the gesture-vs-target matrix.
+
+
+---

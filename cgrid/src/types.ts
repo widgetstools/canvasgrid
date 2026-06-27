@@ -615,6 +615,19 @@ export interface CGridOptions<TRow = any> {
    *  apps opting into chip sorting in a later cycle can suppress it
    *  per-grid). Default `false`. */
   rowGroupPanelSuppressSort?: boolean;
+  /** Cycle 15.5 / Task 1 — when `true`, dragging a column header
+   *  OUT of the grid body (past the row-group-panel or beyond the
+   *  header band) does NOT hide the column. The default
+   *  drag-leaves-grid behaviour (a column dragged outside its
+   *  natural bounds gets `hide: true` applied) is the ag-grid
+   *  parity behaviour; some apps (especially those with a fixed
+   *  column set) prefer the column to stay visible.
+   *
+   *  Plumbed here in Task 1; the actual drag-leaves-grid wiring
+   *  lands in Cycle 15.5 / Task 7 alongside the other column-
+   *  visibility-on-group/ungroup flags
+   *  (`suppressGroupChangesColumnVisibility`). Default `false`. */
+  suppressDragLeaveHidesColumns?: boolean;
   /** Cycle 15 / Task 8 — when `true` AND `rowSelection: 'multiple'`,
    *  each group row in the auto-group column paints a tri-state
    *  checkbox alongside the chevron + indent + value + (count).
@@ -1868,6 +1881,35 @@ export interface CGridApi {
   setSortModel(s: SortModel): void;
   setFilterModel(f: FilterModel): void;
   setGroupModel(g: GroupModel): void;
+
+  /** Cycle 15.5 / Task 1 — primitive grouping mutation: replace the
+   *  entire ordered row-group column list. Equivalent to
+   *  `setGroupModel({ rowGroupCols })` but routes through the
+   *  GroupingState primitive so all three grouping UIs
+   *  (panel / tool panel / context menu) re-render live. */
+  setRowGroupColumns(columns: string[]): void;
+  /** Cycle 15.5 / Task 1 — primitive grouping mutation: append
+   *  `colId` to the row-group column list. No-op when the column is
+   *  already grouped. */
+  addRowGroupColumn(colId: string): void;
+  /** Cycle 15.5 / Task 1 — primitive grouping mutation: remove
+   *  `colId` from the row-group column list. No-op when the column
+   *  isn't currently grouped. */
+  removeRowGroupColumn(colId: string): void;
+  /** Cycle 15.5 / Task 1 — primitive grouping mutation: move the
+   *  column at index `from` to index `to`. `to === length` slots
+   *  the column at the end of the list. The per-level sort entry
+   *  travels with the column. No-op when `from === to`. */
+  moveRowGroupColumn(from: number, to: number): void;
+  /** Cycle 15.5 / Task 1 — primitive grouping mutation: set the
+   *  per-level sort for the row-group level holding `colId`.
+   *  `direction: null` clears the sort. No-op when `colId` isn't
+   *  in the row-group column list. */
+  setRowGroupColumnSort(colId: string, direction: 'asc' | 'desc' | null): void;
+  /** Cycle 15.5 / Task 1 — snapshot of the current row-group column
+   *  list in nesting order. Returns a fresh array — callers may
+   *  mutate it without affecting grid state. */
+  getRowGroupColumns(): string[];
 
   /** Cycle 15 / Task 7 — expand every row group. Fires
    *  `expandOrCollapseAll` with `expanded: true`. No-op when grouping

@@ -55,6 +55,7 @@ import {
   normalizeRowGroupPanelShow,
   type RowGroupPanelGridContext,
 } from './interaction/rowGroupPanel/host';
+import { GroupingState, type GroupingStateChangedEvent } from './core/groupingState';
 import type { MenuItem, GetContextMenuItemsParams, GetMainMenuItemsParams } from './interaction/contextMenu/types';
 import { buildDefaultMenuItems } from './interaction/contextMenu/defaults';
 import { buildDefaultMainMenuItems } from './interaction/contextMenu/mainMenuDefaults';
@@ -588,6 +589,17 @@ export class CGrid<TRow = any> {
    *  column insertion (this task) + worker `setGroupModel` dispatch
    *  (Task 1). The empty model bypasses every group-aware pass cleanly. */
   private groupModel: GroupModel = { rowGroupCols: [] };
+  /** Cycle 15.5 / Task 1 — the canonical mutable grouping state shared
+   *  by the three grouping UIs (row group panel, columns tool panel
+   *  Row Groups drop zone, header context menu Group/Un-Group items).
+   *  All three views call the same primitive verbs
+   *  (`addRowGroupColumn`, `removeRowGroupColumn`,
+   *  `moveRowGroupColumn`, `setRowGroupColumnSort`) and subscribe to
+   *  `groupingStateChanged` to re-render. Constructed at init with
+   *  the initial `rowGroupCols`; mutations route through
+   *  `applyGroupingStateChange` so the worker stays in sync. */
+  private groupingState: GroupingState = new GroupingState();
+  private groupingStateUnsubscribe: () => void = () => {};
   /** Cycle 15 / Task 4 + Task 5 — synthesized auto-group column(s).
    *  Length depends on `groupDisplayType`:
    *    - `'singleColumn'` + grouping active → one column.
@@ -902,21 +914,28 @@ export class CGrid<TRow = any> {
     // to `this.root` AFTER the status bar so its z-order sits above
     // the canvas + side bar + status bar without explicit z-index
     // plumbing.
+    // Cycle 15.5 / Task 1 — initialise the grouping state primitive
+    // from the current rowGroupCols (empty at construction time; apps
+    // call `setGroupModel` afterwards). All three grouping UIs read
+    // from / mutate via this object.
+    this.groupingState = new GroupingState({
+      rowGroupColumns: this.groupModel.rowGroupCols,
+    });
+    this.groupingStateUnsubscribe = this.groupingState.on(
+      'groupingStateChanged',
+      (e) => this.handleGroupingStateChanged(e),
+    );
+
     const rgShow = normalizeRowGroupPanelShow(options.rowGroupPanelShow);
     if (rgShow !== null) {
-      const ctx: RowGroupPanelGridContext = {
-        setReservedSpace: (side, height) => this.reserveRowGroupPanelSpace(side, height),
-        getHeaderName: (colId) => this.columnDefsMap.get(colId)?.headerName,
-        isColumnRowGroupEnabled: (colId) =>
-          this.columnDefsMap.get(colId)?.enableRowGroup === true,
-        appendRowGroup: (colId) => this.appendRowGroupFromPanel(colId),
-        removeRowGroup: (colId) => this.removeRowGroupFromPanel(colId),
-      };
+      const ctx: RowGroupPanelGridContext = this.makeRowGroupPanelContext();
       this.rowGroupPanel = new RowGroupPanelHost(
         this.root,
         ctx,
         rgShow,
-        this.groupModel.rowGroupCols,
+        this.groupingState.getRowGroupColumns(),
+        this.groupingState.getPerLevelSort(),
+        { suppressSort: options.rowGroupPanelSuppressSort === true },
       );
       // Initial top offset = status bar's top inset (zero when no top
       // status bar). The panel's own `style.top` is updated whenever
@@ -2549,6 +2568,12 @@ export class CGrid<TRow = any> {
     if (this.destroyed) return;
     this.groupModel = { rowGroupCols: [...g.rowGroupCols] };
     this.rebuildAutoGroupColumn();
+    // Cycle 15.5 / Task 1 — sync the GroupingState primitive so any
+    // subscribed view (panel, tool-panel zone, context menu)
+    // re-renders. The handler short-circuits the round-trip back
+    // through `setGroupModel` (sameOrder === true) so the call is
+    // free of recursive worker dispatch.
+    this.groupingState.setRowGroupColumns(this.groupModel.rowGroupCols);
     this.rowGroupPanel?.setRowGroupCols(this.groupModel.rowGroupCols);
     // Cycle 15 / Task 7 — fresh model resets expansion to the
     // default-all sentinel; the worker does the same on its side. The
@@ -2760,30 +2785,47 @@ export class CGrid<TRow = any> {
     this.cgridCanvas?.requestRepaint();
   }
 
-  /** Cycle 15 / Task 6 — append `colId` to `rowGroupCols`. Called
-   *  by the row group panel host when a column header drag drops
-   *  onto the panel. Idempotent — a column already in
-   *  `rowGroupCols` is left alone (the drop verdict in the host
-   *  already filtered, but this guard keeps a stray programmatic
-   *  re-add safe). */
-  private appendRowGroupFromPanel(colId: string): void {
+  /** Cycle 15.5 / Task 1 — primitive grouping mutation: replace the
+   *  entire ordered row-group column list. Routes through the
+   *  GroupingState primitive; the `groupingStateChanged` handler
+   *  ships the new model to the worker. */
+  setRowGroupColumns(columns: string[]): void {
     if (this.destroyed) return;
-    if (this.groupModel.rowGroupCols.includes(colId)) return;
-    this.setGroupModel({
-      rowGroupCols: [...this.groupModel.rowGroupCols, colId],
-    });
+    this.groupingState.setRowGroupColumns(columns);
   }
 
-  /** Cycle 15 / Task 6 — remove `colId` from `rowGroupCols`. Called
-   *  by the row group panel host when a chip's `×` affordance is
-   *  clicked. Idempotent — a column not in `rowGroupCols` is a
-   *  no-op (the host shouldn't render a chip for it, but defensive). */
-  private removeRowGroupFromPanel(colId: string): void {
+  /** Cycle 15.5 / Task 1 — primitive grouping mutation: append
+   *  `colId` to the row-group column list. */
+  addRowGroupColumn(colId: string): void {
     if (this.destroyed) return;
-    if (!this.groupModel.rowGroupCols.includes(colId)) return;
-    this.setGroupModel({
-      rowGroupCols: this.groupModel.rowGroupCols.filter((c) => c !== colId),
-    });
+    this.groupingState.addRowGroupColumn(colId);
+  }
+
+  /** Cycle 15.5 / Task 1 — primitive grouping mutation: remove
+   *  `colId` from the row-group column list. */
+  removeRowGroupColumn(colId: string): void {
+    if (this.destroyed) return;
+    this.groupingState.removeRowGroupColumn(colId);
+  }
+
+  /** Cycle 15.5 / Task 1 — primitive grouping mutation: move the
+   *  column at index `from` to index `to`. */
+  moveRowGroupColumn(from: number, to: number): void {
+    if (this.destroyed) return;
+    this.groupingState.moveRowGroupColumn(from, to);
+  }
+
+  /** Cycle 15.5 / Task 1 — primitive grouping mutation: set the
+   *  per-level sort for the row-group level holding `colId`. */
+  setRowGroupColumnSort(colId: string, direction: 'asc' | 'desc' | null): void {
+    if (this.destroyed) return;
+    this.groupingState.setRowGroupColumnSort(colId, direction);
+  }
+
+  /** Cycle 15.5 / Task 1 — snapshot of the current row-group column
+   *  list in nesting order. */
+  getRowGroupColumns(): string[] {
+    return this.groupingState.getRowGroupColumns();
   }
 
   /** Cycle 15 / Task 6 — runtime swap of `rowGroupPanelShow`. When
@@ -2803,21 +2845,56 @@ export class CGrid<TRow = any> {
       this.rowGroupPanel.setShowMode(next);
       return;
     }
-    const ctx: RowGroupPanelGridContext = {
-      setReservedSpace: (side, height) => this.reserveRowGroupPanelSpace(side, height),
-      getHeaderName: (colId) => this.columnDefsMap.get(colId)?.headerName,
-      isColumnRowGroupEnabled: (colId) =>
-        this.columnDefsMap.get(colId)?.enableRowGroup === true,
-      appendRowGroup: (colId) => this.appendRowGroupFromPanel(colId),
-      removeRowGroup: (colId) => this.removeRowGroupFromPanel(colId),
-    };
+    const ctx: RowGroupPanelGridContext = this.makeRowGroupPanelContext();
     this.rowGroupPanel = new RowGroupPanelHost(
       this.root,
       ctx,
       next,
-      this.groupModel.rowGroupCols,
+      this.groupingState.getRowGroupColumns(),
+      this.groupingState.getPerLevelSort(),
+      { suppressSort: this.options.rowGroupPanelSuppressSort === true },
     );
     this.setRowGroupPanelTop(this.statusBarInsets.top);
+  }
+
+  /** Cycle 15.5 / Task 1 — build the per-host context object shared by
+   *  the construction-time path and the runtime-show-flip path. Routes
+   *  every primitive mutation through `groupingState`; the
+   *  `groupingStateChanged` handler downstream lands the model swap
+   *  on the worker. */
+  private makeRowGroupPanelContext(): RowGroupPanelGridContext {
+    return {
+      setReservedSpace: (side, height) => this.reserveRowGroupPanelSpace(side, height),
+      getHeaderName: (colId) => this.columnDefsMap.get(colId)?.headerName,
+      isColumnRowGroupEnabled: (colId) =>
+        this.columnDefsMap.get(colId)?.enableRowGroup === true,
+      addRowGroupColumn: (colId) => this.groupingState.addRowGroupColumn(colId),
+      removeRowGroupColumn: (colId) => this.groupingState.removeRowGroupColumn(colId),
+      moveRowGroupColumn: (from, to) => this.groupingState.moveRowGroupColumn(from, to),
+      setRowGroupColumnSort: (colId, direction) =>
+        this.groupingState.setRowGroupColumnSort(colId, direction),
+    };
+  }
+
+  /** Cycle 15.5 / Task 1 — `groupingStateChanged` handler. When the
+   *  ordered column list changes (`source: 'set' | 'add' | 'remove' |
+   *  'move'`), ship a `setGroupModel` round-trip to the worker so the
+   *  visible chunk reflects the new grouping. Pure sort changes
+   *  (`source: 'sort'`) don't yet drive a worker swap — Cycle 15.5 /
+   *  Task 9 lands group-aware sort by aggregate; until then the
+   *  pill's sort indicator is decorative. The panel host re-renders
+   *  via `setGroupingState` so the updated chip + indicator paint
+   *  immediately. */
+  private handleGroupingStateChanged(e: GroupingStateChangedEvent): void {
+    if (this.destroyed) return;
+    this.rowGroupPanel?.setGroupingState(e.rowGroupColumns, e.perLevelSort);
+    if (e.source !== 'sort') {
+      const sameOrder = this.groupModel.rowGroupCols.length === e.rowGroupColumns.length
+        && this.groupModel.rowGroupCols.every((c, i) => c === e.rowGroupColumns[i]);
+      if (!sameOrder) {
+        this.setGroupModel({ rowGroupCols: [...e.rowGroupColumns] });
+      }
+    }
   }
 
   /** Resolve `rowId` to its current visible-row index via the worker, then
@@ -3583,6 +3660,8 @@ export class CGrid<TRow = any> {
         );
       },
       updateRowGroupPanelShow: (value) => this.updateRowGroupPanelShow(value),
+      updateRowGroupPanelSuppressSort: (suppress) =>
+        this.rowGroupPanel?.setRenderOptions({ suppressSort: suppress }),
       updateGroupSelectsChildren: (enabled) => this.applyGroupSelectsChildren(enabled),
     };
   }
@@ -3875,6 +3954,11 @@ export class CGrid<TRow = any> {
     // the same guard as the side / status bars.
     this.rowGroupPanel?.destroy();
     this.rowGroupPanel = null;
+    // Cycle 15.5 / Task 1 — release the grouping primitive's
+    // subscribers + clear its event emitter so a late listener can't
+    // fire on a destroyed grid.
+    this.groupingStateUnsubscribe();
+    this.groupingState.destroy();
     // Cycle 4 / Task 11 (cell-flash patch) — cancel any in-flight
     // rAF tick + clear the registry so a late callback can't fire on
     // a destroyed grid.
@@ -3898,6 +3982,12 @@ export class CGrid<TRow = any> {
       setSortModel: (s) => this.setSortModel(s),
       setFilterModel: (f) => this.setFilterModel(f),
       setGroupModel: (g) => this.setGroupModel(g),
+      setRowGroupColumns: (cols) => this.setRowGroupColumns(cols),
+      addRowGroupColumn: (colId) => this.addRowGroupColumn(colId),
+      removeRowGroupColumn: (colId) => this.removeRowGroupColumn(colId),
+      moveRowGroupColumn: (from, to) => this.moveRowGroupColumn(from, to),
+      setRowGroupColumnSort: (colId, dir) => this.setRowGroupColumnSort(colId, dir),
+      getRowGroupColumns: () => this.getRowGroupColumns(),
       expandAll: () => this.expandAll(),
       collapseAll: () => this.collapseAll(),
       setExpanded: (k, e) => this.setExpanded(k, e),
