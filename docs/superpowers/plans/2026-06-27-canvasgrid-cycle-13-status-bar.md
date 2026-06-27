@@ -561,4 +561,138 @@ review is 10× the cost of catching it now.
 
 ## Shipped
 
-(Filled in by Task 6 once every PR has merged.)
+**Status-bar host (DOM scaffold + canvas resize + panel registry).** A
+horizontal DOM strip mounts under the body when
+`options.statusBar` resolves to a `StatusBarDef`. The host owns three
+flex zones (`left` / `center` / `right`) inside a single root and a
+panel registry keyed by `panelDef.key`. Mount / visibility-change /
+destroy each route through `setReservedSpace('bottom', height)` which
+funnels into a new `bottom` field on `CGridCanvas.setHostBounds`; the
+drawable canvas region shrinks (or grows back) by exactly the bar's
+height in one synchronous resize, no worker round-trip. The DOM
+scaffold mirrors `interaction/sideBar/host.ts` rotated 90° — same
+reservedSpace plumbing, same lifecycle shape, no new abstractions.
+The shell's design (sandwich tone via `--cg-header-bg`, ≈28 px height,
+type vocabulary matching the side-bar tab labels) is documented in
+`docs/superpowers/plans/notes/cycle-13-statusbar-design.md` § Task 1.
+Visual cell 14 (`14-status-bar-mounted.png`) baselines the empty bar
+so a future refactor that drops the chrome / tonal tint / height
+fails CI before merge.
+
+**Built-in count panels (Total / Filtered / Selected /
+TotalAndFiltered).** Four `IStatusPanelComp` implementations live in
+`cgrid/src/interaction/statusBar/panels/counts.ts`. Each renders
+`<span class="cg-status-panel-count"><span class="…-label">Label:
+</span> <strong class="…-value">N</strong></span>` per the design
+vocabulary; the combined panel doubles up via the `--combined`
+modifier (Total Rows + Rows with a `2ch` gap between pairs). All four
+subscribe to their trigger event in `init()` (`rowDataUpdated` /
+`filterChanged` / `selectionChanged`) and call their own `refresh()`
+on settle — the host's rAF batching from Task 5 wraps every
+subscription transparently. Values format through a shared
+`Intl.NumberFormat('en-US')` so `3,000` renders consistently in both
+themes. Visual cell 15 (`15-status-bar-count-panels.png`) baselines
+all four panels in the right zone so an inter-panel gap or
+hierarchy-collapse regression diffs at merge.
+
+**`agAggregationComponent` (count / sum / min / max / avg with ≤ 1 ms
+perf gate).** A single panel summarises the active selection inline
+as `Count: 23 · Sum: 1,234 · Min: 12 · Max: 89 · Avg: 54`. A pure-
+function module (`cgrid/src/interaction/statusBar/aggMath.ts`) owns
+the five aggregates and the canonical ordering; the panel
+(`panels/aggregation.ts`) owns DOM, event subscription, and the
+empty-state contract (`gui.hidden = true` when there's no selection,
+em-dash `—` for any stat whose aggregate is `NaN`). Reads cell values
+off the main-thread chunk the renderer already uses — no worker
+round-trip — and a pre-sized array allocation keeps the per-cell
+cost constant. The perf gate `aggregate(500 cells, all funcs) < 1 ms`
+runs in the unit suite (`aggregationPanel.test.ts`); empirically it
+lands at ~0.05 ms on the developer box, so the gate has ~20× headroom
+against the worker-offload fallback. Cell 16
+(`16-status-bar-aggregation.png`) baselines the panel rendering 5
+stats over a 10-row × 2-column range so a separator / canonical-
+order / formatter regression diffs at merge.
+
+**Custom status-panel API + `getStatusPanel(key)`.** Apps register
+custom `IStatusPanelComp` components through `CGridOptions.components`
+(same channel as side-bar tool panels) keyed by panel key; the host's
+registry consults `options.components` for any string key it doesn't
+recognise as a built-in. `api.getStatusPanel<T>(key)` returns the live
+instance (typed by the caller), or `undefined` for unknown keys.
+Refresh + destroy lifecycle on a custom panel mirrors the built-ins.
+Tests cover the eight cases the worklog calls out (register / init /
+lookup / refresh / destroy / unknown key / multiple in one zone /
+mixed with built-ins). The demo wires a `DemoCustomStatusPanel` under
+`?statusBar=customDemo` so manual checks (and any downstream E2E)
+exercise the same path the unit tests cover.
+
+**rAF-batched refresh + zero-canvas-repaint perf gate.** The host
+collapses multiple `refresh()` calls per panel per frame into one
+rAF-batched dispatch; a burst of 100 `selectionChanged` events in a
+single frame produces exactly one `panel.refresh()` call per
+mounted panel, and across 5 separate rAF ticks produces 5 calls.
+A throwing panel is wrapped in try/catch so it can't take down its
+neighbours. The perf gate `cgridCanvas.requestRepaint` is spied on
+in `statusBarPerf.test.ts`; under a 100-event selection burst the
+spy stays at 0 calls — the status bar is a DOM panel and the canvas
+is canvas, and they don't talk. This holds across all four event
+sources (`selectionChanged` / `filterChanged` / `rowDataUpdated` /
+`cellSelectionChanged`) the bar subscribes to.
+
+**Demo default-on + visual matrix re-baseline.** The demo
+(`apps/cgrid-positions/src/positionsGrid.ts`) now mounts the status
+bar by default (left = `agAggregationComponent`, right =
+`agTotalAndFilteredRowCountComponent` + `agSelectedRowCountComponent`)
+so every visual matrix cell 01–13 — fresh grid, scrolled, editors,
+range overlays, side bar, empty grid, light theme, context menu —
+gets the bar at the bottom. The query-flag opt-ins remain for the
+specific Task 1–4 cells: `?statusBar=mounted` (cell 14, empty bar),
+`?statusBar=counts` (cell 15, four count panels), `?statusBar=full`
+(cell 16, agg + counts), `?statusBar=customDemo` (custom panel
+demo). 13 baselines updated; the diff in each is "now has a status
+bar at the bottom" with no other change. The agg panel hides itself
+on the default render (no selection) so the left zone stays clean
+until the user makes a selection — the bar reads as "right-loaded
+glance" by default, exactly per the design notes.
+
+**FM coverage.** Area 18 = 8 / 8 ✅ (`statusBar` config,
+`agTotalRowCountComponent`, `agFilteredRowCountComponent`,
+`agSelectedRowCountComponent`,
+`agTotalAndFilteredRowCountComponent`, `agAggregationComponent`,
+Custom `IStatusPanelComp`, `getStatusPanel`). Area 23 row "Status
+bar / side bar API" flips its bundled `getStatusPanel` marker
+(`isSideBarVisible` / `openToolPanel` / `getToolPanelInstance` were
+already complete from Cycle 11).
+
+**Test sweep (recorded against the Task 6 branch):**
+- `npm run test:cgrid` (Vitest): 98 files, 1129 tests pass (3.7 s).
+- `npx playwright test` (functional): 208 specs pass (1.6 m).
+- `npm run test:visual` (regression matrix): 17 specs (1 smoke + 13
+  layout/overlay + 3 status-bar) pass (1.8 s).
+
+---
+
+## Cycle 13 status: COMPLETE
+
+Closed on 2026-06-27.
+
+- [x] Task 1 — Status-bar host (DOM scaffold + canvas resize + panel
+      registry) (PR #52, `7332a39`).
+- [x] Task 2 — Built-in count status panels (Total / Filtered /
+      Selected / TotalAndFiltered) (PR #53, `964eff3`).
+- [x] Task 3 — `agAggregationComponent` (count / sum / min / max /
+      avg with ≤ 1 ms perf gate) (PR #54, `6e845f3`).
+- [x] Task 4 — Custom status panel API + `getStatusPanel(key)` (PR #55,
+      `665e399`).
+- [x] Task 5 — rAF-batched status-bar refresh + zero-canvas-repaint
+      perf gate (PR #56, `65da195`).
+- [x] Task 6 — Cycle 13 exit ritual: worklog `## Shipped` block, demo
+      default-on + 13-baseline re-bake, FM Area 18 (8/8) + Area 23
+      `getStatusPanel` flips.
+
+**FM coverage:** Area 18 = 8 / 8 ✅. Area 23 "Status bar / side bar
+API" row flips its `getStatusPanel` marker. The full status-bar
+surface — host, four count panels, aggregation panel, custom panel
+API, the live-instance lookup — is now production-grade and gated by
+both Vitest (event wiring + perf) and the visual matrix (chrome +
+hierarchy + zone layout).

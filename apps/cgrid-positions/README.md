@@ -16,6 +16,37 @@ npm run dev:positions
 
 Opens at http://localhost:5175.
 
+## Status bar (Cycle 13)
+
+The demo mounts the **status bar** at the bottom by default: the
+`agAggregationComponent` sits in the **left zone** and hides itself
+until you make a selection (then renders five inline stats —
+`Count · Sum · Min · Max · Avg`); the **right zone** holds the
+`agTotalAndFilteredRowCountComponent` (Total Rows + Rows) plus
+`agSelectedRowCountComponent` (Selected: N). Make a range with the
+mouse to wake the agg panel; clear it and the left zone goes quiet
+again — the bar always reads as a right-loaded glance.
+
+URL flags opt the demo into the per-cell variants the visual matrix
+baselines (cells 14 / 15 / 16):
+
+- `?statusBar=mounted` — empty bar, host chrome only (cell 14).
+- `?statusBar=counts` — all four built-in count panels in the right
+  zone: Total + Filtered + Selected + TotalAndFiltered (cell 15).
+- `?statusBar=full` — same as the default (agg left + 2 counts
+  right) for symmetry with the other flag values; cell 16 stages a
+  10-row range so the agg panel renders.
+- `?statusBar=customDemo` — the demo `DemoCustomStatusPanel` in the
+  left zone + TotalAndFiltered in the right. Exercises the
+  `CGridOptions.components` registration channel + the public
+  `api.getStatusPanel(key)` lookup.
+
+Status updates batch per rAF and never trigger a body-canvas repaint
+— the bar is a DOM panel and the canvas is canvas, and they don't
+talk. See `cycle-13-statusbar-design.md` for the design vocabulary
+(sandwich tone via `--cg-header-bg`, ≈28 px height, type matching
+the side-bar tab labels) every panel inherits.
+
 ## Visual regression (Cycle 12)
 
 A pinned-Chromium, fixed-viewport Playwright suite under `e2e-visual/` diffs
