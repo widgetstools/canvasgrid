@@ -111,6 +111,20 @@ export class FloatingFilterOverlay {
       if (!def || def.floatingFilter === false) continue;
       seen.add(col.colId);
       const entry = this.acquireCell(col.colId, def);
+      // Hide cells whose column has scrolled out of its own band.
+      // Center cells must sit fully inside `[bodyLeft, bodyRight]` —
+      // a center column that has scrolled into the pinned-left zone
+      // (or past the right pinned edge) otherwise renders its input
+      // *over* the pinned columns' filter cells. Pinned cells always
+      // pass: their `col.left` / `col.right` are anchored to their
+      // band by definition.
+      const inBand = col.pinned === 'left' || col.pinned === 'right'
+        ? true
+        : col.left >= viewport.bodyLeft && col.right <= viewport.bodyRight;
+      if (!inBand) {
+        entry.wrapper.style.display = 'none';
+        continue;
+      }
       entry.wrapper.style.transform = `translate(${col.left + INSET_X}px, ${rowTop + INSET_Y}px)`;
       entry.wrapper.style.width = `${Math.max(0, col.width - INSET_X * 2)}px`;
       entry.wrapper.style.height = `${Math.max(0, rowHeight - INSET_Y * 2)}px`;
