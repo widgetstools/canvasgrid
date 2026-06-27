@@ -36,7 +36,7 @@
   --cg-flash-from-color: #fef3c7;
   --cg-flash-to-color: rgba(254, 243, 199, 0);
   --cg-resizer-hot-zone: 4px;
-  --cg-scrollbar-thickness: 2px;
+  --cg-scrollbar-thickness: 6px;
   --cg-floating-filter-bg: #ffffff;
   --cg-floating-filter-border: #d5dbe0;
   --cg-floating-filter-placeholder: #94a3b8;
@@ -123,7 +123,7 @@
   --cg-flash-from-color: #b45309;
   --cg-flash-to-color: rgba(180, 83, 9, 0);
   --cg-resizer-hot-zone: 4px;
-  --cg-scrollbar-thickness: 2px;
+  --cg-scrollbar-thickness: 6px;
   --cg-floating-filter-bg: transparent;
   --cg-floating-filter-border: #38507a;
   --cg-floating-filter-placeholder: #64748b;
@@ -179,8 +179,8 @@
  * our 12 px width on macOS instead of falling back to a 0-width overlay
  * that only flashes on scroll (regression flagged on 2026-06-26). */
 .cg-scroller::-webkit-scrollbar {
-  width: 2px;
-  height: 2px;
+  width: 6px;
+  height: 6px;
   -webkit-appearance: none;
 }
 .cg-scroller::-webkit-scrollbar-thumb {
