@@ -16,6 +16,54 @@ npm run dev:positions
 
 Opens at http://localhost:5175.
 
+## Totals row + pinned rows (Cycle 14)
+
+The demo mounts the **pinned grand-totals row** at the bottom of the
+grid body by default. Every column with an `aggFunc` declared on its
+def — `notionalAmount` / `marketValue` / `currentPrice` / `pnl` /
+`dailyPnl` / `unrealizedPnl` / `yield` / `spread` / `dv01` / `pv01` —
+reads its computed total from the worker's `chunk.totals[colId]`.
+Header cells render as `sum(Notional)` / `avg(Price)` etc. via the
+default `suppressAggFuncInHeader: false`; the totals cells render
+through the `'totals'` built-in renderer (right-aligned numerics,
++1 weight stop over body, em-dash for empty totals). No additional
+worker round-trip per scroll — the row reads from the chunk the
+data pass already emits.
+
+URL flags opt into the per-cell variants the visual matrix baselines
+(cells 17 / 18 / 19):
+
+- `?totals=bottom` — bottom-pinned totals row (cell 17; matches the
+  demo default).
+- `?totals=top` — top-pinned totals row (header → totals → data band).
+- `?totals=off` — opt OUT of the totals row entirely (recovers the
+  pre-Cycle-14 body-only chrome for callers that need it).
+- `?pinned=top` — mount a sample "Benchmark" reference row at the
+  top of the body via `pinnedTopRowData` (cell 18 — warm tint, body
+  weight; coexists with the totals row).
+- `?pinned=bottom` / `?pinned=both` — same reference row at the
+  bottom edge, or both edges, for smoke-testing the pinned + totals
+  coexistence stack.
+- `?suppressAggHeader=1` — flip `suppressAggFuncInHeader` to `true`
+  so headers read as raw `Notional` / `Price` (cell 19 off variant).
+
+The custom aggFunc registry ships through `CGridOptions.aggFuncs` +
+the `setAggFuncs` worker message: register a named function once and
+reference it from any column's `aggFunc` field (or use the array form
+`aggFunc: ['p99', 'avg']` for an ordered fallback). The
+`aggregationChanged` event fires on every recomputation tagged with a
+`source` field (`'rowDataChanged' | 'filterChanged' | 'aggFuncChanged'
+| 'columnAggFuncChanged' | 'pinnedRowDataChanged' | 'api'`) so apps
+can subscribe without re-deriving totals locally. Cosmetic re-renders
+(scroll / sort / theme) don't fire the event.
+
+See `cycle-14-aggregation-design.md` for the design vocabulary every
+piece inherits — the **lift** idiom (1px hairline above, 3% tint,
++1 weight stop) for the totals row, the **warm-tint, body-weight**
+pinned-row chrome, and the **lowercase-verb + parens** header
+decoration that lets the totals row's weight and the header's parens
+bracket each agg column with two non-redundant cues.
+
 ## Status bar (Cycle 13)
 
 The demo mounts the **status bar** at the bottom by default: the

@@ -23,6 +23,9 @@ const grid = new CGrid<{ id: string; name: string; value: number }>(
     ],
     getRowId: (row) => row.id,
     rowSelection: 'multiple',
+    // Cycle 14 — pinned grand-totals row at the bottom of the body.
+    // Reads chunk.totals[colId] for every column that declares aggFunc.
+    totalsRowPosition: 'bottom',
     theme: 'cg-theme-quartz',
   },
 );

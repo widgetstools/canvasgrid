@@ -611,4 +611,176 @@ review is 10× the cost of catching it now.
 
 ## Shipped
 
-(Filled in by Task 7 once every PR has merged.)
+**`TotalsSubgrid` + `chunk.totals` plumbing.** A new non-scrolling
+`Subgrid` impl (`cgrid/src/core/subgrid.ts`) reads `chunk.totals[colId]`
+from the already-emitted worker viewport reply — zero extra worker
+round-trips per scroll. Mounts at the top or bottom of the body via
+`CGridOptions.totalsRowPosition: 'top' | 'bottom' | null`. The worker
+`dataPipeline.ts` carries a `totals: Record<colId, unknown>` map on every
+chunk; columns without an `aggFunc` emit no entry and the renderer
+paints the cell blank. The viewport math (`core/viewport.ts`) was
+refactored to stack subgrids relative to data so a future footer / group
+subgrid drops in without re-deriving body geometry. The
+`--cg-totals-*` CSS tokens (light + dark, design-passed for "lift" via
+3% tint + 1px hairline + +1 weight stop) thread through `cssReader.ts`
+into the paint path. `byRows.ts` row-bg pass paints the slate tint for
+`isTotals` rows; `propertyChain.applyCellProps` bumps the font weight
+on the totals cells; `gridLinesPainter.ts` draws the 1px structural
+border. Visual cell 17 (`17-totals-row-bottom.png`) baselines the
+bottom-pinned totals row so a chrome regression diffs at merge. Design
+notes in
+`docs/superpowers/plans/notes/cycle-14-aggregation-design.md` § Task 1.
+
+**`pinnedTopRowData` + `pinnedBottomRowData`.** A second `Subgrid`
+impl (`PinnedRowsSubgrid`) handles arbitrary static rows the app owns
+on the main thread. Multiple rows per array; runtime updates via
+`setGridOption('pinnedTopRowData', …)` / `'pinnedBottomRowData'`
+re-mount the subgrid in place. The pinned chrome uses a WARM 3% / 5%
+tint (deliberately opposite the totals row's slate) with body weight
+— the design pass explicitly rejects "reuse totals verbatim" because
+pinned rows are reference rows (anchored data, not synthesis). The
+body↔pinned↔totals stack reads coherently: pinned rows hug the data,
+the totals row sits outermost, both share the same 1px structural
+border colour (`--cg-totals-border-top`) so the boundary between
+scrolling data and everything else is one shape. Visual cell 18
+(`18-pinned-top-row.png`) baselines the pinned-top variant. Design
+notes § Task 2.
+
+**Custom `aggFunc` registry (main → worker via `setAggFuncs`).** Apps
+declare custom column aggregations on `CGridOptions.aggFuncs:
+Record<string, IAggFunc>`. Built-ins (`sum / avg / min / max / count /
+first / last`) are pre-registered on the worker; custom functions
+serialise via `Function.prototype.toString()` and reconstruct through
+`new Function(...)` (same channel as Cycle 8's `ComparatorRegistry`).
+The main thread runs the rebuild + a probe call locally BEFORE
+shipping, so closures over outer scope fail fast with a clear error
+pointing the app at the constraint — the worker never sees a
+deserialised function that would fail mid-pass. Built-in math
+(`sum / avg / min / max / count`) delegates through
+`interaction/statusBar/aggMath.ts` — the SINGLE source of truth shared
+with the status panel's `agAggregationComponent` (Cycle 13 / Task 3),
+so the totals row and the agg panel can never silently diverge on (e.g.)
+NaN / Infinity handling. Array-form `aggFunc: ['p99', 'avg']` is an
+ordered fallback; unknown names produce an empty totals entry, not a
+crash. Runtime swap via `setGridOption('aggFuncs', { … })` reships the
+custom layer to the worker and fires `aggregationChanged` tagged
+`aggFuncChanged`.
+
+**`suppressAggFuncInHeader` toggle (per-grid + per-column).** Header
+text for a column with an `aggFunc` decorates as `sum(Notional)` /
+`avg(Price)` by default; flipping the option (grid-level or
+`CColDef.suppressAggFuncInHeader`) collapses the prefix back to the
+raw `headerName`. The decoration is the smallest possible change to
+the header-text path in `byRows.ts` — same weight, same color,
+lowercase verb, no spaces, parens — relying on the function-call
+signature (parens) to carry the structural cue without crowding the
+600-weight header band. Array-form `aggFunc` uses the first entry as
+the visible prefix. Per-column override wins over grid-level
+(`undefined` defers to the grid). Visual cells 19-on /
+`19-aggfunc-in-header-on.png` and 19-off / `19-aggfunc-in-header-off.png`
+baseline both states. Design notes § Task 4.
+
+**`'totals'` cell renderer (leaf polish).** The polished leaf for
+`TotalsSubgrid` cells: column-halign always (right for numerics, left
+for text, center where the column declares it), 6px padding (identical
+to `numberCell` / `textCell`), em-dash `—` in the muted fg
+(`--cg-totals-fg-muted`) for empty / null / NaN totals, no hover, no
+focus, cell-clip on overflow. Default for cells in the totals subgrid
+unless the column overrides `cellRenderer`. The +1 weight stop and
+slate tint and 1px top border are STILL upstream (Task 1's
+`applyCellProps` + `gridLinesPainter` + row-bg pass) — the renderer
+adds the value layer only. The `emptyFg` field on `CellPaintConfig` is
+the established pattern for "renderer-specific theme color threaded
+through the shared config"; future renderers (footer in Cycle 15)
+follow the same shape. Visual cells 17 + 18 re-baselined against the
+polished renderer in this task. Design notes § Task 5.
+
+**`aggregationChanged` event payload polish (+ source tagging).**
+The event fires on every recomputation (rowDataChanged, filterChanged,
+aggFuncChanged, columnAggFuncChanged, pinnedRowDataChanged, api),
+carrying `{ type: 'aggregationChanged', totals: Record<colId,
+unknown>, source: AggregationChangedSource }`. Cosmetic re-renders
+(sort, scroll, theme flip) don't fire the event — the emission point
+is gated on actual chunk.totals delta vs the prior snapshot. The
+`source` tag lets apps disambiguate "user changed the agg func" from
+"filter changed". Five Vitest cases pin the payload shape, source
+discriminator, and the cosmetic-no-fire contract.
+
+**Demo default-on + visual matrix re-baseline.** The demo
+(`apps/cgrid-positions/src/main.ts` + `positionsGrid.ts`) now mounts
+the totals row at the BOTTOM by default — every visual matrix cell
+01–16 picks up the row at the body bottom edge. The `?totals=bottom`
+opt-in remains for cell 17's explicit-state baseline; `?totals=top`
+flips to top-pinned; `?totals=off` opts OUT of the row for callers
+that need the prior body-only layout. Pinned rows still ride
+`?pinned=top|bottom|both` (cell 18 + smoke). The aggFunc-in-header
+decoration is on by default (the canonical `sum(Notional)` reading);
+`?suppressAggHeader=1` flips it off for cell 19's second snapshot.
+18 baselines re-baked in this PR (cells 01–16, 18, 19-off) — the
+visible diff in each is "header columns now read `sum(...)` /
+`avg(...)`, bottom of body now shows the totals row" with no other
+change. Cells 17 and 19-on already shipped with the polished render
+in earlier task PRs so their bytes carry through unchanged.
+
+**FM coverage.** Area 10 ships **16 of 26 rows** ✅ at cycle exit:
+the `aggFunc` ColDef option + `initialAggFunc` (covered by the same
+first-creation handling), the `aggFuncs` GridOptions registry,
+`suppressAggFuncInHeader` (per-grid + per-column), the `addAggFuncs`
+/ `clearAggFuncs` / `setColumnAggFunc` api surface via
+`setGridOption('aggFuncs', …)` and `updateGridOptions({ columnDefs })`,
+the `columnValueChanged`-equivalent `aggregationChanged` event with
+`source` tagging, the `IAggFunc` signature, all seven built-ins (sum /
+min / max / count / avg / first / last),
+`alwaysAggregateAtRootLevel` (root-level is the only level until
+Cycle 15 introduces groups), the `valueGetter` interaction
+(`row[field]` resolution), and the `suppressAggFuncInHeader` display
+behaviour. The 10 deferred rows split between:
+- **Group / footer dependent (Cycle 15):** `IAggFuncParams.aggregatedChildren`
+  (group nodes), `IAggFuncResult` for nested re-aggregation (nested
+  groups), `Filter interaction (suppressAggFilteredOnly)` (group-aggregate
+  filter interaction), `suppressAggFilteredOnly` (the same toggle as
+  an option).
+- **GUI value-tool-panel dependent (later cycle):** `defaultAggFunc`,
+  `allowedAggFuncs`, `enableValue`, `functionsReadOnly`, `GUI
+  aggregation controls` — these require a value-tool-panel UI that
+  cgrid does not ship in Cycle 14.
+- **Performance opt deferred:** `aggregateOnlyChangedColumns` — the
+  current pipeline re-aggregates every column on chunk update; an
+  incremental opt-in lands when a profile call shows it on the hot path.
+
+**Test sweep (recorded against the Task 7 branch):**
+- `npm run test:cgrid` (Vitest): 104 files, 1192 tests pass.
+- `npm run typecheck` (workspaces, `tsc --noEmit`): zero errors.
+- `npm run test:visual` (regression matrix): 21 specs (1 smoke + 13
+  layout/overlay + 3 status-bar + 4 aggregation) pass.
+
+---
+
+## Cycle 14 status: COMPLETE
+
+Closed on 2026-06-27.
+
+- [x] Task 1 — `TotalsSubgrid` + `chunk.totals` plumbing
+      (PR #58, `19de9ab`).
+- [x] Task 2 — `pinnedTopRowData` + `pinnedBottomRowData`
+      (PR #59, `bd15766`).
+- [x] Task 3 — Custom aggFunc registry (main → worker via
+      `setAggFuncs`) (PR #60, `821fd8f`).
+- [x] Task 4 — `suppressAggFuncInHeader` toggle (per-grid + per-column)
+      (PR #61, `4f1b830`).
+- [x] Task 5 — `'totals'` cell renderer + visual polish
+      (PR #62, `5405a37`).
+- [x] Task 6 — `aggregationChanged` event payload polish (+ source
+      tagging) (PR #63, `8a722d4`).
+- [x] Task 7 — Cycle 14 exit ritual: worklog `## Shipped` block, demo
+      default-on (totals row pinned bottom) + visual matrix re-baseline
+      (cells 01–16, 18, 19-off), FM Area 10 (16/26 ✅) flips, demo
+      README + cgrid README quickstart updates.
+
+**FM coverage:** Area 10 = 16/26 ✅. The remaining 10 rows split
+between group-footer-dependent (Cycle 15), GUI value-tool-panel
+dependent (later cycle), and one perf-opt deferral
+(`aggregateOnlyChangedColumns`). The shipped surface — totals row,
+pinned rows, custom aggFunc registry, header decoration, event
+payload — is gated by Vitest (functional + perf), Playwright
+(functional E2E), and the visual matrix (chrome + values).
