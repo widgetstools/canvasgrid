@@ -119,6 +119,35 @@ function autoHeightDescription(positionId: string): string {
   return `autoHeight wrap demo ${positionId}`;
 }
 
+// Cycle 15 / Task 6 — deterministic client-side decorator that adds
+// desk / region / currency / trader to STOMP-arriving rows. STOMP
+// doesn't carry these fields; values derive from a positionId hash so
+// they're stable across snapshots + updates (so grouping never sees a
+// row "move" between desks just because an update arrived). Unknown
+// fields are silently dropped at the worker boundary when no column
+// declares them, so the decorator is on by default — visual cells
+// without these columns stay byte-stable.
+const DESKS = ['Equities', 'Fixed Income', 'FX', 'Commodities'];
+const REGIONS = ['Americas', 'EMEA', 'APAC'];
+const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY', 'CHF'];
+const TRADERS = ['A. Smith', 'B. Patel', 'C. Wong', 'D. Garcia', 'E. Rossi', 'F. Müller', 'G. Khan', 'H. Lopez'];
+function hash32(s: string): number {
+  let h = 2166136261 >>> 0;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+function decorateWithCategoricals<T extends { positionId: string; desk?: string; region?: string; currency?: string; trader?: string }>(row: T): T {
+  const id = row.positionId;
+  if (row.desk == null)     row.desk     = DESKS[hash32(id + 'd') % DESKS.length];
+  if (row.region == null)   row.region   = REGIONS[hash32(id + 'r') % REGIONS.length];
+  if (row.currency == null) row.currency = CURRENCIES[hash32(id + 'c') % CURRENCIES.length];
+  if (row.trader == null)   row.trader   = TRADERS[hash32(id + 't') % TRADERS.length];
+  return row;
+}
+
 grid.on('gridReady', () => {
   console.log('[cgrid] ready');
   connectStomp({
@@ -132,9 +161,11 @@ grid.on('gridReady', () => {
           if (r.notes == null || r.notes === '') r.notes = autoHeightDescription(r.positionId);
         }
       }
+      for (const r of rows) decorateWithCategoricals(r);
       grid.setRowData(rows);
     },
     onLiveUpdate: (updates) => {
+      for (const u of updates) decorateWithCategoricals(u);
       grid.applyTransactionAsync({ update: updates });
       recordUpdates(updates.length);
     },

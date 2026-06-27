@@ -26,6 +26,16 @@ export interface Position {
   // STOMP snapshots that don't carry these fields still type-check.
   sector?: string;
   subSector?: string;
+  // Cycle 15 / Task 6 — additional categorical fields synthesized
+  // on the client by `decorateWithCategoricals` in main.ts so the
+  // row group panel's `?rowGroupPanel=always` demo has meaningful
+  // columns to drag into the panel (desk, region, currency, trader).
+  // STOMP doesn't carry these; the decorator derives them deterministically
+  // from positionId hash so values are stable across snapshots + updates.
+  desk?: string;
+  region?: string;
+  currency?: string;
+  trader?: string;
 }
 
 export interface StompCallbacks {

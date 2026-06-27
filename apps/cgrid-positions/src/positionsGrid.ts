@@ -448,6 +448,18 @@ export function createPositionsGrid(
             { field: 'subSector' as const, headerName: 'Sub Sector', width: 110, filter: 'set' as const, enableRowGroup: true as const },
           ]
         : []),
+      // Cycle 15 / Task 6 — client-side categorical columns
+      // synthesized by `decorateWithCategoricals` in main.ts. Mounted
+      // only under `?rowGroupPanel=always` so existing visual cells
+      // (none of which declare these columns) stay byte-stable.
+      ...(opts.rowGroupPanelAlways
+        ? [
+            { field: 'desk' as const,     headerName: 'Desk',     width: 130, filter: 'set' as const, enableRowGroup: true as const },
+            { field: 'region' as const,   headerName: 'Region',   width: 110, filter: 'set' as const, enableRowGroup: true as const },
+            { field: 'currency' as const, headerName: 'Currency', width: 90,  filter: 'set' as const, enableRowGroup: true as const },
+            { field: 'trader' as const,   headerName: 'Trader',   width: 130, filter: 'set' as const, enableRowGroup: true as const },
+          ]
+        : []),
       // Cycle 5 Task 2: notionalAmount exercises the 'number' editor; min/precision
       // enforce non-negative two-decimal commits.
       // Cycle 6 / Task 1: lockPosition: 'right' pins notionalAmount to the
