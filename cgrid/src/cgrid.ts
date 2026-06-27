@@ -3257,14 +3257,27 @@ export class CGrid<TRow = any> {
       this.editor.commit();
       return;
     }
-    // Cell straddles or has scrolled past the body band — commit so the
+    // Cell straddles or has scrolled past the band — commit so the
     // editor input doesn't render over the header (top) or below the
-    // body bottom edge. The canvas focus ring already self-clips; the
-    // DOM-based editor needs an explicit close because the editor host
-    // container isn't clipped to the body region (it also hosts filter
-    // popups + context menus, which should NOT be clipped).
+    // body bottom edge, AND so a center-column editor can't slide
+    // horizontally into the pinned-left / pinned-right zones.
+    // The canvas focus ring already self-clips; the DOM-based editor
+    // needs an explicit close because the editor host container isn't
+    // clipped (it also hosts filter popups + context menus, which
+    // should NOT be clipped).
     const vs = this.viewport;
     if (bounds.y < vs.bodyTop || bounds.y + bounds.h > vs.bodyBottom) {
+      this.editor.commit();
+      return;
+    }
+    const col = vs.visibleColumns.find((c) => c.colId === colId);
+    const xL = col?.pinned === 'left' ? 0
+      : col?.pinned === 'right' ? vs.bodyRight
+      : vs.bodyLeft;
+    const xR = col?.pinned === 'left' ? vs.bodyLeft
+      : col?.pinned === 'right' ? Number.POSITIVE_INFINITY
+      : vs.bodyRight;
+    if (bounds.x < xL || bounds.x + bounds.w > xR) {
       this.editor.commit();
       return;
     }

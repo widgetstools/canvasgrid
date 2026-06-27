@@ -21,12 +21,23 @@ export function paintOverlay(gc: CachedContext2D, p: PainterCtx): void {
 
   const hw = theme.focusRingWidth / 2;
   gc.save();
-  // Clip to the scrollable body region so the ring is cropped when
-  // the focused cell is partially scrolled under the header (or below
-  // the body bottom). 1e6 is a "large enough" extent in CSS px — the
-  // canvas is never wider than a few thousand pixels.
+  // Clip to the focused column's band so the ring is cropped when:
+  // - the focused row scrolls under the header / below the body
+  //   (vertical bound: bodyTop..bodyBottom)
+  // - a center cell scrolls into the pinned-left or pinned-right
+  //   region (horizontal bound: the column's band based on its
+  //   `pinned` flag).
+  // Without the horizontal clip, a center cell that has scrolled to
+  // col.left < bodyLeft would paint its focus ring inside the
+  // pinned-left zone, on top of unrelated pinned cells.
+  const xL = col.pinned === 'left' ? 0
+    : col.pinned === 'right' ? vs.bodyRight
+    : vs.bodyLeft;
+  const xR = col.pinned === 'left' ? vs.bodyLeft
+    : col.pinned === 'right' ? 1e6
+    : vs.bodyRight;
   gc.beginPath();
-  gc.rect(0, vs.bodyTop, 1e6, vs.bodyBottom - vs.bodyTop);
+  gc.rect(xL, vs.bodyTop, xR - xL, vs.bodyBottom - vs.bodyTop);
   gc.clip();
   gc.cache.strokeStyle = theme.focusRingColor;
   gc.cache.lineWidth = theme.focusRingWidth;

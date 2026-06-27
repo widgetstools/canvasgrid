@@ -24,12 +24,18 @@ export function paintRangeOverlay(gc: CachedContext2D, p: PainterCtx): void {
 
   // Clip every range fill / border to the scrollable body region so a
   // partially-scrolled range can't paint over the header (top) or
-  // below the body bottom edge. `save` + `restore` brackets the loop
-  // because the clip applies to all ranges plus the fill-handle paint
-  // below.
+  // below the body bottom edge. Horizontally we clip to bodyLeft /
+  // bodyRight so a center-column range can't leak into the
+  // pinned-left / pinned-right zones during horizontal scroll. (A
+  // range that targets pinned columns would itself sit inside the
+  // pinned band; we accept that the clip suppresses such ranges —
+  // pinned-column range selection isn't part of the demo today, so
+  // this is the simpler, safer choice.) `save` + `restore` brackets
+  // the loop because the clip applies to all ranges plus the
+  // fill-handle paint below.
   gc.save();
   gc.beginPath();
-  gc.rect(0, vs.bodyTop, 1e6, vs.bodyBottom - vs.bodyTop);
+  gc.rect(vs.bodyLeft, vs.bodyTop, vs.bodyRight - vs.bodyLeft, vs.bodyBottom - vs.bodyTop);
   gc.clip();
 
   // Set draw state once. The painter doesn't save/restore between
