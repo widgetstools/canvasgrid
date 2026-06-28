@@ -7,7 +7,7 @@
     "apps/*"
   ],
   "scripts": {
-    "dev:showcase": "npm run dev --workspace=showcase",
+    "dev:showcase": "npm run dev --workspace=cgrid-showcase",
     "dev:positions": "npm run dev --workspace=cgrid-positions",
     "build:cgrid": "npm run build --workspace=cgrid",
     "test:cgrid": "npm test --workspace=cgrid",

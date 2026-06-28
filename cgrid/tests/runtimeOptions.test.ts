@@ -148,6 +148,18 @@ describe('CGrid.setGridOption — runtime options apply', () => {
     teardown(grid, host);
   });
 
+  it('suppressCount is runtime-mutable (Cycle 15.5 / Task 7) and stored on options', () => {
+    const { grid, host } = mountGrid();
+    const api = (grid as any).makeApi();
+    // Must be recognised as a runtime option — no "not a recognised runtime
+    // option" throw — and store + flip cleanly.
+    expect(() => api.setGridOption('suppressCount', true)).not.toThrow();
+    expect((grid as any).options.suppressCount).toBe(true);
+    api.setGridOption('suppressCount', false);
+    expect((grid as any).options.suppressCount).toBe(false);
+    teardown(grid, host);
+  });
+
   it('rowBuffer is stored on options (read site lands in Task 5)', () => {
     const { grid, host } = mountGrid();
     const api = (grid as any).makeApi();

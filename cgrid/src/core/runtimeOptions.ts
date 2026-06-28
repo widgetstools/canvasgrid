@@ -66,7 +66,8 @@ export type RuntimeOption =
   | 'suppressAggFuncInHeader'
   | 'rowGroupPanelShow'
   | 'rowGroupPanelSuppressSort'
-  | 'groupSelectsChildren';
+  | 'groupSelectsChildren'
+  | 'suppressCount';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
  *  import on `CGrid` (cgrid.ts imports this module). */
@@ -252,6 +253,14 @@ export function applyRuntimeOption<TRow>(
       // label changes).
       target.refreshLayout();
       return;
+    case 'suppressCount':
+      // Cycle 15.5 / Task 7 — toggle the `(n)` child-count badge on group
+      // rows. The group cell-renderer params builder reads
+      // `options.suppressCount` per cell-build (childCount is already
+      // known main-side), so a single repaint flips every group row's
+      // badge with no worker round-trip.
+      target.refreshLayout();
+      return;
     case 'pinnedTopRowData':
     case 'pinnedBottomRowData':
       // Cycle 14 / Task 2 — re-mount the subgrid stack. The new array is
@@ -314,4 +323,5 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'rowGroupPanelShow',
   'rowGroupPanelSuppressSort',
   'groupSelectsChildren',
+  'suppressCount',
 ]);
