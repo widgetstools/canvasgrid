@@ -933,6 +933,9 @@ export { AggPass } from './passes/aggPass';
 export { GroupPass } from './passes/groupPass';
 export type { GroupNode, GroupPassOutput, FlatOrderEntry } from './passes/groupPass';
 
+export { PivotPass, encodePivotValueKey, getPivotValue, PIVOT_PATH_SEP } from './passes/pivotPass';
+export type { PivotModel, PivotKeyNode, PivotPassOutput } from './passes/pivotPass';
+
 // Cycle 15 / Task 2 — group-aware viewport helpers. Re-exported so the
 // worker's `getViewport` handler can stay rooted in `dataPipeline`'s
 // import surface; the actual collapse-skip walk + grouped slicer live
