@@ -29,7 +29,7 @@
   --cg-header-bg: #f4f6f8;
   --cg-header-fg: #1a1f24;
   --cg-border-color: #d5dbe0;
-  --cg-grid-line-color: #e0e5e9;
+  --cg-grid-line-color: #e3e8eb;
   --cg-row-hover-bg: #eef1f3;
   --cg-row-selected-bg: rgb(56 132 195 / 22%);
   --cg-focus-ring-color: #3b82f6;
@@ -143,7 +143,7 @@
   --cg-header-bg: #252526;
   --cg-header-fg: #d4d4d4;
   --cg-border-color: #454545;
-  --cg-grid-line-color: #3a3d3e;
+  --cg-grid-line-color: #373a3b;
   --cg-row-hover-bg: #2a2d2e;
   --cg-row-selected-bg: rgb(38 79 120 / 50%);
   --cg-focus-ring-color: #007fd4;
