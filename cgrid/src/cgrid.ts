@@ -3106,16 +3106,34 @@ export class CGrid<TRow = any> {
   /** Cycle 15.5 / Task 1 — `groupingStateChanged` handler. When the
    *  ordered column list changes (`source: 'set' | 'add' | 'remove' |
    *  'move'`), ship a `setGroupModel` round-trip to the worker so the
-   *  visible chunk reflects the new grouping. Pure sort changes
-   *  (`source: 'sort'`) don't yet drive a worker swap — Cycle 15.5 /
-   *  Task 9 lands group-aware sort by aggregate; until then the
-   *  pill's sort indicator is decorative. The panel host re-renders
-   *  via `setGroupingState` so the updated chip + indicator paint
-   *  immediately. */
+   *  visible chunk reflects the new grouping.
+   *
+   *  Cycle 15.5 / Task 9 gap-fill — a pure sort change (`source: 'sort'`)
+   *  now drives a real re-order: the per-level group sort is translated
+   *  into the worker sort model, and `SortPass.applyGrouped` re-sorts each
+   *  group level by the sort entry targeting that level's grouping column.
+   *  Both entry points (the public `setRowGroupColumnSort` API and the
+   *  row group panel pill chevron) funnel through here, so both re-order.
+   *
+   *  The panel host re-renders via `setGroupingState` so the updated chip
+   *  + indicator paint immediately. */
   private handleGroupingStateChanged(e: GroupingStateChangedEvent): void {
     if (this.destroyed) return;
     this.rowGroupPanel?.setGroupingState(e.rowGroupColumns, e.perLevelSort);
-    if (e.source !== 'sort') {
+    if (e.source === 'sort') {
+      // Translate the per-level group sort into the worker sort model.
+      // Rebuild the group-column entries from `perLevelSort` (in nesting
+      // order so the outer level sorts first), preserving any leaf-column
+      // sort entries already present in the model.
+      const groupColSet = new Set(e.rowGroupColumns);
+      const nonGroupSort = this.sortModel.filter((s) => !groupColSet.has(s.colId));
+      const groupSort: SortModel = [];
+      e.rowGroupColumns.forEach((colId, i) => {
+        const entry = e.perLevelSort[i];
+        if (entry) groupSort.push({ colId, direction: entry.direction });
+      });
+      this.setSortModel([...groupSort, ...nonGroupSort]);
+    } else {
       const sameOrder = this.groupModel.rowGroupCols.length === e.rowGroupColumns.length
         && this.groupModel.rowGroupCols.every((c, i) => c === e.rowGroupColumns[i]);
       if (!sameOrder) {
