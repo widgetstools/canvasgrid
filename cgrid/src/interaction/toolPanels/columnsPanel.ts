@@ -79,6 +79,10 @@
  *   § Cycle 15.5 / Task 2 — pill style + drop zone position + tokens.
  */
 import type { CGridApi, CColumnState } from '../../types';
+import {
+  routeExternalDragHover,
+  clearExternalDragHover,
+} from '../features/columnDrag';
 import type {
   IToolPanelColumnCompParams,
   ToolPanel,
@@ -532,12 +536,41 @@ export class ColumnsToolPanel implements ToolPanel {
       .map((c) => (c as HTMLElement).dataset.colId)
       .filter((id): id is string => typeof id === 'string');
 
+    // True when the pointer is inside the tool panel's own Row Groups
+    // drop zone (the section within this panel).
     let overZone = false;
+    // True when the pointer is inside the row group HEADER STRIP (the
+    // horizontal chip-strip above the column headers, managed by the
+    // RowGroupPanelHost).  Mutually exclusive with overZone — the strip
+    // is outside the sidebar, so the cursor can only be in one at a time.
+    let overHeaderStrip = false;
+
+    // Cast the api to the router interface so routeExternalDragHover can
+    // call the three methods we just wired on CGrid / CGridApi.
+    const router = this.api as unknown as import('../features/columnDrag').RowGroupPanelDragRouter;
+    const hasRouter =
+      typeof (this.api as any).isPointInRowGroupPanel === 'function'
+      && typeof (this.api as any).setRowGroupPanelDragHover === 'function'
+      && typeof (this.api as any).commitRowGroupPanelDrop === 'function';
+
     const onMove = (ev: MouseEvent) => {
-      // Cycle 15.5 / Task 2 — paint the zone drop-state when the
-      // cursor enters / leaves the zone mid-drag. The verdict is
-      // computed once at gesture start (column metadata can't mutate
-      // mid-drag); the paint is a per-move toggle.
+      // Cycle 15.5 / Task 2 (gap-fill) — check the row group HEADER STRIP
+      // first (it is outside the sidebar; higher visual priority).  When
+      // the cursor enters the strip we light it up via the shared router
+      // and suppress both the in-panel drop-zone paint and the in-list
+      // reorder to avoid competing visual feedback.
+      if (hasRouter && allowDragOut && isGroupable && !alreadyGrouped) {
+        const inStrip = routeExternalDragHover(router, colId, ev.clientX, ev.clientY);
+        if (inStrip !== overHeaderStrip) {
+          overHeaderStrip = inStrip;
+          // When entering the header strip, also clear the zone highlight.
+          if (inStrip) this.setRowGroupsZoneDropState(null);
+        }
+        if (overHeaderStrip) return; // cursor is in the strip — skip all zone/list logic
+      }
+
+      // Cycle 15.5 / Task 2 — paint the tool-panel zone drop-state when
+      // the cursor enters / leaves the zone mid-drag.
       if (allowDragOut && this.rowGroupsSection !== null) {
         const insideNow = this.isPointInRowGroupsZone(ev.clientX, ev.clientY);
         if (insideNow !== overZone) {
@@ -590,11 +623,20 @@ export class ColumnsToolPanel implements ToolPanel {
       row.el.classList.remove('cg-columns-panel-row--dragging');
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
-      // Cycle 15.5 / Task 2 — release-over-zone commits as a group-by
-      // when the column is eligible. Reject (not groupable or already
-      // grouped) drops are silently swallowed (the zone outline goes
-      // back to its idle state); the list reorder doesn't fire because
-      // we suppressed it while over the zone.
+
+      // Always clear the header strip hover state on release.
+      if (hasRouter) clearExternalDragHover(router);
+
+      // Cycle 15.5 / Task 2 (gap-fill) — if the release is inside the
+      // row group HEADER STRIP, commit there (addRowGroupColumn via the
+      // panel host's acceptance path) and skip all other drop targets.
+      if (overHeaderStrip) {
+        (this.api as any).commitRowGroupPanelDrop?.(colId);
+        return;
+      }
+
+      // Cycle 15.5 / Task 2 — release-over-tool-panel-zone commits as a
+      // group-by when the column is eligible.
       this.setRowGroupsZoneDropState(null);
       if (
         allowDragOut

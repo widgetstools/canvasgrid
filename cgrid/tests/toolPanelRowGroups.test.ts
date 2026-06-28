@@ -410,4 +410,80 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     const empty = root.querySelector<HTMLElement>('.cg-columns-panel-rgz-empty');
     expect(empty?.textContent).toBe('Drag here to set row groups');
   });
+
+  // ---- Task 2 gap-fill: column-list drag → row group HEADER STRIP --------
+  //
+  // These three cases verify that when `api.isPointInRowGroupPanel`,
+  // `api.setRowGroupPanelDragHover`, and `api.commitRowGroupPanelDrop`
+  // are wired on the api (CGrid's public surface), the column-list row
+  // drag uses them to route through the row group panel header strip.
+
+  it('column-list drag move calls setRowGroupPanelDragHover when cursor enters the header strip', () => {
+    const setHover = vi.fn();
+    const isInPanel = vi.fn().mockReturnValue(true);
+    const commitDrop = vi.fn().mockReturnValue(true);
+    const api = {
+      ...makeApi(),
+      isPointInRowGroupPanel: isInPanel,
+      setRowGroupPanelDragHover: setHover,
+      commitRowGroupPanelDrop: commitDrop,
+    };
+    const { panel, root } = mountPanel(api as any);
+    hosts.push(panel);
+
+    // Grab a row handle and fire mousedown → mousemove.
+    const handle = root.querySelector<HTMLElement>('.cg-columns-panel-row-handle');
+    if (!handle) { expect(handle).not.toBeNull(); return; }
+    handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 10, clientY: 10 }));
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 10, clientY: 50 }));
+
+    expect(setHover).toHaveBeenCalledWith('athlete', 10, 50);
+  });
+
+  it('column-list drag mouseup over header strip calls commitRowGroupPanelDrop', () => {
+    const setHover = vi.fn();
+    const isInPanel = vi.fn().mockReturnValue(true);
+    const commitDrop = vi.fn().mockReturnValue(true);
+    const api = {
+      ...makeApi(),
+      isPointInRowGroupPanel: isInPanel,
+      setRowGroupPanelDragHover: setHover,
+      commitRowGroupPanelDrop: commitDrop,
+    };
+    const { panel, root } = mountPanel(api as any);
+    hosts.push(panel);
+
+    const handle = root.querySelector<HTMLElement>('.cg-columns-panel-row-handle');
+    if (!handle) { expect(handle).not.toBeNull(); return; }
+    handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 10, clientY: 10 }));
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 10, clientY: 50 }));
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 10, clientY: 50 }));
+
+    expect(commitDrop).toHaveBeenCalledWith('athlete');
+  });
+
+  it('column-list drag clears header strip hover state on mouseup (via clearExternalDragHover)', () => {
+    const setHover = vi.fn();
+    // First call returns true (in panel), second returns false (cleared).
+    const isInPanel = vi.fn().mockReturnValueOnce(true).mockReturnValue(false);
+    const commitDrop = vi.fn().mockReturnValue(true);
+    const api = {
+      ...makeApi(),
+      isPointInRowGroupPanel: isInPanel,
+      setRowGroupPanelDragHover: setHover,
+      commitRowGroupPanelDrop: commitDrop,
+    };
+    const { panel, root } = mountPanel(api as any);
+    hosts.push(panel);
+
+    const handle = root.querySelector<HTMLElement>('.cg-columns-panel-row-handle');
+    if (!handle) { expect(handle).not.toBeNull(); return; }
+    handle.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, clientX: 10, clientY: 10 }));
+    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 10, clientY: 50 }));
+    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 10, clientY: 50 }));
+
+    // clearExternalDragHover calls setRowGroupPanelDragHover(null, -1, -1)
+    const clearCall = setHover.mock.calls.find((c) => c[0] === null);
+    expect(clearCall).toBeDefined();
+  });
 });

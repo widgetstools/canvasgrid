@@ -28,6 +28,50 @@
 import { Feature, type CGridEventCtx } from '../feature';
 
 const DRAG_THRESHOLD_PX = 4;
+
+// ---- Shared row-group-panel drag router (exported for tool-panel pills) ----
+//
+// Both ColumnDrag (column-header drags) and ColumnsToolPanel (column-list
+// row drags) need to dispatch hover + drop through the row group panel.
+// Rather than duplicating the three-method protocol in each callsite, we
+// export a minimal interface and a pair of helpers that any drag source can
+// call regardless of which grid context object it has access to.
+
+/** Minimal surface needed to route a drag source through the row group
+ *  panel.  Both `CGridEventCtx` (Feature chain) and `CGridApi` (public
+ *  surface, after Task 2 gap-fill) satisfy this interface. */
+export interface RowGroupPanelDragRouter {
+  isPointInRowGroupPanel(clientX: number, clientY: number): boolean;
+  setRowGroupPanelDragHover(colId: string | null, clientX: number, clientY: number): void;
+  commitRowGroupPanelDrop(colId: string): boolean;
+}
+
+/** Dispatch a mid-drag hover tick to the row group panel.
+ *
+ *  Returns `true` when the cursor is inside the panel (so the caller
+ *  can suppress other drop targets, e.g. the in-list reorder or the
+ *  tool-panel drop zone).  Returns `false` and clears any prior hover
+ *  state when the cursor is outside the panel. */
+export function routeExternalDragHover(
+  ctx: RowGroupPanelDragRouter,
+  colId: string,
+  clientX: number,
+  clientY: number,
+): boolean {
+  if (ctx.isPointInRowGroupPanel(clientX, clientY)) {
+    ctx.setRowGroupPanelDragHover(colId, clientX, clientY);
+    return true;
+  }
+  ctx.setRowGroupPanelDragHover(null, clientX, clientY);
+  return false;
+}
+
+/** Clear the row group panel hover state unconditionally.
+ *  Call this on drag-end (mouseup / pointercancel) regardless of where
+ *  the drag landed, so the panel's outline + insertion line disappear. */
+export function clearExternalDragHover(ctx: RowGroupPanelDragRouter): void {
+  ctx.setRowGroupPanelDragHover(null, -1, -1);
+}
 const GHOST_CLASS = 'cg-column-drag-ghost';
 const INSERTION_LINE_CLASS = 'cg-column-drag-insertion-line';
 
@@ -169,19 +213,14 @@ export class ColumnDrag extends Feature {
   }
 
   /** Cycle 15 / Task 6 — feed the row group panel host the current
-   *  drag state. The host hit-tests against its own DOM rect (viewport
-   *  coords) and paints the drop indicator + insertion line. When the
-   *  cursor is OUTSIDE the panel, this clears any prior hover. */
+   *  drag state via the shared router.  When the cursor is OUTSIDE the
+   *  panel, `routeExternalDragHover` clears any prior hover state. */
   private dispatchRowGroupPanelHover(ctx: CGridEventCtx): void {
     const state = this.state;
     if (state === null || state.kind !== 'dragging') return;
     const raw = ctx.raw;
     if (!(raw instanceof MouseEvent)) return;
-    if (ctx.grid.isPointInRowGroupPanel(raw.clientX, raw.clientY)) {
-      ctx.grid.setRowGroupPanelDragHover(state.colId, raw.clientX, raw.clientY);
-    } else {
-      ctx.grid.setRowGroupPanelDragHover(null, raw.clientX, raw.clientY);
-    }
+    routeExternalDragHover(ctx.grid, state.colId, raw.clientX, raw.clientY);
   }
 
   override handleClick(ctx: CGridEventCtx): void {

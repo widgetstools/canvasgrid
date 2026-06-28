@@ -2345,6 +2345,22 @@ export interface CGridApi {
    *  the "Group by `<col>`" item visibility). Returns `false` for
    *  unknown colIds. */
   isColumnRowGroupEnabled(colId: string): boolean;
+  /** Cycle 15.5 / Task 2 (gap-fill) — `true` when the row group panel
+   *  is mounted AND the viewport-coord point `(clientX, clientY)` falls
+   *  inside its DOM rect.  Exposed on the public API so external drag
+   *  sources (e.g. the columns tool panel column-list row drag) can route
+   *  through the same row-group-panel acceptance path that column-header
+   *  drags use via the `ColumnDrag` feature chain. */
+  isPointInRowGroupPanel?(clientX: number, clientY: number): boolean;
+  /** Cycle 15.5 / Task 2 (gap-fill) — inform the row group panel of an
+   *  in-progress drag from an external source.  Pass `colId: null` to
+   *  clear any hover state (e.g. on mouse-leave or drag-end). */
+  setRowGroupPanelDragHover?(colId: string | null, clientX: number, clientY: number): void;
+  /** Cycle 15.5 / Task 2 (gap-fill) — commit a column-list drag drop
+   *  into the row group panel.  Returns `true` when the column was
+   *  appended to `rowGroupColumns`, `false` when rejected (column
+   *  already grouped or `enableRowGroup` not set). */
+  commitRowGroupPanelDrop?(colId: string): boolean;
   /** Cycle 11 / Task 4 — the resolved popup-filter type for `colId`, or
    *  `null` when the column is unknown or has no filter. Used by the
    *  FiltersToolPanel to decide which columns get a collapsible row. */

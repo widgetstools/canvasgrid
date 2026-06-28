@@ -2847,6 +2847,27 @@ export class CGrid<TRow = any> {
     return this.columnDefsMap.get(colId)?.enableRowGroup === true;
   }
 
+  /** Cycle 15.5 / Task 2 (gap-fill) — expose the row-group-panel
+   *  hit-test on the public CGridApi so external drag sources (columns
+   *  tool panel column-list row drag) can route through the panel. */
+  isPointInRowGroupPanel(clientX: number, clientY: number): boolean {
+    return this.rowGroupPanel?.isPointInPanel(clientX, clientY) === true;
+  }
+
+  /** Cycle 15.5 / Task 2 (gap-fill) — forward external drag hover to
+   *  the row group panel host. */
+  setRowGroupPanelDragHover(colId: string | null, clientX: number, clientY: number): void {
+    if (this.destroyed) return;
+    this.rowGroupPanel?.setDragHover(colId, clientX, clientY);
+  }
+
+  /** Cycle 15.5 / Task 2 (gap-fill) — commit an external column-list
+   *  drag drop into the row group panel. */
+  commitRowGroupPanelDrop(colId: string): boolean {
+    if (this.destroyed) return false;
+    return this.rowGroupPanel?.handleColumnDrop(colId) ?? false;
+  }
+
   /** Cycle 15 / Task 6 — runtime swap of `rowGroupPanelShow`. When
    *  the option mutates via `setGridOption`, this method either
    *  mounts a fresh host (transition from `'never'`), unmounts the
