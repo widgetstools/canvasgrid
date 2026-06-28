@@ -1101,13 +1101,13 @@ All Tasks 4–12 delivered in the `ssrm` branch. Test count: **1480 → 1580** (
 |------|-------------|-------------|-----------|
 | 4 | `groupHideOpenParents` flag — expanded parents hidden from flatOrder, sticky suppressed | 15 | `protocol.ts`, `hideOpenParents.test.ts` |
 | 5 | `GroupSelectsMode` — self / descendants / filteredDescendants; checkbox gating | 25 | `selectionModel.ts`, `selectionModes.test.ts` |
-| 6 | Expand/collapse polish — `isGroupOpenByDefault` callback, keyboard nav, public API | 14 | `groupPass.ts`, `groupExpand.ts`, `cgrid.ts`, `expandPolish.test.ts` |
+| 6 | Expand/collapse polish — `isGroupOpenByDefault` callback, keyboard nav, public API | 14 + 4 E2E | `groupPass.ts`, `groupExpand.ts`, `cgrid.ts`, `expandPolish.test.ts`, `cycle15.5-keyboardGroupNav.spec.ts` |
 | 7 | Group rendering parity flags — `suppressCount`, `innerRenderer`, `suppressGroupChangesColumnVisibility` | 16 | `group.ts`, `cgrid.ts`, `groupParityFlags.test.ts` |
 | 8 | Aggregation extensions — object-returning aggFuncs + `groupTotalRow`/`grandTotalRow` aliases | 25 (20+5) | `cgrid.ts`, `aggExtensions.test.ts`, `aggIncremental.perf.test.ts` |
 | 9 | Group sort by aggregate + per-level sort state + filtering interaction | 26 (14+12) | `groupSortByAggregate.test.ts`, `filteringWithGrouping.test.ts` |
 | 10 | Grid State save/restore — `GroupingState.serialize()` / `restore()` | 14 | `groupingState.ts`, `gridStateGrouping.test.ts` |
 | 11 | Perf + correctness gate — 12 perf cases + 8 three-UIs-one-list cases | 20 | `groupingPerf.test.ts`, `threeUIsOneList.test.ts` |
-| 12 | Exit ritual — FM Area 09 (sticky) + Area 17 (drop zone) + Area 23 (grouping API) flipped | 0 | `FEATURE_MATRIX.md`, this plan |
+| 12 | Exit ritual — FM Area 09 (keyboard nav + isGroupOpenByDefault + resetRowGroupExpansion + ensureIndexVisible) + Area 23 (ensureIndexVisible) flipped; 225 E2E passing | 0 | `FEATURE_MATRIX.md`, this plan |
 
 ---
 

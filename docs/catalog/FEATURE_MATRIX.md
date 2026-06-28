@@ -200,7 +200,7 @@
 | 05 | ✅ flashCells | Community | api | no | P1 | Trigger flash animation |
 | 05 | getCellRendererInstances | Community | api | no | P2 | Access live renderer instances |
 | 05 | getRenderedNodes | Community | api | no | P1 | Viewport + buffer row nodes |
-| 05 | ensureIndexVisible | Community | api | no | P1 | Scroll to row by index |
+| 05 | ✅ ensureIndexVisible | Community | api | no | P1 | Scroll to row by index |
 | 05 | ensureNodeVisible | Community | api | no | P1 | Scroll to row node |
 | 05 | ensureColumnVisible | Community | api | no | P1 | Scroll to column |
 | 05 | getVerticalPixelRange | Community | api | no | P1 | Current vertical scroll range |
@@ -435,6 +435,9 @@
 | 09 | ✅ Group total and grand total rows | Enterprise | behavior | yes | P0 | groupTotalRow/grandTotalRow insert aggregate rows |
 | 09 | ✅ Unbalanced groups | Enterprise | behavior | no | P2 | groupAllowUnbalanced prevents synthetic (Blanks) node |
 | 09 | ✅ autoGroupColumnDef customisation | Enterprise | behavior | yes | P0 | Any ColDef property except colId applied to auto group column |
+| 09 | ✅ isGroupOpenByDefault callback | Enterprise | option | no | P1 | Per-node callback overrides groupDefaultExpanded at group-pass time |
+| 09 | ✅ resetRowGroupExpansion | Enterprise | api | no | P1 | Discards user toggles; re-evaluates groupDefaultExpanded + isGroupOpenByDefault |
+| 09 | ✅ Keyboard group navigation | Enterprise | behavior | yes | P0 | ArrowRight/Left expands/collapses; Enter/Space toggles focus group row |
 
 <!-- area:10 Aggregation -->
 | 10 | ✅ aggFunc (ColDef) | Enterprise | option | yes | P0 | Aggregation function; built-in: sum/min/max/count/avg/first/last |
@@ -768,7 +771,7 @@
 | 23 | Charts API | Enterprise | api | no | P3 | createRangeChart, createPivotChart, getChartModels, updateChart, restoreChart — see `23-api.md` |
 | 23 | Export API | Community | api | no | P2 | getDataAsCsv, exportDataAsCsv, exportDataAsExcel, exportMultipleSheetsAsExcel — see `23-api.md` |
 | 23 | ✅ Status bar / side bar API | Enterprise | api | no | P2 | ✅ getStatusPanel (Cycle 13 / Task 4), ✅ isSideBarVisible, ✅ openToolPanel, ✅ getToolPanelInstance — see `23-api.md` |
-| 23 | Misc API | Community | api | yes | P1 | getFocusedCell, ✅ setFocusedCell, ✅ ensureColumnVisible, ✅ ensureColumnGroupVisible, ✅ ensureRowVisible (by rowId), ensureIndexVisible, paginationGoToPage — see `23-api.md` |
+| 23 | Misc API | Community | api | yes | P1 | getFocusedCell, ✅ setFocusedCell, ✅ ensureColumnVisible, ✅ ensureColumnGroupVisible, ✅ ensureRowVisible (by rowId), ✅ ensureIndexVisible, paginationGoToPage — see `23-api.md` |
 
 <!-- area:24 Charts & sparklines -->
 | 24 | enableCharts | Enterprise | option | no | P2 | Enables integrated charting; requires IntegratedChartsModule + ag-charts-community peer |
