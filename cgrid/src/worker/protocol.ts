@@ -217,6 +217,29 @@ export interface ViewportChunk {
   groupKey?: string[];
 }
 
+/** Cycle 15 / Task 16 — one sticky ancestor entry per depth level
+ *  above the current `firstRow`. Sent from the worker alongside each
+ *  `viewport` response so the main-thread painter can pin the ancestor
+ *  group rows at the top of the body area without round-tripping.
+ *
+ *  Sorted by depth ascending (depth 0 = top-level group first). */
+export interface StickyAncestor {
+  depth: number;
+  /** Composite group key — same vocabulary as `chunk.groupKey`. Used for
+   *  the chevron click toggle and for push-off identity comparison. */
+  key: string;
+  /** Source grouping column — used by the painter to choose indent and
+   *  by the hit-tester to resolve the auto-group column. */
+  colId: string;
+  /** Formatted display value (same as `groupValue` in the chunk for the
+   *  group row that produced this entry). */
+  value: string;
+  /** Total descendant LEAF row count — paints as `(N)` badge. */
+  childCount: number;
+  /** Current expansion state — determines chevron direction. */
+  isExpanded: boolean;
+}
+
 /** Cycle 5 / Task 8 — items batched into a single `measureTextRequest`
  *  push so the main thread can resolve them all in one canvas-context turn. */
 export interface MeasureTextItem {
@@ -467,7 +490,13 @@ export type WorkerResponse =
        *  (those carry the explicit set the caller just shipped). */
       expandedKeys?: string[] | null;
     }
-  | { id: ReqId; type: 'viewport';            chunk: ViewportChunk }
+  /** Cycle 15 / Task 16 — sticky group row ancestors for the current
+   *  viewport. Computed on the worker side from `visibleOrder[0..rowStart-1]`
+   *  — the last group seen at each depth above the first visible row.
+   *  Empty / absent when grouping is inactive or the first visible row
+   *  is at position 0 (nothing scrolled past). Rides structured-clone
+   *  alongside `chunk` (no ArrayBuffer transfer needed). */
+  | { id: ReqId; type: 'viewport'; chunk: ViewportChunk; stickyAncestors?: StickyAncestor[] }
   | { id: ReqId; type: 'transactionFlushed';  results: TransactionResult }
   | { id: ReqId; type: 'rowIndex';            index: number }
   | { id: ReqId; type: 'rowIndices';          indices: Int32Array }

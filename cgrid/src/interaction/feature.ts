@@ -270,6 +270,14 @@ export interface CGridLike {
    *  § Task 7. Reading the row's chunk fields here lives on the grid
    *  side so the feature stays a thin click-router. */
   hitTestGroupChevron(x: number, y: number): { groupKey: string } | null;
+  /** Cycle 15 / Task 16 — hit-test the sticky group band painted at
+   *  the top of the body. Returns the composite group key when the
+   *  point lands on a chevron within the pinned band, `null` otherwise.
+   *  Called BEFORE `hitTestGroupChevron` in `GroupExpandFeature` so a
+   *  click on the sticky band always routes to the correct ancestor key
+   *  rather than mis-hitting a body group row that happens to share
+   *  the same y-range. */
+  hitTestStickyChevron(x: number, y: number): { groupKey: string } | null;
   /** Toggle the expanded state of `groupKey`. Routes through the same
    *  `setExpanded` API path apps use, so a chevron click fires the
    *  `rowGroupOpened` event with `source: 'ui'`. */

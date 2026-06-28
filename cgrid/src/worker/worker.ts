@@ -1,5 +1,6 @@
 import type {
   WorkerRequest, WorkerResponse, WorkerPush, WorkerInitPayload, MeasureTextItem,
+  StickyAncestor,
 } from './protocol';
 import { collectViewportTransferables } from './protocol';
 import {
@@ -388,8 +389,8 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     roots: readonly GroupNode[],
     columns: readonly WorkerColumn[],
     expandedKeys: ReadonlySet<string>,
-  ): Map<string, { value: string; childCount: number; isExpanded: boolean }> {
-    const map = new Map<string, { value: string; childCount: number; isExpanded: boolean }>();
+  ): Map<string, { value: string; childCount: number; isExpanded: boolean; colId: string }> {
+    const map = new Map<string, { value: string; childCount: number; isExpanded: boolean; colId: string }>();
     const colTypeByColId = new Map<string, 'text' | 'number'>();
     for (const c of columns) colTypeByColId.set(c.colId, c.type);
     const walk = (nodes: readonly GroupNode[]): void => {
@@ -404,12 +405,39 @@ export function createWorkerHost(post: PostFn): WorkerHost {
           value: formatted,
           childCount: node.childCount,
           isExpanded: expandedKeys.has(node.key),
+          colId: node.colId,
         });
         if (node.childGroups.length > 0) walk(node.childGroups);
       }
     };
     walk(roots);
     return map;
+  }
+
+  /** Cycle 15 / Task 16 — compute the sticky ancestor band for `rowStart`.
+   *  Walks `visibleOrder[0..rowStart)`, tracking the last group entry seen
+   *  at each depth. Only expanded groups can have visible descendants below
+   *  them, so non-expanded ancestors are excluded. O(rowStart). */
+  function computeStickyAncestors(
+    visibleOrder: readonly VisibleRowEntry[],
+    rowStart: number,
+    metaLookup: ReadonlyMap<string, { value: string; childCount: number; isExpanded: boolean; colId: string }>,
+  ): StickyAncestor[] {
+    if (rowStart === 0) return [];
+    const lastAtDepth = new Map<number, string>(); // depth → composite key
+    const limit = Math.min(rowStart, visibleOrder.length);
+    for (let i = 0; i < limit; i++) {
+      const entry = visibleOrder[i]!;
+      if (entry.kind === 'group') lastAtDepth.set(entry.depth, entry.key);
+    }
+    if (lastAtDepth.size === 0) return [];
+    const result: StickyAncestor[] = [];
+    for (const [depth, key] of [...lastAtDepth.entries()].sort((a, b) => a[0] - b[0])) {
+      const meta = metaLookup.get(key);
+      if (!meta || !meta.isExpanded) continue;
+      result.push({ depth, key, colId: meta.colId, value: meta.value, childCount: meta.childCount, isExpanded: meta.isExpanded });
+    }
+    return result;
   }
 
   async function invalidateAndCount(): Promise<number> {
@@ -1222,6 +1250,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             // slicer — same shape as Cycle 4.
             let chunk;
             let visibleSliceIds: string[];
+            let stickyAncestors: StickyAncestor[] | undefined;
             if (isGroupingActive()) {
               const groupOutput = state.groupOutput!;
               const expandedKeys = effectiveExpandedKeys();
@@ -1236,6 +1265,9 @@ export function createWorkerHost(post: PostFn): WorkerHost {
                 (key) => metaLookup.get(key),
                 state.showOpenedGroup,
               );
+              // Cycle 15 / Task 16 — compute sticky ancestors from the
+              // ordered group tree above firstRow (O(rowStart) scan).
+              stickyAncestors = computeStickyAncestors(visibleOrder, chunk.rowStart, metaLookup);
               // For flash drain below, we need the rowIds at each
               // emitted slot. Group slots carry no rowId — only data
               // entries do. Build a per-slot rowId array here so the
@@ -1297,7 +1329,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
               }
             }
             post(
-              { id: req.id, type: 'viewport', chunk },
+              { id: req.id, type: 'viewport', chunk, stickyAncestors },
               collectViewportTransferables(chunk) as ArrayBuffer[],
             );
             // AutoHeight pass — runs out-of-band so the first chunk lands

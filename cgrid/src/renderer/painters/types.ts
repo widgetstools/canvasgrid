@@ -4,6 +4,7 @@ import type { ResolvedColDef } from '../../core/propertyChain';
 import type { CellRendererRegistry } from '../cellRenderers/registry';
 import type { GroupCellValue } from '../cellRenderers/group';
 import type { SortModel, SelectionRange } from '../../types';
+import type { StickyAncestor } from '../../worker/protocol';
 
 export type CellDataLookup = (
   rowIndex: number,
@@ -106,4 +107,23 @@ export interface PainterCtx {
    * the probe is absent.
    */
   rowKindAt?: (rowIndex: number) => number;
+  /**
+   * Cycle 15 / Task 16 — sticky group row ancestors above the current
+   * first visible row. Empty when grouping is inactive or the first
+   * visible row is at position 0. Sorted depth-ascending so the painter
+   * can stack them top-to-bottom from bodyTop.
+   */
+  stickyAncestors?: StickyAncestor[];
+  /**
+   * Cycle 15 / Task 16 — group depth for a row index (same index space
+   * as `rowKindAt`). Returns 0 when the row is not in the current chunk
+   * or when grouping is inactive.
+   */
+  groupDepthAt?: (rowIndex: number) => number;
+  /**
+   * Cycle 15 / Task 16 — composite group key for a row index (same
+   * index space as `rowKindAt`). Returns `''` for data rows or when the
+   * row is outside the current chunk.
+   */
+  groupKeyAt?: (rowIndex: number) => string;
 }

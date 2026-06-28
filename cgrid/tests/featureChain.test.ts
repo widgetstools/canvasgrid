@@ -115,6 +115,7 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
     // anywhere" so existing chain tests' mousedown / click flow is
     // never intercepted by GroupExpandFeature.
     hitTestGroupChevron: () => null,
+    hitTestStickyChevron: () => null,
     toggleGroupExpanded: () => {},
     // Cycle 15 / Task 8 — same default for the tri-state checkbox
     // hit-lane so chain tests stay on the data-cell path.

@@ -87,7 +87,7 @@ import type { CellEditorCtor, ICellEditor } from './interaction/editors/iCellEdi
 import { A11yOverlay } from './interaction/a11yOverlay';
 import { WorkerClient } from './worker/client';
 import { wrapTextToHeight } from './worker/measureText';
-import type { WorkerColumn, ViewportChunk, AutosizeColumnRequest } from './worker/protocol';
+import type { WorkerColumn, ViewportChunk, AutosizeColumnRequest, StickyAncestor } from './worker/protocol';
 import type { IAggFunc, IAggFuncParams } from './types';
 import { decodeText } from './worker/chunkFormat';
 // Cycle 10 / Task 5 — main-side serialise + paste-cell map helpers used when
@@ -419,6 +419,10 @@ export class CGrid<TRow = any> {
   private scrollTop = 0;
   private rowCount = 0;
   private chunk: ViewportChunk | null = null;
+  /** Cycle 15 / Task 16 — latest sticky ancestor band from the worker.
+   *  Refreshed on every `getViewport` reply. Empty when grouping is
+   *  inactive or the first visible row is at position 0. */
+  private stickyAncestors: StickyAncestor[] = [];
   /** Cumulative row-height index over the current visible-row order. Built
    *  on first chunk arrival (filled with the global `rowHeight` fallback for
    *  every row), then updated incrementally as chunks layer their per-row
@@ -814,6 +818,10 @@ export class CGrid<TRow = any> {
         if (localIndex < 0 || localIndex >= chunk.rowCount) return 0;
         return chunk.rowKinds[localIndex] ?? 0;
       },
+      // Cycle 15 / Task 16 — sticky group band.
+      getStickyAncestors: () => this.stickyAncestors,
+      getGroupDepthAt: (rowIndex) => this.groupDepthAt(rowIndex),
+      getGroupKeyAt: (rowIndex) => this.groupKeyAt(rowIndex),
     });
 
     // 7. Canvas wrapper — owns the <canvas>, gc cache, RAF + resize polling.
@@ -1100,6 +1108,7 @@ export class CGrid<TRow = any> {
       // toggle path needs to fire the `rowGroupOpened` event with
       // `source: 'ui'` distinct from imperative API toggles.
       hitTestGroupChevron: (x, y) => this.hitTestGroupChevron(x, y),
+      hitTestStickyChevron: (x, y) => this.hitTestStickyChevron(x, y),
       toggleGroupExpanded: (key) => this.toggleGroupExpandedFromUi(key),
       // Cycle 15 / Task 8 — tri-state checkbox hit-test + cascade
       // toggle. Same geometry-on-grid / feature-stays-thin split as
@@ -4415,6 +4424,38 @@ export class CGrid<TRow = any> {
     return { groupKey };
   }
 
+  /** Cycle 15 / Task 16 — hit-test the sticky group band painted at the
+   *  top of the body area. Returns the ancestor's composite group key
+   *  when the pointer falls on a chevron within the pinned band.
+   *
+   *  Geometry agrees with `renderer/painters/stickyGroups.ts`:
+   *  PADDING + depth×INDENT_UNIT + CHEVRON_SIZE, HIT_PAD = 4 px.
+   *  Does NOT require a visible-rows lookup — the band occupies a
+   *  fixed y-range (bodyTop .. bodyTop + numAncestors × rowH). */
+  private hitTestStickyChevron(x: number, y: number): { groupKey: string } | null {
+    const ancestors = this.stickyAncestors;
+    if (ancestors.length === 0) return null;
+    const vs = this.viewport;
+    const rowH = this.options.rowHeight ?? this.theme.rowHeight;
+    const bodyTop = vs.bodyTop;
+    const bodyLeft = vs.bodyLeft;
+    const bodyRight = vs.bodyRight;
+    if (y < bodyTop || y >= bodyTop + ancestors.length * rowH) return null;
+    if (x < bodyLeft || x >= bodyRight) return null;
+    const bandIdx = Math.floor((y - bodyTop) / rowH);
+    const ancestor = ancestors[bandIdx];
+    if (!ancestor) return null;
+    const PADDING = 6;
+    const CHEVRON_SIZE = 12;
+    const INDENT_UNIT = 14;
+    const HIT_PAD = 4;
+    const indentX = ancestor.depth * INDENT_UNIT;
+    const left = bodyLeft + PADDING + indentX;
+    const right = left + CHEVRON_SIZE;
+    if (x < left - HIT_PAD || x > right + HIT_PAD) return null;
+    return { groupKey: ancestor.key };
+  }
+
   /** Cycle 15 / Task 8 — hit-test a canvas-local point against the
    *  tri-state checkbox of an auto-group cell. Returns the composite
    *  group key + current aggregate state when the point falls inside
@@ -4553,6 +4594,24 @@ export class CGrid<TRow = any> {
       isExpanded,
       selectionState,
     };
+  }
+
+  /** Cycle 15 / Task 16 — group depth for a given local row index.
+   *  Same index space as `groupCellContextAt`. Returns 0 outside the chunk. */
+  private groupDepthAt(rowIndex: number): number {
+    if (!this.chunk) return 0;
+    const localIndex = rowIndex - this.chunk.rowStart;
+    if (localIndex < 0 || localIndex >= this.chunk.rowCount) return 0;
+    return this.chunk.groupDepth[localIndex] ?? 0;
+  }
+
+  /** Cycle 15 / Task 16 — composite group key for a given local row index.
+   *  Returns `''` for data rows or when outside the current chunk. */
+  private groupKeyAt(rowIndex: number): string {
+    if (!this.chunk) return '';
+    const localIndex = rowIndex - this.chunk.rowStart;
+    if (localIndex < 0 || localIndex >= this.chunk.rowCount) return '';
+    return this.chunk.groupKey?.[localIndex] ?? '';
   }
 
   /** Visible-leaf colIds in RENDER order: left-pinned first, then center,
@@ -4990,13 +5049,14 @@ export class CGrid<TRow = any> {
     const rowStart = this.viewport.firstRow;
     const rowEnd = this.viewport.lastRow + 1;
     this.workerClient.getViewport({ rowStart, rowEnd, columns: cols, includeFlashMask: true })
-      .then((chunk) => {
+      .then(({ chunk, stickyAncestors }) => {
         this.viewportRequestPending = false;
         // Capture the previous chunk's totals BEFORE overwriting this.chunk
         // so the aggregate-flash diff can compare old vs new values.
         const prevGroupTotals = this.chunk?.groupTotals;
         const prevChunkTotals = this.chunk?.totals;
         this.chunk = chunk;
+        this.stickyAncestors = stickyAncestors ?? [];
         this.decodedTextCols.clear();
         // Cycle 4 / Task 11 (cell-flash patch) — drain the worker's
         // per-cell flashMask into the registry. The chunk's `rowIds`

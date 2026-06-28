@@ -29,15 +29,15 @@ import { Feature, type CGridEventCtx } from '../feature';
 
 export class GroupExpandFeature extends Feature {
   override handleMouseMove(ctx: CGridEventCtx): void {
-    // Cursor: pointer when over EITHER a chevron OR a checkbox hit
-    // zone. Reset to null otherwise so a previous-tick cursor doesn't
-    // leak; FeatureChain's tail-first `setCursor` walk applies the
-    // head's non-null value.
-    const chevron = ctx.grid.hitTestGroupChevron(ctx.point.x, ctx.point.y);
-    const checkbox = chevron === null
+    // Cursor: pointer when over a sticky chevron, body chevron, OR checkbox.
+    const sticky = ctx.grid.hitTestStickyChevron(ctx.point.x, ctx.point.y);
+    const chevron = sticky === null
+      ? ctx.grid.hitTestGroupChevron(ctx.point.x, ctx.point.y)
+      : null;
+    const checkbox = sticky === null && chevron === null
       ? ctx.grid.hitTestGroupCheckbox(ctx.point.x, ctx.point.y)
       : null;
-    this.cursor = chevron !== null || checkbox !== null ? 'pointer' : null;
+    this.cursor = sticky !== null || chevron !== null || checkbox !== null ? 'pointer' : null;
     super.handleMouseMove(ctx);
   }
 
@@ -46,6 +46,12 @@ export class GroupExpandFeature extends Feature {
     // their respective handlers via `super`.
     if (ctx.raw instanceof MouseEvent && ctx.raw.button !== 0) {
       super.handleMouseDown(ctx);
+      return;
+    }
+    // Cycle 15 / Task 16 — sticky band chevron takes highest priority.
+    const sticky = ctx.grid.hitTestStickyChevron(ctx.point.x, ctx.point.y);
+    if (sticky !== null) {
+      ctx.grid.toggleGroupExpanded(sticky.groupKey);
       return;
     }
     // Chevron takes precedence over checkbox — its hit zone is
@@ -76,10 +82,10 @@ export class GroupExpandFeature extends Feature {
   }
 
   override handleClick(ctx: CGridEventCtx): void {
-    // Consume trailing clicks on EITHER the chevron OR the checkbox
-    // hit zone so apps listening to `cellClicked` on the auto-group
-    // column don't see a spurious "the user clicked the group cell"
-    // event for what was really a toggle gesture.
+    // Consume trailing clicks on sticky chevrons, body chevrons, and
+    // checkboxes so apps don't see a spurious `cellClicked`.
+    const sticky = ctx.grid.hitTestStickyChevron(ctx.point.x, ctx.point.y);
+    if (sticky !== null) return;
     const chevron = ctx.grid.hitTestGroupChevron(ctx.point.x, ctx.point.y);
     if (chevron !== null) return;
     const checkbox = ctx.grid.hitTestGroupCheckbox(ctx.point.x, ctx.point.y);

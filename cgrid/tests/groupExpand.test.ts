@@ -80,6 +80,7 @@ function makeCtx(
   const augmented: MockGrid = {
     hitTestGroupCheckbox: () => null,
     toggleGroupChildrenSelected: vi.fn(),
+    hitTestStickyChevron: () => null,
     ...grid,
   };
   return {

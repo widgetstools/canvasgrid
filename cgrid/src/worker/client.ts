@@ -1,8 +1,9 @@
 import type {
   WorkerRequest, WorkerResponse, WorkerPush, WorkerInitPayload, ViewportRequest, ViewportChunk,
-  WorkerColumn, MeasureTextItem, AutosizeColumnRequest,
+  WorkerColumn, MeasureTextItem, AutosizeColumnRequest, StickyAncestor,
 } from './protocol';
 import { normalizeViewportChunk } from './protocol';
+export type { StickyAncestor };
 import type { TransactionResult, SortModel, FilterModel, GroupModel, SelectionRange } from '../types';
 
 export interface WorkerClientHandlers {
@@ -354,9 +355,9 @@ export class WorkerClient {
     return this.send<{ visibleCount: number }>({ type: 'setQuickFilter', payload });
   }
 
-  getViewport(req: ViewportRequest): Promise<ViewportChunk> {
-    return this.send<{ chunk: ViewportChunk }>({ type: 'getViewport', payload: req })
-      .then((r) => normalizeViewportChunk(r.chunk));
+  getViewport(req: ViewportRequest): Promise<{ chunk: ViewportChunk; stickyAncestors?: StickyAncestor[] }> {
+    return this.send<{ chunk: ViewportChunk; stickyAncestors?: StickyAncestor[] }>({ type: 'getViewport', payload: req })
+      .then((r) => ({ chunk: normalizeViewportChunk(r.chunk), stickyAncestors: r.stickyAncestors }));
   }
 
   /** Push updated column metadata into the worker so filter/sort/agg/slicer

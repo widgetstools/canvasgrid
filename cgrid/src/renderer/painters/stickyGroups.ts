@@ -1,0 +1,132 @@
+/**
+ * Cycle 15 / Task 16 — `paintStickyGroups`.
+ *
+ * Pins the ancestor group band to the top of the body area when the
+ * user has scrolled past one or more group rows. Each band row mirrors
+ * the layout of a regular group row (indent + chevron + value + child-
+ * count badge) and is interactive via `hitTestStickyChevron` in cgrid.ts.
+ *
+ * Layout:
+ *   bodyTop + 0 × rowH  → ancestor at depth 0 (top-level group)
+ *   bodyTop + 1 × rowH  → ancestor at depth 1 (child group)
+ *   ...
+ *
+ * Push-off: when a sibling group row (same depth, different key) scrolls
+ * up into the band, the sticky row slides upward:
+ *   pushOff = clamp(sibling.top − bandBottom, −rowH, 0)
+ *
+ * Z-order: painted AFTER `paintGridLines` (band bg occludes body
+ * gridlines) and BEFORE `paintOverlay` (focus rings + range selections
+ * clip on top of the band).
+ */
+
+import type { PainterCtx } from './types';
+import type { CachedContext2D } from '../gc';
+import { drawIcon } from '../icons';
+
+// Shared constants — must agree with `renderer/cellRenderers/group.ts`.
+const PADDING = 6;
+const CHEVRON_SIZE = 12;
+const CHEVRON_GAP = 6;
+const INDENT_UNIT = 14;
+const COUNT_GAP = 4;
+const EMPTY_GLYPH = '—';
+const SHADOW_HEIGHT = 6;
+
+export function paintStickyGroups(gc: CachedContext2D, p: PainterCtx): void {
+  const ancestors = p.stickyAncestors;
+  if (!ancestors || ancestors.length === 0) return;
+
+  const { bodyTop, bodyLeft, bodyRight } = p.viewport;
+  const theme = p.theme;
+  const rowH = theme.rowHeight;
+  const bandW = bodyRight - bodyLeft;
+  const totalH = ancestors.length * rowH + SHADOW_HEIGHT;
+
+  // Clip to the band + shadow zone.
+  gc.cache.save();
+  gc.beginPath();
+  gc.rect(bodyLeft, bodyTop, bandW, totalH);
+  gc.clip();
+
+  // Track the bottom edge of the last painted row for the shadow.
+  let lastRowBottom = bodyTop;
+
+  for (let bandIdx = 0; bandIdx < ancestors.length; bandIdx++) {
+    const ancestor = ancestors[bandIdx]!;
+    const bandTop = bodyTop + bandIdx * rowH;
+    const bandBottom = bandTop + rowH;
+
+    // Push-off: find the first sibling group at the same depth in the
+    // visible rows. When it has entered the band region, translate the
+    // sticky row upward proportionally.
+    let pushOff = 0;
+    if (p.rowKindAt && p.groupDepthAt && p.groupKeyAt) {
+      for (const vr of p.viewport.visibleRows) {
+        if (!vr.subgrid.isData) continue;
+        if (p.rowKindAt(vr.localRowIndex) !== 1) continue;
+        const depth = p.groupDepthAt(vr.localRowIndex);
+        if (depth !== ancestor.depth) continue;
+        const key = p.groupKeyAt(vr.localRowIndex);
+        if (key === ancestor.key || key === '') continue;
+        if (vr.top < bandBottom) {
+          pushOff = Math.max(-rowH, vr.top - bandBottom);
+        }
+        break;
+      }
+    }
+
+    const paintY = bandTop + pushOff;
+    lastRowBottom = paintY + rowH;
+
+    // Background.
+    gc.cache.fillStyle = theme.groupRowBg ?? theme.bg;
+    gc.fillRect(bodyLeft, paintY, bandW, rowH);
+
+    // Bottom separator (hairline gridline).
+    gc.cache.fillStyle = theme.gridLineColor;
+    gc.fillRect(bodyLeft, paintY + rowH - 1, bandW, 1);
+
+    // Chevron icon.
+    const cy = paintY + rowH / 2;
+    const indentX = ancestor.depth * INDENT_UNIT;
+    const left = bodyLeft + PADDING + indentX;
+    const chevronCx = left + CHEVRON_SIZE / 2;
+    drawIcon(
+      gc,
+      ancestor.isExpanded ? 'chevron-down' : 'chevron-right',
+      chevronCx,
+      cy,
+      CHEVRON_SIZE,
+      { color: theme.groupChevronColor, strokeWidth: 2 },
+    );
+
+    // Value text (bypasses gc.cache — drawIcon's save/restore can leave
+    // the proxy stale, so write directly as in group.ts).
+    const textX = left + CHEVRON_SIZE + CHEVRON_GAP;
+    const valueText = ancestor.value === '' ? EMPTY_GLYPH : ancestor.value;
+    gc.fillStyle = theme.fg;
+    gc.font = theme.font;
+    gc.textBaseline = 'middle';
+    gc.textAlign = 'left';
+    gc.fillText(valueText, textX, cy);
+
+    if (ancestor.childCount > 0) {
+      const countText = `(${ancestor.childCount.toLocaleString()})`;
+      const countX = textX + gc.measureText(valueText).width + COUNT_GAP;
+      gc.fillStyle = theme.groupCountColor ?? theme.fg;
+      gc.fillText(countText, countX, cy);
+    }
+  }
+
+  // Drop shadow below the band.
+  const gradient = gc.createLinearGradient(
+    0, lastRowBottom, 0, lastRowBottom + SHADOW_HEIGHT,
+  );
+  gradient.addColorStop(0, 'rgba(0,0,0,0.10)');
+  gradient.addColorStop(1, 'rgba(0,0,0,0)');
+  gc.cache.fillStyle = gradient;
+  gc.fillRect(bodyLeft, lastRowBottom, bandW, SHADOW_HEIGHT);
+
+  gc.cache.restore();
+}

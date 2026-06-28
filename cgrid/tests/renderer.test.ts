@@ -56,6 +56,9 @@ describe('Renderer', () => {
       getShowFillHandle: () => false,
       getSuppressAggFuncInHeader: () => false,
       getGroupRowStrip: () => null,
+      getStickyAncestors: () => [],
+      getGroupDepthAt: () => 0,
+      getGroupKeyAt: () => '',
     } as any);
     r.paint(gc);
     // The very first fillRect call must be the full-canvas bg fill — this is

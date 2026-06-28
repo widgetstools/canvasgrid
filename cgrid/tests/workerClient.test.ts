@@ -27,7 +27,7 @@ describe('WorkerClient', () => {
     });
     const rc = await client.setRowData([{ id: 'a', name: 'apple', pri: 1 }]);
     expect(rc.visibleCount).toBe(1);
-    const chunk = await client.getViewport({ rowStart: 0, rowEnd: 1, columns: ['name'] });
+    const { chunk } = await client.getViewport({ rowStart: 0, rowEnd: 1, columns: ['name'] });
     expect(chunk.rowCount).toBe(1);
   });
 

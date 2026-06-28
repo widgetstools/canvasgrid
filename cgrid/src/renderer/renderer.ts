@@ -5,11 +5,13 @@ import type { CellRendererRegistry } from './cellRenderers/registry';
 import type { GroupCellValue } from './cellRenderers/group';
 import type { CellDataLookup } from './painters/types';
 import type { SortModel, SelectionRange } from '../types';
+import type { StickyAncestor } from '../worker/protocol';
 import type { CachedContext2D } from './gc';
 import { paintCellsByRows } from './painters/byRows';
 import { paintGridLines } from './painters/gridLinesPainter';
 import { paintOverlay } from './painters/overlayPainter';
 import { paintRangeOverlay } from './painters/rangeOverlayPainter';
+import { paintStickyGroups } from './painters/stickyGroups';
 
 export type { CellDataLookup };
 
@@ -94,6 +96,22 @@ export interface RendererOpts {
    * default — paints as data row, no footer chrome).
    */
   getRowKindAt: (rowIndex: number) => number;
+  /**
+   * Cycle 15 / Task 16 — sticky group ancestors above the viewport's
+   * first visible row. Empty array when grouping is inactive or nothing
+   * has scrolled past. Sorted depth-ascending.
+   */
+  getStickyAncestors: () => StickyAncestor[];
+  /**
+   * Cycle 15 / Task 16 — group depth for a given local row index.
+   * Returns 0 when outside the current chunk.
+   */
+  getGroupDepthAt: (rowIndex: number) => number;
+  /**
+   * Cycle 15 / Task 16 — composite group key for a given local row
+   * index. Returns `''` for data rows or when outside the current chunk.
+   */
+  getGroupKeyAt: (rowIndex: number) => string;
 }
 
 export class Renderer {
@@ -115,6 +133,9 @@ export class Renderer {
       getVisibleCellBounds: this.opts.getVisibleCellBounds,
       groupRowStrip: this.opts.getGroupRowStrip(),
       rowKindAt: this.opts.getRowKindAt,
+      stickyAncestors: this.opts.getStickyAncestors(),
+      groupDepthAt: this.opts.getGroupDepthAt,
+      groupKeyAt: this.opts.getGroupKeyAt,
     };
     // Fill the entire drawable area with theme bg as the FIRST instruction so
     // there's no transparent moment between the prior frame's pixels (or a
@@ -126,8 +147,12 @@ export class Renderer {
     gc.fillRect(0, 0, w, h);
     paintCellsByRows(gc, pctx);
     // Gridlines run after all cell paints so they sit on top with no double-stroked
-    // seams. Overlay (focus ring) goes last so it sits above the gridlines.
+    // seams. Sticky group band paints over the body rows (below the header).
     paintGridLines(gc, pctx);
+    // Cycle 15 / Task 16 — sticky group rows pin the ancestor group band
+    // above the scrollable body rows. Paints after gridlines so the band
+    // bg occludes gridlines at the top of the body area.
+    paintStickyGroups(gc, pctx);
     paintOverlay(gc, pctx);
     // Cycle 9 / Task 3 — range overlay paints translucent fill + opaque
     // border per active range. Runs after the focus-ring overlay so the

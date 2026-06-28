@@ -277,7 +277,7 @@ describe('CGrid.setGridOption("aggFuncs", ...) — end-to-end across postMessage
     });
     await new Promise((r) => setTimeout(r, 30));
     const client = (t.grid as any).workerClient;
-    const chunk = await client.getViewport({
+    const { chunk } = await client.getViewport({
       rowStart: 0,
       rowEnd: 3,
       columns: ['id', 'price'],
