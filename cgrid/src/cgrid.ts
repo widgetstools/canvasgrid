@@ -5495,12 +5495,20 @@ export class CGrid<TRow = any> {
       : this.viewport.visibleColumns
           .filter((c) => !c.pinned || c.pinned === 'left')
           .map((c) => ({ colId: c.colId, valueFormatted: this.cellAt(focusedRowIndex, c.colId)?.valueFormatted ?? '' }));
+    // aria-expanded for the focused row: resolve the group state only when
+    // the focused row is a group row; leaf rows report `null` (no attribute).
+    let groupExpanded: boolean | null = null;
+    if (focusedRowIndex != null && this.isGroupRow(focusedRowIndex)) {
+      const groupKey = this.getGroupKeyAtRow(focusedRowIndex);
+      if (groupKey) groupExpanded = this.isGroupExpanded(groupKey);
+    }
     this.a11y.update({
       visibleRowCount: this.rowCount,
       columnCount: this.columnOrder.length,
       focusedRowIndex,
       focusedColId,
       focusedRowData,
+      groupExpanded,
     });
   }
 

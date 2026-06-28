@@ -22,6 +22,7 @@ describe('A11yOverlay', () => {
         { colId: 'a', valueFormatted: 'apple' },
         { colId: 'b', valueFormatted: '12.5' },
       ],
+      groupExpanded: null,
     });
     const cells = root.querySelectorAll('[role="gridcell"]');
     expect(cells.length).toBe(2);
@@ -39,11 +40,38 @@ describe('A11yOverlay', () => {
       focusedRowIndex: 9,
       focusedColId: 'a',
       focusedRowData: [{ colId: 'a', valueFormatted: 'x' }],
+      groupExpanded: null,
     });
     const grid = root.querySelector('[role="grid"]') as HTMLElement;
     expect(grid.getAttribute('aria-rowcount')).toBe('200');
     expect(grid.getAttribute('aria-colcount')).toBe('5');
     const row = root.querySelector('[role="row"]') as HTMLElement;
     expect(row.getAttribute('aria-rowindex')).toBe('10');
+  });
+
+  it('sets aria-expanded on a focused group row and removes it for leaf rows', () => {
+    const root = document.createElement('div');
+    document.body.appendChild(root);
+    const a = new A11yOverlay(root);
+    const base = {
+      visibleRowCount: 10,
+      columnCount: 2,
+      focusedRowIndex: 0,
+      focusedColId: 'a',
+      focusedRowData: [{ colId: 'a', valueFormatted: 'Tech' }],
+    };
+    const row = root.querySelector('[role="row"]') as HTMLElement;
+
+    // Expanded group row → aria-expanded="true".
+    a.update({ ...base, groupExpanded: true });
+    expect(row.getAttribute('aria-expanded')).toBe('true');
+
+    // Collapsed group row → aria-expanded="false".
+    a.update({ ...base, groupExpanded: false });
+    expect(row.getAttribute('aria-expanded')).toBe('false');
+
+    // Leaf row → attribute removed entirely.
+    a.update({ ...base, groupExpanded: null });
+    expect(row.hasAttribute('aria-expanded')).toBe(false);
   });
 });

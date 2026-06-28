@@ -163,6 +163,52 @@ test.describe('Cycle 15.5 / Task 6 — keyboard group navigation', () => {
     expect(stillExpanded).toBe(true);
   });
 
+  test('aria-expanded on the focused group row flips with keyboard toggle; absent on leaf rows', async ({ page }) => {
+    await gridReady(page);
+    await seedRows(page, 50);
+
+    // Focus the group row at index 0.
+    const bounds = await page.evaluate(() =>
+      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getCellBoundsAt(0, 'ag-Grid-AutoColumn')
+    );
+    const off = await canvasOffset(page);
+    await page.mouse.click(
+      off.x + bounds!.x + Math.min(80, Math.round(bounds!.w * 0.6)),
+      off.y + bounds!.y + Math.round(bounds!.h / 2),
+    );
+    await waitForFrames(page, 6);
+
+    const ariaExpanded = (): Promise<string | null> => page.evaluate(() => {
+      const row = document.querySelector('.cg-a11y-root [role="row"]');
+      return row ? row.getAttribute('aria-expanded') : 'NO_ROW';
+    });
+
+    // Focused expanded group row → aria-expanded="true".
+    expect(await ariaExpanded()).toBe('true');
+
+    const canvas = page.locator(GRID_SELECTOR);
+    // ArrowLeft collapses → aria-expanded="false".
+    await canvas.press('ArrowLeft');
+    await waitForFrames(page, 8);
+    expect(await ariaExpanded()).toBe('false');
+
+    // ArrowRight re-expands → aria-expanded="true".
+    await canvas.press('ArrowRight');
+    await waitForFrames(page, 8);
+    expect(await ariaExpanded()).toBe('true');
+
+    // Move focus to a leaf (data) row → attribute removed entirely.
+    const leafBounds = await page.evaluate(() =>
+      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.getCellBoundsAt(1, 'ag-Grid-AutoColumn')
+    );
+    await page.mouse.click(
+      off.x + leafBounds!.x + Math.min(80, Math.round(leafBounds!.w * 0.6)),
+      off.y + leafBounds!.y + Math.round(leafBounds!.h / 2),
+    );
+    await waitForFrames(page, 6);
+    expect(await ariaExpanded()).toBeNull();
+  });
+
   test('Enter toggles a group row (expand → collapse → expand)', async ({ page }) => {
     await gridReady(page);
     await seedRows(page, 50);

@@ -4,6 +4,11 @@ export interface A11yState {
   focusedRowIndex: number | null;
   focusedColId: string | null;
   focusedRowData: { colId: string; valueFormatted: string }[];
+  /** Expanded state of the focused row when it is a group row:
+   *  `true` / `false` set `aria-expanded` on the row; `null` removes the
+   *  attribute (the focused row is a leaf / data row). AG Grid parity —
+   *  every group row exposes `aria-expanded` to assistive tech. */
+  groupExpanded: boolean | null;
 }
 
 const HIDDEN_STYLE =
@@ -33,6 +38,14 @@ export class A11yOverlay {
     this.grid.setAttribute('aria-colcount', String(state.columnCount));
     if (state.focusedRowIndex !== null) {
       this.row.setAttribute('aria-rowindex', String(state.focusedRowIndex + 1));
+    }
+    // Group rows expose aria-expanded; leaf rows must not carry the
+    // attribute at all (AG Grid parity — screen readers announce
+    // "collapsed"/"expanded" only on rows that are actually toggleable).
+    if (state.groupExpanded === null) {
+      this.row.removeAttribute('aria-expanded');
+    } else {
+      this.row.setAttribute('aria-expanded', state.groupExpanded ? 'true' : 'false');
     }
     // Clear + rebuild focused row's cells
     while (this.row.firstChild) this.row.removeChild(this.row.firstChild);

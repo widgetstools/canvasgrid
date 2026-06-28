@@ -1101,13 +1101,29 @@ All Tasks 4–12 delivered in the `ssrm` branch. Test count: **1480 → 1580** (
 |------|-------------|-------------|-----------|
 | 4 | `groupHideOpenParents` flag — expanded parents hidden from flatOrder, sticky suppressed | 15 | `protocol.ts`, `hideOpenParents.test.ts` |
 | 5 | `GroupSelectsMode` — self / descendants / filteredDescendants; checkbox gating | 25 | `selectionModel.ts`, `selectionModes.test.ts` |
-| 6 | Expand/collapse polish — `isGroupOpenByDefault` callback, keyboard nav, public API | 14 + 4 E2E | `groupPass.ts`, `groupExpand.ts`, `cgrid.ts`, `expandPolish.test.ts`, `cycle15.5-keyboardGroupNav.spec.ts` |
+| 6 | Expand/collapse polish — `isGroupOpenByDefault` callback, keyboard nav, public API, **`aria-expanded` on group rows** | 15 + 5 E2E | `groupPass.ts`, `groupExpand.ts`, `cgrid.ts`, `a11yOverlay.ts`, `expandPolish.test.ts`, `a11yOverlay.test.ts`, `cycle15.5-keyboardGroupNav.spec.ts` |
 | 7 | Group rendering parity flags — `suppressCount`, `innerRenderer`, `suppressGroupChangesColumnVisibility` | 16 | `group.ts`, `cgrid.ts`, `groupParityFlags.test.ts` |
 | 8 | Aggregation extensions — object-returning aggFuncs + `groupTotalRow`/`grandTotalRow` aliases | 25 (20+5) | `cgrid.ts`, `aggExtensions.test.ts`, `aggIncremental.perf.test.ts` |
 | 9 | Group sort by aggregate + per-level sort state + filtering interaction | 26 (14+12) | `groupSortByAggregate.test.ts`, `filteringWithGrouping.test.ts` |
 | 10 | Grid State save/restore — `GroupingState.serialize()` / `restore()` | 14 | `groupingState.ts`, `gridStateGrouping.test.ts` |
 | 11 | Perf + correctness gate — 12 perf cases + 8 three-UIs-one-list cases | 20 | `groupingPerf.test.ts`, `threeUIsOneList.test.ts` |
-| 12 | Exit ritual — FM Area 09 (keyboard nav + isGroupOpenByDefault + resetRowGroupExpansion + ensureIndexVisible) + Area 23 (ensureIndexVisible) flipped; 225 E2E passing | 0 | `FEATURE_MATRIX.md`, this plan |
+| 12 | Exit ritual — FM Area 09 (keyboard nav + isGroupOpenByDefault + resetRowGroupExpansion + ensureIndexVisible + aria-expanded + header Group-by menu) + Area 02 (column reorder drag ghost) + Area 23 (ensureIndexVisible) flipped; 229 E2E passing, 0 skipped | 0 | `FEATURE_MATRIX.md`, this plan |
+
+### Gap-closure (2026-06-28) — three deferred items finished, no skips remaining
+
+After cycle exit, three acceptance items that had been deferred (and in one
+case masked by a `test.skip`) were completed and verified green:
+
+| Gap | What shipped | Verification |
+|-----|-------------|--------------|
+| **Drag ghost (Task 1)** | Built the `.cg-column-drag-ghost` floating header card shown during a plain column reorder (Cycle 6 design that was never implemented); pill chip now gated to the row group panel only | `cycle6-columnDrag.spec.ts` ghost test **unskipped** + passing; `columnDrag.test.ts` (14) still green |
+| **ARIA `aria-expanded` (Task 6)** | `A11yOverlay` sets `aria-expanded` on the focused group row, flips on toggle, removed on leaf rows | `a11yOverlay.test.ts` +1 case; `cycle15.5-keyboardGroupNav.spec.ts` +1 ARIA E2E |
+| **Header context menu Group-by E2E (Task 2)** | New E2E proving right-click → DOM menu → Group by / Un-Group by mutates `rowGroupColumns` | `cycle15.5-contextMenuGroupBy.spec.ts` (2 tests) |
+
+Full suite after gap-closure: **1581 unit + 229 E2E, 0 skipped, 0 failed.**
+(Visual-snapshot suite has pre-existing stale baselines from the prior
+navy→grey theme change — unrelated to grouping; left for a dedicated
+re-baseline PR.)
 
 ---
 

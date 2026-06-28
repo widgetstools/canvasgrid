@@ -98,6 +98,7 @@
 | 02 | ✅ columnPinned | Community | event | no | P1 | Column(s) pinned or unpinned; source: api/columnState |
 | 02 | ✅ columnResized | Community | event | no | P1 | Column width changed; finished flag distinguishes drag-tick from commit |
 | 02 | ✅ columnMoved | Community | event | no | P2 | Column(s) reordered; source: uiColumnDragged/api/columnState |
+| 02 | ✅ Column reorder drag affordance | Community | behavior | yes | P2 | Floating header ghost + live insertion line follow the cursor during a header drag-reorder; ghost swaps to a group pill over the row group panel |
 | 02 | ✅ displayedColumnsChanged | Community | event | no | P1 | Displayed column set changes; source widened to include columnVisible/Pinned/Moved/columnsReset |
 | 02 | ✅ virtualColumnsChanged | Community | event | no | P1 | Virtually rendered column set changes; afterScroll flag distinguishes scroll-driven from mutation-driven |
 | 02 | ✅ columnsReset | Community | event | no | P2 | Fires once after resetColumnState before per-slot change events |
@@ -438,6 +439,8 @@
 | 09 | ✅ isGroupOpenByDefault callback | Enterprise | option | no | P1 | Per-node callback overrides groupDefaultExpanded at group-pass time |
 | 09 | ✅ resetRowGroupExpansion | Enterprise | api | no | P1 | Discards user toggles; re-evaluates groupDefaultExpanded + isGroupOpenByDefault |
 | 09 | ✅ Keyboard group navigation | Enterprise | behavior | yes | P0 | ArrowRight/Left expands/collapses; Enter/Space toggles focus group row |
+| 09 | ✅ aria-expanded on group rows | Enterprise | behavior | yes | P1 | Focused group row exposes aria-expanded; flips on keyboard/chevron toggle; absent on leaf rows |
+| 09 | ✅ Header menu Group by / Un-Group by | Enterprise | behavior | yes | P1 | Right-click header offers Group by / Un-Group by / Expand All / Collapse All via the shared rowGroupColumns primitive |
 
 <!-- area:10 Aggregation -->
 | 10 | ✅ aggFunc (ColDef) | Enterprise | option | yes | P0 | Aggregation function; built-in: sum/min/max/count/avg/first/last |
