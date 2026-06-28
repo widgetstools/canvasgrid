@@ -35,7 +35,7 @@ interface GridApiSurface {
 }
 
 async function gridReady(page: import('@playwright/test').Page): Promise<void> {
-  await page.goto('/?stress=light');
+  await page.goto('/?stress=light&pinning=on');
   await page.waitForFunction(
     () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,
     null,

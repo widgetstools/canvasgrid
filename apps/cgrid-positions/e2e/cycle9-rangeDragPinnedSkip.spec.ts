@@ -23,7 +23,7 @@ interface GridSurface {
 }
 
 async function gridReady(page: Page): Promise<void> {
-  await page.goto('/?stress=light');
+  await page.goto('/?stress=light&pinning=on');
   await page.waitForSelector(GRID_SELECTOR, { state: 'visible' });
   await page.waitForFunction(
     () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,

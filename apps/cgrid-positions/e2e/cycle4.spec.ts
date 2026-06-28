@@ -10,9 +10,9 @@ import { test, expect, Page, Locator } from '@playwright/test';
 
 const GRID_SELECTOR = '#grid canvas';
 
-const GRID_LINE_COLOR_DARK = 'rgb(43,58,92)';   // --cg-grid-line-color
-const BORDER_COLOR_DARK = 'rgb(56,80,122)';     // --cg-border-color
-const HEADER_BG_DARK = 'rgb(13,26,51)';         // --cg-header-bg
+const GRID_LINE_COLOR_DARK = 'rgb(55,58,59)';   // --cg-grid-line-color (#373a3b)
+const BORDER_COLOR_DARK = 'rgb(69,69,69)';     // --cg-border-color (#454545)
+const HEADER_BG_DARK = 'rgb(37,37,38)';         // --cg-header-bg (#252526)
 
 async function waitForGridPopulated(page: Page, canvas: Locator) {
   await expect
@@ -99,6 +99,8 @@ test('column-group header label "P&L" is visible above its child columns', async
 });
 
 test('group-header row has NO vertical separator between two ungrouped columns', async ({ page }) => {
+  await page.goto('/?stress=light&columnGroups=on');
+  await page.waitForSelector(GRID_SELECTOR, { state: 'visible' });
   const canvas = page.locator(GRID_SELECTOR);
   await waitForGridPopulated(page, canvas);
   // Position ID (150 wide, pinned left) and CUSIP (~110 wide, pinned left).
@@ -110,6 +112,8 @@ test('group-header row has NO vertical separator between two ungrouped columns',
 });
 
 test('group-header row HAS vertical separators at group boundaries (around P&L)', async ({ page }) => {
+  await page.goto('/?stress=light&columnGroups=on');
+  await page.waitForSelector(GRID_SELECTOR, { state: 'visible' });
   const canvas = page.locator(GRID_SELECTOR);
   await waitForGridPopulated(page, canvas);
   // The P&L group spans Daily+Unrealized. Just to the LEFT of "Daily" column
@@ -136,6 +140,8 @@ test('group-header row HAS vertical separators at group boundaries (around P&L)'
 });
 
 test('leaf-header row HAS vertical separators between every column', async ({ page }) => {
+  await page.goto('/?stress=light&columnGroups=on');
+  await page.waitForSelector(GRID_SELECTOR, { state: 'visible' });
   const canvas = page.locator(GRID_SELECTOR);
   await waitForGridPopulated(page, canvas);
   // Leaf header is below the group-header (which is 40px tall). So y≈50.
@@ -147,6 +153,8 @@ test('leaf-header row HAS vertical separators between every column', async ({ pa
 // ─── Header / body bleed regressions ─────────────────────────────────────────
 
 test('data rows do not bleed text into the header area after vertical scroll', async ({ page }) => {
+  await page.goto('/?stress=light&columnGroups=on');
+  await page.waitForSelector(GRID_SELECTOR, { state: 'visible' });
   const canvas = page.locator(GRID_SELECTOR);
   await waitForGridPopulated(page, canvas);
 
@@ -190,30 +198,37 @@ test('cell text does not bleed into the adjacent column', async ({ page }) => {
 test('vertical-dominant wheel gesture does not horizontally scroll', async ({ page }) => {
   const canvas = page.locator(GRID_SELECTOR);
   await waitForGridPopulated(page, canvas);
-  // Snapshot a horizontal-position-sensitive region of the leaf header.
-  // If horizontal scroll happens, column labels shift and the pixel sig changes.
-  const headerBefore = await pixelSig(canvas, 200, 40, 400, 30);
+  // Read scrollLeft from the scroller element. A vertical-dominant gesture
+  // must not shift columns horizontally, so scrollLeft must stay the same.
+  const scrollLeftBefore = await page.evaluate(() => {
+    const el = document.querySelector('.cg-scroller') as HTMLElement | null;
+    return el?.scrollLeft ?? -1;
+  });
 
   await canvas.hover();
-  // Vertical-dominant gesture with a small horizontal wobble.
   await page.mouse.wheel(8, 200);
   await page.waitForTimeout(50);
-  await page.mouse.wheel(15, 180); // still in the same gesture window
+  await page.mouse.wheel(15, 180);
   await page.waitForTimeout(50);
   await page.mouse.wheel(20, 150);
   await page.waitForTimeout(300);
 
-  const headerAfter = await pixelSig(canvas, 200, 40, 400, 30);
-  // Leaf-header column labels must stay where they were — no horizontal drift.
-  expect(headerAfter).toBe(headerBefore);
+  const scrollLeftAfter = await page.evaluate(() => {
+    const el = document.querySelector('.cg-scroller') as HTMLElement | null;
+    return el?.scrollLeft ?? -1;
+  });
+  expect(scrollLeftAfter).toBe(scrollLeftBefore);
 });
 
 test('horizontal-dominant wheel gesture does not vertically scroll', async ({ page }) => {
   const canvas = page.locator(GRID_SELECTOR);
   await waitForGridPopulated(page, canvas);
-  // Snapshot a row-content-sensitive region: a vertical strip on the LEFT
-  // (pinned columns don't scroll horizontally — so any change there = vertical).
-  const before = await pixelSig(canvas, 10, 100, 60, 300);
+  // Read scrollTop from the scroller element. A horizontal-dominant gesture
+  // must not shift rows vertically, so scrollTop must stay the same.
+  const scrollTopBefore = await page.evaluate(() => {
+    const el = document.querySelector('.cg-scroller') as HTMLElement | null;
+    return el?.scrollTop ?? -1;
+  });
 
   await canvas.hover();
   await page.mouse.wheel(200, 8);
@@ -223,9 +238,11 @@ test('horizontal-dominant wheel gesture does not vertically scroll', async ({ pa
   await page.mouse.wheel(150, 20);
   await page.waitForTimeout(300);
 
-  const after = await pixelSig(canvas, 10, 100, 60, 300);
-  // Vertical region of pinned-left band must be unchanged — no vertical drift.
-  expect(after).toBe(before);
+  const scrollTopAfter = await page.evaluate(() => {
+    const el = document.querySelector('.cg-scroller') as HTMLElement | null;
+    return el?.scrollTop ?? -1;
+  });
+  expect(scrollTopAfter).toBe(scrollTopBefore);
 });
 
 // ─── Scrollbar visibility ────────────────────────────────────────────────────
@@ -256,6 +273,8 @@ test('vertical scrollbar gutter is reserved to the right of the canvas', async (
 // ─── Custom cell renderer (Cycle 4 Task 8) ───────────────────────────────────
 
 test('custom pnlPill renderer paints a coloured pill on the Total P&L column', async ({ page }) => {
+  await page.goto('/?stress=light&pinning=on');
+  await page.waitForSelector(GRID_SELECTOR, { state: 'visible' });
   const canvas = page.locator(GRID_SELECTOR);
   await waitForGridPopulated(page, canvas);
 

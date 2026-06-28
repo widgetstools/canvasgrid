@@ -62,7 +62,7 @@ test.describe('Cycle 11 / Task 3 — Columns tool panel', () => {
 
     await expect(page.locator(PANEL)).toBeVisible();
     await expect(page.locator(`${PANEL} .cg-columns-panel-pivot-mode`)).toHaveCount(1);
-    await expect(page.locator(`${PANEL} .cg-columns-panel-search input`)).toBeVisible();
+    await expect(page.locator(`${PANEL} .cg-columns-panel-search input[type="search"]`)).toBeVisible();
     // Section headers + drop zones.
     const headers = page.locator(`${PANEL} .cg-columns-panel-section-header`);
     await expect(headers).toHaveCount(2);
@@ -121,7 +121,7 @@ test.describe('Cycle 11 / Task 3 — Columns tool panel', () => {
     await gridReady(page);
     await openColumnsPanel(page);
 
-    const search = page.locator(`${PANEL} .cg-columns-panel-search input`);
+    const search = page.locator(`${PANEL} .cg-columns-panel-search input[type="search"]`);
     await search.fill('pri');
     await waitForFrames(page, 3);
     const visibleRows = page.locator(`${PANEL} .cg-columns-panel-row:not([style*="display: none"])`);

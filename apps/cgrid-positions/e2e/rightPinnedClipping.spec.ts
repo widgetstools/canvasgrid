@@ -10,7 +10,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
 async function gridReady(page: Page): Promise<void> {
-  await page.goto('/?stress=light');
+  await page.goto('/?stress=light&pinning=on');
   await page.waitForFunction(
     () => (window as unknown as { __cgridReady?: boolean }).__cgridReady === true,
     null,
