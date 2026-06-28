@@ -236,6 +236,10 @@ export interface AutosizeColumnRequest {
   headerName: string;
   font: string;
   padding: number;
+  /** Extra padding reserved for the sort/unsort caret in the header.
+   *  When set, the header label is sized with this value instead of
+   *  `padding`. Defaults to `padding` in the worker when absent. */
+  headerPadding?: number;
   minWidth: number;
   maxWidth: number;
 }

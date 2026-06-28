@@ -1339,6 +1339,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
                 headerName: c.headerName,
                 font: c.font,
                 padding: c.padding,
+                headerPadding: c.headerPadding,
                 minWidth: c.minWidth,
                 maxWidth: c.maxWidth,
                 textOf: (rowIndex) => {

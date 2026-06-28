@@ -49,6 +49,14 @@ export class ColumnResizing extends Feature {
     super.handleMouseUp(ctx);
   }
 
+  override handleDoubleClick(ctx: CGridEventCtx): void {
+    if (ctx.hit.kind === 'headerResizer') {
+      void ctx.grid.autoSizeColumn(ctx.hit.colId);
+      return;
+    }
+    super.handleDoubleClick(ctx);
+  }
+
   override handleMouseMove(ctx: CGridEventCtx): void {
     this.cursor = ctx.hit.kind === 'headerResizer' ? 'col-resize' : null;
     super.handleMouseMove(ctx);

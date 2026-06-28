@@ -296,6 +296,13 @@ export interface CGridLike {
    *  and a subsequent `getSelectedRowIds()` returns the new leaf list.
    *  Fires `selectionChanged`. */
   toggleGroupChildrenSelected(groupKey: string, selected: boolean): void;
+
+  // --- Column autosize (Cycle 6 / Task 4) ---
+  /** Autosize a single column — equivalent to `autoSizeColumns([colId])`.
+   *  Exposed on `CGridLike` so features (e.g. double-click on the
+   *  column resizer hot-zone) can trigger it without a direct reference
+   *  to the CGrid instance. */
+  autoSizeColumn(colId: string): Promise<void>;
 }
 
 export interface CGridEventCtx {

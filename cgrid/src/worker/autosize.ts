@@ -29,6 +29,11 @@ export interface AutosizeColumnSpec {
    *  the measured text width. Matches the inline cell-painter padding so
    *  text doesn't sit flush against the column edge after an autosize. */
   padding: number;
+  /** Padding applied to the header label measurement when `skipHeader` is
+   *  false. Defaults to `padding` when not supplied. Pass a larger value
+   *  here (e.g. left-pad + sort-icon-pad + sort-icon-size) so the
+   *  auto-sized width always reserves room for the sort/unsort caret. */
+  headerPadding?: number;
   minWidth: number;
   maxWidth: number;
   /** Text accessor invoked once per sampled row. Returns the visible /
@@ -86,24 +91,29 @@ export function measureColumnWidths(params: MeasureColumnWidthsParams): Map<stri
 
   for (const col of cols) {
     const measure = getMeasurer(col.font);
-    let max = 0;
-
-    if (!skipHeader && col.headerName) {
-      max = measureTextCached(col.headerName, col.font, measure, cache);
-    }
+    let maxData = 0;
 
     const consider = (rowIndex: number): void => {
       const text = col.textOf(rowIndex);
       if (!text) return;
       const w = measureTextCached(text, col.font, measure, cache);
-      if (w > max) max = w;
+      if (w > maxData) maxData = w;
     };
 
     for (let i = 0; i < sampleHead; i++) consider(i);
     for (let i = sampleTailStart; i < rowCount; i++) consider(i);
 
-    const padded = max + col.padding;
-    const clamped = Math.max(col.minWidth, Math.min(col.maxWidth, padded));
+    // Data cells use col.padding; header uses col.headerPadding (defaults to
+    // col.padding). The header padding is typically larger to reserve room for
+    // the sort/unsort caret drawn at the right edge of each header cell.
+    const hPad = col.headerPadding ?? col.padding;
+    let maxRaw = maxData + col.padding;
+    if (!skipHeader && col.headerName) {
+      const headerW = measureTextCached(col.headerName, col.font, measure, cache) + hPad;
+      if (headerW > maxRaw) maxRaw = headerW;
+    }
+
+    const clamped = Math.max(col.minWidth, Math.min(col.maxWidth, maxRaw));
     out.set(col.colId, clamped);
   }
 

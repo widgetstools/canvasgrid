@@ -1106,6 +1106,7 @@ export class CGrid<TRow = any> {
       hitTestGroupCheckbox: (x, y) => this.computeCheckboxHit(x, y),
       toggleGroupChildrenSelected: (key, selected) =>
         this.cascadeGroupSelectionFromUi(key, selected),
+      autoSizeColumn: (colId) => this.autoSizeColumns([colId]),
     });
     this.cellEditorRegistry = new CellEditorRegistry();
     CellEditorRegistry.seed(this.cellEditorRegistry);
@@ -5470,6 +5471,9 @@ export class CGrid<TRow = any> {
   async autoSizeColumns(keys: string[], skipHeader: boolean = false): Promise<void> {
     if (this.destroyed) return;
     const padding = 16; // matches the inline-cell horizontal padding
+    // HEADER_PADDING(8) + SORT_ICON_PAD(8) + SORT_ICON_SIZE(14) = 30px —
+    // ensures the auto-sized width always reserves room for the sort caret.
+    const headerPadding = 30;
     const requests: AutosizeColumnRequest[] = [];
     for (const key of keys) {
       const def = this.columnDefsMap.get(key);
@@ -5482,6 +5486,7 @@ export class CGrid<TRow = any> {
         headerName: def.headerName,
         font,
         padding,
+        headerPadding,
         minWidth: def.minWidth,
         maxWidth: Number.isFinite(def.maxWidth) ? def.maxWidth : Number.MAX_SAFE_INTEGER,
       });
