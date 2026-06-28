@@ -430,7 +430,7 @@
 | 09 | ✅ groupDisplayType multipleColumns mode | Enterprise | behavior | no | P1 | One auto column generated per group level |
 | 09 | ✅ groupDisplayType groupRows mode | Enterprise | behavior | no | P2 | Full-width group row replaces group header column |
 | 09 | ✅ groupDisplayType custom mode | Enterprise | behavior | no | P2 | Developer supplies group columns via showRowGroup |
-| 09 | Sticky group headers | Enterprise | behavior | no | P1 | Group row sticks to top while children scroll through viewport |
+| 09 | ✅ Sticky group headers | Enterprise | behavior | no | P1 | Group row sticks to top while children scroll through viewport |
 | 09 | ✅ Group expansion depth control | Enterprise | behavior | yes | P0 | groupDefaultExpanded + expandAll/collapseAll API |
 | 09 | ✅ Group total and grand total rows | Enterprise | behavior | yes | P0 | groupTotalRow/grandTotalRow insert aggregate rows |
 | 09 | ✅ Unbalanced groups | Enterprise | behavior | no | P2 | groupAllowUnbalanced prevents synthetic (Blanks) node |
@@ -654,6 +654,7 @@
 | 17 | ✅ ToolPanelDef (id, iconKey, minWidth, maxWidth, width) | Enterprise | config | yes | P1 | Individual tool panel registration and sizing |
 | 17 | ✅ agColumnsToolPanel | Enterprise | config | yes | P1 | Built-in column visibility and grouping panel |
 | 17 | ✅ IToolPanelColumnCompParams (suppressColumnMove, suppressRowGroups, buttons) | Enterprise | config | yes | P2 | Columns tool panel params |
+| 17 | ✅ Row Groups drop zone in Columns Tool Panel | Enterprise | behavior | no | P1 | Drag column from row-group area into grid grouping; drop zone accepts drags from column list and external pill reorder |
 | 17 | ✅ agFiltersToolPanel | Enterprise | config | yes | P1 | Built-in per-column filter panel |
 | 17 | ✅ IToolPanelFiltersCompParams | Enterprise | config | no | P2 | Filters tool panel params |
 | 17 | ✅ Custom IToolPanelComp | Enterprise | config | no | P2 | Custom tool panel component interface |
@@ -761,7 +762,7 @@
 | 23 | Selection API | Community | api | yes | P0 | selectAll, deselectAll, getSelectedNodes, getSelectedRows, ✅ setSelectedRowIds, getCellRanges, clearCellSelection — see `23-api.md` |
 | 23 | Sorting API | Community | api | no | P1 | onSortChanged — see `23-api.md` |
 | 23 | ✅ Filtering API | Community | api | yes | P1 | ✅ isAnyFilterPresent, ✅ isColumnFilterPresent, ✅ setFilterModel, getFilterModel, ✅ getColumnFilterModel, ✅ setColumnFilterModel, ✅ destroyFilter, ✅ showColumnFilter, ✅ hideColumnFilter, ✅ onFilterChanged, getAdvancedFilterModel — see `23-api.md` |
-| 23 | Grouping / aggregation / pivot API | Enterprise | api | no | P2 | setRowGroupColumns, addAggFuncs, isPivotMode, setPivotColumns, addDetailGridInfo — see `23-api.md` |
+| 23 | ✅ Grouping / aggregation / pivot API | Enterprise | api | no | P2 | ✅ setRowGroupColumns / addRowGroupColumns / removeRowGroupColumns / moveRowGroupColumn / getRowGroupColumns; ✅ GroupingState.serialize() / restore() (grid state round-trip); addAggFuncs, isPivotMode, setPivotColumns deferred — see `23-api.md` |
 | 23 | Server-side API | Enterprise | api | no | P2 | applyServerSideTransaction, refreshServerSide, getServerSideGroupLevelState — see `23-api.md` |
 | 23 | Clipboard API | Enterprise | api | no | P2 | copyToClipboard, cutToClipboard, pasteFromClipboard, copySelectedRowsToClipboard — see `23-api.md` |
 | 23 | Charts API | Enterprise | api | no | P3 | createRangeChart, createPivotChart, getChartModels, updateChart, restoreChart — see `23-api.md` |

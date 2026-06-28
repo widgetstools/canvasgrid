@@ -95,7 +95,16 @@ export type GroupingStateChangeSource =
   | 'add'
   | 'remove'
   | 'move'
-  | 'sort';
+  | 'sort'
+  | 'restore';
+
+/** Cycle 15.5 / Task 10 — serialized snapshot of GroupingState. Plain
+ *  object suitable for `JSON.stringify` — no functions, no class refs.
+ *  Produced by `GroupingState.serialize()`; consumed by `restore()`. */
+export interface GroupingStateSnapshot {
+  rowGroupColumns: string[];
+  perLevelSort: Array<{ direction: 'asc' | 'desc' } | null>;
+}
 
 /** The single state primitive. One instance lives on `CGrid`; the
  *  three grouping UIs read from + mutate via it.
@@ -251,6 +260,36 @@ export class GroupingState {
       this.perLevelSort = next;
     }
     this.emitChanged('sort');
+  }
+
+  // ─── Cycle 15.5 / Task 10 — serialize / restore ──────────────────
+
+  /** Snapshot the current state into a plain-object bag suitable for
+   *  JSON serialization (e.g. into `localStorage` for Grid State
+   *  save/restore). The returned object is structurally independent of
+   *  this instance — mutations on either side do not affect the other. */
+  serialize(): GroupingStateSnapshot {
+    return {
+      rowGroupColumns: [...this.rowGroupColumns],
+      perLevelSort: this.perLevelSort.map((e) =>
+        e === null ? null : { direction: e.direction },
+      ),
+    };
+  }
+
+  /** Replace the current state with a previously-serialized snapshot.
+   *  Emits `groupingStateChanged` once with source `'restore'` so all
+   *  three UI surfaces re-render from the new state. Idempotent when
+   *  called with the same snapshot twice (second call detects no-change
+   *  and skips the event — TODO: currently always fires; callers
+   *  should guard externally if needed). */
+  restore(snapshot: GroupingStateSnapshot): void {
+    if (this.destroyed) return;
+    this.rowGroupColumns = [...snapshot.rowGroupColumns];
+    this.perLevelSort = snapshot.perLevelSort.map((e) =>
+      e === null ? null : { direction: e.direction },
+    );
+    this.emitChanged('restore');
   }
 
   /** Subscribe to mutations. Returns the unsubscribe function. */

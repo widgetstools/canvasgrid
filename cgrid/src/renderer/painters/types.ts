@@ -108,6 +108,11 @@ export interface PainterCtx {
    */
   rowKindAt?: (rowIndex: number) => number;
   /**
+   * Cycle 15.5 / Task 4 — when `true`, the sticky group band is
+   * suppressed (a hidden open parent can't be pinned). Sourced from
+   * `CGridOptions.groupHideOpenParents`. */
+  groupHideOpenParents?: boolean;
+  /**
    * Cycle 15 / Task 16 — sticky group row ancestors above the current
    * first visible row. Empty when grouping is inactive or the first
    * visible row is at position 0. Sorted depth-ascending so the painter
@@ -126,4 +131,10 @@ export interface PainterCtx {
    * row is outside the current chunk.
    */
   groupKeyAt?: (rowIndex: number) => string;
+  /**
+   * Cycle 15.5 — look up a formatted aggregate value for a sticky ancestor's
+   * group key + colId. Returns null when the column has no aggFunc or the
+   * group key is unknown. Supplied by cgrid.ts via totalsCellLookup.
+   */
+  getStickyGroupTotals?: (groupKey: string, colId: string) => { value: unknown; valueFormatted: string } | null;
 }

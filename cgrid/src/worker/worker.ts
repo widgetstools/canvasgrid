@@ -91,6 +91,12 @@ interface State {
    *  `groupDefaultExpanded` pattern). The flag is also read in the
    *  `getViewport` handler so the slicer receives it per call. */
   showOpenedGroup: boolean;
+  /** Cycle 15.5 / Task 4 — `groupHideOpenParents` option captured at
+   *  init. When `true`, expanded parent group rows are skipped in
+   *  `computeGroupVisibleOrder`; children appear in the parent's slot.
+   *  The sticky band suppresses automatically (no hidden parent to pin).
+   *  Init-only; off by default. */
+  groupHideOpenParents: boolean;
   /** Cycle 8 / Task 3 — named comparators registered via
    *  `registerComparator`. `SortPass.apply` looks up each sorted column's
    *  `comparator` (a string name on the `WorkerColumn`) against this
@@ -444,7 +450,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     if (!state) return 0;
     state.visibleCache = await buildVisibleAsync();
     if (isGroupingActive()) {
-      return computeGroupVisibleRowCount(state.groupOutput!.flatOrder, effectiveExpandedKeys());
+      return computeGroupVisibleRowCount(state.groupOutput!.flatOrder, effectiveExpandedKeys(), state.groupHideOpenParents);
     }
     return state.visibleCache.length;
   }
@@ -594,6 +600,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       // `sliceGroupedViewport` on every `getViewport` so data-row
       // `groupValue[i]` slots populate when the option is on.
       showOpenedGroup: payload.showOpenedGroup === true,
+      groupHideOpenParents: payload.groupHideOpenParents === true,
     };
 
     post({ id, type: 'ready' });
@@ -1220,9 +1227,32 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             // Build a one-shot lookup table so an N-id batch is O(visible + N)
             // instead of O(visible * N). Critical when the selection set is
             // large (e.g. selectAll over a million rows).
-            const ids = await visibleAsync();
+            //
+            // When grouping is active the painter uses localRowIndex which is
+            // the GROUPED display position (group headers + leaf rows counted
+            // together).  The flat visibleAsync() result only includes leaf
+            // rows (indices 0..N-1), so leaf-row IDs would get wrong positions
+            // and selection highlighting would misfire.  Build the lookup from
+            // the in-order grouped display sequence instead.
             const lookup = new Map<string, number>();
-            for (let i = 0; i < ids.length; i++) lookup.set(ids[i]!, i);
+            if (isGroupingActive() && state?.groupOutput && state.groupInputIds) {
+              const groupInputIds = state.groupInputIds;
+              const visibleOrder = computeGroupVisibleOrder(
+                state.groupOutput.flatOrder,
+                effectiveExpandedKeys(),
+                state.groupHideOpenParents,
+              );
+              for (let i = 0; i < visibleOrder.length; i++) {
+                const entry = visibleOrder[i]!;
+                if (entry.kind === 'row') {
+                  const id = groupInputIds[entry.rowIndex];
+                  if (id !== undefined) lookup.set(id, i);
+                }
+              }
+            } else {
+              const ids = await visibleAsync();
+              for (let i = 0; i < ids.length; i++) lookup.set(ids[i]!, i);
+            }
             const requested = req.payload.rowIds;
             const out = new Int32Array(requested.length);
             for (let i = 0; i < requested.length; i++) {
@@ -1255,7 +1285,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
               const groupOutput = state.groupOutput!;
               const expandedKeys = effectiveExpandedKeys();
               const visibleOrder: VisibleRowEntry[] = computeGroupVisibleOrder(
-                groupOutput.flatOrder, expandedKeys,
+                groupOutput.flatOrder, expandedKeys, state.groupHideOpenParents,
               );
               const colIndex = new Map<string, WorkerColumn>();
               for (const c of state.columns) colIndex.set(c.colId, c);

@@ -313,6 +313,30 @@ export interface PositionsGridOptions {
    *  `groupIncludeFooter` is on; appends a single grand-total row at
    *  the very end of the body using the same totals signature. */
   groupIncludeTotalFooter?: boolean;
+  /** Cycle 15.5 / Task 4 — `?groupHideOpenParents=1` hides expanded
+   *  parent group rows so only leaf rows are visible when the group is
+   *  open. Collapsed groups still show the parent row. */
+  groupHideOpenParents?: boolean;
+  /** Cycle 15.5 / Task 6 — `?isGroupOpenByDefault=1` installs a
+   *  callback that returns `true` for every group node, so all groups
+   *  start expanded even when `groupDefaultExpanded` is set to 0.
+   *  Used by the E2E to verify `resetRowGroupExpansion` re-applies the
+   *  callback after a `collapseAll`. */
+  isGroupOpenByDefault?: boolean;
+  /** Cycle 15.5 / Task 7 — `?suppressCount=1` suppresses the `(N)`
+   *  child-count badge from all group rows. */
+  suppressCount?: boolean;
+  /** Cycle 15.5 / Task 7 — `?suppressGroupChangesColVis=1` prevents
+   *  the grid from auto-hiding a column when it is added to
+   *  `rowGroupCols`. The original leaf column stays visible alongside
+   *  the synthesized auto-group column. */
+  suppressGroupChangesColumnVisibility?: boolean;
+  /** Cycle 15.5 / Task 8 — `?groupTotalRow=bottom|top` renders a
+   *  per-group total row at the specified edge of each expanded group. */
+  groupTotalRow?: 'top' | 'bottom';
+  /** Cycle 15.5 / Task 8 — `?grandTotalRow=bottom|top` renders a
+   *  single grand-total row at the specified edge of the entire body. */
+  grandTotalRow?: 'top' | 'bottom';
 }
 
 /** Cycle 14 / Task 2 — deterministic seed for the demo pinned reference
@@ -891,6 +915,24 @@ export function createPositionsGrid(
           groupIncludeTotalFooter: true as const,
         }
       : {}),
+    // Cycle 15.5 / Task 4 — `?groupHideOpenParents=1` hides expanded
+    // parent rows so only leaves are visible when a group is open.
+    ...(opts.groupHideOpenParents ? { groupHideOpenParents: true as const } : {}),
+    // Cycle 15.5 / Task 6 — install a callback that always returns true
+    // so every group starts open regardless of groupDefaultExpanded.
+    // `resetRowGroupExpansion()` re-runs the callback after a collapseAll.
+    ...(opts.isGroupOpenByDefault ? { isGroupOpenByDefault: () => true } : {}),
+    // Cycle 15.5 / Task 7 — suppress the "(N)" child-count badge.
+    ...(opts.suppressCount ? { suppressCount: true as const } : {}),
+    // Cycle 15.5 / Task 7 — keep the leaf column visible when it is
+    // added to rowGroupCols (don't auto-hide it).
+    ...(opts.suppressGroupChangesColumnVisibility
+      ? { suppressGroupChangesColumnVisibility: true as const }
+      : {}),
+    // Cycle 15.5 / Task 8 — per-group total row position.
+    ...(opts.groupTotalRow ? { groupTotalRow: opts.groupTotalRow } : {}),
+    // Cycle 15.5 / Task 8 — grand-total row position.
+    ...(opts.grandTotalRow ? { grandTotalRow: opts.grandTotalRow } : {}),
   };
   const grid = new CGrid<Position>(container, options);
   grid.registerCellRenderer('pnlPill', pnlPill);

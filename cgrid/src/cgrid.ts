@@ -818,10 +818,13 @@ export class CGrid<TRow = any> {
         if (localIndex < 0 || localIndex >= chunk.rowCount) return 0;
         return chunk.rowKinds[localIndex] ?? 0;
       },
+      // Cycle 15.5 / Task 4 — groupHideOpenParents suppresses sticky band.
+      getGroupHideOpenParents: () => this.options.groupHideOpenParents === true,
       // Cycle 15 / Task 16 — sticky group band.
       getStickyAncestors: () => this.stickyAncestors,
       getGroupDepthAt: (rowIndex) => this.groupDepthAt(rowIndex),
       getGroupKeyAt: (rowIndex) => this.groupKeyAt(rowIndex),
+      getStickyGroupTotals: (groupKey, colId) => this.totalsCellLookup(colId, groupKey),
     });
 
     // 7. Canvas wrapper — owns the <canvas>, gc cache, RAF + resize polling.
@@ -1117,6 +1120,9 @@ export class CGrid<TRow = any> {
       toggleGroupChildrenSelected: (key, selected) =>
         this.cascadeGroupSelectionFromUi(key, selected),
       autoSizeColumn: (colId) => this.autoSizeColumns([colId]),
+      getGroupKeyAtRow: (rowIndex) => this.getGroupKeyAtRow(rowIndex),
+      isGroupRow: (rowIndex) => this.isGroupRow(rowIndex),
+      isGroupExpanded: (groupKey) => this.isGroupExpanded(groupKey),
     });
     this.cellEditorRegistry = new CellEditorRegistry();
     CellEditorRegistry.seed(this.cellEditorRegistry);
@@ -1273,8 +1279,17 @@ export class CGrid<TRow = any> {
       // first `setGroupModel` produces flatOrder entries with footers
       // AND the first `getViewport` reply ships `chunk.groupTotals`.
       // Init-only this cycle.
-      groupIncludeFooter: this.options.groupIncludeFooter,
-      groupIncludeTotalFooter: this.options.groupIncludeTotalFooter,
+      // Cycle 15.5 / Task 8 — `groupTotalRow`/`grandTotalRow` are the
+      // AG Grid 35 aliases. Either form activates footer rows in the worker;
+      // the position ('top' vs 'bottom') is a renderer concern and is
+      // preserved in the options for the paint path to read.
+      groupIncludeFooter:
+        this.options.groupIncludeFooter
+        ?? (this.options.groupTotalRow != null ? true : undefined),
+      groupIncludeTotalFooter:
+        this.options.groupIncludeTotalFooter
+        ?? (this.options.grandTotalRow != null ? true : undefined),
+      groupHideOpenParents: this.options.groupHideOpenParents,
     }).then(async () => {
       // Cycle 7 / Task 8 — register the external-filter round-trip BEFORE
       // gridReady fires so the first setRowData runs against a worker
@@ -1319,6 +1334,21 @@ export class CGrid<TRow = any> {
       // Runtime swaps route through `applyGroupSelectsChildren`.
       if (this.options.groupSelectsChildren === true) {
         await this.applyGroupSelectsChildren(true);
+      }
+      // Cycle 15.5 / Task 5 — `groupSelects` option wires the new 3-mode
+      // API on top of the Task 8 descendants machinery. 'self' requires no
+      // membership resolver; 'descendants' / 'filteredDescendants' forward
+      // to the existing applyGroupSelectsChildren path for the worker side.
+      const groupSelectsOpt = this.options.groupSelects;
+      if (groupSelectsOpt && groupSelectsOpt !== 'descendants') {
+        // 'self' or 'filteredDescendants' — only selectionModel side; no
+        // worker-side membership emission needed for 'self'.
+        this.selection.setGroupSelects(groupSelectsOpt, null);
+      } else if (groupSelectsOpt === 'descendants' && this.options.groupSelectsChildren !== true) {
+        // Explicit 'descendants' without the legacy bool — forward to the
+        // same path as groupSelectsChildren: true.
+        await this.applyGroupSelectsChildren(true);
+        this.selection.setGroupSelects('descendants', null);
       }
       this.events.emit({ type: 'gridReady', api: this.makeApi() });
       if (options.rowData) this.setRowData(options.rowData);
@@ -2635,8 +2665,15 @@ export class CGrid<TRow = any> {
     // Hide columns that are now acting as group levels; restore visibility
     // for columns removed from grouping. Mirrors ag-grid's default behaviour
     // so grouped fields don't appear redundantly as standalone grid columns.
-    if (toHide.length > 0) this.setColumnsVisible(toHide, false);
-    if (toShow.length > 0) this.setColumnsVisible(toShow, true);
+    // Cycle 15.5 / Task 7 — `suppressGroupChangesColumnVisibility` gates this:
+    //   true / 'suppressHideOnGroup'+'suppressShowOnUngroup' → skip both.
+    //   'suppressHideOnGroup' → skip hide only; allow show on ungroup.
+    //   'suppressShowOnUngroup' → skip show only; allow hide on group.
+    const suppressVis = this.options.suppressGroupChangesColumnVisibility;
+    const suppressHide = suppressVis === true || suppressVis === 'suppressHideOnGroup';
+    const suppressShow = suppressVis === true || suppressVis === 'suppressShowOnUngroup';
+    if (toHide.length > 0 && !suppressHide) this.setColumnsVisible(toHide, false);
+    if (toShow.length > 0 && !suppressShow) this.setColumnsVisible(toShow, true);
   }
 
   /** Cycle 15 / Task 7 — flip every group to expanded. Ships the
@@ -2646,6 +2683,32 @@ export class CGrid<TRow = any> {
    *  (`rowGroupCols.length === 0`) — the event still fires so apps
    *  with a "toggle grouping" UX don't have to special-case the
    *  ungrouped grid. */
+  /** Cycle 15.5 / Task 6 — scroll a row by zero-based display index into
+   *  view. Wraps the private `ensureRowIndexVisible` so callers that know
+   *  the index (e.g. keyboard nav code that already has the row index in
+   *  front of it) don't need to round-trip to the worker for the ID. */
+  ensureIndexVisible(
+    index: number,
+    position: 'auto' | 'top' | 'middle' | 'bottom' = 'auto',
+  ): void {
+    if (this.destroyed) return;
+    this.ensureRowIndexVisible(index, position);
+  }
+
+  /** Cycle 15.5 / Task 6 — reset all row group expansion state back to
+   *  the initial defaults (`groupDefaultExpanded` / `groupDefaultExpandedKeys`
+   *  / `isGroupOpenByDefault`). Discards every user-driven expand / collapse
+   *  toggle and re-runs `setGroupModel` with the current model so the worker
+   *  re-seeds `expandedKeys` from defaults. */
+  resetRowGroupExpansion(): void {
+    if (this.destroyed) return;
+    this.expandedKeys = null;
+    // Re-submit the current group model; the worker will re-apply the
+    // groupDefaultExpanded / groupDefaultExpandedKeys defaults it was
+    // initialised with, producing a fresh expandedKeys set.
+    this.setGroupModel(this.groupModel);
+  }
+
   expandAll(): void {
     if (this.destroyed) return;
     this.expandedKeys = null;
@@ -4074,6 +4137,23 @@ export class CGrid<TRow = any> {
     }
     if (raw === undefined) return null;
     if (raw === null) return { value: null, valueFormatted: '' };
+    // Cycle 15.5 / Task 8 — object-returning custom aggFuncs. When `raw`
+    // is an object with a `value` field, extract that for display. This
+    // supports weighted-average funcs that return `{ value, weight }` and
+    // similar compound results where the caller wants the renderer to see
+    // only the primary `value` without a custom valueFormatter. If the
+    // object also has a `valueFormatted` string field, use it verbatim.
+    if (typeof raw === 'object' && raw !== null && 'value' in raw) {
+      const obj = raw as { value: unknown; valueFormatted?: string };
+      const inner = obj.value;
+      if (typeof obj.valueFormatted === 'string') {
+        return { value: inner, valueFormatted: obj.valueFormatted };
+      }
+      if (typeof inner === 'number') {
+        return { value: inner, valueFormatted: this.formatNumber(colId, inner) };
+      }
+      return { value: inner, valueFormatted: inner == null ? '' : String(inner) };
+    }
     // Cycle 14 / Task 3 — custom aggFuncs may return non-numeric values
     // (e.g. `'first'` returns whatever shape the column carries). Route
     // numeric returns through the column's number formatter; fall back
@@ -4175,6 +4255,8 @@ export class CGrid<TRow = any> {
       collapseAll: () => this.collapseAll(),
       setExpanded: (k, e) => this.setExpanded(k, e),
       getExpandedKeys: () => this.getExpandedKeys(),
+      ensureIndexVisible: (i, pos) => this.ensureIndexVisible(i, pos),
+      resetRowGroupExpansion: () => this.resetRowGroupExpansion(),
       showColumnFilter: (c) => this.showColumnFilter(c),
       hideColumnFilter: () => this.hideColumnFilter(),
       onFilterChanged: (source) => this.onFilterChanged(source),
@@ -4524,6 +4606,11 @@ export class CGrid<TRow = any> {
     if (this.destroyed) return;
     if (groupKey === '') return;
     this.selection.setGroupSelected(groupKey, selected);
+    // Rebuild the index-keyed selectedRowIndices so the painter highlights
+    // the cascaded leaf rows. setGroupSelected only updates the persistent
+    // id set; the paint set is index-keyed and requires a worker round-trip
+    // to map ids → current row indices.
+    this.rebuildSelectionFromPersistentIds();
   }
 
   /** Cycle 15 / Task 7 — toggle a group's expanded state in response
@@ -4572,19 +4659,32 @@ export class CGrid<TRow = any> {
     const isExpanded = this.chunk.isExpanded
       ? (this.chunk.isExpanded[localIndex] ?? 0) !== 0
       : true;
-    // Cycle 15 / Task 8 — thread tri-state selection state into the
-    // payload ONLY when `groupSelectsChildren` is on AND the row is a
-    // group row. Leaves it `undefined` otherwise so the renderer skips
-    // the checkbox slot entirely (the cell stays free of a hairline
-    // outlined box on data rows / single-mode grids).
+    // Cycle 15 / Task 8 + Cycle 15.5 / Task 5 — thread tri-state selection
+    // state into the payload when group checkboxes are visible. Three
+    // conditions gate this path:
+    //   1. The row must be a group row (rowKind === 1).
+    //   2. `checkboxLocation` must route to the auto-group column (not
+    //      'none' and not 'selectionColumn').
+    //   3. A group-selects mode is active (descendants OR self modes).
+    const checkboxLoc = this.options.checkboxLocation ?? 'autoGroupColumn';
+    const groupSelectsMode = this.selection.getGroupSelects();
+    const showCheckboxInGroupCell =
+      rowKind === 1
+      && checkboxLoc !== 'none'
+      && checkboxLoc !== 'selectionColumn'
+      && (groupSelectsMode !== 'none' || this.selection.isGroupSelectsChildren());
     let selectionState: 'none' | 'partial' | 'all' | undefined;
-    if (rowKind === 1 && this.selection.isGroupSelectsChildren()) {
+    if (showCheckboxInGroupCell) {
       const groupKeyArr = this.chunk.groupKey;
       const groupKey = groupKeyArr ? (groupKeyArr[localIndex] ?? '') : '';
       selectionState = groupKey === ''
         ? 'none'
         : this.selection.getGroupSelectionState(groupKey);
     }
+    // Cycle 15.5 / Task 7 — suppressCount and innerRenderer options.
+    const suppressCount = this.options.suppressCount === true
+      || this.options.groupRowRendererParams?.suppressCount === true;
+    const innerRenderer = this.options.groupRowRendererParams?.innerRenderer;
     return {
       kind: 'group',
       rowKind,
@@ -4593,6 +4693,8 @@ export class CGrid<TRow = any> {
       childCount,
       isExpanded,
       selectionState,
+      suppressCount: suppressCount || undefined,
+      innerRenderer,
     };
   }
 
@@ -4612,6 +4714,28 @@ export class CGrid<TRow = any> {
     const localIndex = rowIndex - this.chunk.rowStart;
     if (localIndex < 0 || localIndex >= this.chunk.rowCount) return '';
     return this.chunk.groupKey?.[localIndex] ?? '';
+  }
+
+  /** Cycle 15.5 / Task 6 — public surface for the feature interface.
+   *  Delegates to the private `groupKeyAt` helper. */
+  getGroupKeyAtRow(rowIndex: number): string {
+    return this.groupKeyAt(rowIndex);
+  }
+
+  /** Cycle 15.5 / Task 6 — true when the row at `rowIndex` is a group
+   *  row (rowKind === 1). Returns false on data rows or outside the chunk. */
+  isGroupRow(rowIndex: number): boolean {
+    if (!this.chunk) return false;
+    const localIndex = rowIndex - this.chunk.rowStart;
+    if (localIndex < 0 || localIndex >= this.chunk.rowCount) return false;
+    return (this.chunk.rowKinds?.[localIndex] ?? 0) === 1;
+  }
+
+  /** Cycle 15.5 / Task 6 — true when `groupKey` is in the current
+   *  expanded set. Returns false for collapsed or unknown keys. */
+  isGroupExpanded(groupKey: string): boolean {
+    if (this.expandedKeys === null) return true; // all-expanded sentinel
+    return this.expandedKeys.has(groupKey);
   }
 
   /** Visible-leaf colIds in RENDER order: left-pinned first, then center,
@@ -4993,7 +5117,12 @@ export class CGrid<TRow = any> {
     const focusedId = this.selection.getPersistentFocusedRowId();
     const allIds: string[] = [...selectedIds];
     if (focusedId !== null && !selectedIds.includes(focusedId)) allIds.push(focusedId);
-    if (allIds.length === 0) return;
+    if (allIds.length === 0) {
+      // Nothing selected or focused — clear any stale paint indices immediately,
+      // no worker round-trip needed.
+      this.selection.rebuildIndices(new Map());
+      return;
+    }
     this.workerClient.getRowIndicesForIds(allIds).then((indices) => {
       if (this.destroyed) return;
       const map = new Map<string, number>();

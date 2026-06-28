@@ -109,6 +109,17 @@ export interface GroupCellValue {
    *  Omit (or `undefined`) to suppress the checkbox entirely; this is
    *  the default when `groupSelectsChildren` is off. */
   readonly selectionState?: 'none' | 'partial' | 'all';
+  /** Cycle 15.5 / Task 7 — when `true`, the `(N)` child-count suffix is
+   *  suppressed regardless of `childCount`. Threaded from
+   *  `CGridOptions.suppressCount` by `cgrid.ts`'s `groupCellContextAt`. */
+  readonly suppressCount?: boolean;
+  /** Cycle 15.5 / Task 7 — custom inner renderer name. When set, the
+   *  renderer looks up the named cell renderer for the value portion
+   *  only (chevron + indent stay native). The inner renderer receives
+   *  `{ value: valueFormatted, depth, childCount, key }` as its `params`
+   *  and the call's return string replaces the value text. Omit to use
+   *  the default text path. */
+  readonly innerRenderer?: string;
 }
 
 /** Type-narrow `value` to a `GroupCellValue`. Defensive — the painter
@@ -263,9 +274,9 @@ export const groupCell: CellPainter = {
     gc.textAlign = 'left';
     gc.fillText(valueText, textX, cy);
 
-    // Count suffix. Zero count omits the suffix entirely — empty
-    // groups shouldn't read as "(0)".
-    if (groupValue.childCount > 0) {
+    // Count suffix. Zero count omits the suffix. `suppressCount: true`
+    // (Cycle 15.5 / Task 7) suppresses it regardless of childCount.
+    if (groupValue.childCount > 0 && !groupValue.suppressCount) {
       const valueWidth = gc.measureText(valueText).width;
       const countText = `(${groupValue.childCount.toLocaleString()})`;
       const countX = textX + valueWidth + COUNT_GAP;

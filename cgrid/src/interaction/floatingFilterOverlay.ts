@@ -99,6 +99,15 @@ export class FloatingFilterOverlay {
    */
   repositionAll(viewport: ViewportState): void {
     if (this.destroyed) return;
+    // When floatingFilterRowTop is undefined, the FloatingFilterSubgrid
+    // contributed 0 rows (isFloatingFilterEnabled() returned false).
+    // Hide every pooled input and bail — nothing should overlay the header.
+    if (viewport.floatingFilterRowTop === undefined) {
+      for (const [, entry] of this.pool) {
+        entry.wrapper.style.display = 'none';
+      }
+      return;
+    }
     const rowTop = this.deps.getRowTop();
     const rowHeight = this.deps.getRowHeight();
     // Inset the cell inside its column rect so the input border + padding

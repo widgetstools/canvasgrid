@@ -66,6 +66,10 @@ export interface WorkerInitPayload {
    *  `groupIncludeFooter: false` is silently ignored (no footer
    *  emission path is active). */
   groupIncludeTotalFooter?: boolean;
+  /** Cycle 15.5 / Task 4 — when `true`, expanded parent group rows are
+   *  skipped in `computeGroupVisibleOrder`; children appear in the
+   *  parent's slot. The sticky band suppresses automatically. Init-only. */
+  groupHideOpenParents?: boolean;
 }
 
 export interface WorkerColumn {

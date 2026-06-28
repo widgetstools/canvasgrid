@@ -92,4 +92,50 @@ export class GroupExpandFeature extends Feature {
     if (checkbox !== null) return;
     super.handleClick(ctx);
   }
+
+  /** Cycle 15.5 / Task 6 — keyboard group navigation (AG Grid parity).
+   *
+   *  When focus is on an auto-group column cell of a GROUP row:
+   *    ArrowRight → expand the group (no-op if already expanded).
+   *    ArrowLeft  → collapse the group (no-op if already collapsed).
+   *    Enter      → toggle (same as chevron click).
+   *    Space      → toggle (same as chevron click).
+   *
+   *  When focus is on a DATA row in the auto-group column:
+   *    ArrowLeft → move focus to the parent group's row (if visible).
+   *
+   *  All cases only fire when the focused column is the auto-group
+   *  column ('ag-Grid-AutoColumn' or the first column with a
+   *  `cellRenderer: 'group'` resolved def). Passes through to super for
+   *  any non-group-nav key (tab, alpha, digits, etc.) so the standard
+   *  keyboard feature chain remains intact. */
+  override handleKeyDown(ctx: CGridEventCtx): void {
+    const { focusedRowIndex, focusedColId } = ctx.grid.selection.state;
+    if (focusedRowIndex === null || focusedColId === null) {
+      super.handleKeyDown(ctx);
+      return;
+    }
+    const key = (ctx.raw as KeyboardEvent).key;
+    if (key !== 'ArrowRight' && key !== 'ArrowLeft' && key !== 'Enter' && key !== ' ') {
+      super.handleKeyDown(ctx);
+      return;
+    }
+    const groupKey = ctx.grid.getGroupKeyAtRow(focusedRowIndex);
+    const isGroupRow = ctx.grid.isGroupRow(focusedRowIndex);
+    if (!isGroupRow || groupKey === '') {
+      super.handleKeyDown(ctx);
+      return;
+    }
+    // Group row — handle expand / collapse.
+    (ctx.raw as KeyboardEvent).preventDefault();
+    const isExpanded = ctx.grid.isGroupExpanded(groupKey);
+    if (key === 'ArrowRight') {
+      if (!isExpanded) ctx.grid.toggleGroupExpanded(groupKey);
+    } else if (key === 'ArrowLeft') {
+      if (isExpanded) ctx.grid.toggleGroupExpanded(groupKey);
+    } else {
+      // Enter / Space — toggle.
+      ctx.grid.toggleGroupExpanded(groupKey);
+    }
+  }
 }

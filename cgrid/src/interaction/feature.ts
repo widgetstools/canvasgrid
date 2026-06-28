@@ -305,12 +305,31 @@ export interface CGridLike {
    *  Fires `selectionChanged`. */
   toggleGroupChildrenSelected(groupKey: string, selected: boolean): void;
 
+  // --- Group row keyboard queries (Cycle 15.5 / Task 6) ---
+  /** Composite group key for the given display row index (same key the
+   *  chevron hit-test returns). Returns `''` on data rows or when the
+   *  index is outside the current chunk. */
+  getGroupKeyAtRow(rowIndex: number): string;
+  /** True when the given display row index is a group row (rowKind === 1).
+   *  Returns false outside the current chunk. */
+  isGroupRow(rowIndex: number): boolean;
+  /** True when `groupKey` is currently in the expanded set. Returns false
+   *  for unknown / collapsed keys. */
+  isGroupExpanded(groupKey: string): boolean;
+
   // --- Column autosize (Cycle 6 / Task 4) ---
   /** Autosize a single column — equivalent to `autoSizeColumns([colId])`.
    *  Exposed on `CGridLike` so features (e.g. double-click on the
    *  column resizer hot-zone) can trigger it without a direct reference
    *  to the CGrid instance. */
   autoSizeColumn(colId: string): Promise<void>;
+  /** Cycle 15.5 — composite group key for the row at `rowIndex`, or `''`
+   *  when the row is not a group row or is outside the current chunk. */
+  getGroupKeyAtRow(rowIndex: number): string;
+  /** Cycle 15.5 — true when the row at `rowIndex` is a group row. */
+  isGroupRow(rowIndex: number): boolean;
+  /** Cycle 15.5 — true when `groupKey` is in the current expanded set. */
+  isGroupExpanded(groupKey: string): boolean;
 }
 
 export interface CGridEventCtx {

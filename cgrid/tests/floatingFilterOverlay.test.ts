@@ -21,6 +21,7 @@ function makeViewport(cols: ViewportColumn[]): ViewportState {
     contentHeight: 0,
     maxScrollLeft: 0,
     maxScrollTop: 0,
+    floatingFilterRowTop: 0,  // present = floating filters enabled
   };
 }
 

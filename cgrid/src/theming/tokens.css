@@ -401,6 +401,29 @@
   font-family: var(--cg-font-family);
   font-size: var(--cg-font-size);
 }
+.cg-filter-popup-condition {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cg-filter-popup-case-sensitive-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  font-size: var(--cg-font-size);
+  color: var(--cg-fg-color);
+  line-height: 1;
+}
+.cg-filter-popup-case-sensitive-label input[type="checkbox"] {
+  margin: 0;
+  flex-shrink: 0;
+  width: 13px;
+  height: 13px;
+  cursor: pointer;
+  accent-color: var(--cg-focus-ring-color);
+}
 .cg-filter-popup-inputs {
   flex-wrap: wrap;
 }

@@ -748,6 +748,92 @@ export interface CGridOptions<TRow = any> {
    *  Default `false`. Init-only this cycle. Design plan:
    *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 12. */
   groupIncludeTotalFooter?: boolean;
+  /** Cycle 15.5 / Task 4 — when `true` AND grouping is active, an
+   *  EXPANDED parent group row is NOT emitted into the visible row list.
+   *  Children of the hidden parent appear directly in the parent's slot,
+   *  preserving continuity. AG Grid parity: `groupHideOpenParents`.
+   *
+   *  The sticky group-row band auto-disables in this mode (a hidden
+   *  parent can't be pinned). `suppressGroupRowsSticky` fires
+   *  automatically — no extra option needed.
+   *
+   *  Default `false`. Init-only this cycle. */
+  groupHideOpenParents?: boolean;
+  /** Cycle 15.5 / Task 5 — controls which rows the group checkbox
+   *  cascade selects. Supersedes the boolean `groupSelectsChildren`
+   *  (which is kept as a shorthand for `'descendants'`).
+   *  - `'descendants'` — every descendant leaf row.
+   *  - `'self'` — the group row only (no cascade; the checkbox tracks
+   *    whether the group row id itself is selected).
+   *  - `'filteredDescendants'` — only descendants that survive the
+   *    current filter. Default `'descendants'` when
+   *    `groupSelectsChildren: true` is set. Has no effect when
+   *    `rowSelection !== 'multiple'`. */
+  groupSelects?: 'descendants' | 'self' | 'filteredDescendants';
+  /** Cycle 15.5 / Task 5 — where the selection checkbox appears in the
+   *  grid.
+   *  - `'autoGroupColumn'` (default) — inside the auto-group cell, as
+   *    already implemented in Cycle 15 / Task 8.
+   *  - `'selectionColumn'` — a synthesized leftmost column (≤ 32 px)
+   *    hosting only the checkbox + tri-state header checkbox.
+   *  - `'none'` — no checkbox rendered; programmatic selection only.
+   *  Has no effect when `groupSelectsChildren` is off. */
+  checkboxLocation?: 'autoGroupColumn' | 'selectionColumn' | 'none';
+  /** Cycle 15.5 / Task 5 — scope for the header checkbox's "select all"
+   *  gesture.
+   *  - `'all'` — all rows regardless of filter.
+   *  - `'filtered'` — only filtered-in rows.
+   *  - `'currentPage'` — only rows on the visible page (pagination).
+   *  Default `'all'`. */
+  selectAll?: 'all' | 'filtered' | 'currentPage';
+  /** Cycle 15.5 / Task 6 — per-group-node callback evaluated at
+   *  tree-build time to decide the starting expansion state. When
+   *  provided, overrides `groupDefaultExpanded` for the specific node.
+   *  The callback receives the node's composite `key` (the full
+   *  `colId:value::…` path) and the array of per-level values forming
+   *  the route from root to this node. */
+  isGroupOpenByDefault?: (params: { key: string; route: string[] }) => boolean;
+  /** Cycle 15.5 / Task 7 — when `true`, the `(N)` descendant count
+   *  suffix is suppressed in every group row cell. Default `false`. */
+  suppressCount?: boolean;
+  /** Cycle 15.5 / Task 7 — params forwarded to the group-row renderer.
+   *  Currently supports `innerRenderer` — a registered cell-renderer
+   *  name used in place of the built-in value-text paint (chevron +
+   *  indent + checkbox still paint natively; only the value portion is
+   *  delegated). */
+  groupRowRendererParams?: {
+    /** Registered cell-renderer name for the value portion of a group
+     *  row cell. Receives the `GroupCellValue` payload. */
+    innerRenderer?: string;
+    /** When present, overrides the grid-level `suppressCount` just for
+     *  the inner renderer's own count suffix. */
+    suppressCount?: boolean;
+  };
+  /** Cycle 15.5 / Task 7 — controls whether adding/removing a column
+   *  from `rowGroupColumns` auto-hides/shows that column.
+   *  - `true` — always suppress (no visibility change on group/ungroup).
+   *  - `'suppressHideOnGroup'` — adding to rowGroupColumns does not
+   *    hide the column (but removing still shows it).
+   *  - `'suppressShowOnUngroup'` — removing from rowGroupColumns does
+   *    not show the column (but adding still hides it).
+   *  - `false` / omitted (default) — mirrors AG Grid: adding hides,
+   *    removing shows. */
+  suppressGroupChangesColumnVisibility?: boolean | 'suppressHideOnGroup' | 'suppressShowOnUngroup';
+  /** Cycle 15.5 / Task 8 — where per-group total rows appear.
+   *  - `'top'` — before the group's first child row.
+   *  - `'bottom'` — after the group's last child row (same slot as
+   *    `groupIncludeFooter`; prefer `groupIncludeFooter` which shipped
+   *    in Cycle 15 / Task 12).
+   *  - `null` / omitted — no per-group totals (default).
+   *  Init-only this cycle. */
+  groupTotalRow?: 'top' | 'bottom' | null;
+  /** Cycle 15.5 / Task 8 — where the grand-total row appears.
+   *  - `'top'` — before all group rows (just below the headers).
+   *  - `'bottom'` — after all group rows (last row in the body).
+   *  - `null` / omitted — no grand total from this option; use
+   *    `totalsRowPosition` from Cycle 13 for a pinned grand total.
+   *  Init-only this cycle. */
+  grandTotalRow?: 'top' | 'bottom' | null;
 }
 
 /** Cycle 10 / Task 5 — params for `processCellForClipboard`. Mirrors
@@ -1805,7 +1891,7 @@ export type CGridEvent =
   | {
       type: 'columnRowGroupChanged';
       columns: string[];
-      source: 'set' | 'add' | 'remove' | 'move' | 'sort';
+      source: 'set' | 'add' | 'remove' | 'move' | 'sort' | 'restore';
     }
   /** Fires when the set / order of displayed columns changes for any reason.
    *  Cycle 4 wired the original `columnGroupOpened` + `columnDefsChanged`
@@ -1960,6 +2046,12 @@ export interface CGridApi {
    *  group keys. Returns a fresh `Set` (mutations don't affect grid
    *  state). Empty when grouping is bypassed. */
   getExpandedKeys(): Set<string>;
+  /** Cycle 15.5 — scroll the row at `index` into view. `position`
+   *  controls where the row lands: `'auto'` (default) scrolls only when
+   *  out of view, `'top'` / `'middle'` / `'bottom'` always moves it. */
+  ensureIndexVisible(index: number, position?: 'auto' | 'top' | 'middle' | 'bottom'): void;
+  /** Cycle 15.5 / Task 1 — reset all row groups to collapsed. */
+  resetRowGroupExpansion(): void;
 
   /** Cycle 7 / Task 9 — read the v2 per-column filter entry for
    *  `colId`. Returns `null` when the column is unfiltered or

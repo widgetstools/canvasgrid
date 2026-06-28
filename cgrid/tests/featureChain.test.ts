@@ -121,6 +121,11 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
     // hit-lane so chain tests stay on the data-cell path.
     hitTestGroupCheckbox: () => null,
     toggleGroupChildrenSelected: () => {},
+    // Cycle 15.5 / Task 6 — keyboard group nav stubs (data rows only so
+    // handleKeyDown delegates to super / column nav as before).
+    getGroupKeyAtRow: () => '',
+    isGroupRow: () => false,
+    isGroupExpanded: () => false,
   } as unknown as CGridLike;
   const chain = new FeatureChain(grid);
   return { canvas, sel, chain, emitClicked, emitDoubleClicked, resizeColumn, cycleSort, scrollBy, openEditor, stopEditing };

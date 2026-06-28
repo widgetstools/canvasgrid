@@ -34,6 +34,9 @@ const EMPTY_GLYPH = '—';
 const SHADOW_HEIGHT = 6;
 
 export function paintStickyGroups(gc: CachedContext2D, p: PainterCtx): void {
+  // Cycle 15.5 / Task 4 — groupHideOpenParents force-disables sticky
+  // (a hidden parent can't be pinned at the top; no group rows to stick).
+  if (p.groupHideOpenParents) return;
   const ancestors = p.stickyAncestors;
   if (!ancestors || ancestors.length === 0) return;
 
@@ -116,6 +119,22 @@ export function paintStickyGroups(gc: CachedContext2D, p: PainterCtx): void {
       const countX = textX + gc.measureText(valueText).width + COUNT_GAP;
       gc.fillStyle = theme.groupCountColor ?? theme.fg;
       gc.fillText(countText, countX, cy);
+    }
+
+    // Cycle 15.5 — paint per-column aggregate values for non-auto-group columns.
+    if (p.getStickyGroupTotals) {
+      for (const col of p.viewport.visibleColumns) {
+        if (col.colId.startsWith('ag-Grid-AutoColumn')) continue;
+        const entry = p.getStickyGroupTotals(ancestor.key, col.colId);
+        if (!entry || entry.valueFormatted === '') continue;
+        const colRight = col.right - PADDING;
+        gc.fillStyle = theme.fg;
+        gc.font = theme.font;
+        gc.textBaseline = 'middle';
+        gc.textAlign = 'right';
+        gc.fillText(entry.valueFormatted, colRight, cy);
+      }
+      gc.textAlign = 'left';
     }
   }
 

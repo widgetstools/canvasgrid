@@ -115,6 +115,24 @@ const groupSelectsChildren = search.get('groupSelectsChildren') === '1';
 // `?groupIncludeTotalFooter=1` — typically toggled together.
 const groupIncludeFooter = search.get('groupIncludeFooter') === '1';
 const groupIncludeTotalFooter = search.get('groupIncludeTotalFooter') === '1';
+// Cycle 15.5 / Task 4 — `?groupHideOpenParents=1` hides expanded parent rows.
+const groupHideOpenParents = search.get('groupHideOpenParents') === '1';
+// Cycle 15.5 / Task 6 — `?isGroupOpenByDefault=1` installs a callback that
+// opens every group by default; used with `resetRowGroupExpansion` in the E2E.
+const isGroupOpenByDefault = search.get('isGroupOpenByDefault') === '1';
+// Cycle 15.5 / Task 7 — `?suppressCount=1` suppresses the "(N)" child badge.
+const suppressCount = search.get('suppressCount') === '1';
+// Cycle 15.5 / Task 7 — `?suppressGroupChangesColVis=1` keeps leaf columns
+// visible when they are added to rowGroupCols.
+const suppressGroupChangesColumnVisibility = search.get('suppressGroupChangesColVis') === '1';
+// Cycle 15.5 / Task 8 — `?groupTotalRow=top|bottom` per-group footer position.
+const groupTotalRowRaw = search.get('groupTotalRow');
+const groupTotalRow: 'top' | 'bottom' | undefined =
+  groupTotalRowRaw === 'top' || groupTotalRowRaw === 'bottom' ? groupTotalRowRaw : undefined;
+// Cycle 15.5 / Task 8 — `?grandTotalRow=top|bottom` grand-total row position.
+const grandTotalRowRaw = search.get('grandTotalRow');
+const grandTotalRow: 'top' | 'bottom' | undefined =
+  grandTotalRowRaw === 'top' || grandTotalRowRaw === 'bottom' ? grandTotalRowRaw : undefined;
 // Feature toggles wired to the toolbar checkboxes. Default OFF so the
 // demo opens with a CLEAN grid (no pinned columns, no header groups).
 // User opts each surface in via the header checkbox; the URL flag
@@ -122,7 +140,7 @@ const groupIncludeTotalFooter = search.get('groupIncludeTotalFooter') === '1';
 // + lets deep-links pin a feature combo.
 const pinning      = search.get('pinning')      === 'on';
 const columnGroups = search.get('columnGroups') === 'on';
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, groupingDemo, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, rowGroupPanelMarketsGrid, groupSelectsChildren, groupIncludeFooter, groupIncludeTotalFooter, pinning, columnGroups });
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, groupingDemo, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, rowGroupPanelMarketsGrid, groupSelectsChildren, groupIncludeFooter, groupIncludeTotalFooter, pinning, columnGroups, groupHideOpenParents, isGroupOpenByDefault, suppressCount, suppressGroupChangesColumnVisibility, groupTotalRow, grandTotalRow });
 
 // Toolbar feature-toggle checkboxes. Toggling reloads the page with
 // the matching URL flag set / unset because the structural changes

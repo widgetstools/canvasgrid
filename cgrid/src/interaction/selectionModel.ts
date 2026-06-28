@@ -2,6 +2,15 @@ import type { SelectionRange } from '../types';
 
 export type SelectionMode = 'none' | 'single' | 'multiple';
 
+/** Cycle 15.5 / Task 5 — how a group-row checkbox cascades selection.
+ *  - `'none'`               → no checkbox / no cascade (default).
+ *  - `'self'`               → the group row is itself selectable; clicking
+ *                             its checkbox selects/deselects only that row.
+ *  - `'descendants'`        → cascade to ALL descendant leaf rows.
+ *  - `'filteredDescendants'`→ cascade to only the currently-filtered
+ *                             descendant leaf rows. */
+export type GroupSelectsMode = 'none' | 'self' | 'descendants' | 'filteredDescendants';
+
 export interface SelectionState {
   focusedRowIndex: number | null;
   focusedColId: string | null;
@@ -60,6 +69,20 @@ export class SelectionModel {
    *  when cascading is enabled AND the host (cgrid.ts or a test) has
    *  supplied a resolver. */
   private _membership: GroupMembershipResolver | null = null;
+
+  /** Cycle 15.5 / Task 5 — current group-selects mode. `'none'` disables
+   *  all group checkbox machinery. `'self'` selects the group node itself.
+   *  `'descendants'` / `'filteredDescendants'` cascade to leaf rows. */
+  private _groupSelects: GroupSelectsMode = 'none';
+  /** Cycle 15.5 / Task 5 — selected group keys for `'self'` mode. The
+   *  keys are the same composite group key strings used everywhere else
+   *  (e.g. `"desk:APAC"`). Not mixed into `_selectedRowIds` since they
+   *  are group-node IDs, not data-row IDs. */
+  private _selectedGroupKeys: Set<string> = new Set();
+  /** Cycle 15.5 / Task 5 — filtered data-row ID set for
+   *  `'filteredDescendants'` mode. Intersection gates which descendants
+   *  get selected / count toward the tri-state. */
+  private _filteredIds: ReadonlySet<string> | null = null;
 
   constructor(private mode: SelectionMode) {}
 
@@ -330,7 +353,12 @@ export class SelectionModel {
    *  the emit when nothing actually changes so a steady-state model update
    *  doesn't churn paint. */
   rebuildIndices(rowIdToIndex: ReadonlyMap<string, number>): void {
-    if (this._selectedRowIds.size === 0 && this._focusedRowId === null) return;
+    // Skip only when there is genuinely nothing to update — both the
+    // persistent id sets are empty AND the paint indices are already clear.
+    // Without the selectedRowIndices guard, a deselect-all that empties
+    // _selectedRowIds would skip the loop and leave stale paint highlights.
+    if (this._selectedRowIds.size === 0 && this._focusedRowId === null
+        && this._state.selectedRowIndices.size === 0 && this._state.focusedRowIndex === null) return;
     let changed = false;
 
     const nextSelectedIndices = new Set<number>();
@@ -382,6 +410,55 @@ export class SelectionModel {
    *  is off — there is no "leaf-row" auto-group cell in Cycle 15). */
   isGroupSelectsChildren(): boolean { return this._groupSelectsChildren; }
 
+  /** Cycle 15.5 / Task 5 — read the current group-selects mode. */
+  getGroupSelects(): GroupSelectsMode { return this._groupSelects; }
+
+  /** Cycle 15.5 / Task 5 — configure the group-selects mode atomically.
+   *  Replaces the Task 8 `setGroupSelectsChildren` escape hatch with a
+   *  3-mode discriminated union. `membership` is required for
+   *  `'descendants'` / `'filteredDescendants'`; pass `null` otherwise.
+   *  `filteredIds` is used only by `'filteredDescendants'` — supply it
+   *  from the worker's current filtered-row set, refreshed on every
+   *  transaction or filter change.
+   *
+   *  Calling this with `'none'` disables group checkbox machinery but
+   *  does NOT clear the current selected-id set — leaf rows selected
+   *  during a prior cascade remain selected (mirrors the runtime toggle
+   *  contract of `setGridOption('rowSelection', …)`). */
+  setGroupSelects(
+    mode: GroupSelectsMode,
+    membership: GroupMembershipResolver | null,
+    filteredIds?: ReadonlySet<string>,
+  ): void {
+    this._groupSelects = mode;
+    this._membership = (mode === 'descendants' || mode === 'filteredDescendants') ? membership : null;
+    this._filteredIds = filteredIds ?? null;
+    // Keep the Task 8 bool in sync for any callers that still use the old API.
+    this._groupSelectsChildren = mode === 'descendants' || mode === 'filteredDescendants';
+  }
+
+  /** Cycle 15.5 / Task 5 — update the filtered ID set used by
+   *  `'filteredDescendants'` mode (call on every filter change). Has no
+   *  effect in other modes. No emit: changes take effect on the next
+   *  `getGroupSelectionState` / `setGroupSelected` call. */
+  setFilteredIds(filteredIds: ReadonlySet<string>): void {
+    this._filteredIds = filteredIds;
+  }
+
+  /** Cycle 15.5 / Task 5 — clear the `'self'` group-key selection set.
+   *  Does not touch the data-row selection set. No-op when the set is
+   *  already empty (no emit). */
+  clearGroupKeySelection(): void {
+    if (this._selectedGroupKeys.size === 0) return;
+    this._selectedGroupKeys.clear();
+    this.emit();
+  }
+
+  /** Cycle 15.5 / Task 5 — snapshot of the selected group keys in
+   *  `'self'` mode. Empty array when in other modes or nothing is
+   *  selected. */
+  getSelectedGroupKeys(): string[] { return Array.from(this._selectedGroupKeys); }
+
   /** Cycle 15 / Task 8 — cascade-select / deselect every descendant
    *  leaf row under `groupKey`. No-op when cascading is off, when
    *  membership isn't wired, or when the resolver reports zero
@@ -397,10 +474,27 @@ export class SelectionModel {
    *  at all (`groupSelectsChildren` is meaningless under single
    *  selection); the no-op here is purely a defensive guard. */
   setGroupSelected(groupKey: string, selected: boolean): void {
+    // Cycle 15.5 / Task 5 — 'self' mode: select the group node itself.
+    if (this._groupSelects === 'self') {
+      if (this.mode === 'none') return;
+      const had = this._selectedGroupKeys.has(groupKey);
+      if (selected === had) return;
+      if (selected) this._selectedGroupKeys.add(groupKey);
+      else this._selectedGroupKeys.delete(groupKey);
+      this.emit();
+      return;
+    }
     if (!this._groupSelectsChildren) return;
     if (this.mode !== 'multiple') return;
     if (!this._membership) return;
-    const descendants = this._membership.getDescendantRowIds(groupKey);
+    let descendants: readonly string[] = this._membership.getDescendantRowIds(groupKey);
+    // Cycle 15.5 / Task 5 — 'filteredDescendants': gate on the current
+    // filter set. Descendants that don't pass the filter are invisible
+    // to the cascade and to the tri-state count.
+    if (this._groupSelects === 'filteredDescendants' && this._filteredIds !== null) {
+      const filtered = this._filteredIds;
+      descendants = descendants.filter(id => filtered.has(id));
+    }
     if (descendants.length === 0) return;
     const before = this._selectedRowIds.size;
     if (selected) {
@@ -409,19 +503,8 @@ export class SelectionModel {
       for (const id of descendants) this._selectedRowIds.delete(id);
     }
     if (this._selectedRowIds.size === before) {
-      // No-op: the set's count didn't change, which means every
-      // descendant was already in the requested state (or no
-      // descendant was in the opposite state). Skip the emit so a
-      // redundant cascade click doesn't churn paint.
-      //
-      // Edge case: a select-add where every descendant is already
-      // present AND a select-remove where no descendant is present
-      // both hit this branch. Both are correct no-ops.
       return;
     }
-    // Indices stay derived; cgrid.ts re-runs rebuildIndices on the
-    // next modelUpdated to refresh paint indices for the rows that
-    // landed under a different visible-row index after the cascade.
     this.emit();
   }
 
@@ -440,9 +523,19 @@ export class SelectionModel {
    *  filtered, or collapsed — the descendants that aren't currently
    *  visible still count. */
   getGroupSelectionState(groupKey: string): GroupSelectionState {
+    // Cycle 15.5 / Task 5 — 'self' mode: binary state (no tri-state partial).
+    if (this._groupSelects === 'self') {
+      return this._selectedGroupKeys.has(groupKey) ? 'all' : 'none';
+    }
     if (!this._groupSelectsChildren) return 'none';
     if (!this._membership) return 'none';
-    const descendants = this._membership.getDescendantRowIds(groupKey);
+    let descendants: readonly string[] = this._membership.getDescendantRowIds(groupKey);
+    // Cycle 15.5 / Task 5 — 'filteredDescendants': count only those that
+    // pass the filter. Matches the cascade in setGroupSelected.
+    if (this._groupSelects === 'filteredDescendants' && this._filteredIds !== null) {
+      const filtered = this._filteredIds;
+      descendants = descendants.filter(id => filtered.has(id));
+    }
     if (descendants.length === 0) return 'none';
     let selectedCount = 0;
     for (const id of descendants) {

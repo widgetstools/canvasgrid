@@ -56,6 +56,7 @@ describe('Renderer', () => {
       getShowFillHandle: () => false,
       getSuppressAggFuncInHeader: () => false,
       getGroupRowStrip: () => null,
+      getGroupHideOpenParents: () => false,
       getStickyAncestors: () => [],
       getGroupDepthAt: () => 0,
       getGroupKeyAt: () => '',

@@ -57,10 +57,16 @@ import { encodeText } from './chunkFormat';
  *  about "visible rows" without coupling to the group pass module. */
 export type VisibleRowEntry = FlatOrderEntry;
 
-/** Materialise the in-order visible row list. */
+/** Materialise the in-order visible row list.
+ *
+ *  `hideOpenParents` (Cycle 15.5 / Task 4): when `true`, an EXPANDED
+ *  group's own group-row entry is skipped — children appear directly in
+ *  the parent's slot. A COLLAPSED group still emits its group entry and
+ *  suppresses children (existing behaviour). */
 export function computeGroupVisibleOrder(
   flatOrder: readonly FlatOrderEntry[],
   expandedKeys: ReadonlySet<string>,
+  hideOpenParents = false,
 ): VisibleRowEntry[] {
   const out: VisibleRowEntry[] = [];
   let skipDepth = -1;
@@ -68,8 +74,14 @@ export function computeGroupVisibleOrder(
     const entry = flatOrder[i]!;
     if (skipDepth >= 0 && entry.depth > skipDepth) continue;
     skipDepth = -1;
-    out.push(entry);
-    if (entry.kind === 'group' && !expandedKeys.has(entry.key)) {
+    const isExpandedGroup = entry.kind === 'group' && expandedKeys.has(entry.key);
+    // hideOpenParents: skip the group-row entry when the group is expanded,
+    // but do NOT set skipDepth — children still emit.
+    if (!hideOpenParents || !isExpandedGroup) {
+      out.push(entry);
+    }
+    if (entry.kind === 'group' && !isExpandedGroup) {
+      // Collapsed group — skip all its descendants.
       skipDepth = entry.depth;
     }
   }
@@ -81,6 +93,7 @@ export function computeGroupVisibleOrder(
 export function computeGroupVisibleRowCount(
   flatOrder: readonly FlatOrderEntry[],
   expandedKeys: ReadonlySet<string>,
+  hideOpenParents = false,
 ): number {
   let count = 0;
   let skipDepth = -1;
@@ -88,10 +101,9 @@ export function computeGroupVisibleRowCount(
     const entry = flatOrder[i]!;
     if (skipDepth >= 0 && entry.depth > skipDepth) continue;
     skipDepth = -1;
-    count++;
-    if (entry.kind === 'group' && !expandedKeys.has(entry.key)) {
-      skipDepth = entry.depth;
-    }
+    const isExpandedGroup = entry.kind === 'group' && expandedKeys.has(entry.key);
+    if (!hideOpenParents || !isExpandedGroup) count++;
+    if (entry.kind === 'group' && !isExpandedGroup) skipDepth = entry.depth;
   }
   return count;
 }

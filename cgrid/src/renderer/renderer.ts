@@ -97,6 +97,11 @@ export interface RendererOpts {
    */
   getRowKindAt: (rowIndex: number) => number;
   /**
+   * Cycle 15.5 / Task 4 — whether `groupHideOpenParents` is active.
+   * When `true`, the sticky group painter returns immediately.
+   */
+  getGroupHideOpenParents: () => boolean;
+  /**
    * Cycle 15 / Task 16 — sticky group ancestors above the viewport's
    * first visible row. Empty array when grouping is inactive or nothing
    * has scrolled past. Sorted depth-ascending.
@@ -112,6 +117,12 @@ export interface RendererOpts {
    * index. Returns `''` for data rows or when outside the current chunk.
    */
   getGroupKeyAt: (rowIndex: number) => string;
+  /**
+   * Cycle 15.5 — look up a formatted aggregate value for a sticky group row's
+   * group key + colId. Returns null when the column has no aggFunc or the
+   * group key is unknown.
+   */
+  getStickyGroupTotals?: (groupKey: string, colId: string) => { value: unknown; valueFormatted: string } | null;
 }
 
 export class Renderer {
@@ -133,9 +144,11 @@ export class Renderer {
       getVisibleCellBounds: this.opts.getVisibleCellBounds,
       groupRowStrip: this.opts.getGroupRowStrip(),
       rowKindAt: this.opts.getRowKindAt,
+      groupHideOpenParents: this.opts.getGroupHideOpenParents(),
       stickyAncestors: this.opts.getStickyAncestors(),
       groupDepthAt: this.opts.getGroupDepthAt,
       groupKeyAt: this.opts.getGroupKeyAt,
+      getStickyGroupTotals: this.opts.getStickyGroupTotals,
     };
     // Fill the entire drawable area with theme bg as the FIRST instruction so
     // there's no transparent moment between the prior frame's pixels (or a

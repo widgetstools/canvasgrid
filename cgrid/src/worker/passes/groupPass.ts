@@ -146,6 +146,16 @@ export class GroupPass<TRow = any> {
    *  group's collapsible scope so it never drops on collapse. Off by
    *  default. */
   private includeTotalFooter = false;
+  /** Cycle 15.5 / Task 6 — per-node expansion callback. When set, called
+   *  for every group node in `computeDefaultExpandedKeys`; returning
+   *  `true` marks the group open by default. Takes priority over
+   *  `defaultExpanded` / `defaultExpandedKeys` when set. Cannot be
+   *  threaded through the worker postMessage interface — set by unit tests
+   *  directly; runtime evaluation runs on the main thread via
+   *  `cgrid.ts`'s `applyIsGroupOpenByDefault`. */
+  private isGroupOpenByDefaultCb:
+    | ((params: { key: string; route: string[] }) => boolean)
+    | null = null;
 
   constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
     this.setColumns(columns);
@@ -236,6 +246,16 @@ export class GroupPass<TRow = any> {
     this.includeTotalFooter = includeTotalFooter;
   }
 
+  /** Cycle 15.5 / Task 6 — install the per-node open-by-default callback.
+   *  Pass `null` to clear. Has no effect in the worker (functions cannot
+   *  cross the postMessage boundary); used by unit tests and main-thread
+   *  evaluation in `cgrid.ts`. */
+  setIsGroupOpenByDefault(
+    cb: ((params: { key: string; route: string[] }) => boolean) | null,
+  ): void {
+    this.isGroupOpenByDefaultCb = cb;
+  }
+
   /** Cycle 15 / Task 12 — read-only access. Used by `worker.ts` to
    *  decide whether to compute per-group totals during the agg pass. */
   getIncludeFooter(): boolean {
@@ -265,6 +285,22 @@ export class GroupPass<TRow = any> {
    *       explicit "no groups expanded" set instead of the
    *       all-expanded sentinel. */
   computeDefaultExpandedKeys(roots: readonly GroupNode[]): Set<string> | null {
+    // Cycle 15.5 / Task 6 — `isGroupOpenByDefault` callback takes priority.
+    // Walk the tree and include every node for which the callback returns true.
+    // The route (ancestor value chain) is threaded down the walk.
+    if (this.isGroupOpenByDefaultCb !== null) {
+      const cb = this.isGroupOpenByDefaultCb;
+      const set = new Set<string>();
+      const walk = (nodes: readonly GroupNode[], route: string[]): void => {
+        for (const node of nodes) {
+          const nodeRoute = [...route, String(node.value ?? '')];
+          if (cb({ key: node.key, route: nodeRoute })) set.add(node.key);
+          if (node.childGroups.length > 0) walk(node.childGroups, nodeRoute);
+        }
+      };
+      walk(roots, []);
+      return set;
+    }
     if (this.defaultExpandedKeys !== null) {
       return new Set(this.defaultExpandedKeys);
     }
