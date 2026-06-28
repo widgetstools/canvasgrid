@@ -152,8 +152,8 @@
   --cg-flash-to-color: rgba(184, 134, 11, 0);
   --cg-resizer-hot-zone: 4px;
   --cg-scrollbar-thickness: 6px;
-  --cg-floating-filter-bg: transparent;
-  --cg-floating-filter-border: transparent;
+  --cg-floating-filter-bg: color-mix(in srgb, var(--cg-header-bg) 60%, transparent);
+  --cg-floating-filter-border: color-mix(in srgb, var(--cg-border-color) 80%, transparent);
   --cg-floating-filter-placeholder: #6e7681;
   --cg-quick-filter-match-bg: #4d3700;
   --cg-unsort-icon-color: rgba(212, 212, 212, 0.4);

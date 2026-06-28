@@ -143,6 +143,15 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
     gc.fillRect(0, Math.round(vs.bodyTop) - 1, rightEdge, 1);
   }
 
+  // Header→floating-filter separator. The header row's horizontal gridline
+  // already lands at floatingFilterRowTop - 1 (gridLineColor); overpaint with
+  // borderColor so the transition reads as a deliberate divider, mirroring
+  // the header→body separator at bodyTop above.
+  if (vs.floatingFilterRowTop !== undefined && vs.floatingFilterRowTop > 0) {
+    gc.cache.fillStyle = theme.borderColor;
+    gc.fillRect(0, Math.round(vs.floatingFilterRowTop) - 1, rightEdge, 1);
+  }
+
   // Cycle 14 / Task 2 — pinned stack ↔ data structural border. Painted
   // LAST so it overpaints both the per-row gridline (laid down in the
   // horizontals pass above) AND the bodyTop separator (when pinned-top
