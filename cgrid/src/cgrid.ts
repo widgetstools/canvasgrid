@@ -56,6 +56,12 @@ import {
   type RowGroupPanelGridContext,
 } from './interaction/rowGroupPanel/host';
 import { GroupingState, type GroupingStateChangedEvent } from './core/groupingState';
+import { PivotState, type PivotStateChangedEvent, type PivotValueColumn } from './core/pivotState';
+import {
+  synthesizePivotColumns, isPivotResultColumnId,
+  type PivotCellSpec, type PivotValueColumnSpec,
+} from './core/pivotColumns';
+import { encodePivotValueKey, PIVOT_PATH_SEP, type PivotModel, type PivotKeyNode } from './worker/passes/pivotPass';
 import type { MenuItem, GetContextMenuItemsParams, GetMainMenuItemsParams } from './interaction/contextMenu/types';
 import { buildDefaultMenuItems } from './interaction/contextMenu/defaults';
 import { buildDefaultMainMenuItems } from './interaction/contextMenu/mainMenuDefaults';
@@ -616,6 +622,27 @@ export class CGrid<TRow = any> {
    *  `applyGroupingStateChange` so the worker stays in sync. */
   private groupingState: GroupingState = new GroupingState();
   private groupingStateUnsubscribe: () => void = () => {};
+  /** Cycle 18 / Task 3 — canonical pivot state (pivotMode + ordered
+   *  pivotColumns + valueColumns). Mirrors `groupingState`: every pivot
+   *  UI surface mutates it; subscribers re-render. The imperative pivot
+   *  API routes through it. */
+  private pivotState: PivotState = new PivotState();
+  private pivotStateUnsubscribe: () => void = () => {};
+  /** Cycle 18 / Task 3 — true while synthesized pivot result columns are
+   *  installed (the column tree has been swapped to the pivot tree). */
+  private pivotActive = false;
+  /** Cycle 18 / Task 3 — saved primary column structures, restored when
+   *  pivot deactivates. `null` while pivot is inactive. */
+  private primaryColumnTree: ColumnTree | null = null;
+  private primaryColumnGroupState: ColumnGroupState | null = null;
+  /** Cycle 18 / Task 3 — reverse index: synthetic pivot colId →
+   *  (pivotPath, valueColId), for the body cell lookup against
+   *  `chunk.pivotValues`. */
+  private pivotCellSpecById: Map<string, PivotCellSpec> = new Map();
+  /** Cycle 18 / Task 3 — signature of the last-synthesized pivot tree
+   *  (leaf paths + value columns) so columns re-synthesize only when the
+   *  distinct-key set or measures actually change. */
+  private pivotTreeSignature = '';
   /** Cycle 15 / Task 4 + Task 5 — synthesized auto-group column(s).
    *  Length depends on `groupDisplayType`:
    *    - `'singleColumn'` + grouping active → one column.
@@ -947,6 +974,16 @@ export class CGrid<TRow = any> {
     this.groupingStateUnsubscribe = this.groupingState.on(
       'groupingStateChanged',
       (e) => this.handleGroupingStateChanged(e),
+    );
+
+    // Cycle 18 / Task 3 — pivot state primitive. Seeded from the
+    // `pivotMode` option (pivot/value columns are configured afterwards
+    // via the imperative API / tool panels). Every pivot UI mutates this
+    // object; `handlePivotStateChanged` syncs the worker + repaints.
+    this.pivotState = new PivotState({ pivotMode: options.pivotMode === true });
+    this.pivotStateUnsubscribe = this.pivotState.on(
+      'pivotStateChanged',
+      (e) => this.handlePivotStateChanged(e),
     );
 
     const rgShow = normalizeRowGroupPanelShow(options.rowGroupPanelShow);
@@ -2676,6 +2713,159 @@ export class CGrid<TRow = any> {
     if (toShow.length > 0 && !suppressShow) this.setColumnsVisible(toShow, true);
   }
 
+  // ─── Cycle 18 / Task 3 — pivot API + render wiring ─────────────────────
+
+  isPivotMode(): boolean { return this.pivotState.isPivotMode(); }
+  setPivotMode(pivotMode: boolean): void {
+    if (!this.destroyed) this.pivotState.setPivotMode(pivotMode);
+  }
+  getPivotColumns(): string[] { return this.pivotState.getPivotColumns(); }
+  setPivotColumns(colIds: string[]): void {
+    if (!this.destroyed) this.pivotState.setPivotColumns(colIds);
+  }
+  addPivotColumn(colId: string): void {
+    if (!this.destroyed) this.pivotState.addPivotColumn(colId);
+  }
+  removePivotColumn(colId: string): void {
+    if (!this.destroyed) this.pivotState.removePivotColumn(colId);
+  }
+  movePivotColumn(from: number, to: number): void {
+    if (!this.destroyed) this.pivotState.movePivotColumn(from, to);
+  }
+  getValueColumns(): Array<{ colId: string; aggFunc: string }> {
+    return this.pivotState.getValueColumns().map((v) => ({ colId: v.colId, aggFunc: v.aggFunc }));
+  }
+  addValueColumn(colId: string, aggFunc: string): void {
+    if (!this.destroyed) this.pivotState.addValueColumn(colId, aggFunc);
+  }
+  removeValueColumn(colId: string): void {
+    if (!this.destroyed) this.pivotState.removeValueColumn(colId);
+  }
+  setValueColumnAggFunc(colId: string, aggFunc: string): void {
+    if (!this.destroyed) this.pivotState.setValueColumnAggFunc(colId, aggFunc);
+  }
+
+  /** Build the worker pivot model from the current pivot state. Returns an
+   *  EMPTY model unless the pivot is active (mode on AND ≥1 pivot column
+   *  AND ≥1 value column) — `pivotMode` itself is not part of the worker
+   *  model, so an inactive pivot must surface as an empty model or the
+   *  worker would keep cross-tabbing. */
+  private pivotWorkerModel(): PivotModel {
+    if (!this.pivotState.isPivotActive()) return { pivotColIds: [], valueCols: [] };
+    return {
+      pivotColIds: this.pivotState.getPivotColumns(),
+      valueCols: this.pivotState.getValueColumns().map((v) => ({ colId: v.colId, aggFunc: v.aggFunc })),
+    };
+  }
+
+  /** Cycle 18 / Task 3 — react to any pivot state mutation. Refresh the
+   *  worker's column metadata (so pivot/value fields survive the primaries
+   *  being hidden), install the model, then request a viewport — the chunk
+   *  reply carries the pivot tree + values and `maybeSyncPivotColumns`
+   *  (re)synthesizes the secondary columns. Cite:
+   *  docs/superpowers/plans/notes/cycle-18-pivoting-design.md (Task 3). */
+  private handlePivotStateChanged(_e: PivotStateChangedEvent): void {
+    if (this.destroyed) return;
+    this.workerClient.updateColumns(this.workerColumns())
+      .then(() => this.workerClient.setPivotModel(this.pivotWorkerModel()))
+      .then(() => {
+        if (this.destroyed) return;
+        this.requestViewport();
+      })
+      .catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+  }
+
+  /** Cycle 18 / Task 3 — install / drop the synthesized pivot result
+   *  columns based on the freshly-arrived chunk. Re-synthesizes only when
+   *  the distinct-key set or value columns changed (cheap signature
+   *  compare) so steady-state scrolls don't churn the column tree. */
+  private maybeSyncPivotColumns(chunk: ViewportChunk): void {
+    const active = this.pivotState.isPivotActive() && chunk.pivotColumnTree !== undefined;
+    if (active) {
+      const signature = JSON.stringify({
+        leaves: chunk.pivotLeafPaths ?? [],
+        vals: this.pivotState.getValueColumns(),
+      });
+      if (!this.pivotActive || signature !== this.pivotTreeSignature) {
+        this.pivotTreeSignature = signature;
+        this.applyPivotColumns(chunk.pivotColumnTree!, chunk.pivotLeafPaths ?? []);
+      }
+    } else if (this.pivotActive) {
+      this.revertPivotColumns();
+    }
+  }
+
+  /** Swap the column tree to the synthesized pivot tree: pivot levels
+   *  become column groups (`HeaderGroupSubgrid` renders them verbatim),
+   *  the primary data columns drop out, and the auto-group column is kept
+   *  as the row-dim axis. */
+  private applyPivotColumns(keyTree: PivotKeyNode[], _leafPaths: string[][]): void {
+    const valueColumns: PivotValueColumnSpec[] = this.pivotState.getValueColumns().map((v) => {
+      const primary = (this.primaryColumnTree ?? this.columnTree).leafById.get(v.colId);
+      return {
+        colId: v.colId,
+        aggFunc: v.aggFunc,
+        headerName: primary?.headerName ?? v.colId,
+        cellDataType: primary?.cellDataType ?? 'number',
+        width: primary?.width,
+      };
+    });
+    const { defs, cellSpecById } = synthesizePivotColumns<TRow>({ keyTree, valueColumns });
+
+    // Save the primary structures on first activation so revert restores
+    // the exact pre-pivot tree (with its column-group open/closed state).
+    if (!this.pivotActive) {
+      this.primaryColumnTree = this.columnTree;
+      this.primaryColumnGroupState = this.columnGroupState;
+    }
+
+    const pivotTree = resolveColumnTree<TRow>(defs);
+    this.columnTree = pivotTree;
+    this.columnGroupState = new ColumnGroupState(pivotTree);
+    this.columnDefsMap = pivotTree.leafById as Map<string, ResolvedColDef<TRow>>;
+    // Keep the auto-group column(s) resolvable for the painter / leaf header.
+    for (const col of this.autoGroupColumns) this.columnDefsMap.set(col.colId, col);
+    this.pivotCellSpecById = cellSpecById;
+    this.pivotActive = true;
+
+    this.columnOrder = this.computeVisibleColumnOrder();
+    this.columnLayout = resolveColumnWidths(
+      this.columnOrder,
+      this.canvasBounds.width || this.scroller.clientWidth || 800,
+    );
+    this.rebuildSubgridStack();
+    this.recomputeViewport();
+    this.cgridCanvas?.requestRepaint();
+  }
+
+  /** Restore the primary columns when pivot deactivates. Drops the
+   *  synthetic columns en masse and re-fetches a viewport for the primary
+   *  column data (the current chunk only carries pivot values). */
+  private revertPivotColumns(): void {
+    if (!this.pivotActive) return;
+    if (this.primaryColumnTree) this.columnTree = this.primaryColumnTree;
+    if (this.primaryColumnGroupState) this.columnGroupState = this.primaryColumnGroupState;
+    this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
+    for (const col of this.autoGroupColumns) this.columnDefsMap.set(col.colId, col);
+    this.pivotCellSpecById = new Map();
+    this.pivotTreeSignature = '';
+    this.pivotActive = false;
+    this.primaryColumnTree = null;
+    this.primaryColumnGroupState = null;
+
+    this.columnOrder = this.computeVisibleColumnOrder();
+    this.columnLayout = resolveColumnWidths(
+      this.columnOrder,
+      this.canvasBounds.width || this.scroller.clientWidth || 800,
+    );
+    this.rebuildSubgridStack();
+    this.recomputeViewport();
+    this.cgridCanvas?.requestRepaint();
+    // The chunk that drove the revert carried no primary column data
+    // (it was requested with the synthetic colIds) — fetch fresh data.
+    this.requestViewport();
+  }
+
   /** Cycle 15 / Task 7 — flip every group to expanded. Ships the
    *  "default = all" sentinel to the worker so the slicer derives
    *  the all-keys set itself; fires `expandOrCollapseAll` once with
@@ -4240,6 +4430,10 @@ export class CGrid<TRow = any> {
     // fire on a destroyed grid.
     this.groupingStateUnsubscribe();
     this.groupingState.destroy();
+    // Cycle 18 / Task 3 — release the pivot state subscriber + emitter
+    // so a late listener can't fire on a destroyed grid.
+    this.pivotStateUnsubscribe();
+    this.pivotState.destroy();
     // Cycle 4 / Task 11 (cell-flash patch) — cancel any in-flight
     // rAF tick + clear the registry so a late callback can't fire on
     // a destroyed grid.
@@ -4269,6 +4463,18 @@ export class CGrid<TRow = any> {
       moveRowGroupColumn: (from, to) => this.moveRowGroupColumn(from, to),
       setRowGroupColumnSort: (colId, dir) => this.setRowGroupColumnSort(colId, dir),
       getRowGroupColumns: () => this.getRowGroupColumns(),
+      // Cycle 18 / Task 3 — pivot API.
+      isPivotMode: () => this.isPivotMode(),
+      setPivotMode: (m) => this.setPivotMode(m),
+      getPivotColumns: () => this.getPivotColumns(),
+      setPivotColumns: (cols) => this.setPivotColumns(cols),
+      addPivotColumn: (colId) => this.addPivotColumn(colId),
+      removePivotColumn: (colId) => this.removePivotColumn(colId),
+      movePivotColumn: (from, to) => this.movePivotColumn(from, to),
+      getValueColumns: () => this.getValueColumns(),
+      addValueColumn: (colId, aggFunc) => this.addValueColumn(colId, aggFunc),
+      removeValueColumn: (colId) => this.removeValueColumn(colId),
+      setValueColumnAggFunc: (colId, aggFunc) => this.setValueColumnAggFunc(colId, aggFunc),
       expandAll: () => this.expandAll(),
       collapseAll: () => this.collapseAll(),
       setExpanded: (k, e) => this.setExpanded(k, e),
@@ -4791,10 +4997,23 @@ export class CGrid<TRow = any> {
     // to resolve field names. Append any group-by column that is not already
     // visible so the worker never loses the ability to bucket rows by that field.
     const visibleIds = new Set(this.columnOrder.map((c) => c.colId));
-    const extraGroupCols = this.groupModel.rowGroupCols
-      .filter((id) => !visibleIds.has(id))
-      .map((id) => this.columnDefsMap.get(id))
-      .filter((def): def is typeof def & {} => def !== undefined);
+    // Source primary leaf defs from the saved primary tree while pivot is
+    // active (the live `columnDefsMap` then holds the SYNTHESIZED pivot
+    // leaves, not `sector` / `pnl`). Falls back to `columnDefsMap` when no
+    // pivot swap is in effect.
+    const primaryLeaves = this.primaryColumnTree?.leafById ?? this.columnDefsMap;
+    // Columns the worker needs in its colIndex even when hidden from the
+    // display: row-group columns (GroupPass) + pivot columns + value
+    // columns (PivotPass reads their fields). Cycle 15 hid grouped cols;
+    // Cycle 18 / Task 3 hides ALL primaries under pivot, so the pivot +
+    // value columns must be re-appended or the worker loses their fields.
+    const extraIds = new Set<string>();
+    for (const id of this.groupModel.rowGroupCols) if (!visibleIds.has(id)) extraIds.add(id);
+    for (const id of this.pivotState.getPivotColumns()) if (!visibleIds.has(id)) extraIds.add(id);
+    for (const v of this.pivotState.getValueColumns()) if (!visibleIds.has(v.colId)) extraIds.add(v.colId);
+    const extraGroupCols = [...extraIds]
+      .map((id) => primaryLeaves.get(id) as ResolvedColDef<TRow> | undefined)
+      .filter((def): def is ResolvedColDef<TRow> => def !== undefined);
     return [...this.columnOrder, ...extraGroupCols].map((c) => {
       const base: WorkerColumn = {
         colId: c.colId,
@@ -5205,6 +5424,10 @@ export class CGrid<TRow = any> {
         this.chunk = chunk;
         this.stickyAncestors = stickyAncestors ?? [];
         this.decodedTextCols.clear();
+        // Cycle 18 / Task 3 — (re)synthesize or drop the pivot result
+        // columns from the freshly-arrived pivot tree before the layout +
+        // paint below run off the new column order.
+        this.maybeSyncPivotColumns(chunk);
         // Cycle 4 / Task 11 (cell-flash patch) — drain the worker's
         // per-cell flashMask into the registry. The chunk's `rowIds`
         // are numeric (the worker's stable mapping); the painter's
@@ -5422,6 +5645,30 @@ export class CGrid<TRow = any> {
       const payload = this.groupCellContextAt(rowIndex);
       if (payload === null) return { value: '', valueFormatted: '', flashAlpha: flash };
       return { value: payload, valueFormatted: payload.valueFormatted, flashAlpha: flash };
+    }
+    // Cycle 18 / Task 3 — pivot result columns read their cross-tab
+    // aggregate from `chunk.pivotValues`, addressed by the row's group key
+    // × the column's (pivotPath, valueColId). Only aggregated rows carry a
+    // value: group rows (1), grand-total (2), and footer rows (3) resolve
+    // through their composite `groupKey` (the grand total uses key `''`);
+    // leaf data rows (0) are not aggregated under pivot → empty.
+    if (this.pivotActive && isPivotResultColumnId(colId)) {
+      const spec = this.pivotCellSpecById.get(colId);
+      const pivotValues = this.chunk.pivotValues;
+      const kind = this.chunk.rowKinds[localIndex] ?? 0;
+      if (!spec || !pivotValues || kind === 0) {
+        return { value: '', valueFormatted: '', flashAlpha: flash };
+      }
+      const groupKey = this.chunk.groupKey?.[localIndex] ?? '';
+      const raw = pivotValues.get(
+        encodePivotValueKey(groupKey, spec.pivotPath.join(PIVOT_PATH_SEP), spec.valueColId),
+      );
+      if (raw === undefined || raw === null) {
+        return { value: '', valueFormatted: '', flashAlpha: flash };
+      }
+      const valueFormatted = typeof raw === 'number' ? this.formatNumber(colId, raw) : String(raw);
+      const gFlash = this.groupFlashAlpha(groupKey, colId);
+      return { value: raw, valueFormatted, flashAlpha: gFlash ?? flash };
     }
     // Cycle 15 / Task 12 — footer rows (rowKind === 3) source their
     // per-column values from the per-group totals map (or, for the

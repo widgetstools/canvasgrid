@@ -5,6 +5,7 @@ import type {
 import { normalizeViewportChunk } from './protocol';
 export type { StickyAncestor };
 import type { TransactionResult, SortModel, FilterModel, GroupModel, SelectionRange } from '../types';
+import type { PivotModel } from './passes/pivotPass';
 
 export interface WorkerClientHandlers {
   /** Cycle 15 / Task 7 — `groupKeys` is present when grouping is
@@ -164,6 +165,15 @@ export class WorkerClient {
       groupDescendants: r.groupDescendants ?? [],
       expandedKeys: r.expandedKeys ?? null,
     }));
+  }
+
+  /** Cycle 18 / Task 3 — install / replace the worker's pivot model.
+   *  The worker re-runs `PivotPass` on the next `getViewport`; an empty
+   *  model deactivates pivot. Unknown / fieldless colIds surface as a
+   *  rejected promise (mirrors `setGroupModel`). Resolves with the
+   *  current visible row count (pivot does not change row visibility). */
+  setPivotModel(model: PivotModel): Promise<{ visibleCount: number }> {
+    return this.send<{ visibleCount: number }>({ type: 'setPivotModel', payload: model });
   }
 
   /** Cycle 15 / Task 7 — replace the worker's persistent expanded-keys

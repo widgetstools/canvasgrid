@@ -5,9 +5,10 @@ import type {
 import { collectViewportTransferables } from './protocol';
 import {
   RowStore, FilterPass, SortPass, AggPass, GroupPass, ViewportSlicer, TransactionQueue,
-  QuickFilterPass, DistinctValuesPass, diffRowFields,
+  QuickFilterPass, DistinctValuesPass, diffRowFields, PivotPass,
 } from './dataPipeline';
 import type { GroupNode, GroupPassOutput } from './passes/groupPass';
+import type { PivotModel } from './passes/pivotPass';
 import {
   computeGroupVisibleOrder, computeGroupVisibleRowCount, sliceGroupedViewport,
   type VisibleRowEntry,
@@ -60,6 +61,17 @@ interface State {
   /** Cycle 15 / Task 1 — last `GroupPass.apply` result. Recomputed on
    *  every `buildVisibleAsync`. `null` until the first build runs. */
   groupOutput: GroupPassOutput | null;
+  /** Cycle 18 / Task 3 — pivot engine. Runs in the `getViewport` handler
+   *  (like `AggPass`) when a non-empty pivot model is installed, reading
+   *  `pivotInputIds` + `groupOutput`. Bypasses (ships no pivot fields)
+   *  when no pivot/value columns are set. */
+  pivot: PivotPass;
+  /** Cycle 18 / Task 3 — post-filter (pre-sort) rowId set captured on
+   *  every `buildVisibleAsync`. `PivotPass.apply` scans these for key
+   *  discovery + grand-total aggregation; for the per-group cross-tabs
+   *  it uses `groupInputIds` (which `GroupNode.childIndices` index into)
+   *  when grouping is active. `null` until the first build runs. */
+  pivotInputIds: readonly string[] | null;
   /** Cycle 15 / Task 8 — snapshot of the rowId array fed into the most
    *  recent `GroupPass.apply` (the post-filter, pre-sort set). Captured
    *  alongside `groupOutput` so we can translate a `GroupNode`'s
@@ -243,6 +255,11 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     // so a future `state.group.apply` doesn't mutate this snapshot
     // behind a pending descendant request.
     state.groupInputIds = state.groupOutput.bypassed ? null : ids.slice();
+    // Cycle 18 / Task 3 — capture the post-filter set for PivotPass key
+    // discovery + grand-total aggregation. When grouping is active this is
+    // the same array `groupInputIds` snapshots (so `GroupNode.childIndices`
+    // align); we keep a dedicated handle so ungrouped pivots have it too.
+    state.pivotInputIds = ids.slice();
     // Cycle 15 / Task 11 — group-aware sort. When grouping is active,
     // sort happens inside the group tree (within-bucket child indices +
     // per-level group ordering), NOT across the flat post-filter array.
@@ -574,6 +591,10 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       sort:        new SortPass(store, payload.columns, comparators),
       group,
       groupOutput: null,
+      // Cycle 18 / Task 3 — pivot engine shares the same AggFuncRegistry
+      // as AggPass so custom aggFuncs resolve identically.
+      pivot:       new PivotPass(store, payload.columns, aggFuncs),
+      pivotInputIds: null,
       groupInputIds: null,
       emitGroupDescendants: false,
       expandedKeys: null,
@@ -899,6 +920,30 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             break;
           }
 
+          case 'setPivotModel': {
+            // Cycle 18 / Task 3 — install / replace the pivot model.
+            // Reject unknown / fieldless colIds at the set-site (mirrors
+            // setGroupModel) so malformed input surfaces as an `error`
+            // envelope instead of a silently broken cross-tab. The pivot
+            // model does NOT change which rows are visible (it's a column
+            // transform), so the visible cache is untouched — the next
+            // getViewport simply re-runs PivotPass against the cached
+            // post-filter set. Resolves with the current visible count.
+            try {
+              state.pivot.setModel(req.payload as PivotModel);
+            } catch (err) {
+              post({ id: req.id, type: 'error', error: String((err as Error).message ?? err) });
+              break;
+            }
+            post({
+              id: req.id,
+              type: 'rowCount',
+              count: state.store.size(),
+              visibleCount: await invalidateAndCount(),
+            });
+            break;
+          }
+
           case 'setExpandedKeys': {
             // Cycle 15 / Task 7 — replace the persistent expanded set.
             // `null` means "revert to the all-expanded default" (used by
@@ -960,6 +1005,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             state.distinct.setColumns(cols);
             state.sort.setColumns(cols);
             state.group.setColumns(cols);
+            state.pivot.setColumns(cols);
             state.agg.setColumns(cols);
             state.slicer.setColumns(cols);
             state.visibleCache = null;
@@ -1356,6 +1402,32 @@ export function createWorkerHost(post: PostFn): WorkerHost {
               );
               if (Object.keys(groupAggResult.groupTotals).length > 0) {
                 chunk.groupTotals = groupAggResult.groupTotals;
+              }
+            }
+            // Cycle 18 / Task 3 — pivot cross-tab. Runs only when a pivot
+            // model is installed (cheap getModel() check guards the row
+            // scan). Per-group cross-tabs read `groupInputIds` (which
+            // `GroupNode.childIndices` index into) when grouping is active;
+            // the key discovery + grand total scan `pivotInputIds`. The
+            // result rides the chunk's structured-clone path (no transfer
+            // buffers, no binary chunkFormat — like groupTotals).
+            const pivotModel = state.pivot.getModel();
+            if (
+              pivotModel.pivotColIds.length > 0
+              && pivotModel.valueCols.length > 0
+              && state.pivotInputIds !== null
+            ) {
+              const pivotInputIds = isGroupingActive() && state.groupInputIds !== null
+                ? state.groupInputIds
+                : state.pivotInputIds;
+              const pivotOut = state.pivot.apply(
+                pivotInputIds,
+                state.groupOutput ?? { bypassed: true, roots: [], flatOrder: [] },
+              );
+              if (!pivotOut.bypassed) {
+                chunk.pivotColumnTree = pivotOut.keyTree;
+                chunk.pivotLeafPaths = pivotOut.leafPaths;
+                chunk.pivotValues = pivotOut.values;
               }
             }
             post(

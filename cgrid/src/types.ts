@@ -587,6 +587,18 @@ export interface CGridOptions<TRow = any> {
    *  Design plan:
    *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 5. */
   groupDisplayType?: 'singleColumn' | 'multipleColumns' | 'groupRows' | 'custom';
+  /** Cycle 18 / Task 3 — master pivot switch. When `true`, the grid
+   *  enters pivot mode: the configured pivot (Column Label) columns'
+   *  distinct values become secondary column groups, the value columns
+   *  become aggregated measures, and the primary data columns are
+   *  hidden (the auto-group column stays as the row-dim axis). Pivot
+   *  only PRODUCES a matrix when at least one pivot column AND one value
+   *  column are also configured (`api.isPivotMode()` reflects the mode;
+   *  the matrix is "active" only when both lists are non-empty). Pivot
+   *  config is set via the imperative API (`setPivotColumns` /
+   *  `addValueColumn`) or the tool-panel surfaces (Task 5-7). Persisted
+   *  separately from column state (ag-grid parity). Default `false`. */
+  pivotMode?: boolean;
   /** Cycle 15 / Task 5 — registered cell-renderer name used to paint
    *  group rows when `groupDisplayType === 'custom'`. The renderer is
    *  invoked once per group row with bounds spanning every visible
@@ -1289,6 +1301,17 @@ export interface CColDef<TRow = any, TValue = any> {
    *  UI drag-from-header gesture. Design plan:
    *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 6. */
   enableRowGroup?: boolean;
+  /** Cycle 18 / Task 3 — gates whether the user may drag this column's
+   *  header into the Column Labels (pivot) drop zone. `false` (default,
+   *  mirrors ag-grid) rejects the drop; the imperative
+   *  `setPivotColumns` / `addPivotColumn` API works regardless — this
+   *  flag gates only the UI gesture (Task 5 / 7 wire the surfaces). */
+  enablePivot?: boolean;
+  /** Cycle 18 / Task 3 — gates whether the user may drag this column's
+   *  header into the Values drop zone (aggregated measure). `false`
+   *  (default) rejects the drop; the imperative `addValueColumn` API
+   *  works regardless. */
+  enableValue?: boolean;
 }
 
 /**
@@ -2026,6 +2049,31 @@ export interface CGridApi {
    *  list in nesting order. Returns a fresh array — callers may
    *  mutate it without affecting grid state. */
   getRowGroupColumns(): string[];
+
+  // ─── Cycle 18 / Task 3 — pivot API (ag-grid parity) ───────────────────
+  /** Whether pivot mode is on. */
+  isPivotMode(): boolean;
+  /** Turn pivot mode on / off. A pivot only produces a matrix when at
+   *  least one pivot column AND one value column are also set. */
+  setPivotMode(pivotMode: boolean): void;
+  /** Snapshot of the ordered pivot (Column Label) columns. Fresh array. */
+  getPivotColumns(): string[];
+  /** Replace the ordered pivot column list wholesale. */
+  setPivotColumns(colIds: string[]): void;
+  /** Append a pivot column (idempotent). */
+  addPivotColumn(colId: string): void;
+  /** Remove a pivot column (idempotent). */
+  removePivotColumn(colId: string): void;
+  /** Move a pivot column from index `from` to index `to`. */
+  movePivotColumn(from: number, to: number): void;
+  /** Snapshot of the ordered value columns (`{ colId, aggFunc }`). Fresh. */
+  getValueColumns(): Array<{ colId: string; aggFunc: string }>;
+  /** Append a value column with its aggregation (idempotent by colId). */
+  addValueColumn(colId: string, aggFunc: string): void;
+  /** Remove a value column (idempotent). */
+  removeValueColumn(colId: string): void;
+  /** Change an existing value column's aggregation function. */
+  setValueColumnAggFunc(colId: string, aggFunc: string): void;
 
   /** Cycle 15 / Task 7 — expand every row group. Fires
    *  `expandOrCollapseAll` with `expanded: true`. No-op when grouping
