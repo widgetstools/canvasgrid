@@ -26,6 +26,16 @@ test.describe('groupTotalRow feature', () => {
     await expect(btn).toBeVisible();
   });
 
+  test('behaviour: per-group footer rows are present — footers add rows beyond groups + leaves', async ({ page }) => {
+    await gotoFeature(page, 'groupTotalRow');
+
+    // 100 leaves + 4 desk group rows = 104 baseline. groupIncludeFooter
+    // inserts one footer row per group, so the visible row count must
+    // exceed the no-footer baseline (observed: 108 = 104 + 4 footers).
+    const rowCount = await page.evaluate(() => (window.__cgrid as unknown as { rowCount: number }).rowCount ?? 0);
+    expect(rowCount).toBeGreaterThan(104);
+  });
+
   test('description bar mentions groupTotalRow', async ({ page }) => {
     await gotoFeature(page, 'groupTotalRow');
 
