@@ -4,8 +4,8 @@
     {
       "name": "cgrid-positions",
       "runtimeExecutable": "npm",
-      "runtimeArgs": ["run", "dev", "--workspace=apps/cgrid-positions"],
-      "port": 5176
+      "runtimeArgs": ["run", "dev", "--workspace=cgrid-positions"],
+      "port": 5183
     }
   ]
 }
