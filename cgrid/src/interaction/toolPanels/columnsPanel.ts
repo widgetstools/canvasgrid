@@ -514,20 +514,33 @@ export class ColumnsToolPanel implements ToolPanel {
 
   // ---- drag-within-list reorder + drag-into-row-groups-zone ---------
 
-  /** Drag-within-the-panel reorder. Cycle 15.5 / Task 2 extends the
-   *  Cycle 11 gesture: if `allowDragFromColumnsToolPanel` is on
-   *  (default `true`) AND the user releases over the Row Groups drop
-   *  zone, the column is added to `rowGroupColumns` (when
-   *  `enableRowGroup`); otherwise the gesture commits as a normal
-   *  reorder via `api.moveColumns`. */
+  /** Drag-within-the-panel reorder with ag-grid–style drag UX.
+   *
+   *  Gesture state machine:
+   *    idle → pressed (mousedown on handle)
+   *    pressed → dragging (movement past DRAG_THRESHOLD_PX)
+   *    dragging → idle (mouseup)
+   *
+   *  While DRAGGING:
+   *  - The source row becomes invisible (`--lifted`) so its DOM slot is
+   *    preserved for the optimistic reorder but the row isn't shown twice.
+   *  - A floating ghost card (`cg-col-drag-ghost`) mounts on document.body
+   *    and follows the cursor at (+12, +8) offset — same pattern as the
+   *    row group panel chip ghost from Task 1.
+   *  - Drop targets (tool-panel zone + row group header strip) light up
+   *    with accept/reject outlines as the cursor crosses their rects.
+   *
+   *  A mouseup before the threshold is treated as a click: no ghost,
+   *  no state mutation, no `moveColumns` call. */
   private beginRowDrag(e: MouseEvent, colId: string): void {
     e.preventDefault();
     const row = this.rows.get(colId);
     if (!row) return;
-    row.el.classList.add('cg-columns-panel-row--dragging');
 
-    // Default to `true` when the option is omitted (`undefined`); only
-    // an explicit `false` opts out of the drag-into-zone gesture.
+    const label = this.resolveLabel(colId);
+    const startX = e.clientX;
+    const startY = e.clientY;
+
     const allowDragOut = this.api.getGridOption?.('allowDragFromColumnsToolPanel') !== false;
     const isGroupable = this.api.isColumnRowGroupEnabled?.(colId) ?? false;
     const alreadyGrouped = (this.api.getRowGroupColumns?.() ?? []).includes(colId);
@@ -536,120 +549,139 @@ export class ColumnsToolPanel implements ToolPanel {
       .map((c) => (c as HTMLElement).dataset.colId)
       .filter((id): id is string => typeof id === 'string');
 
-    // True when the pointer is inside the tool panel's own Row Groups
-    // drop zone (the section within this panel).
+    let dragStarted = false;
     let overZone = false;
-    // True when the pointer is inside the row group HEADER STRIP (the
-    // horizontal chip-strip above the column headers, managed by the
-    // RowGroupPanelHost).  Mutually exclusive with overZone — the strip
-    // is outside the sidebar, so the cursor can only be in one at a time.
     let overHeaderStrip = false;
 
-    // Cast the api to the router interface so routeExternalDragHover can
-    // call the three methods we just wired on CGrid / CGridApi.
+    // ---- Floating ghost -------------------------------------------
+    let ghost: HTMLDivElement | null = null;
+
+    const mountGhost = (clientX: number, clientY: number): void => {
+      if (typeof document === 'undefined') return;
+      const el = document.createElement('div');
+      el.className = 'cg-col-drag-ghost';
+      const icon = document.createElement('span');
+      icon.className = 'cg-col-drag-ghost-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      icon.textContent = '⠿';
+      const lbl = document.createElement('span');
+      lbl.className = 'cg-col-drag-ghost-label';
+      lbl.textContent = label;
+      el.appendChild(icon);
+      el.appendChild(lbl);
+      ghost = el;
+      // Position before appending so the first frame is already correct
+      // (avoids a flash at 0,0 before the rAF fires).
+      el.style.transform = `translate(${Math.round(clientX + 12)}px,${Math.round(clientY + 8)}px)`;
+      document.body.appendChild(el);
+      // Trigger the fade-in transition on the next paint.
+      requestAnimationFrame(() => el.classList.add('cg-col-drag-ghost--visible'));
+    };
+
+    const positionGhost = (clientX: number, clientY: number): void => {
+      if (!ghost) return;
+      ghost.style.transform = `translate(${Math.round(clientX + 12)}px,${Math.round(clientY + 8)}px)`;
+    };
+
+    const removeGhost = (): void => {
+      ghost?.remove();
+      ghost = null;
+    };
+
+    // ---- Shared row-group-panel router ----------------------------
     const router = this.api as unknown as import('../features/columnDrag').RowGroupPanelDragRouter;
     const hasRouter =
       typeof (this.api as any).isPointInRowGroupPanel === 'function'
       && typeof (this.api as any).setRowGroupPanelDragHover === 'function'
       && typeof (this.api as any).commitRowGroupPanelDrop === 'function';
 
+    // ---- Handlers -------------------------------------------------
     const onMove = (ev: MouseEvent) => {
-      // Cycle 15.5 / Task 2 (gap-fill) — check the row group HEADER STRIP
-      // first (it is outside the sidebar; higher visual priority).  When
-      // the cursor enters the strip we light it up via the shared router
-      // and suppress both the in-panel drop-zone paint and the in-list
-      // reorder to avoid competing visual feedback.
+      // Gate ALL drag behavior behind the threshold — clicks must not
+      // trigger zone highlights, list reorders, or ghost rendering.
+      if (!dragStarted) {
+        const dx = ev.clientX - startX;
+        const dy = ev.clientY - startY;
+        if (Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) return;
+        dragStarted = true;
+        // Visually "lift" the row out of the list without removing its
+        // DOM slot (so the optimistic reorder doesn't change list height).
+        row.el.classList.add('cg-columns-panel-row--lifted');
+        mountGhost(ev.clientX, ev.clientY);
+      }
+
+      positionGhost(ev.clientX, ev.clientY);
+
+      // Check the row group HEADER STRIP first — it's outside the sidebar
+      // so it has higher visual priority than the in-panel zone.
       if (hasRouter && allowDragOut && isGroupable && !alreadyGrouped) {
         const inStrip = routeExternalDragHover(router, colId, ev.clientX, ev.clientY);
         if (inStrip !== overHeaderStrip) {
           overHeaderStrip = inStrip;
-          // When entering the header strip, also clear the zone highlight.
           if (inStrip) this.setRowGroupsZoneDropState(null);
         }
-        if (overHeaderStrip) return; // cursor is in the strip — skip all zone/list logic
+        if (overHeaderStrip) return;
       }
 
-      // Cycle 15.5 / Task 2 — paint the tool-panel zone drop-state when
-      // the cursor enters / leaves the zone mid-drag.
+      // Paint the tool-panel drop-zone outline.
       if (allowDragOut && this.rowGroupsSection !== null) {
         const insideNow = this.isPointInRowGroupsZone(ev.clientX, ev.clientY);
         if (insideNow !== overZone) {
           overZone = insideNow;
-          if (insideNow) {
-            const verdict = isGroupable && !alreadyGrouped ? 'accept' : 'reject';
-            this.setRowGroupsZoneDropState(verdict);
-          } else {
-            this.setRowGroupsZoneDropState(null);
-          }
+          this.setRowGroupsZoneDropState(
+            insideNow
+              ? (isGroupable && !alreadyGrouped ? 'accept' : 'reject')
+              : null,
+          );
         }
       }
 
-      // When the cursor is inside the zone, skip the in-list reorder
-      // logic — the user is aiming AT the zone, not at a list slot.
       if (overZone) return;
 
-      const list = orderedColIds();
-      const fromIdx = list.indexOf(colId);
+      // Optimistic list reorder.
       const rect = this.listEl.getBoundingClientRect();
       const y = ev.clientY - rect.top;
-      // Compute the target index by walking siblings and finding the first
-      // one whose midpoint is below the pointer.
       const children = Array.from(this.listEl.children) as HTMLElement[];
       if (children.length === 0) return;
+      const list = orderedColIds();
+      const fromIdx = list.indexOf(colId);
       let toIdx = children.length - 1;
       for (let i = 0; i < children.length; i++) {
         const child = children[i]!;
         const r = child.getBoundingClientRect();
-        const mid = r.top + r.height / 2 - rect.top;
-        if (y < mid) {
-          toIdx = i;
-          break;
-        }
+        if (y < r.top + r.height / 2 - rect.top) { toIdx = i; break; }
       }
       if (toIdx === fromIdx) return;
-      // Move the DOM node optimistically; final commit on mouseup.
-      const moving = row.el;
       const ref = children[toIdx]!;
-      if (toIdx > fromIdx) {
-        // Inserting after `ref` because the moving node currently occupies
-        // an earlier slot — DOM convention: insert before ref.nextSibling.
-        ref.parentElement?.insertBefore(moving, ref.nextSibling);
-      } else {
-        ref.parentElement?.insertBefore(moving, ref);
-      }
+      ref.parentElement?.insertBefore(
+        row.el,
+        toIdx > fromIdx ? ref.nextSibling : ref,
+      );
     };
 
     const onUp = (ev: MouseEvent) => {
-      row.el.classList.remove('cg-columns-panel-row--dragging');
+      row.el.classList.remove('cg-columns-panel-row--lifted');
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
-
-      // Always clear the header strip hover state on release.
+      removeGhost();
       if (hasRouter) clearExternalDragHover(router);
 
-      // Cycle 15.5 / Task 2 (gap-fill) — if the release is inside the
-      // row group HEADER STRIP, commit there (addRowGroupColumn via the
-      // panel host's acceptance path) and skip all other drop targets.
+      // A click that never crossed the threshold — nothing to commit.
+      if (!dragStarted) return;
+
       if (overHeaderStrip) {
         (this.api as any).commitRowGroupPanelDrop?.(colId);
         return;
       }
 
-      // Cycle 15.5 / Task 2 — release-over-tool-panel-zone commits as a
-      // group-by when the column is eligible.
       this.setRowGroupsZoneDropState(null);
-      if (
-        allowDragOut
-        && this.rowGroupsSection !== null
-        && this.isPointInRowGroupsZone(ev.clientX, ev.clientY)
-      ) {
-        if (isGroupable && !alreadyGrouped) {
-          this.api.addRowGroupColumn?.(colId);
-        }
+      if (allowDragOut && this.rowGroupsSection !== null
+          && this.isPointInRowGroupsZone(ev.clientX, ev.clientY)) {
+        if (isGroupable && !alreadyGrouped) this.api.addRowGroupColumn?.(colId);
         return;
       }
-      const list = orderedColIds();
-      const finalIdx = list.indexOf(colId);
+
+      const finalIdx = orderedColIds().indexOf(colId);
       if (finalIdx >= 0) {
         try {
           this.api.moveColumns([colId], finalIdx);

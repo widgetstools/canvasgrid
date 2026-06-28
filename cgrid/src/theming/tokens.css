@@ -807,9 +807,10 @@
 .cg-columns-panel-row:hover {
   background: var(--cg-row-hover-bg);
 }
-.cg-columns-panel-row--dragging {
-  opacity: 0.7;
-  background: color-mix(in srgb, var(--cg-focus-ring-color) 18%, transparent);
+.cg-columns-panel-row--lifted {
+  /* Row is "in the air" — keep its DOM slot so layout doesn't shift, but
+   * hide the row itself so there's no double-render with the ghost. */
+  visibility: hidden;
 }
 .cg-columns-panel-row-checkbox {
   flex: 0 0 auto;
@@ -840,6 +841,49 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+/* Floating drag ghost for column-list row drags (columnsPanel beginRowDrag).
+ * Mounts on document.body, tracks the cursor with transform: translate.
+ * Starts invisible (opacity: 0) and fades in on the next rAF tick by adding
+ * the --visible modifier so the first frame is never a flash at (0,0). */
+.cg-col-drag-ghost {
+  position: fixed;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  user-select: none;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border-radius: 4px;
+  background: var(--cg-header-bg, #1e2022);
+  color: var(--cg-header-fg, #d4d4d4);
+  font-size: 12px;
+  font-family: var(--cg-font-family, inherit);
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 1px 4px rgba(0, 0, 0, 0.35);
+  border: 1px solid color-mix(in srgb, var(--cg-border-color, #444) 80%, transparent);
+  opacity: 0;
+  will-change: transform;
+  transform: translate(0, 0);
+}
+.cg-col-drag-ghost--visible {
+  /* Transition only opacity so transform updates are instant (no lag). */
+  opacity: 1;
+  transition: opacity 80ms ease;
+}
+.cg-col-drag-ghost-icon {
+  opacity: 0.6;
+  font-size: 11px;
+  line-height: 1;
+}
+.cg-col-drag-ghost-label {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .cg-columns-panel-section {
   flex: 0 0 auto;
   border-top: 1px solid color-mix(in srgb, var(--cg-border-color) 60%, transparent);
@@ -902,10 +946,13 @@
   /* When pills are present, swap to a left-aligned, list-shaped
    * layout. The empty-state placeholder retains the original centered
    * text via its own `text-align: center` rule below. */
-  padding: 6px;
+  /* Bottom padding gives ~1.5-pill-height of always-visible drop space
+   * below any existing pills — no need to aim precisely at a tiny gap. */
+  padding: 6px 6px 30px;
   opacity: 1;
   text-align: left;
-  min-height: 40px;
+  min-height: 80px;
+  transition: border-color 120ms ease, box-shadow 120ms ease;
 }
 .cg-columns-panel-rgz[data-drop="accept"] {
   border-color: var(--cg-row-group-panel-drop-border,
