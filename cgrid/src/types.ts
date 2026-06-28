@@ -2361,6 +2361,17 @@ export interface CGridApi {
    *  appended to `rowGroupColumns`, `false` when rejected (column
    *  already grouped or `enableRowGroup` not set). */
   commitRowGroupPanelDrop?(colId: string): boolean;
+  /** True when (clientX, clientY) is within the leaf column-header band.
+   *  Used by external drag sources (e.g. Columns tool panel) to decide
+   *  whether the cursor is hovering over the column-header strip. */
+  isPointInColumnHeaderBand?(clientX: number, clientY: number): boolean;
+  /** Inform the column-header area of an external drag hover.  Paints
+   *  an insertion line at the nearest column gap.  Pass `colId=null`
+   *  to clear (e.g. on drag-end or drag-leave). */
+  setColumnHeaderDragHover?(colId: string | null, clientX: number, clientY: number): void;
+  /** Commit an external drop onto the column-header area: moves `colId`
+   *  to the nearest legal column position at `clientX`. */
+  commitColumnHeaderDrop?(colId: string, clientX: number): void;
   /** Cycle 11 / Task 4 — the resolved popup-filter type for `colId`, or
    *  `null` when the column is unknown or has no filter. Used by the
    *  FiltersToolPanel to decide which columns get a collapsible row. */

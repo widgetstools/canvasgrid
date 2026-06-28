@@ -20,6 +20,7 @@
   color-scheme: light;
   --cg-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
   --cg-font-size: 13px;
+  --cg-font-size-sm: 12px;
   --cg-row-height: 32px;
   --cg-header-height: 40px;
   --cg-fg-color: #1a1f24;
@@ -127,83 +128,56 @@
 }
 
 .cg-theme-quartz-dark {
-  /* Dark-mode counterpart — flips the native date-picker calendar,
-   * spinners, and autofill chrome to dark UA rendering so they match
-   * the grid surface instead of punching a white square out of it. */
+  /* VS Code Dark Modern palette — editor.background #1e1e1e family.
+   * focusBorder: #007fd4 · sideBar: #252526 · list.hover: #2a2d2e
+   * editorLineNumber: #858585 · selection: #264f78 */
   color-scheme: dark;
   --cg-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
   --cg-font-size: 13px;
+  --cg-font-size-sm: 12px;
   --cg-row-height: 32px;
   --cg-header-height: 40px;
-  --cg-fg-color: #cbd5e1;
-  --cg-bg-color: #0a1428;
-  --cg-row-alt-bg: #0a1428;
-  --cg-header-bg: #0d1a33;
-  --cg-header-fg: #cbd5e1;
-  --cg-border-color: #38507a;
-  --cg-grid-line-color: #2b3a5c;
-  --cg-row-hover-bg: #11203a;
-  --cg-row-selected-bg: rgb(56 132 195 / 32%);
-  --cg-focus-ring-color: #60a5fa;
+  --cg-fg-color: #d4d4d4;
+  --cg-bg-color: #1e1e1e;
+  --cg-row-alt-bg: #1e1e1e;
+  --cg-header-bg: #252526;
+  --cg-header-fg: #d4d4d4;
+  --cg-border-color: #454545;
+  --cg-grid-line-color: #2a2d2e;
+  --cg-row-hover-bg: #2a2d2e;
+  --cg-row-selected-bg: rgb(38 79 120 / 50%);
+  --cg-focus-ring-color: #007fd4;
   --cg-focus-ring-width: 2px;
-  --cg-flash-from-color: #b45309;
-  --cg-flash-to-color: rgba(180, 83, 9, 0);
+  --cg-flash-from-color: #b8860b;
+  --cg-flash-to-color: rgba(184, 134, 11, 0);
   --cg-resizer-hot-zone: 4px;
   --cg-scrollbar-thickness: 6px;
   --cg-floating-filter-bg: transparent;
-  --cg-floating-filter-border: #38507a;
-  --cg-floating-filter-placeholder: #64748b;
-  /* Cycle 7 / Task 7 — muted amber tint so the highlight stays
-   * legible against --cg-fg-color (#cbd5e1) on dark theme without
-   * over-saturating. */
-  --cg-quick-filter-match-bg: #5a3a0e;
-  /* Cycle 8 / Task 5 — dark-mode counterpart of --cg-unsort-icon-color.
-   * Pale slate so the faint chevron pair stays barely visible against
-   * --cg-header-bg (#0d1a33). The 50% painter alpha drops it to ~24%
-   * effective opacity. */
-  --cg-unsort-icon-color: rgba(203, 213, 225, 0.48);
-  /* Cycle 9 / Task 3 — dark-mode counterpart. Same translucent wash
-   * tuned against the dark surface; border matches the dark focus
-   * ring color. */
-  --cg-range-fill-color: rgb(96 165 250 / 22%);
-  --cg-range-border-color: #60a5fa;
-  /* Cycle 14 / Task 1 — dark-mode totals tokens. The same hairline lift
-   * tuned for the dark body: a 5% upward shift in lightness with no
-   * temperature change, rule color between gridline and header border. */
-  --cg-totals-bg: #0f1d36;
-  --cg-totals-fg: #e2e8f0;
-  --cg-totals-border-top: #4a6391;
-  --cg-totals-fg-muted: #94a3b8;
+  --cg-floating-filter-border: transparent;
+  --cg-floating-filter-placeholder: #6e7681;
+  --cg-quick-filter-match-bg: #4d3700;
+  --cg-unsort-icon-color: rgba(212, 212, 212, 0.4);
+  --cg-range-fill-color: rgb(0 127 212 / 20%);
+  --cg-range-border-color: #007fd4;
+  /* Totals — sideBar.background lift + editorLineNumber muted fg. */
+  --cg-totals-bg: #252526;
+  --cg-totals-fg: #e8e8e8;
+  --cg-totals-border-top: #454545;
+  --cg-totals-fg-muted: #858585;
   --cg-totals-font-weight: 500;
-  /* Cycle 14 / Task 2 — dark-mode pinned-row tokens. The warm cast
-   * survives the theme flip: body `#0a1428` (cool slate) → pinned
-   * `#241e16` (~5% upward + amber shift). Same structural border as
-   * totals via the aliased var. */
-  --cg-pinned-row-bg: #241e16;
+  /* Pinned rows — single step above editor background. */
+  --cg-pinned-row-bg: #2c2c2c;
   --cg-pinned-row-fg: var(--cg-fg-color);
   --cg-pinned-row-border: var(--cg-totals-border-top);
-  /* Cycle 15 / Task 4 — dark-mode auto-group column tokens. Aliased to
-   * the muted totals foreground so chevron + count read as the same
-   * "metadata" tone the totals renderer uses for empty placeholders.
-   * Indent unit is theme-agnostic; declared once on the light theme. */
+  /* Group rows — same as header so spine reads as structural chrome. */
   --cg-group-chevron-color: var(--cg-totals-fg-muted);
   --cg-group-count-color: var(--cg-totals-fg-muted);
   --cg-group-indent: 14px;
-  /* Cycle 15 / Task 5 — dark-mode group-row strip bg. Pale slate cast
-   * over the dark body (#0a1428); same role as the light token — far
-   * lighter than --cg-totals-bg (which carries the synthesis signature
-   * in dark too). */
-  --cg-group-row-bg: #11203a;
-  /* Cycle 15 / Task 8 — dark-mode tri-state checkbox tokens. Body fg
-   * (var(--cg-fg-color) ≈ #cbd5e1) keeps the outlined box visible
-   * against the dark surface; shape carries the state distinction. */
+  --cg-group-row-bg: #252526;
   --cg-group-checkbox-border-color: var(--cg-fg-color);
   --cg-group-checkbox-check-color: var(--cg-fg-color);
   --cg-group-checkbox-indeterminate-color: var(--cg-fg-color);
   --cg-group-checkbox-fill: transparent;
-  /* Cycle 15 / Task 12 — dark-mode per-group footer tokens. Same
-   * inherit-from-totals pattern as the light theme; flipping the
-   * theme keeps the footer-vs-grand-total visual parity. */
   --cg-group-footer-bg: var(--cg-totals-bg);
   --cg-group-footer-fg: var(--cg-totals-fg);
   --cg-group-footer-border-top: var(--cg-totals-border-top);
@@ -301,7 +275,7 @@
 }
 .cg-floating-filter-input::placeholder {
   color: var(--cg-floating-filter-placeholder);
-  font-size: 11px;
+  font-size: var(--cg-font-size-sm);
   opacity: 0.7;
 }
 .cg-floating-filter-input:focus {
@@ -324,7 +298,7 @@
   background: transparent;
   color: var(--cg-floating-filter-placeholder);
   font-family: var(--cg-font-family);
-  font-size: 14px;
+  font-size: var(--cg-font-size);
   line-height: 1;
   cursor: pointer;
   display: none;
@@ -357,7 +331,7 @@
   background: transparent;
   color: var(--cg-floating-filter-placeholder);
   font-family: var(--cg-font-family);
-  font-size: 12px;
+  font-size: var(--cg-font-size-sm);
   line-height: 1;
   cursor: pointer;
   display: flex;
@@ -560,7 +534,7 @@
 }
 .cg-menu-item-tail {
   color: color-mix(in srgb, var(--cg-fg-color) 50%, transparent);
-  font-size: 12px;
+  font-size: var(--cg-font-size-sm);
   padding-left: 16px;
 }
 .cg-menu-item-chevron {
@@ -603,92 +577,83 @@
   border-right: 1px solid var(--cg-border-color);
 }
 .cg-side-bar-tabs {
-  /* Strip holds detached chip-style tabs. Outer padding gives the
-   * chips a small inset from the canvas edge; row-gap separates the
-   * chips so each one reads as its own control. */
+  /* Slim vertical tab strip (ag-grid style). Tabs are minimal: just
+   * the rotated label, no chunky chips. Background is darker; border
+   * separates from the panel. */
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 8px;
-  width: 52px;
-  padding: 8px 6px;
-  background: color-mix(in srgb, var(--cg-bg-color) 85%, #000 15%);
-  border-left: 1px solid color-mix(in srgb, var(--cg-border-color) 60%, transparent);
+  gap: 0;
+  width: 36px;
+  padding: 4px 0;
+  background: var(--cg-header-bg);
+  border-left: 1px solid var(--cg-border-color);
   flex: 0 0 auto;
 }
 .cg-side-bar[data-position="left"] .cg-side-bar-tabs {
   border-left: none;
-  border-right: 1px solid color-mix(in srgb, var(--cg-border-color) 60%, transparent);
+  border-right: 1px solid var(--cg-border-color);
+}
+.cg-side-bar[data-position="left"] .cg-side-bar-tab[aria-pressed="true"] {
+  border-left: none;
+  border-right: 2px solid var(--cg-focus-ring-color);
+  padding-right: 0;
 }
 .cg-side-bar-tab {
-  /* Chip-style tab: rounded rectangle with a visible border, icon
-   * upright at the top, rotated label below. Inactive chips carry a
-   * subtle border in the theme's border colour; active chips switch
-   * to a 2 px focus-ring border on all four sides — the reference
-   * pattern from the user's 2026-06-26 sidebar*.png screenshots.
-   *
-   * The CHIP keeps the normal horizontal-tb writing mode so flex
-   * layout still works the obvious way: column = vertical stack,
-   * justify-content: flex-start = icon at top, label below.
-   * Only the LABEL element rotates (writing-mode: vertical-rl). */
+  /* Minimal vertical tab button — just the icon + rotated label on a
+   * slim background. No borders, no padding bloat. Subtle hover + active
+   * states to signal interactivity. Matches ag-grid's slim sidebar aesthetic. */
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
-  gap: 12px;
-  padding: 14px 8px;
-  min-height: 140px;
-  background: color-mix(in srgb, var(--cg-bg-color) 55%, var(--cg-header-bg) 45%);
-  color: var(--cg-fg-color);
-  border: 1.5px solid color-mix(in srgb, var(--cg-border-color) 65%, transparent);
-  border-radius: 6px;
+  justify-content: center;
+  gap: 3px;
+  padding: 10px 0;
+  height: auto;
+  background: transparent;
+  color: color-mix(in srgb, var(--cg-fg-color) 75%, transparent);
+  border: none;
+  border-left: 2px solid transparent;
   cursor: pointer;
   font-family: inherit;
-  font-size: 13px;
-  font-weight: 400;
   line-height: 1;
-  transition: border-color 0.12s ease, background-color 0.12s ease,
-    box-shadow 0.12s ease;
+  transition: background-color 0.12s ease, color 0.12s ease, border-color 0.12s ease;
 }
 .cg-side-bar-tab:hover {
-  border-color: var(--cg-border-color);
-  background: color-mix(in srgb, var(--cg-bg-color) 35%, var(--cg-header-bg) 65%);
+  background: color-mix(in srgb, var(--cg-fg-color) 6%, transparent);
+  color: var(--cg-fg-color);
 }
 .cg-side-bar-tab:focus-visible {
-  outline: none;
-  border-color: var(--cg-focus-ring-color);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--cg-focus-ring-color) 40%, transparent);
+  outline: 2px solid var(--cg-focus-ring-color);
+  outline-offset: -2px;
 }
 .cg-side-bar-tab[aria-pressed="true"] {
-  /* Active chip: 2 px focus-ring border on all four sides + slightly
-   * lifted background. User-confirmed in Cycle 11; matches the
-   * 2026-06-26 sidebar1/2/3.png reference pattern. */
-  border: 2px solid var(--cg-focus-ring-color);
-  background: color-mix(in srgb, var(--cg-bg-color) 45%, var(--cg-header-bg) 55%);
-  /* Compensate for the 0.5 px border thickness change so the chip
-   * doesn't shift when the active state flips. */
-  padding: 13.5px 7.5px;
+  color: var(--cg-focus-ring-color);
+  border-left: 2px solid var(--cg-focus-ring-color);
+  background: color-mix(in srgb, var(--cg-focus-ring-color) 8%, transparent);
 }
 .cg-side-bar-tab-icon {
-  font-size: 16px;
-  line-height: 1;
-  opacity: 0.85;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
 }
 .cg-side-bar-tab[aria-pressed="true"] .cg-side-bar-tab-icon {
   opacity: 1;
-  color: var(--cg-fg-color);
 }
 .cg-side-bar-tab-label {
-  /* Only the label rotates. Inside its own writing-mode the text
-   * flows top-to-bottom; padding-inline gives the requested padding
-   * around the caption. */
   writing-mode: vertical-rl;
-  padding-block: 6px;
+  padding-block: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
   line-height: 1;
+  width: auto;
+  flex-shrink: 0;
 }
 .cg-side-bar-panel {
-  flex: 0 0 auto;
-  min-width: var(--cg-side-bar-min-width, 100px);
+  flex: 1 1 auto;
+  min-width: var(--cg-side-bar-min-width, 200px);
   overflow: hidden;
   display: flex;
   flex-direction: column;
@@ -759,39 +724,79 @@
   transform: translateX(12px);
 }
 .cg-columns-panel-pivot-mode-label {
-  font-size: 13px;
+  font-size: var(--cg-font-size);
   line-height: 1;
 }
 .cg-columns-panel-search {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 10px;
+  gap: 8px;
+  padding: 8px 10px 6px;
   border-bottom: 1px solid var(--cg-border-color);
   flex: 0 0 auto;
 }
-.cg-columns-panel-search-icon {
-  font-size: 12px;
-  opacity: 0.7;
-  line-height: 1;
+/* "Select All / Deselect All" checkbox — matches column-row checkboxes in
+ * size and accent; supports indeterminate state (some columns hidden). */
+.cg-columns-panel-select-all {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--cg-focus-ring-color);
 }
-.cg-columns-panel-search input {
+/* Wrapper that positions the search icon inside the input on the left. */
+.cg-columns-panel-search-wrap {
   flex: 1 1 auto;
   min-width: 0;
-  padding: 4px 6px;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.cg-columns-panel-search-icon {
+  position: absolute;
+  left: 7px;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  opacity: 0.5;
+  /* SVG magnifying glass via mask-image so it inherits the foreground color */
+  background-color: var(--cg-fg-color);
+  -webkit-mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='16.5' y1='16.5' x2='22' y2='22'/%3E%3C/svg%3E");
+  mask-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='currentColor' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='11' cy='11' r='7'/%3E%3Cline x1='16.5' y1='16.5' x2='22' y2='22'/%3E%3C/svg%3E");
+  -webkit-mask-size: contain;
+  mask-size: contain;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-position: center;
+  mask-position: center;
+  font-size: 0; /* hide any text content */
+}
+.cg-columns-panel-search-wrap input {
+  width: 100%;
+  min-width: 0;
+  padding: 4px 6px 4px 24px; /* 24px left = room for icon */
   background: var(--cg-bg-color);
   color: var(--cg-fg-color);
   border: 1px solid var(--cg-border-color);
   border-radius: 2px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: var(--cg-font-size);
+  box-sizing: border-box;
 }
-.cg-columns-panel-search input:focus {
+.cg-columns-panel-search-wrap input:focus {
   outline: none;
   border-color: var(--cg-focus-ring-color);
 }
+.cg-columns-panel-search-wrap input::placeholder {
+  opacity: 0.5;
+}
 .cg-columns-panel-list {
-  flex: 1 1 auto;
+  flex: 2 1 0;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 4px 0;
@@ -835,7 +840,7 @@
 }
 .cg-columns-panel-row-label {
   flex: 1 1 auto;
-  font-size: 13px;
+  font-size: var(--cg-font-size);
   line-height: 1.4;
   overflow: hidden;
   white-space: nowrap;
@@ -856,13 +861,13 @@
   align-items: center;
   gap: 6px;
   /* Mirror the zone pill dimensions */
-  height: 26px;
+  height: 28px;
   padding: 0 10px 0 8px;
   border: 1px solid var(--cg-row-group-chip-border, var(--cg-border-color));
   border-radius: var(--cg-row-group-chip-radius, 4px);
   background: var(--cg-header-bg, #1e2022);
   color: var(--cg-fg-color);
-  font-size: 12px;
+  font-size: var(--cg-font-size);
   font-family: var(--cg-font-family, inherit);
   white-space: nowrap;
   /* Elevated: stronger shadow than the zone pills */
@@ -895,38 +900,35 @@
 }
 
 .cg-columns-panel-section {
-  flex: 0 0 auto;
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   border-top: 1px solid color-mix(in srgb, var(--cg-border-color) 60%, transparent);
-  padding: 14px 14px 12px;
+  padding: 10px 10px 8px;
 }
 .cg-columns-panel-section-header {
-  /* Sentence case + regular weight matches the 2026-06-26 sidebar2.png
-   * reference ("Row Groups", "Σ Values"). The icon sits inline to the
-   * left at the same size as the label so the pair reads as a phrase. */
+  flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin-bottom: 10px;
-  font-size: 14px;
-  font-weight: 400;
-  letter-spacing: 0;
-  text-transform: none;
-  color: var(--cg-fg-color);
+  gap: 6px;
+  margin-bottom: 8px;
+  font-size: var(--cg-font-size-sm);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: color-mix(in srgb, var(--cg-fg-color) 65%, transparent);
+  padding: 4px 0 2px;
 }
-.cg-columns-panel-section-header::before {
-  content: attr(data-icon);
-  font-weight: normal;
-  font-size: 16px;
-  line-height: 1;
-  opacity: 0.85;
+.cg-columns-panel-section-header-icon {
+  opacity: 0.75;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
 }
 .cg-columns-panel-drop-zone {
-  border: 1px dashed color-mix(in srgb, var(--cg-border-color) 80%, transparent);
-  border-radius: 4px;
-  padding: 12px;
-  text-align: center;
-  font-size: 12px;
-  opacity: 0.7;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
   background: transparent;
 }
 
@@ -949,71 +951,66 @@
  * Design plan:
  *   docs/superpowers/plans/notes/cycle-15-grouping-design.md
  *   § Cycle 15.5 / Task 2 — pill style + drop zone tokens. */
+/* Row Groups drop zone — clean list-style layout matching ag-grid sidebar.
+ * No dashed-box container; items are full-width rows like column-list
+ * entries. Accept/reject states highlight with a subtle outline around the
+ * whole content block rather than a decorative inner box. */
 .cg-columns-panel-rgz {
-  --cg-columns-panel-rgz-chip-font-size: 11px;
-  --cg-columns-panel-rgz-chip-gap: 4px;
-  --cg-columns-panel-rgz-drop-line-thickness: 2px;
-  /* When pills are present, swap to a left-aligned, list-shaped
-   * layout. The empty-state placeholder retains the original centered
-   * text via its own `text-align: center` rule below. */
-  /* Bottom padding gives ~1.5-pill-height of always-visible drop space
-   * below any existing pills — no need to aim precisely at a tiny gap. */
-  padding: 6px 6px 30px;
-  opacity: 1;
-  text-align: left;
-  min-height: 80px;
-  transition: border-color 120ms ease, box-shadow 120ms ease;
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  transition: border-color 120ms ease, background 120ms ease;
+  min-height: 32px;
 }
 .cg-columns-panel-rgz[data-drop="accept"] {
-  border-color: var(--cg-row-group-panel-drop-border,
-    var(--cg-focus-ring-color));
-  box-shadow: inset 0 0 0 1px var(--cg-row-group-panel-drop-border,
-    var(--cg-focus-ring-color));
+  border-color: var(--cg-focus-ring-color);
+  background: color-mix(in srgb, var(--cg-focus-ring-color) 6%, transparent);
 }
 .cg-columns-panel-rgz[data-drop="reject"] {
-  border-color: var(--cg-row-group-panel-drop-border-reject, #f59e0b);
-  box-shadow: inset 0 0 0 1px var(--cg-row-group-panel-drop-border-reject,
-    #f59e0b);
+  border-color: #f59e0b;
+  background: color-mix(in srgb, #f59e0b 6%, transparent);
 }
 .cg-columns-panel-rgz-content {
   display: flex;
   flex-direction: column;
-  gap: var(--cg-columns-panel-rgz-chip-gap);
+  gap: 3px;
+  padding: 2px 0;
 }
 .cg-columns-panel-rgz-empty {
   text-align: center;
-  font-size: 12px;
+  font-size: var(--cg-font-size-sm);
   padding: 6px 4px;
-  opacity: 0.7;
+  opacity: 0.45;
 }
+/* Full-width list-row pill — matches ag-grid sidebar item appearance.
+ * Height and font match the column-list rows above for visual continuity.
+ * NOT using chip tokens (those belong to the top bar's compact chips). */
 .cg-columns-panel-rgz-pill {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  height: var(--cg-row-group-chip-height, 22px);
-  padding: 0 var(--cg-row-group-chip-padding-x, 6px);
-  gap: var(--cg-row-group-chip-gap, 4px);
-  border: 1px solid var(--cg-row-group-chip-border, var(--cg-border-color));
-  border-radius: var(--cg-row-group-chip-radius, 4px);
-  background: var(--cg-row-group-chip-bg, transparent);
-  color: var(--cg-row-group-chip-fg, var(--cg-fg-color));
-  font-size: var(--cg-columns-panel-rgz-chip-font-size, 11px);
+  height: 28px;
+  padding: 0 8px 0 4px;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--cg-border-color) 55%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--cg-header-bg) 70%, var(--cg-bg-color) 30%);
+  color: var(--cg-fg-color);
+  font-size: var(--cg-font-size);
   line-height: 1;
   cursor: grab;
-  white-space: nowrap;
   user-select: none;
+  white-space: nowrap;
 }
 .cg-columns-panel-rgz-pill:hover {
-  background: var(--cg-row-group-chip-hover-bg,
-    color-mix(in srgb, var(--cg-header-bg) 92%, var(--cg-fg-color) 8%));
+  background: var(--cg-row-hover-bg);
+  border-color: color-mix(in srgb, var(--cg-border-color) 80%, transparent);
 }
-/* Drag handle on the left of each zone pill — same dot-grid pattern as
- * the column-list row handles so the affordance reads consistently. */
+/* Drag handle — same dot-grid as column-list row handles. */
 .cg-columns-panel-rgz-pill-handle {
   flex: 0 0 auto;
   display: inline-block;
   width: 10px;
-  height: 12px;
+  height: 14px;
   opacity: 0.45;
   cursor: grab;
   background-image: radial-gradient(circle, currentColor 1.1px, transparent 1.4px);
@@ -1025,9 +1022,6 @@
   cursor: grabbing;
 }
 .cg-columns-panel-rgz-pill--lifted {
-  /* Keep the DOM slot (layout preserved) but hide the pill while its
-   * ghost is floating — same visibility:hidden pattern as --lifted on
-   * column-list rows. */
   visibility: hidden;
 }
 .cg-columns-panel-rgz-pill--dragging {
@@ -1035,23 +1029,25 @@
   cursor: grabbing;
 }
 .cg-columns-panel-rgz-pill-label {
+  flex: 1 1 auto;
   font-family: var(--cg-font-family);
-  font-size: var(--cg-columns-panel-rgz-chip-font-size, 11px);
+  font-size: var(--cg-font-size);
   font-weight: 400;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .cg-columns-panel-rgz-pill-remove {
+  flex: 0 0 auto;
   appearance: none;
   background: transparent;
   border: 0;
   padding: 0 2px;
   margin: 0;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--cg-font-size);
   line-height: 1;
   color: inherit;
-  opacity: 0.7;
+  opacity: 0.55;
   cursor: pointer;
 }
 .cg-columns-panel-rgz-pill-remove:hover {
@@ -1061,6 +1057,29 @@
   outline: 2px solid var(--cg-focus-ring-color);
   outline-offset: 1px;
   border-radius: 2px;
+}
+
+/* Values drop zone — same visual style as the Row Groups zone but
+ * separate classes so Row Groups tests can query `.cg-columns-panel-rgz`
+ * without picking up the Values container. Wired fully in Cycle 16. */
+.cg-columns-panel-valz {
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  transition: border-color 120ms ease, background 120ms ease;
+  min-height: 32px;
+}
+.cg-columns-panel-valz-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 2px 0;
+}
+.cg-columns-panel-valz-empty {
+  text-align: center;
+  font-size: var(--cg-font-size-sm);
+  padding: 6px 4px;
+  opacity: 0.45;
 }
 
 /* Cycle 11 / Task 4 — FiltersToolPanel.
@@ -1092,7 +1111,7 @@
   flex: 0 0 auto;
 }
 .cg-filters-panel-search-icon {
-  font-size: 12px;
+  font-size: var(--cg-font-size-sm);
   opacity: 0.7;
   line-height: 1;
 }
@@ -1105,7 +1124,7 @@
   border: 1px solid var(--cg-border-color);
   border-radius: 2px;
   font-family: inherit;
-  font-size: 13px;
+  font-size: var(--cg-font-size);
 }
 .cg-filters-panel-search input:focus {
   outline: none;
@@ -1126,7 +1145,7 @@
   border-radius: 2px;
   padding: 3px 8px;
   font-family: inherit;
-  font-size: 12px;
+  font-size: var(--cg-font-size-sm);
   cursor: pointer;
   opacity: 0.85;
 }
@@ -1143,7 +1162,7 @@
 .cg-filters-panel-empty {
   padding: 24px 12px;
   text-align: center;
-  font-size: 12px;
+  font-size: var(--cg-font-size-sm);
   opacity: 0.6;
 }
 .cg-filters-panel-row {
@@ -1164,7 +1183,7 @@
   flex: 0 0 auto;
   width: 12px;
   text-align: center;
-  font-size: 14px;
+  font-size: var(--cg-font-size);
   line-height: 1;
   opacity: 0.7;
   color: var(--cg-fg-color);
@@ -1174,7 +1193,7 @@
 }
 .cg-filters-panel-row-label {
   flex: 1 1 auto;
-  font-size: 13px;
+  font-size: var(--cg-font-size);
   line-height: 1.4;
   overflow: hidden;
   white-space: nowrap;
@@ -1431,16 +1450,22 @@
   --cg-row-group-panel-padding-x: 8px;
   --cg-row-group-panel-gap: 6px;
   --cg-row-group-chip-height: 22px;
-  --cg-row-group-chip-radius: 4px;
-  --cg-row-group-chip-padding-x: 6px;
+  --cg-row-group-chip-radius: 11px;
+  --cg-row-group-chip-padding-x: 7px;
   --cg-row-group-chip-gap: 4px;
-  --cg-row-group-chip-bg: transparent;
-  --cg-row-group-chip-border: var(--cg-border-color);
+  /* Chip background — slightly elevated above header-bg via a mix with
+   * fg-color so chips read as neutral tokens without a blue tint. The
+   * border uses the same formula at a lower opacity so a thin hairline
+   * is visible on both dark and light surfaces. */
+  --cg-row-group-chip-bg:
+    color-mix(in srgb, var(--cg-header-bg) 82%, var(--cg-fg-color) 18%);
+  --cg-row-group-chip-border:
+    color-mix(in srgb, var(--cg-fg-color) 14%, transparent);
   --cg-row-group-chip-fg: var(--cg-fg-color);
   --cg-row-group-chip-hover-bg:
-    color-mix(in srgb, var(--cg-header-bg) 92%, var(--cg-fg-color) 8%);
+    color-mix(in srgb, var(--cg-header-bg) 72%, var(--cg-fg-color) 28%);
   --cg-row-group-chip-active-bg:
-    color-mix(in srgb, var(--cg-header-bg) 85%, var(--cg-fg-color) 15%);
+    color-mix(in srgb, var(--cg-header-bg) 62%, var(--cg-fg-color) 38%);
   --cg-row-group-panel-empty-fg:
     color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
   --cg-row-group-panel-drop-border: var(--cg-focus-ring-color);
@@ -1474,14 +1499,11 @@
   box-sizing: border-box;
 }
 
-/* Drop-target outline — painted as an INSET box-shadow rather than a
- * border so the panel's own height + chip layout doesn't shift when
- * the outline lights up mid-drag. */
-.cg-row-group-panel[data-drop="accept"] {
-  box-shadow: inset 0 0 0 2px var(--cg-row-group-panel-drop-border);
-}
+/* Drop-target — no box-shadow highlight on the panel strip; the
+ * floating pill ghost + insertion line are sufficient affordance. */
+.cg-row-group-panel[data-drop="accept"],
 .cg-row-group-panel[data-drop="reject"] {
-  box-shadow: inset 0 0 0 2px var(--cg-row-group-panel-drop-border-reject);
+  box-shadow: none;
 }
 
 /* Vertical insertion line — 2 px wide bar painted between chips at
@@ -1497,8 +1519,8 @@
   border-radius: 1px;
 }
 
-/* The chip — outlined token, 22px tall, 4px radius. The drag-handle
- * `≡` + label + `×` remove button sit inside in that order. */
+/* The chip — pill token, 22px tall, fully-rounded ends. The dot-grid
+ * drag handle + label + `×` remove button sit inside in that order. */
 .cg-row-group-panel-chip {
   display: inline-flex;
   align-items: center;
@@ -1509,7 +1531,7 @@
   border-radius: var(--cg-row-group-chip-radius);
   background: var(--cg-row-group-chip-bg);
   color: var(--cg-row-group-chip-fg);
-  font-size: 12px;
+  font-size: 11px;
   line-height: 1;
   cursor: grab;
   white-space: nowrap;
@@ -1523,31 +1545,38 @@
   cursor: grabbing;
 }
 .cg-row-group-panel-chip-handle {
-  /* The `≡` (U+2261) drag-handle glyph. Quiet — the handle's job
-   * is to imply "grab here," not to compete with the label. */
-  opacity: 0.7;
-  font-size: 13px;
-  line-height: 1;
+  /* Dot-grid drag-handle — same radial-gradient pattern as the column
+   * list drag handles and the col-drag-ghost icon. Renders as a 2-col
+   * × 3-row grid of dots sized to the narrower 22px chip. */
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 8px;
+  height: 12px;
+  opacity: 0.45;
+  cursor: grab;
+  background-image: radial-gradient(circle, currentColor 1.1px, transparent 1.4px);
+  background-size: 4px 4px;
+  background-position: 0px 0px;
+  background-repeat: repeat;
 }
 .cg-row-group-panel-chip-label {
   font-family: var(--cg-font-family);
-  font-size: 12px;
+  font-size: var(--cg-font-size-sm);
   font-weight: 400;
 }
 .cg-row-group-panel-chip-remove {
   /* The `✕` (U+2715) remove glyph. Button so it's keyboard-focusable
-   * + announces as a button to AT. Bare-bones styling — the chip's
-   * border carries the shape; the × is just the glyph. */
+   * + announces as a button to AT. */
   appearance: none;
   background: transparent;
   border: 0;
   padding: 0 2px;
   margin: 0;
   font: inherit;
-  font-size: 11px;
+  font-size: var(--cg-font-size-sm);
   line-height: 1;
   color: inherit;
-  opacity: 0.7;
+  opacity: 0.85;
   cursor: pointer;
 }
 .cg-row-group-panel-chip-remove:hover {
@@ -1572,7 +1601,7 @@
   padding: 0 2px;
   margin: 0;
   font: inherit;
-  font-size: var(--cg-row-group-chip-sort-size, 11px);
+  font-size: var(--cg-row-group-chip-sort-size, var(--cg-font-size-sm));
   line-height: 1;
   color: var(--cg-row-group-chip-sort-color, var(--cg-group-chevron-color, color-mix(in srgb, var(--cg-fg-color) 55%, transparent)));
   opacity: 0.85;
@@ -1613,7 +1642,7 @@
  * token so the chevron family stays consistent across the cycle. */
 .cg-row-group-panel-separator {
   color: var(--cg-group-chevron-color, color-mix(in srgb, var(--cg-fg-color) 55%, transparent));
-  font-size: 14px;
+  font-size: var(--cg-font-size);
   line-height: 1;
   user-select: none;
   flex: 0 0 auto;
@@ -1631,7 +1660,7 @@
   border: 1px dashed color-mix(in srgb, var(--cg-border-color) 80%, transparent);
   border-radius: var(--cg-row-group-chip-radius);
   margin: 4px 0;
-  font-size: 12px;
+  font-size: var(--cg-font-size-sm);
   color: var(--cg-row-group-panel-empty-fg);
   text-align: center;
 }

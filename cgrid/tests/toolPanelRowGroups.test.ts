@@ -391,14 +391,15 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     expect(label?.textContent).toBe('unlabelled');
   });
 
-  it('section header reads "Row Groups" with the ☰ icon family (one icon across surfaces)', () => {
+  it('section header reads "Row Groups" and carries an SVG icon element', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
     const header = root.querySelector<HTMLElement>('.cg-columns-panel-section-header--groups');
     expect(header).not.toBeNull();
     expect(header!.textContent?.trim()).toBe('Row Groups');
-    expect(header!.dataset.icon).toBe('☰');
+    // Icon is now an SVG element inside a .cg-columns-panel-section-header-icon wrapper.
+    expect(header!.querySelector('.cg-columns-panel-section-header-icon svg')).not.toBeNull();
   });
 
   it('removing the last pill returns the empty-state placeholder', () => {

@@ -21,7 +21,10 @@ export type IconName =
   | 'chevrons-up-down'
   | 'filter'
   | 'menu'
-  | 'x';
+  | 'x'
+  | 'layout-grid'
+  | 'list-filter'
+  | 'sigma';
 
 const PATHS: Record<IconName, string> = {
   // Sort ascending
@@ -40,6 +43,12 @@ const PATHS: Record<IconName, string> = {
   'menu': 'M4 6h16 M4 12h16 M4 18h16',
   // Close
   'x': 'M18 6L6 18 M6 6l12 12',
+  // 2x2 grid — used for the Columns tool-panel sidebar tab (Lucide layout-grid)
+  'layout-grid': 'M3 3h7v7H3z M14 3h7v7h-7z M14 14h7v7h-7z M3 14h7v7H3z',
+  // Three narrowing bars — used for the Filters tool-panel sidebar tab (Lucide list-filter)
+  'list-filter': 'M3 6h18 M7 12h10 M11 18h2',
+  // Sigma / summation — used for the Values section header (Lucide sigma)
+  'sigma': 'M18 3H6l8 9-8 9h12',
 };
 
 const cache = new Map<IconName, Path2D>();
@@ -48,6 +57,33 @@ function getPath(name: IconName): Path2D {
   let p = cache.get(name);
   if (!p) { p = new Path2D(PATHS[name]); cache.set(name, p); }
   return p;
+}
+
+/**
+ * Create an `<svg>` DOM element for `name` sized to `sizePx × sizePx`.
+ * Stroke color inherits from CSS `currentColor` so callers don't need to
+ * pass a color — the icon picks up the button/label text color automatically.
+ * Use for DOM contexts (sidebar tabs, panel section headers) rather than
+ * the canvas surface.
+ */
+export function iconSvg(name: IconName, sizePx = 16): SVGElement {
+  const NS = 'http://www.w3.org/2000/svg';
+  const svg = document.createElementNS(NS, 'svg') as SVGElement;
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('width', String(sizePx));
+  svg.setAttribute('height', String(sizePx));
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '2');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.style.display = 'block';
+  svg.style.flexShrink = '0';
+  const path = document.createElementNS(NS, 'path');
+  path.setAttribute('d', PATHS[name]);
+  svg.appendChild(path);
+  return svg;
 }
 
 /**

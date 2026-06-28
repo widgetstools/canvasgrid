@@ -117,24 +117,21 @@ describe('ColumnDrag', () => {
     expect(grid.reorderColumn).not.toHaveBeenCalled();
   });
 
-  it('mounts a ghost header + insertion line on drag, then removes them on drop', () => {
+  it('mounts a pill ghost + insertion line on drag, then removes them on drop', () => {
     const f = new ColumnDrag();
     const host = document.createElement('div');
     document.body.appendChild(host);
-    const grid = makeGrid({ getOverlayHost: () => host, getLeafHeaderTop: () => 30 });
+    const grid = makeGrid({ getOverlayHost: () => host });
     const hit: Hit = { kind: 'header', colId: 'a' };
     f.handleMouseDown(ctx(hit, { x: 10, y: 8 }, grid));
-    expect(host.querySelector('.cg-column-drag-ghost')).toBeNull();
+    // Pill ghost mounts on document.body (no cg-theme ancestor in test DOM).
+    expect(document.body.querySelector('.cg-col-drag-ghost')).toBeNull();
     f.handleMouseDrag(ctx(hit, { x: 220, y: 8 }, grid));
-    const ghost = host.querySelector('.cg-column-drag-ghost') as HTMLElement | null;
-    expect(ghost).not.toBeNull();
-    // Ghost mounts at the leaf-header Y (30 in the mock), NOT at top:0.
-    // With column groups present, top:0 would float the ghost above the
-    // group header instead of replacing the leaf header.
-    expect(ghost!.style.top).toBe('30px');
+    expect(document.body.querySelector('.cg-col-drag-ghost')).not.toBeNull();
+    // Insertion line still mounts in the overlay host.
     expect(host.querySelector('.cg-column-drag-insertion-line')).not.toBeNull();
     f.handleMouseUp(ctx(hit, { x: 220, y: 8 }, grid));
-    expect(host.querySelector('.cg-column-drag-ghost')).toBeNull();
+    expect(document.body.querySelector('.cg-col-drag-ghost')).toBeNull();
     expect(host.querySelector('.cg-column-drag-insertion-line')).toBeNull();
   });
 

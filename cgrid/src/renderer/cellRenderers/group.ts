@@ -69,7 +69,7 @@ const PADDING = 6;
 const CHEVRON_SIZE = 12;
 const CHEVRON_GAP = 6;
 const COUNT_GAP = 4;
-const EMPTY_GLYPH = '—';
+const EMPTY_GLYPH = '';
 /** Cycle 15 / Task 8 — tri-state checkbox geometry. Identical to the
  *  existing `checkboxCell` painter's box size so a `confirmed`-column
  *  checkbox and a group-row checkbox read as the same control. The

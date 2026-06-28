@@ -37,12 +37,14 @@
  */
 import { ToolPanelRegistry } from '../toolPanels/registry';
 import type { SideBarDef, ToolPanel, ToolPanelDef } from '../toolPanels/types';
+import { iconSvg } from '../../renderer/icons';
+import type { IconName } from '../../renderer/icons';
 
 /** Width of the vertical tab strip in CSS px. Mirrors
- *  `.cg-side-bar-tabs { width: 28px }` in tokens.css. Used only as a
+ *  `.cg-side-bar-tabs { width: 32px }` in tokens.css. Used only as a
  *  fallback in `getReservedWidth` when `getBoundingClientRect()`
  *  returns 0 (jsdom). */
-const TABS_WIDTH = 28;
+const TABS_WIDTH = 36;
 
 /** Width of the `.cg-side-bar` border-left in CSS px. Same fallback
  *  use as `TABS_WIDTH` — the live path measures the bar directly. */
@@ -62,12 +64,10 @@ const DEFAULT_PANEL_WIDTH = 280;
 const DEFAULT_MIN_WIDTH = 100;
 const DEFAULT_MAX_WIDTH = 800;
 
-/** Built-in icon glyphs. Inline unicode keeps Task 2 dependency-free;
- *  Cycle 11.5 swaps these for proper SVG icons sourced from
- *  `cgrid/src/theming/icons/`. */
-const BUILT_IN_ICONS: Record<string, string> = {
-  columns: '☰', // ☰
-  filter: '▼',  // ▼
+/** Maps the built-in iconKey values on ToolPanelDef to icon registry names. */
+const BUILT_IN_ICON_MAP: Record<string, IconName> = {
+  columns: 'layout-grid',
+  filter:  'list-filter',
 };
 
 /** Per-tool-panel slot — the resolved def + (when mounted) the live
@@ -196,14 +196,15 @@ export class SideBarHost {
     this.handleEl.style.display = 'none';
 
     // Order of children inside .cg-side-bar:
-    //   resize-handle | panel | tabs
-    // The CSS rule `flex-direction: row-reverse` for right-positioned
-    // bars puts the tabs at the rightmost edge; `row` for left-positioned
-    // puts the tabs at the leftmost. The handle sits adjacent to the
-    // panel (inner edge of the side bar).
-    this.bar.appendChild(this.handleEl);
-    this.bar.appendChild(this.panelEl);
+    //   tabs | panel | handle
+    // With flex-direction:row-reverse (right sidebar): first child is
+    // rightmost → tabs end up on the right edge, handle on the left
+    // (adjacent to the panel). With flex-direction:row (left sidebar):
+    // first child is leftmost → tabs on the left edge, handle on the
+    // right.
     this.bar.appendChild(this.tabsEl);
+    this.bar.appendChild(this.panelEl);
+    this.bar.appendChild(this.handleEl);
 
     // Build one tab per resolved ToolPanelDef.
     for (const def of this.def.toolPanels) {
@@ -365,6 +366,15 @@ export class SideBarHost {
     });
   }
 
+  /** Shift the side bar's top edge down by `top` CSS px so it clears
+   *  the row group panel (or any other element stacked above it in the
+   *  grid root). Called from cgrid's `applyVerticalInsets` whenever the
+   *  row group panel height changes. */
+  setTopOffset(top: number): void {
+    if (this.destroyed) return;
+    this.bar.style.top = top > 0 ? `${top}px` : '';
+  }
+
   /** Switch the side bar to the opposite edge. Re-mounts the DOM as a
    *  whole so CSS rules anchored on `[data-position]` apply, and tells
    *  the host grid to release the old edge reservation + take the new
@@ -405,15 +415,15 @@ export class SideBarHost {
     btn.setAttribute('aria-label', def.labelDefault);
     btn.dataset.id = def.id;
 
-    // Icon span (rotated content under writing-mode:vertical-rl on the
-    // button) + label span. Both render top-down on the vertical tab.
-    const icon = document.createElement('span');
-    icon.className = 'cg-side-bar-tab-icon';
-    icon.textContent = def.iconKey ? (BUILT_IN_ICONS[def.iconKey] ?? '') : '';
+    // SVG icon + rotated text label stacked vertically on the slim tab strip.
+    const iconWrap = document.createElement('span');
+    iconWrap.className = 'cg-side-bar-tab-icon';
+    const iconKey = def.iconKey ? (BUILT_IN_ICON_MAP[def.iconKey] ?? null) : null;
+    if (iconKey) iconWrap.appendChild(iconSvg(iconKey, 14));
     const label = document.createElement('span');
     label.className = 'cg-side-bar-tab-label';
     label.textContent = def.labelDefault;
-    btn.appendChild(icon);
+    btn.appendChild(iconWrap);
     btn.appendChild(label);
 
     btn.addEventListener('click', () => {

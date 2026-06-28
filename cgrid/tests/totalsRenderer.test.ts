@@ -115,9 +115,11 @@ describe('totalsCell — value path', () => {
 });
 
 describe('totalsCell — empty placeholder', () => {
-  it('paints an em-dash in emptyFg when value AND valueFormatted are both empty', () => {
+  it('paints blank (empty string) in emptyFg when value AND valueFormatted are both empty', () => {
     // Column without an aggFunc → chunk.totals returns null → byRows
-    // threads value: '' / valueFormatted: '' into the renderer.
+    // threads value: '' / valueFormatted: '' into the renderer. Cell is
+    // blank rather than an em-dash; emptyFg is still applied so the
+    // canvas fill-style is set correctly even for zero-length text.
     const gc = makeGc();
     totalsCell.paint(gc, baseParams({
       value: '',
@@ -127,11 +129,11 @@ describe('totalsCell — empty placeholder', () => {
       emptyFg: '#475569',
     }));
     const [text] = (gc.fillText as any).mock.calls[0]!;
-    expect(text).toBe('—');
+    expect(text).toBe('');
     expect(gc.cache.fillStyle).toBe('#475569');
   });
 
-  it('paints em-dash for null and undefined values too', () => {
+  it('paints blank for null and undefined values too', () => {
     // The empty predicate must catch the three shapes byRows / aggregation
     // can produce: '' (column had no aggFunc), null (worker returned null),
     // undefined (aggFunc resolved but yielded no value e.g. empty filter).
@@ -143,14 +145,14 @@ describe('totalsCell — empty placeholder', () => {
         emptyFg: '#475569',
       }));
       const [text] = (gc.fillText as any).mock.calls[0]!;
-      expect(text).toBe('—');
+      expect(text).toBe('');
     }
   });
 
   it('falls back to fg when emptyFg is unset (defensive — non-totals callers)', () => {
     // emptyFg is populated by applyCellProps only when ctx.isTotals === true.
     // A non-totals caller (or a future refactor that drops the field) must
-    // still produce a legible em-dash, not a transparent one.
+    // still render cleanly — blank text in the body fg, not transparent.
     const gc = makeGc();
     totalsCell.paint(gc, baseParams({
       value: null,
@@ -159,7 +161,7 @@ describe('totalsCell — empty placeholder', () => {
       emptyFg: undefined,
     }));
     const [text] = (gc.fillText as any).mock.calls[0]!;
-    expect(text).toBe('—');
+    expect(text).toBe('');
     expect(gc.cache.fillStyle).toBe('#0f172a');
   });
 });

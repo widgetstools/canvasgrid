@@ -52,10 +52,11 @@ import type { RowGroupPanelShow, RowGroupPanelDropVerdict } from './types';
  *  Row Groups section. One drop-zone vocabulary across the grid. */
 const EMPTY_PLACEHOLDER = 'Drag here to set row groups';
 
-/** Drag-handle glyph at the chip's left edge. Unicode IDENTICAL TO
- *  (U+2261) — same family as the Cycle 11 sidebar's `'columns'`
- *  icon `☰` so the "grab here" affordance reads consistently. */
-const DRAG_HANDLE_GLYPH = '≡';
+/** Drag-handle glyph for the chip — empty string because the handle
+ *  is now rendered entirely via CSS dot-grid (`.cg-row-group-panel-
+ *  chip-handle` background-image), matching the column-list and
+ *  col-drag-ghost icon patterns. */
+const DRAG_HANDLE_GLYPH = '';
 
 /** Remove-chip glyph. Unicode MULTIPLICATION X (U+2715) — crisper
  *  than `×` (U+00D7, a math sign). Matches the close glyph used by
@@ -82,11 +83,9 @@ const SORT_DESC_GLYPH = '↓';
 const DRAG_THRESHOLD_PX = 4;
 
 /** Pointer offset for the floating ghost relative to the cursor.
- *  Right + below by 8px so the ghost sits OUT of the cursor's
- *  direct overlap with the panel — the user can still see the
- *  insertion line / drop verdict / chip targets clearly. */
-const GHOST_OFFSET_X = 8;
-const GHOST_OFFSET_Y = 8;
+ *  Zero X and -11 Y centers the 22px chip vertically on the cursor tip. */
+const GHOST_OFFSET_X = 0;
+const GHOST_OFFSET_Y = -11;
 
 /** Context handed to RowGroupPanelHost by CGrid (or a test harness).
  *  Keeps the host framework-agnostic — it can mutate the grouping

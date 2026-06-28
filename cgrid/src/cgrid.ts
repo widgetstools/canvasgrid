@@ -506,10 +506,21 @@ export class CGrid<TRow = any> {
    *  applying the scroller's `top` style so a top status bar + row
    *  group panel stack cleanly. */
   private rowGroupPanelTopInset = 0;
+  /** Insertion line element for external column-header drops (e.g. from
+   *  the Columns tool panel). Lazily created, lives in editorContainer.
+   *  Reused across drags; hidden when no drag is active. */
+  private colDropInsertionLine: HTMLDivElement | null = null;
   /** Cycle 4 / Task 11 (cell-flash patch) — per-cell flash tracker.
    *  Drained from each `getViewport` chunk's `flashMask` and queried
    *  by the painter's `cellData` callback to produce `flashAlpha`. */
   private flashRegistry: FlashRegistry;
+  /** Flash tracker for group-row and footer-row aggregate cells.
+   *  Keyed by `"${groupKey}\0${colId}"` → flash start time (ms from
+   *  performance.now()). Populated when groupTotals values change
+   *  between consecutive viewport chunks. Parallel to flashRegistry
+   *  but group rows carry no rowId so they can't use the rowId-keyed
+   *  registry. */
+  private groupFlashMap = new Map<string, number>();
   /** Cycle 4 / Task 11 — `prefers-reduced-motion: reduce` listener.
    *  Live-read by `FlashRegistry.getReducedMotion`. */
   private reducedMotionQuery: MediaQueryList | null = null;
@@ -2566,6 +2577,13 @@ export class CGrid<TRow = any> {
    *  flows into the visible chips. */
   setGroupModel(g: GroupModel): void {
     if (this.destroyed) return;
+    // Compute visibility diff BEFORE mutating groupModel so we know which
+    // columns were newly added to groups (should be hidden from the grid)
+    // and which were removed (should be restored to visible).
+    const prevSet = new Set(this.groupModel.rowGroupCols);
+    const nextSet = new Set(g.rowGroupCols);
+    const toHide = g.rowGroupCols.filter((id) => !prevSet.has(id));
+    const toShow = this.groupModel.rowGroupCols.filter((id) => !nextSet.has(id));
     this.groupModel = { rowGroupCols: [...g.rowGroupCols] };
     this.rebuildAutoGroupColumn();
     // Cycle 15.5 / Task 1 — sync the GroupingState primitive so any
@@ -2603,6 +2621,11 @@ export class CGrid<TRow = any> {
       this.cgridCanvas.requestRepaint();
       this.requestViewport();
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+    // Hide columns that are now acting as group levels; restore visibility
+    // for columns removed from grouping. Mirrors ag-grid's default behaviour
+    // so grouped fields don't appear redundantly as standalone grid columns.
+    if (toHide.length > 0) this.setColumnsVisible(toHide, false);
+    if (toShow.length > 0) this.setColumnsVisible(toShow, true);
   }
 
   /** Cycle 15 / Task 7 — flip every group to expanded. Ships the
@@ -2866,6 +2889,96 @@ export class CGrid<TRow = any> {
   commitRowGroupPanelDrop(colId: string): boolean {
     if (this.destroyed) return false;
     return this.rowGroupPanel?.handleColumnDrop(colId) ?? false;
+  }
+
+  /** True when (clientX, clientY) falls within the leaf column-header
+   *  band of the canvas.  Used by external drag sources (e.g. the
+   *  Columns tool panel) to decide whether the cursor is hovering
+   *  over the column-header strip. */
+  isPointInColumnHeaderBand(clientX: number, clientY: number): boolean {
+    if (this.destroyed) return false;
+    const rect = this.cgridCanvas.canvas.getBoundingClientRect();
+    if (clientX < rect.left || clientX > rect.right) return false;
+    const leaf = this.viewport.visibleRows.find(
+      (r) => !r.subgrid.isData && !('getGroupIdAt' in r.subgrid),
+    );
+    const leafTop = leaf ? leaf.top : 0;
+    const leafHeight = this.options.headerHeight ?? this.theme.headerHeight;
+    const top = rect.top + leafTop;
+    return clientY >= top && clientY <= top + leafHeight;
+  }
+
+  /** Inform the column header band of an external drag hover.  Paints
+   *  an insertion line at the nearest column gap.  Pass `colId=null`
+   *  to clear (e.g. on drag-end or drag-leave). */
+  setColumnHeaderDragHover(colId: string | null, clientX: number, clientY: number): void {
+    if (this.destroyed) return;
+    if (colId === null) {
+      if (this.colDropInsertionLine) this.colDropInsertionLine.style.display = 'none';
+      return;
+    }
+    const rect = this.cgridCanvas.canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const ids = this.allColIdsInRenderOrder();
+    if (!ids.length) return;
+    let bestIdx = 0;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < ids.length; i++) {
+      const col = this.viewport.visibleColumns.find((c) => c.colId === ids[i]);
+      if (!col) continue;
+      const center = col.left + col.width / 2;
+      const dist = Math.abs(x - center);
+      if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+    }
+    const targetId = ids[bestIdx];
+    const targetCol = targetId
+      ? this.viewport.visibleColumns.find((c) => c.colId === targetId)
+      : null;
+    let lineX = 0;
+    if (targetCol) {
+      const center = targetCol.left + targetCol.width / 2;
+      lineX = x >= center ? targetCol.left + targetCol.width - 1 : targetCol.left;
+    }
+    if (!this.colDropInsertionLine) {
+      const line = document.createElement('div');
+      line.className = 'cg-column-drag-insertion-line';
+      line.style.cssText = [
+        'position:absolute',
+        'pointer-events:none',
+        'top:0',
+        'left:0',
+        'width:2px',
+        'height:100%',
+        'background:var(--cg-selected-cell-color, #3b82f6)',
+        'z-index:6',
+        'will-change:transform',
+      ].join(';');
+      this.editorContainer.appendChild(line);
+      this.colDropInsertionLine = line;
+    }
+    this.colDropInsertionLine.style.display = '';
+    this.colDropInsertionLine.style.transform = `translate3d(${Math.round(lineX)}px, 0px, 0)`;
+  }
+
+  /** Commit an external column drop onto the column-header area.
+   *  Moves `colId` to the nearest legal column index at `clientX`. */
+  commitColumnHeaderDrop(colId: string, clientX: number): void {
+    if (this.destroyed) return;
+    if (this.colDropInsertionLine) this.colDropInsertionLine.style.display = 'none';
+    const rect = this.cgridCanvas.canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const ids = this.allColIdsInRenderOrder();
+    if (!ids.length) return;
+    let bestIdx = 0;
+    let bestDist = Number.POSITIVE_INFINITY;
+    for (let i = 0; i < ids.length; i++) {
+      const col = this.viewport.visibleColumns.find((c) => c.colId === ids[i]);
+      if (!col) continue;
+      const center = col.left + col.width / 2;
+      const dist = Math.abs(x - center);
+      if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+    }
+    this.reorderColumn(colId, bestIdx, 'uiColumnDragged');
   }
 
   /** Cycle 15 / Task 6 — runtime swap of `rowGroupPanelShow`. When
@@ -3562,6 +3675,9 @@ export class CGrid<TRow = any> {
         bottom,
       });
     }
+    // The side bar must start below the row group panel so the tab strip
+    // is not visually occluded. Use the same `top` value as the scroller.
+    this.sideBar?.setTopOffset(top);
     // The row group panel itself sits at the status bar's top-inset
     // (so a top status bar pushes the panel down by exactly its
     // height) — the panel's own height is then the next contributor
@@ -3778,6 +3894,12 @@ export class CGrid<TRow = any> {
   private rebuildColumns({ defaultColDef }: { defaultColDef?: Partial<any> }): void {
     this.columnTree = resolveColumnTree(this.options.columnDefs, defaultColDef ?? this.options.defaultColDef, this.options.columnTypes);
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
+    // columnTree.leafById is a fresh Map that only holds user-supplied columns.
+    // Re-register the synthesized auto-group columns so painter lookups
+    // by colId keep working after any rebuildColumns() call (e.g. reorderColumn).
+    for (const col of this.autoGroupColumns) {
+      this.columnDefsMap.set(col.colId, col);
+    }
     this.columnGroupState.setTree(this.columnTree);
     this.columnOrder = this.computeVisibleColumnOrder();
     this.columnLayout = resolveColumnWidths(
@@ -4460,7 +4582,17 @@ export class CGrid<TRow = any> {
   }
 
   private workerColumns(): WorkerColumn[] {
-    return this.columnOrder.map((c) => {
+    // Start from the visible column order. When auto-hide is active (grouped
+    // columns are hidden from display), the grouping columns are missing from
+    // `columnOrder` but the worker's GroupPass still needs them in its colIndex
+    // to resolve field names. Append any group-by column that is not already
+    // visible so the worker never loses the ability to bucket rows by that field.
+    const visibleIds = new Set(this.columnOrder.map((c) => c.colId));
+    const extraGroupCols = this.groupModel.rowGroupCols
+      .filter((id) => !visibleIds.has(id))
+      .map((id) => this.columnDefsMap.get(id))
+      .filter((def): def is typeof def & {} => def !== undefined);
+    return [...this.columnOrder, ...extraGroupCols].map((c) => {
       const base: WorkerColumn = {
         colId: c.colId,
         field: c.field as string | undefined,
@@ -4858,6 +4990,10 @@ export class CGrid<TRow = any> {
     this.workerClient.getViewport({ rowStart, rowEnd, columns: cols, includeFlashMask: true })
       .then((chunk) => {
         this.viewportRequestPending = false;
+        // Capture the previous chunk's totals BEFORE overwriting this.chunk
+        // so the aggregate-flash diff can compare old vs new values.
+        const prevGroupTotals = this.chunk?.groupTotals;
+        const prevChunkTotals = this.chunk?.totals;
         this.chunk = chunk;
         this.decodedTextCols.clear();
         // Cycle 4 / Task 11 (cell-flash patch) — drain the worker's
@@ -4872,6 +5008,37 @@ export class CGrid<TRow = any> {
             mask: chunk.flashMask,
           });
           this.startFlashTickLoop();
+        }
+        // Flash aggregate cells whose groupTotals or grand totals changed
+        // vs the previous chunk. Data-row flashes come from the worker's
+        // flashMask (keyed by rowId); group/footer rows carry no rowId
+        // so we diff the totals records here on the main thread.
+        // groupTotals covers per-group group rows AND per-group footer rows.
+        // chunk.totals covers the grand-total footer (groupKey='').
+        if (this.options.enableCellChangeFlash) {
+          const now = performance.now();
+          if (chunk.groupTotals && prevGroupTotals) {
+            for (const groupKey of Object.keys(chunk.groupTotals)) {
+              const oldRec = prevGroupTotals[groupKey];
+              const newRec = chunk.groupTotals[groupKey]!;
+              for (const colId of Object.keys(newRec)) {
+                if (oldRec?.[colId] !== newRec[colId]) {
+                  this.groupFlashMap.set(`${groupKey}\0${colId}`, now);
+                }
+              }
+            }
+          }
+          // Grand-total footer (groupKey='') sources from chunk.totals,
+          // not groupTotals. Diff it separately; store under the '' key
+          // so groupFlashAlpha('', colId) resolves for rowKind=3 + empty key.
+          if (chunk.totals && prevChunkTotals) {
+            for (const colId of Object.keys(chunk.totals)) {
+              if (prevChunkTotals[colId] !== chunk.totals[colId]) {
+                this.groupFlashMap.set(`\0${colId}`, now);
+              }
+            }
+          }
+          if (this.groupFlashMap.size > 0) this.startFlashTickLoop();
         }
         // Build / refresh the cumulative row-height index (Cycle 5 / Task 7).
         // Initial build seeds every row with the grid-level fallback; subsequent
@@ -4979,7 +5146,18 @@ export class CGrid<TRow = any> {
       this.flashTickHandle = null;
       if (this.destroyed) return;
       this.flashRegistry.tick(now);
-      if (this.flashRegistry.size() > 0) {
+      // Prune expired groupFlashMap entries so the loop self-cancels
+      // when both the rowId-keyed and groupKey-keyed flash sets drain.
+      if (this.groupFlashMap.size > 0) {
+        const flashDur = this.options.cellFlashDuration ?? 500;
+        const fadeDur = this.options.cellFadeDuration ?? 1000;
+        const cutoff = now - flashDur - fadeDur;
+        for (const [k, startedAt] of this.groupFlashMap) {
+          if (startedAt < cutoff) this.groupFlashMap.delete(k);
+        }
+        if (this.groupFlashMap.size > 0) this.cgridCanvas.requestRepaint();
+      }
+      if (this.flashRegistry.size() > 0 || this.groupFlashMap.size > 0) {
         this.flashTickHandle = requestAnimationFrame(tick);
       }
     };
@@ -5049,7 +5227,27 @@ export class CGrid<TRow = any> {
       const groupKey = this.chunk.groupKey?.[localIndex] ?? '';
       const entry = this.totalsCellLookup(colId, groupKey);
       if (entry === null) return { value: '', valueFormatted: '', flashAlpha: flash };
-      return { value: entry.value, valueFormatted: entry.valueFormatted, flashAlpha: flash };
+      const gFlash = this.groupFlashAlpha(groupKey, colId);
+      return { value: entry.value, valueFormatted: entry.valueFormatted, flashAlpha: gFlash ?? flash };
+    }
+    // Group rows (rowKind === 1) show per-group aggregate values from
+    // `chunk.groupTotals` when available — same source as the per-group
+    // footer row (rowKind === 3). This matches AG Grid's behaviour where
+    // a group row header shows the aggregated column values both when
+    // collapsed AND when expanded (the footer row echoes them below).
+    // Falls through to empty rather than the zero-filled numericCols
+    // slot so a group row without an aggFunc column shows nothing
+    // rather than a misleading "0".
+    if ((this.chunk.rowKinds[localIndex] ?? 0) === 1) {
+      const groupKey = this.chunk.groupKey?.[localIndex] ?? '';
+      if (groupKey !== '') {
+        const entry = this.totalsCellLookup(colId, groupKey);
+        if (entry !== null) {
+          const gFlash = this.groupFlashAlpha(groupKey, colId);
+          return { value: entry.value, valueFormatted: entry.valueFormatted, flashAlpha: gFlash ?? flash };
+        }
+      }
+      return { value: '', valueFormatted: '', flashAlpha: flash };
     }
     const numeric = this.chunk.numericCols[colId];
     if (numeric) {
@@ -5072,8 +5270,32 @@ export class CGrid<TRow = any> {
     return `row-${rowIndex}`;
   }
 
-  private formatNumber(_colId: string, value: number): string {
-    return Number.isFinite(value) ? value.toString() : '';
+  private formatNumber(colId: string, value: number): string {
+    if (!Number.isFinite(value)) return '';
+    const def = this.columnDefsMap.get(colId);
+    if (def?.valueFormatter) {
+      return def.valueFormatter({ value, colId, data: undefined as unknown as TRow });
+    }
+    return value.toString();
+  }
+
+  /** Compute flash alpha for a group/footer aggregate cell from
+   *  `groupFlashMap`. Returns `undefined` when no flash is active so
+   *  the caller can fall through to the data-row `flashAlpha` (which is
+   *  always 0 for group rows since their rowId is 0, but keeps the
+   *  return type consistent). */
+  private groupFlashAlpha(groupKey: string, colId: string): number | undefined {
+    const startedAt = this.groupFlashMap.get(`${groupKey}\0${colId}`);
+    if (startedAt === undefined) return undefined;
+    const now = performance.now();
+    const flashDur = this.options.cellFlashDuration ?? 500;
+    const fadeDur = this.options.cellFadeDuration ?? 1000;
+    const elapsed = now - startedAt;
+    if (elapsed < 0) return 1;
+    if (elapsed <= flashDur) return 1;
+    const fadeElapsed = elapsed - flashDur;
+    if (fadeElapsed >= fadeDur) { this.groupFlashMap.delete(`${groupKey}\0${colId}`); return undefined; }
+    return 1 - fadeElapsed / fadeDur;
   }
 
   private updateA11y(): void {

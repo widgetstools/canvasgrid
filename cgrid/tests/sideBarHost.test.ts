@@ -291,18 +291,18 @@ describe('SideBarHost', () => {
         width: 260,
       }],
     });
-    // Mount-time reserve (no panel open): 28 px tabs + 1 px sidebar
-    // border-left = 29 px. (Under happy-dom getBoundingClientRect returns
+    // Mount-time reserve (no panel open): 36 px tabs + 1 px sidebar
+    // border-left = 37 px. (Under happy-dom getBoundingClientRect returns
     // 0, so getReservedWidth uses its constant-summed fallback.)
     const initial = ctx.reserveCalls[ctx.reserveCalls.length - 1];
-    expect(initial.width).toBe(29);
+    expect(initial.width).toBe(37);
     host.openPanel('agColumnsToolPanel');
     // Open: + 3 px resize handle + panelWidth.
     const afterOpen = ctx.reserveCalls[ctx.reserveCalls.length - 1];
-    expect(afterOpen.width).toBe(260 + 28 + 1 + 3);
+    expect(afterOpen.width).toBe(260 + 36 + 1 + 3);
     host.closePanel();
     const afterClose = ctx.reserveCalls[ctx.reserveCalls.length - 1];
-    expect(afterClose.width).toBe(29);
+    expect(afterClose.width).toBe(37);
     host.destroy();
   });
 

@@ -366,12 +366,12 @@ describe('Cycle 15.5 / Task 1 — Row group panel completeness', () => {
     dispatchPointer(window, 'pointermove', { clientX: 36, clientY: 16 });
     const ghost = document.querySelector('.cg-row-group-panel-chip-ghost') as HTMLElement;
     expect(ghost).not.toBeNull();
-    expect(parseFloat(ghost.style.left)).toBe(36 + 8);
-    expect(parseFloat(ghost.style.top)).toBe(16 + 8);
+    expect(parseFloat(ghost.style.left)).toBe(36 + 0);
+    expect(parseFloat(ghost.style.top)).toBe(16 + -11);
     // Move further — ghost tracks.
     dispatchPointer(window, 'pointermove', { clientX: 100, clientY: 20 });
-    expect(parseFloat(ghost.style.left)).toBe(100 + 8);
-    expect(parseFloat(ghost.style.top)).toBe(20 + 8);
+    expect(parseFloat(ghost.style.left)).toBe(100 + 0);
+    expect(parseFloat(ghost.style.top)).toBe(20 + -11);
     // Release — ghost unmounts.
     dispatchPointer(window, 'pointerup', { clientX: 100, clientY: 20 });
     expect(document.querySelector('.cg-row-group-panel-chip-ghost')).toBeNull();

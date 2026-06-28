@@ -90,15 +90,24 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
   }
 
   // Verticals — one band at a time so out-of-band column lines stay clipped.
-  // Span from leafHeaderTop to bodyBottom so the leaf header + data rows get
-  // column separators while group-header rows above stay merged.
+  // Span from leafHeaderTop to the bottom of the LAST rendered row so column
+  // separators don't bleed into empty canvas below the data.
   const leftPinned = vs.visibleColumns.filter((c) => c.pinned === 'left');
   const center = vs.visibleColumns.filter((c) => !c.pinned);
   const rightPinned = vs.visibleColumns.filter((c) => c.pinned === 'right');
 
-  paintVerticalsInBand(gc, leftPinned, 0, vs.bodyLeft, leafHeaderTop, vs.bodyBottom, theme.gridLineColor);
-  paintVerticalsInBand(gc, center, vs.bodyLeft, vs.bodyRight, leafHeaderTop, vs.bodyBottom, theme.gridLineColor);
-  paintVerticalsInBand(gc, rightPinned, vs.bodyRight, rightEdge, leafHeaderTop, vs.bodyBottom, theme.gridLineColor);
+  // Compute the bottom of the last visible non-header row; if there are no
+  // data/totals rows yet, fall back to bodyTop (verticals span header only).
+  let lastRowBottom = vs.bodyTop;
+  for (const row of vs.visibleRows) {
+    if (row.subgrid.isHeader) continue;
+    const b = Math.min(row.bottom, vs.bodyBottom);
+    if (b > lastRowBottom) lastRowBottom = b;
+  }
+
+  paintVerticalsInBand(gc, leftPinned, 0, vs.bodyLeft, leafHeaderTop, lastRowBottom, theme.gridLineColor);
+  paintVerticalsInBand(gc, center, vs.bodyLeft, vs.bodyRight, leafHeaderTop, lastRowBottom, theme.gridLineColor);
+  paintVerticalsInBand(gc, rightPinned, vs.bodyRight, rightEdge, leafHeaderTop, lastRowBottom, theme.gridLineColor);
 
   // Group-header rows: paint verticals ONLY at group boundaries (where two
   // adjacent leaves resolve to different groups at this depth). Inside a
@@ -114,18 +123,16 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
     paintGroupBoundariesInBand(gc, rightPinned, vs.bodyRight, rightEdge, row.top, row.bottom, sg, theme.gridLineColor);
   }
 
-  // Pinned-band edges — heavier line via theme.borderColor. Span from the top
-  // of the canvas to bodyBottom so the pinned/scroll divider is visible even
-  // through group-header rows (the divider doesn't subdivide a single cell —
-  // it separates pinned from scrollable regions, which is meaningful at every
-  // header depth).
+  // Pinned-band edges — heavier line via theme.borderColor. Stop at
+  // lastRowBottom (same as verticals) so the divider doesn't extend into
+  // empty canvas below the data area.
   if (leftPinned.length > 0) {
     gc.cache.fillStyle = theme.borderColor;
-    gc.fillRect(Math.round(vs.bodyLeft) - 1, 0, 1, vs.bodyBottom);
+    gc.fillRect(Math.round(vs.bodyLeft) - 1, 0, 1, lastRowBottom);
   }
   if (rightPinned.length > 0) {
     gc.cache.fillStyle = theme.borderColor;
-    gc.fillRect(Math.round(vs.bodyRight), 0, 1, vs.bodyBottom);
+    gc.fillRect(Math.round(vs.bodyRight), 0, 1, lastRowBottom);
   }
 
   // Subgrid separator — header→body. The leaf-header bottom already paints a

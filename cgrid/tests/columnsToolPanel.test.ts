@@ -147,7 +147,7 @@ describe('ColumnsToolPanel', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
 
-    const search = root.querySelector<HTMLInputElement>('.cg-columns-panel-search input')!;
+    const search = root.querySelector<HTMLInputElement>('.cg-columns-panel-search input[type="search"]')!;
     search.value = 'go';
     search.dispatchEvent(new Event('input', { bubbles: true }));
     const rows = Array.from(root.querySelectorAll<HTMLElement>('.cg-columns-panel-row'));

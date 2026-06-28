@@ -290,6 +290,11 @@ export interface PositionsGridOptions {
    *  Not used by any visual cell — exists for human exploration of
    *  the panel before Task 13 ships the cycle default. */
   rowGroupPanelAlways?: boolean;
+  /** `?rowGroupPanel=marketsGrid` — MarketsGrid reference layout:
+   *  desk → trader → region 3-level grouping with per-group and
+   *  grand-total footer rows. Mounts desk/trader/region columns and
+   *  seeds the group model. For human demo only; not a visual cell. */
+  rowGroupPanelMarketsGrid?: boolean;
   /** Cycle 15 / Task 8 — opts the demo into tri-state cascading
    *  selection (`groupSelectsChildren: true`). The auto-group cells
    *  paint a tri-state checkbox between the chevron and the value.
@@ -485,9 +490,9 @@ export function createPositionsGrid(
         : []),
       // Cycle 15 / Task 6 — client-side categorical columns
       // synthesized by `decorateWithCategoricals` in main.ts. Mounted
-      // only under `?rowGroupPanel=always` so existing visual cells
-      // (none of which declare these columns) stay byte-stable.
-      ...(opts.rowGroupPanelAlways
+      // only under `?rowGroupPanel=always` (or `=marketsGrid`) so
+      // existing visual cells stay byte-stable.
+      ...(opts.rowGroupPanelAlways || opts.rowGroupPanelMarketsGrid
         ? [
             { field: 'desk' as const,     headerName: 'Desk',     width: 130, filter: 'set' as const, enableRowGroup: true as const },
             { field: 'region' as const,   headerName: 'Region',   width: 110, filter: 'set' as const, enableRowGroup: true as const },
@@ -841,7 +846,7 @@ export function createPositionsGrid(
     // demo also opts in here AND seeds 1-level grouping by `ticker`
     // post-construction below so a single chip is visible and the
     // grid is grouped (live-demo mode).
-    ...(opts.rowGroupPanelEmpty || opts.rowGroupPanelThreeChips || opts.rowGroupPanelAlways
+    ...(opts.rowGroupPanelEmpty || opts.rowGroupPanelThreeChips || opts.rowGroupPanelAlways || opts.rowGroupPanelMarketsGrid
       ? { rowGroupPanelShow: 'always' as const }
       : {}),
     // Cycle 15 / Task 8 — opt into tri-state cascading selection
@@ -871,6 +876,15 @@ export function createPositionsGrid(
     // grand-total footer caps the body. Explicit URL flags above still
     // win for byte-stable visual baselines.
     ...(opts.rowGroupPanelAlways
+      ? {
+          groupDefaultExpanded: 0 as const,
+          groupIncludeFooter: true as const,
+          groupIncludeTotalFooter: true as const,
+        }
+      : {}),
+    // MarketsGrid reference layout — desk → trader → region 3-level
+    // grouping, footers at every level + grand total.
+    ...(opts.rowGroupPanelMarketsGrid
       ? {
           groupDefaultExpanded: 0 as const,
           groupIncludeFooter: true as const,
@@ -944,6 +958,9 @@ export function createPositionsGrid(
   // columns into.
   if (opts.rowGroupPanelAlways) {
     grid.setGroupModel({ rowGroupCols: ['ticker'] });
+  }
+  if (opts.rowGroupPanelMarketsGrid) {
+    grid.setGroupModel({ rowGroupCols: ['desk', 'trader', 'region'] });
   }
   // Cycle 15 / Task 13 — cycle-exit showcase: seed the 1-level ticker
   // grouping post-construction so the per-group footer flag (set above

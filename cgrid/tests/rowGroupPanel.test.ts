@@ -303,15 +303,14 @@ describe('RowGroupPanelHost', () => {
     host.destroy();
   });
 
-  it('chips render the drag-handle ≡ + ✕ remove glyphs in vocabulary continuity with sidebar', () => {
-    // Regression: the chip glyphs must match the design notes — `≡`
-    // for the drag handle (same family as the sidebar `'columns'`
-    // icon `☰`) and `✕` for the remove affordance (crisper than `×`).
+  it('chips render CSS dot-grid handle (no text glyph) + ✕ remove glyph', () => {
+    // The handle is purely CSS (radial-gradient dot-grid); DRAG_HANDLE_GLYPH
+    // is empty string so textContent must be ''. The remove affordance stays '✕'.
     const ctx = makeContext();
     const host = new RowGroupPanelHost(root, ctx, 'always', ['ticker']);
     const handle = root.querySelector('.cg-row-group-panel-chip-handle') as HTMLElement;
     const remove = root.querySelector('.cg-row-group-panel-chip-remove') as HTMLElement;
-    expect(handle.textContent).toBe('≡');
+    expect(handle.textContent).toBe('');
     expect(remove.textContent).toBe('✕');
     host.destroy();
   });

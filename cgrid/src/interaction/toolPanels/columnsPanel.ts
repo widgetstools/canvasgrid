@@ -79,6 +79,7 @@
  *   § Cycle 15.5 / Task 2 — pill style + drop zone position + tokens.
  */
 import type { CGridApi, CColumnState } from '../../types';
+import { iconSvg } from '../../renderer/icons';
 import {
   routeExternalDragHover,
   clearExternalDragHover,
@@ -123,6 +124,8 @@ export class ColumnsToolPanel implements ToolPanel {
 
   /** Search input (null when suppressColumnFilter). */
   private searchInput: HTMLInputElement | null = null;
+  /** "Select All / Deselect All" checkbox (null when suppressColumnFilter). */
+  private selectAllCb: HTMLInputElement | null = null;
   /** Container for the column rows. */
   private listEl!: HTMLElement;
   /** Per-colId row cache so refresh + reorder don't blow away DOM nodes. */
@@ -164,6 +167,7 @@ export class ColumnsToolPanel implements ToolPanel {
     this.listEl.className = 'cg-columns-panel-list';
     this.root.appendChild(this.listEl);
     this.buildRows();
+    this.syncSelectAll();
 
     if (!this.params.suppressRowGroups) {
       this.root.appendChild(this.buildRowGroupsSection());
@@ -199,6 +203,7 @@ export class ColumnsToolPanel implements ToolPanel {
     const state = this.api.getColumnState();
     this.syncRows(state);
     this.applySearchFilter(this.searchInput?.value ?? '');
+    this.syncSelectAll();
     this.refreshRowGroupPills();
   }
 
@@ -245,9 +250,29 @@ export class ColumnsToolPanel implements ToolPanel {
     const row = document.createElement('div');
     row.className = 'cg-columns-panel-search';
 
+    // "Select All / Deselect All" checkbox
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.className = 'cg-columns-panel-select-all';
+    cb.setAttribute('aria-label', 'Select all columns');
+    cb.addEventListener('change', () => {
+      const makeVisible = cb.checked;
+      const state = this.api.getColumnState();
+      this.api.applyColumnState({
+        state: state.map(s => ({ ...s, hide: !makeVisible })),
+        applyOrder: false,
+      });
+      this.refresh();
+    });
+    this.selectAllCb = cb;
+    row.appendChild(cb);
+
+    // Wrapper so the magnifying glass icon lives inside the input visually
+    const wrap = document.createElement('div');
+    wrap.className = 'cg-columns-panel-search-wrap';
+
     const icon = document.createElement('span');
     icon.className = 'cg-columns-panel-search-icon';
-    icon.textContent = '\u{1F50D}'; // 🔍
     icon.setAttribute('aria-hidden', 'true');
 
     const input = document.createElement('input');
@@ -256,10 +281,37 @@ export class ColumnsToolPanel implements ToolPanel {
     input.setAttribute('aria-label', 'Search columns');
     input.addEventListener('input', () => this.applySearchFilter(input.value));
 
-    row.appendChild(icon);
-    row.appendChild(input);
+    wrap.appendChild(icon);
+    wrap.appendChild(input);
+    row.appendChild(wrap);
     this.searchInput = input;
     return row;
+  }
+
+  /** Update the "Select All" checkbox to reflect current column visibility.
+   *  Reads directly from the row checkbox DOM so it's always consistent with
+   *  what the list rows show (avoids a second getColumnState() call). */
+  private syncSelectAll(): void {
+    const cb = this.selectAllCb;
+    if (!cb) return;
+    const rows = Array.from(this.rows.values());
+    const total = rows.length;
+    if (total === 0) {
+      cb.checked = false;
+      cb.indeterminate = false;
+      return;
+    }
+    const visible = rows.filter(r => r.checkbox.checked).length;
+    if (visible === total) {
+      cb.checked = true;
+      cb.indeterminate = false;
+    } else if (visible === 0) {
+      cb.checked = false;
+      cb.indeterminate = false;
+    } else {
+      cb.checked = false;
+      cb.indeterminate = true;
+    }
   }
 
   /** Cycle 15.5 / Task 2 — Row Groups SECTION builder. Replaces the
@@ -272,8 +324,11 @@ export class ColumnsToolPanel implements ToolPanel {
 
     const header = document.createElement('div');
     header.className = 'cg-columns-panel-section-header cg-columns-panel-section-header--groups';
-    header.dataset.icon = '☰'; // ☰ — matches the Cycle 11 baseline icon
-    header.textContent = 'Row Groups';
+    const groupsIcon = document.createElement('span');
+    groupsIcon.className = 'cg-columns-panel-section-header-icon';
+    groupsIcon.appendChild(iconSvg('menu', 13));
+    header.appendChild(groupsIcon);
+    header.appendChild(document.createTextNode('Row Groups'));
 
     const dropZone = document.createElement('div');
     dropZone.className = 'cg-columns-panel-drop-zone cg-columns-panel-rgz';
@@ -300,12 +355,23 @@ export class ColumnsToolPanel implements ToolPanel {
 
     const header = document.createElement('div');
     header.className = 'cg-columns-panel-section-header cg-columns-panel-section-header--values';
-    header.dataset.icon = 'Σ'; // Σ
-    header.textContent = 'Values';
+    const valuesIcon = document.createElement('span');
+    valuesIcon.className = 'cg-columns-panel-section-header-icon';
+    valuesIcon.appendChild(iconSvg('sigma', 13));
+    header.appendChild(valuesIcon);
+    header.appendChild(document.createTextNode('Values'));
 
     const dropZone = document.createElement('div');
-    dropZone.className = 'cg-columns-panel-drop-zone';
-    dropZone.textContent = VALUES_PLACEHOLDER;
+    dropZone.className = 'cg-columns-panel-drop-zone cg-columns-panel-valz';
+    dropZone.setAttribute('role', 'list');
+    dropZone.setAttribute('aria-label', 'Aggregate value columns');
+    const valContent = document.createElement('div');
+    valContent.className = 'cg-columns-panel-valz-content';
+    const valEmpty = document.createElement('div');
+    valEmpty.className = 'cg-columns-panel-valz-empty';
+    valEmpty.textContent = VALUES_PLACEHOLDER;
+    valContent.appendChild(valEmpty);
+    dropZone.appendChild(valContent);
     dropZone.addEventListener('drop', (e) => {
       e.preventDefault();
       console.debug('[values] drop (stub — wired in Cycle 16)');
@@ -557,6 +623,13 @@ export class ColumnsToolPanel implements ToolPanel {
     let dragStarted = false;
     let overZone = false;
     let overHeaderStrip = false;
+    let overColumnHeaderBand = false;
+
+    // Column-header drop router — parallel to the row-group-panel router.
+    const hasColHeaderDropRouter =
+      typeof (this.api as any).isPointInColumnHeaderBand === 'function'
+      && typeof (this.api as any).setColumnHeaderDragHover === 'function'
+      && typeof (this.api as any).commitColumnHeaderDrop === 'function';
 
     // ---- Floating ghost -------------------------------------------
     let ghost: HTMLDivElement | null = null;
@@ -577,7 +650,7 @@ export class ColumnsToolPanel implements ToolPanel {
       ghost = el;
       // Position before appending so the first frame is already correct
       // (avoids a flash at 0,0 before the rAF fires).
-      el.style.transform = `translate(${Math.round(clientX + 12)}px,${Math.round(clientY + 8)}px)`;
+      el.style.transform = `translate(${Math.round(clientX)}px,${Math.round(clientY - 14)}px)`;
       // Mount inside the themed ancestor so CSS variables resolve.  The
       // ghost uses `position:fixed` which stays viewport-relative as long
       // as no ancestor introduces a `transform` / `filter` stacking
@@ -589,7 +662,7 @@ export class ColumnsToolPanel implements ToolPanel {
 
     const positionGhost = (clientX: number, clientY: number): void => {
       if (!ghost) return;
-      ghost.style.transform = `translate(${Math.round(clientX + 12)}px,${Math.round(clientY + 8)}px)`;
+      ghost.style.transform = `translate(${Math.round(clientX)}px,${Math.round(clientY - 14)}px)`;
     };
 
     const removeGhost = (): void => {
@@ -627,9 +700,33 @@ export class ColumnsToolPanel implements ToolPanel {
         const inStrip = routeExternalDragHover(router, colId, ev.clientX, ev.clientY);
         if (inStrip !== overHeaderStrip) {
           overHeaderStrip = inStrip;
-          if (inStrip) this.setRowGroupsZoneDropState(null);
+          if (inStrip) {
+            this.setRowGroupsZoneDropState(null);
+            if (overColumnHeaderBand) {
+              (this.api as any).setColumnHeaderDragHover(null, ev.clientX, ev.clientY);
+              overColumnHeaderBand = false;
+            }
+          }
         }
         if (overHeaderStrip) return;
+      }
+
+      // Check the column header band — allows dragging a column from the
+      // columns panel into the grid header to reorder it.
+      if (hasColHeaderDropRouter && allowDragOut && !overHeaderStrip) {
+        const inHeaderBand = (this.api as any).isPointInColumnHeaderBand(ev.clientX, ev.clientY) as boolean;
+        if (inHeaderBand !== overColumnHeaderBand) {
+          overColumnHeaderBand = inHeaderBand;
+          if (!inHeaderBand) {
+            (this.api as any).setColumnHeaderDragHover(null, ev.clientX, ev.clientY);
+          } else {
+            this.setRowGroupsZoneDropState(null);
+          }
+        }
+        if (inHeaderBand) {
+          (this.api as any).setColumnHeaderDragHover(colId, ev.clientX, ev.clientY);
+          return;
+        }
       }
 
       // Paint the tool-panel drop-zone outline.
@@ -674,12 +771,20 @@ export class ColumnsToolPanel implements ToolPanel {
       window.removeEventListener('mouseup', onUp);
       removeGhost();
       if (hasRouter) clearExternalDragHover(router);
+      if (hasColHeaderDropRouter) {
+        (this.api as any).setColumnHeaderDragHover(null, ev.clientX, ev.clientY);
+      }
 
       // A click that never crossed the threshold — nothing to commit.
       if (!dragStarted) return;
 
       if (overHeaderStrip) {
         (this.api as any).commitRowGroupPanelDrop?.(colId);
+        return;
+      }
+
+      if (overColumnHeaderBand) {
+        (this.api as any).commitColumnHeaderDrop(colId, ev.clientX);
         return;
       }
 
@@ -737,7 +842,7 @@ export class ColumnsToolPanel implements ToolPanel {
       el.appendChild(icon);
       el.appendChild(lbl);
       ghost = el;
-      el.style.transform = `translate(${Math.round(clientX + 12)}px,${Math.round(clientY + 8)}px)`;
+      el.style.transform = `translate(${Math.round(clientX)}px,${Math.round(clientY - 14)}px)`;
       const themeHost = this.root.closest<HTMLElement>('[class*="cg-theme"]') ?? document.body;
       themeHost.appendChild(el);
       requestAnimationFrame(() => el.classList.add('cg-col-drag-ghost--visible'));
@@ -745,7 +850,7 @@ export class ColumnsToolPanel implements ToolPanel {
 
     const positionGhost = (clientX: number, clientY: number): void => {
       if (!ghost) return;
-      ghost.style.transform = `translate(${Math.round(clientX + 12)}px,${Math.round(clientY + 8)}px)`;
+      ghost.style.transform = `translate(${Math.round(clientX)}px,${Math.round(clientY - 14)}px)`;
     };
 
     const removeGhost = (): void => { ghost?.remove(); ghost = null; };

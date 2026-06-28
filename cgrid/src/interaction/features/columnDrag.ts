@@ -72,7 +72,6 @@ export function routeExternalDragHover(
 export function clearExternalDragHover(ctx: RowGroupPanelDragRouter): void {
   ctx.setRowGroupPanelDragHover(null, -1, -1);
 }
-const GHOST_CLASS = 'cg-column-drag-ghost';
 const INSERTION_LINE_CLASS = 'cg-column-drag-insertion-line';
 
 interface PressedState {
@@ -95,6 +94,11 @@ interface DraggingState {
   grabOffsetX: number;
   ghost: HTMLDivElement | null;
   insertionLine: HTMLDivElement | null;
+  /** Pill ghost shown when hovering over the row group panel.  Lazily
+   *  created the first time the cursor enters the panel; the column-header
+   *  ghost is hidden while this is visible. */
+  pillGhost: HTMLDivElement | null;
+  overRowGroupPanel: boolean;
 }
 
 type State = PressedState | DraggingState | null;
@@ -155,8 +159,10 @@ export class ColumnDrag extends Feature {
         startY: this.state.startY,
         currentX: ctx.point.x,
         grabOffsetX: this.state.grabOffsetX,
-        ghost: createGhost(ctx, this.state.colId),
+        ghost: null,
         insertionLine: createInsertionLine(ctx),
+        pillGhost: createPillGhost(ctx, this.state.colId),
+        overRowGroupPanel: false,
       };
       this.cursor = 'grabbing';
       updateGhostPosition(this.state, ctx);
@@ -183,6 +189,7 @@ export class ColumnDrag extends Feature {
     }
     state.ghost?.remove();
     state.insertionLine?.remove();
+    state.pillGhost?.remove();
     // Cycle 15 / Task 6 — if the drop landed inside the row group
     // panel, commit the drop there instead of running the header
     // reorder. The panel's drop verdict already filtered for
@@ -212,15 +219,20 @@ export class ColumnDrag extends Feature {
     this.suppressNextClick = true;
   }
 
-  /** Cycle 15 / Task 6 — feed the row group panel host the current
-   *  drag state via the shared router.  When the cursor is OUTSIDE the
-   *  panel, `routeExternalDragHover` clears any prior hover state. */
+  /** Feed the row group panel host the current drag state via the shared
+   *  router. When the cursor ENTERS the panel, hide the insertion line
+   *  (drop target is the panel, not a column slot). Restore it on exit.
+   *  The pill ghost is always visible throughout the drag. */
   private dispatchRowGroupPanelHover(ctx: CGridEventCtx): void {
     const state = this.state;
     if (state === null || state.kind !== 'dragging') return;
     const raw = ctx.raw;
     if (!(raw instanceof MouseEvent)) return;
-    routeExternalDragHover(ctx.grid, state.colId, raw.clientX, raw.clientY);
+    const inPanel = routeExternalDragHover(ctx.grid, state.colId, raw.clientX, raw.clientY);
+    if (inPanel !== state.overRowGroupPanel) {
+      state.overRowGroupPanel = inPanel;
+      if (state.insertionLine) state.insertionLine.style.display = inPanel ? 'none' : '';
+    }
   }
 
   override handleClick(ctx: CGridEventCtx): void {
@@ -271,51 +283,6 @@ function computeDropTargetIndex(
   return bestIdx;
 }
 
-/** Build the ghost header div and append it to the overlay host. Returns
- *  `null` when the overlay host isn't available (test mocks, headless
- *  environments) — the drag still commits, just without the visual
- *  affordance. */
-function createGhost(ctx: CGridEventCtx, colId: string): HTMLDivElement | null {
-  const host = ctx.grid.getOverlayHost?.();
-  if (!host || typeof document === 'undefined') return null;
-  const width = ctx.grid.columnWidthOf(colId) ?? 100;
-  const height = ctx.grid.getLeafHeaderHeight?.() ?? 30;
-  // Mount at the leaf-header row's Y, not 0. With column groups present
-  // (the demo has the P&L group), the leaf header sits BELOW the group
-  // header rows; mounting at 0 would float the ghost above the wrong band.
-  const top = ctx.grid.getLeafHeaderTop?.() ?? 0;
-  const ghost = document.createElement('div');
-  ghost.className = GHOST_CLASS;
-  ghost.textContent = ctx.grid.getHeaderName?.(colId) ?? colId;
-  // Background opacity lives on the background-color via color-mix so the
-  // text stays fully opaque (an element-level `opacity` would fade the
-  // headerName too, making it hard to read mid-drag).
-  ghost.style.cssText = [
-    'position:absolute',
-    'pointer-events:none',
-    `top:${top}px`,
-    'left:0',
-    `width:${width}px`,
-    `height:${height}px`,
-    'box-sizing:border-box',
-    'padding:0 8px',
-    'display:flex',
-    'align-items:center',
-    'background:color-mix(in srgb, var(--cg-header-bg) 70%, transparent)',
-    'color:var(--cg-header-fg)',
-    'font:var(--cg-font)',
-    'border:1px solid var(--cg-border-color)',
-    'box-shadow:0 4px 12px rgba(0,0,0,0.45)',
-    'z-index:5',
-    'white-space:nowrap',
-    'overflow:hidden',
-    'text-overflow:ellipsis',
-    'will-change:transform',
-  ].join(';');
-  host.appendChild(ghost);
-  return ghost;
-}
-
 /** Build the 2 px vertical insertion line and append it to the overlay
  *  host. Spans full canvas height; X is set by `updateInsertionLinePosition`. */
 function createInsertionLine(ctx: CGridEventCtx): HTMLDivElement | null {
@@ -338,12 +305,14 @@ function createInsertionLine(ctx: CGridEventCtx): HTMLDivElement | null {
   return line;
 }
 
-/** Translate the ghost to follow the cursor — anchored so the click point
- *  remains under the cursor. */
+/** Translate the pill ghost to follow the cursor (+12, +8 offset so it
+ *  sits just below and to the right of the pointer tip). */
 function updateGhostPosition(state: DraggingState, ctx: CGridEventCtx): void {
-  if (!state.ghost) return;
-  const x = Math.round(ctx.point.x - state.grabOffsetX);
-  state.ghost.style.transform = `translate3d(${x}px, 0px, 0)`;
+  if (!state.pillGhost) return;
+  const raw = ctx.raw;
+  if (!(raw instanceof MouseEvent)) return;
+  state.pillGhost.style.transform =
+    `translate(${Math.round(raw.clientX)}px,${Math.round(raw.clientY - 14)}px)`;
 }
 
 /** Position the insertion line at the LEFT edge of the column the moving
@@ -363,4 +332,32 @@ function updateInsertionLinePosition(state: DraggingState, ctx: CGridEventCtx): 
   const center = left + width / 2;
   const x = ctx.point.x >= center ? left + width - 1 : left;
   state.insertionLine.style.transform = `translate3d(${Math.round(x)}px, 0px, 0)`;
+}
+
+/** Build a pill ghost (`.cg-col-drag-ghost`) on `document.body` to show
+ *  when a column-header drag enters the row group panel.  Uses the same
+ *  pill style as the Columns tool panel's column-list row drag so the
+ *  "I'm dropping a group chip" affordance reads consistently across
+ *  drag sources.  Returns `null` in headless environments. */
+function createPillGhost(ctx: CGridEventCtx, colId: string): HTMLDivElement | null {
+  if (typeof document === 'undefined') return null;
+  const label = ctx.grid.getHeaderName?.(colId) ?? colId;
+  const el = document.createElement('div');
+  el.className = 'cg-col-drag-ghost cg-col-drag-ghost--visible';
+  const icon = document.createElement('span');
+  icon.className = 'cg-col-drag-ghost-icon';
+  icon.setAttribute('aria-hidden', 'true');
+  const lbl = document.createElement('span');
+  lbl.className = 'cg-col-drag-ghost-label';
+  lbl.textContent = label;
+  el.appendChild(icon);
+  el.appendChild(lbl);
+  // Mount inside the themed ancestor so CSS variables resolve. Uses
+  // position:fixed which stays viewport-relative as long as no ancestor
+  // introduces a transform stacking context — grid containers don't.
+  const themeHost =
+    (ctx.grid.getOverlayHost?.()?.closest<HTMLElement>('[class*="cg-theme"]'))
+    ?? document.body;
+  themeHost.appendChild(el);
+  return el;
 }

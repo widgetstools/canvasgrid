@@ -29,7 +29,7 @@ import type { CellPainter, CellPaintConfig } from './registry';
  */
 
 const PADDING = 6;
-const EMPTY_GLYPH = '—';
+const EMPTY_GLYPH = '';
 
 /** Treats null / undefined / empty-string values OR an empty/undefined
  *  formatted string as "no totals to display for this column." Catches

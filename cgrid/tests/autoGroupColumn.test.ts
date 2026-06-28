@@ -294,17 +294,15 @@ describe('groupCell renderer — chrome painting', () => {
     expect(calls[0]![0]).toBe('EmptyBucket');
   });
 
-  it('paints em-dash glyph for empty / null group value', () => {
-    // Matches the Cycle 14 / Task 5 totals empty placeholder — one
-    // empty glyph across the cycle vocabulary so a grouped grid with
-    // a null group key reads identically to a totals row with no
-    // aggFunc value.
+  it('paints empty string (no glyph) for empty / null group value', () => {
+    // Empty group keys render as blank — no em-dash sentinel. The cell
+    // chrome (chevron, count) still paints; only the value text is empty.
     const gc = makeGc();
     groupCell.paint(gc, baseParams({
       value: makeGroupValue({ valueFormatted: '' }),
     }));
     const calls = (gc.fillText as unknown as ReturnType<typeof vi.fn>).mock.calls;
-    expect(calls[0]![0]).toBe('—');
+    expect(calls[0]![0]).toBe('');
   });
 
   it('paints NO chrome for a data row (rowKind === 0) with empty valueFormatted — only background', () => {

@@ -100,6 +100,7 @@ const rowGroupPanelMode = search.get('rowGroupPanel');
 const rowGroupPanelEmpty = rowGroupPanelMode === 'empty';
 const rowGroupPanelThreeChips = rowGroupPanelMode === 'threeChips';
 const rowGroupPanelAlways = rowGroupPanelMode === 'always';
+const rowGroupPanelMarketsGrid = rowGroupPanelMode === 'marketsGrid';
 // Cycle 15 / Task 8 — `?groupSelectsChildren=1` opts the demo into
 // tri-state cascading selection. Off by default so visual cells
 // 01–24 stay byte-stable; visual cell 25 turns it on AND seeds a
@@ -121,7 +122,7 @@ const groupIncludeTotalFooter = search.get('groupIncludeTotalFooter') === '1';
 // + lets deep-links pin a feature combo.
 const pinning      = search.get('pinning')      === 'on';
 const columnGroups = search.get('columnGroups') === 'on';
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, groupingDemo, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, groupSelectsChildren, groupIncludeFooter, groupIncludeTotalFooter, pinning, columnGroups });
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, groupingDemo, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, rowGroupPanelMarketsGrid, groupSelectsChildren, groupIncludeFooter, groupIncludeTotalFooter, pinning, columnGroups });
 
 // Toolbar feature-toggle checkboxes. Toggling reloads the page with
 // the matching URL flag set / unset because the structural changes
