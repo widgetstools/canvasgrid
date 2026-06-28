@@ -71,6 +71,7 @@ import { wrapTextCell } from './renderer/cellRenderers/wrapText';
 import { totalsCell } from './renderer/cellRenderers/totals';
 import { groupCell, type GroupCellValue } from './renderer/cellRenderers/group';
 import { groupFooterCell } from './renderer/cellRenderers/groupFooter';
+import { decorateHeader } from './renderer/painters/byRows';
 import {
   autoGroupColumnDepthFromId,
   isAutoGroupColumnId, resolveGroupDisplayType, synthesizeAutoGroupColumns,
@@ -5481,9 +5482,12 @@ export class CGrid<TRow = any> {
       if (def.hide) continue;
       if (def.suppressAutoSize) continue;
       const font = def.cellStyle?.font ?? this.theme.font;
+      // Use the decorated header text (e.g. "sum(Notional)") so the
+      // measured width matches exactly what the header painter draws.
+      const headerName = decorateHeader(def, this.options.suppressAggFuncInHeader === true);
       requests.push({
         colId: def.colId,
-        headerName: def.headerName,
+        headerName,
         font,
         padding,
         headerPadding,
