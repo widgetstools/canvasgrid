@@ -439,6 +439,11 @@ export class ColumnsToolPanel implements ToolPanel {
     pill.setAttribute('role', 'listitem');
     pill.dataset.colId = colId;
 
+    const handle = document.createElement('span');
+    handle.className = 'cg-columns-panel-rgz-pill-handle';
+    handle.setAttribute('aria-hidden', 'true');
+    pill.appendChild(handle);
+
     const label = document.createElement('span');
     label.className = 'cg-columns-panel-rgz-pill-label';
     label.textContent = this.resolveLabel(colId);
@@ -563,7 +568,7 @@ export class ColumnsToolPanel implements ToolPanel {
       const icon = document.createElement('span');
       icon.className = 'cg-col-drag-ghost-icon';
       icon.setAttribute('aria-hidden', 'true');
-      icon.textContent = '⠿';
+      // No textContent — the dot-grid is drawn via CSS background-image.
       const lbl = document.createElement('span');
       lbl.className = 'cg-col-drag-ghost-label';
       lbl.textContent = label;
@@ -573,8 +578,12 @@ export class ColumnsToolPanel implements ToolPanel {
       // Position before appending so the first frame is already correct
       // (avoids a flash at 0,0 before the rAF fires).
       el.style.transform = `translate(${Math.round(clientX + 12)}px,${Math.round(clientY + 8)}px)`;
-      document.body.appendChild(el);
-      // Trigger the fade-in transition on the next paint.
+      // Mount inside the themed ancestor so CSS variables resolve.  The
+      // ghost uses `position:fixed` which stays viewport-relative as long
+      // as no ancestor introduces a `transform` / `filter` stacking
+      // context — grid containers don't, so this is safe.
+      const themeHost = this.root.closest<HTMLElement>('[class*="cg-theme"]') ?? document.body;
+      themeHost.appendChild(el);
       requestAnimationFrame(() => el.classList.add('cg-col-drag-ghost--visible'));
     };
 
@@ -708,9 +717,38 @@ export class ColumnsToolPanel implements ToolPanel {
     if (!section) return;
     const pill = section.pills.find((p) => p.colId === colId);
     if (!pill) return;
+
+    const label = this.resolveLabel(colId);
     const startX = e.clientX;
     const startY = e.clientY;
     let dragging = false;
+    let ghost: HTMLDivElement | null = null;
+
+    const mountGhost = (clientX: number, clientY: number): void => {
+      if (typeof document === 'undefined') return;
+      const el = document.createElement('div');
+      el.className = 'cg-col-drag-ghost';
+      const icon = document.createElement('span');
+      icon.className = 'cg-col-drag-ghost-icon';
+      icon.setAttribute('aria-hidden', 'true');
+      const lbl = document.createElement('span');
+      lbl.className = 'cg-col-drag-ghost-label';
+      lbl.textContent = label;
+      el.appendChild(icon);
+      el.appendChild(lbl);
+      ghost = el;
+      el.style.transform = `translate(${Math.round(clientX + 12)}px,${Math.round(clientY + 8)}px)`;
+      const themeHost = this.root.closest<HTMLElement>('[class*="cg-theme"]') ?? document.body;
+      themeHost.appendChild(el);
+      requestAnimationFrame(() => el.classList.add('cg-col-drag-ghost--visible'));
+    };
+
+    const positionGhost = (clientX: number, clientY: number): void => {
+      if (!ghost) return;
+      ghost.style.transform = `translate(${Math.round(clientX + 12)}px,${Math.round(clientY + 8)}px)`;
+    };
+
+    const removeGhost = (): void => { ghost?.remove(); ghost = null; };
 
     const onMove = (ev: MouseEvent) => {
       if (!dragging) {
@@ -718,19 +756,23 @@ export class ColumnsToolPanel implements ToolPanel {
         const dy = ev.clientY - startY;
         if (Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) return;
         dragging = true;
-        pill.el.classList.add('cg-columns-panel-rgz-pill--dragging');
+        pill.el.classList.add('cg-columns-panel-rgz-pill--lifted');
+        mountGhost(ev.clientX, ev.clientY);
       }
+      positionGhost(ev.clientX, ev.clientY);
     };
+
     const onUp = (ev: MouseEvent) => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
-      pill.el.classList.remove('cg-columns-panel-rgz-pill--dragging');
-      if (!dragging) return; // a click below threshold — swallow (×
-      // is the click target; the body is grab-only).
+      pill.el.classList.remove('cg-columns-panel-rgz-pill--lifted');
+      removeGhost();
+      if (!dragging) return;
       if (!this.isPointInRowGroupsZone(ev.clientX, ev.clientY)) {
         this.api.removeRowGroupColumn?.(colId);
       }
     };
+
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
   }

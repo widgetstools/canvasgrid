@@ -841,10 +841,10 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-/* Floating drag ghost for column-list row drags (columnsPanel beginRowDrag).
- * Mounts on document.body, tracks the cursor with transform: translate.
- * Starts invisible (opacity: 0) and fades in on the next rAF tick by adding
- * the --visible modifier so the first frame is never a flash at (0,0). */
+/* Floating drag ghost — shared by column-list row drags AND pill drag-outs.
+ * Styled to match the row-group zone pill exactly (same height, border,
+ * radius, background) so the user sees "this is a row-group chip" not a
+ * generic tooltip card.  Elevated via box-shadow to read as "lifted". */
 .cg-col-drag-ghost {
   position: fixed;
   top: 0;
@@ -855,31 +855,41 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 5px 10px;
-  border-radius: 4px;
+  /* Mirror the zone pill dimensions */
+  height: 26px;
+  padding: 0 10px 0 8px;
+  border: 1px solid var(--cg-row-group-chip-border, var(--cg-border-color));
+  border-radius: var(--cg-row-group-chip-radius, 4px);
   background: var(--cg-header-bg, #1e2022);
-  color: var(--cg-header-fg, #d4d4d4);
+  color: var(--cg-fg-color);
   font-size: 12px;
   font-family: var(--cg-font-family, inherit);
   white-space: nowrap;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5), 0 1px 4px rgba(0, 0, 0, 0.35);
-  border: 1px solid color-mix(in srgb, var(--cg-border-color, #444) 80%, transparent);
+  /* Elevated: stronger shadow than the zone pills */
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.5), 0 1px 4px rgba(0, 0, 0, 0.35);
   opacity: 0;
   will-change: transform;
   transform: translate(0, 0);
 }
 .cg-col-drag-ghost--visible {
-  /* Transition only opacity so transform updates are instant (no lag). */
   opacity: 1;
-  transition: opacity 80ms ease;
+  transition: opacity 70ms ease;
 }
+/* The drag handle icon inside the ghost — same dot-grid pattern as the
+ * column-list row handles and the zone pill handles. */
 .cg-col-drag-ghost-icon {
-  opacity: 0.6;
-  font-size: 11px;
-  line-height: 1;
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 10px;
+  height: 12px;
+  opacity: 0.5;
+  background-image: radial-gradient(circle, currentColor 1.1px, transparent 1.4px);
+  background-size: 4px 4px;
+  background-position: 1px 1px;
+  background-repeat: repeat;
 }
 .cg-col-drag-ghost-label {
-  max-width: 180px;
+  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
@@ -996,6 +1006,29 @@
 .cg-columns-panel-rgz-pill:hover {
   background: var(--cg-row-group-chip-hover-bg,
     color-mix(in srgb, var(--cg-header-bg) 92%, var(--cg-fg-color) 8%));
+}
+/* Drag handle on the left of each zone pill — same dot-grid pattern as
+ * the column-list row handles so the affordance reads consistently. */
+.cg-columns-panel-rgz-pill-handle {
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 10px;
+  height: 12px;
+  opacity: 0.45;
+  cursor: grab;
+  background-image: radial-gradient(circle, currentColor 1.1px, transparent 1.4px);
+  background-size: 4px 4px;
+  background-position: 1px 1px;
+  background-repeat: repeat;
+}
+.cg-columns-panel-rgz-pill-handle:active {
+  cursor: grabbing;
+}
+.cg-columns-panel-rgz-pill--lifted {
+  /* Keep the DOM slot (layout preserved) but hide the pill while its
+   * ghost is floating — same visibility:hidden pattern as --lifted on
+   * column-list rows. */
+  visibility: hidden;
 }
 .cg-columns-panel-rgz-pill--dragging {
   opacity: 0.6;
