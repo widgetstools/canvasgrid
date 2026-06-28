@@ -142,6 +142,7 @@ function wireFeatureToggle(id: string, flagName: string, flagOnValue: string, is
 wireFeatureToggle('toggle-pinning',         'pinning',       'on',     pinning);
 wireFeatureToggle('toggle-column-groups',   'columnGroups',  'on',     columnGroups);
 wireFeatureToggle('toggle-row-group-panel', 'rowGroupPanel', 'always', rowGroupPanelAlways);
+wireFeatureToggle('toggle-open-columns',    'openColumns',   '1',      openColumns);
 
 // E2E hooks: expose the grid + a readiness flag so Playwright tests can wait
 // for first-data-rendered and call api helpers (`getCellBoundsAt`,
