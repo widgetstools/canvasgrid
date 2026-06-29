@@ -38,6 +38,7 @@
  */
 
 import type { PivotPanelShow, PivotPanelDropVerdict } from './types';
+import { copyResolvedChipStyles } from '../chipGhostStyles';
 
 /** Verbatim from `interaction/toolPanels/columnsPanel.ts`'s plz zone.
  *  ONE drop-zone vocabulary across the grid. */
@@ -589,6 +590,11 @@ export class PivotPanelHost {
     ghost.removeAttribute('data-col-id');
     ghost.removeAttribute('data-index');
     ghost.setAttribute('aria-hidden', 'true');
+    // The chip CSS uses panel-scoped variables which DO NOT resolve
+    // on document.body. Snapshot resolved computed styles from the
+    // source pill into inline declarations so the ghost renders
+    // correctly outside the panel scope.
+    copyResolvedChipStyles(sourcePill, ghost);
     const rect = sourcePill.getBoundingClientRect();
     ghost.style.width = `${rect.width}px`;
     ghost.style.height = `${rect.height}px`;
