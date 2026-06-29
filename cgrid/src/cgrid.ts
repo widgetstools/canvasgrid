@@ -83,6 +83,7 @@ import { wrapTextCell } from './renderer/cellRenderers/wrapText';
 import { totalsCell } from './renderer/cellRenderers/totals';
 import { groupCell, type GroupCellValue } from './renderer/cellRenderers/group';
 import { groupFooterCell } from './renderer/cellRenderers/groupFooter';
+import { sparklineCell } from './renderer/cellRenderers/sparkline';
 import { decorateHeader } from './renderer/painters/byRows';
 import {
   autoGroupColumnDepthFromId,
@@ -749,6 +750,10 @@ export class CGrid<TRow = any> {
     this.cellRenderers.register('totals', totalsCell);
     this.cellRenderers.register('group', groupCell);
     this.cellRenderers.register('groupFooter', groupFooterCell);
+    // Cycle 21 / Task 1 — canvas-painted sparkline (line variant; Task 2
+    // plugs the column / area / bar / pie sibling painters through the
+    // same registered name via `cellRendererParams.sparkline.type`).
+    this.cellRenderers.register('sparkline', sparklineCell);
 
     // 2b. Tool-panel registry (Cycle 11 / Task 1). Seed the built-in
     // IDs first, then overwrite the Columns stub with the real
