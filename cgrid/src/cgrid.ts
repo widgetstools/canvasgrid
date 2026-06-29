@@ -2774,8 +2774,21 @@ export class CGrid<TRow = any> {
    *  reply carries the pivot tree + values and `maybeSyncPivotColumns`
    *  (re)synthesizes the secondary columns. Cite:
    *  docs/superpowers/plans/notes/cycle-18-pivoting-design.md (Task 3). */
-  private handlePivotStateChanged(_e: PivotStateChangedEvent): void {
+  private handlePivotStateChanged(e: PivotStateChangedEvent): void {
     if (this.destroyed) return;
+    // Cycle 18 / Task 5 — fan the change out as a public event so the
+    // columns tool panel + pivot panel + context menu keep their views
+    // over PivotState in sync. Fire BEFORE the worker round-trip so
+    // subscribers can repaint optimistically — the chunk reply that
+    // lands a tick later only matters for body cell values, not the
+    // pill / toggle chrome these surfaces render from state.
+    this.events.emit({
+      type: 'pivotStateChanged',
+      pivotMode: e.pivotMode,
+      pivotColumns: [...e.pivotColumns],
+      valueColumns: e.valueColumns.map((v) => ({ ...v })),
+      source: e.source,
+    });
     this.workerClient.updateColumns(this.workerColumns())
       .then(() => this.workerClient.setPivotModel(this.pivotWorkerModel()))
       .then(() => {
@@ -3150,6 +3163,21 @@ export class CGrid<TRow = any> {
    *  `isColumnRowGroupEnabled` API entry. */
   isColumnRowGroupEnabled(colId: string): boolean {
     return this.columnDefsMap.get(colId)?.enableRowGroup === true;
+  }
+
+  /** Cycle 18 / Task 5 — `true` when the column's resolved colDef carries
+   *  `enablePivot: true`. Gates whether the columns tool panel + context
+   *  menu offer the "add as pivot" affordance. Mirrors the
+   *  `isColumnRowGroupEnabled` shape; same class+API duality. */
+  isColumnPivotEnabled(colId: string): boolean {
+    return this.columnDefsMap.get(colId)?.enablePivot === true;
+  }
+
+  /** Cycle 18 / Task 5 — `true` when the column's resolved colDef carries
+   *  `enableValue: true`. Gates whether the columns tool panel + context
+   *  menu offer the "add as value/aggregation" affordance. */
+  isColumnValueEnabled(colId: string): boolean {
+    return this.columnDefsMap.get(colId)?.enableValue === true;
   }
 
   /** Cycle 15.5 / Task 2 (gap-fill) — expose the row-group-panel
@@ -4559,6 +4587,8 @@ export class CGrid<TRow = any> {
       getColumnState: () => this.getColumnState(),
       getColumnHeaderName: (colId) => this.getColumnHeaderName(colId),
       isColumnRowGroupEnabled: (colId) => this.isColumnRowGroupEnabled(colId),
+      isColumnPivotEnabled: (colId) => this.isColumnPivotEnabled(colId),
+      isColumnValueEnabled: (colId) => this.isColumnValueEnabled(colId),
       getColumnFilterType: (colId) => this.getColumnFilterType(colId),
       buildColumnFilterEditor: (colId) => this.buildColumnFilterEditor(colId),
       applyColumnState: (p) => this.applyColumnState(p),

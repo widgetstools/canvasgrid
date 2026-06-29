@@ -63,15 +63,20 @@ test.describe('Cycle 11 / Task 3 — Columns tool panel', () => {
     await expect(page.locator(PANEL)).toBeVisible();
     await expect(page.locator(`${PANEL} .cg-columns-panel-pivot-mode`)).toHaveCount(1);
     await expect(page.locator(`${PANEL} .cg-columns-panel-search input[type="search"]`)).toBeVisible();
-    // Section headers + drop zones.
+    // Section headers + drop zones. Cycle 18 / Task 5 added the Column
+    // Labels (pivot) zone and reordered: pivot-related zones (Column
+    // Labels, Values) sit above Row Groups so they cluster near the
+    // columns list under pivot mode.
     const headers = page.locator(`${PANEL} .cg-columns-panel-section-header`);
-    await expect(headers).toHaveCount(2);
-    await expect(headers.nth(0)).toHaveText('Row Groups');
+    await expect(headers).toHaveCount(3);
+    await expect(headers.nth(0)).toHaveText('Column Labels');
     await expect(headers.nth(1)).toHaveText('Values');
+    await expect(headers.nth(2)).toHaveText('Row Groups');
     const dropZones = page.locator(`${PANEL} .cg-columns-panel-drop-zone`);
-    await expect(dropZones).toHaveCount(2);
-    await expect(dropZones.nth(0)).toHaveText('Drag here to set row groups');
+    await expect(dropZones).toHaveCount(3);
+    await expect(dropZones.nth(0)).toHaveText('Drag here to set column labels');
     await expect(dropZones.nth(1)).toHaveText('Drag here to aggregate');
+    await expect(dropZones.nth(2)).toHaveText('Drag here to set row groups');
 
     // Demo grid carries 17 leaf columns at present — assert at least the
     // first five render with their headerNames (sanity check on
@@ -138,7 +143,7 @@ test.describe('Cycle 11 / Task 3 — Columns tool panel', () => {
     expect(restored).toBe(allRows);
   });
 
-  test('the Pivot Mode toggle flips aria-pressed on click (visual stub — wired in Cycle 16)', async ({ page }) => {
+  test('the Pivot Mode toggle drives api.setPivotMode and flips aria-pressed on click', async ({ page }) => {
     await gridReady(page);
     await openColumnsPanel(page);
 
@@ -146,8 +151,20 @@ test.describe('Cycle 11 / Task 3 — Columns tool panel', () => {
     await expect(toggle).toHaveAttribute('aria-pressed', 'false');
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-pressed', 'true');
+    // Cycle 18 / Task 5 — the click now drives the real api, so the
+    // grid's pivotMode state reflects the toggle.
+    const pivotModeAfterOn = await page.evaluate(() => {
+      const api = (window as unknown as { __cgrid?: { isPivotMode?: () => boolean } }).__cgrid;
+      return api?.isPivotMode?.() ?? null;
+    });
+    expect(pivotModeAfterOn).toBe(true);
     await toggle.click();
     await expect(toggle).toHaveAttribute('aria-pressed', 'false');
+    const pivotModeAfterOff = await page.evaluate(() => {
+      const api = (window as unknown as { __cgrid?: { isPivotMode?: () => boolean } }).__cgrid;
+      return api?.isPivotMode?.() ?? null;
+    });
+    expect(pivotModeAfterOff).toBe(false);
   });
 
   test('the panel mirrors external columnVisible mutations (refresh path)', async ({ page }) => {

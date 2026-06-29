@@ -1926,6 +1926,20 @@ export type CGridEvent =
       columns: string[];
       source: 'set' | 'add' | 'remove' | 'move' | 'sort' | 'restore';
     }
+  /** Cycle 18 / Task 5 — fired whenever PivotState mutates: pivotMode flip,
+   *  pivot/value column add/remove/move, value aggFunc change, or a
+   *  `restore()` round-trip. Carries fresh snapshots so subscribers can
+   *  diff against their last-known copy. The columns tool panel + pivot
+   *  panel + context menu items all subscribe to keep the three views over
+   *  PivotState in sync (the same "many views over one model" invariant
+   *  GroupingState + `columnRowGroupChanged` already enforces for grouping). */
+  | {
+      type: 'pivotStateChanged';
+      pivotMode: boolean;
+      pivotColumns: string[];
+      valueColumns: Array<{ colId: string; aggFunc: string }>;
+      source: 'mode' | 'set' | 'add' | 'remove' | 'move' | 'aggFunc' | 'restore';
+    }
   /** Fires when the set / order of displayed columns changes for any reason.
    *  Cycle 4 wired the original `columnGroupOpened` + `columnDefsChanged`
    *  sources; Cycle 6 / Task 8 widens the source union so listeners can
@@ -2495,6 +2509,16 @@ export interface CGridApi {
    *  the "Group by `<col>`" item visibility). Returns `false` for
    *  unknown colIds. */
   isColumnRowGroupEnabled(colId: string): boolean;
+  /** Cycle 18 / Task 5 — `true` when the column's resolved colDef carries
+   *  `enablePivot: true`. Gates whether the columns tool panel + context
+   *  menu let a user assign the column as a pivot (Column Label). Returns
+   *  `false` for unknown colIds. */
+  isColumnPivotEnabled(colId: string): boolean;
+  /** Cycle 18 / Task 5 — `true` when the column's resolved colDef carries
+   *  `enableValue: true`. Gates whether the columns tool panel + context
+   *  menu let a user assign the column as a Values measure. Returns
+   *  `false` for unknown colIds. */
+  isColumnValueEnabled(colId: string): boolean;
   /** Cycle 15.5 / Task 2 (gap-fill) — `true` when the row group panel
    *  is mounted AND the viewport-coord point `(clientX, clientY)` falls
    *  inside its DOM rect.  Exposed on the public API so external drag

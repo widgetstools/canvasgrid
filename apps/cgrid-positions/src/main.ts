@@ -140,7 +140,14 @@ const grandTotalRow: 'top' | 'bottom' | undefined =
 // + lets deep-links pin a feature combo.
 const pinning      = search.get('pinning')      === 'on';
 const columnGroups = search.get('columnGroups') === 'on';
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, groupingDemo, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, rowGroupPanelMarketsGrid, groupSelectsChildren, groupIncludeFooter, groupIncludeTotalFooter, pinning, columnGroups, groupHideOpenParents, isGroupOpenByDefault, suppressCount, suppressGroupChangesColumnVisibility, groupTotalRow, grandTotalRow });
+// Cycle 18 / Task 5 — `?pivotDemo=on` opts a handful of categorical
+// columns into `enablePivot: true` and a handful of numeric columns
+// into `enableValue: true` so the columns tool panel's Column Labels
+// + Values drop zones have something to accept. Side bar opens with
+// the Columns panel active so the pivot affordances are visible on
+// mount. Off by default so visual cells stay byte-stable.
+const pivotDemo = search.get('pivotDemo') === 'on';
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, groupingDemo, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, rowGroupPanelMarketsGrid, groupSelectsChildren, groupIncludeFooter, groupIncludeTotalFooter, pinning, columnGroups, groupHideOpenParents, isGroupOpenByDefault, suppressCount, suppressGroupChangesColumnVisibility, groupTotalRow, grandTotalRow, pivotDemo });
 
 // Toolbar feature-toggle checkboxes. Toggling reloads the page with
 // the matching URL flag set / unset because the structural changes

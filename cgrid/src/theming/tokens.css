@@ -1114,13 +1114,21 @@
 
 /* Values drop zone — same visual style as the Row Groups zone but
  * separate classes so Row Groups tests can query `.cg-columns-panel-rgz`
- * without picking up the Values container. Wired fully in Cycle 16. */
+ * without picking up the Values container. Wired in Cycle 18 / Task 5. */
 .cg-columns-panel-valz {
   padding: 0;
   border-radius: 4px;
   border: 1px solid transparent;
   transition: border-color 120ms ease, background 120ms ease;
   min-height: 32px;
+}
+.cg-columns-panel-valz[data-drop="accept"] {
+  border-color: var(--cg-focus-ring-color);
+  background: color-mix(in srgb, var(--cg-focus-ring-color) 6%, transparent);
+}
+.cg-columns-panel-valz[data-drop="reject"] {
+  border-color: #f59e0b;
+  background: color-mix(in srgb, #f59e0b 6%, transparent);
 }
 .cg-columns-panel-valz-content {
   display: flex;
@@ -1133,6 +1141,119 @@
   font-size: var(--cg-font-size-sm);
   padding: 6px 4px;
   opacity: 0.45;
+}
+
+/* Cycle 18 / Task 5 — Column Labels (pivot) drop zone. Same visual
+ * vocabulary as Row Groups / Values; separate class prefix so per-zone
+ * tests stay unambiguous. */
+.cg-columns-panel-plz {
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  transition: border-color 120ms ease, background 120ms ease;
+  min-height: 32px;
+}
+.cg-columns-panel-plz[data-drop="accept"] {
+  border-color: var(--cg-focus-ring-color);
+  background: color-mix(in srgb, var(--cg-focus-ring-color) 6%, transparent);
+}
+.cg-columns-panel-plz[data-drop="reject"] {
+  border-color: #f59e0b;
+  background: color-mix(in srgb, #f59e0b 6%, transparent);
+}
+.cg-columns-panel-plz-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 2px 0;
+}
+.cg-columns-panel-plz-empty {
+  text-align: center;
+  font-size: var(--cg-font-size-sm);
+  padding: 6px 4px;
+  opacity: 0.45;
+}
+
+/* Cycle 18 / Task 5 — shared pill chrome for ALL drop zones (rgz, plz,
+ * valz). Each pill element carries both its zone-prefixed class AND the
+ * shared `.cg-columns-panel-pill*` class. The zone-prefixed selectors
+ * above (e.g. `.cg-columns-panel-rgz-pill`) keep the original test
+ * surface; this shared block guarantees identical chrome on the new
+ * plz + valz pills without duplicating rules. */
+.cg-columns-panel-pill {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 8px 0 4px;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--cg-border-color) 55%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--cg-header-bg) 70%, var(--cg-bg-color) 30%);
+  color: var(--cg-fg-color);
+  font-size: var(--cg-font-size);
+  line-height: 1;
+  cursor: grab;
+  user-select: none;
+  white-space: nowrap;
+}
+.cg-columns-panel-pill:hover {
+  background: var(--cg-row-hover-bg);
+  border-color: color-mix(in srgb, var(--cg-border-color) 80%, transparent);
+}
+.cg-columns-panel-pill-handle {
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 10px;
+  height: 14px;
+  opacity: 0.45;
+  cursor: grab;
+  background-image: radial-gradient(circle, currentColor 1.1px, transparent 1.4px);
+  background-size: 4px 4px;
+  background-position: 1px 1px;
+  background-repeat: repeat;
+}
+.cg-columns-panel-pill-handle:active {
+  cursor: grabbing;
+}
+.cg-columns-panel-pill-label {
+  flex: 1 1 auto;
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cg-columns-panel-pill-remove {
+  flex: 0 0 auto;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0 2px;
+  margin: 0;
+  font: inherit;
+  font-size: var(--cg-font-size);
+  line-height: 1;
+  color: inherit;
+  opacity: 0.55;
+  cursor: pointer;
+}
+.cg-columns-panel-pill-remove:hover {
+  opacity: 1;
+}
+.cg-columns-panel-pill-remove:focus-visible {
+  outline: 2px solid var(--cg-focus-ring-color);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+/* Lifted/dragging modifiers — apply to any zone via per-zone class. */
+.cg-columns-panel-plz-pill--lifted,
+.cg-columns-panel-valz-pill--lifted {
+  visibility: hidden;
+}
+.cg-columns-panel-plz-pill--dragging,
+.cg-columns-panel-valz-pill--dragging {
+  opacity: 0.6;
+  cursor: grabbing;
 }
 
 /* Cycle 11 / Task 4 — FiltersToolPanel.

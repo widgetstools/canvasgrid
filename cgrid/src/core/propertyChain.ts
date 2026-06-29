@@ -187,6 +187,18 @@ export interface ResolvedColDef<TRow = any> {
    *  the imperative `setGroupModel` API still works regardless.
    *  Cycle 15 / Task 6. */
   enableRowGroup: boolean;
+  /** See `CColDef.enablePivot`. When `true`, the column header
+   *  can be dragged into the Column Labels drop zone (or the pivot
+   *  panel, when wired) to add the column to `pivotColumns`. `false`
+   *  (default) rejects the drop; the imperative `setPivotColumns` /
+   *  `addPivotColumn` API still works regardless. Cycle 18 / Task 5. */
+  enablePivot: boolean;
+  /** See `CColDef.enableValue`. When `true`, the column header can
+   *  be dragged into the Values drop zone to add the column as a
+   *  measure under pivot. `false` (default) rejects the drop; the
+   *  imperative `addValueColumn` API still works regardless.
+   *  Cycle 18 / Task 5. */
+  enableValue: boolean;
   /** See `CColDef.initialSort`. Resolved value is the column's
    *  construction-time seed; the cgrid layer reads it once to build the
    *  initial sort model and never re-reads it. Cycle 8 / Task 2. */
@@ -644,6 +656,8 @@ export function resolveColDef<TRow>(
     suppressSizeToFit: merged.suppressSizeToFit ?? false,
     suppressAutoSize: merged.suppressAutoSize ?? false,
     enableRowGroup: merged.enableRowGroup ?? false,
+    enablePivot: merged.enablePivot ?? false,
+    enableValue: merged.enableValue ?? false,
     initialSort: merged.initialSort,
     initialSortIndex: merged.initialSortIndex,
   };
