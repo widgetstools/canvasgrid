@@ -42,6 +42,7 @@ import { FillHandle } from './features/fillHandle';
 import { RightClick } from './features/rightClick';
 import { KeyboardShortcuts } from './features/keyboardShortcuts';
 import { GroupExpandFeature } from './features/groupExpand';
+import { SparklineTooltip } from './features/sparklineTooltip';
 
 /** Idle gap (ms) after the last wheel event before the axis lock releases.
  *  ~150ms matches the natural pause between separate trackpad gestures while
@@ -87,6 +88,13 @@ export class FeatureChain {
       // not implement handleContextMenu so the placement is cosmetic today,
       // but matches the "tail-of-input-features" intent from the worklog.
       .append(new RightClick())
+      // Cycle 21 / Task 3 — sparkline tooltip sits ahead of OnHover so
+      // its DOM overlay update runs on every mousemove tick. Both
+      // features forward via `super` (neither claims the move), so the
+      // ordering only affects which one runs first; placing the
+      // tooltip ahead of OnHover keeps it visible immediately when the
+      // pointer enters a sparkline cell.
+      .append(new SparklineTooltip())
       .append(new OnHover());
 
     const c = grid.canvas.canvas;

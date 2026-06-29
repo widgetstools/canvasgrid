@@ -1216,6 +1216,21 @@ export class CGrid<TRow = any> {
       getGroupKeyAtRow: (rowIndex) => this.getGroupKeyAtRow(rowIndex),
       isGroupRow: (rowIndex) => this.isGroupRow(rowIndex),
       isGroupExpanded: (groupKey) => this.isGroupExpanded(groupKey),
+      // Cycle 21 / Task 3 — sparkline-tooltip lookup. Returns the cell
+      // data array only when the column's resolved cellRenderer is
+      // `'sparkline'`; null otherwise (non-sparkline column, off-screen
+      // row, or value not an array). The SparklineTooltip feature uses
+      // null as the "hide" signal so this stays the one consolidated
+      // gate for whether the overlay is active at all.
+      getSparklineData: (rowIndex, colId) => {
+        const def = this.columnDefsMap.get(colId);
+        if (!def || def.cellRenderer !== 'sparkline') return null;
+        const cell = this.cellAt(rowIndex, colId);
+        const value = cell?.value;
+        return Array.isArray(value) && value.every((v) => typeof v === 'number')
+          ? (value as readonly number[])
+          : null;
+      },
     });
     this.cellEditorRegistry = new CellEditorRegistry();
     CellEditorRegistry.seed(this.cellEditorRegistry);

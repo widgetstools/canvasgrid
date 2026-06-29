@@ -360,6 +360,15 @@ export interface CGridLike {
   isGroupRow(rowIndex: number): boolean;
   /** Cycle 15.5 — true when `groupKey` is in the current expanded set. */
   isGroupExpanded(groupKey: string): boolean;
+
+  /** Cycle 21 / Task 3 — sparkline-tooltip lookup. Returns the cell's
+   *  data array WHEN AND ONLY WHEN the column's resolved cellRenderer is
+   *  `'sparkline'` AND the row's value at that column is an array of
+   *  numbers. Returns `null` for every other case (non-sparkline column,
+   *  missing data, off-screen row) so the SparklineTooltip feature can
+   *  treat null as "hide". The grid owns this resolution because column
+   *  defs + chunk-side row data both live there. */
+  getSparklineData(rowIndex: number, colId: string): readonly number[] | null;
 }
 
 export interface CGridEventCtx {
