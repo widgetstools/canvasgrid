@@ -51,9 +51,9 @@ export const pivotAgComparison: Feature = {
   mount(gridHost, controls, theme) {
     const cgridTheme = theme;
 
-    // ─── Split host into two columns ─────────────────────────────────────────
+    // ─── Split host into top/bottom panes ────────────────────────────────────
     gridHost.style.display = 'flex';
-    gridHost.style.flexDirection = 'row';
+    gridHost.style.flexDirection = 'column';
     gridHost.style.gap = '8px';
     gridHost.style.width = '100%';
     gridHost.style.height = '100%';
@@ -61,7 +61,7 @@ export const pivotAgComparison: Feature = {
 
     const makePane = (label: string): { wrap: HTMLDivElement; body: HTMLDivElement } => {
       const wrap = document.createElement('div');
-      wrap.style.cssText = 'flex:1 1 0; min-width:0; display:flex; flex-direction:column; min-height:0;';
+      wrap.style.cssText = 'flex:1 1 0; min-height:0; display:flex; flex-direction:column;';
       const head = document.createElement('div');
       head.textContent = label;
       head.style.cssText = 'padding:4px 8px; font-size:12px; font-weight:600; color:var(--cg-color-text, #ccc); border-bottom:1px solid rgba(127,127,127,0.2);';
@@ -73,10 +73,10 @@ export const pivotAgComparison: Feature = {
       return { wrap, body };
     };
 
-    const left = makePane('cgrid');
-    const right = makePane('AG-Grid Enterprise (v35)');
+    const top = makePane('cgrid');
+    const bottom = makePane('AG-Grid Enterprise (v35)');
 
-    // ─── cgrid (left) ────────────────────────────────────────────────────────
+    // ─── cgrid (top) ─────────────────────────────────────────────────────────
     const fmt = (params: { value: unknown }) => {
       const v = params.value;
       if (v === null || v === undefined || v === '') return '';
@@ -84,7 +84,7 @@ export const pivotAgComparison: Feature = {
       return Number.isFinite(n) ? `£${n.toLocaleString()}` : String(v);
     };
 
-    const grid = new CGrid<ShowcaseRow>(left.body, {
+    const grid = new CGrid<ShowcaseRow>(top.body, {
       getRowId: (r) => r.id,
       columnDefs: [
         { colId: 'ticker',   field: 'ticker',   headerName: 'Ticker',   cellDataType: 'text',   enableRowGroup: true, enablePivot: true, flex: 1 },
@@ -111,7 +111,7 @@ export const pivotAgComparison: Feature = {
     grid.addValueColumn('notional', 'sum');
     grid.setPivotMode(true);
 
-    // ─── AG-Grid (right) — v35 with new Theming API ──────────────────────────
+    // ─── AG-Grid (bottom) — v35 with new Theming API ─────────────────────────
     const isDark = cgridTheme.includes('dark');
     const agTheme = isDark
       ? themeQuartz.withParams({
@@ -124,7 +124,7 @@ export const pivotAgComparison: Feature = {
         })
       : themeQuartz;
 
-    const agApi = createGrid<ShowcaseRow>(right.body, {
+    const agApi = createGrid<ShowcaseRow>(bottom.body, {
       theme: agTheme,
       rowData: rows,
       columnDefs: [
