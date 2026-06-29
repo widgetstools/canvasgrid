@@ -244,6 +244,10 @@ export class ColumnsToolPanel implements ToolPanel {
     if (!this.params.suppressPivots) {
       this.root.appendChild(this.buildPivotsSection());
       this.refreshPivotPills();
+      // Column Labels only makes sense in pivot mode — hide the entire
+      // section when pivot mode is off so the tool panel doesn't show
+      // an empty drop zone for a feature the user isn't using.
+      this.syncPivotsSectionVisibility();
     }
 
     if (!this.params.suppressSyncLayoutWithGrid) {
@@ -281,9 +285,20 @@ export class ColumnsToolPanel implements ToolPanel {
         // re-syncing the row checkboxes (semantics depend on pivotMode +
         // role membership).
         this.refreshRowChecks();
+        // Show/hide the Column Labels section to track pivot mode.
+        this.syncPivotsSectionVisibility();
       });
       this.unsubs.push(offPivot);
     }
+  }
+
+  /** Hide the Column Labels section when pivot mode is OFF. The
+   *  section exists in the DOM (so refs / refreshPivotPills stay
+   *  valid) but its `display` is toggled. */
+  private syncPivotsSectionVisibility(): void {
+    if (!this.pivotsSection) return;
+    const pivotOn = this.api.isPivotMode?.() === true;
+    this.pivotsSection.section.style.display = pivotOn ? '' : 'none';
   }
 
   getGui(): HTMLElement {

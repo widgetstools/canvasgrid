@@ -144,25 +144,20 @@ describe('PivotPanelHost', () => {
     host.destroy();
   });
 
-  it('"onlyWhenPivoting" mounts the strip + reserves height at construction even when pivot is inactive', () => {
-    // Regression: this is the Task 6 invariant that distinguishes the
-    // pivot panel from the row group panel. `'onlyWhenPivoting'` must
-    // RESERVE the strip's height at construction so a later
-    // `setPivotMode(true)` doesn't trigger a layout reflow. The strip's
-    // content is just paint-suppressed (not rendered) until pivot
-    // activates. The reservation is non-zero.
+  it('"onlyWhenPivoting" fully hides the strip when pivot is inactive (no reservation)', () => {
+    // Contract: `'onlyWhenPivoting'` releases the strip entirely when
+    // pivot is off — the empty drop band is clutter for a feature the
+    // user isn't using, and the data area should reclaim the band.
+    // (Earlier the strip pre-reserved height to avoid a reflow on
+    // setPivotMode(true); the user feedback prefers the cleaner
+    // off-state and accepts a one-time reflow.)
     const ctx = makeContext();
     ctx.pivotActive = false;
     const host = new PivotPanelHost(root, ctx, 'onlyWhenPivoting', []);
-    expect(host.isVisible()).toBe(true);
-    expect(host.getReservedHeight()).toBeGreaterThan(0);
-    // Paint suppression: no pill children, no empty-placeholder children.
+    expect(host.isVisible()).toBe(false);
+    expect(host.getReservedHeight()).toBe(0);
     const panel = root.querySelector('.cg-pivot-panel') as HTMLElement;
-    expect(panel.querySelector('.cg-pivot-panel-pill')).toBeNull();
-    expect(panel.querySelector('.cg-pivot-panel-empty')).toBeNull();
-    // The host marks itself inactive via a dataset attribute so the
-    // CSS can mute the strip's interactive affordance.
-    expect(panel.dataset.active).toBe('false');
+    expect(getComputedStyle(panel).display).toBe('none');
     host.destroy();
   });
 
@@ -184,14 +179,19 @@ describe('PivotPanelHost', () => {
     host.destroy();
   });
 
-  it('"onlyWhenPivoting" paints the pill strip when pivotColumns is non-empty (regardless of pivot active flag)', () => {
-    // Regression: non-empty pivot columns always paint pills, even when
-    // pivot mode is technically off — the pills represent retained
-    // configuration. The empty-state suppression only applies when the
-    // strip would be EMPTY.
+  it('"onlyWhenPivoting" hides even when pivotColumns is non-empty if pivot is inactive', () => {
+    // Contract: under the new "fully hide" semantics, retained pivot
+    // configuration is irrelevant — the strip is gone until pivot
+    // mode turns on. The config survives in PivotState; the pills
+    // re-paint when setPivotActive(true) lands.
     const ctx = makeContext();
     ctx.pivotActive = false;
     const host = new PivotPanelHost(root, ctx, 'onlyWhenPivoting', ['sector']);
+    expect(host.isVisible()).toBe(false);
+    expect(root.querySelector('.cg-pivot-panel-pill')).toBeNull();
+    // Flipping pivot active paints the pills.
+    ctx.pivotActive = true;
+    host.setPivotActive(true);
     const pill = root.querySelector('.cg-pivot-panel-pill') as HTMLElement | null;
     expect(pill).not.toBeNull();
     expect(pill!.dataset.colId).toBe('sector');

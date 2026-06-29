@@ -55,7 +55,11 @@ export const pivot: Feature = {
       ],
       theme,
       rowGroupPanelShow: 'always',
-      pivotPanelShow: 'always',
+      // Pivot panel only renders when pivot mode is on — same gate as
+      // the columns tool panel's "Column Labels" section. Out of pivot
+      // mode, the empty strip would be clutter for a feature the user
+      // isn't using.
+      pivotPanelShow: 'onlyWhenPivoting',
       pivotDefaultExpanded: 1,
       // AG-Grid parity: when a pivot column group is expanded, the
       // per-group rollup leaf is ALWAYS visible alongside the children

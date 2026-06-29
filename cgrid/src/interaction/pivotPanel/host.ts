@@ -163,14 +163,16 @@ export class PivotPanelHost {
     return 32;
   }
 
-  /** True when the panel is currently mounted AND visible. Unlike the
-   *  row group panel's `'onlyWhenGrouping'`, the pivot panel's
-   *  `'onlyWhenPivoting'` mode keeps the strip visible (height
-   *  reserved) even when pivot is inactive — only the content is
-   *  paint-suppressed. */
+  /** True when the panel is currently mounted AND visible. In
+   *  `'onlyWhenPivoting'` mode the strip is fully hidden (height
+   *  released) when pivot is inactive — the empty drop strip is
+   *  clutter for a feature the user isn't using, and `getReservedHeight`
+   *  returns 0 so the data area reclaims the band. `'always'` always
+   *  paints; `'never'` never mounts. */
   isVisible(): boolean {
     if (this.destroyed) return false;
     if (this.show === 'never') return false;
+    if (this.show === 'onlyWhenPivoting' && !this.ctx.isPivotActive()) return false;
     return true;
   }
 
