@@ -240,6 +240,83 @@ describe('Cycle 22 / Task 2 — density modes', () => {
   });
 });
 
+describe('Cycle 22 / Task 3 — setThemeParams API', () => {
+  beforeEach(() => { document.body.innerHTML = ''; });
+
+  it('writes inline CSS custom properties onto the grid root', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+      theme: 'cg-theme-quartz',
+    } as any);
+    grid.setThemeParams({
+      '--cg-row-height': '36px',
+      '--cg-header-bg': '#0f172a',
+    });
+    const root = host.querySelector('.cg-grid') as HTMLElement;
+    expect(root.style.getPropertyValue('--cg-row-height')).toBe('36px');
+    expect(root.style.getPropertyValue('--cg-header-bg')).toBe('#0f172a');
+    grid.destroy();
+  });
+
+  it('round-trips the params through getThemeParams', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+      theme: 'cg-theme-quartz',
+    } as any);
+    grid.setThemeParams({ '--cg-row-height': '36px' });
+    expect(grid.getThemeParams()).toEqual({ '--cg-row-height': '36px' });
+    grid.setThemeParams({ '--cg-header-bg': '#000' });
+    // Merge — both keys present.
+    expect(grid.getThemeParams()).toEqual({
+      '--cg-row-height': '36px',
+      '--cg-header-bg': '#000',
+    });
+    grid.destroy();
+  });
+
+  it('removes a token when its value is the empty string', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+      theme: 'cg-theme-quartz',
+    } as any);
+    grid.setThemeParams({ '--cg-row-height': '36px' });
+    grid.setThemeParams({ '--cg-row-height': '' });
+    const root = host.querySelector('.cg-grid') as HTMLElement;
+    expect(root.style.getPropertyValue('--cg-row-height')).toBe('');
+    expect(grid.getThemeParams()['--cg-row-height']).toBeUndefined();
+    grid.destroy();
+  });
+
+  it('re-reads the theme so cssReader picks up the override on the next paint', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+      theme: 'cg-theme-quartz',
+    } as any);
+    const before = (grid as any).theme.headerBg;
+    grid.setThemeParams({ '--cg-header-bg': '#000000' });
+    const after = (grid as any).theme.headerBg;
+    expect(after).not.toBe(before);
+    expect(after).toBe('#000000');
+    grid.destroy();
+  });
+});
+
 describe('Cycle 22 / Task 1 — inter-column rule + popup/menu tokens', () => {
   beforeEach(() => { document.body.innerHTML = ''; });
 

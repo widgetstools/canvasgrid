@@ -78,6 +78,11 @@ import { SetFilterPopup } from './interaction/filters/setFilter';
 import { FlashRegistry } from './core/flashRegistry';
 import { CGridCanvas } from './core/canvas';
 import { CssReader, type ResolvedTheme } from './theming/cssReader';
+import {
+  setThemeParams as themeParamsSet,
+  getThemeParams as themeParamsGet,
+  clearThemeParams as themeParamsClear,
+} from './theming/themeParams';
 import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell, type CellPainter } from './renderer/cellRenderers/registry';
 import { wrapTextCell } from './renderer/cellRenderers/wrapText';
 import { totalsCell } from './renderer/cellRenderers/totals';
@@ -4498,6 +4503,29 @@ export class CGrid<TRow = any> {
     this.cgridCanvas?.requestRepaint();
   }
 
+  /** Cycle 22 / Task 3 — runtime per-token override. Apps tune
+   *  individual `--cg-*` variables without writing CSS; the patch
+   *  lands as inline styles on the grid root so `getComputedStyle`
+   *  resolves them ahead of the theme-class declarations. Pass `''`
+   *  for a key to REMOVE the override (the token then falls back to
+   *  the theme's declared value).
+   *
+   *  Side effects: one inline-style mutation per patched key, one
+   *  `cssReader.read()`, one repaint. No worker round-trip. */
+  setThemeParams(patch: Readonly<Record<string, string>>): void {
+    themeParamsSet(this.root, patch);
+    this.theme = this.cssReader.read();
+    this.recomputeViewport();
+    this.cgridCanvas.requestRepaint();
+  }
+
+  /** Cycle 22 / Task 3 — read the currently-set inline overrides. Returns
+   *  ONLY the values set through `setThemeParams` — NOT the resolved
+   *  tokens (call `getComputedStyle(grid.host)` for those). */
+  getThemeParams(): Record<string, string> {
+    return themeParamsGet(this.root);
+  }
+
   setTheme(themeClass: string): void {
     const current = Array.from(this.root.classList).filter((c) => c.startsWith('cg-theme-'));
     current.forEach((c) => this.root.classList.remove(c));
@@ -5017,6 +5045,11 @@ export class CGrid<TRow = any> {
       this.flashTickHandle = null;
     }
     this.flashRegistry.destroy();
+    // Cycle 22 / Task 3 — explicit cleanup of any inline `--cg-*`
+    // overrides so the WeakMap state doesn't leak past destroy. The
+    // root element gets removed below, but apps that re-parent / re-
+    // use the host expect the inline styles cleared.
+    themeParamsClear(this.root);
     this.root.parentElement?.removeChild(this.root);
     this.events.destroy();
   }
