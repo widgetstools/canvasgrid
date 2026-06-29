@@ -2903,6 +2903,7 @@ export class CGrid<TRow = any> {
         rowTotals: this.options.pivotRowTotals ?? null,
         colGroupTotals: this.options.pivotColumnGroupTotals ?? null,
         defaultExpanded: this.options.pivotDefaultExpanded ?? null,
+        grandTotals: this.options.pivotGrandTotals === true,
         leaves: chunk.pivotLeafPaths ?? [],
         vals: this.pivotState.getValueColumns(),
       });
@@ -2934,6 +2935,7 @@ export class CGrid<TRow = any> {
       keyTree,
       valueColumns,
       pivotDefaultExpanded: this.options.pivotDefaultExpanded,
+      pivotGrandTotals: this.options.pivotGrandTotals === true,
       // Cycle 18 / Task 8e — pivot totals (row totals + column-group totals).
       pivotRowTotals: this.options.pivotRowTotals ?? null,
       pivotColumnGroupTotals: this.options.pivotColumnGroupTotals ?? null,
@@ -3500,6 +3502,11 @@ export class CGrid<TRow = any> {
    *  reply. */
   private updatePivotTotalsOption(): void {
     if (this.destroyed) return;
+    // pivotGrandTotals can toggle the TotalsSubgrid in/out of the stack
+    // (when pivot is active) — rebuild so the visible row count changes
+    // on the next paint, not just the synthesized columns.
+    this.rebuildSubgridStack();
+    this.recomputeViewport();
     this.requestViewport();
   }
 
@@ -4545,7 +4552,8 @@ export class CGrid<TRow = any> {
     // step-out from synthesis-adjacent → synthesis. See
     // `docs/superpowers/plans/notes/cycle-14-aggregation-design.md`
     // § Task 2 — Coexistence — pinned + totals.
-    if (this.options.totalsRowPosition === 'top') {
+    const effectiveTotalsPos = this.effectiveTotalsRowPosition();
+    if (effectiveTotalsPos === 'top') {
       stack.push(this.makeTotalsSubgrid('top'));
     }
     if (this.pinnedRowsArray('top').length > 0) {
@@ -4563,10 +4571,22 @@ export class CGrid<TRow = any> {
     if (this.pinnedRowsArray('bottom').length > 0) {
       stack.push(this.makePinnedRowsSubgrid('bottom'));
     }
-    if (this.options.totalsRowPosition === 'bottom') {
+    if (effectiveTotalsPos === 'bottom') {
       stack.push(this.makeTotalsSubgrid('bottom'));
     }
     this.subgrids = stack;
+  }
+
+  /** Resolve the effective totals-row position by combining the explicit
+   *  `totalsRowPosition` option with `pivotGrandTotals`. When
+   *  `pivotGrandTotals: true` and pivot is active, the row is implicitly
+   *  pinned to the bottom (Excel-style grand total). Otherwise the
+   *  caller's explicit value (or `null`) applies. */
+  private effectiveTotalsRowPosition(): 'top' | 'bottom' | null {
+    if (this.options.pivotGrandTotals === true && this.pivotActive) {
+      return 'bottom';
+    }
+    return this.options.totalsRowPosition ?? null;
   }
 
   /** Cycle 14 / Task 2 — read the pinned-rows array for `position`. Returns
@@ -4649,6 +4669,27 @@ export class CGrid<TRow = any> {
   private totalsCellLookup(colId: string, parentGroupKey: string = ''): { value: unknown; valueFormatted: string } | null {
     const chunk = this.chunk;
     if (!chunk) return null;
+    // Excel-style grand totals — under active pivot, the totals row
+    // reads pivot result cells from `chunk.pivotValues` keyed by
+    // `groupKey: ''` (the bucket PivotPass.aggregateNode('', inputIds)
+    // already populates) so each cross-tab cell shows the
+    // grand-of-grand for that (pivotPath, valueColId).
+    if (this.pivotActive && parentGroupKey === '') {
+      // Render the "Grand Total" label at the auto-group leaf column.
+      if (isAutoGroupColumnId(colId)) {
+        return { value: 'Grand Total', valueFormatted: 'Grand Total' };
+      }
+      const spec = this.pivotCellSpecById.get(colId);
+      if (spec && chunk.pivotValues) {
+        const lookupRaw = chunk.pivotValues.get(
+          encodePivotValueKey('', spec.pivotPath.join(PIVOT_PATH_SEP), spec.valueColId),
+        );
+        if (lookupRaw === undefined) return null;
+        if (lookupRaw === null) return { value: null, valueFormatted: '' };
+        const fmt = typeof lookupRaw === 'number' ? this.formatNumber(colId, lookupRaw) : String(lookupRaw);
+        return { value: lookupRaw, valueFormatted: fmt };
+      }
+    }
     let raw: unknown;
     if (parentGroupKey !== '' && chunk.groupTotals) {
       const groupRec = chunk.groupTotals[parentGroupKey];
@@ -5985,7 +6026,16 @@ export class CGrid<TRow = any> {
     const fallback = this.options.rowHeight ?? this.theme.rowHeight;
     if (!this.chunk) return fallback;
     const i = localRowIndex - this.chunk.rowStart;
-    if (i < 0 || i >= this.chunk.heights.length) return fallback;
+    if (i < 0 || i >= this.chunk.heights.length) {
+      // Under active pivot mode, rows outside the chunk are always leaves
+      // (the slicer only ships group rows + footer entries into the chunk).
+      // Returning 0 collapses the data subgrid's extent to just the visible
+      // group rows — which is what makes the bottom-pinned Grand Total row
+      // visible without forcing the user to scroll past hundreds of empty
+      // leaf rows.
+      if (this.pivotActive) return 0;
+      return fallback;
+    }
     const h = this.chunk.heights[i]!;
     return h > 0 ? h : fallback;
   }

@@ -688,6 +688,28 @@ export interface CGridOptions<TRow = any> {
    *  visible only when the group is collapsed). AG-Grid parity:
    *  `pivotColumnGroupTotals`. */
   pivotColumnGroupTotals?: 'before' | 'after' | null;
+  /** Excel-style grand totals (cgrid-only superpower; AG-Grid pivot
+   *  does not provide this). When `true` and pivot mode is active:
+   *  - A "Grand Total" row appears at the bottom (sticky — does not
+   *    scroll vertically; reuses the TotalsSubgrid that lives outside
+   *    the data subgrid's vertical scroll). The cells in this row
+   *    read the worker's existing `aggregateNode('', inputIds)` output
+   *    (`chunk.pivotValues` keyed by `groupKey: ''`) — no new
+   *    aggregation required.
+   *  - The right-edge "Total" column (i.e. `pivotRowTotals: 'after'`)
+   *    is implicitly enabled when the caller didn't set
+   *    `pivotRowTotals`, and its leaves get `pinned: 'right'` so the
+   *    existing pinned-column layout machinery keeps them sticky
+   *    during horizontal scroll. If the caller explicitly set
+   *    `pivotRowTotals: 'before'`, the leaves pin to the LEFT.
+   *  - The corner cell ("Grand Total" row × right "Total" column)
+   *    shows the grand-of-grands aggregate per value column —
+   *    `chunk.totals[valueColId]`, already computed by AggPass.
+   *
+   *  No-op when pivot mode is inactive. Use `grandTotalRow` for the
+   *  non-pivot case (the two options coexist — `pivotGrandTotals`
+   *  takes precedence under pivot mode). Runtime-mutable. */
+  pivotGrandTotals?: boolean;
   /** Cycle 18 / Task 8f — app callback fired once per synthesized pivot
    *  result leaf colDef BEFORE the column-tree resolver sees it. Apps
    *  mutate the def in place (override `headerName`, add

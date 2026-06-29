@@ -193,10 +193,27 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
    *  mutate the group def in place — override headerName, headerClass,
    *  etc. AG-Grid parity: `processPivotResultColGroupDef`. */
   processPivotResultColGroupDef?: (groupDef: CColGroupDef<TRow>) => void;
+  /** Excel-style grand totals (cgrid-only superpower). When `true`:
+   *  - If `pivotRowTotals` is null, treat it as `'after'` for synthesis
+   *    only (the caller's option object is NOT mutated).
+   *  - The row-total leaves get `pinned: 'right'` (or `'left'` if the
+   *    caller explicitly set `pivotRowTotals: 'before'`) so the
+   *    layout resolver keeps them sticky during horizontal scroll.
+   *  - The grand total ROW (bottom) is mounted by the cgrid main
+   *    thread via `groupIncludeTotalFooter` — synthesis stays out of
+   *    that path; cells in the row read `chunk.pivotValues` at
+   *    `groupKey: ''` (already computed by PivotPass.aggregateNode). */
+  pivotGrandTotals?: boolean;
 }): SynthesizedPivotColumns<TRow> {
   const { keyTree, valueColumns } = input;
   const pivotDefaultExpanded = input.pivotDefaultExpanded ?? 0;
-  const pivotRowTotals = input.pivotRowTotals ?? null;
+  const pivotGrandTotals = input.pivotGrandTotals === true;
+  // pivotGrandTotals forces the row-totals column to exist (default
+  // 'after') so the grand-total ROW has a corner cell. Caller's explicit
+  // 'before' / 'after' is honoured.
+  const pivotRowTotals = pivotGrandTotals
+    ? (input.pivotRowTotals ?? 'after')
+    : (input.pivotRowTotals ?? null);
   const pivotColumnGroupTotals = input.pivotColumnGroupTotals ?? null;
   const processColDef = input.processPivotResultColDef;
   const processGroupDef = input.processPivotResultColGroupDef;
@@ -330,6 +347,12 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
         sortable: true,
       };
       if (vc.width !== undefined) def.width = vc.width;
+      // pivotGrandTotals pins the row-total leaves to the edge (right
+      // when caller wants 'after', left for 'before') so the layout
+      // resolver keeps them sticky during horizontal scroll.
+      if (pivotGrandTotals) {
+        def.pinned = pivotRowTotals === 'before' ? 'left' : 'right';
+      }
       // Cycle 18 / Task 8f — also fire the column-def callback for
       // row-total leaves so apps can customise valueFormatter / cellStyle
       // on the totals column the same way they would on any other pivot

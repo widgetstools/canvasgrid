@@ -131,6 +131,24 @@ export const pivot: Feature = {
       refreshColGroupTotals();
     });
 
+    // Excel-style grand totals toggle (cgrid superpower; AG-Grid has nothing
+    // like this). Flip on → "Grand Total" row appears at the bottom (sticky
+    // vertical), right-pinned Total column appears (sticky horizontal),
+    // corner cell shows the grand-of-grands per value column.
+    let grandTotals = false;
+    const grandTotalsBtn = document.createElement('button');
+    grandTotalsBtn.className = 'ctrl-btn';
+    grandTotalsBtn.setAttribute('data-testid', 'btn-grand-totals');
+    const refreshGrandTotals = () => {
+      grandTotalsBtn.textContent = `Grand totals: ${grandTotals ? 'on' : 'off'}`;
+    };
+    refreshGrandTotals();
+    grandTotalsBtn.addEventListener('click', () => {
+      grandTotals = !grandTotals;
+      grid.setGridOption('pivotGrandTotals', grandTotals);
+      refreshGrandTotals();
+    });
+
     let strict = false;
     const strictBtn = document.createElement('button');
     strictBtn.className = 'ctrl-btn';
@@ -204,6 +222,7 @@ export const pivot: Feature = {
     controls.appendChild(strictBtn);
     controls.appendChild(rowTotalsBtn);
     controls.appendChild(colGroupTotalsBtn);
+    controls.appendChild(grandTotalsBtn);
     controls.appendChild(saveBtn);
     controls.appendChild(restoreBtn);
     controls.appendChild(banner);

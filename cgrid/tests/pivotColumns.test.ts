@@ -381,6 +381,55 @@ describe('synthesizePivotColumns — pivotRowTotals (Task 8e)', () => {
   });
 });
 
+describe('synthesizePivotColumns — pivotGrandTotals (Excel parity)', () => {
+  it('true: forces pivotRowTotals="after" when caller did not set it + pins those leaves to the right', () => {
+    const { defs } = synthesizePivotColumns({
+      keyTree: flatTree(['FIN', 'TECH']),
+      valueColumns: [
+        { colId: 'pnl', aggFunc: 'sum', headerName: 'PnL' },
+        { colId: 'qty', aggFunc: 'sum', headerName: 'Qty' },
+      ],
+      pivotGrandTotals: true,
+    });
+    // 2 pivot key groups + 1 "Total" wrapper group at the end.
+    expect(defs).toHaveLength(3);
+    const last = defs[defs.length - 1]!;
+    expect(last.headerName).toBe('Total');
+    // Every row-total leaf must be pinned to the right edge.
+    for (const child of last.children as Array<{ colId: string; pinned?: string }>) {
+      expect(child.pinned).toBe('right');
+    }
+  });
+
+  it('true + caller set pivotRowTotals="before": leaves pin to the LEFT', () => {
+    const { defs } = synthesizePivotColumns({
+      keyTree: flatTree(['FIN', 'TECH']),
+      valueColumns: [{ colId: 'pnl', aggFunc: 'sum' }],
+      pivotRowTotals: 'before',
+      pivotGrandTotals: true,
+    });
+    expect(defs).toHaveLength(3);
+    const first = defs[0]!;
+    expect(first.headerName).toBe('Total');
+    for (const child of first.children as Array<{ colId: string; pinned?: string }>) {
+      expect(child.pinned).toBe('left');
+    }
+  });
+
+  it('false (default): row-total leaves are NOT pinned', () => {
+    const { defs } = synthesizePivotColumns({
+      keyTree: flatTree(['FIN', 'TECH']),
+      valueColumns: [{ colId: 'pnl', aggFunc: 'sum' }],
+      pivotRowTotals: 'after',
+      // pivotGrandTotals omitted → defaults to false.
+    });
+    const last = defs[defs.length - 1]!;
+    for (const child of last.children as Array<{ colId: string; pinned?: string }>) {
+      expect(child.pinned).toBeUndefined();
+    }
+  });
+});
+
 describe('synthesizePivotColumns — pivotColumnGroupTotals (Task 8e)', () => {
   it('null (default) keeps Task 4 behaviour: prefix totals show only when group is closed', () => {
     const { defs } = synthesizePivotColumns({
