@@ -66,7 +66,7 @@ test.describe('pivot showcase feature', () => {
     expect(state.valueCols.map((v) => v.colId).sort()).toEqual(['notional', 'pnl']);
   });
 
-  test('processPivotResultColDef formatter fires — pivot result columns render with £ prefix', async ({ page }) => {
+  test('processPivotResultColDef formatter fires — pivot result columns render with Excel-style parens', async ({ page }) => {
     await gotoFeature(page, 'pivot');
     await waitForGroupRows(page);
 
@@ -94,7 +94,9 @@ test.describe('pivot showcase feature', () => {
       return null;
     });
     expect(formatted).not.toBeNull();
-    expect(formatted!.startsWith('£')).toBe(true);
+    // Showcase formatter: thousand separators on positives, parens on
+    // negatives, no currency prefix (mirrors Excel pivot output).
+    expect(formatted!).toMatch(/^(\(?[0-9][0-9,]*\)?|0)$/);
   });
 
   test('Row totals toggle cycles off → after → before → off; adds/removes synthetic row-total cols', async ({ page }) => {

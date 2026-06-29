@@ -33,35 +33,38 @@ test.describe('groupSort feature — per-level group sort', () => {
     expect(cols).toEqual(['desk', 'ticker']);
   });
 
-  test('Desk ↓ reverses the top-level group order; Desk ↑ restores it', async ({ page }) => {
+  test('Desk ↓ reverses the top-level group order; Desk ↑ sorts ascending', async ({ page }) => {
     await gotoFeature(page, 'groupSort');
 
-    // Default composite-key asc → AMER is the first top-level group.
-    await waitForFirstGroup(page, 'AMER');
-    expect(await firstGroupKey(page)).toContain('AMER');
+    // AG-parity default: data-insertion order (DESKS = APAC, EMEA, AMER,
+    // LATAM in seedData) → APAC is the first top-level group when no
+    // explicit sort is active.
+    await waitForFirstGroup(page, 'APAC');
+    expect(await firstGroupKey(page)).toContain('APAC');
 
     // Desk ↓ → descending → LATAM first.
     await page.getByRole('button', { name: /Desk ↓/ }).click();
     await waitForFirstGroup(page, 'LATAM');
     expect(await firstGroupKey(page)).toContain('LATAM');
 
-    // Desk ↑ → ascending again → AMER first.
+    // Desk ↑ → ascending → AMER first.
     await page.getByRole('button', { name: /Desk ↑/ }).click();
     await waitForFirstGroup(page, 'AMER');
     expect(await firstGroupKey(page)).toContain('AMER');
   });
 
-  test('Clear Sort returns to the default ascending group order', async ({ page }) => {
+  test('Clear Sort returns to the default data-insertion group order', async ({ page }) => {
     await gotoFeature(page, 'groupSort');
 
     // Flip to desc first.
     await page.getByRole('button', { name: /Desk ↓/ }).click();
     await waitForFirstGroup(page, 'LATAM');
 
-    // Clear → back to default asc (AMER first). `exact` avoids colliding
-    // with the row group panel pill chevron's "Clear sort on Desk" aria-label.
+    // Clear → back to default insertion order (APAC first). `exact`
+    // avoids colliding with the row group panel pill chevron's
+    // "Clear sort on Desk" aria-label.
     await page.getByRole('button', { name: 'Clear Sort', exact: true }).click();
-    await waitForFirstGroup(page, 'AMER');
-    expect(await firstGroupKey(page)).toContain('AMER');
+    await waitForFirstGroup(page, 'APAC');
+    expect(await firstGroupKey(page)).toContain('APAC');
   });
 });

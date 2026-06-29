@@ -44,11 +44,12 @@ test.describe('groupSelects feature', () => {
     await page.evaluate(() => (window.__cgrid as unknown as { resetRowGroupExpansion(): void }).resetRowGroupExpansion());
     await settle(page);
 
-    // Default asc order → AMER is the first desk group. Its leaves are the
-    // seed rows where i % 4 === 2 (R2, R6, … R98) = 25 ids.
+    // Default data-insertion order (DESKS = APAC, EMEA, AMER, LATAM
+    // in seedData) → APAC is the first desk group. Its leaves are the
+    // seed rows where i % 4 === 0 (R0, R4, … R96) = 25 ids.
     const amerIds = await page.evaluate(() => {
       const a: string[] = [];
-      for (let i = 2; i < 100; i += 4) a.push('R' + i);
+      for (let i = 0; i < 100; i += 4) a.push('R' + i);
       return a;
     });
 
@@ -67,7 +68,7 @@ test.describe('groupSelects feature', () => {
     expect(await groupSelectionState()).toBe('all');
 
     // Select a subset → 'partial'.
-    await page.evaluate(() => (window.__cgrid as unknown as { setSelectedRowIds(ids: string[]): void }).setSelectedRowIds(['R2', 'R6']));
+    await page.evaluate(() => (window.__cgrid as unknown as { setSelectedRowIds(ids: string[]): void }).setSelectedRowIds(['R0', 'R4']));
     await settle(page);
     expect(await groupSelectionState()).toBe('partial');
 
