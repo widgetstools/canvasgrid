@@ -133,9 +133,13 @@ describe('synthesizePivotColumns — resolver compatibility', () => {
     const tree = resolveColumnTree(defs);
     expect(tree.leaves).toHaveLength(3);
     // Default cellDataType is number (aggregates are numeric) → number renderer.
+    // Cycle 18 / Task 8d — synthesized columns are sortable; the worker's
+    // SortPass decodes the synthesized colId via
+    // `decodePivotResultColumnId` and re-orders row groups by the
+    // matching pivot aggregate.
     for (const leaf of tree.leaves) {
       expect(leaf.cellDataType).toBe('number');
-      expect(leaf.sortable).toBe(false);
+      expect(leaf.sortable).toBe(true);
     }
   });
 });

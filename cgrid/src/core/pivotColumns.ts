@@ -80,6 +80,21 @@ export function isPivotResultColumnId(colId: string): boolean {
   return colId.startsWith(PIVOT_RESULT_COL_PREFIX + PIVOT_ID_SEP);
 }
 
+/** Cycle 18 / Task 8d — inverse of `pivotResultColumnId`. Decodes a
+ *  synthetic colId back into its `(pivotPath, valueColId)` parts so the
+ *  worker's SortPass can look up the per-group aggregate when the user
+ *  sorts a pivot result column. Returns `null` for a non-synthetic id. */
+export function decodePivotResultColumnId(colId: string):
+  { pivotPath: string[]; valueColId: string } | null {
+  if (!isPivotResultColumnId(colId)) return null;
+  const parts = colId.split(PIVOT_ID_SEP);
+  // [prefix, ...pivotPath, valueColId]
+  if (parts.length < 3) return null;
+  const valueColId = parts[parts.length - 1]!;
+  const pivotPath = parts.slice(1, parts.length - 1);
+  return { pivotPath, valueColId };
+}
+
 /** Stable groupId for a pivot column-group node at `path`. */
 function pivotGroupId(path: readonly string[]): string {
   return [PIVOT_RESULT_COL_PREFIX, 'grp', ...path].join(PIVOT_ID_SEP);
@@ -136,10 +151,14 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
         colId,
         headerName: vc.headerName ?? vc.colId,
         cellDataType: vc.cellDataType ?? 'number',
-        // Synthesized columns are derived, not author-provided: not
-        // sortable (Task 8 wires sort-by-aggregate), no field (value
-        // comes from chunk.pivotValues, not a row object key).
-        sortable: false,
+        // Cycle 18 / Task 8d — synthesized columns ARE sortable; the
+        // user-clicked sort lands as a SortModel entry whose colId is
+        // the synthesized one, the worker's SortPass decodes
+        // `(pivotPath, valueColId)` via `decodePivotResultColumnId` and
+        // sorts each row-group level by the matching pivot aggregate.
+        // No `field` — value comes from chunk.pivotValues, not a row
+        // object key. AG-Grid parity Prompt 8.
+        sortable: true,
       };
       if (vc.width !== undefined) def.width = vc.width;
       if (columnGroupShow !== undefined) def.columnGroupShow = columnGroupShow;

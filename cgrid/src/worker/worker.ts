@@ -72,6 +72,14 @@ interface State {
    *  it uses `groupInputIds` (which `GroupNode.childIndices` index into)
    *  when grouping is active. `null` until the first build runs. */
   pivotInputIds: readonly string[] | null;
+  /** Cycle 18 / Task 8d — last `PivotPass.apply` result. Computed inside
+   *  `buildVisibleAsync` BEFORE `SortPass.applyGrouped` so a sort entry
+   *  targeting a pivot-result column can re-order the row groups by the
+   *  aggregate value. The chunk-emit site reads this back instead of
+   *  recomputing — PivotPass output is sort-invariant (keyed by group
+   *  key strings, not node order), so caching is safe. `null` until the
+   *  first build with an active pivot model runs. */
+  pivotOut: import('./passes/pivotPass').PivotPassOutput | null;
   /** Cycle 15 / Task 8 — snapshot of the rowId array fed into the most
    *  recent `GroupPass.apply` (the post-filter, pre-sort set). Captured
    *  alongside `groupOutput` so we can translate a `GroupNode`'s
@@ -260,6 +268,25 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     // the same array `groupInputIds` snapshots (so `GroupNode.childIndices`
     // align); we keep a dedicated handle so ungrouped pivots have it too.
     state.pivotInputIds = ids.slice();
+    // Cycle 18 / Task 8d — compute PivotPass eagerly (before SortPass)
+    // when the model is active. The result is sort-invariant (keyed by
+    // group key strings, not node order), so the cached value is safe
+    // to read in the getViewport handler. When pivot is INACTIVE the
+    // cached value is null and the handler also skips. The benefit of
+    // running early: a sort entry targeting a synthesized pivot-result
+    // column can re-order the row groups by the aggregate value.
+    const pivotModel = state.pivot.getModel();
+    if (
+      pivotModel.pivotColIds.length > 0
+      && pivotModel.valueCols.length > 0
+    ) {
+      const pivotInputIds = !state.groupOutput.bypassed && state.groupInputIds !== null
+        ? state.groupInputIds
+        : state.pivotInputIds;
+      state.pivotOut = state.pivot.apply(pivotInputIds, state.groupOutput);
+    } else {
+      state.pivotOut = null;
+    }
     // Cycle 15 / Task 11 — group-aware sort. When grouping is active,
     // sort happens inside the group tree (within-bucket child indices +
     // per-level group ordering), NOT across the flat post-filter array.
@@ -274,11 +301,13 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       // rebuilt flatOrder re-emits footer entries / honors elision.
       // Without this, sorting strips the footer entries the
       // GroupPass-emitted flatOrder carries.
+      // Cycle 18 / Task 8d — also thread the cached PivotPass output
+      // through so a pivot-result column sort can re-order each level.
       state.groupOutput = state.sort.applyGrouped(state.groupOutput, ids, {
         includeFooter: state.group.getIncludeFooter(),
         includeTotalFooter: state.group.getIncludeTotalFooter(),
         removeSingleChildren: state.group.getRemoveSingleChildren(),
-      });
+      }, state.pivotOut ?? undefined);
     } else {
       ids = state.sort.apply(ids);
     }
@@ -595,6 +624,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       // as AggPass so custom aggFuncs resolve identically.
       pivot:       new PivotPass(store, payload.columns, aggFuncs),
       pivotInputIds: null,
+      pivotOut:    null,
       groupInputIds: null,
       emitGroupDescendants: false,
       expandedKeys: null,
@@ -922,9 +952,13 @@ export function createWorkerHost(post: PostFn): WorkerHost {
 
           case 'setStrictPivotColumnOrder': {
             // Cycle 18 / Task 8c — push the strict-order flag into the
-            // PivotPass. The next viewport honors the new behaviour.
+            // PivotPass. Cycle 18 / Task 8d — PivotPass now runs inside
+            // `buildVisibleAsync` (before SortPass) so the cached
+            // `state.pivotOut` is part of the visible-build output.
+            // Invalidate the visible cache so the next viewport
+            // rebuilds with the new flag.
             state.pivot.setStrictPivotColumnOrder(req.payload === true);
-            const vc = state.visibleCache?.length ?? state.store.size();
+            const vc = await invalidateAndCount();
             post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: vc });
             break;
           }
@@ -933,15 +967,16 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             // Cycle 18 / Task 8a — push the cap into PivotPass. The next
             // `getViewport` honors the new cap; if it would breach, the
             // chunk carries `pivotMaxColumnsReached` and the main thread
-            // fires the public event. Reuses the rowCount reply shape
-            // (same pattern setAggFuncs uses) since the cap change does
-            // not move rows.
+            // fires the public event. Cycle 18 / Task 8d — PivotPass now
+            // runs inside `buildVisibleAsync`; invalidate the cache so
+            // the new cap propagates to the cached `state.pivotOut`.
             state.pivot.setMaxGeneratedColumns(req.payload as number | undefined);
+            const vc = await invalidateAndCount();
             post({
               id: req.id,
               type: 'rowCount',
               count: state.store.size(),
-              visibleCount: state.visibleCache?.length ?? state.store.size(),
+              visibleCount: vc,
             });
             break;
           }
@@ -1430,26 +1465,15 @@ export function createWorkerHost(post: PostFn): WorkerHost {
                 chunk.groupTotals = groupAggResult.groupTotals;
               }
             }
-            // Cycle 18 / Task 3 — pivot cross-tab. Runs only when a pivot
-            // model is installed (cheap getModel() check guards the row
-            // scan). Per-group cross-tabs read `groupInputIds` (which
-            // `GroupNode.childIndices` index into) when grouping is active;
-            // the key discovery + grand total scan `pivotInputIds`. The
-            // result rides the chunk's structured-clone path (no transfer
-            // buffers, no binary chunkFormat — like groupTotals).
-            const pivotModel = state.pivot.getModel();
-            if (
-              pivotModel.pivotColIds.length > 0
-              && pivotModel.valueCols.length > 0
-              && state.pivotInputIds !== null
-            ) {
-              const pivotInputIds = isGroupingActive() && state.groupInputIds !== null
-                ? state.groupInputIds
-                : state.pivotInputIds;
-              const pivotOut = state.pivot.apply(
-                pivotInputIds,
-                state.groupOutput ?? { bypassed: true, roots: [], flatOrder: [] },
-              );
+            // Cycle 18 / Task 3 + Task 8d — pivot cross-tab. PivotPass now
+            // runs INSIDE `buildVisibleAsync` (before SortPass) so a
+            // pivot-result-column sort can re-order the row groups by
+            // the aggregate value. The cached `state.pivotOut` is read
+            // here and shipped on the chunk; output is sort-invariant
+            // (keyed by group key strings, not node order) so caching
+            // is safe across re-sorts.
+            const pivotOut = state.pivotOut;
+            if (pivotOut !== null) {
               if (!pivotOut.bypassed) {
                 chunk.pivotColumnTree = pivotOut.keyTree;
                 chunk.pivotLeafPaths = pivotOut.leafPaths;

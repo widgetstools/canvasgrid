@@ -207,6 +207,55 @@ describe('CGrid pivot — render integration', () => {
     restore();
   });
 
+  it('sort on a pivot result column reorders row groups by aggregated value (Task 8d)', async () => {
+    const { grid, restore } = buildWiredGrid();
+    await tick();
+    grid.setGroupModel({ rowGroupCols: ['region'] });
+    await tick();
+    grid.setPivotColumns(['sector']);
+    grid.addValueColumn('pnl', 'sum');
+    grid.setPivotMode(true);
+    await tick();
+    grid.collapseAll();
+    await tick();
+
+    // Sum of pnl per region for sector FIN:
+    //   EMEA-FIN: 300
+    //   APAC-FIN: 500
+    // → descending sort by `pivotcolFINpnl` should put APAC before EMEA.
+    const finPnl = pivotResultColumnId(['FIN'], 'pnl');
+    grid.setSortModel([{ colId: finPnl, direction: 'desc' }]);
+    await tick();
+    await tick();
+
+    // Read the group rows' keys in their currently-rendered order.
+    const g = grid as unknown as {
+      chunk: { rowStart: number; rowCount: number; rowKinds: Uint8Array; groupKey?: string[] };
+    };
+    const orderedGroupKeys: string[] = [];
+    for (let i = 0; i < g.chunk.rowCount; i++) {
+      if ((g.chunk.rowKinds[i] ?? 0) === 1) {
+        orderedGroupKeys.push(g.chunk.groupKey?.[i] ?? '');
+      }
+    }
+    expect(orderedGroupKeys).toEqual(['region:APAC', 'region:EMEA']);
+
+    // Flip to ascending — EMEA (300) before APAC (500).
+    grid.setSortModel([{ colId: finPnl, direction: 'asc' }]);
+    await tick();
+    await tick();
+    const ascKeys: string[] = [];
+    for (let i = 0; i < g.chunk.rowCount; i++) {
+      if ((g.chunk.rowKinds[i] ?? 0) === 1) {
+        ascKeys.push(g.chunk.groupKey?.[i] ?? '');
+      }
+    }
+    expect(ascKeys).toEqual(['region:EMEA', 'region:APAC']);
+
+    grid.destroy();
+    restore();
+  });
+
   it('reverts to primary columns when pivot mode is turned off', async () => {
     const { grid, restore } = buildWiredGrid();
     await tick();
