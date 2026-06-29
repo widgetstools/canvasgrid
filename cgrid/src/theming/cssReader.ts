@@ -143,6 +143,43 @@ export interface ResolvedTheme {
   headerHeight: number;
   resizerHotZone: number;
   scrollbarThickness: number;
+  /** Cycle 22 / Task 1 — input chrome for floating filters + cell
+   *  editors + tool-panel search boxes. The five-token bundle lets
+   *  apps theme every text-input surface from one place; defaults
+   *  alias to body fg/bg + border so an undeclared theme still reads
+   *  inputs as "matches the grid". */
+  inputBg: string;
+  inputFg: string;
+  inputBorder: string;
+  inputFocusBorder: string;
+  inputDisabledBg: string;
+  /** Cycle 22 / Task 1 — tooltip overlay chrome. Consumed by the
+   *  shared sparkline tooltip (and any future hover popovers). The
+   *  default is a near-opaque dark slate so the tooltip reads as a
+   *  popover, not a chip, against either light or dark grids. */
+  tooltipBg: string;
+  tooltipFg: string;
+  tooltipBorder: string;
+  /** Cycle 22 / Task 1 — accent fill for the body `'checkbox'` cell
+   *  renderer + group tri-state checkbox when the box is checked.
+   *  Default `'transparent'` preserves the existing outlined-only
+   *  look; apps that want a filled brand-accent checkbox set both
+   *  `--cg-checkbox-checked-bg` AND `--cg-checkbox-checked-fg` so
+   *  the interior glyph stays legible against the fill. */
+  checkboxCheckedBg: string;
+  checkboxCheckedFg: string;
+  /** Cycle 22 / Task 1 — optional vertical rule between adjacent
+   *  columns. Default `'transparent'` keeps the grid lineless on the
+   *  X axis (the painter only consults this when the value is a
+   *  non-transparent color). */
+  cellHorizontalBorderColor: string;
+  /** Cycle 22 / Task 1 — popup / context-menu chrome. Three tokens
+   *  shared across the filter popup, the context menu, and the
+   *  sidebar panel surfaces — apps set them once and the entire
+   *  popup family responds. */
+  popupBg: string;
+  popupBorder: string;
+  menuHoverBg: string;
   /**
    * Map of class-name → ColCellOverrides patch. Populated from CSS custom
    * properties matching `--cg-cell-class-<name>-(bg|fg|font|halign)`.
@@ -281,6 +318,32 @@ export class CssReader {
       headerHeight: px('--cg-header-height', 32),
       resizerHotZone: px('--cg-resizer-hot-zone', 4),
       scrollbarThickness: px('--cg-scrollbar-thickness', 10),
+      // Cycle 22 / Task 1 — input chrome. Defaults alias body bg/fg
+      // and the focus ring color so an undeclared theme still reads.
+      inputBg: get('--cg-input-bg') || get('--cg-bg-color') || '#ffffff',
+      inputFg: get('--cg-input-fg') || get('--cg-fg-color') || '#1a1f24',
+      inputBorder: get('--cg-input-border') || get('--cg-border-color') || '#d5dbe0',
+      inputFocusBorder: get('--cg-input-focus-border') || get('--cg-focus-ring-color') || '#3b82f6',
+      inputDisabledBg: get('--cg-input-disabled-bg') || get('--cg-row-alt-bg') || '#f3f4f6',
+      // Cycle 22 / Task 1 — tooltip overlay chrome. Slate fallback
+      // matches the existing inline default in `sparklineTooltip.ts`.
+      tooltipBg: get('--cg-tooltip-bg') || 'rgba(17,24,39,0.92)',
+      tooltipFg: get('--cg-tooltip-fg') || '#ffffff',
+      tooltipBorder: get('--cg-tooltip-border') || 'transparent',
+      // Cycle 22 / Task 1 — filled-checkbox accent. `'transparent'`
+      // default keeps the outlined-only look the existing renderer
+      // ships with.
+      checkboxCheckedBg: get('--cg-checkbox-checked-bg') || 'transparent',
+      checkboxCheckedFg: get('--cg-checkbox-checked-fg') || get('--cg-fg-color') || '#1a1f24',
+      // Cycle 22 / Task 1 — optional inter-column rule. Painter only
+      // strokes when the value is a non-transparent color.
+      cellHorizontalBorderColor: get('--cg-cell-horizontal-border-color') || 'transparent',
+      // Cycle 22 / Task 1 — popup / menu surfaces. Default to body bg
+      // + border so the popup looks like "a piece of the grid"
+      // floating above when the token isn't declared.
+      popupBg: get('--cg-popup-bg') || get('--cg-bg-color') || '#ffffff',
+      popupBorder: get('--cg-popup-border') || get('--cg-border-color') || '#d5dbe0',
+      menuHoverBg: get('--cg-menu-hover-bg') || get('--cg-row-hover-bg') || '#eef1f3',
       cellClassVariants,
       headerClassVariants,
     };

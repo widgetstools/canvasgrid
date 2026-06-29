@@ -2,6 +2,11 @@
 // Public surface lives here. Internals live under core/, renderer/, interaction/,
 // worker/, theming/. See docs/superpowers/specs/2026-06-23-canvasgrid-foundation-design.md.
 import './theming/tokens.css';
+// Cycle 22 / Task 5 — load the same tokens.css as a plain string so the
+// shadow-root path can inject a self-contained `<style>` element inside
+// the encapsulated DOM. The `?inline` suffix is a Vite primitive; the
+// import resolves to the compiled CSS text at build time.
+import tokensCssInline from './theming/tokens.css?inline';
 import type {
   CGridOptions, CGridEvent, CGridApi, Tx, TransactionResult, SortModel, FilterModel,
   CFilterModelEntry, GroupModel, FlashCellsParams, SelectionRange,
@@ -78,6 +83,11 @@ import { SetFilterPopup } from './interaction/filters/setFilter';
 import { FlashRegistry } from './core/flashRegistry';
 import { CGridCanvas } from './core/canvas';
 import { CssReader, type ResolvedTheme } from './theming/cssReader';
+import {
+  setThemeParams as themeParamsSet,
+  getThemeParams as themeParamsGet,
+  clearThemeParams as themeParamsClear,
+} from './theming/themeParams';
 import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell, type CellPainter } from './renderer/cellRenderers/registry';
 import { wrapTextCell } from './renderer/cellRenderers/wrapText';
 import { totalsCell } from './renderer/cellRenderers/totals';
@@ -450,6 +460,11 @@ export class CGrid<TRow = any> {
   private viewportRequestQueued = false;
 
   private root: HTMLDivElement;
+  /** Cycle 22 / Task 5 — non-null when the grid was constructed with
+   *  `shadowRoot: true`. The constructor attaches the shadow root to
+   *  the supplied container and mounts the grid's entire DOM inside
+   *  it; the destroy path detaches the same root. */
+  private shadowRoot: ShadowRoot | null = null;
   private scroller: HTMLDivElement;
   private sizer: HTMLDivElement;
   private cgridCanvas!: CGridCanvas;
@@ -719,7 +734,39 @@ export class CGrid<TRow = any> {
     // interactive.
     this.root = document.createElement('div');
     this.root.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
+    // Cycle 22 / Task 2 — `cg-grid` is the stable marker class for the
+    // grid root. Density modes, print mode, and any future host-level
+    // chrome layer their own class alongside it; the theme class then
+    // contributes the token bundle.
+    this.root.classList.add('cg-grid');
     this.root.classList.add(options.theme ?? 'cg-theme-quartz');
+    // Cycle 22 / Task 2 — density class on the root. Applied here so
+    // `--cg-row-height` / `--cg-header-height` / `--cg-cell-padding-x`
+    // resolve to the density-bundle's overrides before the first
+    // `cssReader.read()`.
+    if (options.density) {
+      this.root.classList.add(`cg-density-${options.density}`);
+    }
+    // Cycle 22 / Task 5 — optional shadow-root encapsulation. The grid
+    // attaches an open shadow root to `container` and mounts every
+    // descendant (root + its scroller + canvas + editor overlay) inside
+    // it. The package's tokens.css is inlined as a `<style>` so the
+    // shadow tree gets the full token bundle without an external sheet.
+    // The mount target later in the constructor uses `this.shadowRoot
+    // ?? container`, so the rest of the construction path doesn't need
+    // to know whether shadow mode is active.
+    if (options.shadowRoot) {
+      this.shadowRoot = container.attachShadow({ mode: 'open' });
+      const styleEl = document.createElement('style');
+      styleEl.className = 'cg-shadow-tokens';
+      // Vite's `?inline` resolves to the compiled CSS at build time
+      // (production); the test runtime returns an empty string, which
+      // is fine — the test environment doesn't exercise visual paint,
+      // and apps in shadow-root mode that need additional rules layer
+      // them via `setThemeParams` or a sibling `<style>` element.
+      styleEl.textContent = tokensCssInline;
+      this.shadowRoot.appendChild(styleEl);
+    }
 
     this.scroller = document.createElement('div');
     this.scroller.className = 'cg-scroller';
@@ -737,7 +784,10 @@ export class CGrid<TRow = any> {
     this.editorContainer.style.cssText = 'position:absolute; left:0; top:0; right:0; bottom:0; pointer-events:none;';
     // Children of editorContainer set pointer-events:auto themselves
     this.root.appendChild(this.scroller);
-    container.appendChild(this.root);
+    // Cycle 22 / Task 5 — when shadow mode is active, mount the entire
+    // grid DOM inside the shadow root. Otherwise the grid lives in the
+    // light DOM (the default + lowest-friction path).
+    (this.shadowRoot ?? container).appendChild(this.root);
 
     // 2. Theme + cell renderers
     this.cssReader = new CssReader(this.root);
@@ -4486,12 +4536,54 @@ export class CGrid<TRow = any> {
     this.cgridCanvas?.requestRepaint();
   }
 
+  /** Cycle 22 / Task 3 — runtime per-token override. Apps tune
+   *  individual `--cg-*` variables without writing CSS; the patch
+   *  lands as inline styles on the grid root so `getComputedStyle`
+   *  resolves them ahead of the theme-class declarations. Pass `''`
+   *  for a key to REMOVE the override (the token then falls back to
+   *  the theme's declared value).
+   *
+   *  Side effects: one inline-style mutation per patched key, one
+   *  `cssReader.read()`, one repaint. No worker round-trip. */
+  setThemeParams(patch: Readonly<Record<string, string>>): void {
+    themeParamsSet(this.root, patch);
+    this.theme = this.cssReader.read();
+    this.recomputeViewport();
+    this.cgridCanvas.requestRepaint();
+  }
+
+  /** Cycle 22 / Task 3 — read the currently-set inline overrides. Returns
+   *  ONLY the values set through `setThemeParams` — NOT the resolved
+   *  tokens (call `getComputedStyle(grid.host)` for those). */
+  getThemeParams(): Record<string, string> {
+    return themeParamsGet(this.root);
+  }
+
   setTheme(themeClass: string): void {
     const current = Array.from(this.root.classList).filter((c) => c.startsWith('cg-theme-'));
     current.forEach((c) => this.root.classList.remove(c));
     this.root.classList.add(themeClass);
     this.theme = this.cssReader.read();
     this.options.theme = themeClass;
+    this.recomputeViewport();
+    this.cgridCanvas.requestRepaint();
+  }
+
+  /** Cycle 22 / Task 2 — swap the density-mode class on the root.
+   *  `null` / `undefined` removes any active density class entirely
+   *  (back to the theme's native baseline). The CSS class flip is the
+   *  only DOM mutation — `cssReader.read()` re-resolves the bundle's
+   *  `--cg-row-height` / `--cg-header-height` / `--cg-cell-padding-x`
+   *  overrides, and `recomputeViewport` + `requestRepaint` line the new
+   *  row geometry up on the next frame. No worker round-trip. */
+  setDensity(density: 'compact' | 'normal' | 'comfortable' | null | undefined): void {
+    const current = Array.from(this.root.classList).filter((c) => c.startsWith('cg-density-'));
+    current.forEach((c) => this.root.classList.remove(c));
+    if (density) {
+      this.root.classList.add(`cg-density-${density}`);
+    }
+    this.options.density = density ?? undefined;
+    this.theme = this.cssReader.read();
     this.recomputeViewport();
     this.cgridCanvas.requestRepaint();
   }
@@ -4568,6 +4660,7 @@ export class CGrid<TRow = any> {
     return {
       options: this.options,
       setTheme: (t) => this.setTheme(t),
+      setDensity: (d) => this.setDensity(d),
       rebuildColumns: ({ defaultColDef }) => this.rebuildColumns({ defaultColDef }),
       refreshLayout: () => {
         this.recomputeViewport();
@@ -4985,6 +5078,11 @@ export class CGrid<TRow = any> {
       this.flashTickHandle = null;
     }
     this.flashRegistry.destroy();
+    // Cycle 22 / Task 3 — explicit cleanup of any inline `--cg-*`
+    // overrides so the WeakMap state doesn't leak past destroy. The
+    // root element gets removed below, but apps that re-parent / re-
+    // use the host expect the inline styles cleared.
+    themeParamsClear(this.root);
     this.root.parentElement?.removeChild(this.root);
     this.events.destroy();
   }

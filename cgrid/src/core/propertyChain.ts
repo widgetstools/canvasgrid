@@ -378,6 +378,11 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.groupCheckboxCheckColor = theme.groupCheckboxCheckColor;
   target.groupCheckboxIndeterminateColor = theme.groupCheckboxIndeterminateColor;
   target.groupCheckboxFill = theme.groupCheckboxFill;
+  // Cycle 22 / Task 1 — body checkbox accent. Threaded onto every cell
+  // config so the `'checkbox'` renderer reads from `p.checkboxCheckedBg`
+  // (with `'transparent'` defaulting to the outlined-only look).
+  target.checkboxCheckedBg = theme.checkboxCheckedBg;
+  target.checkboxCheckedFg = theme.checkboxCheckedFg;
   target.params = ctx.params;
 
   // Theme defaults.
