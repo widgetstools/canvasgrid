@@ -1838,3 +1838,131 @@
   color: var(--cg-row-group-panel-empty-fg);
   text-align: center;
 }
+
+/* Cycle 18 / Task 6 — pivot panel.
+ *
+ * Horizontal drop strip mounted ABOVE the row group panel and column
+ * headers. Mirrors `.cg-row-group-panel` in structure (32 px height,
+ * 8 px horizontal padding, hairline bottom border) but REUSES the
+ * shared `.cg-columns-panel-pill*` chrome from Task 5 so a pivot pill
+ * looks IDENTICAL whether it lives in the top-of-grid panel or the
+ * sidebar's Column Labels zone. One vocabulary across surfaces.
+ *
+ * Stacking: the grid's `applyVerticalInsets` places the pivot panel
+ * BELOW any top status bar and ABOVE the row group panel. The strip's
+ * own `top` style is set from JS each time the status-bar inset
+ * changes.
+ *
+ * `'onlyWhenPivoting'` mode: the strip stays visible (height
+ * reserved) but the host paints NO content while
+ * `data-active="false"`. The strip's background still reads as part
+ * of the chrome — the user sees a thin band where the panel will
+ * activate once pivot turns on. Avoids the layout-reflow that would
+ * happen if `setPivotMode(true)` mounted a fresh strip mid-session. */
+.cg-pivot-panel {
+  --cg-pivot-panel-height: 32px;
+  --cg-pivot-panel-padding-x: 8px;
+  --cg-pivot-panel-gap: 6px;
+  --cg-pivot-panel-empty-fg:
+    color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
+  --cg-pivot-panel-drop-border: var(--cg-focus-ring-color);
+  /* Amber reject — same hue as the row group panel + tool panel
+   * plz/valz zones for cross-surface vocabulary continuity. */
+  --cg-pivot-panel-drop-border-reject: #f59e0b;
+
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: var(--cg-pivot-panel-height);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--cg-pivot-panel-padding-x);
+  gap: var(--cg-pivot-panel-gap);
+  background: var(--cg-header-bg);
+  color: var(--cg-fg-color);
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  border-bottom: 1px solid var(--cg-border-color);
+  user-select: none;
+  /* Above the canvas + status bar; below the editor overlay so
+   * popups still render on top. Matches `.cg-row-group-panel`. */
+  z-index: 2;
+  box-sizing: border-box;
+}
+
+/* `'onlyWhenPivoting'` + pivot inactive — paint the strip subtly
+ * muted so the user understands the surface is waiting for pivot
+ * to activate. The mute is a small opacity drop on the surface so
+ * theming inherits cleanly. */
+.cg-pivot-panel[data-show="onlyWhenPivoting"][data-active="false"] {
+  opacity: 0.6;
+}
+
+/* Drop-target outline — accept = focus ring; reject = amber. */
+.cg-pivot-panel[data-drop="accept"] {
+  box-shadow: inset 0 0 0 2px var(--cg-pivot-panel-drop-border);
+}
+.cg-pivot-panel[data-drop="reject"] {
+  box-shadow: inset 0 0 0 2px var(--cg-pivot-panel-drop-border-reject);
+}
+
+/* Vertical insertion line — 2 px bar at the pill-gap nearest the
+ * pointer. Same shape as `.cg-row-group-panel-insertion-line`. */
+.cg-pivot-panel-insertion-line {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--cg-pivot-panel-drop-border);
+  pointer-events: none;
+  border-radius: 1px;
+}
+
+/* Between-pill separator `›` — punctuation between pill tokens.
+ * Inherits the chevron color token so the family stays consistent
+ * across grouping + pivoting surfaces. */
+.cg-pivot-panel-separator {
+  color: var(--cg-group-chevron-color, color-mix(in srgb, var(--cg-fg-color) 55%, transparent));
+  font-size: var(--cg-font-size);
+  line-height: 1;
+  user-select: none;
+  flex: 0 0 auto;
+}
+
+/* Empty-state placeholder — dashed-border container; vocabulary
+ * mirrors `.cg-row-group-panel-empty` + the tool panel's plz empty
+ * state. Text content is set from JS:
+ * "Drag here to set column labels". */
+.cg-pivot-panel-empty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed color-mix(in srgb, var(--cg-border-color) 80%, transparent);
+  border-radius: 4px;
+  margin: 4px 0;
+  font-size: var(--cg-font-size-sm);
+  color: var(--cg-pivot-panel-empty-fg);
+  text-align: center;
+}
+
+/* Pivot pill — REUSES the shared `.cg-columns-panel-pill*` chrome
+ * from Task 5 so the pill is visually identical to the sidebar plz
+ * zone. The `.cg-pivot-panel-pill*` selectors exist for unambiguous
+ * test surface + JS pointer-event wiring. The pivot-panel pill has
+ * no additional styling — the shared block fully covers it. */
+
+/* Floating drag ghost — clone of the pill, position: fixed,
+ * pointer-events: none. Lives on `document.body` so its position
+ * is screen-relative. */
+.cg-pivot-panel-pill.cg-pivot-panel-pill-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 2147483600;
+  background: var(--cg-header-bg);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+  opacity: 0.92;
+  cursor: grabbing;
+  margin: 0;
+}

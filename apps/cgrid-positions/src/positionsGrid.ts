@@ -344,6 +344,11 @@ export interface PositionsGridOptions {
    *  accept drags. Side bar opens to the Columns panel so the
    *  affordances are visible on mount. */
   pivotDemo?: boolean;
+  /** Cycle 18 / Task 6 — `?pivotPanel=always|onlyWhenPivoting` opts
+   *  in the top-of-grid pivot panel (drop strip ABOVE the row group
+   *  panel). Pairs with `?pivotDemo=on` so column-header drags from
+   *  `enablePivot` columns land in the panel. */
+  pivotPanelShow?: 'always' | 'onlyWhenPivoting';
 }
 
 /** Cycle 14 / Task 2 — deterministic seed for the demo pinned reference
@@ -940,6 +945,9 @@ export function createPositionsGrid(
     ...(opts.groupTotalRow ? { groupTotalRow: opts.groupTotalRow } : {}),
     // Cycle 15.5 / Task 8 — grand-total row position.
     ...(opts.grandTotalRow ? { grandTotalRow: opts.grandTotalRow } : {}),
+    // Cycle 18 / Task 6 — pivot panel (top-of-grid drop strip ABOVE
+    // the row group panel). `?pivotPanel=always|onlyWhenPivoting`.
+    ...(opts.pivotPanelShow ? { pivotPanelShow: opts.pivotPanelShow } : {}),
   };
 
   // Cycle 18 / Task 5 — `?pivotDemo=on`: stamp `enablePivot` on a few

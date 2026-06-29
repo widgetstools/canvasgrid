@@ -147,7 +147,16 @@ const columnGroups = search.get('columnGroups') === 'on';
 // the Columns panel active so the pivot affordances are visible on
 // mount. Off by default so visual cells stay byte-stable.
 const pivotDemo = search.get('pivotDemo') === 'on';
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, groupingDemo, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, rowGroupPanelMarketsGrid, groupSelectsChildren, groupIncludeFooter, groupIncludeTotalFooter, pinning, columnGroups, groupHideOpenParents, isGroupOpenByDefault, suppressCount, suppressGroupChangesColumnVisibility, groupTotalRow, grandTotalRow, pivotDemo });
+// Cycle 18 / Task 6 — `?pivotPanel=always|onlyWhenPivoting` mounts the
+// top-of-grid pivot panel (drop strip ABOVE the row group panel). Pairs
+// with `?pivotDemo=on` so categorical columns carry `enablePivot` and
+// can land in the panel via drag.
+const pivotPanelShowRaw = search.get('pivotPanel');
+const pivotPanelShow: 'always' | 'onlyWhenPivoting' | undefined =
+  pivotPanelShowRaw === 'always' || pivotPanelShowRaw === 'onlyWhenPivoting'
+    ? pivotPanelShowRaw
+    : undefined;
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, groupingDemo, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, rowGroupPanelMarketsGrid, groupSelectsChildren, groupIncludeFooter, groupIncludeTotalFooter, pinning, columnGroups, groupHideOpenParents, isGroupOpenByDefault, suppressCount, suppressGroupChangesColumnVisibility, groupTotalRow, grandTotalRow, pivotDemo, pivotPanelShow });
 
 // Toolbar feature-toggle checkboxes. Toggling reloads the page with
 // the matching URL flag set / unset because the structural changes

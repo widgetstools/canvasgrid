@@ -631,6 +631,21 @@ export interface CGridOptions<TRow = any> {
    *  Design plan:
    *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 6. */
   rowGroupPanelShow?: 'always' | 'onlyWhenGrouping' | 'never';
+  /** Cycle 18 / Task 6 — controls when the pivot panel (the horizontal
+   *  drop strip above the row group panel) mounts.
+   *  - `'never'` (default): the panel never mounts.
+   *  - `'always'`: the panel mounts on construction and stays visible
+   *    even when `pivotColumns.length === 0` (the empty state's
+   *    `Drag here to set column labels` placeholder replaces the pills).
+   *  - `'onlyWhenPivoting'`: the strip RESERVES height at construction
+   *    so a later `setPivotMode(true)` doesn't trigger a layout reflow,
+   *    but the strip content (pills + empty placeholder) is paint-
+   *    suppressed until pivot is active OR pivot columns are present.
+   *  When both this AND `rowGroupPanelShow` mount, the pivot panel sits
+   *  ABOVE the row group panel (pivot is the matrix-definition layer
+   *  that wraps the row dimension). Mirrors AG-Grid's `pivotPanelShow`.
+   *  AG-Grid parity: `pivot-behaviors-prompts.md` Prompt 6. */
+  pivotPanelShow?: 'always' | 'onlyWhenPivoting' | 'never';
   /** Cycle 15 / Task 6 — when `true`, the row group panel's chips do
    *  not render a sort indicator (Cycle 15 ships chips without a sort
    *  glyph today; this flag is plumbed for forward compatibility so
@@ -2535,6 +2550,23 @@ export interface CGridApi {
    *  appended to `rowGroupColumns`, `false` when rejected (column
    *  already grouped or `enableRowGroup` not set). */
   commitRowGroupPanelDrop?(colId: string): boolean;
+  /** Cycle 18 / Task 6 — `true` when the pivot panel is mounted AND
+   *  the viewport-coord point `(clientX, clientY)` falls inside its
+   *  DOM rect AND the panel currently accepts drops (`'always'` always
+   *  accepts; `'onlyWhenPivoting'` accepts only when pivot is active).
+   *  Exposed on the public API so external drag sources (column-header
+   *  drags from the grid, columns tool panel column-list row drags)
+   *  can route through the same pivot-panel acceptance path. */
+  isPointInPivotPanel?(clientX: number, clientY: number): boolean;
+  /** Cycle 18 / Task 6 — inform the pivot panel of an in-progress drag
+   *  from an external source. Pass `colId: null` to clear any hover
+   *  state (e.g. on mouse-leave or drag-end). */
+  setPivotPanelDragHover?(colId: string | null, clientX: number, clientY: number): void;
+  /** Cycle 18 / Task 6 — commit an external drag drop into the pivot
+   *  panel. Returns `true` when the column was appended to
+   *  `pivotColumns`, `false` when rejected (column already pivoted or
+   *  `enablePivot` not set). */
+  commitPivotPanelDrop?(colId: string): boolean;
   /** True when (clientX, clientY) is within the leaf column-header band.
    *  Used by external drag sources (e.g. Columns tool panel) to decide
    *  whether the cursor is hovering over the column-header strip. */

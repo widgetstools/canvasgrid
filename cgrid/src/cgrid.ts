@@ -55,6 +55,11 @@ import {
   normalizeRowGroupPanelShow,
   type RowGroupPanelGridContext,
 } from './interaction/rowGroupPanel/host';
+import {
+  PivotPanelHost,
+  normalizePivotPanelShow,
+  type PivotPanelGridContext,
+} from './interaction/pivotPanel/host';
 import { GroupingState, type GroupingStateChangedEvent } from './core/groupingState';
 import { PivotState, type PivotStateChangedEvent, type PivotValueColumn } from './core/pivotState';
 import {
@@ -517,6 +522,19 @@ export class CGrid<TRow = any> {
    *  applying the scroller's `top` style so a top status bar + row
    *  group panel stack cleanly. */
   private rowGroupPanelTopInset = 0;
+  /** Cycle 18 / Task 6 — pivot panel host (DOM strip ABOVE the row
+   *  group panel and column header row that hosts one pill per
+   *  `pivotColumns[i]`). `null` when `options.pivotPanelShow` resolves
+   *  to off. Reserves an additional top inset on the canvas region via
+   *  `reservePivotPanelSpace`; stacks ABOVE the row group panel so the
+   *  vertical order is: status bar → pivot panel → row group panel →
+   *  column headers → body. */
+  private pivotPanel: PivotPanelHost | null = null;
+  /** Cycle 18 / Task 6 — reserved top inset (CSS px) contributed by
+   *  the pivot panel. Combined with `statusBarInsets.top` +
+   *  `rowGroupPanelTopInset` when applying the scroller's `top`
+   *  style. */
+  private pivotPanelTopInset = 0;
   /** Insertion line element for external column-header drops (e.g. from
    *  the Columns tool panel). Lazily created, lives in editorContainer.
    *  Reused across drags; hidden when no drag is active. */
@@ -1009,6 +1027,23 @@ export class CGrid<TRow = any> {
       this.setRowGroupPanelTop(this.statusBarInsets.top);
     }
 
+    // Cycle 18 / Task 6 — pivot panel host (top-of-grid drop strip
+    // ABOVE the row group panel + column headers; pivot wraps the row
+    // dimension). Constructed AFTER the row group panel so visibility
+    // reservations land in the right order: row group panel reserves
+    // first, pivot panel reserves on top of that.
+    const ppShow = normalizePivotPanelShow(options.pivotPanelShow);
+    if (ppShow !== null) {
+      const ctx: PivotPanelGridContext = this.makePivotPanelContext();
+      this.pivotPanel = new PivotPanelHost(
+        this.root,
+        ctx,
+        ppShow,
+        this.pivotState.getPivotColumns(),
+      );
+      this.setPivotPanelTop(this.statusBarInsets.top);
+    }
+
     // 8. Hit-test + input
     this.hitTester = new HitTester(
       () => this.viewport,
@@ -1148,6 +1183,14 @@ export class CGrid<TRow = any> {
         this.rowGroupPanel?.setDragHover(colId, x, y);
       },
       commitRowGroupPanelDrop: (colId) => this.rowGroupPanel?.handleColumnDrop(colId) ?? false,
+      // Cycle 18 / Task 6 — pivot panel drop target. The column drag
+      // feature dispatches hover + drop through these so the pivot
+      // panel can paint its outline + insertion line.
+      isPointInPivotPanel: (x, y) => this.pivotPanel?.isPointInPanel(x, y) === true,
+      setPivotPanelDragHover: (colId, x, y) => {
+        this.pivotPanel?.setDragHover(colId, x, y);
+      },
+      commitPivotPanelDrop: (colId) => this.pivotPanel?.handleColumnDrop(colId) ?? false,
       // Cycle 15 / Task 7 — chevron hit-test + toggle. The grid owns
       // both because (a) hit geometry requires column bounds + chunk
       // group fields the feature shouldn't reach into, and (b) the
@@ -2789,6 +2832,14 @@ export class CGrid<TRow = any> {
       valueColumns: e.valueColumns.map((v) => ({ ...v })),
       source: e.source,
     });
+    // Cycle 18 / Task 6 — fan the change out to the pivot panel host
+    // (when mounted) so its pill strip + onlyWhenPivoting paint state
+    // stay in sync with PivotState. Pills mirror `pivotColumns`; the
+    // active flag toggles whether 'onlyWhenPivoting' paints content.
+    if (this.pivotPanel) {
+      this.pivotPanel.setPivotColumns(e.pivotColumns);
+      this.pivotPanel.setPivotActive(this.pivotState.isPivotActive());
+    }
     this.workerClient.updateColumns(this.workerColumns())
       .then(() => this.workerClient.setPivotModel(this.pivotWorkerModel()))
       .then(() => {
@@ -3201,6 +3252,27 @@ export class CGrid<TRow = any> {
     return this.rowGroupPanel?.handleColumnDrop(colId) ?? false;
   }
 
+  /** Cycle 18 / Task 6 — `true` when the pivot panel is mounted AND
+   *  the viewport-coord point `(clientX, clientY)` falls inside its
+   *  DOM rect AND the panel currently accepts drops. */
+  isPointInPivotPanel(clientX: number, clientY: number): boolean {
+    return this.pivotPanel?.isPointInPanel(clientX, clientY) === true;
+  }
+
+  /** Cycle 18 / Task 6 — forward an external drag hover to the pivot
+   *  panel host. */
+  setPivotPanelDragHover(colId: string | null, clientX: number, clientY: number): void {
+    if (this.destroyed) return;
+    this.pivotPanel?.setDragHover(colId, clientX, clientY);
+  }
+
+  /** Cycle 18 / Task 6 — commit an external column drag drop into the
+   *  pivot panel. */
+  commitPivotPanelDrop(colId: string): boolean {
+    if (this.destroyed) return false;
+    return this.pivotPanel?.handleColumnDrop(colId) ?? false;
+  }
+
   /** True when (clientX, clientY) falls within the leaf column-header
    *  band of the canvas.  Used by external drag sources (e.g. the
    *  Columns tool panel) to decide whether the cursor is hovering
@@ -3318,6 +3390,51 @@ export class CGrid<TRow = any> {
       { suppressSort: this.options.rowGroupPanelSuppressSort === true },
     );
     this.setRowGroupPanelTop(this.statusBarInsets.top);
+  }
+
+  /** Cycle 18 / Task 6 — runtime swap of `pivotPanelShow`. When the
+   *  option mutates via `setGridOption`, this method either mounts a
+   *  fresh host (transition from `'never'`), unmounts the current one
+   *  (transition to `'never'`), or hands the new mode to the existing
+   *  host. */
+  private updatePivotPanelShow(show: 'always' | 'onlyWhenPivoting' | 'never' | undefined): void {
+    if (this.destroyed) return;
+    const next = normalizePivotPanelShow(show);
+    if (next === null) {
+      this.pivotPanel?.destroy();
+      this.pivotPanel = null;
+      return;
+    }
+    if (this.pivotPanel) {
+      this.pivotPanel.setShowMode(next);
+      return;
+    }
+    const ctx: PivotPanelGridContext = this.makePivotPanelContext();
+    this.pivotPanel = new PivotPanelHost(
+      this.root,
+      ctx,
+      next,
+      this.pivotState.getPivotColumns(),
+    );
+    this.setPivotPanelTop(this.statusBarInsets.top);
+  }
+
+  /** Cycle 18 / Task 6 — build the per-host context object shared by
+   *  the construction-time path and the runtime-show-flip path. Every
+   *  primitive mutation routes through `pivotState`; the
+   *  `pivotStateChanged` handler downstream lands the model swap on
+   *  the worker. */
+  private makePivotPanelContext(): PivotPanelGridContext {
+    return {
+      setReservedSpace: (side, height) => this.reservePivotPanelSpace(side, height),
+      getHeaderName: (colId) => this.columnDefsMap.get(colId)?.headerName,
+      isColumnPivotEnabled: (colId) =>
+        this.columnDefsMap.get(colId)?.enablePivot === true,
+      addPivotColumn: (colId) => this.pivotState.addPivotColumn(colId),
+      removePivotColumn: (colId) => this.pivotState.removePivotColumn(colId),
+      movePivotColumn: (from, to) => this.pivotState.movePivotColumn(from, to),
+      isPivotActive: () => this.pivotState.isPivotActive(),
+    };
   }
 
   /** Cycle 15.5 / Task 1 — build the per-host context object shared by
@@ -3941,12 +4058,15 @@ export class CGrid<TRow = any> {
     // current status-bar bottom reservation flows through the same
     // setHostBounds call so a side-bar reflow can't drop the bar inset.
     if (this.cgridCanvas) {
-      // Cycle 15 / Task 6 — fold the status-bar top + row-group-panel
-      // top contributions through the same call so a side-bar reflow
-      // doesn't drop either inset.
+      // Cycle 15 / Task 6 + Cycle 18 / Task 6 — fold the status-bar
+      // top + pivot-panel top + row-group-panel top contributions
+      // through the same call so a side-bar reflow doesn't drop any
+      // of the three insets.
       this.cgridCanvas.setHostBounds({
         left,
-        top: this.statusBarInsets.top + this.rowGroupPanelTopInset,
+        top: this.statusBarInsets.top
+          + this.pivotPanelTopInset
+          + this.rowGroupPanelTopInset,
         bottom: this.statusBarInsets.bottom,
       });
     }
@@ -3982,15 +4102,30 @@ export class CGrid<TRow = any> {
     this.applyVerticalInsets();
   }
 
+  /** Cycle 18 / Task 6 — adjust the canvas region's top inset to
+   *  make room for the pivot panel (the drop strip ABOVE the row
+   *  group panel). Called by `PivotPanelHost` on mount, show-mode
+   *  change, pill-count change, and destroy. Combines with the
+   *  status bar + row group panel top insets via `applyVerticalInsets`. */
+  private reservePivotPanelSpace(side: 'top', height: number): void {
+    if (side !== 'top') return;
+    if (this.pivotPanelTopInset === height) return;
+    this.pivotPanelTopInset = height;
+    this.applyVerticalInsets();
+  }
+
   /** Cycle 15 / Task 6 — recompute and apply the combined top +
    *  bottom insets to the scroller, editor overlay, canvas host,
    *  and the row group panel's own top offset. Top inset is the
-   *  sum of `statusBarInsets.top` + `rowGroupPanelTopInset` so the
-   *  row group panel sits BELOW any top-positioned status bar.
-   *  Bottom inset is `statusBarInsets.bottom` alone (no row group
+   *  sum of `statusBarInsets.top` + `pivotPanelTopInset` +
+   *  `rowGroupPanelTopInset` so the visual order top-to-bottom is:
+   *  status bar → pivot panel → row group panel → column headers →
+   *  body. Bottom inset is `statusBarInsets.bottom` alone (no
    *  panel contribution). */
   private applyVerticalInsets(): void {
-    const top = this.statusBarInsets.top + this.rowGroupPanelTopInset;
+    const top = this.statusBarInsets.top
+      + this.pivotPanelTopInset
+      + this.rowGroupPanelTopInset;
     const bottom = this.statusBarInsets.bottom;
     this.scroller.style.top = `${top}px`;
     this.scroller.style.bottom = `${bottom}px`;
@@ -4003,15 +4138,18 @@ export class CGrid<TRow = any> {
         bottom,
       });
     }
-    // The side bar must start below the row group panel so the tab strip
-    // is not visually occluded. Use the same `top` value as the scroller.
+    // The side bar must start below the panels so the tab strip is not
+    // visually occluded. Use the same `top` value as the scroller.
     this.sideBar?.setTopOffset(top);
-    // The row group panel itself sits at the status bar's top-inset
-    // (so a top status bar pushes the panel down by exactly its
-    // height) — the panel's own height is then the next contributor
-    // to the scroller's top. Keeps stacking deterministic.
+    // The pivot panel sits at the status bar's top-inset (top of the
+    // stack, just below any top status bar). The row group panel sits
+    // BELOW the pivot panel — its top equals statusBar + pivotPanel.
+    // Keeps stacking deterministic.
+    if (this.pivotPanel) {
+      this.setPivotPanelTop(this.statusBarInsets.top);
+    }
     if (this.rowGroupPanel) {
-      this.setRowGroupPanelTop(this.statusBarInsets.top);
+      this.setRowGroupPanelTop(this.statusBarInsets.top + this.pivotPanelTopInset);
     }
   }
 
@@ -4021,6 +4159,14 @@ export class CGrid<TRow = any> {
    *  the top status bar) and once at construction. */
   private setRowGroupPanelTop(top: number): void {
     const el = this.root.querySelector('.cg-row-group-panel') as HTMLElement | null;
+    if (el) el.style.top = `${top}px`;
+  }
+
+  /** Cycle 18 / Task 6 — set the pivot panel's own `top` style.
+   *  Called from `applyVerticalInsets` whenever the status bar's
+   *  top inset changes and once at construction. */
+  private setPivotPanelTop(top: number): void {
+    const el = this.root.querySelector('.cg-pivot-panel') as HTMLElement | null;
     if (el) el.style.top = `${top}px`;
   }
 
@@ -4154,6 +4300,7 @@ export class CGrid<TRow = any> {
         );
       },
       updateRowGroupPanelShow: (value) => this.updateRowGroupPanelShow(value),
+      updatePivotPanelShow: (value) => this.updatePivotPanelShow(value),
       updateRowGroupPanelSuppressSort: (suppress) =>
         this.rowGroupPanel?.setRenderOptions({ suppressSort: suppress }),
       updateGroupSelectsChildren: (enabled) => this.applyGroupSelectsChildren(enabled),
@@ -4471,6 +4618,11 @@ export class CGrid<TRow = any> {
     // the same guard as the side / status bars.
     this.rowGroupPanel?.destroy();
     this.rowGroupPanel = null;
+    // Cycle 18 / Task 6 — release the pivot panel's top inset +
+    // remove its DOM. Symmetric with the row group panel teardown
+    // above.
+    this.pivotPanel?.destroy();
+    this.pivotPanel = null;
     // Cycle 15.5 / Task 1 — release the grouping primitive's
     // subscribers + clear its event emitter so a late listener can't
     // fire on a destroyed grid.

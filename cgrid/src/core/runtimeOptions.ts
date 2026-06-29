@@ -66,6 +66,7 @@ export type RuntimeOption =
   | 'suppressAggFuncInHeader'
   | 'rowGroupPanelShow'
   | 'rowGroupPanelSuppressSort'
+  | 'pivotPanelShow'
   | 'groupSelectsChildren'
   | 'suppressCount';
 
@@ -118,6 +119,9 @@ export interface RuntimeOptionTarget<TRow = any> {
    *  CGrid normalises the value (undefined / `'never'` → unmount;
    *  otherwise mount-or-update). */
   updateRowGroupPanelShow(value: 'always' | 'onlyWhenGrouping' | 'never' | undefined): void;
+  /** Cycle 18 / Task 6 — hand the runtime pivot-panel show mode to
+   *  CGrid so it can mount / unmount / setShowMode on the host. */
+  updatePivotPanelShow(value: 'always' | 'onlyWhenPivoting' | 'never' | undefined): void;
   /** Cycle 15.5 / Task 1 — hand the runtime `rowGroupPanelSuppressSort`
    *  flag to CGrid so the panel re-renders (with / without the sort
    *  indicator) on the next frame. */
@@ -276,6 +280,13 @@ export function applyRuntimeOption<TRow>(
         value as 'always' | 'onlyWhenGrouping' | 'never' | undefined,
       );
       return;
+    case 'pivotPanelShow':
+      // Cycle 18 / Task 6 — runtime mount / unmount / show-mode swap
+      // for the pivot panel (top-of-grid drop strip).
+      target.updatePivotPanelShow(
+        value as 'always' | 'onlyWhenPivoting' | 'never' | undefined,
+      );
+      return;
     case 'rowGroupPanelSuppressSort':
       // Cycle 15.5 / Task 1 — re-render the chip strip without the
       // sort indicator span when `true`. The flag toggles which DOM
@@ -322,6 +333,7 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'suppressAggFuncInHeader',
   'rowGroupPanelShow',
   'rowGroupPanelSuppressSort',
+  'pivotPanelShow',
   'groupSelectsChildren',
   'suppressCount',
 ]);

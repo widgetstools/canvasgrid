@@ -42,6 +42,13 @@ export const pivotToolPanel: Feature = {
       ],
       theme,
       rowGroupPanelShow: 'always',
+      // Cycle 18 / Task 6 — mount the top-of-grid pivot panel so the
+      // showcase exercises BOTH views over PivotState (sidebar plz
+      // zone + top panel). Drag a column header into the strip to add
+      // it as a pivot column; the sidebar pill list updates on the
+      // next event tick (sync invariant — both surfaces subscribe to
+      // `pivotStateChanged`).
+      pivotPanelShow: 'always',
       sideBar: {
         toolPanels: ['columns', 'filters'],
         defaultToolPanel: 'agColumnsToolPanel',

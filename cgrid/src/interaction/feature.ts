@@ -258,6 +258,27 @@ export interface CGridLike {
    *  within the header band as if the drop hadn't been attempted). */
   commitRowGroupPanelDrop(colId: string): boolean;
 
+  // --- Pivot panel drop target (Cycle 18 / Task 6) ---
+  /** True when the pivot panel is mounted AND the viewport-coord
+   *  point `(clientX, clientY)` falls inside its DOM rect AND the
+   *  panel accepts drops right now. Read each `mousemove` tick during
+   *  a column-header drag so the drag feature can paint the panel's
+   *  drop indicator. Returns `false` when no panel is mounted
+   *  (`pivotPanelShow === 'never'`) or when 'onlyWhenPivoting' is
+   *  inactive. */
+  isPointInPivotPanel(clientX: number, clientY: number): boolean;
+  /** Inform the pivot panel of an in-progress drag. Passing
+   *  `colId: null` clears any drop-hover state. */
+  setPivotPanelDragHover(
+    colId: string | null,
+    clientX: number,
+    clientY: number,
+  ): void;
+  /** Commit a column-header drop into the pivot panel. Returns `true`
+   *  when the column was appended to `pivotColumns`, `false` when
+   *  the drop was rejected. */
+  commitPivotPanelDrop(colId: string): boolean;
+
   // --- Group expand / collapse (Cycle 15 / Task 7) ---
   /** Hit-test a canvas-local point against the chevron rect of an
    *  auto-group cell. Returns the composite group key when the point

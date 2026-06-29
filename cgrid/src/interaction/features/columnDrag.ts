@@ -46,6 +46,16 @@ export interface RowGroupPanelDragRouter {
   commitRowGroupPanelDrop(colId: string): boolean;
 }
 
+/** Cycle 18 / Task 6 — analogue of the row group panel router for the
+ *  pivot panel.  Same shape, same `routeExternalDragHover` /
+ *  `clearExternalDragHover` consumers, so external drag sources can
+ *  route through both panels with a uniform protocol. */
+export interface PivotPanelDragRouter {
+  isPointInPivotPanel(clientX: number, clientY: number): boolean;
+  setPivotPanelDragHover(colId: string | null, clientX: number, clientY: number): void;
+  commitPivotPanelDrop(colId: string): boolean;
+}
+
 /** Dispatch a mid-drag hover tick to the row group panel.
  *
  *  Returns `true` when the cursor is inside the panel (so the caller
@@ -72,6 +82,30 @@ export function routeExternalDragHover(
 export function clearExternalDragHover(ctx: RowGroupPanelDragRouter): void {
   ctx.setRowGroupPanelDragHover(null, -1, -1);
 }
+
+/** Cycle 18 / Task 6 — analogue of `routeExternalDragHover` for the
+ *  pivot panel. Same return contract: `true` when the cursor is
+ *  inside the pivot panel (so the caller can suppress other drop
+ *  targets); `false` (with cleared hover state) when outside. */
+export function routePivotPanelDragHover(
+  ctx: PivotPanelDragRouter,
+  colId: string,
+  clientX: number,
+  clientY: number,
+): boolean {
+  if (ctx.isPointInPivotPanel(clientX, clientY)) {
+    ctx.setPivotPanelDragHover(colId, clientX, clientY);
+    return true;
+  }
+  ctx.setPivotPanelDragHover(null, clientX, clientY);
+  return false;
+}
+
+/** Cycle 18 / Task 6 — analogue of `clearExternalDragHover` for the
+ *  pivot panel. */
+export function clearPivotPanelDragHover(ctx: PivotPanelDragRouter): void {
+  ctx.setPivotPanelDragHover(null, -1, -1);
+}
 const INSERTION_LINE_CLASS = 'cg-column-drag-insertion-line';
 const GHOST_HEADER_CLASS = 'cg-column-drag-ghost';
 
@@ -95,11 +129,16 @@ interface DraggingState {
   grabOffsetX: number;
   ghost: HTMLDivElement | null;
   insertionLine: HTMLDivElement | null;
-  /** Pill ghost shown when hovering over the row group panel.  Lazily
-   *  created the first time the cursor enters the panel; the column-header
-   *  ghost is hidden while this is visible. */
+  /** Pill ghost shown when hovering over the row group panel OR the
+   *  pivot panel (Cycle 18 / Task 6).  Lazily created the first time the
+   *  cursor enters either panel; the column-header ghost is hidden while
+   *  this is visible. */
   pillGhost: HTMLDivElement | null;
   overRowGroupPanel: boolean;
+  /** Cycle 18 / Task 6 — true while the cursor is over the pivot panel.
+   *  Tracked separately so the pill ghost can flip on / off as the
+   *  cursor traverses panel boundaries. */
+  overPivotPanel: boolean;
 }
 
 type State = PressedState | DraggingState | null;
@@ -164,12 +203,13 @@ export class ColumnDrag extends Feature {
         insertionLine: createInsertionLine(ctx),
         pillGhost: createPillGhost(ctx, this.state.colId),
         overRowGroupPanel: false,
+        overPivotPanel: false,
       };
       this.cursor = 'grabbing';
       updateHeaderGhostPosition(this.state, ctx);
       updatePillGhostPosition(this.state, ctx);
       updateInsertionLinePosition(this.state, ctx);
-      this.dispatchRowGroupPanelHover(ctx);
+      this.dispatchPanelHover(ctx);
       return;
     }
     // dragging — track pointer X for the drop-target computation
@@ -177,7 +217,7 @@ export class ColumnDrag extends Feature {
     updateHeaderGhostPosition(this.state, ctx);
     updatePillGhostPosition(this.state, ctx);
     updateInsertionLinePosition(this.state, ctx);
-    this.dispatchRowGroupPanelHover(ctx);
+    this.dispatchPanelHover(ctx);
   }
 
   override handleMouseUp(ctx: CGridEventCtx): void {
@@ -193,14 +233,23 @@ export class ColumnDrag extends Feature {
     state.ghost?.remove();
     state.insertionLine?.remove();
     state.pillGhost?.remove();
-    // Cycle 15 / Task 6 — if the drop landed inside the row group
-    // panel, commit the drop there instead of running the header
-    // reorder. The panel's drop verdict already filtered for
-    // `enableRowGroup`; a `reject` returns `false` and we fall back
-    // to a header reorder so the column doesn't disappear into a
-    // rejected drop.
+    // Cycle 15 / Task 6 + Cycle 18 / Task 6 — if the drop landed
+    // inside the pivot panel OR the row group panel, commit the drop
+    // there instead of running the header reorder. Pivot panel takes
+    // priority because it sits ABOVE the row group panel (matching
+    // the stacking order in `applyVerticalInsets`). The panel's drop
+    // verdict already filtered for `enableX`; a `reject` returns
+    // `false` and we fall back to header reorder so the column
+    // doesn't disappear into a rejected drop.
     const raw = ctx.raw;
     if (raw instanceof MouseEvent) {
+      const droppedIntoPivot = ctx.grid.isPointInPivotPanel(raw.clientX, raw.clientY)
+        && ctx.grid.commitPivotPanelDrop(state.colId);
+      ctx.grid.setPivotPanelDragHover(null, raw.clientX, raw.clientY);
+      if (droppedIntoPivot) {
+        this.suppressNextClick = true;
+        return;
+      }
       const droppedIntoPanel = ctx.grid.isPointInRowGroupPanel(raw.clientX, raw.clientY)
         && ctx.grid.commitRowGroupPanelDrop(state.colId);
       // Clear any drop-hover state regardless of accept/reject so the
@@ -222,26 +271,40 @@ export class ColumnDrag extends Feature {
     this.suppressNextClick = true;
   }
 
-  /** Feed the row group panel host the current drag state via the shared
-   *  router. The two ghosts swap as the cursor crosses the panel boundary:
-   *    - OUTSIDE the panel (plain column reorder): the header ghost +
-   *      insertion line are shown; the pill chip is hidden.
-   *    - INSIDE the panel: the header ghost + insertion line are hidden
-   *      (the drop target is the panel, not a column slot) and the pill
-   *      chip is shown to signal "I'm dropping a group chip here". */
-  private dispatchRowGroupPanelHover(ctx: CGridEventCtx): void {
+  /** Feed the row group panel + pivot panel hosts the current drag
+   *  state via the shared router. The two ghosts swap as the cursor
+   *  crosses ANY panel boundary:
+   *    - OUTSIDE both panels (plain column reorder): the header ghost +
+   *      insertion line are shown; the pill ghost is hidden.
+   *    - INSIDE either panel: the header ghost + insertion line are
+   *      hidden and the pill ghost is shown to signal "I'm dropping
+   *      a chip here". Pivot panel is checked first so its hover
+   *      paint wins when both panels would accept the cursor (pivot
+   *      sits ABOVE row group panel in the stacking order). */
+  private dispatchPanelHover(ctx: CGridEventCtx): void {
     const state = this.state;
     if (state === null || state.kind !== 'dragging') return;
     const raw = ctx.raw;
     if (!(raw instanceof MouseEvent)) return;
-    const inPanel = routeExternalDragHover(ctx.grid, state.colId, raw.clientX, raw.clientY);
-    if (inPanel !== state.overRowGroupPanel) {
-      state.overRowGroupPanel = inPanel;
-      if (state.insertionLine) state.insertionLine.style.display = inPanel ? 'none' : '';
-      if (state.ghost) state.ghost.style.display = inPanel ? 'none' : '';
-      if (state.pillGhost) {
-        state.pillGhost.classList.toggle('cg-col-drag-ghost--visible', inPanel);
-      }
+    const inPivot = routePivotPanelDragHover(ctx.grid, state.colId, raw.clientX, raw.clientY);
+    if (inPivot !== state.overPivotPanel) {
+      state.overPivotPanel = inPivot;
+    }
+    // When the cursor is over the pivot panel, suppress hover on the
+    // row group panel (clear any prior hover so the outline goes away)
+    // — pivot takes drop precedence. When NOT over the pivot panel,
+    // route hover to the row group panel normally.
+    const inRowGroup = inPivot
+      ? (clearExternalDragHover(ctx.grid), false)
+      : routeExternalDragHover(ctx.grid, state.colId, raw.clientX, raw.clientY);
+    if (inRowGroup !== state.overRowGroupPanel) {
+      state.overRowGroupPanel = inRowGroup;
+    }
+    const overAnyPanel = inPivot || inRowGroup;
+    if (state.insertionLine) state.insertionLine.style.display = overAnyPanel ? 'none' : '';
+    if (state.ghost) state.ghost.style.display = overAnyPanel ? 'none' : '';
+    if (state.pillGhost) {
+      state.pillGhost.classList.toggle('cg-col-drag-ghost--visible', overAnyPanel);
     }
   }
 
