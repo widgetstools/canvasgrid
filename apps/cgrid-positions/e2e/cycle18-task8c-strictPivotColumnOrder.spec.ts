@@ -53,11 +53,15 @@ async function gridReady(page: Page, qs: string): Promise<void> {
   await waitForFrames(page, 6);
 }
 
-/** Read the pivot result column ids in their current rendered order. */
+/** Read the pivot result column ids in their current rendered order.
+ *  Reads `columnOrder` (the rendered list) — `getColumnState` returns
+ *  PRIMARY cols under pivot mode post Cycle 18 / Task 9. */
 async function pivotResultColIds(page: Page): Promise<string[]> {
   return page.evaluate(() => {
-    const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
-    return api.getColumnState()
+    const grid = (window as unknown as {
+      __cgrid: { columnOrder: Array<{ colId: string }> };
+    }).__cgrid;
+    return (grid.columnOrder ?? [])
       .map((c) => c.colId)
       .filter((id) => id.startsWith('pivotcol'));
   });

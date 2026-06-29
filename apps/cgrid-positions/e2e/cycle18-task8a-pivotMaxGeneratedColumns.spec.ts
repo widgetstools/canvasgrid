@@ -81,9 +81,13 @@ async function readBreaches(page: Page): Promise<Array<{ generatedColumns: numbe
 
 async function pivotResultColCount(page: Page): Promise<number> {
   return page.evaluate(() => {
-    const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
-    // `pivotcol` is the PIVOT_RESULT_COL_PREFIX defined in cgrid/src/core/pivotColumns.ts.
-    return api.getColumnState().filter((c) => c.colId.startsWith('pivotcol')).length;
+    // `getColumnState` reports PRIMARY cols under pivot mode (Cycle 18 /
+    // Task 9 fix for AG-Grid parity). Read the actually-rendered list
+    // from `columnOrder` instead so we count synthesized leaves.
+    const grid = (window as unknown as {
+      __cgrid: { columnOrder: Array<{ colId: string }> };
+    }).__cgrid;
+    return (grid.columnOrder ?? []).filter((c) => c.colId.startsWith('pivotcol')).length;
   });
 }
 

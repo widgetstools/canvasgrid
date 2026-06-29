@@ -122,9 +122,13 @@ test.describe('Cycle 18 / Task 8d — sort secondary column sorts row groups', (
     await waitForFrames(page, 12);
 
     // Find a synthesized pivot result colId — first currency value × notionalAmount.
+    // Read `columnOrder` (rendered list) since `getColumnState` reports
+    // PRIMARY cols under pivot mode post Cycle 18 / Task 9.
     const pivotColIds = await page.evaluate(() => {
-      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
-      return api.getColumnState().map((c) => c.colId)
+      const grid = (window as unknown as {
+        __cgrid: { columnOrder: Array<{ colId: string }> };
+      }).__cgrid;
+      return (grid.columnOrder ?? []).map((c) => c.colId)
         .filter((id) => id.startsWith('pivotcol'));
     });
     expect(pivotColIds.length).toBeGreaterThan(0);

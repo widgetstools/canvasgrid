@@ -6216,10 +6216,22 @@ export class CGrid<TRow = any> {
    *  PivotState primitives. The original Cycle 6 implementation read the
    *  static colDef slots and missed runtime API mutations — a latent bug
    *  the tool panel + pivot panel + context menu items all surfaced as
-   *  "Restore doesn't restore". */
+   *  "Restore doesn't restore".
+   *
+   *  Cycle 18 / Task 9 — under pivot mode the rendered tree is the
+   *  SYNTHESIZED pivot result tree (pivotcol* leaves + the auto-group
+   *  col), NOT the primary user columns. Snapshotting the synthesized
+   *  tree would lose every primary column from the save → the round-
+   *  trip restore couldn't reinstate the pivot/value role lists. AG
+   *  parity: column state always reflects PRIMARY columns. So when
+   *  pivot is active we snapshot against the cached primary tree
+   *  instead. */
   getColumnState(): CColumnState[] {
+    const treeForSnapshot = this.pivotActive && this.primaryColumnTree !== null
+      ? this.primaryColumnTree
+      : this.columnTree;
     return snapshotState(
-      this.columnTree,
+      treeForSnapshot,
       this.columnLayout,
       this.sortModel,
       {
@@ -6526,20 +6538,34 @@ export class CGrid<TRow = any> {
     params: CApplyColumnStateParams,
     emitReset: boolean,
   ): boolean {
+    // Cycle 18 / Task 9 — under pivot mode the live `columnTree` /
+    // `columnDefsMap` describe the SYNTHESIZED pivot result tree
+    // (pivotcol* leaves + the auto-group column), NOT the primary
+    // user columns. Saved column state always reflects PRIMARY
+    // columns (see `getColumnState` above for the AG-parity rationale),
+    // so apply must validate + mutate against the primary tree's
+    // leaf map under pivot mode. The role fan-out in
+    // `applyRoleStateFromColumnState` then drives the pivot synthesis
+    // to re-build from the restored primary state.
+    const applyTree = this.pivotActive && this.primaryColumnTree !== null
+      ? this.primaryColumnTree
+      : this.columnTree;
+    const applyLeafById = applyTree.leafById;
+
     let allFound = true;
     if (params.state) {
       for (const entry of params.state) {
-        if (!this.columnDefsMap.has(entry.colId)) { allFound = false; break; }
+        if (!applyLeafById.has(entry.colId)) { allFound = false; break; }
       }
     }
 
     const locks: SnapshotLocks = {
-      lockVisibleOf: (id) => this.columnDefsMap.get(id)?.lockVisible ?? false,
-      lockPinnedOf: (id) => this.columnDefsMap.get(id)?.lockPinned ?? false,
+      lockVisibleOf: (id) => (applyLeafById.get(id) as { lockVisible?: boolean })?.lockVisible ?? false,
+      lockPinnedOf: (id) => (applyLeafById.get(id) as { lockPinned?: boolean })?.lockPinned ?? false,
     };
 
     const oldOrder = this.columnOrder.map((c) => c.colId);
-    const result = applyStateToTree(this.columnTree, params, locks);
+    const result = applyStateToTree(applyTree, params, locks);
 
     // Cycle 18 / Task 8b — fan the role slots out to the runtime state
     // primitives (GroupingState + PivotState). The Cycle 6 columnState
@@ -6724,8 +6750,14 @@ export class CGrid<TRow = any> {
     const rowGroups: Indexed[] = [];
     const pivots: Indexed[] = [];
     const values: Array<{ colId: string; aggFunc: string }> = [];
+    // Cycle 18 / Task 9 — under pivot mode `columnDefsMap` covers
+    // synthesized leaves only; validate against the primary tree so
+    // saved state with primary col ids round-trips.
+    const validLeafById = this.pivotActive && this.primaryColumnTree !== null
+      ? this.primaryColumnTree.leafById
+      : this.columnDefsMap;
     state.forEach((entry, declOrder) => {
-      if (!this.columnDefsMap.has(entry.colId)) return;
+      if (!validLeafById.has(entry.colId)) return;
       if (entry.rowGroup === true) {
         rowGroups.push({
           colId: entry.colId,

@@ -471,47 +471,54 @@
 | 10 | ✅ GUI aggregation controls | Enterprise | behavior | no | P1 | enableValue + allowedAggFuncs + functionsReadOnly |
 
 <!-- area:11 Pivoting -->
-| 11 | pivot (ColDef) | Enterprise | option | no | P1 | Pivots by this column's distinct values; requires PivotModule |
+| 11 | ✅ pivot (ColDef) | Enterprise | option | yes | P1 | Pivots by this column's distinct values; round-trips via columnState |
 | 11 | initialPivot (ColDef) | Enterprise | option | no | P2 | pivot applied on first column creation only |
-| 11 | pivotIndex (ColDef) | Enterprise | option | no | P1 | Position in multi-column pivot hierarchy |
+| 11 | ✅ pivotIndex (ColDef) | Enterprise | option | yes | P1 | Position in multi-column pivot hierarchy; round-trips via columnState |
 | 11 | initialPivotIndex (ColDef) | Enterprise | option | no | P2 | pivotIndex applied on first column creation only |
-| 11 | enablePivot (ColDef) | Enterprise | option | yes | P1 | Allows user to drag column into pivot panel via GUI |
-| 11 | pivotComparator (ColDef) | Enterprise | option | no | P2 | Custom comparator for ordering generated pivot column groups |
-| 11 | pivotMode | Enterprise | option | no | P1 | Activates pivot rendering pipeline |
-| 11 | pivotPanelShow | Enterprise | option | no | P2 | Visibility of pivot drag-and-drop panel |
-| 11 | pivotMaxGeneratedColumns | Enterprise | option | no | P2 | Cap on generated pivot columns; -1 for unlimited |
-| 11 | pivotDefaultExpanded | Enterprise | option | no | P2 | Pivot column group levels expanded on load |
-| 11 | pivotColumnGroupTotals | Enterprise | option | no | P1 | Adds total column within each pivot key group |
-| 11 | pivotRowTotals | Enterprise | option | no | P1 | Adds total value column across all pivot key groups |
+| 11 | ✅ enablePivot (ColDef) | Enterprise | option | yes | P1 | Gates drag-to-pivot + context-menu "Add to Labels" item |
+| 11 | pivotComparator (ColDef) | Enterprise | option | no | P2 | Custom comparator for ordering generated pivot column groups (deferred — see enableStrictPivotColumnOrder) |
+| 11 | ✅ pivotMode | Enterprise | option | yes | P1 | Master switch; activates pivot rendering pipeline |
+| 11 | ✅ pivotPanelShow | Enterprise | option | yes | P2 | Visibility of pivot drag-and-drop panel (always / onlyWhenPivoting / never) |
+| 11 | ✅ pivotMaxGeneratedColumns | Enterprise | option | yes | P2 | Cap on generated pivot columns; default 5000; fires pivotMaxColumnsReached event |
+| 11 | ✅ pivotDefaultExpanded | Enterprise | option | yes | P2 | Pivot column group levels expanded on load |
+| 11 | ✅ pivotColumnGroupTotals | Enterprise | option | yes | P1 | Inserts always-visible per-pivot-group subtotal leaves before/after children |
+| 11 | ✅ pivotRowTotals | Enterprise | option | yes | P1 | Inserts row-total value column(s) across all pivot key groups |
+| 11 | ✅ enableStrictPivotColumnOrder | Enterprise | option | yes | P1 | Strict alphanumeric vs append-new-at-end pivot key ordering |
 | 11 | pivotSuppressAutoColumn | Enterprise | option | no | P2 | Prevents auto-insertion of group column in pivot mode |
 | 11 | suppressExpandablePivotGroups | Enterprise | option | no | P2 | Makes pivot column groups non-collapsible |
 | 11 | removePivotHeaderRowWhenSingleValueColumn | Enterprise | option | no | P2 | Removes redundant value-column header row when only one value |
-| 11 | processPivotResultColDef | Enterprise | option | no | P1 | Callback to mutate each generated pivot leaf column definition |
-| 11 | processPivotResultColGroupDef | Enterprise | option | no | P1 | Callback to mutate each generated pivot column group definition |
-| 11 | isPivotMode | Enterprise | api | no | P1 | Returns true if pivot mode is active |
-| 11 | setPivotColumns | Enterprise | api | no | P1 | Replaces current pivot columns |
-| 11 | addPivotColumns | Enterprise | api | no | P1 | Adds columns to pivot definition |
-| 11 | removePivotColumns | Enterprise | api | no | P1 | Removes columns from pivot definition |
-| 11 | getPivotColumns | Enterprise | api | no | P1 | Returns current pivot columns |
-| 11 | getPivotResultColumn | Enterprise | api | no | P1 | Looks up generated pivot result column by key path |
-| 11 | getPivotResultColumns | Enterprise | api | no | P1 | Returns all generated pivot result columns |
-| 11 | setPivotResultColumns | Enterprise | api | no | P2 | Manually sets secondary column definitions (SSRM use) |
-| 11 | setValueColumns | Enterprise | api | no | P1 | Replaces value columns used in pivot |
-| 11 | addValueColumns | Enterprise | api | no | P1 | Adds value columns to pivot |
-| 11 | removeValueColumns | Enterprise | api | no | P1 | Removes value columns from pivot |
-| 11 | getValueColumns | Enterprise | api | no | P1 | Returns current value columns |
-| 11 | columnPivotModeChanged | Enterprise | event | no | P1 | pivotMode toggled on or off |
-| 11 | columnPivotChanged | Enterprise | event | no | P1 | Column added to or removed from pivot column set |
-| 11 | columnValueChanged | Enterprise | event | no | P1 | Column added to or removed from value (aggregation) set |
-| 11 | pivotMaxColumnsExceeded | Enterprise | event | no | P2 | Generated pivot column count exceeds pivotMaxGeneratedColumns |
-| 11 | Pivot mode activation | Enterprise | behavior | no | P1 | pivotMode=true + at least one pivot=true column required |
-| 11 | Primary vs secondary columns | Enterprise | behavior | no | P1 | Grid replaces primary columns with generated secondary set |
-| 11 | Pivot key ordering via pivotComparator | Enterprise | behavior | no | P2 | Custom string comparator controls pivot group column order |
-| 11 | processPivotResultColDef mutation hook | Enterprise | behavior | no | P1 | Called each time grid regenerates pivot columns |
-| 11 | pivotColumnGroupTotals insertion | Enterprise | behavior | no | P1 | Injects aggregate column before/after each pivot key group |
-| 11 | pivotRowTotals insertion | Enterprise | behavior | no | P1 | Injects row-total value column outside pivot key groups |
-| 11 | Pivot + aggregation pipeline | Enterprise | behavior | no | P0 | Pivot result columns inherit aggFunc from value column |
-| 11 | SSRM pivot via setPivotResultColumns | Enterprise | behavior | no | P2 | Server supplies secondary column defs; grid renders them |
+| 11 | ✅ processPivotResultColDef | Enterprise | option | yes | P1 | Callback to mutate each generated pivot leaf colDef (fires on row-total leaves too) |
+| 11 | ✅ processPivotResultColGroupDef | Enterprise | option | yes | P1 | Callback to mutate each generated pivot column group def |
+| 11 | ✅ isPivotMode | Enterprise | api | yes | P1 | Returns true if pivot mode is active |
+| 11 | ✅ setPivotColumns | Enterprise | api | yes | P1 | Replaces current pivot columns (PivotState batch verb) |
+| 11 | addPivotColumns | Enterprise | api | no | P1 | Plural form — addPivotColumn (singular) ships; plural is a thin loop |
+| 11 | removePivotColumns | Enterprise | api | no | P1 | Plural form — removePivotColumn (singular) ships |
+| 11 | ✅ getPivotColumns | Enterprise | api | yes | P1 | Returns current pivot columns |
+| 11 | getPivotResultColumn | Enterprise | api | no | P1 | Lookup by pivot key path; synthesized colIds are stable but no dedicated accessor yet |
+| 11 | getPivotResultColumns | Enterprise | api | no | P1 | No dedicated accessor; columnOrder filters by pivotcol prefix |
+| 11 | setPivotResultColumns | Enterprise | api | no | P2 | SSRM use case; not applicable to client-side pipeline |
+| 11 | ✅ setValueColumns | Enterprise | api | yes | P1 | Replaces value columns used in pivot (PivotState batch verb, Task 8b) |
+| 11 | addValueColumns | Enterprise | api | no | P1 | Plural form — addValueColumn (singular) ships |
+| 11 | removeValueColumns | Enterprise | api | no | P1 | Plural form — removeValueColumn (singular) ships |
+| 11 | ✅ getValueColumns | Enterprise | api | yes | P1 | Returns current value columns |
+| 11 | ✅ pivotStateChanged | Enterprise | event | yes | P1 | Unified event: mode flip + pivot/value column add/remove/move + aggFunc change |
+| 11 | columnPivotModeChanged | Enterprise | event | no | P1 | Covered by pivotStateChanged with source='mode' |
+| 11 | columnPivotChanged | Enterprise | event | no | P1 | Covered by pivotStateChanged with source='add'/'remove'/'move'/'set' |
+| 11 | columnValueChanged | Enterprise | event | no | P1 | Covered by pivotStateChanged with source='aggFunc'/'set' on valueColumns |
+| 11 | ✅ pivotMaxColumnsReached | Enterprise | event | yes | P2 | Fires when generated pivot column count exceeds pivotMaxGeneratedColumns |
+| 11 | ✅ Pivot mode activation | Enterprise | behavior | yes | P1 | pivotMode=true + at least one pivot col + at least one value col required (isPivotActive) |
+| 11 | ✅ Primary vs secondary columns | Enterprise | behavior | yes | P1 | Grid replaces primary columns with generated secondary set; columnState reports primaries |
+| 11 | Pivot key ordering via pivotComparator | Enterprise | behavior | no | P2 | Custom string comparator deferred; enableStrictPivotColumnOrder controls strict-vs-append today |
+| 11 | ✅ processPivotResultColDef mutation hook | Enterprise | behavior | yes | P1 | Called each time grid regenerates pivot columns; fires on row-total leaves too |
+| 11 | ✅ pivotColumnGroupTotals insertion | Enterprise | behavior | yes | P1 | Injects aggregate column before/after each pivot key group |
+| 11 | ✅ pivotRowTotals insertion | Enterprise | behavior | yes | P1 | Injects row-total value column outside pivot key groups |
+| 11 | ✅ Pivot + aggregation pipeline | Enterprise | behavior | yes | P0 | Pivot result columns inherit aggFunc from value column via PivotState |
+| 11 | ✅ Sort secondary col → sort row groups | Enterprise | behavior | yes | P1 | Clicking a pivot result column header re-orders row groups by the aggregate value |
+| 11 | ✅ Filter → pivot key set | Enterprise | behavior | yes | P1 | Filter removing every row with a pivot key drops the result column group; re-adds on clear (append vs strict per enableStrictPivotColumnOrder) |
+| 11 | ✅ Three-views invariant (tool panel + pivot panel + context menu) | Enterprise | behavior | yes | P1 | All three surfaces are views over the same PivotState ordered list |
+| 11 | ✅ Pivot Grid State save/restore | Enterprise | behavior | yes | P1 | columnState round-trips role lists through GroupingState/PivotState; pivotMode persists separately |
+| 11 | ✅ Pivot column-group expand/collapse | Enterprise | behavior | yes | P1 | Toggle on synthesized group header; pivotDefaultExpanded seeds initial depth |
+| 11 | SSRM pivot via setPivotResultColumns | Enterprise | behavior | no | P2 | Server supplies secondary column defs; not applicable to client-side pipeline |
 | 11 | Pivot chart integration | Enterprise | behavior | no | P2 | Pivot result columns feed AG Charts; see 24-charts-and-sparklines.md |
 
 <!-- area:12 Selection -->
