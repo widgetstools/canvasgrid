@@ -339,21 +339,23 @@ describe('PivotPanelHost', () => {
     host.destroy();
   });
 
-  it('reuses the shared .cg-columns-panel-pill chrome class on every pill', () => {
-    // Regression: the Task 5 invariant — pills across the top-of-grid
-    // pivot panel AND the sidebar plz zone must share the
-    // `.cg-columns-panel-pill*` classes verbatim. Without this the two
-    // surfaces drift visually.
+  it('reuses the row-group panel chip classes so both top-of-grid strips share one vocabulary', () => {
+    // Regression: the top-of-grid pivot panel and row-group panel
+    // ride the same vertical strip and need to look identical — same
+    // 22px height, fully-rounded ends, same drag ghost. The pivot
+    // pill carries `.cg-row-group-panel-chip*` classes so the shared
+    // CSS hits both. Per-panel `.cg-pivot-panel-pill*` classes stay
+    // for JS targeting + per-panel hooks.
     const ctx = makeContext();
     const host = new PivotPanelHost(root, ctx, 'always', ['sector']);
     const pill = root.querySelector('.cg-pivot-panel-pill') as HTMLElement;
-    expect(pill.classList.contains('cg-columns-panel-pill')).toBe(true);
+    expect(pill.classList.contains('cg-row-group-panel-chip')).toBe(true);
     const handle = pill.querySelector('.cg-pivot-panel-pill-handle') as HTMLElement;
-    expect(handle.classList.contains('cg-columns-panel-pill-handle')).toBe(true);
+    expect(handle.classList.contains('cg-row-group-panel-chip-handle')).toBe(true);
     const label = pill.querySelector('.cg-pivot-panel-pill-label') as HTMLElement;
-    expect(label.classList.contains('cg-columns-panel-pill-label')).toBe(true);
+    expect(label.classList.contains('cg-row-group-panel-chip-label')).toBe(true);
     const remove = pill.querySelector('.cg-pivot-panel-pill-remove') as HTMLElement;
-    expect(remove.classList.contains('cg-columns-panel-pill-remove')).toBe(true);
+    expect(remove.classList.contains('cg-row-group-panel-chip-remove')).toBe(true);
     host.destroy();
   });
 

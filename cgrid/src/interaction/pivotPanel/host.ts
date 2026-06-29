@@ -64,7 +64,10 @@ const DRAG_THRESHOLD_PX = 4;
 
 /** Pointer offset for the floating ghost relative to the cursor. */
 const GHOST_OFFSET_X = 0;
-const GHOST_OFFSET_Y = -14;
+// Matches the row-group panel's ghost offset (-11) so the dragged
+// pill sits at the same cursor-relative position in both panels.
+// Tied to the 22px row-group chip height (≈ -chipHeight / 2).
+const GHOST_OFFSET_Y = -11;
 
 /** Context handed to PivotPanelHost by CGrid (or a test harness).
  *  Keeps the host framework-agnostic — it can mutate PivotState +
@@ -351,12 +354,14 @@ export class PivotPanelHost {
     }
   }
 
-  /** Build one pill: drag-handle + label + `×` remove. Reuses the
-   *  shared `.cg-columns-panel-pill*` chrome from Task 5 so the visual
-   *  vocabulary stays consistent with the sidebar plz zone. */
+  /** Build one pill: drag-handle + label + `×` remove. Wears the
+   *  row-group panel's chip classes so the top-of-grid pivot strip
+   *  and row-group strip share one visual vocabulary (compact 22px,
+   *  fully-rounded ends). The pivot-scoped `.cg-pivot-panel-pill*`
+   *  classes are kept for JS targeting + per-panel hooks. */
   private buildPill(colId: string, index: number): HTMLDivElement {
     const pill = document.createElement('div');
-    pill.className = 'cg-pivot-panel-pill cg-columns-panel-pill';
+    pill.className = 'cg-pivot-panel-pill cg-row-group-panel-chip';
     pill.dataset.colId = colId;
     pill.dataset.index = String(index);
     pill.setAttribute('role', 'button');
@@ -367,19 +372,19 @@ export class PivotPanelHost {
     pill.tabIndex = 0;
 
     const handle = document.createElement('span');
-    handle.className = 'cg-pivot-panel-pill-handle cg-columns-panel-pill-handle';
+    handle.className = 'cg-pivot-panel-pill-handle cg-row-group-panel-chip-handle';
     handle.setAttribute('aria-hidden', 'true');
     handle.textContent = DRAG_HANDLE_GLYPH;
     pill.appendChild(handle);
 
     const label = document.createElement('span');
-    label.className = 'cg-pivot-panel-pill-label cg-columns-panel-pill-label';
+    label.className = 'cg-pivot-panel-pill-label cg-row-group-panel-chip-label';
     label.textContent = this.ctx.getHeaderName(colId) ?? colId;
     pill.appendChild(label);
 
     const remove = document.createElement('button');
     remove.type = 'button';
-    remove.className = 'cg-pivot-panel-pill-remove cg-columns-panel-pill-remove';
+    remove.className = 'cg-pivot-panel-pill-remove cg-row-group-panel-chip-remove';
     remove.setAttribute(
       'aria-label',
       `Remove ${this.ctx.getHeaderName(colId) ?? colId} from column labels`,
@@ -577,7 +582,10 @@ export class PivotPanelHost {
     if (this.destroyed) return;
     if (this.ghost) this.unmountGhost();
     const ghost = sourcePill.cloneNode(true) as HTMLDivElement;
-    ghost.classList.add('cg-pivot-panel-pill-ghost');
+    // Inherits the row-group chip's ghost styling (opaque bg, soft
+    // shadow, fixed positioning, top-most z-index) so dragging a pill
+    // in either panel produces an identical floating ghost.
+    ghost.classList.add('cg-pivot-panel-pill-ghost', 'cg-row-group-panel-chip-ghost');
     ghost.removeAttribute('data-col-id');
     ghost.removeAttribute('data-index');
     ghost.setAttribute('aria-hidden', 'true');
