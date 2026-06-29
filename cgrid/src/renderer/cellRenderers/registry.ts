@@ -101,6 +101,19 @@ export interface CellPaintConfig {
    *  glyph. Defaults to `'transparent'` (outlined-only). */
   groupCheckboxFill?: string;
   /**
+   * Cycle 22 / Task 1 — accent fill for the body `'checkbox'` cell
+   * renderer when the value is truthy. When set to a non-
+   * `'transparent'` color the painter fills the 14×14 box with this
+   * color BEFORE drawing the check, and the check itself uses
+   * `checkboxCheckedFg`. `'transparent'` (default) ships the existing
+   * outlined-only look so themes that opt out get no visual change.
+   */
+  checkboxCheckedBg?: string;
+  /** Cycle 22 / Task 1 — companion to `checkboxCheckedBg`. Controls the
+   *  stroke color of the checkmark itself. Defaults to `fg` so an
+   *  outlined-only checkbox still reads in the body text color. */
+  checkboxCheckedFg?: string;
+  /**
    * Opaque per-cell params forwarded by the painter. Set from either the
    * resolved column's static `cellRendererParams` or — when a column has a
    * `cellRendererSelector` that returned `{ params }` — that per-cell
@@ -197,10 +210,21 @@ export const checkboxCell: CellPainter = {
     const size = 14;
     const cx = p.bounds.x + p.bounds.w / 2 - size / 2;
     const cy = p.bounds.y + p.bounds.h / 2 - size / 2;
+    // Cycle 22 / Task 1 — accent fill when the theme opted in AND the
+    // value is truthy. Outlined-only otherwise (the default path —
+    // matches the look the renderer has shipped since Cycle 3).
+    const accent = p.value && p.checkboxCheckedBg && p.checkboxCheckedBg !== 'transparent'
+      ? p.checkboxCheckedBg
+      : null;
+    if (accent) {
+      gc.cache.fillStyle = accent;
+      gc.fillRect(cx, cy, size, size);
+    }
     gc.cache.strokeStyle = p.fg;
     gc.cache.lineWidth = 1;
     gc.strokeRect(cx + 0.5, cy + 0.5, size, size);
     if (p.value) {
+      gc.cache.strokeStyle = accent ? (p.checkboxCheckedFg ?? p.fg) : p.fg;
       gc.beginPath();
       gc.moveTo(cx + 3, cy + size / 2);
       gc.lineTo(cx + size / 2 - 1, cy + size - 3);

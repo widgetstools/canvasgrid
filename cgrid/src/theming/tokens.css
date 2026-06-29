@@ -125,6 +125,39 @@
   --cg-group-footer-fg: var(--cg-totals-fg);
   --cg-group-footer-border-top: var(--cg-totals-border-top);
   --cg-group-footer-font-weight: var(--cg-totals-font-weight);
+  /* Cycle 22 / Task 1 — input chrome (floating filters, cell editors,
+   * tool-panel search). Defaults align to body bg/fg + the focus ring
+   * so an undeclared theme still reads "matches the grid". */
+  --cg-input-bg: #ffffff;
+  --cg-input-fg: #1a1f24;
+  --cg-input-border: #d1d5db;
+  --cg-input-focus-border: var(--cg-focus-ring-color);
+  --cg-input-disabled-bg: #f3f4f6;
+  /* Cycle 22 / Task 1 — tooltip overlay (shared sparkline tooltip + any
+   * future hover popovers). Near-opaque slate so the tooltip reads as a
+   * popover, not a chip. */
+  --cg-tooltip-bg: rgba(15, 23, 42, 0.95);
+  --cg-tooltip-fg: #ffffff;
+  --cg-tooltip-border: rgba(255, 255, 255, 0.08);
+  /* Cycle 22 / Task 1 — filled-checkbox accent. `transparent` ships the
+   * existing outlined-only look; apps wanting a brand-accent checkbox
+   * set bg + fg together so the interior glyph stays legible. */
+  --cg-checkbox-checked-bg: transparent;
+  --cg-checkbox-checked-fg: var(--cg-fg-color);
+  /* Cycle 22 / Task 1 — optional vertical rule between adjacent columns.
+   * `transparent` (default) keeps the grid lineless on the X axis. */
+  --cg-cell-horizontal-border-color: transparent;
+  /* Cycle 22 / Task 1 — popup / context-menu chrome. Shared across the
+   * filter popup, the context menu, and tool-panel popups. */
+  --cg-popup-bg: #ffffff;
+  --cg-popup-border: #d1d5db;
+  --cg-menu-hover-bg: var(--cg-row-hover-bg);
+  /* Cycle 22 / Task 2 — density-mode tokens. The three density classes
+   * (.cg-density-compact / .cg-density-normal / .cg-density-comfortable)
+   * override row + header height and the cell horizontal padding;
+   * declared here so apps that don't apply a density class still get a
+   * stable baseline. */
+  --cg-cell-padding-x: 8px;
 }
 
 .cg-theme-quartz-dark {
@@ -182,6 +215,25 @@
   --cg-group-footer-fg: var(--cg-totals-fg);
   --cg-group-footer-border-top: var(--cg-totals-border-top);
   --cg-group-footer-font-weight: var(--cg-totals-font-weight);
+  /* Cycle 22 / Task 1 — dark-mode counterparts. Inputs aliased to a
+   * subtle lift over body bg; tooltip stays slate (same family as
+   * light mode) so the popover reads consistently across themes. */
+  --cg-input-bg: #2a2d2e;
+  --cg-input-fg: var(--cg-fg-color);
+  --cg-input-border: var(--cg-border-color);
+  --cg-input-focus-border: var(--cg-focus-ring-color);
+  --cg-input-disabled-bg: #232323;
+  --cg-tooltip-bg: rgba(40, 44, 52, 0.96);
+  --cg-tooltip-fg: #f8fafc;
+  --cg-tooltip-border: rgba(255, 255, 255, 0.08);
+  --cg-checkbox-checked-bg: transparent;
+  --cg-checkbox-checked-fg: var(--cg-fg-color);
+  --cg-cell-horizontal-border-color: transparent;
+  --cg-popup-bg: #252526;
+  --cg-popup-border: var(--cg-border-color);
+  --cg-menu-hover-bg: var(--cg-row-hover-bg);
+  /* Cycle 22 / Task 2 — density baseline. Overridden per density class. */
+  --cg-cell-padding-x: 8px;
 }
 
 /* Native scrollbar styling (Chromium/WebKit) — always-visible thumb
