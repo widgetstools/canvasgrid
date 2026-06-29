@@ -79,6 +79,11 @@ export const pivot: Feature = {
     grid.addValueColumn('pnl', 'sum');
     grid.addValueColumn('notional', 'sum');
     grid.setPivotMode(true);
+    // Collapse on mount so the matrix shows clean per-desk roll-ups
+    // (leaf rows under pivot carry no pivot-cell values — Cycle 18 /
+    // Task 3 chose group-only display until full leaf-row suppression
+    // lands).
+    grid.collapseAll();
 
     // ─── Controls ──────────────────────────────────────────────────────────
 
