@@ -12,6 +12,7 @@ import { filteringWithGroups } from './filteringWithGroups';
 import { pivotToolPanel } from './pivotToolPanel';
 import { pivot } from './pivot';
 import { pivotAgComparison } from './pivotAgComparison';
+import { exportFeature } from './exportFeature';
 
 export interface Feature {
   id: string;
@@ -33,6 +34,7 @@ export const FEATURES: Feature[] = [
   pivotToolPanel,
   pivot,
   pivotAgComparison,
+  exportFeature,
 ];
 
 export const FEATURE_MAP = new Map(FEATURES.map((f) => [f.id, f]));

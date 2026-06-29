@@ -73,6 +73,7 @@ export type RuntimeOption =
   | 'pivotColumnGroupTotals'
   | 'pivotDefaultExpanded'
   | 'pivotGrandTotals'
+  | 'domLayout'
   | 'groupSelectsChildren'
   | 'suppressCount';
 
@@ -333,6 +334,13 @@ export function applyRuntimeOption<TRow>(
       // implementation issues a viewport request.
       target.updatePivotTotalsOption();
       return;
+    case 'domLayout':
+      // Cycle 20 / Task 6 — flipping between 'normal' and 'print'
+      // changes the effective virtualisation flags read on the next
+      // viewport compute. Re-request a viewport so the data subgrid
+      // expands (print) or re-virtualises (normal).
+      target.refreshLayout();
+      return;
     case 'rowGroupPanelSuppressSort':
       // Cycle 15.5 / Task 1 — re-render the chip strip without the
       // sort indicator span when `true`. The flag toggles which DOM
@@ -386,6 +394,7 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'pivotColumnGroupTotals',
   'pivotDefaultExpanded',
   'pivotGrandTotals',
+  'domLayout',
   'groupSelectsChildren',
   'suppressCount',
 ]);

@@ -496,6 +496,42 @@ export type WorkerRequest =
       id: ReqId;
       type: 'clipboardDeserialize';
       payload: { text: string; delimiter: string };
+    }
+  /** Cycle 20 / Task 3 — full-data export. The worker walks all
+   *  visible (filtered + sorted + grouped) rows, materialises them
+   *  with the per-row data from `RowStore`, and runs the matching
+   *  writer (`writeCsv` / `writeXlsx`). Returns the serialised
+   *  bytes via the `exportDataResult` response. */
+  | {
+      id: ReqId;
+      type: 'exportData';
+      payload: {
+        format: 'csv' | 'xlsx';
+        /** Per-column header overrides keyed by colId. Main side
+         *  passes the resolved headerNames so the worker doesn't
+         *  need to know about column-tree state. */
+        headerNames: Record<string, string>;
+        /** Per-column type hint keyed by colId. `'number'` writes
+         *  inline numeric cells in XLSX. */
+        types: Record<string, 'text' | 'number'>;
+        /** Serializer options — superset across both formats. The
+         *  worker passes only the relevant subset to each writer. */
+        options: Record<string, unknown>;
+        /** Cycle 20 / Task 5 — when `options.onlySelected === true`,
+         *  the worker exports only the rows whose id is in this list.
+         *  Main passes the current `SelectionModel.getSelectedRowIds()`
+         *  result so the worker doesn't need its own selection state. */
+        selectedRowIds?: string[];
+      };
+    }
+  /** Cycle 20 / Task 4 — ship the materialised visible rows + the
+   *  column list back to main so callbacks (which can't postMessage
+   *  to a worker) can run main-side. Used by the export path when
+   *  any `process*Callback` is referenced. */
+  | {
+      id: ReqId;
+      type: 'getExportRows';
+      payload: { selectedRowIds?: string[] };
     };
 
 export type WorkerResponse =
@@ -568,6 +604,11 @@ export type WorkerResponse =
   /** Cycle 10 / Task 3 — encoded TSV / CSV for the supplied ranges. The
    *  main thread forwards `tsv` to `navigator.clipboard.writeText`. */
   | { id: ReqId; type: 'clipboardSerializeResult'; tsv: string }
+  /** Cycle 20 / Task 3 — bytes from a full-data export. Transferred
+   *  (zero-copy) so a 100k-row XLSX doesn't pay a copy on its way
+   *  to main. */
+  | { id: ReqId; type: 'exportDataResult'; format: 'csv' | 'xlsx'; buffer: ArrayBuffer }
+  | { id: ReqId; type: 'getExportRowsResult'; rows: Array<Record<string, unknown>> }
   /** Cycle 10 / Task 4 — parsed `string[][]` for the supplied payload.
    *  Rows are in source order; cells are raw strings (RFC-4180 quoting
    *  already unwrapped). The main thread anchors the grid at the focused

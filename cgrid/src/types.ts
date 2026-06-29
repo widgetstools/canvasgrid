@@ -165,6 +165,15 @@ export interface CGridOptions<TRow = any> {
   /** Render every data row regardless of vertical scroll position. Trades
    *  scroll-FPS for guaranteed full-grid materialisation. */
   suppressRowVirtualisation?: boolean;
+  /** Cycle 20 / Task 6 — DOM layout mode. `'normal'` (default) is the
+   *  scroll-virtualised grid. `'print'` grows the host element to
+   *  content height + materialises every row so `window.print()`
+   *  captures the entire grid (not just the visible viewport). Acts
+   *  as if `suppressRowVirtualisation: true` AND
+   *  `suppressColumnVirtualisation: true` were set. Runtime-mutable
+   *  — flip to `'print'`, call `window.print()`, flip back to
+   *  `'normal'` to restore the virtualised layout. */
+  domLayout?: 'normal' | 'print';
   /** Number of extra rows to materialise above and below the visible window.
    *  Defaults to the engine's internal overscan (3) when unset. */
   rowBuffer?: number;
@@ -474,6 +483,14 @@ export interface CGridOptions<TRow = any> {
    *  `agAggregationComponent`) land in Cycle 13 Tasks 2 + 3; until then
    *  a bar with built-in keys renders the inert stubs. */
   statusBar?: StatusBarDef | boolean;
+
+  /** Cycle 20 / Task 4 — named callback registry for export transforms.
+   *  Functions can't cross the worker postMessage boundary, so apps
+   *  register callbacks at construction time keyed by name. The
+   *  export params (`processCellCallback`, `processHeaderCallback`,
+   *  etc.) reference callbacks by name; cgrid runs the matching
+   *  callback main-side over the rows the worker hands back. */
+  exportCallbacks?: Record<string, ExportCallback>;
 
   /** Cycle 14 / Task 1 — pinned grand-totals row. When set, a single
    *  non-scrolling row mounts at the grid body's `'top'` or `'bottom'`
@@ -1761,6 +1778,21 @@ export interface CSetFilterParams extends CFilterParams {
 }
 
 export interface GroupModel { rowGroupCols: string[] }
+
+/** Cycle 20 / Task 4 — value-transform callback fired during export.
+ *  Same shape covers `processCellCallback`, `processHeaderCallback`,
+ *  and `processRowGroupCallback` — apps switch on `colId` /
+ *  `kind` to decide what to do. */
+export type ExportCallback = (params: {
+  value: unknown;
+  colId: string;
+  /** `'cell'` for data cells, `'header'` for column headers,
+   *  `'rowGroup'` for group-row labels. */
+  kind: 'cell' | 'header' | 'rowGroup';
+  /** The row's full data object (cells only). Undefined for header /
+   *  rowGroup invocations. */
+  node?: Record<string, unknown>;
+}) => unknown;
 
 export interface Tx<TRow = any> {
   add?: TRow[];

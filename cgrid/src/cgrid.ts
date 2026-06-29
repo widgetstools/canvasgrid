@@ -3794,6 +3794,164 @@ export class CGrid<TRow = any> {
     await navigator.clipboard.writeText(tsv);
   }
 
+  // ─── Cycle 20 / Task 3 — public export API ────────────────────────────
+
+  /** Build the per-column metadata maps the worker needs (header
+   *  names + type hints by colId). The worker doesn't keep its own
+   *  copy of headerName / type, so we resolve here and ship. */
+  private buildExportColumnMaps(): { headerNames: Record<string, string>; types: Record<string, 'text' | 'number'> } {
+    const headerNames: Record<string, string> = {};
+    const types: Record<string, 'text' | 'number'> = {};
+    for (const leaf of this.columnTree.leaves) {
+      headerNames[leaf.colId] = leaf.headerName ?? leaf.colId;
+      // `cellDataType` is the canonical type hint on the resolved
+      // column. Anything non-'number' falls back to 'text' in the
+      // writer (numeric XLSX columns get `<c t="n">`).
+      types[leaf.colId] = leaf.cellDataType === 'number' ? 'number' : 'text';
+    }
+    return { headerNames, types };
+  }
+
+  /** Resolve which export route to use. When any `process*Callback`
+   *  is referenced, we fetch rows back to main and run the writer
+   *  there so the callbacks (which can't postMessage to the worker)
+   *  can fire. Otherwise we keep the worker-side fast path. */
+  private hasExportCallback(params: ExportCsvParams | ExportExcelParams): boolean {
+    return Boolean(
+      (params as ExportCsvParams).processCellCallback
+      || (params as ExportCsvParams).processHeaderCallback,
+    );
+  }
+
+  /** Apply the resolved cell/header callbacks main-side and serialise
+   *  through the matching writer. Returns the bytes. */
+  private async exportViaMainSide(
+    format: 'csv' | 'xlsx',
+    params: ExportCsvParams | ExportExcelParams,
+  ): Promise<Uint8Array> {
+    const { headerNames, types } = this.buildExportColumnMaps();
+    const callbacks = this.options.exportCallbacks ?? {};
+    const cellCb = callbacks[(params as ExportCsvParams).processCellCallback ?? ''];
+    const headerCb = callbacks[(params as ExportCsvParams).processHeaderCallback ?? ''];
+    const rows = await this.workerClient.getExportRows({
+      selectedRowIds: params.onlySelected ? this.getSelectedRowIds() : undefined,
+    });
+
+    // Build column list, mapping each header through `headerCb` once.
+    const cols = this.columnTree.leaves.map((leaf) => ({
+      colId: leaf.colId,
+      field: (leaf as { field?: string }).field ?? leaf.colId,
+      headerName: headerCb
+        ? String(headerCb({
+            value: headerNames[leaf.colId] ?? leaf.colId,
+            colId: leaf.colId,
+            kind: 'header' as const,
+          }))
+        : (headerNames[leaf.colId] ?? leaf.colId),
+      type: types[leaf.colId] ?? 'text' as const,
+    }));
+
+    // Transform per-cell when `cellCb` is configured. We mutate a
+    // fresh copy per row so the worker's row store isn't disturbed.
+    const transformedRows = cellCb
+      ? rows.map((row) => {
+          const out: Record<string, unknown> = {};
+          for (const c of cols) {
+            out[c.field] = cellCb({
+              value: row[c.field],
+              colId: c.colId,
+              kind: 'cell',
+              node: row,
+            });
+          }
+          return out;
+        })
+      : rows;
+
+    if (format === 'csv') {
+      const { writeCsv } = await import('./worker/export/csv');
+      return writeCsv(transformedRows, cols, params as ExportCsvParams);
+    }
+    const { writeXlsx } = await import('./worker/export/xlsx');
+    return writeXlsx(transformedRows, cols, params as ExportExcelParams);
+  }
+
+  /** Return the current data as a CSV string. Worker-side serialization
+   *  when no callback is set; main-side serialization when one is. */
+  async getDataAsCsv(params: ExportCsvParams = {}): Promise<string> {
+    if (this.destroyed) return '';
+    if (this.hasExportCallback(params)) {
+      const bytes = await this.exportViaMainSide('csv', params);
+      return new TextDecoder('utf-8').decode(bytes);
+    }
+    const { headerNames, types } = this.buildExportColumnMaps();
+    const buffer = await this.workerClient.exportData({
+      format: 'csv',
+      headerNames,
+      types,
+      options: params as unknown as Record<string, unknown>,
+      selectedRowIds: params.onlySelected ? this.getSelectedRowIds() : undefined,
+    });
+    return new TextDecoder('utf-8').decode(buffer);
+  }
+
+  /** Export the current data as CSV + trigger a browser download. */
+  async exportDataAsCsv(params: ExportCsvParams = {}): Promise<void> {
+    if (this.destroyed) return;
+    let buffer: ArrayBuffer;
+    if (this.hasExportCallback(params)) {
+      const bytes = await this.exportViaMainSide('csv', params);
+      // Copy out of the writer's possibly-shared scratch into an owned ArrayBuffer.
+      buffer = bytes.slice().buffer as ArrayBuffer;
+    } else {
+      const { headerNames, types } = this.buildExportColumnMaps();
+      buffer = await this.workerClient.exportData({
+        format: 'csv',
+        headerNames,
+        types,
+        options: params as unknown as Record<string, unknown>,
+      });
+    }
+    triggerDownload(buffer, params.fileName ?? 'export.csv', 'text/csv;charset=utf-8');
+  }
+
+  /** Return the current data as an XLSX `Blob`. */
+  async getDataAsExcel(params: ExportExcelParams = {}): Promise<Blob> {
+    if (this.destroyed) return new Blob([]);
+    if (this.hasExportCallback(params)) {
+      const bytes = await this.exportViaMainSide('xlsx', params);
+      return new Blob([bytes.slice().buffer as ArrayBuffer], { type: XLSX_MIME });
+    }
+    const { headerNames, types } = this.buildExportColumnMaps();
+    const buffer = await this.workerClient.exportData({
+      format: 'xlsx',
+      headerNames,
+      types,
+      options: params as unknown as Record<string, unknown>,
+      selectedRowIds: params.onlySelected ? this.getSelectedRowIds() : undefined,
+    });
+    return new Blob([buffer], { type: XLSX_MIME });
+  }
+
+  /** Export the current data as XLSX + trigger a browser download. */
+  async exportDataAsExcel(params: ExportExcelParams = {}): Promise<void> {
+    if (this.destroyed) return;
+    let buffer: ArrayBuffer;
+    if (this.hasExportCallback(params)) {
+      const bytes = await this.exportViaMainSide('xlsx', params);
+      buffer = bytes.slice().buffer as ArrayBuffer;
+    } else {
+      const { headerNames, types } = this.buildExportColumnMaps();
+      buffer = await this.workerClient.exportData({
+        format: 'xlsx',
+        headerNames,
+        types,
+        options: params as unknown as Record<string, unknown>,
+      });
+    }
+    triggerDownload(buffer, params.fileName ?? 'export.xlsx', XLSX_MIME);
+  }
+
   /** Cycle 10 / Task 5 — main-side serialise used when
    *  `processCellForClipboard` is configured. Batches `getRowByIndex`
    *  for every unique row in `ranges` so the callback sees the row's
@@ -5609,8 +5767,15 @@ export class CGrid<TRow = any> {
       scrollLeft: this.scrollLeft,
       scrollTop: this.scrollTop,
       rowBuffer: this.options.rowBuffer,
-      suppressColumnVirtualisation: this.options.suppressColumnVirtualisation,
-      suppressRowVirtualisation: this.options.suppressRowVirtualisation,
+      // Cycle 20 / Task 6 — `domLayout: 'print'` forces every row +
+      // every column to materialise so the browser print path
+      // captures the entire grid.
+      suppressColumnVirtualisation:
+        this.options.suppressColumnVirtualisation
+        || this.options.domLayout === 'print',
+      suppressRowVirtualisation:
+        this.options.suppressRowVirtualisation
+        || this.options.domLayout === 'print',
       dataRowHeightIndex: this.rowHeightIndex ?? undefined,
     });
   }
@@ -7489,4 +7654,61 @@ export class CGrid<TRow = any> {
     });
     return throwaway.bg;
   }
+}
+
+// ─── Cycle 20 / Task 3 — export support ─────────────────────────────────────
+
+/** Caller-facing CSV export params. Mirrors AG-Grid's
+ *  `CsvExportParams` for the subset the worker writer respects. */
+export interface ExportCsvParams {
+  fileName?: string;
+  columnSeparator?: string;
+  columnKeys?: string[];
+  skipColumnHeaders?: boolean;
+  suppressQuotes?: boolean;
+  withBOM?: boolean;
+  prependContent?: string;
+  appendContent?: string;
+  /** Name of an `exportCallbacks` entry to transform each cell. */
+  processCellCallback?: string;
+  /** Name of an `exportCallbacks` entry to transform each header. */
+  processHeaderCallback?: string;
+  /** Cycle 20 / Task 5 — limit the export to currently-selected rows. */
+  onlySelected?: boolean;
+}
+
+/** Caller-facing XLSX export params. */
+export interface ExportExcelParams {
+  fileName?: string;
+  sheetName?: string;
+  columnKeys?: string[];
+  skipColumnHeaders?: boolean;
+  freezeRows?: number;
+  freezeColumns?: number;
+  author?: string;
+  processCellCallback?: string;
+  processHeaderCallback?: string;
+  /** Cycle 20 / Task 5 — limit the export to currently-selected rows. */
+  onlySelected?: boolean;
+}
+
+const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+
+/** Trigger a browser download for an ArrayBuffer. Builds a Blob,
+ *  creates an object-URL, dispatches an anchor click, then revokes
+ *  the URL on a microtask so the browser has time to start the
+ *  download before we drop the handle. */
+function triggerDownload(buffer: ArrayBuffer, fileName: string, mime: string): void {
+  if (typeof document === 'undefined' || typeof URL === 'undefined') return;
+  const blob = new Blob([buffer], { type: mime });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.style.display = 'none';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  // Revoke once the browser has had a chance to fetch the blob.
+  setTimeout(() => URL.revokeObjectURL(url), 0);
 }

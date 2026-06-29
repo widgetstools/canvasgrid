@@ -465,6 +465,29 @@ export class WorkerClient {
     }).then((r) => r.rows);
   }
 
+  /** Cycle 20 / Task 3 — full-data export. Walks all visible rows in
+   *  the worker, serializes to CSV / XLSX bytes, returns an
+   *  ArrayBuffer (transferred — zero copy from worker to main). */
+  exportData(payload: {
+    format: 'csv' | 'xlsx';
+    headerNames: Record<string, string>;
+    types: Record<string, 'text' | 'number'>;
+    options: Record<string, unknown>;
+    selectedRowIds?: string[];
+  }): Promise<ArrayBuffer> {
+    return this.send<{ buffer: ArrayBuffer }>({
+      type: 'exportData', payload,
+    }).then((r) => r.buffer);
+  }
+
+  /** Cycle 20 / Task 4 — fetch the full visible row set so callbacks
+   *  (main-only functions) can run before serialization. */
+  getExportRows(payload: { selectedRowIds?: string[] } = {}): Promise<Array<Record<string, unknown>>> {
+    return this.send<{ rows: Array<Record<string, unknown>> }>({
+      type: 'getExportRows', payload,
+    }).then((r) => r.rows);
+  }
+
   destroy(): void {
     this.worker.terminate();
     this.pending.forEach((p) => p.reject(new Error('worker terminated')));
