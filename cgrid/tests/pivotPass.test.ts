@@ -386,6 +386,98 @@ describe('PivotPass — enableStrictPivotColumnOrder + pivotComparator (Task 8c)
   });
 });
 
+describe('PivotPass — filter ↔ pivot key parity (Task 8g)', () => {
+  // FilterPass runs UPSTREAM of PivotPass in the worker pipeline.
+  // PivotPass sees only the filtered rowIds; filtered-out pivot key
+  // values vanish from the key tree. Clearing the filter re-introduces
+  // those keys — under the AG default (non-strict), they're treated as
+  // brand-new and appended at the end of the previously-known order.
+  // Under strict mode they re-sort alphanumerically.
+  it('filtering out a pivot key removes its result column group on the next apply (non-strict)', () => {
+    const rows = [
+      { id: '1', region: 'X', sector: 'FIN',  assetClass: 'a', pnl: 100, qty: 10 },
+      { id: '2', region: 'X', sector: 'TECH', assetClass: 'a', pnl: 200, qty: 20 },
+      { id: '3', region: 'X', sector: 'FIN',  assetClass: 'a', pnl: 300, qty: 30 },
+    ];
+    const { pivot, groupOutput } = setup(['region'], rows);
+    pivot.setStrictPivotColumnOrder(false);
+    pivot.setModel({ pivotColIds: ['sector'], valueCols: [{ colId: 'pnl', aggFunc: 'sum' }] });
+    // Initial apply: both sectors present.
+    const out1 = pivot.apply(['1', '2', '3'], groupOutput);
+    expect(out1.keyTree.map((n) => n.value)).toEqual(['FIN', 'TECH']);
+    // Filter excludes every FIN row → PivotPass apply receives ids
+    // without those rows. The FIN pivot column group must vanish.
+    const out2 = pivot.apply(['2'], groupOutput);
+    expect(out2.keyTree.map((n) => n.value)).toEqual(['TECH']);
+  });
+
+  it('clearing the filter re-introduces the dropped key APPENDED at the end (non-strict / AG default)', () => {
+    const rows = [
+      { id: '1', region: 'X', sector: 'FIN',  assetClass: 'a', pnl: 100, qty: 10 },
+      { id: '2', region: 'X', sector: 'TECH', assetClass: 'a', pnl: 200, qty: 20 },
+    ];
+    const { pivot, groupOutput } = setup(['region'], rows);
+    pivot.setStrictPivotColumnOrder(false);
+    pivot.setModel({ pivotColIds: ['sector'], valueCols: [{ colId: 'pnl', aggFunc: 'sum' }] });
+    pivot.apply(['1', '2'], groupOutput);
+    // Filter drops FIN.
+    pivot.apply(['2'], groupOutput);
+    // Filter cleared → FIN comes BACK. Under non-strict it lands at
+    // the end of the previously-known [TECH] order (the engine treats
+    // it as a brand-new key after the prior apply scrubbed it).
+    const out = pivot.apply(['1', '2'], groupOutput);
+    expect(out.keyTree.map((n) => n.value)).toEqual(['TECH', 'FIN']);
+  });
+
+  it('clearing the filter re-introduces the dropped key in ALPHANUMERIC order (strict)', () => {
+    const rows = [
+      { id: '1', region: 'X', sector: 'FIN',  assetClass: 'a', pnl: 100, qty: 10 },
+      { id: '2', region: 'X', sector: 'TECH', assetClass: 'a', pnl: 200, qty: 20 },
+    ];
+    const { pivot, groupOutput } = setup(['region'], rows);
+    pivot.setStrictPivotColumnOrder(true);
+    pivot.setModel({ pivotColIds: ['sector'], valueCols: [{ colId: 'pnl', aggFunc: 'sum' }] });
+    pivot.apply(['1', '2'], groupOutput);
+    pivot.apply(['2'], groupOutput);
+    const out = pivot.apply(['1', '2'], groupOutput);
+    expect(out.keyTree.map((n) => n.value)).toEqual(['FIN', 'TECH']);
+  });
+
+  it('filtering on a non-pivot column does not change the pivot key set (only the per-group aggregates change)', () => {
+    // Pivot on `sector` but filter excludes some `assetClass` values —
+    // every sector is still represented at least once after filtering.
+    const rows = [
+      { id: '1', region: 'X', sector: 'FIN',  assetClass: 'Large', pnl: 100, qty: 10 },
+      { id: '2', region: 'X', sector: 'FIN',  assetClass: 'Small', pnl: 200, qty: 20 },
+      { id: '3', region: 'X', sector: 'TECH', assetClass: 'Large', pnl: 300, qty: 30 },
+    ];
+    const { pivot, groupOutput } = setup(['region'], rows);
+    pivot.setStrictPivotColumnOrder(false);
+    pivot.setModel({ pivotColIds: ['sector'], valueCols: [{ colId: 'pnl', aggFunc: 'sum' }] });
+    pivot.apply(['1', '2', '3'], groupOutput);
+    // "Filter to assetClass=Large only" — FIN-Small (id 2) dropped, but
+    // FIN survives via id 1 + TECH via id 3.
+    const out = pivot.apply(['1', '3'], groupOutput);
+    expect(out.keyTree.map((n) => n.value)).toEqual(['FIN', 'TECH']);
+    // FIN aggregate is now 100 (was 100+200=300 before the filter).
+    expect(getPivotValue(out, 'region:X', ['FIN'], 'pnl')).toBe(100);
+    expect(getPivotValue(out, 'region:X', ['TECH'], 'pnl')).toBe(300);
+  });
+
+  it('removing the LAST row carrying a pivot key drops the key — empty result set drops every key', () => {
+    const rows = [
+      { id: '1', region: 'X', sector: 'FIN',  assetClass: 'a', pnl: 100, qty: 10 },
+      { id: '2', region: 'X', sector: 'TECH', assetClass: 'a', pnl: 200, qty: 20 },
+    ];
+    const { pivot, groupOutput } = setup(['region'], rows);
+    pivot.setModel({ pivotColIds: ['sector'], valueCols: [{ colId: 'pnl', aggFunc: 'sum' }] });
+    // Filter excludes everything.
+    const out = pivot.apply([], groupOutput);
+    expect(out.keyTree).toEqual([]);
+    expect(out.leafPaths).toEqual([]);
+  });
+});
+
 describe('PivotPass — pivotMaxGeneratedColumns cap (Task 8a)', () => {
   it('default cap (5000) does not engage for small key sets', () => {
     const { pivot, groupOutput, ids } = setup(['region']);
