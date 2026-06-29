@@ -165,6 +165,15 @@ export interface CGridOptions<TRow = any> {
   /** Render every data row regardless of vertical scroll position. Trades
    *  scroll-FPS for guaranteed full-grid materialisation. */
   suppressRowVirtualisation?: boolean;
+  /** Cycle 20 / Task 6 — DOM layout mode. `'normal'` (default) is the
+   *  scroll-virtualised grid. `'print'` grows the host element to
+   *  content height + materialises every row so `window.print()`
+   *  captures the entire grid (not just the visible viewport). Acts
+   *  as if `suppressRowVirtualisation: true` AND
+   *  `suppressColumnVirtualisation: true` were set. Runtime-mutable
+   *  — flip to `'print'`, call `window.print()`, flip back to
+   *  `'normal'` to restore the virtualised layout. */
+  domLayout?: 'normal' | 'print';
   /** Number of extra rows to materialise above and below the visible window.
    *  Defaults to the engine's internal overscan (3) when unset. */
   rowBuffer?: number;

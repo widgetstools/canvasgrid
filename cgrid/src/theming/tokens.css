@@ -1987,3 +1987,33 @@
   cursor: grabbing;
   margin: 0;
 }
+
+/* ─── Cycle 20 / Task 7 — `cg-theme-print` print-friendly theme ──────────── */
+/* Override-only theme — apps stack `cg-theme-print` ALONGSIDE their           */
+/* primary theme class (e.g. `cg-theme-quartz cg-theme-print`) so the print    */
+/* path adopts black-on-white, no row stripes, no hovers, no flash, printer-  */
+/* friendly black gridlines. Designed to pair with                            */
+/* `setGridOption('domLayout', 'print')` then `window.print()`.               */
+.cg-theme-print {
+  --cg-bg-color: #ffffff;
+  --cg-fg-color: #000000;
+  --cg-header-bg: #ffffff;
+  --cg-row-odd-bg: #ffffff;
+  --cg-row-hover-bg: transparent;
+  --cg-grid-line-color: #000000;
+  --cg-selection-bg: transparent;
+  --cg-border-color: #000000;
+}
+
+/* `@media print` — strip any residual decoration that survives the          */
+/* token override (canvas filters, body backgrounds, browser print chrome).  */
+@media print {
+  .cg-grid {
+    background: #ffffff !important;
+  }
+  /* Page breaks at group boundaries — group footers (Cycle 15) act as the   */
+  /* break point so each group lands on its own page when the data is long. */
+  .cg-grid .cg-group-footer-portal {
+    break-after: page;
+  }
+}

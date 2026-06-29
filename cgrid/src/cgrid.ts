@@ -5767,8 +5767,15 @@ export class CGrid<TRow = any> {
       scrollLeft: this.scrollLeft,
       scrollTop: this.scrollTop,
       rowBuffer: this.options.rowBuffer,
-      suppressColumnVirtualisation: this.options.suppressColumnVirtualisation,
-      suppressRowVirtualisation: this.options.suppressRowVirtualisation,
+      // Cycle 20 / Task 6 — `domLayout: 'print'` forces every row +
+      // every column to materialise so the browser print path
+      // captures the entire grid.
+      suppressColumnVirtualisation:
+        this.options.suppressColumnVirtualisation
+        || this.options.domLayout === 'print',
+      suppressRowVirtualisation:
+        this.options.suppressRowVirtualisation
+        || this.options.domLayout === 'print',
       dataRowHeightIndex: this.rowHeightIndex ?? undefined,
     });
   }
