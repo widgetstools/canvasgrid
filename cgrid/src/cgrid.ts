@@ -84,6 +84,7 @@ import { totalsCell } from './renderer/cellRenderers/totals';
 import { groupCell, type GroupCellValue } from './renderer/cellRenderers/group';
 import { groupFooterCell } from './renderer/cellRenderers/groupFooter';
 import { sparklineCell } from './renderer/cellRenderers/sparkline';
+import { coerceToNumberArray } from './renderer/cellRenderers/sparkline/coerceToNumberArray';
 import { decorateHeader } from './renderer/painters/byRows';
 import {
   autoGroupColumnDepthFromId,
@@ -1226,10 +1227,11 @@ export class CGrid<TRow = any> {
         const def = this.columnDefsMap.get(colId);
         if (!def || def.cellRenderer !== 'sparkline') return null;
         const cell = this.cellAt(rowIndex, colId);
-        const value = cell?.value;
-        return Array.isArray(value) && value.every((v) => typeof v === 'number')
-          ? (value as readonly number[])
-          : null;
+        // Reuse the painter's coercion so the tooltip + the canvas
+        // paint agree on what counts as a usable sparkline value
+        // (covers both raw arrays and CSV-stringified arrays shipped
+        // through the worker's text-column path).
+        return coerceToNumberArray(cell?.value);
       },
     });
     this.cellEditorRegistry = new CellEditorRegistry();

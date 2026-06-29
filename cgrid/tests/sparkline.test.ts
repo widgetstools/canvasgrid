@@ -1,10 +1,15 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import {
   CellRendererRegistry,
   type CellPaintConfig,
 } from '../src/renderer/cellRenderers/registry';
 import { sparklineCell } from '../src/renderer/cellRenderers/sparkline';
+import { _resetCoerceCacheForTests } from '../src/renderer/cellRenderers/sparkline/coerceToNumberArray';
 import type { CachedContext2D } from '../src/renderer/gc';
+
+beforeEach(() => {
+  _resetCoerceCacheForTests();
+});
 
 beforeAll(() => {
   if (typeof (globalThis as any).Path2D === 'undefined') {
@@ -305,6 +310,50 @@ describe('pie sparkline (Task 2)', () => {
     }));
     // fillStyle should land on the segment color by the end of the paint.
     expect(gc.fillStyle).toBe('#f59e0b');
+  });
+});
+
+describe('sparkline value coercion (worker chunkFormat compatibility)', () => {
+  it('accepts a comma-separated numeric string and paints the line', () => {
+    // Worker chunkFormat ships array columns as text. The painter must
+    // transparently decode "a,b,c" into number[] so apps don't need to
+    // hold a parallel data store on the main thread.
+    const gc = makeGc();
+    sparklineCell.paint(gc, baseParams({ value: '1,2,3,4,5' }));
+    expect((gc.beginPath as any)).toHaveBeenCalledTimes(1);
+    expect((gc.lineTo as any)).toHaveBeenCalledTimes(4);
+  });
+
+  it('no-ops on an empty string', () => {
+    const gc = makeGc();
+    sparklineCell.paint(gc, baseParams({ value: '' }));
+    expect((gc.beginPath as any)).not.toHaveBeenCalled();
+  });
+
+  it('no-ops on a malformed CSV (non-numeric token)', () => {
+    const gc = makeGc();
+    sparklineCell.paint(gc, baseParams({ value: '1,2,abc,4' }));
+    expect((gc.beginPath as any)).not.toHaveBeenCalled();
+  });
+
+  it('caches the parse — same string reference produces identical results across paints', () => {
+    const gc1 = makeGc();
+    const gc2 = makeGc();
+    const series = '10,20,30,40,50';
+    sparklineCell.paint(gc1, baseParams({ value: series }));
+    sparklineCell.paint(gc2, baseParams({ value: series }));
+    // Both paints produce the same number of lineTo calls (4 = N-1).
+    expect((gc1.lineTo as any).mock.calls.length).toBe(4);
+    expect((gc2.lineTo as any).mock.calls.length).toBe(4);
+  });
+
+  it('feeds the parsed array through the column variant too', () => {
+    const gc = makeGc();
+    sparklineCell.paint(gc, baseParams({
+      value: '1,2,3,4',
+      params: { sparkline: { type: 'column' } },
+    }));
+    expect((gc.fillRect as any).mock.calls.length).toBe(4);
   });
 });
 

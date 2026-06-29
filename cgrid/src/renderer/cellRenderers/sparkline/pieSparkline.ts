@@ -28,14 +28,24 @@ export function paintPieSparkline(gc: CachedContext2D, p: CellPaintConfig): void
   if (outerR <= 0) return;
   const innerR = outerR * 0.55;
 
-  const part = data[0]!;
+  // Single-segment ring contract:
+  //   length === 1: degenerate (no second magnitude to compare); skip.
+  //   length === 2: classic part/whole — `[actual, target]`.
+  //   length  >  2: reduce a time series to "latest vs. rolling high"
+  //                 so the same `priceHistory` column the line / column
+  //                 / area / bar variants consume produces a meaningful
+  //                 ring without needing a second pre-computed field.
+  let part: number;
   let whole: number;
+  if (data.length === 1) return;
   if (data.length === 2) {
+    part = data[0]!;
     whole = data[1]!;
   } else {
-    let sum = 0;
-    for (let i = 0; i < data.length; i++) sum += data[i]!;
-    whole = sum;
+    part = data[data.length - 1]!;
+    let max = data[0]!;
+    for (let i = 1; i < data.length; i++) if (data[i]! > max) max = data[i]!;
+    whole = max;
   }
   const fraction = whole > 0 ? Math.max(0, Math.min(1, part / whole)) : 0;
 
@@ -67,7 +77,7 @@ function drawAnnulus(
   gc.beginPath();
   gc.arc(cx, cy, outerR, start, end, false);
   gc.arc(cx, cy, innerR, end, start, true);
-  gc.cache.fill();
+  gc.fill();
 }
 
 function withAlpha(color: string, alpha: number): string {

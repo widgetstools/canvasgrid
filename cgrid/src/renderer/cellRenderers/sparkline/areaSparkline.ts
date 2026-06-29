@@ -48,7 +48,7 @@ export function paintAreaSparkline(gc: CachedContext2D, p: CellPaintConfig): voi
   // Close down to the baseline so the fill always sits below the polyline.
   gc.lineTo(x0 + w, y0 + h);
   gc.lineTo(x0, y0 + h);
-  gc.cache.fill();
+  gc.fill();
 
   // Pass 2 — open polyline, stroked.
   gc.cache.strokeStyle = lineColor;

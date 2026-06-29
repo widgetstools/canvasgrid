@@ -30,11 +30,13 @@ export function paintColumnSparkline(gc: CachedContext2D, p: CellPaintConfig): v
     if (v < min) min = v;
     if (v > max) max = v;
   }
-  // Negative min collapses to 0 so columns always grow from a stable
-  // baseline (mirrors the "data is non-negative magnitudes" assumption
-  // ag-grid sparklines make). Constant series falls back to range = 1
-  // and renders as a row of full-height bars.
-  const baseline = min < 0 ? min : 0;
+  // Baseline = min, not zero — sparklines exist to show RELATIVE
+  // change, and a $187→$163 price series collapses to a wall of
+  // ceiling-high bars when normalized against zero. Min-baselining
+  // surfaces the variation that's the entire reason for the cell.
+  // Constant series falls back to range = 1 (the painter renders a
+  // single row of zero-height bars, which reads correctly as "flat").
+  const baseline = min;
   const range = max - baseline || 1;
 
   const gap = opts?.gap ?? 1;

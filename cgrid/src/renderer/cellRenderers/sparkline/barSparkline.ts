@@ -29,7 +29,10 @@ export function paintBarSparkline(gc: CachedContext2D, p: CellPaintConfig): void
     if (v < min) min = v;
     if (v > max) max = v;
   }
-  const baseline = min < 0 ? min : 0;
+  // Min-baselined (see columnSparkline.ts for the reasoning); the
+  // horizontal bar variant inherits the same need to surface relative
+  // variation instead of magnitudes.
+  const baseline = min;
   const range = max - baseline || 1;
 
   const gap = opts?.gap ?? 1;

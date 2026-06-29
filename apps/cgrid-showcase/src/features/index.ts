@@ -13,6 +13,7 @@ import { pivotToolPanel } from './pivotToolPanel';
 import { pivot } from './pivot';
 import { pivotAgComparison } from './pivotAgComparison';
 import { exportFeature } from './exportFeature';
+import { sparkline } from './sparkline';
 
 export interface Feature {
   id: string;
@@ -35,6 +36,7 @@ export const FEATURES: Feature[] = [
   pivot,
   pivotAgComparison,
   exportFeature,
+  sparkline,
 ];
 
 export const FEATURE_MAP = new Map(FEATURES.map((f) => [f.id, f]));
