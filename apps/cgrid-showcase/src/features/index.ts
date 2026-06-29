@@ -11,6 +11,7 @@ import { stateRoundtrip } from './stateRoundtrip';
 import { filteringWithGroups } from './filteringWithGroups';
 import { pivotToolPanel } from './pivotToolPanel';
 import { pivot } from './pivot';
+import { pivotAgComparison } from './pivotAgComparison';
 
 export interface Feature {
   id: string;
@@ -31,6 +32,7 @@ export const FEATURES: Feature[] = [
   filteringWithGroups,
   pivotToolPanel,
   pivot,
+  pivotAgComparison,
 ];
 
 export const FEATURE_MAP = new Map(FEATURES.map((f) => [f.id, f]));
