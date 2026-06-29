@@ -1627,6 +1627,39 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             post({ id: req.id, type: 'clipboardSerializeResult', tsv });
             break;
           }
+
+          case 'exportData': {
+            // Cycle 20 / Task 3 — walk all visible rows + serialize
+            // to the requested format off the main thread.
+            const { format, headerNames, types, options } = req.payload;
+            const visIds = await visibleAsync();
+            const exportRows: Array<Record<string, unknown>> = [];
+            for (const rowId of visIds) {
+              const data = state.store.getById(rowId);
+              if (data !== undefined) exportRows.push(data as Record<string, unknown>);
+            }
+            const cols = state.columns.map((c) => ({
+              colId: c.colId,
+              field: c.field,
+              headerName: headerNames[c.colId] ?? c.colId,
+              type: types[c.colId] ?? 'text',
+            }));
+            const { writeCsv } = await import('./export/csv');
+            const { writeXlsx } = await import('./export/xlsx');
+            const bytes = format === 'csv'
+              ? writeCsv(exportRows, cols, options as Parameters<typeof writeCsv>[2])
+              : writeXlsx(exportRows, cols as Parameters<typeof writeXlsx>[1], options as Parameters<typeof writeXlsx>[2]);
+            // Transfer the underlying ArrayBuffer so the post is zero-
+            // copy. Slice when offset/length differ from the buffer.
+            const fits = bytes.byteOffset === 0
+              && bytes.byteLength === bytes.buffer.byteLength
+              && bytes.buffer instanceof ArrayBuffer;
+            const buffer: ArrayBuffer = fits
+              ? bytes.buffer as ArrayBuffer
+              : bytes.slice().buffer as ArrayBuffer;
+            post({ id: req.id, type: 'exportDataResult', format, buffer }, [buffer]);
+            break;
+          }
         }
       } catch (err) {
         post({ id: (req as { id: number }).id, type: 'error', error: String((err as Error).message ?? err) });
