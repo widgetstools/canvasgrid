@@ -351,6 +351,15 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     return !!state?.groupOutput && !state.groupOutput.bypassed;
   }
 
+  /** Cycle 18 / Task 3 follow-up — true when the most recent
+   *  `PivotPass.apply` produced cross-tab output (NOT bypassed AND NOT
+   *  capped). Under pivot mode the slicer hides leaf data rows
+   *  entirely; only group + footer rows surface so the user sees a
+   *  clean cross-tab matrix. AG-Grid parity. */
+  function isPivotActive(): boolean {
+    return !!state?.pivotOut && !state.pivotOut.bypassed;
+  }
+
   /** Cycle 15 / Task 7 — resolve the effective expanded-keys set for the
    *  next pipeline pass. When `state.expandedKeys` is non-null the API
    *  has been driven explicitly (collapseAll / setExpanded /
@@ -496,7 +505,10 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     if (!state) return 0;
     state.visibleCache = await buildVisibleAsync();
     if (isGroupingActive()) {
-      return computeGroupVisibleRowCount(state.groupOutput!.flatOrder, effectiveExpandedKeys(), state.groupHideOpenParents);
+      return computeGroupVisibleRowCount(
+        state.groupOutput!.flatOrder, effectiveExpandedKeys(),
+        state.groupHideOpenParents, isPivotActive(),
+      );
     }
     return state.visibleCache.length;
   }
@@ -1391,8 +1403,12 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             if (isGroupingActive()) {
               const groupOutput = state.groupOutput!;
               const expandedKeys = effectiveExpandedKeys();
+              // Cycle 18 / Task 3 follow-up — when pivot is active, the
+              // slicer drops leaf data rows entirely so the user sees a
+              // clean cross-tab matrix (AG-Grid parity).
               const visibleOrder: VisibleRowEntry[] = computeGroupVisibleOrder(
                 groupOutput.flatOrder, expandedKeys, state.groupHideOpenParents,
+                isPivotActive(),
               );
               const colIndex = new Map<string, WorkerColumn>();
               for (const c of state.columns) colIndex.set(c.colId, c);

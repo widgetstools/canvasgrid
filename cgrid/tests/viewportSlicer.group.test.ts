@@ -314,3 +314,64 @@ describe('sliceGroupedViewport', () => {
     expect(empty.rowIds.length).toBe(0);
   });
 });
+
+// Cycle 18 / Task 3 follow-up — leaf-row suppression under pivot mode.
+//
+// The Cycle 18 worker now passes `suppressLeafRows = isPivotActive()`
+// into `computeGroupVisibleOrder` so leaf data rows disappear from the
+// visible viewport while a pivot model produces output. The user sees
+// only the group + footer rows that make up the cross-tab matrix — AG-
+// Grid parity. The flatOrder itself is unchanged (so selection, sort,
+// agg pipelines reading the flat post-sort row order keep working);
+// only the slicer-visible projection drops the row entries.
+describe('computeGroupVisibleOrder — suppressLeafRows (pivot mode)', () => {
+  it('drops every kind="row" entry while keeping every kind="group" entry', () => {
+    const { flatOrder } = buildOneLevel();
+    const allExpanded = new Set(flatOrder.filter((e) => e.kind === 'group').map((e) => (e as { key: string }).key));
+    // Sanity: without suppression every leaf row rides through.
+    const withLeaves = computeGroupVisibleOrder(flatOrder, allExpanded);
+    expect(withLeaves.some((e) => e.kind === 'row')).toBe(true);
+    // With suppression: zero leaf row entries; every group entry survives.
+    const noLeaves = computeGroupVisibleOrder(flatOrder, allExpanded, false, true);
+    expect(noLeaves.every((e) => e.kind !== 'row')).toBe(true);
+    const groupCount = flatOrder.filter((e) => e.kind === 'group').length;
+    expect(noLeaves.length).toBe(groupCount);
+  });
+
+  it('interacts cleanly with collapsed groups — a collapsed group still emits its group entry but its descendants are skipped', () => {
+    const { flatOrder } = buildOneLevel();
+    // Only APAC expanded; EMEA collapsed.
+    const expanded = new Set(['desk:APAC']);
+    const noLeaves = computeGroupVisibleOrder(flatOrder, expanded, false, true);
+    // Both desk groups still appear (collapsed groups always emit their
+    // own entry); their descendant leaf rows do not.
+    const groupKeys = noLeaves
+      .filter((e) => e.kind === 'group')
+      .map((e) => (e as { key: string }).key)
+      .sort();
+    expect(groupKeys).toEqual(['desk:APAC', 'desk:EMEA']);
+    expect(noLeaves.every((e) => e.kind !== 'row')).toBe(true);
+  });
+
+  it('drops only leaf rows — kind="footer" entries (when emitted) survive', () => {
+    // Re-run GroupPass with includeFooter so footer entries appear.
+    const store = fixtureStore();
+    const gp = new GroupPass(store, cols);
+    gp.setModel({ rowGroupCols: ['desk'] });
+    gp.setIncludeFooter(true);
+    const out = gp.apply(allIds);
+    const expanded = new Set(out.flatOrder.filter((e) => e.kind === 'group').map((e) => (e as { key: string }).key));
+    const noLeaves = computeGroupVisibleOrder(out.flatOrder, expanded, false, true);
+    // No leaf rows; footer entries survive.
+    expect(noLeaves.some((e) => e.kind === 'row')).toBe(false);
+    expect(noLeaves.some((e) => e.kind === 'footer')).toBe(true);
+  });
+
+  it('row-count helper matches the visible-order length under suppression', () => {
+    const { flatOrder } = buildOneLevel();
+    const expanded = new Set(flatOrder.filter((e) => e.kind === 'group').map((e) => (e as { key: string }).key));
+    const order = computeGroupVisibleOrder(flatOrder, expanded, false, true);
+    const count = computeGroupVisibleRowCount(flatOrder, expanded, false, true);
+    expect(count).toBe(order.length);
+  });
+});

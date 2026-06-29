@@ -62,11 +62,18 @@ export type VisibleRowEntry = FlatOrderEntry;
  *  `hideOpenParents` (Cycle 15.5 / Task 4): when `true`, an EXPANDED
  *  group's own group-row entry is skipped — children appear directly in
  *  the parent's slot. A COLLAPSED group still emits its group entry and
- *  suppresses children (existing behaviour). */
+ *  suppresses children (existing behaviour).
+ *
+ *  `suppressLeafRows` (Cycle 18 / Task 3 follow-up): when `true`, every
+ *  `kind: 'row'` entry is dropped — only group + footer rows survive.
+ *  AG-Grid parity: leaf data rows are NOT shown under pivot mode (the
+ *  cross-tab matrix is the only thing the user sees). The cgrid layer
+ *  enables this when `pivotMode === true` and pivot is active. */
 export function computeGroupVisibleOrder(
   flatOrder: readonly FlatOrderEntry[],
   expandedKeys: ReadonlySet<string>,
   hideOpenParents = false,
+  suppressLeafRows = false,
 ): VisibleRowEntry[] {
   const out: VisibleRowEntry[] = [];
   let skipDepth = -1;
@@ -75,9 +82,12 @@ export function computeGroupVisibleOrder(
     if (skipDepth >= 0 && entry.depth > skipDepth) continue;
     skipDepth = -1;
     const isExpandedGroup = entry.kind === 'group' && expandedKeys.has(entry.key);
+    const isLeafRow = entry.kind === 'row';
     // hideOpenParents: skip the group-row entry when the group is expanded,
     // but do NOT set skipDepth — children still emit.
-    if (!hideOpenParents || !isExpandedGroup) {
+    // suppressLeafRows: skip every data row entry — pivot mode only
+    // surfaces group + footer rows.
+    if ((!hideOpenParents || !isExpandedGroup) && !(suppressLeafRows && isLeafRow)) {
       out.push(entry);
     }
     if (entry.kind === 'group' && !isExpandedGroup) {
@@ -94,6 +104,7 @@ export function computeGroupVisibleRowCount(
   flatOrder: readonly FlatOrderEntry[],
   expandedKeys: ReadonlySet<string>,
   hideOpenParents = false,
+  suppressLeafRows = false,
 ): number {
   let count = 0;
   let skipDepth = -1;
@@ -102,7 +113,8 @@ export function computeGroupVisibleRowCount(
     if (skipDepth >= 0 && entry.depth > skipDepth) continue;
     skipDepth = -1;
     const isExpandedGroup = entry.kind === 'group' && expandedKeys.has(entry.key);
-    if (!hideOpenParents || !isExpandedGroup) count++;
+    const isLeafRow = entry.kind === 'row';
+    if ((!hideOpenParents || !isExpandedGroup) && !(suppressLeafRows && isLeafRow)) count++;
     if (entry.kind === 'group' && !isExpandedGroup) skipDepth = entry.depth;
   }
   return count;
