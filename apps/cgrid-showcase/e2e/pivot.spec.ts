@@ -50,7 +50,7 @@ async function waitForGroupRows(page: Page, attempts = 20): Promise<boolean> {
 }
 
 test.describe('pivot showcase feature', () => {
-  test('loads with desk row group + sector pivot + two value cols pre-seeded', async ({ page }) => {
+  test('loads with desk row group + region/sector pivot + two value cols pre-seeded', async ({ page }) => {
     await gotoFeature(page, 'pivot');
 
     const state = await page.evaluate(() => ({
@@ -62,7 +62,7 @@ test.describe('pivot showcase feature', () => {
 
     expect(state.pivotMode).toBe(true);
     expect(state.rowGroupCols).toEqual(['desk']);
-    expect(state.pivotCols).toEqual(['sector']);
+    expect(state.pivotCols).toEqual(['region', 'sector']);
     expect(state.valueCols.map((v) => v.colId).sort()).toEqual(['notional', 'pnl']);
   });
 
@@ -153,7 +153,7 @@ test.describe('pivot showcase feature', () => {
       pivotCols: (window.__cgrid as unknown as { getPivotColumns: () => string[] }).getPivotColumns(),
     }));
     expect(state.pivotMode).toBe(true);
-    expect(state.pivotCols).toEqual(['sector']);
+    expect(state.pivotCols).toEqual(['region', 'sector']);
   });
 
   test('Strict order toggle flips enableStrictPivotColumnOrder + survives a pivot round-trip', async ({ page }) => {

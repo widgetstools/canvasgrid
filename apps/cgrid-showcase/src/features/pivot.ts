@@ -75,7 +75,12 @@ export const pivot: Feature = {
 
     grid.setRowData(makeRows(120));
     grid.setRowGroupColumns(['desk']);
-    grid.setPivotColumns(['sector']);
+    // Two pivot levels so the `Col-group totals` toggle has a parent to
+    // subtotal under (AG semantics: a 1-level pivot has no parent group
+    // to total). With region × sector, toggling col-group totals adds a
+    // visible "Total" sub-group inside each region; without that, the
+    // toggle is a no-op.
+    grid.setPivotColumns(['region', 'sector']);
     grid.addValueColumn('pnl', 'sum');
     grid.addValueColumn('notional', 'sum');
     grid.setPivotMode(true);
