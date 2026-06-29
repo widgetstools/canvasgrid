@@ -55,6 +55,17 @@ export const pivot: Feature = {
       rowGroupPanelShow: 'always',
       pivotPanelShow: 'always',
       pivotDefaultExpanded: 1,
+      // Cycle 14 — bottom GRAND TOTAL ROW. Under pivot mode this row
+      // aggregates each pivot result column across every row group
+      // (per-column totals across all desks). Combined with
+      // `pivotRowTotals: 'after'` the matrix gets both per-row totals
+      // (right column) AND per-column totals (bottom row), matching
+      // Excel pivot "Total Result" semantics. Set at construction —
+      // grandTotalRow is not in the runtime-mutable option set today.
+      // `groupIncludeFooter` is the upstream toggle that makes the
+      // worker emit footer entries; `grandTotalRow` rides on top.
+      grandTotalRow: 'bottom',
+      groupIncludeFooter: true,
       sideBar: {
         toolPanels: ['columns', 'filters'],
         defaultToolPanel: 'agColumnsToolPanel',
