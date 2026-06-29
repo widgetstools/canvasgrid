@@ -3833,7 +3833,9 @@ export class CGrid<TRow = any> {
     const callbacks = this.options.exportCallbacks ?? {};
     const cellCb = callbacks[(params as ExportCsvParams).processCellCallback ?? ''];
     const headerCb = callbacks[(params as ExportCsvParams).processHeaderCallback ?? ''];
-    const rows = await this.workerClient.getExportRows();
+    const rows = await this.workerClient.getExportRows({
+      selectedRowIds: params.onlySelected ? this.getSelectedRowIds() : undefined,
+    });
 
     // Build column list, mapping each header through `headerCb` once.
     const cols = this.columnTree.leaves.map((leaf) => ({
@@ -3888,6 +3890,7 @@ export class CGrid<TRow = any> {
       headerNames,
       types,
       options: params as unknown as Record<string, unknown>,
+      selectedRowIds: params.onlySelected ? this.getSelectedRowIds() : undefined,
     });
     return new TextDecoder('utf-8').decode(buffer);
   }
@@ -3925,6 +3928,7 @@ export class CGrid<TRow = any> {
       headerNames,
       types,
       options: params as unknown as Record<string, unknown>,
+      selectedRowIds: params.onlySelected ? this.getSelectedRowIds() : undefined,
     });
     return new Blob([buffer], { type: XLSX_MIME });
   }
@@ -7662,6 +7666,8 @@ export interface ExportCsvParams {
   processCellCallback?: string;
   /** Name of an `exportCallbacks` entry to transform each header. */
   processHeaderCallback?: string;
+  /** Cycle 20 / Task 5 — limit the export to currently-selected rows. */
+  onlySelected?: boolean;
 }
 
 /** Caller-facing XLSX export params. */
@@ -7675,6 +7681,8 @@ export interface ExportExcelParams {
   author?: string;
   processCellCallback?: string;
   processHeaderCallback?: string;
+  /** Cycle 20 / Task 5 — limit the export to currently-selected rows. */
+  onlySelected?: boolean;
 }
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';

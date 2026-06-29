@@ -517,6 +517,11 @@ export type WorkerRequest =
         /** Serializer options — superset across both formats. The
          *  worker passes only the relevant subset to each writer. */
         options: Record<string, unknown>;
+        /** Cycle 20 / Task 5 — when `options.onlySelected === true`,
+         *  the worker exports only the rows whose id is in this list.
+         *  Main passes the current `SelectionModel.getSelectedRowIds()`
+         *  result so the worker doesn't need its own selection state. */
+        selectedRowIds?: string[];
       };
     }
   /** Cycle 20 / Task 4 — ship the materialised visible rows + the
@@ -526,7 +531,7 @@ export type WorkerRequest =
   | {
       id: ReqId;
       type: 'getExportRows';
-      payload: Record<string, never>;
+      payload: { selectedRowIds?: string[] };
     };
 
 export type WorkerResponse =

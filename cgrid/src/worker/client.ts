@@ -473,6 +473,7 @@ export class WorkerClient {
     headerNames: Record<string, string>;
     types: Record<string, 'text' | 'number'>;
     options: Record<string, unknown>;
+    selectedRowIds?: string[];
   }): Promise<ArrayBuffer> {
     return this.send<{ buffer: ArrayBuffer }>({
       type: 'exportData', payload,
@@ -481,9 +482,9 @@ export class WorkerClient {
 
   /** Cycle 20 / Task 4 — fetch the full visible row set so callbacks
    *  (main-only functions) can run before serialization. */
-  getExportRows(): Promise<Array<Record<string, unknown>>> {
+  getExportRows(payload: { selectedRowIds?: string[] } = {}): Promise<Array<Record<string, unknown>>> {
     return this.send<{ rows: Array<Record<string, unknown>> }>({
-      type: 'getExportRows', payload: {},
+      type: 'getExportRows', payload,
     }).then((r) => r.rows);
   }
 

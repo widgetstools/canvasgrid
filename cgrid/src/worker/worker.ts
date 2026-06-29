@@ -1631,10 +1631,17 @@ export function createWorkerHost(post: PostFn): WorkerHost {
           case 'exportData': {
             // Cycle 20 / Task 3 — walk all visible rows + serialize
             // to the requested format off the main thread.
-            const { format, headerNames, types, options } = req.payload;
+            const { format, headerNames, types, options, selectedRowIds } = req.payload;
             const visIds = await visibleAsync();
+            // Cycle 20 / Task 5 — `onlySelected: true` filters by the
+            // selection set main passed in.
+            const onlySelected = options.onlySelected === true;
+            const selectionSet = onlySelected && selectedRowIds
+              ? new Set(selectedRowIds)
+              : null;
             const exportRows: Array<Record<string, unknown>> = [];
             for (const rowId of visIds) {
+              if (selectionSet && !selectionSet.has(rowId)) continue;
               const data = state.store.getById(rowId);
               if (data !== undefined) exportRows.push(data as Record<string, unknown>);
             }
@@ -1666,9 +1673,12 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             // main-side serialization path (used when an export
             // callback is configured; callbacks are functions and
             // can't run inside the worker).
+            const { selectedRowIds: sel } = req.payload;
             const visIds = await visibleAsync();
+            const selectionSet = sel ? new Set(sel) : null;
             const rows: Array<Record<string, unknown>> = [];
             for (const rowId of visIds) {
+              if (selectionSet && !selectionSet.has(rowId)) continue;
               const data = state.store.getById(rowId);
               if (data !== undefined) rows.push(data as Record<string, unknown>);
             }
