@@ -63,7 +63,7 @@ import {
 import { GroupingState, type GroupingStateChangedEvent } from './core/groupingState';
 import { PivotState, type PivotStateChangedEvent, type PivotValueColumn } from './core/pivotState';
 import {
-  synthesizePivotColumns, isPivotResultColumnId,
+  synthesizePivotColumns, isPivotResultColumnId, isPivotRowTotalColumnId,
   type PivotCellSpec, type PivotValueColumnSpec,
 } from './core/pivotColumns';
 import { encodePivotValueKey, PIVOT_PATH_SEP, type PivotModel, type PivotKeyNode } from './worker/passes/pivotPass';
@@ -2881,6 +2881,12 @@ export class CGrid<TRow = any> {
     const active = this.pivotState.isPivotActive() && chunk.pivotColumnTree !== undefined;
     if (active) {
       const signature = JSON.stringify({
+        // Cycle 18 / Task 8e — pivotRowTotals + pivotColumnGroupTotals
+        // are inputs to synthesis; folding them into the signature so a
+        // runtime swap re-synthesizes (without this, the cached pivot
+        // tree would paint without the totals column).
+        rowTotals: this.options.pivotRowTotals ?? null,
+        colGroupTotals: this.options.pivotColumnGroupTotals ?? null,
         leaves: chunk.pivotLeafPaths ?? [],
         vals: this.pivotState.getValueColumns(),
       });
@@ -2912,6 +2918,9 @@ export class CGrid<TRow = any> {
       keyTree,
       valueColumns,
       pivotDefaultExpanded: this.options.pivotDefaultExpanded,
+      // Cycle 18 / Task 8e — pivot totals (row totals + column-group totals).
+      pivotRowTotals: this.options.pivotRowTotals ?? null,
+      pivotColumnGroupTotals: this.options.pivotColumnGroupTotals ?? null,
     });
 
     // Save the primary structures on first activation so revert restores
@@ -3462,6 +3471,16 @@ export class CGrid<TRow = any> {
       .catch((err) => {
         if (!this.destroyed) console.error('[cgrid] setPivotMaxGeneratedColumns:', err);
       });
+  }
+
+  /** Cycle 18 / Task 8e — re-synthesize the pivot columns so the new
+   *  totals position lands on the next chunk. The signature comparison
+   *  inside `maybeSyncPivotColumns` already folds the totals options
+   *  in, so a single `requestViewport` triggers re-synthesis on the
+   *  reply. */
+  private updatePivotTotalsOption(): void {
+    if (this.destroyed) return;
+    this.requestViewport();
   }
 
   /** Cycle 18 / Task 8c — flip the strict-order flag at runtime.
@@ -4383,6 +4402,7 @@ export class CGrid<TRow = any> {
       updatePivotPanelShow: (value) => this.updatePivotPanelShow(value),
       updatePivotMaxGeneratedColumns: (value) => this.updatePivotMaxGeneratedColumns(value),
       updateStrictPivotColumnOrder: (value) => this.updateStrictPivotColumnOrder(value),
+      updatePivotTotalsOption: () => this.updatePivotTotalsOption(),
       updateRowGroupPanelSuppressSort: (suppress) =>
         this.rowGroupPanel?.setRenderOptions({ suppressSort: suppress }),
       updateGroupSelectsChildren: (enabled) => this.applyGroupSelectsChildren(enabled),
@@ -5971,7 +5991,7 @@ export class CGrid<TRow = any> {
     // value: group rows (1), grand-total (2), and footer rows (3) resolve
     // through their composite `groupKey` (the grand total uses key `''`);
     // leaf data rows (0) are not aggregated under pivot → empty.
-    if (this.pivotActive && isPivotResultColumnId(colId)) {
+    if (this.pivotActive && (isPivotResultColumnId(colId) || isPivotRowTotalColumnId(colId))) {
       const spec = this.pivotCellSpecById.get(colId);
       const pivotValues = this.chunk.pivotValues;
       const kind = this.chunk.rowKinds[localIndex] ?? 0;
@@ -5979,6 +5999,10 @@ export class CGrid<TRow = any> {
         return { value: '', valueFormatted: '', flashAlpha: flash };
       }
       const groupKey = this.chunk.groupKey?.[localIndex] ?? '';
+      // Cycle 18 / Task 8e — row totals carry `pivotPath: []`; the join
+      // produces `''` which resolves to the row-total bucket
+      // PivotPass.apply now emits per group. Regular pivot cells use the
+      // joined per-level path. Both paths use the same lookup.
       const raw = pivotValues.get(
         encodePivotValueKey(groupKey, spec.pivotPath.join(PIVOT_PATH_SEP), spec.valueColId),
       );

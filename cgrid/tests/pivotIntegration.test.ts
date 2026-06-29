@@ -207,6 +207,39 @@ describe('CGrid pivot — render integration', () => {
     restore();
   });
 
+  it('pivotRowTotals="after" appends a Total column whose cells read from chunk.groupTotals (Task 8e)', async () => {
+    const { grid, restore } = buildWiredGrid();
+    await tick();
+    // Set the option BEFORE pivot mode so the very first synthesis emits the totals col.
+    grid.setGridOption('pivotRowTotals' as never, 'after' as never);
+    grid.setGroupModel({ rowGroupCols: ['region'] });
+    await tick();
+    grid.setPivotColumns(['sector']);
+    grid.addValueColumn('pnl', 'sum');
+    grid.setPivotMode(true);
+    await tick();
+    grid.collapseAll();
+    await tick();
+
+    const ids = orderIds(grid);
+    // The row-total column id encodes via the pivotrowtotal prefix.
+    const totalColId = ids.find((id) => id.startsWith('pivotrowtotal'));
+    expect(totalColId).toBeDefined();
+    // The Total column sits AFTER the matrix columns.
+    const lastMatrixIdx = Math.max(
+      ids.lastIndexOf(pivotResultColumnId(['FIN'], 'pnl')),
+      ids.lastIndexOf(pivotResultColumnId(['TECH'], 'pnl')),
+    );
+    expect(ids.indexOf(totalColId!)).toBeGreaterThan(lastMatrixIdx);
+
+    // EMEA row total = 100+200+300 = 600. APAC = 400+500 = 900.
+    expect(pivotCell(grid, 'region:EMEA', totalColId!)).toBe(600);
+    expect(pivotCell(grid, 'region:APAC', totalColId!)).toBe(900);
+
+    grid.destroy();
+    restore();
+  });
+
   it('sort on a pivot result column reorders row groups by aggregated value (Task 8d)', async () => {
     const { grid, restore } = buildWiredGrid();
     await tick();

@@ -69,6 +69,8 @@ export type RuntimeOption =
   | 'pivotPanelShow'
   | 'pivotMaxGeneratedColumns'
   | 'enableStrictPivotColumnOrder'
+  | 'pivotRowTotals'
+  | 'pivotColumnGroupTotals'
   | 'groupSelectsChildren'
   | 'suppressCount';
 
@@ -132,6 +134,12 @@ export interface RuntimeOptionTarget<TRow = any> {
    *  always re-sort. `false` (AG default) = preserve prior order +
    *  append new keys at end. */
   updateStrictPivotColumnOrder(value: boolean | undefined): void;
+  /** Cycle 18 / Task 8e — re-synthesize the pivot columns so the new
+   *  totals position lands. The cached pivot tree signature folds the
+   *  totals options in, so the next chunk receipt detects the change
+   *  and re-synthesizes. CGrid implementation triggers a viewport
+   *  request after stashing the option. */
+  updatePivotTotalsOption(): void;
   /** Cycle 15.5 / Task 1 — hand the runtime `rowGroupPanelSuppressSort`
    *  flag to CGrid so the panel re-renders (with / without the sort
    *  indicator) on the next frame. */
@@ -311,6 +319,15 @@ export function applyRuntimeOption<TRow>(
       // to `false` (the AG default).
       target.updateStrictPivotColumnOrder(value as boolean | undefined);
       return;
+    case 'pivotRowTotals':
+    case 'pivotColumnGroupTotals':
+      // Cycle 18 / Task 8e — re-synthesize on the next viewport. Both
+      // options are inputs to `synthesizePivotColumns` (NOT to the
+      // worker pipeline), so the change only matters once the next
+      // chunk arrives + the signature compare picks up the option
+      // delta. CGrid implementation issues a viewport request.
+      target.updatePivotTotalsOption();
+      return;
     case 'rowGroupPanelSuppressSort':
       // Cycle 15.5 / Task 1 — re-render the chip strip without the
       // sort indicator span when `true`. The flag toggles which DOM
@@ -360,6 +377,8 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'pivotPanelShow',
   'pivotMaxGeneratedColumns',
   'enableStrictPivotColumnOrder',
+  'pivotRowTotals',
+  'pivotColumnGroupTotals',
   'groupSelectsChildren',
   'suppressCount',
 ]);

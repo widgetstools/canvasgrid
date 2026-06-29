@@ -306,3 +306,132 @@ describe('synthesizePivotColumns — Task 4 collapse/expand', () => {
 function pivotGroupIdFromPath(path: string[]): string {
   return ['pivotcol', 'grp', ...path].join('');
 }
+
+// Cycle 18 / Task 8e — pivot totals (row totals + column-group totals).
+//
+//   `pivotRowTotals: 'before' | 'after' | null` — adds ONE totals column
+//      per value column at the start / end of the synthesized column
+//      list. Cells read from `chunk.groupTotals[valueColId]` (already
+//      computed by AggPass, no PivotPass changes needed).
+//
+//   `pivotColumnGroupTotals: 'before' | 'after' | null` — for multi-
+//      level pivots, the existing per-prefix "group total" leaves Task 4
+//      emitted with `columnGroupShow: 'closed'` now also show when the
+//      group is open. Order is 'before' = first child, 'after' = last
+//      child. Default null = Task 4 behaviour (closed-only).
+//
+// AG-parity Prompt 3 / 8 (totals follow-up).
+import {
+  isPivotRowTotalColumnId,
+  pivotRowTotalColumnId,
+} from '../src/core/pivotColumns';
+
+describe('synthesizePivotColumns — pivotRowTotals (Task 8e)', () => {
+  it('null (default) emits no row total columns', () => {
+    const { defs, cellSpecById } = synthesizePivotColumns({
+      keyTree: flatTree(['FIN', 'TECH']),
+      valueColumns: [{ colId: 'pnl', aggFunc: 'sum', headerName: 'PnL' }],
+    });
+    expect(defs).toHaveLength(2);
+    for (const spec of cellSpecById.values()) {
+      expect((spec as { isRowTotal?: boolean }).isRowTotal).toBeFalsy();
+    }
+  });
+
+  it('"after": appends a single-leaf totals group with one leaf per value column', () => {
+    const { defs, cellSpecById } = synthesizePivotColumns({
+      keyTree: flatTree(['FIN', 'TECH']),
+      valueColumns: [
+        { colId: 'pnl', aggFunc: 'sum', headerName: 'PnL' },
+        { colId: 'qty', aggFunc: 'sum', headerName: 'Qty' },
+      ],
+      pivotRowTotals: 'after',
+    });
+    expect(defs).toHaveLength(3);
+    const last = defs[defs.length - 1]!;
+    expect(last.children).toHaveLength(2);
+    const pnlTotalId = pivotRowTotalColumnId('pnl');
+    const qtyTotalId = pivotRowTotalColumnId('qty');
+    const ids = (last.children as Array<{ colId: string }>).map((c) => c.colId);
+    expect(ids).toEqual([pnlTotalId, qtyTotalId]);
+    expect((cellSpecById.get(pnlTotalId) as { isRowTotal?: boolean })?.isRowTotal).toBe(true);
+    expect(cellSpecById.get(pnlTotalId)?.valueColId).toBe('pnl');
+  });
+
+  it('"before": prepends the totals group ahead of all pivot key groups', () => {
+    const { defs } = synthesizePivotColumns({
+      keyTree: flatTree(['FIN', 'TECH']),
+      valueColumns: [{ colId: 'pnl', aggFunc: 'sum', headerName: 'PnL' }],
+      pivotRowTotals: 'before',
+    });
+    expect(defs).toHaveLength(3);
+    const first = defs[0]!;
+    const firstChild = (first.children as Array<{ colId: string }>)[0]!;
+    expect(firstChild.colId).toBe(pivotRowTotalColumnId('pnl'));
+  });
+
+  it('pivotRowTotalColumnId / isPivotRowTotalColumnId round-trip uniquely per valueColId', () => {
+    const a = pivotRowTotalColumnId('pnl');
+    const b = pivotRowTotalColumnId('qty');
+    expect(a).not.toBe(b);
+    expect(isPivotRowTotalColumnId(a)).toBe(true);
+    expect(isPivotRowTotalColumnId(b)).toBe(true);
+    expect(isPivotRowTotalColumnId(pivotResultColumnId(['FIN'], 'pnl'))).toBe(false);
+    expect(isPivotRowTotalColumnId('pnl')).toBe(false);
+  });
+});
+
+describe('synthesizePivotColumns — pivotColumnGroupTotals (Task 8e)', () => {
+  it('null (default) keeps Task 4 behaviour: prefix totals show only when group is closed', () => {
+    const { defs } = synthesizePivotColumns({
+      keyTree: nestedTree({ TECH: ['EQ', 'BOND'] }),
+      valueColumns: [{ colId: 'pnl', aggFunc: 'sum' }],
+    });
+    const tech = defs[0]!;
+    const total = (tech.children as Array<{ columnGroupShow?: 'open' | 'closed' }>)[0]!;
+    expect(total.columnGroupShow).toBe('closed');
+  });
+
+  it('"after" appends the prefix-total leaf as the LAST child + makes it always visible', () => {
+    const { defs } = synthesizePivotColumns({
+      keyTree: nestedTree({ TECH: ['EQ', 'BOND'] }),
+      valueColumns: [{ colId: 'pnl', aggFunc: 'sum' }],
+      pivotColumnGroupTotals: 'after',
+    });
+    const tech = defs[0]!;
+    const children = tech.children as Array<
+      | { colId: string; columnGroupShow?: 'open' | 'closed' }
+      | { groupId: string }
+    >;
+    expect(children).toHaveLength(3);
+    const last = children[children.length - 1]! as { colId: string; columnGroupShow?: 'open' | 'closed' };
+    expect(last.colId).toBe(pivotResultColumnId(['TECH'], 'pnl'));
+    expect(last.columnGroupShow).toBeUndefined();
+  });
+
+  it('"before" keeps the prefix-total leaf as the FIRST child + makes it always visible', () => {
+    const { defs } = synthesizePivotColumns({
+      keyTree: nestedTree({ TECH: ['EQ', 'BOND'] }),
+      valueColumns: [{ colId: 'pnl', aggFunc: 'sum' }],
+      pivotColumnGroupTotals: 'before',
+    });
+    const tech = defs[0]!;
+    const children = tech.children as Array<
+      | { colId: string; columnGroupShow?: 'open' | 'closed' }
+      | { groupId: string }
+    >;
+    expect(children).toHaveLength(3);
+    const first = children[0]! as { colId: string; columnGroupShow?: 'open' | 'closed' };
+    expect(first.colId).toBe(pivotResultColumnId(['TECH'], 'pnl'));
+    expect(first.columnGroupShow).toBeUndefined();
+  });
+
+  it('does not affect 1-level pivots (no nesting => no prefix totals)', () => {
+    const { defs } = synthesizePivotColumns({
+      keyTree: flatTree(['FIN', 'TECH']),
+      valueColumns: [{ colId: 'pnl', aggFunc: 'sum' }],
+      pivotColumnGroupTotals: 'after',
+    });
+    expect(defs).toHaveLength(2);
+  });
+});

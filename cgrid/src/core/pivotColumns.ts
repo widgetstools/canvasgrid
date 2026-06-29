@@ -27,11 +27,17 @@
  */
 
 import type { CColDef, CColGroupDef } from '../types';
-import type { PivotKeyNode } from '../worker/passes/pivotPass';
+import { type PivotKeyNode, PIVOT_ROW_TOTAL_PATH_MARKER } from '../worker/passes/pivotPass';
 
 /** Prefix marking a synthesized pivot-result column id. Mirrors how
  *  `AUTO_GROUP_COLUMN_ID` marks the auto-group column. */
 export const PIVOT_RESULT_COL_PREFIX = 'pivotcol';
+/** Cycle 18 / Task 8e — prefix marking a synthesized "row total" column.
+ *  Row totals show the row-group total across ALL pivot values per row,
+ *  computed by AggPass (so the cell reader hits `chunk.groupTotals[valueColId]`
+ *  rather than `chunk.pivotValues`). Distinct prefix so cellAt can branch
+ *  cleanly. AG-Grid parity: `pivotRowTotals`. */
+export const PIVOT_ROW_TOTAL_COL_PREFIX = 'pivotrowtotal';
 /** Separator inside a pivot-result colId. `` cannot appear in a
  *  normal colId / stringified pivot value. */
 const PIVOT_ID_SEP = '';
@@ -53,10 +59,15 @@ export interface PivotValueColumnSpec {
 
 /** Reverse index entry: how a synthetic colId addresses `pivotValues`. */
 export interface PivotCellSpec {
-  /** The pivot key path (one stringified value per pivot level). */
+  /** The pivot key path (one stringified value per pivot level). Empty
+   *  array when `isRowTotal === true`. */
   pivotPath: string[];
   /** The value column being measured at this intersection. */
   valueColId: string;
+  /** Cycle 18 / Task 8e — when `true`, the cell value comes from
+   *  `chunk.groupTotals[valueColId]` (the row-axis total across ALL
+   *  pivot values) instead of `chunk.pivotValues`. */
+  isRowTotal?: boolean;
 }
 
 export interface SynthesizedPivotColumns<TRow = unknown> {
@@ -93,6 +104,27 @@ export function decodePivotResultColumnId(colId: string):
   const valueColId = parts[parts.length - 1]!;
   const pivotPath = parts.slice(1, parts.length - 1);
   return { pivotPath, valueColId };
+}
+
+/** Cycle 18 / Task 8e — stable colId for a row-total synthetic column.
+ *  One per value column, regardless of pivot key set. The cell reader
+ *  resolves the cell value via `chunk.groupTotals[valueColId]`. */
+export function pivotRowTotalColumnId(valueColId: string): string {
+  return [PIVOT_ROW_TOTAL_COL_PREFIX, valueColId].join(PIVOT_ID_SEP);
+}
+
+/** Cycle 18 / Task 8e — true when `colId` identifies a synthesized
+ *  row-total column. */
+export function isPivotRowTotalColumnId(colId: string): boolean {
+  return colId.startsWith(PIVOT_ROW_TOTAL_COL_PREFIX + PIVOT_ID_SEP);
+}
+
+/** Cycle 18 / Task 8e — decode a row-total colId back to its value
+ *  column. Returns `null` for a non-row-total id. */
+export function decodePivotRowTotalColumnId(colId: string): string | null {
+  if (!isPivotRowTotalColumnId(colId)) return null;
+  const parts = colId.split(PIVOT_ID_SEP);
+  return parts.length >= 2 ? parts.slice(1).join(PIVOT_ID_SEP) : null;
 }
 
 /** Stable groupId for a pivot column-group node at `path`. */
@@ -135,9 +167,24 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
    *  default) keeps every group closed. Mirrors AG-Grid's
    *  `pivotDefaultExpanded` grid option. */
   pivotDefaultExpanded?: number;
+  /** Cycle 18 / Task 8e — `'before' | 'after' | null`. Adds a totals
+   *  column group at the start / end of the synthesized output with
+   *  one leaf per value column. Cells read from `chunk.groupTotals`
+   *  (no PivotPass change needed — AggPass already computes them).
+   *  AG-Grid parity: `pivotRowTotals`. */
+  pivotRowTotals?: 'before' | 'after' | null;
+  /** Cycle 18 / Task 8e — `'before' | 'after' | null`. For multi-level
+   *  pivots, the existing per-prefix "group total" leaves Task 4 emits
+   *  with `columnGroupShow: 'closed'` get promoted to ALWAYS VISIBLE
+   *  (no columnGroupShow stamp) at the requested position within each
+   *  non-leaf pivot column group. `null` keeps the Task 4 behaviour
+   *  (closed-only). AG-Grid parity: `pivotColumnGroupTotals`. */
+  pivotColumnGroupTotals?: 'before' | 'after' | null;
 }): SynthesizedPivotColumns<TRow> {
   const { keyTree, valueColumns } = input;
   const pivotDefaultExpanded = input.pivotDefaultExpanded ?? 0;
+  const pivotRowTotals = input.pivotRowTotals ?? null;
+  const pivotColumnGroupTotals = input.pivotColumnGroupTotals ?? null;
   const cellSpecById = new Map<string, PivotCellSpec>();
 
   const buildValueLeaves = (
@@ -184,22 +231,73 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
         children: buildValueLeaves(node.path, hasAncestorBranch ? 'open' : undefined),
       };
     }
-    // Branch node — emit a "group total" leaf (visible when this group
-    // is collapsed) PLUS the recursive child groups. The totals address
-    // the prefix path that PivotPass already aggregates. Branch groups
-    // honour `pivotDefaultExpanded` per level.
+    // Branch node — emit a "group total" leaf PLUS the recursive child
+    // groups. The totals address the prefix path that PivotPass already
+    // aggregates. Branch groups honour `pivotDefaultExpanded` per level.
+    //
+    // Cycle 18 / Task 8e — when `pivotColumnGroupTotals` is set, the
+    // prefix-totals leaves get promoted to ALWAYS VISIBLE (no
+    // columnGroupShow stamp) and the ordering switches to before / after
+    // the child sub-groups per the option value. `null` keeps the
+    // Cycle 18 / Task 4 behaviour: columnGroupShow:'closed' so the
+    // totals leaf only appears when the group is collapsed; the leaf
+    // sits at the front of the children list.
     const openByDefault = depth < pivotDefaultExpanded;
-    const totals = buildValueLeaves(node.path, 'closed');
+    const totals = pivotColumnGroupTotals === null
+      ? buildValueLeaves(node.path, 'closed')
+      : buildValueLeaves(node.path, undefined);
     const childGroups = node.children.map((c) => buildNode(c, depth + 1, true));
+    const orderedChildren = pivotColumnGroupTotals === 'after'
+      ? [...childGroups, ...totals]
+      : [...totals, ...childGroups];
     return {
       groupId: pivotGroupId(node.path),
       headerName: node.value,
       openByDefault,
-      children: [...totals, ...childGroups],
+      children: orderedChildren,
     };
   };
 
-  return { defs: keyTree.map((n) => buildNode(n, 0, false)), cellSpecById };
+  const matrixDefs = keyTree.map((n) => buildNode(n, 0, false));
+
+  // Cycle 18 / Task 8e — emit the optional row-totals group (one leaf
+  // per value column). The cell reader detects the row-total prefix and
+  // reads from `chunk.groupTotals[valueColId]` instead of the pivot map.
+  if (pivotRowTotals !== null && valueColumns.length > 0) {
+    const totalLeaves: CColDef<TRow>[] = valueColumns.map((vc) => {
+      const colId = pivotRowTotalColumnId(vc.colId);
+      cellSpecById.set(colId, {
+        // The sentinel marker lands the same lookup PivotPass populates
+        // for its row-total bucket. The join of a single-element path
+        // produces the marker verbatim (no PIVOT_PATH_SEP).
+        pivotPath: [PIVOT_ROW_TOTAL_PATH_MARKER],
+        valueColId: vc.colId,
+        isRowTotal: true,
+      });
+      const def: CColDef<TRow> = {
+        colId,
+        headerName: vc.headerName ?? vc.colId,
+        cellDataType: vc.cellDataType ?? 'number',
+        // Row totals are sortable too — the user can sort row groups
+        // by the row-total just like by any other pivot result column.
+        sortable: true,
+      };
+      if (vc.width !== undefined) def.width = vc.width;
+      return def;
+    });
+    const totalsGroup: CColGroupDef<TRow> = {
+      groupId: [PIVOT_RESULT_COL_PREFIX, 'grp', 'rowtotal'].join(PIVOT_ID_SEP),
+      headerName: 'Total',
+      openByDefault: true,
+      children: totalLeaves,
+    };
+    const defs = pivotRowTotals === 'before'
+      ? [totalsGroup, ...matrixDefs]
+      : [...matrixDefs, totalsGroup];
+    return { defs, cellSpecById };
+  }
+
+  return { defs: matrixDefs, cellSpecById };
 }
 
 /** True when `groupId` identifies a synthesized pivot-result column GROUP

@@ -672,6 +672,22 @@ export interface CGridOptions<TRow = any> {
    *  always-sorted matrix opt in by setting `true`. AG-Grid parity:
    *  `pivot-behaviors-prompts.md` Prompt 8. */
   enableStrictPivotColumnOrder?: boolean;
+  /** Cycle 18 / Task 8e — adds a totals column group with ONE leaf per
+   *  value column at the start or end of the synthesized pivot output.
+   *  Each totals cell reads `chunk.groupTotals[valueColId]` — i.e. the
+   *  per-row-group aggregate ACROSS all pivot values (AggPass output,
+   *  not PivotPass). `null` / `undefined` (default) shows no totals.
+   *  AG-Grid parity: `pivotRowTotals`. */
+  pivotRowTotals?: 'before' | 'after' | null;
+  /** Cycle 18 / Task 8e — for multi-level pivots, controls whether the
+   *  per-prefix subtotal leaves (the per-pivot-group aggregate Task 4
+   *  already emits with `columnGroupShow: 'closed'`) show when the
+   *  group is OPEN too. `'before'` places the subtotal as the first
+   *  child of each non-leaf pivot group; `'after'` places it last;
+   *  `null` / `undefined` (default) keeps Task 4's behaviour (subtotal
+   *  visible only when the group is collapsed). AG-Grid parity:
+   *  `pivotColumnGroupTotals`. */
+  pivotColumnGroupTotals?: 'before' | 'after' | null;
   /** Cycle 15 / Task 6 — when `true`, the row group panel's chips do
    *  not render a sort indicator (Cycle 15 ships chips without a sort
    *  glyph today; this flag is plumbed for forward compatibility so
