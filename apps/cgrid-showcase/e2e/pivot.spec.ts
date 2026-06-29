@@ -156,6 +156,61 @@ test.describe('pivot showcase feature', () => {
     expect(state.pivotCols).toEqual(['region', 'sector']);
   });
 
+  test('parent pivot group (Region) is toggleable — collapse hides child sub-groups, only Total leaf stays', async ({ page }) => {
+    // AG-Grid parity: with `pivotColumnGroupTotals: 'after'` the
+    // showcase pre-seeds an always-visible Total sub-group inside each
+    // region. Clicking the parent region header should collapse the
+    // sector sub-groups while keeping the Total. This is the
+    // "ag-grid allows the user to collapse/expand child column groups
+    // from the parent" behaviour. Verified at the API level: toggling
+    // a region's column-group state drops every Energy/Finance/etc.
+    // leaf from columnOrder while the Americas Total leaves stay.
+    await gotoFeature(page, 'pivot');
+    await page.waitForTimeout(500);
+
+    const before = await page.evaluate(() => {
+      const g = window.__cgrid as unknown as { columnOrder: Array<{ colId: string }> };
+      return g.columnOrder.map((c) => c.colId);
+    });
+    // Sanity: Americas/Energy leaves are present in the expanded default.
+    expect(before.some((id) => id.includes('Americas') && id.includes('Energy'))).toBe(true);
+
+    // Collapse the Americas region group.
+    await page.evaluate(() => {
+      const g = window.__cgrid as unknown as { toggleColumnGroup: (id: string) => void };
+      g.toggleColumnGroup(['pivotcol', 'grp', 'Americas'].join('\x01'));
+    });
+    await page.waitForTimeout(300);
+
+    const afterCollapse = await page.evaluate(() => {
+      const g = window.__cgrid as unknown as { columnOrder: Array<{ colId: string }> };
+      return g.columnOrder.map((c) => c.colId);
+    });
+    // Americas/Energy hidden; Americas Total leaves stay. The Total
+    // leaves use the SHORT pivot path (just `Americas`, no sector) —
+    // they're the prefix-aggregate leaves wrapped in the Total sub-
+    // group. The full sector leaves use `Americas/<Sector>/<value>`.
+    expect(afterCollapse.some((id) => id.includes('Americas') && id.includes('Energy'))).toBe(false);
+    expect(afterCollapse.some(
+      (id) => /^pivotcol\x01Americas\x01[^\x01]+$/.test(id),
+    )).toBe(true);
+    // Asia + Europe still expanded — their sub-group leaves remain.
+    expect(afterCollapse.some((id) => id.includes('Asia') && id.includes('Tech'))).toBe(true);
+
+    // Re-toggle to expand.
+    await page.evaluate(() => {
+      const g = window.__cgrid as unknown as { toggleColumnGroup: (id: string) => void };
+      g.toggleColumnGroup(['pivotcol', 'grp', 'Americas'].join('\x01'));
+    });
+    await page.waitForTimeout(300);
+
+    const afterExpand = await page.evaluate(() => {
+      const g = window.__cgrid as unknown as { columnOrder: Array<{ colId: string }> };
+      return g.columnOrder.map((c) => c.colId);
+    });
+    expect(afterExpand).toEqual(before);
+  });
+
   test('clicking a leaf pivot group header (sector row) is a no-op — does NOT hide the column', async ({ page }) => {
     // Regression: HeaderClick.handleClick used to call
     // `toggleColumnGroup` for ANY headerGroup hit. Leaf pivot groups

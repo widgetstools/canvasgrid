@@ -366,10 +366,20 @@ function paintBand(
           // `toggleColumnGroup`.
           let pivotGroupExpand: 'open' | 'closed' | undefined;
           if (groupDef && isPivotResultGroupId(groupDef.groupId) && getColumnGroupOpen) {
-            const hasTotalsLeaf = groupDef.children.some(
+            // Cycle 18 / Task 9 follow-up (AG parity) — paint a chevron
+            // when the toggle has a visible effect, which is when EITHER:
+            //   - the group has a sub-group child (branch pivot group;
+            //     collapsing hides every value-col leaf inside the
+            //     descendant sub-groups while always-visible leaves
+            //     stay — the AG-Grid default behaviour); OR
+            //   - the group has a direct `columnGroupShow:'closed'`
+            //     leaf (legacy Cycle 18 / Task 4 — collapse reveals the
+            //     fallback total leaf).
+            const hasBranchChild = groupDef.children.some((c) => c.kind === 'group');
+            const hasClosedLeaf = groupDef.children.some(
               (c) => c.kind === 'leaf' && c.colDef.columnGroupShow === 'closed',
             );
-            if (hasTotalsLeaf) {
+            if (hasBranchChild || hasClosedLeaf) {
               pivotGroupExpand = getColumnGroupOpen(groupDef.groupId) ? 'open' : 'closed';
             }
           }

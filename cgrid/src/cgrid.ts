@@ -4876,15 +4876,18 @@ export class CGrid<TRow = any> {
    *  chevron-eligibility rule. A column group is toggleable when:
    *    - It's a regular (non-pivot) column group — Cycle 4 / Task 4
    *      groups have always been toggleable, no change there.
-   *    - OR it's a pivot result group that emitted a
-   *      `columnGroupShow:'closed'` totals leaf during synthesis
-   *      (branch pivot groups — those have a fallback leaf to show
-   *      when collapsed, so the toggle is meaningful).
-   *  Leaf pivot groups (deepest pivot level — sectors under a
-   *  multi-level pivot, or every group of a 1-level pivot) have no
-   *  closed-state totals leaf; collapsing them would hide their value-
-   *  col leaves with NOTHING to fall back on. The user reported this
-   *  as "clicking on any cell of the sector row hides that column".
+   *    - OR it's a BRANCH pivot result group — defined as a pivot
+   *      group with at least one CHILD GROUP (a deeper pivot level
+   *      below it). AG-Grid parity: the user can collapse/expand the
+   *      parent to hide/show all the child column groups beneath it,
+   *      and the collapsed state surfaces the rollup leaf (the Total
+   *      sub-group when `pivotColumnGroupTotals` is set, or the
+   *      legacy `columnGroupShow:'closed'` leaf otherwise).
+   *  LEAF pivot groups (deepest pivot level — sectors under a multi-
+   *  level pivot, or every group of a 1-level pivot) have no child
+   *  groups, only value-col leaves. Collapsing them would hide
+   *  everything with nothing to fall back on (the user reported this
+   *  as "clicking on any cell of the sector row hides that column").
    *  HeaderClick uses this predicate to short-circuit the toggle for
    *  those groups so the click becomes a no-op. */
   canToggleColumnGroup(groupId: string): boolean {
@@ -4892,12 +4895,21 @@ export class CGrid<TRow = any> {
     if (!group) return false;
     // Non-pivot groups are toggleable per legacy Cycle 4 behaviour.
     if (!isPivotResultGroupId(groupId)) return true;
-    // Pivot result groups — only toggleable when they emitted a
-    // `columnGroupShow:'closed'` leaf (the synthesized totals leaf).
-    // The synthesizer attaches that leaf to BRANCH pivot groups only;
-    // leaf pivot groups (no further pivot subgroups) have no totals
-    // leaf, so toggling them would hide their value-col leaves with
-    // nothing to fall back on.
+    // Pivot result groups — toggleable when they have at least one
+    // CHILD GROUP (branch group) OR a `columnGroupShow:'closed'`
+    // direct leaf (legacy Task 4 fallback). Either signal indicates
+    // collapsing would have a visible effect: child groups hide on
+    // collapse; closed-state leaves appear on collapse.
+    for (const childGroupId of this.columnTree.groupById.keys()) {
+      if (childGroupId === groupId) continue;
+      const child = this.columnTree.groupById.get(childGroupId);
+      if (!child) continue;
+      // Direct parent check: child's leafColIds are a subset of
+      // group's leafColIds AND the child is one level deeper.
+      // Simpler proxy: the child's groupId starts with the parent's
+      // groupId + the path separator (pivot ids encode the path).
+      if (childGroupId.startsWith(groupId + '\x01')) return true;
+    }
     for (const leafId of group.leafColIds) {
       const def = this.columnDefsMap.get(leafId);
       if (def?.columnGroupShow === 'closed') return true;
