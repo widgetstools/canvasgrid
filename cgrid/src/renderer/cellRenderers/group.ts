@@ -102,6 +102,14 @@ export interface GroupCellValue {
    *  down-pointing. `false` paints right-pointing. Data rows are
    *  always "expanded" (no chevron paints anyway). */
   readonly isExpanded: boolean;
+  /** Cycle 18 / Task 9 follow-up — when `true` the chevron is NOT
+   *  painted at all. Set by the cgrid layer when expanding would
+   *  reveal nothing visible — e.g. the group sits at the deepest
+   *  row-group level AND pivot mode is active (leaf data rows are
+   *  suppressed under pivot, so the user has nothing to drill into).
+   *  Indent + value + count badge still paint per the standard
+   *  layout; only the caret is omitted. */
+  readonly suppressChevron?: boolean;
   /** Cycle 15 / Task 8 — when present, the renderer paints a tri-state
    *  checkbox between the chevron and the value text. Three states
    *  differentiated by interior shape only (empty / horizontal dash /
@@ -223,14 +231,20 @@ export const groupCell: CellPainter = {
     const cy = p.bounds.y + p.bounds.h / 2;
     const left = p.bounds.x + PADDING + indentX;
     const chevronCx = left + CHEVRON_SIZE / 2;
-    drawIcon(
-      gc,
-      groupValue.isExpanded ? 'chevron-down' : 'chevron-right',
-      chevronCx,
-      cy,
-      CHEVRON_SIZE,
-      { color: chevronColor, strokeWidth: 2 },
-    );
+    // Cycle 18 / Task 9 follow-up — under pivot mode the deepest
+    // row-group level has no expandable children (leaf data rows are
+    // hidden). cgrid stamps `suppressChevron: true` on those rows so
+    // the caret doesn't paint a misleading "click to expand" hint.
+    if (!groupValue.suppressChevron) {
+      drawIcon(
+        gc,
+        groupValue.isExpanded ? 'chevron-down' : 'chevron-right',
+        chevronCx,
+        cy,
+        CHEVRON_SIZE,
+        { color: chevronColor, strokeWidth: 2 },
+      );
+    }
 
     // Cycle 15 / Task 8 — tri-state checkbox slot. Paints when
     // `groupSelectsChildren` is on (cgrid.cellAt threads

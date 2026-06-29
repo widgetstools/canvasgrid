@@ -211,6 +211,40 @@ test.describe('pivot showcase feature', () => {
     expect(afterExpand).toEqual(before);
   });
 
+  test('group rows have no expand caret under pivot mode (deepest row-group level)', async ({ page }) => {
+    // AG-Grid parity: under pivot mode, leaf data rows are suppressed
+    // (cgrid commit 8c2f398). Group rows at the deepest row-group level
+    // therefore have nothing to expand into — the chevron caret was
+    // misleading. cgrid's groupCellContextAt now stamps
+    // `suppressChevron: true` on those rows + the chevron hit-test
+    // bails out so the cell-click handling stays normal. Asserted at
+    // the cellAt level: AMER's GroupCellValue.suppressChevron === true.
+    await gotoFeature(page, 'pivot');
+    await page.waitForTimeout(400);
+
+    const suppressFlags = await page.evaluate(() => {
+      const grid = window.__cgrid as unknown as {
+        chunk: { rowStart: number; rowCount: number; rowKinds?: Uint8Array };
+        cellAt: (rowIndex: number, colId: string) => { value: unknown } | null;
+      };
+      const chunk = grid.chunk;
+      const kinds = chunk.rowKinds ?? new Uint8Array(0);
+      // Read the GroupCellValue payload off the auto-group column for
+      // every group row in the chunk.
+      const out: Array<boolean | undefined> = [];
+      for (let i = 0; i < chunk.rowCount; i++) {
+        if ((kinds[i] ?? 0) !== 1) continue;
+        const cell = grid.cellAt(chunk.rowStart + i, 'ag-Grid-AutoColumn');
+        const val = cell?.value as { suppressChevron?: boolean } | undefined;
+        out.push(val?.suppressChevron);
+      }
+      return out;
+    });
+
+    // Four desk groups, all at the deepest row-group level, all suppress.
+    expect(suppressFlags).toEqual([true, true, true, true]);
+  });
+
   test('clicking a leaf pivot group header (sector row) is a no-op — does NOT hide the column', async ({ page }) => {
     // Regression: HeaderClick.handleClick used to call
     // `toggleColumnGroup` for ANY headerGroup hit. Leaf pivot groups

@@ -5087,6 +5087,17 @@ export class CGrid<TRow = any> {
     // Chevrons only live on the column whose depth matches the row's.
     const colDepth = autoGroupColumnDepthFromId(col.colId);
     if (colDepth !== null && colDepth !== rowDepth) return null;
+    // Cycle 18 / Task 9 follow-up — when the chevron is suppressed
+    // (deepest row-group level under pivot mode; leaf rows hidden so
+    // nothing to expand into), the hit-test must also bail so a
+    // click on the chevron's would-be slot stays a normal cell click
+    // instead of a stealthy group toggle.
+    const rowGroupDepthCount = this.groupingState.getRowGroupColumns().length;
+    if (
+      this.pivotActive
+      && rowGroupDepthCount > 0
+      && rowDepth === rowGroupDepthCount - 1
+    ) return null;
     // Chevron geometry must agree with `renderer/cellRenderers/group.ts`.
     // PADDING + CHEVRON_SIZE + indent unit live as constants in both
     // files; if either drifts the chevron paints in one place and is
@@ -5285,6 +5296,19 @@ export class CGrid<TRow = any> {
     const suppressCount = this.options.suppressCount === true
       || this.options.groupRowRendererParams?.suppressCount === true;
     const innerRenderer = this.options.groupRowRendererParams?.innerRenderer;
+    // Cycle 18 / Task 9 follow-up — under pivot mode a group at the
+    // deepest row-group level has nothing to expand into: leaf data
+    // rows are suppressed by the worker slicer (commit 8c2f398), so
+    // toggling the chevron reveals nothing. Suppress the caret on
+    // those rows so the user isn't tricked into thinking there's
+    // hidden content. Non-pivot mode keeps the legacy behaviour:
+    // every group row paints its chevron even when it has zero child
+    // groups (clicking still toggles to reveal leaf rows).
+    const rowGroupDepthCount = this.groupingState.getRowGroupColumns().length;
+    const suppressChevron = rowKind === 1
+      && this.pivotActive
+      && rowGroupDepthCount > 0
+      && depth === rowGroupDepthCount - 1;
     return {
       kind: 'group',
       rowKind,
@@ -5295,6 +5319,7 @@ export class CGrid<TRow = any> {
       selectionState,
       suppressCount: suppressCount || undefined,
       innerRenderer,
+      suppressChevron: suppressChevron || undefined,
     };
   }
 
