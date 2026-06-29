@@ -479,6 +479,14 @@ export class WorkerClient {
     }).then((r) => r.buffer);
   }
 
+  /** Cycle 20 / Task 4 — fetch the full visible row set so callbacks
+   *  (main-only functions) can run before serialization. */
+  getExportRows(): Promise<Array<Record<string, unknown>>> {
+    return this.send<{ rows: Array<Record<string, unknown>> }>({
+      type: 'getExportRows', payload: {},
+    }).then((r) => r.rows);
+  }
+
   destroy(): void {
     this.worker.terminate();
     this.pending.forEach((p) => p.reject(new Error('worker terminated')));

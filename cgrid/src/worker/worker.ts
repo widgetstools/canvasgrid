@@ -1660,6 +1660,21 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             post({ id: req.id, type: 'exportDataResult', format, buffer }, [buffer]);
             break;
           }
+
+          case 'getExportRows': {
+            // Cycle 20 / Task 4 — materialised visible rows for the
+            // main-side serialization path (used when an export
+            // callback is configured; callbacks are functions and
+            // can't run inside the worker).
+            const visIds = await visibleAsync();
+            const rows: Array<Record<string, unknown>> = [];
+            for (const rowId of visIds) {
+              const data = state.store.getById(rowId);
+              if (data !== undefined) rows.push(data as Record<string, unknown>);
+            }
+            post({ id: req.id, type: 'getExportRowsResult', rows });
+            break;
+          }
         }
       } catch (err) {
         post({ id: (req as { id: number }).id, type: 'error', error: String((err as Error).message ?? err) });

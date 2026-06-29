@@ -475,6 +475,14 @@ export interface CGridOptions<TRow = any> {
    *  a bar with built-in keys renders the inert stubs. */
   statusBar?: StatusBarDef | boolean;
 
+  /** Cycle 20 / Task 4 — named callback registry for export transforms.
+   *  Functions can't cross the worker postMessage boundary, so apps
+   *  register callbacks at construction time keyed by name. The
+   *  export params (`processCellCallback`, `processHeaderCallback`,
+   *  etc.) reference callbacks by name; cgrid runs the matching
+   *  callback main-side over the rows the worker hands back. */
+  exportCallbacks?: Record<string, ExportCallback>;
+
   /** Cycle 14 / Task 1 — pinned grand-totals row. When set, a single
    *  non-scrolling row mounts at the grid body's `'top'` or `'bottom'`
    *  edge and displays the worker-computed `chunk.totals` for every
@@ -1761,6 +1769,21 @@ export interface CSetFilterParams extends CFilterParams {
 }
 
 export interface GroupModel { rowGroupCols: string[] }
+
+/** Cycle 20 / Task 4 — value-transform callback fired during export.
+ *  Same shape covers `processCellCallback`, `processHeaderCallback`,
+ *  and `processRowGroupCallback` — apps switch on `colId` /
+ *  `kind` to decide what to do. */
+export type ExportCallback = (params: {
+  value: unknown;
+  colId: string;
+  /** `'cell'` for data cells, `'header'` for column headers,
+   *  `'rowGroup'` for group-row labels. */
+  kind: 'cell' | 'header' | 'rowGroup';
+  /** The row's full data object (cells only). Undefined for header /
+   *  rowGroup invocations. */
+  node?: Record<string, unknown>;
+}) => unknown;
 
 export interface Tx<TRow = any> {
   add?: TRow[];

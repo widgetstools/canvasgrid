@@ -518,6 +518,15 @@ export type WorkerRequest =
          *  worker passes only the relevant subset to each writer. */
         options: Record<string, unknown>;
       };
+    }
+  /** Cycle 20 / Task 4 — ship the materialised visible rows + the
+   *  column list back to main so callbacks (which can't postMessage
+   *  to a worker) can run main-side. Used by the export path when
+   *  any `process*Callback` is referenced. */
+  | {
+      id: ReqId;
+      type: 'getExportRows';
+      payload: Record<string, never>;
     };
 
 export type WorkerResponse =
@@ -594,6 +603,7 @@ export type WorkerResponse =
    *  (zero-copy) so a 100k-row XLSX doesn't pay a copy on its way
    *  to main. */
   | { id: ReqId; type: 'exportDataResult'; format: 'csv' | 'xlsx'; buffer: ArrayBuffer }
+  | { id: ReqId; type: 'getExportRowsResult'; rows: Array<Record<string, unknown>> }
   /** Cycle 10 / Task 4 — parsed `string[][]` for the supplied payload.
    *  Rows are in source order; cells are raw strings (RFC-4180 quoting
    *  already unwrapped). The main thread anchors the grid at the focused
