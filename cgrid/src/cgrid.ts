@@ -3231,6 +3231,35 @@ export class CGrid<TRow = any> {
     return this.columnDefsMap.get(colId)?.enableValue === true;
   }
 
+  /** Cycle 18 / Task 7 — `true` when the column's resolved colDef would
+   *  render in the body (i.e. `hide !== true`). Distinct from "currently
+   *  paints" — a hidden column still rides `columnDefsMap` and
+   *  `getColumnState()`. Gates the "Scroll to column" context-menu item:
+   *  scrolling to a hidden column is a no-op. */
+  isColumnVisible(colId: string): boolean {
+    const def = this.columnDefsMap.get(colId);
+    return def !== undefined && def.hide !== true;
+  }
+
+  /** Cycle 18 / Task 7 — names of every aggregation the "Value:
+   *  Aggregate `<col>`" submenu offers. The built-in subset
+   *  (`sum / avg / min / max / count`) plus any names registered via
+   *  `CGridOptions.aggFuncs` / `setGridOption('aggFuncs', …)`. `first` /
+   *  `last` are intentionally excluded — AG-Grid's value submenu omits
+   *  them too (not aggregations, just array access). Read at menu-open
+   *  time so a runtime `aggFuncs` swap takes effect on the next
+   *  right-click without re-wiring. */
+  getRegisteredAggFuncNames(): string[] {
+    const out: string[] = ['sum', 'avg', 'min', 'max', 'count'];
+    const custom = this.options.aggFuncs;
+    if (custom) {
+      for (const name of Object.keys(custom)) {
+        if (!out.includes(name)) out.push(name);
+      }
+    }
+    return out;
+  }
+
   /** Cycle 15.5 / Task 2 (gap-fill) — expose the row-group-panel
    *  hit-test on the public CGridApi so external drag sources (columns
    *  tool panel column-list row drag) can route through the panel. */
