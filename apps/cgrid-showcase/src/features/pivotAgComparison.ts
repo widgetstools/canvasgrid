@@ -52,16 +52,20 @@ export const pivotAgComparison: Feature = {
     const cgridTheme = theme;
 
     // ─── Split host into top/bottom panes ────────────────────────────────────
+    // Each pane gets a hard minimum height so neither grid collapses under
+    // the row-group/pivot panel + header overhead. If the viewport is too
+    // short to fit both at min height, scroll the host vertically.
     gridHost.style.display = 'flex';
     gridHost.style.flexDirection = 'column';
     gridHost.style.gap = '8px';
     gridHost.style.width = '100%';
     gridHost.style.height = '100%';
     gridHost.style.minHeight = '0';
+    gridHost.style.overflowY = 'auto';
 
     const makePane = (label: string): { wrap: HTMLDivElement; body: HTMLDivElement } => {
       const wrap = document.createElement('div');
-      wrap.style.cssText = 'flex:1 1 0; min-height:0; display:flex; flex-direction:column;';
+      wrap.style.cssText = 'flex:1 1 0; min-height:420px; display:flex; flex-direction:column;';
       const head = document.createElement('div');
       head.textContent = label;
       head.style.cssText = 'padding:4px 8px; font-size:12px; font-weight:600; color:var(--cg-color-text, #ccc); border-bottom:1px solid rgba(127,127,127,0.2);';
