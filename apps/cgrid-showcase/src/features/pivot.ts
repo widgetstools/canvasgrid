@@ -39,7 +39,9 @@ export const pivot: Feature = {
 
   mount(gridHost, controls, theme) {
     let activeRowTotals: 'before' | 'after' | null = null;
-    let activeColGroupTotals: 'before' | 'after' | null = null;
+    // AG-Grid parity default: pivot column-group totals visible
+    // alongside the expanded children. See construction options below.
+    let activeColGroupTotals: 'before' | 'after' | null = 'after';
 
     const grid = new CGrid<ShowcaseRow>(gridHost, {
       getRowId: (r) => r.id,
@@ -55,17 +57,18 @@ export const pivot: Feature = {
       rowGroupPanelShow: 'always',
       pivotPanelShow: 'always',
       pivotDefaultExpanded: 1,
-      // Cycle 14 — bottom GRAND TOTAL ROW. Under pivot mode this row
-      // aggregates each pivot result column across every row group
-      // (per-column totals across all desks). Combined with
-      // `pivotRowTotals: 'after'` the matrix gets both per-row totals
-      // (right column) AND per-column totals (bottom row), matching
-      // Excel pivot "Total Result" semantics. Set at construction —
-      // grandTotalRow is not in the runtime-mutable option set today.
-      // `groupIncludeFooter` is the upstream toggle that makes the
-      // worker emit footer entries; `grandTotalRow` rides on top.
-      grandTotalRow: 'bottom',
-      groupIncludeFooter: true,
+      // AG-Grid parity: when a pivot column group is expanded, the
+      // per-group rollup leaf is ALWAYS visible alongside the children
+      // (e.g. Alpine Skiing → 2002 / 2006 / 2010 / sum(Gold) total).
+      // Default our showcase to that behaviour so the matrix matches
+      // the AG-Grid pivot reference; users can toggle off via the
+      // Col-group totals button if they want the closed-only behavior.
+      pivotColumnGroupTotals: 'after',
+      // No `grandTotalRow` / `groupIncludeFooter` by default — AG-Grid
+      // pivot screenshots show a clean per-row-group matrix without a
+      // bottom Total row or per-group footer rows. Apps that want the
+      // Excel-style bottom totals can re-enable both via the Cycle 14
+      // construction options.
       sideBar: {
         toolPanels: ['columns', 'filters'],
         defaultToolPanel: 'agColumnsToolPanel',

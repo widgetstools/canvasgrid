@@ -84,7 +84,7 @@ describe('ColumnsToolPanel', () => {
     document.body.replaceChildren();
   });
 
-  it('init + getGui returns a root with search input, Pivot Mode toggle, column list, and the Column Labels + Values + Row Groups section headers', () => {
+  it('init + getGui returns a root with search input, Pivot Mode toggle, column list, and the Row Groups + Values + Column Labels section headers (AG parity)', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
@@ -95,11 +95,10 @@ describe('ColumnsToolPanel', () => {
     expect(root.querySelector('.cg-columns-panel-list')).not.toBeNull();
     const sections = Array.from(root.querySelectorAll('.cg-columns-panel-section-header'))
       .map((el) => el.textContent?.trim());
-    // Cycle 18 / Task 5 — Column Labels section is now live alongside
-    // Values and Row Groups. Order (top → bottom): pivot-related zones
-    // (Column Labels, Values) sit above Row Groups so they cluster
-    // near the columns list under pivot mode.
-    expect(sections).toEqual(['Column Labels', 'Values', 'Row Groups']);
+    // Cycle 18 / Task 9 follow-up — AG-Grid parity for tool panel
+    // section order. Row dimension first, then Values, then Column
+    // Labels — matches the convention pivot users expect.
+    expect(sections).toEqual(['Row Groups', 'Values', 'Column Labels']);
   });
 
   it('renders one row per columnState entry in order, with the headerName label and the visibility checkbox reflecting `hide`', () => {

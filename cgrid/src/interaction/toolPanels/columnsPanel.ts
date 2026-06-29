@@ -226,21 +226,24 @@ export class ColumnsToolPanel implements ToolPanel {
     this.buildRows();
     this.syncSelectAll();
 
-    // Order (Cycle 18 / Task 5): Column Labels → Values → Row Groups.
-    // Pivot-related zones live closer to the columns list because in
-    // pivot mode they are the "active" surfaces; Row Groups slides down
-    // since it's the non-pivot affordance.
-    if (!this.params.suppressPivots) {
-      this.root.appendChild(this.buildPivotsSection());
-      this.refreshPivotPills();
+    // Order (Cycle 18 / Task 9 follow-up — AG-Grid parity):
+    //   Row Groups → Values → Column Labels
+    // AG-Grid orders the drop zones so the row dimension is listed
+    // first (matching how users read a pivot table: rows → values →
+    // columns). Cycle 18 / Task 5 originally clustered the pivot-
+    // related zones nearer the column list; AG parity overrides that
+    // with the conventional row-first sequencing.
+    if (!this.params.suppressRowGroups) {
+      this.root.appendChild(this.buildRowGroupsSection());
+      this.refreshRowGroupPills();
     }
     if (!this.params.suppressValues) {
       this.root.appendChild(this.buildValuesSection());
       this.refreshValuePills();
     }
-    if (!this.params.suppressRowGroups) {
-      this.root.appendChild(this.buildRowGroupsSection());
-      this.refreshRowGroupPills();
+    if (!this.params.suppressPivots) {
+      this.root.appendChild(this.buildPivotsSection());
+      this.refreshPivotPills();
     }
 
     if (!this.params.suppressSyncLayoutWithGrid) {
