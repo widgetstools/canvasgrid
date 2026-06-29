@@ -47,13 +47,35 @@ export interface ApplyResult {
   newOrder: string[] | null;
 }
 
+/** Cycle 18 / Task 8b — runtime-state providers the snapshot reads from
+ *  for the role slots (rowGroup / rowGroupIndex / pivot / pivotIndex /
+ *  aggFunc). When supplied, these are the authoritative source — NOT the
+ *  static colDef slots — so `api.addRowGroupColumn(...)` / `addPivotColumn`
+ *  / `addValueColumn` / `setValueColumnAggFunc` round-trip through
+ *  `getColumnState`. Omitting any field falls back to the def slot to
+ *  preserve back-compat for callers that don't yet thread runtime state. */
+export interface SnapshotRuntimeProviders {
+  /** Ordered row-group column ids (GroupingState). */
+  rowGroupColumns?: readonly string[];
+  /** Ordered pivot column ids (PivotState). */
+  pivotColumns?: readonly string[];
+  /** Ordered value columns (PivotState). */
+  valueColumns?: ReadonlyArray<{ colId: string; aggFunc: string }>;
+}
+
 /** Build a `CColumnState[]` snapshot from the tree + the current resolved
  *  layout + sort model. Hidden leaves are still included so a future
- *  `applyColumnState(state)` can round-trip the visibility flip. */
+ *  `applyColumnState(state)` can round-trip the visibility flip.
+ *
+ *  Cycle 18 / Task 8b — when `runtime` is supplied, the rowGroup / pivot /
+ *  aggFunc slots are derived from runtime state primitives. The role index
+ *  fields (`rowGroupIndex` / `pivotIndex`) come from the position in the
+ *  ordered list. Otherwise (back-compat) the static colDef slots fill in. */
 export function snapshotState(
   tree: ColumnTree,
   layout: ColumnLayout[],
   sortModel: SortModel,
+  runtime?: SnapshotRuntimeProviders,
 ): CColumnState[] {
   const widthByCol = new Map<string, number>();
   const pinnedByCol = new Map<string, 'left' | 'right'>();
@@ -65,6 +87,21 @@ export function snapshotState(
   sortModel.forEach((entry, i) => {
     sortByCol.set(entry.colId, { direction: entry.direction, index: i });
   });
+
+  // Cycle 18 / Task 8b — index the runtime role lists for O(1) lookup.
+  // `undefined` providers fall back to the def slot.
+  const rowGroupIndexById = new Map<string, number>();
+  const pivotIndexById = new Map<string, number>();
+  const aggFuncById = new Map<string, string>();
+  if (runtime?.rowGroupColumns) {
+    runtime.rowGroupColumns.forEach((id, i) => rowGroupIndexById.set(id, i));
+  }
+  if (runtime?.pivotColumns) {
+    runtime.pivotColumns.forEach((id, i) => pivotIndexById.set(id, i));
+  }
+  if (runtime?.valueColumns) {
+    for (const v of runtime.valueColumns) aggFuncById.set(v.colId, v.aggFunc);
+  }
 
   const out: CColumnState[] = [];
   for (const leaf of tree.leaves) {
@@ -81,6 +118,36 @@ export function snapshotState(
     const width = layoutWidth ?? def.width;
     const pinned = layoutPinned ?? (def.pinned ?? null);
     const sort = sortByCol.get(leaf.colId);
+
+    // Cycle 18 / Task 8b — role fields source from runtime state when
+    // available; otherwise fall through to the def slot for back-compat.
+    let rowGroup: boolean;
+    let rowGroupIndex: number | null;
+    if (runtime?.rowGroupColumns) {
+      const i = rowGroupIndexById.get(leaf.colId);
+      rowGroup = i !== undefined;
+      rowGroupIndex = i ?? null;
+    } else {
+      rowGroup = def.rowGroup ?? false;
+      rowGroupIndex = def.rowGroupIndex ?? null;
+    }
+    let pivot: boolean;
+    let pivotIndex: number | null;
+    if (runtime?.pivotColumns) {
+      const i = pivotIndexById.get(leaf.colId);
+      pivot = i !== undefined;
+      pivotIndex = i ?? null;
+    } else {
+      pivot = def.pivot ?? false;
+      pivotIndex = def.pivotIndex ?? null;
+    }
+    let aggFunc: string | null;
+    if (runtime?.valueColumns) {
+      aggFunc = aggFuncById.get(leaf.colId) ?? null;
+    } else {
+      aggFunc = def.aggFunc ?? null;
+    }
+
     out.push({
       colId: leaf.colId,
       width,
@@ -89,11 +156,11 @@ export function snapshotState(
       pinned,
       sort: sort ? sort.direction : null,
       sortIndex: sort ? sort.index : null,
-      rowGroup: def.rowGroup ?? false,
-      rowGroupIndex: def.rowGroupIndex ?? null,
-      pivot: def.pivot ?? false,
-      pivotIndex: def.pivotIndex ?? null,
-      aggFunc: def.aggFunc ?? null,
+      rowGroup,
+      rowGroupIndex,
+      pivot,
+      pivotIndex,
+      aggFunc,
     });
   }
   return out;

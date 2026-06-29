@@ -6155,9 +6155,25 @@ export class CGrid<TRow = any> {
   }
 
   /** Cycle 6 / Task 2 — serialisable snapshot of every leaf's mutable
-   *  state in declaration order (hidden leaves included). */
+   *  state in declaration order (hidden leaves included).
+   *
+   *  Cycle 18 / Task 8b — the role slots (rowGroup / rowGroupIndex / pivot
+   *  / pivotIndex / aggFunc) source from the runtime GroupingState +
+   *  PivotState primitives. The original Cycle 6 implementation read the
+   *  static colDef slots and missed runtime API mutations — a latent bug
+   *  the tool panel + pivot panel + context menu items all surfaced as
+   *  "Restore doesn't restore". */
   getColumnState(): CColumnState[] {
-    return snapshotState(this.columnTree, this.columnLayout, this.sortModel);
+    return snapshotState(
+      this.columnTree,
+      this.columnLayout,
+      this.sortModel,
+      {
+        rowGroupColumns: this.groupingState.getRowGroupColumns(),
+        pivotColumns: this.pivotState.getPivotColumns(),
+        valueColumns: this.pivotState.getValueColumns(),
+      },
+    );
   }
 
   /** Cycle 6 / Task 2 — restore column state through a single re-layout +
@@ -6471,6 +6487,22 @@ export class CGrid<TRow = any> {
     const oldOrder = this.columnOrder.map((c) => c.colId);
     const result = applyStateToTree(this.columnTree, params, locks);
 
+    // Cycle 18 / Task 8b — fan the role slots out to the runtime state
+    // primitives (GroupingState + PivotState). The Cycle 6 columnState
+    // primitive writes the def slots opaquely; without this step
+    // mutations made via `api.addRowGroupColumn` / `addPivotColumn` /
+    // `addValueColumn` did not round-trip through `applyColumnState`.
+    // Semantics: FULL replace — columns NOT present in the input state
+    // (or present with rowGroup:false / pivot:false / aggFunc:null) are
+    // dropped from the role lists. AG-Grid parity Prompt 8.
+    //
+    // pivotMode itself is NOT in CColumnState (per AG parity); it
+    // persists via the `pivotMode` grid option separately. Apps wanting
+    // a single save/restore call use `setPivotMode` + this method.
+    if (params.state) {
+      this.applyRoleStateFromColumnState(params.state);
+    }
+
     let newDefs = this.options.columnDefs;
     let leafOrderChanged = false;
     if (result.newOrder) {
@@ -6619,6 +6651,57 @@ export class CGrid<TRow = any> {
       .catch((err) => { if (!this.destroyed) console.error('[cgrid] applyColumnState:', err); });
 
     return allFound;
+  }
+
+  /** Cycle 18 / Task 8b — derive the rowGroupColumns / pivotColumns /
+   *  valueColumns lists from a CColumnState array and replace the
+   *  runtime state primitives in one event tick each. The row-group +
+   *  pivot lists honor the per-entry `rowGroupIndex` / `pivotIndex` for
+   *  ordering (stable for ties; columns without an index sort last).
+   *  Value columns preserve the state input order (no separate index).
+   *
+   *  Routed through `setRowGroupColumns` / `setPivotColumns` /
+   *  `setValueColumns` (batch verbs) so the cross-surface event chain
+   *  fires once per role list — NOT once per column. The tool panel +
+   *  pivot panel + context menu items + row group panel all repaint
+   *  from those events. */
+  private applyRoleStateFromColumnState(state: readonly CColumnState[]): void {
+    interface Indexed { colId: string; index: number; declOrder: number }
+    const rowGroups: Indexed[] = [];
+    const pivots: Indexed[] = [];
+    const values: Array<{ colId: string; aggFunc: string }> = [];
+    state.forEach((entry, declOrder) => {
+      if (!this.columnDefsMap.has(entry.colId)) return;
+      if (entry.rowGroup === true) {
+        rowGroups.push({
+          colId: entry.colId,
+          index: entry.rowGroupIndex ?? Number.MAX_SAFE_INTEGER,
+          declOrder,
+        });
+      }
+      if (entry.pivot === true) {
+        pivots.push({
+          colId: entry.colId,
+          index: entry.pivotIndex ?? Number.MAX_SAFE_INTEGER,
+          declOrder,
+        });
+      }
+      if (typeof entry.aggFunc === 'string' && entry.aggFunc.length > 0) {
+        values.push({ colId: entry.colId, aggFunc: entry.aggFunc });
+      }
+    });
+    const sortByIndex = (a: Indexed, b: Indexed) =>
+      (a.index - b.index) || (a.declOrder - b.declOrder);
+    rowGroups.sort(sortByIndex);
+    pivots.sort(sortByIndex);
+
+    // Always call the batch verbs — even on empty lists — so a state
+    // input that omits any column previously assigned to a role clears
+    // that role. The verbs short-circuit when the resulting list is
+    // identical to the current one (no spurious event emission).
+    this.groupingState.setRowGroupColumns(rowGroups.map((e) => e.colId));
+    this.pivotState.setPivotColumns(pivots.map((e) => e.colId));
+    this.pivotState.setValueColumns(values);
   }
 
   /** Build the per-leaf lock + marryChildren constraints used by Task-1's

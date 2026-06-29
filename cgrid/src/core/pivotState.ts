@@ -214,6 +214,23 @@ export class PivotState {
     this.emitChanged('aggFunc');
   }
 
+  /** Replace the ordered value column list wholesale. No-op when
+   *  identical to the current list (same colIds in the same order with
+   *  the same aggFuncs). Used by `applyColumnState` to land a saved
+   *  Grid State in one event tick (Cycle 18 / Task 8b). */
+  setValueColumns(next: PivotValueColumn[]): void {
+    if (this.destroyed) return;
+    const cloned = next.map((v) => ({ colId: v.colId, aggFunc: v.aggFunc }));
+    if (
+      cloned.length === this.valueColumns.length
+      && cloned.every((v, i) =>
+        this.valueColumns[i]!.colId === v.colId
+        && this.valueColumns[i]!.aggFunc === v.aggFunc)
+    ) return;
+    this.valueColumns = cloned;
+    this.emitChanged('set');
+  }
+
   /** Move the value column at index `from` to index `to`. */
   moveValueColumn(from: number, to: number): void {
     if (this.destroyed) return;
