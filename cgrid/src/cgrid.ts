@@ -2,6 +2,11 @@
 // Public surface lives here. Internals live under core/, renderer/, interaction/,
 // worker/, theming/. See docs/superpowers/specs/2026-06-23-canvasgrid-foundation-design.md.
 import './theming/tokens.css';
+// Cycle 22 / Task 5 — load the same tokens.css as a plain string so the
+// shadow-root path can inject a self-contained `<style>` element inside
+// the encapsulated DOM. The `?inline` suffix is a Vite primitive; the
+// import resolves to the compiled CSS text at build time.
+import tokensCssInline from './theming/tokens.css?inline';
 import type {
   CGridOptions, CGridEvent, CGridApi, Tx, TransactionResult, SortModel, FilterModel,
   CFilterModelEntry, GroupModel, FlashCellsParams, SelectionRange,
@@ -455,6 +460,11 @@ export class CGrid<TRow = any> {
   private viewportRequestQueued = false;
 
   private root: HTMLDivElement;
+  /** Cycle 22 / Task 5 — non-null when the grid was constructed with
+   *  `shadowRoot: true`. The constructor attaches the shadow root to
+   *  the supplied container and mounts the grid's entire DOM inside
+   *  it; the destroy path detaches the same root. */
+  private shadowRoot: ShadowRoot | null = null;
   private scroller: HTMLDivElement;
   private sizer: HTMLDivElement;
   private cgridCanvas!: CGridCanvas;
@@ -737,6 +747,26 @@ export class CGrid<TRow = any> {
     if (options.density) {
       this.root.classList.add(`cg-density-${options.density}`);
     }
+    // Cycle 22 / Task 5 — optional shadow-root encapsulation. The grid
+    // attaches an open shadow root to `container` and mounts every
+    // descendant (root + its scroller + canvas + editor overlay) inside
+    // it. The package's tokens.css is inlined as a `<style>` so the
+    // shadow tree gets the full token bundle without an external sheet.
+    // The mount target later in the constructor uses `this.shadowRoot
+    // ?? container`, so the rest of the construction path doesn't need
+    // to know whether shadow mode is active.
+    if (options.shadowRoot) {
+      this.shadowRoot = container.attachShadow({ mode: 'open' });
+      const styleEl = document.createElement('style');
+      styleEl.className = 'cg-shadow-tokens';
+      // Vite's `?inline` resolves to the compiled CSS at build time
+      // (production); the test runtime returns an empty string, which
+      // is fine — the test environment doesn't exercise visual paint,
+      // and apps in shadow-root mode that need additional rules layer
+      // them via `setThemeParams` or a sibling `<style>` element.
+      styleEl.textContent = tokensCssInline;
+      this.shadowRoot.appendChild(styleEl);
+    }
 
     this.scroller = document.createElement('div');
     this.scroller.className = 'cg-scroller';
@@ -754,7 +784,10 @@ export class CGrid<TRow = any> {
     this.editorContainer.style.cssText = 'position:absolute; left:0; top:0; right:0; bottom:0; pointer-events:none;';
     // Children of editorContainer set pointer-events:auto themselves
     this.root.appendChild(this.scroller);
-    container.appendChild(this.root);
+    // Cycle 22 / Task 5 — when shadow mode is active, mount the entire
+    // grid DOM inside the shadow root. Otherwise the grid lives in the
+    // light DOM (the default + lowest-friction path).
+    (this.shadowRoot ?? container).appendChild(this.root);
 
     // 2. Theme + cell renderers
     this.cssReader = new CssReader(this.root);

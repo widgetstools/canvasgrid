@@ -24,6 +24,10 @@ export const INITIAL_ONLY_OPTIONS: ReadonlySet<keyof CGridOptions<any>> = new Se
   'columnDefs',
   'getRowId',
   'worker',
+  // Cycle 22 / Task 5 — shadow-root attach happens once at construction
+  // and the rebuild cost (re-parent every overlay + re-attach worker
+  // listeners) outweighs any plausible runtime flip use case.
+  'shadowRoot',
 ]);
 
 /** Keys handled by the runtime apply table. Anything not here AND not in

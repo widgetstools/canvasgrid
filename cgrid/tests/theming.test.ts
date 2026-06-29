@@ -350,6 +350,78 @@ describe('Cycle 22 / Task 4 — cg-theme-auto class', () => {
   });
 });
 
+describe('Cycle 22 / Task 5 — shadow-root option', () => {
+  beforeEach(() => { document.body.innerHTML = ''; });
+
+  it('attaches a shadow root to the container when shadowRoot is true', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+      theme: 'cg-theme-quartz',
+      shadowRoot: true,
+    } as any);
+    expect(host.shadowRoot).not.toBeNull();
+    expect(host.shadowRoot!.querySelector('.cg-grid')).not.toBeNull();
+    grid.destroy();
+  });
+
+  it('injects a <style> element inside the shadow root for tokens.css', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+      theme: 'cg-theme-quartz',
+      shadowRoot: true,
+    } as any);
+    // The element MUST exist so production builds (where Vite's
+    // `?inline` resolves to the compiled CSS text) ship a self-
+    // contained shadow tree. In the test runtime Vite's inline
+    // pipeline returns an empty string, so we only assert the element
+    // attaches — the content assertion is covered by the prod
+    // production bundle test (verified by the showcase build target).
+    const styleEl = host.shadowRoot!.querySelector('style.cg-shadow-tokens');
+    expect(styleEl).not.toBeNull();
+    grid.destroy();
+  });
+
+  it('does NOT attach a shadow root when shadowRoot is unset or false (default)', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+      theme: 'cg-theme-quartz',
+    } as any);
+    expect(host.shadowRoot).toBeNull();
+    expect(host.querySelector('.cg-grid')).not.toBeNull();
+    grid.destroy();
+  });
+
+  it('setThemeParams writes onto the root inside the shadow tree, not the light DOM', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+      theme: 'cg-theme-quartz',
+      shadowRoot: true,
+    } as any);
+    grid.setThemeParams({ '--cg-row-height': '42px' });
+    const rootInShadow = host.shadowRoot!.querySelector('.cg-grid') as HTMLElement;
+    expect(rootInShadow.style.getPropertyValue('--cg-row-height')).toBe('42px');
+    // No leak into the light DOM.
+    expect((host as HTMLElement).style.getPropertyValue('--cg-row-height')).toBe('');
+    grid.destroy();
+  });
+});
+
 describe('Cycle 22 / Task 1 — inter-column rule + popup/menu tokens', () => {
   beforeEach(() => { document.body.innerHTML = ''; });
 

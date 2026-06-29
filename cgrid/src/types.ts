@@ -166,6 +166,27 @@ export interface CGridOptions<TRow = any> {
    * flip + one viewport recompute, no worker round-trip.
    */
   density?: 'compact' | 'normal' | 'comfortable';
+  /**
+   * Cycle 22 / Task 5 — encapsulate the grid inside a shadow root. When
+   * `true`, the grid attaches an open shadow root to the supplied
+   * container and mounts ALL of its DOM (canvas, scroller, editors,
+   * tool panels, etc.) inside it. The package's tokens.css is also
+   * inlined as a `<style>` element inside the shadow root so the
+   * grid keeps its theme even when the host page ships an
+   * aggressive global reset (Bootstrap, Tailwind preflight, etc.).
+   *
+   * Initial-only — flip it through the constructor, not via
+   * `setGridOption`. The default (`false` / omitted) keeps cgrid in
+   * the light DOM where developer tooling + global CSS inspection
+   * are easiest.
+   *
+   * Known limitation: DOM overlays that mount on `document.body`
+   * (browser-level dialogs) do not inherit shadow-root styles.
+   * Apps using shadow-root mode AND those overlays should declare
+   * a duplicate token block on `body` or use the
+   * `setThemeParams` API on the relevant element.
+   */
+  shadowRoot?: boolean;
   worker?: { url?: string };
 
   /** Hint to skip CSS-animated row transitions. Runtime-mutable; storage-only
