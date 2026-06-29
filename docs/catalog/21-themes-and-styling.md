@@ -142,3 +142,250 @@ The theming system does not emit dedicated events.
 - `pinnedColumnBorder` and `pinnedRowBorder` tokens map directly to lines the canvas engine draws between pane regions; they should be first-class drawing params rather than derived from CSS.
 - Dark mode support in the canvas port requires conditional token sets evaluated at draw time rather than CSS media queries. `withParams({...}, 'dark')` semantics should inform the canvas token resolution strategy.
 - `refreshCells()` has a canvas equivalent: invalidate the cell regions and schedule a re-draw. The trigger contract (which cells are re-evaluated) must be identical so `cellClassRules` updates work the same way.
+
+---
+
+## cgrid Theming Surface (Cycle 22)
+
+cgrid's theming is **CSS-variable-driven from day one** — the `cssReader.ts`
+module reads every paint-relevant value from `--cg-*` tokens off the grid
+root element. Cycle 22 closes the parity gap with ag-grid's full Quartz
+variable set, then adds three ergonomic layers on top:
+
+1. **Density modes** — preset variable bundles (`compact` / `normal` / `comfortable`).
+2. **Theme-parameter API** — runtime per-token overrides via `setThemeParams`.
+3. **`prefers-color-scheme` auto-detect** — light/dark follows OS preference.
+4. **Shadow-root option** — full CSS encapsulation for embedded grids.
+
+### Built-in theme classes
+
+| Class | Tier | Purpose |
+|---|---|---|
+| `cg-theme-quartz` | Community | Light theme. Default. |
+| `cg-theme-quartz-dark` | Community | Dark theme. VS Code Dark Modern palette. |
+| `cg-theme-auto` | Community | Follows OS `prefers-color-scheme` setting via `@media` query. |
+| `cg-theme-print` | Community | Cycle 20 — applied automatically during `domLayout: 'print'`. |
+
+### Full token table
+
+Tokens declared in `src/theming/tokens.css` and read by `CssReader.read()`
+into a `ResolvedTheme` object. The painter pipeline reads from
+`ResolvedTheme`, never from `getComputedStyle` per cell.
+
+#### Core (rows + paint surfaces)
+
+| Token | Light default | Dark default | Purpose |
+|---|---|---|---|
+| `--cg-font-family` | JetBrains Mono stack | (same) | Default font family for cells + headers. |
+| `--cg-font-size` | `13px` | `13px` | Default cell font size. |
+| `--cg-font-size-sm` | `12px` | `12px` | Floating filter row + status bar. |
+| `--cg-row-height` | `32px` | `32px` | Data-row height. Overridable per density. |
+| `--cg-header-height` | `40px` | `40px` | Header-row height. Overridable per density. |
+| `--cg-fg-color` | `#1a1f24` | `#d4d4d4` | Body text. |
+| `--cg-bg-color` | `#ffffff` | `#1e1e1e` | Body + canvas background. |
+| `--cg-row-alt-bg` | `#ffffff` | `#1e1e1e` | Alternating row stripe. |
+| `--cg-row-hover-bg` | `#eef1f3` | `#2a2d2e` | Row hover tint. |
+| `--cg-row-selected-bg` | `rgb(56 132 195 / 22%)` | `rgb(38 79 120 / 50%)` | Selected-row tint. |
+| `--cg-header-bg` | `#f4f6f8` | `#252526` | Header cell background. |
+| `--cg-header-fg` | `#1a1f24` | `#d4d4d4` | Header cell text. |
+| `--cg-border-color` | `#d5dbe0` | `#454545` | Structural borders (pinned edge, body↔header). |
+| `--cg-grid-line-color` | `#e3e8eb` | `#373a3b` | Default horizontal + vertical cell rules. |
+| `--cg-cell-horizontal-border-color` | `transparent` | `transparent` | **Cycle 22 / Task 1.** Optional override for vertical inter-column rules. |
+| `--cg-focus-ring-color` | `#3b82f6` | `#007fd4` | Focus ring on focused cell. |
+| `--cg-focus-ring-width` | `2px` | `2px` | Focus ring stroke width. |
+| `--cg-resizer-hot-zone` | `4px` | `4px` | Column-resize handle hot zone. |
+| `--cg-scrollbar-thickness` | `6px` | `6px` | Native scrollbar track + thumb width. |
+
+#### Inputs (Cycle 22 / Task 1)
+
+| Token | Light default | Dark default | Purpose |
+|---|---|---|---|
+| `--cg-input-bg` | `#ffffff` | `#2a2d2e` | Floating filter, cell editor, tool panel inputs. |
+| `--cg-input-fg` | `#1a1f24` | `inherit` | Input text. |
+| `--cg-input-border` | `#d1d5db` | `inherit` from `--cg-border-color` | Input border. |
+| `--cg-input-focus-border` | `inherit` from `--cg-focus-ring-color` | (same) | Focused input border. |
+| `--cg-input-disabled-bg` | `#f3f4f6` | `#232323` | Disabled input bg. |
+
+#### Tooltip (Cycle 22 / Task 1)
+
+| Token | Light default | Dark default | Purpose |
+|---|---|---|---|
+| `--cg-tooltip-bg` | `rgba(15, 23, 42, 0.95)` | `rgba(40, 44, 52, 0.96)` | Tooltip surface (sparkline tooltip + future popovers). |
+| `--cg-tooltip-fg` | `#ffffff` | `#f8fafc` | Tooltip text. |
+| `--cg-tooltip-border` | `rgba(255,255,255,0.08)` | (same) | Tooltip outline. |
+
+#### Checkbox accent (Cycle 22 / Task 1)
+
+| Token | Light default | Dark default | Purpose |
+|---|---|---|---|
+| `--cg-checkbox-checked-bg` | `transparent` | `transparent` | Filled-checkbox accent. `transparent` ships the outlined-only look. |
+| `--cg-checkbox-checked-fg` | `inherit` from `--cg-fg-color` | (same) | Checkmark color when accent fill is set. |
+
+#### Popups / menus (Cycle 22 / Task 1)
+
+| Token | Light default | Dark default | Purpose |
+|---|---|---|---|
+| `--cg-popup-bg` | `#ffffff` | `#252526` | Filter popup, context menu, tool-panel popup. |
+| `--cg-popup-border` | `#d1d5db` | `inherit` from `--cg-border-color` | Popup outline. |
+| `--cg-menu-hover-bg` | `inherit` from `--cg-row-hover-bg` | (same) | Menu item hover tint. |
+
+#### Flash + filter + sort (existing tokens, documented for completeness)
+
+| Token | Light default | Dark default | Purpose |
+|---|---|---|---|
+| `--cg-flash-from-color` | `#fef3c7` | `#b8860b` | Cell-change-flash start color. |
+| `--cg-flash-to-color` | `rgba(254,243,199,0)` | `rgba(184,134,11,0)` | Cell-change-flash fade target. |
+| `--cg-floating-filter-bg` | `#ffffff` | `color-mix(in srgb, var(--cg-header-bg) 60%, transparent)` | Floating filter row input bg. |
+| `--cg-floating-filter-border` | `#d5dbe0` | `color-mix(in srgb, var(--cg-border-color) 80%, transparent)` | Floating filter input border. |
+| `--cg-floating-filter-placeholder` | `#94a3b8` | `#6e7681` | Placeholder text color. |
+| `--cg-quick-filter-match-bg` | `#fff3b8` | `#4d3700` | Quick-filter highlight tint. |
+| `--cg-unsort-icon-color` | `rgba(26,31,36,0.48)` | `rgba(212,212,212,0.4)` | Faint chevron-pair on sortable-but-unsorted columns. |
+| `--cg-range-fill-color` | `rgb(59 130 246 / 22%)` | `rgb(0 127 212 / 20%)` | Range-selection fill tint. |
+| `--cg-range-border-color` | `#3b82f6` | `#007fd4` | Range-selection outline. |
+
+#### Totals + pinned + group (existing — Cycle 14/15)
+
+See the inline comments in `src/theming/tokens.css` for full rationale. Tokens: `--cg-totals-*`, `--cg-pinned-row-*`, `--cg-group-*`, `--cg-group-checkbox-*`, `--cg-group-footer-*`.
+
+#### Density (Cycle 22 / Task 2)
+
+| Token | `compact` | `normal` | `comfortable` |
+|---|---|---|---|
+| `--cg-row-height` | `24px` | `32px` | `40px` |
+| `--cg-header-height` | `28px` | `40px` | `48px` |
+| `--cg-cell-padding-x` | `4px` | `8px` | `12px` |
+| `--cg-font-size` | `12px` | `13px` | `14px` |
+
+---
+
+### Density modes (Cycle 22 / Task 2)
+
+Three CSS classes layered over any theme class on the grid root
+(`.cg-grid`) bundle row + header dimensions for one coherent step:
+
+```typescript
+new CGrid(host, { density: 'compact', ... });
+
+// Runtime swap — one DOM class flip, no worker round-trip.
+grid.setGridOption('density', 'comfortable');
+```
+
+The option is omittable; without it the active theme's native row/header
+dimensions apply (32 / 40px on Quartz).
+
+---
+
+### Theme-parameter API (Cycle 22 / Task 3)
+
+Apps tune individual `--cg-*` variables without writing CSS. Each patch
+lands as inline styles on the grid root, so `getComputedStyle`
+resolves the override ahead of the theme-class declaration:
+
+```typescript
+grid.setThemeParams({
+  '--cg-row-height': '36px',
+  '--cg-header-bg': '#0f172a',
+  '--cg-header-fg': '#ffffff',
+});
+
+// Round-trip
+grid.getThemeParams();
+// → { '--cg-row-height': '36px', '--cg-header-bg': '#0f172a', '--cg-header-fg': '#ffffff' }
+
+// Clear a single token (falls back to the theme's declared value)
+grid.setThemeParams({ '--cg-row-height': '' });
+```
+
+Side effects per call: one inline-style mutation per patched key, one
+`cssReader.read()`, one viewport recompute, one repaint. No worker
+round-trip.
+
+`getThemeParams()` returns ONLY the overrides set through
+`setThemeParams` — NOT the resolved tokens. Use
+`getComputedStyle(grid.host)` for resolved values.
+
+---
+
+### `prefers-color-scheme` auto-detect (Cycle 22 / Task 4)
+
+`cg-theme-auto` reads the OS color-scheme preference automatically via a
+CSS `@media (prefers-color-scheme: dark)` block. No JS listener — the
+CSS engine reacts to system preference changes and the next paint frame
+picks up the new computed values:
+
+```typescript
+new CGrid(host, { theme: 'cg-theme-auto', ... });
+```
+
+The class also declares `color-scheme: light dark` so native form
+controls inside the grid (date pickers, native scrollbars) adapt
+without a separate listener.
+
+Apps that need explicit control stay on `cg-theme-quartz` /
+`cg-theme-quartz-dark`. Mixing is fine — different grids on the same
+page can pick different theme classes.
+
+---
+
+### Shadow-root encapsulation (Cycle 22 / Task 5)
+
+`shadowRoot: true` mounts the grid inside an open shadow root attached
+to the supplied container. The package's tokens.css is inlined as a
+`<style class="cg-shadow-tokens">` element inside the shadow tree so
+the grid keeps its theme even when the host page ships an aggressive
+global reset (Bootstrap, Tailwind preflight, etc.):
+
+```typescript
+new CGrid(host, {
+  shadowRoot: true,
+  theme: 'cg-theme-quartz',
+  ...
+});
+```
+
+**Initial-only** option. The rebuild cost (re-parenting every overlay +
+re-attaching worker listeners) outweighs any plausible runtime flip
+use case.
+
+`setThemeParams` continues to write onto the grid root inside the
+shadow tree, so per-token theming keeps working under encapsulation.
+
+#### Known limitation
+
+A small set of overlays still mount on `document.body` (browser-level
+popups). Apps using shadow-root mode AND those overlays should mirror
+their token block on `body`:
+
+```css
+body {
+  --cg-popup-bg: #ffffff;
+  --cg-popup-border: #d1d5db;
+  /* …or simply: */
+  /* @import 'cgrid/style.css'; */
+}
+```
+
+Full overlay re-parenting lands in a follow-on cycle.
+
+---
+
+### Migration notes (ag-grid → cgrid)
+
+| ag-grid surface | cgrid equivalent |
+|---|---|
+| `themeQuartz` (object) | `theme: 'cg-theme-quartz'` (string class) |
+| `themeQuartz.withParams({ accentColor: '#0d9488' })` | `setThemeParams({ '--cg-focus-ring-color': '#0d9488' })` |
+| `themeAlpine` / `themeBalham` / `themeMaterial` | Not yet shipped — clone `tokens.css` + add new class. |
+| `withPart(colorSchemeDark)` | `setTheme('cg-theme-quartz-dark')` |
+| `browserColorScheme: 'dark'` | Use `cg-theme-quartz-dark` directly, OR `cg-theme-auto` with OS-level dark mode. |
+| `themeStyleContainer: shadowRoot` | `shadowRoot: true` option. |
+| `loadThemeGoogleFonts: true` | Not shipped — apps `<link>` their own webfont. |
+
+---
+
+### Performance notes
+
+- Theme change = 1 DOM class flip + 1 `cssReader.read()` + 1 `requestRepaint()`. No worker round-trip.
+- Density change = same shape — recomputes `RowHeightIndex` in ≤ 16 ms.
+- `setThemeParams` with 10 overrides = single paint frame.
+- Shadow-root mode adds < 1 ms to grid construction (one `attachShadow` + one `<style>` injection).
