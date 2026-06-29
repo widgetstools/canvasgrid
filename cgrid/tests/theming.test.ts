@@ -1,5 +1,33 @@
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
 import { CssReader } from '../src/theming/cssReader';
+
+// Stub Worker + canvas 2D context for happy-dom so CGrid can construct.
+// Mirrors the setup in cgrid.integration.test.ts.
+beforeAll(() => {
+  (globalThis as any).Worker = class {
+    listeners: Array<(e: { data: any }) => void> = [];
+    constructor(public url: URL) {}
+    postMessage = vi.fn();
+    addEventListener = (_: string, cb: (e: { data: any }) => void) => this.listeners.push(cb);
+    terminate = vi.fn();
+  };
+  HTMLCanvasElement.prototype.getContext = (() => {
+    const fakeCtx: any = {
+      fillRect: vi.fn(), strokeRect: vi.fn(), fillText: vi.fn(),
+      save: vi.fn(), restore: vi.fn(), rect: vi.fn(), clip: vi.fn(),
+      beginPath: vi.fn(), stroke: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(),
+      setTransform: vi.fn(), clearRect: vi.fn(), translate: vi.fn(), scale: vi.fn(),
+      measureText: () => ({ width: 50 }),
+      fillStyle: '', strokeStyle: '', font: '', textBaseline: '',
+      textAlign: '', lineWidth: 1, globalAlpha: 1,
+      lineCap: 'butt', lineJoin: 'miter', miterLimit: 10, lineDashOffset: 0,
+      shadowOffsetX: 0, shadowOffsetY: 0, shadowBlur: 0, shadowColor: '',
+      globalCompositeOperation: 'source-over', imageSmoothingEnabled: true,
+      direction: 'inherit', filter: 'none',
+    };
+    return () => fakeCtx as any;
+  })() as any;
+});
 
 /**
  * Cycle 22 / Task 1 — CSS variable audit. Adds tokens for inputs,
@@ -142,6 +170,73 @@ describe('Cycle 22 / Task 1 — checkbox painter accent wiring', () => {
     // No accent fillRect call — the background-fill path is gated on a
     // non-transparent checkboxCheckedBg.
     expect((ctx.fillRect as any)).not.toHaveBeenCalled();
+  });
+});
+
+describe('Cycle 22 / Task 2 — density modes', () => {
+  beforeEach(() => { document.body.innerHTML = ''; });
+
+  it('applies the cg-density-<mode> class on construction when density is set', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+      theme: 'cg-theme-quartz',
+      density: 'compact',
+    } as any);
+    const root = host.querySelector('.cg-grid') as HTMLElement | null;
+    expect(root).not.toBeNull();
+    expect(root!.classList.contains('cg-density-compact')).toBe(true);
+    grid.destroy();
+  });
+
+  it('omits density classes entirely when no density is specified', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+      theme: 'cg-theme-quartz',
+    } as any);
+    const cls = (host.querySelector('.cg-grid') as HTMLElement).className;
+    expect(cls).not.toContain('cg-density-');
+    grid.destroy();
+  });
+
+  it('swaps the density class via setGridOption("density", ...)', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+      theme: 'cg-theme-quartz',
+      density: 'normal',
+    } as any);
+    grid.setGridOption('density', 'comfortable');
+    const root = host.querySelector('.cg-grid') as HTMLElement;
+    expect(root.classList.contains('cg-density-comfortable')).toBe(true);
+    expect(root.classList.contains('cg-density-normal')).toBe(false);
+    grid.destroy();
+  });
+
+  it('clears the density class when set to undefined', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+      theme: 'cg-theme-quartz',
+      density: 'compact',
+    } as any);
+    grid.setGridOption('density', undefined);
+    const root = host.querySelector('.cg-grid') as HTMLElement;
+    expect(root.className).not.toContain('cg-density-');
+    grid.destroy();
   });
 });
 

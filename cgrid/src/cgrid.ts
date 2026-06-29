@@ -719,7 +719,19 @@ export class CGrid<TRow = any> {
     // interactive.
     this.root = document.createElement('div');
     this.root.style.cssText = 'position:relative; width:100%; height:100%; overflow:hidden;';
+    // Cycle 22 / Task 2 — `cg-grid` is the stable marker class for the
+    // grid root. Density modes, print mode, and any future host-level
+    // chrome layer their own class alongside it; the theme class then
+    // contributes the token bundle.
+    this.root.classList.add('cg-grid');
     this.root.classList.add(options.theme ?? 'cg-theme-quartz');
+    // Cycle 22 / Task 2 — density class on the root. Applied here so
+    // `--cg-row-height` / `--cg-header-height` / `--cg-cell-padding-x`
+    // resolve to the density-bundle's overrides before the first
+    // `cssReader.read()`.
+    if (options.density) {
+      this.root.classList.add(`cg-density-${options.density}`);
+    }
 
     this.scroller = document.createElement('div');
     this.scroller.className = 'cg-scroller';
@@ -4496,6 +4508,25 @@ export class CGrid<TRow = any> {
     this.cgridCanvas.requestRepaint();
   }
 
+  /** Cycle 22 / Task 2 — swap the density-mode class on the root.
+   *  `null` / `undefined` removes any active density class entirely
+   *  (back to the theme's native baseline). The CSS class flip is the
+   *  only DOM mutation — `cssReader.read()` re-resolves the bundle's
+   *  `--cg-row-height` / `--cg-header-height` / `--cg-cell-padding-x`
+   *  overrides, and `recomputeViewport` + `requestRepaint` line the new
+   *  row geometry up on the next frame. No worker round-trip. */
+  setDensity(density: 'compact' | 'normal' | 'comfortable' | null | undefined): void {
+    const current = Array.from(this.root.classList).filter((c) => c.startsWith('cg-density-'));
+    current.forEach((c) => this.root.classList.remove(c));
+    if (density) {
+      this.root.classList.add(`cg-density-${density}`);
+    }
+    this.options.density = density ?? undefined;
+    this.theme = this.cssReader.read();
+    this.recomputeViewport();
+    this.cgridCanvas.requestRepaint();
+  }
+
   /** Read any grid option (runtime or initial). Mirrors ag-grid's
    *  `getGridOption` — useful for app code that needs to round-trip a setting. */
   getGridOption<K extends keyof CGridOptions<TRow>>(key: K): CGridOptions<TRow>[K] | undefined {
@@ -4568,6 +4599,7 @@ export class CGrid<TRow = any> {
     return {
       options: this.options,
       setTheme: (t) => this.setTheme(t),
+      setDensity: (d) => this.setDensity(d),
       rebuildColumns: ({ defaultColDef }) => this.rebuildColumns({ defaultColDef }),
       refreshLayout: () => {
         this.recomputeViewport();

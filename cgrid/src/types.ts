@@ -153,6 +153,19 @@ export interface CGridOptions<TRow = any> {
   cellFadeDuration?: number;
   asyncTransactionWaitMillis?: number;
   theme?: string;
+  /**
+   * Cycle 22 / Task 2 — density-mode preset. Toggling the value swaps
+   * one CSS class on the grid root (`.cg-density-compact` /
+   * `.cg-density-normal` / `.cg-density-comfortable`); each class
+   * overrides `--cg-row-height`, `--cg-header-height`, and
+   * `--cg-cell-padding-x`. Omitting the option (`undefined`) skips
+   * the class entirely so the active theme's native row/header
+   * dimensions apply.
+   *
+   * Runtime-mutable via `setGridOption('density', …)` — single class
+   * flip + one viewport recompute, no worker round-trip.
+   */
+  density?: 'compact' | 'normal' | 'comfortable';
   worker?: { url?: string };
 
   /** Hint to skip CSS-animated row transitions. Runtime-mutable; storage-only

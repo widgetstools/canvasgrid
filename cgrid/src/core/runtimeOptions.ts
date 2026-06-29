@@ -30,6 +30,7 @@ export const INITIAL_ONLY_OPTIONS: ReadonlySet<keyof CGridOptions<any>> = new Se
  *  `INITIAL_ONLY_OPTIONS` is rejected as unknown — keeps the gate tight. */
 export type RuntimeOption =
   | 'theme'
+  | 'density'
   | 'rowHeight'
   | 'headerHeight'
   | 'defaultColDef'
@@ -82,6 +83,12 @@ export type RuntimeOption =
 export interface RuntimeOptionTarget<TRow = any> {
   options: CGridOptions<TRow>;
   setTheme(themeClass: string): void;
+  /** Cycle 22 / Task 2 — swap the density-mode CSS class on the grid
+   *  root (or remove it entirely when `density` is `null` /
+   *  `undefined`). The grid re-reads its theme + recomputes the
+   *  viewport before the next paint so row + header height pick up the
+   *  density bundle's overrides. */
+  setDensity(density: 'compact' | 'normal' | 'comfortable' | null | undefined): void;
   /** Re-resolve the column tree using the current `options.columnDefs` +
    *  the supplied (or current) `defaultColDef`. Triggers viewport + worker
    *  refresh. Used by both the `defaultColDef` runtime apply and the
@@ -169,6 +176,16 @@ export function applyRuntimeOption<TRow>(
   switch (key) {
     case 'theme':
       if (typeof value === 'string') target.setTheme(value);
+      return;
+    case 'density':
+      // Cycle 22 / Task 2 — accept `'compact' | 'normal' | 'comfortable'`
+      // and `null` / `undefined` (clears the density class). The
+      // helper swaps the host class, re-reads tokens, and triggers
+      // one viewport recompute + one repaint.
+      if (value === 'compact' || value === 'normal' || value === 'comfortable'
+          || value === null || value === undefined) {
+        target.setDensity(value as 'compact' | 'normal' | 'comfortable' | null | undefined);
+      }
       return;
     case 'rowHeight':
     case 'headerHeight':
@@ -365,7 +382,7 @@ export function isRuntimeOption(key: string): key is RuntimeOption {
 }
 
 const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
-  'theme', 'rowHeight', 'headerHeight', 'defaultColDef',
+  'theme', 'density', 'rowHeight', 'headerHeight', 'defaultColDef',
   'animateRows', 'rowSelection',
   'suppressColumnVirtualisation', 'suppressRowVirtualisation',
   'enableCellChangeFlash', 'cellFlashDuration', 'cellFadeDuration',

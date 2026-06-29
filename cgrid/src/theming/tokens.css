@@ -236,6 +236,35 @@
   --cg-cell-padding-x: 8px;
 }
 
+/* Cycle 22 / Task 2 — density modes. Three CSS classes layer over any
+ * theme class on the grid root (`.cg-grid`); each bundles row-height,
+ * header-height, and horizontal cell padding overrides for a coherent
+ * density step. The classes are theme-agnostic — they layer cleanly
+ * over both Quartz light and dark — and the API surface is one
+ * runtime option (`density: 'compact' | 'normal' | 'comfortable'`).
+ *
+ * `cg-density-normal` declares the baseline values so apps can flip
+ * BACK to the baseline by setting the class explicitly (instead of
+ * having to clear all density classes via `undefined`). */
+.cg-grid.cg-density-compact {
+  --cg-row-height: 24px;
+  --cg-header-height: 28px;
+  --cg-cell-padding-x: 4px;
+  --cg-font-size: 12px;
+}
+.cg-grid.cg-density-normal {
+  --cg-row-height: 32px;
+  --cg-header-height: 40px;
+  --cg-cell-padding-x: 8px;
+  --cg-font-size: 13px;
+}
+.cg-grid.cg-density-comfortable {
+  --cg-row-height: 40px;
+  --cg-header-height: 48px;
+  --cg-cell-padding-x: 12px;
+  --cg-font-size: 14px;
+}
+
 /* Native scrollbar styling (Chromium/WebKit) — always-visible thumb
  * when the content actually overflows. `overflow: auto` (set inline on
  * the scroller element) hides the tracks when nothing scrolls — the
