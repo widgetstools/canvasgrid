@@ -317,6 +317,39 @@ describe('Cycle 22 / Task 3 — setThemeParams API', () => {
   });
 });
 
+describe('Cycle 22 / Task 4 — cg-theme-auto class', () => {
+  // happy-dom doesn't honor CSS imports at module-load time, so a
+  // standard `document.styleSheets` walk returns empty. Read the
+  // source as text and assert against the declarations — covers both
+  // the `.cg-theme-auto` selector AND the `@media (prefers-color-
+  // scheme: dark)` rule it ships paired with.
+  let cssSource: string;
+  beforeAll(async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const file = path.join(process.cwd(), 'src/theming/tokens.css');
+    cssSource = fs.readFileSync(file, 'utf-8');
+  });
+
+  it('declares a .cg-theme-auto selector in tokens.css', () => {
+    expect(cssSource).toMatch(/\.cg-theme-auto\b/);
+  });
+
+  it('pairs the auto selector with a @media (prefers-color-scheme: dark) override', () => {
+    expect(cssSource).toMatch(/@media\s*\(\s*prefers-color-scheme:\s*dark\s*\)/);
+  });
+
+  it('the dark @media block sets a dark-tone --cg-bg-color (sanity check the dark bundle landed)', () => {
+    // Pluck the dark media block and confirm it sets bg-color to a value
+    // distinct from the light theme's #ffffff.
+    const match = cssSource.match(
+      /@media[^{]*prefers-color-scheme:\s*dark[^{]*\{([\s\S]*?)\}\s*\}/,
+    );
+    expect(match).not.toBeNull();
+    expect(match![1]).toMatch(/--cg-bg-color\s*:\s*#1e1e1e/);
+  });
+});
+
 describe('Cycle 22 / Task 1 — inter-column rule + popup/menu tokens', () => {
   beforeEach(() => { document.body.innerHTML = ''; });
 
