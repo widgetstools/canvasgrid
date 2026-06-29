@@ -852,6 +852,12 @@ export class CGrid<TRow = any> {
       getGroupDepthAt: (rowIndex) => this.groupDepthAt(rowIndex),
       getGroupKeyAt: (rowIndex) => this.groupKeyAt(rowIndex),
       getStickyGroupTotals: (groupKey, colId) => this.totalsCellLookup(colId, groupKey),
+      // Cycle 18 / Task 4 — column group open/closed lookup for the
+      // pivot column-group chevron paint path. byRows reads this on
+      // every header-group paint to flip the chevron direction; the
+      // painter restricts use to BRANCH pivot groups, so non-pivot
+      // group headers (Cycle 4) never call into this lookup.
+      getColumnGroupOpen: (groupId) => this.columnGroupState.isOpen(groupId),
     });
 
     // 7. Canvas wrapper — owns the <canvas>, gc cache, RAF + resize polling.
@@ -1530,19 +1536,23 @@ export class CGrid<TRow = any> {
     // and surface both the per-group event and the broader displayed-columns
     // signal. Done before selection wiring so the first paint sees the right
     // column set even if openByDefault flipped any leaves below.
-    this.columnGroupState.onChange((changed) => {
-      this.columnOrder = this.computeVisibleColumnOrder();
-      this.columnLayout = resolveColumnWidths(this.columnOrder, this.canvasBounds.width || this.scroller.clientWidth || 800);
-      this.recomputeViewport();
-      this.cgridCanvas?.requestRepaint();
-      for (const c of changed) {
-        this.events.emit({ type: 'columnGroupOpened', groupId: c.groupId, open: c.open });
-      }
-      this.events.emit({ type: 'displayedColumnsChanged', source: 'columnGroupOpened' });
-      // Re-fetch the chunk for the new visible-column set so newly-shown
-      // leaves get data instead of blank cells until the next scroll tick.
-      if (this.workerClient) this.requestViewport();
-    });
+    //
+    // Cycle 18 / Task 4 — scrollLeft is intentionally PRESERVED across
+    // pivot column-group toggles (and any other column-group toggle).
+    // This mirrors the row-group scrollTop-preservation invariant: the
+    // user's view anchor in the surviving columns stays put. The native
+    // scroller may auto-clamp scrollLeft when the new column set is
+    // narrower than the cursor's current position (`maxScrollLeft`
+    // shrinks), but that's a one-sided clamp — never an unsolicited
+    // reset to 0.
+    //
+    // The subscription is wrapped in a helper so `applyPivotColumns` /
+    // `revertPivotColumns` can re-subscribe whenever the
+    // `ColumnGroupState` instance is swapped — otherwise the new state
+    // would have no listener and pivot column-group toggles would be
+    // silent no-ops (Cycle 18 / Task 4 regression caught by the
+    // pivotIntegration E2E).
+    this.subscribeColumnGroupState();
 
     // 11. Selection feedback. `ensureRowIndexVisible` / `ensureColIdVisible`
     // run only when the focused cell ACTUALLY changed since the last emit —
@@ -2810,7 +2820,11 @@ export class CGrid<TRow = any> {
         width: primary?.width,
       };
     });
-    const { defs, cellSpecById } = synthesizePivotColumns<TRow>({ keyTree, valueColumns });
+    const { defs, cellSpecById } = synthesizePivotColumns<TRow>({
+      keyTree,
+      valueColumns,
+      pivotDefaultExpanded: this.options.pivotDefaultExpanded,
+    });
 
     // Save the primary structures on first activation so revert restores
     // the exact pre-pivot tree (with its column-group open/closed state).
@@ -2822,6 +2836,7 @@ export class CGrid<TRow = any> {
     const pivotTree = resolveColumnTree<TRow>(defs);
     this.columnTree = pivotTree;
     this.columnGroupState = new ColumnGroupState(pivotTree);
+    this.subscribeColumnGroupState();
     this.columnDefsMap = pivotTree.leafById as Map<string, ResolvedColDef<TRow>>;
     // Keep the auto-group column(s) resolvable for the painter / leaf header.
     for (const col of this.autoGroupColumns) this.columnDefsMap.set(col.colId, col);
@@ -2844,7 +2859,10 @@ export class CGrid<TRow = any> {
   private revertPivotColumns(): void {
     if (!this.pivotActive) return;
     if (this.primaryColumnTree) this.columnTree = this.primaryColumnTree;
-    if (this.primaryColumnGroupState) this.columnGroupState = this.primaryColumnGroupState;
+    if (this.primaryColumnGroupState) {
+      this.columnGroupState = this.primaryColumnGroupState;
+      this.subscribeColumnGroupState();
+    }
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
     for (const col of this.autoGroupColumns) this.columnDefsMap.set(col.colId, col);
     this.pivotCellSpecById = new Map();
@@ -4562,6 +4580,29 @@ export class CGrid<TRow = any> {
 
   private toggleColumnGroup(groupId: string): void {
     this.columnGroupState.toggle(groupId);
+  }
+
+  /** Cycle 18 / Task 4 — (re)attach the column-group-state listener.
+   *  Called from the constructor and from `applyPivotColumns` /
+   *  `revertPivotColumns` whenever a new `ColumnGroupState` is installed
+   *  (pivot synthesis swaps the tree). Disposes the prior subscription
+   *  (if any) so we never accumulate stale listeners. */
+  private columnGroupStateUnsubscribe: (() => void) | null = null;
+  private subscribeColumnGroupState(): void {
+    if (this.columnGroupStateUnsubscribe) this.columnGroupStateUnsubscribe();
+    this.columnGroupStateUnsubscribe = this.columnGroupState.onChange((changed) => {
+      this.columnOrder = this.computeVisibleColumnOrder();
+      this.columnLayout = resolveColumnWidths(this.columnOrder, this.canvasBounds.width || this.scroller.clientWidth || 800);
+      this.recomputeViewport();
+      this.cgridCanvas?.requestRepaint();
+      for (const c of changed) {
+        this.events.emit({ type: 'columnGroupOpened', groupId: c.groupId, open: c.open });
+      }
+      this.events.emit({ type: 'displayedColumnsChanged', source: 'columnGroupOpened' });
+      // Re-fetch the chunk for the new visible-column set so newly-shown
+      // leaves get data instead of blank cells until the next scroll tick.
+      if (this.workerClient) this.requestViewport();
+    });
   }
 
   /** Map `resolveVisibleLeaves` (colIds) back to ResolvedColDefs. Hidden

@@ -44,6 +44,16 @@ export interface CellPaintConfig {
    *  black/white depending on the active theme). Only meaningful when
    *  `unSortIcon === true`. */
   unSortIconColor?: string;
+  /** Cycle 18 / Task 4 — pivot column-group expand/collapse affordance.
+   *  Set ONLY on synthesized pivot column-group headers that own a
+   *  `columnGroupShow:'closed'` "group total" leaf (i.e. branch pivot
+   *  groups). `'open'` paints a chevron-down to indicate the group is
+   *  expanded; `'closed'` paints a chevron-right. The header click
+   *  already routes through `toggleColumnGroup(groupId)` —
+   *  `interaction/features/headerClick.ts` — so the chevron is the
+   *  visual cue for the existing hit-testable group region. Design note:
+   *  `docs/superpowers/plans/notes/cycle-18-pivoting-design.md` (Task 4). */
+  pivotGroupExpand?: 'open' | 'closed';
   // Flash overlay (Cycle 4 / Task 11 — `flashAlpha` is the per-cell
   // alpha drained from FlashRegistry; `flashFromColor` is the theme's
   // current --cg-flash-from-color so light + dark themes both paint
@@ -119,6 +129,11 @@ const PADDING = 6;
 const HEADER_PADDING = 8;
 const SORT_ICON_SIZE = 14;
 const SORT_ICON_PAD = 8;
+/** Cycle 18 / Task 4 — pivot column-group chevron sizing. Matches the
+ *  sort chevron size + padding so pivot headers don't introduce a new
+ *  visual rhythm. */
+const PIVOT_CHEVRON_SIZE = 14;
+const PIVOT_CHEVRON_GAP = 4;
 
 function paintBackground(gc: CachedContext2D, p: CellPaintConfig): void {
   // Skip the per-cell bg fill when the bundle already painted this bg.
@@ -205,7 +220,26 @@ export const headerCell: CellPainter = {
     gc.cache.textBaseline = 'middle';
     gc.cache.textAlign = 'left';
     const cy = p.bounds.y + p.bounds.h / 2;
-    gc.fillText(p.valueFormatted, p.bounds.x + HEADER_PADDING, cy);
+    // Cycle 18 / Task 4 — pivot column-group chevron. Painted at the
+    // LEFT of the header text when the cell belongs to a branch pivot
+    // group; chevron-down when expanded, chevron-right when collapsed.
+    // The whole group-header rect is already hit-testable via
+    // `interaction/features/headerClick.ts` → `toggleColumnGroup` so the
+    // chevron is purely a visual affordance — the click target is the
+    // entire group-header band, matching how Cycle 4 column groups
+    // already work.
+    let textX = p.bounds.x + HEADER_PADDING;
+    if (p.pivotGroupExpand !== undefined) {
+      const iconCx = p.bounds.x + HEADER_PADDING + PIVOT_CHEVRON_SIZE / 2;
+      drawIcon(
+        gc,
+        p.pivotGroupExpand === 'open' ? 'chevron-down' : 'chevron-right',
+        iconCx, cy, PIVOT_CHEVRON_SIZE,
+        { color: p.iconColor ?? p.fg, strokeWidth: 2 },
+      );
+      textX = p.bounds.x + HEADER_PADDING + PIVOT_CHEVRON_SIZE + PIVOT_CHEVRON_GAP;
+    }
+    gc.fillText(p.valueFormatted, textX, cy);
     if (p.sortDirection) {
       const iconCx = p.bounds.x + p.bounds.w - SORT_ICON_PAD - SORT_ICON_SIZE / 2;
       drawIcon(

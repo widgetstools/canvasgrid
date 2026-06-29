@@ -108,40 +108,75 @@ export class ColumnGroupState {
 /**
  * Visible leaf colIds given the tree + current group state. Each leaf is kept
  * iff its `columnGroupShow` is compatible with the open/closed state of its
- * immediate parent group. Leaves without a parent group (top-level ungrouped)
- * always appear. Order matches `tree.leaves` (= declaration order).
+ * ancestor groups, where:
+ *
+ * - `columnGroupShow: undefined` — always visible regardless of state.
+ * - `columnGroupShow: 'open'` — visible iff EVERY ancestor group is open.
+ *   Closing ANY ancestor (immediate parent or higher) hides the leaf —
+ *   this is the cascading-collapse semantic pivot column groups depend on
+ *   (Cycle 18 / Task 4): collapsing a top-level pivot group hides every
+ *   leaf underneath, not only the leaves whose immediate parent is the
+ *   collapsed group.
+ * - `columnGroupShow: 'closed'` — visible iff the IMMEDIATE parent is
+ *   closed AND no STRICT ancestor (above the immediate parent) is closed.
+ *   The second clause stops nested "group total" leaves from doubling up
+ *   when an outer pivot group is also collapsed (the outer total takes
+ *   over).
+ *
+ * Leaves without a parent group (top-level ungrouped) always appear.
+ * Order matches `tree.leaves` (= declaration order).
  */
 export function resolveVisibleLeaves(
   tree: ColumnTree,
   state: ColumnGroupState,
 ): string[] {
-  const parentByLeaf = buildParentIndex(tree);
+  const ancestorsByLeaf = buildAncestorIndex(tree);
   const out: string[] = [];
   for (const leaf of tree.leaves) {
     const show = leaf.columnGroupShow ?? null;
-    const parent = parentByLeaf.get(leaf.colId);
-    if (!parent || show == null) {
+    const ancestors = ancestorsByLeaf.get(leaf.colId) ?? [];
+    if (ancestors.length === 0 || show == null) {
       out.push(leaf.colId);
       continue;
     }
-    const parentOpen = state.isOpen(parent.groupId);
-    if (show === 'open' && !parentOpen) continue;
-    if (show === 'closed' && parentOpen) continue;
-    out.push(leaf.colId);
+    const immediateParent = ancestors[ancestors.length - 1]!;
+    const immediateOpen = state.isOpen(immediateParent.groupId);
+    // 'open' leaves: hide if ANY ancestor (including immediate parent) is closed.
+    if (show === 'open') {
+      let anyClosed = false;
+      for (const a of ancestors) {
+        if (!state.isOpen(a.groupId)) { anyClosed = true; break; }
+      }
+      if (anyClosed) continue;
+      out.push(leaf.colId);
+      continue;
+    }
+    // 'closed' leaves: require immediate parent closed AND no STRICT ancestor closed.
+    if (show === 'closed') {
+      if (immediateOpen) continue;
+      let strictAncestorClosed = false;
+      for (let i = 0; i < ancestors.length - 1; i++) {
+        if (!state.isOpen(ancestors[i]!.groupId)) { strictAncestorClosed = true; break; }
+      }
+      if (strictAncestorClosed) continue;
+      out.push(leaf.colId);
+      continue;
+    }
   }
   return out;
 }
 
-/** Build a `colId → immediate parent group` map by walking the tree once. */
-function buildParentIndex(tree: ColumnTree): Map<string, ResolvedColGroupDef> {
-  const out = new Map<string, ResolvedColGroupDef>();
-  function walk(node: ColumnTreeNode, parent: ResolvedColGroupDef | null): void {
+/** Build a `colId → root→immediate-parent ancestor chain` map by walking the tree once. */
+function buildAncestorIndex(tree: ColumnTree): Map<string, ResolvedColGroupDef[]> {
+  const out = new Map<string, ResolvedColGroupDef[]>();
+  function walk(node: ColumnTreeNode, ancestors: ResolvedColGroupDef[]): void {
     if (node.kind === 'leaf') {
-      if (parent) out.set(node.colDef.colId, parent);
+      if (ancestors.length > 0) out.set(node.colDef.colId, ancestors);
       return;
     }
-    for (const child of node.children) walk(child, node);
+    const childAncestors = [...ancestors, node];
+    for (const child of node.children) walk(child, childAncestors);
   }
-  for (const root of tree.roots) walk(root, null);
+  for (const root of tree.roots) walk(root, []);
   return out;
 }

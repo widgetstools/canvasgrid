@@ -200,6 +200,228 @@ describe('CGrid pivot — render integration', () => {
     restore();
   });
 
+  // Cycle 18 / Task 4 — pivot column-group expand / collapse.
+  //
+  // Wires the full CGrid → real worker host on a 2-level pivot (Sector ×
+  // AssetClass). Asserts the collapsed-state defaults (only the per-Sector
+  // total leaves visible, rolled-up aggregates correct), then toggles a
+  // pivot group through `toggleColumnGroup` (the same call the canvas
+  // header click dispatches) and verifies the child columns
+  // appear / disappear and the column-order count tracks the change.
+  //
+  // Design note: docs/superpowers/plans/notes/cycle-18-pivoting-design.md (Task 4).
+  describe('pivot column-group expand / collapse', () => {
+    interface SubRow {
+      id: string;
+      region: string;
+      sector: string;
+      assetClass: string;
+      pnl: number;
+    }
+    const SUB_ROWS: SubRow[] = [
+      { id: '1', region: 'EMEA', sector: 'TECH', assetClass: 'EQ',   pnl: 100 },
+      { id: '2', region: 'EMEA', sector: 'TECH', assetClass: 'BOND', pnl: 200 },
+      { id: '3', region: 'EMEA', sector: 'FIN',  assetClass: 'EQ',   pnl: 300 },
+      { id: '4', region: 'APAC', sector: 'TECH', assetClass: 'EQ',   pnl: 400 },
+      { id: '5', region: 'APAC', sector: 'FIN',  assetClass: 'EQ',   pnl: 500 },
+      { id: '6', region: 'APAC', sector: 'TECH', assetClass: 'BOND', pnl: 600 },
+    ];
+    const SUB_COLS = [
+      { field: 'id' },
+      { field: 'region', enableRowGroup: true },
+      { field: 'sector', enablePivot: true },
+      { field: 'assetClass', enablePivot: true },
+      { field: 'pnl', type: 'number', headerName: 'PnL', enableValue: true },
+    ];
+
+    function buildSubGrid() {
+      const container = document.createElement('div');
+      container.style.cssText = 'width:900px; height:600px;';
+      container.className = 'cg-theme-quartz';
+      document.body.appendChild(container);
+      const prevWorker = (globalThis as { Worker?: unknown }).Worker;
+      (globalThis as { Worker?: unknown }).Worker = class {
+        listeners: Array<(e: { data: unknown }) => void> = [];
+        host = createWorkerHost((msg) => {
+          queueMicrotask(() => this.listeners.forEach((cb) => cb({ data: msg })));
+        });
+        constructor(public url: URL) {}
+        postMessage(msg: unknown) { this.host.handle(msg as Parameters<typeof this.host.handle>[0]); }
+        addEventListener(_: string, cb: (e: { data: unknown }) => void) { this.listeners.push(cb); }
+        terminate() {}
+      };
+      const grid = new CGrid<SubRow>(container, {
+        columnDefs: SUB_COLS as Parameters<typeof CGrid<SubRow>>[1]['columnDefs'],
+        getRowId: (r) => r.id,
+        rowData: SUB_ROWS,
+      });
+      const restore = () => {
+        (globalThis as { Worker?: unknown }).Worker = prevWorker;
+        container.remove();
+      };
+      return { grid, restore };
+    }
+
+    function subOrderIds(grid: CGrid<SubRow>): string[] {
+      return (grid as unknown as { columnOrder: Array<{ colId: string }> }).columnOrder.map((c) => c.colId);
+    }
+
+    function subPivotCell(grid: CGrid<SubRow>, groupKey: string, pivotColId: string): unknown {
+      const g = grid as unknown as {
+        chunk: { rowStart: number; rowCount: number; rowKinds: Uint8Array; groupKey?: string[] };
+        cellAt: (rowIndex: number, colId: string) => { value: unknown; valueFormatted: string } | null;
+      };
+      const chunk = g.chunk;
+      for (let i = 0; i < chunk.rowCount; i++) {
+        if ((chunk.rowKinds[i] ?? 0) !== 1) continue;
+        if ((chunk.groupKey?.[i] ?? '') !== groupKey) continue;
+        return g.cellAt(chunk.rowStart + i, pivotColId)?.value;
+      }
+      return undefined;
+    }
+
+    it('collapsed-by-default: shows only per-sector group total leaves with rolled-up aggregates', async () => {
+      const { grid, restore } = buildSubGrid();
+      await tick();
+      grid.setGroupModel({ rowGroupCols: ['region'] });
+      await tick();
+      grid.setPivotColumns(['sector', 'assetClass']);
+      grid.addValueColumn('pnl', 'sum');
+      grid.setPivotMode(true);
+      await tick();
+      grid.collapseAll();
+      await tick();
+
+      const ids = subOrderIds(grid);
+      const techTotal = pivotResultColumnId(['TECH'], 'pnl');
+      const finTotal = pivotResultColumnId(['FIN'], 'pnl');
+      const techEqLeaf = pivotResultColumnId(['TECH', 'EQ'], 'pnl');
+      const techBondLeaf = pivotResultColumnId(['TECH', 'BOND'], 'pnl');
+
+      // Defaults: every BRANCH pivot group is closed → totals visible,
+      // deeper leaves hidden via cascading collapse.
+      expect(ids).toContain(techTotal);
+      expect(ids).toContain(finTotal);
+      expect(ids).not.toContain(techEqLeaf);
+      expect(ids).not.toContain(techBondLeaf);
+
+      // Rolled-up aggregates on the per-region group rows come from
+      // PivotPass's prefix-path aggregates (Cycle 18 / Task 2). EMEA TECH
+      // = 100 + 200 = 300; APAC TECH = 400 + 600 = 1000; APAC FIN = 500.
+      expect(subPivotCell(grid, 'region:EMEA', techTotal)).toBe(300);
+      expect(subPivotCell(grid, 'region:EMEA', finTotal)).toBe(300);
+      expect(subPivotCell(grid, 'region:APAC', techTotal)).toBe(1000);
+      expect(subPivotCell(grid, 'region:APAC', finTotal)).toBe(500);
+
+      grid.destroy();
+      restore();
+    });
+
+    it('toggleColumnGroup on a pivot group reveals its child columns, re-toggle hides them', async () => {
+      const { grid, restore } = buildSubGrid();
+      await tick();
+      grid.setGroupModel({ rowGroupCols: ['region'] });
+      await tick();
+      grid.setPivotColumns(['sector', 'assetClass']);
+      grid.addValueColumn('pnl', 'sum');
+      grid.setPivotMode(true);
+      await tick();
+      grid.collapseAll();
+      await tick();
+
+      const techTotal = pivotResultColumnId(['TECH'], 'pnl');
+      const techEqLeaf = pivotResultColumnId(['TECH', 'EQ'], 'pnl');
+      const techBondLeaf = pivotResultColumnId(['TECH', 'BOND'], 'pnl');
+      const techGroupId = ['pivotcol', 'grp', 'TECH'].join('\x01');
+
+      // Pre-toggle: TECH total visible, TECH child leaves hidden.
+      const before = subOrderIds(grid);
+      expect(before).toContain(techTotal);
+      expect(before).not.toContain(techEqLeaf);
+      expect(before).not.toContain(techBondLeaf);
+
+      // Sanity-check the group id exists in the synthesized tree so a
+      // typo / wrong-separator never silently no-ops the toggle.
+      const treeGroups = (grid as unknown as { columnTree: { groupById: Map<string, unknown> } }).columnTree.groupById;
+      expect(treeGroups.has(techGroupId)).toBe(true);
+
+      // Expand TECH via the same imperative call the canvas header click
+      // dispatches (interaction/features/headerClick.ts → toggleColumnGroup).
+      (grid as unknown as { toggleColumnGroup: (g: string) => void }).toggleColumnGroup(techGroupId);
+      await tick();
+
+      const expanded = subOrderIds(grid);
+      // TECH total now hidden; TECH/EQ + TECH/BOND leaves visible.
+      expect(expanded).not.toContain(techTotal);
+      expect(expanded).toContain(techEqLeaf);
+      expect(expanded).toContain(techBondLeaf);
+      // Aggregates on the deeper leaves: EMEA TECH/EQ = 100, EMEA TECH/BOND
+      // = 200, APAC TECH/EQ = 400, APAC TECH/BOND = 600.
+      expect(subPivotCell(grid, 'region:EMEA', techEqLeaf)).toBe(100);
+      expect(subPivotCell(grid, 'region:EMEA', techBondLeaf)).toBe(200);
+      expect(subPivotCell(grid, 'region:APAC', techEqLeaf)).toBe(400);
+      expect(subPivotCell(grid, 'region:APAC', techBondLeaf)).toBe(600);
+
+      // Re-toggle → back to the collapsed total view.
+      (grid as unknown as { toggleColumnGroup: (g: string) => void }).toggleColumnGroup(techGroupId);
+      await tick();
+
+      const recollapsed = subOrderIds(grid);
+      expect(recollapsed).toContain(techTotal);
+      expect(recollapsed).not.toContain(techEqLeaf);
+      expect(recollapsed).not.toContain(techBondLeaf);
+
+      grid.destroy();
+      restore();
+    });
+
+    it('pivotDefaultExpanded: 1 starts with depth-0 groups expanded so deeper leaves are visible from first paint', async () => {
+      const container = document.createElement('div');
+      container.style.cssText = 'width:900px; height:600px;';
+      container.className = 'cg-theme-quartz';
+      document.body.appendChild(container);
+      const prevWorker = (globalThis as { Worker?: unknown }).Worker;
+      (globalThis as { Worker?: unknown }).Worker = class {
+        listeners: Array<(e: { data: unknown }) => void> = [];
+        host = createWorkerHost((msg) => {
+          queueMicrotask(() => this.listeners.forEach((cb) => cb({ data: msg })));
+        });
+        constructor(public url: URL) {}
+        postMessage(msg: unknown) { this.host.handle(msg as Parameters<typeof this.host.handle>[0]); }
+        addEventListener(_: string, cb: (e: { data: unknown }) => void) { this.listeners.push(cb); }
+        terminate() {}
+      };
+      const grid = new CGrid<SubRow>(container, {
+        columnDefs: SUB_COLS as Parameters<typeof CGrid<SubRow>>[1]['columnDefs'],
+        getRowId: (r) => r.id,
+        rowData: SUB_ROWS,
+        pivotDefaultExpanded: 1,
+      });
+      const restore = () => {
+        (globalThis as { Worker?: unknown }).Worker = prevWorker;
+        container.remove();
+      };
+
+      await tick();
+      grid.setGroupModel({ rowGroupCols: ['region'] });
+      await tick();
+      grid.setPivotColumns(['sector', 'assetClass']);
+      grid.addValueColumn('pnl', 'sum');
+      grid.setPivotMode(true);
+      await tick();
+
+      const ids = subOrderIds(grid);
+      // pivotDefaultExpanded=1 → TECH (depth 0) is open from first paint.
+      // The TECH total leaf is hidden; deeper TECH/EQ + TECH/BOND show.
+      expect(ids).not.toContain(pivotResultColumnId(['TECH'], 'pnl'));
+      expect(ids).toContain(pivotResultColumnId(['TECH', 'EQ'], 'pnl'));
+      expect(ids).toContain(pivotResultColumnId(['TECH', 'BOND'], 'pnl'));
+
+      grid.destroy();
+      restore();
+    });
+  });
+
   it('exposes pivot state through the imperative API', async () => {
     const { grid, restore } = buildWiredGrid();
     await tick();

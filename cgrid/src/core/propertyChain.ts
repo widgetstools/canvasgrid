@@ -272,6 +272,16 @@ export interface ApplyCellPropsInput {
    * Cycle 6 / Task 7 (fix-pass).
    */
   groupHeaderClassNames?: string[];
+  /**
+   * Cycle 18 / Task 4 — set to `'open'` / `'closed'` when this group-header
+   * cell belongs to a pivot result group that owns a
+   * `columnGroupShow:'closed'` totals leaf (a branch pivot group). The
+   * header painter draws a chevron-down / chevron-right at the left of
+   * the cell so the user can see the group is collapsible. Plumbed
+   * through to `CellPaintConfig.pivotGroupExpand`. Threaded by
+   * `renderer/painters/byRows.ts` once per group header per paint.
+   */
+  pivotGroupExpand?: 'open' | 'closed';
 }
 
 /** Apply a `ColCellOverrides` patch onto the mutable slots of `target`.
@@ -335,6 +345,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.sortTotal = ctx.sortTotal;
   target.unSortIcon = ctx.unSortIcon;
   target.unSortIconColor = ctx.unSortIconColor;
+  target.pivotGroupExpand = ctx.pivotGroupExpand;
   target.flashAlpha = ctx.flashAlpha;
   // Cycle 4 / Task 11 — pipe the theme's resolved flash color through
   // so painters don't hard-code it. Read once per cell (constant per

@@ -137,4 +137,12 @@ export interface PainterCtx {
    * group key is unknown. Supplied by cgrid.ts via totalsCellLookup.
    */
   getStickyGroupTotals?: (groupKey: string, colId: string) => { value: unknown; valueFormatted: string } | null;
+  /**
+   * Cycle 18 / Task 4 — column group open/closed lookup used by the
+   * byRows painter to draw a chevron on branch pivot column-group
+   * headers. Returns the group's current open state; treats unknown
+   * group ids as open so non-pivot Cycle 4 group headers never paint
+   * an accidental chevron.
+   */
+  getColumnGroupOpen?: (groupId: string) => boolean;
 }

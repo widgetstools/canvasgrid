@@ -599,6 +599,16 @@ export interface CGridOptions<TRow = any> {
    *  `addValueColumn`) or the tool-panel surfaces (Task 5-7). Persisted
    *  separately from column state (ag-grid parity). Default `false`. */
   pivotMode?: boolean;
+  /** Cycle 18 / Task 4 — expand pivot column groups down to this depth by
+   *  default. `0` (default) leaves every BRANCH pivot group closed so the
+   *  grid initially shows only the top-level group-total columns;
+   *  expanding a group reveals its child pivot columns. LEAF pivot groups
+   *  (no further pivot nesting below them) are always open — there's
+   *  nothing to expand within them — so a 2-level pivot with
+   *  `pivotDefaultExpanded: 1` displays the full value-column matrix.
+   *  Mirrors AG-Grid's `pivotDefaultExpanded` grid option. Design note:
+   *  `docs/superpowers/plans/notes/cycle-18-pivoting-design.md` (Task 4). */
+  pivotDefaultExpanded?: number;
   /** Cycle 15 / Task 5 — registered cell-renderer name used to paint
    *  group rows when `groupDisplayType === 'custom'`. The renderer is
    *  invoked once per group row with bounds spanning every visible

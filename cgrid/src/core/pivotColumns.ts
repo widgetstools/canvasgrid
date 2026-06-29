@@ -93,6 +93,22 @@ function pivotGroupId(path: readonly string[]): string {
  * of `keyTree` expands into one column group whose children are the value
  * columns; every intermediate node becomes a nesting column group.
  *
+ * **Cycle 18 / Task 4 — collapse/expand.** Every NON-LEAF pivot key node
+ * also emits a `columnGroupShow: 'closed'` "group total" leaf addressed
+ * at its prefix path (the prefix aggregate `PivotPass` already emits via
+ * `getPivotValue(out, groupKey, prefixPath, valueColId)`). The deeper
+ * value-column leaves under a multi-level pivot carry
+ * `columnGroupShow: 'open'` so the cascading resolver
+ * (`resolveVisibleLeaves` in `core/columnGroupState.ts`) hides them
+ * whenever ANY ancestor pivot group is closed. `pivotDefaultExpanded`
+ * (default `0`) seeds `openByDefault = depth < pivotDefaultExpanded` on
+ * each synthesized group — `0` keeps every group closed (only the
+ * top-level totals show), `1` opens depth-0, and so on.
+ *
+ * 1-level pivots have no collapsible level (every key is a leaf, no
+ * ancestor branch), so the synthesis matches Task 3's behaviour
+ * verbatim — no `columnGroupShow`, no totals.
+ *
  * Precondition (the caller's `isPivotActive` guard): `valueColumns` is
  * non-empty, so no empty-children group is ever produced (which
  * `resolveColumnTree` would reject).
@@ -100,14 +116,22 @@ function pivotGroupId(path: readonly string[]): string {
 export function synthesizePivotColumns<TRow = unknown>(input: {
   keyTree: PivotKeyNode[];
   valueColumns: PivotValueColumnSpec[];
+  /** Expand pivot column groups down to this depth by default. `0` (the
+   *  default) keeps every group closed. Mirrors AG-Grid's
+   *  `pivotDefaultExpanded` grid option. */
+  pivotDefaultExpanded?: number;
 }): SynthesizedPivotColumns<TRow> {
   const { keyTree, valueColumns } = input;
+  const pivotDefaultExpanded = input.pivotDefaultExpanded ?? 0;
   const cellSpecById = new Map<string, PivotCellSpec>();
 
-  const buildLeafColumns = (node: PivotKeyNode): CColDef<TRow>[] =>
+  const buildValueLeaves = (
+    pivotPath: readonly string[],
+    columnGroupShow: 'open' | 'closed' | undefined,
+  ): CColDef<TRow>[] =>
     valueColumns.map((vc) => {
-      const colId = pivotResultColumnId(node.path, vc.colId);
-      cellSpecById.set(colId, { pivotPath: node.path, valueColId: vc.colId });
+      const colId = pivotResultColumnId(pivotPath, vc.colId);
+      cellSpecById.set(colId, { pivotPath: [...pivotPath], valueColId: vc.colId });
       const def: CColDef<TRow> = {
         colId,
         headerName: vc.headerName ?? vc.colId,
@@ -118,17 +142,50 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
         sortable: false,
       };
       if (vc.width !== undefined) def.width = vc.width;
+      if (columnGroupShow !== undefined) def.columnGroupShow = columnGroupShow;
       return def;
     });
 
-  const buildNode = (node: PivotKeyNode): CColGroupDef<TRow> => ({
-    groupId: pivotGroupId(node.path),
-    headerName: node.value,
-    children:
-      node.children.length === 0
-        ? buildLeafColumns(node)
-        : node.children.map(buildNode),
-  });
+  const buildNode = (
+    node: PivotKeyNode,
+    depth: number,
+    hasAncestorBranch: boolean,
+  ): CColGroupDef<TRow> => {
+    if (node.children.length === 0) {
+      // Leaf pivot level — emit the value columns. The group itself is
+      // openByDefault=true so the user sees its value cols whenever any
+      // branch ancestor is expanded; cascading-collapse + the value
+      // cols' `columnGroupShow:'open'` hides them when a branch ancestor
+      // closes. Top-level leaves of a 1-level pivot have no ancestor
+      // branch and stay always-visible (no `columnGroupShow`).
+      return {
+        groupId: pivotGroupId(node.path),
+        headerName: node.value,
+        openByDefault: true,
+        children: buildValueLeaves(node.path, hasAncestorBranch ? 'open' : undefined),
+      };
+    }
+    // Branch node — emit a "group total" leaf (visible when this group
+    // is collapsed) PLUS the recursive child groups. The totals address
+    // the prefix path that PivotPass already aggregates. Branch groups
+    // honour `pivotDefaultExpanded` per level.
+    const openByDefault = depth < pivotDefaultExpanded;
+    const totals = buildValueLeaves(node.path, 'closed');
+    const childGroups = node.children.map((c) => buildNode(c, depth + 1, true));
+    return {
+      groupId: pivotGroupId(node.path),
+      headerName: node.value,
+      openByDefault,
+      children: [...totals, ...childGroups],
+    };
+  };
 
-  return { defs: keyTree.map(buildNode), cellSpecById };
+  return { defs: keyTree.map((n) => buildNode(n, 0, false)), cellSpecById };
+}
+
+/** True when `groupId` identifies a synthesized pivot-result column GROUP
+ *  (as opposed to a user-defined column group). The Cycle 18 / Task 4
+ *  header chevron uses this to mark pivot groups as collapsible. */
+export function isPivotResultGroupId(groupId: string): boolean {
+  return groupId.startsWith(PIVOT_RESULT_COL_PREFIX + PIVOT_ID_SEP + 'grp' + PIVOT_ID_SEP);
 }
