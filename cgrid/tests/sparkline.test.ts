@@ -164,3 +164,167 @@ describe('line sparkline (Task 1)', () => {
     expect((gc.lineTo as any)).toHaveBeenCalledTimes(99);
   });
 });
+
+describe('column sparkline (Task 2)', () => {
+  it('dispatches via type: "column" and paints N rects', () => {
+    const gc = makeGc();
+    sparklineCell.paint(gc, baseParams({
+      value: [1, 2, 3, 4, 5],
+      params: { sparkline: { type: 'column' } },
+    }));
+    expect((gc.fillRect as any).mock.calls.length).toBe(5);
+    // Column painter must not invoke the line-stroke path.
+    expect((gc.stroke as any)).not.toHaveBeenCalled();
+  });
+
+  it('bars sit fully inside the cell band (no overflow)', () => {
+    const gc = makeGc();
+    sparklineCell.paint(gc, baseParams({
+      value: [1, 100, 50, 0, 25],
+      bounds: { x: 10, y: 20, w: 80, h: 40 },
+      params: { sparkline: { type: 'column' } },
+    }));
+    const calls = (gc.fillRect as any).mock.calls as [number, number, number, number][];
+    for (const [x, y, w, h] of calls) {
+      expect(x).toBeGreaterThanOrEqual(12);
+      expect(x + w).toBeLessThanOrEqual(88);
+      expect(y).toBeGreaterThanOrEqual(22);
+      expect(y + h).toBeLessThanOrEqual(58);
+    }
+  });
+
+  it('returns early on empty data', () => {
+    const gc = makeGc();
+    sparklineCell.paint(gc, baseParams({ value: [], params: { sparkline: { type: 'column' } } }));
+    expect((gc.fillRect as any)).not.toHaveBeenCalled();
+  });
+
+  it('reads fill color from cellRendererParams options', () => {
+    const gc = makeGc();
+    sparklineCell.paint(gc, baseParams({
+      value: [1, 2, 3],
+      params: { sparkline: { type: 'column', options: { fill: '#10b981' } } },
+    }));
+    expect(gc.fillStyle).toBe('#10b981');
+  });
+});
+
+describe('area sparkline (Task 2)', () => {
+  it('dispatches via type: "area" — paints filled area then stroked line', () => {
+    const gc = makeGc();
+    sparklineCell.paint(gc, baseParams({
+      value: [1, 2, 3, 4, 5],
+      params: { sparkline: { type: 'area' } },
+    }));
+    // Two-pass paint: closed area path (fill) + open polyline (stroke).
+    expect((gc.beginPath as any)).toHaveBeenCalledTimes(2);
+    expect((gc.fill as any)).toHaveBeenCalledTimes(1);
+    expect((gc.stroke as any)).toHaveBeenCalledTimes(1);
+  });
+
+  it('honors fill + lineColor options', () => {
+    const gc = makeGc();
+    sparklineCell.paint(gc, baseParams({
+      value: [1, 2, 3],
+      params: {
+        sparkline: {
+          type: 'area',
+          options: { fill: 'rgba(37,99,235,0.15)', lineColor: '#2563eb' },
+        },
+      },
+    }));
+    // strokeStyle is set last (stroke pass runs after fill pass).
+    expect(gc.strokeStyle).toBe('#2563eb');
+  });
+
+  it('returns early on empty / single-point data', () => {
+    const gc = makeGc();
+    sparklineCell.paint(gc, baseParams({ value: [], params: { sparkline: { type: 'area' } } }));
+    expect((gc.beginPath as any)).not.toHaveBeenCalled();
+
+    const gc2 = makeGc();
+    sparklineCell.paint(gc2, baseParams({ value: [3], params: { sparkline: { type: 'area' } } }));
+    expect((gc2.beginPath as any)).not.toHaveBeenCalled();
+  });
+});
+
+describe('bar sparkline (Task 2)', () => {
+  it('dispatches via type: "bar" and paints horizontal bars', () => {
+    const gc = makeGc();
+    sparklineCell.paint(gc, baseParams({
+      value: [1, 2, 3, 4],
+      params: { sparkline: { type: 'bar' } },
+    }));
+    expect((gc.fillRect as any).mock.calls.length).toBe(4);
+  });
+
+  it('bars grow rightward — wider rects encode larger values', () => {
+    const gc = makeGc();
+    sparklineCell.paint(gc, baseParams({
+      value: [10, 90],
+      bounds: { x: 0, y: 0, w: 100, h: 40 },
+      params: { sparkline: { type: 'bar' } },
+    }));
+    const calls = (gc.fillRect as any).mock.calls as [number, number, number, number][];
+    // Bigger value → wider bar. With min=10, max=90, normalized: 0 and 1.
+    const [, , w0] = calls[0]!;
+    const [, , w1] = calls[1]!;
+    expect(w1).toBeGreaterThan(w0);
+  });
+
+  it('returns early on empty data', () => {
+    const gc = makeGc();
+    sparklineCell.paint(gc, baseParams({ value: [], params: { sparkline: { type: 'bar' } } }));
+    expect((gc.fillRect as any)).not.toHaveBeenCalled();
+  });
+});
+
+describe('pie sparkline (Task 2)', () => {
+  it('dispatches via type: "pie" — paints a ring with a single arc segment', () => {
+    const gc = makeGc();
+    sparklineCell.paint(gc, baseParams({
+      value: [25, 100],
+      params: { sparkline: { type: 'pie' } },
+    }));
+    // Two arcs (track ring + filled segment), two fills.
+    expect((gc.arc as any).mock.calls.length).toBeGreaterThanOrEqual(1);
+    expect((gc.fill as any).mock.calls.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('returns early on empty data', () => {
+    const gc = makeGc();
+    sparklineCell.paint(gc, baseParams({ value: [], params: { sparkline: { type: 'pie' } } }));
+    expect((gc.arc as any)).not.toHaveBeenCalled();
+  });
+
+  it('honors fill color option', () => {
+    const gc = makeGc();
+    sparklineCell.paint(gc, baseParams({
+      value: [25, 100],
+      params: { sparkline: { type: 'pie', options: { fill: '#f59e0b' } } },
+    }));
+    // fillStyle should land on the segment color by the end of the paint.
+    expect(gc.fillStyle).toBe('#f59e0b');
+  });
+});
+
+describe('sparkline type dispatch (Task 2)', () => {
+  it('defaults to line when type is omitted', () => {
+    const gc = makeGc();
+    sparklineCell.paint(gc, baseParams({ value: [1, 2, 3], params: { sparkline: {} } }));
+    // Line variant produces a stroke; column/bar produce none.
+    expect((gc.stroke as any)).toHaveBeenCalled();
+  });
+
+  it('no-ops when type is unrecognized (defensive — never throws)', () => {
+    const gc = makeGc();
+    expect(() => {
+      sparklineCell.paint(gc, baseParams({
+        value: [1, 2, 3],
+        params: { sparkline: { type: 'unknown' as any } },
+      }));
+    }).not.toThrow();
+    expect((gc.fillRect as any)).not.toHaveBeenCalled();
+    expect((gc.stroke as any)).not.toHaveBeenCalled();
+  });
+});
