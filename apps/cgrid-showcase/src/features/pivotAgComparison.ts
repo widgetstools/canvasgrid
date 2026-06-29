@@ -1,7 +1,6 @@
 import { CGrid } from 'cgrid';
 import type { ShowcaseRow } from '../seedData';
 import type { Feature } from './index';
-import { makeRows } from '../seedData';
 import {
   ClientSideRowModelModule,
   ModuleRegistry,
@@ -107,7 +106,22 @@ export const pivotAgComparison: Feature = {
       processPivotResultColDef: (def) => { def.valueFormatter = fmt; },
     });
 
-    const rows = makeRows(120);
+    // In-feature rows so Region and Sector vary independently — the shared
+    // `makeRows` ties them to the same modulus (i % 3) which collapses the
+    // 3×3 pivot matrix to a diagonal of 3 cells, defeating the comparison.
+    const DESKS = ['APAC', 'EMEA', 'AMER', 'LATAM'];
+    const TICKERS = ['AAPL', 'MSFT', 'GOOG', 'TSLA', 'AMZN'];
+    const REGIONS = ['Americas', 'Asia', 'Europe'];
+    const SECTORS = ['Tech', 'Finance', 'Energy'];
+    const rows: ShowcaseRow[] = Array.from({ length: 180 }, (_, i) => ({
+      id: `R${i}`,
+      ticker: TICKERS[i % TICKERS.length]!,
+      desk: DESKS[i % DESKS.length]!,
+      region: REGIONS[Math.floor(i / 60) % REGIONS.length]!,
+      sector: SECTORS[i % SECTORS.length]!,
+      pnl: ((i * 73) % 50 - 25) * 1000,
+      notional: ((i + 1) * 10_000),
+    }));
     grid.setRowData(rows);
     grid.setRowGroupColumns(['desk']);
     grid.setPivotColumns(['region', 'sector']);
@@ -227,8 +241,13 @@ export const pivotAgComparison: Feature = {
     const origDestroy = grid.destroy.bind(grid);
     (grid as unknown as { destroy: () => void }).destroy = () => {
       try { agApi.destroy(); } catch { /* ignore */ }
+      delete (window as unknown as Record<string, unknown>).__agGrid;
       origDestroy();
     };
+
+    // Expose AG API on window so the diff harness can drive it from the
+    // console alongside `window.__cgrid`.
+    (window as unknown as { __agGrid: unknown }).__agGrid = agApi;
 
     return grid;
   },
