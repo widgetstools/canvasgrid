@@ -71,6 +71,7 @@ export type RuntimeOption =
   | 'enableStrictPivotColumnOrder'
   | 'pivotRowTotals'
   | 'pivotColumnGroupTotals'
+  | 'pivotDefaultExpanded'
   | 'groupSelectsChildren'
   | 'suppressCount';
 
@@ -321,11 +322,12 @@ export function applyRuntimeOption<TRow>(
       return;
     case 'pivotRowTotals':
     case 'pivotColumnGroupTotals':
-      // Cycle 18 / Task 8e — re-synthesize on the next viewport. Both
-      // options are inputs to `synthesizePivotColumns` (NOT to the
-      // worker pipeline), so the change only matters once the next
-      // chunk arrives + the signature compare picks up the option
-      // delta. CGrid implementation issues a viewport request.
+    case 'pivotDefaultExpanded':
+      // Cycle 18 / Task 8e — re-synthesize on the next viewport. All
+      // three options are inputs to `synthesizePivotColumns` (NOT to
+      // the worker pipeline), so the change only matters once the
+      // next chunk arrives + the signature compare picks up the
+      // option delta. CGrid implementation issues a viewport request.
       target.updatePivotTotalsOption();
       return;
     case 'rowGroupPanelSuppressSort':
@@ -379,6 +381,7 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'enableStrictPivotColumnOrder',
   'pivotRowTotals',
   'pivotColumnGroupTotals',
+  'pivotDefaultExpanded',
   'groupSelectsChildren',
   'suppressCount',
 ]);

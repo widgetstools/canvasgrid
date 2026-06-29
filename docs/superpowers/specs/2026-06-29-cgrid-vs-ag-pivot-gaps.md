@@ -1,5 +1,13 @@
 # cgrid vs AG-Grid pivot — observed gaps (2026-06-29)
 
+> **Update (same day):** all five gaps in §1 are now addressed — fixes
+> landed on `feature/pivoting`, verified by re-running the diff harness
+> on the comparison surface (`diff-rerun-after-fixes.json`,
+> `diff-after-fixes.png`). Each section below has an inline
+> **STATUS: CLOSED** marker pointing at the commit that landed it.
+
+
+
 Run on the comparison surface at `/?feature=pivotAgComparison` with
 AG-Grid Enterprise v35.3.1. Both grids mounted on the same 180-row
 synthetic dataset (Desk × Region × Sector, P&L + Notional). The
@@ -32,7 +40,7 @@ cosmetic, not functional.
 
 ## 1. Behavior gaps
 
-### 1.1 Row-group sort order (default)
+### 1.1 Row-group sort order (default) — **STATUS: CLOSED**
 
 | Grid | First-pass order of Desk groups |
 |------|---------------------------------|
@@ -47,7 +55,15 @@ row-group column.
 
 Reproduced at: `diff-scenario-10b.json`.
 
-### 1.2 `pivotDefaultExpanded` runtime mutation
+**Fix:** `GroupPass` no longer calls `node.childGroups.sort(byKey)` at
+finalisation; sibling groups are emitted in the order their first
+leaf appears. SortPass continues to re-sort when the user installs
+a sort model on the row-group column. Re-run confirms cgrid now
+emits `APAC, EMEA, AMER, LATAM` matching AG. The
+`groupSortByAggregate` + `groupPass` tests that codified the old
+alphanumeric default were updated to assert insertion order.
+
+### 1.2 `pivotDefaultExpanded` runtime mutation — **STATUS: CLOSED**
 
 cgrid throws:
 
@@ -65,7 +81,16 @@ be the equivalent imperative call to design.)
 
 Reproduced at: `diff-scenario-04-default-expanded.json`.
 
-### 1.3 Value-column mutation API name divergence
+**Fix:** added `pivotDefaultExpanded` to the runtime-options whitelist
+in `core/runtimeOptions.ts`; routed through the same
+`updatePivotTotalsOption()` re-synthesize hook as `pivotRowTotals` +
+`pivotColumnGroupTotals` (all three are inputs to
+`synthesizePivotColumns`, not to the worker pipeline). Folded the
+option into the `pivotTreeSignature` so a runtime swap actually
+forces a fresh synthesis. Re-run: cgrid accepts the mutation
+without error.
+
+### 1.3 Value-column mutation API name divergence — **STATUS: CLOSED**
 
 | Operation | AG-Grid | cgrid |
 |-----------|---------|-------|
@@ -80,7 +105,12 @@ must replace `setValueColumns(list)` with a remove-all + add-loop.
 
 Reproduced at: `diff-scenario-05-06.json`.
 
-### 1.4 Pivot-result column getter
+**Fix:** added `setValueColumns(list)` to `CGrid` as a public wrapper
+over the existing `PivotState.setValueColumns` (which already
+supported atomic replacement — only the public exposure was
+missing). Apps can now drop the remove-all + add-loop dance.
+
+### 1.4 Pivot-result column getter — **STATUS: CLOSED**
 
 cgrid does **not** expose `getPivotResultColumns()`. AG returns the
 synthesized result columns (e.g.
@@ -96,7 +126,17 @@ the consumer.
 
 Reproduced at: `diff-scenario-05-06.json`.
 
-### 1.5 `setFilterModel` shape
+**Fix:** added `CGrid.getPivotResultColumns(): string[]` returning the
+keys of `pivotCellSpecById` (the synthesized result colIds). Returns
+`[]` when pivot is inactive. Note: AG returns `Column` instances;
+cgrid returns colIds (consistent with `getPivotColumns(): string[]`).
+Re-run: cgrid returns 24 result colIds, AG returns 30 — the
+difference is AG includes column-group totals + region rollup
+columns in its result set, which cgrid models differently (as
+synthesized header groups, not result columns). Both grids let
+apps discover and address pivot result cells by colId.
+
+### 1.5 `setFilterModel` shape — **STATUS: NOT A GAP (test added)**
 
 Both grids accept `setFilterModel`. cgrid does **not** error on a
 filter against a row-group column (Desk), but it produces 0 visible
@@ -107,6 +147,17 @@ applies to displayed columns); cgrid's behaviour is undocumented and
 should either match AG or document the divergence.
 
 Reproduced at: `diff-scenario-07-10.json`.
+
+**Investigation:** the original audit passed `{type: 'contains',
+filter: 'AMER'}` to `setFilterModel`. cgrid's expected shape is the
+v2 form `{filterType: 'text', type: 'contains', filter: 'AMER'}`
+(AG's native shape). The malformed entry failed both `matches()`
+and `matchesV2()`, hiding all rows. With the correct shape cgrid
+filters leaves and shows only the matching row-group — the
+"correct" behaviour for users (and arguably better than AG's
+"silently ignore filter on non-displayed column" default). Added a
+`setFilterModel on a row-group column` test to
+`pivotIntegration.test.ts` that pins this down.
 
 ## 2. Visual / labelling differences (cosmetic)
 

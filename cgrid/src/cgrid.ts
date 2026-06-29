@@ -2823,6 +2823,19 @@ export class CGrid<TRow = any> {
   setValueColumnAggFunc(colId: string, aggFunc: string): void {
     if (!this.destroyed) this.pivotState.setValueColumnAggFunc(colId, aggFunc);
   }
+  setValueColumns(list: Array<{ colId: string; aggFunc: string }>): void {
+    if (!this.destroyed) this.pivotState.setValueColumns(list);
+  }
+  /** Synthesized pivot result column IDs — the cross-tabbed
+   *  `pivot_<pivotKey>_<valueColId>` colIds the worker emits when pivot is
+   *  active. Returns `[]` when pivot is inactive. Mirrors AG-Grid's
+   *  `gridApi.getPivotResultColumns()` (we return colIds, the AG getter
+   *  returns Column instances; the colId is the only useful piece for
+   *  driving sort / state). */
+  getPivotResultColumns(): string[] {
+    if (!this.pivotActive) return [];
+    return Array.from(this.pivotCellSpecById.keys());
+  }
 
   /** Build the worker pivot model from the current pivot state. Returns an
    *  EMPTY model unless the pivot is active (mode on AND ≥1 pivot column
@@ -2889,6 +2902,7 @@ export class CGrid<TRow = any> {
         // tree would paint without the totals column).
         rowTotals: this.options.pivotRowTotals ?? null,
         colGroupTotals: this.options.pivotColumnGroupTotals ?? null,
+        defaultExpanded: this.options.pivotDefaultExpanded ?? null,
         leaves: chunk.pivotLeafPaths ?? [],
         vals: this.pivotState.getValueColumns(),
       });

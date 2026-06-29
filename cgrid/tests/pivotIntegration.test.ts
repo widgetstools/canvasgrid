@@ -557,4 +557,125 @@ describe('CGrid pivot — render integration', () => {
     grid.destroy();
     restore();
   });
+
+  it('row groups appear in data-insertion order (AG parity, no explicit sort)', async () => {
+    const { grid, restore } = buildWiredGrid();
+    await tick();
+    grid.setGroupModel({ rowGroupCols: ['region'] });
+    grid.setPivotColumns(['sector']);
+    grid.addValueColumn('pnl', 'sum');
+    grid.setPivotMode(true);
+    await tick();
+    // ROWS insertion: EMEA, EMEA, EMEA, APAC, APAC → expect EMEA first,
+    // not alphabetical (which would be APAC first).
+    const keys: string[] = [];
+    for (let i = 0; i < grid.getDisplayedRowCount(); i++) {
+      const k = grid.getGroupKeyAtRow(i);
+      if (k && !keys.includes(k)) keys.push(k);
+    }
+    expect(keys).toEqual(['region:EMEA', 'region:APAC']);
+    grid.destroy();
+    restore();
+  });
+
+  it('setFilterModel on a row-group column under pivot mode filters leaves → matching groups only', async () => {
+    const { grid, restore } = buildWiredGrid();
+    await tick();
+    grid.setGroupModel({ rowGroupCols: ['region'] });
+    grid.setPivotColumns(['sector']);
+    grid.addValueColumn('pnl', 'sum');
+    grid.setPivotMode(true);
+    await tick();
+    // Collect the group keys visible in row order — both regions present.
+    const groupKeysBefore = new Set<string>();
+    for (let i = 0; i < grid.getDisplayedRowCount(); i++) {
+      const k = grid.getGroupKeyAtRow(i);
+      if (k) groupKeysBefore.add(k);
+    }
+    expect(groupKeysBefore.has('region:APAC')).toBe(true);
+    expect(groupKeysBefore.has('region:EMEA')).toBe(true);
+    // Filter region to APAC. Use the v2 shape (filterType discriminator
+    // + AG-style type / filter fields).
+    grid.setFilterModel({
+      region: { filterType: 'text', type: 'contains', filter: 'APAC' },
+    });
+    await tick();
+    const groupKeysAfter = new Set<string>();
+    for (let i = 0; i < grid.getDisplayedRowCount(); i++) {
+      const k = grid.getGroupKeyAtRow(i);
+      if (k) groupKeysAfter.add(k);
+    }
+    // Only APAC region group should remain; EMEA leaves don't pass.
+    expect(groupKeysAfter.has('region:APAC')).toBe(true);
+    expect(groupKeysAfter.has('region:EMEA')).toBe(false);
+    // Clear filter — both region groups return.
+    grid.setFilterModel({});
+    await tick();
+    const groupKeysReset = new Set<string>();
+    for (let i = 0; i < grid.getDisplayedRowCount(); i++) {
+      const k = grid.getGroupKeyAtRow(i);
+      if (k) groupKeysReset.add(k);
+    }
+    expect(groupKeysReset.has('region:APAC')).toBe(true);
+    expect(groupKeysReset.has('region:EMEA')).toBe(true);
+    grid.destroy();
+    restore();
+  });
+
+  it('setGridOption("pivotDefaultExpanded", n) is accepted at runtime (AG parity)', async () => {
+    const { grid, restore } = buildWiredGrid();
+    await tick();
+    grid.setPivotColumns(['sector']);
+    grid.addValueColumn('pnl', 'sum');
+    grid.setPivotMode(true);
+    await tick();
+    // Must not throw "not a recognised runtime option".
+    expect(() => grid.setGridOption('pivotDefaultExpanded', 0)).not.toThrow();
+    expect(() => grid.setGridOption('pivotDefaultExpanded', 2)).not.toThrow();
+    expect(() => grid.setGridOption('pivotDefaultExpanded', 1)).not.toThrow();
+    grid.destroy();
+    restore();
+  });
+
+  it('getPivotResultColumns returns the synthesized result colIds (AG parity)', async () => {
+    const { grid, restore } = buildWiredGrid();
+    await tick();
+    grid.setPivotColumns(['sector']);
+    grid.addValueColumn('pnl', 'sum');
+    grid.setPivotMode(true);
+    await tick();
+    const ids = grid.getPivotResultColumns();
+    expect(Array.isArray(ids)).toBe(true);
+    // Each synthetic colId is of the form pivot_sector_<sectorValue>_pnl.
+    expect(ids.length).toBeGreaterThan(0);
+    expect(ids.every((id) => typeof id === 'string')).toBe(true);
+    // The result includes the pnl measure for at least one sector key.
+    expect(ids.some((id) => /pnl$/.test(id))).toBe(true);
+    // When pivot is inactive, the getter returns an empty array.
+    grid.setPivotMode(false);
+    await tick();
+    expect(grid.getPivotResultColumns()).toEqual([]);
+    grid.destroy();
+    restore();
+  });
+
+  it('setValueColumns replaces the entire value-column list atomically (AG parity)', async () => {
+    const { grid, restore } = buildWiredGrid();
+    await tick();
+    grid.setPivotColumns(['sector']);
+    grid.addValueColumn('pnl', 'sum');
+    grid.addValueColumn('qty', 'sum');
+    expect(grid.getValueColumns()).toEqual([
+      { colId: 'pnl', aggFunc: 'sum' },
+      { colId: 'qty', aggFunc: 'sum' },
+    ]);
+    // Atomic replacement — change agg func + drop a column + reorder in one call.
+    grid.setValueColumns([{ colId: 'qty', aggFunc: 'avg' }]);
+    expect(grid.getValueColumns()).toEqual([{ colId: 'qty', aggFunc: 'avg' }]);
+    // No-op when identical
+    grid.setValueColumns([{ colId: 'qty', aggFunc: 'avg' }]);
+    expect(grid.getValueColumns()).toEqual([{ colId: 'qty', aggFunc: 'avg' }]);
+    grid.destroy();
+    restore();
+  });
 });

@@ -48,13 +48,15 @@ function rootKeys(out: GroupPassOutput): string[] {
   return out.roots.map(r => r.value as string);
 }
 
-// ─── Default sort: composite key asc ─────────────────────────────────────────
+// ─── Default sort: data-insertion order ───────────────────────────────────────
+// AG-parity: GroupPass preserves the order each distinct group key was
+// first seen. Apps that want alphabetical install a sort model.
 
-describe('group sort: default composite key order', () => {
-  it('GroupPass.apply produces groups in asc-key order by default', () => {
+describe('group sort: default insertion order', () => {
+  it('GroupPass.apply produces groups in data-insertion order by default', () => {
     const { out } = makeGrouped();
-    // Keys are 'desk:AMER', 'desk:APAC', 'desk:EMEA' → values AMER < APAC < EMEA
-    expect(rootKeys(out)).toEqual(['AMER', 'APAC', 'EMEA']);
+    // ROWS insertion: EMEA, EMEA, APAC, APAC, AMER → first sighting order.
+    expect(rootKeys(out)).toEqual(['EMEA', 'APAC', 'AMER']);
   });
 
   it('SortPass.applyGrouped with no sort model keeps GroupPass order', () => {
@@ -62,7 +64,7 @@ describe('group sort: default composite key order', () => {
     const sp = new SortPass(store, COLS);
     sp.setModel([]);
     const sorted = sp.applyGrouped(out, ALL_IDS);
-    expect(rootKeys(sorted)).toEqual(['AMER', 'APAC', 'EMEA']);
+    expect(rootKeys(sorted)).toEqual(['EMEA', 'APAC', 'AMER']);
   });
 });
 
@@ -151,17 +153,17 @@ describe('group sort: two-level independent sort', () => {
     return { store, out: gp.apply(ids) };
   }
 
-  it('sort on desk desc leaves children in their GroupPass asc-key order', () => {
+  it('sort on desk desc sorts top-level by key desc; children keep insertion order', () => {
     const { store, out } = makeTwoLevel();
     const sp = new SortPass(store, COLS);
     sp.setModel([{ colId: 'desk', direction: 'desc' }]);
     const sorted = sp.applyGrouped(out, ALL_IDS);
-    // Top-level groups reversed: EMEA, APAC, AMER
+    // String desc: EMEA > APAC > AMER.
     expect(rootKeys(sorted)).toEqual(['EMEA', 'APAC', 'AMER']);
-    // Children of APAC (Rates, Credit) stay in asc-key order
+    // Children of APAC stay in their insertion order (Rates first, Credit second).
     const apacNode = sorted.roots.find(r => r.value === 'APAC')!;
     const childValues = apacNode.childGroups.map(c => c.value as string);
-    expect(childValues).toEqual(['Credit', 'Rates']);
+    expect(childValues).toEqual(['Rates', 'Credit']);
   });
 
   it('sort on region asc sorts children, not top-level', () => {
@@ -169,8 +171,8 @@ describe('group sort: two-level independent sort', () => {
     const sp = new SortPass(store, COLS);
     sp.setModel([{ colId: 'region', direction: 'asc' }]);
     const sorted = sp.applyGrouped(out, ALL_IDS);
-    // Top-level unchanged: AMER, APAC, EMEA
-    expect(rootKeys(sorted)).toEqual(['AMER', 'APAC', 'EMEA']);
+    // Top-level unchanged from GroupPass insertion order: EMEA, APAC, AMER.
+    expect(rootKeys(sorted)).toEqual(['EMEA', 'APAC', 'AMER']);
     // Children of EMEA: Credit < Rates (asc)
     const emeaNode = sorted.roots.find(r => r.value === 'EMEA')!;
     const emeaChildren = emeaNode.childGroups.map(c => c.value as string);
