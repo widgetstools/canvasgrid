@@ -392,38 +392,41 @@ describe('synthesizePivotColumns — pivotColumnGroupTotals (Task 8e)', () => {
     expect(total.columnGroupShow).toBe('closed');
   });
 
-  it('"after" appends the prefix-total leaf as the LAST child + makes it always visible', () => {
+  it('"after" appends the prefix-total leaves wrapped in a "Total" sub-group as the LAST child', () => {
+    // The wrapper sub-group is what gives the totals their own slot in
+    // the sector-depth header band. Without it, the leaves would line up
+    // against the empty sector-header slot next to their labelled
+    // sector siblings, leaving a visible gap in the header.
     const { defs } = synthesizePivotColumns({
       keyTree: nestedTree({ TECH: ['EQ', 'BOND'] }),
       valueColumns: [{ colId: 'pnl', aggFunc: 'sum' }],
       pivotColumnGroupTotals: 'after',
     });
     const tech = defs[0]!;
-    const children = tech.children as Array<
-      | { colId: string; columnGroupShow?: 'open' | 'closed' }
-      | { groupId: string }
-    >;
-    expect(children).toHaveLength(3);
-    const last = children[children.length - 1]! as { colId: string; columnGroupShow?: 'open' | 'closed' };
-    expect(last.colId).toBe(pivotResultColumnId(['TECH'], 'pnl'));
-    expect(last.columnGroupShow).toBeUndefined();
+    const children = tech.children as Array<{ groupId: string; headerName?: string; children?: Array<{ colId: string; columnGroupShow?: 'open' | 'closed' }> }>;
+    expect(children).toHaveLength(3); // 2 sector sub-groups + 1 totals group
+    const last = children[children.length - 1]!;
+    expect(last.headerName).toBe('Total');
+    const totalLeaf = (last.children ?? [])[0]!;
+    expect(totalLeaf.colId).toBe(pivotResultColumnId(['TECH'], 'pnl'));
+    // Always-visible (no columnGroupShow stamp).
+    expect(totalLeaf.columnGroupShow).toBeUndefined();
   });
 
-  it('"before" keeps the prefix-total leaf as the FIRST child + makes it always visible', () => {
+  it('"before" keeps the totals sub-group as the FIRST child', () => {
     const { defs } = synthesizePivotColumns({
       keyTree: nestedTree({ TECH: ['EQ', 'BOND'] }),
       valueColumns: [{ colId: 'pnl', aggFunc: 'sum' }],
       pivotColumnGroupTotals: 'before',
     });
     const tech = defs[0]!;
-    const children = tech.children as Array<
-      | { colId: string; columnGroupShow?: 'open' | 'closed' }
-      | { groupId: string }
-    >;
+    const children = tech.children as Array<{ groupId: string; headerName?: string; children?: Array<{ colId: string; columnGroupShow?: 'open' | 'closed' }> }>;
     expect(children).toHaveLength(3);
-    const first = children[0]! as { colId: string; columnGroupShow?: 'open' | 'closed' };
-    expect(first.colId).toBe(pivotResultColumnId(['TECH'], 'pnl'));
-    expect(first.columnGroupShow).toBeUndefined();
+    const first = children[0]!;
+    expect(first.headerName).toBe('Total');
+    const totalLeaf = (first.children ?? [])[0]!;
+    expect(totalLeaf.colId).toBe(pivotResultColumnId(['TECH'], 'pnl'));
+    expect(totalLeaf.columnGroupShow).toBeUndefined();
   });
 
   it('does not affect 1-level pivots (no nesting => no prefix totals)', () => {

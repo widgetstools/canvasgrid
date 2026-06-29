@@ -267,13 +267,33 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
     // totals leaf only appears when the group is collapsed; the leaf
     // sits at the front of the children list.
     const openByDefault = depth < pivotDefaultExpanded;
-    const totals = pivotColumnGroupTotals === null
-      ? buildValueLeaves(node.path, 'closed')
-      : buildValueLeaves(node.path, undefined);
+    // Cycle 18 / Task 8e — when `pivotColumnGroupTotals` is set the
+    // prefix totals are ALWAYS-VISIBLE leaves that need their own
+    // sub-group wrapper so the sector-depth header band has a cell to
+    // paint above them (otherwise the column-tree resolver lines them
+    // up against an empty header slot — visually broken when sector
+    // sibling groups ARE labelled). The Cycle 18 / Task 4 default
+    // (`null`) keeps the columnGroupShow:'closed' loose-leaf shape
+    // since those leaves only paint when their parent collapses (no
+    // sector siblings to align against, so no header gap).
     const childGroups = node.children.map((c) => buildNode(c, depth + 1, true));
-    const orderedChildren = pivotColumnGroupTotals === 'after'
-      ? [...childGroups, ...totals]
-      : [...totals, ...childGroups];
+    let orderedChildren: Array<CColDef<TRow> | CColGroupDef<TRow>>;
+    if (pivotColumnGroupTotals === null) {
+      const totals = buildValueLeaves(node.path, 'closed');
+      orderedChildren = [...totals, ...childGroups];
+    } else {
+      const totalsLeaves = buildValueLeaves(node.path, undefined);
+      const totalsGroup: CColGroupDef<TRow> = {
+        groupId: [pivotGroupId(node.path), 'total'].join(PIVOT_ID_SEP),
+        headerName: 'Total',
+        openByDefault: true,
+        children: totalsLeaves,
+      };
+      processGroupDef?.(totalsGroup);
+      orderedChildren = pivotColumnGroupTotals === 'after'
+        ? [...childGroups, totalsGroup]
+        : [totalsGroup, ...childGroups];
+    }
     const branchGroup: CColGroupDef<TRow> = {
       groupId: pivotGroupId(node.path),
       headerName: node.value,
