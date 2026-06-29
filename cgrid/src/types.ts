@@ -658,6 +658,20 @@ export interface CGridOptions<TRow = any> {
    *  option must not accidentally disable pivot. AG-Grid parity:
    *  `pivot-behaviors-prompts.md` Prompt 8 / Task 8a. */
   pivotMaxGeneratedColumns?: number;
+  /** Cycle 18 / Task 8c — when `true`, the pivot result columns are
+   *  re-sorted at every pivot run (alphanumeric — `pivotComparator`
+   *  integration is a follow-up). When `false` (the default per AG
+   *  parity), brand-new pivot key values land at the END of the
+   *  previously-known order; the prior column positions are preserved
+   *  across data updates. The first apply always sorts alphanumeric
+   *  (no prior knowledge), so the initial visible order is
+   *  deterministic.
+   *
+   *  Apps that want the stable Excel-like layout under tick traffic
+   *  leave this off (the default). Apps that want a strict
+   *  always-sorted matrix opt in by setting `true`. AG-Grid parity:
+   *  `pivot-behaviors-prompts.md` Prompt 8. */
+  enableStrictPivotColumnOrder?: boolean;
   /** Cycle 15 / Task 6 — when `true`, the row group panel's chips do
    *  not render a sort indicator (Cycle 15 ships chips without a sort
    *  glyph today; this flag is plumbed for forward compatibility so

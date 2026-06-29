@@ -226,6 +226,166 @@ describe('PivotPass — setModel validation', () => {
   });
 });
 
+describe('PivotPass — enableStrictPivotColumnOrder + pivotComparator (Task 8c)', () => {
+  it('strict mode (default) sorts every level alphanumerically — current behaviour preserved', () => {
+    const { pivot, groupOutput, ids } = setup(['region']);
+    pivot.setModel({ pivotColIds: ['sector'], valueCols: [{ colId: 'pnl', aggFunc: 'sum' }] });
+    // Default constructor leaves strict ON to match prior cycles' shipped
+    // alphanumeric ordering; the public CGridOptions flag flips it to OFF
+    // (append-new-at-end). 8c verifies both branches.
+    pivot.setStrictPivotColumnOrder(true);
+    const out = pivot.apply(ids, groupOutput);
+    expect(out.keyTree.map((n) => n.value)).toEqual(['FIN', 'TECH']);
+  });
+
+  it('non-strict mode (AG default) APPENDS brand-new keys at the end of the previously-known order', () => {
+    const baseRows = [
+      { id: '1', region: 'EMEA', sector: 'TECH', assetClass: 'L', pnl: 100, qty: 10 },
+      { id: '2', region: 'APAC', sector: 'FIN',  assetClass: 'L', pnl: 200, qty: 20 },
+    ];
+    const store = makeStore(baseRows as never);
+    const gp = new GroupPass(store, COLS);
+    gp.setModel({ rowGroupCols: [] });
+    const groupOutput = gp.apply(baseRows.map((r) => r.id));
+    const pivot = new PivotPass(store, COLS, new AggFuncRegistry());
+    pivot.setStrictPivotColumnOrder(false);
+    pivot.setModel({ pivotColIds: ['region'], valueCols: [{ colId: 'pnl', aggFunc: 'sum' }] });
+
+    // First apply: no prior knowledge → falls back to alphanumeric so the
+    // FIRST visible order is still deterministic.
+    const out1 = pivot.apply(baseRows.map((r) => r.id), groupOutput);
+    expect(out1.keyTree.map((n) => n.value)).toEqual(['APAC', 'EMEA']);
+
+    // Data ADDS a third region that sorts BEFORE the existing ones
+    // alphanumerically (AMER < APAC). Under non-strict mode the new key
+    // must land AT THE END.
+    store.setAll([
+      ...baseRows,
+      { id: '3', region: 'AMER', sector: 'TECH', assetClass: 'L', pnl: 300, qty: 30 },
+    ] as never);
+    const ids2 = ['1', '2', '3'];
+    const gp2 = new GroupPass(store, COLS);
+    gp2.setModel({ rowGroupCols: [] });
+    const groupOutput2 = gp2.apply(ids2);
+    const out2 = pivot.apply(ids2, groupOutput2);
+    expect(out2.keyTree.map((n) => n.value)).toEqual(['APAC', 'EMEA', 'AMER']);
+  });
+
+  it('non-strict mode preserves prior order even when keys are removed (filter drops a region)', () => {
+    const baseRows = [
+      { id: '1', region: 'EMEA', sector: 'TECH', assetClass: 'L', pnl: 100, qty: 10 },
+      { id: '2', region: 'APAC', sector: 'FIN',  assetClass: 'L', pnl: 200, qty: 20 },
+      { id: '3', region: 'AMER', sector: 'TECH', assetClass: 'L', pnl: 300, qty: 30 },
+    ];
+    const store = makeStore(baseRows as never);
+    const gp = new GroupPass(store, COLS);
+    gp.setModel({ rowGroupCols: [] });
+    const groupOutput = gp.apply(['1', '2', '3']);
+    const pivot = new PivotPass(store, COLS, new AggFuncRegistry());
+    pivot.setStrictPivotColumnOrder(false);
+    pivot.setModel({ pivotColIds: ['region'], valueCols: [{ colId: 'pnl', aggFunc: 'sum' }] });
+    const out1 = pivot.apply(['1', '2', '3'], groupOutput);
+    expect(out1.keyTree.map((n) => n.value)).toEqual(['AMER', 'APAC', 'EMEA']);
+    // Filter drops EMEA. The previously-known order [AMER, APAC, EMEA]
+    // contracts to [AMER, APAC] (the relative position of the
+    // remaining keys is preserved).
+    const out2 = pivot.apply(['2', '3'], groupOutput);
+    expect(out2.keyTree.map((n) => n.value)).toEqual(['AMER', 'APAC']);
+  });
+
+  it('strict mode RE-SORTS on every apply (new keys land in alphabetical position)', () => {
+    const baseRows = [
+      { id: '1', region: 'EMEA', sector: 'T', assetClass: 'L', pnl: 1, qty: 1 },
+      { id: '2', region: 'APAC', sector: 'T', assetClass: 'L', pnl: 1, qty: 1 },
+    ];
+    const store = makeStore(baseRows as never);
+    const gp = new GroupPass(store, COLS);
+    gp.setModel({ rowGroupCols: [] });
+    const groupOutput = gp.apply(['1', '2']);
+    const pivot = new PivotPass(store, COLS, new AggFuncRegistry());
+    pivot.setStrictPivotColumnOrder(true);
+    pivot.setModel({ pivotColIds: ['region'], valueCols: [{ colId: 'pnl', aggFunc: 'sum' }] });
+    pivot.apply(['1', '2'], groupOutput);
+    // Add AMER. Under strict mode it lands at the front (alphanumeric).
+    store.setAll([
+      ...baseRows,
+      { id: '3', region: 'AMER', sector: 'T', assetClass: 'L', pnl: 1, qty: 1 },
+    ] as never);
+    const ids2 = ['1', '2', '3'];
+    const gp2 = new GroupPass(store, COLS);
+    gp2.setModel({ rowGroupCols: [] });
+    const out = pivot.apply(ids2, gp2.apply(ids2));
+    expect(out.keyTree.map((n) => n.value)).toEqual(['AMER', 'APAC', 'EMEA']);
+  });
+
+  it('append-at-end works at every NESTED level (two-pivot stable order)', () => {
+    const baseRows = [
+      { id: '1', region: 'EMEA', sector: 'TECH', assetClass: 'L', pnl: 1, qty: 1 },
+      { id: '2', region: 'EMEA', sector: 'FIN',  assetClass: 'L', pnl: 1, qty: 1 },
+    ];
+    const store = makeStore(baseRows as never);
+    const gp = new GroupPass(store, COLS);
+    gp.setModel({ rowGroupCols: [] });
+    const pivot = new PivotPass(store, COLS, new AggFuncRegistry());
+    pivot.setStrictPivotColumnOrder(false);
+    pivot.setModel({
+      pivotColIds: ['region', 'sector'],
+      valueCols: [{ colId: 'pnl', aggFunc: 'sum' }],
+    });
+    pivot.apply(['1', '2'], gp.apply(['1', '2']));
+    // Add a NEW sector 'AERO' (alphanumerically first) inside EMEA. Under
+    // non-strict, it must land at the end of EMEA's child list.
+    store.setAll([
+      ...baseRows,
+      { id: '3', region: 'EMEA', sector: 'AERO', assetClass: 'L', pnl: 1, qty: 1 },
+    ] as never);
+    const ids2 = ['1', '2', '3'];
+    const out = pivot.apply(ids2, new GroupPass(store, COLS).apply(ids2));
+    const emea = out.keyTree.find((n) => n.value === 'EMEA')!;
+    // First apply sorted alphabetically: FIN, TECH. Adding AERO with the
+    // append flag → FIN, TECH, AERO.
+    expect(emea.children.map((c) => c.value)).toEqual(['FIN', 'TECH', 'AERO']);
+  });
+
+  it('flipping the strict flag to true on a PivotPass that has prior keys re-sorts the next apply', () => {
+    const baseRows = [
+      { id: '1', region: 'EMEA', sector: 'T', assetClass: 'L', pnl: 1, qty: 1 },
+      { id: '2', region: 'APAC', sector: 'T', assetClass: 'L', pnl: 1, qty: 1 },
+      { id: '3', region: 'AMER', sector: 'T', assetClass: 'L', pnl: 1, qty: 1 },
+    ];
+    const store = makeStore(baseRows as never);
+    const gp = new GroupPass(store, COLS);
+    gp.setModel({ rowGroupCols: [] });
+    const pivot = new PivotPass(store, COLS, new AggFuncRegistry());
+    pivot.setStrictPivotColumnOrder(false);
+    pivot.setModel({ pivotColIds: ['region'], valueCols: [{ colId: 'pnl', aggFunc: 'sum' }] });
+    pivot.apply(['1', '2', '3'], gp.apply(['1', '2', '3']));
+    pivot.setStrictPivotColumnOrder(true);
+    const out = pivot.apply(['1', '2', '3'], gp.apply(['1', '2', '3']));
+    expect(out.keyTree.map((n) => n.value)).toEqual(['AMER', 'APAC', 'EMEA']);
+  });
+
+  it('setModel resets the prior-keys memory (new pivot columns get a clean slate)', () => {
+    const baseRows = [
+      { id: '1', region: 'EMEA', sector: 'TECH', assetClass: 'L', pnl: 1, qty: 1 },
+      { id: '2', region: 'APAC', sector: 'FIN',  assetClass: 'L', pnl: 1, qty: 1 },
+    ];
+    const store = makeStore(baseRows as never);
+    const gp = new GroupPass(store, COLS);
+    gp.setModel({ rowGroupCols: [] });
+    const pivot = new PivotPass(store, COLS, new AggFuncRegistry());
+    pivot.setStrictPivotColumnOrder(false);
+    pivot.setModel({ pivotColIds: ['region'], valueCols: [{ colId: 'pnl', aggFunc: 'sum' }] });
+    pivot.apply(['1', '2'], gp.apply(['1', '2']));
+    // Switch to pivoting by sector. The previously-memorised order for the
+    // region pivot must not leak into the sector pivot — fresh
+    // alphanumeric ordering applies.
+    pivot.setModel({ pivotColIds: ['sector'], valueCols: [{ colId: 'pnl', aggFunc: 'sum' }] });
+    const out = pivot.apply(['1', '2'], gp.apply(['1', '2']));
+    expect(out.keyTree.map((n) => n.value)).toEqual(['FIN', 'TECH']);
+  });
+});
+
 describe('PivotPass — pivotMaxGeneratedColumns cap (Task 8a)', () => {
   it('default cap (5000) does not engage for small key sets', () => {
     const { pivot, groupOutput, ids } = setup(['region']);

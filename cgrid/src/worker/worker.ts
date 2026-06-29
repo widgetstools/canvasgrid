@@ -920,6 +920,15 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             break;
           }
 
+          case 'setStrictPivotColumnOrder': {
+            // Cycle 18 / Task 8c — push the strict-order flag into the
+            // PivotPass. The next viewport honors the new behaviour.
+            state.pivot.setStrictPivotColumnOrder(req.payload === true);
+            const vc = state.visibleCache?.length ?? state.store.size();
+            post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: vc });
+            break;
+          }
+
           case 'setPivotMaxGeneratedColumns': {
             // Cycle 18 / Task 8a — push the cap into PivotPass. The next
             // `getViewport` honors the new cap; if it would breach, the

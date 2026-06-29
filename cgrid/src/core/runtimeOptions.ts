@@ -68,6 +68,7 @@ export type RuntimeOption =
   | 'rowGroupPanelSuppressSort'
   | 'pivotPanelShow'
   | 'pivotMaxGeneratedColumns'
+  | 'enableStrictPivotColumnOrder'
   | 'groupSelectsChildren'
   | 'suppressCount';
 
@@ -127,6 +128,10 @@ export interface RuntimeOptionTarget<TRow = any> {
    *  subsequent `getViewport` calls honor it. `undefined` reverts to
    *  the worker default (5000). */
   updatePivotMaxGeneratedColumns(value: number | undefined): void;
+  /** Cycle 18 / Task 8c — flip the strict-order behaviour. `true` =
+   *  always re-sort. `false` (AG default) = preserve prior order +
+   *  append new keys at end. */
+  updateStrictPivotColumnOrder(value: boolean | undefined): void;
   /** Cycle 15.5 / Task 1 — hand the runtime `rowGroupPanelSuppressSort`
    *  flag to CGrid so the panel re-renders (with / without the sort
    *  indicator) on the next frame. */
@@ -300,6 +305,12 @@ export function applyRuntimeOption<TRow>(
         value as number | undefined,
       );
       return;
+    case 'enableStrictPivotColumnOrder':
+      // Cycle 18 / Task 8c — flip the strict-order flag. Both branches
+      // are explicit booleans on the worker side; `undefined` resolves
+      // to `false` (the AG default).
+      target.updateStrictPivotColumnOrder(value as boolean | undefined);
+      return;
     case 'rowGroupPanelSuppressSort':
       // Cycle 15.5 / Task 1 — re-render the chip strip without the
       // sort indicator span when `true`. The flag toggles which DOM
@@ -348,6 +359,7 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'rowGroupPanelSuppressSort',
   'pivotPanelShow',
   'pivotMaxGeneratedColumns',
+  'enableStrictPivotColumnOrder',
   'groupSelectsChildren',
   'suppressCount',
 ]);

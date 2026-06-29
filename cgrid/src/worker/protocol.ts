@@ -339,6 +339,11 @@ export type WorkerRequest =
    *  honors the new cap; the cgrid main thread fires
    *  `pivotMaxColumnsReached` when the chunk carries the breach payload. */
   | { id: ReqId; type: 'setPivotMaxGeneratedColumns'; payload: number | undefined }
+  /** Cycle 18 / Task 8c — flip `enableStrictPivotColumnOrder`. `true` =
+   *  always re-sort discovered pivot keys alphanumerically. `false`
+   *  (AG default) = preserve prior order + append new keys at end.
+   *  The next `getViewport` honors the new flag. */
+  | { id: ReqId; type: 'setStrictPivotColumnOrder'; payload: boolean }
   /** Cycle 15 / Task 7 — replace the worker's persistent expanded-keys
    *  set. `keys === null` reverts to the "all groups expanded" default
    *  (the same view Task 4 shipped before any explicit toggle); `keys: []`

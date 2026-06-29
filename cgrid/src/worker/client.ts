@@ -187,6 +187,16 @@ export class WorkerClient {
     });
   }
 
+  /** Cycle 18 / Task 8c — flip the strict-order flag. `true` =
+   *  always re-sort alphanumerically. `false` (AG default) =
+   *  preserve prior order + append new keys at the end. */
+  setStrictPivotColumnOrder(strict: boolean): Promise<{ visibleCount: number }> {
+    return this.send<{ visibleCount: number }>({
+      type: 'setStrictPivotColumnOrder',
+      payload: strict,
+    });
+  }
+
   /** Cycle 15 / Task 7 — replace the worker's persistent expanded-keys
    *  set. `keys === null` reverts to the all-expanded default; an
    *  empty array collapses everything; any other array is the

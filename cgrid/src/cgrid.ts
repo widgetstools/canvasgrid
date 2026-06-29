@@ -1424,6 +1424,18 @@ export class CGrid<TRow = any> {
             if (!this.destroyed) console.error('[cgrid] setPivotMaxGeneratedColumns:', err);
           });
       }
+      // Cycle 18 / Task 8c — flip the worker's PivotPass to the
+      // AG-parity "append new keys at the end" default UNLESS the app
+      // opts back into strict alphanumeric ordering. The PivotPass
+      // constructor still defaults to `strict=true` to preserve the
+      // legacy single-test behaviour for the standalone engine; cgrid
+      // ALWAYS forwards the resolved flag so the boundary is
+      // unambiguous.
+      this.workerClient
+        .setStrictPivotColumnOrder(this.options.enableStrictPivotColumnOrder === true)
+        .catch((err) => {
+          if (!this.destroyed) console.error('[cgrid] setStrictPivotColumnOrder:', err);
+        });
       // Cycle 15 / Task 8 — when `groupSelectsChildren: true` is set
       // at construction, register the SelectionModel's membership
       // resolver AND flip the worker's per-snapshot descendant
@@ -3452,6 +3464,19 @@ export class CGrid<TRow = any> {
       });
   }
 
+  /** Cycle 18 / Task 8c — flip the strict-order flag at runtime.
+   *  The next `getViewport` honors the new behaviour. */
+  private updateStrictPivotColumnOrder(strict: boolean | undefined): void {
+    if (this.destroyed) return;
+    this.workerClient.setStrictPivotColumnOrder(strict === true)
+      .then(() => {
+        if (!this.destroyed) this.requestViewport();
+      })
+      .catch((err) => {
+        if (!this.destroyed) console.error('[cgrid] setStrictPivotColumnOrder:', err);
+      });
+  }
+
   private updatePivotPanelShow(show: 'always' | 'onlyWhenPivoting' | 'never' | undefined): void {
     if (this.destroyed) return;
     const next = normalizePivotPanelShow(show);
@@ -4357,6 +4382,7 @@ export class CGrid<TRow = any> {
       updateRowGroupPanelShow: (value) => this.updateRowGroupPanelShow(value),
       updatePivotPanelShow: (value) => this.updatePivotPanelShow(value),
       updatePivotMaxGeneratedColumns: (value) => this.updatePivotMaxGeneratedColumns(value),
+      updateStrictPivotColumnOrder: (value) => this.updateStrictPivotColumnOrder(value),
       updateRowGroupPanelSuppressSort: (suppress) =>
         this.rowGroupPanel?.setRenderOptions({ suppressSort: suppress }),
       updateGroupSelectsChildren: (enabled) => this.applyGroupSelectsChildren(enabled),
