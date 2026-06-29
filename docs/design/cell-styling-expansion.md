@@ -1,13 +1,13 @@
-# Cell Styling Expansion — Design Spec
+# Cycle 27 — Cell Styling Expansion — Design Spec
 
 > Expand cgrid's per-cell, per-header, and per-group-header styling to cover:
 > per-side borders, vertical alignment, font breakouts, text transforms, cell
 > content types (icon / emoji / icon+text), and corner-/edge-positioned
 > decorators. First-class API for bg/fg color throughout.
 
-**Status:** Proposed, not yet implemented.
-**Author:** Cycle plan distilled from styling-capability audit (2026-06-29).
-**Target:** 3 cycles, ~1,500–2,500 LOC total across `cgrid/src/types.ts`, `cgrid/src/core/propertyChain.ts`, `cgrid/src/renderer/`.
+**Status:** Cycle 27 — proposed, not yet started.
+**Author:** Plan distilled from styling-capability audit (2026-06-29).
+**Target:** 3 tasks within Cycle 27, ~1,500–2,500 LOC total across `cgrid/src/types.ts`, `cgrid/src/core/propertyChain.ts`, `cgrid/src/renderer/`.
 
 ---
 
@@ -185,7 +185,7 @@ export interface CColGroupDef {
 
 ---
 
-## Cycle 1 — Cell-style expansion
+## Task 1 — Cell-style expansion
 
 **Scope:** vertical alignment, font breakouts, text transform, letter spacing, line height, padding, direct `headerStyle` / `groupHeaderStyle`. Bg/fg already work — surfaced here as part of the consistent override schema.
 
@@ -277,7 +277,7 @@ Same precedence rules; same painter consumption.
 
 ---
 
-## Cycle 2 — Per-side borders
+## Task 2 — Per-side borders
 
 **Scope:** Per-side border width / color / style / visibility on cells, column headers, group headers. Style support: solid, dashed, dotted, double.
 
@@ -355,7 +355,7 @@ For `'double'`: render as two parallel lines `width` apart. Slightly more painte
 
 | File | Change |
 |---|---|
-| [cgrid/src/types.ts](cgrid/src/types.ts) | Add `BorderSide`, `BorderSpec`, `BorderStyle` (from Cycle 1's type system). |
+| [cgrid/src/types.ts](cgrid/src/types.ts) | Add `BorderSide`, `BorderSpec`, `BorderStyle` (from Task 1's type system). |
 | [cgrid/src/renderer/painters/cellBordersPainter.ts](cgrid/src/renderer/painters/cellBordersPainter.ts) | **NEW.** Per-cell border painter. |
 | [cgrid/src/renderer/painters/gridLinesPainter.ts](cgrid/src/renderer/painters/gridLinesPainter.ts) | Add `excludeSegments` parameter to suppress default lines where per-cell borders override. |
 | [cgrid/src/cgrid.ts](cgrid/src/cgrid.ts) (or the renderer orchestration) | Wire the new painter into the paint pipeline; run after content paint, before overlays. |
@@ -377,7 +377,7 @@ For `'double'`: render as two parallel lines `width` apart. Slightly more painte
 
 ---
 
-## Cycle 3 — Cell content slots + corner decorators
+## Task 3 — Cell content slots + corner decorators
 
 **Scope:** `content` slot (icon / emoji / icon+text instead of plain text) + `decorators` (up to 6 per cell, in corner and middle-edge positions).
 
@@ -505,7 +505,7 @@ Errors logged once per colDef compile, not per cell paint.
 
 ## Migration & backwards compatibility
 
-**Zero breaking changes** across all three cycles. Every new field is optional. Existing grids using `cellStyle: { fg, bg, font, halign }` work identically.
+**Zero breaking changes** across all three tasks. Every new field is optional. Existing grids using `cellStyle: { fg, bg, font, halign }` work identically.
 
 Existing `colDef.headerClass` + class-variant CSS scheme continues to work. The new `headerStyle` is an additional path with higher precedence when both are present (consistent with `cellClass` + `cellStyle` precedence today).
 
@@ -515,13 +515,13 @@ Class variants don't gain the new fields in this scope — they're still limited
 
 ## Performance budget
 
-Combined cost of all three cycles on a 10K row × 50 col grid (~500 cells visible at any time):
+Combined cost of all three tasks on a 10K row × 50 col grid (~500 cells visible at any time):
 
 | Pass | Cost per visible cell | Total per frame |
 |---|---|---|
-| Cycle 1 — font + valign + transforms | ~0.5 μs (one font compose + transform check) | ~0.25 ms |
-| Cycle 2 — borders (5% of cells) | ~3 μs per bordered cell (4 strokes) | ~0.075 ms |
-| Cycle 3 — content + decorators (30% with decorators, avg 1.5 decorators) | ~5 μs per decorated cell | ~0.75 ms |
+| Task 1 — font + valign + transforms | ~0.5 μs (one font compose + transform check) | ~0.25 ms |
+| Task 2 — borders (5% of cells) | ~3 μs per bordered cell (4 strokes) | ~0.075 ms |
+| Task 3 — content + decorators (30% with decorators, avg 1.5 decorators) | ~5 μs per decorated cell | ~0.75 ms |
 | **Combined** | | **~1.1 ms / frame** |
 
 Budget: 16.6 ms per frame (60 fps). Cell styling adds ~7% of frame budget. Acceptable.
@@ -530,12 +530,12 @@ Budget: 16.6 ms per frame (60 fps). Cell styling adds ~7% of frame budget. Accep
 
 ## Test plan
 
-Per cycle:
+Per task:
 
 1. **Unit tests** (vitest) for type composition, font shorthand parsing, decorator position math, validation rules.
 2. **Visual snapshot tests** using canvas pixel capture — render a 5×5 grid with various style permutations, hash output, compare against committed baselines. Catches accidental regressions in painter output.
 3. **Performance regression tests** — render-frame timing for the 10K × 50 grid with various styling densities. Fail if regression > 10% vs. baseline.
-4. **Showcase demos** under `apps/cgrid-showcase/src/features/` — one per cycle. Hand-verified.
+4. **Showcase demos** under `apps/cgrid-showcase/src/features/` — one per task. Hand-verified.
 
 ---
 
@@ -547,14 +547,14 @@ Pick or skip — all have reasonable defaults if you don't care.
 2. **Decorator clickability.** Spec says no for v1. Confirm — or do you want click events on decorators (for "delete this row" trash icons, etc.)? If yes, that's a small follow-up cycle.
 3. **Padding interaction with decorators.** Should `ml`/`mr` decorators automatically shrink the text area, or always overlay? Spec proposes overlay-only (user handles padding manually). The alternative (auto-shrink) is more "intuitive" but harder to predict.
 4. **Class variants for new fields.** Extending the CSS variant scanner to support `valign`, `fontSize`, etc. is a small follow-up. Worth doing in this scope, or defer until users ask?
-5. **Cycle ordering.** Spec proposes 1 → 2 → 3. Want to swap (e.g., do per-side borders first since most visible)? Or bundle 1+2 into one PR since they're both small?
+5. **Task ordering within Cycle 27.** Spec proposes Task 1 → 2 → 3. Want to swap (e.g., do per-side borders first since most visible)? Or bundle Tasks 1+2 into one PR since they're both small?
 
 ---
 
 ## Estimated timeline (loose)
 
-- **Cycle 1:** 1–2 days dev + 1 day test/polish/demo
-- **Cycle 2:** 2–3 days dev + 1 day test/polish/demo
-- **Cycle 3:** 3–4 days dev + 1 day test/polish/demo
+- **Task 1:** 1–2 days dev + 1 day test/polish/demo
+- **Task 2:** 2–3 days dev + 1 day test/polish/demo
+- **Task 3:** 3–4 days dev + 1 day test/polish/demo
 
 Total: ~7–10 working days for a single dev, including showcase and tests.
