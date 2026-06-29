@@ -29,6 +29,8 @@ function makeGridStub(): {
   copy: ReturnType<typeof vi.fn>;
   paste: ReturnType<typeof vi.fn>;
   cut: ReturnType<typeof vi.fn>;
+  csvExport: ReturnType<typeof vi.fn>;
+  excelExport: ReturnType<typeof vi.fn>;
 } {
   const autoSize = vi.fn();
   const reset = vi.fn();
@@ -36,6 +38,8 @@ function makeGridStub(): {
   const copy = vi.fn().mockResolvedValue(undefined);
   const paste = vi.fn().mockResolvedValue(undefined);
   const cut = vi.fn().mockResolvedValue(undefined);
+  const csvExport = vi.fn().mockResolvedValue(undefined);
+  const excelExport = vi.fn().mockResolvedValue(undefined);
   const grid: DefaultMenuGrid = {
     autoSizeAllColumns: autoSize as unknown as DefaultMenuGrid['autoSizeAllColumns'],
     resetColumnState: reset as unknown as DefaultMenuGrid['resetColumnState'],
@@ -43,8 +47,10 @@ function makeGridStub(): {
     copySelectedRangesToClipboard: copy as unknown as DefaultMenuGrid['copySelectedRangesToClipboard'],
     pasteFromClipboard: paste as unknown as DefaultMenuGrid['pasteFromClipboard'],
     cutSelectedRanges: cut as unknown as DefaultMenuGrid['cutSelectedRanges'],
+    exportDataAsCsv: csvExport as unknown as DefaultMenuGrid['exportDataAsCsv'],
+    exportDataAsExcel: excelExport as unknown as DefaultMenuGrid['exportDataAsExcel'],
   };
-  return { grid, autoSize, reset, pinned, copy, paste, cut };
+  return { grid, autoSize, reset, pinned, copy, paste, cut, csvExport, excelExport };
 }
 
 function makeParams(overrides: Partial<GetContextMenuItemsParams> = {}): GetContextMenuItemsParams {
@@ -135,12 +141,49 @@ describe('buildDefaultMenuItems', () => {
     expect(cut).toHaveBeenCalledTimes(1);
   });
 
-  it('Export action exists and does not throw (stub)', () => {
+  it('Export item carries a CSV + Excel submenu (Cycle 20)', () => {
     const { grid } = makeGridStub();
     const items = buildDefaultMenuItems(grid, makeParams({ colId: 'a' }));
     const exportItem = items.find((i) => i.name === 'Export')!;
-    expect(typeof exportItem.action).toBe('function');
-    expect(() => exportItem.action!(makeParams({ colId: 'a' }))).not.toThrow();
+    expect(exportItem.subMenu).toBeDefined();
+    const subNames = exportItem.subMenu!.map((s) => s.name);
+    expect(subNames).toEqual(['CSV Export', 'Excel Export']);
+  });
+
+  it('CSV Export submenu item routes to grid.exportDataAsCsv()', () => {
+    const { grid, csvExport } = makeGridStub();
+    const items = buildDefaultMenuItems(grid, makeParams({ colId: 'a' }));
+    const csvItem = items.find((i) => i.name === 'Export')!.subMenu!
+      .find((s) => s.name === 'CSV Export')!;
+    csvItem.action!(makeParams({ colId: 'a' }));
+    expect(csvExport).toHaveBeenCalledTimes(1);
+  });
+
+  it('Excel Export submenu item routes to grid.exportDataAsExcel()', () => {
+    const { grid, excelExport } = makeGridStub();
+    const items = buildDefaultMenuItems(grid, makeParams({ colId: 'a' }));
+    const xlsxItem = items.find((i) => i.name === 'Export')!.subMenu!
+      .find((s) => s.name === 'Excel Export')!;
+    xlsxItem.action!(makeParams({ colId: 'a' }));
+    expect(excelExport).toHaveBeenCalledTimes(1);
+  });
+
+  it('Export submenu items render disabled when the host did not supply the methods', () => {
+    // Host built before Cycle 20 doesn't expose exportDataAs*.
+    const gridNoExport: DefaultMenuGrid = {
+      autoSizeAllColumns: vi.fn() as unknown as DefaultMenuGrid['autoSizeAllColumns'],
+      resetColumnState: vi.fn() as unknown as DefaultMenuGrid['resetColumnState'],
+      setColumnsPinned: vi.fn() as unknown as DefaultMenuGrid['setColumnsPinned'],
+      copySelectedRangesToClipboard: vi.fn() as unknown as DefaultMenuGrid['copySelectedRangesToClipboard'],
+      pasteFromClipboard: vi.fn() as unknown as DefaultMenuGrid['pasteFromClipboard'],
+      cutSelectedRanges: vi.fn() as unknown as DefaultMenuGrid['cutSelectedRanges'],
+    };
+    const items = buildDefaultMenuItems(gridNoExport, makeParams({ colId: 'a' }));
+    const exportItem = items.find((i) => i.name === 'Export')!;
+    expect(exportItem.disabled).toBe(true);
+    const sub = exportItem.subMenu!;
+    expect(sub.find((s) => s.name === 'CSV Export')!.disabled).toBe(true);
+    expect(sub.find((s) => s.name === 'Excel Export')!.disabled).toBe(true);
   });
 
   it('Autosize Columns action calls grid.autoSizeAllColumns()', () => {

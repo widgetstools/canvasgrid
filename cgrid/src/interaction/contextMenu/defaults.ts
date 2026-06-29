@@ -54,6 +54,11 @@ export interface DefaultMenuGrid {
    *  back-compat: registries built before Task 6 land continue to work
    *  (`undefined` is treated as `false`). */
   isClipboardPasteSuppressed?(): boolean;
+  /** Cycle 20 — Export submenu. The `CSV` / `Excel Export` items route
+   *  here. Optional for back-compat: registries built before Cycle 20
+   *  land render the Export menu disabled. */
+  exportDataAsCsv?(params?: { fileName?: string }): Promise<void>;
+  exportDataAsExcel?(params?: { fileName?: string }): Promise<void>;
 }
 
 /** Build the eight-item default list. `grid` carries the column-ops
@@ -142,7 +147,31 @@ export function buildDefaultMenuItems(
     {
       name: 'Export',
       icon: '↓',
-      action: () => { console.debug('[export] (stub — out of scope for Cycle 10)'); },
+      // Cycle 20 — submenu surfaces CSV + Excel as separate items, the
+      // ag-grid vocabulary. Items render disabled if the host grid
+      // didn't supply the matching method (back-compat with hosts
+      // built before Cycle 20).
+      disabled: !grid.exportDataAsCsv && !grid.exportDataAsExcel,
+      subMenu: [
+        {
+          name: 'CSV Export',
+          disabled: !grid.exportDataAsCsv,
+          action: () => {
+            void grid.exportDataAsCsv?.().catch((err) => {
+              console.warn('[cgrid] exportDataAsCsv:', err);
+            });
+          },
+        },
+        {
+          name: 'Excel Export',
+          disabled: !grid.exportDataAsExcel,
+          action: () => {
+            void grid.exportDataAsExcel?.().catch((err) => {
+              console.warn('[cgrid] exportDataAsExcel:', err);
+            });
+          },
+        },
+      ],
     },
     { name: '---' },
     {
