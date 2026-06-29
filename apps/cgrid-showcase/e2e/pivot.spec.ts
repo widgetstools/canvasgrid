@@ -156,6 +156,70 @@ test.describe('pivot showcase feature', () => {
     expect(state.pivotCols).toEqual(['region', 'sector']);
   });
 
+  test('clicking a leaf pivot group header (sector row) is a no-op — does NOT hide the column', async ({ page }) => {
+    // Regression: HeaderClick.handleClick used to call
+    // `toggleColumnGroup` for ANY headerGroup hit. Leaf pivot groups
+    // (the sector row in a multi-level pivot, or every pivot key in a
+    // 1-level pivot) have no `columnGroupShow:'closed'` totals leaf to
+    // fall back on, so collapsing them hides the entire value-col
+    // group. The user reported this as "clicking on any cell of the
+    // sector row hides that column". Fix: only toggle when the group
+    // emitted a closed-state child (matches the chevron painter rule).
+    await gotoFeature(page, 'pivot');
+    await page.waitForTimeout(500);
+
+    // Snapshot the rendered column order before the click.
+    const before = await page.evaluate(() => {
+      const g = window.__cgrid as unknown as { columnOrder: Array<{ colId: string }> };
+      return g.columnOrder.map((c) => c.colId);
+    });
+
+    // Find the sector-row header cell via getHeaderBoundsAt for one of
+    // the pivot leaf groups. We pick a leaf-pivot value column
+    // (e.g. the first pivotcol* col), get its header bounds, then
+    // click at the parent's row (sector-depth) by walking UP one row
+    // height. Easier: dispatch a synthetic click directly at the
+    // canvas at the right canvas-local y for the sector header band.
+    const click = await page.evaluate(() => {
+      const g = window.__cgrid as unknown as {
+        columnOrder: Array<{ colId: string }>;
+        getHeaderBoundsAt: (colId: string) => { x: number; y: number; w: number; h: number } | null;
+      };
+      const pivotColId = (g.columnOrder ?? []).find((c) => c.colId.startsWith('pivotcol'))?.colId;
+      if (!pivotColId) return null;
+      const leafBounds = g.getHeaderBoundsAt(pivotColId);
+      if (!leafBounds) return null;
+      // The sector-row header sits one row above the leaf header.
+      // Header row height is ~28px (cgrid default). Click 30px above
+      // the leaf header's top edge.
+      const canvas = document.querySelector('#grid-host canvas') as HTMLCanvasElement;
+      const r = canvas.getBoundingClientRect();
+      const clientX = r.left + leafBounds.x + leafBounds.w / 2;
+      const clientY = r.top + leafBounds.y - 14; // mid of the previous row band
+      // Synthetic mousedown + mouseup so the canvas click handler fires.
+      const dispatch = (type: string) => {
+        canvas.dispatchEvent(new MouseEvent(type, {
+          bubbles: true, cancelable: true, clientX, clientY, button: 0,
+        }));
+      };
+      dispatch('mousedown');
+      dispatch('mouseup');
+      dispatch('click');
+      return { clientX, clientY };
+    });
+    expect(click).not.toBeNull();
+    await page.waitForTimeout(300);
+
+    const after = await page.evaluate(() => {
+      const g = window.__cgrid as unknown as { columnOrder: Array<{ colId: string }> };
+      return g.columnOrder.map((c) => c.colId);
+    });
+
+    // The column order must not change — clicking a leaf-pivot-group
+    // header has no effect.
+    expect(after).toEqual(before);
+  });
+
   test('Strict order toggle flips enableStrictPivotColumnOrder + survives a pivot round-trip', async ({ page }) => {
     await gotoFeature(page, 'pivot');
 

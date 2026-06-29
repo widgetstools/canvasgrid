@@ -135,6 +135,15 @@ export interface CGridLike {
    *  with `{ append: true }`. */
   getMultiSortKey(): 'Shift' | 'Ctrl' | 'Alt' | null;
   toggleColumnGroup(groupId: string): void;
+  /** Cycle 18 / Task 4 follow-up — true when toggling this column
+   *  group has a visible effect. Pivot result groups whose children
+   *  are all `columnGroupShow:'closed'`-less leaves (the deepest
+   *  pivot level) have NO totals fallback — collapsing would hide
+   *  the column entirely. The header chevron painter uses the same
+   *  predicate (`byRows.ts` checks `hasTotalsLeaf`); HeaderClick now
+   *  short-circuits the toggle when this returns false so clicking
+   *  a leaf-pivot-group header is a no-op instead of a column-hide. */
+  canToggleColumnGroup(groupId: string): boolean;
   scrollBy(dx: number, dy: number): void;
   /** Cycle 9 patch / Task 2 — body rectangle in canvas-local CSS px. Read
    *  by `RangeSelection` on each drag tick to detect when the pointer has

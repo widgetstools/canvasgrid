@@ -64,6 +64,7 @@ import { GroupingState, type GroupingStateChangedEvent } from './core/groupingSt
 import { PivotState, type PivotStateChangedEvent, type PivotValueColumn } from './core/pivotState';
 import {
   synthesizePivotColumns, isPivotResultColumnId, isPivotRowTotalColumnId,
+  isPivotResultGroupId,
   type PivotCellSpec, type PivotValueColumnSpec,
 } from './core/pivotColumns';
 import { encodePivotValueKey, PIVOT_PATH_SEP, type PivotModel, type PivotKeyNode } from './worker/passes/pivotPass';
@@ -1104,6 +1105,7 @@ export class CGrid<TRow = any> {
         ? null
         : (this.options.multiSortKey ?? 'Shift'),
       toggleColumnGroup: (groupId) => this.toggleColumnGroup(groupId),
+      canToggleColumnGroup: (groupId) => this.canToggleColumnGroup(groupId),
       scrollBy: (dx, dy) => this.scroller.scrollBy({ left: dx, top: dy, behavior: 'auto' }),
       // Cycle 9 patch / Task 2 — body rectangle for RangeSelection's edge-zone
       // auto-scroll math. Read at event time so a container resize between
@@ -4868,6 +4870,39 @@ export class CGrid<TRow = any> {
 
   private toggleColumnGroup(groupId: string): void {
     this.columnGroupState.toggle(groupId);
+  }
+
+  /** Cycle 18 / Task 4 follow-up — predicate matching the painter's
+   *  chevron-eligibility rule. A column group is toggleable when:
+   *    - It's a regular (non-pivot) column group — Cycle 4 / Task 4
+   *      groups have always been toggleable, no change there.
+   *    - OR it's a pivot result group that emitted a
+   *      `columnGroupShow:'closed'` totals leaf during synthesis
+   *      (branch pivot groups — those have a fallback leaf to show
+   *      when collapsed, so the toggle is meaningful).
+   *  Leaf pivot groups (deepest pivot level — sectors under a
+   *  multi-level pivot, or every group of a 1-level pivot) have no
+   *  closed-state totals leaf; collapsing them would hide their value-
+   *  col leaves with NOTHING to fall back on. The user reported this
+   *  as "clicking on any cell of the sector row hides that column".
+   *  HeaderClick uses this predicate to short-circuit the toggle for
+   *  those groups so the click becomes a no-op. */
+  canToggleColumnGroup(groupId: string): boolean {
+    const group = this.columnTree.groupById.get(groupId);
+    if (!group) return false;
+    // Non-pivot groups are toggleable per legacy Cycle 4 behaviour.
+    if (!isPivotResultGroupId(groupId)) return true;
+    // Pivot result groups — only toggleable when they emitted a
+    // `columnGroupShow:'closed'` leaf (the synthesized totals leaf).
+    // The synthesizer attaches that leaf to BRANCH pivot groups only;
+    // leaf pivot groups (no further pivot subgroups) have no totals
+    // leaf, so toggling them would hide their value-col leaves with
+    // nothing to fall back on.
+    for (const leafId of group.leafColIds) {
+      const def = this.columnDefsMap.get(leafId);
+      if (def?.columnGroupShow === 'closed') return true;
+    }
+    return false;
   }
 
   /** Cycle 18 / Task 4 — (re)attach the column-group-state listener.
