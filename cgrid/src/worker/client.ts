@@ -176,6 +176,17 @@ export class WorkerClient {
     return this.send<{ visibleCount: number }>({ type: 'setPivotModel', payload: model });
   }
 
+  /** Cycle 18 / Task 8a — set the cap on the synthesized pivot column
+   *  count. `undefined` reverts to the default (5000). The cap is
+   *  enforced inside `PivotPass.apply`; if exceeded, the chunk carries
+   *  `pivotMaxColumnsReached` and pivot output is empty (bypassed). */
+  setPivotMaxGeneratedColumns(cap: number | undefined): Promise<{ visibleCount: number }> {
+    return this.send<{ visibleCount: number }>({
+      type: 'setPivotMaxGeneratedColumns',
+      payload: cap,
+    });
+  }
+
   /** Cycle 15 / Task 7 — replace the worker's persistent expanded-keys
    *  set. `keys === null` reverts to the all-expanded default; an
    *  empty array collapses everything; any other array is the

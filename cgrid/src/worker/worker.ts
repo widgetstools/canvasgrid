@@ -920,6 +920,23 @@ export function createWorkerHost(post: PostFn): WorkerHost {
             break;
           }
 
+          case 'setPivotMaxGeneratedColumns': {
+            // Cycle 18 / Task 8a — push the cap into PivotPass. The next
+            // `getViewport` honors the new cap; if it would breach, the
+            // chunk carries `pivotMaxColumnsReached` and the main thread
+            // fires the public event. Reuses the rowCount reply shape
+            // (same pattern setAggFuncs uses) since the cap change does
+            // not move rows.
+            state.pivot.setMaxGeneratedColumns(req.payload as number | undefined);
+            post({
+              id: req.id,
+              type: 'rowCount',
+              count: state.store.size(),
+              visibleCount: state.visibleCache?.length ?? state.store.size(),
+            });
+            break;
+          }
+
           case 'setPivotModel': {
             // Cycle 18 / Task 3 — install / replace the pivot model.
             // Reject unknown / fieldless colIds at the set-site (mirrors
@@ -1428,6 +1445,12 @@ export function createWorkerHost(post: PostFn): WorkerHost {
                 chunk.pivotColumnTree = pivotOut.keyTree;
                 chunk.pivotLeafPaths = pivotOut.leafPaths;
                 chunk.pivotValues = pivotOut.values;
+              }
+              if (pivotOut.maxColumnsReached !== undefined) {
+                // Cycle 18 / Task 8a — surface the breach to the main thread
+                // so the public `pivotMaxColumnsReached` event fires. The
+                // pivot output is empty (bypassed) when this is set.
+                chunk.pivotMaxColumnsReached = { ...pivotOut.maxColumnsReached };
               }
             }
             post(

@@ -349,6 +349,10 @@ export interface PositionsGridOptions {
    *  panel). Pairs with `?pivotDemo=on` so column-header drags from
    *  `enablePivot` columns land in the panel. */
   pivotPanelShow?: 'always' | 'onlyWhenPivoting';
+  /** Cycle 18 / Task 8a — forces the worker pivot-result-column cap so
+   *  the E2E can drive a breach + verify the public event fires.
+   *  Negative / non-finite revert to the worker default (5000). */
+  pivotMaxGeneratedColumns?: number;
 }
 
 /** Cycle 14 / Task 2 — deterministic seed for the demo pinned reference
@@ -948,6 +952,10 @@ export function createPositionsGrid(
     // Cycle 18 / Task 6 — pivot panel (top-of-grid drop strip ABOVE
     // the row group panel). `?pivotPanel=always|onlyWhenPivoting`.
     ...(opts.pivotPanelShow ? { pivotPanelShow: opts.pivotPanelShow } : {}),
+    // Cycle 18 / Task 8a — `?pivotMaxGeneratedColumns=N` forces the cap.
+    ...(opts.pivotMaxGeneratedColumns !== undefined
+      ? { pivotMaxGeneratedColumns: opts.pivotMaxGeneratedColumns }
+      : {}),
   };
 
   // Cycle 18 / Task 5 — `?pivotDemo=on`: stamp `enablePivot` on a few

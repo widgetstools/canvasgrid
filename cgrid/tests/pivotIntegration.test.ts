@@ -172,6 +172,41 @@ describe('CGrid pivot — render integration', () => {
     restore();
   });
 
+  it('pivotMaxGeneratedColumns breach fires the pivotMaxColumnsReached event AND pivot result columns are NOT synthesized (Task 8a)', async () => {
+    const { grid, restore } = buildWiredGrid();
+    await tick();
+    grid.setGroupModel({ rowGroupCols: ['region'] });
+    await tick();
+
+    const breaches: Array<{ generatedColumns: number; cap: number }> = [];
+    grid.on('pivotMaxColumnsReached' as never, ((e: {
+      type: 'pivotMaxColumnsReached'; generatedColumns: number; cap: number;
+    }) => {
+      breaches.push({ generatedColumns: e.generatedColumns, cap: e.cap });
+    }) as never);
+
+    // 2 leaves (FIN+TECH) × 2 value cols (pnl+qty) = 4. Cap at 3 forces the breach.
+    grid.setGridOption('pivotMaxGeneratedColumns', 3);
+    grid.setPivotColumns(['sector']);
+    grid.addValueColumn('pnl', 'sum');
+    grid.addValueColumn('qty', 'sum');
+    grid.setPivotMode(true);
+    await tick();
+    await tick();
+
+    expect(breaches.length).toBeGreaterThanOrEqual(1);
+    const last = breaches[breaches.length - 1]!;
+    expect(last.generatedColumns).toBe(4);
+    expect(last.cap).toBe(3);
+
+    // Pivot output bypassed → no pivot result columns synthesized.
+    const ids = orderIds(grid);
+    expect(ids.some(isPivotResultColumnId)).toBe(false);
+
+    grid.destroy();
+    restore();
+  });
+
   it('reverts to primary columns when pivot mode is turned off', async () => {
     const { grid, restore } = buildWiredGrid();
     await tick();

@@ -1412,6 +1412,18 @@ export class CGrid<TRow = any> {
       if (this.options.aggFuncs && Object.keys(this.options.aggFuncs).length > 0) {
         this.forwardAggFuncs(this.options.aggFuncs);
       }
+      // Cycle 18 / Task 8a — push the construction-time pivot cap to the
+      // worker BEFORE the first getViewport so the very first pivot run
+      // honors the cap. Absent option leaves the worker on its default
+      // (5000). Fire-and-forget — the reply rides the existing rowCount
+      // channel and the cap doesn't move rows.
+      if (this.options.pivotMaxGeneratedColumns !== undefined) {
+        this.workerClient
+          .setPivotMaxGeneratedColumns(this.options.pivotMaxGeneratedColumns)
+          .catch((err) => {
+            if (!this.destroyed) console.error('[cgrid] setPivotMaxGeneratedColumns:', err);
+          });
+      }
       // Cycle 15 / Task 8 — when `groupSelectsChildren: true` is set
       // at construction, register the SelectionModel's membership
       // resolver AND flip the worker's per-snapshot descendant
@@ -3426,6 +3438,20 @@ export class CGrid<TRow = any> {
    *  fresh host (transition from `'never'`), unmounts the current one
    *  (transition to `'never'`), or hands the new mode to the existing
    *  host. */
+  /** Cycle 18 / Task 8a — forward the runtime cap to the worker.
+   *  Pure pass-through: the worker validates (negative / non-finite
+   *  revert to default) and the next `getViewport` honors the new cap. */
+  private updatePivotMaxGeneratedColumns(cap: number | undefined): void {
+    if (this.destroyed) return;
+    this.workerClient.setPivotMaxGeneratedColumns(cap)
+      .then(() => {
+        if (!this.destroyed) this.requestViewport();
+      })
+      .catch((err) => {
+        if (!this.destroyed) console.error('[cgrid] setPivotMaxGeneratedColumns:', err);
+      });
+  }
+
   private updatePivotPanelShow(show: 'always' | 'onlyWhenPivoting' | 'never' | undefined): void {
     if (this.destroyed) return;
     const next = normalizePivotPanelShow(show);
@@ -4330,6 +4356,7 @@ export class CGrid<TRow = any> {
       },
       updateRowGroupPanelShow: (value) => this.updateRowGroupPanelShow(value),
       updatePivotPanelShow: (value) => this.updatePivotPanelShow(value),
+      updatePivotMaxGeneratedColumns: (value) => this.updatePivotMaxGeneratedColumns(value),
       updateRowGroupPanelSuppressSort: (suppress) =>
         this.rowGroupPanel?.setRenderOptions({ suppressSort: suppress }),
       updateGroupSelectsChildren: (enabled) => this.applyGroupSelectsChildren(enabled),
@@ -5680,6 +5707,20 @@ export class CGrid<TRow = any> {
         // columns from the freshly-arrived pivot tree before the layout +
         // paint below run off the new column order.
         this.maybeSyncPivotColumns(chunk);
+        // Cycle 18 / Task 8a — surface the cap breach as a public event.
+        // The chunk already arrived with no pivot output when this is set
+        // (PivotPass bypassed early); the grid paints primary columns
+        // normally. Apps can listen + raise the cap / narrow the filter.
+        // Emit ONCE per chunk that carries the field — no debounce needed
+        // since the worker only sets the field when the breach actually
+        // happened (not on every chunk).
+        if (chunk.pivotMaxColumnsReached !== undefined) {
+          this.events.emit({
+            type: 'pivotMaxColumnsReached',
+            generatedColumns: chunk.pivotMaxColumnsReached.generatedColumns,
+            cap: chunk.pivotMaxColumnsReached.cap,
+          });
+        }
         // Cycle 4 / Task 11 (cell-flash patch) — drain the worker's
         // per-cell flashMask into the registry. The chunk's `rowIds`
         // are numeric (the worker's stable mapping); the painter's

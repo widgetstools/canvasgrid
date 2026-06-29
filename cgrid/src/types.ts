@@ -646,6 +646,18 @@ export interface CGridOptions<TRow = any> {
    *  that wraps the row dimension). Mirrors AG-Grid's `pivotPanelShow`.
    *  AG-Grid parity: `pivot-behaviors-prompts.md` Prompt 6. */
   pivotPanelShow?: 'always' | 'onlyWhenPivoting' | 'never';
+  /** Cycle 18 / Task 8a — maximum number of synthesized pivot result
+   *  columns the worker will produce per `PivotPass`. Default `5000`
+   *  (mirrors AG-Grid's `pivotMaxGeneratedColumns`). When a configured
+   *  pivot model would produce more, `PivotPass` stops early, the chunk
+   *  carries no pivot output (primary columns render normally), and the
+   *  grid fires the `pivotMaxColumnsReached` event with the would-be
+   *  count + the active cap so the app can raise the limit, narrow the
+   *  filter, or warn the user. Negative / non-finite values are
+   *  rejected and the default is used — a buggy app's misconfigured
+   *  option must not accidentally disable pivot. AG-Grid parity:
+   *  `pivot-behaviors-prompts.md` Prompt 8 / Task 8a. */
+  pivotMaxGeneratedColumns?: number;
   /** Cycle 15 / Task 6 — when `true`, the row group panel's chips do
    *  not render a sort indicator (Cycle 15 ships chips without a sort
    *  glyph today; this flag is plumbed for forward compatibility so
@@ -1954,6 +1966,18 @@ export type CGridEvent =
       pivotColumns: string[];
       valueColumns: Array<{ colId: string; aggFunc: string }>;
       source: 'mode' | 'set' | 'add' | 'remove' | 'move' | 'aggFunc' | 'restore';
+    }
+  /** Cycle 18 / Task 8a — fires when a worker chunk reports that the
+   *  pivot pass would have synthesized more than `pivotMaxGeneratedColumns`.
+   *  The pivot output is empty on that chunk (primary columns render
+   *  normally — no half-shaped matrix). Apps listen to raise the cap,
+   *  narrow the filter, or show a banner. Mirrors AG-Grid's
+   *  `pivotMaxColumnsReached`. The two-field payload is what AG-Grid
+   *  carries verbatim. */
+  | {
+      type: 'pivotMaxColumnsReached';
+      generatedColumns: number;
+      cap: number;
     }
   /** Fires when the set / order of displayed columns changes for any reason.
    *  Cycle 4 wired the original `columnGroupOpened` + `columnDefsChanged`

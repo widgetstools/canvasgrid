@@ -226,6 +226,79 @@ describe('PivotPass — setModel validation', () => {
   });
 });
 
+describe('PivotPass — pivotMaxGeneratedColumns cap (Task 8a)', () => {
+  it('default cap (5000) does not engage for small key sets', () => {
+    const { pivot, groupOutput, ids } = setup(['region']);
+    pivot.setModel({ pivotColIds: ['sector'], valueCols: [{ colId: 'pnl', aggFunc: 'sum' }] });
+    const out = pivot.apply(ids, groupOutput);
+    expect(out.bypassed).toBe(false);
+    expect(out.maxColumnsReached).toBeUndefined();
+    expect(out.leafPaths.length).toBe(2); // FIN + TECH
+  });
+
+  it('engages when leafPaths × valueCols exceeds the cap — returns bypassed output + maxColumnsReached payload', () => {
+    const { pivot, groupOutput, ids } = setup(['region']);
+    pivot.setModel({
+      pivotColIds: ['sector'],
+      valueCols: [{ colId: 'pnl', aggFunc: 'sum' }, { colId: 'qty', aggFunc: 'sum' }],
+    });
+    // 2 leaves × 2 value cols = 4. Cap at 3 forces the breach.
+    pivot.setMaxGeneratedColumns(3);
+    const out = pivot.apply(ids, groupOutput);
+    expect(out.bypassed).toBe(true);
+    expect(out.keyTree).toEqual([]);
+    expect(out.leafPaths).toEqual([]);
+    expect(out.values.size).toBe(0);
+    expect(out.maxColumnsReached).toEqual({ generatedColumns: 4, cap: 3 });
+  });
+
+  it('does NOT engage when generated count exactly equals the cap (boundary)', () => {
+    const { pivot, groupOutput, ids } = setup(['region']);
+    pivot.setModel({ pivotColIds: ['sector'], valueCols: [{ colId: 'pnl', aggFunc: 'sum' }] });
+    // 2 leaves × 1 value col = 2. Cap at 2 → exactly at the limit, allowed.
+    pivot.setMaxGeneratedColumns(2);
+    const out = pivot.apply(ids, groupOutput);
+    expect(out.bypassed).toBe(false);
+    expect(out.maxColumnsReached).toBeUndefined();
+    expect(out.leafPaths.length).toBe(2);
+  });
+
+  it('cap of zero disables synthesis (any non-empty pivot result trips the breach)', () => {
+    const { pivot, groupOutput, ids } = setup(['region']);
+    pivot.setModel({ pivotColIds: ['sector'], valueCols: [{ colId: 'pnl', aggFunc: 'sum' }] });
+    pivot.setMaxGeneratedColumns(0);
+    const out = pivot.apply(ids, groupOutput);
+    expect(out.bypassed).toBe(true);
+    expect(out.maxColumnsReached).toEqual({ generatedColumns: 2, cap: 0 });
+  });
+
+  it('a negative or non-finite cap is treated as the default (5000) — guards a buggy app from accidentally bypassing pivot', () => {
+    const { pivot, groupOutput, ids } = setup(['region']);
+    pivot.setModel({ pivotColIds: ['sector'], valueCols: [{ colId: 'pnl', aggFunc: 'sum' }] });
+    pivot.setMaxGeneratedColumns(-1);
+    const out1 = pivot.apply(ids, groupOutput);
+    expect(out1.bypassed).toBe(false);
+    pivot.setMaxGeneratedColumns(Number.NaN);
+    const out2 = pivot.apply(ids, groupOutput);
+    expect(out2.bypassed).toBe(false);
+    pivot.setMaxGeneratedColumns(Infinity);
+    const out3 = pivot.apply(ids, groupOutput);
+    expect(out3.bypassed).toBe(false);
+  });
+
+  it('reverting the cap to default re-enables pivot synthesis on the next apply', () => {
+    const { pivot, groupOutput, ids } = setup(['region']);
+    pivot.setModel({ pivotColIds: ['sector'], valueCols: [{ colId: 'pnl', aggFunc: 'sum' }] });
+    pivot.setMaxGeneratedColumns(1);
+    const tripped = pivot.apply(ids, groupOutput);
+    expect(tripped.bypassed).toBe(true);
+    pivot.setMaxGeneratedColumns(undefined);
+    const restored = pivot.apply(ids, groupOutput);
+    expect(restored.bypassed).toBe(false);
+    expect(restored.maxColumnsReached).toBeUndefined();
+  });
+});
+
 describe('PivotPass — scale correctness (100k rows, no wall-clock)', () => {
   it('aggregates a large deterministic set correctly', () => {
     const N = 100_000;

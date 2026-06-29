@@ -67,6 +67,7 @@ export type RuntimeOption =
   | 'rowGroupPanelShow'
   | 'rowGroupPanelSuppressSort'
   | 'pivotPanelShow'
+  | 'pivotMaxGeneratedColumns'
   | 'groupSelectsChildren'
   | 'suppressCount';
 
@@ -122,6 +123,10 @@ export interface RuntimeOptionTarget<TRow = any> {
   /** Cycle 18 / Task 6 — hand the runtime pivot-panel show mode to
    *  CGrid so it can mount / unmount / setShowMode on the host. */
   updatePivotPanelShow(value: 'always' | 'onlyWhenPivoting' | 'never' | undefined): void;
+  /** Cycle 18 / Task 8a — forward the runtime cap to the worker so
+   *  subsequent `getViewport` calls honor it. `undefined` reverts to
+   *  the worker default (5000). */
+  updatePivotMaxGeneratedColumns(value: number | undefined): void;
   /** Cycle 15.5 / Task 1 — hand the runtime `rowGroupPanelSuppressSort`
    *  flag to CGrid so the panel re-renders (with / without the sort
    *  indicator) on the next frame. */
@@ -287,6 +292,14 @@ export function applyRuntimeOption<TRow>(
         value as 'always' | 'onlyWhenPivoting' | 'never' | undefined,
       );
       return;
+    case 'pivotMaxGeneratedColumns':
+      // Cycle 18 / Task 8a — forward the runtime cap. Worker handles
+      // negative / non-finite by reverting to the default — main here
+      // just ships whatever the app wrote, no pre-validation.
+      target.updatePivotMaxGeneratedColumns(
+        value as number | undefined,
+      );
+      return;
     case 'rowGroupPanelSuppressSort':
       // Cycle 15.5 / Task 1 — re-render the chip strip without the
       // sort indicator span when `true`. The flag toggles which DOM
@@ -334,6 +347,7 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'rowGroupPanelShow',
   'rowGroupPanelSuppressSort',
   'pivotPanelShow',
+  'pivotMaxGeneratedColumns',
   'groupSelectsChildren',
   'suppressCount',
 ]);

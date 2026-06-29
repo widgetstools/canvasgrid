@@ -156,7 +156,16 @@ const pivotPanelShow: 'always' | 'onlyWhenPivoting' | undefined =
   pivotPanelShowRaw === 'always' || pivotPanelShowRaw === 'onlyWhenPivoting'
     ? pivotPanelShowRaw
     : undefined;
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, groupingDemo, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, rowGroupPanelMarketsGrid, groupSelectsChildren, groupIncludeFooter, groupIncludeTotalFooter, pinning, columnGroups, groupHideOpenParents, isGroupOpenByDefault, suppressCount, suppressGroupChangesColumnVisibility, groupTotalRow, grandTotalRow, pivotDemo, pivotPanelShow });
+// Cycle 18 / Task 8a — `?pivotMaxGeneratedColumns=N` forces the cap so
+// the E2E can drive a breach without first stamping `enablePivot` on a
+// high-cardinality column. Parsed lazily; non-numeric values are
+// ignored and the worker default (5000) is used.
+const pivotMaxRaw = search.get('pivotMaxGeneratedColumns');
+const pivotMaxGeneratedColumns: number | undefined = pivotMaxRaw !== null
+  && Number.isFinite(Number(pivotMaxRaw))
+    ? Number(pivotMaxRaw)
+    : undefined;
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, groupingDemo, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, rowGroupPanelMarketsGrid, groupSelectsChildren, groupIncludeFooter, groupIncludeTotalFooter, pinning, columnGroups, groupHideOpenParents, isGroupOpenByDefault, suppressCount, suppressGroupChangesColumnVisibility, groupTotalRow, grandTotalRow, pivotDemo, pivotPanelShow, pivotMaxGeneratedColumns });
 
 // Toolbar feature-toggle checkboxes. Toggling reloads the page with
 // the matching URL flag set / unset because the structural changes

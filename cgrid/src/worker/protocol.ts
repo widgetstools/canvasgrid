@@ -241,6 +241,13 @@ export interface ViewportChunk {
   pivotColumnTree?: PivotKeyNode[];
   pivotLeafPaths?: string[][];
   pivotValues?: Map<string, unknown>;
+  /** Cycle 18 / Task 8a — populated when the pivot pass would have
+   *  produced more synthetic columns than `pivotMaxGeneratedColumns`.
+   *  The pivot output is empty (bypassed) — primary columns render
+   *  normally — and the main thread fires a `pivotMaxColumnsReached`
+   *  event the app can listen to (raise the cap, narrow the filter, …).
+   *  Absent on every other chunk. Rides the structured-clone path. */
+  pivotMaxColumnsReached?: { generatedColumns: number; cap: number };
 }
 
 /** Cycle 15 / Task 16 — one sticky ancestor entry per depth level
@@ -325,6 +332,13 @@ export type WorkerRequest =
    *  current visible row count (pivot does not change which rows are
    *  visible). */
   | { id: ReqId; type: 'setPivotModel';    payload: PivotModel }
+  /** Cycle 18 / Task 8a — set the cap on the synthesized pivot column
+   *  count. `undefined` reverts to the default (5000). Negative /
+   *  non-finite values also revert to default (a misconfigured option
+   *  must not accidentally disable pivot). The next `getViewport`
+   *  honors the new cap; the cgrid main thread fires
+   *  `pivotMaxColumnsReached` when the chunk carries the breach payload. */
+  | { id: ReqId; type: 'setPivotMaxGeneratedColumns'; payload: number | undefined }
   /** Cycle 15 / Task 7 — replace the worker's persistent expanded-keys
    *  set. `keys === null` reverts to the "all groups expanded" default
    *  (the same view Task 4 shipped before any explicit toggle); `keys: []`
