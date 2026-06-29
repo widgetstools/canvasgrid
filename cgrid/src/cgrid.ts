@@ -2921,6 +2921,10 @@ export class CGrid<TRow = any> {
       // Cycle 18 / Task 8e — pivot totals (row totals + column-group totals).
       pivotRowTotals: this.options.pivotRowTotals ?? null,
       pivotColumnGroupTotals: this.options.pivotColumnGroupTotals ?? null,
+      // Cycle 18 / Task 8f — app callbacks for customising the synthesized
+      // colDef / groupDef before the resolver sees them.
+      processPivotResultColDef: this.options.processPivotResultColDef,
+      processPivotResultColGroupDef: this.options.processPivotResultColGroupDef,
     });
 
     // Save the primary structures on first activation so revert restores

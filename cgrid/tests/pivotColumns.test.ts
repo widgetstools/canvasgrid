@@ -435,3 +435,88 @@ describe('synthesizePivotColumns — pivotColumnGroupTotals (Task 8e)', () => {
     expect(defs).toHaveLength(2);
   });
 });
+
+// Cycle 18 / Task 8f — processPivotResultColDef / processPivotResultColGroupDef.
+//
+// App-provided callbacks let the app mutate the synthesized colDef / group
+// before the resolver sees it. Common uses: override headerName, set
+// valueFormatter, add cellStyle / cellClassRules. AG-Grid parity.
+describe('synthesizePivotColumns — processPivotResultColDef (Task 8f)', () => {
+  it('is called once per synthesized LEAF colDef + receives the def by reference for in-place mutation', () => {
+    const seen: string[] = [];
+    const { defs } = synthesizePivotColumns({
+      keyTree: flatTree(['FIN', 'TECH']),
+      valueColumns: [
+        { colId: 'pnl', aggFunc: 'sum', headerName: 'PnL' },
+        { colId: 'qty', aggFunc: 'sum', headerName: 'Qty' },
+      ],
+      processPivotResultColDef: (def) => {
+        seen.push(def.colId ?? '');
+        def.headerName = `[${def.headerName}]`;
+      },
+    });
+    // 2 pivot keys × 2 value cols = 4 leaves.
+    expect(seen).toHaveLength(4);
+    for (const group of defs) {
+      const leaves = (group.children as Array<{ headerName: string }>);
+      for (const leaf of leaves) expect(leaf.headerName.startsWith('[')).toBe(true);
+    }
+  });
+
+  it('is NOT called when undefined (default no-op)', () => {
+    const { defs } = synthesizePivotColumns({
+      keyTree: flatTree(['FIN']),
+      valueColumns: [{ colId: 'pnl', aggFunc: 'sum', headerName: 'PnL' }],
+    });
+    const leaf = (defs[0]!.children as Array<{ headerName: string }>)[0]!;
+    expect(leaf.headerName).toBe('PnL');
+  });
+
+  it('is also called on row-total leaves (Task 8e) when pivotRowTotals is set', () => {
+    let totalLeafSeen = false;
+    synthesizePivotColumns({
+      keyTree: flatTree(['FIN']),
+      valueColumns: [{ colId: 'pnl', aggFunc: 'sum', headerName: 'PnL' }],
+      pivotRowTotals: 'after',
+      processPivotResultColDef: (def) => {
+        if (def.colId && def.colId.startsWith('pivotrowtotal')) totalLeafSeen = true;
+      },
+    });
+    expect(totalLeafSeen).toBe(true);
+  });
+});
+
+describe('synthesizePivotColumns — processPivotResultColGroupDef (Task 8f)', () => {
+  it('is called once per synthesized GROUP def + receives the group by reference', () => {
+    const seen: string[] = [];
+    const { defs } = synthesizePivotColumns({
+      keyTree: nestedTree({ TECH: ['EQ', 'BOND'] }),
+      valueColumns: [{ colId: 'pnl', aggFunc: 'sum' }],
+      processPivotResultColGroupDef: (g) => {
+        seen.push(g.headerName ?? '');
+        g.headerName = `<${g.headerName}>`;
+      },
+    });
+    // TECH (depth-0) + EQ (depth-1) + BOND (depth-1) = 3 groups.
+    expect(seen.sort()).toEqual(['BOND', 'EQ', 'TECH']);
+    const tech = defs[0]!;
+    expect(tech.headerName).toBe('<TECH>');
+  });
+
+  it('is NOT called for the row-totals group (different category — leaves go through processPivotResultColDef)', () => {
+    // The row-totals group is wrapped chrome — its identity is "Total"
+    // for layout reasons. Apps customise the totals via the leaf
+    // callback, not the group one (the group has no per-pivot-key
+    // semantics).
+    let totalsGroupSeen = false;
+    synthesizePivotColumns({
+      keyTree: flatTree(['FIN']),
+      valueColumns: [{ colId: 'pnl', aggFunc: 'sum' }],
+      pivotRowTotals: 'after',
+      processPivotResultColGroupDef: (g) => {
+        if (g.headerName === 'Total') totalsGroupSeen = true;
+      },
+    });
+    expect(totalsGroupSeen).toBe(false);
+  });
+});

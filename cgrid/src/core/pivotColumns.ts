@@ -180,11 +180,26 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
    *  non-leaf pivot column group. `null` keeps the Task 4 behaviour
    *  (closed-only). AG-Grid parity: `pivotColumnGroupTotals`. */
   pivotColumnGroupTotals?: 'before' | 'after' | null;
+  /** Cycle 18 / Task 8f — app-provided callback fired once per
+   *  synthesized leaf colDef BEFORE the resolver sees it. Apps mutate
+   *  the def in place (override headerName, set valueFormatter, add
+   *  cellStyle / cellClassRules, etc.). Pivot result columns + row-
+   *  total leaves both flow through this callback. AG-Grid parity:
+   *  `processPivotResultColDef`. */
+  processPivotResultColDef?: (colDef: CColDef<TRow>) => void;
+  /** Cycle 18 / Task 8f — app-provided callback fired once per
+   *  synthesized column GROUP (the pivot-key column groups; NOT the
+   *  row-totals wrapper group whose identity is layout chrome). Apps
+   *  mutate the group def in place — override headerName, headerClass,
+   *  etc. AG-Grid parity: `processPivotResultColGroupDef`. */
+  processPivotResultColGroupDef?: (groupDef: CColGroupDef<TRow>) => void;
 }): SynthesizedPivotColumns<TRow> {
   const { keyTree, valueColumns } = input;
   const pivotDefaultExpanded = input.pivotDefaultExpanded ?? 0;
   const pivotRowTotals = input.pivotRowTotals ?? null;
   const pivotColumnGroupTotals = input.pivotColumnGroupTotals ?? null;
+  const processColDef = input.processPivotResultColDef;
+  const processGroupDef = input.processPivotResultColGroupDef;
   const cellSpecById = new Map<string, PivotCellSpec>();
 
   const buildValueLeaves = (
@@ -209,6 +224,11 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
       };
       if (vc.width !== undefined) def.width = vc.width;
       if (columnGroupShow !== undefined) def.columnGroupShow = columnGroupShow;
+      // Cycle 18 / Task 8f — let the app mutate the def in place
+      // (headerName, valueFormatter, cellStyle, …) BEFORE the resolver
+      // sees it. The mutation is intentionally last so app overrides
+      // win over the synthesis defaults.
+      processColDef?.(def);
       return def;
     });
 
@@ -224,12 +244,16 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
       // cols' `columnGroupShow:'open'` hides them when a branch ancestor
       // closes. Top-level leaves of a 1-level pivot have no ancestor
       // branch and stay always-visible (no `columnGroupShow`).
-      return {
+      const leafGroup: CColGroupDef<TRow> = {
         groupId: pivotGroupId(node.path),
         headerName: node.value,
         openByDefault: true,
         children: buildValueLeaves(node.path, hasAncestorBranch ? 'open' : undefined),
       };
+      // Cycle 18 / Task 8f — app group-def hook fires AFTER children
+      // are built so apps can re-read leaf shape if they want.
+      processGroupDef?.(leafGroup);
+      return leafGroup;
     }
     // Branch node — emit a "group total" leaf PLUS the recursive child
     // groups. The totals address the prefix path that PivotPass already
@@ -250,12 +274,15 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
     const orderedChildren = pivotColumnGroupTotals === 'after'
       ? [...childGroups, ...totals]
       : [...totals, ...childGroups];
-    return {
+    const branchGroup: CColGroupDef<TRow> = {
       groupId: pivotGroupId(node.path),
       headerName: node.value,
       openByDefault,
       children: orderedChildren,
     };
+    // Cycle 18 / Task 8f — app group-def hook.
+    processGroupDef?.(branchGroup);
+    return branchGroup;
   };
 
   const matrixDefs = keyTree.map((n) => buildNode(n, 0, false));
@@ -283,6 +310,12 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
         sortable: true,
       };
       if (vc.width !== undefined) def.width = vc.width;
+      // Cycle 18 / Task 8f — also fire the column-def callback for
+      // row-total leaves so apps can customise valueFormatter / cellStyle
+      // on the totals column the same way they would on any other pivot
+      // result column. The wrapper GROUP ("Total") is intentionally NOT
+      // forwarded to processGroupDef — its identity is layout chrome.
+      processColDef?.(def);
       return def;
     });
     const totalsGroup: CColGroupDef<TRow> = {

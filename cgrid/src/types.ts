@@ -688,6 +688,19 @@ export interface CGridOptions<TRow = any> {
    *  visible only when the group is collapsed). AG-Grid parity:
    *  `pivotColumnGroupTotals`. */
   pivotColumnGroupTotals?: 'before' | 'after' | null;
+  /** Cycle 18 / Task 8f — app callback fired once per synthesized pivot
+   *  result leaf colDef BEFORE the column-tree resolver sees it. Apps
+   *  mutate the def in place (override `headerName`, add
+   *  `valueFormatter` / `cellStyle` / `cellClassRules`, etc.). Pivot
+   *  result columns AND row-total leaves both flow through this hook.
+   *  AG-Grid parity: `processPivotResultColDef`. */
+  processPivotResultColDef?: (colDef: CColDef<TRow>) => void;
+  /** Cycle 18 / Task 8f — app callback fired once per synthesized pivot
+   *  column GROUP (the per-pivot-key wrapper groups; NOT the row-totals
+   *  wrapper which is layout chrome). Mutate the group in place
+   *  (override `headerName`, `headerClass`, …). AG-Grid parity:
+   *  `processPivotResultColGroupDef`. */
+  processPivotResultColGroupDef?: (groupDef: CColGroupDef<TRow>) => void;
   /** Cycle 15 / Task 6 — when `true`, the row group panel's chips do
    *  not render a sort indicator (Cycle 15 ships chips without a sort
    *  glyph today; this flag is plumbed for forward compatibility so
