@@ -1870,6 +1870,27 @@
    * plz/valz zones for cross-surface vocabulary continuity. */
   --cg-pivot-panel-drop-border-reject: #f59e0b;
 
+  /* Pivot panel pills wear `.cg-row-group-panel-chip*` classes so the
+   * top-of-grid pivot strip and row-group strip share one visual
+   * vocabulary. Those classes reference CSS variables (chip bg /
+   * border / hover) that are normally defined on `.cg-row-group-panel`.
+   * Duplicate them here so the inherited chip styling resolves the
+   * same way under either parent. Kept in lockstep with the row-group
+   * definitions above. */
+  --cg-row-group-chip-height: 22px;
+  --cg-row-group-chip-radius: 11px;
+  --cg-row-group-chip-padding-x: 7px;
+  --cg-row-group-chip-gap: 4px;
+  --cg-row-group-chip-bg:
+    color-mix(in srgb, var(--cg-header-bg) 82%, var(--cg-fg-color) 18%);
+  --cg-row-group-chip-border:
+    color-mix(in srgb, var(--cg-fg-color) 14%, transparent);
+  --cg-row-group-chip-fg: var(--cg-fg-color);
+  --cg-row-group-chip-hover-bg:
+    color-mix(in srgb, var(--cg-header-bg) 72%, var(--cg-fg-color) 28%);
+  --cg-row-group-chip-active-bg:
+    color-mix(in srgb, var(--cg-header-bg) 62%, var(--cg-fg-color) 38%);
+
   position: absolute;
   left: 0;
   right: 0;
