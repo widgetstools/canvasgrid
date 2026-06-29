@@ -83,6 +83,8 @@ import { wrapTextCell } from './renderer/cellRenderers/wrapText';
 import { totalsCell } from './renderer/cellRenderers/totals';
 import { groupCell, type GroupCellValue } from './renderer/cellRenderers/group';
 import { groupFooterCell } from './renderer/cellRenderers/groupFooter';
+import { sparklineCell } from './renderer/cellRenderers/sparkline';
+import { coerceToNumberArray } from './renderer/cellRenderers/sparkline/coerceToNumberArray';
 import { decorateHeader } from './renderer/painters/byRows';
 import {
   autoGroupColumnDepthFromId,
@@ -749,6 +751,10 @@ export class CGrid<TRow = any> {
     this.cellRenderers.register('totals', totalsCell);
     this.cellRenderers.register('group', groupCell);
     this.cellRenderers.register('groupFooter', groupFooterCell);
+    // Cycle 21 / Task 1 — canvas-painted sparkline (line variant; Task 2
+    // plugs the column / area / bar / pie sibling painters through the
+    // same registered name via `cellRendererParams.sparkline.type`).
+    this.cellRenderers.register('sparkline', sparklineCell);
 
     // 2b. Tool-panel registry (Cycle 11 / Task 1). Seed the built-in
     // IDs first, then overwrite the Columns stub with the real
@@ -1211,6 +1217,22 @@ export class CGrid<TRow = any> {
       getGroupKeyAtRow: (rowIndex) => this.getGroupKeyAtRow(rowIndex),
       isGroupRow: (rowIndex) => this.isGroupRow(rowIndex),
       isGroupExpanded: (groupKey) => this.isGroupExpanded(groupKey),
+      // Cycle 21 / Task 3 — sparkline-tooltip lookup. Returns the cell
+      // data array only when the column's resolved cellRenderer is
+      // `'sparkline'`; null otherwise (non-sparkline column, off-screen
+      // row, or value not an array). The SparklineTooltip feature uses
+      // null as the "hide" signal so this stays the one consolidated
+      // gate for whether the overlay is active at all.
+      getSparklineData: (rowIndex, colId) => {
+        const def = this.columnDefsMap.get(colId);
+        if (!def || def.cellRenderer !== 'sparkline') return null;
+        const cell = this.cellAt(rowIndex, colId);
+        // Reuse the painter's coercion so the tooltip + the canvas
+        // paint agree on what counts as a usable sparkline value
+        // (covers both raw arrays and CSV-stringified arrays shipped
+        // through the worker's text-column path).
+        return coerceToNumberArray(cell?.value);
+      },
     });
     this.cellEditorRegistry = new CellEditorRegistry();
     CellEditorRegistry.seed(this.cellEditorRegistry);
