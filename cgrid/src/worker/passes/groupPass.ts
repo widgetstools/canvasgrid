@@ -413,13 +413,12 @@ export class GroupPass<TRow = any> {
       }
     }
 
-    // Post-process: deterministic ordering + typed-array conversion +
-    // childCount rollup. Walk the tree via the build-bucket structure
-    // (its `childByKey` is keyed by per-level value, NOT composite key
-    // — see the hot-loop comment above). The public `node.childGroups`
-    // array is sorted by composite key for deterministic emission, but
-    // finalisation order is independent so iterating the Map's values
-    // is correct.
+    // Post-process: typed-array conversion + childCount rollup. We
+    // PRESERVE data-insertion order for sibling groups (AG-parity:
+    // a group's position is determined by the order its first leaf
+    // appeared). The SortPass downstream re-sorts when the user has
+    // an explicit sort on the row-group column; until then, insertion
+    // order is the deterministic default.
     const finalise = (bucket: BuildBucket): number => {
       const node = bucket.node;
       if (bucket.leafIndices !== null) {
@@ -429,7 +428,6 @@ export class GroupPass<TRow = any> {
         node.childCount = bucket.leafIndices.length;
         return node.childCount;
       }
-      node.childGroups.sort(byKey);
       let total = 0;
       for (const childBucket of bucket.childByKey.values()) {
         total += finalise(childBucket);
@@ -438,7 +436,6 @@ export class GroupPass<TRow = any> {
       return total;
     };
 
-    root.node.childGroups.sort(byKey);
     for (const childBucket of root.childByKey.values()) {
       finalise(childBucket);
     }

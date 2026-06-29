@@ -24,7 +24,8 @@ export type IconName =
   | 'x'
   | 'layout-grid'
   | 'list-filter'
-  | 'sigma';
+  | 'sigma'
+  | 'columns-3';
 
 const PATHS: Record<IconName, string> = {
   // Sort ascending
@@ -49,6 +50,10 @@ const PATHS: Record<IconName, string> = {
   'list-filter': 'M3 6h18 M7 12h10 M11 18h2',
   // Sigma / summation — used for the Values section header (Lucide sigma)
   'sigma': 'M18 3H6l8 9-8 9h12',
+  // Three vertical columns — used for the Column Labels section header
+  // (Cycle 18 / Task 5). Lucide `columns-3` path: a frame with two
+  // inner vertical dividers (echoes "column headers / pivot labels").
+  'columns-3': 'M21 4H3v16h18V4z M15 4v16 M9 4v16',
 };
 
 const cache = new Map<IconName, Path2D>();

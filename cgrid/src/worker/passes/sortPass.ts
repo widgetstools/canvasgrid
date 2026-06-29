@@ -56,6 +56,8 @@ import type {
   GroupPassOutput,
 } from './groupPass';
 import { ComparatorRegistry, type ComparatorFn } from '../comparatorRegistry';
+import { decodePivotResultColumnId } from '../../core/pivotColumns';
+import { encodePivotValueKey, PIVOT_PATH_SEP, type PivotPassOutput } from './pivotPass';
 
 interface ResolvedSortEntry {
   entry: SortModelEntry;
@@ -157,6 +159,13 @@ export class SortPass<TRow = any> {
       includeTotalFooter?: boolean;
       removeSingleChildren?: boolean;
     } = {},
+    /** Cycle 18 / Task 8d — pivot output for the current viewport. When
+     *  supplied AND the sort model targets a pivot-result column, each
+     *  group level is re-ordered by the corresponding pivot aggregate
+     *  (looked up by `(groupKey × pivotPath × valueColId)`). Without
+     *  this, pivot-result sort entries silently fall through and the
+     *  level keeps the default composite-key order. */
+    pivotOut?: PivotPassOutput,
   ): GroupPassOutput {
     if (groupOutput.bypassed || groupOutput.roots.length === 0) {
       return groupOutput;
@@ -198,7 +207,9 @@ export class SortPass<TRow = any> {
     // entries that target different grouping columns; each level inspects
     // its own colId against every entry (first match wins). When no
     // entry matches, the level keeps `GroupPass`'s composite-key sort.
-    this.sortGroupLevels(roots, resolved);
+    // Cycle 18 / Task 8d — also passes the pivot output so a pivot-
+    // result sort entry can override the per-level grouping sort.
+    this.sortGroupLevels(roots, resolved, pivotOut);
 
     // Rebuild flatOrder DFS — preserves the GroupPass contract: each
     // group entry rides at its node `depth`; row entries ride at
@@ -357,6 +368,7 @@ export class SortPass<TRow = any> {
   private sortGroupLevels(
     nodes: GroupNode[],
     resolved: readonly ResolvedSortEntry[],
+    pivotOut?: PivotPassOutput,
   ): void {
     if (nodes.length === 0) return;
     // Every node at the current `nodes` slot shares the same `colId` —
@@ -364,17 +376,68 @@ export class SortPass<TRow = any> {
     // model entry up once per call.
     const levelColId = nodes[0]!.colId;
     let levelEntry: ResolvedSortEntry | undefined;
+    let pivotEntry: ResolvedSortEntry | undefined;
     for (const r of resolved) {
-      if (r.entry.colId === levelColId) { levelEntry = r; break; }
+      if (r.entry.colId === levelColId && levelEntry === undefined) {
+        levelEntry = r;
+      }
+      // Cycle 18 / Task 8d — capture any pivot-result entry. The first
+      // one wins (matches the existing first-match-wins behaviour for
+      // primary entries).
+      if (pivotEntry === undefined && decodePivotResultColumnId(r.entry.colId) !== null) {
+        pivotEntry = r;
+      }
     }
-    if (levelEntry !== undefined) {
+    // Cycle 18 / Task 8d — a pivot-result sort entry takes precedence
+    // over the level's primary entry. The user clicked a synthesized
+    // pivot column header; that's their explicit intent for the row
+    // group order.
+    if (pivotEntry !== undefined && pivotOut !== undefined && !pivotOut.bypassed) {
+      this.reorderGroupLevelByPivot(nodes, pivotEntry, pivotOut);
+    } else if (levelEntry !== undefined) {
       this.reorderGroupLevel(nodes, levelEntry);
     }
     for (const node of nodes) {
       if (node.childGroups.length > 0) {
-        this.sortGroupLevels(node.childGroups, resolved);
+        this.sortGroupLevels(node.childGroups, resolved, pivotOut);
       }
     }
+  }
+
+  /** Cycle 18 / Task 8d — sort child groups by the pivot aggregate at
+   *  `(node.key × pivotPath × valueColId)`. The decoded path comes
+   *  straight from the synthesized colId via `decodePivotResultColumnId`.
+   *  `undefined` aggregates (no rows match the intersection) sort to
+   *  the end on `asc`, to the front on `desc` — matching the
+   *  null-handling the flat `compare()` already uses. */
+  private reorderGroupLevelByPivot(
+    nodes: GroupNode[],
+    resolved: ResolvedSortEntry,
+    pivotOut: PivotPassOutput,
+  ): void {
+    const decoded = decodePivotResultColumnId(resolved.entry.colId);
+    if (decoded === null) return;
+    const { pivotPath, valueColId } = decoded;
+    const joinedPath = pivotPath.join(PIVOT_PATH_SEP);
+    const dir = resolved.entry.direction === 'asc' ? 1 : -1;
+    const valueOf = (key: string): unknown =>
+      pivotOut.values.get(encodePivotValueKey(key, joinedPath, valueColId));
+    nodes.sort((a, b) => {
+      const av = valueOf(a.key);
+      const bv = valueOf(b.key);
+      // Push undefined / null entries to the end on asc (start on desc).
+      const aMissing = av === undefined || av === null;
+      const bMissing = bv === undefined || bv === null;
+      if (aMissing && bMissing) return 0;
+      if (aMissing) return  1;
+      if (bMissing) return -1;
+      const an = Number(av);
+      const bn = Number(bv);
+      if (Number.isNaN(an) && Number.isNaN(bn)) return 0;
+      if (Number.isNaN(an)) return  1;
+      if (Number.isNaN(bn)) return -1;
+      return dir * (an < bn ? -1 : an > bn ? 1 : 0);
+    });
   }
 
   /** Apply the level entry to a single `childGroups` array. Sorts in

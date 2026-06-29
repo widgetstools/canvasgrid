@@ -47,6 +47,7 @@
 
 import type { GroupingSortEntry } from '../../core/groupingState';
 import type { RowGroupPanelShow, RowGroupPanelDropVerdict } from './types';
+import { copyResolvedChipStyles } from '../chipGhostStyles';
 
 /** Verbatim from `cgrid/src/interaction/toolPanels/columnsPanel.ts`'s
  *  Row Groups section. One drop-zone vocabulary across the grid. */
@@ -753,8 +754,13 @@ export class RowGroupPanelHost {
     ghost.removeAttribute('data-col-id');
     ghost.removeAttribute('data-index');
     ghost.setAttribute('aria-hidden', 'true');
-    // Clones inherit the chip width via the inline-flex layout; pin
-    // the rendered width so `position: fixed` doesn't re-flow.
+    // The chip CSS uses panel-scoped variables (`--cg-row-group-chip-bg`,
+    // `--cg-row-group-chip-border`, etc.) which DO NOT resolve when the
+    // ghost lives on `document.body`. Snapshot the resolved computed
+    // styles from the source chip and apply them inline so the ghost
+    // renders correctly outside the panel scope.
+    copyResolvedChipStyles(sourceChip, ghost);
+    // Pin the rendered width/height so `position: fixed` doesn't reflow.
     const rect = sourceChip.getBoundingClientRect();
     ghost.style.width = `${rect.width}px`;
     ghost.style.height = `${rect.height}px`;

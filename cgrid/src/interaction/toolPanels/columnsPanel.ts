@@ -1,5 +1,5 @@
 /**
- * Cycle 11 / Task 3 + Cycle 15.5 / Task 2 — ColumnsToolPanel
+ * Cycle 11 / Task 3 + Cycle 15.5 / Task 2 + Cycle 18 / Task 5 — ColumnsToolPanel
  * (built-in `agColumnsToolPanel`).
  *
  * Mounted by the SideBarHost (Cycle 11 / Task 2). Reads from
@@ -10,29 +10,48 @@
  * `CColumnState` shape only carries colIds + width / hide / pinned /
  * sort flags.
  *
- * Cycle 15.5 / Task 2 upgrades the Row Groups SECTION from an inert
+ * Cycle 15.5 / Task 2 upgraded the Row Groups SECTION from an inert
  * stub to a LIVE drop zone — the third view over the same
  * `rowGroupColumns` list (along with the row group panel from Cycle
  * 15 / Task 6 + Cycle 15.5 / Task 1 + the header context menu items
- * from Cycle 15.5 / Task 2). The drop zone:
+ * from Cycle 15.5 / Task 2).
  *
- *   - Renders one COMPACT pill per `api.getRowGroupColumns()` entry
- *     in nesting order (vertically stacked — design plan picks
- *     vertical because the sidebar is narrow).
- *   - Each pill carries the column's headerName + an `✕` remove
- *     button that routes through `api.removeRowGroupColumn(colId)`.
- *   - Accepts drag drops from the column list: if `enableRowGroup`
- *     is true on the dragged column AND the column isn't already
- *     grouped, `api.addRowGroupColumn(colId)` is called on release.
- *   - Accepts pill drag-out: dragging a pill OUT of the zone on
- *     release calls `api.removeRowGroupColumn(colId)`.
- *   - Subscribes to `columnRowGroupChanged` so a mutation from the
- *     row group panel OR the header context menu re-renders the
- *     pills here live (the three-views-one-list invariant the
- *     Cycle 15.5 worklog calls load-bearing).
+ * Cycle 18 / Task 5 closes out the pivot wiring:
  *
- * Layout (matches the user reference 2026-06-26 dark-theme target
- * encoded in the worklog Task 3 ASCII, extended by Task 2's live zone):
+ *   1. Pivot Mode toggle now drives `api.setPivotMode` and subscribes to
+ *      `pivotStateChanged` so external setPivotMode calls (the imperative
+ *      API or — later — the context menu) keep the toggle in sync.
+ *      Initial aria-pressed reads `api.isPivotMode()`.
+ *   2. NEW Column Labels drop zone (`.cg-columns-panel-plz`) — the third
+ *      view over PivotState's ordered `pivotColumns` list (the future
+ *      pivot panel + header context menu items will be views 1 + 2).
+ *      Same pill chrome + drop-state outline as the Row Groups zone
+ *      (Cycle 15.5 vocabulary — ONE drop-zone idiom across all three).
+ *      Drag from columns list → `addPivotColumn` (gated by `enablePivot`);
+ *      pill drag-out → `removePivotColumn`. Section gated by
+ *      `suppressPivots`.
+ *   3. Values drop zone was a stub in Cycle 15.5; this task activates the
+ *      drag/drop — drag from columns list → `addValueColumn(colId,
+ *      defaultAggFunc)`. Default agg is the column's declared `aggFunc`
+ *      when present, else `'sum'`. Pill chrome shows `aggFunc(headerName)`
+ *      (e.g. `sum(Gold)`) — same label convention the agg-decorated
+ *      column header uses elsewhere.
+ *   4. **pivotMode-dependent checkbox semantics** (THE AG-parity bug —
+ *      Prompt 9 item 4 in `pivot-behaviors-prompts.md`). When pivotMode
+ *      is OFF the checkbox toggles VISIBILITY (existing Cycle 11 behavior
+ *      preserved). When pivotMode is ON the checkbox toggles ROLE
+ *      MEMBERSHIP — checking adds the column as a row-group OR value
+ *      (whichever it's eligible for; `enableRowGroup` wins over
+ *      `enableValue` per AG parity), unchecking removes the role.
+ *      Setting visibility has no effect in pivot mode. A column with
+ *      neither `enableRowGroup` nor `enableValue` is a no-op (a true
+ *      AG-parity sidebar would render it disabled; the checkbox stays
+ *      live but does nothing — the columns list still doubles as a
+ *      column-reorder drag source). To add a column SPECIFICALLY as a
+ *      pivot (Column Label) the user must DRAG to the Column Labels
+ *      zone — checking does not assign the pivot role.
+ *
+ * Section layout (top → bottom, after Cycle 18 / Task 5 reordering):
  *
  *   ┌──────────────────────────────────────┐
  *   │ ⬤━━━━  Pivot Mode                     │  ← suppressPivotMode
@@ -43,40 +62,31 @@
  *   │ ☑  ⋮⋮⋮  Age                           │  drag handles hidden when
  *   │ …                                     │  suppressColumnMove
  *   ├──────────────────────────────────────┤
- *   │ ☰  Row Groups                         │  ← suppressRowGroups
- *   │ ┌─ Country ✕ ──────────────────────┐  │  ← pill (live)
- *   │ ├─ Year    ✕ ──────────────────────┤  │
- *   │ └─ Drag here to set row groups ───┘  │  ← empty-state placeholder
+ *   │ ▥  Column Labels                      │  ← suppressPivots  (NEW)
+ *   │ ┌─ Sport   ✕ ──────────────────────┐  │
+ *   │ └─ Drag here to set column labels ─┘  │
  *   ├──────────────────────────────────────┤
  *   │ Σ  Values                             │  ← suppressValues
- *   │ ┌─ Drag here to aggregate ──────┐    │
- *   │ └──────────────────────────────┘     │
+ *   │ ┌─ sum(Gold) ✕ ────────────────────┐  │
+ *   │ └─ Drag here to aggregate ────────┘  │
+ *   ├──────────────────────────────────────┤
+ *   │ ☰  Row Groups                         │  ← suppressRowGroups
+ *   │ ┌─ Country ✕ ─────────────────────┐  │
+ *   │ └─ Drag here to set row groups ───┘  │
  *   └──────────────────────────────────────┘
- *
- * The Pivot Mode toggle ships as a visual stub in Cycle 11 — clicking
- * flips `aria-pressed` but does NOT call any grid API. The real
- * `api.setPivotMode` wiring lands in Cycle 16; for now we log a debug
- * breadcrumb so the path is greppable. The Values drop zone is
- * similarly inert — aggregation drag-and-drop lands in Cycle 16.
  *
  * Subscribes to `columnVisible` + `columnMoved` events so external
  * state mutations (e.g. an app calling `applyColumnState`) keep the
  * panel in sync. `suppressSyncLayoutWithGrid: true` opts out of this
  * subscription for apps that drive the panel imperatively via
- * `refreshToolPanel`. The Row Groups zone separately subscribes to
- * `columnRowGroupChanged` (always on — there's no parallel suppress
- * flag because the zone's whole point is to mirror state).
- *
- * `refresh()` walks the existing row list and updates checkbox state +
- * reorders DOM nodes in place to match the new `getColumnState()`
- * order. The root container is never replaced, so scroll position
- * survives a refresh. `refresh()` also re-renders the Row Groups zone
- * pills (a programmatic `refreshToolPanel` call should make the zone
- * pick up any new state).
+ * `refreshToolPanel`. The Row Groups + Column Labels + Values zones
+ * separately subscribe to `columnRowGroupChanged` / `pivotStateChanged`
+ * (always on — the zones ARE mirrors by design; suppressing the sync
+ * would defeat the purpose).
  *
  * Design plan:
- *   docs/superpowers/plans/notes/cycle-15-grouping-design.md
- *   § Cycle 15.5 / Task 2 — pill style + drop zone position + tokens.
+ *   docs/superpowers/plans/notes/cycle-18-pivoting-design.md
+ *   § Task 7 — Pivot panel in side bar (Cycle 11 tool panel extension).
  */
 import type { CGridApi, CColumnState } from '../../types';
 import { iconSvg } from '../../renderer/icons';
@@ -106,16 +116,50 @@ interface RowGroupPill {
   colId: string;
 }
 
+/** Per-pill DOM handles for the Column Labels drop zone (Cycle 18 / Task 5).
+ *  Same wholesale-rebuild contract as the Row Groups pills. */
+interface PivotPill {
+  el: HTMLElement;
+  colId: string;
+}
+
+/** Per-pill DOM handles for the Values drop zone. Carries the bound
+ *  `aggFunc` so the pill label can repaint without re-querying state. */
+interface ValuePill {
+  el: HTMLElement;
+  colId: string;
+  aggFunc: string;
+}
+
 /** Verbatim from the Cycle 15 / Task 6 row group panel. ONE drop-zone
  *  empty-state string across the grid. */
 const ROW_GROUPS_PLACEHOLDER = 'Drag here to set row groups';
 const VALUES_PLACEHOLDER = 'Drag here to aggregate';
+const PIVOT_PLACEHOLDER = 'Drag here to set column labels';
+
+/** Default aggregation when a column gets dropped on the Values zone
+ *  and its colDef declares no `aggFunc`. Mirrors AG-Grid's default. */
+const DEFAULT_VALUE_AGG_FUNC = 'sum';
 
 /** Threshold (CSS px) the pointer must move from the down-event before
  *  a press is treated as a drag. Matches Cycle 6's column-drag
  *  threshold + Cycle 15.5 / Task 1's pill-reorder threshold; one drag
  *  budget across the grid. */
 const DRAG_THRESHOLD_PX = 4;
+
+/** A drop-zone hosts pills of one logical kind (row-group / pivot /
+ *  value). The shared shape lets `beginRowDrag` route through ANY of
+ *  the three with the same hit-test + accept/reject paint logic. */
+interface DropZoneSpec {
+  /** The dashed-outline container that doubles as the drop target. */
+  dropZone: HTMLElement;
+  /** True when `colId` is eligible to land in this zone (i.e. the
+   *  column's resolved colDef carries the right `enableX` flag AND the
+   *  column isn't already assigned to this zone). */
+  accepts(colId: string): boolean;
+  /** Commit the drop — add `colId` to this zone's underlying list. */
+  commit(colId: string): void;
+}
 
 export class ColumnsToolPanel implements ToolPanel {
   private root!: HTMLElement;
@@ -126,12 +170,12 @@ export class ColumnsToolPanel implements ToolPanel {
   private searchInput: HTMLInputElement | null = null;
   /** "Select All / Deselect All" checkbox (null when suppressColumnFilter). */
   private selectAllCb: HTMLInputElement | null = null;
+  /** Pivot mode toggle button (null when suppressPivotMode). */
+  private pivotModeBtn: HTMLButtonElement | null = null;
   /** Container for the column rows. */
   private listEl!: HTMLElement;
   /** Per-colId row cache so refresh + reorder don't blow away DOM nodes. */
   private rows = new Map<string, PanelRow>();
-  /** Current pivot-mode toggle state (visual stub — flipped on click). */
-  private pivotModeActive = false;
   /** Unsubscribe functions returned by `api.addEventListener`. */
   private unsubs: Array<() => void> = [];
 
@@ -139,14 +183,27 @@ export class ColumnsToolPanel implements ToolPanel {
    *  when `suppressRowGroups` is set. */
   private rowGroupsSection: {
     section: HTMLElement;
-    /** The dashed-outline container that doubles as the drop target.
-     *  Houses the pill list AND the empty-state placeholder. */
     dropZone: HTMLElement;
-    /** Holds the pill stack OR the empty-state placeholder. Rebuilt
-     *  wholesale on every `columnRowGroupChanged`. */
     content: HTMLElement;
-    /** Per-pill cache (size = current `rowGroupColumns.length`). */
     pills: RowGroupPill[];
+  } | null = null;
+
+  /** Cycle 18 / Task 5 — DOM handles for the Column Labels zone. `null`
+   *  when `suppressPivots` is set. */
+  private pivotsSection: {
+    section: HTMLElement;
+    dropZone: HTMLElement;
+    content: HTMLElement;
+    pills: PivotPill[];
+  } | null = null;
+
+  /** Cycle 18 / Task 5 — DOM handles for the Values zone. `null` when
+   *  `suppressValues` is set. */
+  private valuesSection: {
+    section: HTMLElement;
+    dropZone: HTMLElement;
+    content: HTMLElement;
+    pills: ValuePill[];
   } | null = null;
 
   init(p: ToolPanelParams): void {
@@ -169,12 +226,28 @@ export class ColumnsToolPanel implements ToolPanel {
     this.buildRows();
     this.syncSelectAll();
 
+    // Order (Cycle 18 / Task 9 follow-up — AG-Grid parity):
+    //   Row Groups → Values → Column Labels
+    // AG-Grid orders the drop zones so the row dimension is listed
+    // first (matching how users read a pivot table: rows → values →
+    // columns). Cycle 18 / Task 5 originally clustered the pivot-
+    // related zones nearer the column list; AG parity overrides that
+    // with the conventional row-first sequencing.
     if (!this.params.suppressRowGroups) {
       this.root.appendChild(this.buildRowGroupsSection());
       this.refreshRowGroupPills();
     }
     if (!this.params.suppressValues) {
       this.root.appendChild(this.buildValuesSection());
+      this.refreshValuePills();
+    }
+    if (!this.params.suppressPivots) {
+      this.root.appendChild(this.buildPivotsSection());
+      this.refreshPivotPills();
+      // Column Labels only makes sense in pivot mode — hide the entire
+      // section when pivot mode is off so the tool panel doesn't show
+      // an empty drop zone for a feature the user isn't using.
+      this.syncPivotsSectionVisibility();
     }
 
     if (!this.params.suppressSyncLayoutWithGrid) {
@@ -182,17 +255,50 @@ export class ColumnsToolPanel implements ToolPanel {
       const offMoved = this.api.addEventListener('columnMoved', () => this.refresh());
       this.unsubs.push(offVisible, offMoved);
     }
-    // Cycle 15.5 / Task 2 — the Row Groups zone ALWAYS subscribes
-    // (independent of `suppressSyncLayoutWithGrid` — the zone IS a
-    // mirror by design; suppressing the sync would defeat the purpose).
-    // When suppressRowGroups is set, there's nothing to refresh, so
-    // skip the subscription too.
+    // The Row Groups zone ALWAYS subscribes (independent of
+    // `suppressSyncLayoutWithGrid` — the zone IS a mirror by design).
     if (!this.params.suppressRowGroups) {
       const offGroup = this.api.addEventListener('columnRowGroupChanged', () => {
         this.refreshRowGroupPills();
+        // pivotMode-OFF→ON checkbox semantics need the row-checks to
+        // recompute when grouping changes (a column becoming grouped
+        // flips its checkbox from "visible" → "checked because grouped").
+        if (this.api.isPivotMode?.() === true) this.refreshRowChecks();
       });
       this.unsubs.push(offGroup);
     }
+
+    // Pivot state subscription: keep the pivot mode toggle aria-pressed,
+    // the Column Labels pills, the Values pills, and (when pivot mode is
+    // on) the row checkboxes in sync with any external mutation.
+    const subscribesPivot = !this.params.suppressPivotMode
+      || !this.params.suppressPivots
+      || !this.params.suppressValues;
+    if (subscribesPivot) {
+      const offPivot = this.api.addEventListener('pivotStateChanged', (e) => {
+        if (this.pivotModeBtn) {
+          this.pivotModeBtn.setAttribute('aria-pressed', String(e.pivotMode));
+        }
+        if (this.pivotsSection) this.refreshPivotPills();
+        if (this.valuesSection) this.refreshValuePills();
+        // Mode flip OR any role change while in pivot mode requires
+        // re-syncing the row checkboxes (semantics depend on pivotMode +
+        // role membership).
+        this.refreshRowChecks();
+        // Show/hide the Column Labels section to track pivot mode.
+        this.syncPivotsSectionVisibility();
+      });
+      this.unsubs.push(offPivot);
+    }
+  }
+
+  /** Hide the Column Labels section when pivot mode is OFF. The
+   *  section exists in the DOM (so refs / refreshPivotPills stay
+   *  valid) but its `display` is toggled. */
+  private syncPivotsSectionVisibility(): void {
+    if (!this.pivotsSection) return;
+    const pivotOn = this.api.isPivotMode?.() === true;
+    this.pivotsSection.section.style.display = pivotOn ? '' : 'none';
   }
 
   getGui(): HTMLElement {
@@ -205,6 +311,9 @@ export class ColumnsToolPanel implements ToolPanel {
     this.applySearchFilter(this.searchInput?.value ?? '');
     this.syncSelectAll();
     this.refreshRowGroupPills();
+    this.refreshPivotPills();
+    this.refreshValuePills();
+    this.refreshRowChecks();
   }
 
   destroy(): void {
@@ -214,6 +323,9 @@ export class ColumnsToolPanel implements ToolPanel {
     this.unsubs.length = 0;
     this.rows.clear();
     this.rowGroupsSection = null;
+    this.pivotsSection = null;
+    this.valuesSection = null;
+    this.pivotModeBtn = null;
     this.root.parentElement?.removeChild(this.root);
   }
 
@@ -226,16 +338,21 @@ export class ColumnsToolPanel implements ToolPanel {
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'cg-columns-panel-toggle';
-    btn.setAttribute('aria-pressed', 'false');
+    const initial = this.api.isPivotMode?.() === true;
+    btn.setAttribute('aria-pressed', String(initial));
     btn.setAttribute('aria-label', 'Pivot Mode');
     const knob = document.createElement('span');
     knob.className = 'cg-columns-panel-toggle-knob';
     btn.appendChild(knob);
     btn.addEventListener('click', () => {
-      this.pivotModeActive = !this.pivotModeActive;
-      btn.setAttribute('aria-pressed', String(this.pivotModeActive));
-      console.debug('[pivot] mode toggle (stub — wired in Cycle 16)');
+      const next = btn.getAttribute('aria-pressed') !== 'true';
+      // Optimistic flip — the pivotStateChanged subscription confirms
+      // the aria state on the next tick, which is a no-op when the
+      // api accepted the mutation.
+      btn.setAttribute('aria-pressed', String(next));
+      this.api.setPivotMode?.(next);
     });
+    this.pivotModeBtn = btn;
 
     const label = document.createElement('span');
     label.className = 'cg-columns-panel-pivot-mode-label';
@@ -314,72 +431,84 @@ export class ColumnsToolPanel implements ToolPanel {
     }
   }
 
-  /** Cycle 15.5 / Task 2 — Row Groups SECTION builder. Replaces the
-   *  Cycle 11 inert stub with the live drop zone. Returns the section
-   *  element; pills are rendered lazily by `refreshRowGroupPills`. */
+  /** Cycle 15.5 / Task 2 — Row Groups SECTION builder. */
   private buildRowGroupsSection(): HTMLElement {
-    const section = document.createElement('div');
-    section.className = 'cg-columns-panel-section';
-    section.dataset.kind = 'groups';
-
-    const header = document.createElement('div');
-    header.className = 'cg-columns-panel-section-header cg-columns-panel-section-header--groups';
-    const groupsIcon = document.createElement('span');
-    groupsIcon.className = 'cg-columns-panel-section-header-icon';
-    groupsIcon.appendChild(iconSvg('menu', 13));
-    header.appendChild(groupsIcon);
-    header.appendChild(document.createTextNode('Row Groups'));
-
-    const dropZone = document.createElement('div');
-    dropZone.className = 'cg-columns-panel-drop-zone cg-columns-panel-rgz';
-    dropZone.setAttribute('role', 'list');
-    dropZone.setAttribute('aria-label', 'Row group columns');
-
-    const content = document.createElement('div');
-    content.className = 'cg-columns-panel-rgz-content';
-    dropZone.appendChild(content);
-
-    section.appendChild(header);
-    section.appendChild(dropZone);
-
+    const { section, dropZone, content } = this.buildDropZoneSection({
+      kind: 'groups',
+      iconName: 'menu',
+      headerText: 'Row Groups',
+      ariaLabel: 'Row group columns',
+      zoneClass: 'cg-columns-panel-rgz',
+      contentClass: 'cg-columns-panel-rgz-content',
+    });
     this.rowGroupsSection = { section, dropZone, content, pills: [] };
     return section;
   }
 
-  /** Build the Values section (still an inert stub in Cycle 15.5 —
-   *  aggregation drag-and-drop lands in Cycle 16). */
+  /** Cycle 18 / Task 5 — Column Labels SECTION builder. */
+  private buildPivotsSection(): HTMLElement {
+    const { section, dropZone, content } = this.buildDropZoneSection({
+      kind: 'pivots',
+      iconName: 'columns-3',
+      headerText: 'Column Labels',
+      ariaLabel: 'Pivot column labels',
+      zoneClass: 'cg-columns-panel-plz',
+      contentClass: 'cg-columns-panel-plz-content',
+    });
+    this.pivotsSection = { section, dropZone, content, pills: [] };
+    return section;
+  }
+
+  /** Cycle 18 / Task 5 — Values SECTION builder (was inert stub in
+   *  Cycle 15.5 — pills + drag/drop are live in this task). */
   private buildValuesSection(): HTMLElement {
+    const { section, dropZone, content } = this.buildDropZoneSection({
+      kind: 'values',
+      iconName: 'sigma',
+      headerText: 'Values',
+      ariaLabel: 'Aggregate value columns',
+      zoneClass: 'cg-columns-panel-valz',
+      contentClass: 'cg-columns-panel-valz-content',
+    });
+    this.valuesSection = { section, dropZone, content, pills: [] };
+    return section;
+  }
+
+  /** Shared drop-zone section scaffold — header (icon + label) + zone
+   *  container + content. Returns the section element and the inner
+   *  handles each section type caches. */
+  private buildDropZoneSection(opts: {
+    kind: 'groups' | 'pivots' | 'values';
+    iconName: Parameters<typeof iconSvg>[0];
+    headerText: string;
+    ariaLabel: string;
+    zoneClass: string;
+    contentClass: string;
+  }): { section: HTMLElement; dropZone: HTMLElement; content: HTMLElement } {
     const section = document.createElement('div');
     section.className = 'cg-columns-panel-section';
-    section.dataset.kind = 'values';
+    section.dataset.kind = opts.kind;
 
     const header = document.createElement('div');
-    header.className = 'cg-columns-panel-section-header cg-columns-panel-section-header--values';
-    const valuesIcon = document.createElement('span');
-    valuesIcon.className = 'cg-columns-panel-section-header-icon';
-    valuesIcon.appendChild(iconSvg('sigma', 13));
-    header.appendChild(valuesIcon);
-    header.appendChild(document.createTextNode('Values'));
+    header.className = `cg-columns-panel-section-header cg-columns-panel-section-header--${opts.kind}`;
+    const iconWrap = document.createElement('span');
+    iconWrap.className = 'cg-columns-panel-section-header-icon';
+    iconWrap.appendChild(iconSvg(opts.iconName, 13));
+    header.appendChild(iconWrap);
+    header.appendChild(document.createTextNode(opts.headerText));
 
     const dropZone = document.createElement('div');
-    dropZone.className = 'cg-columns-panel-drop-zone cg-columns-panel-valz';
+    dropZone.className = `cg-columns-panel-drop-zone ${opts.zoneClass}`;
     dropZone.setAttribute('role', 'list');
-    dropZone.setAttribute('aria-label', 'Aggregate value columns');
-    const valContent = document.createElement('div');
-    valContent.className = 'cg-columns-panel-valz-content';
-    const valEmpty = document.createElement('div');
-    valEmpty.className = 'cg-columns-panel-valz-empty';
-    valEmpty.textContent = VALUES_PLACEHOLDER;
-    valContent.appendChild(valEmpty);
-    dropZone.appendChild(valContent);
-    dropZone.addEventListener('drop', (e) => {
-      e.preventDefault();
-      console.debug('[values] drop (stub — wired in Cycle 16)');
-    });
+    dropZone.setAttribute('aria-label', opts.ariaLabel);
+
+    const content = document.createElement('div');
+    content.className = opts.contentClass;
+    dropZone.appendChild(content);
 
     section.appendChild(header);
     section.appendChild(dropZone);
-    return section;
+    return { section, dropZone, content };
   }
 
   /** Build every row once from `getColumnState()`. Called from `init`. */
@@ -400,12 +529,11 @@ export class ColumnsToolPanel implements ToolPanel {
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
     checkbox.className = 'cg-columns-panel-row-checkbox';
-    checkbox.checked = entry.hide !== true;
+    checkbox.checked = this.computeRowChecked(entry);
     checkbox.setAttribute('aria-label', this.resolveLabel(entry.colId));
     checkbox.addEventListener('click', (e) => {
       e.stopPropagation();
-      const next = checkbox.checked;
-      this.api.setColumnsVisible([entry.colId], next);
+      this.handleRowCheckboxClick(entry.colId, checkbox);
     });
     el.appendChild(checkbox);
 
@@ -425,9 +553,116 @@ export class ColumnsToolPanel implements ToolPanel {
     return { el, checkbox, label };
   }
 
+  /** Cycle 18 / Task 5 — checked state depends on pivotMode.
+   *
+   *  pivotMode OFF: checkbox tracks VISIBILITY (existing behavior).
+   *  pivotMode  ON: checkbox tracks ROLE MEMBERSHIP (column is currently
+   *                 a row-group OR a value column). */
+  private computeRowChecked(entry: CColumnState): boolean {
+    if (this.api.isPivotMode?.() === true) {
+      return this.hasPivotRole(entry.colId);
+    }
+    return entry.hide !== true;
+  }
+
+  /** True when the column is currently assigned the row-group OR value
+   *  role (i.e. the checkbox should appear checked in pivot mode). The
+   *  pivot/Column-Label role is NOT included — per AG parity, checking
+   *  cannot assign the pivot role; the user must drag to that zone. */
+  private hasPivotRole(colId: string): boolean {
+    const groups = this.api.getRowGroupColumns?.() ?? [];
+    if (groups.includes(colId)) return true;
+    const values = this.api.getValueColumns?.() ?? [];
+    return values.some((v) => v.colId === colId);
+  }
+
+  /** Cycle 18 / Task 5 — checkbox click router. Branches on pivotMode:
+   *  off = visibility flip; on = role add/remove (rowGroup wins over
+   *  value). Setting visibility has NO effect in pivot mode. */
+  private handleRowCheckboxClick(colId: string, checkbox: HTMLInputElement): void {
+    if (this.api.isPivotMode?.() !== true) {
+      // pivotMode OFF — existing Cycle 11 behavior preserved.
+      this.api.setColumnsVisible([colId], checkbox.checked);
+      return;
+    }
+    // pivotMode ON.
+    const groups = this.api.getRowGroupColumns?.() ?? [];
+    const values = this.api.getValueColumns?.() ?? [];
+    const isGrouped = groups.includes(colId);
+    const isValued = values.some((v) => v.colId === colId);
+    const isRoleEligible = this.isColumnRowGroupable(colId) || this.isColumnValueable(colId);
+
+    if (!checkbox.checked) {
+      // Unchecking — remove whichever role the column currently holds.
+      if (isGrouped) this.api.removeRowGroupColumn?.(colId);
+      else if (isValued) this.api.removeValueColumn?.(colId);
+      // If the column had no role to begin with, the click is a no-op
+      // (but the user still managed to uncheck the visual — restore it
+      // on the next refresh-row tick).
+      if (!isGrouped && !isValued && !isRoleEligible) {
+        // Force the checkbox back to its computed state so it doesn't
+        // appear to drop a role that wasn't there.
+        checkbox.checked = false;
+      }
+      return;
+    }
+    // Checking — add the role. enableRowGroup wins over enableValue
+    // (AG parity; see Prompt 5 in pivot-behaviors-prompts.md).
+    if (this.isColumnRowGroupable(colId)) {
+      this.api.addRowGroupColumn?.(colId);
+      return;
+    }
+    if (this.isColumnValueable(colId)) {
+      const aggFunc = this.resolveDefaultAggFunc(colId);
+      this.api.addValueColumn?.(colId, aggFunc);
+      return;
+    }
+    // Column has no eligible role under pivot mode. Revert the visual
+    // tick so the user doesn't see a phantom check.
+    checkbox.checked = false;
+  }
+
+  /** Reflect the current grouping / value state in EVERY row's checkbox.
+   *  Called when pivotMode flips or any role assignment changes — every
+   *  row's checked state may change without the underlying column state
+   *  visibility changing. */
+  private refreshRowChecks(): void {
+    const state = this.api.getColumnState();
+    const byId = new Map(state.map((s) => [s.colId, s]));
+    for (const [colId, row] of this.rows) {
+      const entry = byId.get(colId);
+      if (!entry) continue;
+      const next = this.computeRowChecked(entry);
+      if (row.checkbox.checked !== next) row.checkbox.checked = next;
+    }
+    this.syncSelectAll();
+  }
+
   private resolveLabel(colId: string): string {
     const headerName = this.api.getColumnHeaderName?.(colId);
     return (headerName && headerName.length > 0) ? headerName : colId;
+  }
+
+  private isColumnRowGroupable(colId: string): boolean {
+    return this.api.isColumnRowGroupEnabled?.(colId) === true;
+  }
+
+  private isColumnPivotable(colId: string): boolean {
+    return this.api.isColumnPivotEnabled?.(colId) === true;
+  }
+
+  private isColumnValueable(colId: string): boolean {
+    return this.api.isColumnValueEnabled?.(colId) === true;
+  }
+
+  /** Resolve the default aggregation func for a column when it's dropped
+   *  on the Values zone. Prefers the colDef's declared `aggFunc`, falls
+   *  back to `'sum'`. The api method is optional on the mock surface;
+   *  tests stub it via `getColumnDefaultAggFunc`. */
+  private resolveDefaultAggFunc(colId: string): string {
+    const apiAny = this.api as unknown as { getColumnDefaultAggFunc?: (colId: string) => string | undefined };
+    const declared = apiAny.getColumnDefaultAggFunc?.(colId);
+    return (typeof declared === 'string' && declared.length > 0) ? declared : DEFAULT_VALUE_AGG_FUNC;
   }
 
   // ---- refresh ------------------------------------------------------
@@ -444,7 +679,7 @@ export class ColumnsToolPanel implements ToolPanel {
         row = this.buildRow(entry);
         this.rows.set(entry.colId, row);
       } else {
-        row.checkbox.checked = entry.hide !== true;
+        row.checkbox.checked = this.computeRowChecked(entry);
         const next = this.resolveLabel(entry.colId);
         if (row.label.textContent !== next) row.label.textContent = next;
       }
@@ -466,10 +701,6 @@ export class ColumnsToolPanel implements ToolPanel {
 
   // ---- Row Groups drop zone -----------------------------------------
 
-  /** Cycle 15.5 / Task 2 — rebuild the pill stack from the current
-   *  `rowGroupColumns`. Wholesale rebuild — the list is small (≤ a
-   *  handful) so the cost is trivial and we avoid the bookkeeping a
-   *  diff-render would need. */
   private refreshRowGroupPills(): void {
     const section = this.rowGroupsSection;
     if (!section) return;
@@ -479,93 +710,206 @@ export class ColumnsToolPanel implements ToolPanel {
     section.content.replaceChildren();
 
     if (cols.length === 0) {
-      const empty = document.createElement('div');
-      empty.className = 'cg-columns-panel-rgz-empty';
-      empty.textContent = ROW_GROUPS_PLACEHOLDER;
-      section.content.appendChild(empty);
+      section.content.appendChild(this.buildEmpty('rgz', ROW_GROUPS_PLACEHOLDER));
       return;
     }
 
     for (const colId of cols) {
-      const pillEl = this.buildRowGroupPill(colId);
+      const pillEl = this.buildPill({
+        zone: 'rgz',
+        colId,
+        label: this.resolveLabel(colId),
+        removeAriaLabel: `Remove ${this.resolveLabel(colId)} from row groups`,
+        onRemove: () => this.api.removeRowGroupColumn?.(colId),
+        onDragOut: () => this.api.removeRowGroupColumn?.(colId),
+        getZoneRect: () => this.getZoneRect(this.rowGroupsSection?.dropZone),
+      });
       section.content.appendChild(pillEl);
       section.pills.push({ el: pillEl, colId });
     }
   }
 
-  /** Build one pill: label + `✕` remove. The pill body itself is the
-   *  drag-out source — pointer-down + drag past the threshold + release
-   *  outside the drop zone removes the column from the row-group list.
-   *  Release inside the zone is a no-op (within-zone reorder is
-   *  deferred to a follow-up cycle; the row group panel from Task 1
-   *  is the canonical reorder surface). */
-  private buildRowGroupPill(colId: string): HTMLElement {
+  // ---- Column Labels (pivot) drop zone -------------------------------
+
+  private refreshPivotPills(): void {
+    const section = this.pivotsSection;
+    if (!section) return;
+    const cols = this.api.getPivotColumns?.() ?? [];
+
+    section.pills = [];
+    section.content.replaceChildren();
+
+    if (cols.length === 0) {
+      section.content.appendChild(this.buildEmpty('plz', PIVOT_PLACEHOLDER));
+      return;
+    }
+
+    for (const colId of cols) {
+      const pillEl = this.buildPill({
+        zone: 'plz',
+        colId,
+        label: this.resolveLabel(colId),
+        removeAriaLabel: `Remove ${this.resolveLabel(colId)} from column labels`,
+        onRemove: () => this.api.removePivotColumn?.(colId),
+        onDragOut: () => this.api.removePivotColumn?.(colId),
+        getZoneRect: () => this.getZoneRect(this.pivotsSection?.dropZone),
+      });
+      section.content.appendChild(pillEl);
+      section.pills.push({ el: pillEl, colId });
+    }
+  }
+
+  // ---- Values drop zone --------------------------------------------
+
+  private refreshValuePills(): void {
+    const section = this.valuesSection;
+    if (!section) return;
+    const valueCols = this.api.getValueColumns?.() ?? [];
+
+    section.pills = [];
+    section.content.replaceChildren();
+
+    if (valueCols.length === 0) {
+      section.content.appendChild(this.buildEmpty('valz', VALUES_PLACEHOLDER));
+      return;
+    }
+
+    for (const v of valueCols) {
+      const label = `${v.aggFunc}(${this.resolveLabel(v.colId)})`;
+      const pillEl = this.buildPill({
+        zone: 'valz',
+        colId: v.colId,
+        label,
+        removeAriaLabel: `Remove ${label} from values`,
+        onRemove: () => this.api.removeValueColumn?.(v.colId),
+        onDragOut: () => this.api.removeValueColumn?.(v.colId),
+        getZoneRect: () => this.getZoneRect(this.valuesSection?.dropZone),
+      });
+      section.content.appendChild(pillEl);
+      section.pills.push({ el: pillEl, colId: v.colId, aggFunc: v.aggFunc });
+    }
+  }
+
+  // ---- shared pill / drop-zone helpers ------------------------------
+
+  private buildEmpty(zone: 'rgz' | 'plz' | 'valz', placeholder: string): HTMLElement {
+    const empty = document.createElement('div');
+    empty.className = `cg-columns-panel-${zone}-empty`;
+    empty.textContent = placeholder;
+    return empty;
+  }
+
+  /** Build one pill: drag-handle + label + ✕ remove. `zone` is the
+   *  CSS prefix that scopes the pill's classes so per-zone selectors
+   *  in tests (e.g. `.cg-columns-panel-plz-pill`) still uniquely
+   *  identify the right pill kind. */
+  private buildPill(opts: {
+    zone: 'rgz' | 'plz' | 'valz';
+    colId: string;
+    label: string;
+    removeAriaLabel: string;
+    onRemove: () => void;
+    onDragOut: () => void;
+    getZoneRect: () => DOMRect | null;
+  }): HTMLElement {
     const pill = document.createElement('div');
-    pill.className = 'cg-columns-panel-rgz-pill';
+    pill.className = `cg-columns-panel-${opts.zone}-pill cg-columns-panel-pill`;
     pill.setAttribute('role', 'listitem');
-    pill.dataset.colId = colId;
+    pill.dataset.colId = opts.colId;
 
     const handle = document.createElement('span');
-    handle.className = 'cg-columns-panel-rgz-pill-handle';
+    handle.className = `cg-columns-panel-${opts.zone}-pill-handle cg-columns-panel-pill-handle`;
     handle.setAttribute('aria-hidden', 'true');
     pill.appendChild(handle);
 
     const label = document.createElement('span');
-    label.className = 'cg-columns-panel-rgz-pill-label';
-    label.textContent = this.resolveLabel(colId);
+    label.className = `cg-columns-panel-${opts.zone}-pill-label cg-columns-panel-pill-label`;
+    label.textContent = opts.label;
     pill.appendChild(label);
 
     const remove = document.createElement('button');
     remove.type = 'button';
-    remove.className = 'cg-columns-panel-rgz-pill-remove';
-    remove.setAttribute('aria-label', `Remove ${this.resolveLabel(colId)} from row groups`);
-    remove.textContent = '✕'; // ✕
+    remove.className = `cg-columns-panel-${opts.zone}-pill-remove cg-columns-panel-pill-remove`;
+    remove.setAttribute('aria-label', opts.removeAriaLabel);
+    remove.textContent = '✕';
     remove.addEventListener('click', (e) => {
       e.stopPropagation();
-      this.api.removeRowGroupColumn?.(colId);
+      opts.onRemove();
     });
     pill.appendChild(remove);
 
     pill.addEventListener('mousedown', (e) => {
-      // `×` button has its own click handler; don't intercept clicks
-      // landing on it (pointer-down on the button still bubbles here).
-      if (e.target instanceof Element && e.target.closest('.cg-columns-panel-rgz-pill-remove')) {
+      if (e.target instanceof Element && e.target.closest(`.cg-columns-panel-${opts.zone}-pill-remove`)) {
         return;
       }
-      this.beginPillDrag(e, colId);
+      this.beginPillDrag(e, {
+        pillEl: pill,
+        zone: opts.zone,
+        label: opts.label,
+        onDragOut: opts.onDragOut,
+        getZoneRect: opts.getZoneRect,
+      });
     });
 
     return pill;
   }
 
-  /** True when the cursor (`clientX`, `clientY`) falls inside the
-   *  Row Groups drop zone's bounding rect. The zone IS the drop
-   *  target — releasing a column-list drag inside this rect adds the
-   *  column to the row-group list (when `enableRowGroup`); releasing
-   *  a pill drag OUTSIDE this rect removes the pill. */
-  private isPointInRowGroupsZone(clientX: number, clientY: number): boolean {
-    const section = this.rowGroupsSection;
-    if (!section) return false;
-    const rect = section.dropZone.getBoundingClientRect();
-    if (rect.width === 0 && rect.height === 0) return false;
-    return clientX >= rect.left
-      && clientX <= rect.right
-      && clientY >= rect.top
-      && clientY <= rect.bottom;
+  private getZoneRect(zone: HTMLElement | undefined): DOMRect | null {
+    if (!zone) return null;
+    const rect = zone.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) return null;
+    return rect;
   }
 
-  /** Paint / clear the drop-target outline on the zone. `'accept'` lights
-   *  it up in the focus-ring color (one drop-color across all drop
-   *  zones); `'reject'` paints the amber rejected variant; `null`
-   *  clears it. */
-  private setRowGroupsZoneDropState(state: 'accept' | 'reject' | null): void {
-    const section = this.rowGroupsSection;
-    if (!section) return;
-    if (state === null) {
-      delete section.dropZone.dataset.drop;
-    } else {
-      section.dropZone.dataset.drop = state;
+  private isPointInRect(rect: DOMRect | null, clientX: number, clientY: number): boolean {
+    if (!rect) return false;
+    return clientX >= rect.left && clientX <= rect.right
+      && clientY >= rect.top  && clientY <= rect.bottom;
+  }
+
+  /** Paint / clear the drop-target outline on a zone. */
+  private setZoneDropState(zone: HTMLElement | null, state: 'accept' | 'reject' | null): void {
+    if (!zone) return;
+    if (state === null) delete zone.dataset.drop;
+    else zone.dataset.drop = state;
+  }
+
+  /** Resolve the three drop-zone specs in priority order — pivot first
+   *  (top of the panel), then values, then row groups. Skips zones that
+   *  are suppressed (their handle is `null`). */
+  private dropZoneSpecs(colId: string): DropZoneSpec[] {
+    const specs: DropZoneSpec[] = [];
+    const pivot = this.pivotsSection;
+    if (pivot) {
+      specs.push({
+        dropZone: pivot.dropZone,
+        accepts: (id) => this.isColumnPivotable(id)
+          && !(this.api.getPivotColumns?.() ?? []).includes(id),
+        commit: (id) => this.api.addPivotColumn?.(id),
+      });
     }
+    const values = this.valuesSection;
+    if (values) {
+      specs.push({
+        dropZone: values.dropZone,
+        accepts: (id) => this.isColumnValueable(id)
+          && !(this.api.getValueColumns?.() ?? []).some((v) => v.colId === id),
+        commit: (id) => this.api.addValueColumn?.(id, this.resolveDefaultAggFunc(id)),
+      });
+    }
+    const groups = this.rowGroupsSection;
+    if (groups) {
+      specs.push({
+        dropZone: groups.dropZone,
+        accepts: (id) => this.isColumnRowGroupable(id)
+          && !(this.api.getRowGroupColumns?.() ?? []).includes(id),
+        commit: (id) => this.api.addRowGroupColumn?.(id),
+      });
+    }
+    // colId is unused at spec-build time but kept in the signature for
+    // future per-column gating (e.g. lockPosition columns).
+    void colId;
+    return specs;
   }
 
   // ---- search -------------------------------------------------------
@@ -583,26 +927,12 @@ export class ColumnsToolPanel implements ToolPanel {
     }
   }
 
-  // ---- drag-within-list reorder + drag-into-row-groups-zone ---------
+  // ---- drag-within-list reorder + drag-into-{plz|valz|rgz} -----------
 
-  /** Drag-within-the-panel reorder with ag-grid–style drag UX.
-   *
-   *  Gesture state machine:
-   *    idle → pressed (mousedown on handle)
-   *    pressed → dragging (movement past DRAG_THRESHOLD_PX)
-   *    dragging → idle (mouseup)
-   *
-   *  While DRAGGING:
-   *  - The source row becomes invisible (`--lifted`) so its DOM slot is
-   *    preserved for the optimistic reorder but the row isn't shown twice.
-   *  - A floating ghost card (`cg-col-drag-ghost`) mounts on document.body
-   *    and follows the cursor at (+12, +8) offset — same pattern as the
-   *    row group panel chip ghost from Task 1.
-   *  - Drop targets (tool-panel zone + row group header strip) light up
-   *    with accept/reject outlines as the cursor crosses their rects.
-   *
-   *  A mouseup before the threshold is treated as a click: no ghost,
-   *  no state mutation, no `moveColumns` call. */
+  /** Drag-within-the-panel reorder with ag-grid–style drag UX, AND
+   *  drag-INTO any of the three drop zones (Column Labels / Values /
+   *  Row Groups) — Cycle 18 / Task 5 generalises the routing across
+   *  all three. */
   private beginRowDrag(e: MouseEvent, colId: string): void {
     e.preventDefault();
     const row = this.rows.get(colId);
@@ -613,6 +943,8 @@ export class ColumnsToolPanel implements ToolPanel {
     const startY = e.clientY;
 
     const allowDragOut = this.api.getGridOption?.('allowDragFromColumnsToolPanel') !== false;
+    // Header-strip routing only makes sense for row-groupable columns
+    // (the row group panel is the row-group axis surface).
     const isGroupable = this.api.isColumnRowGroupEnabled?.(colId) ?? false;
     const alreadyGrouped = (this.api.getRowGroupColumns?.() ?? []).includes(colId);
 
@@ -620,8 +952,10 @@ export class ColumnsToolPanel implements ToolPanel {
       .map((c) => (c as HTMLElement).dataset.colId)
       .filter((id): id is string => typeof id === 'string');
 
+    const zoneSpecs = allowDragOut ? this.dropZoneSpecs(colId) : [];
+
     let dragStarted = false;
-    let overZone = false;
+    let overZoneIdx = -1; // index into zoneSpecs of the zone the cursor is over
     let overHeaderStrip = false;
     let overColumnHeaderBand = false;
 
@@ -641,20 +975,13 @@ export class ColumnsToolPanel implements ToolPanel {
       const icon = document.createElement('span');
       icon.className = 'cg-col-drag-ghost-icon';
       icon.setAttribute('aria-hidden', 'true');
-      // No textContent — the dot-grid is drawn via CSS background-image.
       const lbl = document.createElement('span');
       lbl.className = 'cg-col-drag-ghost-label';
       lbl.textContent = label;
       el.appendChild(icon);
       el.appendChild(lbl);
       ghost = el;
-      // Position before appending so the first frame is already correct
-      // (avoids a flash at 0,0 before the rAF fires).
       el.style.transform = `translate(${Math.round(clientX)}px,${Math.round(clientY - 14)}px)`;
-      // Mount inside the themed ancestor so CSS variables resolve.  The
-      // ghost uses `position:fixed` which stays viewport-relative as long
-      // as no ancestor introduces a `transform` / `filter` stacking
-      // context — grid containers don't, so this is safe.
       const themeHost = this.root.closest<HTMLElement>('[class*="cg-theme"]') ?? document.body;
       themeHost.appendChild(el);
       requestAnimationFrame(() => el.classList.add('cg-col-drag-ghost--visible'));
@@ -665,10 +992,7 @@ export class ColumnsToolPanel implements ToolPanel {
       ghost.style.transform = `translate(${Math.round(clientX)}px,${Math.round(clientY - 14)}px)`;
     };
 
-    const removeGhost = (): void => {
-      ghost?.remove();
-      ghost = null;
-    };
+    const removeGhost = (): void => { ghost?.remove(); ghost = null; };
 
     // ---- Shared row-group-panel router ----------------------------
     const router = this.api as unknown as import('../features/columnDrag').RowGroupPanelDragRouter;
@@ -677,31 +1001,37 @@ export class ColumnsToolPanel implements ToolPanel {
       && typeof (this.api as any).setRowGroupPanelDragHover === 'function'
       && typeof (this.api as any).commitRowGroupPanelDrop === 'function';
 
+    /** Clear any drop-state outline this drag has painted (zone-specific
+     *  or header-strip). Called before painting a new state OR on
+     *  release. */
+    const clearAllZoneOutlines = (): void => {
+      for (let i = 0; i < zoneSpecs.length; i++) {
+        this.setZoneDropState(zoneSpecs[i]!.dropZone, null);
+      }
+    };
+
     // ---- Handlers -------------------------------------------------
     const onMove = (ev: MouseEvent) => {
-      // Gate ALL drag behavior behind the threshold — clicks must not
-      // trigger zone highlights, list reorders, or ghost rendering.
+      // Gate ALL drag behavior behind the threshold.
       if (!dragStarted) {
         const dx = ev.clientX - startX;
         const dy = ev.clientY - startY;
         if (Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) return;
         dragStarted = true;
-        // Visually "lift" the row out of the list without removing its
-        // DOM slot (so the optimistic reorder doesn't change list height).
         row.el.classList.add('cg-columns-panel-row--lifted');
         mountGhost(ev.clientX, ev.clientY);
       }
 
       positionGhost(ev.clientX, ev.clientY);
 
-      // Check the row group HEADER STRIP first — it's outside the sidebar
-      // so it has higher visual priority than the in-panel zone.
+      // 1. Row group HEADER STRIP — outside the sidebar, highest priority.
       if (hasRouter && allowDragOut && isGroupable && !alreadyGrouped) {
         const inStrip = routeExternalDragHover(router, colId, ev.clientX, ev.clientY);
         if (inStrip !== overHeaderStrip) {
           overHeaderStrip = inStrip;
           if (inStrip) {
-            this.setRowGroupsZoneDropState(null);
+            clearAllZoneOutlines();
+            overZoneIdx = -1;
             if (overColumnHeaderBand) {
               (this.api as any).setColumnHeaderDragHover(null, ev.clientX, ev.clientY);
               overColumnHeaderBand = false;
@@ -711,8 +1041,7 @@ export class ColumnsToolPanel implements ToolPanel {
         if (overHeaderStrip) return;
       }
 
-      // Check the column header band — allows dragging a column from the
-      // columns panel into the grid header to reorder it.
+      // 2. Column header band.
       if (hasColHeaderDropRouter && allowDragOut && !overHeaderStrip) {
         const inHeaderBand = (this.api as any).isPointInColumnHeaderBand(ev.clientX, ev.clientY) as boolean;
         if (inHeaderBand !== overColumnHeaderBand) {
@@ -720,7 +1049,8 @@ export class ColumnsToolPanel implements ToolPanel {
           if (!inHeaderBand) {
             (this.api as any).setColumnHeaderDragHover(null, ev.clientX, ev.clientY);
           } else {
-            this.setRowGroupsZoneDropState(null);
+            clearAllZoneOutlines();
+            overZoneIdx = -1;
           }
         }
         if (inHeaderBand) {
@@ -729,22 +1059,32 @@ export class ColumnsToolPanel implements ToolPanel {
         }
       }
 
-      // Paint the tool-panel drop-zone outline.
-      if (allowDragOut && this.rowGroupsSection !== null) {
-        const insideNow = this.isPointInRowGroupsZone(ev.clientX, ev.clientY);
-        if (insideNow !== overZone) {
-          overZone = insideNow;
-          this.setRowGroupsZoneDropState(
-            insideNow
-              ? (isGroupable && !alreadyGrouped ? 'accept' : 'reject')
-              : null,
-          );
+      // 3. In-panel drop zones (pivot, values, row groups in that order).
+      if (allowDragOut && zoneSpecs.length > 0) {
+        let nextZoneIdx = -1;
+        for (let i = 0; i < zoneSpecs.length; i++) {
+          const spec = zoneSpecs[i]!;
+          if (this.isPointInRect(this.getZoneRect(spec.dropZone), ev.clientX, ev.clientY)) {
+            nextZoneIdx = i;
+            break;
+          }
+        }
+        if (nextZoneIdx !== overZoneIdx) {
+          // Clear the prior zone's outline.
+          if (overZoneIdx >= 0) {
+            this.setZoneDropState(zoneSpecs[overZoneIdx]!.dropZone, null);
+          }
+          overZoneIdx = nextZoneIdx;
+          if (overZoneIdx >= 0) {
+            const spec = zoneSpecs[overZoneIdx]!;
+            this.setZoneDropState(spec.dropZone, spec.accepts(colId) ? 'accept' : 'reject');
+          }
         }
       }
 
-      if (overZone) return;
+      if (overZoneIdx >= 0) return;
 
-      // Optimistic list reorder.
+      // 4. Otherwise — optimistic list reorder.
       const rect = this.listEl.getBoundingClientRect();
       const y = ev.clientY - rect.top;
       const children = Array.from(this.listEl.children) as HTMLElement[];
@@ -780,21 +1120,31 @@ export class ColumnsToolPanel implements ToolPanel {
 
       if (overHeaderStrip) {
         (this.api as any).commitRowGroupPanelDrop?.(colId);
+        clearAllZoneOutlines();
         return;
       }
 
       if (overColumnHeaderBand) {
         (this.api as any).commitColumnHeaderDrop(colId, ev.clientX);
+        clearAllZoneOutlines();
         return;
       }
 
-      this.setRowGroupsZoneDropState(null);
-      if (allowDragOut && this.rowGroupsSection !== null
-          && this.isPointInRowGroupsZone(ev.clientX, ev.clientY)) {
-        if (isGroupable && !alreadyGrouped) this.api.addRowGroupColumn?.(colId);
-        return;
+      // In-panel zone release.
+      clearAllZoneOutlines();
+      if (allowDragOut && zoneSpecs.length > 0) {
+        // Re-resolve which zone the cursor lands in (independent of the
+        // last-painted state — clears stale hover when the pointer left
+        // mid-drag).
+        for (const spec of zoneSpecs) {
+          if (this.isPointInRect(this.getZoneRect(spec.dropZone), ev.clientX, ev.clientY)) {
+            if (spec.accepts(colId)) spec.commit(colId);
+            return;
+          }
+        }
       }
 
+      // Otherwise it's a list reorder.
       const finalIdx = orderedColIds().indexOf(colId);
       if (finalIdx >= 0) {
         try {
@@ -809,21 +1159,21 @@ export class ColumnsToolPanel implements ToolPanel {
     window.addEventListener('mouseup', onUp);
   }
 
-  /** Cycle 15.5 / Task 2 — pill drag-out. Mouse-down on a pill body
-   *  begins a candidate drag; once the pointer moves past
-   *  `DRAG_THRESHOLD_PX`, a `--dragging` class lights up. Release
-   *  INSIDE the zone is a no-op (within-zone reorder is intentionally
-   *  out of scope for Task 2 — the row group panel is the canonical
-   *  reorder surface). Release OUTSIDE the zone removes the column
-   *  from the row-group list. */
-  private beginPillDrag(e: MouseEvent, colId: string): void {
+  /** Pill drag-out — generalised across rgz / plz / valz. Release
+   *  OUTSIDE the originating zone fires `onDragOut`; release INSIDE the
+   *  zone is a no-op (within-zone reorder is deferred to a follow-up
+   *  cycle, mirroring Cycle 15.5 / Task 2's choice for row-group pills). */
+  private beginPillDrag(
+    e: MouseEvent,
+    opts: {
+      pillEl: HTMLElement;
+      zone: 'rgz' | 'plz' | 'valz';
+      label: string;
+      onDragOut: () => void;
+      getZoneRect: () => DOMRect | null;
+    },
+  ): void {
     e.preventDefault();
-    const section = this.rowGroupsSection;
-    if (!section) return;
-    const pill = section.pills.find((p) => p.colId === colId);
-    if (!pill) return;
-
-    const label = this.resolveLabel(colId);
     const startX = e.clientX;
     const startY = e.clientY;
     let dragging = false;
@@ -838,7 +1188,7 @@ export class ColumnsToolPanel implements ToolPanel {
       icon.setAttribute('aria-hidden', 'true');
       const lbl = document.createElement('span');
       lbl.className = 'cg-col-drag-ghost-label';
-      lbl.textContent = label;
+      lbl.textContent = opts.label;
       el.appendChild(icon);
       el.appendChild(lbl);
       ghost = el;
@@ -852,8 +1202,9 @@ export class ColumnsToolPanel implements ToolPanel {
       if (!ghost) return;
       ghost.style.transform = `translate(${Math.round(clientX)}px,${Math.round(clientY - 14)}px)`;
     };
-
     const removeGhost = (): void => { ghost?.remove(); ghost = null; };
+
+    const liftedClass = `cg-columns-panel-${opts.zone}-pill--lifted`;
 
     const onMove = (ev: MouseEvent) => {
       if (!dragging) {
@@ -861,7 +1212,7 @@ export class ColumnsToolPanel implements ToolPanel {
         const dy = ev.clientY - startY;
         if (Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) return;
         dragging = true;
-        pill.el.classList.add('cg-columns-panel-rgz-pill--lifted');
+        opts.pillEl.classList.add(liftedClass);
         mountGhost(ev.clientX, ev.clientY);
       }
       positionGhost(ev.clientX, ev.clientY);
@@ -870,11 +1221,11 @@ export class ColumnsToolPanel implements ToolPanel {
     const onUp = (ev: MouseEvent) => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
-      pill.el.classList.remove('cg-columns-panel-rgz-pill--lifted');
+      opts.pillEl.classList.remove(liftedClass);
       removeGhost();
       if (!dragging) return;
-      if (!this.isPointInRowGroupsZone(ev.clientX, ev.clientY)) {
-        this.api.removeRowGroupColumn?.(colId);
+      if (!this.isPointInRect(opts.getZoneRect(), ev.clientX, ev.clientY)) {
+        opts.onDragOut();
       }
     };
 

@@ -1114,13 +1114,21 @@
 
 /* Values drop zone — same visual style as the Row Groups zone but
  * separate classes so Row Groups tests can query `.cg-columns-panel-rgz`
- * without picking up the Values container. Wired fully in Cycle 16. */
+ * without picking up the Values container. Wired in Cycle 18 / Task 5. */
 .cg-columns-panel-valz {
   padding: 0;
   border-radius: 4px;
   border: 1px solid transparent;
   transition: border-color 120ms ease, background 120ms ease;
   min-height: 32px;
+}
+.cg-columns-panel-valz[data-drop="accept"] {
+  border-color: var(--cg-focus-ring-color);
+  background: color-mix(in srgb, var(--cg-focus-ring-color) 6%, transparent);
+}
+.cg-columns-panel-valz[data-drop="reject"] {
+  border-color: #f59e0b;
+  background: color-mix(in srgb, #f59e0b 6%, transparent);
 }
 .cg-columns-panel-valz-content {
   display: flex;
@@ -1133,6 +1141,119 @@
   font-size: var(--cg-font-size-sm);
   padding: 6px 4px;
   opacity: 0.45;
+}
+
+/* Cycle 18 / Task 5 — Column Labels (pivot) drop zone. Same visual
+ * vocabulary as Row Groups / Values; separate class prefix so per-zone
+ * tests stay unambiguous. */
+.cg-columns-panel-plz {
+  padding: 0;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  transition: border-color 120ms ease, background 120ms ease;
+  min-height: 32px;
+}
+.cg-columns-panel-plz[data-drop="accept"] {
+  border-color: var(--cg-focus-ring-color);
+  background: color-mix(in srgb, var(--cg-focus-ring-color) 6%, transparent);
+}
+.cg-columns-panel-plz[data-drop="reject"] {
+  border-color: #f59e0b;
+  background: color-mix(in srgb, #f59e0b 6%, transparent);
+}
+.cg-columns-panel-plz-content {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 2px 0;
+}
+.cg-columns-panel-plz-empty {
+  text-align: center;
+  font-size: var(--cg-font-size-sm);
+  padding: 6px 4px;
+  opacity: 0.45;
+}
+
+/* Cycle 18 / Task 5 — shared pill chrome for ALL drop zones (rgz, plz,
+ * valz). Each pill element carries both its zone-prefixed class AND the
+ * shared `.cg-columns-panel-pill*` class. The zone-prefixed selectors
+ * above (e.g. `.cg-columns-panel-rgz-pill`) keep the original test
+ * surface; this shared block guarantees identical chrome on the new
+ * plz + valz pills without duplicating rules. */
+.cg-columns-panel-pill {
+  display: flex;
+  align-items: center;
+  height: 28px;
+  padding: 0 8px 0 4px;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--cg-border-color) 55%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--cg-header-bg) 70%, var(--cg-bg-color) 30%);
+  color: var(--cg-fg-color);
+  font-size: var(--cg-font-size);
+  line-height: 1;
+  cursor: grab;
+  user-select: none;
+  white-space: nowrap;
+}
+.cg-columns-panel-pill:hover {
+  background: var(--cg-row-hover-bg);
+  border-color: color-mix(in srgb, var(--cg-border-color) 80%, transparent);
+}
+.cg-columns-panel-pill-handle {
+  flex: 0 0 auto;
+  display: inline-block;
+  width: 10px;
+  height: 14px;
+  opacity: 0.45;
+  cursor: grab;
+  background-image: radial-gradient(circle, currentColor 1.1px, transparent 1.4px);
+  background-size: 4px 4px;
+  background-position: 1px 1px;
+  background-repeat: repeat;
+}
+.cg-columns-panel-pill-handle:active {
+  cursor: grabbing;
+}
+.cg-columns-panel-pill-label {
+  flex: 1 1 auto;
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  font-weight: 400;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cg-columns-panel-pill-remove {
+  flex: 0 0 auto;
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0 2px;
+  margin: 0;
+  font: inherit;
+  font-size: var(--cg-font-size);
+  line-height: 1;
+  color: inherit;
+  opacity: 0.55;
+  cursor: pointer;
+}
+.cg-columns-panel-pill-remove:hover {
+  opacity: 1;
+}
+.cg-columns-panel-pill-remove:focus-visible {
+  outline: 2px solid var(--cg-focus-ring-color);
+  outline-offset: 1px;
+  border-radius: 2px;
+}
+/* Lifted/dragging modifiers — apply to any zone via per-zone class. */
+.cg-columns-panel-plz-pill--lifted,
+.cg-columns-panel-valz-pill--lifted {
+  visibility: hidden;
+}
+.cg-columns-panel-plz-pill--dragging,
+.cg-columns-panel-valz-pill--dragging {
+  opacity: 0.6;
+  cursor: grabbing;
 }
 
 /* Cycle 11 / Task 4 — FiltersToolPanel.
@@ -1716,4 +1837,153 @@
   font-size: var(--cg-font-size-sm);
   color: var(--cg-row-group-panel-empty-fg);
   text-align: center;
+}
+
+/* Cycle 18 / Task 6 — pivot panel.
+ *
+ * Horizontal drop strip mounted ABOVE the row group panel and column
+ * headers. Mirrors `.cg-row-group-panel` in structure (32 px height,
+ * 8 px horizontal padding, hairline bottom border) but REUSES the
+ * shared `.cg-columns-panel-pill*` chrome from Task 5 so a pivot pill
+ * looks IDENTICAL whether it lives in the top-of-grid panel or the
+ * sidebar's Column Labels zone. One vocabulary across surfaces.
+ *
+ * Stacking: the grid's `applyVerticalInsets` places the pivot panel
+ * BELOW any top status bar and ABOVE the row group panel. The strip's
+ * own `top` style is set from JS each time the status-bar inset
+ * changes.
+ *
+ * `'onlyWhenPivoting'` mode: the strip stays visible (height
+ * reserved) but the host paints NO content while
+ * `data-active="false"`. The strip's background still reads as part
+ * of the chrome — the user sees a thin band where the panel will
+ * activate once pivot turns on. Avoids the layout-reflow that would
+ * happen if `setPivotMode(true)` mounted a fresh strip mid-session. */
+.cg-pivot-panel {
+  --cg-pivot-panel-height: 32px;
+  --cg-pivot-panel-padding-x: 8px;
+  --cg-pivot-panel-gap: 6px;
+  --cg-pivot-panel-empty-fg:
+    color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
+  --cg-pivot-panel-drop-border: var(--cg-focus-ring-color);
+  /* Amber reject — same hue as the row group panel + tool panel
+   * plz/valz zones for cross-surface vocabulary continuity. */
+  --cg-pivot-panel-drop-border-reject: #f59e0b;
+
+  /* Pivot panel pills wear `.cg-row-group-panel-chip*` classes so the
+   * top-of-grid pivot strip and row-group strip share one visual
+   * vocabulary. Those classes reference CSS variables (chip bg /
+   * border / hover) that are normally defined on `.cg-row-group-panel`.
+   * Duplicate them here so the inherited chip styling resolves the
+   * same way under either parent. Kept in lockstep with the row-group
+   * definitions above. */
+  --cg-row-group-chip-height: 22px;
+  --cg-row-group-chip-radius: 11px;
+  --cg-row-group-chip-padding-x: 7px;
+  --cg-row-group-chip-gap: 4px;
+  --cg-row-group-chip-bg:
+    color-mix(in srgb, var(--cg-header-bg) 82%, var(--cg-fg-color) 18%);
+  --cg-row-group-chip-border:
+    color-mix(in srgb, var(--cg-fg-color) 14%, transparent);
+  --cg-row-group-chip-fg: var(--cg-fg-color);
+  --cg-row-group-chip-hover-bg:
+    color-mix(in srgb, var(--cg-header-bg) 72%, var(--cg-fg-color) 28%);
+  --cg-row-group-chip-active-bg:
+    color-mix(in srgb, var(--cg-header-bg) 62%, var(--cg-fg-color) 38%);
+
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: var(--cg-pivot-panel-height);
+  display: flex;
+  align-items: center;
+  padding: 0 var(--cg-pivot-panel-padding-x);
+  gap: var(--cg-pivot-panel-gap);
+  background: var(--cg-header-bg);
+  color: var(--cg-fg-color);
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  border-bottom: 1px solid var(--cg-border-color);
+  user-select: none;
+  /* Above the canvas + status bar; below the editor overlay so
+   * popups still render on top. Matches `.cg-row-group-panel`. */
+  z-index: 2;
+  box-sizing: border-box;
+}
+
+/* `'onlyWhenPivoting'` + pivot inactive — paint the strip subtly
+ * muted so the user understands the surface is waiting for pivot
+ * to activate. The mute is a small opacity drop on the surface so
+ * theming inherits cleanly. */
+.cg-pivot-panel[data-show="onlyWhenPivoting"][data-active="false"] {
+  opacity: 0.6;
+}
+
+/* Drop-target outline — accept = focus ring; reject = amber. */
+.cg-pivot-panel[data-drop="accept"] {
+  box-shadow: inset 0 0 0 2px var(--cg-pivot-panel-drop-border);
+}
+.cg-pivot-panel[data-drop="reject"] {
+  box-shadow: inset 0 0 0 2px var(--cg-pivot-panel-drop-border-reject);
+}
+
+/* Vertical insertion line — 2 px bar at the pill-gap nearest the
+ * pointer. Same shape as `.cg-row-group-panel-insertion-line`. */
+.cg-pivot-panel-insertion-line {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  background: var(--cg-pivot-panel-drop-border);
+  pointer-events: none;
+  border-radius: 1px;
+}
+
+/* Between-pill separator `›` — punctuation between pill tokens.
+ * Inherits the chevron color token so the family stays consistent
+ * across grouping + pivoting surfaces. */
+.cg-pivot-panel-separator {
+  color: var(--cg-group-chevron-color, color-mix(in srgb, var(--cg-fg-color) 55%, transparent));
+  font-size: var(--cg-font-size);
+  line-height: 1;
+  user-select: none;
+  flex: 0 0 auto;
+}
+
+/* Empty-state placeholder — dashed-border container; vocabulary
+ * mirrors `.cg-row-group-panel-empty` + the tool panel's plz empty
+ * state. Text content is set from JS:
+ * "Drag here to set column labels". */
+.cg-pivot-panel-empty {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed color-mix(in srgb, var(--cg-border-color) 80%, transparent);
+  border-radius: 4px;
+  margin: 4px 0;
+  font-size: var(--cg-font-size-sm);
+  color: var(--cg-pivot-panel-empty-fg);
+  text-align: center;
+}
+
+/* Pivot pill — REUSES the shared `.cg-columns-panel-pill*` chrome
+ * from Task 5 so the pill is visually identical to the sidebar plz
+ * zone. The `.cg-pivot-panel-pill*` selectors exist for unambiguous
+ * test surface + JS pointer-event wiring. The pivot-panel pill has
+ * no additional styling — the shared block fully covers it. */
+
+/* Floating drag ghost — clone of the pill, position: fixed,
+ * pointer-events: none. Lives on `document.body` so its position
+ * is screen-relative. */
+.cg-pivot-panel-pill.cg-pivot-panel-pill-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 2147483600;
+  background: var(--cg-header-bg);
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.12);
+  opacity: 0.92;
+  cursor: grabbing;
+  margin: 0;
 }

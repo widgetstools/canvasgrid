@@ -20,6 +20,12 @@ interface MockGrid {
   isPointInRowGroupPanel: (x: number, y: number) => boolean;
   setRowGroupPanelDragHover: ReturnType<typeof vi.fn>;
   commitRowGroupPanelDrop: ReturnType<typeof vi.fn>;
+  /** Cycle 18 / Task 6 — pivot panel drop target. Default mock
+   *  returns `false` from `isPointInPivotPanel` so existing tests
+   *  behave identically; Task 6's dedicated tests override the trio. */
+  isPointInPivotPanel: (x: number, y: number) => boolean;
+  setPivotPanelDragHover: ReturnType<typeof vi.fn>;
+  commitPivotPanelDrop: ReturnType<typeof vi.fn>;
 }
 
 function ctx(hit: Hit, point: { x: number; y: number }, grid: MockGrid): CGridEventCtx {
@@ -49,6 +55,9 @@ function makeGrid(overrides: Partial<MockGrid> = {}): MockGrid {
     isPointInRowGroupPanel: () => false,
     setRowGroupPanelDragHover: vi.fn(),
     commitRowGroupPanelDrop: vi.fn(),
+    isPointInPivotPanel: () => false,
+    setPivotPanelDragHover: vi.fn(),
+    commitPivotPanelDrop: vi.fn(),
     ...overrides,
   };
 }

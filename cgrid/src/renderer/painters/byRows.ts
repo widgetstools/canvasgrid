@@ -6,6 +6,7 @@ import type { ResolvedColDef } from '../../core/propertyChain';
 import { applyCellProps } from '../../core/propertyChain';
 import { HeaderGroupSubgrid } from '../../core/subgrid';
 import { cellMatchesAnyQuickFilterTerm } from '../../worker/dataPipeline';
+import { isPivotResultGroupId } from '../../core/pivotColumns';
 
 /** Cycle 14 / Task 4 — decorate a leaf-column header with its aggFunc
  *  prefix when the column declares `aggFunc` AND the suppress flag is
@@ -205,13 +206,13 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
 
     paintBand(gc, sb.rows, leftPinned,
               0, vs.bodyLeft, sgTop, sgBottom,
-              /*clip*/ isDataBand, rowBgs, groupStripRows, isFooterRow, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader);
+              /*clip*/ isDataBand, rowBgs, groupStripRows, isFooterRow, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader, p.getColumnGroupOpen);
     paintBand(gc, sb.rows, center,
               vs.bodyLeft, vs.bodyRight, sgTop, sgBottom,
-              /*clip*/ true, rowBgs, groupStripRows, isFooterRow, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader);
+              /*clip*/ true, rowBgs, groupStripRows, isFooterRow, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader, p.getColumnGroupOpen);
     paintBand(gc, sb.rows, rightPinned,
               vs.bodyRight, rightEdge, sgTop, sgBottom,
-              /*clip*/ isDataBand, rowBgs, groupStripRows, isFooterRow, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader);
+              /*clip*/ isDataBand, rowBgs, groupStripRows, isFooterRow, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader, p.getColumnGroupOpen);
   }
 
   // Cycle 15 / Task 5 — group-row strip content (chevron + value + count).
@@ -298,6 +299,7 @@ function paintBand(
   quickFilterActive: boolean,
   quickFilterLowerTerms: readonly string[],
   suppressAggFuncInHeader: boolean,
+  getColumnGroupOpen: ((groupId: string) => boolean) | undefined,
 ): void {
   if (cols.length === 0 || rows.length === 0) return;
   if (clip) {
@@ -353,6 +355,34 @@ function paintBand(
               groupHeaderClassNames = []; // signal: group path, no class names
             }
           }
+          // Cycle 18 / Task 4 — pivot column-group chevron. Only BRANCH
+          // pivot groups (those whose synthesis emitted a
+          // `columnGroupShow:'closed'` totals leaf) get the chevron:
+          // those are the groups where toggling has a meaningful effect
+          // (totals leaf ⇄ child columns). Cycle 4 column groups never
+          // hit this branch — the `isPivotResultGroupId` guard rejects
+          // them. The hit-test for the toggle is the entire group rect,
+          // wired in `interaction/features/headerClick.ts` →
+          // `toggleColumnGroup`.
+          let pivotGroupExpand: 'open' | 'closed' | undefined;
+          if (groupDef && isPivotResultGroupId(groupDef.groupId) && getColumnGroupOpen) {
+            // Cycle 18 / Task 9 follow-up (AG parity) — paint a chevron
+            // when the toggle has a visible effect, which is when EITHER:
+            //   - the group has a sub-group child (branch pivot group;
+            //     collapsing hides every value-col leaf inside the
+            //     descendant sub-groups while always-visible leaves
+            //     stay — the AG-Grid default behaviour); OR
+            //   - the group has a direct `columnGroupShow:'closed'`
+            //     leaf (legacy Cycle 18 / Task 4 — collapse reveals the
+            //     fallback total leaf).
+            const hasBranchChild = groupDef.children.some((c) => c.kind === 'group');
+            const hasClosedLeaf = groupDef.children.some(
+              (c) => c.kind === 'leaf' && c.colDef.columnGroupShow === 'closed',
+            );
+            if (hasBranchChild || hasClosedLeaf) {
+              pivotGroupExpand = getColumnGroupOpen(groupDef.groupId) ? 'open' : 'closed';
+            }
+          }
           applyCellProps(config, {
             theme,
             colDef: def,
@@ -365,6 +395,7 @@ function paintBand(
             iconColor: theme.focusRingColor,
             rowData: undefined,
             groupHeaderClassNames,
+            pivotGroupExpand,
           });
           cellRenderers.get('header').paint(gc, config);
         }

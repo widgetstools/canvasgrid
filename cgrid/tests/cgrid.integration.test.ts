@@ -514,9 +514,15 @@ describe('CGrid integration', () => {
 
       // Snapshot-side assertions: every slot was actually captured by
       // getColumnState (catches "always returns null" bugs).
+      // Cycle 18 / Task 8b — applyColumnState now writes rowGroup through
+      // GroupingState; Cycle 15's auto-group-hide behaviour kicks in and
+      // hides the primary column once it becomes a row-group level. So `a`
+      // ends up `hide: true` even though the input state said false. The
+      // round-trip remains symmetric (the second apply sees hide:true and
+      // keeps it).
       const byId = new Map(snapshot.map((s) => [s.colId, s]));
       expect(byId.get('a')).toMatchObject({
-        width: 250, hide: false, pinned: null,
+        width: 250, hide: true, pinned: null,
         sort: 'asc', sortIndex: 1, aggFunc: 'sum',
         rowGroup: true, rowGroupIndex: 0,
       });
@@ -605,6 +611,246 @@ describe('CGrid integration', () => {
         { colId: 'a', direction: 'asc' },
       ]);
       grid.destroy();
+    });
+  });
+
+  // Cycle 18 / Task 8b — column state ↔ pivot/group runtime-state round-trip.
+  // The Cycle 6 columnState primitive originally stored rowGroup / pivot /
+  // aggFunc as OPAQUE def slots that round-tripped without firing the role-
+  // state mutators. Task 8b wires getColumnState to source these flags from
+  // the runtime GroupingState + PivotState, and applyColumnState to write
+  // through those primitives so the row group panel / tool panel zones /
+  // pivot panel / context menu items all reflect the restore. AG-parity
+  // Prompt 8: pivotMode persists SEPARATELY (NOT in column state).
+  describe('column state ↔ pivot/group runtime state round-trip (Cycle 18 / Task 8b)', () => {
+    function buildBareGrid<T extends { id: string }>(rows: T[], cols: any[]) {
+      const container = document.createElement('div');
+      container.style.cssText = 'width:800px; height:600px;';
+      container.className = 'cg-theme-quartz';
+      document.body.appendChild(container);
+      const grid = new CGrid<T>(container, {
+        columnDefs: cols,
+        getRowId: (r) => r.id,
+        rowData: rows,
+      });
+      const w = (grid as any).workerClient.worker;
+      w.listeners.forEach((cb: any) => cb({ data: { id: 1, type: 'ready' } }));
+      return { grid, container };
+    }
+
+    it('addRowGroupColumn surfaces in getColumnState as rowGroup:true with rowGroupIndex', () => {
+      const { grid } = buildBareGrid<{ id: string; sector: string; pnl: number }>(
+        [],
+        [{ field: 'id' }, { field: 'sector', enableRowGroup: true }, { field: 'pnl' }],
+      );
+      grid.addRowGroupColumn('sector');
+      const state = grid.getColumnState();
+      const s = state.find((e) => e.colId === 'sector')!;
+      expect(s.rowGroup).toBe(true);
+      expect(s.rowGroupIndex).toBe(0);
+      // Columns not in the group list have rowGroup:false / index:null.
+      const pnl = state.find((e) => e.colId === 'pnl')!;
+      expect(pnl.rowGroup).toBe(false);
+      expect(pnl.rowGroupIndex).toBeNull();
+      grid.destroy();
+    });
+
+    it('addPivotColumn surfaces in getColumnState as pivot:true with pivotIndex', () => {
+      const { grid } = buildBareGrid<{ id: string; region: string; sector: string }>(
+        [],
+        [{ field: 'id' }, { field: 'region', enablePivot: true }, { field: 'sector', enablePivot: true }],
+      );
+      grid.addPivotColumn('region');
+      grid.addPivotColumn('sector');
+      const state = grid.getColumnState();
+      expect(state.find((e) => e.colId === 'region')!.pivot).toBe(true);
+      expect(state.find((e) => e.colId === 'region')!.pivotIndex).toBe(0);
+      expect(state.find((e) => e.colId === 'sector')!.pivot).toBe(true);
+      expect(state.find((e) => e.colId === 'sector')!.pivotIndex).toBe(1);
+      grid.destroy();
+    });
+
+    it('addValueColumn surfaces in getColumnState as aggFunc:"sum"', () => {
+      const { grid } = buildBareGrid<{ id: string; pnl: number }>(
+        [],
+        [{ field: 'id' }, { field: 'pnl', enableValue: true }],
+      );
+      grid.addValueColumn('pnl', 'sum');
+      const state = grid.getColumnState();
+      expect(state.find((e) => e.colId === 'pnl')!.aggFunc).toBe('sum');
+      grid.destroy();
+    });
+
+    it('setValueColumnAggFunc updates aggFunc in getColumnState (runtime swap not def-stale)', () => {
+      const { grid } = buildBareGrid<{ id: string; pnl: number }>(
+        [],
+        [{ field: 'id' }, { field: 'pnl', enableValue: true, aggFunc: 'sum' }],
+      );
+      grid.addValueColumn('pnl', 'sum');
+      grid.setValueColumnAggFunc('pnl', 'avg');
+      expect(grid.getColumnState().find((e) => e.colId === 'pnl')!.aggFunc).toBe('avg');
+      grid.destroy();
+    });
+
+    it('removePivotColumn / removeValueColumn / removeRowGroupColumn flip the corresponding flags off', () => {
+      const { grid } = buildBareGrid<{ id: string; r: string; p: string; v: number }>(
+        [],
+        [
+          { field: 'id' },
+          { field: 'r', enableRowGroup: true },
+          { field: 'p', enablePivot: true },
+          { field: 'v', enableValue: true },
+        ],
+      );
+      grid.addRowGroupColumn('r');
+      grid.addPivotColumn('p');
+      grid.addValueColumn('v', 'sum');
+      grid.removeRowGroupColumn('r');
+      grid.removePivotColumn('p');
+      grid.removeValueColumn('v');
+      const state = grid.getColumnState();
+      expect(state.find((e) => e.colId === 'r')!.rowGroup).toBe(false);
+      expect(state.find((e) => e.colId === 'r')!.rowGroupIndex).toBeNull();
+      expect(state.find((e) => e.colId === 'p')!.pivot).toBe(false);
+      expect(state.find((e) => e.colId === 'p')!.pivotIndex).toBeNull();
+      expect(state.find((e) => e.colId === 'v')!.aggFunc).toBeNull();
+      grid.destroy();
+    });
+
+    it('applyColumnState with rowGroup:true populates GroupingState.rowGroupColumns', () => {
+      const { grid } = buildBareGrid<{ id: string; r: string }>(
+        [],
+        [{ field: 'id' }, { field: 'r', enableRowGroup: true }],
+      );
+      grid.applyColumnState({
+        state: [
+          { colId: 'id', rowGroup: false, rowGroupIndex: null },
+          { colId: 'r',  rowGroup: true,  rowGroupIndex: 0    },
+        ],
+      });
+      expect(grid.getRowGroupColumns()).toEqual(['r']);
+      grid.destroy();
+    });
+
+    it('applyColumnState with pivot:true populates PivotState.pivotColumns (sorted by pivotIndex)', () => {
+      const { grid } = buildBareGrid<{ id: string; a: string; b: string }>(
+        [],
+        [{ field: 'id' }, { field: 'a', enablePivot: true }, { field: 'b', enablePivot: true }],
+      );
+      grid.applyColumnState({
+        state: [
+          { colId: 'id' },
+          { colId: 'a', pivot: true, pivotIndex: 1 },
+          { colId: 'b', pivot: true, pivotIndex: 0 },
+        ],
+      });
+      // pivotIndex sort wins: b (0) before a (1).
+      expect(grid.getPivotColumns()).toEqual(['b', 'a']);
+      grid.destroy();
+    });
+
+    it('applyColumnState with aggFunc populates PivotState.valueColumns', () => {
+      const { grid } = buildBareGrid<{ id: string; pnl: number; qty: number }>(
+        [],
+        [
+          { field: 'id' },
+          { field: 'pnl', enableValue: true },
+          { field: 'qty', enableValue: true },
+        ],
+      );
+      grid.applyColumnState({
+        state: [
+          { colId: 'id' },
+          { colId: 'pnl', aggFunc: 'sum' },
+          { colId: 'qty', aggFunc: 'avg' },
+        ],
+      });
+      const values = grid.getValueColumns();
+      // Order follows state input order.
+      expect(values).toEqual([
+        { colId: 'pnl', aggFunc: 'sum' },
+        { colId: 'qty', aggFunc: 'avg' },
+      ]);
+      grid.destroy();
+    });
+
+    it('applyColumnState fully REPLACES role lists — columns absent from the new state become un-grouped / un-pivoted / non-value', () => {
+      const { grid } = buildBareGrid<{ id: string; a: string; b: string }>(
+        [],
+        [
+          { field: 'id' },
+          { field: 'a', enableRowGroup: true, enablePivot: true, enableValue: true },
+          { field: 'b', enableRowGroup: true, enablePivot: true, enableValue: true },
+        ],
+      );
+      // Seed: a and b in every role list.
+      grid.addRowGroupColumn('a'); grid.addRowGroupColumn('b');
+      grid.addPivotColumn('a');     grid.addPivotColumn('b');
+      grid.addValueColumn('a', 'sum');
+      grid.addValueColumn('b', 'avg');
+
+      // Replace state with ONLY entries that omit role flags — full replace
+      // semantics drop every previously-set role.
+      grid.applyColumnState({
+        state: [
+          { colId: 'id' },
+          { colId: 'a', rowGroup: false, pivot: false, aggFunc: null },
+          { colId: 'b', rowGroup: false, pivot: false, aggFunc: null },
+        ],
+      });
+      expect(grid.getRowGroupColumns()).toEqual([]);
+      expect(grid.getPivotColumns()).toEqual([]);
+      expect(grid.getValueColumns()).toEqual([]);
+      grid.destroy();
+    });
+
+    it('pivotMode is NOT included in CColumnState (persists separately per AG parity)', () => {
+      const { grid } = buildBareGrid<{ id: string }>([], [{ field: 'id' }]);
+      grid.setPivotMode(true);
+      const state = grid.getColumnState();
+      // No entry, no property, no leak.
+      for (const entry of state) {
+        expect((entry as unknown as { pivotMode?: unknown }).pivotMode).toBeUndefined();
+      }
+      // Round-trip: applyColumnState on a fresh grid with pivotMode=false
+      // does NOT alter pivotMode — the option is its own surface.
+      const { grid: g2 } = buildBareGrid<{ id: string }>([], [{ field: 'id' }]);
+      expect(g2.isPivotMode()).toBe(false);
+      g2.applyColumnState({ state });
+      expect(g2.isPivotMode()).toBe(false);
+      grid.destroy();
+      g2.destroy();
+    });
+
+    it('full round-trip: snapshot → fresh grid → applyColumnState → role lists restored', () => {
+      const cols = [
+        { field: 'id' },
+        { field: 'sector', enableRowGroup: true, enablePivot: true },
+        { field: 'region', enableRowGroup: true, enablePivot: true },
+        { field: 'pnl',    enableValue: true },
+        { field: 'qty',    enableValue: true },
+      ];
+      const { grid: g1 } = buildBareGrid<{
+        id: string; sector: string; region: string; pnl: number; qty: number;
+      }>([], cols);
+      g1.addRowGroupColumn('sector');
+      g1.addPivotColumn('region');
+      g1.addValueColumn('pnl', 'sum');
+      g1.addValueColumn('qty', 'avg');
+      const saved = JSON.parse(JSON.stringify(g1.getColumnState()));
+      g1.destroy();
+
+      const { grid: g2 } = buildBareGrid<{
+        id: string; sector: string; region: string; pnl: number; qty: number;
+      }>([], cols);
+      g2.applyColumnState({ state: saved });
+      expect(g2.getRowGroupColumns()).toEqual(['sector']);
+      expect(g2.getPivotColumns()).toEqual(['region']);
+      expect(g2.getValueColumns()).toEqual([
+        { colId: 'pnl', aggFunc: 'sum' },
+        { colId: 'qty', aggFunc: 'avg' },
+      ]);
+      g2.destroy();
     });
   });
 

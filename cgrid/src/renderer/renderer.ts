@@ -123,6 +123,13 @@ export interface RendererOpts {
    * group key is unknown.
    */
   getStickyGroupTotals?: (groupKey: string, colId: string) => { value: unknown; valueFormatted: string } | null;
+  /**
+   * Cycle 18 / Task 4 — open/closed state for a column group, used by the
+   * byRows painter to paint a chevron on branch pivot column-group
+   * headers. Returns `true` for unknown groups so non-pivot group
+   * headers (Cycle 4) never accidentally get a chevron.
+   */
+  getColumnGroupOpen?: (groupId: string) => boolean;
 }
 
 export class Renderer {
@@ -149,6 +156,7 @@ export class Renderer {
       groupDepthAt: this.opts.getGroupDepthAt,
       groupKeyAt: this.opts.getGroupKeyAt,
       getStickyGroupTotals: this.opts.getStickyGroupTotals,
+      getColumnGroupOpen: this.opts.getColumnGroupOpen,
     };
     // Fill the entire drawable area with theme bg as the FIRST instruction so
     // there's no transparent moment between the prior frame's pixels (or a

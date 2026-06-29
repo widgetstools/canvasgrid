@@ -112,15 +112,17 @@ describe('GroupPass — multi-level', () => {
 });
 
 // 4 — Group ordering at every level is deterministic (sorted by
-// composite key). Reverses the row insertion order to prove the output
-// doesn't depend on insertion order — the slicer + autoGroupColumn UI
-// need a stable order across runs and across data mutations.
+// data-insertion order — the slicer + autoGroupColumn UI need a stable
+// order across runs and across data mutations. AG-parity: a group's
+// position is determined by the order its first leaf appeared.
+// Apps that want alphabetical ordering install a sort model via
+// `setRowGroupColumnSort`; SortPass re-sorts on top of GroupPass.
 describe('GroupPass — deterministic ordering', () => {
-  it('sorts child groups by composite key, independent of row insertion order', () => {
+  it('preserves data-insertion order for sibling groups', () => {
     const s = new RowStore('id');
     s.setAll([
       // Insert EMEA before APAC; "z" before "a" within region — output
-      // must still come back APAC,EMEA and a,z within each region.
+      // mirrors that insertion order at both levels.
       { id: 'r1', desk: 'EMEA', region: 'z' },
       { id: 'r2', desk: 'EMEA', region: 'a' },
       { id: 'r3', desk: 'APAC', region: 'z' },
@@ -132,9 +134,9 @@ describe('GroupPass — deterministic ordering', () => {
     ]);
     p.setModel({ rowGroupCols: ['desk', 'region'] });
     const out = p.apply(['r1', 'r2', 'r3', 'r4']);
-    expect(out.roots.map((r) => r.value)).toEqual(['APAC', 'EMEA']);
-    expect(out.roots[0]!.childGroups.map((g) => g.value)).toEqual(['a', 'z']);
-    expect(out.roots[1]!.childGroups.map((g) => g.value)).toEqual(['a', 'z']);
+    expect(out.roots.map((r) => r.value)).toEqual(['EMEA', 'APAC']);
+    expect(out.roots[0]!.childGroups.map((g) => g.value)).toEqual(['z', 'a']);
+    expect(out.roots[1]!.childGroups.map((g) => g.value)).toEqual(['z', 'a']);
   });
 });
 
@@ -153,7 +155,7 @@ describe('GroupPass — null group values', () => {
     const p = new GroupPass(s, [{ colId: 'desk', field: 'desk', type: 'text' }]);
     p.setModel({ rowGroupCols: ['desk'] });
     const out = p.apply(['1', '2', '3']);
-    expect(out.roots.length).toBe(2);  // ['', 'APAC'] sorted by key
+    expect(out.roots.length).toBe(2);  // insertion order: ['', 'APAC']
     const blank = out.roots[0]!;
     expect(blank.key).toBe('desk:');
     expect(blank.value).toBeNull();      // first null seen

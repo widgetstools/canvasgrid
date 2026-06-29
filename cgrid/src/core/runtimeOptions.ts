@@ -66,6 +66,13 @@ export type RuntimeOption =
   | 'suppressAggFuncInHeader'
   | 'rowGroupPanelShow'
   | 'rowGroupPanelSuppressSort'
+  | 'pivotPanelShow'
+  | 'pivotMaxGeneratedColumns'
+  | 'enableStrictPivotColumnOrder'
+  | 'pivotRowTotals'
+  | 'pivotColumnGroupTotals'
+  | 'pivotDefaultExpanded'
+  | 'pivotGrandTotals'
   | 'groupSelectsChildren'
   | 'suppressCount';
 
@@ -118,6 +125,23 @@ export interface RuntimeOptionTarget<TRow = any> {
    *  CGrid normalises the value (undefined / `'never'` → unmount;
    *  otherwise mount-or-update). */
   updateRowGroupPanelShow(value: 'always' | 'onlyWhenGrouping' | 'never' | undefined): void;
+  /** Cycle 18 / Task 6 — hand the runtime pivot-panel show mode to
+   *  CGrid so it can mount / unmount / setShowMode on the host. */
+  updatePivotPanelShow(value: 'always' | 'onlyWhenPivoting' | 'never' | undefined): void;
+  /** Cycle 18 / Task 8a — forward the runtime cap to the worker so
+   *  subsequent `getViewport` calls honor it. `undefined` reverts to
+   *  the worker default (5000). */
+  updatePivotMaxGeneratedColumns(value: number | undefined): void;
+  /** Cycle 18 / Task 8c — flip the strict-order behaviour. `true` =
+   *  always re-sort. `false` (AG default) = preserve prior order +
+   *  append new keys at end. */
+  updateStrictPivotColumnOrder(value: boolean | undefined): void;
+  /** Cycle 18 / Task 8e — re-synthesize the pivot columns so the new
+   *  totals position lands. The cached pivot tree signature folds the
+   *  totals options in, so the next chunk receipt detects the change
+   *  and re-synthesizes. CGrid implementation triggers a viewport
+   *  request after stashing the option. */
+  updatePivotTotalsOption(): void;
   /** Cycle 15.5 / Task 1 — hand the runtime `rowGroupPanelSuppressSort`
    *  flag to CGrid so the panel re-renders (with / without the sort
    *  indicator) on the next frame. */
@@ -276,6 +300,39 @@ export function applyRuntimeOption<TRow>(
         value as 'always' | 'onlyWhenGrouping' | 'never' | undefined,
       );
       return;
+    case 'pivotPanelShow':
+      // Cycle 18 / Task 6 — runtime mount / unmount / show-mode swap
+      // for the pivot panel (top-of-grid drop strip).
+      target.updatePivotPanelShow(
+        value as 'always' | 'onlyWhenPivoting' | 'never' | undefined,
+      );
+      return;
+    case 'pivotMaxGeneratedColumns':
+      // Cycle 18 / Task 8a — forward the runtime cap. Worker handles
+      // negative / non-finite by reverting to the default — main here
+      // just ships whatever the app wrote, no pre-validation.
+      target.updatePivotMaxGeneratedColumns(
+        value as number | undefined,
+      );
+      return;
+    case 'enableStrictPivotColumnOrder':
+      // Cycle 18 / Task 8c — flip the strict-order flag. Both branches
+      // are explicit booleans on the worker side; `undefined` resolves
+      // to `false` (the AG default).
+      target.updateStrictPivotColumnOrder(value as boolean | undefined);
+      return;
+    case 'pivotRowTotals':
+    case 'pivotColumnGroupTotals':
+    case 'pivotDefaultExpanded':
+    case 'pivotGrandTotals':
+      // Cycle 18 / Task 8e + Excel-grand-totals — re-synthesize on the
+      // next viewport. All four options are inputs to
+      // `synthesizePivotColumns` (NOT to the worker pipeline), so the
+      // change only matters once the next chunk arrives + the
+      // signature compare picks up the option delta. CGrid
+      // implementation issues a viewport request.
+      target.updatePivotTotalsOption();
+      return;
     case 'rowGroupPanelSuppressSort':
       // Cycle 15.5 / Task 1 — re-render the chip strip without the
       // sort indicator span when `true`. The flag toggles which DOM
@@ -322,6 +379,13 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'suppressAggFuncInHeader',
   'rowGroupPanelShow',
   'rowGroupPanelSuppressSort',
+  'pivotPanelShow',
+  'pivotMaxGeneratedColumns',
+  'enableStrictPivotColumnOrder',
+  'pivotRowTotals',
+  'pivotColumnGroupTotals',
+  'pivotDefaultExpanded',
+  'pivotGrandTotals',
   'groupSelectsChildren',
   'suppressCount',
 ]);

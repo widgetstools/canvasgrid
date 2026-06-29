@@ -337,6 +337,22 @@ export interface PositionsGridOptions {
   /** Cycle 15.5 / Task 8 — `?grandTotalRow=bottom|top` renders a
    *  single grand-total row at the specified edge of the entire body. */
   grandTotalRow?: 'top' | 'bottom';
+  /** Cycle 18 / Task 5 — `?pivotDemo=on` opts a handful of categorical
+   *  columns (sector, region, currency) into `enablePivot: true` and
+   *  numeric columns (notionalAmount, quantity) into `enableValue: true`
+   *  so the columns tool panel's Column Labels + Values drop zones can
+   *  accept drags. Side bar opens to the Columns panel so the
+   *  affordances are visible on mount. */
+  pivotDemo?: boolean;
+  /** Cycle 18 / Task 6 — `?pivotPanel=always|onlyWhenPivoting` opts
+   *  in the top-of-grid pivot panel (drop strip ABOVE the row group
+   *  panel). Pairs with `?pivotDemo=on` so column-header drags from
+   *  `enablePivot` columns land in the panel. */
+  pivotPanelShow?: 'always' | 'onlyWhenPivoting';
+  /** Cycle 18 / Task 8a — forces the worker pivot-result-column cap so
+   *  the E2E can drive a breach + verify the public event fires.
+   *  Negative / non-finite revert to the worker default (5000). */
+  pivotMaxGeneratedColumns?: number;
 }
 
 /** Cycle 14 / Task 2 — deterministic seed for the demo pinned reference
@@ -506,7 +522,7 @@ export function createPositionsGrid(
       // drop verdict reads `'accept'` for these three (the rest stay
       // off — visual cell 22-empty exercises the rejection path
       // separately via the body painter).
-      ...(opts.groupMultipleColumns || opts.rowGroupPanelThreeChips || opts.rowGroupPanelAlways
+      ...(opts.groupMultipleColumns || opts.rowGroupPanelThreeChips || opts.rowGroupPanelAlways || opts.pivotDemo
         ? [
             { field: 'sector' as const,    headerName: 'Sector',     width: 110, filter: 'set' as const, enableRowGroup: true as const },
             { field: 'subSector' as const, headerName: 'Sub Sector', width: 110, filter: 'set' as const, enableRowGroup: true as const },
@@ -516,7 +532,7 @@ export function createPositionsGrid(
       // synthesized by `decorateWithCategoricals` in main.ts. Mounted
       // only under `?rowGroupPanel=always` (or `=marketsGrid`) so
       // existing visual cells stay byte-stable.
-      ...(opts.rowGroupPanelAlways || opts.rowGroupPanelMarketsGrid
+      ...(opts.rowGroupPanelAlways || opts.rowGroupPanelMarketsGrid || opts.pivotDemo
         ? [
             { field: 'desk' as const,     headerName: 'Desk',     width: 130, filter: 'set' as const, enableRowGroup: true as const },
             { field: 'region' as const,   headerName: 'Region',   width: 110, filter: 'set' as const, enableRowGroup: true as const },
@@ -933,7 +949,48 @@ export function createPositionsGrid(
     ...(opts.groupTotalRow ? { groupTotalRow: opts.groupTotalRow } : {}),
     // Cycle 15.5 / Task 8 — grand-total row position.
     ...(opts.grandTotalRow ? { grandTotalRow: opts.grandTotalRow } : {}),
+    // Cycle 18 / Task 6 — pivot panel (top-of-grid drop strip ABOVE
+    // the row group panel). `?pivotPanel=always|onlyWhenPivoting`.
+    ...(opts.pivotPanelShow ? { pivotPanelShow: opts.pivotPanelShow } : {}),
+    // Cycle 18 / Task 8a — `?pivotMaxGeneratedColumns=N` forces the cap.
+    ...(opts.pivotMaxGeneratedColumns !== undefined
+      ? { pivotMaxGeneratedColumns: opts.pivotMaxGeneratedColumns }
+      : {}),
   };
+
+  // Cycle 18 / Task 5 — `?pivotDemo=on`: stamp `enablePivot` on a few
+  // categorical columns and `enableValue` on a few numeric measures so
+  // the Columns tool panel's Column Labels + Values zones have something
+  // to accept. Categorical columns also need `enableRowGroup` so the
+  // pivotMode-ON checkbox semantics light up (checkbox-add-as-row-group).
+  // Walk recursively so children inside a header group (e.g. P&L children
+  // under `?columnGroups=on`) also get the flags.
+  if (opts.pivotDemo) {
+    const PIVOT_FIELDS = new Set(['sector', 'region', 'currency', 'desk']);
+    const VALUE_FIELDS = new Set(['notionalAmount', 'marketValue', 'pnl', 'quantity']);
+    const stamp = (defs: Array<Record<string, unknown>>): void => {
+      for (const def of defs) {
+        const field = typeof def.field === 'string' ? def.field : undefined;
+        if (field && PIVOT_FIELDS.has(field)) {
+          def.enablePivot = true;
+          def.enableRowGroup = true;
+        }
+        if (field && VALUE_FIELDS.has(field)) {
+          def.enableValue = true;
+        }
+        const children = (def as { children?: unknown }).children;
+        if (Array.isArray(children)) {
+          stamp(children as Array<Record<string, unknown>>);
+        }
+      }
+    };
+    stamp(options.columnDefs as Array<Record<string, unknown>>);
+    // Open the side bar to Columns so the pivot affordances are visible.
+    if (options.sideBar && typeof options.sideBar === 'object') {
+      (options.sideBar as { defaultToolPanel?: string }).defaultToolPanel = 'agColumnsToolPanel';
+    }
+  }
+
   const grid = new CGrid<Position>(container, options);
   grid.registerCellRenderer('pnlPill', pnlPill);
   // Cycle 8 / Task 3 — register a natural-order comparator so the ticker

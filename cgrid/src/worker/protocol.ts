@@ -1,4 +1,5 @@
 import type { SortModel, FilterModel, GroupModel, TransactionResult, SelectionRange } from '../types';
+import type { PivotModel, PivotKeyNode } from './passes/pivotPass';
 
 export type ReqId = number;
 
@@ -219,6 +220,34 @@ export interface ViewportChunk {
    *  matching its behaviour for a data row). Not part of the binary
    *  format — this field rides the structured-clone path only. */
   groupKey?: string[];
+  /** Cycle 18 / Task 3 — pivot result. Present only when a pivot model is
+   *  active (`pivotColIds.length > 0 && valueCols.length > 0`). Three
+   *  companion fields, all riding the structured-clone path (like
+   *  `groupKey` / `groupTotals` — heterogeneous, no typed-array form):
+   *
+   *  `pivotColumnTree` — the distinct pivot-key tree (sorted at every
+   *  level). The main thread synthesizes the secondary columns from it
+   *  (`core/pivotColumns.ts`), nesting pivot levels as column groups.
+   *
+   *  `pivotLeafPaths` — every leaf pivot-key path in column-render order
+   *  (each × value column = one secondary column).
+   *
+   *  `pivotValues` — the cross-tab cell map keyed by
+   *  `encodePivotValueKey(groupKey, joinedPivotPath, valueColId)`. The
+   *  body cell lookup reads a group row's pivot cell from here. Carries
+   *  every row-group level + every pivot-path prefix (collapsed column
+   *  groups) + the grand total (groupKey `''`). Absent when no pivot
+   *  model is active. */
+  pivotColumnTree?: PivotKeyNode[];
+  pivotLeafPaths?: string[][];
+  pivotValues?: Map<string, unknown>;
+  /** Cycle 18 / Task 8a — populated when the pivot pass would have
+   *  produced more synthetic columns than `pivotMaxGeneratedColumns`.
+   *  The pivot output is empty (bypassed) — primary columns render
+   *  normally — and the main thread fires a `pivotMaxColumnsReached`
+   *  event the app can listen to (raise the cap, narrow the filter, …).
+   *  Absent on every other chunk. Rides the structured-clone path. */
+  pivotMaxColumnsReached?: { generatedColumns: number; cap: number };
 }
 
 /** Cycle 15 / Task 16 — one sticky ancestor entry per depth level
@@ -293,6 +322,28 @@ export type WorkerRequest =
       };
     }
   | { id: ReqId; type: 'setGroupModel';    payload: GroupModel }
+  /** Cycle 18 / Task 3 — install / replace the worker's pivot model
+   *  (the Column Labels + Values roles). The next `getViewport` runs
+   *  `PivotPass` against the post-filter rows + group tree and ships the
+   *  pivot result on the chunk. An empty model (`pivotColIds: []` OR
+   *  `valueCols: []`) deactivates pivot — the chunk drops its pivot
+   *  fields. Unknown / fieldless colIds are rejected at set-time as an
+   *  `error` envelope (mirrors `setGroupModel`). Resolves with the
+   *  current visible row count (pivot does not change which rows are
+   *  visible). */
+  | { id: ReqId; type: 'setPivotModel';    payload: PivotModel }
+  /** Cycle 18 / Task 8a — set the cap on the synthesized pivot column
+   *  count. `undefined` reverts to the default (5000). Negative /
+   *  non-finite values also revert to default (a misconfigured option
+   *  must not accidentally disable pivot). The next `getViewport`
+   *  honors the new cap; the cgrid main thread fires
+   *  `pivotMaxColumnsReached` when the chunk carries the breach payload. */
+  | { id: ReqId; type: 'setPivotMaxGeneratedColumns'; payload: number | undefined }
+  /** Cycle 18 / Task 8c — flip `enableStrictPivotColumnOrder`. `true` =
+   *  always re-sort discovered pivot keys alphanumerically. `false`
+   *  (AG default) = preserve prior order + append new keys at end.
+   *  The next `getViewport` honors the new flag. */
+  | { id: ReqId; type: 'setStrictPivotColumnOrder'; payload: boolean }
   /** Cycle 15 / Task 7 — replace the worker's persistent expanded-keys
    *  set. `keys === null` reverts to the "all groups expanded" default
    *  (the same view Task 4 shipped before any explicit toggle); `keys: []`

@@ -587,6 +587,28 @@ export interface CGridOptions<TRow = any> {
    *  Design plan:
    *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 5. */
   groupDisplayType?: 'singleColumn' | 'multipleColumns' | 'groupRows' | 'custom';
+  /** Cycle 18 / Task 3 — master pivot switch. When `true`, the grid
+   *  enters pivot mode: the configured pivot (Column Label) columns'
+   *  distinct values become secondary column groups, the value columns
+   *  become aggregated measures, and the primary data columns are
+   *  hidden (the auto-group column stays as the row-dim axis). Pivot
+   *  only PRODUCES a matrix when at least one pivot column AND one value
+   *  column are also configured (`api.isPivotMode()` reflects the mode;
+   *  the matrix is "active" only when both lists are non-empty). Pivot
+   *  config is set via the imperative API (`setPivotColumns` /
+   *  `addValueColumn`) or the tool-panel surfaces (Task 5-7). Persisted
+   *  separately from column state (ag-grid parity). Default `false`. */
+  pivotMode?: boolean;
+  /** Cycle 18 / Task 4 — expand pivot column groups down to this depth by
+   *  default. `0` (default) leaves every BRANCH pivot group closed so the
+   *  grid initially shows only the top-level group-total columns;
+   *  expanding a group reveals its child pivot columns. LEAF pivot groups
+   *  (no further pivot nesting below them) are always open — there's
+   *  nothing to expand within them — so a 2-level pivot with
+   *  `pivotDefaultExpanded: 1` displays the full value-column matrix.
+   *  Mirrors AG-Grid's `pivotDefaultExpanded` grid option. Design note:
+   *  `docs/superpowers/plans/notes/cycle-18-pivoting-design.md` (Task 4). */
+  pivotDefaultExpanded?: number;
   /** Cycle 15 / Task 5 — registered cell-renderer name used to paint
    *  group rows when `groupDisplayType === 'custom'`. The renderer is
    *  invoked once per group row with bounds spanning every visible
@@ -609,6 +631,98 @@ export interface CGridOptions<TRow = any> {
    *  Design plan:
    *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 6. */
   rowGroupPanelShow?: 'always' | 'onlyWhenGrouping' | 'never';
+  /** Cycle 18 / Task 6 — controls when the pivot panel (the horizontal
+   *  drop strip above the row group panel) mounts.
+   *  - `'never'` (default): the panel never mounts.
+   *  - `'always'`: the panel mounts on construction and stays visible
+   *    even when `pivotColumns.length === 0` (the empty state's
+   *    `Drag here to set column labels` placeholder replaces the pills).
+   *  - `'onlyWhenPivoting'`: the strip RESERVES height at construction
+   *    so a later `setPivotMode(true)` doesn't trigger a layout reflow,
+   *    but the strip content (pills + empty placeholder) is paint-
+   *    suppressed until pivot is active OR pivot columns are present.
+   *  When both this AND `rowGroupPanelShow` mount, the pivot panel sits
+   *  ABOVE the row group panel (pivot is the matrix-definition layer
+   *  that wraps the row dimension). Mirrors AG-Grid's `pivotPanelShow`.
+   *  AG-Grid parity: `pivot-behaviors-prompts.md` Prompt 6. */
+  pivotPanelShow?: 'always' | 'onlyWhenPivoting' | 'never';
+  /** Cycle 18 / Task 8a — maximum number of synthesized pivot result
+   *  columns the worker will produce per `PivotPass`. Default `5000`
+   *  (mirrors AG-Grid's `pivotMaxGeneratedColumns`). When a configured
+   *  pivot model would produce more, `PivotPass` stops early, the chunk
+   *  carries no pivot output (primary columns render normally), and the
+   *  grid fires the `pivotMaxColumnsReached` event with the would-be
+   *  count + the active cap so the app can raise the limit, narrow the
+   *  filter, or warn the user. Negative / non-finite values are
+   *  rejected and the default is used — a buggy app's misconfigured
+   *  option must not accidentally disable pivot. AG-Grid parity:
+   *  `pivot-behaviors-prompts.md` Prompt 8 / Task 8a. */
+  pivotMaxGeneratedColumns?: number;
+  /** Cycle 18 / Task 8c — when `true`, the pivot result columns are
+   *  re-sorted at every pivot run (alphanumeric — `pivotComparator`
+   *  integration is a follow-up). When `false` (the default per AG
+   *  parity), brand-new pivot key values land at the END of the
+   *  previously-known order; the prior column positions are preserved
+   *  across data updates. The first apply always sorts alphanumeric
+   *  (no prior knowledge), so the initial visible order is
+   *  deterministic.
+   *
+   *  Apps that want the stable Excel-like layout under tick traffic
+   *  leave this off (the default). Apps that want a strict
+   *  always-sorted matrix opt in by setting `true`. AG-Grid parity:
+   *  `pivot-behaviors-prompts.md` Prompt 8. */
+  enableStrictPivotColumnOrder?: boolean;
+  /** Cycle 18 / Task 8e — adds a totals column group with ONE leaf per
+   *  value column at the start or end of the synthesized pivot output.
+   *  Each totals cell reads `chunk.groupTotals[valueColId]` — i.e. the
+   *  per-row-group aggregate ACROSS all pivot values (AggPass output,
+   *  not PivotPass). `null` / `undefined` (default) shows no totals.
+   *  AG-Grid parity: `pivotRowTotals`. */
+  pivotRowTotals?: 'before' | 'after' | null;
+  /** Cycle 18 / Task 8e — for multi-level pivots, controls whether the
+   *  per-prefix subtotal leaves (the per-pivot-group aggregate Task 4
+   *  already emits with `columnGroupShow: 'closed'`) show when the
+   *  group is OPEN too. `'before'` places the subtotal as the first
+   *  child of each non-leaf pivot group; `'after'` places it last;
+   *  `null` / `undefined` (default) keeps Task 4's behaviour (subtotal
+   *  visible only when the group is collapsed). AG-Grid parity:
+   *  `pivotColumnGroupTotals`. */
+  pivotColumnGroupTotals?: 'before' | 'after' | null;
+  /** Excel-style grand totals (cgrid-only superpower; AG-Grid pivot
+   *  does not provide this). When `true` and pivot mode is active:
+   *  - A "Grand Total" row appears at the bottom (sticky — does not
+   *    scroll vertically; reuses the TotalsSubgrid that lives outside
+   *    the data subgrid's vertical scroll). The cells in this row
+   *    read the worker's existing `aggregateNode('', inputIds)` output
+   *    (`chunk.pivotValues` keyed by `groupKey: ''`) — no new
+   *    aggregation required.
+   *  - The right-edge "Total" column (i.e. `pivotRowTotals: 'after'`)
+   *    is implicitly enabled when the caller didn't set
+   *    `pivotRowTotals`, and its leaves get `pinned: 'right'` so the
+   *    existing pinned-column layout machinery keeps them sticky
+   *    during horizontal scroll. If the caller explicitly set
+   *    `pivotRowTotals: 'before'`, the leaves pin to the LEFT.
+   *  - The corner cell ("Grand Total" row × right "Total" column)
+   *    shows the grand-of-grands aggregate per value column —
+   *    `chunk.totals[valueColId]`, already computed by AggPass.
+   *
+   *  No-op when pivot mode is inactive. Use `grandTotalRow` for the
+   *  non-pivot case (the two options coexist — `pivotGrandTotals`
+   *  takes precedence under pivot mode). Runtime-mutable. */
+  pivotGrandTotals?: boolean;
+  /** Cycle 18 / Task 8f — app callback fired once per synthesized pivot
+   *  result leaf colDef BEFORE the column-tree resolver sees it. Apps
+   *  mutate the def in place (override `headerName`, add
+   *  `valueFormatter` / `cellStyle` / `cellClassRules`, etc.). Pivot
+   *  result columns AND row-total leaves both flow through this hook.
+   *  AG-Grid parity: `processPivotResultColDef`. */
+  processPivotResultColDef?: (colDef: CColDef<TRow>) => void;
+  /** Cycle 18 / Task 8f — app callback fired once per synthesized pivot
+   *  column GROUP (the per-pivot-key wrapper groups; NOT the row-totals
+   *  wrapper which is layout chrome). Mutate the group in place
+   *  (override `headerName`, `headerClass`, …). AG-Grid parity:
+   *  `processPivotResultColGroupDef`. */
+  processPivotResultColGroupDef?: (groupDef: CColGroupDef<TRow>) => void;
   /** Cycle 15 / Task 6 — when `true`, the row group panel's chips do
    *  not render a sort indicator (Cycle 15 ships chips without a sort
    *  glyph today; this flag is plumbed for forward compatibility so
@@ -1289,6 +1403,17 @@ export interface CColDef<TRow = any, TValue = any> {
    *  UI drag-from-header gesture. Design plan:
    *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 6. */
   enableRowGroup?: boolean;
+  /** Cycle 18 / Task 3 — gates whether the user may drag this column's
+   *  header into the Column Labels (pivot) drop zone. `false` (default,
+   *  mirrors ag-grid) rejects the drop; the imperative
+   *  `setPivotColumns` / `addPivotColumn` API works regardless — this
+   *  flag gates only the UI gesture (Task 5 / 7 wire the surfaces). */
+  enablePivot?: boolean;
+  /** Cycle 18 / Task 3 — gates whether the user may drag this column's
+   *  header into the Values drop zone (aggregated measure). `false`
+   *  (default) rejects the drop; the imperative `addValueColumn` API
+   *  works regardless. */
+  enableValue?: boolean;
 }
 
 /**
@@ -1893,6 +2018,32 @@ export type CGridEvent =
       columns: string[];
       source: 'set' | 'add' | 'remove' | 'move' | 'sort' | 'restore';
     }
+  /** Cycle 18 / Task 5 — fired whenever PivotState mutates: pivotMode flip,
+   *  pivot/value column add/remove/move, value aggFunc change, or a
+   *  `restore()` round-trip. Carries fresh snapshots so subscribers can
+   *  diff against their last-known copy. The columns tool panel + pivot
+   *  panel + context menu items all subscribe to keep the three views over
+   *  PivotState in sync (the same "many views over one model" invariant
+   *  GroupingState + `columnRowGroupChanged` already enforces for grouping). */
+  | {
+      type: 'pivotStateChanged';
+      pivotMode: boolean;
+      pivotColumns: string[];
+      valueColumns: Array<{ colId: string; aggFunc: string }>;
+      source: 'mode' | 'set' | 'add' | 'remove' | 'move' | 'aggFunc' | 'restore';
+    }
+  /** Cycle 18 / Task 8a — fires when a worker chunk reports that the
+   *  pivot pass would have synthesized more than `pivotMaxGeneratedColumns`.
+   *  The pivot output is empty on that chunk (primary columns render
+   *  normally — no half-shaped matrix). Apps listen to raise the cap,
+   *  narrow the filter, or show a banner. Mirrors AG-Grid's
+   *  `pivotMaxColumnsReached`. The two-field payload is what AG-Grid
+   *  carries verbatim. */
+  | {
+      type: 'pivotMaxColumnsReached';
+      generatedColumns: number;
+      cap: number;
+    }
   /** Fires when the set / order of displayed columns changes for any reason.
    *  Cycle 4 wired the original `columnGroupOpened` + `columnDefsChanged`
    *  sources; Cycle 6 / Task 8 widens the source union so listeners can
@@ -2026,6 +2177,31 @@ export interface CGridApi {
    *  list in nesting order. Returns a fresh array — callers may
    *  mutate it without affecting grid state. */
   getRowGroupColumns(): string[];
+
+  // ─── Cycle 18 / Task 3 — pivot API (ag-grid parity) ───────────────────
+  /** Whether pivot mode is on. */
+  isPivotMode(): boolean;
+  /** Turn pivot mode on / off. A pivot only produces a matrix when at
+   *  least one pivot column AND one value column are also set. */
+  setPivotMode(pivotMode: boolean): void;
+  /** Snapshot of the ordered pivot (Column Label) columns. Fresh array. */
+  getPivotColumns(): string[];
+  /** Replace the ordered pivot column list wholesale. */
+  setPivotColumns(colIds: string[]): void;
+  /** Append a pivot column (idempotent). */
+  addPivotColumn(colId: string): void;
+  /** Remove a pivot column (idempotent). */
+  removePivotColumn(colId: string): void;
+  /** Move a pivot column from index `from` to index `to`. */
+  movePivotColumn(from: number, to: number): void;
+  /** Snapshot of the ordered value columns (`{ colId, aggFunc }`). Fresh. */
+  getValueColumns(): Array<{ colId: string; aggFunc: string }>;
+  /** Append a value column with its aggregation (idempotent by colId). */
+  addValueColumn(colId: string, aggFunc: string): void;
+  /** Remove a value column (idempotent). */
+  removeValueColumn(colId: string): void;
+  /** Change an existing value column's aggregation function. */
+  setValueColumnAggFunc(colId: string, aggFunc: string): void;
 
   /** Cycle 15 / Task 7 — expand every row group. Fires
    *  `expandOrCollapseAll` with `expanded: true`. No-op when grouping
@@ -2437,6 +2613,16 @@ export interface CGridApi {
    *  the "Group by `<col>`" item visibility). Returns `false` for
    *  unknown colIds. */
   isColumnRowGroupEnabled(colId: string): boolean;
+  /** Cycle 18 / Task 5 — `true` when the column's resolved colDef carries
+   *  `enablePivot: true`. Gates whether the columns tool panel + context
+   *  menu let a user assign the column as a pivot (Column Label). Returns
+   *  `false` for unknown colIds. */
+  isColumnPivotEnabled(colId: string): boolean;
+  /** Cycle 18 / Task 5 — `true` when the column's resolved colDef carries
+   *  `enableValue: true`. Gates whether the columns tool panel + context
+   *  menu let a user assign the column as a Values measure. Returns
+   *  `false` for unknown colIds. */
+  isColumnValueEnabled(colId: string): boolean;
   /** Cycle 15.5 / Task 2 (gap-fill) — `true` when the row group panel
    *  is mounted AND the viewport-coord point `(clientX, clientY)` falls
    *  inside its DOM rect.  Exposed on the public API so external drag
@@ -2453,6 +2639,23 @@ export interface CGridApi {
    *  appended to `rowGroupColumns`, `false` when rejected (column
    *  already grouped or `enableRowGroup` not set). */
   commitRowGroupPanelDrop?(colId: string): boolean;
+  /** Cycle 18 / Task 6 — `true` when the pivot panel is mounted AND
+   *  the viewport-coord point `(clientX, clientY)` falls inside its
+   *  DOM rect AND the panel currently accepts drops (`'always'` always
+   *  accepts; `'onlyWhenPivoting'` accepts only when pivot is active).
+   *  Exposed on the public API so external drag sources (column-header
+   *  drags from the grid, columns tool panel column-list row drags)
+   *  can route through the same pivot-panel acceptance path. */
+  isPointInPivotPanel?(clientX: number, clientY: number): boolean;
+  /** Cycle 18 / Task 6 — inform the pivot panel of an in-progress drag
+   *  from an external source. Pass `colId: null` to clear any hover
+   *  state (e.g. on mouse-leave or drag-end). */
+  setPivotPanelDragHover?(colId: string | null, clientX: number, clientY: number): void;
+  /** Cycle 18 / Task 6 — commit an external drag drop into the pivot
+   *  panel. Returns `true` when the column was appended to
+   *  `pivotColumns`, `false` when rejected (column already pivoted or
+   *  `enablePivot` not set). */
+  commitPivotPanelDrop?(colId: string): boolean;
   /** True when (clientX, clientY) is within the leaf column-header band.
    *  Used by external drag sources (e.g. Columns tool panel) to decide
    *  whether the cursor is hovering over the column-header strip. */

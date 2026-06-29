@@ -44,7 +44,15 @@ export class HeaderClick extends Feature {
       return;
     }
     if (ctx.hit.kind === 'headerGroup') {
-      ctx.grid.toggleColumnGroup(ctx.hit.groupId);
+      // Cycle 18 / Task 4 follow-up — only toggle when the group has a
+      // closed-state fallback child (the painter only paints a chevron
+      // on these groups too). Leaf pivot groups have NO totals leaf to
+      // fall back on, so toggling them would hide every value-col leaf
+      // with nothing to show — the user reported this as "clicking on
+      // any cell of the sector row hides that column".
+      if (ctx.grid.canToggleColumnGroup(ctx.hit.groupId)) {
+        ctx.grid.toggleColumnGroup(ctx.hit.groupId);
+      }
       return;
     }
     super.handleClick(ctx);

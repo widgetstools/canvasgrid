@@ -135,6 +135,15 @@ export interface CGridLike {
    *  with `{ append: true }`. */
   getMultiSortKey(): 'Shift' | 'Ctrl' | 'Alt' | null;
   toggleColumnGroup(groupId: string): void;
+  /** Cycle 18 / Task 4 follow-up — true when toggling this column
+   *  group has a visible effect. Pivot result groups whose children
+   *  are all `columnGroupShow:'closed'`-less leaves (the deepest
+   *  pivot level) have NO totals fallback — collapsing would hide
+   *  the column entirely. The header chevron painter uses the same
+   *  predicate (`byRows.ts` checks `hasTotalsLeaf`); HeaderClick now
+   *  short-circuits the toggle when this returns false so clicking
+   *  a leaf-pivot-group header is a no-op instead of a column-hide. */
+  canToggleColumnGroup(groupId: string): boolean;
   scrollBy(dx: number, dy: number): void;
   /** Cycle 9 patch / Task 2 — body rectangle in canvas-local CSS px. Read
    *  by `RangeSelection` on each drag tick to detect when the pointer has
@@ -257,6 +266,27 @@ export interface CGridLike {
    *  when the drop was rejected (the drag feature can then re-order
    *  within the header band as if the drop hadn't been attempted). */
   commitRowGroupPanelDrop(colId: string): boolean;
+
+  // --- Pivot panel drop target (Cycle 18 / Task 6) ---
+  /** True when the pivot panel is mounted AND the viewport-coord
+   *  point `(clientX, clientY)` falls inside its DOM rect AND the
+   *  panel accepts drops right now. Read each `mousemove` tick during
+   *  a column-header drag so the drag feature can paint the panel's
+   *  drop indicator. Returns `false` when no panel is mounted
+   *  (`pivotPanelShow === 'never'`) or when 'onlyWhenPivoting' is
+   *  inactive. */
+  isPointInPivotPanel(clientX: number, clientY: number): boolean;
+  /** Inform the pivot panel of an in-progress drag. Passing
+   *  `colId: null` clears any drop-hover state. */
+  setPivotPanelDragHover(
+    colId: string | null,
+    clientX: number,
+    clientY: number,
+  ): void;
+  /** Commit a column-header drop into the pivot panel. Returns `true`
+   *  when the column was appended to `pivotColumns`, `false` when
+   *  the drop was rejected. */
+  commitPivotPanelDrop(colId: string): boolean;
 
   // --- Group expand / collapse (Cycle 15 / Task 7) ---
   /** Hit-test a canvas-local point against the chevron rect of an

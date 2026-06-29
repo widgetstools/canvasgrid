@@ -187,6 +187,18 @@ export interface ResolvedColDef<TRow = any> {
    *  the imperative `setGroupModel` API still works regardless.
    *  Cycle 15 / Task 6. */
   enableRowGroup: boolean;
+  /** See `CColDef.enablePivot`. When `true`, the column header
+   *  can be dragged into the Column Labels drop zone (or the pivot
+   *  panel, when wired) to add the column to `pivotColumns`. `false`
+   *  (default) rejects the drop; the imperative `setPivotColumns` /
+   *  `addPivotColumn` API still works regardless. Cycle 18 / Task 5. */
+  enablePivot: boolean;
+  /** See `CColDef.enableValue`. When `true`, the column header can
+   *  be dragged into the Values drop zone to add the column as a
+   *  measure under pivot. `false` (default) rejects the drop; the
+   *  imperative `addValueColumn` API still works regardless.
+   *  Cycle 18 / Task 5. */
+  enableValue: boolean;
   /** See `CColDef.initialSort`. Resolved value is the column's
    *  construction-time seed; the cgrid layer reads it once to build the
    *  initial sort model and never re-reads it. Cycle 8 / Task 2. */
@@ -272,6 +284,16 @@ export interface ApplyCellPropsInput {
    * Cycle 6 / Task 7 (fix-pass).
    */
   groupHeaderClassNames?: string[];
+  /**
+   * Cycle 18 / Task 4 — set to `'open'` / `'closed'` when this group-header
+   * cell belongs to a pivot result group that owns a
+   * `columnGroupShow:'closed'` totals leaf (a branch pivot group). The
+   * header painter draws a chevron-down / chevron-right at the left of
+   * the cell so the user can see the group is collapsible. Plumbed
+   * through to `CellPaintConfig.pivotGroupExpand`. Threaded by
+   * `renderer/painters/byRows.ts` once per group header per paint.
+   */
+  pivotGroupExpand?: 'open' | 'closed';
 }
 
 /** Apply a `ColCellOverrides` patch onto the mutable slots of `target`.
@@ -335,6 +357,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.sortTotal = ctx.sortTotal;
   target.unSortIcon = ctx.unSortIcon;
   target.unSortIconColor = ctx.unSortIconColor;
+  target.pivotGroupExpand = ctx.pivotGroupExpand;
   target.flashAlpha = ctx.flashAlpha;
   // Cycle 4 / Task 11 — pipe the theme's resolved flash color through
   // so painters don't hard-code it. Read once per cell (constant per
@@ -633,6 +656,8 @@ export function resolveColDef<TRow>(
     suppressSizeToFit: merged.suppressSizeToFit ?? false,
     suppressAutoSize: merged.suppressAutoSize ?? false,
     enableRowGroup: merged.enableRowGroup ?? false,
+    enablePivot: merged.enablePivot ?? false,
+    enableValue: merged.enableValue ?? false,
     initialSort: merged.initialSort,
     initialSortIndex: merged.initialSortIndex,
   };

@@ -55,7 +55,19 @@ import {
   normalizeRowGroupPanelShow,
   type RowGroupPanelGridContext,
 } from './interaction/rowGroupPanel/host';
+import {
+  PivotPanelHost,
+  normalizePivotPanelShow,
+  type PivotPanelGridContext,
+} from './interaction/pivotPanel/host';
 import { GroupingState, type GroupingStateChangedEvent } from './core/groupingState';
+import { PivotState, type PivotStateChangedEvent, type PivotValueColumn } from './core/pivotState';
+import {
+  synthesizePivotColumns, isPivotResultColumnId, isPivotRowTotalColumnId,
+  isPivotResultGroupId,
+  type PivotCellSpec, type PivotValueColumnSpec,
+} from './core/pivotColumns';
+import { encodePivotValueKey, PIVOT_PATH_SEP, type PivotModel, type PivotKeyNode } from './worker/passes/pivotPass';
 import type { MenuItem, GetContextMenuItemsParams, GetMainMenuItemsParams } from './interaction/contextMenu/types';
 import { buildDefaultMenuItems } from './interaction/contextMenu/defaults';
 import { buildDefaultMainMenuItems } from './interaction/contextMenu/mainMenuDefaults';
@@ -511,6 +523,19 @@ export class CGrid<TRow = any> {
    *  applying the scroller's `top` style so a top status bar + row
    *  group panel stack cleanly. */
   private rowGroupPanelTopInset = 0;
+  /** Cycle 18 / Task 6 — pivot panel host (DOM strip ABOVE the row
+   *  group panel and column header row that hosts one pill per
+   *  `pivotColumns[i]`). `null` when `options.pivotPanelShow` resolves
+   *  to off. Reserves an additional top inset on the canvas region via
+   *  `reservePivotPanelSpace`; stacks ABOVE the row group panel so the
+   *  vertical order is: status bar → pivot panel → row group panel →
+   *  column headers → body. */
+  private pivotPanel: PivotPanelHost | null = null;
+  /** Cycle 18 / Task 6 — reserved top inset (CSS px) contributed by
+   *  the pivot panel. Combined with `statusBarInsets.top` +
+   *  `rowGroupPanelTopInset` when applying the scroller's `top`
+   *  style. */
+  private pivotPanelTopInset = 0;
   /** Insertion line element for external column-header drops (e.g. from
    *  the Columns tool panel). Lazily created, lives in editorContainer.
    *  Reused across drags; hidden when no drag is active. */
@@ -616,6 +641,27 @@ export class CGrid<TRow = any> {
    *  `applyGroupingStateChange` so the worker stays in sync. */
   private groupingState: GroupingState = new GroupingState();
   private groupingStateUnsubscribe: () => void = () => {};
+  /** Cycle 18 / Task 3 — canonical pivot state (pivotMode + ordered
+   *  pivotColumns + valueColumns). Mirrors `groupingState`: every pivot
+   *  UI surface mutates it; subscribers re-render. The imperative pivot
+   *  API routes through it. */
+  private pivotState: PivotState = new PivotState();
+  private pivotStateUnsubscribe: () => void = () => {};
+  /** Cycle 18 / Task 3 — true while synthesized pivot result columns are
+   *  installed (the column tree has been swapped to the pivot tree). */
+  private pivotActive = false;
+  /** Cycle 18 / Task 3 — saved primary column structures, restored when
+   *  pivot deactivates. `null` while pivot is inactive. */
+  private primaryColumnTree: ColumnTree | null = null;
+  private primaryColumnGroupState: ColumnGroupState | null = null;
+  /** Cycle 18 / Task 3 — reverse index: synthetic pivot colId →
+   *  (pivotPath, valueColId), for the body cell lookup against
+   *  `chunk.pivotValues`. */
+  private pivotCellSpecById: Map<string, PivotCellSpec> = new Map();
+  /** Cycle 18 / Task 3 — signature of the last-synthesized pivot tree
+   *  (leaf paths + value columns) so columns re-synthesize only when the
+   *  distinct-key set or measures actually change. */
+  private pivotTreeSignature = '';
   /** Cycle 15 / Task 4 + Task 5 — synthesized auto-group column(s).
    *  Length depends on `groupDisplayType`:
    *    - `'singleColumn'` + grouping active → one column.
@@ -825,6 +871,12 @@ export class CGrid<TRow = any> {
       getGroupDepthAt: (rowIndex) => this.groupDepthAt(rowIndex),
       getGroupKeyAt: (rowIndex) => this.groupKeyAt(rowIndex),
       getStickyGroupTotals: (groupKey, colId) => this.totalsCellLookup(colId, groupKey),
+      // Cycle 18 / Task 4 — column group open/closed lookup for the
+      // pivot column-group chevron paint path. byRows reads this on
+      // every header-group paint to flip the chevron direction; the
+      // painter restricts use to BRANCH pivot groups, so non-pivot
+      // group headers (Cycle 4) never call into this lookup.
+      getColumnGroupOpen: (groupId) => this.columnGroupState.isOpen(groupId),
     });
 
     // 7. Canvas wrapper — owns the <canvas>, gc cache, RAF + resize polling.
@@ -949,6 +1001,16 @@ export class CGrid<TRow = any> {
       (e) => this.handleGroupingStateChanged(e),
     );
 
+    // Cycle 18 / Task 3 — pivot state primitive. Seeded from the
+    // `pivotMode` option (pivot/value columns are configured afterwards
+    // via the imperative API / tool panels). Every pivot UI mutates this
+    // object; `handlePivotStateChanged` syncs the worker + repaints.
+    this.pivotState = new PivotState({ pivotMode: options.pivotMode === true });
+    this.pivotStateUnsubscribe = this.pivotState.on(
+      'pivotStateChanged',
+      (e) => this.handlePivotStateChanged(e),
+    );
+
     const rgShow = normalizeRowGroupPanelShow(options.rowGroupPanelShow);
     if (rgShow !== null) {
       const ctx: RowGroupPanelGridContext = this.makeRowGroupPanelContext();
@@ -964,6 +1026,23 @@ export class CGrid<TRow = any> {
       // status bar). The panel's own `style.top` is updated whenever
       // the top status bar's inset changes.
       this.setRowGroupPanelTop(this.statusBarInsets.top);
+    }
+
+    // Cycle 18 / Task 6 — pivot panel host (top-of-grid drop strip
+    // ABOVE the row group panel + column headers; pivot wraps the row
+    // dimension). Constructed AFTER the row group panel so visibility
+    // reservations land in the right order: row group panel reserves
+    // first, pivot panel reserves on top of that.
+    const ppShow = normalizePivotPanelShow(options.pivotPanelShow);
+    if (ppShow !== null) {
+      const ctx: PivotPanelGridContext = this.makePivotPanelContext();
+      this.pivotPanel = new PivotPanelHost(
+        this.root,
+        ctx,
+        ppShow,
+        this.pivotState.getPivotColumns(),
+      );
+      this.setPivotPanelTop(this.statusBarInsets.top);
     }
 
     // 8. Hit-test + input
@@ -1026,6 +1105,7 @@ export class CGrid<TRow = any> {
         ? null
         : (this.options.multiSortKey ?? 'Shift'),
       toggleColumnGroup: (groupId) => this.toggleColumnGroup(groupId),
+      canToggleColumnGroup: (groupId) => this.canToggleColumnGroup(groupId),
       scrollBy: (dx, dy) => this.scroller.scrollBy({ left: dx, top: dy, behavior: 'auto' }),
       // Cycle 9 patch / Task 2 — body rectangle for RangeSelection's edge-zone
       // auto-scroll math. Read at event time so a container resize between
@@ -1105,6 +1185,14 @@ export class CGrid<TRow = any> {
         this.rowGroupPanel?.setDragHover(colId, x, y);
       },
       commitRowGroupPanelDrop: (colId) => this.rowGroupPanel?.handleColumnDrop(colId) ?? false,
+      // Cycle 18 / Task 6 — pivot panel drop target. The column drag
+      // feature dispatches hover + drop through these so the pivot
+      // panel can paint its outline + insertion line.
+      isPointInPivotPanel: (x, y) => this.pivotPanel?.isPointInPanel(x, y) === true,
+      setPivotPanelDragHover: (colId, x, y) => {
+        this.pivotPanel?.setDragHover(colId, x, y);
+      },
+      commitPivotPanelDrop: (colId) => this.pivotPanel?.handleColumnDrop(colId) ?? false,
       // Cycle 15 / Task 7 — chevron hit-test + toggle. The grid owns
       // both because (a) hit geometry requires column bounds + chunk
       // group fields the feature shouldn't reach into, and (b) the
@@ -1326,6 +1414,30 @@ export class CGrid<TRow = any> {
       if (this.options.aggFuncs && Object.keys(this.options.aggFuncs).length > 0) {
         this.forwardAggFuncs(this.options.aggFuncs);
       }
+      // Cycle 18 / Task 8a — push the construction-time pivot cap to the
+      // worker BEFORE the first getViewport so the very first pivot run
+      // honors the cap. Absent option leaves the worker on its default
+      // (5000). Fire-and-forget — the reply rides the existing rowCount
+      // channel and the cap doesn't move rows.
+      if (this.options.pivotMaxGeneratedColumns !== undefined) {
+        this.workerClient
+          .setPivotMaxGeneratedColumns(this.options.pivotMaxGeneratedColumns)
+          .catch((err) => {
+            if (!this.destroyed) console.error('[cgrid] setPivotMaxGeneratedColumns:', err);
+          });
+      }
+      // Cycle 18 / Task 8c — flip the worker's PivotPass to the
+      // AG-parity "append new keys at the end" default UNLESS the app
+      // opts back into strict alphanumeric ordering. The PivotPass
+      // constructor still defaults to `strict=true` to preserve the
+      // legacy single-test behaviour for the standalone engine; cgrid
+      // ALWAYS forwards the resolved flag so the boundary is
+      // unambiguous.
+      this.workerClient
+        .setStrictPivotColumnOrder(this.options.enableStrictPivotColumnOrder === true)
+        .catch((err) => {
+          if (!this.destroyed) console.error('[cgrid] setStrictPivotColumnOrder:', err);
+        });
       // Cycle 15 / Task 8 — when `groupSelectsChildren: true` is set
       // at construction, register the SelectionModel's membership
       // resolver AND flip the worker's per-snapshot descendant
@@ -1493,19 +1605,23 @@ export class CGrid<TRow = any> {
     // and surface both the per-group event and the broader displayed-columns
     // signal. Done before selection wiring so the first paint sees the right
     // column set even if openByDefault flipped any leaves below.
-    this.columnGroupState.onChange((changed) => {
-      this.columnOrder = this.computeVisibleColumnOrder();
-      this.columnLayout = resolveColumnWidths(this.columnOrder, this.canvasBounds.width || this.scroller.clientWidth || 800);
-      this.recomputeViewport();
-      this.cgridCanvas?.requestRepaint();
-      for (const c of changed) {
-        this.events.emit({ type: 'columnGroupOpened', groupId: c.groupId, open: c.open });
-      }
-      this.events.emit({ type: 'displayedColumnsChanged', source: 'columnGroupOpened' });
-      // Re-fetch the chunk for the new visible-column set so newly-shown
-      // leaves get data instead of blank cells until the next scroll tick.
-      if (this.workerClient) this.requestViewport();
-    });
+    //
+    // Cycle 18 / Task 4 — scrollLeft is intentionally PRESERVED across
+    // pivot column-group toggles (and any other column-group toggle).
+    // This mirrors the row-group scrollTop-preservation invariant: the
+    // user's view anchor in the surviving columns stays put. The native
+    // scroller may auto-clamp scrollLeft when the new column set is
+    // narrower than the cursor's current position (`maxScrollLeft`
+    // shrinks), but that's a one-sided clamp — never an unsolicited
+    // reset to 0.
+    //
+    // The subscription is wrapped in a helper so `applyPivotColumns` /
+    // `revertPivotColumns` can re-subscribe whenever the
+    // `ColumnGroupState` instance is swapped — otherwise the new state
+    // would have no listener and pivot column-group toggles would be
+    // silent no-ops (Cycle 18 / Task 4 regression caught by the
+    // pivotIntegration E2E).
+    this.subscribeColumnGroupState();
 
     // 11. Selection feedback. `ensureRowIndexVisible` / `ensureColIdVisible`
     // run only when the focused cell ACTUALLY changed since the last emit —
@@ -2676,6 +2792,217 @@ export class CGrid<TRow = any> {
     if (toShow.length > 0 && !suppressShow) this.setColumnsVisible(toShow, true);
   }
 
+  // ─── Cycle 18 / Task 3 — pivot API + render wiring ─────────────────────
+
+  isPivotMode(): boolean { return this.pivotState.isPivotMode(); }
+  setPivotMode(pivotMode: boolean): void {
+    if (!this.destroyed) this.pivotState.setPivotMode(pivotMode);
+  }
+  getPivotColumns(): string[] { return this.pivotState.getPivotColumns(); }
+  setPivotColumns(colIds: string[]): void {
+    if (!this.destroyed) this.pivotState.setPivotColumns(colIds);
+  }
+  addPivotColumn(colId: string): void {
+    if (!this.destroyed) this.pivotState.addPivotColumn(colId);
+  }
+  removePivotColumn(colId: string): void {
+    if (!this.destroyed) this.pivotState.removePivotColumn(colId);
+  }
+  movePivotColumn(from: number, to: number): void {
+    if (!this.destroyed) this.pivotState.movePivotColumn(from, to);
+  }
+  getValueColumns(): Array<{ colId: string; aggFunc: string }> {
+    return this.pivotState.getValueColumns().map((v) => ({ colId: v.colId, aggFunc: v.aggFunc }));
+  }
+  addValueColumn(colId: string, aggFunc: string): void {
+    if (!this.destroyed) this.pivotState.addValueColumn(colId, aggFunc);
+  }
+  removeValueColumn(colId: string): void {
+    if (!this.destroyed) this.pivotState.removeValueColumn(colId);
+  }
+  setValueColumnAggFunc(colId: string, aggFunc: string): void {
+    if (!this.destroyed) this.pivotState.setValueColumnAggFunc(colId, aggFunc);
+  }
+  setValueColumns(list: Array<{ colId: string; aggFunc: string }>): void {
+    if (!this.destroyed) this.pivotState.setValueColumns(list);
+  }
+  /** Synthesized pivot result column IDs — the cross-tabbed
+   *  `pivot_<pivotKey>_<valueColId>` colIds the worker emits when pivot is
+   *  active. Returns `[]` when pivot is inactive. Mirrors AG-Grid's
+   *  `gridApi.getPivotResultColumns()` (we return colIds, the AG getter
+   *  returns Column instances; the colId is the only useful piece for
+   *  driving sort / state). */
+  getPivotResultColumns(): string[] {
+    if (!this.pivotActive) return [];
+    return Array.from(this.pivotCellSpecById.keys());
+  }
+
+  /** Build the worker pivot model from the current pivot state. Returns an
+   *  EMPTY model unless the pivot is active (mode on AND ≥1 pivot column
+   *  AND ≥1 value column) — `pivotMode` itself is not part of the worker
+   *  model, so an inactive pivot must surface as an empty model or the
+   *  worker would keep cross-tabbing. */
+  private pivotWorkerModel(): PivotModel {
+    if (!this.pivotState.isPivotActive()) return { pivotColIds: [], valueCols: [] };
+    return {
+      pivotColIds: this.pivotState.getPivotColumns(),
+      valueCols: this.pivotState.getValueColumns().map((v) => ({ colId: v.colId, aggFunc: v.aggFunc })),
+    };
+  }
+
+  /** Cycle 18 / Task 3 — react to any pivot state mutation. Refresh the
+   *  worker's column metadata (so pivot/value fields survive the primaries
+   *  being hidden), install the model, then request a viewport — the chunk
+   *  reply carries the pivot tree + values and `maybeSyncPivotColumns`
+   *  (re)synthesizes the secondary columns. Cite:
+   *  docs/superpowers/plans/notes/cycle-18-pivoting-design.md (Task 3). */
+  private handlePivotStateChanged(e: PivotStateChangedEvent): void {
+    if (this.destroyed) return;
+    // Cycle 18 / Task 5 — fan the change out as a public event so the
+    // columns tool panel + pivot panel + context menu keep their views
+    // over PivotState in sync. Fire BEFORE the worker round-trip so
+    // subscribers can repaint optimistically — the chunk reply that
+    // lands a tick later only matters for body cell values, not the
+    // pill / toggle chrome these surfaces render from state.
+    this.events.emit({
+      type: 'pivotStateChanged',
+      pivotMode: e.pivotMode,
+      pivotColumns: [...e.pivotColumns],
+      valueColumns: e.valueColumns.map((v) => ({ ...v })),
+      source: e.source,
+    });
+    // Cycle 18 / Task 6 — fan the change out to the pivot panel host
+    // (when mounted) so its pill strip + onlyWhenPivoting paint state
+    // stay in sync with PivotState. Pills mirror `pivotColumns`; the
+    // active flag toggles whether 'onlyWhenPivoting' paints content.
+    if (this.pivotPanel) {
+      this.pivotPanel.setPivotColumns(e.pivotColumns);
+      this.pivotPanel.setPivotActive(this.pivotState.isPivotActive());
+    }
+    this.workerClient.updateColumns(this.workerColumns())
+      .then(() => this.workerClient.setPivotModel(this.pivotWorkerModel()))
+      .then(() => {
+        if (this.destroyed) return;
+        this.requestViewport();
+      })
+      .catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+  }
+
+  /** Cycle 18 / Task 3 — install / drop the synthesized pivot result
+   *  columns based on the freshly-arrived chunk. Re-synthesizes only when
+   *  the distinct-key set or value columns changed (cheap signature
+   *  compare) so steady-state scrolls don't churn the column tree. */
+  private maybeSyncPivotColumns(chunk: ViewportChunk): void {
+    const active = this.pivotState.isPivotActive() && chunk.pivotColumnTree !== undefined;
+    if (active) {
+      const signature = JSON.stringify({
+        // Cycle 18 / Task 8e — pivotRowTotals + pivotColumnGroupTotals
+        // are inputs to synthesis; folding them into the signature so a
+        // runtime swap re-synthesizes (without this, the cached pivot
+        // tree would paint without the totals column).
+        rowTotals: this.options.pivotRowTotals ?? null,
+        colGroupTotals: this.options.pivotColumnGroupTotals ?? null,
+        defaultExpanded: this.options.pivotDefaultExpanded ?? null,
+        grandTotals: this.options.pivotGrandTotals === true,
+        leaves: chunk.pivotLeafPaths ?? [],
+        vals: this.pivotState.getValueColumns(),
+      });
+      if (!this.pivotActive || signature !== this.pivotTreeSignature) {
+        this.pivotTreeSignature = signature;
+        this.applyPivotColumns(chunk.pivotColumnTree!, chunk.pivotLeafPaths ?? []);
+      }
+    } else if (this.pivotActive) {
+      this.revertPivotColumns();
+    }
+  }
+
+  /** Swap the column tree to the synthesized pivot tree: pivot levels
+   *  become column groups (`HeaderGroupSubgrid` renders them verbatim),
+   *  the primary data columns drop out, and the auto-group column is kept
+   *  as the row-dim axis. */
+  private applyPivotColumns(keyTree: PivotKeyNode[], _leafPaths: string[][]): void {
+    const valueColumns: PivotValueColumnSpec[] = this.pivotState.getValueColumns().map((v) => {
+      const primary = (this.primaryColumnTree ?? this.columnTree).leafById.get(v.colId);
+      return {
+        colId: v.colId,
+        aggFunc: v.aggFunc,
+        headerName: primary?.headerName ?? v.colId,
+        cellDataType: primary?.cellDataType ?? 'number',
+        width: primary?.width,
+      };
+    });
+    const { defs, cellSpecById } = synthesizePivotColumns<TRow>({
+      keyTree,
+      valueColumns,
+      pivotDefaultExpanded: this.options.pivotDefaultExpanded,
+      pivotGrandTotals: this.options.pivotGrandTotals === true,
+      // Cycle 18 / Task 8e — pivot totals (row totals + column-group totals).
+      pivotRowTotals: this.options.pivotRowTotals ?? null,
+      pivotColumnGroupTotals: this.options.pivotColumnGroupTotals ?? null,
+      // Cycle 18 / Task 8f — app callbacks for customising the synthesized
+      // colDef / groupDef before the resolver sees them.
+      processPivotResultColDef: this.options.processPivotResultColDef,
+      processPivotResultColGroupDef: this.options.processPivotResultColGroupDef,
+    });
+
+    // Save the primary structures on first activation so revert restores
+    // the exact pre-pivot tree (with its column-group open/closed state).
+    if (!this.pivotActive) {
+      this.primaryColumnTree = this.columnTree;
+      this.primaryColumnGroupState = this.columnGroupState;
+    }
+
+    const pivotTree = resolveColumnTree<TRow>(defs);
+    this.columnTree = pivotTree;
+    this.columnGroupState = new ColumnGroupState(pivotTree);
+    this.subscribeColumnGroupState();
+    this.columnDefsMap = pivotTree.leafById as Map<string, ResolvedColDef<TRow>>;
+    // Keep the auto-group column(s) resolvable for the painter / leaf header.
+    for (const col of this.autoGroupColumns) this.columnDefsMap.set(col.colId, col);
+    this.pivotCellSpecById = cellSpecById;
+    this.pivotActive = true;
+
+    this.columnOrder = this.computeVisibleColumnOrder();
+    this.columnLayout = resolveColumnWidths(
+      this.columnOrder,
+      this.canvasBounds.width || this.scroller.clientWidth || 800,
+    );
+    this.rebuildSubgridStack();
+    this.recomputeViewport();
+    this.cgridCanvas?.requestRepaint();
+  }
+
+  /** Restore the primary columns when pivot deactivates. Drops the
+   *  synthetic columns en masse and re-fetches a viewport for the primary
+   *  column data (the current chunk only carries pivot values). */
+  private revertPivotColumns(): void {
+    if (!this.pivotActive) return;
+    if (this.primaryColumnTree) this.columnTree = this.primaryColumnTree;
+    if (this.primaryColumnGroupState) {
+      this.columnGroupState = this.primaryColumnGroupState;
+      this.subscribeColumnGroupState();
+    }
+    this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
+    for (const col of this.autoGroupColumns) this.columnDefsMap.set(col.colId, col);
+    this.pivotCellSpecById = new Map();
+    this.pivotTreeSignature = '';
+    this.pivotActive = false;
+    this.primaryColumnTree = null;
+    this.primaryColumnGroupState = null;
+
+    this.columnOrder = this.computeVisibleColumnOrder();
+    this.columnLayout = resolveColumnWidths(
+      this.columnOrder,
+      this.canvasBounds.width || this.scroller.clientWidth || 800,
+    );
+    this.rebuildSubgridStack();
+    this.recomputeViewport();
+    this.cgridCanvas?.requestRepaint();
+    // The chunk that drove the revert carried no primary column data
+    // (it was requested with the synthetic colIds) — fetch fresh data.
+    this.requestViewport();
+  }
+
   /** Cycle 15 / Task 7 — flip every group to expanded. Ships the
    *  "default = all" sentinel to the worker so the slicer derives
    *  the all-keys set itself; fires `expandOrCollapseAll` once with
@@ -2944,6 +3271,50 @@ export class CGrid<TRow = any> {
     return this.columnDefsMap.get(colId)?.enableRowGroup === true;
   }
 
+  /** Cycle 18 / Task 5 — `true` when the column's resolved colDef carries
+   *  `enablePivot: true`. Gates whether the columns tool panel + context
+   *  menu offer the "add as pivot" affordance. Mirrors the
+   *  `isColumnRowGroupEnabled` shape; same class+API duality. */
+  isColumnPivotEnabled(colId: string): boolean {
+    return this.columnDefsMap.get(colId)?.enablePivot === true;
+  }
+
+  /** Cycle 18 / Task 5 — `true` when the column's resolved colDef carries
+   *  `enableValue: true`. Gates whether the columns tool panel + context
+   *  menu offer the "add as value/aggregation" affordance. */
+  isColumnValueEnabled(colId: string): boolean {
+    return this.columnDefsMap.get(colId)?.enableValue === true;
+  }
+
+  /** Cycle 18 / Task 7 — `true` when the column's resolved colDef would
+   *  render in the body (i.e. `hide !== true`). Distinct from "currently
+   *  paints" — a hidden column still rides `columnDefsMap` and
+   *  `getColumnState()`. Gates the "Scroll to column" context-menu item:
+   *  scrolling to a hidden column is a no-op. */
+  isColumnVisible(colId: string): boolean {
+    const def = this.columnDefsMap.get(colId);
+    return def !== undefined && def.hide !== true;
+  }
+
+  /** Cycle 18 / Task 7 — names of every aggregation the "Value:
+   *  Aggregate `<col>`" submenu offers. The built-in subset
+   *  (`sum / avg / min / max / count`) plus any names registered via
+   *  `CGridOptions.aggFuncs` / `setGridOption('aggFuncs', …)`. `first` /
+   *  `last` are intentionally excluded — AG-Grid's value submenu omits
+   *  them too (not aggregations, just array access). Read at menu-open
+   *  time so a runtime `aggFuncs` swap takes effect on the next
+   *  right-click without re-wiring. */
+  getRegisteredAggFuncNames(): string[] {
+    const out: string[] = ['sum', 'avg', 'min', 'max', 'count'];
+    const custom = this.options.aggFuncs;
+    if (custom) {
+      for (const name of Object.keys(custom)) {
+        if (!out.includes(name)) out.push(name);
+      }
+    }
+    return out;
+  }
+
   /** Cycle 15.5 / Task 2 (gap-fill) — expose the row-group-panel
    *  hit-test on the public CGridApi so external drag sources (columns
    *  tool panel column-list row drag) can route through the panel. */
@@ -2963,6 +3334,27 @@ export class CGrid<TRow = any> {
   commitRowGroupPanelDrop(colId: string): boolean {
     if (this.destroyed) return false;
     return this.rowGroupPanel?.handleColumnDrop(colId) ?? false;
+  }
+
+  /** Cycle 18 / Task 6 — `true` when the pivot panel is mounted AND
+   *  the viewport-coord point `(clientX, clientY)` falls inside its
+   *  DOM rect AND the panel currently accepts drops. */
+  isPointInPivotPanel(clientX: number, clientY: number): boolean {
+    return this.pivotPanel?.isPointInPanel(clientX, clientY) === true;
+  }
+
+  /** Cycle 18 / Task 6 — forward an external drag hover to the pivot
+   *  panel host. */
+  setPivotPanelDragHover(colId: string | null, clientX: number, clientY: number): void {
+    if (this.destroyed) return;
+    this.pivotPanel?.setDragHover(colId, clientX, clientY);
+  }
+
+  /** Cycle 18 / Task 6 — commit an external column drag drop into the
+   *  pivot panel. */
+  commitPivotPanelDrop(colId: string): boolean {
+    if (this.destroyed) return false;
+    return this.pivotPanel?.handleColumnDrop(colId) ?? false;
   }
 
   /** True when (clientX, clientY) falls within the leaf column-header
@@ -3082,6 +3474,93 @@ export class CGrid<TRow = any> {
       { suppressSort: this.options.rowGroupPanelSuppressSort === true },
     );
     this.setRowGroupPanelTop(this.statusBarInsets.top);
+  }
+
+  /** Cycle 18 / Task 6 — runtime swap of `pivotPanelShow`. When the
+   *  option mutates via `setGridOption`, this method either mounts a
+   *  fresh host (transition from `'never'`), unmounts the current one
+   *  (transition to `'never'`), or hands the new mode to the existing
+   *  host. */
+  /** Cycle 18 / Task 8a — forward the runtime cap to the worker.
+   *  Pure pass-through: the worker validates (negative / non-finite
+   *  revert to default) and the next `getViewport` honors the new cap. */
+  private updatePivotMaxGeneratedColumns(cap: number | undefined): void {
+    if (this.destroyed) return;
+    this.workerClient.setPivotMaxGeneratedColumns(cap)
+      .then(() => {
+        if (!this.destroyed) this.requestViewport();
+      })
+      .catch((err) => {
+        if (!this.destroyed) console.error('[cgrid] setPivotMaxGeneratedColumns:', err);
+      });
+  }
+
+  /** Cycle 18 / Task 8e — re-synthesize the pivot columns so the new
+   *  totals position lands on the next chunk. The signature comparison
+   *  inside `maybeSyncPivotColumns` already folds the totals options
+   *  in, so a single `requestViewport` triggers re-synthesis on the
+   *  reply. */
+  private updatePivotTotalsOption(): void {
+    if (this.destroyed) return;
+    // pivotGrandTotals can toggle the TotalsSubgrid in/out of the stack
+    // (when pivot is active) — rebuild so the visible row count changes
+    // on the next paint, not just the synthesized columns.
+    this.rebuildSubgridStack();
+    this.recomputeViewport();
+    this.requestViewport();
+  }
+
+  /** Cycle 18 / Task 8c — flip the strict-order flag at runtime.
+   *  The next `getViewport` honors the new behaviour. */
+  private updateStrictPivotColumnOrder(strict: boolean | undefined): void {
+    if (this.destroyed) return;
+    this.workerClient.setStrictPivotColumnOrder(strict === true)
+      .then(() => {
+        if (!this.destroyed) this.requestViewport();
+      })
+      .catch((err) => {
+        if (!this.destroyed) console.error('[cgrid] setStrictPivotColumnOrder:', err);
+      });
+  }
+
+  private updatePivotPanelShow(show: 'always' | 'onlyWhenPivoting' | 'never' | undefined): void {
+    if (this.destroyed) return;
+    const next = normalizePivotPanelShow(show);
+    if (next === null) {
+      this.pivotPanel?.destroy();
+      this.pivotPanel = null;
+      return;
+    }
+    if (this.pivotPanel) {
+      this.pivotPanel.setShowMode(next);
+      return;
+    }
+    const ctx: PivotPanelGridContext = this.makePivotPanelContext();
+    this.pivotPanel = new PivotPanelHost(
+      this.root,
+      ctx,
+      next,
+      this.pivotState.getPivotColumns(),
+    );
+    this.setPivotPanelTop(this.statusBarInsets.top);
+  }
+
+  /** Cycle 18 / Task 6 — build the per-host context object shared by
+   *  the construction-time path and the runtime-show-flip path. Every
+   *  primitive mutation routes through `pivotState`; the
+   *  `pivotStateChanged` handler downstream lands the model swap on
+   *  the worker. */
+  private makePivotPanelContext(): PivotPanelGridContext {
+    return {
+      setReservedSpace: (side, height) => this.reservePivotPanelSpace(side, height),
+      getHeaderName: (colId) => this.columnDefsMap.get(colId)?.headerName,
+      isColumnPivotEnabled: (colId) =>
+        this.columnDefsMap.get(colId)?.enablePivot === true,
+      addPivotColumn: (colId) => this.pivotState.addPivotColumn(colId),
+      removePivotColumn: (colId) => this.pivotState.removePivotColumn(colId),
+      movePivotColumn: (from, to) => this.pivotState.movePivotColumn(from, to),
+      isPivotActive: () => this.pivotState.isPivotActive(),
+    };
   }
 
   /** Cycle 15.5 / Task 1 — build the per-host context object shared by
@@ -3705,12 +4184,15 @@ export class CGrid<TRow = any> {
     // current status-bar bottom reservation flows through the same
     // setHostBounds call so a side-bar reflow can't drop the bar inset.
     if (this.cgridCanvas) {
-      // Cycle 15 / Task 6 — fold the status-bar top + row-group-panel
-      // top contributions through the same call so a side-bar reflow
-      // doesn't drop either inset.
+      // Cycle 15 / Task 6 + Cycle 18 / Task 6 — fold the status-bar
+      // top + pivot-panel top + row-group-panel top contributions
+      // through the same call so a side-bar reflow doesn't drop any
+      // of the three insets.
       this.cgridCanvas.setHostBounds({
         left,
-        top: this.statusBarInsets.top + this.rowGroupPanelTopInset,
+        top: this.statusBarInsets.top
+          + this.pivotPanelTopInset
+          + this.rowGroupPanelTopInset,
         bottom: this.statusBarInsets.bottom,
       });
     }
@@ -3746,15 +4228,30 @@ export class CGrid<TRow = any> {
     this.applyVerticalInsets();
   }
 
+  /** Cycle 18 / Task 6 — adjust the canvas region's top inset to
+   *  make room for the pivot panel (the drop strip ABOVE the row
+   *  group panel). Called by `PivotPanelHost` on mount, show-mode
+   *  change, pill-count change, and destroy. Combines with the
+   *  status bar + row group panel top insets via `applyVerticalInsets`. */
+  private reservePivotPanelSpace(side: 'top', height: number): void {
+    if (side !== 'top') return;
+    if (this.pivotPanelTopInset === height) return;
+    this.pivotPanelTopInset = height;
+    this.applyVerticalInsets();
+  }
+
   /** Cycle 15 / Task 6 — recompute and apply the combined top +
    *  bottom insets to the scroller, editor overlay, canvas host,
    *  and the row group panel's own top offset. Top inset is the
-   *  sum of `statusBarInsets.top` + `rowGroupPanelTopInset` so the
-   *  row group panel sits BELOW any top-positioned status bar.
-   *  Bottom inset is `statusBarInsets.bottom` alone (no row group
+   *  sum of `statusBarInsets.top` + `pivotPanelTopInset` +
+   *  `rowGroupPanelTopInset` so the visual order top-to-bottom is:
+   *  status bar → pivot panel → row group panel → column headers →
+   *  body. Bottom inset is `statusBarInsets.bottom` alone (no
    *  panel contribution). */
   private applyVerticalInsets(): void {
-    const top = this.statusBarInsets.top + this.rowGroupPanelTopInset;
+    const top = this.statusBarInsets.top
+      + this.pivotPanelTopInset
+      + this.rowGroupPanelTopInset;
     const bottom = this.statusBarInsets.bottom;
     this.scroller.style.top = `${top}px`;
     this.scroller.style.bottom = `${bottom}px`;
@@ -3767,15 +4264,18 @@ export class CGrid<TRow = any> {
         bottom,
       });
     }
-    // The side bar must start below the row group panel so the tab strip
-    // is not visually occluded. Use the same `top` value as the scroller.
+    // The side bar must start below the panels so the tab strip is not
+    // visually occluded. Use the same `top` value as the scroller.
     this.sideBar?.setTopOffset(top);
-    // The row group panel itself sits at the status bar's top-inset
-    // (so a top status bar pushes the panel down by exactly its
-    // height) — the panel's own height is then the next contributor
-    // to the scroller's top. Keeps stacking deterministic.
+    // The pivot panel sits at the status bar's top-inset (top of the
+    // stack, just below any top status bar). The row group panel sits
+    // BELOW the pivot panel — its top equals statusBar + pivotPanel.
+    // Keeps stacking deterministic.
+    if (this.pivotPanel) {
+      this.setPivotPanelTop(this.statusBarInsets.top);
+    }
     if (this.rowGroupPanel) {
-      this.setRowGroupPanelTop(this.statusBarInsets.top);
+      this.setRowGroupPanelTop(this.statusBarInsets.top + this.pivotPanelTopInset);
     }
   }
 
@@ -3785,6 +4285,14 @@ export class CGrid<TRow = any> {
    *  the top status bar) and once at construction. */
   private setRowGroupPanelTop(top: number): void {
     const el = this.root.querySelector('.cg-row-group-panel') as HTMLElement | null;
+    if (el) el.style.top = `${top}px`;
+  }
+
+  /** Cycle 18 / Task 6 — set the pivot panel's own `top` style.
+   *  Called from `applyVerticalInsets` whenever the status bar's
+   *  top inset changes and once at construction. */
+  private setPivotPanelTop(top: number): void {
+    const el = this.root.querySelector('.cg-pivot-panel') as HTMLElement | null;
     if (el) el.style.top = `${top}px`;
   }
 
@@ -3918,6 +4426,10 @@ export class CGrid<TRow = any> {
         );
       },
       updateRowGroupPanelShow: (value) => this.updateRowGroupPanelShow(value),
+      updatePivotPanelShow: (value) => this.updatePivotPanelShow(value),
+      updatePivotMaxGeneratedColumns: (value) => this.updatePivotMaxGeneratedColumns(value),
+      updateStrictPivotColumnOrder: (value) => this.updateStrictPivotColumnOrder(value),
+      updatePivotTotalsOption: () => this.updatePivotTotalsOption(),
       updateRowGroupPanelSuppressSort: (suppress) =>
         this.rowGroupPanel?.setRenderOptions({ suppressSort: suppress }),
       updateGroupSelectsChildren: (enabled) => this.applyGroupSelectsChildren(enabled),
@@ -4040,7 +4552,8 @@ export class CGrid<TRow = any> {
     // step-out from synthesis-adjacent → synthesis. See
     // `docs/superpowers/plans/notes/cycle-14-aggregation-design.md`
     // § Task 2 — Coexistence — pinned + totals.
-    if (this.options.totalsRowPosition === 'top') {
+    const effectiveTotalsPos = this.effectiveTotalsRowPosition();
+    if (effectiveTotalsPos === 'top') {
       stack.push(this.makeTotalsSubgrid('top'));
     }
     if (this.pinnedRowsArray('top').length > 0) {
@@ -4058,10 +4571,22 @@ export class CGrid<TRow = any> {
     if (this.pinnedRowsArray('bottom').length > 0) {
       stack.push(this.makePinnedRowsSubgrid('bottom'));
     }
-    if (this.options.totalsRowPosition === 'bottom') {
+    if (effectiveTotalsPos === 'bottom') {
       stack.push(this.makeTotalsSubgrid('bottom'));
     }
     this.subgrids = stack;
+  }
+
+  /** Resolve the effective totals-row position by combining the explicit
+   *  `totalsRowPosition` option with `pivotGrandTotals`. When
+   *  `pivotGrandTotals: true` and pivot is active, the row is implicitly
+   *  pinned to the bottom (Excel-style grand total). Otherwise the
+   *  caller's explicit value (or `null`) applies. */
+  private effectiveTotalsRowPosition(): 'top' | 'bottom' | null {
+    if (this.options.pivotGrandTotals === true && this.pivotActive) {
+      return 'bottom';
+    }
+    return this.options.totalsRowPosition ?? null;
   }
 
   /** Cycle 14 / Task 2 — read the pinned-rows array for `position`. Returns
@@ -4144,6 +4669,29 @@ export class CGrid<TRow = any> {
   private totalsCellLookup(colId: string, parentGroupKey: string = ''): { value: unknown; valueFormatted: string } | null {
     const chunk = this.chunk;
     if (!chunk) return null;
+    // Excel-style grand totals — under active pivot, the totals row
+    // reads pivot result cells from `chunk.pivotValues` keyed by
+    // `groupKey: ''` (the bucket PivotPass.aggregateNode('', inputIds)
+    // already populates) so each cross-tab cell shows the
+    // grand-of-grand for that (pivotPath, valueColId).
+    if (this.pivotActive && parentGroupKey === '') {
+      // Match Excel's pivot terminology — "Total Result" labels both the
+      // bottom row and the right column header so the corner reads
+      // consistently regardless of which axis the eye lands on first.
+      if (isAutoGroupColumnId(colId)) {
+        return { value: 'Total Result', valueFormatted: 'Total Result' };
+      }
+      const spec = this.pivotCellSpecById.get(colId);
+      if (spec && chunk.pivotValues) {
+        const lookupRaw = chunk.pivotValues.get(
+          encodePivotValueKey('', spec.pivotPath.join(PIVOT_PATH_SEP), spec.valueColId),
+        );
+        if (lookupRaw === undefined) return null;
+        if (lookupRaw === null) return { value: null, valueFormatted: '' };
+        const fmt = typeof lookupRaw === 'number' ? this.formatNumber(colId, lookupRaw) : String(lookupRaw);
+        return { value: lookupRaw, valueFormatted: fmt };
+      }
+    }
     let raw: unknown;
     if (parentGroupKey !== '' && chunk.groupTotals) {
       const groupRec = chunk.groupTotals[parentGroupKey];
@@ -4235,11 +4783,20 @@ export class CGrid<TRow = any> {
     // the same guard as the side / status bars.
     this.rowGroupPanel?.destroy();
     this.rowGroupPanel = null;
+    // Cycle 18 / Task 6 — release the pivot panel's top inset +
+    // remove its DOM. Symmetric with the row group panel teardown
+    // above.
+    this.pivotPanel?.destroy();
+    this.pivotPanel = null;
     // Cycle 15.5 / Task 1 — release the grouping primitive's
     // subscribers + clear its event emitter so a late listener can't
     // fire on a destroyed grid.
     this.groupingStateUnsubscribe();
     this.groupingState.destroy();
+    // Cycle 18 / Task 3 — release the pivot state subscriber + emitter
+    // so a late listener can't fire on a destroyed grid.
+    this.pivotStateUnsubscribe();
+    this.pivotState.destroy();
     // Cycle 4 / Task 11 (cell-flash patch) — cancel any in-flight
     // rAF tick + clear the registry so a late callback can't fire on
     // a destroyed grid.
@@ -4269,6 +4826,18 @@ export class CGrid<TRow = any> {
       moveRowGroupColumn: (from, to) => this.moveRowGroupColumn(from, to),
       setRowGroupColumnSort: (colId, dir) => this.setRowGroupColumnSort(colId, dir),
       getRowGroupColumns: () => this.getRowGroupColumns(),
+      // Cycle 18 / Task 3 — pivot API.
+      isPivotMode: () => this.isPivotMode(),
+      setPivotMode: (m) => this.setPivotMode(m),
+      getPivotColumns: () => this.getPivotColumns(),
+      setPivotColumns: (cols) => this.setPivotColumns(cols),
+      addPivotColumn: (colId) => this.addPivotColumn(colId),
+      removePivotColumn: (colId) => this.removePivotColumn(colId),
+      movePivotColumn: (from, to) => this.movePivotColumn(from, to),
+      getValueColumns: () => this.getValueColumns(),
+      addValueColumn: (colId, aggFunc) => this.addValueColumn(colId, aggFunc),
+      removeValueColumn: (colId) => this.removeValueColumn(colId),
+      setValueColumnAggFunc: (colId, aggFunc) => this.setValueColumnAggFunc(colId, aggFunc),
       expandAll: () => this.expandAll(),
       collapseAll: () => this.collapseAll(),
       setExpanded: (k, e) => this.setExpanded(k, e),
@@ -4335,6 +4904,8 @@ export class CGrid<TRow = any> {
       getColumnState: () => this.getColumnState(),
       getColumnHeaderName: (colId) => this.getColumnHeaderName(colId),
       isColumnRowGroupEnabled: (colId) => this.isColumnRowGroupEnabled(colId),
+      isColumnPivotEnabled: (colId) => this.isColumnPivotEnabled(colId),
+      isColumnValueEnabled: (colId) => this.isColumnValueEnabled(colId),
       getColumnFilterType: (colId) => this.getColumnFilterType(colId),
       buildColumnFilterEditor: (colId) => this.buildColumnFilterEditor(colId),
       applyColumnState: (p) => this.applyColumnState(p),
@@ -4356,6 +4927,74 @@ export class CGrid<TRow = any> {
 
   private toggleColumnGroup(groupId: string): void {
     this.columnGroupState.toggle(groupId);
+  }
+
+  /** Cycle 18 / Task 4 follow-up — predicate matching the painter's
+   *  chevron-eligibility rule. A column group is toggleable when:
+   *    - It's a regular (non-pivot) column group — Cycle 4 / Task 4
+   *      groups have always been toggleable, no change there.
+   *    - OR it's a BRANCH pivot result group — defined as a pivot
+   *      group with at least one CHILD GROUP (a deeper pivot level
+   *      below it). AG-Grid parity: the user can collapse/expand the
+   *      parent to hide/show all the child column groups beneath it,
+   *      and the collapsed state surfaces the rollup leaf (the Total
+   *      sub-group when `pivotColumnGroupTotals` is set, or the
+   *      legacy `columnGroupShow:'closed'` leaf otherwise).
+   *  LEAF pivot groups (deepest pivot level — sectors under a multi-
+   *  level pivot, or every group of a 1-level pivot) have no child
+   *  groups, only value-col leaves. Collapsing them would hide
+   *  everything with nothing to fall back on (the user reported this
+   *  as "clicking on any cell of the sector row hides that column").
+   *  HeaderClick uses this predicate to short-circuit the toggle for
+   *  those groups so the click becomes a no-op. */
+  canToggleColumnGroup(groupId: string): boolean {
+    const group = this.columnTree.groupById.get(groupId);
+    if (!group) return false;
+    // Non-pivot groups are toggleable per legacy Cycle 4 behaviour.
+    if (!isPivotResultGroupId(groupId)) return true;
+    // Pivot result groups — toggleable when they have at least one
+    // CHILD GROUP (branch group) OR a `columnGroupShow:'closed'`
+    // direct leaf (legacy Task 4 fallback). Either signal indicates
+    // collapsing would have a visible effect: child groups hide on
+    // collapse; closed-state leaves appear on collapse.
+    for (const childGroupId of this.columnTree.groupById.keys()) {
+      if (childGroupId === groupId) continue;
+      const child = this.columnTree.groupById.get(childGroupId);
+      if (!child) continue;
+      // Direct parent check: child's leafColIds are a subset of
+      // group's leafColIds AND the child is one level deeper.
+      // Simpler proxy: the child's groupId starts with the parent's
+      // groupId + the path separator (pivot ids encode the path).
+      if (childGroupId.startsWith(groupId + '\x01')) return true;
+    }
+    for (const leafId of group.leafColIds) {
+      const def = this.columnDefsMap.get(leafId);
+      if (def?.columnGroupShow === 'closed') return true;
+    }
+    return false;
+  }
+
+  /** Cycle 18 / Task 4 — (re)attach the column-group-state listener.
+   *  Called from the constructor and from `applyPivotColumns` /
+   *  `revertPivotColumns` whenever a new `ColumnGroupState` is installed
+   *  (pivot synthesis swaps the tree). Disposes the prior subscription
+   *  (if any) so we never accumulate stale listeners. */
+  private columnGroupStateUnsubscribe: (() => void) | null = null;
+  private subscribeColumnGroupState(): void {
+    if (this.columnGroupStateUnsubscribe) this.columnGroupStateUnsubscribe();
+    this.columnGroupStateUnsubscribe = this.columnGroupState.onChange((changed) => {
+      this.columnOrder = this.computeVisibleColumnOrder();
+      this.columnLayout = resolveColumnWidths(this.columnOrder, this.canvasBounds.width || this.scroller.clientWidth || 800);
+      this.recomputeViewport();
+      this.cgridCanvas?.requestRepaint();
+      for (const c of changed) {
+        this.events.emit({ type: 'columnGroupOpened', groupId: c.groupId, open: c.open });
+      }
+      this.events.emit({ type: 'displayedColumnsChanged', source: 'columnGroupOpened' });
+      // Re-fetch the chunk for the new visible-column set so newly-shown
+      // leaves get data instead of blank cells until the next scroll tick.
+      if (this.workerClient) this.requestViewport();
+    });
   }
 
   /** Map `resolveVisibleLeaves` (colIds) back to ResolvedColDefs. Hidden
@@ -4505,6 +5144,17 @@ export class CGrid<TRow = any> {
     // Chevrons only live on the column whose depth matches the row's.
     const colDepth = autoGroupColumnDepthFromId(col.colId);
     if (colDepth !== null && colDepth !== rowDepth) return null;
+    // Cycle 18 / Task 9 follow-up — when the chevron is suppressed
+    // (deepest row-group level under pivot mode; leaf rows hidden so
+    // nothing to expand into), the hit-test must also bail so a
+    // click on the chevron's would-be slot stays a normal cell click
+    // instead of a stealthy group toggle.
+    const rowGroupDepthCount = this.groupingState.getRowGroupColumns().length;
+    if (
+      this.pivotActive
+      && rowGroupDepthCount > 0
+      && rowDepth === rowGroupDepthCount - 1
+    ) return null;
     // Chevron geometry must agree with `renderer/cellRenderers/group.ts`.
     // PADDING + CHEVRON_SIZE + indent unit live as constants in both
     // files; if either drifts the chevron paints in one place and is
@@ -4703,6 +5353,19 @@ export class CGrid<TRow = any> {
     const suppressCount = this.options.suppressCount === true
       || this.options.groupRowRendererParams?.suppressCount === true;
     const innerRenderer = this.options.groupRowRendererParams?.innerRenderer;
+    // Cycle 18 / Task 9 follow-up — under pivot mode a group at the
+    // deepest row-group level has nothing to expand into: leaf data
+    // rows are suppressed by the worker slicer (commit 8c2f398), so
+    // toggling the chevron reveals nothing. Suppress the caret on
+    // those rows so the user isn't tricked into thinking there's
+    // hidden content. Non-pivot mode keeps the legacy behaviour:
+    // every group row paints its chevron even when it has zero child
+    // groups (clicking still toggles to reveal leaf rows).
+    const rowGroupDepthCount = this.groupingState.getRowGroupColumns().length;
+    const suppressChevron = rowKind === 1
+      && this.pivotActive
+      && rowGroupDepthCount > 0
+      && depth === rowGroupDepthCount - 1;
     return {
       kind: 'group',
       rowKind,
@@ -4713,6 +5376,7 @@ export class CGrid<TRow = any> {
       selectionState,
       suppressCount: suppressCount || undefined,
       innerRenderer,
+      suppressChevron: suppressChevron || undefined,
     };
   }
 
@@ -4791,10 +5455,23 @@ export class CGrid<TRow = any> {
     // to resolve field names. Append any group-by column that is not already
     // visible so the worker never loses the ability to bucket rows by that field.
     const visibleIds = new Set(this.columnOrder.map((c) => c.colId));
-    const extraGroupCols = this.groupModel.rowGroupCols
-      .filter((id) => !visibleIds.has(id))
-      .map((id) => this.columnDefsMap.get(id))
-      .filter((def): def is typeof def & {} => def !== undefined);
+    // Source primary leaf defs from the saved primary tree while pivot is
+    // active (the live `columnDefsMap` then holds the SYNTHESIZED pivot
+    // leaves, not `sector` / `pnl`). Falls back to `columnDefsMap` when no
+    // pivot swap is in effect.
+    const primaryLeaves = this.primaryColumnTree?.leafById ?? this.columnDefsMap;
+    // Columns the worker needs in its colIndex even when hidden from the
+    // display: row-group columns (GroupPass) + pivot columns + value
+    // columns (PivotPass reads their fields). Cycle 15 hid grouped cols;
+    // Cycle 18 / Task 3 hides ALL primaries under pivot, so the pivot +
+    // value columns must be re-appended or the worker loses their fields.
+    const extraIds = new Set<string>();
+    for (const id of this.groupModel.rowGroupCols) if (!visibleIds.has(id)) extraIds.add(id);
+    for (const id of this.pivotState.getPivotColumns()) if (!visibleIds.has(id)) extraIds.add(id);
+    for (const v of this.pivotState.getValueColumns()) if (!visibleIds.has(v.colId)) extraIds.add(v.colId);
+    const extraGroupCols = [...extraIds]
+      .map((id) => primaryLeaves.get(id) as ResolvedColDef<TRow> | undefined)
+      .filter((def): def is ResolvedColDef<TRow> => def !== undefined);
     return [...this.columnOrder, ...extraGroupCols].map((c) => {
       const base: WorkerColumn = {
         colId: c.colId,
@@ -5205,6 +5882,24 @@ export class CGrid<TRow = any> {
         this.chunk = chunk;
         this.stickyAncestors = stickyAncestors ?? [];
         this.decodedTextCols.clear();
+        // Cycle 18 / Task 3 — (re)synthesize or drop the pivot result
+        // columns from the freshly-arrived pivot tree before the layout +
+        // paint below run off the new column order.
+        this.maybeSyncPivotColumns(chunk);
+        // Cycle 18 / Task 8a — surface the cap breach as a public event.
+        // The chunk already arrived with no pivot output when this is set
+        // (PivotPass bypassed early); the grid paints primary columns
+        // normally. Apps can listen + raise the cap / narrow the filter.
+        // Emit ONCE per chunk that carries the field — no debounce needed
+        // since the worker only sets the field when the breach actually
+        // happened (not on every chunk).
+        if (chunk.pivotMaxColumnsReached !== undefined) {
+          this.events.emit({
+            type: 'pivotMaxColumnsReached',
+            generatedColumns: chunk.pivotMaxColumnsReached.generatedColumns,
+            cap: chunk.pivotMaxColumnsReached.cap,
+          });
+        }
         // Cycle 4 / Task 11 (cell-flash patch) — drain the worker's
         // per-cell flashMask into the registry. The chunk's `rowIds`
         // are numeric (the worker's stable mapping); the painter's
@@ -5333,7 +6028,16 @@ export class CGrid<TRow = any> {
     const fallback = this.options.rowHeight ?? this.theme.rowHeight;
     if (!this.chunk) return fallback;
     const i = localRowIndex - this.chunk.rowStart;
-    if (i < 0 || i >= this.chunk.heights.length) return fallback;
+    if (i < 0 || i >= this.chunk.heights.length) {
+      // Under active pivot mode, rows outside the chunk are always leaves
+      // (the slicer only ships group rows + footer entries into the chunk).
+      // Returning 0 collapses the data subgrid's extent to just the visible
+      // group rows — which is what makes the bottom-pinned Grand Total row
+      // visible without forcing the user to scroll past hundreds of empty
+      // leaf rows.
+      if (this.pivotActive) return 0;
+      return fallback;
+    }
     const h = this.chunk.heights[i]!;
     return h > 0 ? h : fallback;
   }
@@ -5422,6 +6126,34 @@ export class CGrid<TRow = any> {
       const payload = this.groupCellContextAt(rowIndex);
       if (payload === null) return { value: '', valueFormatted: '', flashAlpha: flash };
       return { value: payload, valueFormatted: payload.valueFormatted, flashAlpha: flash };
+    }
+    // Cycle 18 / Task 3 — pivot result columns read their cross-tab
+    // aggregate from `chunk.pivotValues`, addressed by the row's group key
+    // × the column's (pivotPath, valueColId). Only aggregated rows carry a
+    // value: group rows (1), grand-total (2), and footer rows (3) resolve
+    // through their composite `groupKey` (the grand total uses key `''`);
+    // leaf data rows (0) are not aggregated under pivot → empty.
+    if (this.pivotActive && (isPivotResultColumnId(colId) || isPivotRowTotalColumnId(colId))) {
+      const spec = this.pivotCellSpecById.get(colId);
+      const pivotValues = this.chunk.pivotValues;
+      const kind = this.chunk.rowKinds[localIndex] ?? 0;
+      if (!spec || !pivotValues || kind === 0) {
+        return { value: '', valueFormatted: '', flashAlpha: flash };
+      }
+      const groupKey = this.chunk.groupKey?.[localIndex] ?? '';
+      // Cycle 18 / Task 8e — row totals carry `pivotPath: []`; the join
+      // produces `''` which resolves to the row-total bucket
+      // PivotPass.apply now emits per group. Regular pivot cells use the
+      // joined per-level path. Both paths use the same lookup.
+      const raw = pivotValues.get(
+        encodePivotValueKey(groupKey, spec.pivotPath.join(PIVOT_PATH_SEP), spec.valueColId),
+      );
+      if (raw === undefined || raw === null) {
+        return { value: '', valueFormatted: '', flashAlpha: flash };
+      }
+      const valueFormatted = typeof raw === 'number' ? this.formatNumber(colId, raw) : String(raw);
+      const gFlash = this.groupFlashAlpha(groupKey, colId);
+      return { value: raw, valueFormatted, flashAlpha: gFlash ?? flash };
     }
     // Cycle 15 / Task 12 — footer rows (rowKind === 3) source their
     // per-column values from the per-group totals map (or, for the
@@ -5615,9 +6347,37 @@ export class CGrid<TRow = any> {
   }
 
   /** Cycle 6 / Task 2 — serialisable snapshot of every leaf's mutable
-   *  state in declaration order (hidden leaves included). */
+   *  state in declaration order (hidden leaves included).
+   *
+   *  Cycle 18 / Task 8b — the role slots (rowGroup / rowGroupIndex / pivot
+   *  / pivotIndex / aggFunc) source from the runtime GroupingState +
+   *  PivotState primitives. The original Cycle 6 implementation read the
+   *  static colDef slots and missed runtime API mutations — a latent bug
+   *  the tool panel + pivot panel + context menu items all surfaced as
+   *  "Restore doesn't restore".
+   *
+   *  Cycle 18 / Task 9 — under pivot mode the rendered tree is the
+   *  SYNTHESIZED pivot result tree (pivotcol* leaves + the auto-group
+   *  col), NOT the primary user columns. Snapshotting the synthesized
+   *  tree would lose every primary column from the save → the round-
+   *  trip restore couldn't reinstate the pivot/value role lists. AG
+   *  parity: column state always reflects PRIMARY columns. So when
+   *  pivot is active we snapshot against the cached primary tree
+   *  instead. */
   getColumnState(): CColumnState[] {
-    return snapshotState(this.columnTree, this.columnLayout, this.sortModel);
+    const treeForSnapshot = this.pivotActive && this.primaryColumnTree !== null
+      ? this.primaryColumnTree
+      : this.columnTree;
+    return snapshotState(
+      treeForSnapshot,
+      this.columnLayout,
+      this.sortModel,
+      {
+        rowGroupColumns: this.groupingState.getRowGroupColumns(),
+        pivotColumns: this.pivotState.getPivotColumns(),
+        valueColumns: this.pivotState.getValueColumns(),
+      },
+    );
   }
 
   /** Cycle 6 / Task 2 — restore column state through a single re-layout +
@@ -5916,20 +6676,50 @@ export class CGrid<TRow = any> {
     params: CApplyColumnStateParams,
     emitReset: boolean,
   ): boolean {
+    // Cycle 18 / Task 9 — under pivot mode the live `columnTree` /
+    // `columnDefsMap` describe the SYNTHESIZED pivot result tree
+    // (pivotcol* leaves + the auto-group column), NOT the primary
+    // user columns. Saved column state always reflects PRIMARY
+    // columns (see `getColumnState` above for the AG-parity rationale),
+    // so apply must validate + mutate against the primary tree's
+    // leaf map under pivot mode. The role fan-out in
+    // `applyRoleStateFromColumnState` then drives the pivot synthesis
+    // to re-build from the restored primary state.
+    const applyTree = this.pivotActive && this.primaryColumnTree !== null
+      ? this.primaryColumnTree
+      : this.columnTree;
+    const applyLeafById = applyTree.leafById;
+
     let allFound = true;
     if (params.state) {
       for (const entry of params.state) {
-        if (!this.columnDefsMap.has(entry.colId)) { allFound = false; break; }
+        if (!applyLeafById.has(entry.colId)) { allFound = false; break; }
       }
     }
 
     const locks: SnapshotLocks = {
-      lockVisibleOf: (id) => this.columnDefsMap.get(id)?.lockVisible ?? false,
-      lockPinnedOf: (id) => this.columnDefsMap.get(id)?.lockPinned ?? false,
+      lockVisibleOf: (id) => (applyLeafById.get(id) as { lockVisible?: boolean })?.lockVisible ?? false,
+      lockPinnedOf: (id) => (applyLeafById.get(id) as { lockPinned?: boolean })?.lockPinned ?? false,
     };
 
     const oldOrder = this.columnOrder.map((c) => c.colId);
-    const result = applyStateToTree(this.columnTree, params, locks);
+    const result = applyStateToTree(applyTree, params, locks);
+
+    // Cycle 18 / Task 8b — fan the role slots out to the runtime state
+    // primitives (GroupingState + PivotState). The Cycle 6 columnState
+    // primitive writes the def slots opaquely; without this step
+    // mutations made via `api.addRowGroupColumn` / `addPivotColumn` /
+    // `addValueColumn` did not round-trip through `applyColumnState`.
+    // Semantics: FULL replace — columns NOT present in the input state
+    // (or present with rowGroup:false / pivot:false / aggFunc:null) are
+    // dropped from the role lists. AG-Grid parity Prompt 8.
+    //
+    // pivotMode itself is NOT in CColumnState (per AG parity); it
+    // persists via the `pivotMode` grid option separately. Apps wanting
+    // a single save/restore call use `setPivotMode` + this method.
+    if (params.state) {
+      this.applyRoleStateFromColumnState(params.state);
+    }
 
     let newDefs = this.options.columnDefs;
     let leafOrderChanged = false;
@@ -6079,6 +6869,63 @@ export class CGrid<TRow = any> {
       .catch((err) => { if (!this.destroyed) console.error('[cgrid] applyColumnState:', err); });
 
     return allFound;
+  }
+
+  /** Cycle 18 / Task 8b — derive the rowGroupColumns / pivotColumns /
+   *  valueColumns lists from a CColumnState array and replace the
+   *  runtime state primitives in one event tick each. The row-group +
+   *  pivot lists honor the per-entry `rowGroupIndex` / `pivotIndex` for
+   *  ordering (stable for ties; columns without an index sort last).
+   *  Value columns preserve the state input order (no separate index).
+   *
+   *  Routed through `setRowGroupColumns` / `setPivotColumns` /
+   *  `setValueColumns` (batch verbs) so the cross-surface event chain
+   *  fires once per role list — NOT once per column. The tool panel +
+   *  pivot panel + context menu items + row group panel all repaint
+   *  from those events. */
+  private applyRoleStateFromColumnState(state: readonly CColumnState[]): void {
+    interface Indexed { colId: string; index: number; declOrder: number }
+    const rowGroups: Indexed[] = [];
+    const pivots: Indexed[] = [];
+    const values: Array<{ colId: string; aggFunc: string }> = [];
+    // Cycle 18 / Task 9 — under pivot mode `columnDefsMap` covers
+    // synthesized leaves only; validate against the primary tree so
+    // saved state with primary col ids round-trips.
+    const validLeafById = this.pivotActive && this.primaryColumnTree !== null
+      ? this.primaryColumnTree.leafById
+      : this.columnDefsMap;
+    state.forEach((entry, declOrder) => {
+      if (!validLeafById.has(entry.colId)) return;
+      if (entry.rowGroup === true) {
+        rowGroups.push({
+          colId: entry.colId,
+          index: entry.rowGroupIndex ?? Number.MAX_SAFE_INTEGER,
+          declOrder,
+        });
+      }
+      if (entry.pivot === true) {
+        pivots.push({
+          colId: entry.colId,
+          index: entry.pivotIndex ?? Number.MAX_SAFE_INTEGER,
+          declOrder,
+        });
+      }
+      if (typeof entry.aggFunc === 'string' && entry.aggFunc.length > 0) {
+        values.push({ colId: entry.colId, aggFunc: entry.aggFunc });
+      }
+    });
+    const sortByIndex = (a: Indexed, b: Indexed) =>
+      (a.index - b.index) || (a.declOrder - b.declOrder);
+    rowGroups.sort(sortByIndex);
+    pivots.sort(sortByIndex);
+
+    // Always call the batch verbs — even on empty lists — so a state
+    // input that omits any column previously assigned to a role clears
+    // that role. The verbs short-circuit when the resulting list is
+    // identical to the current one (no spurious event emission).
+    this.groupingState.setRowGroupColumns(rowGroups.map((e) => e.colId));
+    this.pivotState.setPivotColumns(pivots.map((e) => e.colId));
+    this.pivotState.setValueColumns(values);
   }
 
   /** Build the per-leaf lock + marryChildren constraints used by Task-1's

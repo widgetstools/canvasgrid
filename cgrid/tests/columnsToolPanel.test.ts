@@ -84,7 +84,7 @@ describe('ColumnsToolPanel', () => {
     document.body.replaceChildren();
   });
 
-  it('init + getGui returns a root with search input, Pivot Mode toggle, column list, and the Row Groups + Values section headers', () => {
+  it('init + getGui returns a root with search input, Pivot Mode toggle, column list, and the Row Groups + Values + Column Labels section headers (AG parity)', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
@@ -95,10 +95,10 @@ describe('ColumnsToolPanel', () => {
     expect(root.querySelector('.cg-columns-panel-list')).not.toBeNull();
     const sections = Array.from(root.querySelectorAll('.cg-columns-panel-section-header'))
       .map((el) => el.textContent?.trim());
-    expect(sections).toContain('Row Groups');
-    expect(sections).toContain('Values');
-    // Plan element-req 6: no Column Labels / pivot section in Cycle 11.
-    expect(sections).not.toContain('Column Labels');
+    // Cycle 18 / Task 9 follow-up — AG-Grid parity for tool panel
+    // section order. Row dimension first, then Values, then Column
+    // Labels — matches the convention pivot users expect.
+    expect(sections).toEqual(['Row Groups', 'Values', 'Column Labels']);
   });
 
   it('renders one row per columnState entry in order, with the headerName label and the visibility checkbox reflecting `hide`', () => {
@@ -266,15 +266,18 @@ describe('ColumnsToolPanel', () => {
     expect(subscribedTypes).not.toContain('columnMoved');
   });
 
-  it('Row Groups + Values drop zones render dashed-border containers with placeholder text', () => {
+  it('Column Labels + Values + Row Groups drop zones render with their empty-state placeholder text', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
     const dropZones = Array.from(root.querySelectorAll<HTMLElement>('.cg-columns-panel-drop-zone'));
-    expect(dropZones.length).toBe(2);
+    // Cycle 18 / Task 5 — three live drop zones (Column Labels, Values,
+    // Row Groups). Empty-state placeholders read the canonical strings.
+    expect(dropZones.length).toBe(3);
     const texts = dropZones.map((z) => z.textContent?.trim());
-    expect(texts).toContain('Drag here to set row groups');
+    expect(texts).toContain('Drag here to set column labels');
     expect(texts).toContain('Drag here to aggregate');
+    expect(texts).toContain('Drag here to set row groups');
   });
 
   it('Pivot Mode toggle click flips the data-active attribute (visual stub — wired to api.setPivotMode in Cycle 16)', () => {

@@ -140,7 +140,32 @@ const grandTotalRow: 'top' | 'bottom' | undefined =
 // + lets deep-links pin a feature combo.
 const pinning      = search.get('pinning')      === 'on';
 const columnGroups = search.get('columnGroups') === 'on';
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, groupingDemo, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, rowGroupPanelMarketsGrid, groupSelectsChildren, groupIncludeFooter, groupIncludeTotalFooter, pinning, columnGroups, groupHideOpenParents, isGroupOpenByDefault, suppressCount, suppressGroupChangesColumnVisibility, groupTotalRow, grandTotalRow });
+// Cycle 18 / Task 5 — `?pivotDemo=on` opts a handful of categorical
+// columns into `enablePivot: true` and a handful of numeric columns
+// into `enableValue: true` so the columns tool panel's Column Labels
+// + Values drop zones have something to accept. Side bar opens with
+// the Columns panel active so the pivot affordances are visible on
+// mount. Off by default so visual cells stay byte-stable.
+const pivotDemo = search.get('pivotDemo') === 'on';
+// Cycle 18 / Task 6 — `?pivotPanel=always|onlyWhenPivoting` mounts the
+// top-of-grid pivot panel (drop strip ABOVE the row group panel). Pairs
+// with `?pivotDemo=on` so categorical columns carry `enablePivot` and
+// can land in the panel via drag.
+const pivotPanelShowRaw = search.get('pivotPanel');
+const pivotPanelShow: 'always' | 'onlyWhenPivoting' | undefined =
+  pivotPanelShowRaw === 'always' || pivotPanelShowRaw === 'onlyWhenPivoting'
+    ? pivotPanelShowRaw
+    : undefined;
+// Cycle 18 / Task 8a — `?pivotMaxGeneratedColumns=N` forces the cap so
+// the E2E can drive a breach without first stamping `enablePivot` on a
+// high-cardinality column. Parsed lazily; non-numeric values are
+// ignored and the worker default (5000) is used.
+const pivotMaxRaw = search.get('pivotMaxGeneratedColumns');
+const pivotMaxGeneratedColumns: number | undefined = pivotMaxRaw !== null
+  && Number.isFinite(Number(pivotMaxRaw))
+    ? Number(pivotMaxRaw)
+    : undefined;
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, groupingDemo, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, rowGroupPanelMarketsGrid, groupSelectsChildren, groupIncludeFooter, groupIncludeTotalFooter, pinning, columnGroups, groupHideOpenParents, isGroupOpenByDefault, suppressCount, suppressGroupChangesColumnVisibility, groupTotalRow, grandTotalRow, pivotDemo, pivotPanelShow, pivotMaxGeneratedColumns });
 
 // Toolbar feature-toggle checkboxes. Toggling reloads the page with
 // the matching URL flag set / unset because the structural changes

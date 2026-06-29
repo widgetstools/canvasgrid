@@ -1,6 +1,6 @@
 /**
- * Cycle 10 (post-cycle patch) + Cycle 15.5 / Task 2 — default MAIN menu
- * items registry.
+ * Cycle 10 (post-cycle patch) + Cycle 15.5 / Task 2 + Cycle 18 / Task 7 —
+ * default MAIN menu items registry.
  *
  * `buildDefaultMainMenuItems(grid, params)` produces the header / column
  * context menu — what ag-grid calls the "main menu" — distinct from the
@@ -9,28 +9,41 @@
  * column-ops-heavy and intentionally does NOT show clipboard items
  * because right-clicking a header has no cell-range context.
  *
- * Items shipped today (post 15.5 / Task 2):
+ * Items shipped today (post 18 / Task 7):
  *   - Pin Column ► (Pin Left / Pin Right / No Pin)
  *   - Autosize This Column
  *   - Autosize All Columns
  *   - ────────
  *   - Reset Columns
- *   - ──────── (only when at least one group item below is visible)
- *   - Group by `<col.headerName>`   (when enableRowGroup && not grouped)
- *   - Un-Group by `<col.headerName>` (when col is currently a group level)
+ *   - ──────── (only when at least one role/pivot item below is visible)
+ *   - Group by `<col.headerName>`     (when enableRowGroup && not grouped)
+ *   - Un-Group by `<col.headerName>`  (when col is currently a group level)
+ *   - Add to Labels                   (when enablePivot && not currently a pivot col)
+ *   - Remove from Labels              (when currently a pivot col)
+ *   - Value: Aggregate `<col>` ►      (when enableValue) — submenu lists
+ *                                     registered agg names, current agg
+ *                                     pre-checked; click semantics:
+ *                                       not a value col       → addValueColumn
+ *                                       value col + same agg  → removeValueColumn (toggle-off)
+ *                                       value col + diff agg  → setValueColumnAggFunc
  *   - Expand All Groups              (when grouping is active)
  *   - Collapse All Groups            (when grouping is active)
+ *   - ──────── (only when "Scroll to column" is shown)
+ *   - Scroll to column               (when pivotMode === false AND col is visible)
  *
- * The group items mutate `rowGroupColumns` through the SAME primitive API
- * (`addRowGroupColumn` / `removeRowGroupColumn` / `expandAll` /
- * `collapseAll`) the row group panel + tool panel zone use. This is the
- * "three views over one ordered list" invariant the Cycle 15.5 worklog
- * calls out — Task 11's perf gate asserts mutating via any one view
- * re-renders the others.
+ * THE SYNC INVARIANT (Cycle 18 / Task 7 — AG-parity Prompt 7): the pivot
+ * items are the THIRD view over PivotState, alongside the tool panel
+ * plz/valz zones (Task 5) and the top-of-grid pivot panel (Task 6). The
+ * click handlers MUST go through the same PivotState verbs the drag /
+ * checkbox surfaces call (`addPivotColumn`, `removePivotColumn`,
+ * `addValueColumn`, `removeValueColumn`, `setValueColumnAggFunc`) — NOT
+ * a parallel code path. Triggering an item makes a matching pill appear
+ * in the other two surfaces on the next `pivotStateChanged` event tick.
  *
- * Design plan:
+ * Design plans:
  *   docs/superpowers/plans/notes/cycle-15-grouping-design.md
- *   § Cycle 15.5 / Task 2 — icon family + ordering + visibility rules.
+ *   docs/superpowers/plans/notes/cycle-18-pivoting-design.md
+ *   /Users/develop/Downloads/pivot-behaviors-prompts.md  (Prompt 7)
  */
 import type { GetMainMenuItemsParams, MenuItem } from './types';
 
@@ -76,6 +89,49 @@ export interface DefaultMainMenuGrid {
    *  build the "Group by `<headerName>`" / "Un-Group by `<headerName>`"
    *  labels. Falls back to the raw colId when undefined. */
   getColumnHeaderName?(colId: string): string | undefined;
+
+  // ── Cycle 18 / Task 7 — pivot surface (all optional for back-compat) ──
+
+  /** True when `pivotMode` is currently on. The "Scroll to column" item
+   *  hides under pivotMode === true (secondary pivot result columns
+   *  have no 1:1 primary colId mapping to scroll to). */
+  isPivotMode?(): boolean;
+  /** True when the column's resolved colDef carries `enablePivot: true`.
+   *  Gates the "Add to Labels" / "Remove from Labels" items. */
+  isColumnPivotEnabled?(colId: string): boolean;
+  /** True when the column's resolved colDef carries `enableValue: true`.
+   *  Gates the "Value: Aggregate `<col>`" item + submenu. */
+  isColumnValueEnabled?(colId: string): boolean;
+  /** True when the column's resolved colDef does NOT carry `hide: true`
+   *  (i.e. the column would render in the body if pivotMode were off).
+   *  Gates the "Scroll to column" item. */
+  isColumnVisible?(colId: string): boolean;
+  /** Snapshot of the ordered pivot column list. Used to decide whether
+   *  "Add to Labels" vs "Remove from Labels" shows. */
+  getPivotColumns?(): string[];
+  /** Snapshot of the ordered value column list (with current aggFunc).
+   *  Used to drive the submenu's checked state + click semantics. */
+  getValueColumns?(): Array<{ colId: string; aggFunc: string }>;
+  /** Names of every registered aggFunc — built-in subset (`sum` / `avg`
+   *  / `min` / `max` / `count`) plus any app-registered customs from
+   *  `CGridOptions.aggFuncs`. Read at menu-open time so a runtime
+   *  `setGridOption('aggFuncs', …)` takes effect on the next right-click. */
+  getRegisteredAggFuncNames?(): string[];
+  /** Append `colId` to the ordered pivot column list. Routes through
+   *  the PivotState primitive so the tool panel plz zone + top-of-grid
+   *  pivot panel re-render via `pivotStateChanged`. */
+  addPivotColumn?(colId: string): void;
+  /** Remove `colId` from the ordered pivot column list. */
+  removePivotColumn?(colId: string): void;
+  /** Append `colId` (with `aggFunc`) to the ordered value column list. */
+  addValueColumn?(colId: string, aggFunc: string): void;
+  /** Remove `colId` from the value column list. */
+  removeValueColumn?(colId: string): void;
+  /** Change the aggFunc of an existing value column. */
+  setValueColumnAggFunc?(colId: string, aggFunc: string): void;
+  /** Scroll the body horizontally so `colId`'s left edge sits inside the
+   *  body viewport. Pinned columns + unknown IDs are no-ops. */
+  ensureColumnVisible?(colId: string): void;
 }
 
 /** Build the default main-menu list. `params.colId` is always populated
@@ -91,6 +147,8 @@ export function buildDefaultMainMenuItems(
     grid.setColumnsPinned([colId], pinned);
   };
 
+  const headerName = grid.getColumnHeaderName?.(colId) ?? colId;
+
   // Cycle 15.5 / Task 2 — group section. Items appear only when the
   // grid surface exposes the predicates AND each item's visibility
   // condition holds. Mutually exclusive by design: Group-by hides when
@@ -99,14 +157,13 @@ export function buildDefaultMainMenuItems(
   const groupingActive = rowGroupCols.length > 0;
   const isCurrentlyGrouped = rowGroupCols.includes(colId);
   const isGroupable = grid.isColumnRowGroupEnabled?.(colId) === true;
-  const headerName = grid.getColumnHeaderName?.(colId) ?? colId;
-  const groupItems: MenuItem[] = [];
+  const roleItems: MenuItem[] = [];
   if (
     isGroupable
     && !isCurrentlyGrouped
     && grid.addRowGroupColumn !== undefined
   ) {
-    groupItems.push({
+    roleItems.push({
       name: `Group by ${headerName}`,
       icon: '☰',
       action: () => { grid.addRowGroupColumn!(colId); },
@@ -116,26 +173,93 @@ export function buildDefaultMainMenuItems(
     isCurrentlyGrouped
     && grid.removeRowGroupColumn !== undefined
   ) {
-    groupItems.push({
+    roleItems.push({
       name: `Un-Group by ${headerName}`,
       icon: '☰',
       action: () => { grid.removeRowGroupColumn!(colId); },
     });
   }
+
+  // Cycle 18 / Task 7 — Add/Remove from Labels (pivot role).
+  const isPivotable = grid.isColumnPivotEnabled?.(colId) === true;
+  const pivotCols = grid.getPivotColumns?.() ?? [];
+  const isCurrentlyPivoted = pivotCols.includes(colId);
+  if (isPivotable && grid.isColumnPivotEnabled !== undefined) {
+    if (!isCurrentlyPivoted && grid.addPivotColumn !== undefined) {
+      roleItems.push({
+        name: 'Add to Labels',
+        icon: '⊞',
+        action: () => { grid.addPivotColumn!(colId); },
+      });
+    } else if (isCurrentlyPivoted && grid.removePivotColumn !== undefined) {
+      roleItems.push({
+        name: 'Remove from Labels',
+        icon: '⊟',
+        action: () => { grid.removePivotColumn!(colId); },
+      });
+    }
+  }
+
+  // Cycle 18 / Task 7 — Value: Aggregate <col> submenu.
+  const isValueable = grid.isColumnValueEnabled?.(colId) === true;
+  if (isValueable && grid.isColumnValueEnabled !== undefined) {
+    const valueCols = grid.getValueColumns?.() ?? [];
+    const currentEntry = valueCols.find((v) => v.colId === colId);
+    const aggNames = grid.getRegisteredAggFuncNames?.() ?? [];
+    const subMenu: MenuItem[] = aggNames.map((aggName) => {
+      const isCurrent = currentEntry !== undefined && currentEntry.aggFunc === aggName;
+      const item: MenuItem = {
+        name: aggName,
+        action: () => {
+          if (currentEntry === undefined) {
+            grid.addValueColumn?.(colId, aggName);
+          } else if (currentEntry.aggFunc === aggName) {
+            // Click on the currently-active agg → toggle off.
+            grid.removeValueColumn?.(colId);
+          } else {
+            grid.setValueColumnAggFunc?.(colId, aggName);
+          }
+        },
+      };
+      if (isCurrent) item.icon = '✓';
+      return item;
+    });
+    if (subMenu.length > 0) {
+      roleItems.push({
+        name: `Value: Aggregate ${headerName}`,
+        icon: 'Σ',
+        subMenu,
+      });
+    }
+  }
+
   if (groupingActive && grid.expandAll !== undefined) {
-    groupItems.push({
+    roleItems.push({
       name: 'Expand All Groups',
       icon: '▾',
       action: () => { grid.expandAll!(); },
     });
   }
   if (groupingActive && grid.collapseAll !== undefined) {
-    groupItems.push({
+    roleItems.push({
       name: 'Collapse All Groups',
       icon: '▸',
       action: () => { grid.collapseAll!(); },
     });
   }
+
+  // Cycle 18 / Task 7 — Scroll to column (pivotMode-OFF parity item).
+  // Secondary (pivot result) columns can't be scroll-to'd by primary
+  // colId — there's no 1:1 mapping — so the item hides under
+  // pivotMode === true. Also requires the column to be visible (i.e.
+  // not currently hidden); scrolling to a hidden column is a no-op.
+  const pivotMode = grid.isPivotMode?.() === true;
+  const isVisible = grid.isColumnVisible?.(colId) === true;
+  const showScrollTo =
+    !pivotMode
+    && isVisible
+    && grid.ensureColumnVisible !== undefined
+    && grid.isColumnVisible !== undefined;
 
   const items: MenuItem[] = [
     {
@@ -164,9 +288,17 @@ export function buildDefaultMainMenuItems(
       action: () => { grid.resetColumnState(); },
     },
   ];
-  if (groupItems.length > 0) {
+  if (roleItems.length > 0) {
     items.push({ name: '---' });
-    items.push(...groupItems);
+    items.push(...roleItems);
+  }
+  if (showScrollTo) {
+    items.push({ name: '---' });
+    items.push({
+      name: 'Scroll to column',
+      icon: '→',
+      action: () => { grid.ensureColumnVisible!(colId); },
+    });
   }
   return items;
 }

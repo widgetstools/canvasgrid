@@ -5,6 +5,7 @@ import type {
 import { normalizeViewportChunk } from './protocol';
 export type { StickyAncestor };
 import type { TransactionResult, SortModel, FilterModel, GroupModel, SelectionRange } from '../types';
+import type { PivotModel } from './passes/pivotPass';
 
 export interface WorkerClientHandlers {
   /** Cycle 15 / Task 7 — `groupKeys` is present when grouping is
@@ -164,6 +165,36 @@ export class WorkerClient {
       groupDescendants: r.groupDescendants ?? [],
       expandedKeys: r.expandedKeys ?? null,
     }));
+  }
+
+  /** Cycle 18 / Task 3 — install / replace the worker's pivot model.
+   *  The worker re-runs `PivotPass` on the next `getViewport`; an empty
+   *  model deactivates pivot. Unknown / fieldless colIds surface as a
+   *  rejected promise (mirrors `setGroupModel`). Resolves with the
+   *  current visible row count (pivot does not change row visibility). */
+  setPivotModel(model: PivotModel): Promise<{ visibleCount: number }> {
+    return this.send<{ visibleCount: number }>({ type: 'setPivotModel', payload: model });
+  }
+
+  /** Cycle 18 / Task 8a — set the cap on the synthesized pivot column
+   *  count. `undefined` reverts to the default (5000). The cap is
+   *  enforced inside `PivotPass.apply`; if exceeded, the chunk carries
+   *  `pivotMaxColumnsReached` and pivot output is empty (bypassed). */
+  setPivotMaxGeneratedColumns(cap: number | undefined): Promise<{ visibleCount: number }> {
+    return this.send<{ visibleCount: number }>({
+      type: 'setPivotMaxGeneratedColumns',
+      payload: cap,
+    });
+  }
+
+  /** Cycle 18 / Task 8c — flip the strict-order flag. `true` =
+   *  always re-sort alphanumerically. `false` (AG default) =
+   *  preserve prior order + append new keys at the end. */
+  setStrictPivotColumnOrder(strict: boolean): Promise<{ visibleCount: number }> {
+    return this.send<{ visibleCount: number }>({
+      type: 'setStrictPivotColumnOrder',
+      payload: strict,
+    });
   }
 
   /** Cycle 15 / Task 7 — replace the worker's persistent expanded-keys
