@@ -394,7 +394,7 @@ describe('synthesizePivotColumns — pivotGrandTotals (Excel parity)', () => {
     // 2 pivot key groups + 1 "Total" wrapper group at the end.
     expect(defs).toHaveLength(3);
     const last = defs[defs.length - 1]!;
-    expect(last.headerName).toBe('Total');
+    expect(last.headerName).toBe('Total Result');
     // Every row-total leaf must be pinned to the right edge.
     for (const child of last.children as Array<{ colId: string; pinned?: string }>) {
       expect(child.pinned).toBe('right');
@@ -410,7 +410,7 @@ describe('synthesizePivotColumns — pivotGrandTotals (Excel parity)', () => {
     });
     expect(defs).toHaveLength(3);
     const first = defs[0]!;
-    expect(first.headerName).toBe('Total');
+    expect(first.headerName).toBe('Total Result');
     for (const child of first.children as Array<{ colId: string; pinned?: string }>) {
       expect(child.pinned).toBe('left');
     }

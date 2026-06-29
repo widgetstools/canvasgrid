@@ -363,7 +363,12 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
     });
     const totalsGroup: CColGroupDef<TRow> = {
       groupId: [PIVOT_RESULT_COL_PREFIX, 'grp', 'rowtotal'].join(PIVOT_ID_SEP),
-      headerName: 'Total',
+      // Match Excel's pivot terminology when grand totals are on
+      // (the column header pairs with the bottom row's "Total Result"
+      // label so the corner reads consistently). Plain `pivotRowTotals`
+      // (no grand totals) keeps the existing "Total" label so apps that
+      // already use the row-totals column don't see a label change.
+      headerName: pivotGrandTotals ? 'Total Result' : 'Total',
       openByDefault: true,
       children: totalLeaves,
     };

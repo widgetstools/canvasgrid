@@ -73,16 +73,18 @@ export const pivot: Feature = {
         toolPanels: ['columns', 'filters'],
         defaultToolPanel: 'agColumnsToolPanel',
       },
-      // Cycle 18 / Task 8f — every synthesized pivot result column
-      // gets a £-prefix valueFormatter. This proves the hook actually
-      // fires on the synthesis path — without it, the totals + body
-      // cells paint as raw numbers; with it they paint £-prefixed.
+      // Excel pivot table number format: thousand separators on
+      // positives, parentheses around negatives, no currency prefix.
+      // Mirrors the screenshot reference for `pivotGrandTotals`
+      // ("(18,605)" / "112,505" — Excel's pivot default).
       processPivotResultColDef: (def) => {
         def.valueFormatter = (params) => {
           const v = params.value;
           if (v === null || v === undefined || v === '') return '';
           const n = typeof v === 'number' ? v : Number(v);
-          return Number.isFinite(n) ? `£${n.toLocaleString()}` : String(v);
+          if (!Number.isFinite(n)) return String(v);
+          const abs = Math.abs(n).toLocaleString();
+          return n < 0 ? `(${abs})` : abs;
         };
       },
     });

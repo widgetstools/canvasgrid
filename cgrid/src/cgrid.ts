@@ -4675,9 +4675,11 @@ export class CGrid<TRow = any> {
     // already populates) so each cross-tab cell shows the
     // grand-of-grand for that (pivotPath, valueColId).
     if (this.pivotActive && parentGroupKey === '') {
-      // Render the "Grand Total" label at the auto-group leaf column.
+      // Match Excel's pivot terminology — "Total Result" labels both the
+      // bottom row and the right column header so the corner reads
+      // consistently regardless of which axis the eye lands on first.
       if (isAutoGroupColumnId(colId)) {
-        return { value: 'Grand Total', valueFormatted: 'Grand Total' };
+        return { value: 'Total Result', valueFormatted: 'Total Result' };
       }
       const spec = this.pivotCellSpecById.get(colId);
       if (spec && chunk.pivotValues) {
