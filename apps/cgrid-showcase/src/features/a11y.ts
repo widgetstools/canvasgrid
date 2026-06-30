@@ -20,6 +20,15 @@ import { makeRows } from '../seedData';
  */
 
 const COLUMNS: CColDef<ShowcaseRow>[] = [
+  {
+    colId: 'select',
+    checkboxSelection: true,
+    headerCheckboxSelection: true,
+    pinned: 'left',
+    width: 42,
+    sortable: false,
+    resizable: false,
+  } as any,
   { colId: 'ticker', field: 'ticker', headerName: 'Ticker', cellDataType: 'text', width: 120, filter: 'text' },
   { colId: 'desk', field: 'desk', headerName: 'Desk', cellDataType: 'text', width: 110, filter: 'text' },
   { colId: 'region', field: 'region', headerName: 'Region', cellDataType: 'text', width: 110, filter: 'text' },
@@ -55,12 +64,16 @@ export const a11y: Feature = {
   mount(gridHost, controls, theme) {
     let activeTheme: ThemeChoice = (theme as ThemeChoice) ?? 'cg-theme-quartz';
     let tabExits = false;
+    let checkboxOnly = false;
 
     const grid = new CGrid<ShowcaseRow>(gridHost, {
       getRowId: (r) => r.id,
       columnDefs: COLUMNS,
       theme: activeTheme,
       rowSelection: 'multiple',
+      // Default: row-click toggles selection alongside the checkbox.
+      // The toolbar's "Checkbox only" toggle below flips this on.
+      suppressRowClickSelection: false,
       ariaLabel: 'Trading positions, accessibility demo',
       tabToNextHeader: ({ event: _e }) => !tabExits,
       tabToPreviousHeader: ({ event: _e }) => !tabExits,
@@ -121,6 +134,23 @@ export const a11y: Feature = {
       refreshTab();
     });
     controls.appendChild(tabBtn);
+
+    // ─── Checkbox-only selection toggle ─────────────────────────────
+
+    const cbBtn = document.createElement('button');
+    const refreshCb = () => {
+      cbBtn.textContent = `Checkbox-only selection: ${checkboxOnly ? 'on' : 'off'}`;
+      cbBtn.classList.toggle('primary', checkboxOnly);
+    };
+    cbBtn.className = 'ctrl-btn';
+    cbBtn.setAttribute('data-testid', 'btn-a11y-checkbox-only');
+    refreshCb();
+    cbBtn.addEventListener('click', () => {
+      checkboxOnly = !checkboxOnly;
+      grid.setGridOption('suppressRowClickSelection', checkboxOnly);
+      refreshCb();
+    });
+    controls.appendChild(cbBtn);
 
     // ─── Reduced motion banner ──────────────────────────────────────
 

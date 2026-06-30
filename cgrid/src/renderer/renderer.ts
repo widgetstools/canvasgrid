@@ -31,6 +31,9 @@ export interface RendererOpts {
     ranges: SelectionRange[];
   };
   getSortModel: () => SortModel;
+  /** Total visible row count after filter/sort. Used by the header
+   *  painter for the row-select header tri-state checkbox. */
+  getTotalRowCount?: () => number;
   /** Total drawable width in CSS px (matches CGridCanvas.bounds.width). */
   getCanvasWidth: () => number;
   /** Total drawable height in CSS px (matches CGridCanvas.bounds.height). */
@@ -144,6 +147,7 @@ export class Renderer {
       cellData: this.opts.cellData,
       selection: this.opts.getSelection(),
       sortModel: this.opts.getSortModel(),
+      totalRowCount: this.opts.getTotalRowCount?.() ?? 0,
       rowDataSnapshotAt: this.opts.rowDataSnapshotAt,
       quickFilterLowerTerms: this.opts.getQuickFilterLowerTerms(),
       showFillHandle: this.opts.getShowFillHandle(),

@@ -38,6 +38,16 @@ export interface ResolvedColDef<TRow = any> {
   cellRenderer: string;
   /** Static params forwarded to the painter as `CellPaintConfig.params`. */
   cellRendererParams?: unknown;
+  /** Mirrors `CColDef.checkboxSelection`. When true the resolver
+   *  forces `cellRenderer` to `'rowSelectCheckbox'` and a chain
+   *  feature claims clicks on cells in this column for the row-
+   *  toggle gesture. */
+  checkboxSelection?: boolean;
+  /** Mirrors `CColDef.headerCheckboxSelection`. When true the header
+   *  painter draws a tri-state checkbox in this column's header and
+   *  `HeaderClick` routes clicks on the box to the select-all /
+   *  clear-all toggle. */
+  headerCheckboxSelection?: boolean;
   /** Per-cell renderer selector (see `CCellRendererSelector`). */
   cellRendererSelector?: CCellRendererSelector<TRow>;
   /** Either a registered comparator name (string — preferred, runs
@@ -315,6 +325,12 @@ export interface ApplyCellPropsInput {
    * `renderer/painters/byRows.ts` once per group header per paint.
    */
   pivotGroupExpand?: 'open' | 'closed';
+  /** Row-select header checkbox state — `'none' | 'partial' | 'all'`
+   *  when the cell is a header on a column with
+   *  `headerCheckboxSelection: true`. `undefined` for every other
+   *  cell. The header painter renders a centered tri-state checkbox
+   *  in place of the column's headerName text. */
+  headerCheckboxState?: 'none' | 'partial' | 'all';
 }
 
 /** Apply a `ColCellOverrides` patch onto the mutable slots of `target`.
@@ -490,6 +506,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.unSortIcon = ctx.unSortIcon;
   target.unSortIconColor = ctx.unSortIconColor;
   target.pivotGroupExpand = ctx.pivotGroupExpand;
+  target.headerCheckboxState = ctx.headerCheckboxState;
   target.flashAlpha = ctx.flashAlpha;
   // Cycle 4 / Task 11 — pipe the theme's resolved flash color through
   // so painters don't hard-code it. Read once per cell (constant per
@@ -799,8 +816,15 @@ export function resolveColDef<TRow>(
     valueFormatter: merged.valueFormatter as ResolvedColDef<TRow>['valueFormatter'],
     valueParser: merged.valueParser as ResolvedColDef<TRow>['valueParser'],
     valueSetter: merged.valueSetter as ResolvedColDef<TRow>['valueSetter'],
-    cellRenderer: merged.cellRenderer ?? (merged.wrapText ? 'text-wrap' : cellDataType),
+    // Row-select checkbox columns FORCE the renderer regardless of
+    // cellDataType — the checkbox state is the entire visual + the
+    // column's data field is irrelevant.
+    cellRenderer: merged.checkboxSelection === true
+      ? 'rowSelectCheckbox'
+      : (merged.cellRenderer ?? (merged.wrapText ? 'text-wrap' : cellDataType)),
     cellRendererParams: merged.cellRendererParams,
+    checkboxSelection: merged.checkboxSelection,
+    headerCheckboxSelection: merged.headerCheckboxSelection,
     cellRendererSelector: merged.cellRendererSelector as ResolvedColDef<TRow>['cellRendererSelector'],
     comparator: merged.comparator as ResolvedColDef<TRow>['comparator'],
     filter: merged.filter,

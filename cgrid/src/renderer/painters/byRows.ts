@@ -36,6 +36,7 @@ export function decorateHeader(def: ResolvedColDef, gridSuppress: boolean): stri
 
 export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
   const { viewport: vs, theme, columnDefs, cellRenderers, cellData, selection, sortModel, rowDataSnapshotAt, quickFilterLowerTerms, suppressAggFuncInHeader, groupRowStrip } = p;
+  const totalRowCount = p.totalRowCount ?? 0;
   const quickFilterActive = quickFilterLowerTerms.length > 0;
 
   // 1. Compute the right edge of the painted area (mirrors gridLinesPainter).
@@ -206,13 +207,13 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
 
     paintBand(gc, sb.rows, leftPinned,
               0, vs.bodyLeft, sgTop, sgBottom,
-              /*clip*/ isDataBand, rowBgs, groupStripRows, isFooterRow, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader, p.getColumnGroupOpen);
+              /*clip*/ isDataBand, rowBgs, groupStripRows, isFooterRow, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader, p.getColumnGroupOpen, totalRowCount);
     paintBand(gc, sb.rows, center,
               vs.bodyLeft, vs.bodyRight, sgTop, sgBottom,
-              /*clip*/ true, rowBgs, groupStripRows, isFooterRow, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader, p.getColumnGroupOpen);
+              /*clip*/ true, rowBgs, groupStripRows, isFooterRow, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader, p.getColumnGroupOpen, totalRowCount);
     paintBand(gc, sb.rows, rightPinned,
               vs.bodyRight, rightEdge, sgTop, sgBottom,
-              /*clip*/ isDataBand, rowBgs, groupStripRows, isFooterRow, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader, p.getColumnGroupOpen);
+              /*clip*/ isDataBand, rowBgs, groupStripRows, isFooterRow, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader, p.getColumnGroupOpen, totalRowCount);
   }
 
   // Cycle 15 / Task 5 — group-row strip content (chevron + value + count).
@@ -300,6 +301,7 @@ function paintBand(
   quickFilterLowerTerms: readonly string[],
   suppressAggFuncInHeader: boolean,
   getColumnGroupOpen: ((groupId: string) => boolean) | undefined,
+  totalRowCount: number,
 ): void {
   if (cols.length === 0 || rows.length === 0) return;
   if (clip) {
@@ -543,6 +545,19 @@ function paintBand(
         params,
         rowData,
         rowIndex: row.subgrid.isData ? row.localRowIndex : 0,
+        // Row-select header tri-state checkbox. Resolved on the
+        // header row only; non-headers stay `undefined` so the cell
+        // / totals / footer paths see the default. State is computed
+        // from the selection-set cardinality vs. the total visible
+        // row count — `'none'` / `'all'` are exact, anything else is
+        // `'partial'` (indeterminate).
+        headerCheckboxState: row.subgrid.isHeader && def.headerCheckboxSelection === true
+          ? (selection.selectedRowIndices.size === 0
+              ? 'none'
+              : selection.selectedRowIndices.size >= totalRowCount
+                ? 'all'
+                : 'partial')
+          : undefined,
       });
 
       // Cycle 7 / Task 7 — quick-filter cell highlight. Tints any data

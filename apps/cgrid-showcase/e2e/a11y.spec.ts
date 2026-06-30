@@ -55,6 +55,33 @@ test.describe('Cycle 24 — accessibility + keyboard demo', () => {
     expect(wrapAfter).toBe(false);
   });
 
+  test('checkbox column resolves the rowSelectCheckbox cell renderer', async ({ page }) => {
+    await gotoFeature(page, 'a11y');
+    const rendererName: string = await page.evaluate(() => {
+      const def = (window as any).__cgrid.columnDefsMap.get('select');
+      return def?.cellRenderer;
+    });
+    expect(rendererName).toBe('rowSelectCheckbox');
+  });
+
+  test('header checkbox click selects every row via toggleHeaderCheckbox', async ({ page }) => {
+    await gotoFeature(page, 'a11y');
+    const before: number = await page.evaluate(() =>
+      (window as any).__cgrid.selection.state.selectedRowIndices.size);
+    expect(before).toBe(0);
+    await page.evaluate(() => (window as any).__cgrid.toggleHeaderCheckbox('select'));
+    const after: number = await page.evaluate(() =>
+      (window as any).__cgrid.selection.state.selectedRowIndices.size);
+    expect(after).toBe(50);  // demo has 50 rows
+  });
+
+  test('checkbox-only toggle flips suppressRowClickSelection', async ({ page }) => {
+    await gotoFeature(page, 'a11y');
+    expect(await page.evaluate(() => (window as any).__cgrid.options.suppressRowClickSelection)).toBeFalsy();
+    await page.getByTestId('btn-a11y-checkbox-only').click();
+    expect(await page.evaluate(() => (window as any).__cgrid.options.suppressRowClickSelection)).toBe(true);
+  });
+
   test('axe-core reports zero violations on the default a11y page', async ({ page }) => {
     await gotoFeature(page, 'a11y');
     // Disable color-contrast for the canvas — pixel-level contrast is

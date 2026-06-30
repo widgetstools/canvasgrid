@@ -87,6 +87,17 @@ export interface CellPaintConfig {
    *  visual cue for the existing hit-testable group region. Design note:
    *  `docs/superpowers/plans/notes/cycle-18-pivoting-design.md` (Task 4). */
   pivotGroupExpand?: 'open' | 'closed';
+  /** Row-select header checkbox state, set ONLY on the header cell of
+   *  columns declaring `headerCheckboxSelection: true`. `undefined`
+   *  on every other header. Values mirror the body checkbox's three
+   *  states:
+   *    `'none'`    — no rows selected
+   *    `'partial'` — at least one but not all rows selected
+   *    `'all'`     — every row selected
+   *  The header painter renders a centered 14×14 checkbox + matching
+   *  glyph (none = empty, partial = dash, all = check) in place of
+   *  the column's headerName text. */
+  headerCheckboxState?: 'none' | 'partial' | 'all';
   // Flash overlay (Cycle 4 / Task 11 — `flashAlpha` is the per-cell
   // alpha drained from FlashRegistry; `flashFromColor` is the theme's
   // current --cg-flash-from-color so light + dark themes both paint
@@ -419,6 +430,43 @@ export const headerCell: CellPainter = {
     // chevron is purely a visual affordance — the click target is the
     // entire group-header band, matching how Cycle 4 column groups
     // already work.
+    // Row-select header checkbox — paints CENTERED in the column,
+    // suppresses the headerName text. Apps that want both should use
+    // a custom column header (deferred to a later cycle).
+    if (p.headerCheckboxState !== undefined) {
+      const size = 14;
+      const cx = p.bounds.x + p.bounds.w / 2 - size / 2;
+      const cy2 = p.bounds.y + p.bounds.h / 2 - size / 2;
+      const checked = p.headerCheckboxState === 'all';
+      const partial = p.headerCheckboxState === 'partial';
+      const accent = (checked || partial)
+        && p.checkboxCheckedBg
+        && p.checkboxCheckedBg !== 'transparent'
+        ? p.checkboxCheckedBg
+        : null;
+      if (accent) {
+        gc.cache.fillStyle = accent;
+        gc.fillRect(cx, cy2, size, size);
+      }
+      gc.cache.strokeStyle = p.fg;
+      gc.cache.lineWidth = 1;
+      gc.strokeRect(cx + 0.5, cy2 + 0.5, size, size);
+      if (checked) {
+        gc.cache.strokeStyle = accent ? (p.checkboxCheckedFg ?? p.fg) : p.fg;
+        gc.beginPath();
+        gc.moveTo(cx + 3, cy2 + size / 2);
+        gc.lineTo(cx + size / 2 - 1, cy2 + size - 3);
+        gc.lineTo(cx + size - 2, cy2 + 3);
+        gc.stroke();
+      } else if (partial) {
+        gc.cache.strokeStyle = accent ? (p.checkboxCheckedFg ?? p.fg) : p.fg;
+        gc.beginPath();
+        gc.moveTo(cx + 3, cy2 + size / 2);
+        gc.lineTo(cx + size - 3, cy2 + size / 2);
+        gc.stroke();
+      }
+      return;
+    }
     let textX = p.bounds.x + HEADER_PADDING;
     if (p.pivotGroupExpand !== undefined) {
       const iconCx = p.bounds.x + HEADER_PADDING + PIVOT_CHEVRON_SIZE / 2;
