@@ -166,6 +166,20 @@ describe('autoGroupColumn — synthesis', () => {
     expect(def.sortable).toBe(false);
     expect(def.resizable).toBe(true);
     expect(def.cellDataType).toBe('text');
+    // The visible-leaf order builder re-prepends the auto-group
+    // column on every recompute, so a UI drag could never stick.
+    // Default to suppressMovable: true so the header cursor doesn't
+    // suggest a drag the engine ignores.
+    expect(def.suppressMovable).toBe(true);
+  });
+
+  it('autoGroupColumnDef can opt back into a draggable header via suppressMovable: false', () => {
+    // The fixed position is enforced by computeVisibleColumnOrder
+    // regardless of suppressMovable, but apps that prefer the AG-Grid
+    // drag affordance (even when the drop doesn't persist) can flip
+    // the flag through the override.
+    const def = buildAutoGroupColumn({ override: { suppressMovable: false } });
+    expect(def.suppressMovable).toBe(false);
   });
 
   it('autoGroupColumnDef override merges onto defaults; colId is always forced', () => {

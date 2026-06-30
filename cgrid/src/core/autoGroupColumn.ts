@@ -170,6 +170,14 @@ export function buildAutoGroupColumn<TRow = unknown>(
     cellDataType: 'text',
     sortable: override.sortable ?? false,
     resizable: override.resizable ?? true,
+    // The auto-group column is always rendered at the leftmost slot
+    // (just after a selection column when that's added later); the
+    // visible-leaf order builder re-prepends it on every recompute,
+    // so a UI drag would never stick. Suppress the movable affordance
+    // by default so the header cursor doesn't suggest a drag the
+    // engine ignores. Apps that really want it draggable can opt in
+    // via `autoGroupColumnDef: { suppressMovable: false }`.
+    suppressMovable: override.suppressMovable ?? true,
   };
 
   // `resolveColDef` rejects defs without a `colId` AND a `field`; we
