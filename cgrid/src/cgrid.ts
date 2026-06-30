@@ -153,6 +153,19 @@ export type {
 export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/registry';
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
 
+// Cycle 27 / Task 1 + 2 + 3 — cell styling expansion types.
+export type {
+  VAlign, FontWeight, FontStyle, TextTransform, Padding,
+  BorderSide, BorderSpec, BorderStyle,
+  CellContent, CellDecorator, DecoratorPosition,
+  HeaderStyleFunc,
+} from './types';
+
+// Cycle 27 / Task 3 — user-extensible icon registry. Apps register icon
+// SVG paths once at init; subsequent `cellStyle.content` /
+// `cellStyle.decorators` entries can reference custom icon names.
+export { registerIcon, registerIcons, hasIcon } from './renderer/icons';
+
 /**
  * Infer the row-ID field name from a `(row) => row.<field>` style accessor.
  * Exported as a top-level function so it can be unit-tested independently of CGrid.

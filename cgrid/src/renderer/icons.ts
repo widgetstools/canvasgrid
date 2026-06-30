@@ -56,12 +56,55 @@ const PATHS: Record<IconName, string> = {
   'columns-3': 'M21 4H3v16h18V4z M15 4v16 M9 4v16',
 };
 
-const cache = new Map<IconName, Path2D>();
+/** Cycle 27 / Task 3 — runtime-registered icons. Layered ON TOP of the
+ *  built-in PATHS so users can extend without touching the source map.
+ *  `registerIcon` / `registerIcons` add entries; `hasIcon` queries; a
+ *  test-only unregister helper drains state between tests. */
+const CUSTOM_PATHS = new Map<string, string>();
+const cache = new Map<string, Path2D>();
 
-function getPath(name: IconName): Path2D {
+function lookupPath(name: string): string | undefined {
+  // Custom registrations win, so users CAN override a built-in by name.
+  return CUSTOM_PATHS.get(name) ?? (PATHS as Record<string, string>)[name];
+}
+
+function getPath(name: string): Path2D {
   let p = cache.get(name);
-  if (!p) { p = new Path2D(PATHS[name]); cache.set(name, p); }
+  if (!p) {
+    const d = lookupPath(name);
+    if (d === undefined) throw new Error(`[cgrid] unknown icon '${name}'`);
+    p = new Path2D(d);
+    cache.set(name, p);
+  }
   return p;
+}
+
+/** Cycle 27 / Task 3 — register a custom icon by name + SVG path data
+ *  (the `d` attribute of an SVG `<path>`, in a 24×24 viewBox). Subsequent
+ *  `drawIcon(name, ...)` calls render this icon. Custom registrations
+ *  win over built-in names. */
+export function registerIcon(name: string, path: string): void {
+  CUSTOM_PATHS.set(name, path);
+  cache.delete(name); // invalidate cached Path2D so the new path takes effect
+}
+
+/** Cycle 27 / Task 3 — batch helper for `registerIcon`. Apps can ship
+ *  their whole icon set at init time. */
+export function registerIcons(map: Record<string, string>): void {
+  for (const [name, path] of Object.entries(map)) registerIcon(name, path);
+}
+
+/** Cycle 27 / Task 3 — true when an icon (built-in OR custom) is known
+ *  for `name`. */
+export function hasIcon(name: string): boolean {
+  return lookupPath(name) !== undefined;
+}
+
+/** Cycle 27 / Task 3 — test-only. Drains a single custom registration.
+ *  Not exposed via the public CGrid API. */
+export function unregisterIconForTest(name: string): void {
+  CUSTOM_PATHS.delete(name);
+  cache.delete(name);
 }
 
 /**
@@ -99,7 +142,7 @@ export function iconSvg(name: IconName, sizePx = 16): SVGElement {
  */
 export function drawIcon(
   ctx: CanvasRenderingContext2D,
-  name: IconName,
+  name: IconName | string,
   cx: number,
   cy: number,
   size: number,

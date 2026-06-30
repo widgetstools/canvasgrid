@@ -15,6 +15,7 @@ import { pivotAgComparison } from './pivotAgComparison';
 import { exportFeature } from './exportFeature';
 import { sparkline } from './sparkline';
 import { theming } from './theming';
+import { cellStyleExpansion } from './cellStyleExpansion';
 
 export interface Feature {
   id: string;
@@ -39,6 +40,7 @@ export const FEATURES: Feature[] = [
   exportFeature,
   sparkline,
   theming,
+  cellStyleExpansion,
 ];
 
 export const FEATURE_MAP = new Map(FEATURES.map((f) => [f.id, f]));
