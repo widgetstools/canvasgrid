@@ -184,7 +184,21 @@ export class CellSelection extends Feature {
       }
       case ' ':
         if (fr != null) {
-          sel.toggleMulti(fr);
+          // Conventional / ag-grid parity — Shift+Space extends a row
+          // range from the FIRST currently-selected row (the anchor)
+          // to the focused row. Without a prior selection, falls back
+          // to a single-row toggle so the first press still
+          // produces a useful row selection.
+          if (e.shiftKey) {
+            const anchor = sel.state.selectedRowIndices.values().next().value as number | undefined;
+            if (anchor != null) {
+              sel.range(anchor, fr);
+            } else {
+              sel.toggleMulti(fr);
+            }
+          } else {
+            sel.toggleMulti(fr);
+          }
           e.preventDefault();
           return;
         }
