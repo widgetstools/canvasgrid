@@ -171,6 +171,12 @@ describe('autoGroupColumn — synthesis', () => {
     // Default to suppressMovable: true so the header cursor doesn't
     // suggest a drag the engine ignores.
     expect(def.suppressMovable).toBe(true);
+    // Pin to the left by default so the Group column is visually the
+    // first column even when the app has pinned other columns (e.g.
+    // an ID column). Without this, [pinnedId | Group | …] reads as
+    // "ID before Group" which contradicts the auto-group's role as
+    // the row's anchor.
+    expect(def.pinned).toBe('left');
   });
 
   it('autoGroupColumnDef can opt back into a draggable header via suppressMovable: false', () => {
@@ -180,6 +186,17 @@ describe('autoGroupColumn — synthesis', () => {
     // the flag through the override.
     const def = buildAutoGroupColumn({ override: { suppressMovable: false } });
     expect(def.suppressMovable).toBe(false);
+  });
+
+  it('autoGroupColumnDef can opt out of the default pinned: "left"', () => {
+    // Apps that want the Group column to sit in the center band
+    // (e.g. so the user can scroll past it horizontally) pass
+    // `pinned: null` through the override. `resolveColDef`'s `??`
+    // chain treats null as "no value here" and the resolved slot
+    // ends up undefined, which the painter reads as the center
+    // band.
+    const def = buildAutoGroupColumn({ override: { pinned: null as any } });
+    expect(def.pinned).toBeUndefined();
   });
 
   it('autoGroupColumnDef override merges onto defaults; colId is always forced', () => {

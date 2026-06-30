@@ -178,6 +178,15 @@ export function buildAutoGroupColumn<TRow = unknown>(
     // engine ignores. Apps that really want it draggable can opt in
     // via `autoGroupColumnDef: { suppressMovable: false }`.
     suppressMovable: override.suppressMovable ?? true,
+    // Pin to the left by default so the Group column is visually the
+    // FIRST column regardless of any pinned-left user columns —
+    // `computeVisibleColumnOrder` puts it at index 0 of the leaf
+    // order, and pinning lands it at index 0 of the pinned-left
+    // band. Without this, an app that pins (say) an ID column to the
+    // left ends up rendering [ID | Group | …] instead of
+    // [Group | ID | …]. Apps can opt out with
+    // `autoGroupColumnDef: { pinned: null }` (or `false`).
+    pinned: override.pinned !== undefined ? override.pinned : 'left',
   };
 
   // `resolveColDef` rejects defs without a `colId` AND a `field`; we
