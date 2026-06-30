@@ -16,6 +16,7 @@ import { exportFeature } from './exportFeature';
 import { sparkline } from './sparkline';
 import { theming } from './theming';
 import { cellStyleExpansion } from './cellStyleExpansion';
+import { eventsState } from './eventsState';
 
 export interface Feature {
   id: string;
@@ -41,6 +42,7 @@ export const FEATURES: Feature[] = [
   sparkline,
   theming,
   cellStyleExpansion,
+  eventsState,
 ];
 
 export const FEATURE_MAP = new Map(FEATURES.map((f) => [f.id, f]));

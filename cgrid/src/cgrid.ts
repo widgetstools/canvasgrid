@@ -155,6 +155,9 @@ export type {
   AggregationChangedSource, AggregationChangedEvent,
 } from './types';
 export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/registry';
+// Cycle 23 / Tasks 5-6 — state-snapshot public types.
+export type { GridState } from './core/stateSnapshot';
+export { STATE_SCHEMA_VERSION } from './core/stateSnapshot';
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
 
 // Cycle 27 / Task 1 + 2 + 3 — cell styling expansion types.
