@@ -3223,10 +3223,21 @@ export class CGrid<TRow = any> {
         width: primary?.width,
       };
     });
+    // When this re-synthesis is a role-change re-build (the prior
+    // pivot was already active), the previous layout — including
+    // expansion depth — is discarded and the new tree opens fully.
+    // The user's cardinal principle: every role mutation produces a
+    // fresh, fully-visible matrix without a toggle-off/on round trip.
+    // The initial synthesis (pivotActive: false) still honours the
+    // app's `pivotDefaultExpanded` so first-paint matches construction
+    // intent.
+    const resolvedExpansion = this.pivotActive
+      ? Number.POSITIVE_INFINITY
+      : this.options.pivotDefaultExpanded;
     const { defs, cellSpecById } = synthesizePivotColumns<TRow>({
       keyTree,
       valueColumns,
-      pivotDefaultExpanded: this.options.pivotDefaultExpanded,
+      pivotDefaultExpanded: resolvedExpansion,
       pivotGrandTotals: this.options.pivotGrandTotals === true,
       // Cycle 18 / Task 8e — pivot totals (row totals + column-group totals).
       pivotRowTotals: this.options.pivotRowTotals ?? null,

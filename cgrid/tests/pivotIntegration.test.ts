@@ -371,6 +371,10 @@ describe('CGrid pivot — render integration', () => {
         columnDefs: SUB_COLS as Parameters<typeof CGrid<SubRow>>[1]['columnDefs'],
         getRowId: (r) => r.id,
         rowData: SUB_ROWS,
+        // Pin closed-by-default; the engine default flipped to
+        // all-expanded so runtime role changes immediately paint the
+        // new matrix. These tests exercise the collapse path.
+        pivotDefaultExpanded: 0,
       });
       const restore = () => {
         (globalThis as { Worker?: unknown }).Worker = prevWorker;

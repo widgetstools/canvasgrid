@@ -206,7 +206,14 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
   pivotGrandTotals?: boolean;
 }): SynthesizedPivotColumns<TRow> {
   const { keyTree, valueColumns } = input;
-  const pivotDefaultExpanded = input.pivotDefaultExpanded ?? 0;
+  // Default to fully expanded so that a freshly-created pivot (and
+  // every runtime role change, which discards the previous layout and
+  // re-synthesises) shows the full matrix immediately. The user's
+  // cardinal principle: dragging a column into any pivot section
+  // produces a visible result without forcing a toggle-off/toggle-on
+  // round trip. Apps that want collapsed defaults can opt in with
+  // `pivotDefaultExpanded: 0` (or any finite depth).
+  const pivotDefaultExpanded = input.pivotDefaultExpanded ?? Number.POSITIVE_INFINITY;
   const pivotGrandTotals = input.pivotGrandTotals === true;
   // pivotGrandTotals forces the row-totals column to exist (default
   // 'after') so the grand-total ROW has a corner cell. Caller's explicit

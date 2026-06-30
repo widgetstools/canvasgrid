@@ -217,10 +217,14 @@ describe('synthesizePivotColumns — Task 4 collapse/expand', () => {
     });
   });
 
-  it('pivotDefaultExpanded=0 (default) leaves every BRANCH pivot group closed', () => {
+  it('pivotDefaultExpanded=0 (explicit) leaves every BRANCH pivot group closed', () => {
+    // Default changed to Infinity (all-expanded) so that runtime
+    // role changes show the full matrix without a toggle round-trip;
+    // this test pins the explicit `0` opt-in to closed-by-default.
     const { defs } = synthesizePivotColumns({
       keyTree: nestedTree({ TECH: ['EQ', 'BOND'] }),
       valueColumns: [{ colId: 'pnl', aggFunc: 'sum', headerName: 'PnL' }],
+      pivotDefaultExpanded: 0,
     });
     const tree = resolveColumnTree(defs);
     // TECH (branch, depth 0): closed (0 < 0 is false).
@@ -281,6 +285,10 @@ describe('synthesizePivotColumns — Task 4 collapse/expand', () => {
     const { defs } = synthesizePivotColumns({
       keyTree: nestedTree({ TECH: ['EQ', 'BOND'] }),
       valueColumns: [{ colId: 'pnl', aggFunc: 'sum', headerName: 'PnL' }],
+      // Pin closed-by-default to exercise the collapse path. The
+      // engine default flipped to Infinity (all-expanded) so role
+      // changes paint the new matrix without a toggle round-trip.
+      pivotDefaultExpanded: 0,
     });
     const tree = resolveColumnTree(defs);
     const state = new ColumnGroupState(tree);

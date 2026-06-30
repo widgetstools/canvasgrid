@@ -228,6 +228,74 @@ test.describe('cross-section pill drag routing', () => {
     expect(afterOn.labelsSectionDisplay).not.toBe('none');
   });
 
+  test('cardinal principle: dragging a column into any role panel re-creates the pivot fresh — full matrix visible without toggle', async ({ page }) => {
+    await gotoFeature(page, 'pivot');
+
+    // Pre-drag: pivot is region × sector × {pnl, notional} = 2-level
+    // matrix. Drag desk from Row Groups → Pivot panel; the new
+    // 3-level matrix (region × sector × desk × value) should appear
+    // immediately, NOT collapsed to per-sector totals.
+    const before = await page.evaluate(() => {
+      const g = (window as any).__cgrid;
+      const cols = (g.columnOrder ?? []) as Array<{ colId: string }>;
+      // 3-level pivot result colIds carry FOUR -separated
+      // segments (`pivotcol<L1><L2><L3><value>`).
+      return {
+        pivots: g.getPivotColumns(),
+        threeLevelCount: cols.filter((c) => c.colId.split('').length >= 5).length,
+      };
+    });
+    expect(before.pivots).toEqual(['region', 'sector']);
+    expect(before.threeLevelCount).toBe(0);
+
+    // Drag desk into the pivot panel — uses the cross-panel router.
+    await page.evaluate(() => {
+      const deskPill = document.querySelector('.cg-row-group-panel-chip[data-col-id="desk"]') as HTMLElement;
+      const pivotPanel = document.querySelector('.cg-pivot-panel') as HTMLElement;
+      const sr = deskPill.getBoundingClientRect();
+      const tr = pivotPanel.getBoundingClientRect();
+      const startX = sr.left + sr.width / 2;
+      const startY = sr.top + sr.height / 2;
+      const endX = tr.right - 60;
+      const endY = tr.top + tr.height / 2;
+      deskPill.dispatchEvent(new PointerEvent('pointerdown', {
+        bubbles: true, cancelable: true, composed: true,
+        pointerType: 'mouse', isPrimary: true, button: 0, buttons: 1, pointerId: 1,
+        clientX: startX, clientY: startY,
+      }));
+      for (let i = 1; i <= 10; i++) {
+        const x = startX + (endX - startX) * (i / 10);
+        const y = startY + (endY - startY) * (i / 10);
+        window.dispatchEvent(new PointerEvent('pointermove', {
+          bubbles: true, cancelable: true, composed: true,
+          pointerType: 'mouse', isPrimary: true, buttons: 1, pointerId: 1,
+          clientX: x, clientY: y,
+        }));
+      }
+      window.dispatchEvent(new PointerEvent('pointerup', {
+        bubbles: true, cancelable: true, composed: true,
+        pointerType: 'mouse', isPrimary: true, button: 0, buttons: 0, pointerId: 1,
+        clientX: endX, clientY: endY,
+      }));
+    });
+    await page.waitForTimeout(800);
+
+    const after = await page.evaluate(() => {
+      const g = (window as any).__cgrid;
+      const cols = (g.columnOrder ?? []) as Array<{ colId: string }>;
+      return {
+        pivots: g.getPivotColumns(),
+        threeLevelCount: cols.filter((c) => c.colId.split('').length >= 5).length,
+      };
+    });
+    expect(after.pivots).toEqual(['region', 'sector', 'desk']);
+    // Fresh 3-level matrix is visible — the deepest leaves paint
+    // immediately. Without the re-synthesis fix the new sector-level
+    // groups stayed closed and only per-sector totals showed (0
+    // 3-level leaves).
+    expect(after.threeLevelCount).toBeGreaterThan(0);
+  });
+
   test('enable-flag predicates fall through to primaryColumnTree under pivot mode', async ({ page }) => {
     await gotoFeature(page, 'pivot');
     // In pivot mode the source colDefs are swapped out of columnDefsMap.
