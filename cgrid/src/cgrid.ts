@@ -3031,7 +3031,16 @@ export class CGrid<TRow = any> {
     // applied); the reply handler below overrides it with the
     // explicit set when present.
     this.expandedKeys = null;
-    this.workerClient.setGroupModel(this.groupModel).then(({ visibleCount, groupKeys, groupDescendants, expandedKeys }) => {
+    // Sync the worker's column metadata BEFORE pushing the new
+    // group model. The pivot-mode role filter on `computeVisibleColumnOrder`
+    // (and the auto-hide on grouped columns) may have pushed the
+    // newly-grouped colId out of `columnOrder` since the last
+    // `updateColumns`; without re-syncing, the worker's GroupPass
+    // rejects an "unknown column id" and the body collapses to
+    // empty-group-key data rows.
+    this.workerClient.updateColumns(this.workerColumns())
+      .then(() => this.workerClient.setGroupModel(this.groupModel))
+      .then(({ visibleCount, groupKeys, groupDescendants, expandedKeys }) => {
       if (this.destroyed) return;
       this.knownGroupKeys = groupKeys;
       this.updateGroupDescendantsCache(groupKeys, groupDescendants);
