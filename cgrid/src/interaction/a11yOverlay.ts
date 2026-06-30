@@ -92,6 +92,15 @@ export class A11yOverlay {
     }
     // Clear + rebuild focused row's cells
     while (this.row.firstChild) this.row.removeChild(this.row.firstChild);
+    // Cycle 24 / Task 3 — an empty `role="row"` violates the ARIA
+    // required-children rule (axe-core reports it as a critical
+    // violation). Strip the role when there are no cells to host;
+    // re-apply it whenever cell data arrives.
+    if (state.focusedRowData.length === 0) {
+      this.row.removeAttribute('role');
+    } else {
+      this.row.setAttribute('role', 'row');
+    }
     state.focusedRowData.forEach((cell, i) => {
       const c = document.createElement('div');
       c.setAttribute('role', 'gridcell');

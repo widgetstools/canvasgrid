@@ -6694,8 +6694,11 @@ export class CGrid<TRow = any> {
       this.a11y.announce(`Editing ${headerNameOf(e.colId)}, row ${e.rowIndex + 1}`);
     });
     this.events.on('cellEditingStopped', (e) => {
-      if (e.cancelled) this.a11y.announce('Edit cancelled');
-      else this.a11y.announce(`${headerNameOf(e.colId)} set to ${String(e.newValue)}`);
+      if (e.valueChanged) {
+        this.a11y.announce(`${headerNameOf(e.colId)} set to ${String(e.newValue)}`);
+      } else {
+        this.a11y.announce('Edit closed');
+      }
     });
   }
 
