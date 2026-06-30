@@ -466,6 +466,181 @@ test.describe('cross-section pill drag routing', () => {
     expect(after).toEqual(['notional', 'pnl']);
   });
 
+  // Dragging a row from the columns side panel onto an external
+  // destination — the row-group HEADER STRIP, the pivot HEADER STRIP
+  // (Column Labels), or the column header band itself. All three
+  // routes commit the drop on mouseup; the column lands in the right
+  // role / position with no extra click.
+  test('side-panel row drag → row-group panel strip adds the column to rowGroupColumns', async ({ page }) => {
+    await gotoFeature(page, 'pivot');
+    const opened = await page.evaluate(
+      () => document.querySelector('.cg-columns-panel-row[data-col-id="desk"]') !== null,
+    );
+    if (!opened) await page.locator('button.cg-side-bar-tab:has-text("Columns")').click();
+    await page.locator('.cg-columns-panel-row[data-col-id="ticker"]').waitFor();
+
+    const before = await page.evaluate(() => {
+      const g = (window as any).__cgrid;
+      return g.getRowGroupColumns() as string[];
+    });
+    expect(before).toEqual(['desk']);
+
+    await page.evaluate(() => {
+      const handle = document.querySelector(
+        '.cg-columns-panel-row[data-col-id="ticker"] .cg-columns-panel-row-handle',
+      ) as HTMLElement;
+      const strip = document.querySelector('.cg-row-group-panel') as HTMLElement;
+      const sr = handle.getBoundingClientRect();
+      const tr = strip.getBoundingClientRect();
+      const startX = sr.left + sr.width / 2;
+      const startY = sr.top + sr.height / 2;
+      const endX = tr.right - 60;
+      const endY = tr.top + tr.height / 2;
+      handle.dispatchEvent(new MouseEvent('mousedown', {
+        bubbles: true, cancelable: true, button: 0, buttons: 1,
+        clientX: startX, clientY: startY,
+      }));
+      for (let i = 1; i <= 10; i++) {
+        const x = startX + (endX - startX) * (i / 10);
+        const y = startY + (endY - startY) * (i / 10);
+        window.dispatchEvent(new MouseEvent('mousemove', {
+          bubbles: true, cancelable: true, buttons: 1,
+          clientX: x, clientY: y,
+        }));
+      }
+      window.dispatchEvent(new MouseEvent('mouseup', {
+        bubbles: true, cancelable: true, button: 0, buttons: 0,
+        clientX: endX, clientY: endY,
+      }));
+    });
+    await page.waitForTimeout(400);
+
+    const after = await page.evaluate(() => {
+      const g = (window as any).__cgrid;
+      return g.getRowGroupColumns() as string[];
+    });
+    expect(after).toContain('ticker');
+  });
+
+  test('side-panel row drag → pivot panel strip (Column Labels) adds the column to pivotColumns', async ({ page }) => {
+    await gotoFeature(page, 'pivot');
+    const opened = await page.evaluate(
+      () => document.querySelector('.cg-columns-panel-row[data-col-id="desk"]') !== null,
+    );
+    if (!opened) await page.locator('button.cg-side-bar-tab:has-text("Columns")').click();
+    await page.locator('.cg-columns-panel-row[data-col-id="ticker"]').waitFor();
+
+    const before = await page.evaluate(() => {
+      const g = (window as any).__cgrid;
+      return g.getPivotColumns() as string[];
+    });
+    expect(before).toEqual(['region', 'sector']);
+
+    await page.evaluate(() => {
+      const handle = document.querySelector(
+        '.cg-columns-panel-row[data-col-id="ticker"] .cg-columns-panel-row-handle',
+      ) as HTMLElement;
+      const strip = document.querySelector('.cg-pivot-panel') as HTMLElement;
+      const sr = handle.getBoundingClientRect();
+      const tr = strip.getBoundingClientRect();
+      const startX = sr.left + sr.width / 2;
+      const startY = sr.top + sr.height / 2;
+      const endX = tr.right - 60;
+      const endY = tr.top + tr.height / 2;
+      handle.dispatchEvent(new MouseEvent('mousedown', {
+        bubbles: true, cancelable: true, button: 0, buttons: 1,
+        clientX: startX, clientY: startY,
+      }));
+      for (let i = 1; i <= 10; i++) {
+        const x = startX + (endX - startX) * (i / 10);
+        const y = startY + (endY - startY) * (i / 10);
+        window.dispatchEvent(new MouseEvent('mousemove', {
+          bubbles: true, cancelable: true, buttons: 1,
+          clientX: x, clientY: y,
+        }));
+      }
+      window.dispatchEvent(new MouseEvent('mouseup', {
+        bubbles: true, cancelable: true, button: 0, buttons: 0,
+        clientX: endX, clientY: endY,
+      }));
+    });
+    await page.waitForTimeout(400);
+
+    const after = await page.evaluate(() => {
+      const g = (window as any).__cgrid;
+      return g.getPivotColumns() as string[];
+    });
+    expect(after).toContain('ticker');
+  });
+
+  test('side-panel row drag → column header band un-hides the column and lands it at the drop position', async ({ page }) => {
+    await gotoFeature(page, 'pivot');
+    // Toggle pivot OFF so we exercise the plain column header band
+    // (in pivot mode the band paints synthesised result columns and
+    // the source columns are out of the band's index space).
+    await page.locator('[data-testid="btn-pivot-toggle"]').click();
+    await page.waitForTimeout(300);
+
+    const opened = await page.evaluate(
+      () => document.querySelector('.cg-columns-panel-row[data-col-id="desk"]') !== null,
+    );
+    if (!opened) await page.locator('button.cg-side-bar-tab:has-text("Columns")').click();
+    await page.locator('.cg-columns-panel-row[data-col-id="ticker"]').waitFor();
+
+    // Hide ticker via the public API so the drag has a hidden column
+    // to re-introduce. Confirm the hide landed.
+    await page.evaluate(() => {
+      const g = (window as any).__cgrid;
+      g.setColumnsVisible(['ticker'], false);
+    });
+    await page.waitForTimeout(200);
+    const hiddenBefore = await page.evaluate(() => {
+      const g = (window as any).__cgrid;
+      return (g.getColumnState() as Array<{ colId: string; hide?: boolean }>)
+        .find((s) => s.colId === 'ticker')?.hide === true;
+    });
+    expect(hiddenBefore).toBe(true);
+
+    // Drag ticker from the side panel onto the column header band.
+    await page.evaluate(() => {
+      const handle = document.querySelector(
+        '.cg-columns-panel-row[data-col-id="ticker"] .cg-columns-panel-row-handle',
+      ) as HTMLElement;
+      const canvas = document.querySelector('.cg-grid-canvas, canvas') as HTMLElement;
+      const sr = handle.getBoundingClientRect();
+      const tr = canvas.getBoundingClientRect();
+      const startX = sr.left + sr.width / 2;
+      const startY = sr.top + sr.height / 2;
+      // Aim at the top band of the canvas where headers paint.
+      const endX = tr.left + 200;
+      const endY = tr.top + 12;
+      handle.dispatchEvent(new MouseEvent('mousedown', {
+        bubbles: true, cancelable: true, button: 0, buttons: 1,
+        clientX: startX, clientY: startY,
+      }));
+      for (let i = 1; i <= 10; i++) {
+        const x = startX + (endX - startX) * (i / 10);
+        const y = startY + (endY - startY) * (i / 10);
+        window.dispatchEvent(new MouseEvent('mousemove', {
+          bubbles: true, cancelable: true, buttons: 1,
+          clientX: x, clientY: y,
+        }));
+      }
+      window.dispatchEvent(new MouseEvent('mouseup', {
+        bubbles: true, cancelable: true, button: 0, buttons: 0,
+        clientX: endX, clientY: endY,
+      }));
+    });
+    await page.waitForTimeout(400);
+
+    const hiddenAfter = await page.evaluate(() => {
+      const g = (window as any).__cgrid;
+      return (g.getColumnState() as Array<{ colId: string; hide?: boolean }>)
+        .find((s) => s.colId === 'ticker')?.hide === true;
+    });
+    expect(hiddenAfter).toBe(false);
+  });
+
   test('dragging a pill within its zone reorders the role in place (pivots)', async ({ page }) => {
     await gotoFeature(page, 'pivot');
 

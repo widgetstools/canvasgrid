@@ -3816,6 +3816,12 @@ export class CGrid<TRow = any> {
   commitColumnHeaderDrop(colId: string, clientX: number): void {
     if (this.destroyed) return;
     if (this.colDropInsertionLine) this.colDropInsertionLine.style.display = 'none';
+    // Dragging from the columns side panel onto the header band can
+    // target a column that is currently hidden — un-hide it first so
+    // the drop visibly adds the column to the grid. Visible columns
+    // are no-op for setColumnsVisible (idempotent).
+    const stateEntry = this.getColumnState().find((s) => s.colId === colId);
+    if (stateEntry?.hide === true) this.setColumnsVisible([colId], true);
     const rect = this.cgridCanvas.canvas.getBoundingClientRect();
     const x = clientX - rect.left;
     const ids = this.allColIdsInRenderOrder();
@@ -3938,9 +3944,13 @@ export class CGrid<TRow = any> {
   private makePivotPanelContext(): PivotPanelGridContext {
     return {
       setReservedSpace: (side, height) => this.reservePivotPanelSpace(side, height),
-      getHeaderName: (colId) => this.columnDefsMap.get(colId)?.headerName,
-      isColumnPivotEnabled: (colId) =>
-        this.columnDefsMap.get(colId)?.enablePivot === true,
+      getHeaderName: (colId) =>
+        this.columnDefsMap.get(colId)?.headerName
+        ?? this.primaryColumnTree?.leafById.get(colId)?.headerName,
+      // Pivot mode swaps source colDefs out of `columnDefsMap`; fall
+      // through to `primaryColumnTree` so the pivot panel still
+      // accepts drops of source columns that carry `enablePivot`.
+      isColumnPivotEnabled: (colId) => this.isColumnPivotEnabled(colId),
       addPivotColumn: (colId) => this.pivotState.addPivotColumn(colId),
       removePivotColumn: (colId) => this.pivotState.removePivotColumn(colId),
       movePivotColumn: (from, to) => this.pivotState.movePivotColumn(from, to),
@@ -3958,9 +3968,13 @@ export class CGrid<TRow = any> {
   private makeRowGroupPanelContext(): RowGroupPanelGridContext {
     return {
       setReservedSpace: (side, height) => this.reserveRowGroupPanelSpace(side, height),
-      getHeaderName: (colId) => this.columnDefsMap.get(colId)?.headerName,
-      isColumnRowGroupEnabled: (colId) =>
-        this.columnDefsMap.get(colId)?.enableRowGroup === true,
+      getHeaderName: (colId) =>
+        this.columnDefsMap.get(colId)?.headerName
+        ?? this.primaryColumnTree?.leafById.get(colId)?.headerName,
+      // Pivot mode swaps source colDefs out of `columnDefsMap`; fall
+      // through to `primaryColumnTree` so the row-group panel still
+      // accepts drops of source columns that carry `enableRowGroup`.
+      isColumnRowGroupEnabled: (colId) => this.isColumnRowGroupEnabled(colId),
       addRowGroupColumn: (colId) => this.groupingState.addRowGroupColumn(colId),
       removeRowGroupColumn: (colId) => this.groupingState.removeRowGroupColumn(colId),
       moveRowGroupColumn: (from, to) => this.groupingState.moveRowGroupColumn(from, to),
@@ -5671,7 +5685,20 @@ export class CGrid<TRow = any> {
       getRowBoundsAt: (r) => this.getRowBoundsAt(r),
       getCellValue: (r, c) => this.getCellValue(r, c),
       getCellPaintedBg: (r, c) => this.getCellPaintedBg(r, c),
-    };
+      // External-drag routers — exposed so tool panels (Columns side
+      // panel) can drag a row onto the top-strip Row Groups panel, the
+      // top-strip Pivot panel (Column Labels), or the column header
+      // band itself, and have the drop commit.
+      isPointInRowGroupPanel: (x, y) => this.isPointInRowGroupPanel(x, y),
+      setRowGroupPanelDragHover: (colId, x, y) => this.setRowGroupPanelDragHover(colId, x, y),
+      commitRowGroupPanelDrop: (colId) => this.commitRowGroupPanelDrop(colId),
+      isPointInPivotPanel: (x, y) => this.isPointInPivotPanel(x, y),
+      setPivotPanelDragHover: (colId, x, y) => this.setPivotPanelDragHover(colId, x, y),
+      commitPivotPanelDrop: (colId) => this.commitPivotPanelDrop(colId),
+      isPointInColumnHeaderBand: (x, y) => this.isPointInColumnHeaderBand(x, y),
+      setColumnHeaderDragHover: (colId, x, y) => this.setColumnHeaderDragHover(colId, x, y),
+      commitColumnHeaderDrop: (colId, x) => this.commitColumnHeaderDrop(colId, x),
+    } as CGridApi;
   }
 
   private toggleColumnGroup(groupId: string): void {

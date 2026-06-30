@@ -93,6 +93,8 @@ import { iconSvg } from '../../renderer/icons';
 import {
   routeExternalDragHover,
   clearExternalDragHover,
+  routePivotPanelDragHover,
+  clearPivotPanelDragHover,
 } from '../features/columnDrag';
 import type {
   IToolPanelColumnCompParams,
@@ -985,10 +987,12 @@ export class ColumnsToolPanel implements ToolPanel {
     const startY = e.clientY;
 
     const allowDragOut = this.api.getGridOption?.('allowDragFromColumnsToolPanel') !== false;
-    // Header-strip routing only makes sense for row-groupable columns
-    // (the row group panel is the row-group axis surface).
+    // Header-strip routing only makes sense for role-eligible columns
+    // (the strips are role-axis surfaces).
     const isGroupable = this.api.isColumnRowGroupEnabled?.(colId) ?? false;
     const alreadyGrouped = (this.api.getRowGroupColumns?.() ?? []).includes(colId);
+    const isPivotable = this.api.isColumnPivotEnabled?.(colId) ?? false;
+    const alreadyPivoted = (this.api.getPivotColumns?.() ?? []).includes(colId);
 
     const orderedColIds = (): string[] => Array.from(this.listEl.children)
       .map((c) => (c as HTMLElement).dataset.colId)
@@ -999,6 +1003,7 @@ export class ColumnsToolPanel implements ToolPanel {
     let dragStarted = false;
     let overZoneIdx = -1; // index into zoneSpecs of the zone the cursor is over
     let overHeaderStrip = false;
+    let overPivotStrip = false;
     let overColumnHeaderBand = false;
 
     // Column-header drop router — parallel to the row-group-panel router.
@@ -1043,6 +1048,13 @@ export class ColumnsToolPanel implements ToolPanel {
       && typeof (this.api as any).setRowGroupPanelDragHover === 'function'
       && typeof (this.api as any).commitRowGroupPanelDrop === 'function';
 
+    // ---- Shared pivot-panel router (Column Labels top strip) -------
+    const pivotRouter = this.api as unknown as import('../features/columnDrag').PivotPanelDragRouter;
+    const hasPivotRouter =
+      typeof (this.api as any).isPointInPivotPanel === 'function'
+      && typeof (this.api as any).setPivotPanelDragHover === 'function'
+      && typeof (this.api as any).commitPivotPanelDrop === 'function';
+
     /** Clear any drop-state outline this drag has painted (zone-specific
      *  or header-strip). Called before painting a new state OR on
      *  release. */
@@ -1078,9 +1090,30 @@ export class ColumnsToolPanel implements ToolPanel {
               (this.api as any).setColumnHeaderDragHover(null, ev.clientX, ev.clientY);
               overColumnHeaderBand = false;
             }
+            if (overPivotStrip && hasPivotRouter) {
+              clearPivotPanelDragHover(pivotRouter);
+              overPivotStrip = false;
+            }
           }
         }
         if (overHeaderStrip) return;
+      }
+
+      // 1b. Pivot HEADER STRIP (Column Labels) — outside the sidebar.
+      if (hasPivotRouter && allowDragOut && isPivotable && !alreadyPivoted) {
+        const inStrip = routePivotPanelDragHover(pivotRouter, colId, ev.clientX, ev.clientY);
+        if (inStrip !== overPivotStrip) {
+          overPivotStrip = inStrip;
+          if (inStrip) {
+            clearAllZoneOutlines();
+            overZoneIdx = -1;
+            if (overColumnHeaderBand) {
+              (this.api as any).setColumnHeaderDragHover(null, ev.clientX, ev.clientY);
+              overColumnHeaderBand = false;
+            }
+          }
+        }
+        if (overPivotStrip) return;
       }
 
       // 2. Column header band.
@@ -1153,6 +1186,7 @@ export class ColumnsToolPanel implements ToolPanel {
       window.removeEventListener('mouseup', onUp);
       removeGhost();
       if (hasRouter) clearExternalDragHover(router);
+      if (hasPivotRouter) clearPivotPanelDragHover(pivotRouter);
       if (hasColHeaderDropRouter) {
         (this.api as any).setColumnHeaderDragHover(null, ev.clientX, ev.clientY);
       }
@@ -1162,6 +1196,12 @@ export class ColumnsToolPanel implements ToolPanel {
 
       if (overHeaderStrip) {
         (this.api as any).commitRowGroupPanelDrop?.(colId);
+        clearAllZoneOutlines();
+        return;
+      }
+
+      if (overPivotStrip) {
+        (this.api as any).commitPivotPanelDrop?.(colId);
         clearAllZoneOutlines();
         return;
       }
