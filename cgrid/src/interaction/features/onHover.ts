@@ -1,6 +1,11 @@
 // OnHover — tracks the hovered cell/header and requests a repaint when it
 // changes so painters can render a hover background. Sets `pointer` cursor on
 // header hover (lower priority than ColumnResizing's `col-resize`).
+//
+// Cycle 23 / Task 2 — also fans out cellMouseOver/Out + rowMouseOver/Out
+// events as the pointer crosses cell/row boundaries. Coalescing is per
+// transition (NEVER per pixel): a 100-pixel drag inside one cell fires
+// zero hover events.
 
 import { Feature, type CGridEventCtx } from '../feature';
 
@@ -33,6 +38,22 @@ export class OnHover extends Feature {
       key = { kind: 'header', colId: ctx.hit.colId };
     }
     if (!sameHover(this.lastHover, key)) {
+      // Cycle 23 / Task 2 — fan out the hover events BEFORE swapping
+      // `lastHover` so the OUT event has access to the previous cell.
+      const raw = ctx.raw as MouseEvent;
+      const prev = this.lastHover;
+      const prevRow = prev?.kind === 'cell' ? prev.rowIndex : null;
+      const nextRow = key?.kind === 'cell' ? key.rowIndex : null;
+      if (prev?.kind === 'cell') {
+        ctx.grid.emitCellMouseOut?.(prev.rowIndex, prev.colId, raw);
+      }
+      if (key?.kind === 'cell') {
+        ctx.grid.emitCellMouseOver?.(key.rowIndex, key.colId, raw);
+      }
+      if (prevRow !== nextRow) {
+        if (prevRow !== null) ctx.grid.emitRowMouseOut?.(prevRow, raw);
+        if (nextRow !== null) ctx.grid.emitRowMouseOver?.(nextRow, raw);
+      }
       this.lastHover = key;
       ctx.grid.canvas.requestRepaint();
     }

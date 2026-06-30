@@ -351,6 +351,22 @@ export interface CGridOptions<TRow = any> {
    * `setThemeParams` API on the relevant element.
    */
   shadowRoot?: boolean;
+  /**
+   * Cycle 23 / Task 6 — restore a saved state snapshot at
+   * construction time. Applied AFTER initial options resolve but
+   * BEFORE the first paint, so apps that persist `getState()` to
+   * localStorage (or any other store) hand the saved snapshot back
+   * here and the grid lights up in the user's last layout.
+   *
+   * Equivalent to calling `setState(initialState)` immediately after
+   * construction; bundling it as a constructor option avoids the
+   * one-frame flash where the grid renders with defaults before the
+   * restore lands.
+   *
+   * Older snapshots forward-migrate through `STATE_MIGRATIONS`; newer
+   * snapshots (from a future grid version) throw with a clear error.
+   */
+  initialState?: import('./core/stateSnapshot').GridState;
   worker?: { url?: string };
 
   /** Hint to skip CSS-animated row transitions. Runtime-mutable; storage-only
@@ -2098,6 +2114,18 @@ export type CGridEvent =
   | { type: 'gridReady'; api: CGridApi }
   | { type: 'cellClicked'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
   | { type: 'cellDoubleClicked'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
+  /** Cycle 23 / Task 2 — pointer crossed a cell boundary. Fires per
+   *  transition only (never per pixel). The Out event is paired with
+   *  the Over event for the next cell when the pointer moves from one
+   *  cell to another; either fires alone when the pointer enters or
+   *  leaves the body band entirely. */
+  | { type: 'cellMouseOver'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
+  | { type: 'cellMouseOut'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
+  /** Cycle 23 / Task 2 — pointer crossed a row boundary. Coalesced
+   *  per row: moving across multiple cells inside the same row fires
+   *  zero `rowMouse*` events. */
+  | { type: 'rowMouseOver'; rowId: string; mouse: MouseEvent }
+  | { type: 'rowMouseOut'; rowId: string; mouse: MouseEvent }
   | { type: 'cellFocused'; rowId: string; colId: string }
   | {
       type: 'cellValueChanged';
@@ -2123,6 +2151,49 @@ export type CGridEvent =
   | RowValueChangedEvent
   | { type: 'selectionChanged'; selectedRowIds: string[] }
   | { type: 'viewportChanged'; firstRow: number; lastRow: number }
+  /** Cycle 23 / Task 3 — fires on every scroll tick. `direction`
+   *  carries the dominant axis of THIS tick relative to the previous
+   *  scroll position (`'vertical'` if `top` changed, `'horizontal'`
+   *  if only `left` changed). Apps that watch scroll progress
+   *  (mini-map cursors, custom virtualization) subscribe here.
+   *  Pair with `bodyScrollEnd` (debounced) for "settled" handlers. */
+  | { type: 'bodyScroll'; top: number; left: number; direction: 'vertical' | 'horizontal' }
+  /** Cycle 23 / Task 3 — debounced companion to `bodyScroll`. Fires
+   *  exactly once 200ms after the last scroll tick; subsequent
+   *  scrolls within the window reset the debounce. Apps that
+   *  persist scroll position to storage hook this instead of
+   *  `bodyScroll` so they save once per gesture. */
+  | { type: 'bodyScrollEnd'; top: number; left: number }
+  /** Cycle 23 / Task 4 — focused cell sees a keydown BEFORE the grid's
+   *  own key handler. Apps can call `event.preventDefault()` to
+   *  suppress grid behavior (e.g., disable Enter-to-commit on a
+   *  specific column). `rowId` / `colId` reflect the currently
+   *  focused cell at the moment the key fired; `value` is the cell
+   *  value via `cellAt`. */
+  | { type: 'cellKeyDown'; rowId: string; colId: string; value: unknown; event: KeyboardEvent }
+  /** Cycle 23 / Task 4 — fires alongside `cellKeyDown` when the key
+   *  represents a single printable character (length-1 `event.key`
+   *  with no Ctrl / Meta / Alt modifier). Modern browsers deprecated
+   *  the native `keypress` event; the grid synthesizes this from
+   *  keydown so apps that watched ag-grid's `cellKeyPress` still get
+   *  the type-to-edit hook. `preventDefault` on the underlying
+   *  KeyboardEvent suppresses the grid's printable-key behavior the
+   *  same way. */
+  | { type: 'cellKeyPress'; rowId: string; colId: string; value: unknown; event: KeyboardEvent }
+  /** Cycle 23 / Task 7 — fires when any GridState component changes.
+   *  Debounced per rAF: N changes within one frame collapse into one
+   *  event. The payload carries the FULL state snapshot + a
+   *  changedKeys array tagged with the GridState keys that mutated
+   *  this frame. `source` distinguishes the trigger — `'api'` for an
+   *  explicit `setState` call, `'init'` for the `initialState`
+   *  constructor option, `'ui'` for everything else (user
+   *  interaction, runtime option swap, drag, etc.). */
+  | {
+      type: 'stateUpdated';
+      state: import('./core/stateSnapshot').GridState;
+      changedKeys: (keyof import('./core/stateSnapshot').GridState)[];
+      source: 'api' | 'ui' | 'init';
+    }
   | { type: 'modelUpdated'; visibleRowCount: number }
   | { type: 'sortChanged'; sortModel: SortModel }
   | {

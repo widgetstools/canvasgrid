@@ -25,6 +25,10 @@ import {
   snapshotState, applyStateToTree, cloneStateForReset,
   type SnapshotLocks, type ChangeRecord,
 } from './core/columnState';
+import {
+  buildSnapshot, migrateSnapshot, STATE_SCHEMA_VERSION, type GridState,
+} from './core/stateSnapshot';
+import { StateUpdatedBus } from './core/stateUpdatedBus';
 import type { CColumnState, CApplyColumnStateParams, ISizeColumnsToFitParams } from './types';
 import type { CColDef, CColGroupDef } from './types';
 import {
@@ -151,6 +155,9 @@ export type {
   AggregationChangedSource, AggregationChangedEvent,
 } from './types';
 export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/registry';
+// Cycle 23 / Tasks 5-6 — state-snapshot public types.
+export type { GridState } from './core/stateSnapshot';
+export { STATE_SCHEMA_VERSION } from './core/stateSnapshot';
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
 
 // Cycle 27 / Task 1 + 2 + 3 — cell styling expansion types.
@@ -446,6 +453,12 @@ export function defaultFillExtrapolate(sourceValues: unknown[], targetIndex: num
 
 export class CGrid<TRow = any> {
   private events = new TypedEventEmitter<CGridEvent>();
+  /** Cycle 23 / Task 7 — coalesced `stateUpdated` emitter. Subscribes
+   *  to every state-affecting event on `this.events` and emits one
+   *  `stateUpdated` per rAF tick carrying the full snapshot + the
+   *  merged changedKeys. Lazily constructed in the constructor body
+   *  so `this.getState()` is bound by the time it subscribes. */
+  private stateUpdatedBus!: StateUpdatedBus;
   private columnTree!: ColumnTree;
   private columnGroupState!: ColumnGroupState;
   private columnDefsMap: Map<string, ResolvedColDef<TRow>> = new Map();
@@ -454,6 +467,10 @@ export class CGrid<TRow = any> {
   private theme: ResolvedTheme;
   private scrollLeft = 0;
   private scrollTop = 0;
+  /** Cycle 23 / Task 3 — debounce handle for `bodyScrollEnd`. Cleared
+   *  on every scroll tick and re-armed for 200ms; null when no scroll
+   *  has happened in the last window. */
+  private scrollEndTimer: ReturnType<typeof setTimeout> | null = null;
   private rowCount = 0;
   private chunk: ViewportChunk | null = null;
   /** Cycle 15 / Task 16 — latest sticky ancestor band from the worker.
@@ -806,6 +823,13 @@ export class CGrid<TRow = any> {
     this.cssReader = new CssReader(this.root);
     this.theme = this.cssReader.read();
     this.cellRenderers = new CellRendererRegistry();
+    // Cycle 23 / Task 7 — wire the state-update bus. Subscribes to
+    // every state-affecting event on `this.events` so a single
+    // `stateUpdated` fires per rAF frame regardless of how many
+    // discrete mutations landed. Built BEFORE the rest of construction
+    // so any setup-time events (initial column resolution, etc.) get
+    // captured.
+    this.stateUpdatedBus = new StateUpdatedBus(this.events, () => this.getState());
     this.cellRenderers.register('text', textCell);
     this.cellRenderers.register('number', numberCell);
     this.cellRenderers.register('checkbox', checkboxCell);
@@ -1197,6 +1221,41 @@ export class CGrid<TRow = any> {
         const rowId = this.rowIdAt(rowIndex);
         if (rowId) this.events.emit({ type: 'cellDoubleClicked', rowId, colId, value: this.cellAt(rowIndex, colId)?.value, mouse });
       },
+      // Cycle 23 / Task 2 — hover-transition event hooks. Each fires
+      // only when the OnHover feature detects a true boundary
+      // crossing. The grid resolves rowIndex → rowId + reads the cell
+      // value before dispatching so subscribers receive the same
+      // (rowId, colId, value) shape as cellClicked.
+      emitCellMouseOver: (rowIndex, colId, mouse) =>
+        this.emitCellMouseOverFromHover(rowIndex, colId, mouse),
+      emitCellMouseOut: (rowIndex, colId, mouse) =>
+        this.emitCellMouseOutFromHover(rowIndex, colId, mouse),
+      emitRowMouseOver: (rowIndex, mouse) =>
+        this.emitRowMouseOverFromHover(rowIndex, mouse),
+      emitRowMouseOut: (rowIndex, mouse) =>
+        this.emitRowMouseOutFromHover(rowIndex, mouse),
+      // Cycle 23 / Task 4 — cell keyboard events. The CellKeyboardEvents
+      // feature sits at the HEAD of the chain; it returns the
+      // `event.defaultPrevented` flag back upstream so the chain can
+      // short-circuit when an app listener consumed the key.
+      emitCellKeyDown: (rowIndex, colId, event) => {
+        const rowId = this.rowIdAt(rowIndex);
+        if (!rowId) return false;
+        this.events.emit({
+          type: 'cellKeyDown', rowId, colId,
+          value: this.cellAt(rowIndex, colId)?.value, event,
+        });
+        return event.defaultPrevented;
+      },
+      emitCellKeyPress: (rowIndex, colId, event) => {
+        const rowId = this.rowIdAt(rowIndex);
+        if (!rowId) return false;
+        this.events.emit({
+          type: 'cellKeyPress', rowId, colId,
+          value: this.cellAt(rowIndex, colId)?.value, event,
+        });
+        return event.defaultPrevented;
+      },
       getEditingFlags: () => ({
         singleClickEdit: this.options.singleClickEdit ?? false,
         suppressClickEdit: this.options.suppressClickEdit ?? false,
@@ -1549,6 +1608,18 @@ export class CGrid<TRow = any> {
       }
       this.events.emit({ type: 'gridReady', api: this.makeApi() });
       if (options.rowData) this.setRowData(options.rowData);
+      // Cycle 23 / Task 6 — apply an initial-state snapshot AFTER the
+      // grid is ready (so column tree, pivot state, selection model
+      // are all live) but BEFORE the first user interaction. Bundles
+      // the same plumbing as `setState` so columnState → filter →
+      // sort → groups → pivot → expanded → selection → scroll
+      // applies in dependency order.
+      if (options.initialState) {
+        // Cycle 23 / Task 7 — tag the cascade so the resulting
+        // stateUpdated event reads source: 'init', not 'ui'.
+        this.stateUpdatedBus?.setNextSource('init');
+        this.setState(options.initialState);
+      }
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
 
     // 10. Native scroll listener
@@ -2263,6 +2334,16 @@ export class CGrid<TRow = any> {
    *  `CGridApi`. */
   getColumnFilterModel(colId: string): CFilterModelEntry | null {
     return this.columnFilterModels.get(colId) ?? null;
+  }
+
+  /** Cycle 23 / Task 5 — full filter model as a plain object,
+   *  keyed by colId. Mirrors the shape `setFilterModel` accepts so
+   *  a `setFilterModel(getFilterModel())` round-trip is idempotent.
+   *  Returns `{}` (not `null`) when no columns are filtered. */
+  getFilterModel(): FilterModel {
+    const out: FilterModel = {};
+    for (const [colId, entry] of this.columnFilterModels) out[colId] = entry;
+    return out;
   }
 
   /** Cycle 7 / Task 1 — apply a per-column filter mutation. Updates the
@@ -5091,6 +5172,16 @@ export class CGrid<TRow = any> {
       this.flashTickHandle = null;
     }
     this.flashRegistry.destroy();
+    // Cycle 23 / Task 7 — release the state-update bus subscriptions
+    // + cancel any pending rAF so a late frame can't emit on a
+    // destroyed grid.
+    this.stateUpdatedBus?.destroy();
+    // Cycle 23 / Task 3 — clear the debounce so a late-firing
+    // bodyScrollEnd doesn't try to emit on a destroyed grid.
+    if (this.scrollEndTimer !== null) {
+      clearTimeout(this.scrollEndTimer);
+      this.scrollEndTimer = null;
+    }
     // Cycle 22 / Task 3 — explicit cleanup of any inline `--cg-*`
     // overrides so the WeakMap state doesn't leak past destroy. The
     // root element gets removed below, but apps that re-parent / re-
@@ -5982,10 +6073,29 @@ export class CGrid<TRow = any> {
   private onScrollerScroll(x: number, y: number): void {
     if (x === this.scrollLeft && y === this.scrollTop) return;
     const horizontal = x !== this.scrollLeft;
+    const verticalChanged = y !== this.scrollTop;
     this.scrollLeft = x;
     this.scrollTop = y;
     this.recomputeViewport(/* afterScroll */ horizontal);
     this.events.emit({ type: 'viewportChanged', firstRow: this.viewport.firstRow, lastRow: this.viewport.lastRow });
+    // Cycle 23 / Task 3 — bodyScroll fires every tick. `direction`
+    // reports the dominant axis change for THIS tick; ties (both
+    // axes moved) report `'vertical'` so listeners get a stable
+    // signal for the more common case.
+    this.events.emit({
+      type: 'bodyScroll', top: y, left: x,
+      direction: verticalChanged ? 'vertical' : 'horizontal',
+    });
+    // Cycle 23 / Task 3 — bodyScrollEnd is debounced 200ms after the
+    // last scroll tick. Subsequent scrolls reset the timer so apps
+    // that persist on the END event save once per gesture instead of
+    // once per pixel.
+    if (this.scrollEndTimer !== null) clearTimeout(this.scrollEndTimer);
+    this.scrollEndTimer = setTimeout(() => {
+      this.scrollEndTimer = null;
+      if (this.destroyed) return;
+      this.events.emit({ type: 'bodyScrollEnd', top: this.scrollTop, left: this.scrollLeft });
+    }, 200);
     this.cgridCanvas.requestRepaint();
     this.requestViewport();
     this.syncOpenEditorPosition();
@@ -6509,6 +6619,37 @@ export class CGrid<TRow = any> {
     return `row-${rowIndex}`;
   }
 
+  /** Cycle 23 / Task 2 — fan out cellMouseOver. Looked up here (not in
+   *  the OnHover feature) so the (rowId, value) shape matches the rest
+   *  of the cell-* event family — features don't need to reach into
+   *  the data path. */
+  private emitCellMouseOverFromHover(rowIndex: number, colId: string, mouse: MouseEvent): void {
+    const rowId = this.rowIdAt(rowIndex);
+    if (!rowId) return;
+    this.events.emit({
+      type: 'cellMouseOver', rowId, colId,
+      value: this.cellAt(rowIndex, colId)?.value, mouse,
+    });
+  }
+  private emitCellMouseOutFromHover(rowIndex: number, colId: string, mouse: MouseEvent): void {
+    const rowId = this.rowIdAt(rowIndex);
+    if (!rowId) return;
+    this.events.emit({
+      type: 'cellMouseOut', rowId, colId,
+      value: this.cellAt(rowIndex, colId)?.value, mouse,
+    });
+  }
+  private emitRowMouseOverFromHover(rowIndex: number, mouse: MouseEvent): void {
+    const rowId = this.rowIdAt(rowIndex);
+    if (!rowId) return;
+    this.events.emit({ type: 'rowMouseOver', rowId, mouse });
+  }
+  private emitRowMouseOutFromHover(rowIndex: number, mouse: MouseEvent): void {
+    const rowId = this.rowIdAt(rowIndex);
+    if (!rowId) return;
+    this.events.emit({ type: 'rowMouseOut', rowId, mouse });
+  }
+
   private formatNumber(colId: string, value: number): string {
     if (!Number.isFinite(value)) return '';
     const def = this.columnDefsMap.get(colId);
@@ -6676,6 +6817,132 @@ export class CGrid<TRow = any> {
         valueColumns: this.pivotState.getValueColumns(),
       },
     );
+  }
+
+  /** Cycle 23 / Task 5 — full grid state snapshot. Includes columnState,
+   *  filter / sort / group model, pivot mode + cols, expanded routes,
+   *  side bar + selection + scroll position. Round-trippable through
+   *  `setState` (Task 6); pair with `stateUpdated` (Task 7) to drive
+   *  persistence. Empty fields are omitted so snapshots stay compact —
+   *  apps can serialize the result through `JSON.stringify` without
+   *  pre-pruning. */
+  getState(): GridState {
+    return buildSnapshot({
+      getColumnState: () => this.getColumnState(),
+      getFilterModel: () => this.getFilterModel(),
+      getSortModel: () => this.getSortModel(),
+      getRowGroupColumns: () => this.getRowGroupColumns(),
+      getExpandedKeys: () => this.getExpandedKeys(),
+      isPivotMode: () => this.isPivotMode(),
+      getPivotColumns: () => this.getPivotColumns(),
+      isSideBarVisible: () => this.isSideBarVisible(),
+      getOpenedToolPanel: () => this.getOpenedToolPanel(),
+      getCellRanges: () => this.getCellRanges(),
+      getFocusedCell: () => this.getFocusedCell(),
+      getSelectedRowIds: () => this.getSelectedRowIds(),
+      getScrollPosition: () => ({ top: this.scrollTop, left: this.scrollLeft }),
+    });
+  }
+
+  /** Cycle 23 / Task 6 — restore a state snapshot. Applied in the
+   *  dependency order documented in the design notes: columnState →
+   *  filter → sort → row-group → pivot → expanded → selection →
+   *  side-bar → scroll. Each step is a no-op when the snapshot omits
+   *  the corresponding field, so partial snapshots restore only the
+   *  fields they carry.
+   *
+   *  Migrates the snapshot forward through `STATE_MIGRATIONS` when
+   *  its `version` is older than the current schema. */
+  setState(snapshot: GridState): void {
+    const migrated = migrateSnapshot(snapshot);
+    // Cycle 23 / Task 7 — tag the cascade so the next coalesced
+    // stateUpdated event reads source: 'api'. The cascade of internal
+    // events (filterChanged + sortChanged + ...) collapses into one
+    // emission via the bus's rAF debounce.
+    this.stateUpdatedBus?.setNextSource('api');
+
+    // 1. columnState (defines columns + their geometry).
+    if (migrated.columnState) {
+      this.applyColumnState({ state: migrated.columnState, applyOrder: true });
+    }
+
+    // 2. filterModel — filters rows.
+    if (migrated.filterModel) {
+      this.setFilterModel(migrated.filterModel);
+    }
+
+    // 3. sortModel — orders rows.
+    if (migrated.sortModel) {
+      this.setSortModel(migrated.sortModel);
+    }
+
+    // 4. row-group columns.
+    if (migrated.rowGroupColumns) {
+      this.setRowGroupColumns(migrated.rowGroupColumns);
+    }
+
+    // 5. pivot mode + cols.
+    if (migrated.pivotMode !== undefined) {
+      this.setPivotMode(migrated.pivotMode);
+    }
+    if (migrated.pivotCols) {
+      this.setPivotColumns(migrated.pivotCols);
+    }
+
+    // 6. expanded routes (group / tree). Apply after grouping so the
+    // keys resolve to live group rows.
+    if (migrated.expandedRouteIds) {
+      for (const key of migrated.expandedRouteIds) {
+        this.setExpanded(key, true);
+      }
+    }
+
+    // 7. cell + row selection.
+    if (migrated.cellSelection) {
+      this.clearCellRanges();
+      for (const range of migrated.cellSelection.ranges) {
+        this.addCellRange(range);
+      }
+    }
+    if (migrated.rowSelection) {
+      this.setSelectedRowIds(migrated.rowSelection);
+    }
+
+    // 8. side bar.
+    if (migrated.sideBar) {
+      this.setSideBarVisible(migrated.sideBar.visible);
+      if (migrated.sideBar.openedToolPanel) {
+        this.openToolPanel(migrated.sideBar.openedToolPanel);
+      }
+    }
+
+    // 9. scroll — last so viewport math runs after every model that
+    // affects layout has settled.
+    if (migrated.scroll) {
+      this.scroller.scrollTo({ top: migrated.scroll.top, left: migrated.scroll.left });
+    }
+  }
+
+  /** Cycle 23 / Task 6 — restore the construction-time defaults.
+   *  Walks the same setters `setState` uses but with empty / cleared
+   *  values across the board; column state replays through the
+   *  dedicated `resetColumnState` path so the as-coded layout
+   *  (sort, pin, visibility) comes back exactly as the constructor
+   *  saw it. */
+  resetState(): void {
+    this.resetColumnState();
+    this.setFilterModel({});
+    this.setSortModel([]);
+    this.setRowGroupColumns([]);
+    this.setPivotColumns([]);
+    if (this.isPivotMode()) this.setPivotMode(false);
+    // Collapse every currently-expanded group.
+    for (const key of Array.from(this.getExpandedKeys())) {
+      this.setExpanded(key, false);
+    }
+    this.clearCellRanges();
+    this.setSelectedRowIds([]);
+    this.scroller.scrollTo({ top: 0, left: 0 });
   }
 
   /** Cycle 6 / Task 2 — restore column state through a single re-layout +
