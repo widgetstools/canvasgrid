@@ -107,6 +107,145 @@ export function decodeText(offsets: Uint32Array, bytes: Uint8Array): string[] {
   return out;
 }
 
+// ───── Cycle 25 / Task 2 — dictionary-coded text columns ────────────
+//
+// Low-cardinality columns (region, currency, status) save huge memory
+// when stored as `{ dict, indices }` instead of the inline
+// `{ offsets, bytes }` shape: 10,000 region cells × 4 distinct values
+// compresses from ~50 KB to a 4-entry dict + 10,000 × 1 byte. The
+// helpers below are the pure encode/decode used both by the slicer
+// (when chunkFormat is rewired to emit dict-coded columns) and by
+// the dict-aware text encoder benches.
+
+export type DictIndices = Uint8Array | Uint16Array | Uint32Array;
+
+export interface DictText {
+  dict: string[];
+  indices: DictIndices;
+}
+
+function pickIndicesArray(length: number, dictSize: number): DictIndices {
+  if (dictSize <= 256)   return new Uint8Array(length);
+  if (dictSize <= 65536) return new Uint16Array(length);
+  return new Uint32Array(length);
+}
+
+export function encodeTextDict(strings: ReadonlyArray<string | null | undefined>): DictText {
+  if (strings.length === 0) return { dict: [], indices: new Uint8Array(0) };
+  const dictIndex = new Map<string, number>();
+  const dict: string[] = [];
+  // Two-pass: walk once to build the dictionary so we can pick the
+  // narrowest indices array on the way through. One walk is enough —
+  // we don't need to know the dict size up front; we re-resize only
+  // when the dict crosses 256 / 65536 (rare).
+  const temp = new Uint32Array(strings.length);
+  for (let i = 0; i < strings.length; i++) {
+    const s = strings[i] ?? '';
+    let idx = dictIndex.get(s);
+    if (idx === undefined) {
+      idx = dict.length;
+      dict.push(s);
+      dictIndex.set(s, idx);
+    }
+    temp[i] = idx;
+  }
+  const indices = pickIndicesArray(strings.length, dict.length);
+  for (let i = 0; i < strings.length; i++) indices[i] = temp[i]!;
+  return { dict, indices };
+}
+
+export function decodeTextDict(dict: ReadonlyArray<string>, indices: DictIndices): string[] {
+  const out: string[] = new Array(indices.length);
+  for (let i = 0; i < indices.length; i++) {
+    out[i] = dict[indices[i]!] ?? '';
+  }
+  return out;
+}
+
+// ───── Cycle 25 / Task 3 — varint + delta numeric columns ────────────
+//
+// Zigzag-encoded varints pack signed 32-bit ints into 1–5 bytes. Small
+// magnitudes (the common case for ids, counts, day offsets) shrink to
+// 1 byte. The delta variant first-differences the sequence so sorted /
+// monotonic columns (rowIds, growing timestamps) become nearly all
+// 1-byte deltas — a 1000-row id column packs to ~1 KB instead of 4 KB.
+//
+// `encodeVarintI32` operates on a raw signed-int sequence;
+// `encodeDeltaInts` layers delta-encoding on top. Both produce a
+// Uint8Array; the row count is the decoder's external contract
+// (caller passes it back in) so we don't waste leading bytes on a
+// self-describing prefix.
+
+const VARINT_GROW_FACTOR = 2;
+
+function zigzag32(v: number): number {
+  // Force to 32-bit signed via << 0; then zigzag-map.
+  return (v << 1) ^ (v >> 31);
+}
+
+function unzigzag32(u: number): number {
+  return (u >>> 1) ^ -(u & 1);
+}
+
+export function encodeVarintI32(values: ReadonlyArray<number>): Uint8Array {
+  // 5 bytes worst case per int.
+  let buf = new Uint8Array(Math.max(8, values.length * 2));
+  let pos = 0;
+  for (let i = 0; i < values.length; i++) {
+    let u = zigzag32(values[i]! | 0) >>> 0;
+    // Ensure capacity for up to 5 bytes.
+    if (pos + 5 > buf.byteLength) {
+      const next = new Uint8Array(buf.byteLength * VARINT_GROW_FACTOR);
+      next.set(buf);
+      buf = next;
+    }
+    while (u >= 0x80) {
+      buf[pos++] = (u & 0x7f) | 0x80;
+      u = u >>> 7;
+    }
+    buf[pos++] = u & 0x7f;
+  }
+  return buf.subarray(0, pos);
+}
+
+export function decodeVarintI32(bytes: Uint8Array, count: number): number[] {
+  const out: number[] = new Array(count);
+  let pos = 0;
+  for (let i = 0; i < count; i++) {
+    let u = 0;
+    let shift = 0;
+    let b: number;
+    do {
+      b = bytes[pos++]!;
+      u |= (b & 0x7f) << shift;
+      shift += 7;
+    } while (b & 0x80);
+    out[i] = unzigzag32(u >>> 0);
+  }
+  return out;
+}
+
+export function encodeDeltaInts(values: ReadonlyArray<number>): Uint8Array {
+  if (values.length === 0) return new Uint8Array(0);
+  const deltas: number[] = new Array(values.length);
+  deltas[0] = values[0]!;
+  for (let i = 1; i < values.length; i++) {
+    deltas[i] = values[i]! - values[i - 1]!;
+  }
+  return encodeVarintI32(deltas);
+}
+
+export function decodeDeltaInts(bytes: Uint8Array, count: number): number[] {
+  if (count === 0) return [];
+  const deltas = decodeVarintI32(bytes, count);
+  const out: number[] = new Array(count);
+  out[0] = deltas[0]!;
+  for (let i = 1; i < count; i++) {
+    out[i] = out[i - 1]! + deltas[i]!;
+  }
+  return out;
+}
+
 interface BinaryWriter {
   bytes: Uint8Array;
   view: DataView;

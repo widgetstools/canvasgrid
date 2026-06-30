@@ -1,0 +1,34 @@
+{
+  "_comment": "Cycle 25 / Task 1 — performance baselines captured 2026-06-30 on Apple Silicon (darwin 25.5). Numbers are p75 (ms) at the time of the cycle; regressions ≥30% on the hot-path benches (serialize/deserialize at 10k+, RowHeightIndex queries) should be investigated before merge. Numbers will be retuned once the rest of Cycle 25 lands.",
+  "platform": "darwin-arm64",
+  "node": "v24.2.0",
+  "captured": "2026-06-30",
+  "benches": {
+    "chunkFormat — text encode/decode": {
+      "encodeText short (10k rows × 4 distinct)": { "hz": 634, "p75_ms": 1.89, "p99_ms": 2.48 },
+      "encodeText long (10k rows × ~90 chars)":   { "hz": 439, "p75_ms": 2.01, "p99_ms": 10.85 },
+      "decodeText short":                          { "hz": 1580, "p75_ms": 0.66, "p99_ms": 0.80 },
+      "decodeText long":                           { "hz": 1404, "p75_ms": 0.75, "p99_ms": 0.88 }
+    },
+    "chunkFormat — serialize/deserialize": {
+      "serializeChunk 1k × 8":    { "hz": 45746, "p75_ms": 0.014, "p99_ms": 0.235 },
+      "serializeChunk 10k × 8":   { "hz": 7887,  "p75_ms": 0.100, "p99_ms": 0.836 },
+      "serializeChunk 50k × 8":   { "hz": 2935,  "p75_ms": 0.348, "p99_ms": 0.980 },
+      "deserializeChunk 1k × 8":  { "hz": 57311, "p75_ms": 0.016, "p99_ms": 0.035 },
+      "deserializeChunk 10k × 8": { "hz": 9023,  "p75_ms": 0.097, "p99_ms": 0.814 },
+      "deserializeChunk 50k × 8": { "hz": 1102,  "p75_ms": 0.871, "p99_ms": 2.032 }
+    },
+    "RowHeightIndex @ n=1000000": {
+      "topOf": { "hz": 13196651, "p75_us": 0.1, "p99_us": 0.1 },
+      "rowAt": { "hz": 8563649,  "p75_us": 0.1, "p99_us": 0.2 }
+    }
+  },
+  "regression_thresholds": {
+    "_": "Fail the cycle if a hot-path bench is more than X% slower than baseline.",
+    "serializeChunk 10k × 8":   { "hz_min": 5500 },
+    "serializeChunk 50k × 8":   { "hz_min": 2050 },
+    "deserializeChunk 10k × 8": { "hz_min": 6300 },
+    "deserializeChunk 50k × 8": { "hz_min": 770 },
+    "RowHeightIndex topOf":     { "hz_min": 9000000 }
+  }
+}

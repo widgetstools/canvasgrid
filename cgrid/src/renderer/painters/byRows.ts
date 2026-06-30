@@ -40,9 +40,13 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
   const quickFilterActive = quickFilterLowerTerms.length > 0;
 
   // 1. Compute the right edge of the painted area (mirrors gridLinesPainter).
-  const rightEdge = vs.visibleColumns.length === 0
-    ? vs.bodyRight
-    : Math.max(vs.bodyRight, ...vs.visibleColumns.map((c) => c.right));
+  // Cycle 25 / Task 5 — walk once instead of `Math.max(...visibleColumns.map(...))`
+  // which allocates an array and a spread frame per paint.
+  let rightEdge = vs.bodyRight;
+  for (let i = 0; i < vs.visibleColumns.length; i++) {
+    const r = vs.visibleColumns[i]!.right;
+    if (r > rightEdge) rightEdge = r;
+  }
 
   // Build sort lookup: colId -> { direction, index }.
   const sortLookup = new Map<string, { direction: 'asc' | 'desc'; index: number }>();
@@ -162,9 +166,18 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
   }
 
   // 5. Split columns into bands and paint cells.
-  const leftPinned = vs.visibleColumns.filter((c) => c.pinned === 'left');
-  const center = vs.visibleColumns.filter((c) => !c.pinned);
-  const rightPinned = vs.visibleColumns.filter((c) => c.pinned === 'right');
+  // Cycle 25 / Task 5 — walk visibleColumns once and push into three
+  // pre-allocated arrays instead of three .filter() passes (three
+  // allocations + three walks per paint).
+  const leftPinned: typeof vs.visibleColumns = [];
+  const center: typeof vs.visibleColumns = [];
+  const rightPinned: typeof vs.visibleColumns = [];
+  for (let i = 0; i < vs.visibleColumns.length; i++) {
+    const col = vs.visibleColumns[i]!;
+    if (col.pinned === 'left') leftPinned.push(col);
+    else if (col.pinned === 'right') rightPinned.push(col);
+    else center.push(col);
+  }
 
   // Pre-compute subgrid bands — group visibleRows by subgrid to get y-range per subgrid.
   // Walk once and group consecutive rows from the same subgrid.

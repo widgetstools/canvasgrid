@@ -24,9 +24,12 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
 
   // Full right edge of the painted area: rightmost visible column or the body
   // right (whichever is larger; rightPinned columns extend past bodyRight).
-  const rightEdge = vs.visibleColumns.length === 0
-    ? vs.bodyRight
-    : Math.max(vs.bodyRight, ...vs.visibleColumns.map((c) => c.right));
+  // Cycle 25 / Task 5 — manual scan to avoid the .map + spread.
+  let rightEdge = vs.bodyRight;
+  for (let i = 0; i < vs.visibleColumns.length; i++) {
+    const r = vs.visibleColumns[i]!.right;
+    if (r > rightEdge) rightEdge = r;
+  }
 
   // Locate the LEAF-header row top — the last header subgrid is the leaf
   // header; any rows above it are group-header rows. Verticals start at the
@@ -92,9 +95,16 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
   // Verticals — one band at a time so out-of-band column lines stay clipped.
   // Span from leafHeaderTop to the bottom of the LAST rendered row so column
   // separators don't bleed into empty canvas below the data.
-  const leftPinned = vs.visibleColumns.filter((c) => c.pinned === 'left');
-  const center = vs.visibleColumns.filter((c) => !c.pinned);
-  const rightPinned = vs.visibleColumns.filter((c) => c.pinned === 'right');
+  // Cycle 25 / Task 5 — single-pass split instead of three .filter walks.
+  const leftPinned: typeof vs.visibleColumns = [];
+  const center: typeof vs.visibleColumns = [];
+  const rightPinned: typeof vs.visibleColumns = [];
+  for (let i = 0; i < vs.visibleColumns.length; i++) {
+    const col = vs.visibleColumns[i]!;
+    if (col.pinned === 'left') leftPinned.push(col);
+    else if (col.pinned === 'right') rightPinned.push(col);
+    else center.push(col);
+  }
 
   // Compute the bottom of the last visible non-header row; if there are no
   // data/totals rows yet, fall back to bodyTop (verticals span header only).
