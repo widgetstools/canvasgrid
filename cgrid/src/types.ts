@@ -2600,6 +2600,9 @@ export interface CGridApi {
   addValueColumn(colId: string, aggFunc: string): void;
   /** Remove a value column (idempotent). */
   removeValueColumn(colId: string): void;
+  /** Reorder a value column in-place — `from` and `to` are indices
+   *  into the current `getValueColumns()` order. */
+  moveValueColumn(from: number, to: number): void;
   /** Change an existing value column's aggregation function. */
   setValueColumnAggFunc(colId: string, aggFunc: string): void;
 

@@ -3104,6 +3104,13 @@ export class CGrid<TRow = any> {
   removeValueColumn(colId: string): void {
     if (!this.destroyed) this.pivotState.removeValueColumn(colId);
   }
+  /** Reorder a value column in-place — `from` and `to` are indices
+   *  into the current `getValueColumns()` order. Drives the
+   *  drag-to-reorder gesture inside the columns side-panel Values
+   *  zone. */
+  moveValueColumn(from: number, to: number): void {
+    if (!this.destroyed) this.pivotState.moveValueColumn(from, to);
+  }
   setValueColumnAggFunc(colId: string, aggFunc: string): void {
     if (!this.destroyed) this.pivotState.setValueColumnAggFunc(colId, aggFunc);
   }
@@ -5578,6 +5585,7 @@ export class CGrid<TRow = any> {
       getValueColumns: () => this.getValueColumns(),
       addValueColumn: (colId, aggFunc) => this.addValueColumn(colId, aggFunc),
       removeValueColumn: (colId) => this.removeValueColumn(colId),
+      moveValueColumn: (from, to) => this.moveValueColumn(from, to),
       setValueColumnAggFunc: (colId, aggFunc) => this.setValueColumnAggFunc(colId, aggFunc),
       expandAll: () => this.expandAll(),
       collapseAll: () => this.collapseAll(),

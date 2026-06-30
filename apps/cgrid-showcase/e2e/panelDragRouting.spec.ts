@@ -403,4 +403,120 @@ test.describe('cross-section pill drag routing', () => {
     expect(eligibility.regionRowGroup).toBe(true);
     expect(eligibility.pnlValue).toBe(true);
   });
+
+  // Dragging a pill within its source zone reorders the role in place
+  // (within-zone reorder). The drop slot is computed off the cursor's
+  // Y position vs the midpoint of sibling pills. We use the value zone
+  // (pnl, notional in the showcase) and verify the pair swaps.
+  test('dragging a pill within its zone reorders the role in place (values)', async ({ page }) => {
+    await gotoFeature(page, 'pivot');
+
+    // Open the columns side bar so the pill zones are mounted.
+    const opened = await page.evaluate(
+      () => document.querySelector('.cg-columns-panel-row[data-col-id="desk"]') !== null,
+    );
+    if (!opened) await page.locator('button.cg-side-bar-tab:has-text("Columns")').click();
+    await page.locator('.cg-columns-panel-row[data-col-id="desk"]').waitFor();
+
+    const before = await page.evaluate(() => {
+      const g = (window as any).__cgrid;
+      return (g.getValueColumns() as Array<{ colId: string }>).map((v) => v.colId);
+    });
+    expect(before).toEqual(['pnl', 'notional']);
+
+    // Drag pnl past the bottom of notional → pnl should land after
+    // notional. The mousedown is on the pill; mousemove/mouseup go to
+    // the window. Pass DRAG_THRESHOLD_PX (default 4) on the first move.
+    await page.evaluate(() => {
+      const valuesContent = document.querySelector('.cg-columns-panel-valz-content') as HTMLElement;
+      const pills = Array.from(valuesContent.querySelectorAll('.cg-columns-panel-valz-pill')) as HTMLElement[];
+      const pnlPill = pills.find((p) => p.getAttribute('data-col-id') === 'pnl')!;
+      const notionalPill = pills.find((p) => p.getAttribute('data-col-id') === 'notional')!;
+      const srcRect = pnlPill.getBoundingClientRect();
+      const dstRect = notionalPill.getBoundingClientRect();
+      const startX = srcRect.left + srcRect.width / 2;
+      const startY = srcRect.top + srcRect.height / 2;
+      // Land BELOW notional's midpoint → slot index = pills.length (end).
+      const endX = dstRect.left + dstRect.width / 2;
+      const endY = dstRect.bottom - 2;
+      pnlPill.dispatchEvent(new MouseEvent('mousedown', {
+        bubbles: true, cancelable: true, button: 0, buttons: 1,
+        clientX: startX, clientY: startY,
+      }));
+      const steps = 8;
+      for (let i = 1; i <= steps; i++) {
+        const x = startX + (endX - startX) * (i / steps);
+        const y = startY + (endY - startY) * (i / steps);
+        window.dispatchEvent(new MouseEvent('mousemove', {
+          bubbles: true, cancelable: true, buttons: 1,
+          clientX: x, clientY: y,
+        }));
+      }
+      window.dispatchEvent(new MouseEvent('mouseup', {
+        bubbles: true, cancelable: true, button: 0, buttons: 0,
+        clientX: endX, clientY: endY,
+      }));
+    });
+    await page.waitForTimeout(200);
+
+    const after = await page.evaluate(() => {
+      const g = (window as any).__cgrid;
+      return (g.getValueColumns() as Array<{ colId: string }>).map((v) => v.colId);
+    });
+    expect(after).toEqual(['notional', 'pnl']);
+  });
+
+  test('dragging a pill within its zone reorders the role in place (pivots)', async ({ page }) => {
+    await gotoFeature(page, 'pivot');
+
+    const opened = await page.evaluate(
+      () => document.querySelector('.cg-columns-panel-row[data-col-id="desk"]') !== null,
+    );
+    if (!opened) await page.locator('button.cg-side-bar-tab:has-text("Columns")').click();
+    await page.locator('.cg-columns-panel-row[data-col-id="desk"]').waitFor();
+
+    const before = await page.evaluate(() => {
+      const g = (window as any).__cgrid;
+      return g.getPivotColumns() as string[];
+    });
+    expect(before).toEqual(['region', 'sector']);
+
+    // Drag sector ABOVE region's midpoint → slot 0.
+    await page.evaluate(() => {
+      const labelsContent = document.querySelector('.cg-columns-panel-plz-content') as HTMLElement;
+      const pills = Array.from(labelsContent.querySelectorAll('.cg-columns-panel-plz-pill')) as HTMLElement[];
+      const regionPill = pills.find((p) => p.getAttribute('data-col-id') === 'region')!;
+      const sectorPill = pills.find((p) => p.getAttribute('data-col-id') === 'sector')!;
+      const srcRect = sectorPill.getBoundingClientRect();
+      const dstRect = regionPill.getBoundingClientRect();
+      const startX = srcRect.left + srcRect.width / 2;
+      const startY = srcRect.top + srcRect.height / 2;
+      const endX = dstRect.left + dstRect.width / 2;
+      const endY = dstRect.top + 2;
+      sectorPill.dispatchEvent(new MouseEvent('mousedown', {
+        bubbles: true, cancelable: true, button: 0, buttons: 1,
+        clientX: startX, clientY: startY,
+      }));
+      const steps = 8;
+      for (let i = 1; i <= steps; i++) {
+        const x = startX + (endX - startX) * (i / steps);
+        const y = startY + (endY - startY) * (i / steps);
+        window.dispatchEvent(new MouseEvent('mousemove', {
+          bubbles: true, cancelable: true, buttons: 1,
+          clientX: x, clientY: y,
+        }));
+      }
+      window.dispatchEvent(new MouseEvent('mouseup', {
+        bubbles: true, cancelable: true, button: 0, buttons: 0,
+        clientX: endX, clientY: endY,
+      }));
+    });
+    await page.waitForTimeout(200);
+
+    const after = await page.evaluate(() => {
+      const g = (window as any).__cgrid;
+      return g.getPivotColumns() as string[];
+    });
+    expect(after).toEqual(['sector', 'region']);
+  });
 });

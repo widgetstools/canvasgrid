@@ -738,7 +738,14 @@ export class ColumnsToolPanel implements ToolPanel {
         removeAriaLabel: `Remove ${this.resolveLabel(colId)} from row groups`,
         onRemove: () => this.api.removeRowGroupColumn?.(colId),
         onDragOut: () => this.api.removeRowGroupColumn?.(colId),
+        onReorder: (toIndex) => {
+          const ordered = this.api.getRowGroupColumns?.() ?? [];
+          const fromIndex = ordered.indexOf(colId);
+          if (fromIndex < 0) return;
+          this.api.moveRowGroupColumn?.(fromIndex, toIndex);
+        },
         getZoneRect: () => this.getZoneRect(this.rowGroupsSection?.dropZone),
+        getZoneContent: () => this.rowGroupsSection?.content ?? null,
       });
       section.content.appendChild(pillEl);
       section.pills.push({ el: pillEl, colId });
@@ -768,7 +775,14 @@ export class ColumnsToolPanel implements ToolPanel {
         removeAriaLabel: `Remove ${this.resolveLabel(colId)} from column labels`,
         onRemove: () => this.api.removePivotColumn?.(colId),
         onDragOut: () => this.api.removePivotColumn?.(colId),
+        onReorder: (toIndex) => {
+          const ordered = this.api.getPivotColumns?.() ?? [];
+          const fromIndex = ordered.indexOf(colId);
+          if (fromIndex < 0) return;
+          this.api.movePivotColumn?.(fromIndex, toIndex);
+        },
         getZoneRect: () => this.getZoneRect(this.pivotsSection?.dropZone),
+        getZoneContent: () => this.pivotsSection?.content ?? null,
       });
       section.content.appendChild(pillEl);
       section.pills.push({ el: pillEl, colId });
@@ -799,7 +813,14 @@ export class ColumnsToolPanel implements ToolPanel {
         removeAriaLabel: `Remove ${label} from values`,
         onRemove: () => this.api.removeValueColumn?.(v.colId),
         onDragOut: () => this.api.removeValueColumn?.(v.colId),
+        onReorder: (toIndex) => {
+          const ordered = (this.api.getValueColumns?.() ?? []).map((vc) => vc.colId);
+          const fromIndex = ordered.indexOf(v.colId);
+          if (fromIndex < 0) return;
+          this.api.moveValueColumn?.(fromIndex, toIndex);
+        },
         getZoneRect: () => this.getZoneRect(this.valuesSection?.dropZone),
+        getZoneContent: () => this.valuesSection?.content ?? null,
       });
       section.content.appendChild(pillEl);
       section.pills.push({ el: pillEl, colId: v.colId, aggFunc: v.aggFunc });
@@ -826,7 +847,9 @@ export class ColumnsToolPanel implements ToolPanel {
     removeAriaLabel: string;
     onRemove: () => void;
     onDragOut: () => void;
+    onReorder: (toIndex: number) => void;
     getZoneRect: () => DOMRect | null;
+    getZoneContent: () => HTMLElement | null;
   }): HTMLElement {
     const pill = document.createElement('div');
     pill.className = `cg-columns-panel-${opts.zone}-pill cg-columns-panel-pill`;
@@ -864,7 +887,9 @@ export class ColumnsToolPanel implements ToolPanel {
         colId: opts.colId,
         label: opts.label,
         onDragOut: opts.onDragOut,
+        onReorder: opts.onReorder,
         getZoneRect: opts.getZoneRect,
+        getZoneContent: opts.getZoneContent,
       });
     });
 
@@ -1176,9 +1201,9 @@ export class ColumnsToolPanel implements ToolPanel {
     window.addEventListener('mouseup', onUp);
   }
 
-  /** Pill drag-out — generalised across rgz / plz / valz. On release:
-   *   • If the drop lands inside the originating zone → no-op
-   *     (within-zone reorder is deferred to a follow-up cycle).
+  /** Pill drag — generalised across rgz / plz / valz. On release:
+   *   • If the drop lands inside the originating zone → reorder the
+   *     pill to the slot under the cursor via `onReorder`.
    *   • Else if the drop lands on a DIFFERENT pill panel that accepts
    *     the column → atomic cross-panel move via
    *     `api.commitPanelMove`. The role-change events drive the panel
@@ -1195,7 +1220,9 @@ export class ColumnsToolPanel implements ToolPanel {
       colId: string;
       label: string;
       onDragOut: () => void;
+      onReorder: (toIndex: number) => void;
       getZoneRect: () => DOMRect | null;
+      getZoneContent: () => HTMLElement | null;
     },
   ): void {
     e.preventDefault();
@@ -1203,6 +1230,7 @@ export class ColumnsToolPanel implements ToolPanel {
     const startY = e.clientY;
     let dragging = false;
     let ghost: HTMLDivElement | null = null;
+    let insertionLine: HTMLDivElement | null = null;
 
     const mountGhost = (clientX: number, clientY: number): void => {
       if (typeof document === 'undefined') return;
@@ -1231,6 +1259,58 @@ export class ColumnsToolPanel implements ToolPanel {
 
     const liftedClass = `cg-columns-panel-${opts.zone}-pill--lifted`;
 
+    /** Resolve the slot index (0..pills.length) the cursor is hovering
+     *  over inside the zone's content container. The slot matches the
+     *  AG-Grid `moveInArray` semantics — it indexes into the FULL
+     *  pill list (including the dragged pill, which sits at its
+     *  original position with `visibility:hidden`). */
+    const computeSlotIndex = (clientY: number): { slot: number; gapY: number } | null => {
+      const content = opts.getZoneContent();
+      if (!content) return null;
+      const pills = Array.from(content.children).filter(
+        (el): el is HTMLElement => el instanceof HTMLElement
+          && el.classList.contains('cg-columns-panel-pill'),
+      );
+      if (pills.length === 0) {
+        const rect = content.getBoundingClientRect();
+        return { slot: 0, gapY: rect.top + 4 };
+      }
+      // Compare against each pill's vertical midpoint.
+      let slot = pills.length;
+      let gapY = pills[pills.length - 1]!.getBoundingClientRect().bottom + 1;
+      for (let i = 0; i < pills.length; i++) {
+        const r = pills[i]!.getBoundingClientRect();
+        const mid = r.top + r.height / 2;
+        if (clientY < mid) { slot = i; gapY = r.top - 1; break; }
+      }
+      return { slot, gapY };
+    };
+
+    const mountInsertionLine = (clientY: number): void => {
+      const content = opts.getZoneContent();
+      if (!content) return;
+      const target = computeSlotIndex(clientY);
+      if (!target) return;
+      if (!insertionLine) {
+        insertionLine = document.createElement('div');
+        insertionLine.className = 'cg-columns-panel-insertion-line';
+        // Inline a minimum-viable visual so themes that haven't
+        // styled the class still see the indicator.
+        insertionLine.style.cssText =
+          'position:absolute; left:0; right:0; height:2px; background:var(--cg-color-accent, #4aa3ff); pointer-events:none; z-index:5; border-radius:1px;';
+      }
+      const zoneRect = content.getBoundingClientRect();
+      // Position the line relative to the content container.
+      if (insertionLine.parentElement !== content) content.style.position = 'relative';
+      if (insertionLine.parentElement !== content) content.appendChild(insertionLine);
+      insertionLine.style.top = `${target.gapY - zoneRect.top}px`;
+    };
+
+    const removeInsertionLine = (): void => {
+      insertionLine?.remove();
+      insertionLine = null;
+    };
+
     const onMove = (ev: MouseEvent) => {
       if (!dragging) {
         const dx = ev.clientX - startX;
@@ -1241,6 +1321,15 @@ export class ColumnsToolPanel implements ToolPanel {
         mountGhost(ev.clientX, ev.clientY);
       }
       positionGhost(ev.clientX, ev.clientY);
+      // Paint the insertion line while the cursor is inside the
+      // source zone (within-zone reorder feedback). Clear it
+      // otherwise so a cross-panel drag doesn't leave a stale
+      // marker behind.
+      if (this.isPointInRect(opts.getZoneRect(), ev.clientX, ev.clientY)) {
+        mountInsertionLine(ev.clientY);
+      } else {
+        removeInsertionLine();
+      }
     };
 
     const sourceRole: 'rowGroup' | 'pivot' | 'value' =
@@ -1253,9 +1342,14 @@ export class ColumnsToolPanel implements ToolPanel {
       window.removeEventListener('mouseup', onUp);
       opts.pillEl.classList.remove(liftedClass);
       removeGhost();
+      removeInsertionLine();
       if (!dragging) return;
-      // Drop landed inside the source zone → no-op (reorder TBD).
-      if (this.isPointInRect(opts.getZoneRect(), ev.clientX, ev.clientY)) return;
+      // Drop landed inside the source zone → within-zone reorder.
+      if (this.isPointInRect(opts.getZoneRect(), ev.clientX, ev.clientY)) {
+        const target = computeSlotIndex(ev.clientY);
+        if (target) opts.onReorder(target.slot);
+        return;
+      }
       // Try routing to a foreign pill panel first. If the target
       // accepts, the column moves to the new role; the panel rebuild
       // happens through the role-change event. Only fall back to
