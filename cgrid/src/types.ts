@@ -70,11 +70,71 @@ export interface IAggFuncParams<TValue = unknown, TRow = any> {
 export type IAggFunc<TValue = unknown, TResult = unknown, TRow = any> =
   (params: IAggFuncParams<TValue, TRow>) => TResult;
 
+/** Cycle 27 / Task 1 — vertical alignment of cell content. */
+export type VAlign = 'top' | 'middle' | 'bottom';
+
+/** Cycle 27 / Task 1 — CSS font-weight values accepted in style overrides. */
+export type FontWeight =
+  | 'normal' | 'bold' | 'lighter' | 'bolder'
+  | 100 | 200 | 300 | 400 | 500 | 600 | 700 | 800 | 900;
+
+/** Cycle 27 / Task 1 — italic switch. */
+export type FontStyle = 'normal' | 'italic';
+
+/** Cycle 27 / Task 1 — text transform applied to `valueFormatted` before
+ *  the painter reads it. */
+export type TextTransform = 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+
+/** Cycle 27 / Task 1 — per-side padding override for cell content area.
+ *  Missing sides fall back to the painter's default (typically 6px). */
+export interface Padding {
+  top?: number;
+  right?: number;
+  bottom?: number;
+  left?: number;
+}
+
 export interface ColCellOverrides {
-  font?: string;
+  // ── Colors ────────────────────────────────────────────────────────────────
   fg?: string;
   bg?: string;
+
+  // ── Alignment ─────────────────────────────────────────────────────────────
   halign?: 'left' | 'right' | 'center';
+  /** Cycle 27 / Task 1 — `'middle'` (default) preserves the centered
+   *  baseline; `'top'` / `'bottom'` shift the text baseline to the cell's
+   *  top / bottom edge. */
+  valign?: VAlign;
+
+  // ── Font (shorthand kept for back-compat; breakouts compose into it) ──────
+  font?: string;
+  /** Cycle 27 / Task 1 — font family. Wins over the family in the fallback
+   *  shorthand. */
+  fontFamily?: string;
+  /** Cycle 27 / Task 1 — font size in CSS pixels. Wins over the size in the
+   *  fallback shorthand. */
+  fontSize?: number;
+  /** Cycle 27 / Task 1 — font weight. Numeric (100–900) or CSS keyword
+   *  (`'normal'`, `'bold'`, `'lighter'`, `'bolder'`). */
+  fontWeight?: FontWeight;
+  /** Cycle 27 / Task 1 — italic / normal switch. */
+  fontStyle?: FontStyle;
+
+  // ── Text ──────────────────────────────────────────────────────────────────
+  /** Cycle 27 / Task 1 — transform applied to `valueFormatted` before paint:
+   *  `'uppercase'` / `'lowercase'` / `'capitalize'` / `'none'` (default). */
+  textTransform?: TextTransform;
+  /** Cycle 27 / Task 1 — extra spacing between characters in CSS pixels.
+   *  Forwarded to `CanvasRenderingContext2D.letterSpacing` at paint time
+   *  (Chromium 99+, Firefox 116+, Safari 16+). */
+  letterSpacing?: number;
+  /** Cycle 27 / Task 1 — line-height multiplier for wrap-text cells.
+   *  Default `1.2`. Has no effect on single-line `textCell` / `numberCell`. */
+  lineHeight?: number;
+  /** Cycle 27 / Task 1 — content padding. Accepts a uniform number
+   *  (applies to all four sides) or a per-side object. Missing sides
+   *  fall back to the painter's default. */
+  padding?: number | Padding;
 }
 
 /** Params passed to `cellClass`, `cellClassRules`, and `cellStyle` callbacks. */
@@ -125,6 +185,14 @@ export type HeaderClass =
   | string
   | string[]
   | ((params: { colId: string }) => string | string[] | undefined);
+
+/**
+ * Function-form `headerStyle`. Cycle 27 / Task 1. Applied per header paint;
+ * return value layers AFTER any class-driven variants.
+ */
+export type HeaderStyleFunc = (
+  params: { colId: string },
+) => ColCellOverrides | null | undefined;
 
 export interface CGridOptions<TRow = any> {
   columnDefs: (CColDef<TRow> | CColGroupDef<TRow>)[];
@@ -1329,6 +1397,13 @@ export interface CColDef<TRow = any, TValue = any> {
    */
   cellStyle?: ColCellOverrides | CellStyleFunc<TRow, TValue>;
   /**
+   * Cycle 27 / Task 1 — direct style override for this column's HEADER cell.
+   * Static object or function form (called per header paint). Applied AFTER
+   * `headerClass` variants — same precedence rules as `cellStyle` vs
+   * `cellClass`. Doesn't leak into data cells.
+   */
+  headerStyle?: ColCellOverrides | HeaderStyleFunc;
+  /**
    * Class name(s) applied to the header cell. Resolves through the theme's
    * `headerClassVariants` map. Cycle 6 / Task 7.
    */
@@ -1513,6 +1588,12 @@ export interface CColGroupDef<TRow = any> {
    * was storage-only).
    */
   headerClass?: HeaderClass;
+  /**
+   * Cycle 27 / Task 1 — direct style override for this group's HEADER cell.
+   * Static object or function form. Same precedence rules as the leaf
+   * `headerStyle` field on `CColDef`.
+   */
+  headerStyle?: ColCellOverrides | HeaderStyleFunc;
 }
 
 export interface CValueGetterParams<TRow> { data: TRow; colId: string }

@@ -1,4 +1,4 @@
-import type { CColDef, CColGroupDef, HeaderClass } from '../types';
+import type { CColDef, CColGroupDef, HeaderClass, ColCellOverrides, HeaderStyleFunc } from '../types';
 import { resolveColDef, type ResolvedColDef } from './propertyChain';
 
 /**
@@ -30,6 +30,17 @@ export interface ResolvedColGroupDef {
    * Cycle 6 / Task 7 (fix-pass).
    */
   headerClassFn?: (params: { colId: string }) => string | string[] | undefined;
+  /**
+   * Cycle 27 / Task 1 — pre-resolved static `headerStyle` patch for group
+   * header cells. The painter (`byRows.ts`) passes this to
+   * `applyCellProps` as `groupHeaderStyle`.
+   */
+  headerStyle?: ColCellOverrides;
+  /**
+   * Cycle 27 / Task 1 — function-form `headerStyle` for group headers.
+   * The painter passes this to `applyCellProps` as `groupHeaderStyleFn`.
+   */
+  headerStyleFn?: HeaderStyleFunc;
   /** Depth from root. Root nodes are depth 0. */
   depth: number;
   /** Tree children — groups or leaves, in declaration order. */
@@ -107,6 +118,13 @@ export function resolveColumnTree<TRow>(
         typeof hc === 'function'
           ? (hc as ResolvedColGroupDef['headerClassFn'])
           : undefined;
+      // Cycle 27 / Task 1 — pre-resolve group `headerStyle` into static-object
+      // and function-form slots, paralleling the leaf colDef path.
+      const hs = node.headerStyle;
+      const headerStyle: ColCellOverrides | undefined =
+        typeof hs === 'object' && hs !== null ? hs : undefined;
+      const headerStyleFn: HeaderStyleFunc | undefined =
+        typeof hs === 'function' ? hs : undefined;
 
       const groupNode: ResolvedColGroupDef = {
         kind: 'group',
@@ -117,6 +135,8 @@ export function resolveColumnTree<TRow>(
         headerClass: node.headerClass,
         headerClassStatic,
         headerClassFn,
+        headerStyle,
+        headerStyleFn,
         depth,
         children: [],
         leafColIds: [],

@@ -115,10 +115,10 @@ class WrapTextPainter implements CellPainter {
     wrapIntoLines(this.lineBuffer, text, innerW, measure);
     if (this.lineBuffer.length === 0) return;
 
-    // Line height ~ 1.2 × font size — matches the default CSS `line-height`
-    // for body text in most browsers. Keeps wrap visually aligned with
-    // single-line `textCell` (which uses middle-baseline + cell center).
-    const lineHeight = Math.round(fontSizePx(p.font) * 1.2);
+    // Line height multiplier — default 1.2 (matches the browser default
+    // `line-height` for body text). Cycle 27 / Task 1 lets the user
+    // override via `cellStyle.lineHeight`.
+    const lineHeight = Math.round(fontSizePx(p.font) * (p.lineHeight ?? 1.2));
     const innerH = p.bounds.h - 2 * PADDING_Y;
     const maxLines = Math.max(1, Math.floor(innerH / lineHeight));
 

@@ -395,6 +395,10 @@ function paintBand(
             iconColor: theme.focusRingColor,
             rowData: undefined,
             groupHeaderClassNames,
+            // Cycle 27 / Task 1 — thread the group's resolved headerStyle
+            // overrides through to applyCellProps' header branch.
+            groupHeaderStyle: groupDef?.headerStyle,
+            groupHeaderStyleFn: groupDef?.headerStyleFn,
             pivotGroupExpand,
           });
           cellRenderers.get('header').paint(gc, config);

@@ -13,6 +13,26 @@ export interface CellPaintConfig {
   bg: string;
   borderColor: string;
   halign: 'left' | 'right' | 'center';
+  /** Cycle 27 / Task 1 — vertical alignment of text content. `'middle'`
+   *  (default when undefined) preserves the existing behavior; `'top'` /
+   *  `'bottom'` shift the text baseline to the cell's top / bottom edge. */
+  valign?: 'top' | 'middle' | 'bottom';
+  /** Cycle 27 / Task 1 — text transform applied to `valueFormatted` by
+   *  `applyCellProps` before the painter reads it. Painters do NOT need to
+   *  re-apply this — the transform is already baked into `valueFormatted`. */
+  textTransform?: 'none' | 'uppercase' | 'lowercase' | 'capitalize';
+  /** Cycle 27 / Task 1 — extra CSS-px spacing between glyphs. Painters
+   *  forward to `ctx.letterSpacing = '<N>px'` (default `0`). */
+  letterSpacing?: number;
+  /** Cycle 27 / Task 1 — line-height multiplier for wrap-text cells.
+   *  `wrapTextCell` reads this; default `1.2`. */
+  lineHeight?: number;
+  /** Cycle 27 / Task 1 — per-side content padding. Painters read the
+   *  per-side value if set, otherwise fall back to their built-in
+   *  default. Normalized to a per-side object by `applyOverridePatch`
+   *  (a uniform number becomes `{ top, right, bottom, left }` with the
+   *  same value on all sides). */
+  padding?: { top?: number; right?: number; bottom?: number; left?: number };
   // What's already painted under this cell (bundle bg). Skip the bg fill
   // when bg === prefillColor (already done by the bundle pass).
   prefillColor: string;
@@ -171,35 +191,66 @@ export const textCell: CellPainter = {
     paintBackground(gc, p);
     gc.cache.fillStyle = p.fg;
     gc.cache.font = p.font;
-    gc.cache.textBaseline = 'middle';
-    const cy = p.bounds.y + p.bounds.h / 2;
+    applyLetterSpacing(gc, p);
+    const cy = resolveTextY(gc, p);
+    const padLeft = p.padding?.left ?? PADDING;
+    const padRight = p.padding?.right ?? PADDING;
     if (p.halign === 'right') {
       gc.cache.textAlign = 'right';
-      gc.fillText(p.valueFormatted, p.bounds.x + p.bounds.w - PADDING, cy);
+      gc.fillText(p.valueFormatted, p.bounds.x + p.bounds.w - padRight, cy);
     } else if (p.halign === 'center') {
       gc.cache.textAlign = 'center';
       gc.fillText(p.valueFormatted, p.bounds.x + p.bounds.w / 2, cy);
     } else {
       gc.cache.textAlign = 'left';
-      gc.fillText(p.valueFormatted, p.bounds.x + PADDING, cy);
+      gc.fillText(p.valueFormatted, p.bounds.x + padLeft, cy);
     }
   },
 };
+
+/** Cycle 27 / Task 1 — set the canvas `letterSpacing` from the cell
+ *  config. Always writes (defaults to `'0px'`) so the painter never
+ *  inherits stale state from a previous cell. */
+function applyLetterSpacing(gc: CachedContext2D, p: CellPaintConfig): void {
+  const ls = p.letterSpacing ?? 0;
+  // The DOM property accepts a CSS length string.
+  (gc.cache as any).letterSpacing = `${ls}px`;
+}
+
+/** Cycle 27 / Task 1 — sets `textBaseline` on the canvas and returns the
+ *  matching y coordinate based on `p.valign`. Centralised so every renderer
+ *  picks up valign uniformly. Undefined valign keeps the historical
+ *  `'middle'` baseline behaviour. */
+function resolveTextY(gc: CachedContext2D, p: CellPaintConfig): number {
+  const valign = p.valign ?? 'middle';
+  if (valign === 'top') {
+    gc.cache.textBaseline = 'top';
+    return p.bounds.y + PADDING / 2;
+  }
+  if (valign === 'bottom') {
+    gc.cache.textBaseline = 'alphabetic';
+    return p.bounds.y + p.bounds.h - PADDING / 2;
+  }
+  gc.cache.textBaseline = 'middle';
+  return p.bounds.y + p.bounds.h / 2;
+}
 
 export const numberCell: CellPainter = {
   paint(gc, p) {
     paintBackground(gc, p);
     gc.cache.fillStyle = p.fg;
     gc.cache.font = p.font;
-    gc.cache.textBaseline = 'middle';
+    applyLetterSpacing(gc, p);
     const align: CanvasTextAlign = p.halign === 'left' || p.halign === 'center'
       ? p.halign
       : 'right';
     gc.cache.textAlign = align;
-    const cy = p.bounds.y + p.bounds.h / 2;
-    const x = align === 'right' ? p.bounds.x + p.bounds.w - PADDING
+    const cy = resolveTextY(gc, p);
+    const padLeft = p.padding?.left ?? PADDING;
+    const padRight = p.padding?.right ?? PADDING;
+    const x = align === 'right' ? p.bounds.x + p.bounds.w - padRight
             : align === 'center' ? p.bounds.x + p.bounds.w / 2
-            : p.bounds.x + PADDING;
+            : p.bounds.x + padLeft;
     gc.fillText(p.valueFormatted, x, cy);
   },
 };

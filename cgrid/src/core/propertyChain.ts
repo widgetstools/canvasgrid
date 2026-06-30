@@ -140,6 +140,16 @@ export interface ResolvedColDef<TRow = any> {
    * Cycle 6 / Task 7.
    */
   headerClassFn?: (params: { colId: string }) => string | string[] | undefined;
+  /**
+   * Cycle 27 / Task 1 — static object form of `CColDef.headerStyle`. Applied
+   * AFTER header class variants. Skipped for data cells.
+   */
+  headerStyle?: ColCellOverrides;
+  /**
+   * Cycle 27 / Task 1 — function form of `CColDef.headerStyle`. Highest
+   * precedence header override. Skipped for data cells.
+   */
+  headerStyleFn?: (params: { colId: string }) => ColCellOverrides | null | undefined;
   /** See `CColDef.autoHeight`. When true, the worker measures wrapped-text
    *  height for every visible row in this column and contributes the result
    *  into the row's resolved height. Cycle 5 / Task 8. */
@@ -285,6 +295,17 @@ export interface ApplyCellPropsInput {
    */
   groupHeaderClassNames?: string[];
   /**
+   * Cycle 27 / Task 1 — static `headerStyle` patch from the GROUP definition.
+   * Applied after `groupHeaderClassNames` variants. Skipped when undefined.
+   */
+  groupHeaderStyle?: ColCellOverrides;
+  /**
+   * Cycle 27 / Task 1 — function-form `headerStyle` from the GROUP
+   * definition. Highest precedence for the group header cell. Skipped when
+   * undefined.
+   */
+  groupHeaderStyleFn?: (params: { colId: string }) => ColCellOverrides | null | undefined;
+  /**
    * Cycle 18 / Task 4 — set to `'open'` / `'closed'` when this group-header
    * cell belongs to a pivot result group that owns a
    * `columnGroupShow:'closed'` totals leaf (a branch pivot group). The
@@ -298,12 +319,114 @@ export interface ApplyCellPropsInput {
 
 /** Apply a `ColCellOverrides` patch onto the mutable slots of `target`.
  *  Only defined fields in `patch` are applied; `undefined` fields are
- *  silently skipped, which is what "later wins" stacking requires. */
+ *  silently skipped, which is what "later wins" stacking requires.
+ *
+ *  Cycle 27 / Task 1 — font is now composed via `composeFont(patch,
+ *  target.font)` so breakout fields (`fontFamily` / `fontSize` /
+ *  `fontWeight` / `fontStyle`) layer onto whatever was already in
+ *  `target.font` (theme default or prior patch). Each layer adds its own
+ *  fields, prior layers' fields survive. An explicit `patch.font`
+ *  shorthand replaces wholesale. `valign` also passes through here. */
 function applyOverridePatch(target: CellPaintConfig, patch: ColCellOverrides): void {
-  if (patch.font !== undefined) target.font = patch.font;
+  if (patch.font !== undefined
+      || patch.fontFamily !== undefined
+      || patch.fontSize !== undefined
+      || patch.fontWeight !== undefined
+      || patch.fontStyle !== undefined) {
+    target.font = composeFont(patch, target.font);
+  }
   if (patch.fg !== undefined) target.fg = patch.fg;
   if (patch.bg !== undefined) target.bg = patch.bg;
   if (patch.halign !== undefined) target.halign = patch.halign;
+  if (patch.valign !== undefined) target.valign = patch.valign;
+  if (patch.textTransform !== undefined) target.textTransform = patch.textTransform;
+  if (patch.letterSpacing !== undefined) target.letterSpacing = patch.letterSpacing;
+  if (patch.lineHeight !== undefined) target.lineHeight = patch.lineHeight;
+  if (patch.padding !== undefined) {
+    target.padding = typeof patch.padding === 'number'
+      ? { top: patch.padding, right: patch.padding, bottom: patch.padding, left: patch.padding }
+      : { ...patch.padding };
+  }
+}
+
+/** Cycle 27 / Task 1 — apply `textTransform` to a string. Cheap one-shot
+ *  helper; no-op for `'none'` / undefined. */
+function applyTextTransform(s: string, transform: 'none' | 'uppercase' | 'lowercase' | 'capitalize' | undefined): string {
+  if (!transform || transform === 'none') return s;
+  if (transform === 'uppercase') return s.toUpperCase();
+  if (transform === 'lowercase') return s.toLowerCase();
+  // 'capitalize': uppercase first letter of each whitespace-separated word
+  return s.replace(/\b\w/g, c => c.toUpperCase());
+}
+
+/** Cycle 27 / Task 1 — compose a CSS font shorthand from a
+ *  `ColCellOverrides` patch and a fallback shorthand (typically the
+ *  resolved theme font). Behavior:
+ *
+ *  - `overrides.font` (explicit shorthand) wins — returned verbatim.
+ *  - When no breakouts are set AND no `font`, returns the fallback as-is.
+ *  - When ANY breakout (`fontFamily` / `fontSize` / `fontWeight` /
+ *    `fontStyle`) is set, the fallback is parsed for its existing
+ *    family/size/weight/style and any breakout overrides the parsed
+ *    field. Output is `[style] [weight] <size>px <family>` with
+ *    style/weight only emitted when explicitly set or already present
+ *    in the fallback.
+ *
+ *  Pure function — no side effects, safe to call per cell. */
+export function composeFont(overrides: ColCellOverrides, fallback: string): string {
+  if (overrides.font !== undefined) return overrides.font;
+  const hasBreakout =
+    overrides.fontFamily !== undefined ||
+    overrides.fontSize !== undefined ||
+    overrides.fontWeight !== undefined ||
+    overrides.fontStyle !== undefined;
+  if (!hasBreakout) return fallback;
+
+  const parsed = parseFontShorthand(fallback);
+  const style  = overrides.fontStyle  ?? parsed.style;
+  const weight = overrides.fontWeight ?? parsed.weight;
+  const size   = overrides.fontSize   ?? parsed.size;
+  const family = overrides.fontFamily ?? parsed.family;
+
+  const parts: string[] = [];
+  if (style !== undefined && style !== 'normal') parts.push(style);
+  if (weight !== undefined && weight !== 'normal') parts.push(String(weight));
+  parts.push(`${size}px`);
+  parts.push(family);
+  return parts.join(' ');
+}
+
+interface ParsedFont {
+  style?: 'normal' | 'italic';
+  weight?: string | number;
+  size: number;
+  family: string;
+}
+
+/** Cycle 27 / Task 1 — parse a CSS font shorthand into its component
+ *  fields. Tolerant of the common shapes our tokens emit:
+ *  `13px Inter`, `600 13px Inter`, `italic 600 13px Inter`. Returns
+ *  sane defaults (`size: 13`, `family: 'sans-serif'`) when the string
+ *  doesn't match. */
+function parseFontShorthand(font: string): ParsedFont {
+  const sizeMatch = font.match(/(\d+(?:\.\d+)?)px\s+(.+)$/);
+  if (!sizeMatch) return { size: 13, family: 'sans-serif' };
+  const size = Number(sizeMatch[1]);
+  const family = sizeMatch[2]!.trim();
+  const head = font.slice(0, font.indexOf(`${sizeMatch[1]}px`)).trim();
+  if (!head) return { size, family };
+
+  const tokens = head.split(/\s+/);
+  let style: ParsedFont['style'] | undefined;
+  let weight: ParsedFont['weight'] | undefined;
+  for (const t of tokens) {
+    if (t === 'italic' || t === 'normal') {
+      if (style === undefined) style = t === 'italic' ? 'italic' : 'normal';
+    } else if (/^\d{3}$/.test(t) || ['bold', 'lighter', 'bolder'].includes(t)) {
+      if (weight === undefined) weight = /^\d{3}$/.test(t) ? Number(t) : t;
+    }
+  }
+  return { style, weight, size, family };
 }
 
 /** Cycle 14 / Task 1 — prepend a font-weight to a CSS font shorthand.
@@ -457,6 +580,37 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
         if (patch) applyOverridePatch(target, patch);
       }
     }
+
+    // Cycle 27 / Task 1 — direct `headerStyle` overrides on the leaf colDef.
+    // Static object, then function form. Applied AFTER class variants so
+    // an explicit `headerStyle` wins over a class variant of the same field.
+    if (colDef.headerStyle) {
+      applyOverridePatch(target, colDef.headerStyle);
+    }
+    if (colDef.headerStyleFn) {
+      let patch: ColCellOverrides | null | undefined;
+      try {
+        patch = colDef.headerStyleFn({ colId: colDef.colId });
+      } catch {
+        patch = undefined;
+      }
+      if (patch) applyOverridePatch(target, patch);
+    }
+    // Group-level `headerStyle` (from the column tree) — applies only on
+    // group-header rows. Static then function. Highest precedence inside the
+    // header branch (group def wins over the leaf colDef when both are set).
+    if (ctx.groupHeaderStyle) {
+      applyOverridePatch(target, ctx.groupHeaderStyle);
+    }
+    if (ctx.groupHeaderStyleFn) {
+      let patch: ColCellOverrides | null | undefined;
+      try {
+        patch = ctx.groupHeaderStyleFn({ colId: colDef.colId });
+      } catch {
+        patch = undefined;
+      }
+      if (patch) applyOverridePatch(target, patch);
+    }
   } else {
     // Data-cell path: resolve cellClass + cellClassRules → cellClassVariants.
     const variantMap = theme.cellClassVariants;
@@ -503,6 +657,13 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
       patch = undefined;
     }
     if (patch) applyOverridePatch(target, patch);
+  }
+
+  // ── 5. Cycle 27 / Task 1 — apply textTransform after all overrides ─────
+  // Last step so the final accumulated `target.textTransform` wins. Cheap
+  // string transform; no-op for `'none'` / undefined.
+  if (target.textTransform !== undefined && target.textTransform !== 'none') {
+    target.valueFormatted = applyTextTransform(target.valueFormatted, target.textTransform);
   }
 }
 
@@ -641,6 +802,13 @@ export function resolveColDef<TRow>(
       : undefined,
     cellStyleFn: typeof merged.cellStyle === 'function'
       ? merged.cellStyle as CellStyleFunc
+      : undefined,
+    // Cycle 27 / Task 1 — split headerStyle into object form vs function form.
+    headerStyle: typeof merged.headerStyle === 'object' && merged.headerStyle !== null
+      ? merged.headerStyle as ColCellOverrides
+      : undefined,
+    headerStyleFn: typeof merged.headerStyle === 'function'
+      ? merged.headerStyle as ResolvedColDef['headerStyleFn']
       : undefined,
     // Pre-compile cellClass, cellClassRules, headerClass. Cycle 6 / Task 7.
     ...compileCellClass(merged.cellClass as CellClass | undefined),
