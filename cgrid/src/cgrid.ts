@@ -3911,6 +3911,7 @@ export class CGrid<TRow = any> {
       removePivotColumn: (colId) => this.pivotState.removePivotColumn(colId),
       movePivotColumn: (from, to) => this.pivotState.movePivotColumn(from, to),
       isPivotActive: () => this.pivotState.isPivotActive(),
+      isPivotMode: () => this.pivotState.isPivotMode(),
       tryCrossPanelMove: (colId, x, y) => this.tryCrossPanelMoveFrom('pivot', colId, x, y),
     };
   }

@@ -97,6 +97,11 @@ export interface PivotPanelGridContext {
    *  content. The grid keeps this fresh by calling `setPivotActive`
    *  from its `pivotStateChanged` handler. */
   isPivotActive(): boolean;
+  /** True when `PivotState.isPivotMode()` is true. Pivot mode being
+   *  OFF hides the panel regardless of `pivotPanelShow` — the panel
+   *  is a pivot-mode-only surface (matches AG-Grid v35: with pivot
+   *  mode off, the top pivot drop strip never paints). */
+  isPivotMode(): boolean;
   /** Cross-section pill drag — try routing a pivot pill to a foreign
    *  panel (Row Group panel, Values zone, etc.). Returns `true` when
    *  the column was successfully moved; `false` when no foreign panel
@@ -179,6 +184,11 @@ export class PivotPanelHost {
   isVisible(): boolean {
     if (this.destroyed) return false;
     if (this.show === 'never') return false;
+    // Pivot panel is a pivot-mode-only surface. With pivot mode OFF
+    // the panel hides regardless of `pivotPanelShow` (matches AG
+    // Grid v35; the user wouldn't be assigning pivot columns when
+    // pivot mode isn't even on).
+    if (!this.ctx.isPivotMode()) return false;
     if (this.show === 'onlyWhenPivoting' && !this.ctx.isPivotActive()) return false;
     return true;
   }
@@ -203,7 +213,9 @@ export class PivotPanelHost {
    *  may have changed" tick. */
   setPivotActive(_active?: boolean): void {
     if (this.destroyed) return;
-    if (this.show !== 'onlyWhenPivoting') return;
+    // Re-apply visibility for every mode — the new `isVisible()`
+    // check folds in `isPivotMode()` so a pivotMode flip now
+    // affects `'always'` too, not just `'onlyWhenPivoting'`.
     this.applyVisibility();
   }
 

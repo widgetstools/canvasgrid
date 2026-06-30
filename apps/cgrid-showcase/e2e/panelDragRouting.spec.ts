@@ -180,6 +180,54 @@ test.describe('cross-section pill drag routing', () => {
     expect(fieldErrors).toEqual([]);
   });
 
+  test('pivot panel + Column Labels section hide when pivot mode is OFF (AG parity)', async ({ page }) => {
+    await gotoFeature(page, 'pivot');
+
+    // Pivot ON by default in the showcase — panel + section visible.
+    let initial = await page.evaluate(() => {
+      const pp = document.querySelector('.cg-pivot-panel') as HTMLElement | null;
+      const lblSection = Array.from(document.querySelectorAll('.cg-columns-panel-section'))
+        .find((s) => s.querySelector('.cg-columns-panel-plz')) as HTMLElement | undefined;
+      return {
+        pivotPanelDisplay: pp ? getComputedStyle(pp).display : 'no panel',
+        labelsSectionDisplay: lblSection ? getComputedStyle(lblSection).display : 'no section',
+      };
+    });
+    expect(initial.pivotPanelDisplay).not.toBe('none');
+
+    // Toggle pivot mode OFF via the showcase button.
+    await page.locator('[data-testid="btn-pivot-toggle"]').click();
+    await page.waitForTimeout(300);
+
+    const afterOff = await page.evaluate(() => {
+      const pp = document.querySelector('.cg-pivot-panel') as HTMLElement | null;
+      const lblSection = Array.from(document.querySelectorAll('.cg-columns-panel-section'))
+        .find((s) => s.querySelector('.cg-columns-panel-plz')) as HTMLElement | undefined;
+      return {
+        pivotPanelDisplay: pp ? getComputedStyle(pp).display : 'no panel',
+        labelsSectionDisplay: lblSection ? getComputedStyle(lblSection).display : 'no section',
+      };
+    });
+    expect(afterOff.pivotPanelDisplay).toBe('none');
+    expect(afterOff.labelsSectionDisplay).toBe('none');
+
+    // Toggle back ON — panel reappears.
+    await page.locator('[data-testid="btn-pivot-toggle"]').click();
+    await page.waitForTimeout(300);
+
+    const afterOn = await page.evaluate(() => {
+      const pp = document.querySelector('.cg-pivot-panel') as HTMLElement | null;
+      const lblSection = Array.from(document.querySelectorAll('.cg-columns-panel-section'))
+        .find((s) => s.querySelector('.cg-columns-panel-plz')) as HTMLElement | undefined;
+      return {
+        pivotPanelDisplay: pp ? getComputedStyle(pp).display : 'no panel',
+        labelsSectionDisplay: lblSection ? getComputedStyle(lblSection).display : 'no section',
+      };
+    });
+    expect(afterOn.pivotPanelDisplay).not.toBe('none');
+    expect(afterOn.labelsSectionDisplay).not.toBe('none');
+  });
+
   test('enable-flag predicates fall through to primaryColumnTree under pivot mode', async ({ page }) => {
     await gotoFeature(page, 'pivot');
     // In pivot mode the source colDefs are swapped out of columnDefsMap.
