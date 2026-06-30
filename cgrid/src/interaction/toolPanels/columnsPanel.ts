@@ -556,15 +556,23 @@ export class ColumnsToolPanel implements ToolPanel {
     return { el, checkbox, label };
   }
 
-  /** Checked state tracks VISIBILITY in every mode — without
-   *  exception. The user's cardinal principle is that the columns
-   *  side panel checkbox always matches what's on the grid: a column
-   *  visible in the grid is checked in the panel; a column hidden in
-   *  the grid is unchecked. Pivot role membership is communicated
-   *  through the Row Groups / Values / Column Labels pill sections,
-   *  not the row checkbox. */
+  /** Checked state: a row is checked when the column is VISIBLE
+   *  OR (in pivot mode) participates in a pivot ROLE — even when
+   *  the source column is hidden because the role auto-hid it.
+   *  Two combined truths:
+   *    • visibility — pivot OFF the panel is purely a visibility
+   *      lens; pivot ON visible non-role columns still read as
+   *      "checked" because they're on the grid.
+   *    • role membership — under pivot, adding a column to Row
+   *      Groups / Values / Column Labels makes it CHECKED in the
+   *      list even when the source col auto-hides (rowGroup
+   *      autoshow is the canonical example). That way the panel
+   *      reflects "this column is in the pivot" rather than only
+   *      "this column paints in the body". */
   private computeRowChecked(entry: CColumnState): boolean {
-    return entry.hide !== true;
+    if (entry.hide !== true) return true;
+    if (this.api.isPivotMode?.() === true && this.hasPivotRole(entry.colId)) return true;
+    return false;
   }
 
   /** True when the column is currently assigned ANY pivot-mode role
@@ -595,37 +603,39 @@ export class ColumnsToolPanel implements ToolPanel {
    *  the user's panel state and what's on screen always match. */
   private handleRowCheckboxClick(colId: string, checkbox: HTMLInputElement): void {
     const checked = checkbox.checked;
+
+    if (this.api.isPivotMode?.() === true) {
+      // Pivot mode: manage role assignment FIRST. Removing a
+      // row-group role would otherwise auto-restore the column's
+      // visibility (via `setGroupModel`'s show-removed-cols path)
+      // and stomp the hide flag the click is about to set. We do
+      // the role mutation first, then re-apply the user's
+      // visibility intent.
+      const groups = this.api.getRowGroupColumns?.() ?? [];
+      const values = this.api.getValueColumns?.() ?? [];
+      const pivots = this.api.getPivotColumns?.() ?? [];
+      const isGrouped = groups.includes(colId);
+      const isValued = values.some((v) => v.colId === colId);
+      const isPivoted = pivots.includes(colId);
+
+      if (!checked) {
+        if (isGrouped) this.api.removeRowGroupColumn?.(colId);
+        else if (isValued) this.api.removeValueColumn?.(colId);
+        else if (isPivoted) this.api.removePivotColumn?.(colId);
+      } else {
+        if (this.isColumnRowGroupable(colId)) {
+          this.api.addRowGroupColumn?.(colId);
+        } else if (this.isColumnValueable(colId)) {
+          const aggFunc = this.resolveDefaultAggFunc(colId);
+          this.api.addValueColumn?.(colId, aggFunc);
+        }
+      }
+    }
+
     // Visibility ALWAYS tracks the checkbox — pivot mode or not.
+    // Called LAST so it wins over the role-driven auto-show/auto-hide
+    // that `setGroupModel` runs as a side effect.
     this.api.setColumnsVisible([colId], checked);
-
-    if (this.api.isPivotMode?.() !== true) return;
-
-    // Pivot mode add-ons: also manage role assignment.
-    const groups = this.api.getRowGroupColumns?.() ?? [];
-    const values = this.api.getValueColumns?.() ?? [];
-    const pivots = this.api.getPivotColumns?.() ?? [];
-    const isGrouped = groups.includes(colId);
-    const isValued = values.some((v) => v.colId === colId);
-    const isPivoted = pivots.includes(colId);
-
-    if (!checked) {
-      // Uncheck: drop whichever role the column currently holds.
-      if (isGrouped) this.api.removeRowGroupColumn?.(colId);
-      else if (isValued) this.api.removeValueColumn?.(colId);
-      else if (isPivoted) this.api.removePivotColumn?.(colId);
-      return;
-    }
-    // Check: assign rowGroup (preferred) or value role to eligible
-    // columns. Non-eligible columns just turn visible — no role
-    // assignment, no phantom uncheck.
-    if (this.isColumnRowGroupable(colId)) {
-      this.api.addRowGroupColumn?.(colId);
-      return;
-    }
-    if (this.isColumnValueable(colId)) {
-      const aggFunc = this.resolveDefaultAggFunc(colId);
-      this.api.addValueColumn?.(colId, aggFunc);
-    }
   }
 
   /** Reflect the current grouping / value state in EVERY row's checkbox.
