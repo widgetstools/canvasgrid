@@ -576,40 +576,58 @@ describe('ColumnsToolPanel — pivotMode-dependent checkbox semantics (Cycle 18 
     expect(api.addValueColumn).not.toHaveBeenCalled();
   });
 
-  it('pivotMode ON: checking a column with enableRowGroup ADDS as row-group, NOT visibility', () => {
-    const api = makeApi({ pivotMode: true });
+  it('pivotMode ON: checking a hidden eligible column ADDS as row-group AND turns it visible', () => {
+    // Visibility tracks the checkbox deterministically: a check ALWAYS
+    // turns the column visible. Under pivot mode, role assignment
+    // rides alongside for eligible columns. Start with `country`
+    // hidden so the checkbox begins unchecked.
+    const api = makeApi({
+      pivotMode: true,
+      state: [
+        { colId: 'athlete', width: 120, hide: false },
+        { colId: 'country', width: 100, hide: true },
+        { colId: 'gold',    width: 80,  hide: false },
+      ],
+    });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
     const cb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="country"] .cg-columns-panel-row-checkbox')!;
-    cb.click(); // checked → ADD role
+    expect(cb.checked).toBe(false);
+    cb.click();
     expect(api.addRowGroupColumn).toHaveBeenCalledWith('country');
-    expect(api.setColumnsVisible).not.toHaveBeenCalled();
+    expect(api.setColumnsVisible).toHaveBeenCalledWith(['country'], true);
   });
 
-  it('pivotMode ON: checking a column with enableValue (only) ADDS as value with default sum', () => {
-    const api = makeApi({ pivotMode: true });
+  it('pivotMode ON: checking a hidden value-eligible column ADDS as value with default sum AND turns visible', () => {
+    const api = makeApi({
+      pivotMode: true,
+      state: [
+        { colId: 'country', width: 100, hide: false },
+        { colId: 'gold',    width: 80,  hide: true },
+      ],
+    });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
-    // `gold` is in valueable but not groupable in defaults.
     const cb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="gold"] .cg-columns-panel-row-checkbox')!;
+    expect(cb.checked).toBe(false);
     cb.click();
     expect(api.addValueColumn).toHaveBeenCalledWith('gold', 'sum');
     expect(api.addRowGroupColumn).not.toHaveBeenCalled();
-    expect(api.setColumnsVisible).not.toHaveBeenCalled();
+    expect(api.setColumnsVisible).toHaveBeenCalledWith(['gold'], true);
   });
 
-  it('pivotMode ON: unchecking a column already in row-groups REMOVES the role', () => {
+  it('pivotMode ON: unchecking a column already in row-groups REMOVES the role AND hides it', () => {
     const api = makeApi({ pivotMode: true, rowGroupColumns: ['country'] });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
     const cb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="country"] .cg-columns-panel-row-checkbox')!;
-    expect(cb.checked).toBe(true); // already grouped → starts checked
-    cb.click(); // unchecks
+    expect(cb.checked).toBe(true);
+    cb.click();
     expect(api.removeRowGroupColumn).toHaveBeenCalledWith('country');
-    expect(api.setColumnsVisible).not.toHaveBeenCalled();
+    expect(api.setColumnsVisible).toHaveBeenCalledWith(['country'], false);
   });
 
-  it('pivotMode ON: unchecking a column already in values REMOVES the role', () => {
+  it('pivotMode ON: unchecking a column already in values REMOVES the role AND hides it', () => {
     const api = makeApi({ pivotMode: true, valueColumns: [{ colId: 'gold', aggFunc: 'sum' }] });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
@@ -617,24 +635,29 @@ describe('ColumnsToolPanel — pivotMode-dependent checkbox semantics (Cycle 18 
     expect(cb.checked).toBe(true);
     cb.click();
     expect(api.removeValueColumn).toHaveBeenCalledWith('gold');
-    expect(api.setColumnsVisible).not.toHaveBeenCalled();
+    expect(api.setColumnsVisible).toHaveBeenCalledWith(['gold'], false);
   });
 
-  it('pivotMode ON: column with BOTH enableRowGroup AND enableValue — enableRowGroup wins (AG parity)', () => {
+  it('pivotMode ON: column with BOTH enableRowGroup AND enableValue — enableRowGroup wins on check (AG parity)', () => {
     const api = makeApi({
       pivotMode: true,
       groupable: new Set(['athlete']),
       valueable: new Set(['athlete']),
+      state: [{ colId: 'athlete', width: 120, hide: true }],
     });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
     const cb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="athlete"] .cg-columns-panel-row-checkbox')!;
+    expect(cb.checked).toBe(false);
     cb.click();
     expect(api.addRowGroupColumn).toHaveBeenCalledWith('athlete');
     expect(api.addValueColumn).not.toHaveBeenCalled();
   });
 
-  it('pivotMode ON: column with NEITHER enableRowGroup NOR enableValue — no-op on click', () => {
+  it('pivotMode ON: column with NEITHER enableRowGroup NOR enableValue — visibility still toggles', () => {
+    // Cardinal principle: the checkbox is the single source of truth
+    // for column visibility. Non-role-eligible columns still hide on
+    // uncheck so the panel state and the grid stay in sync.
     const api = makeApi({
       pivotMode: true,
       groupable: new Set(),
@@ -643,13 +666,13 @@ describe('ColumnsToolPanel — pivotMode-dependent checkbox semantics (Cycle 18 
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
     const cb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="athlete"] .cg-columns-panel-row-checkbox')!;
-    cb.click();
+    cb.click(); // starts checked; this unchecks
     expect(api.addRowGroupColumn).not.toHaveBeenCalled();
     expect(api.addValueColumn).not.toHaveBeenCalled();
-    expect(api.setColumnsVisible).not.toHaveBeenCalled();
+    expect(api.setColumnsVisible).toHaveBeenCalledWith(['athlete'], false);
   });
 
-  it('pivotMode ON: checkbox checked state reflects whether the column has a role (rowGroup OR value)', () => {
+  it('pivotMode ON: checkbox checked state reflects role membership OR visibility', () => {
     const api = makeApi({
       pivotMode: true,
       rowGroupColumns: ['country'],
@@ -660,9 +683,11 @@ describe('ColumnsToolPanel — pivotMode-dependent checkbox semantics (Cycle 18 
     const countryCb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="country"] .cg-columns-panel-row-checkbox')!;
     const goldCb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="gold"] .cg-columns-panel-row-checkbox')!;
     const athleteCb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="athlete"] .cg-columns-panel-row-checkbox')!;
+    // Country has rowGroup role → checked. Gold has value role → checked.
+    // Athlete has no role but is visible → checked (visibility fallback).
     expect(countryCb.checked).toBe(true);
     expect(goldCb.checked).toBe(true);
-    expect(athleteCb.checked).toBe(false);
+    expect(athleteCb.checked).toBe(true);
   });
 
   it('pivotMode ON→OFF flip (via external event) re-syncs checkboxes back to visibility semantics', () => {
