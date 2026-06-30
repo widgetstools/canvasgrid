@@ -6,6 +6,12 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "dev", "--workspace=cgrid-positions"],
       "port": 5183
+    },
+    {
+      "name": "cgrid-showcase",
+      "runtimeExecutable": "npm",
+      "runtimeArgs": ["run", "dev", "--workspace=cgrid-showcase"],
+      "port": 5185
     }
   ]
 }
