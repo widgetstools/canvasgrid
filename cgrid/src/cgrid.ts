@@ -16,6 +16,7 @@ import type { ToolPanel, SideBarDef } from './interaction/toolPanels/types';
 import { TypedEventEmitter } from './core/eventEmitter';
 import { type ResolvedColDef, applyCellProps } from './core/propertyChain';
 import { resolveColumnTree, isColGroupDef, type ColumnTree } from './core/columnTree';
+import { resolveSelection } from './core/selectionConfig';
 import { ColumnGroupState, resolveVisibleLeaves } from './core/columnGroupState';
 import {
   applyReorder, resolveLegalDropIndex, reorderLeavesByList,
@@ -159,6 +160,13 @@ export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/regi
 // Cycle 23 / Tasks 5-6 — state-snapshot public types.
 export type { GridState } from './core/stateSnapshot';
 export { STATE_SCHEMA_VERSION } from './core/stateSnapshot';
+export type {
+  SelectionConfig,
+  SingleRowSelectionConfig,
+  MultiRowSelectionConfig,
+  CellSelectionConfig,
+  RowCheckboxCallback,
+} from './core/selectionConfig';
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
 
 // Cycle 27 / Task 1 + 2 + 3 — cell styling expansion types.
@@ -891,6 +899,28 @@ export class CGrid<TRow = any> {
     // so collapsing a group hides its 'open'-only children (and vice-versa).
     // `columnDefsMap` keeps every leaf (including currently-hidden ones) so
     // toggling a group back open can rehydrate without re-resolving defs.
+    // Unified `selection` config resolution. When set, it overrides
+    // legacy `rowSelection` / `suppressRowClickSelection` /
+    // `rowMultiSelectWithClick` and may auto-inject a pinned-left
+    // checkbox column at index 0 (pre-tree-build so the column shows
+    // up alongside the rest with no special-case painting path).
+    const resolvedSelection = resolveSelection<TRow>(options.selection);
+    if (resolvedSelection) {
+      options.rowSelection = resolvedSelection.rowSelectionMode;
+      if (resolvedSelection.suppressRowClickSelection) options.suppressRowClickSelection = true;
+      if (resolvedSelection.rowMultiSelectWithClick) options.rowMultiSelectWithClick = true;
+      if (resolvedSelection.syntheticCheckboxColumn) {
+        // Skip if the app already added a column with the same colId
+        // (idempotent if `selection` is set via setGridOption +
+        // updateGridOptions cycle later).
+        const hasIt = options.columnDefs.some(
+          (d) => (d as any).colId === resolvedSelection.syntheticCheckboxColumn!.colId,
+        );
+        if (!hasIt) {
+          options.columnDefs = [resolvedSelection.syntheticCheckboxColumn, ...options.columnDefs];
+        }
+      }
+    }
     this.columnTree = resolveColumnTree(options.columnDefs, options.defaultColDef, options.columnTypes);
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
     this.columnGroupState = new ColumnGroupState(this.columnTree);
