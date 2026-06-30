@@ -153,6 +153,65 @@ describe('Cycle 23 / Task 2 — mouse hover events (cellMouseOver/Out + rowMouse
   });
 });
 
+describe('Cycle 23 / Task 3 — body-scroll events', () => {
+  it('fires bodyScroll on every scroll tick with { top, left, direction }', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    host.style.cssText = 'width:400px; height:300px;';
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+    } as any);
+
+    const events: any[] = [];
+    grid.on('bodyScroll', (e: any) => events.push(e));
+
+    // Drive the scroll path directly — happy-dom's scroll event
+    // doesn't fire from a synthetic dispatch reliably, so we exercise
+    // the same code path the listener invokes.
+    (grid as any).onScrollerScroll(0, 100);
+    (grid as any).onScrollerScroll(50, 100);
+    (grid as any).onScrollerScroll(50, 150);
+
+    expect(events.length).toBe(3);
+    expect(events[0]).toMatchObject({ top: 100, left: 0, direction: 'vertical' });
+    expect(events[1]).toMatchObject({ top: 100, left: 50, direction: 'horizontal' });
+    expect(events[2]).toMatchObject({ top: 150, left: 50, direction: 'vertical' });
+    grid.destroy();
+  });
+
+  it('debounces bodyScrollEnd — fires once 200ms after the last scroll', async () => {
+    vi.useFakeTimers();
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    host.style.cssText = 'width:400px; height:300px;';
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+    } as any);
+
+    const endEvents: any[] = [];
+    grid.on('bodyScrollEnd', (e: any) => endEvents.push(e));
+
+    (grid as any).onScrollerScroll(0, 50);
+    vi.advanceTimersByTime(100);
+    (grid as any).onScrollerScroll(0, 100);
+    vi.advanceTimersByTime(100);
+    // Still no end event — the second scroll reset the debounce.
+    expect(endEvents.length).toBe(0);
+    (grid as any).onScrollerScroll(0, 150);
+    vi.advanceTimersByTime(199);
+    expect(endEvents.length).toBe(0);
+    vi.advanceTimersByTime(2);
+    expect(endEvents.length).toBe(1);
+    expect(endEvents[0]).toMatchObject({ top: 150, left: 0 });
+    grid.destroy();
+    vi.useRealTimers();
+  });
+});
+
 describe('Cycle 23 / Task 2 — integration with CGrid', () => {
   it('grid.on("cellMouseOver") fires with rowId + colId + value when the pointer crosses a cell boundary', async () => {
     const { CGrid } = await import('../src/cgrid');

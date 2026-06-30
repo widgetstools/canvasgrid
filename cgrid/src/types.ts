@@ -2135,6 +2135,19 @@ export type CGridEvent =
   | RowValueChangedEvent
   | { type: 'selectionChanged'; selectedRowIds: string[] }
   | { type: 'viewportChanged'; firstRow: number; lastRow: number }
+  /** Cycle 23 / Task 3 — fires on every scroll tick. `direction`
+   *  carries the dominant axis of THIS tick relative to the previous
+   *  scroll position (`'vertical'` if `top` changed, `'horizontal'`
+   *  if only `left` changed). Apps that watch scroll progress
+   *  (mini-map cursors, custom virtualization) subscribe here.
+   *  Pair with `bodyScrollEnd` (debounced) for "settled" handlers. */
+  | { type: 'bodyScroll'; top: number; left: number; direction: 'vertical' | 'horizontal' }
+  /** Cycle 23 / Task 3 — debounced companion to `bodyScroll`. Fires
+   *  exactly once 200ms after the last scroll tick; subsequent
+   *  scrolls within the window reset the debounce. Apps that
+   *  persist scroll position to storage hook this instead of
+   *  `bodyScroll` so they save once per gesture. */
+  | { type: 'bodyScrollEnd'; top: number; left: number }
   | { type: 'modelUpdated'; visibleRowCount: number }
   | { type: 'sortChanged'; sortModel: SortModel }
   | {

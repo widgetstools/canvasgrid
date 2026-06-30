@@ -454,6 +454,10 @@ export class CGrid<TRow = any> {
   private theme: ResolvedTheme;
   private scrollLeft = 0;
   private scrollTop = 0;
+  /** Cycle 23 / Task 3 — debounce handle for `bodyScrollEnd`. Cleared
+   *  on every scroll tick and re-armed for 200ms; null when no scroll
+   *  has happened in the last window. */
+  private scrollEndTimer: ReturnType<typeof setTimeout> | null = null;
   private rowCount = 0;
   private chunk: ViewportChunk | null = null;
   /** Cycle 15 / Task 16 — latest sticky ancestor band from the worker.
@@ -5104,6 +5108,12 @@ export class CGrid<TRow = any> {
       this.flashTickHandle = null;
     }
     this.flashRegistry.destroy();
+    // Cycle 23 / Task 3 — clear the debounce so a late-firing
+    // bodyScrollEnd doesn't try to emit on a destroyed grid.
+    if (this.scrollEndTimer !== null) {
+      clearTimeout(this.scrollEndTimer);
+      this.scrollEndTimer = null;
+    }
     // Cycle 22 / Task 3 — explicit cleanup of any inline `--cg-*`
     // overrides so the WeakMap state doesn't leak past destroy. The
     // root element gets removed below, but apps that re-parent / re-
@@ -5995,10 +6005,29 @@ export class CGrid<TRow = any> {
   private onScrollerScroll(x: number, y: number): void {
     if (x === this.scrollLeft && y === this.scrollTop) return;
     const horizontal = x !== this.scrollLeft;
+    const verticalChanged = y !== this.scrollTop;
     this.scrollLeft = x;
     this.scrollTop = y;
     this.recomputeViewport(/* afterScroll */ horizontal);
     this.events.emit({ type: 'viewportChanged', firstRow: this.viewport.firstRow, lastRow: this.viewport.lastRow });
+    // Cycle 23 / Task 3 — bodyScroll fires every tick. `direction`
+    // reports the dominant axis change for THIS tick; ties (both
+    // axes moved) report `'vertical'` so listeners get a stable
+    // signal for the more common case.
+    this.events.emit({
+      type: 'bodyScroll', top: y, left: x,
+      direction: verticalChanged ? 'vertical' : 'horizontal',
+    });
+    // Cycle 23 / Task 3 — bodyScrollEnd is debounced 200ms after the
+    // last scroll tick. Subsequent scrolls reset the timer so apps
+    // that persist on the END event save once per gesture instead of
+    // once per pixel.
+    if (this.scrollEndTimer !== null) clearTimeout(this.scrollEndTimer);
+    this.scrollEndTimer = setTimeout(() => {
+      this.scrollEndTimer = null;
+      if (this.destroyed) return;
+      this.events.emit({ type: 'bodyScrollEnd', top: this.scrollTop, left: this.scrollLeft });
+    }, 200);
     this.cgridCanvas.requestRepaint();
     this.requestViewport();
     this.syncOpenEditorPosition();
