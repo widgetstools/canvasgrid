@@ -1,6 +1,8 @@
 import type { CachedContext2D } from '../gc';
-import { drawIcon } from '../icons';
+import { drawIcon, hasIcon } from '../icons';
 import { paintCellBorders } from '../painters/cellBordersPainter';
+import { paintCellDecorators } from '../painters/cellDecoratorsPainter';
+import type { CellContent } from '../../types';
 
 export interface CellPaintConfig {
   // Cell content
@@ -39,6 +41,11 @@ export interface CellPaintConfig {
    *  top of the cell. Undefined leaves the default grid lines in
    *  charge. */
   border?: import('../../types').BorderSpec;
+  /** Cycle 27 / Task 3 — content slot override. When set, painters render
+   *  this instead of `valueFormatted`. */
+  content?: import('../../types').CellContent;
+  /** Cycle 27 / Task 3 — decorators overlaid after content. */
+  decorators?: import('../../types').CellDecorator[];
   // What's already painted under this cell (bundle bg). Skip the bg fill
   // when bg === prefillColor (already done by the bundle pass).
   prefillColor: string;
@@ -201,7 +208,13 @@ export const textCell: CellPainter = {
     const cy = resolveTextY(gc, p);
     const padLeft = p.padding?.left ?? PADDING;
     const padRight = p.padding?.right ?? PADDING;
-    if (p.halign === 'right') {
+    // Cycle 27 / Task 3 — content slot dispatch. When `p.content` is set,
+    // render the slot's payload (text / icon / emoji / icon+text) instead
+    // of `valueFormatted`. Otherwise fall through to the default text
+    // path which uses `valueFormatted`.
+    if (p.content) {
+      renderContentSlot(gc, p, p.content, cy, padLeft, padRight);
+    } else if (p.halign === 'right') {
       gc.cache.textAlign = 'right';
       gc.fillText(p.valueFormatted, p.bounds.x + p.bounds.w - padRight, cy);
     } else if (p.halign === 'center') {
@@ -214,6 +227,11 @@ export const textCell: CellPainter = {
     // Cycle 27 / Task 2 — per-cell border overlay (after content so it
     // sits on top). No-op when p.border is undefined.
     if (p.border) paintCellBorders(gc, p.bounds, p.border);
+    // Cycle 27 / Task 3 — decorator overlay layer (after borders so
+    // badges sit on the very top).
+    if (p.decorators && p.decorators.length > 0) {
+      paintCellDecorators(gc, p.bounds, p.decorators);
+    }
   },
 };
 
@@ -224,6 +242,85 @@ function applyLetterSpacing(gc: CachedContext2D, p: CellPaintConfig): void {
   const ls = p.letterSpacing ?? 0;
   // The DOM property accepts a CSS length string.
   (gc.cache as any).letterSpacing = `${ls}px`;
+}
+
+/** Cycle 27 / Task 3 — render the content-slot payload. Picks renderer
+ *  based on `content.kind`. The default text path (rendering
+ *  `valueFormatted`) lives in the painters themselves and is NOT
+ *  invoked when a content slot is set. */
+function renderContentSlot(
+  gc: CachedContext2D,
+  p: CellPaintConfig,
+  content: CellContent,
+  cy: number,
+  padLeft: number,
+  padRight: number,
+): void {
+  switch (content.kind) {
+    case 'text': {
+      // Same alignment logic as the default text path; just substitutes
+      // the text value.
+      gc.cache.fillStyle = p.fg;
+      gc.cache.font = p.font;
+      if (p.halign === 'right') {
+        gc.cache.textAlign = 'right';
+        gc.fillText(content.value, p.bounds.x + p.bounds.w - padRight, cy);
+      } else if (p.halign === 'center') {
+        gc.cache.textAlign = 'center';
+        gc.fillText(content.value, p.bounds.x + p.bounds.w / 2, cy);
+      } else {
+        gc.cache.textAlign = 'left';
+        gc.fillText(content.value, p.bounds.x + padLeft, cy);
+      }
+      return;
+    }
+    case 'emoji': {
+      const size = content.size ?? Math.max(12, fontSizePx(p.font));
+      gc.cache.fillStyle = p.fg;
+      gc.cache.font = `${size}px sans-serif`;
+      gc.cache.textAlign = 'center';
+      gc.cache.textBaseline = 'middle';
+      gc.fillText(content.value, p.bounds.x + p.bounds.w / 2, cy);
+      return;
+    }
+    case 'icon': {
+      const size = content.size ?? 16;
+      const color = content.color ?? p.fg;
+      drawIcon(gc as unknown as CanvasRenderingContext2D, content.icon,
+        p.bounds.x + p.bounds.w / 2, cy, size, { color, strokeWidth: 2 });
+      return;
+    }
+    case 'icon-text': {
+      const iconSize = content.iconSize ?? 14;
+      const iconColor = content.iconColor ?? p.fg;
+      const gap = content.gap ?? 4;
+      const before = (content.iconPosition ?? 'before') === 'before';
+      const textWidth = gc.measureText(content.text).width;
+      const totalWidth = iconSize + gap + textWidth;
+      // Center the icon+text cluster horizontally based on halign.
+      let startX: number;
+      if (p.halign === 'right') startX = p.bounds.x + p.bounds.w - padRight - totalWidth;
+      else if (p.halign === 'center') startX = p.bounds.x + (p.bounds.w - totalWidth) / 2;
+      else startX = p.bounds.x + padLeft;
+
+      const iconX = before ? startX + iconSize / 2 : startX + textWidth + gap + iconSize / 2;
+      const textX = before ? startX + iconSize + gap : startX;
+      drawIcon(gc as unknown as CanvasRenderingContext2D, content.icon, iconX, cy, iconSize,
+        { color: iconColor, strokeWidth: 2 });
+      gc.cache.fillStyle = p.fg;
+      gc.cache.font = p.font;
+      gc.cache.textAlign = 'left';
+      gc.cache.textBaseline = (gc.cache as any).textBaseline ?? 'middle';
+      gc.fillText(content.text, textX, cy);
+      return;
+    }
+  }
+}
+
+/** Parse the px size out of a CSS font shorthand. Defensive default 13. */
+function fontSizePx(font: string): number {
+  const m = font.match(/(\d+(?:\.\d+)?)px/);
+  return m ? parseFloat(m[1]!) : 13;
 }
 
 /** Cycle 27 / Task 1 — sets `textBaseline` on the canvas and returns the
@@ -260,9 +357,17 @@ export const numberCell: CellPainter = {
     const x = align === 'right' ? p.bounds.x + p.bounds.w - padRight
             : align === 'center' ? p.bounds.x + p.bounds.w / 2
             : p.bounds.x + padLeft;
-    gc.fillText(p.valueFormatted, x, cy);
+    if (p.content) {
+      renderContentSlot(gc, p, p.content, cy, padLeft, padRight);
+    } else {
+      gc.fillText(p.valueFormatted, x, cy);
+    }
     // Cycle 27 / Task 2 — per-cell border overlay.
     if (p.border) paintCellBorders(gc, p.bounds, p.border);
+    // Cycle 27 / Task 3 — decorator overlay layer.
+    if (p.decorators && p.decorators.length > 0) {
+      paintCellDecorators(gc, p.bounds, p.decorators);
+    }
   },
 };
 

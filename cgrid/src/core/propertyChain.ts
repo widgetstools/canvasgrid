@@ -353,6 +353,9 @@ function applyOverridePatch(target: CellPaintConfig, patch: ColCellOverrides): v
   // spec in their `cellStyle` patch; deep-merge would surprise more than
   // help.
   if (patch.border !== undefined) target.border = patch.border;
+  // Cycle 27 / Task 3 — content + decorators replace wholesale.
+  if (patch.content !== undefined) target.content = patch.content;
+  if (patch.decorators !== undefined) target.decorators = patch.decorators;
 }
 
 /** Cycle 27 / Task 1 — apply `textTransform` to a string. Cheap one-shot
@@ -519,6 +522,21 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.fg = ctx.isHeader ? theme.headerFg : theme.fg;
   target.bg = ctx.rowBg;
   target.halign = colDef.cellDataType === 'number' ? 'right' : 'left';
+
+  // Cycle 27 / Task 1+2+3 — reset opt-in fields with no theme default so
+  // they don't bleed across cells when the target config is reused
+  // across the paint loop. A field that was set by a prior cell's
+  // `cellStyle` patch would otherwise carry into the next cell that
+  // doesn't override it (the original bug surfaced via Task 3's
+  // function-form content-slot leaking into adjacent columns).
+  target.valign = undefined;
+  target.textTransform = undefined;
+  target.letterSpacing = undefined;
+  target.lineHeight = undefined;
+  target.padding = undefined;
+  target.border = undefined;
+  target.content = undefined;
+  target.decorators = undefined;
 
   // Cycle 14 / Task 1 — totals-row "lift" treatment. Bumps the font
   // weight by +1 stop (body 400 → totals 500 by default) and swaps

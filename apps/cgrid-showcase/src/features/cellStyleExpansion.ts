@@ -1,7 +1,11 @@
-import { CGrid } from 'cgrid';
+import { CGrid, registerIcon } from 'cgrid';
 import type { ShowcaseRow } from '../seedData';
 import type { Feature } from './index';
 import { makeRows } from '../seedData';
+
+// Cycle 27 / Task 3 — register a custom icon at module load. Available
+// to any cell's `content` slot or `decorators` array via the name 'star'.
+registerIcon('star', 'M12 2l3 7h7l-5 4 2 7-7-4-7 4 2-7-5-4h7z');
 
 /**
  * Cycle 27 / Task 1 — Cell style expansion demo.
@@ -96,16 +100,19 @@ export const cellStyleExpansion: Feature = {
               width: 120,
               // Function-form cellStyle: color + bg by sign + bottom valign
               // + a colored bottom border that matches the sign tint
-              // (Task 2 — function-form patches can also set borders).
+              // (Task 2 — function-form patches can also set borders) +
+              // Task 3 TR dot decorator that mirrors the sign color.
               cellStyle: (p) => {
                 const v = Number(p.value ?? 0);
                 if (v > 0) return {
                   fg: '#065f46', bg: '#d1fae5', valign: 'bottom', fontWeight: 600,
                   border: { bottom: { width: 2, color: '#10b981', style: 'solid' } },
+                  decorators: [{ position: 'tr', kind: 'dot', color: '#10b981', size: 6, inset: 4 }],
                 };
                 if (v < 0) return {
                   fg: '#7f1d1d', bg: '#fee2e2', valign: 'bottom', fontWeight: 600,
                   border: { bottom: { width: 2, color: '#ef4444', style: 'solid' } },
+                  decorators: [{ position: 'tr', kind: 'dot', color: '#ef4444', size: 6, inset: 4 }],
                 };
                 return { valign: 'bottom' };
               },
@@ -126,7 +133,10 @@ export const cellStyleExpansion: Feature = {
         },
 
         // Sector — capitalize transform + Task 2 'all' border (every
-        // cell in the column gets a thin double-line outline).
+        // cell in the column gets a thin double-line outline) + Task 3
+        // emoji content slot per sector + ML decorator badge that
+        // demonstrates the user-registered 'star' icon (from registerIcon
+        // at the top of this file).
         {
           colId: 'sector',
           field: 'sector',
@@ -134,11 +144,29 @@ export const cellStyleExpansion: Feature = {
           cellDataType: 'text',
           flex: 1,
           headerStyle: { halign: 'center' },
-          cellStyle: {
-            halign: 'center',
-            textTransform: 'capitalize',
-            fontWeight: 500,
-            border: { all: { width: 1, color: '#a78bfa', style: 'double' } },
+          cellStyle: (p) => {
+            const sector = String(p.value ?? '');
+            const sectorEmoji: Record<string, string> = {
+              Tech: '💻', Finance: '💰', Energy: '⚡',
+            };
+            const emoji = sectorEmoji[sector] ?? '•';
+            return {
+              halign: 'center',
+              textTransform: 'capitalize',
+              fontWeight: 500,
+              border: { all: { width: 1, color: '#a78bfa', style: 'double' } },
+              // Task 3 content slot: icon-text combination per sector.
+              content: { kind: 'icon-text', icon: 'star', text: `${emoji} ${sector}`,
+                iconColor: '#a78bfa', iconSize: 12, gap: 6 },
+              // Task 3 decorator: ML colored dot (sector-coded).
+              decorators: [
+                { position: 'ml', kind: 'dot',
+                  color: sector === 'Tech' ? '#3b82f6'
+                       : sector === 'Finance' ? '#fbbf24'
+                       : '#10b981',
+                  size: 6, inset: 6 },
+              ],
+            };
           },
         },
       ],

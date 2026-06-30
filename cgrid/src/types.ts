@@ -117,6 +117,63 @@ export interface BorderSpec {
   all?: BorderSide;
 }
 
+/** Cycle 27 / Task 3 — cell content slot. When set on `cellStyle.content`,
+ *  the painter renders this instead of `valueFormatted` (the default text
+ *  path). Use `'text'` to override the rendered string, `'icon'` to render
+ *  a registered icon, `'emoji'` to render a Unicode glyph at a custom
+ *  size, or `'icon-text'` to render both. */
+export type CellContent =
+  | { kind: 'text'; value: string }
+  | { kind: 'icon'; icon: string; color?: string; size?: number }
+  | { kind: 'emoji'; value: string; size?: number }
+  | {
+      kind: 'icon-text';
+      icon: string;
+      text: string;
+      /** Default `'before'` (icon left of text). */
+      iconPosition?: 'before' | 'after';
+      /** CSS-pixel gap between icon and text. Default `4`. */
+      gap?: number;
+      iconColor?: string;
+      iconSize?: number;
+    };
+
+/** Cycle 27 / Task 3 — decorator anchor positions. */
+export type DecoratorPosition =
+  | 'tl' | 'tr' | 'bl' | 'br'   // four corners
+  | 'ml' | 'mr';                 // middle-left, middle-right
+
+/** Cycle 27 / Task 3 — small decorator (icon / emoji / dot / short text
+ *  label) anchored to one of six positions inside a cell. Decorators
+ *  overlay the cell content; they don't shrink the content area. */
+export type CellDecorator =
+  | {
+      position: DecoratorPosition;
+      kind: 'icon';
+      icon: string;        // registered icon name
+      color?: string;
+      size?: number;       // CSS pixels, default 12
+      inset?: number;      // distance from cell edge, default 2
+      bg?: string;         // optional badge background (circle)
+    }
+  | {
+      position: DecoratorPosition;
+      kind: 'emoji' | 'text';
+      value: string;
+      color?: string;
+      size?: number;       // CSS pixels (font size), default 12
+      inset?: number;
+      bg?: string;
+    }
+  | {
+      position: DecoratorPosition;
+      kind: 'dot';
+      color: string;       // required for dot
+      size?: number;       // diameter; default 6
+      inset?: number;
+      bg?: string;         // optional ring
+    };
+
 export interface ColCellOverrides {
   // ── Colors ────────────────────────────────────────────────────────────────
   fg?: string;
@@ -164,6 +221,16 @@ export interface ColCellOverrides {
    *  `border` patch wholesale (not deep-merged). Sides not listed in the
    *  patch are invisible unless `all` is set. */
   border?: BorderSpec;
+
+  // ── Content + decorators ──────────────────────────────────────────────────
+  /** Cycle 27 / Task 3 — override the cell's rendered content. When set,
+   *  the painter renders this instead of `valueFormatted` (the default
+   *  text path). Replaces wholesale on patch. */
+  content?: CellContent;
+  /** Cycle 27 / Task 3 — up to 6 decorators (one per position) overlaid
+   *  on the cell after content paint. Each anchored to one of
+   *  TL/TR/BL/BR/ML/MR. Replaces wholesale on patch. */
+  decorators?: CellDecorator[];
 }
 
 /** Params passed to `cellClass`, `cellClassRules`, and `cellStyle` callbacks. */
