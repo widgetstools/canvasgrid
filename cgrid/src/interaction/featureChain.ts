@@ -43,6 +43,7 @@ import { RightClick } from './features/rightClick';
 import { KeyboardShortcuts } from './features/keyboardShortcuts';
 import { GroupExpandFeature } from './features/groupExpand';
 import { SparklineTooltip } from './features/sparklineTooltip';
+import { CellKeyboardEvents } from './features/cellKeyboardEvents';
 
 /** Idle gap (ms) after the last wheel event before the axis lock releases.
  *  ~150ms matches the natural pause between separate trackpad gestures while
@@ -60,8 +61,15 @@ export class FeatureChain {
   private wheelIdleTimer: ReturnType<typeof setTimeout> | null = null;
 
   constructor(private grid: CGridLike) {
-    this.head = new ColumnResizing();
+    // Cycle 23 / Task 4 — CellKeyboardEvents sits at the HEAD of the
+    // chain so every keydown fires `cellKeyDown` BEFORE any grid-side
+    // key handler runs. App listeners calling preventDefault
+    // short-circuit the chain entirely (the feature skips its
+    // `super.handleKeyDown` forward), so apps can disable
+    // Enter-to-commit per column, replace shortcuts, etc.
+    this.head = new CellKeyboardEvents();
     this.head
+      .append(new ColumnResizing())
       .append(new ColumnDrag())
       // Cycle 15 / Task 7 — GroupExpand sits ahead of EditTrigger /
       // FillHandle / RangeSelection / CellSelection. A click on the

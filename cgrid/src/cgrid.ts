@@ -1214,6 +1214,28 @@ export class CGrid<TRow = any> {
         this.emitRowMouseOverFromHover(rowIndex, mouse),
       emitRowMouseOut: (rowIndex, mouse) =>
         this.emitRowMouseOutFromHover(rowIndex, mouse),
+      // Cycle 23 / Task 4 — cell keyboard events. The CellKeyboardEvents
+      // feature sits at the HEAD of the chain; it returns the
+      // `event.defaultPrevented` flag back upstream so the chain can
+      // short-circuit when an app listener consumed the key.
+      emitCellKeyDown: (rowIndex, colId, event) => {
+        const rowId = this.rowIdAt(rowIndex);
+        if (!rowId) return false;
+        this.events.emit({
+          type: 'cellKeyDown', rowId, colId,
+          value: this.cellAt(rowIndex, colId)?.value, event,
+        });
+        return event.defaultPrevented;
+      },
+      emitCellKeyPress: (rowIndex, colId, event) => {
+        const rowId = this.rowIdAt(rowIndex);
+        if (!rowId) return false;
+        this.events.emit({
+          type: 'cellKeyPress', rowId, colId,
+          value: this.cellAt(rowIndex, colId)?.value, event,
+        });
+        return event.defaultPrevented;
+      },
       getEditingFlags: () => ({
         singleClickEdit: this.options.singleClickEdit ?? false,
         suppressClickEdit: this.options.suppressClickEdit ?? false,

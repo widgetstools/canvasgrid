@@ -212,6 +212,121 @@ describe('Cycle 23 / Task 3 — body-scroll events', () => {
   });
 });
 
+describe('Cycle 23 / Task 4 — cell keyboard events', () => {
+  it('emits cellKeyDown for the focused cell BEFORE any grid handler', async () => {
+    const { CellKeyboardEvents } = await import('../src/interaction/features/cellKeyboardEvents');
+    const feature = new CellKeyboardEvents();
+    const emitCellKeyDown = vi.fn(() => false);
+    const next = { handleKeyDown: vi.fn() };
+    (feature as any).next = next;
+
+    feature.handleKeyDown({
+      grid: {
+        selection: { state: { focusedRowIndex: 2, focusedColId: 'name' } },
+        emitCellKeyDown,
+        emitCellKeyPress: vi.fn(),
+      } as any,
+      hit: { kind: 'empty' },
+      point: { x: 0, y: 0 },
+      raw: new KeyboardEvent('keydown', { key: 'a' }),
+    });
+    expect(emitCellKeyDown).toHaveBeenCalledTimes(1);
+    expect(emitCellKeyDown).toHaveBeenCalledWith(2, 'name', expect.any(KeyboardEvent));
+    // Downstream features still run when not preventDefaulted.
+    expect(next.handleKeyDown).toHaveBeenCalled();
+  });
+
+  it('short-circuits the chain when the app calls event.preventDefault()', async () => {
+    const { CellKeyboardEvents } = await import('../src/interaction/features/cellKeyboardEvents');
+    const feature = new CellKeyboardEvents();
+    const emitCellKeyDown = vi.fn((_r: number, _c: string, e: KeyboardEvent) => {
+      e.preventDefault();
+      return true;
+    });
+    const next = { handleKeyDown: vi.fn() };
+    (feature as any).next = next;
+
+    feature.handleKeyDown({
+      grid: {
+        selection: { state: { focusedRowIndex: 2, focusedColId: 'name' } },
+        emitCellKeyDown,
+        emitCellKeyPress: vi.fn(),
+      } as any,
+      hit: { kind: 'empty' },
+      point: { x: 0, y: 0 },
+      raw: new KeyboardEvent('keydown', { key: 'Enter' }),
+    });
+    expect(next.handleKeyDown).not.toHaveBeenCalled();
+  });
+
+  it('emits cellKeyPress for printable single-char keys but not for Enter / Tab / Escape', async () => {
+    const { CellKeyboardEvents } = await import('../src/interaction/features/cellKeyboardEvents');
+    const feature = new CellKeyboardEvents();
+    const emitCellKeyPress = vi.fn(() => false);
+    const next = { handleKeyDown: vi.fn() };
+    (feature as any).next = next;
+    const grid = {
+      selection: { state: { focusedRowIndex: 0, focusedColId: 'name' } },
+      emitCellKeyDown: vi.fn(() => false),
+      emitCellKeyPress,
+    } as any;
+    const fire = (key: string) => feature.handleKeyDown({
+      grid, hit: { kind: 'empty' as const }, point: { x: 0, y: 0 },
+      raw: new KeyboardEvent('keydown', { key }),
+    });
+    fire('a');
+    fire('Z');
+    fire('5');
+    fire('Enter');
+    fire('Tab');
+    fire('Escape');
+    fire('ArrowDown');
+    expect(emitCellKeyPress).toHaveBeenCalledTimes(3);
+  });
+
+  it('does NOT emit cellKeyPress when Ctrl / Meta / Alt modifier is held', async () => {
+    const { CellKeyboardEvents } = await import('../src/interaction/features/cellKeyboardEvents');
+    const feature = new CellKeyboardEvents();
+    const emitCellKeyPress = vi.fn(() => false);
+    const next = { handleKeyDown: vi.fn() };
+    (feature as any).next = next;
+    const grid = {
+      selection: { state: { focusedRowIndex: 0, focusedColId: 'name' } },
+      emitCellKeyDown: vi.fn(() => false),
+      emitCellKeyPress,
+    } as any;
+    feature.handleKeyDown({
+      grid, hit: { kind: 'empty' as const }, point: { x: 0, y: 0 },
+      raw: new KeyboardEvent('keydown', { key: 'c', ctrlKey: true }),
+    });
+    feature.handleKeyDown({
+      grid, hit: { kind: 'empty' as const }, point: { x: 0, y: 0 },
+      raw: new KeyboardEvent('keydown', { key: 'c', metaKey: true }),
+    });
+    expect(emitCellKeyPress).not.toHaveBeenCalled();
+  });
+
+  it('no-ops when no cell is focused (focusedRowIndex / focusedColId are null)', async () => {
+    const { CellKeyboardEvents } = await import('../src/interaction/features/cellKeyboardEvents');
+    const feature = new CellKeyboardEvents();
+    const emitCellKeyDown = vi.fn();
+    const next = { handleKeyDown: vi.fn() };
+    (feature as any).next = next;
+    feature.handleKeyDown({
+      grid: {
+        selection: { state: { focusedRowIndex: null, focusedColId: null } },
+        emitCellKeyDown,
+        emitCellKeyPress: vi.fn(),
+      } as any,
+      hit: { kind: 'empty' },
+      point: { x: 0, y: 0 },
+      raw: new KeyboardEvent('keydown', { key: 'Enter' }),
+    });
+    expect(emitCellKeyDown).not.toHaveBeenCalled();
+    expect(next.handleKeyDown).toHaveBeenCalled();  // chain forward still
+  });
+});
+
 describe('Cycle 23 / Task 2 — integration with CGrid', () => {
   it('grid.on("cellMouseOver") fires with rowId + colId + value when the pointer crosses a cell boundary', async () => {
     const { CGrid } = await import('../src/cgrid');

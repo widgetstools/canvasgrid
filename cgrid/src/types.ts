@@ -2148,6 +2148,22 @@ export type CGridEvent =
    *  persist scroll position to storage hook this instead of
    *  `bodyScroll` so they save once per gesture. */
   | { type: 'bodyScrollEnd'; top: number; left: number }
+  /** Cycle 23 / Task 4 — focused cell sees a keydown BEFORE the grid's
+   *  own key handler. Apps can call `event.preventDefault()` to
+   *  suppress grid behavior (e.g., disable Enter-to-commit on a
+   *  specific column). `rowId` / `colId` reflect the currently
+   *  focused cell at the moment the key fired; `value` is the cell
+   *  value via `cellAt`. */
+  | { type: 'cellKeyDown'; rowId: string; colId: string; value: unknown; event: KeyboardEvent }
+  /** Cycle 23 / Task 4 — fires alongside `cellKeyDown` when the key
+   *  represents a single printable character (length-1 `event.key`
+   *  with no Ctrl / Meta / Alt modifier). Modern browsers deprecated
+   *  the native `keypress` event; the grid synthesizes this from
+   *  keydown so apps that watched ag-grid's `cellKeyPress` still get
+   *  the type-to-edit hook. `preventDefault` on the underlying
+   *  KeyboardEvent suppresses the grid's printable-key behavior the
+   *  same way. */
+  | { type: 'cellKeyPress'; rowId: string; colId: string; value: unknown; event: KeyboardEvent }
   | { type: 'modelUpdated'; visibleRowCount: number }
   | { type: 'sortChanged'; sortModel: SortModel }
   | {
