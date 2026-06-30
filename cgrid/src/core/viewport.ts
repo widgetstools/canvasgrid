@@ -164,8 +164,6 @@ export function computeViewport(opts: ViewportInput): ViewportState {
   let yAfterData = bodyTop;
   for (const subgrid of opts.subgrids) {
     if (!subgrid.isData) continue;
-    const fallbackH = subgrid.getRowHeight(0);
-    if (fallbackH <= 0) continue;
     const totalRows = subgrid.getRowCount();
     // Use the index only when it covers the same row population the data
     // subgrid reports. A length mismatch means a sort/filter just landed
@@ -173,6 +171,17 @@ export function computeViewport(opts: ViewportInput): ViewportState {
     // until the next `requestViewport()` completes.
     const idx = opts.dataRowHeightIndex && opts.dataRowHeightIndex.length() === totalRows
       ? opts.dataRowHeightIndex : undefined;
+    const fallbackH = subgrid.getRowHeight(0);
+    // Skip only when there is BOTH no usable per-row index AND no
+    // sensible fallback row height. Pivot mode reports
+    // `getRowHeight(0) === 0` for rows outside the loaded chunk
+    // window — without this guard, scrolling mid-load skips the data
+    // subgrid entirely, collapses `dataContentHeight` to 0, sets
+    // `maxScrollTop = 0`, the sizer shrinks to 1px, and the browser
+    // resets `scrollTop` to 0. The Fenwick index already carries
+    // valid heights (its constructor seeds every row with the
+    // grid-level fallback); use it.
+    if (!idx && fallbackH <= 0) continue;
 
     if (idx) {
       dataContentHeight += idx.totalHeight();
@@ -210,7 +219,14 @@ export function computeViewport(opts: ViewportInput): ViewportState {
       for (let pre = 0; pre < firstDataRow; pre++) top += subgrid.getRowHeight(pre);
     }
     for (let local = firstDataRow; local <= lastDataRow; local++) {
-      const h = subgrid.getRowHeight(local);
+      // Per-row height: subgrid first, but fall back to the index
+      // when the subgrid returns 0 (pivot mode outside-chunk
+      // sentinel). The index already carries the grid-level fallback
+      // for every row, so this keeps visible-row positioning sane
+      // mid-scroll while the new chunk is in flight.
+      let h = subgrid.getRowHeight(local);
+      if (h <= 0 && idx) h = idx.heightAt(local);
+      if (h <= 0 && fallbackH > 0) h = fallbackH;
       visibleRows.push({
         rowIndex: visibleRows.length,
         subgrid,
