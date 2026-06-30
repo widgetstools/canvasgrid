@@ -3147,6 +3147,15 @@ export class CGrid<TRow = any> {
       this.pivotPanel.setPivotColumns(e.pivotColumns);
       this.pivotPanel.setPivotActive(this.pivotState.isPivotActive());
     }
+    // When pivot was synthesised but the new state would produce no
+    // chunk (every pivot/value role removed at runtime), revert
+    // BEFORE the worker round-trip. Otherwise `workerColumns()` would
+    // ship the stale `pivotcol…` colIds the worker doesn't know
+    // about, the next `getViewport` would throw on `col.field`, and
+    // the grid would stay painted with the old pivot matrix.
+    if (this.pivotActive && !this.pivotState.isPivotActive()) {
+      this.revertPivotColumns();
+    }
     this.workerClient.updateColumns(this.workerColumns())
       .then(() => this.workerClient.setPivotModel(this.pivotWorkerModel()))
       .then(() => {

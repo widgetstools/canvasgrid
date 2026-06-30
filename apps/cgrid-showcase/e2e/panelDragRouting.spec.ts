@@ -133,6 +133,52 @@ test.describe('cross-section pill drag routing', () => {
     expect(after.pivots).not.toContain('region');
   });
 
+  test('unchecking ALL roles in pivot mode tears down synthesised pivot columns (no stale matrix)', async ({ page }) => {
+    await gotoFeature(page, 'pivot');
+    const opened = await page.evaluate(
+      () => document.querySelector('.cg-columns-panel-row[data-col-id="desk"]') !== null,
+    );
+    if (!opened) await page.locator('button.cg-side-bar-tab:has-text("Columns")').click();
+    await page.locator('.cg-columns-panel-row[data-col-id="desk"]').waitFor();
+
+    // Uncheck every checked row (desk + region + sector + pnl + notional).
+    const consoleErrors: string[] = [];
+    page.on('console', (msg) => {
+      if (msg.type() === 'error') consoleErrors.push(msg.text());
+    });
+    await page.evaluate(() => {
+      const rows = Array.from(document.querySelectorAll('.cg-columns-panel-row'));
+      for (const r of rows) {
+        const cb = r.querySelector('input[type=checkbox]') as HTMLInputElement | null;
+        if (cb?.checked) cb.click();
+      }
+    });
+    // Let the role-change pipeline settle.
+    await page.waitForTimeout(300);
+
+    const after = await page.evaluate(() => {
+      const g = (window as any).__cgrid;
+      return {
+        rowGroups: g.getRowGroupColumns(),
+        pivots: g.getPivotColumns(),
+        values: g.getValueColumns(),
+        columnOrder: (g.columnOrder ?? []).map((c: any) => c.colId),
+      };
+    });
+    expect(after.rowGroups).toEqual([]);
+    expect(after.pivots).toEqual([]);
+    expect(after.values).toEqual([]);
+    // No stale synthesised pivot result columns; the grid is back to
+    // source columns.
+    const stale = after.columnOrder.filter((id: string) => id.startsWith('pivotcol'));
+    expect(stale).toEqual([]);
+    // The worker shouldn't have errored on the way out (the
+    // mid-swap race in PivotPass.apply is the regression this test
+    // guards).
+    const fieldErrors = consoleErrors.filter((m) => m.includes("reading 'field'"));
+    expect(fieldErrors).toEqual([]);
+  });
+
   test('enable-flag predicates fall through to primaryColumnTree under pivot mode', async ({ page }) => {
     await gotoFeature(page, 'pivot');
     // In pivot mode the source colDefs are swapped out of columnDefsMap.
