@@ -439,6 +439,17 @@ export interface CGridOptions<TRow = any> {
   /** Number of extra rows to materialise above and below the visible window.
    *  Defaults to the engine's internal overscan (3) when unset. */
   rowBuffer?: number;
+  /** Cycle 25 / Task 4 — opt into the worker-side painter.
+   *   `'auto'` (default) selects `'offscreen'` when the platform
+   *  supports `OffscreenCanvas` + `Worker`, else `'main'`.
+   *   `'main'` forces the historic main-thread painter (useful
+   *  when the worker painter has a known regression).
+   *   `'offscreen'` requests the worker painter but still falls
+   *  back to `'main'` when the platform can't support it (no
+   *  surprise crashes).
+   *  NOTE: This commit ships the option + detection; the worker
+   *  painter itself is the follow-up that closes Task 4. */
+  paintMode?: 'auto' | 'main' | 'offscreen';
   /** Cycle 25 / Task 10 — soft cap on the cumulative byte size of
    *  cached viewport chunks the grid holds across requests. When
    *  exceeded, older chunks are evicted from the LRU (which itself
