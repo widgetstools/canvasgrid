@@ -46,6 +46,10 @@ export interface WorkerClientHandlers {
 export interface WorkerLike {
   postMessage(msg: unknown, transfer?: ArrayBuffer[]): void;
   addEventListener(type: 'message', cb: (e: { data: unknown }) => void): void;
+  /** Optional — when present, WorkerClient.destroy() removes the message
+   *  listener before terminate(). Real Web Workers expose it; test mocks
+   *  may omit it (the listener closure is GC'd with the mock anyway). */
+  removeEventListener?(type: 'message', cb: (e: { data: unknown }) => void): void;
   terminate(): void;
 }
 
@@ -68,9 +72,15 @@ export class WorkerClient {
   private pendingModelUpdated: { visibleCount: number; groupKeys?: string[] } | null = null;
   private pendingHeights: Array<{ rowStart: number; heights: Float32Array }> = [];
   private pendingTxnResults: TransactionResult[] = [];
+  private destroyed = false;
+  private readonly messageHandler: (e: { data: unknown }) => void;
 
   constructor(private worker: WorkerLike, private handlers: WorkerClientHandlers) {
-    worker.addEventListener('message', (e) => this.onMessage(e.data as WorkerResponse | WorkerPush));
+    this.messageHandler = (e) => {
+      if (this.destroyed) return;
+      this.onMessage(e.data as WorkerResponse | WorkerPush);
+    };
+    worker.addEventListener('message', this.messageHandler);
   }
 
   private scheduleFlush(): void {
@@ -84,6 +94,9 @@ export class WorkerClient {
 
   private flushPushQueue(): void {
     this.flushScheduled = false;
+    // Late-arriving RAF after destroy() — pending queues were already
+    // cleared, but bail explicitly so we don't dispatch into stale handlers.
+    if (this.destroyed) return;
     const model = this.pendingModelUpdated;
     const heights = this.pendingHeights;
     const txn = this.pendingTxnResults;
@@ -533,8 +546,22 @@ export class WorkerClient {
   }
 
   destroy(): void {
+    if (this.destroyed) return;
+    this.destroyed = true;
+    // Remove the message listener BEFORE terminate(). Two reasons:
+    // (1) real Workers may flush queued messages around terminate; we don't
+    //     want late deliveries hitting the now-stale handlers closure.
+    // (2) the listener arrow function captures `this` (and transitively the
+    //     handlers / CGrid instance) — explicit removal lets GC reclaim the
+    //     graph immediately rather than waiting for the Worker itself.
+    this.worker.removeEventListener?.('message', this.messageHandler);
     this.worker.terminate();
     this.pending.forEach((p) => p.reject(new Error('worker terminated')));
     this.pending.clear();
+    // Clear the queued-push state so any late-arriving callback that
+    // somehow survives can't re-emit stale data.
+    this.pendingModelUpdated = null;
+    this.pendingHeights = [];
+    this.pendingTxnResults = [];
   }
 }

@@ -594,13 +594,22 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   }
 
   // ── 3. Class-driven variants ───────────────────────────────────────────
-  // Build the params object for callbacks (shared shape).
-  const callbackParams = {
-    data: (ctx.rowData ?? {}) as Record<string, unknown>,
-    value: ctx.value,
-    colId: colDef.colId,
-    rowIndex: ctx.rowIndex ?? 0,
-  };
+  // The shared `callbackParams` literal is allocated lazily — header cells
+  // never read it (the header branch passes `{ colId }` instead), and
+  // static-only data columns (no cellClassFn / cellClassRules / cellStyleFn)
+  // don't need it either. Skipping the literal when no resolver consumes
+  // it removes a per-cell allocation in the paint hot loop.
+  const needsCallbackParams =
+    (!ctx.isHeader && (colDef.cellClassFn !== undefined || colDef.cellClassRules !== undefined))
+    || colDef.cellStyleFn !== undefined;
+  const callbackParams = needsCallbackParams
+    ? {
+        data: (ctx.rowData ?? {}) as Record<string, unknown>,
+        value: ctx.value,
+        colId: colDef.colId,
+        rowIndex: ctx.rowIndex ?? 0,
+      }
+    : undefined;
 
   if (ctx.isHeader) {
     // Header path: group-header cells supply groupHeaderClassNames (from the
@@ -664,7 +673,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
     if (colDef.cellClassStatic) {
       staticClassNames = colDef.cellClassStatic;
     } else if (colDef.cellClassFn) {
-      const result = colDef.cellClassFn(callbackParams);
+      const result = colDef.cellClassFn(callbackParams!);
       staticClassNames = result === undefined ? undefined
         : Array.isArray(result) ? result : [result];
     }
@@ -680,7 +689,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
       for (const rule of colDef.cellClassRules) {
         let matched: boolean;
         try {
-          matched = rule.predicate(callbackParams);
+          matched = rule.predicate(callbackParams!);
         } catch {
           matched = false;
         }
@@ -696,7 +705,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   if (colDef.cellStyleFn) {
     let patch: ColCellOverrides | null | undefined;
     try {
-      patch = colDef.cellStyleFn(callbackParams);
+      patch = colDef.cellStyleFn(callbackParams!);
     } catch {
       patch = undefined;
     }

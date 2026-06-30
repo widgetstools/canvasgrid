@@ -14,6 +14,7 @@ import type {
 } from './types';
 import type { ToolPanel, SideBarDef } from './interaction/toolPanels/types';
 import { TypedEventEmitter } from './core/eventEmitter';
+import { DisposableRegistry } from './core/disposable';
 import { type ResolvedColDef, applyCellProps } from './core/propertyChain';
 import { resolveColumnTree, isColGroupDef, type ColumnTree } from './core/columnTree';
 import { resolveSelection } from './core/selectionConfig';
@@ -659,6 +660,10 @@ export class CGrid<TRow = any> {
   private a11y: A11yOverlay;
   private workerClient: WorkerClient;
   private destroyed = false;
+  /** Centralized teardown for every listener / RAF / timer the grid installs.
+   *  Use `this.disposables.addListener` / `addRaf` / `addTimeout` instead of
+   *  raw `addEventListener` / RAF / setTimeout so destroy() never misses one. */
+  private disposables = new DisposableRegistry();
   /** Cycle 10 / Task 6 — methods that have already emitted a one-time
    *  warn after being gated by `suppressClipboardApi`. Keeps the
    *  console quiet for apps that repeatedly hit a suppressed entry
@@ -1489,7 +1494,7 @@ export class CGrid<TRow = any> {
     if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
       this.reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
       this.reducedMotion = this.reducedMotionQuery.matches;
-      this.reducedMotionQuery.addEventListener('change', (e) => {
+      this.disposables.addMediaQueryListener(this.reducedMotionQuery, (e) => {
         this.reducedMotion = e.matches;
       });
     }
@@ -1732,7 +1737,7 @@ export class CGrid<TRow = any> {
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
 
     // 10. Native scroll listener
-    this.scroller.addEventListener('scroll', () => {
+    this.disposables.addListener(this.scroller, 'scroll', () => {
       this.onScrollerScroll(this.scroller.scrollLeft, this.scroller.scrollTop);
     });
 
@@ -1742,7 +1747,7 @@ export class CGrid<TRow = any> {
     // relatedTarget check keeps the editor open while focus moves between
     // the canvas and the editor's own DOM (or between popup DOM and canvas).
     if (this.options.stopEditingWhenCellsLoseFocus) {
-      this.root.addEventListener('focusout', (ev) => {
+      this.disposables.addListener(this.root, 'focusout', (ev) => {
         if (!this.isAnyEditOpen()) return;
         const next = (ev as FocusEvent).relatedTarget as Node | null;
         if (next && this.root.contains(next)) return;
@@ -1762,7 +1767,7 @@ export class CGrid<TRow = any> {
     //   native caret-move handler.
     // We capture-and-stopPropagation so the per-editor Enter/Esc handlers
     // can't double-fire on the same keypress.
-    this.root.addEventListener('keydown', (raw) => {
+    this.disposables.addListener(this.root, 'keydown', ((raw: Event) => {
       const ev = raw as KeyboardEvent;
       // Full-row edit (Cycle 5 / Task 10) — keys are scoped to the row's
       // editor bundle: Tab cycles within the row, Enter commits all, Esc
@@ -1855,12 +1860,12 @@ export class CGrid<TRow = any> {
           this.selection.setFocus(fr, cols[Math.max(0, ci - 1)]!);
         }
       }
-    }, true);
+    }) as EventListener, true);
 
     // Excel-mode mousedown flip: a click inside the open editor switches
     // a type-started 'enter' edit into 'edit' mode so the user can move the
     // caret with the arrow keys instead of accidentally committing.
-    this.editorContainer.addEventListener('mousedown', () => {
+    this.disposables.addListener(this.editorContainer, 'mousedown', () => {
       if (this.activeEdit?.mode === 'enter') {
         this.activeEdit.mode = 'edit';
       }
@@ -5532,6 +5537,10 @@ export class CGrid<TRow = any> {
     // event surface now means apps can wire listeners against a stable shape.
     this.events.emit({ type: 'gridPreDestroyed', state: {} });
     this.destroyed = true;
+    // Tear down every listener / RAF / timer routed through the registry
+    // FIRST so callbacks fired during the rest of destroy() (e.g. a scroll
+    // event triggered by a layout invalidation) can't hit half-disposed state.
+    this.disposables.dispose();
     this.selectionUnsubscribe();
     if (this.chunkLRU) this.chunkLRU.clear();
     this.cgridCanvas.destroy();

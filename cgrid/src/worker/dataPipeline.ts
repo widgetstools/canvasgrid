@@ -528,6 +528,12 @@ export class DistinctValuesPass<TRow = any> {
 export class FilterPass<TRow = any> {
   private model: FilterModel = {};
   private colIndex = new Map<string, WorkerColumn>();
+  /** Per-entry materialized data — built once at setModel time, read on
+   *  every row in `apply()`. Today only holds compiled Set-filter lookups,
+   *  but it's the natural seam for future per-entry pre-compiles (e.g.
+   *  case-folded text needles, parsed numeric thresholds). Keyed by the
+   *  entry object so swapping the model wipes everything via clear(). */
+  private compiledSetValues = new Map<CSetFilterModel, Set<string>>();
 
   constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
     this.setColumns(columns);
@@ -535,6 +541,26 @@ export class FilterPass<TRow = any> {
 
   setModel(model: FilterModel): void {
     this.model = model;
+    this.compiledSetValues.clear();
+    // Walk the model once and pre-materialize every set-filter entry.
+    // Previous code built `new Set(entry.values)` per row × per entry —
+    // for a 100K-row dataset with a 1K-value set filter that's 100M Set
+    // allocations per pipeline pass. The pre-build runs once at setModel
+    // (and again for any nested multi-condition entries).
+    for (const colId in model) {
+      const entry = model[colId];
+      if (entry) this.precompileEntry(entry);
+    }
+  }
+
+  private precompileEntry(entry: unknown): void {
+    if (!entry || typeof entry !== 'object') return;
+    const e = entry as { filterType?: string; values?: unknown[]; conditions?: unknown[] };
+    if (e.filterType === 'set' && Array.isArray(e.values)) {
+      this.compiledSetValues.set(entry as CSetFilterModel, new Set(e.values as string[]));
+    } else if (e.filterType === 'multi' && Array.isArray(e.conditions)) {
+      for (const c of e.conditions) this.precompileEntry(c);
+    }
   }
 
   /** Swap column metadata in place. Preserves the current filter model so
@@ -549,6 +575,7 @@ export class FilterPass<TRow = any> {
     if (entries.length === 0) {
       return Array.from(this.store.rows()).map((r) => this.store.getRowId(r));
     }
+    const compiledSets = this.compiledSetValues;
     const out: string[] = [];
     for (const row of this.store.rows()) {
       let pass = true;
@@ -563,7 +590,7 @@ export class FilterPass<TRow = any> {
         // (textFormatter) threads into matchesV2 so the text matcher
         // can normalise both sides pre-compare.
         const ok = 'filterType' in rawEntry
-          ? matchesV2(rawEntry as CFilterModelEntry, value, col)
+          ? matchesV2(rawEntry as CFilterModelEntry, value, col, compiledSets)
           : matches(rawEntry as WorkerFilterModelEntry, value);
         if (!ok) { pass = false; break; }
       }
@@ -597,9 +624,14 @@ function matches(entry: WorkerFilterModelEntry, raw: unknown): boolean {
  *  discriminator. Cycle 7 / Task 1 (parser enhancement). Cycle 7 /
  *  Task 5 threads the WorkerColumn through so the text matcher can read
  *  the column-level `textFormatter`. */
-function matchesV2(entry: CFilterModelEntry, raw: unknown, col?: WorkerColumn): boolean {
+function matchesV2(
+  entry: CFilterModelEntry,
+  raw: unknown,
+  col?: WorkerColumn,
+  compiledSets?: Map<CSetFilterModel, Set<string>>,
+): boolean {
   if (entry.filterType === 'multi') {
-    return matchesMulti(entry, raw, col);
+    return matchesMulti(entry, raw, col, compiledSets);
   }
   if (entry.filterType === 'text') {
     return matchesText(entry, raw, col);
@@ -611,7 +643,7 @@ function matchesV2(entry: CFilterModelEntry, raw: unknown, col?: WorkerColumn): 
     return matchesDate(entry, raw);
   }
   if (entry.filterType === 'set') {
-    return matchesSet(entry, raw);
+    return matchesSet(entry, raw, compiledSets);
   }
   return false;
 }
@@ -621,16 +653,16 @@ function matchesV2(entry: CFilterModelEntry, raw: unknown, col?: WorkerColumn): 
  *  ag-grid's deselect-all behaviour); a `null` raw value matches only
  *  when `null` is explicitly part of the values set (currently it isn't
  *  because DistinctValuesPass drops nulls — a future cycle wires the
- *  "(blank)" sentinel). The Set lookup is built once per entry call —
- *  the worker re-runs matches on every pipeline pass so the constant
- *  factor per row matters less than the matcher returning fast. */
-function matchesSet(entry: CSetFilterModel, raw: unknown): boolean {
-  // Materialise the Set once per call. Building it inside the matcher
-  // (rather than caching on the entry object) is fine because
-  // FilterPass.apply iterates rows per entry; future cycles can lift
-  // this into a per-entry pre-build if profiling demands it.
-  const allow = new Set(entry.values);
+ *  "(blank)" sentinel). Uses the FilterPass-side pre-compiled Set when
+ *  available; falls back to a per-call build when invoked outside the
+ *  pass (e.g. from tests). */
+function matchesSet(
+  entry: CSetFilterModel,
+  raw: unknown,
+  compiledSets?: Map<CSetFilterModel, Set<string>>,
+): boolean {
   if (raw == null) return false;
+  const allow = compiledSets?.get(entry) ?? new Set(entry.values);
   return allow.has(String(raw));
 }
 
@@ -638,6 +670,7 @@ function matchesMulti(
   entry: CMultiConditionFilterModel,
   raw: unknown,
   col?: WorkerColumn,
+  compiledSets?: Map<CSetFilterModel, Set<string>>,
 ): boolean {
   // Empty conditions array is treated as "no constraint" — `null`-shaped
   // entries don't reach the worker (cgrid drops them in
@@ -645,13 +678,13 @@ function matchesMulti(
   if (entry.conditions.length === 0) return true;
   if (entry.operator === 'AND') {
     for (const c of entry.conditions) {
-      if (!matchesV2(c, raw, col)) return false;
+      if (!matchesV2(c, raw, col, compiledSets)) return false;
     }
     return true;
   }
   // OR — short-circuit on the first pass.
   for (const c of entry.conditions) {
-    if (matchesV2(c, raw, col)) return true;
+    if (matchesV2(c, raw, col, compiledSets)) return true;
   }
   return false;
 }
