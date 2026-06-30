@@ -1256,6 +1256,13 @@ export class CGrid<TRow = any> {
         });
         return event.defaultPrevented;
       },
+      // Cycle 24 / Task 1 — Ctrl+A select-all entry point.
+      selectAllRows: () => this.selectAll(),
+      // Cycle 24 / Task 6 — focus exit callbacks. Read at event time
+      // so a runtime `setGridOption('tabToNextHeader', …)` flip
+      // lights up on the next Tab press.
+      getTabToNextHeader: () => this.options.tabToNextHeader,
+      getTabToPreviousHeader: () => this.options.tabToPreviousHeader,
       getEditingFlags: () => ({
         singleClickEdit: this.options.singleClickEdit ?? false,
         suppressClickEdit: this.options.suppressClickEdit ?? false,
@@ -1419,6 +1426,25 @@ export class CGrid<TRow = any> {
     });
 
     this.a11y = new A11yOverlay(this.root);
+    // Cycle 24 / Task 3 — push the initial aria-label + aria-busy
+    // immediately so screen readers see the correct grid name and
+    // load state before the first focus-driven `updateA11y` runs.
+    this.a11y.update({
+      visibleRowCount: 0,
+      columnCount: 0,
+      focusedRowIndex: null,
+      focusedColId: null,
+      focusedRowData: [],
+      groupExpanded: null,
+      ariaLabel: options.ariaLabel,
+      ariaBusy: options.loading === true,
+    });
+    // Cycle 24 / Task 4 — wire screen-reader announcements. The a11y
+    // overlay holds the role="status" aria-live region; we subscribe
+    // here to state-affecting events and turn each into human-
+    // readable text. Debounced 250ms inside the overlay so a cascade
+    // (e.g. setState restoring 5 keys) lands as ONE announcement.
+    this.wireA11yAnnouncements();
 
     // 9. Worker
     // Foundation: use options.worker.url for test injection; otherwise resolve the co-emitted worker.js
@@ -3846,6 +3872,17 @@ export class CGrid<TRow = any> {
    *  row index via the worker, paints the rows that resolve, and stashes the
    *  full id set so a later sort / filter / transaction rebuilds the paint
    *  indices instead of dropping the selection. Triggers `selectionChanged`. */
+  /** Cycle 24 / Task 1 — Ctrl+A keyboard shortcut entry point. Selects
+   *  every visible row when `rowSelection: 'multiple'` is in effect;
+   *  no-op for `'none'` / `'single'` modes (single-mode selection
+   *  semantics are inconsistent with a bulk select). */
+  selectAll(): void {
+    if (this.destroyed) return;
+    if (this.selection.getMode() !== 'multiple') return;
+    if (this.rowCount <= 0) return;
+    this.selection.range(0, this.rowCount - 1);
+  }
+
   setSelectedRowIds(ids: string[]): void {
     if (this.destroyed) return;
     if (ids.length === 0) {
@@ -4755,6 +4792,7 @@ export class CGrid<TRow = any> {
       options: this.options,
       setTheme: (t) => this.setTheme(t),
       setDensity: (d) => this.setDensity(d),
+      refreshA11y: () => this.updateA11y(),
       rebuildColumns: ({ defaultColDef }) => this.rebuildColumns({ defaultColDef }),
       refreshLayout: () => {
         this.recomputeViewport();
@@ -6619,6 +6657,48 @@ export class CGrid<TRow = any> {
     return `row-${rowIndex}`;
   }
 
+  /** Cycle 24 / Task 4 — subscribe to state-affecting events and feed
+   *  human-readable text into the a11y overlay's aria-live region.
+   *  The overlay debounces 250ms internally so multiple events
+   *  collapse into one announcement. */
+  private wireA11yAnnouncements(): void {
+    const headerNameOf = (colId: string): string =>
+      this.columnDefsMap.get(colId)?.headerName ?? colId;
+
+    this.events.on('sortChanged', (e) => {
+      const m = e.sortModel;
+      if (m.length === 0) { this.a11y.announce('Sort cleared'); return; }
+      const parts = m.map((s) => `${headerNameOf(s.colId)} ${s.direction === 'asc' ? 'ascending' : 'descending'}`);
+      this.a11y.announce(`Sorted by ${parts.join(', ')}`);
+    });
+    this.events.on('filterChanged', () => {
+      const cols = Array.from(this.columnFilterModels.keys());
+      if (cols.length === 0) {
+        this.a11y.announce(`Filters cleared, ${this.rowCount} rows`);
+      } else {
+        this.a11y.announce(
+          `Filtered: ${this.rowCount} rows, ${cols.length} column${cols.length === 1 ? '' : 's'} active`,
+        );
+      }
+    });
+    this.events.on('selectionChanged', (e) => {
+      const n = e.selectedRowIds.length;
+      this.a11y.announce(
+        n === 0 ? 'Selection cleared' : `${n} row${n === 1 ? '' : 's'} selected`,
+      );
+    });
+    this.events.on('rowGroupOpened', (e) => {
+      this.a11y.announce(`${e.expanded ? 'Expanded' : 'Collapsed'} group ${e.key}`);
+    });
+    this.events.on('cellEditingStarted', (e) => {
+      this.a11y.announce(`Editing ${headerNameOf(e.colId)}, row ${e.rowIndex + 1}`);
+    });
+    this.events.on('cellEditingStopped', (e) => {
+      if (e.cancelled) this.a11y.announce('Edit cancelled');
+      else this.a11y.announce(`${headerNameOf(e.colId)} set to ${String(e.newValue)}`);
+    });
+  }
+
   /** Cycle 23 / Task 2 — fan out cellMouseOver. Looked up here (not in
    *  the OnHover feature) so the (rowId, value) shape matches the rest
    *  of the cell-* event family — features don't need to reach into
@@ -6698,6 +6778,12 @@ export class CGrid<TRow = any> {
       focusedColId,
       focusedRowData,
       groupExpanded,
+      // Cycle 24 / Task 3 — aria-label + aria-busy on the grid root.
+      // ariaLabel is opt-in; ariaBusy resolves from the runtime
+      // `loading` flag so apps that flip it during async loads get
+      // the assistive-tech signal automatically.
+      ariaLabel: this.options.ariaLabel,
+      ariaBusy: this.options.loading === true,
     });
   }
 

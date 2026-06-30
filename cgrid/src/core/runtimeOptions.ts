@@ -93,6 +93,10 @@ export interface RuntimeOptionTarget<TRow = any> {
    *  viewport before the next paint so row + header height pick up the
    *  density bundle's overrides. */
   setDensity(density: 'compact' | 'normal' | 'comfortable' | null | undefined): void;
+  /** Cycle 24 / Task 3 — push the current options through to the a11y
+   *  overlay (refreshes aria-label + aria-busy). Cheap; safe to call
+   *  whenever any of the options' a11y-relevant fields change. */
+  refreshA11y?(): void;
   /** Re-resolve the column tree using the current `options.columnDefs` +
    *  the supplied (or current) `defaultColDef`. Triggers viewport + worker
    *  refresh. Used by both the `defaultColDef` runtime apply and the
@@ -240,12 +244,17 @@ export function applyRuntimeOption<TRow>(
       // `aggFuncChanged` after the worker registry updates.
       target.forwardAggFuncs(value as Record<string, unknown> | undefined, true);
       return;
+    case 'loading':
+      // Cycle 24 / Task 3 — aria-busy reflects this flag. Push the new
+      // value through to the a11y overlay immediately so screen
+      // readers learn the loading transition.
+      target.refreshA11y?.();
+      return;
     case 'animateRows':
     case 'cellFlashDuration':
     case 'cellFadeDuration':
     case 'asyncTransactionWaitMillis':
     case 'context':
-    case 'loading':
     case 'debug':
     // Cycle 9 / Task 5 — fill-handle options are storage-only at runtime.
     // The feature reads `options.enableFillHandle` / `fillHandleDirection`

@@ -367,6 +367,24 @@ export interface CGridOptions<TRow = any> {
    * snapshots (from a future grid version) throw with a clear error.
    */
   initialState?: import('./core/stateSnapshot').GridState;
+  /**
+   * Cycle 24 / Task 3 — `aria-label` applied to the grid's
+   * role="grid" element in the a11y overlay. Screen readers read this
+   * as the grid's name. Defaults to no label (the overlay has no
+   * `aria-label` attribute when omitted).
+   */
+  ariaLabel?: string;
+  /**
+   * Cycle 24 / Task 6 — Tab-out callbacks. Fired when the user presses
+   * Tab at the LAST tabbable cell (or Shift+Tab at the first). Return
+   * `true` to keep focus inside the grid (wrap to the opposite end);
+   * return `false` to release focus so the browser's native Tab takes
+   * the user out to the next / previous focusable element on the
+   * page. Omitting either keeps the original wrap-to-next-row
+   * behavior.
+   */
+  tabToNextHeader?: (params: { event: KeyboardEvent }) => boolean;
+  tabToPreviousHeader?: (params: { event: KeyboardEvent }) => boolean;
   worker?: { url?: string };
 
   /** Hint to skip CSS-animated row transitions. Runtime-mutable; storage-only

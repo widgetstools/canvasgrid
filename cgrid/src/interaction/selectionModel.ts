@@ -87,6 +87,10 @@ export class SelectionModel {
   constructor(private mode: SelectionMode) {}
 
   get state(): Readonly<SelectionState> { return this._state; }
+  /** Cycle 24 / Task 1 — expose the current selection mode so callers
+   *  (e.g., `selectAll`) can gate themselves on whether multi-select is
+   *  in effect. */
+  getMode(): SelectionMode { return this.mode; }
 
   /** Swap the selection mode at runtime. Demotes the current selection when
    *  moving to a stricter mode (multiple→single drops all but one;

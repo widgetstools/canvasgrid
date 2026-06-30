@@ -236,6 +236,151 @@
   --cg-cell-padding-x: 8px;
 }
 
+/* Cycle 24 / Task 5 — high-contrast theme. WCAG 2.1 AAA: ≥ 7:1 body
+ * text contrast, thicker focus rings (3px), no semi-transparent fills.
+ * Black-on-white pairing for maximum contrast; the dark variant
+ * mirrors with white-on-black. Use when accessibility audits
+ * (Section 508, EAA) require AAA — apps that just want a dark theme
+ * stay on `cg-theme-quartz-dark`. */
+.cg-theme-high-contrast {
+  color-scheme: light;
+  --cg-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
+  --cg-font-size: 13px;
+  --cg-font-size-sm: 12px;
+  --cg-row-height: 32px;
+  --cg-header-height: 40px;
+  --cg-fg-color: #000000;
+  --cg-bg-color: #ffffff;
+  --cg-row-alt-bg: #ffffff;
+  --cg-header-bg: #ffffff;
+  --cg-header-fg: #000000;
+  --cg-border-color: #000000;
+  --cg-grid-line-color: #000000;
+  --cg-row-hover-bg: #cccccc;
+  --cg-row-selected-bg: #ffff00;
+  --cg-focus-ring-color: #0000ff;
+  --cg-focus-ring-width: 3px;
+  --cg-flash-from-color: #ffff00;
+  --cg-flash-to-color: rgba(255, 255, 0, 0);
+  --cg-resizer-hot-zone: 6px;
+  --cg-scrollbar-thickness: 12px;
+  --cg-quick-filter-match-bg: #ffff00;
+  --cg-unsort-icon-color: #000000;
+  --cg-range-fill-color: #ffff00;
+  --cg-range-border-color: #000000;
+  --cg-totals-bg: #ffffff;
+  --cg-totals-fg: #000000;
+  --cg-totals-border-top: #000000;
+  --cg-totals-fg-muted: #000000;
+  --cg-totals-font-weight: 700;
+  --cg-pinned-row-bg: #ffffff;
+  --cg-pinned-row-fg: #000000;
+  --cg-pinned-row-border: #000000;
+  --cg-group-chevron-color: #000000;
+  --cg-group-count-color: #000000;
+  --cg-group-indent: 14px;
+  --cg-group-row-bg: #ffffff;
+  --cg-group-checkbox-border-color: #000000;
+  --cg-group-checkbox-check-color: #000000;
+  --cg-group-checkbox-indeterminate-color: #000000;
+  --cg-group-checkbox-fill: transparent;
+  --cg-group-footer-bg: #ffffff;
+  --cg-group-footer-fg: #000000;
+  --cg-group-footer-border-top: #000000;
+  --cg-group-footer-font-weight: 700;
+  --cg-input-bg: #ffffff;
+  --cg-input-fg: #000000;
+  --cg-input-border: #000000;
+  --cg-input-focus-border: #0000ff;
+  --cg-input-disabled-bg: #cccccc;
+  --cg-tooltip-bg: #000000;
+  --cg-tooltip-fg: #ffffff;
+  --cg-tooltip-border: #ffffff;
+  --cg-checkbox-checked-bg: #000000;
+  --cg-checkbox-checked-fg: #ffffff;
+  --cg-cell-horizontal-border-color: #000000;
+  --cg-popup-bg: #ffffff;
+  --cg-popup-border: #000000;
+  --cg-menu-hover-bg: #ffff00;
+  --cg-cell-padding-x: 8px;
+}
+.cg-theme-high-contrast { background-color: var(--cg-bg-color); }
+.cg-theme-high-contrast .cg-canvas { background-color: var(--cg-bg-color); }
+
+.cg-theme-high-contrast-dark {
+  color-scheme: dark;
+  --cg-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
+  --cg-font-size: 13px;
+  --cg-font-size-sm: 12px;
+  --cg-row-height: 32px;
+  --cg-header-height: 40px;
+  --cg-fg-color: #ffffff;
+  --cg-bg-color: #000000;
+  --cg-row-alt-bg: #000000;
+  --cg-header-bg: #000000;
+  --cg-header-fg: #ffffff;
+  --cg-border-color: #ffffff;
+  --cg-grid-line-color: #ffffff;
+  --cg-row-hover-bg: #333333;
+  --cg-row-selected-bg: #ffff00;
+  --cg-focus-ring-color: #ffff00;
+  --cg-focus-ring-width: 3px;
+  --cg-flash-from-color: #ffff00;
+  --cg-flash-to-color: rgba(255, 255, 0, 0);
+  --cg-quick-filter-match-bg: #ffff00;
+  --cg-unsort-icon-color: #ffffff;
+  --cg-range-fill-color: #ffff00;
+  --cg-range-border-color: #ffffff;
+  --cg-totals-bg: #000000;
+  --cg-totals-fg: #ffffff;
+  --cg-totals-border-top: #ffffff;
+  --cg-totals-fg-muted: #ffffff;
+  --cg-totals-font-weight: 700;
+  --cg-pinned-row-bg: #000000;
+  --cg-pinned-row-fg: #ffffff;
+  --cg-pinned-row-border: #ffffff;
+  --cg-group-chevron-color: #ffffff;
+  --cg-group-count-color: #ffffff;
+  --cg-group-row-bg: #000000;
+  --cg-group-checkbox-border-color: #ffffff;
+  --cg-group-checkbox-check-color: #ffffff;
+  --cg-group-checkbox-indeterminate-color: #ffffff;
+  --cg-group-checkbox-fill: transparent;
+  --cg-group-footer-bg: #000000;
+  --cg-group-footer-fg: #ffffff;
+  --cg-group-footer-border-top: #ffffff;
+  --cg-input-bg: #000000;
+  --cg-input-fg: #ffffff;
+  --cg-input-border: #ffffff;
+  --cg-input-focus-border: #ffff00;
+  --cg-input-disabled-bg: #333333;
+  --cg-tooltip-bg: #ffffff;
+  --cg-tooltip-fg: #000000;
+  --cg-tooltip-border: #000000;
+  --cg-checkbox-checked-bg: #ffff00;
+  --cg-checkbox-checked-fg: #000000;
+  --cg-cell-horizontal-border-color: #ffffff;
+  --cg-popup-bg: #000000;
+  --cg-popup-border: #ffffff;
+  --cg-menu-hover-bg: #ffff00;
+  --cg-cell-padding-x: 8px;
+}
+.cg-theme-high-contrast-dark { background-color: var(--cg-bg-color); }
+.cg-theme-high-contrast-dark .cg-canvas { background-color: var(--cg-bg-color); }
+
+/* Cycle 24 / Task 7 — `prefers-reduced-motion` overrides. CSS-only:
+ * the same tokens that drive animation surfaces resolve to no-op
+ * values when the user's OS reports reduced-motion. The flash painter
+ * additionally guards on the resolved value (skips entirely when
+ * `--cg-flash-from-color` is `transparent`) so the no-op is both
+ * cosmetic AND zero-cost. */
+@media (prefers-reduced-motion: reduce) {
+  .cg-grid {
+    --cg-flash-from-color: transparent;
+    --cg-flash-to-color: transparent;
+  }
+}
+
 /* Cycle 22 / Task 4 — `cg-theme-auto` follows the OS `prefers-color-
  * scheme` setting. Defaults to the same light bundle as
  * `cg-theme-quartz`; a single `@media (prefers-color-scheme: dark)`

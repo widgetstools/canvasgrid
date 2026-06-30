@@ -26,6 +26,25 @@ export class CellKeyboardEvents extends Feature {
       super.handleKeyDown(ctx);
       return;
     }
+
+    // Cycle 24 / Task 2 — per-column suppressKeyboardEvent gate. If
+    // the focused column declares the callback AND it returns true
+    // for THIS key, the grid skips its entire keyboard pipeline so
+    // an app's custom editor / custom cell can claim the key (Tab
+    // inside a custom textarea, Enter inside a date picker, etc.).
+    // The browser still sees the native key — we just don't let any
+    // downstream grid feature handle it.
+    const suppress = ctx.grid.getColSuppressKeyboardEvent?.(fc);
+    if (suppress) {
+      const suppressed = suppress({
+        event: e,
+        editing: ctx.grid.isEditing?.() ?? false,
+        data: ctx.grid.getRowDataAt?.(fr),
+        colId: fc,
+      });
+      if (suppressed) return;
+    }
+
     const prevented = ctx.grid.emitCellKeyDown?.(fr, fc, e);
     // Also fan out `cellKeyPress` for single printable chars (length-1
     // key, no Ctrl/Meta/Alt). This synthesizes the deprecated DOM
