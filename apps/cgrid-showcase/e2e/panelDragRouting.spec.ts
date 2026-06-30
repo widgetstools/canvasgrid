@@ -190,6 +190,48 @@ test.describe('cross-section pill drag routing', () => {
     expect(fieldErrors).toEqual([]);
   });
 
+  test('AG parity — row group panel + pivot panel share one 32 px strip in pivot mode', async ({ page }) => {
+    await gotoFeature(page, 'pivot');
+    await page.waitForTimeout(300);
+
+    const split = await page.evaluate(() => {
+      const rg = document.querySelector('.cg-row-group-panel') as HTMLElement;
+      const pp = document.querySelector('.cg-pivot-panel') as HTMLElement;
+      return {
+        rgClasses: rg.className,
+        ppClasses: pp.className,
+        rgRect: rg.getBoundingClientRect().toJSON(),
+        ppRect: pp.getBoundingClientRect().toJSON(),
+      };
+    });
+
+    // Split modifier classes applied on both panels.
+    expect(split.rgClasses).toContain('cg-row-group-panel--split-left');
+    expect(split.ppClasses).toContain('cg-pivot-panel--split-right');
+    // Same vertical strip — same top, same height, single 32 px row.
+    expect(split.rgRect.top).toBe(split.ppRect.top);
+    expect(split.rgRect.bottom).toBe(split.ppRect.bottom);
+    expect(split.rgRect.height).toBe(32);
+    // Row groups on the LEFT, column labels on the RIGHT, no overlap.
+    expect(split.rgRect.right).toBeLessThanOrEqual(split.ppRect.left + 1);
+    // Roughly equal half-widths (within 4 px tolerance for rounding).
+    expect(Math.abs(split.rgRect.width - split.ppRect.width)).toBeLessThan(4);
+
+    // Toggling pivot mode OFF unstacks the panels — split classes
+    // come off and the row group panel goes full-width again.
+    await page.locator('[data-testid="btn-pivot-toggle"]').click();
+    await page.waitForTimeout(300);
+    const unsplit = await page.evaluate(() => {
+      const rg = document.querySelector('.cg-row-group-panel') as HTMLElement;
+      return {
+        rgClasses: rg.className,
+        rgWidth: rg.getBoundingClientRect().width,
+      };
+    });
+    expect(unsplit.rgClasses).not.toContain('cg-row-group-panel--split-left');
+    expect(unsplit.rgWidth).toBeGreaterThan(800);
+  });
+
   test('pivot panel + Column Labels section hide when pivot mode is OFF (AG parity)', async ({ page }) => {
     await gotoFeature(page, 'pivot');
 

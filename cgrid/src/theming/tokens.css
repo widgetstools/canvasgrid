@@ -2025,6 +2025,17 @@
   box-shadow: none;
 }
 
+/* AG-Grid parity — when pivot mode is on, the row group panel and
+ * pivot panel share one strip side-by-side. The row group panel
+ * sits on the LEFT half with a hairline separator on its right edge;
+ * the bottom border stays the same so the strip still reads as one
+ * continuous band beneath the column headers. */
+.cg-row-group-panel--split-left {
+  right: 50%;
+  border-right: 1px solid
+    color-mix(in srgb, var(--cg-border-color) 60%, transparent);
+}
+
 /* Vertical insertion line — 2 px wide bar painted between chips at
  * the gap nearest the pointer. Mirrors the `.cg-column-drag-insertion-line`
  * pattern from Cycle 6 but scoped to the panel's vertical band. */
@@ -2167,17 +2178,15 @@
   flex: 0 0 auto;
 }
 
-/* Empty state — dashed-border placeholder spanning the full strip
- * interior. Border vocabulary mirrors `.cg-columns-panel-drop-zone`
- * (sidebar Columns panel) so the dropping affordance reads as the
- * same across surfaces. */
+/* Empty state — borderless placeholder spanning the strip interior.
+ * The strip's own outline + the dragged ghost are sufficient drop
+ * affordance; the dashed border read as a hard rectangle and made
+ * the strip feel busier than AG-Grid's. */
 .cg-row-group-panel-empty {
   flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px dashed color-mix(in srgb, var(--cg-border-color) 80%, transparent);
-  border-radius: var(--cg-row-group-chip-radius);
   margin: 4px 0;
   font-size: var(--cg-font-size-sm);
   color: var(--cg-row-group-panel-empty-fg);
@@ -2265,6 +2274,14 @@
   opacity: 0.6;
 }
 
+/* AG-Grid parity — pivot panel takes the RIGHT half of the shared
+ * strip when the split layout is active. The hairline separator is
+ * drawn by `.cg-row-group-panel--split-left`'s right border, so the
+ * pivot side just needs to start at the half-width mark. */
+.cg-pivot-panel--split-right {
+  left: 50%;
+}
+
 /* Drop-target outline — accept = focus ring; reject = amber. */
 .cg-pivot-panel[data-drop="accept"] {
   box-shadow: inset 0 0 0 2px var(--cg-pivot-panel-drop-border);
@@ -2296,17 +2313,14 @@
   flex: 0 0 auto;
 }
 
-/* Empty-state placeholder — dashed-border container; vocabulary
- * mirrors `.cg-row-group-panel-empty` + the tool panel's plz empty
- * state. Text content is set from JS:
- * "Drag here to set column labels". */
+/* Empty-state placeholder — borderless container; AG-Grid parity
+ * with the row group panel's clean strip. Text content is set
+ * from JS: "Drag here to set column labels". */
 .cg-pivot-panel-empty {
   flex: 1 1 auto;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px dashed color-mix(in srgb, var(--cg-border-color) 80%, transparent);
-  border-radius: 4px;
   margin: 4px 0;
   font-size: var(--cg-font-size-sm);
   color: var(--cg-pivot-panel-empty-fg);

@@ -3194,6 +3194,12 @@ export class CGrid<TRow = any> {
       this.recomputeViewport();
       this.cgridCanvas?.requestRepaint();
     }
+    // Pivot mode flip re-evaluates the split-strip layout (AG-Grid
+    // parity). Hosts only call `setReservedSpace` when their own
+    // visibility changes; with `pivotPanelShow: 'always'` neither
+    // host's visibility moves, so the split toggle wouldn't
+    // otherwise re-apply.
+    this.applyVerticalInsets();
     this.workerClient.updateColumns(this.workerColumns())
       .then(() => this.workerClient.setPivotModel(this.pivotWorkerModel()))
       .then(() => {
@@ -4951,9 +4957,16 @@ export class CGrid<TRow = any> {
    *  body. Bottom inset is `statusBarInsets.bottom` alone (no
    *  panel contribution). */
   private applyVerticalInsets(): void {
-    const top = this.statusBarInsets.top
-      + this.pivotPanelTopInset
-      + this.rowGroupPanelTopInset;
+    // AG-Grid parity — in pivot mode, the row group panel and pivot
+    // panel share ONE 32-px strip side-by-side (row groups on the
+    // left half, column labels on the right half, separated by a
+    // thin hairline). Saves the second 32 px of vertical inset.
+    const sharing = this.isSharingTopStrip();
+    const stripTop = this.statusBarInsets.top;
+    const panelInset = sharing
+      ? Math.max(this.pivotPanelTopInset, this.rowGroupPanelTopInset)
+      : this.pivotPanelTopInset + this.rowGroupPanelTopInset;
+    const top = stripTop + panelInset;
     const bottom = this.statusBarInsets.bottom;
     this.scroller.style.top = `${top}px`;
     this.scroller.style.bottom = `${bottom}px`;
@@ -4969,16 +4982,37 @@ export class CGrid<TRow = any> {
     // The side bar must start below the panels so the tab strip is not
     // visually occluded. Use the same `top` value as the scroller.
     this.sideBar?.setTopOffset(top);
-    // The pivot panel sits at the status bar's top-inset (top of the
-    // stack, just below any top status bar). The row group panel sits
-    // BELOW the pivot panel — its top equals statusBar + pivotPanel.
-    // Keeps stacking deterministic.
-    if (this.pivotPanel) {
-      this.setPivotPanelTop(this.statusBarInsets.top);
+    const rgEl = this.root.querySelector('.cg-row-group-panel') as HTMLElement | null;
+    const pvEl = this.root.querySelector('.cg-pivot-panel') as HTMLElement | null;
+    if (sharing) {
+      // Both panels at the same vertical position; the split modifier
+      // class drives their half-width via CSS so they sit side-by-side.
+      if (this.pivotPanel) this.setPivotPanelTop(stripTop);
+      if (this.rowGroupPanel) this.setRowGroupPanelTop(stripTop);
+      if (rgEl) rgEl.classList.add('cg-row-group-panel--split-left');
+      if (pvEl) pvEl.classList.add('cg-pivot-panel--split-right');
+    } else {
+      // Stacked: pivot panel just below the top status bar; row group
+      // panel beneath the pivot panel.
+      if (this.pivotPanel) this.setPivotPanelTop(stripTop);
+      if (this.rowGroupPanel) {
+        this.setRowGroupPanelTop(stripTop + this.pivotPanelTopInset);
+      }
+      if (rgEl) rgEl.classList.remove('cg-row-group-panel--split-left');
+      if (pvEl) pvEl.classList.remove('cg-pivot-panel--split-right');
     }
-    if (this.rowGroupPanel) {
-      this.setRowGroupPanelTop(this.statusBarInsets.top + this.pivotPanelTopInset);
-    }
+  }
+
+  /** AG-Grid parity — true when the row group panel and pivot panel
+   *  should share a single 32 px strip (row groups on the left,
+   *  column labels on the right). Both panel hosts must exist and be
+   *  visible, and pivot MODE (not just pivot-active) must be on so
+   *  the user sees an empty Column Labels half waiting for input. */
+  private isSharingTopStrip(): boolean {
+    if (!this.pivotState.isPivotMode()) return false;
+    if (!this.pivotPanel?.isVisible()) return false;
+    if (!this.rowGroupPanel?.isVisible()) return false;
+    return true;
   }
 
   /** Cycle 15 / Task 6 — set the row group panel's own `top`
