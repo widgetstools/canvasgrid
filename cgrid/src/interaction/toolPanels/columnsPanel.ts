@@ -556,22 +556,14 @@ export class ColumnsToolPanel implements ToolPanel {
     return { el, checkbox, label };
   }
 
-  /** Checked state.
-   *
-   *  pivotMode OFF: checkbox tracks VISIBILITY (Cycle 11 default).
-   *
-   *  pivotMode ON: checkbox tracks visibility AND/OR role membership.
-   *  A column is "checked" when it carries any pivot role
-   *  (rowGroup / value / pivot) — those columns are participating
-   *  in the pivot even when their source column is hidden from the
-   *  body. Otherwise the checkbox falls back to the visibility flag
-   *  so non-role-eligible columns reflect what the user actually
-   *  sees on screen. */
+  /** Checked state tracks VISIBILITY in every mode — without
+   *  exception. The user's cardinal principle is that the columns
+   *  side panel checkbox always matches what's on the grid: a column
+   *  visible in the grid is checked in the panel; a column hidden in
+   *  the grid is unchecked. Pivot role membership is communicated
+   *  through the Row Groups / Values / Column Labels pill sections,
+   *  not the row checkbox. */
   private computeRowChecked(entry: CColumnState): boolean {
-    if (this.api.isPivotMode?.() === true) {
-      if (this.hasPivotRole(entry.colId)) return true;
-      return entry.hide !== true;
-    }
     return entry.hide !== true;
   }
 

@@ -7568,7 +7568,15 @@ export class CGrid<TRow = any> {
     const targetHide = !visible;
     const changed: string[] = [];
     for (const key of keys) {
-      const def = this.columnDefsMap.get(key);
+      // Under active pivot, source colDefs are swapped out of
+      // `columnDefsMap`. They live on the preserved
+      // `primaryColumnTree` and are still surfaced through
+      // `getColumnState`, so visibility set against them must
+      // round-trip through the panel checkbox and survive pivot
+      // toggles. Mutate the primary def in place when the live
+      // map doesn't carry the colId.
+      const def = this.columnDefsMap.get(key)
+        ?? this.primaryColumnTree?.leafById.get(key);
       if (!def) continue;
       if (def.lockVisible) continue;
       if (def.hide === targetHide) continue;

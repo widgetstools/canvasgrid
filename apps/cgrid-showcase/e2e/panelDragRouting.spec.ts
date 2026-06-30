@@ -84,31 +84,35 @@ test.describe('cross-section pill drag routing', () => {
     expect(after.pivots).toContain('desk');
   });
 
-  test('pivot-mode checkbox tracks ALL three pivot roles — region/sector appear checked', async ({ page }) => {
+  test('pivot-mode checkbox tracks column VISIBILITY in lockstep (cardinal principle, no exceptions)', async ({ page }) => {
     await gotoFeature(page, 'pivot');
-    // Open the columns side panel only when not already open.
     const opened = await page.evaluate(
       () => document.querySelector('.cg-columns-panel-row[data-col-id="desk"]') !== null,
     );
     if (!opened) await page.locator('button.cg-side-bar-tab:has-text("Columns")').click();
     await page.locator('.cg-columns-panel-row[data-col-id="desk"]').waitFor();
 
-    const checked = await page.evaluate(() => {
+    const result = await page.evaluate(() => {
+      const g = (window as any).__cgrid;
+      const state = g.getColumnState() as Array<{ colId: string; hide?: boolean }>;
       const rows = Array.from(document.querySelectorAll('.cg-columns-panel-row'));
-      const out: Record<string, boolean> = {};
+      const checks: Record<string, boolean | undefined> = {};
+      const hides: Record<string, boolean> = {};
       for (const r of rows) {
         const colId = (r as HTMLElement).getAttribute('data-col-id') ?? '';
-        const cb = r.querySelector('input[type=checkbox]') as HTMLInputElement | null;
-        out[colId] = cb?.checked === true;
+        checks[colId] = (r.querySelector('input[type=checkbox]') as HTMLInputElement | null)?.checked;
+        hides[colId] = state.find((s) => s.colId === colId)?.hide === true;
       }
-      return out;
+      return { checks, hides };
     });
 
-    expect(checked['desk']).toBe(true);        // rowGroup role
-    expect(checked['pnl']).toBe(true);         // value role
-    expect(checked['notional']).toBe(true);    // value role
-    expect(checked['region']).toBe(true);      // pivot role — was UNCHECKED before
-    expect(checked['sector']).toBe(true);      // pivot role — was UNCHECKED before
+    // Cardinal principle: checked === !hide for every column.
+    // Role membership is communicated through the pill sections,
+    // not the checkbox. Auto-hidden grouped columns (like desk)
+    // show as UNCHECKED because they're not visible in the body.
+    for (const colId of Object.keys(result.checks)) {
+      expect(result.checks[colId]).toBe(!result.hides[colId]);
+    }
   });
 
   test('unchecking region in pivot mode removes its pivot role', async ({ page }) => {
@@ -141,17 +145,18 @@ test.describe('cross-section pill drag routing', () => {
     if (!opened) await page.locator('button.cg-side-bar-tab:has-text("Columns")').click();
     await page.locator('.cg-columns-panel-row[data-col-id="desk"]').waitFor();
 
-    // Uncheck every checked row (desk + region + sector + pnl + notional).
+    // Tear down every pivot role through the public API (the panel
+    // checkbox no longer toggles role membership — visibility-only
+    // semantics in pivot mode track the cardinal principle).
     const consoleErrors: string[] = [];
     page.on('console', (msg) => {
       if (msg.type() === 'error') consoleErrors.push(msg.text());
     });
     await page.evaluate(() => {
-      const rows = Array.from(document.querySelectorAll('.cg-columns-panel-row'));
-      for (const r of rows) {
-        const cb = r.querySelector('input[type=checkbox]') as HTMLInputElement | null;
-        if (cb?.checked) cb.click();
-      }
+      const g = (window as any).__cgrid;
+      for (const colId of [...g.getRowGroupColumns()]) g.removeRowGroupColumn(colId);
+      for (const colId of [...g.getPivotColumns()]) g.removePivotColumn(colId);
+      for (const v of [...g.getValueColumns()]) g.removeValueColumn(v.colId);
     });
     // Let the role-change pipeline settle.
     await page.waitForTimeout(300);
@@ -294,6 +299,65 @@ test.describe('cross-section pill drag routing', () => {
     // groups stayed closed and only per-sector totals showed (0
     // 3-level leaves).
     expect(after.threeLevelCount).toBeGreaterThan(0);
+  });
+
+  test('columns panel checkbox is in lockstep with column visibility (both directions, role-bearing cols included)', async ({ page }) => {
+    await gotoFeature(page, 'pivot');
+
+    // Direction 1: code-driven hide propagates to checkbox.
+    // Includes pnl (value role) and region (pivot role) — even
+    // role-bearing source columns must reflect the hide flag, not
+    // role membership.
+    const afterCodeHide = await page.evaluate(() => {
+      const g = (window as any).__cgrid;
+      g.setColumnsVisible(['ticker', 'pnl', 'region'], false);
+      return new Promise<Record<string, boolean | undefined>>((resolve) => {
+        setTimeout(() => {
+          const getCheck = (colId: string) => {
+            const r = Array.from(document.querySelectorAll('.cg-columns-panel-row'))
+              .find((el) => el.getAttribute('data-col-id') === colId);
+            return (r?.querySelector('input[type=checkbox]') as HTMLInputElement | null)?.checked;
+          };
+          resolve({ ticker: getCheck('ticker'), pnl: getCheck('pnl'), region: getCheck('region') });
+        }, 200);
+      });
+    });
+    expect(afterCodeHide).toEqual({ ticker: false, pnl: false, region: false });
+
+    // Direction 2: code-driven show propagates back.
+    const afterCodeShow = await page.evaluate(() => {
+      const g = (window as any).__cgrid;
+      g.setColumnsVisible(['ticker', 'pnl', 'region'], true);
+      return new Promise<Record<string, boolean | undefined>>((resolve) => {
+        setTimeout(() => {
+          const getCheck = (colId: string) => {
+            const r = Array.from(document.querySelectorAll('.cg-columns-panel-row'))
+              .find((el) => el.getAttribute('data-col-id') === colId);
+            return (r?.querySelector('input[type=checkbox]') as HTMLInputElement | null)?.checked;
+          };
+          resolve({ ticker: getCheck('ticker'), pnl: getCheck('pnl'), region: getCheck('region') });
+        }, 200);
+      });
+    });
+    expect(afterCodeShow).toEqual({ ticker: true, pnl: true, region: true });
+
+    // Direction 3: panel checkbox click hides the column in the grid.
+    const afterPanelClick = await page.evaluate(() => {
+      const row = Array.from(document.querySelectorAll('.cg-columns-panel-row'))
+        .find((el) => el.getAttribute('data-col-id') === 'ticker') as HTMLElement;
+      (row.querySelector('input[type=checkbox]') as HTMLInputElement).click();
+      return new Promise<{ checked: boolean | undefined; gridHide: boolean }>((resolve) => {
+        setTimeout(() => {
+          const g = (window as any).__cgrid;
+          const state = g.getColumnState() as Array<{ colId: string; hide?: boolean }>;
+          const ticker = state.find((s) => s.colId === 'ticker');
+          const cb = row.querySelector('input[type=checkbox]') as HTMLInputElement;
+          resolve({ checked: cb.checked, gridHide: ticker?.hide === true });
+        }, 200);
+      });
+    });
+    expect(afterPanelClick.checked).toBe(false);
+    expect(afterPanelClick.gridHide).toBe(true);
   });
 
   test('enable-flag predicates fall through to primaryColumnTree under pivot mode', async ({ page }) => {
