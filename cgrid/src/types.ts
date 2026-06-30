@@ -3056,6 +3056,20 @@ export interface CGridApi {
    *  `pivotColumns`, `false` when rejected (column already pivoted or
    *  `enablePivot` not set). */
   commitPivotPanelDrop?(colId: string): boolean;
+  /** Cross-section pill drag routing — resolve the pill panel role
+   *  ('rowGroup' | 'pivot' | 'value') at a viewport-coord point, or
+   *  `null` when the point isn't over any pill container. */
+  resolveDragTargetRole?(clientX: number, clientY: number): 'rowGroup' | 'pivot' | 'value' | null;
+  /** Cross-section pill drag routing — atomically move `colId` from
+   *  `fromRole` to `toRole`. Returns `true` on success; `false` when
+   *  source equals target OR the target rejects the column (no
+   *  matching enable flag). Rejection is silent — source role
+   *  preserved. */
+  commitPanelMove?(
+    fromRole: 'rowGroup' | 'pivot' | 'value',
+    toRole: 'rowGroup' | 'pivot' | 'value',
+    colId: string,
+  ): boolean;
   /** True when (clientX, clientY) is within the leaf column-header band.
    *  Used by external drag sources (e.g. Columns tool panel) to decide
    *  whether the cursor is hovering over the column-header strip. */

@@ -441,6 +441,7 @@ export class ColumnsToolPanel implements ToolPanel {
       zoneClass: 'cg-columns-panel-rgz',
       contentClass: 'cg-columns-panel-rgz-content',
     });
+    dropZone.setAttribute('data-cg-pill-role', 'rowGroup');
     this.rowGroupsSection = { section, dropZone, content, pills: [] };
     return section;
   }
@@ -455,6 +456,7 @@ export class ColumnsToolPanel implements ToolPanel {
       zoneClass: 'cg-columns-panel-plz',
       contentClass: 'cg-columns-panel-plz-content',
     });
+    dropZone.setAttribute('data-cg-pill-role', 'pivot');
     this.pivotsSection = { section, dropZone, content, pills: [] };
     return section;
   }
@@ -470,6 +472,7 @@ export class ColumnsToolPanel implements ToolPanel {
       zoneClass: 'cg-columns-panel-valz',
       contentClass: 'cg-columns-panel-valz-content',
     });
+    dropZone.setAttribute('data-cg-pill-role', 'value');
     this.valuesSection = { section, dropZone, content, pills: [] };
     return section;
   }
@@ -565,15 +568,21 @@ export class ColumnsToolPanel implements ToolPanel {
     return entry.hide !== true;
   }
 
-  /** True when the column is currently assigned the row-group OR value
-   *  role (i.e. the checkbox should appear checked in pivot mode). The
-   *  pivot/Column-Label role is NOT included — per AG parity, checking
-   *  cannot assign the pivot role; the user must drag to that zone. */
+  /** True when the column is currently assigned ANY pivot-mode role
+   *  (row-group, value, OR pivot/Column-Label). The user sees a check
+   *  next to every column that is participating in the pivot — region
+   *  + sector as Column Labels appear checked, just like the row-group
+   *  and value columns. Unchecking removes whichever role the column
+   *  currently holds. Checking still defers to enableRowGroup /
+   *  enableValue (per AG parity, checking cannot assign the pivot
+   *  role — the user must drag to that zone). */
   private hasPivotRole(colId: string): boolean {
     const groups = this.api.getRowGroupColumns?.() ?? [];
     if (groups.includes(colId)) return true;
     const values = this.api.getValueColumns?.() ?? [];
-    return values.some((v) => v.colId === colId);
+    if (values.some((v) => v.colId === colId)) return true;
+    const pivots = this.api.getPivotColumns?.() ?? [];
+    return pivots.includes(colId);
   }
 
   /** Cycle 18 / Task 5 — checkbox click router. Branches on pivotMode:
@@ -588,18 +597,24 @@ export class ColumnsToolPanel implements ToolPanel {
     // pivotMode ON.
     const groups = this.api.getRowGroupColumns?.() ?? [];
     const values = this.api.getValueColumns?.() ?? [];
+    const pivots = this.api.getPivotColumns?.() ?? [];
     const isGrouped = groups.includes(colId);
     const isValued = values.some((v) => v.colId === colId);
+    const isPivoted = pivots.includes(colId);
     const isRoleEligible = this.isColumnRowGroupable(colId) || this.isColumnValueable(colId);
 
     if (!checkbox.checked) {
-      // Unchecking — remove whichever role the column currently holds.
+      // Unchecking — remove whichever role the column currently holds
+      // (rowGroup, value, OR pivot — region/sector being pivot columns
+      // ARE checked in pivot mode and unchecking removes them from the
+      // pivot axis just like rowGroup/value).
       if (isGrouped) this.api.removeRowGroupColumn?.(colId);
       else if (isValued) this.api.removeValueColumn?.(colId);
+      else if (isPivoted) this.api.removePivotColumn?.(colId);
       // If the column had no role to begin with, the click is a no-op
       // (but the user still managed to uncheck the visual — restore it
       // on the next refresh-row tick).
-      if (!isGrouped && !isValued && !isRoleEligible) {
+      if (!isGrouped && !isValued && !isPivoted && !isRoleEligible) {
         // Force the checkbox back to its computed state so it doesn't
         // appear to drop a role that wasn't there.
         checkbox.checked = false;
@@ -845,6 +860,7 @@ export class ColumnsToolPanel implements ToolPanel {
       this.beginPillDrag(e, {
         pillEl: pill,
         zone: opts.zone,
+        colId: opts.colId,
         label: opts.label,
         onDragOut: opts.onDragOut,
         getZoneRect: opts.getZoneRect,
@@ -1159,15 +1175,23 @@ export class ColumnsToolPanel implements ToolPanel {
     window.addEventListener('mouseup', onUp);
   }
 
-  /** Pill drag-out — generalised across rgz / plz / valz. Release
-   *  OUTSIDE the originating zone fires `onDragOut`; release INSIDE the
-   *  zone is a no-op (within-zone reorder is deferred to a follow-up
-   *  cycle, mirroring Cycle 15.5 / Task 2's choice for row-group pills). */
+  /** Pill drag-out — generalised across rgz / plz / valz. On release:
+   *   • If the drop lands inside the originating zone → no-op
+   *     (within-zone reorder is deferred to a follow-up cycle).
+   *   • Else if the drop lands on a DIFFERENT pill panel that accepts
+   *     the column → atomic cross-panel move via
+   *     `api.commitPanelMove`. The role-change events drive the panel
+   *     rebuild — `onDragOut` is NOT called (the column is now in
+   *     the new role, not gone).
+   *   • Else → `onDragOut` fires, which removes the column from this
+   *     zone's role (existing behaviour).
+   */
   private beginPillDrag(
     e: MouseEvent,
     opts: {
       pillEl: HTMLElement;
       zone: 'rgz' | 'plz' | 'valz';
+      colId: string;
       label: string;
       onDragOut: () => void;
       getZoneRect: () => DOMRect | null;
@@ -1218,15 +1242,29 @@ export class ColumnsToolPanel implements ToolPanel {
       positionGhost(ev.clientX, ev.clientY);
     };
 
+    const sourceRole: 'rowGroup' | 'pivot' | 'value' =
+      opts.zone === 'rgz' ? 'rowGroup' :
+      opts.zone === 'plz' ? 'pivot' :
+      'value';
+
     const onUp = (ev: MouseEvent) => {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
       opts.pillEl.classList.remove(liftedClass);
       removeGhost();
       if (!dragging) return;
-      if (!this.isPointInRect(opts.getZoneRect(), ev.clientX, ev.clientY)) {
-        opts.onDragOut();
+      // Drop landed inside the source zone → no-op (reorder TBD).
+      if (this.isPointInRect(opts.getZoneRect(), ev.clientX, ev.clientY)) return;
+      // Try routing to a foreign pill panel first. If the target
+      // accepts, the column moves to the new role; the panel rebuild
+      // happens through the role-change event. Only fall back to
+      // remove-from-current-role when no foreign panel accepted.
+      const target = this.api.resolveDragTargetRole?.(ev.clientX, ev.clientY) ?? null;
+      if (target && target !== sourceRole) {
+        const moved = this.api.commitPanelMove?.(sourceRole, target, opts.colId) ?? false;
+        if (moved) return;
       }
+      opts.onDragOut();
     };
 
     window.addEventListener('mousemove', onMove);

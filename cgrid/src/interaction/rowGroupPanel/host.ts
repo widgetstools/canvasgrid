@@ -119,6 +119,12 @@ export interface RowGroupPanelGridContext {
    *  (`'asc' | 'desc' | null`) per the `none → asc → desc → none`
    *  cycle. */
   setRowGroupColumnSort(colId: string, direction: 'asc' | 'desc' | null): void;
+  /** Cross-section pill drag — when the user drops a row group chip
+   *  on a different panel (Pivot panel, side-panel Values zone, etc),
+   *  this routes the column to that role. Returns `true` when the
+   *  routing committed (chip should not be re-removed on drag-out),
+   *  `false` when no foreign panel was hit OR the target rejected. */
+  tryCrossPanelMove?(colId: string, clientX: number, clientY: number): boolean;
 }
 
 /** Render-time options governing which decorations the host paints
@@ -203,6 +209,11 @@ export class RowGroupPanelHost {
 
     this.panel = document.createElement('div');
     this.panel.className = 'cg-row-group-panel';
+    // Marker for cross-section pill drag routing. See
+    // `core/panelDragMove.ts`. The point-to-role resolver walks up
+    // from `elementFromPoint` to the nearest element carrying this
+    // attribute, so dragging a pill from any panel can land here.
+    this.panel.setAttribute('data-cg-pill-role', 'rowGroup');
 
     this.onPointerMove = (e) => this.handlePointerMove(e);
     this.onPointerUp = (e) => this.handlePointerUp(e);
@@ -712,6 +723,14 @@ export class RowGroupPanelHost {
       if (this.isPointInPanel(e.clientX, e.clientY)) {
         const targetSlot = this.updateInsertionLine(e.clientX);
         this.ctx.moveRowGroupColumn(state.fromIndex, targetSlot);
+      } else {
+        // Cross-section drag — try routing to a foreign pill panel
+        // (Pivot, side-panel Values, etc.). If the route commits, the
+        // column is now in the new role; the row-group panel rebuild
+        // happens through the resulting role-change event. If no
+        // foreign panel was hit OR the target rejected, leave the
+        // column in place (no silent remove — see Cycle 28).
+        this.ctx.tryCrossPanelMove?.(state.colId, e.clientX, e.clientY);
       }
     }
     this.cancelDrag();
