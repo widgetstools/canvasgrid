@@ -3155,6 +3155,21 @@ export class CGrid<TRow = any> {
     // the grid would stay painted with the old pivot matrix.
     if (this.pivotActive && !this.pivotState.isPivotActive()) {
       this.revertPivotColumns();
+    } else if (this.pivotState.isPivotMode() && !this.pivotActive) {
+      // Pivot mode is on but pivot is inactive — rebuild the visible
+      // column order so the pivot-mode role filter in
+      // `computeVisibleColumnOrder` re-evaluates each source column's
+      // role membership. Without this, unchecking a value column
+      // AFTER pivot already went inactive leaves it stale in
+      // `columnOrder` and the painter keeps drawing it.
+      this.columnOrder = this.computeVisibleColumnOrder();
+      this.columnLayout = resolveColumnWidths(
+        this.columnOrder,
+        this.canvasBounds.width || this.scroller.clientWidth || 800,
+      );
+      this.rebuildSubgridStack();
+      this.recomputeViewport();
+      this.cgridCanvas?.requestRepaint();
     }
     this.workerClient.updateColumns(this.workerColumns())
       .then(() => this.workerClient.setPivotModel(this.pivotWorkerModel()))
@@ -5705,9 +5720,30 @@ export class CGrid<TRow = any> {
    *  `getColumnState()` so the round-trip is symmetric. */
   private computeVisibleColumnOrder(): ResolvedColDef<TRow>[] {
     const ids = resolveVisibleLeaves(this.columnTree, this.columnGroupState);
+    // In pivot mode, source columns that are eligible for a pivot role
+    // (`enableRowGroup` / `enablePivot` / `enableValue`) but currently
+    // hold no role should NOT paint. Otherwise unchecking the column
+    // in the columns side panel — which removes the role but doesn't
+    // flip `hide` — leaves the source column visible in the body,
+    // which contradicts the panel's checkbox state. Columns with no
+    // role-eligibility flag stay visible (a plain `id` column has no
+    // pivot semantics; the user can't opt it out via the panel).
+    const pivotMode = this.pivotState.isPivotMode();
+    const rowGroups = pivotMode ? new Set(this.groupModel.rowGroupCols) : null;
+    const pivots = pivotMode ? new Set(this.pivotState.getPivotColumns()) : null;
+    const valueIds = pivotMode
+      ? new Set(this.pivotState.getValueColumns().map((v) => v.colId))
+      : null;
     const visible = ids
       .map((id) => this.columnDefsMap.get(id)!)
-      .filter((def) => !def.hide);
+      .filter((def) => {
+        if (def.hide) return false;
+        if (!pivotMode) return true;
+        const eligible = def.enableRowGroup || def.enablePivot || def.enableValue;
+        if (!eligible) return true;
+        const id = def.colId;
+        return rowGroups!.has(id) || pivots!.has(id) || valueIds!.has(id);
+      });
     // Cycle 15 / Task 4 + Task 5 — when grouping is active AND auto-group
     // column(s) have been synthesized (singleColumn → 1 column;
     // multipleColumns → N columns, one per rowGroupCols entry), insert

@@ -168,10 +168,11 @@ test.describe('cross-section pill drag routing', () => {
     expect(after.rowGroups).toEqual([]);
     expect(after.pivots).toEqual([]);
     expect(after.values).toEqual([]);
-    // No stale synthesised pivot result columns; the grid is back to
-    // source columns.
-    const stale = after.columnOrder.filter((id: string) => id.startsWith('pivotcol'));
-    expect(stale).toEqual([]);
+    // No stale synthesised pivot result columns; AND no source columns
+    // either — under pivot mode, a source column the user just
+    // unchecked has no role, so it shouldn't paint at all (otherwise
+    // the checkbox state contradicts what's on screen).
+    expect(after.columnOrder).toEqual([]);
     // The worker shouldn't have errored on the way out (the
     // mid-swap race in PivotPass.apply is the regression this test
     // guards).
