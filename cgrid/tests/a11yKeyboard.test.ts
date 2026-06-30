@@ -139,6 +139,118 @@ describe('Cycle 24 / Task 1 — keyboard matrix completion', () => {
   });
 });
 
+describe('Cycle 24 / Task 1 — Shift+Arrow extends the cell range', () => {
+  it('Shift+ArrowDown grows the cell range by one row + moves focus down', async () => {
+    const { CellSelection } = await import('../src/interaction/features/cellSelection');
+    const feature = new CellSelection();
+    const setFocusAndCollapseRanges = vi.fn();
+    const addRange = vi.fn();
+    const extendLastRangeToCell = vi.fn();
+    const setFocus = vi.fn();
+    const ctx = makeKeyCtx({
+      key: 'ArrowDown', shiftKey: true,
+      sel: {
+        state: { focusedRowIndex: 3, focusedColId: 'b', selectedRowIndices: new Set(), ranges: [] },
+        setFocusAndCollapseRanges, addRange, extendLastRangeToCell, setFocus,
+        range: vi.fn(), toggleMulti: vi.fn(), selectSingle: vi.fn(), clear: vi.fn(), clearRanges: vi.fn(),
+        getRanges: () => [],
+      },
+      cols: ['a', 'b', 'c'],
+      rowCount: 100,
+    });
+    feature.handleKeyDown(ctx as any);
+    // No ranges existed — feature seeded one on the focused cell first.
+    expect(addRange).toHaveBeenCalledWith({ rowStart: 3, rowEnd: 3, colIds: ['b'] });
+    // Then grew it to cover the target (row 4, col 'b').
+    expect(extendLastRangeToCell).toHaveBeenCalledWith(4, 'b', ['a', 'b', 'c']);
+    // Focus moved to the new target — collapseRanges must NOT be used
+    // (it would wipe the range we just grew).
+    expect(setFocus).toHaveBeenCalledWith(4, 'b');
+    expect(setFocusAndCollapseRanges).not.toHaveBeenCalled();
+  });
+
+  it('Shift+ArrowRight grows the cell range by one column', async () => {
+    const { CellSelection } = await import('../src/interaction/features/cellSelection');
+    const feature = new CellSelection();
+    const extendLastRangeToCell = vi.fn();
+    const ctx = makeKeyCtx({
+      key: 'ArrowRight', shiftKey: true,
+      sel: {
+        state: { focusedRowIndex: 3, focusedColId: 'b', selectedRowIndices: new Set(), ranges: [{ rowStart: 3, rowEnd: 3, colIds: ['b'] }] },
+        setFocusAndCollapseRanges: vi.fn(), addRange: vi.fn(), extendLastRangeToCell,
+        setFocus: vi.fn(), range: vi.fn(), toggleMulti: vi.fn(),
+        selectSingle: vi.fn(), clear: vi.fn(), clearRanges: vi.fn(),
+        getRanges: () => [{ rowStart: 3, rowEnd: 3, colIds: ['b'] }],
+      },
+      cols: ['a', 'b', 'c', 'd'],
+      rowCount: 100,
+    });
+    feature.handleKeyDown(ctx as any);
+    expect(extendLastRangeToCell).toHaveBeenCalledWith(3, 'c', ['a', 'b', 'c', 'd']);
+  });
+
+  it('Ctrl+Shift+ArrowDown grows the range to the LAST row', async () => {
+    const { CellSelection } = await import('../src/interaction/features/cellSelection');
+    const feature = new CellSelection();
+    const extendLastRangeToCell = vi.fn();
+    const ctx = makeKeyCtx({
+      key: 'ArrowDown', shiftKey: true, ctrlKey: true,
+      sel: {
+        state: { focusedRowIndex: 5, focusedColId: 'b', selectedRowIndices: new Set(), ranges: [{ rowStart: 5, rowEnd: 5, colIds: ['b'] }] },
+        setFocusAndCollapseRanges: vi.fn(), addRange: vi.fn(), extendLastRangeToCell,
+        setFocus: vi.fn(), range: vi.fn(), toggleMulti: vi.fn(),
+        selectSingle: vi.fn(), clear: vi.fn(), clearRanges: vi.fn(),
+        getRanges: () => [{ rowStart: 5, rowEnd: 5, colIds: ['b'] }],
+      },
+      cols: ['a', 'b', 'c'],
+      rowCount: 100,
+    });
+    feature.handleKeyDown(ctx as any);
+    expect(extendLastRangeToCell).toHaveBeenCalledWith(99, 'b', ['a', 'b', 'c']);
+  });
+
+  it('Ctrl+Shift+ArrowRight grows the range to the LAST column', async () => {
+    const { CellSelection } = await import('../src/interaction/features/cellSelection');
+    const feature = new CellSelection();
+    const extendLastRangeToCell = vi.fn();
+    const ctx = makeKeyCtx({
+      key: 'ArrowRight', shiftKey: true, ctrlKey: true,
+      sel: {
+        state: { focusedRowIndex: 5, focusedColId: 'b', selectedRowIndices: new Set(), ranges: [{ rowStart: 5, rowEnd: 5, colIds: ['b'] }] },
+        setFocusAndCollapseRanges: vi.fn(), addRange: vi.fn(), extendLastRangeToCell,
+        setFocus: vi.fn(), range: vi.fn(), toggleMulti: vi.fn(),
+        selectSingle: vi.fn(), clear: vi.fn(), clearRanges: vi.fn(),
+        getRanges: () => [{ rowStart: 5, rowEnd: 5, colIds: ['b'] }],
+      },
+      cols: ['a', 'b', 'c', 'd'],
+      rowCount: 100,
+    });
+    feature.handleKeyDown(ctx as any);
+    expect(extendLastRangeToCell).toHaveBeenCalledWith(5, 'd', ['a', 'b', 'c', 'd']);
+  });
+
+  it('Shift+ArrowUp at row 0 stays put (no negative-row range)', async () => {
+    const { CellSelection } = await import('../src/interaction/features/cellSelection');
+    const feature = new CellSelection();
+    const extendLastRangeToCell = vi.fn();
+    const setFocus = vi.fn();
+    const ctx = makeKeyCtx({
+      key: 'ArrowUp', shiftKey: true,
+      sel: {
+        state: { focusedRowIndex: 0, focusedColId: 'a', selectedRowIndices: new Set(), ranges: [{ rowStart: 0, rowEnd: 0, colIds: ['a'] }] },
+        setFocusAndCollapseRanges: vi.fn(), addRange: vi.fn(), extendLastRangeToCell, setFocus,
+        range: vi.fn(), toggleMulti: vi.fn(), selectSingle: vi.fn(), clear: vi.fn(), clearRanges: vi.fn(),
+        getRanges: () => [{ rowStart: 0, rowEnd: 0, colIds: ['a'] }],
+      },
+      cols: ['a', 'b', 'c'],
+      rowCount: 100,
+    });
+    feature.handleKeyDown(ctx as any);
+    expect(extendLastRangeToCell).toHaveBeenCalledWith(0, 'a', ['a', 'b', 'c']);
+    expect(setFocus).toHaveBeenCalledWith(0, 'a');
+  });
+});
+
 describe('Cycle 24 / Task 2 — suppressKeyboardEvent per column', () => {
   it('returning true from suppressKeyboardEvent short-circuits the grid handler', async () => {
     const { CGrid } = await import('../src/cgrid');
