@@ -351,6 +351,22 @@ export interface CGridOptions<TRow = any> {
    * `setThemeParams` API on the relevant element.
    */
   shadowRoot?: boolean;
+  /**
+   * Cycle 23 / Task 6 — restore a saved state snapshot at
+   * construction time. Applied AFTER initial options resolve but
+   * BEFORE the first paint, so apps that persist `getState()` to
+   * localStorage (or any other store) hand the saved snapshot back
+   * here and the grid lights up in the user's last layout.
+   *
+   * Equivalent to calling `setState(initialState)` immediately after
+   * construction; bundling it as a constructor option avoids the
+   * one-frame flash where the grid renders with defaults before the
+   * restore lands.
+   *
+   * Older snapshots forward-migrate through `STATE_MIGRATIONS`; newer
+   * snapshots (from a future grid version) throw with a clear error.
+   */
+  initialState?: import('./core/stateSnapshot').GridState;
   worker?: { url?: string };
 
   /** Hint to skip CSS-animated row transitions. Runtime-mutable; storage-only

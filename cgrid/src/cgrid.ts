@@ -26,7 +26,7 @@ import {
   type SnapshotLocks, type ChangeRecord,
 } from './core/columnState';
 import {
-  buildSnapshot, STATE_SCHEMA_VERSION, type GridState,
+  buildSnapshot, migrateSnapshot, STATE_SCHEMA_VERSION, type GridState,
 } from './core/stateSnapshot';
 import type { CColumnState, CApplyColumnStateParams, ISizeColumnsToFitParams } from './types';
 import type { CColDef, CColGroupDef } from './types';
@@ -1591,6 +1591,13 @@ export class CGrid<TRow = any> {
       }
       this.events.emit({ type: 'gridReady', api: this.makeApi() });
       if (options.rowData) this.setRowData(options.rowData);
+      // Cycle 23 / Task 6 — apply an initial-state snapshot AFTER the
+      // grid is ready (so column tree, pivot state, selection model
+      // are all live) but BEFORE the first user interaction. Bundles
+      // the same plumbing as `setState` so columnState → filter →
+      // sort → groups → pivot → expanded → selection → scroll
+      // applies in dependency order.
+      if (options.initialState) this.setState(options.initialState);
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
 
     // 10. Native scroll listener
@@ -6809,6 +6816,102 @@ export class CGrid<TRow = any> {
       getSelectedRowIds: () => this.getSelectedRowIds(),
       getScrollPosition: () => ({ top: this.scrollTop, left: this.scrollLeft }),
     });
+  }
+
+  /** Cycle 23 / Task 6 — restore a state snapshot. Applied in the
+   *  dependency order documented in the design notes: columnState →
+   *  filter → sort → row-group → pivot → expanded → selection →
+   *  side-bar → scroll. Each step is a no-op when the snapshot omits
+   *  the corresponding field, so partial snapshots restore only the
+   *  fields they carry.
+   *
+   *  Migrates the snapshot forward through `STATE_MIGRATIONS` when
+   *  its `version` is older than the current schema. */
+  setState(snapshot: GridState): void {
+    const migrated = migrateSnapshot(snapshot);
+
+    // 1. columnState (defines columns + their geometry).
+    if (migrated.columnState) {
+      this.applyColumnState({ state: migrated.columnState, applyOrder: true });
+    }
+
+    // 2. filterModel — filters rows.
+    if (migrated.filterModel) {
+      this.setFilterModel(migrated.filterModel);
+    }
+
+    // 3. sortModel — orders rows.
+    if (migrated.sortModel) {
+      this.setSortModel(migrated.sortModel);
+    }
+
+    // 4. row-group columns.
+    if (migrated.rowGroupColumns) {
+      this.setRowGroupColumns(migrated.rowGroupColumns);
+    }
+
+    // 5. pivot mode + cols.
+    if (migrated.pivotMode !== undefined) {
+      this.setPivotMode(migrated.pivotMode);
+    }
+    if (migrated.pivotCols) {
+      this.setPivotColumns(migrated.pivotCols);
+    }
+
+    // 6. expanded routes (group / tree). Apply after grouping so the
+    // keys resolve to live group rows.
+    if (migrated.expandedRouteIds) {
+      for (const key of migrated.expandedRouteIds) {
+        this.setExpanded(key, true);
+      }
+    }
+
+    // 7. cell + row selection.
+    if (migrated.cellSelection) {
+      this.clearCellRanges();
+      for (const range of migrated.cellSelection.ranges) {
+        this.addCellRange(range);
+      }
+    }
+    if (migrated.rowSelection) {
+      this.setSelectedRowIds(migrated.rowSelection);
+    }
+
+    // 8. side bar.
+    if (migrated.sideBar) {
+      this.setSideBarVisible(migrated.sideBar.visible);
+      if (migrated.sideBar.openedToolPanel) {
+        this.openToolPanel(migrated.sideBar.openedToolPanel);
+      }
+    }
+
+    // 9. scroll — last so viewport math runs after every model that
+    // affects layout has settled.
+    if (migrated.scroll) {
+      this.scroller.scrollTo({ top: migrated.scroll.top, left: migrated.scroll.left });
+    }
+  }
+
+  /** Cycle 23 / Task 6 — restore the construction-time defaults.
+   *  Walks the same setters `setState` uses but with empty / cleared
+   *  values across the board; column state replays through the
+   *  dedicated `resetColumnState` path so the as-coded layout
+   *  (sort, pin, visibility) comes back exactly as the constructor
+   *  saw it. */
+  resetState(): void {
+    this.resetColumnState();
+    this.setFilterModel({});
+    this.setSortModel([]);
+    this.setRowGroupColumns([]);
+    this.setPivotColumns([]);
+    if (this.isPivotMode()) this.setPivotMode(false);
+    // Collapse every currently-expanded group.
+    for (const key of Array.from(this.getExpandedKeys())) {
+      this.setExpanded(key, false);
+    }
+    this.clearCellRanges();
+    this.setSelectedRowIds([]);
+    this.scroller.scrollTo({ top: 0, left: 0 });
   }
 
   /** Cycle 6 / Task 2 — restore column state through a single re-layout +

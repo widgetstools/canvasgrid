@@ -422,6 +422,91 @@ describe('Cycle 23 / Task 5 — getState()', () => {
   });
 });
 
+describe('Cycle 23 / Task 6 — setState round-trip', () => {
+  it('setState(getState()) leaves state observably unchanged', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [
+        { colId: 'a', field: 'a', cellDataType: 'text' },
+        { colId: 'b', field: 'b', cellDataType: 'number' },
+      ],
+    } as any);
+    grid.cycleSort('b');
+    const before = JSON.stringify(grid.getState());
+    grid.setState(grid.getState());
+    const after = JSON.stringify(grid.getState());
+    expect(after).toBe(before);
+    grid.destroy();
+  });
+
+  it('restores sortModel from a snapshot', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+    } as any);
+    grid.setState({
+      version: 1,
+      sortModel: [{ colId: 'a', direction: 'desc' } as any],
+    });
+    expect(grid.getSortModel()).toEqual([{ colId: 'a', direction: 'desc' }]);
+    grid.destroy();
+  });
+
+  it('resetState wipes filters, sort, groups, selection back to initial', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+    } as any);
+    grid.cycleSort('a');
+    expect(grid.getSortModel().length).toBe(1);
+    grid.resetState();
+    expect(grid.getSortModel().length).toBe(0);
+    grid.destroy();
+  });
+
+  it('CGridOptions.initialState applies before any user interaction', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+      initialState: {
+        version: 1,
+        sortModel: [{ colId: 'a', direction: 'asc' } as any],
+      },
+    } as any);
+    // Simulate the worker's 'ready' message so the async init chain
+    // (and the initialState apply) completes.
+    const w = (grid as any).workerClient.worker;
+    w.listeners.forEach((cb: any) => cb({ data: { id: 1, type: 'ready' } }));
+    await new Promise((r) => setTimeout(r, 0));
+    expect(grid.getSortModel()).toEqual([{ colId: 'a', direction: 'asc' }]);
+    grid.destroy();
+  });
+
+  it('throws a clear error when a snapshot version is newer than the build', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+    } as any);
+    expect(() => grid.setState({ version: 999 } as any)).toThrow(/newer than this build/);
+    grid.destroy();
+  });
+});
+
 describe('Cycle 23 / Task 2 — integration with CGrid', () => {
   it('grid.on("cellMouseOver") fires with rowId + colId + value when the pointer crosses a cell boundary', async () => {
     const { CGrid } = await import('../src/cgrid');

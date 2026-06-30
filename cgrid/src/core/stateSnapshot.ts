@@ -91,6 +91,37 @@ export interface StateSnapshotSources {
   getScrollPosition(): { top: number; left: number };
 }
 
+/** Schema migrations. Each entry runs over a snapshot whose
+ *  `version` matches the registry key and returns the snapshot at
+ *  `version + 1`. The chain runs forward from the snapshot's stored
+ *  version until it matches `STATE_SCHEMA_VERSION`. Empty when no
+ *  migrations exist yet (v1 is the inaugural shape). */
+export const STATE_MIGRATIONS: Record<number, (s: GridState) => GridState> = {};
+
+/** Forward-migrate a snapshot from its stored version to the current
+ *  schema version. Snapshots already at the current version flow
+ *  through unchanged; unknown future versions throw so the caller
+ *  can surface a clear error instead of silently restoring partial
+ *  state. */
+export function migrateSnapshot(snapshot: GridState): GridState {
+  let v = snapshot.version ?? 1;
+  let current = snapshot;
+  if (v > STATE_SCHEMA_VERSION) {
+    throw new Error(
+      `[cgrid] cannot restore state: snapshot version ${v} is newer than this build (${STATE_SCHEMA_VERSION})`,
+    );
+  }
+  while (v < STATE_SCHEMA_VERSION) {
+    const step = STATE_MIGRATIONS[v];
+    if (!step) {
+      throw new Error(`[cgrid] missing schema migration from version ${v} → ${v + 1}`);
+    }
+    current = step(current);
+    v++;
+  }
+  return { ...current, version: STATE_SCHEMA_VERSION };
+}
+
 /** Compose a GridState snapshot from the supplied sources. Each
  *  field is included only when it carries information — an empty
  *  filter map / row-group list / selection list is omitted so
