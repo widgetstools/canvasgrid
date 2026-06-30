@@ -175,22 +175,23 @@ export class PivotPanelHost {
     return 32;
   }
 
-  /** True when the panel is currently mounted AND visible. In
-   *  `'onlyWhenPivoting'` mode the strip is fully hidden (height
-   *  released) when pivot is inactive — the empty drop strip is
-   *  clutter for a feature the user isn't using, and `getReservedHeight`
-   *  returns 0 so the data area reclaims the band. `'always'` always
-   *  paints; `'never'` never mounts. */
+  /** True when the panel is mounted (height reserved + DOM present).
+   *    • `'always'` — mounted unconditionally (AG-v36 parity; the
+   *      cycle 18 follow-up that also gated on `isPivotMode()` was
+   *      a v35 carryover that conflicted with the option's contract).
+   *    • `'onlyWhenPivoting'` — mounted only while pivot is active.
+   *      Per user feedback (see the unit-test contract in
+   *      `pivotPanel.test.ts`), the strip is FULLY RELEASED when
+   *      pivot is off — the data area reclaims the band and we
+   *      accept the one-time reflow on `setPivotMode(true)` in
+   *      exchange for the cleaner off-state.
+   *    • `'never'` — never mounted. */
   isVisible(): boolean {
     if (this.destroyed) return false;
     if (this.show === 'never') return false;
-    // Pivot panel is a pivot-mode-only surface. With pivot mode OFF
-    // the panel hides regardless of `pivotPanelShow` (matches AG
-    // Grid v35; the user wouldn't be assigning pivot columns when
-    // pivot mode isn't even on).
-    if (!this.ctx.isPivotMode()) return false;
-    if (this.show === 'onlyWhenPivoting' && !this.ctx.isPivotActive()) return false;
-    return true;
+    if (this.show === 'always') return true;
+    // 'onlyWhenPivoting' — fully hide while inactive.
+    return this.ctx.isPivotActive();
   }
 
   /** Receive a fresh ordered pivot column list from PivotState.

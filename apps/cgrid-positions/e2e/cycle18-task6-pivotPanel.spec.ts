@@ -209,6 +209,17 @@ test.describe('Cycle 18 / Task 6 — pivot panel (top-of-grid)', () => {
       await page.waitForSelector(SIDEBAR_PANEL, { state: 'visible' });
       await waitForFrames(page, 3);
     }
+    // Enable pivot mode so the sidebar Column Labels (plz) section
+    // becomes visible — cycle 18 follow-ups intentionally hide it
+    // when pivot mode is off (the section only makes sense in pivot
+    // mode). The top-of-grid pivot panel is independent: `pivotPanel:
+    // always` keeps it visible regardless of pivot mode.
+    await page.evaluate(() => {
+      const api = (window as unknown as { __cgrid?: { setPivotMode: (v: boolean) => void } }).__cgrid;
+      api?.setPivotMode(true);
+    });
+    await waitForFrames(page, 3);
+    await page.locator(PLZ).waitFor({ state: 'visible' });
 
     // Mutate PivotState via the TOP panel: add `desk` via the api
     // (simulating a successful drag-in to the top strip; the drag
@@ -238,19 +249,18 @@ test.describe('Cycle 18 / Task 6 — pivot panel (top-of-grid)', () => {
     expect(state.pivotColumns).toEqual([]);
   });
 
-  test('onlyWhenPivoting mode pre-reserves height but paint-suppresses content while pivot inactive', async ({ page }) => {
-    // Regression: 'onlyWhenPivoting' RESERVES the strip height at
-    // construction so a later `setPivotMode(true)` doesn't trigger a
-    // layout reflow. The strip's content is paint-suppressed until
-    // pivot activates.
+  test('onlyWhenPivoting mode fully releases the strip while pivot is inactive (user-preferred clean off-state)', async ({ page }) => {
+    // Contract: under user feedback (see the unit-test contract in
+    // `pivotPanel.test.ts`), `'onlyWhenPivoting'` releases the strip
+    // entirely when pivot is off — the data area reclaims the band
+    // and we accept the one-time reflow on `setPivotMode(true)` in
+    // exchange for the cleaner off-state. The earlier "pre-reserve
+    // height + paint-suppress" design was replaced by this fully-
+    // hidden design.
     await gridReady(page, '?pivotDemo=on&pivotPanel=onlyWhenPivoting');
     const panel = page.locator(PANEL);
-    await expect(panel).toBeVisible();
-    const box = await panel.boundingBox();
-    expect(box).not.toBeNull();
-    expect(box!.height).toBeGreaterThan(0);
-    // Content is paint-suppressed — no empty placeholder, no pills.
-    await expect(panel).toHaveAttribute('data-active', 'false');
+    // Display is `none` while inactive; the bounding box is collapsed.
+    await expect(panel).toBeHidden();
     await expect(panel.locator('.cg-pivot-panel-empty')).toHaveCount(0);
     await expect(panel.locator('.cg-pivot-panel-pill')).toHaveCount(0);
 

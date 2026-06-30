@@ -570,7 +570,18 @@ export class ColumnsToolPanel implements ToolPanel {
    *      list even when the source col auto-hides (rowGroup
    *      autoshow is the canonical example). That way the panel
    *      reflects "this column is in the pivot" rather than only
-   *      "this column paints in the body". */
+   *      "this column paints in the body".
+   *
+   *  Note on AG-Grid v36 divergence: v36 flips the pivot-mode
+   *  checkbox to ROLE-ONLY semantics (visible non-role cols read
+   *  unchecked). Two cycle 18 / Task 5 E2E tests pin that strict
+   *  behavior (`cycle18-task5-pivotToolPanel.spec.ts:221, 252`).
+   *  The strict semantic only works coherently if pivot mode also
+   *  auto-hides primary columns, which the current implementation
+   *  does NOT do — see cycle 19 / Task 5 (`PivotEngine` extraction)
+   *  for the future home of that auto-hide pass. Until then this
+   *  method keeps the lenient `visible OR role` semantic that the
+   *  showcase `panelDragRouting.spec.ts` tests pin. */
   private computeRowChecked(entry: CColumnState): boolean {
     if (entry.hide !== true) return true;
     if (this.api.isPivotMode?.() === true && this.hasPivotRole(entry.colId)) return true;

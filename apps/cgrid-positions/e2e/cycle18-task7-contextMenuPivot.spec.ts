@@ -116,6 +116,16 @@ test.describe('Cycle 18 / Task 7 — context menu pivot items', () => {
   test('"Add to Labels" mutates PivotState AND pills appear in both other surfaces (SYNC INVARIANT)', async ({ page }) => {
     await gridReady(page);
     expect(await readPivotColumns(page)).toEqual([]);
+    // Enable pivot mode so the sidebar columns panel's Column Labels
+    // (plz) section is visible — cycle 18 follow-ups intentionally
+    // hide it while pivot mode is off (the section only makes sense
+    // in pivot mode). The top-of-grid pivot panel is independent:
+    // `pivotPanel: always` keeps it visible regardless of pivot mode.
+    await page.evaluate(() => {
+      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.setPivotMode(true);
+    });
+    await waitForFrames(page, 3);
+    await page.waitForSelector('.cg-columns-panel-plz', { state: 'visible' });
 
     await rightClickHeader(page, 'sector');
     const addLabel = page.locator(LABEL_SELECTOR).filter({ hasText: /^Add to Labels$/ });

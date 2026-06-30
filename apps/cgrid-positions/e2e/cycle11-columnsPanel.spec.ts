@@ -63,20 +63,21 @@ test.describe('Cycle 11 / Task 3 — Columns tool panel', () => {
     await expect(page.locator(PANEL)).toBeVisible();
     await expect(page.locator(`${PANEL} .cg-columns-panel-pivot-mode`)).toHaveCount(1);
     await expect(page.locator(`${PANEL} .cg-columns-panel-search input[type="search"]`)).toBeVisible();
-    // Section headers + drop zones. Cycle 18 / Task 5 added the Column
-    // Labels (pivot) zone and reordered: pivot-related zones (Column
-    // Labels, Values) sit above Row Groups so they cluster near the
-    // columns list under pivot mode.
-    const headers = page.locator(`${PANEL} .cg-columns-panel-section-header`);
-    await expect(headers).toHaveCount(3);
-    await expect(headers.nth(0)).toHaveText('Column Labels');
+    // Section headers + drop zones. Cycle 18 / Task 9 follow-up
+    // reverted the original Cycle 18 / Task 5 ordering to AG-Grid
+    // parity: Row Groups → Values → Column Labels (rows-first matches
+    // how pivot tables read). The Column Labels section is hidden
+    // entirely when pivot mode is OFF (since cycle 18 follow-ups);
+    // this test runs with pivot mode OFF, so only two headers/zones
+    // are visible.
+    const headers = page.locator(`${PANEL} .cg-columns-panel-section-header:visible`);
+    await expect(headers).toHaveCount(2);
+    await expect(headers.nth(0)).toHaveText('Row Groups');
     await expect(headers.nth(1)).toHaveText('Values');
-    await expect(headers.nth(2)).toHaveText('Row Groups');
-    const dropZones = page.locator(`${PANEL} .cg-columns-panel-drop-zone`);
-    await expect(dropZones).toHaveCount(3);
-    await expect(dropZones.nth(0)).toHaveText('Drag here to set column labels');
+    const dropZones = page.locator(`${PANEL} .cg-columns-panel-drop-zone:visible`);
+    await expect(dropZones).toHaveCount(2);
+    await expect(dropZones.nth(0)).toHaveText('Drag here to set row groups');
     await expect(dropZones.nth(1)).toHaveText('Drag here to aggregate');
-    await expect(dropZones.nth(2)).toHaveText('Drag here to set row groups');
 
     // Demo grid carries 17 leaf columns at present — assert at least the
     // first five render with their headerNames (sanity check on

@@ -703,10 +703,10 @@ describe('ColumnsToolPanel — pivotMode-dependent checkbox semantics (Cycle 18 
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
     const countryCb = root.querySelector<HTMLInputElement>('.cg-columns-panel-row[data-col-id="country"] .cg-columns-panel-row-checkbox')!;
-    expect(countryCb.checked).toBe(true); // grouped → checked under pivot
+    expect(countryCb.checked).toBe(true); // grouped (role) → checked under pivot
     // Flip pivot mode off (e.g. via the toggle from elsewhere).
     api.emit({ type: 'pivotStateChanged', pivotMode: false, pivotColumns: [], valueColumns: [], source: 'mode' });
-    expect(countryCb.checked).toBe(true); // visible → still checked under non-pivot
+    expect(countryCb.checked).toBe(true); // visible → still checked under non-pivot (visibility semantic now)
     // Now click in pivot-off mode — should toggle visibility, not role.
     countryCb.click();
     expect(api.setColumnsVisible).toHaveBeenCalledWith(['country'], false);
