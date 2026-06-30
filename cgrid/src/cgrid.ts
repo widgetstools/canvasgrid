@@ -1197,6 +1197,19 @@ export class CGrid<TRow = any> {
         const rowId = this.rowIdAt(rowIndex);
         if (rowId) this.events.emit({ type: 'cellDoubleClicked', rowId, colId, value: this.cellAt(rowIndex, colId)?.value, mouse });
       },
+      // Cycle 23 / Task 2 — hover-transition event hooks. Each fires
+      // only when the OnHover feature detects a true boundary
+      // crossing. The grid resolves rowIndex → rowId + reads the cell
+      // value before dispatching so subscribers receive the same
+      // (rowId, colId, value) shape as cellClicked.
+      emitCellMouseOver: (rowIndex, colId, mouse) =>
+        this.emitCellMouseOverFromHover(rowIndex, colId, mouse),
+      emitCellMouseOut: (rowIndex, colId, mouse) =>
+        this.emitCellMouseOutFromHover(rowIndex, colId, mouse),
+      emitRowMouseOver: (rowIndex, mouse) =>
+        this.emitRowMouseOverFromHover(rowIndex, mouse),
+      emitRowMouseOut: (rowIndex, mouse) =>
+        this.emitRowMouseOutFromHover(rowIndex, mouse),
       getEditingFlags: () => ({
         singleClickEdit: this.options.singleClickEdit ?? false,
         suppressClickEdit: this.options.suppressClickEdit ?? false,
@@ -6507,6 +6520,37 @@ export class CGrid<TRow = any> {
     // Foundation: numeric IDs need round-trip via worker. For now, we only support cell-level focus events.
     // Real string IDs need a worker→main mapping deferred to a follow-up cycle.
     return `row-${rowIndex}`;
+  }
+
+  /** Cycle 23 / Task 2 — fan out cellMouseOver. Looked up here (not in
+   *  the OnHover feature) so the (rowId, value) shape matches the rest
+   *  of the cell-* event family — features don't need to reach into
+   *  the data path. */
+  private emitCellMouseOverFromHover(rowIndex: number, colId: string, mouse: MouseEvent): void {
+    const rowId = this.rowIdAt(rowIndex);
+    if (!rowId) return;
+    this.events.emit({
+      type: 'cellMouseOver', rowId, colId,
+      value: this.cellAt(rowIndex, colId)?.value, mouse,
+    });
+  }
+  private emitCellMouseOutFromHover(rowIndex: number, colId: string, mouse: MouseEvent): void {
+    const rowId = this.rowIdAt(rowIndex);
+    if (!rowId) return;
+    this.events.emit({
+      type: 'cellMouseOut', rowId, colId,
+      value: this.cellAt(rowIndex, colId)?.value, mouse,
+    });
+  }
+  private emitRowMouseOverFromHover(rowIndex: number, mouse: MouseEvent): void {
+    const rowId = this.rowIdAt(rowIndex);
+    if (!rowId) return;
+    this.events.emit({ type: 'rowMouseOver', rowId, mouse });
+  }
+  private emitRowMouseOutFromHover(rowIndex: number, mouse: MouseEvent): void {
+    const rowId = this.rowIdAt(rowIndex);
+    if (!rowId) return;
+    this.events.emit({ type: 'rowMouseOut', rowId, mouse });
   }
 
   private formatNumber(colId: string, value: number): string {

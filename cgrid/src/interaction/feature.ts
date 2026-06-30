@@ -154,6 +154,14 @@ export interface CGridLike {
   getBodyRect(): { left: number; right: number; top: number; bottom: number };
   emitCellClicked(rowIndex: number, colId: string, e: MouseEvent): void;
   emitCellDoubleClicked(rowIndex: number, colId: string, e: MouseEvent): void;
+  /** Cycle 23 / Task 2 — fan out a cellMouseOver / cellMouseOut event
+   *  when the pointer crosses a cell boundary. Fires per transition
+   *  only, NOT per pixel. The grid resolves rowIndex → rowId + reads
+   *  the cell value before dispatching to subscribers. */
+  emitCellMouseOver?(rowIndex: number, colId: string, e: MouseEvent): void;
+  emitCellMouseOut?(rowIndex: number, colId: string, e: MouseEvent): void;
+  emitRowMouseOver?(rowIndex: number, e: MouseEvent): void;
+  emitRowMouseOut?(rowIndex: number, e: MouseEvent): void;
 
   // --- Editing surface (Cycle 5 / Task 4) ---
   /** Snapshot of every grid-level edit-trigger flag, with defaults applied. */

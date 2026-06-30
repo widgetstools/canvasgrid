@@ -2098,6 +2098,18 @@ export type CGridEvent =
   | { type: 'gridReady'; api: CGridApi }
   | { type: 'cellClicked'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
   | { type: 'cellDoubleClicked'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
+  /** Cycle 23 / Task 2 — pointer crossed a cell boundary. Fires per
+   *  transition only (never per pixel). The Out event is paired with
+   *  the Over event for the next cell when the pointer moves from one
+   *  cell to another; either fires alone when the pointer enters or
+   *  leaves the body band entirely. */
+  | { type: 'cellMouseOver'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
+  | { type: 'cellMouseOut'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
+  /** Cycle 23 / Task 2 — pointer crossed a row boundary. Coalesced
+   *  per row: moving across multiple cells inside the same row fires
+   *  zero `rowMouse*` events. */
+  | { type: 'rowMouseOver'; rowId: string; mouse: MouseEvent }
+  | { type: 'rowMouseOut'; rowId: string; mouse: MouseEvent }
   | { type: 'cellFocused'; rowId: string; colId: string }
   | {
       type: 'cellValueChanged';
