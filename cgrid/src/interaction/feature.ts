@@ -167,6 +167,16 @@ export interface CGridLike {
    *  so the chain can short-circuit and skip downstream key handlers. */
   emitCellKeyDown?(rowIndex: number, colId: string, e: KeyboardEvent): boolean;
   emitCellKeyPress?(rowIndex: number, colId: string, e: KeyboardEvent): boolean;
+  /** Cycle 24 / Task 1 — Ctrl+A keyboard shortcut. Selects every
+   *  visible row when row selection mode is `'multiple'`. */
+  selectAllRows?(): void;
+  /** Cycle 24 / Task 6 — focus exit / wrap callbacks. Return `true` to
+   *  let the grid wrap to the opposite end, `false` to release focus
+   *  so the browser's native Tab handling takes the user OUT of the
+   *  grid. `undefined` (no callback set) keeps the original wrap-to-
+   *  next-row behavior. */
+  getTabToNextHeader?(): ((params: { event: KeyboardEvent }) => boolean) | undefined;
+  getTabToPreviousHeader?(): ((params: { event: KeyboardEvent }) => boolean) | undefined;
 
   // --- Editing surface (Cycle 5 / Task 4) ---
   /** Snapshot of every grid-level edit-trigger flag, with defaults applied. */

@@ -16,6 +16,7 @@
     "cgrid": "*"
   },
   "devDependencies": {
+    "@axe-core/playwright": "^4.12.1",
     "@playwright/test": "^1.61.1",
     "typescript": "~5.9.3",
     "vite": "^7.3.2"

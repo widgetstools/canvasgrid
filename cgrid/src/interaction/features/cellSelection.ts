@@ -73,25 +73,91 @@ export class CellSelection extends Feature {
 
     switch (e.key) {
       case 'ArrowDown':
-        sel.setFocusAndCollapseRanges(fr == null ? 0 : Math.min(rowCount - 1, fr + 1), fc ?? cols[0]!);
+        // Cycle 24 / Task 1 — Ctrl+ArrowDown jumps to the last row in
+        // the same column (data-boundary nav).
+        if (e.ctrlKey || e.metaKey) {
+          sel.setFocusAndCollapseRanges(rowCount - 1, fc ?? cols[0]!);
+        } else {
+          sel.setFocusAndCollapseRanges(fr == null ? 0 : Math.min(rowCount - 1, fr + 1), fc ?? cols[0]!);
+        }
         e.preventDefault();
         return;
       case 'ArrowUp':
-        sel.setFocusAndCollapseRanges(fr == null ? 0 : Math.max(0, fr - 1), fc ?? cols[0]!);
+        if (e.ctrlKey || e.metaKey) {
+          sel.setFocusAndCollapseRanges(0, fc ?? cols[0]!);
+        } else {
+          sel.setFocusAndCollapseRanges(fr == null ? 0 : Math.max(0, fr - 1), fc ?? cols[0]!);
+        }
         e.preventDefault();
         return;
       case 'ArrowRight':
-        sel.setFocusAndCollapseRanges(fr ?? 0, cols[Math.min(cols.length - 1, ci + 1)]!);
+        if (e.ctrlKey || e.metaKey) {
+          sel.setFocusAndCollapseRanges(fr ?? 0, cols[cols.length - 1]!);
+        } else {
+          sel.setFocusAndCollapseRanges(fr ?? 0, cols[Math.min(cols.length - 1, ci + 1)]!);
+        }
         e.preventDefault();
         return;
       case 'ArrowLeft':
-        sel.setFocusAndCollapseRanges(fr ?? 0, cols[Math.max(0, ci - 1)]!);
+        if (e.ctrlKey || e.metaKey) {
+          sel.setFocusAndCollapseRanges(fr ?? 0, cols[0]!);
+        } else {
+          sel.setFocusAndCollapseRanges(fr ?? 0, cols[Math.max(0, ci - 1)]!);
+        }
         e.preventDefault();
         return;
+      case 'Home':
+        // Cycle 24 / Task 1 — Ctrl+Home jumps to row 0 / col 0; plain
+        // Home is already handled by KeyPaging downstream. Only consume
+        // the ctrl variant here so KeyPaging's bare-Home path keeps
+        // working.
+        if (e.ctrlKey || e.metaKey) {
+          sel.setFocusAndCollapseRanges(0, cols[0]!);
+          e.preventDefault();
+          return;
+        }
+        break;
+      case 'End':
+        if (e.ctrlKey || e.metaKey) {
+          sel.setFocusAndCollapseRanges(rowCount - 1, cols[cols.length - 1]!);
+          e.preventDefault();
+          return;
+        }
+        break;
       case 'Tab': {
         // KeyPaging owns Tab while an editor is open (commit + jump to the
         // next editable cell). When closed, normal cell navigation.
         if (ctx.grid.isEditing()) break;
+        // Cycle 24 / Task 6 — at the LAST tabbable cell on Tab (or
+        // FIRST on Shift+Tab) consult the app-supplied
+        // tabToNextHeader / tabToPreviousHeader callback before
+        // wrapping. Returning false from the callback releases focus
+        // so the browser's native Tab takes the user OUT of the
+        // grid; the grid does NOT preventDefault, so the next
+        // focusable element on the page receives focus.
+        const atLastCell = !e.shiftKey
+          && (fr ?? 0) === rowCount - 1 && ci === cols.length - 1;
+        const atFirstCell = e.shiftKey && (fr ?? 0) === 0 && ci === 0;
+        if (atLastCell) {
+          const cb = ctx.grid.getTabToNextHeader?.();
+          if (cb) {
+            const wrap = cb({ event: e });
+            if (!wrap) return;  // app released focus — let browser handle Tab
+            sel.setFocusAndCollapseRanges(0, cols[0]!);
+            e.preventDefault();
+            return;
+          }
+        }
+        if (atFirstCell) {
+          const cb = ctx.grid.getTabToPreviousHeader?.();
+          if (cb) {
+            const wrap = cb({ event: e });
+            if (!wrap) return;
+            sel.setFocusAndCollapseRanges(rowCount - 1, cols[cols.length - 1]!);
+            e.preventDefault();
+            return;
+          }
+        }
         let nextRow = fr ?? 0;
         let nextCi: number;
         if (e.shiftKey) {

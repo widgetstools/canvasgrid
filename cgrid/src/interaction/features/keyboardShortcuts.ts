@@ -110,6 +110,18 @@ export class KeyboardShortcuts extends Feature {
     // only proceeds to the clear `applyTransaction` if writeText
     // resolves, so the user-gesture stack must be active here — the
     // keydown handler runs inside it.
+    // Cycle 24 / Task 1 — Ctrl+A / Cmd+A → select every visible row.
+    // Gated on `selectAllRows` actually existing on CGridLike (the
+    // hook is optional). The grid implementation no-ops when the
+    // selection mode isn't `'multiple'` so single / none modes get
+    // their browser default (no select-all on a canvas — fine).
+    const isSelectAll = e.key === 'a' || e.key === 'A' || e.code === 'KeyA';
+    if (isSelectAll && ctx.grid.selectAllRows) {
+      e.preventDefault();
+      ctx.grid.selectAllRows();
+      return;
+    }
+
     const isCut = e.key === 'x' || e.key === 'X' || e.code === 'KeyX';
     if (isCut) {
       const ranges = ctx.grid.selection.getRanges();
