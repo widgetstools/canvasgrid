@@ -327,6 +327,101 @@ describe('Cycle 23 / Task 4 — cell keyboard events', () => {
   });
 });
 
+describe('Cycle 23 / Task 5 — getState()', () => {
+  it('returns the schema version + populated columnState on a fresh grid', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const { STATE_SCHEMA_VERSION } = await import('../src/core/stateSnapshot');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [
+        { colId: 'a', field: 'a', cellDataType: 'text' },
+        { colId: 'b', field: 'b', cellDataType: 'number' },
+      ],
+    } as any);
+    const state = grid.getState();
+    expect(state.version).toBe(STATE_SCHEMA_VERSION);
+    expect(state.columnState).toBeDefined();
+    expect(state.columnState!.length).toBe(2);
+    expect(state.columnState!.map((c: any) => c.colId)).toEqual(['a', 'b']);
+    grid.destroy();
+  });
+
+  it('omits empty fields so JSON snapshots stay compact', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+    } as any);
+    const state = grid.getState();
+    // No filters, sort, groups, pivot, expanded, side bar, selection,
+    // scroll → all those keys are absent.
+    expect(state.filterModel).toBeUndefined();
+    expect(state.sortModel).toBeUndefined();
+    expect(state.rowGroupColumns).toBeUndefined();
+    expect(state.pivotMode).toBeUndefined();
+    expect(state.scroll).toBeUndefined();
+    expect(state.cellSelection).toBeUndefined();
+    expect(state.rowSelection).toBeUndefined();
+    grid.destroy();
+  });
+
+  it('captures the sort model after sortChanged', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+    } as any);
+    grid.cycleSort('a');
+    const state = grid.getState();
+    expect(state.sortModel).toEqual([{ colId: 'a', direction: 'asc' }]);
+    grid.destroy();
+  });
+
+  it('captures filterModel via setColumnFilterModel', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text', filter: 'text' }],
+    } as any);
+    grid.setColumnFilterModel('a', {
+      filterType: 'text',
+      type: 'contains',
+      filter: 'foo',
+    } as any);
+    const state = grid.getState();
+    expect(state.filterModel).toBeDefined();
+    expect((state.filterModel as any).a.filter).toBe('foo');
+    grid.destroy();
+  });
+
+  it('snapshot is JSON-serializable end-to-end (no functions, no circular refs)', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [
+        { colId: 'a', field: 'a', cellDataType: 'text' },
+        { colId: 'b', field: 'b', cellDataType: 'number' },
+      ],
+    } as any);
+    grid.cycleSort('a');
+    const json = JSON.stringify(grid.getState());
+    expect(() => JSON.parse(json)).not.toThrow();
+    const round = JSON.parse(json);
+    expect(round.sortModel).toEqual([{ colId: 'a', direction: 'asc' }]);
+    grid.destroy();
+  });
+});
+
 describe('Cycle 23 / Task 2 — integration with CGrid', () => {
   it('grid.on("cellMouseOver") fires with rowId + colId + value when the pointer crosses a cell boundary', async () => {
     const { CGrid } = await import('../src/cgrid');

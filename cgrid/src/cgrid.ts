@@ -25,6 +25,9 @@ import {
   snapshotState, applyStateToTree, cloneStateForReset,
   type SnapshotLocks, type ChangeRecord,
 } from './core/columnState';
+import {
+  buildSnapshot, STATE_SCHEMA_VERSION, type GridState,
+} from './core/stateSnapshot';
 import type { CColumnState, CApplyColumnStateParams, ISizeColumnsToFitParams } from './types';
 import type { CColDef, CColGroupDef } from './types';
 import {
@@ -2302,6 +2305,16 @@ export class CGrid<TRow = any> {
    *  `CGridApi`. */
   getColumnFilterModel(colId: string): CFilterModelEntry | null {
     return this.columnFilterModels.get(colId) ?? null;
+  }
+
+  /** Cycle 23 / Task 5 — full filter model as a plain object,
+   *  keyed by colId. Mirrors the shape `setFilterModel` accepts so
+   *  a `setFilterModel(getFilterModel())` round-trip is idempotent.
+   *  Returns `{}` (not `null`) when no columns are filtered. */
+  getFilterModel(): FilterModel {
+    const out: FilterModel = {};
+    for (const [colId, entry] of this.columnFilterModels) out[colId] = entry;
+    return out;
   }
 
   /** Cycle 7 / Task 1 — apply a per-column filter mutation. Updates the
@@ -6771,6 +6784,31 @@ export class CGrid<TRow = any> {
         valueColumns: this.pivotState.getValueColumns(),
       },
     );
+  }
+
+  /** Cycle 23 / Task 5 — full grid state snapshot. Includes columnState,
+   *  filter / sort / group model, pivot mode + cols, expanded routes,
+   *  side bar + selection + scroll position. Round-trippable through
+   *  `setState` (Task 6); pair with `stateUpdated` (Task 7) to drive
+   *  persistence. Empty fields are omitted so snapshots stay compact —
+   *  apps can serialize the result through `JSON.stringify` without
+   *  pre-pruning. */
+  getState(): GridState {
+    return buildSnapshot({
+      getColumnState: () => this.getColumnState(),
+      getFilterModel: () => this.getFilterModel(),
+      getSortModel: () => this.getSortModel(),
+      getRowGroupColumns: () => this.getRowGroupColumns(),
+      getExpandedKeys: () => this.getExpandedKeys(),
+      isPivotMode: () => this.isPivotMode(),
+      getPivotColumns: () => this.getPivotColumns(),
+      isSideBarVisible: () => this.isSideBarVisible(),
+      getOpenedToolPanel: () => this.getOpenedToolPanel(),
+      getCellRanges: () => this.getCellRanges(),
+      getFocusedCell: () => this.getFocusedCell(),
+      getSelectedRowIds: () => this.getSelectedRowIds(),
+      getScrollPosition: () => ({ top: this.scrollTop, left: this.scrollLeft }),
+    });
   }
 
   /** Cycle 6 / Task 2 — restore column state through a single re-layout +
