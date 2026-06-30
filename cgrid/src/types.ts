@@ -439,6 +439,14 @@ export interface CGridOptions<TRow = any> {
   /** Number of extra rows to materialise above and below the visible window.
    *  Defaults to the engine's internal overscan (3) when unset. */
   rowBuffer?: number;
+  /** Cycle 25 / Task 10 — soft cap on the cumulative byte size of
+   *  cached viewport chunks the grid holds across requests. When
+   *  exceeded, older chunks are evicted from the LRU (which itself
+   *  holds them via `WeakRef`, so V8/JSC can collect them ahead of
+   *  our eviction under real memory pressure). Undefined / `0`
+   *  disables the cap (caching disabled — every viewport request
+   *  goes to the worker). Typical: 32. */
+  memoryBudgetMB?: number;
   /** Opaque application data forwarded to callbacks (matches ag-grid).
    *  Storage-only in Cycle 4. */
   context?: unknown;

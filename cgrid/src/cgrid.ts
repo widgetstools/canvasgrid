@@ -17,6 +17,8 @@ import { TypedEventEmitter } from './core/eventEmitter';
 import { type ResolvedColDef, applyCellProps } from './core/propertyChain';
 import { resolveColumnTree, isColGroupDef, type ColumnTree } from './core/columnTree';
 import { resolveSelection } from './core/selectionConfig';
+import { expandRangeForVelocity } from './core/prefetchRange';
+import { ChunkLRU, estimateChunkBytes } from './core/memoryBudget';
 import { ColumnGroupState, resolveVisibleLeaves } from './core/columnGroupState';
 import {
   applyReorder, resolveLegalDropIndex, reorderLeavesByList,
@@ -480,6 +482,18 @@ export class CGrid<TRow = any> {
    *  on every scroll tick and re-armed for 200ms; null when no scroll
    *  has happened in the last window. */
   private scrollEndTimer: ReturnType<typeof setTimeout> | null = null;
+  /** Cycle 25 / Task 8 — scroll velocity in rows per ms (positive =
+   *  scrolling down). Updated by `onScrollerScroll` from the delta
+   *  between consecutive ticks; consumed by `requestViewport` to
+   *  widen the requested range pre-emptively on a fast fling. */
+  private scrollVelocityRows = 0;
+  private lastScrollSampleTop = 0;
+  private lastScrollSampleTime = 0;
+  /** Cycle 25 / Task 10 — LRU of recently-fetched chunks keyed by
+   *  `${rowStart}:${rowEnd}:${cols}`. Holds entries via WeakRef so
+   *  GC can reclaim before our eviction runs. `null` when the
+   *  `memoryBudgetMB` option is unset / 0 (caching disabled). */
+  private chunkLRU: ChunkLRU<ViewportChunk> | null = null;
   private rowCount = 0;
   private chunk: ViewportChunk | null = null;
   /** Cycle 15 / Task 16 — latest sticky ancestor band from the worker.
@@ -766,6 +780,14 @@ export class CGrid<TRow = any> {
 
   constructor(container: HTMLElement, private options: CGridOptions<TRow>) {
     if (!options.getRowId) throw new Error('[cgrid] options.getRowId is required');
+
+    // Cycle 25 / Task 10 — memory-pressure release. Holds recent
+    // chunks via WeakRef so V8/JSC can collect them ahead of our
+    // explicit eviction. `memoryBudgetMB` 0/undefined disables the
+    // cache entirely.
+    if (options.memoryBudgetMB && options.memoryBudgetMB > 0) {
+      this.chunkLRU = new ChunkLRU<ViewportChunk>(options.memoryBudgetMB * 1024 * 1024);
+    }
 
     // 1. DOM scaffold — scroller (with sized sizer child) provides native scrollbars;
     // the canvas (created later by CGridCanvas) overlays the scroller's content area
@@ -5327,6 +5349,7 @@ export class CGrid<TRow = any> {
     this.events.emit({ type: 'gridPreDestroyed', state: {} });
     this.destroyed = true;
     this.selectionUnsubscribe();
+    if (this.chunkLRU) this.chunkLRU.clear();
     this.cgridCanvas.destroy();
     this.workerClient.destroy();
     this.featureChain.destroy();
@@ -6281,6 +6304,25 @@ export class CGrid<TRow = any> {
     if (x === this.scrollLeft && y === this.scrollTop) return;
     const horizontal = x !== this.scrollLeft;
     const verticalChanged = y !== this.scrollTop;
+    // Cycle 25 / Task 8 — sample scroll velocity (rows/ms) before
+    // we mutate scrollTop. requestViewport reads this to widen the
+    // fetched range on a fast fling. We use the row-height index
+    // when present (variable heights) and fall back to the theme's
+    // uniform row height otherwise.
+    if (verticalChanged) {
+      const now = performance.now();
+      const dt = now - this.lastScrollSampleTime;
+      if (dt > 0 && this.lastScrollSampleTime > 0 && dt < 200) {
+        const idx = this.rowHeightIndex;
+        const yRow = idx ? idx.rowAt(y) : Math.floor(y / (this.options.rowHeight ?? this.theme.rowHeight));
+        const prevYRow = idx ? idx.rowAt(this.lastScrollSampleTop) : Math.floor(this.lastScrollSampleTop / (this.options.rowHeight ?? this.theme.rowHeight));
+        this.scrollVelocityRows = (yRow - prevYRow) / dt;
+      } else {
+        this.scrollVelocityRows = 0;
+      }
+      this.lastScrollSampleTop = y;
+      this.lastScrollSampleTime = now;
+    }
     this.scrollLeft = x;
     this.scrollTop = y;
     this.recomputeViewport(/* afterScroll */ horizontal);
@@ -6485,8 +6527,16 @@ export class CGrid<TRow = any> {
     }
     this.viewportRequestPending = true;
     const cols = this.viewport.visibleColumns.map((c) => c.colId);
-    const rowStart = this.viewport.firstRow;
-    const rowEnd = this.viewport.lastRow + 1;
+    // Cycle 25 / Task 8 — widen the row range when scrolling fast so
+    // the next chunk already covers the about-to-be-visible rows.
+    // expandRangeForVelocity is a no-op when velocity is below the
+    // threshold (most scroll ticks), so the request stays at the
+    // tight visible range under normal interaction.
+    const { rowStart, rowEnd } = expandRangeForVelocity(
+      this.viewport.firstRow,
+      this.viewport.lastRow + 1,
+      this.scrollVelocityRows,
+    );
     this.workerClient.getViewport({ rowStart, rowEnd, columns: cols, includeFlashMask: true })
       .then(({ chunk, stickyAncestors }) => {
         this.viewportRequestPending = false;
@@ -6497,6 +6547,17 @@ export class CGrid<TRow = any> {
         this.chunk = chunk;
         this.stickyAncestors = stickyAncestors ?? [];
         this.decodedTextCols.clear();
+        // Cycle 25 / Task 10 — park the chunk in the LRU. WeakRef
+        // retention means GC can reclaim if real memory pressure
+        // builds; the LRU's own eviction kicks in when our running
+        // sum exceeds `memoryBudgetMB`. Cache lookup on subsequent
+        // requests is intentionally NOT wired here — keying on
+        // model versions (sort/filter/group/pivot) needs more
+        // surface than this cycle delivers. Foundation only.
+        if (this.chunkLRU) {
+          const key = `${rowStart}:${rowEnd}:${cols.join(',')}`;
+          this.chunkLRU.set(key, chunk, estimateChunkBytes(chunk));
+        }
         // Cycle 18 / Task 3 — (re)synthesize or drop the pivot result
         // columns from the freshly-arrived pivot tree before the layout +
         // paint below run off the new column order.
