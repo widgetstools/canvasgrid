@@ -55,8 +55,47 @@ export class WorkerClient {
   private nextId = 1;
   private pending = new Map<number, Pending>();
 
+  // Cycle 25 / Task 9 — push coalescing. Multiple modelUpdated /
+  // heightsChanged / asyncTransactionsFlushed messages that arrive
+  // inside one RAF window are collapsed into one downstream dispatch:
+  //  • modelUpdated: latest visibleCount + groupKeys wins
+  //  • heightsChanged: appended in order (each range is distinct)
+  //  • asyncTransactionsFlushed: results lists concatenated
+  // Request-bearing pushes (measureTextRequest, externalFilterCandidates,
+  // postSortRowsRequest) bypass the queue — the worker is awaiting a
+  // synchronous reply on their callId/batchId.
+  private flushScheduled = false;
+  private pendingModelUpdated: { visibleCount: number; groupKeys?: string[] } | null = null;
+  private pendingHeights: Array<{ rowStart: number; heights: Float32Array }> = [];
+  private pendingTxnResults: TransactionResult[] = [];
+
   constructor(private worker: WorkerLike, private handlers: WorkerClientHandlers) {
     worker.addEventListener('message', (e) => this.onMessage(e.data as WorkerResponse | WorkerPush));
+  }
+
+  private scheduleFlush(): void {
+    if (this.flushScheduled) return;
+    this.flushScheduled = true;
+    const raf = typeof requestAnimationFrame === 'function'
+      ? requestAnimationFrame
+      : (cb: () => void) => queueMicrotask(cb);
+    raf(() => this.flushPushQueue());
+  }
+
+  private flushPushQueue(): void {
+    this.flushScheduled = false;
+    const model = this.pendingModelUpdated;
+    const heights = this.pendingHeights;
+    const txn = this.pendingTxnResults;
+    this.pendingModelUpdated = null;
+    this.pendingHeights = [];
+    this.pendingTxnResults = [];
+    if (model) this.handlers.onModelUpdated(model.visibleCount, model.groupKeys);
+    if (heights.length) {
+      const cb = this.handlers.onHeightsChanged;
+      if (cb) for (const h of heights) cb(h.rowStart, h.heights);
+    }
+    if (txn.length) this.handlers.onAsyncTransactionsFlushed(txn);
   }
 
   private onMessage(msg: WorkerResponse | WorkerPush): void {
@@ -68,10 +107,15 @@ export class WorkerClient {
       else                       pending.resolve(msg);
       return;
     }
-    if (msg.type === 'modelUpdated') this.handlers.onModelUpdated(msg.visibleCount, msg.groupKeys);
-    else if (msg.type === 'asyncTransactionsFlushed') this.handlers.onAsyncTransactionsFlushed(msg.results);
-    else if (msg.type === 'heightsChanged') {
-      this.handlers.onHeightsChanged?.(msg.rowStart, msg.heights);
+    if (msg.type === 'modelUpdated') {
+      this.pendingModelUpdated = { visibleCount: msg.visibleCount, groupKeys: msg.groupKeys };
+      this.scheduleFlush();
+    } else if (msg.type === 'asyncTransactionsFlushed') {
+      for (const r of msg.results) this.pendingTxnResults.push(r);
+      this.scheduleFlush();
+    } else if (msg.type === 'heightsChanged') {
+      this.pendingHeights.push({ rowStart: msg.rowStart, heights: msg.heights });
+      this.scheduleFlush();
     } else if (msg.type === 'measureTextRequest') {
       this.handlers.onMeasureTextRequest?.(msg.batchId, msg.items);
     } else if (msg.type === 'externalFilterCandidates') {
