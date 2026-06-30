@@ -19,12 +19,16 @@ import { cellStyleExpansion } from './cellStyleExpansion';
 import { eventsState } from './eventsState';
 import { a11y } from './a11y';
 import { selectionModes } from './selectionModes';
+import { realtimeStomp } from './realtimeStomp';
 
 export interface Feature {
   id: string;
   label: string;
   description: string;
-  mount(gridHost: HTMLElement, controls: HTMLElement, theme: string): CGrid<ShowcaseRow>;
+  // Most features mount a `CGrid<ShowcaseRow>`; a few (e.g.
+  // realtime feeds with a foreign schema) widen to `CGrid<any>` so
+  // the showcase shell can still destroy them uniformly.
+  mount(gridHost: HTMLElement, controls: HTMLElement, theme: string): CGrid<ShowcaseRow> | CGrid<any>;
 }
 
 export const FEATURES: Feature[] = [
@@ -47,6 +51,7 @@ export const FEATURES: Feature[] = [
   eventsState,
   a11y,
   selectionModes,
+  realtimeStomp,
 ];
 
 export const FEATURE_MAP = new Map(FEATURES.map((f) => [f.id, f]));
