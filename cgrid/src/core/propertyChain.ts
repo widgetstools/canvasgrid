@@ -534,8 +534,11 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.checkboxCheckedFg = theme.checkboxCheckedFg;
   target.params = ctx.params;
 
-  // Theme defaults.
-  target.font = theme.font;
+  // Theme defaults. Headers paint with the chrome font (Inter by
+  // default); body cells paint with the cell font (monospace by
+  // default) so numbers, CUSIPs, tickers stay column-aligned.
+  // Legacy theme fixtures without `cellFont` fall back to `font`.
+  target.font = ctx.isHeader ? theme.font : (theme.cellFont ?? theme.font);
   target.fg = ctx.isHeader ? theme.headerFg : theme.fg;
   target.bg = ctx.rowBg;
   target.halign = colDef.cellDataType === 'number' ? 'right' : 'left';
@@ -565,7 +568,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   // placeholder + per-column halign-from-data overrides on top.
   if (ctx.isTotals === true) {
     target.fg = theme.totalsFg;
-    target.font = withFontWeight(theme.font, theme.totalsFontWeight);
+    target.font = withFontWeight(theme.cellFont ?? theme.font, theme.totalsFontWeight);
     // Cycle 14 / Task 5 — thread the muted fg through to the polished
     // `'totals'` renderer so its em-dash placeholder paints in a muted
     // tone without the renderer reaching into the theme directly.
@@ -580,7 +583,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   // exclusive per the input contract — the `else if` enforces it.
   else if (ctx.isGroupFooter === true) {
     target.fg = theme.groupFooterFg;
-    target.font = withFontWeight(theme.font, theme.groupFooterFontWeight);
+    target.font = withFontWeight(theme.cellFont ?? theme.font, theme.groupFooterFontWeight);
     target.emptyFg = theme.totalsFgMuted;
   }
 

@@ -6337,7 +6337,7 @@ export class CGrid<TRow = any> {
         const lineHeight = this.theme.rowHeight;
         const padding = 4;
         base.autoHeight = true;
-        base.autoHeightFont = fontFromCell ?? this.theme.font;
+        base.autoHeightFont = fontFromCell ?? this.theme.cellFont ?? this.theme.font;
         base.autoHeightWidth = Math.max(0, (c.width ?? 200) - horizPad);
         base.autoHeightLineHeight = lineHeight;
         base.autoHeightPadding = padding;
@@ -7551,7 +7551,13 @@ export class CGrid<TRow = any> {
       if (!def) continue;
       if (def.hide) continue;
       if (def.suppressAutoSize) continue;
-      const font = def.cellStyle?.font ?? this.theme.font;
+      // Cell text dominates column-width measurement (longer + more
+      // rows); use the cell font so the resolved width fits the data.
+      // The header text gets measured with the same font, which can
+      // slightly over-pad when the chrome font is narrower than the
+      // cell font — accepted as a small UX tax over under-measuring
+      // cells.
+      const font = def.cellStyle?.font ?? this.theme.cellFont ?? this.theme.font;
       // Use the decorated header text (e.g. "sum(Notional)") so the
       // measured width matches exactly what the header painter draws.
       const headerName = decorateHeader(def, this.options.suppressAggFuncInHeader === true);

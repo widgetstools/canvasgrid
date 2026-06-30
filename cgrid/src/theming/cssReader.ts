@@ -1,7 +1,15 @@
 import type { ColCellOverrides } from '../types';
 
 export interface ResolvedTheme {
+  /** Chrome font (canvas-painted headers, group cells, totals labels,
+   *  side panel / strip / menu chrome via CSS). Resolved from
+   *  `--cg-font-family` + `--cg-font-size`. */
   font: string;
+  /** Cell font (data cells in the body). Resolved from
+   *  `--cg-cell-font-family` + `--cg-font-size`. Defaults to the
+   *  chrome font when `--cg-cell-font-family` isn't declared so
+   *  themes that haven't migrated keep their current look. */
+  cellFont: string;
   fg: string;
   bg: string;
   headerBg: string;
@@ -271,11 +279,16 @@ export class CssReader {
 
     const fontSize = get('--cg-font-size') || '13px';
     const fontFamily = get('--cg-font-family') || 'system-ui';
+    // Fall back to the chrome font when --cg-cell-font-family is
+    // absent so legacy themes that haven't migrated still paint cells
+    // with the same family they always did.
+    const cellFontFamily = get('--cg-cell-font-family') || fontFamily;
 
     const { cellClassVariants, headerClassVariants } = scanVariantVariables();
 
     return {
       font: `${fontSize} ${fontFamily}`,
+      cellFont: `${fontSize} ${cellFontFamily}`,
       fg: get('--cg-fg-color') || '#1a1f24',
       bg: get('--cg-bg-color') || '#ffffff',
       headerBg: get('--cg-header-bg') || '#e8ecef',

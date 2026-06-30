@@ -129,7 +129,9 @@ export function paintStickyGroups(gc: CachedContext2D, p: PainterCtx): void {
         if (!entry || entry.valueFormatted === '') continue;
         const colRight = col.right - PADDING;
         gc.fillStyle = theme.fg;
-        gc.font = theme.font;
+        // Aggregate value text reads as data — use the cell font so
+        // numbers stay column-aligned with the body cells below.
+        gc.font = theme.cellFont ?? theme.font;
         gc.textBaseline = 'middle';
         gc.textAlign = 'right';
         gc.fillText(entry.valueFormatted, colRight, cy);
