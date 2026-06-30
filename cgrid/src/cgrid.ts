@@ -18,6 +18,11 @@ import { type ResolvedColDef, applyCellProps } from './core/propertyChain';
 import { resolveColumnTree, isColGroupDef, type ColumnTree } from './core/columnTree';
 import { resolveSelection } from './core/selectionConfig';
 import { expandRangeForVelocity } from './core/prefetchRange';
+import {
+  commitPanelMove as commitPanelMoveHelper,
+  resolveDragTargetRole as resolveDragTargetRoleHelper,
+  type PillPanelRole, type PanelMoveApi,
+} from './core/panelDragMove';
 import { ChunkLRU, estimateChunkBytes } from './core/memoryBudget';
 import { ColumnGroupState, resolveVisibleLeaves } from './core/columnGroupState';
 import {
@@ -3531,22 +3536,35 @@ export class CGrid<TRow = any> {
    *  item without round-tripping through the API surface. Mirrors the
    *  `isColumnRowGroupEnabled` API entry. */
   isColumnRowGroupEnabled(colId: string): boolean {
-    return this.columnDefsMap.get(colId)?.enableRowGroup === true;
+    if (this.columnDefsMap.get(colId)?.enableRowGroup === true) return true;
+    // Pivot mode swaps source colDefs out of columnDefsMap; fall through
+    // to the preserved `primaryColumnTree` so the source columns'
+    // eligibility flags remain queryable for cross-section pill drags.
+    return this.primaryColumnTree?.leafById.get(colId)?.enableRowGroup === true;
   }
 
   /** Cycle 18 / Task 5 — `true` when the column's resolved colDef carries
    *  `enablePivot: true`. Gates whether the columns tool panel + context
    *  menu offer the "add as pivot" affordance. Mirrors the
-   *  `isColumnRowGroupEnabled` shape; same class+API duality. */
+   *  `isColumnRowGroupEnabled` shape; same class+API duality.
+   *
+   *  When pivot is active `columnDefsMap` is replaced by the synthesised
+   *  pivot result columns; the original source colDefs (the ones the
+   *  user marked with `enablePivot: true`) live on `primaryColumnTree`.
+   *  The fall-through preserves the eligibility flags during pivot mode
+   *  so cross-section drags (Row Groups → Column Labels) can still
+   *  check them. */
   isColumnPivotEnabled(colId: string): boolean {
-    return this.columnDefsMap.get(colId)?.enablePivot === true;
+    if (this.columnDefsMap.get(colId)?.enablePivot === true) return true;
+    return this.primaryColumnTree?.leafById.get(colId)?.enablePivot === true;
   }
 
   /** Cycle 18 / Task 5 — `true` when the column's resolved colDef carries
    *  `enableValue: true`. Gates whether the columns tool panel + context
    *  menu offer the "add as value/aggregation" affordance. */
   isColumnValueEnabled(colId: string): boolean {
-    return this.columnDefsMap.get(colId)?.enableValue === true;
+    if (this.columnDefsMap.get(colId)?.enableValue === true) return true;
+    return this.primaryColumnTree?.leafById.get(colId)?.enableValue === true;
   }
 
   /** Cycle 18 / Task 7 — `true` when the column's resolved colDef would
@@ -3618,6 +3636,52 @@ export class CGrid<TRow = any> {
   commitPivotPanelDrop(colId: string): boolean {
     if (this.destroyed) return false;
     return this.pivotPanel?.handleColumnDrop(colId) ?? false;
+  }
+
+  /** Cross-section pill drag routing — resolve the panel role at a
+   *  viewport-coord point. Walks `elementFromPoint` upward for the
+   *  first `data-cg-pill-role` marker; returns `null` outside any
+   *  panel. See `core/panelDragMove.ts`. */
+  resolveDragTargetRole(clientX: number, clientY: number): PillPanelRole | null {
+    if (this.destroyed) return null;
+    return resolveDragTargetRoleHelper(clientX, clientY);
+  }
+
+  /** Cross-section pill drag routing — atomically move `colId` from
+   *  `fromRole` to `toRole`. Each pill drag handler calls this on
+   *  pointerup when the drop lands on a foreign panel. Returns `true`
+   *  on success; `false` when the source equals the target OR the
+   *  target rejects the column (no matching `enableRowGroup` /
+   *  `enablePivot` / `enableValue` flag). Rejection is silent — the
+   *  source role is preserved so an accidental drop doesn't lose the
+   *  column. */
+  commitPanelMove(fromRole: PillPanelRole, toRole: PillPanelRole, colId: string): boolean {
+    if (this.destroyed) return false;
+    return commitPanelMoveHelper(this.panelMoveApi(), fromRole, toRole, colId);
+  }
+
+  /** Narrow surface that `commitPanelMove` consumes. Kept private so
+   *  the helper can be exercised against this exact shape via the
+   *  public `commitPanelMove` entry. */
+  private panelMoveApi(): PanelMoveApi {
+    return {
+      isColumnRowGroupEnabled: (c) => this.isColumnRowGroupEnabled(c),
+      isColumnPivotEnabled: (c) => this.isColumnPivotEnabled(c),
+      isColumnValueEnabled: (c) => this.isColumnValueEnabled(c),
+      getRowGroupColumns: () => this.getRowGroupColumns(),
+      getPivotColumns: () => this.getPivotColumns(),
+      getValueColumns: () => this.getValueColumns().map((v) => ({ colId: v.colId })),
+      addRowGroupColumn: (c) => this.addRowGroupColumn(c),
+      removeRowGroupColumn: (c) => this.removeRowGroupColumn(c),
+      addPivotColumn: (c) => this.addPivotColumn(c),
+      removePivotColumn: (c) => this.removePivotColumn(c),
+      addValueColumn: (c, agg) => this.addValueColumn(c, agg ?? 'sum'),
+      removeValueColumn: (c) => this.removeValueColumn(c),
+      getColumnDefaultAggFunc: (c) => {
+        const agg = this.columnDefsMap.get(c)?.aggFunc;
+        return typeof agg === 'string' ? agg : undefined;
+      },
+    };
   }
 
   /** True when (clientX, clientY) falls within the leaf column-header
@@ -3823,6 +3887,7 @@ export class CGrid<TRow = any> {
       removePivotColumn: (colId) => this.pivotState.removePivotColumn(colId),
       movePivotColumn: (from, to) => this.pivotState.movePivotColumn(from, to),
       isPivotActive: () => this.pivotState.isPivotActive(),
+      tryCrossPanelMove: (colId, x, y) => this.tryCrossPanelMoveFrom('pivot', colId, x, y),
     };
   }
 
@@ -3842,7 +3907,19 @@ export class CGrid<TRow = any> {
       moveRowGroupColumn: (from, to) => this.groupingState.moveRowGroupColumn(from, to),
       setRowGroupColumnSort: (colId, direction) =>
         this.groupingState.setRowGroupColumnSort(colId, direction),
+      tryCrossPanelMove: (colId, x, y) => this.tryCrossPanelMoveFrom('rowGroup', colId, x, y),
     };
+  }
+
+  /** Helper invoked by each pill drag handler on pointerup-outside-the-source-panel.
+   *  Resolves the panel role under (x, y) and commits a move if the
+   *  target is foreign + accepts the column. Returns the boolean
+   *  result of `commitPanelMove` (`true` on success). */
+  private tryCrossPanelMoveFrom(fromRole: PillPanelRole, colId: string, clientX: number, clientY: number): boolean {
+    const target = this.resolveDragTargetRole(clientX, clientY);
+    if (target === null) return false;
+    if (target === fromRole) return false;
+    return this.commitPanelMove(fromRole, target, colId);
   }
 
   /** Cycle 15.5 / Task 1 — `groupingStateChanged` handler. When the

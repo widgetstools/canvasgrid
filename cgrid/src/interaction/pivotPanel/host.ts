@@ -97,6 +97,11 @@ export interface PivotPanelGridContext {
    *  content. The grid keeps this fresh by calling `setPivotActive`
    *  from its `pivotStateChanged` handler. */
   isPivotActive(): boolean;
+  /** Cross-section pill drag — try routing a pivot pill to a foreign
+   *  panel (Row Group panel, Values zone, etc.). Returns `true` when
+   *  the column was successfully moved; `false` when no foreign panel
+   *  was hit OR the target rejected. */
+  tryCrossPanelMove?(colId: string, clientX: number, clientY: number): boolean;
 }
 
 /** Internal drag-state machine. `null` when no gesture is in flight. */
@@ -144,6 +149,8 @@ export class PivotPanelHost {
 
     this.panel = document.createElement('div');
     this.panel.className = 'cg-pivot-panel';
+    // Cross-section pill drag routing. See `core/panelDragMove.ts`.
+    this.panel.setAttribute('data-cg-pill-role', 'pivot');
 
     this.onPointerMove = (e) => this.handlePointerMove(e);
     this.onPointerUp = (e) => this.handlePointerUp(e);
@@ -549,8 +556,15 @@ export class PivotPanelHost {
         const targetSlot = this.updateInsertionLine(e.clientX);
         this.ctx.movePivotColumn(state.fromIndex, targetSlot);
       } else {
-        // Drag-out: drop outside the panel removes the column.
-        this.ctx.removePivotColumn(state.colId);
+        // Drag-out: first try routing to a foreign pill panel
+        // (Row Group panel, side-panel Values zone, etc.). If the
+        // route commits, the column is now in the new role; the
+        // pivot panel rebuild happens through `pivotStateChanged`.
+        // Otherwise fall back to the existing remove-on-drag-out
+        // behavior so the user can still drag a pill into empty
+        // space to clear its pivot role.
+        const moved = this.ctx.tryCrossPanelMove?.(state.colId, e.clientX, e.clientY) ?? false;
+        if (!moved) this.ctx.removePivotColumn(state.colId);
       }
     }
     this.cancelDrag();
