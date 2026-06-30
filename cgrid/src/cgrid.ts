@@ -15,10 +15,10 @@ import type {
 import type { ToolPanel, SideBarDef } from './interaction/toolPanels/types';
 import { TypedEventEmitter } from './core/eventEmitter';
 import { DisposableRegistry } from './core/disposable';
+import { ViewportManager } from './core/viewportManager';
 import { type ResolvedColDef, applyCellProps } from './core/propertyChain';
 import { resolveColumnTree, isColGroupDef, type ColumnTree } from './core/columnTree';
 import { resolveSelection } from './core/selectionConfig';
-import { expandRangeForVelocity } from './core/prefetchRange';
 import {
   commitPanelMove as commitPanelMoveHelper,
   resolveDragTargetRole as resolveDragTargetRoleHelper,
@@ -49,7 +49,6 @@ import {
   type ColumnLayout,
 } from './core/layout';
 import {
-  computeViewport,
   type ViewportColumn,
   type ViewportRow,
   type ViewportState,
@@ -482,19 +481,15 @@ export class CGrid<TRow = any> {
   private columnOrder: ResolvedColDef<TRow>[] = [];
   private columnLayout: ColumnLayout[] = [];
   private theme: ResolvedTheme;
-  private scrollLeft = 0;
-  private scrollTop = 0;
-  /** Cycle 23 / Task 3 — debounce handle for `bodyScrollEnd`. Cleared
-   *  on every scroll tick and re-armed for 200ms; null when no scroll
-   *  has happened in the last window. */
-  private scrollEndTimer: ReturnType<typeof setTimeout> | null = null;
-  /** Cycle 25 / Task 8 — scroll velocity in rows per ms (positive =
-   *  scrolling down). Updated by `onScrollerScroll` from the delta
-   *  between consecutive ticks; consumed by `requestViewport` to
-   *  widen the requested range pre-emptively on a fast fling. */
-  private scrollVelocityRows = 0;
-  private lastScrollSampleTop = 0;
-  private lastScrollSampleTime = 0;
+  /** Cycle 19 / Task 2 — viewport subsystem: scroll state, the native
+   *  scroll listener, `recompute` / `request` entry points, prefetch-range
+   *  expansion, and the `setScroll` / `ensure*Visible` helpers. CGrid keeps
+   *  delegating wrappers (`recomputeViewport`, `requestViewport`,
+   *  `setScroll`, `ensureRowIndexVisible`, `ensureColIdVisible`) so the
+   *  50+ internal callsites still compile unchanged. The chunk-processing
+   *  tail of `requestViewport` lives on CGrid as `handleViewportChunk`
+   *  until cycle 19 / task 3 lands `WorkerCoordinator`. */
+  private viewportManager!: ViewportManager;
   /** Cycle 25 / Task 10 — LRU of recently-fetched chunks keyed by
    *  `${rowStart}:${rowEnd}:${cols}`. Holds entries via WeakRef so
    *  GC can reclaim before our eviction runs. `null` when the
@@ -515,8 +510,6 @@ export class CGrid<TRow = any> {
    *  Cycle 5 / Task 7. */
   private rowHeightIndex: RowHeightIndex | null = null;
   private decodedTextCols = new Map<string, string[]>();
-  private viewportRequestPending = false;
-  private viewportRequestQueued = false;
 
   private root: HTMLDivElement;
   /** Cycle 22 / Task 5 — non-null when the grid was constructed with
@@ -682,24 +675,6 @@ export class CGrid<TRow = any> {
   private lastEmittedBounds: { width: number; height: number } | null = null;
   /** Latches `firstDataRendered` to exactly once per grid instance. */
   private firstDataFired = false;
-  /** Cycle 14 / Task 6 — what triggered the in-flight aggregation
-   *  recompute. Set by `requestViewport(source)` at the call site that
-   *  caused the totals to need refreshing (data mutation, filter pass,
-   *  custom-aggFunc swap, column aggFunc change, explicit API). Read +
-   *  cleared by the viewport-response handler when emitting
-   *  `aggregationChanged`. Cosmetic re-renders — scroll, sort, theme,
-   *  column move / visible / pin / resize — call `requestViewport()`
-   *  with no source so this stays `null` and no event fires for those
-   *  paths. Most-recent-source wins when multiple data-affecting calls
-   *  coalesce on a single viewport fetch. */
-  private pendingAggSource: AggregationChangedSource | null = null;
-  /** First / last colId of the materialised center-column slice — the
-   *  identity of the virtualisation window. `null` for "no center columns
-   *  visible". The outer ref is `null` until the first `recomputeViewport`
-   *  captures the baseline, so the construction-time recompute does NOT
-   *  emit `virtualColumnsChanged` and external listeners only see real
-   *  post-mount shifts. Cycle 6 / Task 8. */
-  private prevVirtualColRange: { first: string | null; last: string | null } | null = null;
   /** Cycle 9 / Task 7 — snapshot of the range set as it stood at the last
    *  `cellSelectionChanged` emission. Used to debounce: a finished
    *  rangeSelectionChanged that lands on the same set as before skips
@@ -975,6 +950,35 @@ export class CGrid<TRow = any> {
     // CGridCanvas constructor below (via the setBounds callback), but
     // recomputeViewport needs an initial layout so it doesn't crash on undefined.
     this.columnLayout = resolveColumnWidths(this.columnOrder, this.scroller.clientWidth || 800);
+    // Cycle 19 / Task 2 — viewport subsystem. Constructed BEFORE the first
+    // recompute so `recomputeViewport()` and `requestViewport()` can delegate
+    // immediately. The scroller listener is registered inside the constructor
+    // (routed through `disposables` so destroy tears it down).
+    this.viewportManager = new ViewportManager({
+      disposables: this.disposables,
+      events: this.events,
+      scroller: this.scroller,
+      sizer: this.sizer,
+      root: this.root,
+      getColumnLayout: () => this.columnLayout,
+      getSubgrids: () => this.subgrids,
+      getCanvasBounds: () => this.canvasBounds,
+      getOptions: () => this.options,
+      getRowHeightFallback: () => this.options.rowHeight ?? this.theme.rowHeight,
+      getRowHeightIndex: () => this.rowHeightIndex,
+      afterRecompute: (vp) => {
+        // Cycle 7 / Task 1 — re-pin the floating-filter `<input>` pool after
+        // every layout pass. Guarded because `recompute()` runs once in the
+        // constructor before `floatingFilterOverlay` is assigned.
+        if (this.floatingFilterOverlay) this.floatingFilterOverlay.repositionAll(vp);
+      },
+      afterScrollTick: () => {
+        this.cgridCanvas.requestRepaint();
+        this.syncOpenEditorPosition();
+      },
+      isDestroyed: () => this.destroyed,
+      dispatchViewportRequest: (opts) => this.handleViewportChunk(opts),
+    });
     this.recomputeViewport();
 
     // 5. Selection
@@ -1736,10 +1740,8 @@ export class CGrid<TRow = any> {
       }
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
 
-    // 10. Native scroll listener
-    this.disposables.addListener(this.scroller, 'scroll', () => {
-      this.onScrollerScroll(this.scroller.scrollLeft, this.scroller.scrollTop);
-    });
+    // 10. Native scroll listener — Cycle 19 / Task 2: now owned by
+    // `ViewportManager` (registered in its constructor at step 5).
 
     // stopEditingWhenCellsLoseFocus — commit the open editor when focus
     // leaves the grid root. Uses focusout (which bubbles, unlike blur) so a
@@ -5599,12 +5601,8 @@ export class CGrid<TRow = any> {
     // + cancel any pending rAF so a late frame can't emit on a
     // destroyed grid.
     this.stateUpdatedBus?.destroy();
-    // Cycle 23 / Task 3 — clear the debounce so a late-firing
-    // bodyScrollEnd doesn't try to emit on a destroyed grid.
-    if (this.scrollEndTimer !== null) {
-      clearTimeout(this.scrollEndTimer);
-      this.scrollEndTimer = null;
-    }
+    // Cycle 23 / Task 3 — the `bodyScrollEnd` debounce cleanup is now owned
+    // by `ViewportManager`'s disposer (Cycle 19 / Task 2).
     // Cycle 22 / Task 3 — explicit cleanup of any inline `--cg-*`
     // overrides so the WeakMap state doesn't leak past destroy. The
     // root element gets removed below, but apps that re-parent / re-
@@ -6419,148 +6417,13 @@ export class CGrid<TRow = any> {
     void this.workerClient.measureTextResponse(batchId, heights);
   }
 
-  private computeCurrentViewport(): ViewportState {
-    // Use the canvas drawable width (which subtracts the scrollbar gutter on
-    // overlay-scrollbar platforms — see CGridCanvas.measureSize). Falling back
-    // to scroller.clientWidth would leave the rightmost right-pinned column
-    // extending into the gutter, clipped by the canvas right edge.
-    const w = this.canvasBounds.width || this.scroller.clientWidth || this.root.clientWidth || 800;
-    const h = this.canvasBounds.height || this.scroller.clientHeight || this.root.clientHeight || 600;
-    return computeViewport({
-      columnLayout: this.columnLayout,
-      subgrids: this.subgrids,
-      containerWidth: w,
-      containerHeight: h,
-      scrollLeft: this.scrollLeft,
-      scrollTop: this.scrollTop,
-      rowBuffer: this.options.rowBuffer,
-      // Cycle 20 / Task 6 — `domLayout: 'print'` forces every row +
-      // every column to materialise so the browser print path
-      // captures the entire grid.
-      suppressColumnVirtualisation:
-        this.options.suppressColumnVirtualisation
-        || this.options.domLayout === 'print',
-      suppressRowVirtualisation:
-        this.options.suppressRowVirtualisation
-        || this.options.domLayout === 'print',
-      dataRowHeightIndex: this.rowHeightIndex ?? undefined,
-    });
-  }
-
-  /** Size the invisible sizer to match the viewport's scrollable extent so the
-   * native scrollbars track the right range. When an axis has no overflow
-   * (`maxScroll{Left,Top} === 0`) the sizer collapses to 1 px on that axis
-   * — NOT `clientArea + 0`. Reason: clientWidth/Height already excludes any
-   * existing scrollbar gutter, so setting the sizer equal to the current
-   * client extent puts scrollHeight right at the threshold. If the OTHER
-   * axis then needs a scrollbar (e.g. wide columns force horizontal
-   * scrolling), Chrome shrinks the cross-axis client extent by the gutter
-   * width, and `scrollHeight > new clientHeight` triggers a phantom vertical
-   * scrollbar even with zero rows.
-   */
-  private syncSizer(): void {
-    if (!this.sizer) return; // happy-dom guard during early construction
-    const baseW = this.scroller.clientWidth || this.root.clientWidth;
-    const baseH = this.scroller.clientHeight || this.root.clientHeight;
-    const w = this.viewport.maxScrollLeft > 0 ? baseW + this.viewport.maxScrollLeft : 1;
-    const h = this.viewport.maxScrollTop > 0 ? baseH + this.viewport.maxScrollTop : 1;
-    this.sizer.style.width = `${Math.max(1, w)}px`;
-    this.sizer.style.height = `${Math.max(1, h)}px`;
-  }
-
-  /** Reassign viewport AND re-sync the sizer so native scrollbars stay accurate.
-   *  `afterScroll` flags scroll-driven recomputes so the `virtualColumnsChanged`
-   *  emission can report `afterScroll: true` in that case (every other caller
-   *  — resize, column mutation, group toggle — passes `false`). Cycle 6 / Task 8. */
+  /** Cycle 19 / Task 2 — delegates to `ViewportManager.recompute`. Kept as
+   *  a thin wrapper so the 50+ internal `this.recomputeViewport()` callsites
+   *  still compile unchanged. The manager owns `computeCurrentViewport` +
+   *  `syncSizer` + `detectVirtualColumnsChanged` + the floating-filter
+   *  re-pin (via the `afterRecompute` dep). */
   private recomputeViewport(afterScroll: boolean = false): void {
-    this.viewport = this.computeCurrentViewport();
-    this.syncSizer();
-    this.detectVirtualColumnsChanged(afterScroll);
-    // Cycle 7 / Task 1 — re-pin the floating-filter `<input>` pool after
-    // every layout pass. Guarded because `recomputeViewport` runs once in
-    // the constructor before `floatingFilterOverlay` is assigned.
-    if (this.floatingFilterOverlay) {
-      this.floatingFilterOverlay.repositionAll(this.viewport);
-    }
-  }
-
-  /** Compare the materialised center-column range against the previous
-   *  `recomputeViewport` and emit `virtualColumnsChanged` if it shifted.
-   *  Identifies the range by the first / last center colId since
-   *  `ViewportColumn.index` is a 0..N position within `visibleColumns` —
-   *  not a layout index — so it doesn't move when columns slide off-screen.
-   *  The first call after construction captures the baseline silently so
-   *  external listeners only see real post-mount changes. Cycle 6 / Task 8. */
-  private detectVirtualColumnsChanged(afterScroll: boolean): void {
-    let first: string | null = null;
-    let last: string | null = null;
-    for (const c of this.viewport.visibleColumns) {
-      if (c.pinned) continue;
-      if (first === null) first = c.colId;
-      last = c.colId;
-    }
-    const prev = this.prevVirtualColRange;
-    if (prev === null) {
-      this.prevVirtualColRange = { first, last };
-      return;
-    }
-    if (prev.first === first && prev.last === last) return;
-    this.prevVirtualColRange = { first, last };
-    this.events.emit({ type: 'virtualColumnsChanged', afterScroll });
-  }
-
-  /** Called by the scroller's native 'scroll' event. Idempotent — if the
-   * internal state already matches (e.g., because we just set scrollLeft
-   * programmatically), it's a no-op so there's no feedback loop.
-   */
-  private onScrollerScroll(x: number, y: number): void {
-    if (x === this.scrollLeft && y === this.scrollTop) return;
-    const horizontal = x !== this.scrollLeft;
-    const verticalChanged = y !== this.scrollTop;
-    // Cycle 25 / Task 8 — sample scroll velocity (rows/ms) before
-    // we mutate scrollTop. requestViewport reads this to widen the
-    // fetched range on a fast fling. We use the row-height index
-    // when present (variable heights) and fall back to the theme's
-    // uniform row height otherwise.
-    if (verticalChanged) {
-      const now = performance.now();
-      const dt = now - this.lastScrollSampleTime;
-      if (dt > 0 && this.lastScrollSampleTime > 0 && dt < 200) {
-        const idx = this.rowHeightIndex;
-        const yRow = idx ? idx.rowAt(y) : Math.floor(y / (this.options.rowHeight ?? this.theme.rowHeight));
-        const prevYRow = idx ? idx.rowAt(this.lastScrollSampleTop) : Math.floor(this.lastScrollSampleTop / (this.options.rowHeight ?? this.theme.rowHeight));
-        this.scrollVelocityRows = (yRow - prevYRow) / dt;
-      } else {
-        this.scrollVelocityRows = 0;
-      }
-      this.lastScrollSampleTop = y;
-      this.lastScrollSampleTime = now;
-    }
-    this.scrollLeft = x;
-    this.scrollTop = y;
-    this.recomputeViewport(/* afterScroll */ horizontal);
-    this.events.emit({ type: 'viewportChanged', firstRow: this.viewport.firstRow, lastRow: this.viewport.lastRow });
-    // Cycle 23 / Task 3 — bodyScroll fires every tick. `direction`
-    // reports the dominant axis change for THIS tick; ties (both
-    // axes moved) report `'vertical'` so listeners get a stable
-    // signal for the more common case.
-    this.events.emit({
-      type: 'bodyScroll', top: y, left: x,
-      direction: verticalChanged ? 'vertical' : 'horizontal',
-    });
-    // Cycle 23 / Task 3 — bodyScrollEnd is debounced 200ms after the
-    // last scroll tick. Subsequent scrolls reset the timer so apps
-    // that persist on the END event save once per gesture instead of
-    // once per pixel.
-    if (this.scrollEndTimer !== null) clearTimeout(this.scrollEndTimer);
-    this.scrollEndTimer = setTimeout(() => {
-      this.scrollEndTimer = null;
-      if (this.destroyed) return;
-      this.events.emit({ type: 'bodyScrollEnd', top: this.scrollTop, left: this.scrollLeft });
-    }, 200);
-    this.cgridCanvas.requestRepaint();
-    this.requestViewport();
-    this.syncOpenEditorPosition();
+    this.viewport = this.viewportManager.recompute(afterScroll);
   }
 
   /** Keep an open inline / popup editor anchored to its cell when the
@@ -6585,92 +6448,33 @@ export class CGrid<TRow = any> {
     this.editor.reposition(bounds);
   }
 
+  /** Cycle 19 / Task 2 — delegating wrappers. The clamp + scroller drive +
+   *  belt-and-suspenders happy-dom fallback live in `ViewportManager`. */
   private setScroll(x: number, y: number): void {
-    const clampedX = Math.max(0, Math.min(this.viewport.maxScrollLeft, x));
-    const clampedY = Math.max(0, Math.min(this.viewport.maxScrollTop, y));
-    if (clampedX === this.scrollLeft && clampedY === this.scrollTop) return;
-    // Drive the scroller; its scroll event will call onScrollerScroll which
-    // updates internal state and repaints. Setting these properties also
-    // visually moves the native scrollbar thumb.
-    this.scroller.scrollLeft = clampedX;
-    this.scroller.scrollTop = clampedY;
-    // Belt-and-suspenders: if the scroll event hasn't fired yet (e.g., in
-    // happy-dom tests), update synchronously so callers see the new state.
-    if (this.scrollLeft !== clampedX || this.scrollTop !== clampedY) {
-      this.onScrollerScroll(clampedX, clampedY);
-    }
+    this.viewportManager.setScroll(x, y);
   }
-
-  /** Bring the row at `rowIndex` into the visible body.
-   *  `'auto'` scrolls just enough to expose the row (no-op if already in
-   *  view); the named positions force `top` / `middle` / `bottom` alignment
-   *  inside the body area. Clamping is delegated to `setScroll`.
-   *
-   *  Row top / height are read from the Fenwick tree when available so
-   *  variable-height rows scroll to the right pixel (Cycle 5 / Task 7).
-   *  Without an index — e.g. before the first chunk lands — we fall back to
-   *  uniform-height arithmetic. */
+  /** Cycle 19 / Task 2 — back-compat shim for tests + downstream code that
+   *  reach in via `(grid as any).onScrollerScroll(x, y)` to simulate a scroll
+   *  event. The real handler is registered inside `ViewportManager`. */
+  private onScrollerScroll(x: number, y: number): void {
+    this.viewportManager.onScrollerScroll(x, y);
+  }
+  /** Cycle 19 / Task 2 — back-compat getters so E2E + integration tests that
+   *  read `(grid as any).scrollTop` / `.scrollLeft` keep working. The real
+   *  scroll state lives on `ViewportManager`. */
+  private get scrollLeft(): number { return this.viewportManager.scrollLeft; }
+  private get scrollTop(): number { return this.viewportManager.scrollTop; }
   private ensureRowIndexVisible(
     rowIndex: number,
     position: 'auto' | 'top' | 'middle' | 'bottom' = 'auto',
   ): void {
-    const fallback = this.options.rowHeight ?? this.theme.rowHeight;
-    const idx = this.rowHeightIndex;
-    const useIdx = idx !== null && rowIndex < idx.length();
-    const top = useIdx ? idx!.topOf(rowIndex) : rowIndex * fallback;
-    const rh = useIdx ? idx!.heightAt(rowIndex) : fallback;
-    const bottom = top + rh;
-    const bodyH = this.viewport.bodyHeight;
-    if (position === 'top') {
-      this.setScroll(this.scrollLeft, top);
-      return;
-    }
-    if (position === 'middle') {
-      this.setScroll(this.scrollLeft, top - Math.max(0, (bodyH - rh) / 2));
-      return;
-    }
-    if (position === 'bottom') {
-      this.setScroll(this.scrollLeft, bottom - bodyH);
-      return;
-    }
-    if (top < this.scrollTop) {
-      this.setScroll(this.scrollLeft, top);
-    } else if (bottom > this.scrollTop + bodyH) {
-      this.setScroll(this.scrollLeft, bottom - bodyH);
-    }
+    this.viewportManager.ensureRowIndexVisible(rowIndex, position);
   }
-
-  /** Bring the column with `colId` into the visible body. Pinned columns are
-   *  always visible. `'auto'` scrolls just enough; the named positions force
-   *  `start` / `middle` / `end` alignment inside the body area. */
   private ensureColIdVisible(
     colId: string,
     position: 'auto' | 'start' | 'middle' | 'end' = 'auto',
   ): void {
-    const layoutCol = this.columnLayout.find((c) => c.colId === colId);
-    if (!layoutCol || layoutCol.pinned) return;
-    // Convert content-space left (relative to layout) into body-content space.
-    const pinnedLeftWidth = this.columnLayout.filter((c) => c.pinned === 'left').reduce((s, c) => s + c.width, 0);
-    const left = layoutCol.left - pinnedLeftWidth;
-    const right = left + layoutCol.width;
-    const bodyW = this.viewport.bodyWidth;
-    if (position === 'start') {
-      this.setScroll(left, this.scrollTop);
-      return;
-    }
-    if (position === 'middle') {
-      this.setScroll(left - Math.max(0, (bodyW - layoutCol.width) / 2), this.scrollTop);
-      return;
-    }
-    if (position === 'end') {
-      this.setScroll(right - bodyW, this.scrollTop);
-      return;
-    }
-    if (left < this.scrollLeft) {
-      this.setScroll(left, this.scrollTop);
-    } else if (right > this.scrollLeft + bodyW) {
-      this.setScroll(right - bodyW, this.scrollTop);
-    }
+    this.viewportManager.ensureColIdVisible(colId, position);
   }
 
   /** After the worker model changes (sort / filter / transaction / column
@@ -6718,171 +6522,153 @@ export class CGrid<TRow = any> {
     return path;
   }
 
-  /** Fetch the next viewport chunk. `aggSource` (Cycle 14 / Task 6) tags the
-   *  triggering mutation so the `aggregationChanged` event the response
-   *  handler emits carries the correct cause. Pass `null` (default) for
-   *  cosmetic re-fetches that don't recompute totals — scroll, sort,
-   *  theme, column move / visible / pin / resize — so the response
-   *  handler can tell "the totals are the same; suppress the event"
-   *  apart from "data / filter / aggFuncs changed; emit". Most-recent-
-   *  source wins when multiple data-affecting calls coalesce on a single
-   *  in-flight fetch; null calls preserve any pending source. */
+  /** Cycle 19 / Task 2 — viewport-fetch entry point. Delegates to
+   *  `ViewportManager.request`; the manager handles coalescing + the
+   *  velocity-driven prefetch math and invokes `handleViewportChunk` (the
+   *  chunk-processing tail below) via the `dispatchViewportRequest` dep.
+   *  Cycle 19 / Task 3 will absorb both halves into `WorkerCoordinator`. */
   private requestViewport(aggSource: AggregationChangedSource | null = null): void {
-    if (aggSource !== null) this.pendingAggSource = aggSource;
-    // Coalesce: while one fetch is in-flight, additional calls flip a queued
-    // flag so a single follow-up runs after the current completes. Without
-    // this, rapid resizes drop all but the first request — the chunk stays
-    // stuck on the initial viewport range and newly-visible rows render with
-    // no data until the user stops resizing.
-    if (this.viewportRequestPending) {
-      this.viewportRequestQueued = true;
-      return;
+    this.viewportManager.request(aggSource);
+  }
+
+  /** Cycle 19 / Task 2 — chunk-arrival half of the old `requestViewport`. Runs
+   *  the worker `getViewport` call against the velocity-expanded range +
+   *  current column set and performs every side effect the chunk fans out:
+   *  LRU caching, pivot column sync, per-cell + per-group flash, row-height
+   *  index refresh, recompute + repaint, a11y update, `aggregationChanged`
+   *  (gated on `consumePendingAggSource`), `firstDataRendered` latch.
+   *  Returns the Promise that `ViewportManager.request` awaits to release the
+   *  coalescing flag and drain the queued follow-up; rejections are surfaced
+   *  back to the manager's catch handler. */
+  private async handleViewportChunk(opts: {
+    rowStart: number;
+    rowEnd: number;
+    columns: string[];
+  }): Promise<void> {
+    const { rowStart, rowEnd, columns: cols } = opts;
+    const { chunk, stickyAncestors } = await this.workerClient.getViewport({
+      rowStart, rowEnd, columns: cols, includeFlashMask: true,
+    });
+    // Capture the previous chunk's totals BEFORE overwriting this.chunk
+    // so the aggregate-flash diff can compare old vs new values.
+    const prevGroupTotals = this.chunk?.groupTotals;
+    const prevChunkTotals = this.chunk?.totals;
+    this.chunk = chunk;
+    this.stickyAncestors = stickyAncestors ?? [];
+    this.decodedTextCols.clear();
+    // Cycle 25 / Task 10 — park the chunk in the LRU. WeakRef retention means
+    // GC can reclaim if real memory pressure builds; the LRU's own eviction
+    // kicks in when our running sum exceeds `memoryBudgetMB`. Cache lookup on
+    // subsequent requests is intentionally NOT wired here — keying on model
+    // versions (sort/filter/group/pivot) needs more surface than this cycle
+    // delivers. Foundation only.
+    if (this.chunkLRU) {
+      const key = `${rowStart}:${rowEnd}:${cols.join(',')}`;
+      this.chunkLRU.set(key, chunk, estimateChunkBytes(chunk));
     }
-    this.viewportRequestPending = true;
-    const cols = this.viewport.visibleColumns.map((c) => c.colId);
-    // Cycle 25 / Task 8 — widen the row range when scrolling fast so
-    // the next chunk already covers the about-to-be-visible rows.
-    // expandRangeForVelocity is a no-op when velocity is below the
-    // threshold (most scroll ticks), so the request stays at the
-    // tight visible range under normal interaction.
-    const { rowStart, rowEnd } = expandRangeForVelocity(
-      this.viewport.firstRow,
-      this.viewport.lastRow + 1,
-      this.scrollVelocityRows,
-    );
-    this.workerClient.getViewport({ rowStart, rowEnd, columns: cols, includeFlashMask: true })
-      .then(({ chunk, stickyAncestors }) => {
-        this.viewportRequestPending = false;
-        // Capture the previous chunk's totals BEFORE overwriting this.chunk
-        // so the aggregate-flash diff can compare old vs new values.
-        const prevGroupTotals = this.chunk?.groupTotals;
-        const prevChunkTotals = this.chunk?.totals;
-        this.chunk = chunk;
-        this.stickyAncestors = stickyAncestors ?? [];
-        this.decodedTextCols.clear();
-        // Cycle 25 / Task 10 — park the chunk in the LRU. WeakRef
-        // retention means GC can reclaim if real memory pressure
-        // builds; the LRU's own eviction kicks in when our running
-        // sum exceeds `memoryBudgetMB`. Cache lookup on subsequent
-        // requests is intentionally NOT wired here — keying on
-        // model versions (sort/filter/group/pivot) needs more
-        // surface than this cycle delivers. Foundation only.
-        if (this.chunkLRU) {
-          const key = `${rowStart}:${rowEnd}:${cols.join(',')}`;
-          this.chunkLRU.set(key, chunk, estimateChunkBytes(chunk));
-        }
-        // Cycle 18 / Task 3 — (re)synthesize or drop the pivot result
-        // columns from the freshly-arrived pivot tree before the layout +
-        // paint below run off the new column order.
-        this.maybeSyncPivotColumns(chunk);
-        // Cycle 18 / Task 8a — surface the cap breach as a public event.
-        // The chunk already arrived with no pivot output when this is set
-        // (PivotPass bypassed early); the grid paints primary columns
-        // normally. Apps can listen + raise the cap / narrow the filter.
-        // Emit ONCE per chunk that carries the field — no debounce needed
-        // since the worker only sets the field when the breach actually
-        // happened (not on every chunk).
-        if (chunk.pivotMaxColumnsReached !== undefined) {
-          this.events.emit({
-            type: 'pivotMaxColumnsReached',
-            generatedColumns: chunk.pivotMaxColumnsReached.generatedColumns,
-            cap: chunk.pivotMaxColumnsReached.cap,
-          });
-        }
-        // Cycle 4 / Task 11 (cell-flash patch) — drain the worker's
-        // per-cell flashMask into the registry. The chunk's `rowIds`
-        // are numeric (the worker's stable mapping); the painter's
-        // cellData callback reads `registry.getAlpha(numericRowId,
-        // colId, now)` to produce flashAlpha per visible cell.
-        if (chunk.flashMask) {
-          this.flashRegistry.ingestMask({
-            rowIds: chunk.rowIds,
-            colIds: cols,
-            mask: chunk.flashMask,
-          });
-          this.startFlashTickLoop();
-        }
-        // Flash aggregate cells whose groupTotals or grand totals changed
-        // vs the previous chunk. Data-row flashes come from the worker's
-        // flashMask (keyed by rowId); group/footer rows carry no rowId
-        // so we diff the totals records here on the main thread.
-        // groupTotals covers per-group group rows AND per-group footer rows.
-        // chunk.totals covers the grand-total footer (groupKey='').
-        if (this.options.enableCellChangeFlash) {
-          const now = performance.now();
-          if (chunk.groupTotals && prevGroupTotals) {
-            for (const groupKey of Object.keys(chunk.groupTotals)) {
-              const oldRec = prevGroupTotals[groupKey];
-              const newRec = chunk.groupTotals[groupKey]!;
-              for (const colId of Object.keys(newRec)) {
-                if (oldRec?.[colId] !== newRec[colId]) {
-                  this.groupFlashMap.set(`${groupKey}\0${colId}`, now);
-                }
-              }
-            }
-          }
-          // Grand-total footer (groupKey='') sources from chunk.totals,
-          // not groupTotals. Diff it separately; store under the '' key
-          // so groupFlashAlpha('', colId) resolves for rowKind=3 + empty key.
-          if (chunk.totals && prevChunkTotals) {
-            for (const colId of Object.keys(chunk.totals)) {
-              if (prevChunkTotals[colId] !== chunk.totals[colId]) {
-                this.groupFlashMap.set(`\0${colId}`, now);
-              }
-            }
-          }
-          if (this.groupFlashMap.size > 0) this.startFlashTickLoop();
-        }
-        // Build / refresh the cumulative row-height index (Cycle 5 / Task 7).
-        // Initial build seeds every row with the grid-level fallback; subsequent
-        // chunks layer their per-row heights in. A rowCount change (sort /
-        // filter / transaction) discards the existing index so per-row entries
-        // that shifted slots aren't read at their old positions — the next
-        // chunks rebuild it. Done before recomputeViewport so the index is
-        // current for the first paint after the chunk lands.
-        this.refreshRowHeightIndex(chunk);
-        // Recompute the viewport so DataSubgrid.getRowHeight reads the new
-        // chunk's per-row heights (Cycle 5 / Task 6). Without this the
-        // visibleRows array carries heights from BEFORE the chunk arrived
-        // and variable-height rows paint at the fallback until the next
-        // scroll triggers another recompute.
-        this.recomputeViewport();
-        this.cgridCanvas.requestRepaint();
-        this.updateA11y();
-        // Cycle 14 / Task 6 — emit `aggregationChanged` ONLY when the
-        // mutation that drove this fetch actually changed the totals
-        // (data / filter / aggFuncs / column aggFunc / explicit API).
-        // Cosmetic re-fetches (scroll, sort, theme, column move /
-        // visible / pin / resize) call `requestViewport()` with no
-        // source so `pendingAggSource` stays null and we skip the
-        // event — listeners that want every paint subscribe to
-        // `viewportChanged` instead. Cleared on emit so a follow-up
-        // coalesced scroll fetch doesn't re-fire with the same source.
-        if (chunk.totals && this.pendingAggSource !== null) {
-          this.events.emit({
-            type: 'aggregationChanged',
-            totals: chunk.totals,
-            source: this.pendingAggSource,
-          });
-          this.pendingAggSource = null;
-        }
-        // firstDataRendered: latch once per grid instance, the first time a
-        // non-empty chunk has landed and a repaint has been scheduled. Empty
-        // chunks (e.g. setRowData([]) or filter-out-everything) don't count.
-        if (!this.firstDataFired && chunk.rowCount > 0) {
-          this.firstDataFired = true;
-          this.events.emit({ type: 'firstDataRendered' });
-        }
-        if (this.viewportRequestQueued) {
-          this.viewportRequestQueued = false;
-          this.requestViewport();
-        }
-      })
-      .catch((err) => {
-        this.viewportRequestPending = false;
-        this.viewportRequestQueued = false;
-        if (!this.destroyed) console.error('[cgrid] viewport request:', err);
+    // Cycle 18 / Task 3 — (re)synthesize or drop the pivot result columns
+    // from the freshly-arrived pivot tree before the layout + paint below
+    // run off the new column order.
+    this.maybeSyncPivotColumns(chunk);
+    // Cycle 18 / Task 8a — surface the cap breach as a public event. The
+    // chunk already arrived with no pivot output when this is set (PivotPass
+    // bypassed early); the grid paints primary columns normally. Apps can
+    // listen + raise the cap / narrow the filter. Emit ONCE per chunk that
+    // carries the field — no debounce needed since the worker only sets the
+    // field when the breach actually happened (not on every chunk).
+    if (chunk.pivotMaxColumnsReached !== undefined) {
+      this.events.emit({
+        type: 'pivotMaxColumnsReached',
+        generatedColumns: chunk.pivotMaxColumnsReached.generatedColumns,
+        cap: chunk.pivotMaxColumnsReached.cap,
       });
+    }
+    // Cycle 4 / Task 11 (cell-flash patch) — drain the worker's per-cell
+    // flashMask into the registry. The chunk's `rowIds` are numeric (the
+    // worker's stable mapping); the painter's cellData callback reads
+    // `registry.getAlpha(numericRowId, colId, now)` to produce flashAlpha
+    // per visible cell.
+    if (chunk.flashMask) {
+      this.flashRegistry.ingestMask({
+        rowIds: chunk.rowIds,
+        colIds: cols,
+        mask: chunk.flashMask,
+      });
+      this.startFlashTickLoop();
+    }
+    // Flash aggregate cells whose groupTotals or grand totals changed vs the
+    // previous chunk. Data-row flashes come from the worker's flashMask
+    // (keyed by rowId); group/footer rows carry no rowId so we diff the
+    // totals records here on the main thread. groupTotals covers per-group
+    // group rows AND per-group footer rows. chunk.totals covers the grand-
+    // total footer (groupKey='').
+    if (this.options.enableCellChangeFlash) {
+      const now = performance.now();
+      if (chunk.groupTotals && prevGroupTotals) {
+        for (const groupKey of Object.keys(chunk.groupTotals)) {
+          const oldRec = prevGroupTotals[groupKey];
+          const newRec = chunk.groupTotals[groupKey]!;
+          for (const colId of Object.keys(newRec)) {
+            if (oldRec?.[colId] !== newRec[colId]) {
+              this.groupFlashMap.set(`${groupKey}\0${colId}`, now);
+            }
+          }
+        }
+      }
+      // Grand-total footer (groupKey='') sources from chunk.totals, not
+      // groupTotals. Diff it separately; store under the '' key so
+      // groupFlashAlpha('', colId) resolves for rowKind=3 + empty key.
+      if (chunk.totals && prevChunkTotals) {
+        for (const colId of Object.keys(chunk.totals)) {
+          if (prevChunkTotals[colId] !== chunk.totals[colId]) {
+            this.groupFlashMap.set(`\0${colId}`, now);
+          }
+        }
+      }
+      if (this.groupFlashMap.size > 0) this.startFlashTickLoop();
+    }
+    // Build / refresh the cumulative row-height index (Cycle 5 / Task 7).
+    // Initial build seeds every row with the grid-level fallback; subsequent
+    // chunks layer their per-row heights in. A rowCount change (sort /
+    // filter / transaction) discards the existing index so per-row entries
+    // that shifted slots aren't read at their old positions — the next
+    // chunks rebuild it. Done before recomputeViewport so the index is
+    // current for the first paint after the chunk lands.
+    this.refreshRowHeightIndex(chunk);
+    // Recompute the viewport so DataSubgrid.getRowHeight reads the new
+    // chunk's per-row heights (Cycle 5 / Task 6). Without this the
+    // visibleRows array carries heights from BEFORE the chunk arrived and
+    // variable-height rows paint at the fallback until the next scroll
+    // triggers another recompute.
+    this.recomputeViewport();
+    this.cgridCanvas.requestRepaint();
+    this.updateA11y();
+    // Cycle 14 / Task 6 — emit `aggregationChanged` ONLY when the mutation
+    // that drove this fetch actually changed the totals (data / filter /
+    // aggFuncs / column aggFunc / explicit API). Cosmetic re-fetches
+    // (scroll, sort, theme, column move / visible / pin / resize) call
+    // `requestViewport()` with no source so the manager's pending source
+    // stays null and we skip the event — listeners that want every paint
+    // subscribe to `viewportChanged` instead. Consume only when totals
+    // exist so a chunk that lacks totals doesn't clear a pending source
+    // queued for the next totals-bearing chunk.
+    if (chunk.totals) {
+      const source = this.viewportManager.consumePendingAggSource();
+      if (source !== null) {
+        this.events.emit({
+          type: 'aggregationChanged',
+          totals: chunk.totals,
+          source,
+        });
+      }
+    }
+    // firstDataRendered: latch once per grid instance, the first time a
+    // non-empty chunk has landed and a repaint has been scheduled. Empty
+    // chunks (e.g. setRowData([]) or filter-out-everything) don't count.
+    if (!this.firstDataFired && chunk.rowCount > 0) {
+      this.firstDataFired = true;
+      this.events.emit({ type: 'firstDataRendered' });
+    }
   }
 
   /** Build the cumulative-height index from scratch when `rowCount` changed,
@@ -7379,7 +7165,7 @@ export class CGrid<TRow = any> {
       getCellRanges: () => this.getCellRanges(),
       getFocusedCell: () => this.getFocusedCell(),
       getSelectedRowIds: () => this.getSelectedRowIds(),
-      getScrollPosition: () => ({ top: this.scrollTop, left: this.scrollLeft }),
+      getScrollPosition: () => this.viewportManager.getScrollPosition(),
     });
   }
 
