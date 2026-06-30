@@ -6854,7 +6854,14 @@ export class CGrid<TRow = any> {
       // group rows — which is what makes the bottom-pinned Grand Total row
       // visible without forcing the user to scroll past hundreds of empty
       // leaf rows.
-      if (this.pivotActive) return 0;
+      //
+      // Exception: when NO chunk has arrived yet (heights.length === 0) the
+      // grid hasn't seen its visible window. Returning 0 here would
+      // collapse the data subgrid to zero rows, the viewport would request
+      // `[0, 0)`, the worker would ship an empty chunk, and the loop would
+      // never break. Use the fallback so the initial request for the
+      // visible window has a non-zero range.
+      if (this.pivotActive && this.chunk.heights.length > 0) return 0;
       return fallback;
     }
     const h = this.chunk.heights[i]!;
