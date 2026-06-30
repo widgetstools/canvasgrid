@@ -1550,11 +1550,18 @@ export class CGrid<TRow = any> {
           this.refreshGroupDescendantsCache();
         }
         // Row order may have shifted (sort, filter, transaction add/remove) —
-        // per-row heights live with row identity, not slot. Drop the index
-        // and let the next chunk rebuild it (Cycle 5 / Task 7). The viewport
-        // falls back to uniform-height math for the single frame before the
-        // chunk lands.
-        this.rowHeightIndex = null;
+        // per-row heights live with row identity, not slot. Rebuild the
+        // index in place with the grid-level fallback for every row.
+        // Nulling and waiting for the next chunk would collapse
+        // `maxScrollTop` to 0 mid-scroll under pivot mode (the data
+        // subgrid's `getRowHeight(0)` returns 0 for rows outside the
+        // loaded chunk window), the sizer would flip to 1px for one
+        // frame, and the browser would clamp scrollTop to 0. Seeding
+        // with the fallback keeps the scrollable extent intact; the
+        // next chunk arrival overlays the real per-row heights via
+        // `refreshRowHeightIndex`.
+        const fallbackH = this.options.rowHeight ?? this.theme.rowHeight;
+        this.rowHeightIndex = new RowHeightIndex(this.rowCount, () => fallbackH);
         this.recomputeViewport();
         // Re-resolve persistent selection ids against the freshly-sorted /
         // filtered visible order. Without this, indices set by
