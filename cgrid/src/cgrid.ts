@@ -28,6 +28,7 @@ import {
 import {
   buildSnapshot, migrateSnapshot, STATE_SCHEMA_VERSION, type GridState,
 } from './core/stateSnapshot';
+import { StateUpdatedBus } from './core/stateUpdatedBus';
 import type { CColumnState, CApplyColumnStateParams, ISizeColumnsToFitParams } from './types';
 import type { CColDef, CColGroupDef } from './types';
 import {
@@ -449,6 +450,12 @@ export function defaultFillExtrapolate(sourceValues: unknown[], targetIndex: num
 
 export class CGrid<TRow = any> {
   private events = new TypedEventEmitter<CGridEvent>();
+  /** Cycle 23 / Task 7 — coalesced `stateUpdated` emitter. Subscribes
+   *  to every state-affecting event on `this.events` and emits one
+   *  `stateUpdated` per rAF tick carrying the full snapshot + the
+   *  merged changedKeys. Lazily constructed in the constructor body
+   *  so `this.getState()` is bound by the time it subscribes. */
+  private stateUpdatedBus!: StateUpdatedBus;
   private columnTree!: ColumnTree;
   private columnGroupState!: ColumnGroupState;
   private columnDefsMap: Map<string, ResolvedColDef<TRow>> = new Map();
@@ -813,6 +820,13 @@ export class CGrid<TRow = any> {
     this.cssReader = new CssReader(this.root);
     this.theme = this.cssReader.read();
     this.cellRenderers = new CellRendererRegistry();
+    // Cycle 23 / Task 7 — wire the state-update bus. Subscribes to
+    // every state-affecting event on `this.events` so a single
+    // `stateUpdated` fires per rAF frame regardless of how many
+    // discrete mutations landed. Built BEFORE the rest of construction
+    // so any setup-time events (initial column resolution, etc.) get
+    // captured.
+    this.stateUpdatedBus = new StateUpdatedBus(this.events, () => this.getState());
     this.cellRenderers.register('text', textCell);
     this.cellRenderers.register('number', numberCell);
     this.cellRenderers.register('checkbox', checkboxCell);
@@ -1597,7 +1611,12 @@ export class CGrid<TRow = any> {
       // the same plumbing as `setState` so columnState → filter →
       // sort → groups → pivot → expanded → selection → scroll
       // applies in dependency order.
-      if (options.initialState) this.setState(options.initialState);
+      if (options.initialState) {
+        // Cycle 23 / Task 7 — tag the cascade so the resulting
+        // stateUpdated event reads source: 'init', not 'ui'.
+        this.stateUpdatedBus?.setNextSource('init');
+        this.setState(options.initialState);
+      }
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
 
     // 10. Native scroll listener
@@ -5150,6 +5169,10 @@ export class CGrid<TRow = any> {
       this.flashTickHandle = null;
     }
     this.flashRegistry.destroy();
+    // Cycle 23 / Task 7 — release the state-update bus subscriptions
+    // + cancel any pending rAF so a late frame can't emit on a
+    // destroyed grid.
+    this.stateUpdatedBus?.destroy();
     // Cycle 23 / Task 3 — clear the debounce so a late-firing
     // bodyScrollEnd doesn't try to emit on a destroyed grid.
     if (this.scrollEndTimer !== null) {
@@ -6829,6 +6852,11 @@ export class CGrid<TRow = any> {
    *  its `version` is older than the current schema. */
   setState(snapshot: GridState): void {
     const migrated = migrateSnapshot(snapshot);
+    // Cycle 23 / Task 7 — tag the cascade so the next coalesced
+    // stateUpdated event reads source: 'api'. The cascade of internal
+    // events (filterChanged + sortChanged + ...) collapses into one
+    // emission via the bus's rAF debounce.
+    this.stateUpdatedBus?.setNextSource('api');
 
     // 1. columnState (defines columns + their geometry).
     if (migrated.columnState) {

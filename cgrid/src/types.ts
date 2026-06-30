@@ -2180,6 +2180,20 @@ export type CGridEvent =
    *  KeyboardEvent suppresses the grid's printable-key behavior the
    *  same way. */
   | { type: 'cellKeyPress'; rowId: string; colId: string; value: unknown; event: KeyboardEvent }
+  /** Cycle 23 / Task 7 — fires when any GridState component changes.
+   *  Debounced per rAF: N changes within one frame collapse into one
+   *  event. The payload carries the FULL state snapshot + a
+   *  changedKeys array tagged with the GridState keys that mutated
+   *  this frame. `source` distinguishes the trigger — `'api'` for an
+   *  explicit `setState` call, `'init'` for the `initialState`
+   *  constructor option, `'ui'` for everything else (user
+   *  interaction, runtime option swap, drag, etc.). */
+  | {
+      type: 'stateUpdated';
+      state: import('./core/stateSnapshot').GridState;
+      changedKeys: (keyof import('./core/stateSnapshot').GridState)[];
+      source: 'api' | 'ui' | 'init';
+    }
   | { type: 'modelUpdated'; visibleRowCount: number }
   | { type: 'sortChanged'; sortModel: SortModel }
   | {

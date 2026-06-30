@@ -507,6 +507,100 @@ describe('Cycle 23 / Task 6 — setState round-trip', () => {
   });
 });
 
+describe('Cycle 23 / Task 7 — stateUpdated event (coalesced per rAF)', () => {
+  // The bus subscribes to grid emitter event types. The fake worker
+  // in the test env doesn't respond to async messages so the public
+  // setters' .then() callbacks never run. To test the bus's
+  // coalescing logic in isolation we emit events directly on
+  // `grid.events`, which exercises the same subscriber wiring without
+  // depending on the worker round-trip.
+
+  it('coalesces multiple state changes within one frame into a single event', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [
+        { colId: 'a', field: 'a', cellDataType: 'text' },
+        { colId: 'b', field: 'b', cellDataType: 'number' },
+      ],
+    } as any);
+    const events: any[] = [];
+    grid.on('stateUpdated', (e: any) => events.push(e));
+
+    (grid as any).events.emit({ type: 'sortChanged', sortModel: [] });
+    (grid as any).events.emit({ type: 'sortChanged', sortModel: [] });
+    (grid as any).stateUpdatedBus.flush();
+
+    expect(events.length).toBe(1);
+    expect(events[0].changedKeys).toContain('sortModel');
+    expect(events[0].source).toBe('ui');
+    grid.destroy();
+  });
+
+  it('merges changedKeys across distinct event types', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text', filter: 'text' }],
+    } as any);
+    const events: any[] = [];
+    grid.on('stateUpdated', (e: any) => events.push(e));
+
+    (grid as any).events.emit({ type: 'sortChanged', sortModel: [] });
+    (grid as any).events.emit({ type: 'filterChanged', filterModel: {} });
+    (grid as any).stateUpdatedBus.flush();
+
+    expect(events.length).toBe(1);
+    expect(events[0].changedKeys.sort()).toEqual(['filterModel', 'sortModel']);
+    grid.destroy();
+  });
+
+  it('tags source: "api" when setNextSource("api") fires before the cascade', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+    } as any);
+    const events: any[] = [];
+    grid.on('stateUpdated', (e: any) => events.push(e));
+
+    (grid as any).stateUpdatedBus.setNextSource('api');
+    (grid as any).events.emit({ type: 'sortChanged', sortModel: [] });
+    (grid as any).stateUpdatedBus.flush();
+
+    expect(events.length).toBe(1);
+    expect(events[0].source).toBe('api');
+
+    // Source resets to 'ui' after dispatch.
+    (grid as any).events.emit({ type: 'sortChanged', sortModel: [] });
+    (grid as any).stateUpdatedBus.flush();
+    expect(events[events.length - 1].source).toBe('ui');
+    grid.destroy();
+  });
+
+  it('does not fire stateUpdated when no state-affecting event landed', async () => {
+    const { CGrid } = await import('../src/cgrid');
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const grid = new CGrid(host, {
+      getRowId: (r: any) => r.id,
+      columnDefs: [{ colId: 'a', field: 'a', cellDataType: 'text' }],
+    } as any);
+    const events: any[] = [];
+    grid.on('stateUpdated', (e: any) => events.push(e));
+
+    (grid as any).stateUpdatedBus.flush();
+    expect(events.length).toBe(0);
+    grid.destroy();
+  });
+});
+
 describe('Cycle 23 / Task 2 — integration with CGrid', () => {
   it('grid.on("cellMouseOver") fires with rowId + colId + value when the pointer crosses a cell boundary', async () => {
     const { CGrid } = await import('../src/cgrid');
