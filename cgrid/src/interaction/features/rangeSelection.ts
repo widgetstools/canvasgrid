@@ -166,14 +166,32 @@ export class RangeSelection extends Feature {
       super.handleMouseDown(ctx);
       return;
     }
-    // Ctrl/Cmd-click: add a new disjoint 1x1 range. Existing ranges stay.
-    // No drag state — a follow-up drag here would clobber the disjoint set.
+    // Ctrl/Cmd-click on a cell. Two diverging behaviors based on row
+    // selection mode:
+    //
+    //   rowSelection: 'multiple' (blotter / data-grid pattern) — the
+    //     gesture is primarily a ROW toggle (CellSelection consumes
+    //     that). Accumulating disjoint single-cell ranges on top
+    //     produces a visual the user reads as "multiple focused
+    //     cells" — a major perceptual bug. REPLACE the range with a
+    //     single 1×1 at the clicked cell so only one range overlay
+    //     paints at any time.
+    //
+    //   rowSelection: 'single' / 'none' (spreadsheet pattern) — apps
+    //     selected this mode because they want Excel-style disjoint
+    //     ranges for copy / paste / fill. Preserve the accumulation
+    //     behavior.
     if (e.ctrlKey || e.metaKey) {
-      sel.addRange({
+      const oneRange = {
         rowStart: ctx.hit.rowIndex,
         rowEnd: ctx.hit.rowIndex,
         colIds: [ctx.hit.colId],
-      });
+      };
+      if (sel.getMode() === 'multiple') {
+        sel.setRanges([oneRange]);
+      } else {
+        sel.addRange(oneRange);
+      }
       this.state = null;
       ctx.grid.emitRangeSelectionChanged(true, true);
       super.handleMouseDown(ctx);
