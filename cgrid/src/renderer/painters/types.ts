@@ -26,6 +26,14 @@ export interface PainterCtx {
      *  paint translucent fill + opaque border per contiguous rect. */
     ranges: SelectionRange[];
   };
+  /** Total visible row count after filter/sort. Used by the header
+   *  painter for the row-select header tri-state checkbox: state
+   *  resolves to `'all'` when selectedRowIndices.size === this
+   *  count, `'none'` at zero, `'partial'` in between. Optional so
+   *  pre-Cycle-24 test harnesses building partial PainterCtx
+   *  instances don't break (the byRows painter falls back to 0
+   *  when absent, which collapses to `'none'`). */
+  totalRowCount?: number;
   sortModel: SortModel;
   /**
    * Synchronous best-effort row snapshot from the current viewport chunk,

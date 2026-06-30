@@ -98,6 +98,7 @@ import { totalsCell } from './renderer/cellRenderers/totals';
 import { groupCell, type GroupCellValue } from './renderer/cellRenderers/group';
 import { groupFooterCell } from './renderer/cellRenderers/groupFooter';
 import { sparklineCell } from './renderer/cellRenderers/sparkline';
+import { rowSelectCheckboxCell } from './renderer/cellRenderers/rowSelectCheckbox';
 import { coerceToNumberArray } from './renderer/cellRenderers/sparkline/coerceToNumberArray';
 import { decorateHeader } from './renderer/painters/byRows';
 import {
@@ -842,6 +843,10 @@ export class CGrid<TRow = any> {
     // plugs the column / area / bar / pie sibling painters through the
     // same registered name via `cellRendererParams.sparkline.type`).
     this.cellRenderers.register('sparkline', sparklineCell);
+    // Per-row checkbox renderer — forced as the cellRenderer for any
+    // column declaring `checkboxSelection: true`. Reads `p.isSelected`
+    // for state (NOT row data); a chain feature claims the click.
+    this.cellRenderers.register('rowSelectCheckbox', rowSelectCheckboxCell);
 
     // 2b. Tool-panel registry (Cycle 11 / Task 1). Seed the built-in
     // IDs first, then overwrite the Columns stub with the real
@@ -922,6 +927,7 @@ export class CGrid<TRow = any> {
       cellData: (rowIndex, colId) => this.cellAt(rowIndex, colId),
       getSelection: () => this.selection.state,
       getSortModel: () => this.sortModel,
+      getTotalRowCount: () => this.rowCount,
       getCanvasWidth: () => this.canvasBounds.width,
       getCanvasHeight: () => this.canvasBounds.height,
       rowDataSnapshotAt: (rowIndex) => this.rowDataSnapshotAt(rowIndex),
@@ -1261,6 +1267,16 @@ export class CGrid<TRow = any> {
       // Conventional / ag-grid parity — Delete + Ctrl+D entry points.
       clearSelectedCells: () => this.clearSelectedCells(),
       fillDown: () => this.fillDown(),
+      // Row-select checkbox column hooks. Read at event time so a
+      // runtime `updateGridOptions({ columnDefs })` swap lights up
+      // on the next click without re-wiring the feature chain.
+      isCheckboxSelectionColumn: (colId) =>
+        this.columnDefsMap.get(colId)?.checkboxSelection === true,
+      isHeaderCheckboxSelectionColumn: (colId) =>
+        this.columnDefsMap.get(colId)?.headerCheckboxSelection === true,
+      toggleHeaderCheckbox: (colId) => this.toggleHeaderCheckbox(colId),
+      isRowClickSelectionSuppressed: () => this.options.suppressRowClickSelection === true,
+      isRowMultiSelectWithClick: () => this.options.rowMultiSelectWithClick === true,
       // Cycle 24 / Task 6 — focus exit callbacks. Read at event time
       // so a runtime `setGridOption('tabToNextHeader', …)` flip
       // lights up on the next Tab press.
@@ -3991,6 +4007,19 @@ export class CGrid<TRow = any> {
     if (this.selection.getMode() !== 'multiple') return;
     if (this.rowCount <= 0) return;
     this.selection.range(0, this.rowCount - 1);
+  }
+
+  /** Row-select header checkbox toggle. Selects every visible row
+   *  when none-or-some are selected; clears the selection when ALL
+   *  are. Wired from the header click handler on columns declaring
+   *  `headerCheckboxSelection: true`. */
+  toggleHeaderCheckbox(_colId: string): void {
+    if (this.destroyed) return;
+    if (this.selection.getMode() !== 'multiple') return;
+    if (this.rowCount <= 0) return;
+    const allSelected = this.selection.state.selectedRowIndices.size === this.rowCount;
+    if (allSelected) this.selection.clear();
+    else this.selection.range(0, this.rowCount - 1);
   }
 
   setSelectedRowIds(ids: string[]): void {

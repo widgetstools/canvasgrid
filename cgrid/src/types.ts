@@ -312,6 +312,21 @@ export interface CGridOptions<TRow = any> {
   rowHeight?: number;
   headerHeight?: number;
   rowSelection?: 'none' | 'single' | 'multiple';
+  /**
+   * When `true`, clicking on a body cell does NOT toggle the row's
+   * membership in the selection set. Focus still moves to the
+   * clicked cell. Pair with `checkboxSelection: true` on a pinned
+   * column to enforce checkbox-only row selection — the canonical
+   * "blotter with a select column" pattern.
+   */
+  suppressRowClickSelection?: boolean;
+  /**
+   * When `true`, plain (no-modifier) clicks on body cells TOGGLE the
+   * row's selection set membership instead of replacing it. Mirrors
+   * checkbox-list semantics from email clients / file managers; only
+   * meaningful with `rowSelection: 'multiple'`.
+   */
+  rowMultiSelectWithClick?: boolean;
   enableCellChangeFlash?: boolean;
   cellFlashDuration?: number;
   cellFadeDuration?: number;
@@ -1476,6 +1491,25 @@ export interface CColDef<TRow = any, TValue = any> {
    *  chain — return `true` to suppress every grid handler for the
    *  keystroke. */
   suppressKeyboardEvent?: SuppressKeyboardEventCallback<TRow>;
+  /**
+   * Render a row-select checkbox in this column's body cells. When
+   * true, the column's cellRenderer is forced to
+   * `'rowSelectCheckbox'` regardless of the resolved `cellDataType`,
+   * and clicks on the cell toggle the row's membership in
+   * `selectedRowIndices` (no focus move, no cell-range mutation —
+   * pure row-selection gesture). Pair with `pinned: 'left'` for the
+   * conventional blotter checkbox column.
+   */
+  checkboxSelection?: boolean;
+  /**
+   * Render a tri-state select-all checkbox in this column's header.
+   * Click toggles between "select every row" and "clear selection";
+   * the box reports `indeterminate` when some-but-not-all rows are
+   * selected. Independent of `checkboxSelection` — apps can have the
+   * header checkbox without the per-row body checkbox if they want
+   * select-all + click-only row selection.
+   */
+  headerCheckboxSelection?: boolean;
   /**
    * Built-in key (`'text'`, `'number'`, `'date'`, `'dateString'`, `'select'`,
    * `'largeText'`, `'checkbox'`) or a custom constructor registered via

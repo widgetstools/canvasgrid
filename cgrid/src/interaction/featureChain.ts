@@ -44,6 +44,7 @@ import { KeyboardShortcuts } from './features/keyboardShortcuts';
 import { GroupExpandFeature } from './features/groupExpand';
 import { SparklineTooltip } from './features/sparklineTooltip';
 import { CellKeyboardEvents } from './features/cellKeyboardEvents';
+import { RowSelectCheckboxClick } from './features/rowSelectCheckboxClick';
 
 /** Idle gap (ms) after the last wheel event before the axis lock releases.
  *  ~150ms matches the natural pause between separate trackpad gestures while
@@ -69,6 +70,11 @@ export class FeatureChain {
     // Enter-to-commit per column, replace shortcuts, etc.
     this.head = new CellKeyboardEvents();
     this.head
+      // Row-select checkbox column — sits ahead of every selection
+      // / range / focus feature so a click on the checkbox cell can
+      // claim the gesture as a pure row-toggle BEFORE downstream
+      // features try to focus the cell or create a cell range.
+      .append(new RowSelectCheckboxClick())
       .append(new ColumnResizing())
       .append(new ColumnDrag())
       // Cycle 15 / Task 7 — GroupExpand sits ahead of EditTrigger /

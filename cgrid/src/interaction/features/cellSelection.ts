@@ -33,9 +33,22 @@ export class CellSelection extends Feature {
     if (e.button === 2 && sel.state.selectedRowIndices.has(ctx.hit.rowIndex)) {
       return;
     }
+    // Grid-level `suppressRowClickSelection` — focus still moved
+    // above, but the row-selection set MUST NOT mutate from a body
+    // click. Apps that opt in have wired a checkbox column for the
+    // selection gesture.
+    if (ctx.grid.isRowClickSelectionSuppressed?.()) {
+      return;
+    }
     if (e.shiftKey) {
       if (prevFocus != null) sel.range(prevFocus, ctx.hit.rowIndex);
     } else if (e.ctrlKey || e.metaKey) {
+      sel.toggleMulti(ctx.hit.rowIndex);
+    } else if (ctx.grid.isRowMultiSelectWithClick?.()) {
+      // Grid-level `rowMultiSelectWithClick` — plain click toggles
+      // the row in/out of the selection set without requiring a
+      // Ctrl/Cmd modifier. Mirrors the checkbox-list pattern in
+      // email clients / file managers.
       sel.toggleMulti(ctx.hit.rowIndex);
     } else {
       sel.selectSingle(ctx.hit.rowIndex);

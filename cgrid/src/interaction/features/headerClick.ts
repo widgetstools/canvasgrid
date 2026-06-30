@@ -30,6 +30,17 @@ function isAppendClick(
 export class HeaderClick extends Feature {
   override handleClick(ctx: CGridEventCtx): void {
     if (ctx.hit.kind === 'header') {
+      // Row-select header checkbox — when the column declares
+      // `headerCheckboxSelection: true`, the entire header rect is
+      // the click target for the select-all / clear-all toggle. The
+      // sort cycle + column-band selection are skipped on these
+      // columns so the gesture stays unambiguous (you can't sort a
+      // pure checkbox column anyway).
+      if (ctx.grid.isHeaderCheckboxSelectionColumn?.(ctx.hit.colId)) {
+        ctx.grid.toggleHeaderCheckbox?.(ctx.hit.colId);
+        ctx.grid.canvas.requestRepaint();
+        return;
+      }
       const append = isAppendClick(ctx.raw, ctx.grid.getMultiSortKey());
       ctx.grid.cycleSort(ctx.hit.colId, { append });
       // Cycle 9 / Task 6 — skip the column-band selection when

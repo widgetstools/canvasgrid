@@ -40,6 +40,8 @@ export type RuntimeOption =
   | 'defaultColDef'
   | 'animateRows'
   | 'rowSelection'
+  | 'suppressRowClickSelection'
+  | 'rowMultiSelectWithClick'
   | 'suppressColumnVirtualisation'
   | 'suppressRowVirtualisation'
   | 'enableCellChangeFlash'
@@ -250,6 +252,13 @@ export function applyRuntimeOption<TRow>(
       // readers learn the loading transition.
       target.refreshA11y?.();
       return;
+    case 'suppressRowClickSelection':
+    case 'rowMultiSelectWithClick':
+      // Both flags are storage-only at runtime — CellSelection reads
+      // them at event time via `CGridLike.isRowClickSelectionSuppressed`
+      // / `isRowMultiSelectWithClick`, so a flip lights up on the
+      // next click without further wiring.
+      return;
     case 'animateRows':
     case 'cellFlashDuration':
     case 'cellFadeDuration':
@@ -397,6 +406,7 @@ export function isRuntimeOption(key: string): key is RuntimeOption {
 const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'theme', 'density', 'rowHeight', 'headerHeight', 'defaultColDef',
   'animateRows', 'rowSelection',
+  'suppressRowClickSelection', 'rowMultiSelectWithClick',
   'suppressColumnVirtualisation', 'suppressRowVirtualisation',
   'enableCellChangeFlash', 'cellFlashDuration', 'cellFadeDuration',
   'asyncTransactionWaitMillis', 'rowBuffer',

@@ -178,6 +178,29 @@ export interface CGridLike {
    *  active range to every other row in the same range. No-op when
    *  the range is single-row or empty. */
   fillDown?(): void;
+  /** Row-select checkbox feature — true when `colId` has
+   *  `checkboxSelection: true` on its resolved colDef. The
+   *  RowSelectCheckboxClick head feature consults this to decide
+   *  whether to claim the mousedown. */
+  isCheckboxSelectionColumn?(colId: string): boolean;
+  /** True when `colId` has `headerCheckboxSelection: true`. Consulted
+   *  by the header painter for the tri-state checkbox and by
+   *  HeaderClick for the toggle gesture. */
+  isHeaderCheckboxSelectionColumn?(colId: string): boolean;
+  /** Toggle the select-all state — selects every row if zero or some
+   *  are selected; clears the selection if all are. Wired from the
+   *  header checkbox click. */
+  toggleHeaderCheckbox?(colId: string): void;
+  /** Grid-level `suppressRowClickSelection` — when true, body-cell
+   *  clicks must NOT mutate the row-selection set (focus still
+   *  moves). Read at event time so a runtime
+   *  `setGridOption('suppressRowClickSelection', …)` flip lights up
+   *  on the next click. */
+  isRowClickSelectionSuppressed?(): boolean;
+  /** Grid-level `rowMultiSelectWithClick` — when true AND row
+   *  selection mode is multiple, plain clicks toggle the row
+   *  (no modifier required). */
+  isRowMultiSelectWithClick?(): boolean;
   /** Cycle 24 / Task 6 — focus exit / wrap callbacks. Return `true` to
    *  let the grid wrap to the opposite end, `false` to release focus
    *  so the browser's native Tab handling takes the user OUT of the
