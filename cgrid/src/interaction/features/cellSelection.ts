@@ -71,41 +71,52 @@ export class CellSelection extends Feature {
     const { focusedRowIndex: fr, focusedColId: fc } = sel.state;
     const ci = fc == null ? 0 : Math.max(0, cols.indexOf(fc));
 
+    // Cycle 24 / Task 1 (follow-up) — Shift+Arrow grows the active
+    // cell range toward the new target; Ctrl+Shift+Arrow grows it to
+    // the data boundary. The bare-Arrow path stays exactly as it was
+    // (move + collapse to a 1×1 range at the new focused cell). The
+    // Ctrl-only path (no Shift) jumps focus to the data boundary +
+    // collapses ranges — same as bare-Arrow but with the boundary
+    // target.
+    const isArrow = e.key === 'ArrowDown' || e.key === 'ArrowUp'
+      || e.key === 'ArrowRight' || e.key === 'ArrowLeft';
+    if (isArrow) {
+      const ctrl = e.ctrlKey || e.metaKey;
+      let targetRow = fr ?? 0;
+      let targetColIndex = ci;
+      switch (e.key) {
+        case 'ArrowDown':
+          targetRow = ctrl ? rowCount - 1 : Math.min(rowCount - 1, (fr ?? -1) + 1);
+          break;
+        case 'ArrowUp':
+          targetRow = ctrl ? 0 : Math.max(0, (fr ?? 1) - 1);
+          break;
+        case 'ArrowRight':
+          targetColIndex = ctrl ? cols.length - 1 : Math.min(cols.length - 1, ci + 1);
+          break;
+        case 'ArrowLeft':
+          targetColIndex = ctrl ? 0 : Math.max(0, ci - 1);
+          break;
+      }
+      const targetCol = cols[targetColIndex]!;
+      if (e.shiftKey) {
+        // Seed a range on the focused cell when none exists yet — the
+        // user's first Shift+Arrow press should produce a 2-cell range
+        // (focus + neighbor), NOT a no-op.
+        if (sel.getRanges().length === 0 && fr != null && fc != null) {
+          sel.addRange({ rowStart: fr, rowEnd: fr, colIds: [fc] });
+        }
+        sel.extendLastRangeToCell(targetRow, targetCol, cols);
+        // Move focus without collapsing the range we just grew.
+        sel.setFocus(targetRow, targetCol);
+        ctx.grid.emitRangeSelectionChanged?.(false, true);
+      } else {
+        sel.setFocusAndCollapseRanges(targetRow, targetCol);
+      }
+      e.preventDefault();
+      return;
+    }
     switch (e.key) {
-      case 'ArrowDown':
-        // Cycle 24 / Task 1 — Ctrl+ArrowDown jumps to the last row in
-        // the same column (data-boundary nav).
-        if (e.ctrlKey || e.metaKey) {
-          sel.setFocusAndCollapseRanges(rowCount - 1, fc ?? cols[0]!);
-        } else {
-          sel.setFocusAndCollapseRanges(fr == null ? 0 : Math.min(rowCount - 1, fr + 1), fc ?? cols[0]!);
-        }
-        e.preventDefault();
-        return;
-      case 'ArrowUp':
-        if (e.ctrlKey || e.metaKey) {
-          sel.setFocusAndCollapseRanges(0, fc ?? cols[0]!);
-        } else {
-          sel.setFocusAndCollapseRanges(fr == null ? 0 : Math.max(0, fr - 1), fc ?? cols[0]!);
-        }
-        e.preventDefault();
-        return;
-      case 'ArrowRight':
-        if (e.ctrlKey || e.metaKey) {
-          sel.setFocusAndCollapseRanges(fr ?? 0, cols[cols.length - 1]!);
-        } else {
-          sel.setFocusAndCollapseRanges(fr ?? 0, cols[Math.min(cols.length - 1, ci + 1)]!);
-        }
-        e.preventDefault();
-        return;
-      case 'ArrowLeft':
-        if (e.ctrlKey || e.metaKey) {
-          sel.setFocusAndCollapseRanges(fr ?? 0, cols[0]!);
-        } else {
-          sel.setFocusAndCollapseRanges(fr ?? 0, cols[Math.max(0, ci - 1)]!);
-        }
-        e.preventDefault();
-        return;
       case 'Home':
         // Cycle 24 / Task 1 — Ctrl+Home jumps to row 0 / col 0; plain
         // Home is already handled by KeyPaging downstream. Only consume
