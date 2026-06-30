@@ -122,7 +122,7 @@ import { CellEditorRegistry } from './interaction/editors/registry';
 import { RowEditCoordinator, type RowEditCellSpec } from './interaction/editors/rowEditCoordinator';
 import type { CellEditorCtor, ICellEditor } from './interaction/editors/iCellEditor';
 import { A11yOverlay } from './interaction/a11yOverlay';
-import { WorkerClient } from './worker/client';
+import { WorkerCoordinator } from './core/workerCoordinator';
 import { wrapTextToHeight } from './worker/measureText';
 import type { WorkerColumn, ViewportChunk, AutosizeColumnRequest, StickyAncestor } from './worker/protocol';
 import type { IAggFunc, IAggFuncParams } from './types';
@@ -651,7 +651,21 @@ export class CGrid<TRow = any> {
     mode: 'enter' | 'edit';
   } | null = null;
   private a11y: A11yOverlay;
-  private workerClient: WorkerClient;
+  /** Cycle 19 / Task 3 — owns the WorkerClient + its handler wiring +
+   *  the viewport-fetch dispatch ViewportManager forwards into. CGrid
+   *  routes every worker call through this surface; the chunk-reply
+   *  main-side mutation lives in `handleViewportChunk` (delivered via
+   *  the `onViewportChunk` dep below). */
+  private workerCoord: WorkerCoordinator;
+  /** Cycle 19 / Task 3 — back-compat shim. A long tail of integration
+   *  tests reach into `(grid as any).workerClient` to read the underlying
+   *  `WorkerClient` (FakeWorker access, `vi.spyOn` of a worker method, a
+   *  direct `getRowByIndex` round-trip). The real owner is now
+   *  `workerCoord`; this getter keeps every existing `(grid as any).workerClient.*`
+   *  access pattern resolving without touching the test suite. */
+  private get workerClient(): import('./worker/client').WorkerClient {
+    return this.workerCoord.workerClient;
+  }
   private destroyed = false;
   /** Centralized teardown for every listener / RAF / timer the grid installs.
    *  Use `this.disposables.addListener` / `addRaf` / `addTimeout` instead of
@@ -977,7 +991,12 @@ export class CGrid<TRow = any> {
         this.syncOpenEditorPosition();
       },
       isDestroyed: () => this.destroyed,
-      dispatchViewportRequest: (opts) => this.handleViewportChunk(opts),
+      // Cycle 19 / Task 3 — viewport-fetch + chunk-reply both go through the
+      // coordinator now. The chunk arrival side-effects (column sync,
+      // flash, height index, recompute, events, firstDataRendered latch)
+      // live in `handleViewportChunk` and are reached via the coord's
+      // `onViewportChunk` dep.
+      dispatchViewportRequest: (opts) => this.workerCoord.dispatchViewportRequest(opts),
     });
     this.recomputeViewport();
 
@@ -1058,7 +1077,7 @@ export class CGrid<TRow = any> {
         // Only request viewport once the worker is connected; before that, the
         // worker client throws on send. After init the gridReady handler does
         // the first fetch and any later resize re-fetches normally.
-        if (this.workerClient) this.requestViewport();
+        if (this.workerCoord) this.requestViewport();
         // gridSizeChanged: skip the initial measurement (lastEmittedBounds is
         // null on first call — we record the size silently). Emit only when
         // dimensions actually change so a repaint-poll tick that re-measures
@@ -1537,72 +1556,81 @@ export class CGrid<TRow = any> {
     // inlining raw TypeScript as a data: URL (which browsers reject).
     const workerUrl = options.worker?.url ?? new URL('./worker.js', import.meta.url).toString();
     const worker = new Worker(workerUrl as unknown as URL, { type: 'module' });
-    this.workerClient = new WorkerClient(worker as unknown as import('./worker/client').WorkerLike, {
-      onModelUpdated: (visibleCount, groupKeys) => {
-        this.rowCount = visibleCount;
-        // Cycle 15 / Task 7 — keep the main-side mirror in lockstep
-        // with the worker's tree across transactions that add or
-        // remove group keys (e.g. a new ticker entered the dataset).
-        // The worker only ships this when grouping is active.
-        if (groupKeys !== undefined) this.knownGroupKeys = groupKeys;
-        // Cycle 15 / Task 8 — descendants may have shifted (new rows
-        // in a group, removed rows, new groups). The push doesn't
-        // ship them; refresh the cache via a follow-up
-        // `setEmitGroupDescendants(true)` round-trip when the feature
-        // is active. Cheap when the descendants haven't actually
-        // changed — the worker just re-serialises the same arrays.
-        if (
-          groupKeys !== undefined
-          && groupKeys.length > 0
-          && this.selection.isGroupSelectsChildren()
-        ) {
-          this.refreshGroupDescendantsCache();
-        }
-        // Row order may have shifted (sort, filter, transaction add/remove) —
-        // per-row heights live with row identity, not slot. Rebuild the
-        // index in place with the grid-level fallback for every row.
-        // Nulling and waiting for the next chunk would collapse
-        // `maxScrollTop` to 0 mid-scroll under pivot mode (the data
-        // subgrid's `getRowHeight(0)` returns 0 for rows outside the
-        // loaded chunk window), the sizer would flip to 1px for one
-        // frame, and the browser would clamp scrollTop to 0. Seeding
-        // with the fallback keeps the scrollable extent intact; the
-        // next chunk arrival overlays the real per-row heights via
-        // `refreshRowHeightIndex`.
-        const fallbackH = this.options.rowHeight ?? this.theme.rowHeight;
-        this.rowHeightIndex = new RowHeightIndex(this.rowCount, () => fallbackH);
-        this.recomputeViewport();
-        // Re-resolve persistent selection ids against the freshly-sorted /
-        // filtered visible order. Without this, indices set by
-        // `setSelectedRowIds` and `setFocusedCell` would point at the wrong
-        // rows the moment the user sorts.
-        this.rebuildSelectionFromPersistentIds();
-        this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
-        // Cycle 14 / Task 6 — the worker pushes `modelUpdated` only after
-        // a transaction flush (sync or async). The visible set + totals
-        // both reflect the underlying data mutation, so tag the resulting
-        // aggregation event as `rowDataChanged`.
-        this.requestViewport('rowDataChanged');
+    // Cycle 19 / Task 3 — coordinator owns the WorkerClient + the viewport
+    // dispatch. The handler closures route every worker push back into
+    // CGrid's existing state-mutation methods so behaviour is unchanged.
+    this.workerCoord = new WorkerCoordinator(
+      worker as unknown as import('./core/workerCoordinator').WorkerLike,
+      {
+        onModelUpdated: (visibleCount, groupKeys) => {
+          this.rowCount = visibleCount;
+          // Cycle 15 / Task 7 — keep the main-side mirror in lockstep
+          // with the worker's tree across transactions that add or
+          // remove group keys (e.g. a new ticker entered the dataset).
+          // The worker only ships this when grouping is active.
+          if (groupKeys !== undefined) this.knownGroupKeys = groupKeys;
+          // Cycle 15 / Task 8 — descendants may have shifted (new rows
+          // in a group, removed rows, new groups). The push doesn't
+          // ship them; refresh the cache via a follow-up
+          // `setEmitGroupDescendants(true)` round-trip when the feature
+          // is active. Cheap when the descendants haven't actually
+          // changed — the worker just re-serialises the same arrays.
+          if (
+            groupKeys !== undefined
+            && groupKeys.length > 0
+            && this.selection.isGroupSelectsChildren()
+          ) {
+            this.refreshGroupDescendantsCache();
+          }
+          // Row order may have shifted (sort, filter, transaction add/remove) —
+          // per-row heights live with row identity, not slot. Rebuild the
+          // index in place with the grid-level fallback for every row.
+          // Nulling and waiting for the next chunk would collapse
+          // `maxScrollTop` to 0 mid-scroll under pivot mode (the data
+          // subgrid's `getRowHeight(0)` returns 0 for rows outside the
+          // loaded chunk window), the sizer would flip to 1px for one
+          // frame, and the browser would clamp scrollTop to 0. Seeding
+          // with the fallback keeps the scrollable extent intact; the
+          // next chunk arrival overlays the real per-row heights via
+          // `refreshRowHeightIndex`.
+          const fallbackH = this.options.rowHeight ?? this.theme.rowHeight;
+          this.rowHeightIndex = new RowHeightIndex(this.rowCount, () => fallbackH);
+          this.recomputeViewport();
+          // Re-resolve persistent selection ids against the freshly-sorted /
+          // filtered visible order. Without this, indices set by
+          // `setSelectedRowIds` and `setFocusedCell` would point at the wrong
+          // rows the moment the user sorts.
+          this.rebuildSelectionFromPersistentIds();
+          this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
+          // Cycle 14 / Task 6 — the worker pushes `modelUpdated` only after
+          // a transaction flush (sync or async). The visible set + totals
+          // both reflect the underlying data mutation, so tag the resulting
+          // aggregation event as `rowDataChanged`.
+          this.requestViewport('rowDataChanged');
+        },
+        onAsyncTransactionsFlushed: (results) => {
+          this.events.emit({ type: 'asyncTransactionsFlushed', results });
+        },
+        onHeightsChanged: (rowStart, heights) => this.onHeightsChanged(rowStart, heights),
+        onMeasureTextRequest: (batchId, items) => this.onMeasureTextRequest(batchId, items),
+        // Cycle 7 / Task 8 — worker pushed the candidate rowIds (post
+        // column + quick filters, minus alwaysPass rows) up for main-side
+        // `doesExternalFilterPass` evaluation. Run the predicate against
+        // the cached row data and reply with the surviving subset.
+        onExternalFilterCandidates: (rowIds, callId) => this.runExternalFilterCandidates(rowIds, callId),
+        // Cycle 8 / Task 4 — worker pushed the post-SortPass rowId order
+        // up for main-side `postSortRows` evaluation. Run the hook against
+        // the cached row data and reply with the (possibly re-ordered)
+        // array.
+        onPostSortRowsCandidates: (rowIds, callId) => this.runPostSortRowsCandidates(rowIds, callId),
+        onError: (msg) => console.error('[cgrid] worker error:', msg),
+        onViewportChunk: (opts, chunk, stickyAncestors) =>
+          this.handleViewportChunk(opts, chunk, stickyAncestors),
+        isDestroyed: () => this.destroyed,
       },
-      onAsyncTransactionsFlushed: (results) => {
-        this.events.emit({ type: 'asyncTransactionsFlushed', results });
-      },
-      onHeightsChanged: (rowIds, heights) => this.onHeightsChanged(rowIds, heights),
-      onMeasureTextRequest: (batchId, items) => this.onMeasureTextRequest(batchId, items),
-      // Cycle 7 / Task 8 — worker pushed the candidate rowIds (post
-      // column + quick filters, minus alwaysPass rows) up for main-side
-      // `doesExternalFilterPass` evaluation. Run the predicate against
-      // the cached row data and reply with the surviving subset.
-      onExternalFilterCandidates: (rowIds, callId) => this.runExternalFilterCandidates(rowIds, callId),
-      // Cycle 8 / Task 4 — worker pushed the post-SortPass rowId order
-      // up for main-side `postSortRows` evaluation. Run the hook against
-      // the cached row data and reply with the (possibly re-ordered)
-      // array.
-      onPostSortRowsCandidates: (rowIds, callId) => this.runPostSortRowsCandidates(rowIds, callId),
-      onError: (msg) => console.error('[cgrid] worker error:', msg),
-    });
+    );
 
-    this.workerClient.init({
+    this.workerCoord.init({
       rowIdField: inferRowIdField(options.getRowId),
       columns: this.workerColumns(),
       rowHeight: this.options.rowHeight ?? this.theme.rowHeight,
@@ -1650,21 +1678,21 @@ export class CGrid<TRow = any> {
       // `onFilterChanged('externalFilter')` once the app toggles state.
       const initialPresent = this.options.isExternalFilterPresent?.() === true;
       if (initialPresent) {
-        await this.workerClient.setExternalFilterPresent(true).catch(() => {});
+        await this.workerCoord.setExternalFilterPresent(true).catch(() => {});
       }
       // Cycle 8 / Task 2 — push the construction-time sort model to the
       // worker BEFORE the first setRowData so the very first paint is
       // already sorted. When the model is empty (no `initialSort` on any
       // column) the round-trip is skipped entirely.
       if (this.sortModel.length > 0) {
-        await this.workerClient.setSortModel(this.sortModel).catch(() => {});
+        await this.workerCoord.setSortModel(this.sortModel).catch(() => {});
       }
       // Cycle 8 / Task 4 — when `postSortRows` is configured, register
       // the round-trip BEFORE the first setRowData so the very first
       // visible-build runs the hook. Skipped when the option is absent;
       // the worker's pipeline then runs end-to-end with zero overhead.
       if (typeof this.options.postSortRows === 'function') {
-        await this.workerClient.setPostSortRowsPresent(true).catch(() => {});
+        await this.workerCoord.setPostSortRowsPresent(true).catch(() => {});
       }
       // Cycle 14 / Task 3 — push the construction-time aggFuncs map to
       // the worker BEFORE the first setRowData so the very first
@@ -1682,7 +1710,7 @@ export class CGrid<TRow = any> {
       // (5000). Fire-and-forget — the reply rides the existing rowCount
       // channel and the cap doesn't move rows.
       if (this.options.pivotMaxGeneratedColumns !== undefined) {
-        this.workerClient
+        this.workerCoord
           .setPivotMaxGeneratedColumns(this.options.pivotMaxGeneratedColumns)
           .catch((err) => {
             if (!this.destroyed) console.error('[cgrid] setPivotMaxGeneratedColumns:', err);
@@ -1695,7 +1723,7 @@ export class CGrid<TRow = any> {
       // legacy single-test behaviour for the standalone engine; cgrid
       // ALWAYS forwards the resolved flag so the boundary is
       // unambiguous.
-      this.workerClient
+      this.workerCoord
         .setStrictPivotColumnOrder(this.options.enableStrictPivotColumnOrder === true)
         .catch((err) => {
           if (!this.destroyed) console.error('[cgrid] setStrictPivotColumnOrder:', err);
@@ -1946,7 +1974,7 @@ export class CGrid<TRow = any> {
     for (const row of rows) {
       try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip bad rowId */ }
     }
-    this.workerClient.setRowData(rows, heightsByRowId).then(({ visibleCount, groupKeys }) => {
+    this.workerCoord.setRowData(rows, heightsByRowId).then(({ visibleCount, groupKeys }) => {
       this.rowCount = visibleCount;
       // Cycle 15 / Task 7 — setRowData may have grown the set of
       // group keys (data flowing into a grouped grid for the first
@@ -1971,7 +1999,7 @@ export class CGrid<TRow = any> {
     // Foundation: async only. For sync semantics, callers use the worker's sync path via separate cycle.
     const heightsByRowId = this.resolveHeightsForRows([...(t.add ?? []), ...(t.update ?? [])]);
     this.updateRowDataCache(t);
-    this.workerClient.applyTransaction({
+    this.workerCoord.applyTransaction({
       add: t.add as unknown[],
       update: t.update as unknown[],
       remove: (t.remove as TRow[] | undefined)?.map((r) => this.options.getRowId(r)),
@@ -1985,7 +2013,7 @@ export class CGrid<TRow = any> {
   applyTransactionAsync(t: Tx<TRow>): void {
     const heightsByRowId = this.resolveHeightsForRows([...(t.add ?? []), ...(t.update ?? [])]);
     this.updateRowDataCache(t);
-    this.workerClient.applyTransaction({
+    this.workerCoord.applyTransaction({
       add: t.add as unknown[],
       update: t.update as unknown[],
       remove: (t.remove as TRow[] | undefined)?.map((r) => this.options.getRowId(r)),
@@ -2032,7 +2060,7 @@ export class CGrid<TRow = any> {
         if (predicate({ data, rowId })) ids.push(rowId);
       } catch { /* predicate threw — drop the row from alwaysPass */ }
     }
-    this.workerClient.setAlwaysPassRowIds(ids).then(({ visibleCount }) => {
+    this.workerCoord.setAlwaysPassRowIds(ids).then(({ visibleCount }) => {
       if (this.destroyed) return;
       this.rowCount = visibleCount;
       this.recomputeViewport();
@@ -2053,7 +2081,7 @@ export class CGrid<TRow = any> {
       // Misconfigured: external filter was activated but no predicate
       // supplied. Pass everything through so the grid doesn't silently
       // hide every row.
-      this.workerClient.externalFilterResult(callId, rowIds).catch(() => {});
+      this.workerCoord.externalFilterResult(callId, rowIds).catch(() => {});
       return;
     }
     const surviving: string[] = [];
@@ -2064,7 +2092,7 @@ export class CGrid<TRow = any> {
         if (predicate({ data, rowId })) surviving.push(rowId);
       } catch { /* predicate threw — drop the row */ }
     }
-    this.workerClient.externalFilterResult(callId, surviving).catch((err) => {
+    this.workerCoord.externalFilterResult(callId, surviving).catch((err) => {
       if (!this.destroyed) console.error('[cgrid] externalFilterResult:', err);
     });
   }
@@ -2082,7 +2110,7 @@ export class CGrid<TRow = any> {
       | ((p: { rowIds: string[]; getData: (id: string) => TRow | undefined }) => string[])
       | undefined;
     if (typeof hook !== 'function') {
-      this.workerClient.postSortRowsResult(callId, rowIds).catch(() => {});
+      this.workerCoord.postSortRowsResult(callId, rowIds).catch(() => {});
       return;
     }
     let reordered: string[];
@@ -2100,7 +2128,7 @@ export class CGrid<TRow = any> {
       if (!this.destroyed) console.error('[cgrid] postSortRows hook threw:', err);
       reordered = rowIds;
     }
-    this.workerClient.postSortRowsResult(callId, reordered).catch((err) => {
+    this.workerCoord.postSortRowsResult(callId, reordered).catch((err) => {
       if (!this.destroyed) console.error('[cgrid] postSortRowsResult:', err);
     });
   }
@@ -2116,14 +2144,14 @@ export class CGrid<TRow = any> {
    *  first round-trip lands bumps `externalFilterReqId` and the first
    *  reply drops on arrival. */
   onFilterChanged(source: 'api' | 'quickFilter' | 'columnFilter' | 'externalFilter' = 'api'): void {
-    if (!this.workerClient) return;
+    if (!this.workerCoord) return;
     // alwaysPass may close over the same state the external predicate
     // does (e.g. a toggle that flips both at once); refresh it before
     // the refilter so the worker sees a consistent set on the next pass.
     this.recomputeAlwaysPass();
     const present = this.options.isExternalFilterPresent?.() === true;
     const reqId = ++this.externalFilterReqId;
-    this.workerClient.setExternalFilterPresent(present).then(({ visibleCount }) => {
+    this.workerCoord.setExternalFilterPresent(present).then(({ visibleCount }) => {
       if (this.destroyed) return;
       // Drop stale survivors when a newer onFilterChanged superseded
       // this round-trip mid-flight.
@@ -2193,7 +2221,7 @@ export class CGrid<TRow = any> {
       }
     }
     this.sortModel = s;
-    this.workerClient.setSortModel(s).then(({ visibleCount }) => {
+    this.workerCoord.setSortModel(s).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
       // Sort reorders rows — invalidate the Fenwick index so stale per-row
       // heights aren't read at their pre-sort positions (Cycle 5 / Task 7).
@@ -2335,7 +2363,7 @@ export class CGrid<TRow = any> {
     // send back includes the unchanged fields so `RowStore.apply` doesn't
     // drop anything.
     const fetches = targetRows.map((rowIndex) =>
-      this.workerClient.getRowByIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
+      this.workerCoord.getRowByIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
     );
     Promise.all(fetches).then((results) => {
       if (this.destroyed) return;
@@ -2422,7 +2450,7 @@ export class CGrid<TRow = any> {
         this.columnFilterModels.set(id, entry as CFilterModelEntry);
       }
     }
-    this.workerClient.setFilterModel(f).then(({ visibleCount }) => {
+    this.workerCoord.setFilterModel(f).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
       // Filter changes the visible row set — invalidate the Fenwick index so
       // stale per-row heights aren't read at the wrong slots (Cycle 5 /
@@ -2504,7 +2532,7 @@ export class CGrid<TRow = any> {
     for (const [id, entry] of this.columnFilterModels) {
       combined[id] = entry;
     }
-    return this.workerClient.setFilterModel(combined).then(({ visibleCount }) => {
+    return this.workerCoord.setFilterModel(combined).then(({ visibleCount }) => {
       if (this.destroyed) return;
       this.rowCount = visibleCount;
       this.rowHeightIndex = null;
@@ -2582,7 +2610,7 @@ export class CGrid<TRow = any> {
    * until a later cycle ships hidden-column metadata to the worker.
    */
   private applyQuickFilter(): void {
-    if (!this.workerClient) return;
+    if (!this.workerCoord) return;
     const rawText = this.options.quickFilterText ?? '';
     const parser = this.options.quickFilterParser ?? defaultQuickFilterParser;
     let terms: string[] | null;
@@ -2626,7 +2654,7 @@ export class CGrid<TRow = any> {
     // (the user's previous keystroke) is dropped on arrival — see the
     // `reqId` check inside the `.then` below.
     const reqId = ++this.quickFilterReqId;
-    this.workerClient.setQuickFilter({ terms, cacheQuickFilter, colIds })
+    this.workerCoord.setQuickFilter({ terms, cacheQuickFilter, colIds })
       .then(({ visibleCount }) => {
         // Stale reply — a later applyQuickFilter has superseded this one.
         // Dropping prevents rowCount + viewport from flickering back to a
@@ -2835,7 +2863,7 @@ export class CGrid<TRow = any> {
       : null;
     const valuesPromise: Promise<string[]> = params.values !== undefined
       ? Promise.resolve(params.values)
-      : this.workerClient.getDistinctValues(colId);
+      : this.workerCoord.getDistinctValues(colId);
     return valuesPromise.then((values) => {
       if (this.destroyed) return null;
       return new SetFilterPopup({
@@ -3052,8 +3080,8 @@ export class CGrid<TRow = any> {
     // `updateColumns`; without re-syncing, the worker's GroupPass
     // rejects an "unknown column id" and the body collapses to
     // empty-group-key data rows.
-    this.workerClient.updateColumns(this.workerColumns())
-      .then(() => this.workerClient.setGroupModel(this.groupModel))
+    this.workerCoord.updateColumns(this.workerColumns())
+      .then(() => this.workerCoord.setGroupModel(this.groupModel))
       .then(({ visibleCount, groupKeys, groupDescendants, expandedKeys }) => {
       if (this.destroyed) return;
       this.knownGroupKeys = groupKeys;
@@ -3207,8 +3235,8 @@ export class CGrid<TRow = any> {
     // host's visibility moves, so the split toggle wouldn't
     // otherwise re-apply.
     this.applyVerticalInsets();
-    this.workerClient.updateColumns(this.workerColumns())
-      .then(() => this.workerClient.setPivotModel(this.pivotWorkerModel()))
+    this.workerCoord.updateColumns(this.workerColumns())
+      .then(() => this.workerCoord.setPivotModel(this.pivotWorkerModel()))
       .then(() => {
         if (this.destroyed) return;
         this.requestViewport();
@@ -3450,7 +3478,7 @@ export class CGrid<TRow = any> {
    *  `groupDescendants` when the worker is emitting them. The
    *  selection model's membership resolver reads from this cache. */
   private shipExpandedKeys(keys: string[] | null): void {
-    this.workerClient
+    this.workerCoord
       .setExpandedKeys(keys)
       .then(({ visibleCount, groupKeys, groupDescendants }) => {
         if (this.destroyed) return;
@@ -3472,7 +3500,7 @@ export class CGrid<TRow = any> {
    *  lockstep with the worker's tree. Fire-and-forget; a stale paint
    *  for one frame is acceptable while the round-trip resolves. */
   private refreshGroupDescendantsCache(): void {
-    this.workerClient
+    this.workerCoord
       .setEmitGroupDescendants(true)
       .then(({ groupKeys, groupDescendants }) => {
         if (this.destroyed) return;
@@ -3529,7 +3557,7 @@ export class CGrid<TRow = any> {
   private async applyGroupSelectsChildren(enabled: boolean): Promise<void> {
     if (this.destroyed) return;
     try {
-      const { groupKeys, groupDescendants } = await this.workerClient
+      const { groupKeys, groupDescendants } = await this.workerCoord
         .setEmitGroupDescendants(enabled);
       if (this.destroyed) return;
       this.knownGroupKeys = groupKeys;
@@ -3890,7 +3918,7 @@ export class CGrid<TRow = any> {
    *  revert to default) and the next `getViewport` honors the new cap. */
   private updatePivotMaxGeneratedColumns(cap: number | undefined): void {
     if (this.destroyed) return;
-    this.workerClient.setPivotMaxGeneratedColumns(cap)
+    this.workerCoord.setPivotMaxGeneratedColumns(cap)
       .then(() => {
         if (!this.destroyed) this.requestViewport();
       })
@@ -3918,7 +3946,7 @@ export class CGrid<TRow = any> {
    *  The next `getViewport` honors the new behaviour. */
   private updateStrictPivotColumnOrder(strict: boolean | undefined): void {
     if (this.destroyed) return;
-    this.workerClient.setStrictPivotColumnOrder(strict === true)
+    this.workerCoord.setStrictPivotColumnOrder(strict === true)
       .then(() => {
         if (!this.destroyed) this.requestViewport();
       })
@@ -4061,7 +4089,7 @@ export class CGrid<TRow = any> {
    *  scroll it into view. No-op when the row is unknown / filtered out. */
   async ensureRowVisible(rowId: string, position: 'auto' | 'top' | 'middle' | 'bottom' = 'auto'): Promise<void> {
     if (this.destroyed) return;
-    const idx = await this.workerClient.getRowIndexForId(rowId);
+    const idx = await this.workerCoord.getRowIndexForId(rowId);
     if (this.destroyed) return;
     if (idx < 0) return;
     this.ensureRowIndexVisible(idx, position);
@@ -4128,7 +4156,7 @@ export class CGrid<TRow = any> {
     }
     const rowIndices = Array.from(byRow.keys());
     Promise.all(rowIndices.map((rowIndex) =>
-      this.workerClient.getRowByIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
+      this.workerCoord.getRowByIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
     )).then((results) => {
       if (this.destroyed) return;
       const updates: TRow[] = [];
@@ -4179,7 +4207,7 @@ export class CGrid<TRow = any> {
       const targetRows: number[] = [];
       for (let r = range.rowStart + 1; r <= range.rowEnd; r++) targetRows.push(r);
       return Promise.all(targetRows.map((rowIndex) =>
-        this.workerClient.getRowByIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
+        this.workerCoord.getRowByIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
       )).then((results) => {
         const updates: TRow[] = [];
         for (const { fetched } of results) {
@@ -4243,7 +4271,7 @@ export class CGrid<TRow = any> {
       this.selection.setSelectedRowIds([], []);
       return;
     }
-    this.workerClient.getRowIndicesForIds(ids).then((indices) => {
+    this.workerCoord.getRowIndicesForIds(ids).then((indices) => {
       if (this.destroyed) return;
       this.selection.setSelectedRowIds(ids, Array.from(indices));
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid] setSelectedRowIds:', err); });
@@ -4269,7 +4297,7 @@ export class CGrid<TRow = any> {
   setFocusedCell(rowId: string, colId: string): void {
     if (this.destroyed) return;
     if (!this.columnDefsMap.has(colId)) return;
-    this.workerClient.getRowIndicesForIds([rowId]).then((idx) => {
+    this.workerCoord.getRowIndicesForIds([rowId]).then((idx) => {
       if (this.destroyed) return;
       const resolved = idx.length > 0 ? idx[0]! : -1;
       if (resolved >= 0) this.ensureRowIndexVisible(resolved);
@@ -4340,7 +4368,7 @@ export class CGrid<TRow = any> {
     const transform = this.options.processCellForClipboard;
     const tsv = transform
       ? await this.serializeRangesMainSide(ranges, delimiter, transform)
-      : await this.workerClient.clipboardSerialize(ranges, delimiter);
+      : await this.workerCoord.clipboardSerialize(ranges, delimiter);
     // `navigator.clipboard.writeText` requires a user gesture in every
     // mainstream browser; the keyboard / menu handlers already run
     // inside one. Apps that invoke this from a `setTimeout` get a
@@ -4390,7 +4418,7 @@ export class CGrid<TRow = any> {
     const callbacks = this.options.exportCallbacks ?? {};
     const cellCb = callbacks[(params as ExportCsvParams).processCellCallback ?? ''];
     const headerCb = callbacks[(params as ExportCsvParams).processHeaderCallback ?? ''];
-    const rows = await this.workerClient.getExportRows({
+    const rows = await this.workerCoord.getExportRows({
       selectedRowIds: params.onlySelected ? this.getSelectedRowIds() : undefined,
     });
 
@@ -4442,7 +4470,7 @@ export class CGrid<TRow = any> {
       return new TextDecoder('utf-8').decode(bytes);
     }
     const { headerNames, types } = this.buildExportColumnMaps();
-    const buffer = await this.workerClient.exportData({
+    const buffer = await this.workerCoord.exportData({
       format: 'csv',
       headerNames,
       types,
@@ -4462,7 +4490,7 @@ export class CGrid<TRow = any> {
       buffer = bytes.slice().buffer as ArrayBuffer;
     } else {
       const { headerNames, types } = this.buildExportColumnMaps();
-      buffer = await this.workerClient.exportData({
+      buffer = await this.workerCoord.exportData({
         format: 'csv',
         headerNames,
         types,
@@ -4480,7 +4508,7 @@ export class CGrid<TRow = any> {
       return new Blob([bytes.slice().buffer as ArrayBuffer], { type: XLSX_MIME });
     }
     const { headerNames, types } = this.buildExportColumnMaps();
-    const buffer = await this.workerClient.exportData({
+    const buffer = await this.workerCoord.exportData({
       format: 'xlsx',
       headerNames,
       types,
@@ -4499,7 +4527,7 @@ export class CGrid<TRow = any> {
       buffer = bytes.slice().buffer as ArrayBuffer;
     } else {
       const { headerNames, types } = this.buildExportColumnMaps();
-      buffer = await this.workerClient.exportData({
+      buffer = await this.workerCoord.exportData({
         format: 'xlsx',
         headerNames,
         types,
@@ -4530,7 +4558,7 @@ export class CGrid<TRow = any> {
     }
     const indexArr = Array.from(rowIndexSet);
     const fetched = await Promise.all(indexArr.map((rowIndex) =>
-      this.workerClient.getRowByIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
+      this.workerCoord.getRowByIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
     ));
     if (this.destroyed) return '';
     // Build the sparse `rows` array `serializeRanges` consumes — keyed
@@ -4592,7 +4620,7 @@ export class CGrid<TRow = any> {
     const text = await navigator.clipboard.readText();
     if (text === '') return;
     const delimiter = this.options.clipboardDelimiter ?? '\t';
-    const parsed = await this.workerClient.clipboardDeserialize(text, delimiter);
+    const parsed = await this.workerCoord.clipboardDeserialize(text, delimiter);
     if (parsed.length === 0) return;
     // Resolve the focused column's render-order index. When the focused
     // column has been hidden between the focus event and the paste,
@@ -4606,7 +4634,7 @@ export class CGrid<TRow = any> {
     const targetRowIndices: number[] = [];
     for (let r = 0; r < parsed.length; r++) targetRowIndices.push(focusedRowIndex + r);
     const fetches = targetRowIndices.map((rowIndex) =>
-      this.workerClient.getRowByIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
+      this.workerCoord.getRowByIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
     );
     const results = await Promise.all(fetches);
     if (this.destroyed) return;
@@ -4708,7 +4736,7 @@ export class CGrid<TRow = any> {
     }
     const indexArr = Array.from(rowIndexSet);
     const fetched = await Promise.all(indexArr.map((rowIndex) =>
-      this.workerClient.getRowByIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
+      this.workerCoord.getRowByIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
     ));
     if (this.destroyed) return;
     const byIndex = new Map<number, { rowId: string | null; data: unknown | null }>();
@@ -5136,7 +5164,7 @@ export class CGrid<TRow = any> {
       this.options.columnDefs = partial.columnDefs;
       if ('defaultColDef' in partial) this.options.defaultColDef = partial.defaultColDef;
       this.rebuildColumns({ defaultColDef: newDefault });
-      this.workerClient.updateColumns(this.workerColumns())
+      this.workerCoord.updateColumns(this.workerColumns())
         .then(({ visibleCount }) => {
           this.rowCount = visibleCount;
           this.recomputeViewport();
@@ -5187,7 +5215,7 @@ export class CGrid<TRow = any> {
         // Cycle 4 / Task 11 (cell-flash patch) — forward the flag to
         // the worker. Fire-and-forget; the resolve just signals the
         // worker acked the toggle, no main-side state to update.
-        this.workerClient.setEnableCellChangeFlash(enabled).catch((err) => {
+        this.workerCoord.setEnableCellChangeFlash(enabled).catch((err) => {
           if (!this.destroyed) console.error('[cgrid] setEnableCellChangeFlash:', err);
         });
       },
@@ -5260,7 +5288,7 @@ export class CGrid<TRow = any> {
         entries.push({ name, source: serializeAggFunc(name, fn) });
       }
     }
-    const promise = this.workerClient.setAggFuncs(entries);
+    const promise = this.workerCoord.setAggFuncs(entries);
     promise.catch((err) => {
       if (!this.destroyed) console.error('[cgrid] setAggFuncs:', err);
     });
@@ -5546,7 +5574,7 @@ export class CGrid<TRow = any> {
     this.selectionUnsubscribe();
     if (this.chunkLRU) this.chunkLRU.clear();
     this.cgridCanvas.destroy();
-    this.workerClient.destroy();
+    this.workerCoord.destroy();
     this.featureChain.destroy();
     this.a11y.destroy();
     this.editor.close();
@@ -5810,7 +5838,7 @@ export class CGrid<TRow = any> {
       this.events.emit({ type: 'displayedColumnsChanged', source: 'columnGroupOpened' });
       // Re-fetch the chunk for the new visible-column set so newly-shown
       // leaves get data instead of blank cells until the next scroll tick.
-      if (this.workerClient) this.requestViewport();
+      if (this.workerCoord) this.requestViewport();
     });
   }
 
@@ -6400,7 +6428,7 @@ export class CGrid<TRow = any> {
     if (!ctx) {
       // No 2D context anywhere — best effort: zero-height response so the
       // worker resolves and the autoHeight pass exits cleanly.
-      void this.workerClient.measureTextResponse(batchId, new Float32Array(items.length));
+      void this.workerCoord.measureTextResponse(batchId, new Float32Array(items.length));
       return;
     }
     const heights = new Float32Array(items.length);
@@ -6414,7 +6442,7 @@ export class CGrid<TRow = any> {
       const measure = (s: string) => ctx.measureText(s).width;
       heights[i] = wrapTextToHeight(item.text, item.width, item.lineHeight, item.padding, measure);
     }
-    void this.workerClient.measureTextResponse(batchId, heights);
+    void this.workerCoord.measureTextResponse(batchId, heights);
   }
 
   /** Cycle 19 / Task 2 — delegates to `ViewportManager.recompute`. Kept as
@@ -6492,7 +6520,7 @@ export class CGrid<TRow = any> {
       this.selection.rebuildIndices(new Map());
       return;
     }
-    this.workerClient.getRowIndicesForIds(allIds).then((indices) => {
+    this.workerCoord.getRowIndicesForIds(allIds).then((indices) => {
       if (this.destroyed) return;
       const map = new Map<string, number>();
       for (let i = 0; i < allIds.length; i++) map.set(allIds[i]!, indices[i]!);
@@ -6531,30 +6559,30 @@ export class CGrid<TRow = any> {
     this.viewportManager.request(aggSource);
   }
 
-  /** Cycle 19 / Task 2 — chunk-arrival half of the old `requestViewport`. Runs
-   *  the worker `getViewport` call against the velocity-expanded range +
-   *  current column set and performs every side effect the chunk fans out:
-   *  LRU caching, pivot column sync, per-cell + per-group flash, row-height
-   *  index refresh, recompute + repaint, a11y update, `aggregationChanged`
-   *  (gated on `consumePendingAggSource`), `firstDataRendered` latch.
-   *  Returns the Promise that `ViewportManager.request` awaits to release the
-   *  coalescing flag and drain the queued follow-up; rejections are surfaced
-   *  back to the manager's catch handler. */
-  private async handleViewportChunk(opts: {
-    rowStart: number;
-    rowEnd: number;
-    columns: string[];
-  }): Promise<void> {
+  /** Cycle 19 / Task 3 — chunk-arrival side-effects. Invoked from the
+   *  WorkerCoordinator's `onViewportChunk` dep after every successful
+   *  `getViewport` round-trip ViewportManager triggered. The worker call +
+   *  request coalescing live in the coordinator; this method owns the
+   *  main-side fan-out:
+   *    LRU caching, pivot column sync, per-cell + per-group flash,
+   *    row-height index refresh, recompute + repaint, a11y update,
+   *    `aggregationChanged` (gated on `consumePendingAggSource`),
+   *    `firstDataRendered` latch.
+   *  Returns a Promise the coordinator awaits before resolving
+   *  `dispatchViewportRequest`, so ViewportManager's coalescing flag
+   *  releases after the mutation lands. */
+  private async handleViewportChunk(
+    opts: { rowStart: number; rowEnd: number; columns: string[] },
+    chunk: ViewportChunk,
+    stickyAncestors: StickyAncestor[],
+  ): Promise<void> {
     const { rowStart, rowEnd, columns: cols } = opts;
-    const { chunk, stickyAncestors } = await this.workerClient.getViewport({
-      rowStart, rowEnd, columns: cols, includeFlashMask: true,
-    });
     // Capture the previous chunk's totals BEFORE overwriting this.chunk
     // so the aggregate-flash diff can compare old vs new values.
     const prevGroupTotals = this.chunk?.groupTotals;
     const prevChunkTotals = this.chunk?.totals;
     this.chunk = chunk;
-    this.stickyAncestors = stickyAncestors ?? [];
+    this.stickyAncestors = stickyAncestors;
     this.decodedTextCols.clear();
     // Cycle 25 / Task 10 — park the chunk in the LRU. WeakRef retention means
     // GC can reclaim if real memory pressure builds; the LRU's own eviction
@@ -6771,7 +6799,7 @@ export class CGrid<TRow = any> {
     if (this.reducedMotion) return;
     if (!params.rowIds || params.rowIds.length === 0) return;
     const colIds = params.colIds ?? [];
-    this.workerClient.flashCells(params.rowIds, colIds)
+    this.workerCoord.flashCells(params.rowIds, colIds)
       .then(() => {
         if (this.destroyed) return;
         // Force a viewport refresh so the worker drains pendingFlashes
@@ -7086,7 +7114,7 @@ export class CGrid<TRow = any> {
     const newDefs = rebuildColumnDefsByLeafOrder(this.options.columnDefs, newOrder);
     this.options.columnDefs = newDefs;
     this.rebuildColumns({ defaultColDef: this.options.defaultColDef });
-    this.workerClient.updateColumns(this.workerColumns())
+    this.workerCoord.updateColumns(this.workerColumns())
       .then(({ visibleCount }) => {
         this.rowCount = visibleCount;
         this.recomputeViewport();
@@ -7369,7 +7397,7 @@ export class CGrid<TRow = any> {
     if (requests.length === 0) return;
     let widths: Record<string, number>;
     try {
-      widths = await this.workerClient.autosizeColumns(requests, skipHeader);
+      widths = await this.workerCoord.autosizeColumns(requests, skipHeader);
     } catch (err) {
       if (!this.destroyed) console.error('[cgrid] autoSizeColumns:', err);
       return;
@@ -7443,7 +7471,7 @@ export class CGrid<TRow = any> {
     this.events.emit({
       type: 'columnVisible', visible, colIds: changed, source: 'api',
     });
-    this.workerClient?.updateColumns(this.workerColumns())
+    this.workerCoord?.updateColumns(this.workerColumns())
       .then(({ visibleCount }) => {
         this.rowCount = visibleCount;
         this.recomputeViewport();
@@ -7536,7 +7564,7 @@ export class CGrid<TRow = any> {
     const newDefs = rebuildColumnDefsByLeafOrder(this.options.columnDefs, finalOrder);
     this.options.columnDefs = newDefs;
     this.rebuildColumns({ defaultColDef: this.options.defaultColDef });
-    this.workerClient?.updateColumns(this.workerColumns())
+    this.workerCoord?.updateColumns(this.workerColumns())
       .then(({ visibleCount }) => {
         this.rowCount = visibleCount;
         this.recomputeViewport();
@@ -7763,7 +7791,7 @@ export class CGrid<TRow = any> {
     // populated on the next viewport fetch.
     const displayedSource: 'columnsReset' | 'columnDefsChanged' =
       emitReset ? 'columnsReset' : 'columnDefsChanged';
-    this.workerClient?.updateColumns(this.workerColumns())
+    this.workerCoord?.updateColumns(this.workerColumns())
       .then(({ visibleCount }) => {
         this.rowCount = visibleCount;
         this.recomputeViewport();
@@ -8050,7 +8078,7 @@ export class CGrid<TRow = any> {
         // (or the default field assignment), emit cellValueChanged with the
         // real rowId + old/new values, then enqueue the update so the worker
         // re-runs filter / sort / agg against the new value.
-        this.workerClient.getRowByIndex(rowIndex).then((fetched) => {
+        this.workerCoord.getRowByIndex(rowIndex).then((fetched) => {
           if (this.destroyed || !fetched.rowId || fetched.data == null) return;
           const rowData = fetched.data as Record<string, unknown>;
           const field = def.field as string | undefined;
@@ -8076,7 +8104,7 @@ export class CGrid<TRow = any> {
             data: rowData,
           });
           this.activeEdit = null;
-          this.workerClient.applyTransaction({ update: [rowData], async: false })
+          this.workerCoord.applyTransaction({ update: [rowData], async: false })
             .catch((err) => { if (!this.destroyed) console.error('[cgrid] commit-back:', err); });
         }).catch((err) => { if (!this.destroyed) console.error('[cgrid] commit-back fetch:', err); });
       },
@@ -8172,7 +8200,7 @@ export class CGrid<TRow = any> {
     commits: Array<{ colId: string; newRawValue: unknown }>,
   ): void {
     this.cgridCanvas.canvas.focus({ preventScroll: true });
-    this.workerClient.getRowByIndex(rowIndex).then((fetched) => {
+    this.workerCoord.getRowByIndex(rowIndex).then((fetched) => {
       if (this.destroyed) return;
       const resolvedId = fetched.rowId ?? rowId;
       if (fetched.data == null) {
@@ -8207,7 +8235,7 @@ export class CGrid<TRow = any> {
       this.events.emit({ type: 'rowEditingStopped', rowIndex, rowId: resolvedId, data: rowData });
       if (anyChanged) {
         this.events.emit({ type: 'rowValueChanged', rowIndex, rowId: resolvedId, data: rowData });
-        this.workerClient.applyTransaction({ update: [rowData], async: false })
+        this.workerCoord.applyTransaction({ update: [rowData], async: false })
           .catch((err) => { if (!this.destroyed) console.error('[cgrid] row commit-back:', err); });
       }
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid] row commit-back fetch:', err); });
@@ -8239,7 +8267,7 @@ export class CGrid<TRow = any> {
     fn: (a: TValue, b: TValue) => number,
   ): Promise<void> {
     if (this.destroyed) return Promise.resolve();
-    return this.workerClient.registerComparator(name, fn.toString());
+    return this.workerCoord.registerComparator(name, fn.toString());
   }
 
   /** Subscribe to a typed grid event. Returns an unsubscribe. */
