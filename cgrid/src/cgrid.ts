@@ -1258,6 +1258,9 @@ export class CGrid<TRow = any> {
       },
       // Cycle 24 / Task 1 — Ctrl+A select-all entry point.
       selectAllRows: () => this.selectAll(),
+      // Conventional / ag-grid parity — Delete + Ctrl+D entry points.
+      clearSelectedCells: () => this.clearSelectedCells(),
+      fillDown: () => this.fillDown(),
       // Cycle 24 / Task 6 — focus exit callbacks. Read at event time
       // so a runtime `setGridOption('tabToNextHeader', …)` flip
       // lights up on the next Tab press.
@@ -3872,6 +3875,113 @@ export class CGrid<TRow = any> {
    *  row index via the worker, paints the rows that resolve, and stashes the
    *  full id set so a later sort / filter / transaction rebuilds the paint
    *  indices instead of dropping the selection. Triggers `selectionChanged`. */
+  /** Conventional / ag-grid parity — Delete keyboard shortcut entry
+   *  point. Clears every cell in every active range by emitting one
+   *  `applyTransaction({ update })`. No-op when no ranges exist or
+   *  the grid is destroyed. Per-column `valueSetter` is honored so
+   *  apps that virtualise their value-write surface keep that
+   *  invariant. */
+  clearSelectedCells(): void {
+    if (this.destroyed) return;
+    const ranges = this.selection.getRanges();
+    if (ranges.length === 0) return;
+    // Map of rowIndex → set of colIds to clear. Built first so a cell
+    // that sits in multiple overlapping ranges is only cleared once.
+    const byRow = new Map<number, Set<string>>();
+    for (const range of ranges) {
+      for (let r = range.rowStart; r <= range.rowEnd; r++) {
+        let set = byRow.get(r);
+        if (!set) { set = new Set(); byRow.set(r, set); }
+        for (const colId of range.colIds) set.add(colId);
+      }
+    }
+    const rowIndices = Array.from(byRow.keys());
+    Promise.all(rowIndices.map((rowIndex) =>
+      this.workerClient.getRowByIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
+    )).then((results) => {
+      if (this.destroyed) return;
+      const updates: TRow[] = [];
+      for (const { rowIndex, fetched } of results) {
+        if (!fetched.rowId || fetched.data == null) continue;
+        const rowData = fetched.data as Record<string, unknown>;
+        const colsToClear = byRow.get(rowIndex)!;
+        for (const colId of colsToClear) {
+          const def = this.columnDefsMap.get(colId);
+          if (!def) continue;
+          if (def.valueSetter) {
+            const field = def.field as string | undefined;
+            const oldValue = field !== undefined ? rowData[field] : undefined;
+            def.valueSetter({
+              data: rowData as TRow, newValue: null, oldValue, colDef: def as any,
+            });
+          } else if (def.field !== undefined) {
+            rowData[def.field as string] = null;
+          }
+        }
+        updates.push(rowData as TRow);
+      }
+      if (updates.length > 0) this.applyTransaction({ update: updates });
+    }).catch((err) => {
+      if (!this.destroyed) console.error('[cgrid] clearSelectedCells:', err);
+    });
+  }
+
+  /** Conventional / ag-grid parity — Ctrl+D / Cmd+D entry point. The
+   *  TOP row of every multi-row range copies its values into the
+   *  range's other rows. Per-column `valueSetter` is honored. */
+  fillDown(): void {
+    if (this.destroyed) return;
+    const ranges = this.selection.getRanges();
+    const multi = ranges.filter((r) => r.rowEnd > r.rowStart);
+    if (multi.length === 0) return;
+    // For each multi-row range, snapshot the top row's values then
+    // build the update set for the remaining rows. Read sources
+    // synchronously from the visible chunk (the source row is by
+    // definition inside the selected range, which is currently
+    // visible — otherwise the user couldn't have selected it).
+    const allUpdates: Promise<TRow[]>[] = multi.map((range) => {
+      const sourceValuesByCol = new Map<string, unknown>();
+      for (const colId of range.colIds) {
+        const cell = this.cellAt(range.rowStart, colId);
+        sourceValuesByCol.set(colId, cell ? cell.value : null);
+      }
+      const targetRows: number[] = [];
+      for (let r = range.rowStart + 1; r <= range.rowEnd; r++) targetRows.push(r);
+      return Promise.all(targetRows.map((rowIndex) =>
+        this.workerClient.getRowByIndex(rowIndex).then((fetched) => ({ rowIndex, fetched })),
+      )).then((results) => {
+        const updates: TRow[] = [];
+        for (const { fetched } of results) {
+          if (!fetched.rowId || fetched.data == null) continue;
+          const rowData = fetched.data as Record<string, unknown>;
+          for (const colId of range.colIds) {
+            const def = this.columnDefsMap.get(colId);
+            if (!def) continue;
+            const newValue = sourceValuesByCol.get(colId);
+            if (def.valueSetter) {
+              const field = def.field as string | undefined;
+              const oldValue = field !== undefined ? rowData[field] : undefined;
+              def.valueSetter({
+                data: rowData as TRow, newValue, oldValue, colDef: def as any,
+              });
+            } else if (def.field !== undefined) {
+              rowData[def.field as string] = newValue;
+            }
+          }
+          updates.push(rowData as TRow);
+        }
+        return updates;
+      });
+    });
+    Promise.all(allUpdates).then((batches) => {
+      if (this.destroyed) return;
+      const flat = batches.flat();
+      if (flat.length > 0) this.applyTransaction({ update: flat });
+    }).catch((err) => {
+      if (!this.destroyed) console.error('[cgrid] fillDown:', err);
+    });
+  }
+
   /** Cycle 24 / Task 1 — Ctrl+A keyboard shortcut entry point. Selects
    *  every visible row when `rowSelection: 'multiple'` is in effect;
    *  no-op for `'none'` / `'single'` modes (single-mode selection

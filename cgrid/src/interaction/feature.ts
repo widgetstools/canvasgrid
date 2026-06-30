@@ -170,6 +170,14 @@ export interface CGridLike {
   /** Cycle 24 / Task 1 — Ctrl+A keyboard shortcut. Selects every
    *  visible row when row selection mode is `'multiple'`. */
   selectAllRows?(): void;
+  /** Conventional / ag-grid parity — Delete clears every cell in the
+   *  active range(s) via a single `applyTransaction({ update })`.
+   *  No-op when no ranges exist. */
+  clearSelectedCells?(): void;
+  /** Conventional / ag-grid parity — Ctrl+D fills the top row of the
+   *  active range to every other row in the same range. No-op when
+   *  the range is single-row or empty. */
+  fillDown?(): void;
   /** Cycle 24 / Task 6 — focus exit / wrap callbacks. Return `true` to
    *  let the grid wrap to the opposite end, `false` to release focus
    *  so the browser's native Tab handling takes the user OUT of the

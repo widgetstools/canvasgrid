@@ -32,10 +32,39 @@ export class KeyboardShortcuts extends Feature {
       return;
     }
 
+    // Conventional / ag-grid parity — Delete clears every cell in the
+    // active range(s). No modifier; gate on having at least one range
+    // selected so a bare Delete with no range falls through (browser
+    // default, or downstream features for headers etc.).
+    if (e.key === 'Delete' && ctx.grid.clearSelectedCells) {
+      const ranges = ctx.grid.selection.getRanges();
+      if (ranges.length > 0) {
+        e.preventDefault();
+        ctx.grid.clearSelectedCells();
+        return;
+      }
+    }
+
     const isMod = e.ctrlKey || e.metaKey;
     if (!isMod) {
       super.handleKeyDown(ctx);
       return;
+    }
+
+    // Conventional / ag-grid parity — Ctrl+D / Cmd+D fills down: the
+    // top row of the range copies to every other row in the same
+    // range. Gated on a multi-row range existing so single-row
+    // selections fall through (the browser default for Ctrl+D in a
+    // canvas is no-op anyway).
+    const isFillDown = e.key === 'd' || e.key === 'D' || e.code === 'KeyD';
+    if (isFillDown && ctx.grid.fillDown) {
+      const ranges = ctx.grid.selection.getRanges();
+      const hasMultiRow = ranges.some((r) => r.rowEnd > r.rowStart);
+      if (hasMultiRow) {
+        e.preventDefault();
+        ctx.grid.fillDown();
+        return;
+      }
     }
     // Cycle 10 / Task 6 — `suppressClipboardApi: true` removes the
     // shortcut entirely. We forward via super (no `preventDefault`) so
