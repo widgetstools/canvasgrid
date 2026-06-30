@@ -18,6 +18,7 @@ import { theming } from './theming';
 import { cellStyleExpansion } from './cellStyleExpansion';
 import { eventsState } from './eventsState';
 import { a11y } from './a11y';
+import { selectionModes } from './selectionModes';
 
 export interface Feature {
   id: string;
@@ -45,6 +46,7 @@ export const FEATURES: Feature[] = [
   cellStyleExpansion,
   eventsState,
   a11y,
+  selectionModes,
 ];
 
 export const FEATURE_MAP = new Map(FEATURES.map((f) => [f.id, f]));

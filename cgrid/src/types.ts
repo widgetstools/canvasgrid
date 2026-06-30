@@ -313,6 +313,21 @@ export interface CGridOptions<TRow = any> {
   headerHeight?: number;
   rowSelection?: 'none' | 'single' | 'multiple';
   /**
+   * Unified selection configuration. Mirrors ag-grid v33+'s `selection`
+   * API: pick a `mode` (`'singleRow'` / `'multiRow'` / `'cell'`) and
+   * configure its specifics in one place. When set, this OVERRIDES the
+   * legacy `rowSelection`, `suppressRowClickSelection`,
+   * `rowMultiSelectWithClick`, and per-column `checkboxSelection` /
+   * `headerCheckboxSelection`. When omitted, the legacy surface
+   * remains the source of truth.
+   *
+   * Auto-injection: when `selection.checkboxes` is `true`, a pinned-
+   * left checkbox column with `colId: '__cg_select__'` is prepended
+   * to `columnDefs` automatically. Set `headerCheckbox: true` to add
+   * the tri-state header checkbox on that column.
+   */
+  selection?: import('./core/selectionConfig').SelectionConfig<TRow>;
+  /**
    * When `true`, clicking on a body cell does NOT toggle the row's
    * membership in the selection set. Focus still moves to the
    * clicked cell. Pair with `checkboxSelection: true` on a pinned
