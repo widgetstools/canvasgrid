@@ -13,6 +13,7 @@
 import { bench, describe } from 'vitest';
 import {
   encodeText, decodeText, serializeChunk, deserializeChunk,
+  encodeTextDict, decodeTextDict,
 } from '../src/worker/chunkFormat';
 
 // ─── Text encode/decode ──────────────────────────────────────────────────
@@ -40,6 +41,28 @@ describe('chunkFormat — text encode/decode', () => {
 
   bench('decodeText long', () => {
     decodeText(longBlob.offsets, longBlob.bytes);
+  });
+});
+
+// ─── Dictionary text encode/decode (Cycle 25 / Task 2) ───────────────────
+describe('chunkFormat — dict text encode/decode', () => {
+  bench('encodeTextDict short (10k rows × 4 distinct)', () => {
+    encodeTextDict(SHORT);
+  });
+
+  bench('encodeTextDict long (10k rows × ~90 chars, all distinct)', () => {
+    encodeTextDict(LONG);
+  });
+
+  const shortDict = encodeTextDict(SHORT);
+  const longDict = encodeTextDict(LONG);
+
+  bench('decodeTextDict short', () => {
+    decodeTextDict(shortDict.dict, shortDict.indices);
+  });
+
+  bench('decodeTextDict long', () => {
+    decodeTextDict(longDict.dict, longDict.indices);
   });
 });
 
