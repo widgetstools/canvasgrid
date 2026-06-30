@@ -173,11 +173,13 @@ test.describe('cross-section pill drag routing', () => {
     expect(after.rowGroups).toEqual([]);
     expect(after.pivots).toEqual([]);
     expect(after.values).toEqual([]);
-    // No stale synthesised pivot result columns; AND no source columns
-    // either — under pivot mode, a source column the user just
-    // unchecked has no role, so it shouldn't paint at all (otherwise
-    // the checkbox state contradicts what's on screen).
-    expect(after.columnOrder).toEqual([]);
+    // No stale synthesised pivot result columns survive the
+    // role teardown. Source columns ARE expected to reappear —
+    // the hide flag is the sole authority for visibility (cardinal
+    // principle), and the role-driven auto-hide on `desk` is
+    // restored when the rowGroup is removed.
+    const staleSynthesised = (after.columnOrder as string[]).filter((id) => id.startsWith('pivotcol'));
+    expect(staleSynthesised).toEqual([]);
     // The worker shouldn't have errored on the way out (the
     // mid-swap race in PivotPass.apply is the regression this test
     // guards).
