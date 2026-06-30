@@ -311,9 +311,15 @@ describe('RangeSelection — shift-click extend (Cycle 9 / Task 4)', () => {
 });
 
 describe('RangeSelection — ctrl/cmd-click disjoint (Cycle 9 / Task 4)', () => {
-  it('ctrl-click on a cell ADDS a new disjoint 1x1 range (preserves existing ranges)', () => {
+  it('ctrl-click on a cell in rowSelection="multiple" REPLACES the prior range (single-focus invariant)', () => {
+    // Cardinal-rule fix — blotter mode (multiple row selection) must
+    // never visually accumulate disjoint cell ranges: each one paints
+    // a tinted overlay the user reads as a focus ring, producing the
+    // "multiple focused cells" perceptual bug. In multiple mode the
+    // range REPLACES instead of accumulates; the row-toggle still
+    // fires on the matching CellSelection feature path.
     const f = new RangeSelection();
-    const grid = makeGrid();
+    const grid = makeGrid();  // selection mode defaults to 'multiple'
     f.handleMouseDown(ctx({ kind: 'cell', rowIndex: 0, colId: 'cusip' }, { x: 10, y: 30 }, grid));
     f.handleMouseUp(ctx({ kind: 'cell', rowIndex: 0, colId: 'cusip' }, { x: 10, y: 30 }, grid));
     f.handleMouseDown(
@@ -321,12 +327,11 @@ describe('RangeSelection — ctrl/cmd-click disjoint (Cycle 9 / Task 4)', () => 
         new MouseEvent('mousedown', { ctrlKey: true })),
     );
     expect(grid.selection.getRanges()).toEqual([
-      { rowStart: 0, rowEnd: 0, colIds: ['cusip'] },
       { rowStart: 5, rowEnd: 5, colIds: ['qty'] },
     ]);
   });
 
-  it('cmd-click (metaKey) ALSO adds a disjoint range — mac parity with ctrl-click', () => {
+  it('cmd-click (metaKey) in rowSelection="multiple" also REPLACES — mac parity with ctrl-click', () => {
     const f = new RangeSelection();
     const grid = makeGrid();
     f.handleMouseDown(ctx({ kind: 'cell', rowIndex: 0, colId: 'cusip' }, { x: 10, y: 30 }, grid));
@@ -334,6 +339,26 @@ describe('RangeSelection — ctrl/cmd-click disjoint (Cycle 9 / Task 4)', () => 
     f.handleMouseDown(
       ctx({ kind: 'cell', rowIndex: 5, colId: 'qty' }, { x: 320, y: 90 }, grid,
         new MouseEvent('mousedown', { metaKey: true })),
+    );
+    expect(grid.selection.getRanges()).toEqual([
+      { rowStart: 5, rowEnd: 5, colIds: ['qty'] },
+    ]);
+  });
+
+  it('ctrl-click in rowSelection="single" preserves Excel-style disjoint accumulation', () => {
+    // Single / none modes mean the app selected the spreadsheet
+    // pattern — cell ranges are the primary selection vocabulary, and
+    // Excel-style disjoint range accumulation is the convention. The
+    // "multiple focused cells" pitfall doesn't apply because there's
+    // no row-selection chrome competing for the same visual.
+    const sel = new SelectionModel('single');
+    const f = new RangeSelection();
+    const grid = makeGrid({ selection: sel });
+    f.handleMouseDown(ctx({ kind: 'cell', rowIndex: 0, colId: 'cusip' }, { x: 10, y: 30 }, grid));
+    f.handleMouseUp(ctx({ kind: 'cell', rowIndex: 0, colId: 'cusip' }, { x: 10, y: 30 }, grid));
+    f.handleMouseDown(
+      ctx({ kind: 'cell', rowIndex: 5, colId: 'qty' }, { x: 320, y: 90 }, grid,
+        new MouseEvent('mousedown', { ctrlKey: true })),
     );
     expect(grid.selection.getRanges()).toEqual([
       { rowStart: 0, rowEnd: 0, colIds: ['cusip'] },
