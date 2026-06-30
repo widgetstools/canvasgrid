@@ -36,7 +36,8 @@ export const cellStyleExpansion: Feature = {
           headerName: 'Desk',
           cellDataType: 'text',
           width: 110,
-          // headerStyle: an uppercase, italic, larger header for emphasis
+          // headerStyle: an uppercase, italic, larger header for emphasis +
+          // a 3px solid teal bottom border (Task 2).
           headerStyle: {
             bg: '#1f2937',
             fg: '#fbbf24',
@@ -45,11 +46,15 @@ export const cellStyleExpansion: Feature = {
             fontSize: 14,
             textTransform: 'uppercase',
             letterSpacing: 1,
+            border: { bottom: { width: 3, color: '#fbbf24', style: 'solid' } },
           },
           cellStyle: {
             valign: 'top',
             padding: { top: 6, left: 12 },
             fontWeight: 600,
+            // Task 2: dotted right separator to visually divide the
+            // identity columns from the price block.
+            border: { right: { width: 1, color: '#fbbf24', style: 'dotted' } },
           },
         },
         {
@@ -64,6 +69,9 @@ export const cellStyleExpansion: Feature = {
             fontFamily: 'monospace',
             fontSize: 14,
             letterSpacing: 1,
+            // Task 2: dashed left border to bracket the ticker column
+            // with the dotted separator on its left neighbour.
+            border: { left: { width: 1, color: '#9ca3af', style: 'dashed' } },
           },
         },
 
@@ -87,10 +95,18 @@ export const cellStyleExpansion: Feature = {
               cellDataType: 'number',
               width: 120,
               // Function-form cellStyle: color + bg by sign + bottom valign
+              // + a colored bottom border that matches the sign tint
+              // (Task 2 — function-form patches can also set borders).
               cellStyle: (p) => {
                 const v = Number(p.value ?? 0);
-                if (v > 0) return { fg: '#065f46', bg: '#d1fae5', valign: 'bottom', fontWeight: 600 };
-                if (v < 0) return { fg: '#7f1d1d', bg: '#fee2e2', valign: 'bottom', fontWeight: 600 };
+                if (v > 0) return {
+                  fg: '#065f46', bg: '#d1fae5', valign: 'bottom', fontWeight: 600,
+                  border: { bottom: { width: 2, color: '#10b981', style: 'solid' } },
+                };
+                if (v < 0) return {
+                  fg: '#7f1d1d', bg: '#fee2e2', valign: 'bottom', fontWeight: 600,
+                  border: { bottom: { width: 2, color: '#ef4444', style: 'solid' } },
+                };
                 return { valign: 'bottom' };
               },
             },
@@ -109,7 +125,8 @@ export const cellStyleExpansion: Feature = {
           ],
         },
 
-        // Sector — capitalize transform
+        // Sector — capitalize transform + Task 2 'all' border (every
+        // cell in the column gets a thin double-line outline).
         {
           colId: 'sector',
           field: 'sector',
@@ -121,6 +138,7 @@ export const cellStyleExpansion: Feature = {
             halign: 'center',
             textTransform: 'capitalize',
             fontWeight: 500,
+            border: { all: { width: 1, color: '#a78bfa', style: 'double' } },
           },
         },
       ],

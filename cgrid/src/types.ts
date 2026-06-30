@@ -94,6 +94,29 @@ export interface Padding {
   left?: number;
 }
 
+/** Cycle 27 / Task 2 — line style of a cell border side. */
+export type BorderStyle = 'solid' | 'dashed' | 'dotted' | 'double';
+
+/** Cycle 27 / Task 2 — per-side border definition. A side with no `width`
+ *  (or `width: 0`) is invisible. `style` defaults to `'solid'`. */
+export interface BorderSide {
+  width?: number;
+  color?: string;
+  style?: BorderStyle;
+}
+
+/** Cycle 27 / Task 2 — per-cell border override. Each side can be set
+ *  independently; `all` provides a fallback for sides not explicitly
+ *  listed (explicit side wins). */
+export interface BorderSpec {
+  top?: BorderSide;
+  right?: BorderSide;
+  bottom?: BorderSide;
+  left?: BorderSide;
+  /** Fallback for any side NOT explicitly set above. */
+  all?: BorderSide;
+}
+
 export interface ColCellOverrides {
   // ── Colors ────────────────────────────────────────────────────────────────
   fg?: string;
@@ -135,6 +158,12 @@ export interface ColCellOverrides {
    *  (applies to all four sides) or a per-side object. Missing sides
    *  fall back to the painter's default. */
   padding?: number | Padding;
+
+  // ── Borders ───────────────────────────────────────────────────────────────
+  /** Cycle 27 / Task 2 — per-side border override. Replaces any previous
+   *  `border` patch wholesale (not deep-merged). Sides not listed in the
+   *  patch are invisible unless `all` is set. */
+  border?: BorderSpec;
 }
 
 /** Params passed to `cellClass`, `cellClassRules`, and `cellStyle` callbacks. */

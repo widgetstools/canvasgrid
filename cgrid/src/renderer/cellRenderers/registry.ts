@@ -1,5 +1,6 @@
 import type { CachedContext2D } from '../gc';
 import { drawIcon } from '../icons';
+import { paintCellBorders } from '../painters/cellBordersPainter';
 
 export interface CellPaintConfig {
   // Cell content
@@ -33,6 +34,11 @@ export interface CellPaintConfig {
    *  (a uniform number becomes `{ top, right, bottom, left }` with the
    *  same value on all sides). */
   padding?: { top?: number; right?: number; bottom?: number; left?: number };
+  /** Cycle 27 / Task 2 — per-side border override. When set, painters
+   *  call `paintCellBorders` after content paint so the borders sit on
+   *  top of the cell. Undefined leaves the default grid lines in
+   *  charge. */
+  border?: import('../../types').BorderSpec;
   // What's already painted under this cell (bundle bg). Skip the bg fill
   // when bg === prefillColor (already done by the bundle pass).
   prefillColor: string;
@@ -205,6 +211,9 @@ export const textCell: CellPainter = {
       gc.cache.textAlign = 'left';
       gc.fillText(p.valueFormatted, p.bounds.x + padLeft, cy);
     }
+    // Cycle 27 / Task 2 — per-cell border overlay (after content so it
+    // sits on top). No-op when p.border is undefined.
+    if (p.border) paintCellBorders(gc, p.bounds, p.border);
   },
 };
 
@@ -252,6 +261,8 @@ export const numberCell: CellPainter = {
             : align === 'center' ? p.bounds.x + p.bounds.w / 2
             : p.bounds.x + padLeft;
     gc.fillText(p.valueFormatted, x, cy);
+    // Cycle 27 / Task 2 — per-cell border overlay.
+    if (p.border) paintCellBorders(gc, p.bounds, p.border);
   },
 };
 
@@ -358,6 +369,9 @@ export const headerCell: CellPainter = {
       );
       gc.cache.restore();
     }
+    // Cycle 27 / Task 2 — per-header border overlay (from
+    // headerStyle.border or groupHeaderStyle.border).
+    if (p.border) paintCellBorders(gc, p.bounds, p.border);
   },
 };
 

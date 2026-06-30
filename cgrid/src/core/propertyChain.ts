@@ -347,6 +347,12 @@ function applyOverridePatch(target: CellPaintConfig, patch: ColCellOverrides): v
       ? { top: patch.padding, right: patch.padding, bottom: patch.padding, left: patch.padding }
       : { ...patch.padding };
   }
+  // Cycle 27 / Task 2 — border override. Replaces wholesale (no per-side
+  // merge): a later patch with `border: { top: ... }` discards prior
+  // sides. The shape is small enough that callers can supply the full
+  // spec in their `cellStyle` patch; deep-merge would surprise more than
+  // help.
+  if (patch.border !== undefined) target.border = patch.border;
 }
 
 /** Cycle 27 / Task 1 — apply `textTransform` to a string. Cheap one-shot
