@@ -11,6 +11,10 @@ tsconfig.tsbuildinfo
 # Vite cache
 .vite/
 
+# Turbo build cache and per-workspace logs (machine-local artifacts)
+/.turbo/
+**/.turbo/
+
 # npm regenerates per-workspace lockfiles after install; keep only the root one
 apps/*/package-lock.json
 
