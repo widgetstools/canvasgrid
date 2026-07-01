@@ -30,6 +30,16 @@ describe('resolveColDef', () => {
     expect(resolveColDef({ field: 'a', cellRenderer: 'checkbox' }).cellRenderer).toBe('checkbox');
   });
 
+  it("infers cellRenderer 'checkbox' when cellEditor is 'checkbox' and no explicit renderer set (boolean-column smart default)", () => {
+    expect(resolveColDef({ field: 'confirmed', cellEditor: 'checkbox' }).cellRenderer)
+      .toBe('checkbox');
+  });
+
+  it('explicit cellRenderer overrides the checkbox-editor smart default (opt-out path for text-formatted booleans)', () => {
+    expect(resolveColDef({ field: 'confirmed', cellEditor: 'checkbox', cellRenderer: 'text' }).cellRenderer)
+      .toBe('text');
+  });
+
   it('inherits from defaultColDef', () => {
     const r = resolveColDef({ field: 'a' }, { sortable: false, minWidth: 100 });
     expect(r.sortable).toBe(false);

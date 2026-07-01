@@ -831,9 +831,22 @@ export function resolveColDef<TRow>(
     // Row-select checkbox columns FORCE the renderer regardless of
     // cellDataType — the checkbox state is the entire visual + the
     // column's data field is irrelevant.
+    //
+    // Smart default for boolean columns: when a column opts into the
+    // `'checkbox'` cell editor without setting an explicit `cellRenderer`,
+    // pair it with the `'checkbox'` renderer so the same three-state
+    // vocabulary (true → outlined box + check, false → outlined empty
+    // box, null → muted em-dash) displays without the app having to
+    // wire both sides. Apps that want a boolean field to display as
+    // text (e.g. rendering "yes/no" strings) can still set
+    // `cellRenderer: 'text'` explicitly to opt out.
     cellRenderer: merged.checkboxSelection === true
       ? 'rowSelectCheckbox'
-      : (merged.cellRenderer ?? (merged.wrapText ? 'text-wrap' : cellDataType)),
+      : (
+        merged.cellRenderer
+        ?? (merged.wrapText ? 'text-wrap' : null)
+        ?? (merged.cellEditor === 'checkbox' ? 'checkbox' : cellDataType)
+      ),
     cellRendererParams: merged.cellRendererParams,
     checkboxSelection: merged.checkboxSelection,
     headerCheckboxSelection: merged.headerCheckboxSelection,

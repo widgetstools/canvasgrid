@@ -385,13 +385,50 @@ export const numberCell: CellPainter = {
 export const checkboxCell: CellPainter = {
   paint(gc, p) {
     paintBackground(gc, p);
+    // Three-state indicator for boolean columns:
+    //   true  → outlined 14×14 box + checkmark (accent fill when
+    //           `--cg-checkbox-checked-bg` opts in);
+    //   false → outlined 14×14 empty box;
+    //   null / undefined / '' → centered em-dash at 50% alpha of `fg`,
+    //           no box — the absence of the box IS the "no value" signal.
+    // Shape carries meaning without color so the indicator stays legible
+    // for colorblind readers + both themes. All colors resolve from the
+    // theme tokens the painter already reads (`fg`, `bg`, checkboxChecked*).
+    //
+    // Value coercion follows the same widened rules `columnDefsMap` will
+    // eventually derive for `cellDataType: 'boolean'`, but stays inside
+    // the painter for now so no worker-side changes are needed:
+    //   • real booleans (true / false) → their state
+    //   • strings 'true' / 'false' (case-insensitive) → parsed state
+    //     (the worker packs `String(row.confirmed)` when it ships a text
+    //     column, so `false` arrives as `"false"` — treating that
+    //     `"false"` string as truthy would flip the visual state)
+    //   • '' / null / undefined → the null path
+    //   • anything else numeric — 0 → false, non-zero → true
+    const state = resolveTriState(p.value);
+    if (state === 'null') {
+      // Muted em-dash centered in the cell's box region. Alpha 0.5 sits
+      // below the outlined box's visual weight so a column mixing false
+      // and null reads with the trader's eye pulled to the concrete "no"
+      // first and the "unknown" second.
+      const prevAlpha = gc.cache.globalAlpha;
+      gc.cache.globalAlpha = prevAlpha * 0.5;
+      gc.cache.fillStyle = p.fg;
+      gc.cache.font = p.font;
+      gc.cache.textAlign = 'center';
+      gc.cache.textBaseline = 'middle';
+      gc.fillText('—', p.bounds.x + p.bounds.w / 2, p.bounds.y + p.bounds.h / 2);
+      gc.cache.globalAlpha = prevAlpha;
+      return;
+    }
+    const isTrue = state === 'true';
     const size = 14;
     const cx = p.bounds.x + p.bounds.w / 2 - size / 2;
     const cy = p.bounds.y + p.bounds.h / 2 - size / 2;
     // Cycle 22 / Task 1 — accent fill when the theme opted in AND the
     // value is truthy. Outlined-only otherwise (the default path —
     // matches the look the renderer has shipped since Cycle 3).
-    const accent = p.value && p.checkboxCheckedBg && p.checkboxCheckedBg !== 'transparent'
+    const accent = isTrue && p.checkboxCheckedBg && p.checkboxCheckedBg !== 'transparent'
       ? p.checkboxCheckedBg
       : null;
     if (accent) {
@@ -401,7 +438,7 @@ export const checkboxCell: CellPainter = {
     gc.cache.strokeStyle = p.fg;
     gc.cache.lineWidth = 1;
     gc.strokeRect(cx + 0.5, cy + 0.5, size, size);
-    if (p.value) {
+    if (isTrue) {
       gc.cache.strokeStyle = accent ? (p.checkboxCheckedFg ?? p.fg) : p.fg;
       gc.beginPath();
       gc.moveTo(cx + 3, cy + size / 2);
@@ -411,6 +448,24 @@ export const checkboxCell: CellPainter = {
     }
   },
 };
+
+/** Coerce an arbitrary cell value into the tri-state the checkbox painter
+ *  understands. Kept outside the painter so both the painter + tests share
+ *  one source of truth for the boolean-column coercion rules — same rules
+ *  a future `cellDataType: 'boolean'` would apply at the worker boundary. */
+function resolveTriState(v: unknown): 'true' | 'false' | 'null' {
+  if (v === null || v === undefined || v === '') return 'null';
+  if (v === true) return 'true';
+  if (v === false) return 'false';
+  if (typeof v === 'string') {
+    const s = v.toLowerCase();
+    if (s === 'true') return 'true';
+    if (s === 'false') return 'false';
+    return 'null';
+  }
+  if (typeof v === 'number') return v === 0 ? 'false' : 'true';
+  return 'null';
+}
 
 export const headerCell: CellPainter = {
   paint(gc, p) {

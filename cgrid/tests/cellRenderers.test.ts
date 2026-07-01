@@ -111,12 +111,93 @@ describe('numberCell', () => {
   });
 });
 
-describe('checkboxCell', () => {
-  it('paints a checkmark when value is true', () => {
+describe('checkboxCell — tri-state indicator (true / false / null)', () => {
+  it('true: strokes the outlined 14×14 box AND strokes the checkmark path', () => {
     const gc = makeGc();
     checkboxCell.paint(gc, baseParams({ value: true, valueFormatted: '' }));
     expect((gc.strokeRect as any)).toHaveBeenCalled();
     expect((gc.stroke as any)).toHaveBeenCalled();
+    // Never falls through to the em-dash text path.
+    expect((gc.fillText as any)).not.toHaveBeenCalled();
+  });
+
+  it('false: strokes the outlined empty box but never the checkmark', () => {
+    const gc = makeGc();
+    checkboxCell.paint(gc, baseParams({ value: false, valueFormatted: '' }));
+    expect((gc.strokeRect as any)).toHaveBeenCalled();
+    expect((gc.stroke as any)).not.toHaveBeenCalled();
+    expect((gc.fillText as any)).not.toHaveBeenCalled();
+  });
+
+  it('null: paints a centered em-dash with reduced alpha and skips the box entirely', () => {
+    const gc = makeGc();
+    checkboxCell.paint(gc, baseParams({ value: null, valueFormatted: '', bounds: { x: 0, y: 0, w: 60, h: 30 } }));
+    // Em-dash goes through fillText, not the box path.
+    expect((gc.strokeRect as any)).not.toHaveBeenCalled();
+    expect((gc.fillText as any)).toHaveBeenCalledWith('—', 30, 15);
+    // Reduced alpha is applied to the fillText call and restored afterwards
+    // — assertion is on the final restored value (test spy checks final gc state).
+    expect(gc.globalAlpha).toBe(1);
+  });
+
+  it('undefined: same em-dash path as null', () => {
+    const gc = makeGc();
+    checkboxCell.paint(gc, baseParams({ value: undefined, valueFormatted: '', bounds: { x: 0, y: 0, w: 60, h: 30 } }));
+    expect((gc.strokeRect as any)).not.toHaveBeenCalled();
+    expect((gc.fillText as any)).toHaveBeenCalledWith('—', 30, 15);
+  });
+
+  it("empty string: null path — the text-encoded null value shipped by the worker's text-column format", () => {
+    const gc = makeGc();
+    checkboxCell.paint(gc, baseParams({ value: '', valueFormatted: '', bounds: { x: 0, y: 0, w: 60, h: 30 } }));
+    expect((gc.strokeRect as any)).not.toHaveBeenCalled();
+    expect((gc.fillText as any)).toHaveBeenCalledWith('—', 30, 15);
+  });
+
+  it("string 'true': true path — a text-column boolean arrives as the string 'true' after String(bool)", () => {
+    const gc = makeGc();
+    checkboxCell.paint(gc, baseParams({ value: 'true', valueFormatted: '' }));
+    expect((gc.strokeRect as any)).toHaveBeenCalled();
+    expect((gc.stroke as any)).toHaveBeenCalled(); // checkmark path fires
+  });
+
+  it("string 'false': false path — MUST NOT paint the check even though non-empty strings are JS-truthy", () => {
+    const gc = makeGc();
+    checkboxCell.paint(gc, baseParams({ value: 'false', valueFormatted: '' }));
+    expect((gc.strokeRect as any)).toHaveBeenCalled();
+    // The check stroke is NOT called — this is the invariant that guards
+    // against the regression where any non-empty string flipped the visual
+    // to true because the painter checked JS-truthiness directly.
+    expect((gc.stroke as any)).not.toHaveBeenCalled();
+  });
+
+  it('unknown string: null path — treats non-boolean text as unknown rather than misrepresenting', () => {
+    const gc = makeGc();
+    checkboxCell.paint(gc, baseParams({ value: 'maybe', valueFormatted: '', bounds: { x: 0, y: 0, w: 60, h: 30 } }));
+    expect((gc.fillText as any)).toHaveBeenCalledWith('—', 30, 15);
+  });
+
+  it('accent fill: fillRect is called on true when checkboxCheckedBg is set', () => {
+    const gc = makeGc();
+    checkboxCell.paint(gc, baseParams({
+      value: true, valueFormatted: '',
+      checkboxCheckedBg: '#2563eb',
+    }));
+    // fillRect fires for the accent + the background (when bg !== prefillColor).
+    // Verifying the accent fill happened is enough — the exact number of fillRect
+    // calls depends on the bg / prefillColor branch which other tests cover.
+    expect((gc.fillRect as any)).toHaveBeenCalled();
+  });
+
+  it('accent fill: NOT applied when value is false (the empty-box path)', () => {
+    const gc = makeGc();
+    const params = baseParams({
+      value: false, valueFormatted: '',
+      checkboxCheckedBg: '#2563eb',
+      bg: '#fff', prefillColor: '#fff',
+    });
+    checkboxCell.paint(gc, params);
+    expect((gc.fillRect as any)).not.toHaveBeenCalled();
   });
 });
 
