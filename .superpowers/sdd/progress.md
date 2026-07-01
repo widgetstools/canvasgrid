@@ -1,0 +1,256 @@
+Task 0: complete (commits e8c44e4..47f3a39, review clean)
+Task 1: complete (commits 47f3a39..b41e03f, review clean after 1 fix pass)
+  Minors carried to final review:
+    - 03-row-models.md: cacheBlockSize listed twice (Infinite + SSRM) with different Tier values — consider parenthetical cross-ref
+    - 05-rendering-and-dom.md: rowBuffer/animateRows/suppressChangeDetection duplicate rows from 01-grid-options.md — consider "see also" notes
+    - 02-column-model.md: columnEverythingChanged "Deprecated v32.2" formatting inconsistent — standardize when catalog style guide exists
+Task 2: complete (commits b41e03f..f3f3409, review clean after 1 fix pass)
+  Minors carried to final review:
+    - 06-cell-editing.md: ICellEditor interface methods documented under ## Configuration surface with `'required'` as Default — consider moving to dedicated interface block in style guide
+    - 08-filtering.md: excelMode missing from ISetFilterParams Configuration table (mentioned in Behaviors only)
+Task 3: complete (commits f3f3409..e04798e, review clean after 1 fix pass)
+  Minors carried to final review:
+    - 09-row-grouping.md / FEATURE_MATRIX.md: groupSelectsChildren has no @agModule in .d.ts but labeled Enterprise (acceptable historical context)
+    - 10-aggregation.md Concept: note about AggregationModule registration doesn't mention AllEnterpriseModule auto-bundling
+Task 4: complete (commits e04798e..45d0472, review clean after 1 fix pass)
+  Minors carried to final review:
+    - rowGroupOpened tier inconsistency across areas 09/13/14 (09 says Enterprise; 13/14 say Community) — align in final pass
+    - task-4-report line counts had a minor inaccuracy (file is fine)
+Task 5: complete (commits 45d0472..32defe2, review clean after 1 fix pass)
+  Minors carried to final review:
+    - 19-context-menu-and-clipboard.md: preventDefaultOnContextMenu has no @agModule, should be Community not Enterprise
+    - 17-side-bar-and-tool-panels.md: ToolPanelDef.parent field may be internal/undocumented — verify before publishing
+    - 16/21 cross-ref to pinnedRowBorder CSS variable is mildly circular but accurate
+Task 6: complete (commits 32defe2..ccad5f1, review clean after 1 fix pass — controller commit after subagent socket failure)
+  Minors carried to final review:
+    - 23-api.md: getStructuredSchema placement in ### Export — consider ### Misc (AiToolkitModule is AI-integration, not export)
+    - 22-events.md: rangeSelectionChanged "Deprecated alias" wording not backed by formal @deprecated annotation in .d.ts
+    - 23-api.md: showContextMenu placement in ### Misc (defensible but could cross-list)
+Task 7: complete (commits ccad5f1..9208b8a, review clean after 1 fix pass; controller reset --mixed dropped a spurious .superpowers commit the fixer made with `git add -f`)
+  Minors carried to final review:
+    - 24-charts-and-sparklines.md: chartMenuItems description could clarify "AG Charts Enterprise" refers to chart features in the menu, not module registration
+    - 26-performance-knobs.md: setGridOption description's specific @initial annotations could be tightened to only what .d.ts explicitly marks
+Task 8: complete (commits 9208b8a..67c2208, review approved with documented gaps)
+  Gaps (motivate "Task 8b — showcase enhancement" once scope approved):
+    - 06-cell-editing-popup-editor-open.png skipped (no editable columns in showcase)
+    - 12-selection-range-cell-fill-handle.png skipped (cellSelection / range / fill not enabled)
+    - Areas 01/02/03/11/13/14/15/24 still carry placeholder Look & feel (no live UI for them in current showcase)
+    - Filter screenshots 08-filtering-text-filter-popup & set-filter-popup share the agMultiColumnFilter image
+    - 10-aggregation-aggfunc-in-header.png shows totals only (suppressAggFuncInHeader is set)
+Task 8b: complete (commits 67c2208..bb875c5, two-commit sequence: 6b63c78 showcase enhancement + bb875c5 screenshot re-capture)
+  Captured ~22 new screenshots (closed both Task 8 gaps: cell editing popup + range/fill handle)
+  Updated 9 area-file Look & feel sections with real screenshots
+  Known showcase bugs (deferred — out of cycle scope):
+    - Sparklines not rendering: AG Grid 35.x agSparklineCellRenderer needs chart-library bridge; column header visible but cells empty in 24-sparklines-column.png
+    - Tree Data + Charts simultaneous toggle crashes (page reload workaround in capture flow)
+    - Pivot screenshots show identical scroll positions (visual minor)
+Task 9: complete (commits bb875c5..2ad1d68, review clean)
+  Latest stable is 35.3.1 — catalog base = latest, no v36 yet
+Task 10: complete (commits 2ad1d68..e1998ec, fix-pass closed 8 unreferenced-screenshot FAILs + bumped Last verified to 2026-06-23)
+Final review: With fixes — 3 Important findings landed
+  Fix 1: agGridSetup.ts now registers AllEnterpriseModule.with(AgChartsCommunityModule) (commit 84e456a)
+  Fix 2: rowGroupOpened tier aligned to Community across 09/22/FEATURE_MATRIX (commit 84e456a)
+  Fix 3: 3 chart/sparkline screenshots re-captured (commit cdfbdb0) — chart range + chart dialog work end-to-end; sparkline rendering verified live but headless screenshot cannot composite GPU canvas (documented as Known limitation in 24's Look & feel)
+  Charts work deferred per user directive — no further iteration.
+Cycle 1 status: COMPLETE.
+
+=== Cycle 2: Canvasgrid Foundation (start 2026-06-23) ===
+Plan: docs/superpowers/plans/2026-06-23-canvasgrid-foundation.md (27 tasks)
+Spec: docs/superpowers/specs/2026-06-23-canvasgrid-foundation-design.md
+Cycle BASE: b596aa5
+Task 1: complete (commits b596aa5..fb1b415, review needed false-positive Critical clarification — apps/showcase/package-lock.json deletion DID land in 69557fd; preventive gitignore added in fb1b415)
+Task 2: complete (commits fb1b415..1079756, review clean — implementer added --passWithNoTests to vitest, correct resolution of brief-internal conflict)
+Task 3: complete (commits 1079756..52c3246, review clean — 3 type tests, typecheck clean)
+Task 4: complete (commits 52c3246..77d5cf9, review clean — 5/5 tests, typecheck clean)
+Task 5: complete (commits 77d5cf9..c1daaeb, review clean — 12/12 tests, typecheck clean)
+Task 6: complete (commits c1daaeb..8e2648b, review clean — implementer changed return type ArrayBuffer[] -> ArrayBufferLike[] for TS 5.9 lib typing; valid since postMessage transfer-list accepts both)
+Task 7: complete (commits 8e2648b..5b543b7, review clean — RowStore + TransactionQueue, 6/6 tests, default flushFn satisfies test without setFlushFn wiring)
+Task 8: complete (commits 5b543b7..a8bcf51, review clean — FilterPass, 7/7 tests)
+Task 9: complete (commits a8bcf51..aff8dd1, review clean — SortPass, 4/4 tests)
+Task 10: complete (commits aff8dd1..0e4047f, review clean — AggPass, 2/2 tests)
+Task 11: complete (commits 0e4047f..fb9e893, review clean — chunkFormat + ViewportSlicer, 5/5 tests; ViewportSlicer inserted before AggPass — cosmetic deviation, accepted)
+Task 12: complete (commits fb9e893..ee56bb0, review clean — worker host, 2/2 tests; document-undef guard added to Worker detection, valid correctness improvement)
+Task 13: complete (commits ee56bb0..381e5a7, review clean — WorkerClient, 1/1 test; 48/48 cumulative)
+Task 14: complete (commits 381e5a7..7d3c10b, review clean — tokens.css + CssReader, 1/1 test)
+Task 15: complete (commits 7d3c10b..a70393d, review clean — layout + viewport + HitTester, 10/10 tests; 59 cumulative)
+  Minors carried to final review:
+    - hitTester.ts:31 body-zone check uses <= bodyBottom (benign — row search returns null at the edge anyway)
+    - layout.ts:60 flexLeft -= col.flex ?? 0 lacks parens (cosmetic)
+    - hitTester.test.ts:65 uses `as any` instead of narrowing
+Task 16: complete (commits a70393d..c0a6943, review clean — PaintLoop, 4/4 tests)
+Task 17: complete (commits c0a6943..038aae9, review clean after 1 fix pass — Critical numberCell halign='left' bug fixed; 8/8 tests including new regression)
+Task 18: complete (commits 038aae9..898b7f7, review clean — 4 painters + shared PainterCtx, 3/3 tests)
+Task 19: complete (commits 898b7f7..3198f44, review clean — Renderer orchestrator, 1/1 test; DPR + paintLoop + 5-layer painters wired)
+Task 20: complete (commits 3198f44..c69dc61, review clean — SelectionModel, 7/7 tests)
+Task 21: complete (commits c69dc61..acad195, review clean — PointerInput + KeyboardInput, 6/6 tests; 88 cumulative)
+Task 22: complete (commits acad195..cb21f23, review clean — EditorOverlay, 4/4 tests)
+Task 23: complete (commits cb21f23..2784465, review clean — A11yOverlay, 3/3 tests)
+Task 24: complete (commits 2784465..e35f8df, review clean after 1 fix pass — public CGrid class wiring 14+ modules; 3 Critical + 1 Important fixed:
+  - C1+C2: .catch handlers added to all 6 worker promise chains (init/setRowData/applyTransaction[Async]/setSortModel/setFilterModel)
+  - C3: inferRowIdField refactored to top-level fn with matchAll for last-segment capture (fixes silent corruption on `row => row.meta.id`)
+  - I4: SortModelEntry/FilterModelEntry/CValueGetterParams/CValueFormatterParams re-added to public type re-exports
+  - +4 regression tests for inferRowIdField; 100/100 cumulative)
+  Minor carried to final review:
+    - selection.onChange unsubscriber dropped; harmless in practice but architectural inconsistency
+Task 25: complete (commits e35f8df..f506d2b, review clean — demo scaffold; controller fix-commit converted `cgrid: workspace:*` (pnpm) to `cgrid: "*"` (npm-compatible))
+Task 26: complete (commits f506d2b..13874bc, review clean — demo wiring; STOMP server was down at test time so runtime round-trip is unverified at this point but wiring matches the showcase pattern; npm run dev:positions port-relay quirk noted for final review)
+  Minors carried to final review:
+    - buffer flush in stomp.ts uses `splice(0)` (all-at-once) rather than `splice(0, 50)` (capped) — functionally OK since trigger condition is buffer.length >= 50, but unconventional
+    - `npm run dev:positions` may not relay port from vite.config (pre-existing; running `npx vite` from app dir works)
+Task 27: complete (commits 13874bc..fa88aa3, review clean — DoD report + cgrid/README quickstart; 7 ✅ / 2 PARTIAL / 0 ❌; partials: 60fps measurement (STOMP down) + axe-core (binary not installed))
+Final review: With fixes → Yes (after fix pass)
+  Found 2 Critical + 4 Important + 10 Minor.
+  Fix 1 (ca71d8f): worker bundling (Vite multi-entry → dist/worker.js); nested rowId rejected; agg wired through getViewport with totals on ViewportChunk + aggregationChanged event; CSS export added; SelectionModel.onChange unsubscriber tracked; PointerInput window listener cleanup.
+  Fix 2 (a865c84): DoD report revised — 8 ✅ / 2 PARTIAL / 0 ❌; "Final review fixes" section added.
+  Re-review verdict: Ready to merge. 101/101 tests passing (+1 agg totals test); dist clean; demo serves.
+Cycle 2 status: COMPLETE.
+
+=== Cycle 3: Canvasgrid Hypergrid Port (start 2026-06-23) ===
+Plan: docs/superpowers/plans/2026-06-23-canvasgrid-hypergrid-port.md (5 tasks)
+Audit refs: docs/hypergrid-audit/01..04
+Cycle BASE: e02cd68 (docs/audit baseline before any port code)
+Tasks 1-4 landed in prior sessions (per per-task fresh-session workflow this plan prescribes):
+  Task 1: a2da568 — Canvas wrapper + graphics cache (fixes resize flicker)
+  Task 2: f323d45 — single-pass gridlines, no per-cell strokes
+  Task 3: 6ee9d0f — subgrid abstraction for header/body row stacks
+  Task 4: a32dc5d — feature-chain interaction model
+Task 5: complete (commits a32dc5d..d3d322a — 7ef397c implementer + d3d322a controller cleanup; reviewer Approved with 3 Important findings; controller fixed 2 inline)
+  Fixed inline (d3d322a): dead `_p: PainterCtx` parameter in paintBand removed; stale gridLinesPainter horizontals comment refreshed to point at in-file subgrid-separator pass
+  Carried (1 Important + 4 Minor — no follow-up cycle planned):
+    - byRows.ts `rowBgs[row.rowIndex]` indexing is positional and assumes ViewportRow.rowIndex == position in visibleRows; safe today, fragile if future subgrid refactor changes rowIndex semantics
+    - No test for `rowSelectedBg` bundling — selection bundling is what motivates the fillRect-over-clearFill deviation; a regression test would document that invariant
+    - iconColor unconditionally set to theme.focusRingColor for data cells too (harmless — data renderers ignore it)
+    - subgridBands grouping uses `===` on subgrid reference (correct given singleton subgrids; would break if instances become per-row)
+    - makeVsAltRows fixture has bodyTop=32, so gridLines tests using it implicitly exercise the separator (cosmetic)
+Cycle 3 status: COMPLETE. Architecture is fully hypergrid-style: Canvas+gc cache, subgrids, feature chain, single-pass gridlines, unified by-rows painter with bundle optimization + config layering.
+  138/138 unit tests passing; typecheck clean; build produces dist/cgrid.js + dist/worker.js.
+  E2E + manual UI verification deferred (no dev server in this session).
+
+=== Cycle 6: Canvasgrid Column UX (catch-up entry, 2026-06-25) ===
+Plan: docs/superpowers/plans/2026-06-25-canvasgrid-cycle-06-column-ux.md (8 tasks)
+Tasks 1-6 already landed in prior sessions on main (commits: b8d3e5d, 9044087, 8413670, 16e9f0f, 32985e4, 6c77de0, a0c4004, dd01e99, e12c33e, acba774).
+Task 7: complete (commits acba774..a7ea589, review clean after 1 fix pass — controller closed environmental obstacle)
+  Implementer commit 1096fb0: cellClass / cellClassRules / cellStyle (fn) / headerClass via theme variants
+  Fix-pass commit a7ea589: wired CColGroupDef.headerClass for group-header paint (review-flagged gap — leaf was wired, group wasn't)
+  Controller off-tree cleanup: removed stale apps/cgrid-positions/src/{main,positionsGrid,stomp}.js — pre-existing git-untracked compile artifacts that Vite's default extension order (.js before .ts) was resolving over the .ts sources, shadowing all Task 7 demo wiring at runtime; cleanup unblocked the E2E pass
+  Tests: 477/477 unit + 59/59 E2E (incl. cycle6-cellClassRules) + typecheck + build all clean
+  Minors carried to final review:
+    - byRows.ts: if (groupDef) ... else branch doesn't reset groupHeaderClassNames to [] (theoretical leaf-pollution path; can't actually fire given groupForLeaf determinism)
+    - byRows.ts: (row.subgrid as HeaderGroupSubgrid) cast inside instanceof guard is redundant
+
+=== Cycle 21a: Turborepo Monorepo Scaffold (start 2026-07-01) ===
+Plan: docs/superpowers/plans/2026-07-01-cycle-21a-monorepo-scaffold.md (5 tasks)
+Cycle BASE: 0874143
+Branch: cycle21a/monorepo-scaffold
+Task 1: complete (commits 0874143..029fb2e, review approved with 1 Minor observation)
+  Deviation accepted: `packageManager: npm@10.8.0` field added to root package.json — turbo 2.x requires it for workspace resolution; report's summary said "no deviations" but Deviations section correctly disclosed it (cosmetic report inconsistency)
+Task 2: complete (commits 029fb2e..d8bcfcd, review clean after 1 fix pass)
+  Main commit 6cc46a0: git mv cgrid → packages/kernel; rename → @cgrid/kernel; workspaces/scripts/eslint/consumer imports updated; 2326/2326 kernel tests + typecheck + build all green
+  Fix commit d8bcfcd: closed I-1 (32 .turbo/** cache/log files removed from index; /.turbo/ + **/.turbo/ added to .gitignore) + I-2 (stale "cgrid" extraneous entry cleared from package-lock.json via fresh npm install)
+  Accepted deviations from brief:
+    - Vite v7 derives CSS output filename from package name last segment: cgrid.css → kernel.css. `./style.css` export updated to `./dist/kernel.css` (declared export matches reality)
+    - Two side-effect CSS imports missed by plan's grep pattern (`from 'cgrid'` doesn't match `import 'cgrid/style.css'`): apps/cgrid-positions/src/main.ts + apps/cgrid-showcase/src/main.ts fixed manually to `@cgrid/kernel/style.css`
+  Minor carried to final review:
+    - Commit message says "23 import sites" but 25 files actually changed (23 `from 'cgrid'` + 2 CSS side-effect imports). Report documents accurately; commit body just describes the primary grep pattern.
+    - `cssFileName: 'cgrid'` pin in packages/kernel/vite.config.ts could restore byte-equivalent CSS artifact name; deferred to follow-up
+Task 3: complete (commits d8bcfcd..50845fe, review approved — 0 Critical, 2 "Important" findings that reviewer flagged as forward-looking non-blockers)
+  All 9 packages created with correct shape, correct dep graph per Cycle 21 §3.2, all valid JSON, all 10 packages visible to turbo, typecheck clean (21/21)
+  Fix applied to plan bug in scaffold script (deps_json `"\n"` literal-in-double-quotes producing invalid JSON): $'\n' ANSI-C quoting + set -u empty-array safety via "${deps[@]+"${deps[@]}"}"
+  Non-blocking script maintainability notes (carried to final review):
+    - `README.md` heredoc appends literal `.` to description — foot-gun if callers include trailing period in future refinements
+    - `"${deps[@]+"${deps[@]}"}"` empty-array idiom is technically correct but hard to read; consider `[[ ${#deps[@]} -eq 0 ]] && ...` alternative in future refinement
+    - packages/expression/package.json retains empty `"dependencies": {}` — harmless style divergence vs. other packages
+Task 4: complete (commits 50845fe..2d919cf, review approved with 2 Minor cosmetic residuals — both fixed inline)
+  Fix commit bc9ea8b: lint script glob fix (ESLint 9 rejects directory args with empty scaffold tests/ dirs) + 2 stale cgrid refs in kernel README + types.ts fixed
+  Controller hygiene commit 2d919cf: cleared 2 residual prose refs in packages/kernel/src/types.ts (lines 1 + 16) that Step 8's grep pattern missed (grep matched only import/dep syntax, not bare prose)
+  All gates green:
+    - Fresh install: 298 packages, no warnings
+    - Typecheck: 21/21 tasks clean
+    - Kernel unit tests: 2326/2326 (175 files) — exact match to pre-migration baseline
+    - Kernel build: cgrid.js 760.90 kB + kernel.css 44.18 kB (kernel.css is the Task 2 documented Vite v7 deviation)
+    - Lint: clean
+    - E2E showcase: 98/98 (baseline was 97; +1 test added post-Cycle-19)
+    - E2E positions: 262/262 (baseline was 259; +3 tests added post-Cycle-19; STOMP server started at ws://localhost:8081 to unblock)
+    - Residual grep: 0
+  Minors carried to final review:
+    - None outstanding from Task 4 review (both residual prose refs fixed inline)
+Final review: Ready to merge (Yes)
+  0 Critical, 0 Important, 5 Minor
+  Reviewer confirmed all 5 Global Constraints (L2, L3, L4, Q10.1, Q10.2) met exactly and the 9-package dep graph matches Cycle 21 §3.2 line-by-line
+  Fix commit 7912531 closed 2 recommended-in-PR Minors:
+    - M-1: packages/kernel/tsconfig.json now extends ../../tsconfig.base.json (byte-identical compiler options removed; only outDir/rootDir/types + include/exclude overrides remain). Verified turbo run typecheck --force → 21/21 successful.
+    - M-3: 2 aspirational StarUI doc snippets (docs/starui-customizer-ui/README.md:24+27 + docs/starui-platform/01-data-providers.md:334) updated from `from 'cgrid'` to `@cgrid/kernel`
+  Deferred (acceptable follow-ups):
+    - M-2: apps/*/tsconfig.json don't extend tsconfig.base.json (materially different from base — missing several strictness flags; demo apps only)
+    - M-4: prose "cgrid" (product name) intentionally remains in kernel error prefixes + JSDoc — product convention, not package identifier
+    - M-5: root dist/ + tsconfig.tsbuildinfo stale untracked artifacts from pre-rename builds — gitignored, local hygiene only
+Task 5: complete — pushed cycle21a/monorepo-scaffold to origin + opened PR #92
+  PR: https://github.com/widgetstools/canvasgrid/pull/92
+  7 commits: 029fb2e (turbo scaffold) → 6cc46a0 (kernel move+rename) → d8bcfcd (Task 2 fix: .turbo gitignore + stale lock) → 50845fe (9 empty scaffolds) → bc9ea8b (Task 4 fix: lint glob + kernel README/types refs) → 2d919cf (Task 4 hygiene: types.ts prose) → 7912531 (final-review M-1 + M-3: kernel extends base + StarUI doc snippets)
+Cycle 21a status: COMPLETE. Ready for review + merge.
+
+---
+Cycle 21b — @cgrid/expression greenfield DSL — START 2026-07-01
+  Plan: docs/superpowers/plans/2026-07-01-cycle-21b-expression.md (commit 83bfda7 on main)
+  Spec: docs/superpowers/specs/2026-07-01-cycle-21b-expression-design.md (commit 742e86a on main)
+  Baseline: main @ 4f3829d (Cycle 21a merged as PR #92)
+Task 1: complete (commits 83bfda7..fab4159, review clean)
+  Types-only foundation; 10 acceptance points met; typecheck + lint clean; vacuous tests pass.
+  Minors carried to final review:
+    - package.json 'dependencies' key omitted instead of '{}' (cosmetic; zero-dep constraint still holds)
+    - EvalError class name shadows JS global EvalError (brief-specified; forward-note for Task 3)
+Task 2: complete (commits fab4159..8b35618, review clean after 1 plan-bug repair by implementer)
+  Parser + 29-entry golden AST corpus + 76 tests (29 corpus + 7 grammar + 11 syntax-errors + 29 transferability).
+  Plan bug: parseUnary's loc.end = arg.loc.end produced 12 for '!([a] && [b])' but corpus locks 13 (past closing paren).
+    Implementer fix: c.toks[c.i - 1].end after recursion — stable reference to last consumed token.
+    Reviewer independently verified fix across !true, -5, !([a]&&[b]), -(1+2), nested unaries, !IF(...) — all correct.
+  Minors carried to final review:
+    - parsePrimary lparen path: inner loc excludes parens (design choice, locked by corpus '(1+2)*3')
+    - trailing comma in call args untested (not a spec gap)
+Task 3: complete (commits 8b35618..c02a0db, review clean after 1 plan-bug repair by implementer)
+  Compiler + closure evaluator + 14 built-ins; 141/141 tests pass (24 compile + 41 evaluate + 76 pre-existing).
+  Plan bug: compileUnary '-' inline typeof-check produced type-error for null; test expects null-field.
+    Implementer fix: delegate to asNum(v, loc) — same helper binary arithmetic uses; emits null-field for null, type-error for non-numeric.
+    Reviewer independently verified fix across -5, -[missing], -"foo", -true — all correct.
+  Minors carried to final review:
+    - IF built-in evaluates all args eagerly (not Excel-parity lazy branches). Documentation note before Cycle 20.
+    - -true silently coerces to -1 (via asNum boolean-to-number). Spec §3.2 doesn't explicitly lock; note for future refinement.
+    - builtins.asNumber errors surface as EvalError('runtime') via compileCall wrap; compile.asNum errors surface with precise codes. Architectural — call vs. arithmetic paths.
+Task 4: complete (commits c02a0db..c8c3c2c, review clean, no plan-bug repairs)
+  Validator + positional error accuracy; 185/185 tests (27 validate + 9 errors + 8 builtins coverage boosters).
+  Coverage: parse.ts 99.4%, compile.ts 94.4%, evaluate.ts 100%, validate.ts 97%, builtins.ts 97.1%.
+  Minors carried to final review:
+    - LOWER(null) test duplicates LEN(null) asString-null branch (one redundant of 8 boosters)
+    - Untested branch: both sides of comparison inferred 'unknown' (10.4% branch gap on validate.ts, logic sound)
+Task 5: complete — pushed cycle21b/expression to origin + opened PR
+  PR: https://github.com/widgetstools/canvasgrid/pull/93
+  5 commits total for Cycle 21b (Task 1..5).
+  Package @cgrid/expression fully populated:
+    - Public API: parse + compile + evaluate + validate + all types (index.ts)
+    - 14 built-ins (IF, COALESCE, NOT, AND, OR, ABS, ROUND, MIN, MAX,
+      FLOOR, CEIL, LOWER, UPPER, LEN)
+    - AggregateNode + PrevNode reserved in AST schema for Cycle 21d
+    - Golden AST corpus locks 29 canonical expressions
+    - postmessage-transferability contract verified
+  Baselines held:
+    - kernel tests: 2326/2326 (no diff on packages/kernel/**)
+    - E2E: unchanged by construction (apps/ untouched)
+Cycle 21b status: COMPLETE. Ready for review + merge.
+Task 5: complete (commits c8c3c2c..83e89f9, review clean)
+  README + monorepo verify + PR opened.
+  Kernel + apps untouched (git diff main -- packages/kernel/ apps/ empty).
+  PR: https://github.com/widgetstools/canvasgrid/pull/93
+Final whole-branch review (opus): Ready to merge = Yes
+  0 Critical, 0 Important, 8 Minor.
+  All 5 Global Constraints held end-to-end: kernel/apps untouched (L4), no worker enforcement inside package (L7), zero cgrid deps, CSP-safe compile, structuredClone-safe AST with Loc on every emitted node.
+  Public API matches spec §5 with one defensible improvement: EvalError exported as VALUE (class), not TYPE — since consumers need `new` + `instanceof`. Spec §5.1 doc drift noted for follow-up.
+  Reviewer's Minors (all deferrable, none blocking):
+    - packages/expression/package.json missing empty `"dependencies": {}` marker (Task 1 hygiene note; zero-dep constraint still holds since absent key ≡ empty)
+    - compile.ts:135 unreachable throwCompile('unknown-fn') for unknown binary op — code label semantically wrong but unreachable given TS exhaustiveness
+    - compileField typeof coercion aborts on primitive intermediates (e.g. [str.length] returns null); consistent with spec but should be README-noted for Excel-adjacent users
+    - Corpus locks parens-excluded loc for (1+2)*3 — error underlines will exclude parens; cosmetic
+    - Spec §5.1 type block still lists EvalError — update to move out of `export type {}` + note class-vs-type
+    - Loc char offsets are UTF-16 code units, not glyphs — future i18n consideration
+    - AggregateNode.name is stringly-typed — string-literal-union in Cycle 21d for compile-time safety
+    - vitest.config.ts coverage `include: src/**/*.ts` anchor may need re-work when a real build lands (Cycle 21c+)
+Cycle 21b status: COMPLETE. Ready for review + merge.
