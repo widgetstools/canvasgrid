@@ -170,6 +170,10 @@ function makeHarness(opts: {
       return { x: col * 100, y: rowIndex * 30, w: 100, h: 30 };
     },
     setFocus: (rowIndex, colId) => { focus.rowIndex = rowIndex; focus.colId = colId; },
+    setFocusAndCollapseRanges: (rowIndex, colId) => {
+      focus.rowIndex = rowIndex;
+      focus.colId = colId;
+    },
     getFocus: () => ({ rowIndex: focus.rowIndex, colId: focus.colId }),
     focusCanvas,
     getRowByIndex,

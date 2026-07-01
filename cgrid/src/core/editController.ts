@@ -114,11 +114,23 @@ export interface EditControllerDeps<TRow> {
     { x: number; y: number; w: number; h: number } | null;
 
   // --- Selection bridge. ---------------------------------------------------
-  /** Drive focus to follow the editor — without this, closing the editor
-   *  leaves the focus on whatever cell was previously selected, breaking
-   *  subsequent arrow-key navigation. The keydown matrix also calls this
-   *  during Tab cycling so the next editor opens on the focused cell. */
+  /** Drive focus to follow the editor at open time — WITHOUT collapsing
+   *  the active cell-selection range. Called by `openEditor` /
+   *  `openRowEdit` because those paths can be triggered by a mouse
+   *  gesture whose trailing click fires immediately after a drag: the
+   *  drag has already installed a multi-cell range that the following
+   *  focus move must not clobber. Cycle 9 patch parity: mouse-driven
+   *  focus moves keep multi-cell ranges alive; only keyboard nav
+   *  collapses (see `setFocusAndCollapseRanges` below). */
   setFocus(rowIndex: number, colId: string): void;
+  /** Move focus AND collapse `selection.ranges` to a 1×1 at
+   *  (rowIndex, colId), in a single emit. Called by the keydown matrix's
+   *  Enter-nav / Tab-nav / Excel-arrow commit-and-move flows so the
+   *  focus ring + range overlay always paint at the same cell. Wiring
+   *  the plain non-collapsing `setFocus` here leaked the pre-edit range
+   *  through, producing the "two focused cells at once" regression the
+   *  PR #21 (`e81c76d`) invariant originally closed. */
+  setFocusAndCollapseRanges(rowIndex: number, colId: string): void;
   /** Snapshot of `{ focusedRowIndex, focusedColId }` for the keydown matrix's
    *  Enter / Tab / Excel-arrow flows. The originals reach into
    *  `selection.state` directly; this surface keeps the controller from
@@ -620,7 +632,7 @@ export class EditController<TRow = unknown> {
           this.rowEdit.focusNext(ev.shiftKey ? -1 : 1);
           const newCol = this.rowEdit.getActiveColId();
           const newRow = this.rowEdit.getRowIndex();
-          if (newCol != null && newRow != null) this.deps.setFocus(newRow, newCol);
+          if (newCol != null && newRow != null) this.deps.setFocusAndCollapseRanges(newRow, newCol);
           return;
         }
         return;
@@ -641,7 +653,7 @@ export class EditController<TRow = unknown> {
         if (opts.enterNavigatesVerticallyAfterEdit && fr != null && fc != null) {
           const dir = ev.shiftKey ? -1 : 1;
           const rowCount = this.deps.getRowCount();
-          this.deps.setFocus(
+          this.deps.setFocusAndCollapseRanges(
             Math.max(0, Math.min(Math.max(0, rowCount - 1), fr + dir)),
             fc,
           );
@@ -657,7 +669,7 @@ export class EditController<TRow = unknown> {
           const dir = ev.shiftKey ? 'backward' : 'forward';
           const next = this.nextEditableCell(fr, fc, dir);
           if (next) {
-            this.deps.setFocus(next.rowIndex, next.colId);
+            this.deps.setFocusAndCollapseRanges(next.rowIndex, next.colId);
             if (!opts.suppressStartEditOnTab) {
               this.openEditor(next.rowIndex, next.colId, null, 'edit');
             }
@@ -683,13 +695,13 @@ export class EditController<TRow = unknown> {
         const rowCount = this.deps.getRowCount();
         const ci = cols.indexOf(fc);
         if (ev.key === 'ArrowDown') {
-          this.deps.setFocus(Math.min(rowCount - 1, fr + 1), fc);
+          this.deps.setFocusAndCollapseRanges(Math.min(rowCount - 1, fr + 1), fc);
         } else if (ev.key === 'ArrowUp') {
-          this.deps.setFocus(Math.max(0, fr - 1), fc);
+          this.deps.setFocusAndCollapseRanges(Math.max(0, fr - 1), fc);
         } else if (ev.key === 'ArrowRight' && ci >= 0) {
-          this.deps.setFocus(fr, cols[Math.min(cols.length - 1, ci + 1)]!);
+          this.deps.setFocusAndCollapseRanges(fr, cols[Math.min(cols.length - 1, ci + 1)]!);
         } else if (ev.key === 'ArrowLeft' && ci >= 0) {
-          this.deps.setFocus(fr, cols[Math.max(0, ci - 1)]!);
+          this.deps.setFocusAndCollapseRanges(fr, cols[Math.max(0, ci - 1)]!);
         }
       }
     }) as EventListener, true);
