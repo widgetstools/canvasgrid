@@ -11,6 +11,11 @@
     "dev:positions": "npm run dev --workspace=cgrid-positions",
     "build:cgrid": "npm run build --workspace=cgrid",
     "test:cgrid": "npm test --workspace=cgrid",
-    "typecheck": "npm run typecheck --workspaces --if-present"
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "lint": "eslint cgrid/src cgrid/tests apps/cgrid-positions/src apps/cgrid-positions/e2e apps/cgrid-showcase/src apps/cgrid-showcase/e2e"
+  },
+  "devDependencies": {
+    "eslint": "^9.39.4",
+    "typescript-eslint": "^8.62.1"
   }
 }
