@@ -2035,7 +2035,7 @@ export class CGrid<TRow = any> {
    *  worker boundary. */
   private runPostSortRowsCandidates(rowIds: string[], callId: number): void {
     const hook = this.options.postSortRows as
-      | ((p: { rowIds: string[]; getData: (id: string) => TRow | undefined }) => string[])
+      | ((p: { rowIds: string[]; getData: (rowId: string) => TRow | undefined }) => string[])
       | undefined;
     if (typeof hook !== 'function') {
       this.workerCoord.postSortRowsResult(callId, rowIds).catch(() => {});
@@ -2043,7 +2043,7 @@ export class CGrid<TRow = any> {
     }
     let reordered: string[];
     try {
-      const result = hook({ rowIds, getData: (id) => this.rowDataById.get(id) });
+      const result = hook({ rowIds, getData: (rowId) => this.rowDataById.get(rowId) });
       // Guard against bad hook returns. A non-array (or one with mismatched
       // length / unknown ids) would silently corrupt the visible set —
       // fall back to the input order instead.
