@@ -84,7 +84,15 @@ test.describe('cross-section pill drag routing', () => {
     expect(after.pivots).toContain('desk');
   });
 
-  test('pivot-mode checkbox stays checked for visible OR role-bearing columns', async ({ page }) => {
+  // Cycle 19 / Task 5b — under pivot mode the checkbox tracks ROLE
+  // membership only (AG-v36 strict semantic). Primary source cols are
+  // auto-hidden by `PivotEngine` on pivot mode ON, so visibility is
+  // no longer a second source of truth on the checkbox — every
+  // primary paints in the checkbox as "checked iff it holds a
+  // pivot-mode role (rowGroup / value / Column Labels)". The
+  // synthesized pivot result cols never appear in the panel; the
+  // auto-group column ALWAYS reads checked (visibility, not role).
+  test('pivot-mode checkbox tracks role membership (strict AG-v36 semantic)', async ({ page }) => {
     await gotoFeature(page, 'pivot');
     const opened = await page.evaluate(
       () => document.querySelector('.cg-columns-panel-row[data-col-id="desk"]') !== null,
@@ -94,7 +102,6 @@ test.describe('cross-section pill drag routing', () => {
 
     const result = await page.evaluate(() => {
       const g = (window as any).__cgrid;
-      const state = g.getColumnState() as Array<{ colId: string; hide?: boolean }>;
       const rowGroups = new Set<string>(g.getRowGroupColumns());
       const pivots = new Set<string>(g.getPivotColumns());
       const values = new Set<string>(
@@ -102,19 +109,23 @@ test.describe('cross-section pill drag routing', () => {
       );
       const rows = Array.from(document.querySelectorAll('.cg-columns-panel-row'));
       const checks: Record<string, boolean | undefined> = {};
-      const expected: Record<string, boolean> = {};
+      const hasRole: Record<string, boolean> = {};
       for (const r of rows) {
         const colId = (r as HTMLElement).getAttribute('data-col-id') ?? '';
         checks[colId] = (r.querySelector('input[type=checkbox]') as HTMLInputElement | null)?.checked;
-        const hide = state.find((s) => s.colId === colId)?.hide === true;
-        const hasRole = rowGroups.has(colId) || pivots.has(colId) || values.has(colId);
-        expected[colId] = !hide || hasRole;
+        hasRole[colId] = rowGroups.has(colId) || pivots.has(colId) || values.has(colId);
       }
-      return { checks, expected };
+      // Sanity: at least one role-bearing and one non-role primary in
+      // the panel — otherwise the assertion below tests nothing.
+      const anyRole = Object.values(hasRole).some((v) => v);
+      const anyNonRole = Object.values(hasRole).some((v) => !v);
+      return { checks, hasRole, anyRole, anyNonRole };
     });
 
+    expect(result.anyRole).toBe(true);
+    expect(result.anyNonRole).toBe(true);
     for (const colId of Object.keys(result.checks)) {
-      expect(result.checks[colId]).toBe(result.expected[colId]);
+      expect(result.checks[colId]).toBe(result.hasRole[colId]);
     }
   });
 
@@ -348,13 +359,18 @@ test.describe('cross-section pill drag routing', () => {
     expect(after.threeLevelCount).toBeGreaterThan(0);
   });
 
-  test('columns panel checkbox is in lockstep with column visibility (both directions, role-bearing cols included)', async ({ page }) => {
+  // Cycle 19 / Task 5b — pre-5b this was a single "lockstep" test
+  // that conflated two invariants that only hold in different modes.
+  // Under AG-v36 strict pivot semantics the checkbox tracks visibility
+  // out of pivot mode and role membership in pivot mode, so the
+  // assertions have been split.
+  test('checkbox ↔ column visibility lockstep OUT of pivot mode', async ({ page }) => {
     await gotoFeature(page, 'pivot');
+    // The pivot feature initialises in pivot mode. Flip it off so the
+    // visibility-lockstep invariant applies to the checkbox.
+    await page.evaluate(() => (window as any).__cgrid.setPivotMode(false));
+    await page.waitForTimeout(200);
 
-    // Direction 1: code-driven hide on NON-role columns flips
-    // the checkbox to unchecked. Role-bearing columns (pnl, region)
-    // would stay checked because their role is the second source
-    // of truth — exercise the visibility-only path with `ticker`.
     const afterCodeHide = await page.evaluate(() => {
       const g = (window as any).__cgrid;
       g.setColumnsVisible(['ticker'], false);
@@ -371,7 +387,6 @@ test.describe('cross-section pill drag routing', () => {
     });
     expect(afterCodeHide).toEqual({ ticker: false });
 
-    // Direction 2: code-driven show propagates back.
     const afterCodeShow = await page.evaluate(() => {
       const g = (window as any).__cgrid;
       g.setColumnsVisible(['ticker'], true);
@@ -388,7 +403,6 @@ test.describe('cross-section pill drag routing', () => {
     });
     expect(afterCodeShow).toEqual({ ticker: true });
 
-    // Direction 3: panel checkbox click hides the column in the grid.
     const afterPanelClick = await page.evaluate(() => {
       const row = Array.from(document.querySelectorAll('.cg-columns-panel-row'))
         .find((el) => el.getAttribute('data-col-id') === 'ticker') as HTMLElement;
@@ -405,12 +419,20 @@ test.describe('cross-section pill drag routing', () => {
     });
     expect(afterPanelClick.checked).toBe(false);
     expect(afterPanelClick.gridHide).toBe(true);
+  });
 
-    // Direction 4: assigning a role to a hidden column flips its
-    // checkbox to checked even though the column is still hidden
-    // — role membership and visibility are BOTH valid reasons to
-    // be "in the panel". Auto-hidden grouped columns (like desk
-    // in this showcase) are the canonical case.
+  // Cycle 19 / Task 5b — role-bearing hidden primary paints as CHECKED
+  // under pivot mode because the checkbox reads ROLE, not visibility.
+  // `desk` is the canonical case: pivot-mode auto-hide + rowGroup role
+  // → `hide=true, rowGrouped=true, checkbox=checked`.
+  test('pivot-mode checkbox reads role membership even when the column is hidden', async ({ page }) => {
+    await gotoFeature(page, 'pivot');
+    const opened = await page.evaluate(
+      () => document.querySelector('.cg-columns-panel-row[data-col-id="desk"]') !== null,
+    );
+    if (!opened) await page.locator('button.cg-side-bar-tab:has-text("Columns")').click();
+    await page.locator('.cg-columns-panel-row[data-col-id="desk"]').waitFor();
+
     const roleBearingHidden = await page.evaluate(() => {
       const g = (window as any).__cgrid;
       const state = g.getColumnState() as Array<{ colId: string; hide?: boolean }>;
@@ -418,11 +440,13 @@ test.describe('cross-section pill drag routing', () => {
       const row = Array.from(document.querySelectorAll('.cg-columns-panel-row'))
         .find((el) => el.getAttribute('data-col-id') === 'desk') as HTMLElement;
       return {
+        pivotMode: g.isPivotMode(),
         hide: desk?.hide === true,
         rowGrouped: g.getRowGroupColumns().includes('desk'),
         checked: (row.querySelector('input[type=checkbox]') as HTMLInputElement).checked,
       };
     });
+    expect(roleBearingHidden.pivotMode).toBe(true);
     expect(roleBearingHidden.hide).toBe(true);
     expect(roleBearingHidden.rowGrouped).toBe(true);
     expect(roleBearingHidden.checked).toBe(true);
