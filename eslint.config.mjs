@@ -37,7 +37,7 @@ export default tseslint.config(
     ],
   },
   {
-    files: ['cgrid/src/**/*.ts', 'cgrid/tests/**/*.ts', 'apps/*/src/**/*.ts', 'apps/*/e2e/**/*.ts'],
+    files: ['packages/*/src/**/*.ts', 'packages/*/tests/**/*.ts', 'apps/*/src/**/*.ts', 'apps/*/e2e/**/*.ts'],
     languageOptions: {
       parser: tseslint.parser,
       parserOptions: {

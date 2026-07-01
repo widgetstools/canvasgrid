@@ -1,5 +1,5 @@
-import { CGrid } from 'cgrid';
-import type { CColDef, GridState } from 'cgrid';
+import { CGrid } from '@cgrid/kernel';
+import type { CColDef, GridState } from '@cgrid/kernel';
 import type { Feature } from './index';
 import type { ShowcaseRow } from '../seedData';
 import { makeRows } from '../seedData';

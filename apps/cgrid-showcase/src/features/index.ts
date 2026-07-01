@@ -1,4 +1,4 @@
-import type { CGrid } from 'cgrid';
+import type { CGrid } from '@cgrid/kernel';
 import type { ShowcaseRow } from '../seedData';
 import { hideOpenParents } from './hideOpenParents';
 import { groupTotalRow } from './groupTotalRow';

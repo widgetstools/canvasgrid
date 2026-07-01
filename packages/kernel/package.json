@@ -1,5 +1,5 @@
 {
-  "name": "cgrid",
+  "name": "@cgrid/kernel",
   "version": "0.0.0",
   "type": "module",
   "main": "./dist/cgrid.js",
@@ -9,7 +9,7 @@
       "types": "./dist/cgrid.d.ts",
       "import": "./dist/cgrid.js"
     },
-    "./style.css": "./dist/cgrid.css"
+    "./style.css": "./dist/kernel.css"
   },
   "scripts": {
     "build": "vite build && tsc --emitDeclarationOnly",

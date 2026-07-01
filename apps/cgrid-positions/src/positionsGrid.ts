@@ -8,7 +8,7 @@ import {
   type ToolPanelParams,
   type IStatusPanelComp,
   type StatusPanelParams,
-} from 'cgrid';
+} from '@cgrid/kernel';
 import type { Position } from './stomp';
 
 /**
@@ -475,7 +475,7 @@ export function createPositionsGrid(
       {
         field: 'cusip', headerName: 'CUSIP', width: 110, ...(opts.pinning ? { pinned: 'left' as const } : {}),
         editable: true, suppressAutoSize: true,
-        filter: 'text',
+        filter: 'text' as const,
         filterParams: { caseSensitive: false, trimInput: true },
       },
       // Cycle 5 Task 2: ticker exercises the 'select' editor; the values list
@@ -488,7 +488,7 @@ export function createPositionsGrid(
         field: 'ticker', headerName: 'Ticker', width: 100, editable: true,
         cellEditor: 'select',
         cellEditorParams: { values: ['AAPL', 'MSFT', 'GOOG', 'AMZN', 'NVDA', 'TSLA', 'META'] },
-        filter: 'set',
+        filter: 'set' as const,
         // Cycle 8 / Task 3 — natural-order sort: chunks of digits compare
         // numerically (so "TICK2" < "TICK10"), other runs lexicographically.
         // The comparator function is registered on the worker via
@@ -559,10 +559,10 @@ export function createPositionsGrid(
         cellEditor: 'number',
         cellEditorParams: { min: 0, precision: 2 },
         ...(opts.pinning ? { lockPosition: 'right' as const } : {}),
-        filter: 'number',
+        filter: 'number' as const,
       },
-      { field: 'marketValue',    headerName: 'Market Value',  type: 'money', width: 130, aggFunc: 'sum', filter: 'number' },
-      { field: 'currentPrice',   headerName: 'Price',         type: 'number', width: 100, aggFunc: 'avg', filter: 'number' },
+      { field: 'marketValue',    headerName: 'Market Value',  type: 'money', width: 130, aggFunc: 'sum', filter: 'number' as const },
+      { field: 'currentPrice',   headerName: 'Price',         type: 'number', width: 100, aggFunc: 'avg', filter: 'number' as const },
       // P&L children — wrapped in a header group when `opts.columnGroups`
       // is on (toolbar "Column groups" checkbox / `?columnGroups=on`),
       // otherwise flattened into the top-level list so the default demo
@@ -572,7 +572,7 @@ export function createPositionsGrid(
             groupId: 'pnl', headerName: 'P&L',
             children: [
               {
-                field: 'pnl', headerName: 'Total', type: 'number', width: 110,
+                field: 'pnl' as const, headerName: 'Total', type: 'number', width: 110,
                 ...(opts.pinning ? { pinned: 'right' as const } : {}),
                 aggFunc: 'sum',
                 cellRenderer: 'pnlPill',
@@ -583,24 +583,24 @@ export function createPositionsGrid(
                     negative: (p: { value: unknown }) => typeof p.value === 'number' && p.value < 0,
                   },
                 } : {}),
-                filter: 'number',
-                filterParams: { maxNumConditions: 2, defaultJoinOperator: 'AND' },
+                filter: 'number' as const,
+                filterParams: { maxNumConditions: 2, defaultJoinOperator: 'AND' as const },
               },
               {
-                field: 'dailyPnl', headerName: 'Daily', type: 'number', width: 110,
+                field: 'dailyPnl' as const, headerName: 'Daily', type: 'number', width: 110,
                 aggFunc: 'sum',
                 ...(opts.cellClassDemo ? { cellClass: 'warning' } : {}),
-                cellRendererSelector: (p) => {
+                cellRendererSelector: (p: { value: unknown; colId: string }) => {
                   const n = typeof p.value === 'number' ? p.value : Number(p.value);
                   return Number.isFinite(n) && n > 0 ? { component: 'pnlPill' } : undefined;
                 },
               },
-              { field: 'unrealizedPnl', headerName: 'Unrealized', type: 'number', width: 110, aggFunc: 'sum' },
+              { field: 'unrealizedPnl' as const, headerName: 'Unrealized', type: 'number', width: 110, aggFunc: 'sum' },
             ],
           }]
         : [
             {
-              field: 'pnl', headerName: 'Total', type: 'number', width: 110,
+              field: 'pnl' as const, headerName: 'Total', type: 'number', width: 110,
               ...(opts.pinning ? { pinned: 'right' as const } : {}),
               aggFunc: 'sum',
               cellRenderer: 'pnlPill',
@@ -611,19 +611,19 @@ export function createPositionsGrid(
                   negative: (p: { value: unknown }) => typeof p.value === 'number' && p.value < 0,
                 },
               } : {}),
-              filter: 'number',
-              filterParams: { maxNumConditions: 2, defaultJoinOperator: 'AND' },
+              filter: 'number' as const,
+              filterParams: { maxNumConditions: 2, defaultJoinOperator: 'AND' as const },
             },
             {
-              field: 'dailyPnl', headerName: 'Daily', type: 'number', width: 110,
+              field: 'dailyPnl' as const, headerName: 'Daily', type: 'number', width: 110,
               aggFunc: 'sum',
               ...(opts.cellClassDemo ? { cellClass: 'warning' } : {}),
-              cellRendererSelector: (p) => {
+              cellRendererSelector: (p: { value: unknown; colId: string }) => {
                 const n = typeof p.value === 'number' ? p.value : Number(p.value);
                 return Number.isFinite(n) && n > 0 ? { component: 'pnlPill' } : undefined;
               },
             },
-            { field: 'unrealizedPnl', headerName: 'Unrealized', type: 'number', width: 110, aggFunc: 'sum' },
+            { field: 'unrealizedPnl' as const, headerName: 'Unrealized', type: 'number', width: 110, aggFunc: 'sum' },
           ]),
       { field: 'yield',  headerName: 'Yield',  type: 'number', width: 90,  aggFunc: 'avg' },
       { field: 'spread', headerName: 'Spread', type: 'number', width: 90,  aggFunc: 'avg' },
@@ -639,12 +639,12 @@ export function createPositionsGrid(
         // (>YYYY-MM-DD, A..B, CSV, AND/OR).
         field: 'tradeDate', headerName: 'Trade Date', width: 120, editable: true,
         cellEditor: 'dateString',
-        filter: 'date',
+        filter: 'date' as const,
       },
       {
         field: 'expiryDate', headerName: 'Expiry', width: 120, editable: true,
         cellEditor: 'date',
-        filter: 'date',
+        filter: 'date' as const,
       },
       // Notes column — fixed-height by default; the autoHeight +
       // wrapText behaviors opt in via `?autoHeight=1` so the

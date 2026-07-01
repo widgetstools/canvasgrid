@@ -1,4 +1,4 @@
-// Public types for cgrid. Re-exported from src/cgrid.ts.
+// Public types for @cgrid/kernel. Re-exported from src/cgrid.ts.
 // See docs/superpowers/specs/2026-06-23-canvasgrid-foundation-design.md §9.
 //
 // Cycle 19 / Task 1 — this file is now a thin re-export façade. The
@@ -8,13 +8,13 @@
 // keeps working through these re-exports.
 
 // External module re-exports — the public surface keeps exporting these
-// from `cgrid` so app code can `import { ICellEditor } from 'cgrid'`
+// from `@cgrid/kernel` so app code can `import { ICellEditor } from '@cgrid/kernel'`
 // without reaching into interaction/*. These don't belong to any single
 // domain file because they're not OUR types; they're the contracts the
 // interaction subsystems own.
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
-// Cycle 10 / Task 1 — public context-menu surface. Re-exported from cgrid's
-// root index alongside the rest of the public API.
+// Cycle 10 / Task 1 — public context-menu surface. Re-exported from the
+// @cgrid/kernel root index alongside the rest of the public API.
 export type {
   MenuItem,
   GetContextMenuItemsParams,

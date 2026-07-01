@@ -1,7 +1,7 @@
-import 'cgrid/style.css';
+import '@cgrid/kernel/style.css';
 import './showcase.css';
 import { FEATURES, FEATURE_MAP } from './features/index';
-import type { CGrid } from 'cgrid';
+import type { CGrid } from '@cgrid/kernel';
 import type { ShowcaseRow } from './seedData';
 
 declare global {
