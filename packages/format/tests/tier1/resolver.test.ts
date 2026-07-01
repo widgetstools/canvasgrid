@@ -96,6 +96,17 @@ describe('Tier 1 resolveStyle', () => {
     // [if] doesn't produce a style channel; it's a section selector.
     expect(resolveStyle(nodes, { value: null, row: {}, colId: 'c' })).toBeNull();
   });
+
+  it('NaN weight normalizes to "normal"', () => {
+    const nodes: Tier1Node[] = [{
+      channel: 'weight',
+      ast: makeAst('[w]'),
+      ruleRefs: [],
+      loc: { start: 0, end: 5 },
+    }];
+    const style = resolveStyle(nodes, { value: null, row: { w: NaN }, colId: 'c' });
+    expect(style?.weight).toBe('normal');
+  });
 });
 
 describe('Tier 1 resolveIcon', () => {
@@ -127,6 +138,30 @@ describe('Tier 1 resolveIcon', () => {
   it('null dynamicExpr result returns null icon', () => {
     const icon = resolveIcon(
       [{ name: '', dynamicExpr: 'null' }],
+      { value: null, row: {}, colId: 'c' },
+    );
+    expect(icon).toBeNull();
+  });
+
+  it('dynamicExpr returning false returns null icon', () => {
+    const icon = resolveIcon(
+      [{ name: '', dynamicExpr: 'false' }],
+      { value: null, row: {}, colId: 'c' },
+    );
+    expect(icon).toBeNull();
+  });
+
+  it('dynamicExpr returning number returns null icon', () => {
+    const icon = resolveIcon(
+      [{ name: '', dynamicExpr: '42' }],
+      { value: null, row: {}, colId: 'c' },
+    );
+    expect(icon).toBeNull();
+  });
+
+  it('dynamicExpr returning empty string returns null icon', () => {
+    const icon = resolveIcon(
+      [{ name: '', dynamicExpr: '""' }],
       { value: null, row: {}, colId: 'c' },
     );
     expect(icon).toBeNull();

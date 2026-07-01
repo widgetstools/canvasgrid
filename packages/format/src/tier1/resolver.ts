@@ -62,7 +62,7 @@ export function resolveStyle(nodes: Tier1Node[], ctx: FormatEvalContext): StyleO
 }
 
 function normalizeWeight(v: unknown): 'normal' | 'bold' | number {
-  if (typeof v === 'number') return v;
+  if (typeof v === 'number') return Number.isFinite(v) ? v : 'normal';
   const s = String(v);
   if (s === 'bold' || s === 'normal') return s;
   const n = Number(s);
@@ -90,8 +90,8 @@ export function resolveIcon(
     } catch {
       return null;
     }
-    if (evaluated === null || evaluated === undefined) return null;
-    name = String(evaluated);
+    if (typeof evaluated !== 'string' || evaluated === '') return null;
+    name = evaluated;
   }
 
   if (!name) return null;
