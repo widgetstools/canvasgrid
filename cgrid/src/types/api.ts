@@ -31,10 +31,10 @@ export interface TransactionResult {
   remove: { rowId: string }[];
 }
 
-export interface CGridApi {
-  setRowData(rows: any[]): void;
-  applyTransaction(t: Tx): TransactionResult;
-  applyTransactionAsync(t: Tx): void;
+export interface CGridApi<TRow = any> {
+  setRowData(rows: TRow[]): void;
+  applyTransaction(t: Tx<TRow>): TransactionResult;
+  applyTransactionAsync(t: Tx<TRow>): void;
   flushAsyncTransactions(): void;
 
   setSortModel(s: SortModel): void;
@@ -381,14 +381,14 @@ export interface CGridApi {
   getStatusPanel<T extends IStatusPanelComp = IStatusPanelComp>(key: string): T | undefined;
 
   /** Read the current value of any grid option. */
-  getGridOption<K extends keyof CGridOptions>(key: K): CGridOptions[K] | undefined;
+  getGridOption<K extends keyof CGridOptions<TRow>>(key: K): CGridOptions<TRow>[K] | undefined;
   /** Update a single runtime-mutable option. Throws on initial-only keys
    *  (see `INITIAL_ONLY_OPTIONS` in `core/runtimeOptions.ts`). */
-  setGridOption<K extends keyof CGridOptions>(key: K, value: CGridOptions[K]): void;
+  setGridOption<K extends keyof CGridOptions<TRow>>(key: K, value: CGridOptions<TRow>[K]): void;
   /** Batch-update multiple runtime-mutable options. The `columnDefs` key is
    *  honored only via this batched entrypoint (not via `setGridOption`)
    *  because it rebuilds the column tree + worker column metadata. */
-  updateGridOptions(partial: Partial<CGridOptions>): void;
+  updateGridOptions(partial: Partial<CGridOptions<TRow>>): void;
 
   /** Register a custom cell renderer under `name`. Columns referencing the
    *  name via `cellRenderer` (or a `cellRendererSelector` return value)
@@ -426,24 +426,24 @@ export interface CGridApi {
   stopEditing(cancel?: boolean): void;
 
   /** Subscribe to a typed event. Returns an unsubscribe function. */
-  on<K extends CGridEvent['type']>(
+  on<K extends CGridEvent<TRow>['type']>(
     type: K,
-    handler: (event: Extract<CGridEvent, { type: K }>) => void,
+    handler: (event: Extract<CGridEvent<TRow>, { type: K }>) => void,
   ): () => void;
   /** Remove a previously-registered listener. */
-  off<K extends CGridEvent['type']>(
+  off<K extends CGridEvent<TRow>['type']>(
     type: K,
-    handler: (event: Extract<CGridEvent, { type: K }>) => void,
+    handler: (event: Extract<CGridEvent<TRow>, { type: K }>) => void,
   ): void;
   /** Alias for `on()`, present for ag-grid API parity. */
-  addEventListener<K extends CGridEvent['type']>(
+  addEventListener<K extends CGridEvent<TRow>['type']>(
     type: K,
-    handler: (event: Extract<CGridEvent, { type: K }>) => void,
+    handler: (event: Extract<CGridEvent<TRow>, { type: K }>) => void,
   ): () => void;
   /** Alias for `off()`, present for ag-grid API parity. */
-  removeEventListener<K extends CGridEvent['type']>(
+  removeEventListener<K extends CGridEvent<TRow>['type']>(
     type: K,
-    handler: (event: Extract<CGridEvent, { type: K }>) => void,
+    handler: (event: Extract<CGridEvent<TRow>, { type: K }>) => void,
   ): void;
 
   /** Move the leaf at `fromIndex` to `toIndex` in the flat visible-leaf

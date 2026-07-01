@@ -88,8 +88,8 @@ export interface AggregationChangedEvent {
   source: AggregationChangedSource;
 }
 
-export type CGridEvent =
-  | { type: 'gridReady'; api: CGridApi }
+export type CGridEvent<TRow = any> =
+  | { type: 'gridReady'; api: CGridApi<TRow> }
   | { type: 'cellClicked'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
   | { type: 'cellDoubleClicked'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
   /** Cycle 23 / Task 2 — pointer crossed a cell boundary. Fires per
@@ -120,13 +120,13 @@ export type CGridEvent =
       /** Row index in the current visible order. */
       rowIndex?: number;
       /** Mutated row object as it lives in the worker after the commit. */
-      data?: unknown;
+      data?: TRow;
     }
-  | CellEditingStartedEvent
-  | CellEditingStoppedEvent
-  | RowEditingStartedEvent
-  | RowEditingStoppedEvent
-  | RowValueChangedEvent
+  | CellEditingStartedEvent<TRow>
+  | CellEditingStoppedEvent<TRow>
+  | RowEditingStartedEvent<TRow>
+  | RowEditingStoppedEvent<TRow>
+  | RowValueChangedEvent<TRow>
   | { type: 'selectionChanged'; selectedRowIds: string[] }
   | { type: 'viewportChanged'; firstRow: number; lastRow: number }
   /** Cycle 23 / Task 3 — fires on every scroll tick. `direction`
