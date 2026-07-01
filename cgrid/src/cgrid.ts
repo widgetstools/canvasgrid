@@ -117,12 +117,10 @@ import { Renderer } from './renderer/renderer';
 import { HitTester } from './interaction/hitTester';
 import { SelectionModel } from './interaction/selectionModel';
 import { FeatureChain } from './interaction/featureChain';
-import { EditorOverlay } from './interaction/editorOverlay';
-import { CellEditorRegistry } from './interaction/editors/registry';
-import { RowEditCoordinator, type RowEditCellSpec } from './interaction/editors/rowEditCoordinator';
-import type { CellEditorCtor, ICellEditor } from './interaction/editors/iCellEditor';
+import type { CellEditorCtor } from './interaction/editors/iCellEditor';
 import { A11yOverlay } from './interaction/a11yOverlay';
 import { WorkerCoordinator } from './core/workerCoordinator';
+import { EditController } from './core/editController';
 import { wrapTextToHeight } from './worker/measureText';
 import type { WorkerColumn, ViewportChunk, AutosizeColumnRequest, StickyAncestor } from './worker/protocol';
 import type { IAggFunc, IAggFuncParams } from './types';
@@ -521,6 +519,12 @@ export class CGrid<TRow = any> {
   private sizer: HTMLDivElement;
   private cgridCanvas!: CGridCanvas;
   private canvasBounds = { width: 0, height: 0 };
+  /** DOM host shared with `EditController` (owner of the editor overlay +
+   *  row-edit coordinator), floating-filter overlay, filter popup, context
+   *  menu, and the column-drop insertion line. Created early (before
+   *  StatusBarHost + SideBarHost, which reach in via `applyVerticalInsets`
+   *  / `reserveSideBarSpace`) and handed into `EditController` when the
+   *  edit subsystem gets wired up at construction step 9. */
   private editorContainer: HTMLDivElement;
   private cssReader: CssReader;
   private cellRenderers: CellRendererRegistry;
@@ -530,8 +534,6 @@ export class CGrid<TRow = any> {
   private selection: SelectionModel;
   private hitTester: HitTester;
   private featureChain: FeatureChain;
-  private cellEditorRegistry: CellEditorRegistry;
-  private editor: EditorOverlay;
   /** Cycle 7 / Task 1 — DOM overlay that pools `<input>` elements for the
    *  floating-filter row. Mounts onto the same `editorContainer` host so
    *  it stacks above the canvas; positions per `transform: translate`. */
@@ -632,24 +634,12 @@ export class CGrid<TRow = any> {
    *  so a user calling `setFilterModel({legacy})` doesn't drop entries
    *  set via `setColumnFilterModel`. */
   private columnFilterModels: Map<string, CFilterModelEntry> = new Map();
-  /** Full-row edit coordinator (Cycle 5 / Task 10). Mutually exclusive with
-   *  `this.editor` at runtime — `openEditor` dispatches to one or the other
-   *  based on `options.editType`. Surface for `api.getCellEditorInstances`
-   *  (later cycle); for now `getEditorInstances()` is consumed by debug
-   *  flows only. */
-  private rowEdit: RowEditCoordinator;
-  /** Tracks the cell currently being edited (single-cell mode). Cleared on
-   *  close. Used to compose `cellEditingStarted/Stopped` payloads. The
-   *  `mode` field implements Excel's Enter / Edit dichotomy — see
-   *  `CGridOptions.enableExcelEditing` for the dispatch rules. */
-  private activeEdit: {
-    rowIndex: number;
-    rowId: string;
-    colId: string;
-    oldValue: unknown;
-    data: unknown;
-    mode: 'enter' | 'edit';
-  } | null = null;
+  /** Cycle 19 / Task 4 — owns the cell-edit subsystem: editorContainer DOM
+   *  host, EditorOverlay + RowEditCoordinator + CellEditorRegistry, the
+   *  capture-phase keydown matrix, the Excel-mode mousedown flip, and the
+   *  `activeEdit` lifecycle state. CGrid routes the open/stop/sync/register
+   *  primitives through this surface. */
+  private editController!: EditController<TRow>;
   private a11y: A11yOverlay;
   /** Cycle 19 / Task 3 — owns the WorkerClient + its handler wiring +
    *  the viewport-fetch dispatch ViewportManager forwards into. CGrid
@@ -840,9 +830,15 @@ export class CGrid<TRow = any> {
     this.sizer.style.cssText = 'width:1px; height:1px; pointer-events:none;';
     this.scroller.appendChild(this.sizer);
 
+    // Cycle 19 / Task 4 — editorContainer is created here (not inside
+    // `EditController`) because StatusBarHost + SideBarHost (constructed
+    // downstream at steps 6-8) reach in via `applyVerticalInsets` /
+    // `reserveSideBarSpace` before EditController comes online at step 9.
+    // The controller takes the pre-existing container as a construction
+    // dep so ownership of the mousedown listener + tear-down still moves.
     this.editorContainer = document.createElement('div');
     this.editorContainer.style.cssText = 'position:absolute; left:0; top:0; right:0; bottom:0; pointer-events:none;';
-    // Children of editorContainer set pointer-events:auto themselves
+    // Children of editorContainer set pointer-events:auto themselves.
     this.root.appendChild(this.scroller);
     // Cycle 22 / Task 5 — when shadow mode is active, mount the entire
     // grid DOM inside the shadow root. Otherwise the grid lives in the
@@ -988,7 +984,7 @@ export class CGrid<TRow = any> {
       },
       afterScrollTick: () => {
         this.cgridCanvas.requestRepaint();
-        this.syncOpenEditorPosition();
+        this.editController.syncOpenEditorPosition();
       },
       isDestroyed: () => this.destroyed,
       // Cycle 19 / Task 3 — viewport-fetch + chunk-reply both go through the
@@ -1467,10 +1463,43 @@ export class CGrid<TRow = any> {
         return coerceToNumberArray(cell?.value);
       },
     });
-    this.cellEditorRegistry = new CellEditorRegistry();
-    CellEditorRegistry.seed(this.cellEditorRegistry);
-    this.editor = new EditorOverlay(this.editorContainer, this.cellEditorRegistry);
-    this.rowEdit = new RowEditCoordinator(this.editorContainer, this.cellEditorRegistry);
+    // Cycle 19 / Task 4 — instantiate the EditController BEFORE the surfaces
+    // that mount onto its DOM host (floating-filter overlay, filter popup,
+    // context menu) so `this.editorContainer` (a getter that proxies to the
+    // controller's `editorContainer`) is live by the time they look it up.
+    this.editController = new EditController<TRow>(
+      {
+        disposables: this.disposables,
+        events: this.events,
+        root: this.root,
+        editorContainer: this.editorContainer,
+        getColumnDef: (colId) => this.columnDefsMap.get(colId),
+        getColumnOrder: () => this.columnOrder,
+        getRowCount: () => this.rowCount,
+        getVisibleColumns: () => this.viewport.visibleColumns,
+        getVisibleRows: () => this.viewport.visibleRows,
+        getCellAt: (rowIndex, colId) => this.cellAt(rowIndex, colId),
+        getRowIdAt: (rowIndex) => this.rowIdAt(rowIndex),
+        getRowDataSnapshotAt: (rowIndex) => this.rowDataSnapshotAt(rowIndex),
+        getCanvasBounds: () => this.canvasBounds,
+        getVisibleCellBounds: (rowIndex, colId) => this.getVisibleCellBounds(rowIndex, colId),
+        setFocus: (rowIndex, colId) => { this.selection.setFocus(rowIndex, colId); },
+        getFocus: () => ({
+          rowIndex: this.selection.state.focusedRowIndex,
+          colId: this.selection.state.focusedColId,
+        }),
+        focusCanvas: () => { this.cgridCanvas.canvas.focus({ preventScroll: true }); },
+        getRowByIndex: (rowIndex) => this.workerCoord.getRowByIndex(rowIndex),
+        applyTransaction: (payload) => this.workerCoord.applyTransaction(payload),
+        isDestroyed: () => this.destroyed,
+      },
+      () => ({
+        editType: this.options.editType,
+        enableExcelEditing: this.options.enableExcelEditing,
+        enterNavigatesVerticallyAfterEdit: this.options.enterNavigatesVerticallyAfterEdit,
+        suppressStartEditOnTab: this.options.suppressStartEditOnTab,
+      }),
+    );
     // Cycle 7 / Task 1 — floating-filter overlay shares the editorContainer
     // host so its pooled `<input>` elements stack above the canvas and pick
     // up the same pointer-events:auto/none gating the editor uses. The
@@ -1785,121 +1814,10 @@ export class CGrid<TRow = any> {
       });
     }
 
-    // Edit-mode keyboard matrix (Task 4 + Task 5). Root capture-phase
-    // listener because the editor's <input>/<select>/<textarea> has focus
-    // while editing — KeyPaging fires on the canvas and never sees these
-    // keys.
-    // - Escape: cancel
-    // - Enter: commit (+ optional descend per enterNavigatesVerticallyAfterEdit)
-    // - Tab: commit + advance to next editable cell (unless suppressStartEditOnTab)
-    // - Excel mode + activeEdit.mode === 'enter' + Arrow*: commit + move focus
-    //   to the adjacent cell. Otherwise arrow keys fall through to the input's
-    //   native caret-move handler.
-    // We capture-and-stopPropagation so the per-editor Enter/Esc handlers
-    // can't double-fire on the same keypress.
-    this.disposables.addListener(this.root, 'keydown', ((raw: Event) => {
-      const ev = raw as KeyboardEvent;
-      // Full-row edit (Cycle 5 / Task 10) — keys are scoped to the row's
-      // editor bundle: Tab cycles within the row, Enter commits all, Esc
-      // cancels all. Single-cell key flow below is intentionally bypassed.
-      if (this.rowEdit.isOpen()) {
-        if (ev.key === 'Escape') {
-          ev.preventDefault(); ev.stopPropagation();
-          this.rowEdit.cancel();
-          return;
-        }
-        if (ev.key === 'Enter') {
-          ev.preventDefault(); ev.stopPropagation();
-          this.rowEdit.commit();
-          return;
-        }
-        if (ev.key === 'Tab') {
-          ev.preventDefault(); ev.stopPropagation();
-          this.rowEdit.focusNext(ev.shiftKey ? -1 : 1);
-          const newCol = this.rowEdit.getActiveColId();
-          const newRow = this.rowEdit.getRowIndex();
-          if (newCol != null && newRow != null) this.selection.setFocus(newRow, newCol);
-          return;
-        }
-        return;
-      }
-      if (!this.editor.isOpen()) return;
-      if (ev.key === 'Escape') {
-        ev.preventDefault();
-        ev.stopPropagation();
-        this.stopEditing(true);
-        return;
-      }
-      if (ev.key === 'Enter') {
-        ev.preventDefault();
-        ev.stopPropagation();
-        const fr = this.selection.state.focusedRowIndex;
-        const fc = this.selection.state.focusedColId;
-        this.stopEditing(false);
-        if (this.options.enterNavigatesVerticallyAfterEdit && fr != null && fc != null) {
-          const dir = ev.shiftKey ? -1 : 1;
-          this.selection.setFocus(
-            Math.max(0, Math.min(Math.max(0, this.rowCount - 1), fr + dir)),
-            fc,
-          );
-        }
-        return;
-      }
-      if (ev.key === 'Tab') {
-        ev.preventDefault();
-        ev.stopPropagation();
-        const fr = this.selection.state.focusedRowIndex;
-        const fc = this.selection.state.focusedColId;
-        this.stopEditing(false);
-        if (fr != null && fc != null) {
-          const dir = ev.shiftKey ? 'backward' : 'forward';
-          const next = this.nextEditableCell(fr, fc, dir);
-          if (next) {
-            this.selection.setFocus(next.rowIndex, next.colId);
-            if (!this.options.suppressStartEditOnTab) {
-              this.openEditor(next.rowIndex, next.colId, null, 'edit');
-            }
-          }
-        }
-        return;
-      }
-      // Excel-mode arrow commits — only fire when both the grid flag and the
-      // active edit's mode opt in. The default 'edit' mode (F2 / dblclick /
-      // single-click / API) keeps arrow keys for caret-move inside the input.
-      if (
-        this.options.enableExcelEditing
-        && this.activeEdit?.mode === 'enter'
-        && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp'
-            || ev.key === 'ArrowLeft' || ev.key === 'ArrowRight')
-      ) {
-        ev.preventDefault();
-        ev.stopPropagation();
-        const fr = this.selection.state.focusedRowIndex;
-        const fc = this.selection.state.focusedColId;
-        this.stopEditing(false);
-        if (fr == null || fc == null) return;
-        const cols = this.columnOrder.map((c) => c.colId);
-        const ci = cols.indexOf(fc);
-        if (ev.key === 'ArrowDown') {
-          this.selection.setFocus(Math.min(this.rowCount - 1, fr + 1), fc);
-        } else if (ev.key === 'ArrowUp') {
-          this.selection.setFocus(Math.max(0, fr - 1), fc);
-        } else if (ev.key === 'ArrowRight' && ci >= 0) {
-          this.selection.setFocus(fr, cols[Math.min(cols.length - 1, ci + 1)]!);
-        } else if (ev.key === 'ArrowLeft' && ci >= 0) {
-          this.selection.setFocus(fr, cols[Math.max(0, ci - 1)]!);
-        }
-      }
-    }) as EventListener, true);
-
-    // Excel-mode mousedown flip: a click inside the open editor switches
-    // a type-started 'enter' edit into 'edit' mode so the user can move the
-    // caret with the arrow keys instead of accidentally committing.
-    this.disposables.addListener(this.editorContainer, 'mousedown', () => {
-      if (this.activeEdit?.mode === 'enter') {
-        this.activeEdit.mode = 'edit';
-      }
-    });
+    // Cycle 19 / Task 4 — edit-mode keyboard matrix (root capture-phase
+    // listener) + Excel-mode mousedown flip (on the editorContainer) are
+    // now owned by `EditController` and wire through its own
+    // DisposableRegistry registration inside the controller's constructor.
 
     // Subscribe to group state changes — recompute visible columns, repaint,
     // and surface both the per-group event and the broader displayed-columns
@@ -5577,8 +5495,10 @@ export class CGrid<TRow = any> {
     this.workerCoord.destroy();
     this.featureChain.destroy();
     this.a11y.destroy();
-    this.editor.close();
-    this.rowEdit.close();
+    // Cycle 19 / Task 4 — `editController.editor.close()` +
+    // `editController.rowEdit.close()` ride on the DisposableRegistry hook
+    // the controller registers in its constructor; tearing down via
+    // `this.disposables.dispose()` above already fired both.
     this.floatingFilterOverlay.destroy();
     this.filterPopupHost.destroy();
     this.contextMenuHost.destroy();
@@ -6454,26 +6374,10 @@ export class CGrid<TRow = any> {
     this.viewport = this.viewportManager.recompute(afterScroll);
   }
 
-  /** Keep an open inline / popup editor anchored to its cell when the
-   *  grid scrolls. Closes the editor (commit) when the cell scrolls
-   *  out of its column's band or out of the body's vertical band —
-   *  the DOM-based editor lives on an unclipped host (shared with
-   *  filter popups + context menus, which must NOT be clipped), so
-   *  the close is what keeps the input from rendering over the header
-   *  or sliding into a foreign pinned band. The band-clip rule is
-   *  delegated to `getVisibleCellBounds` (Cycle 12 / Task 1) so this
-   *  method, the focus ring, and the range overlay all share one
-   *  source of truth. No-op when no editor is open. */
+  /** Cycle 19 / Task 4 — delegating wrapper. The viewport-tick anchor +
+   *  band-clip close lives in `EditController.syncOpenEditorPosition`. */
   private syncOpenEditorPosition(): void {
-    if (!this.activeEdit) return;
-    if (!this.editor.isOpen()) return;
-    const { rowIndex, colId } = this.activeEdit;
-    const bounds = this.getVisibleCellBounds(rowIndex, colId);
-    if (!bounds) {
-      this.editor.commit();
-      return;
-    }
-    this.editor.reposition(bounds);
+    this.editController.syncOpenEditorPosition();
   }
 
   /** Cycle 19 / Task 2 — delegating wrappers. The clamp + scroller drive +
@@ -7888,55 +7792,10 @@ export class CGrid<TRow = any> {
     return null;
   }
 
-  /** Resolve `colDef.cellEditor` into a registry name. Strings look up
-   *  directly. Constructors are interned under a synthetic name keyed by the
-   *  colId so the registry stays the single source of truth at edit time.
-   *  Undefined falls back to `'text'` (the universal default for editable
-   *  columns; matches ag-grid). */
-  private resolveEditorName(def: ResolvedColDef<TRow>): string {
-    const e = def.cellEditor as string | CellEditorCtor | undefined;
-    if (typeof e === 'string') return e;
-    if (typeof e === 'function') {
-      const synthetic = `__inline_${def.colId}`;
-      if (!this.cellEditorRegistry.has(synthetic)) {
-        this.cellEditorRegistry.register(synthetic, e);
-      }
-      return synthetic;
-    }
-    return 'text';
-  }
-
-  /** Call `cellEditorParams` (or use the static object) to produce the
-   *  params forwarded into `ICellEditorParams.params`. Empty object when
-   *  no params are configured. */
-  private resolveEditorParams(def: ResolvedColDef<TRow>, row: TRow): Record<string, unknown> {
-    const p = (def as { cellEditorParams?: unknown }).cellEditorParams;
-    if (p == null) return {};
-    if (typeof p === 'function') return (p as (r: TRow) => Record<string, unknown>)(row);
-    return p as Record<string, unknown>;
-  }
-
-  /** Resolve the editable predicate for the cell at `(rowIndex, colId)`.
-   *  Static booleans flow through directly; callbacks receive the cell's
-   *  current `{ data, colId, rowIndex, value }`. Returns `false` for
-   *  unknown columns. */
+  /** Cycle 19 / Task 4 — delegating wrapper. Predicate resolution +
+   *  static-bool/function dispatch lives in `EditController.isCellEditable`. */
   private isCellEditable(rowIndex: number, colId: string): boolean {
-    const def = this.columnDefsMap.get(colId);
-    if (!def) return false;
-    const e = def.editable;
-    if (typeof e === 'boolean') return e;
-    if (typeof e === 'function') {
-      const data = this.rowDataSnapshotAt(rowIndex);
-      const value = this.cellAt(rowIndex, colId)?.value;
-      try {
-        return (e as (p: { data: unknown; colId: string; rowIndex: number; value: unknown }) => boolean)(
-          { data, colId, rowIndex, value },
-        );
-      } catch {
-        return false;
-      }
-    }
-    return false;
+    return this.editController.isCellEditable(rowIndex, colId);
   }
 
   /** Best-effort row snapshot built from the current viewport chunk —
@@ -7953,63 +7812,20 @@ export class CGrid<TRow = any> {
     return snapshot;
   }
 
-  /** Close any open editor. `cancel=true` discards the in-progress value.
-   *  Wired into the host blur listener (`stopEditingWhenCellsLoseFocus`)
-   *  and the keyboard handler (Escape cancels; Enter / Tab commit). In
-   *  full-row mode (Cycle 5 / Task 10) this dispatches to the row-edit
-   *  coordinator so every editor in the row commits / cancels together. */
+  /** Cycle 19 / Task 4 — delegating wrappers. Lifecycle + keyboard matrix +
+   *  full-row dispatch + commit-back pipeline live in `EditController`. */
   stopEditing(cancel: boolean = false): void {
-    if (this.rowEdit.isOpen()) {
-      if (cancel) this.rowEdit.cancel();
-      else this.rowEdit.commit();
-      return;
-    }
-    if (!this.editor.isOpen()) return;
-    if (cancel) this.editor.cancel();
-    else this.editor.commit();
+    this.editController.stopEditing(cancel);
   }
-
-  /** True when either the single-cell overlay or the full-row coordinator
-   *  has an editor mounted. The single `isEditing()` exposed to features
-   *  and the host blur listener route through this so full-row mode
-   *  behaves identically to single-cell mode from the consumer's POV. */
   private isAnyEditOpen(): boolean {
-    return this.editor.isOpen() || this.rowEdit.isOpen();
+    return this.editController.isOpen();
   }
-
-  /** Walk the visible-column order to find the next editable cell from
-   *  `(fromRow, fromCol)`. `'forward'` increments by column, wrapping to
-   *  the next row's first column at the right edge; `'backward'`
-   *  mirrors. Returns `null` when no further editable cell exists. */
   private nextEditableCell(
     fromRow: number,
     fromCol: string,
     direction: 'forward' | 'backward',
   ): { rowIndex: number; colId: string } | null {
-    const cols = this.columnOrder.map((c) => c.colId);
-    if (cols.length === 0 || this.rowCount === 0) return null;
-    const startCi = cols.indexOf(fromCol);
-    if (startCi < 0) return null;
-    const step = direction === 'forward' ? 1 : -1;
-    let row = fromRow;
-    let ci = startCi + step;
-    const maxIter = cols.length * Math.max(1, this.rowCount);
-    for (let i = 0; i < maxIter; i++) {
-      if (ci >= cols.length) {
-        ci = 0;
-        row += 1;
-      } else if (ci < 0) {
-        ci = cols.length - 1;
-        row -= 1;
-      }
-      if (row < 0 || row >= this.rowCount) return null;
-      const candidate = cols[ci]!;
-      if (this.isCellEditable(row, candidate)) {
-        return { rowIndex: row, colId: candidate };
-      }
-      ci += step;
-    }
-    return null;
+    return this.editController.nextEditableCell(fromRow, fromCol, direction);
   }
 
   /** Open the editor on the cell at `(rowIndex, colId)`. No-op when the
@@ -8025,234 +7841,14 @@ export class CGrid<TRow = any> {
     charPress: string | null = null,
     mode: 'enter' | 'edit' = 'edit',
   ): void {
-    if (this.isAnyEditOpen()) return;
-    // Full-row dispatch: every editable column in the row opens an editor
-    // simultaneously; the coordinator runs the lifecycle and the
-    // openRowEditor helper wires events + commit-back. charPress / mode
-    // are single-cell concerns (type-to-edit, Excel arrow-commit) and
-    // don't apply in full-row.
-    if (this.options.editType === 'fullRow') {
-      this.openRowEditor(rowIndex, colId);
-      return;
-    }
-    const def = this.columnDefsMap.get(colId);
-    if (!def || !this.isCellEditable(rowIndex, colId)) return;
-    const col = this.viewport.visibleColumns.find((c) => c.colId === colId);
-    const row = this.viewport.visibleRows.find(
-      (r) => r.subgrid.isData && r.localRowIndex === rowIndex,
-    );
-    if (!col || !row) return;
-    // Selection follows the editor — without this, closing the editor leaves
-    // focus on whatever cell was previously selected, so subsequent arrow-key
-    // navigation jumps from the wrong origin.
-    this.selection.setFocus(rowIndex, colId);
-    const cell = this.cellAt(rowIndex, colId);
-    const initialValue = cell?.value ?? '';
-    const editorName = this.resolveEditorName(def);
-    const rowId = this.rowIdAt(rowIndex) ?? `row-${rowIndex}`;
-    // Snapshot the active-edit so the close hook (commit OR cancel) can
-    // compose the `cellEditingStopped` payload without re-fetching state.
-    this.activeEdit = {
-      rowIndex, rowId, colId,
-      oldValue: initialValue,
-      data: cell?.value !== undefined ? { [colId]: cell.value } : null,
-      mode,
-    };
-    this.editor.open({
-      editorName,
-      rowData: cell?.value !== undefined ? { [colId]: cell.value } : {},
-      colId,
-      value: initialValue,
-      cellBounds: { x: col.left, y: row.top, w: col.width, h: row.height },
-      params: this.resolveEditorParams(def, ({} as TRow)),
-      charPress,
-      cellEditorPopup: (def as { cellEditorPopup?: boolean }).cellEditorPopup,
-      cellEditorPopupPosition: (def as { cellEditorPopupPosition?: 'over' | 'under' }).cellEditorPopupPosition,
-      viewportBounds: { width: this.canvasBounds.width, height: this.canvasBounds.height },
-      onCommit: (newValue) => {
-        // Return focus to the canvas so arrow keys / Tab resume cell
-        // navigation immediately after the editor closes. Without this the
-        // user has to mouse-click a cell before the keyboard re-engages.
-        this.cgridCanvas.canvas.focus({ preventScroll: true });
-        // Fetch the full row from the worker, run valueParser → valueSetter
-        // (or the default field assignment), emit cellValueChanged with the
-        // real rowId + old/new values, then enqueue the update so the worker
-        // re-runs filter / sort / agg against the new value.
-        this.workerCoord.getRowByIndex(rowIndex).then((fetched) => {
-          if (this.destroyed || !fetched.rowId || fetched.data == null) return;
-          const rowData = fetched.data as Record<string, unknown>;
-          const field = def.field as string | undefined;
-          const oldValue = field !== undefined ? rowData[field] : undefined;
-          const parsed = def.valueParser
-            ? def.valueParser({ newValue, oldValue, data: rowData as any, colDef: def as any })
-            : newValue;
-          if (def.valueSetter) {
-            def.valueSetter({ data: rowData as any, newValue: parsed, oldValue, colDef: def as any });
-          } else if (field !== undefined) {
-            rowData[field] = parsed;
-          }
-          const changed = parsed !== oldValue;
-          this.events.emit({
-            type: 'cellValueChanged',
-            rowId: fetched.rowId, colId, oldValue, newValue: parsed,
-            newRawValue: newValue, source: 'edit', rowIndex, data: rowData,
-          });
-          this.events.emit({
-            type: 'cellEditingStopped',
-            rowIndex, rowId: fetched.rowId, colId,
-            oldValue, newValue: parsed, valueChanged: changed,
-            data: rowData,
-          });
-          this.activeEdit = null;
-          this.workerCoord.applyTransaction({ update: [rowData], async: false })
-            .catch((err) => { if (!this.destroyed) console.error('[cgrid] commit-back:', err); });
-        }).catch((err) => { if (!this.destroyed) console.error('[cgrid] commit-back fetch:', err); });
-      },
-      onCancel: () => {
-        // Mirrors onCommit — restore canvas focus so the keyboard nav layer
-        // keeps responding without a mouse click.
-        this.cgridCanvas.canvas.focus({ preventScroll: true });
-        const e = this.activeEdit;
-        this.activeEdit = null;
-        if (!e) return;
-        this.events.emit({
-          type: 'cellEditingStopped',
-          rowIndex: e.rowIndex, rowId: e.rowId, colId: e.colId,
-          oldValue: e.oldValue, newValue: e.oldValue, valueChanged: false,
-          data: e.data,
-        });
-      },
-    });
-    // cellEditingStarted fires AFTER the editor has mounted (matches catalog
-    // 06: "A cell editor is activated"). The DOM is live, focus is set.
-    this.events.emit({
-      type: 'cellEditingStarted',
-      rowIndex, rowId, colId,
-      value: initialValue,
-      data: this.activeEdit?.data,
-    });
+    this.editController.openEditor(rowIndex, colId, charPress, mode);
   }
 
-  /** Cycle 5 / Task 10 — full-row edit entrypoint. Iterates the visible
-   *  columns in render order and builds one editor spec per editable
-   *  cell, then hands the bundle to `RowEditCoordinator`. `initialColId`
-   *  is the cell the user actually targeted (clicked / F2 / Tab) and
-   *  receives initial focus; the rest of the row's editors mount in the
-   *  background, ready for Tab navigation.
-   *
-   *  Row-level events: `rowEditingStarted` fires after the bundle mounts;
-   *  `rowEditingStopped` fires on close (commit OR cancel);
-   *  `rowValueChanged` fires only when at least one cell actually changed
-   *  value. Per-cell `cellValueChanged` events still fire — one per
-   *  changed cell — so existing single-cell listeners keep working. */
-  private openRowEditor(rowIndex: number, initialColId: string): void {
-    if (this.rowEdit.isOpen()) return;
-    const row = this.viewport.visibleRows.find(
-      (r) => r.subgrid.isData && r.localRowIndex === rowIndex,
-    );
-    if (!row) return;
-    const specs: RowEditCellSpec[] = [];
-    for (const col of this.viewport.visibleColumns) {
-      if (!this.isCellEditable(rowIndex, col.colId)) continue;
-      const def = this.columnDefsMap.get(col.colId);
-      if (!def) continue;
-      const cell = this.cellAt(rowIndex, col.colId);
-      const value = cell?.value ?? '';
-      specs.push({
-        colId: col.colId,
-        editorName: this.resolveEditorName(def),
-        cellBounds: { x: col.left, y: row.top, w: col.width, h: row.height },
-        value,
-        params: this.resolveEditorParams(def, ({} as TRow)),
-      });
-    }
-    if (specs.length === 0) return;
-    const rowId = this.rowIdAt(rowIndex) ?? `row-${rowIndex}`;
-    const snapshot = this.rowDataSnapshotAt(rowIndex);
-    // Selection mirrors the active editor — without this, Esc + arrow nav
-    // resume from the previous focused cell instead of the row being edited.
-    this.selection.setFocus(rowIndex, initialColId);
-    this.rowEdit.open({
-      rowIndex,
-      rowId,
-      rowData: snapshot,
-      cells: specs,
-      initialColId,
-      onCommit: (commits) => this.handleRowCommit(rowIndex, rowId, commits),
-      onCancel: () => this.handleRowCancel(rowIndex, rowId, snapshot),
-    });
-    this.events.emit({
-      type: 'rowEditingStarted',
-      rowIndex, rowId, data: snapshot as unknown,
-    });
-  }
-
-  /** Cycle 5 / Task 10 — full-row commit. Fetches the canonical row from
-   *  the worker, runs each commit through valueParser → valueSetter (or the
-   *  default field assignment), emits one `cellValueChanged` per changed
-   *  cell, then `rowEditingStopped` and (when any cell changed)
-   *  `rowValueChanged`, then dispatches a single
-   *  `applyTransaction({ update })` so the worker re-runs filter / sort /
-   *  agg against the new values. */
-  private handleRowCommit(
-    rowIndex: number,
-    rowId: string,
-    commits: Array<{ colId: string; newRawValue: unknown }>,
-  ): void {
-    this.cgridCanvas.canvas.focus({ preventScroll: true });
-    this.workerCoord.getRowByIndex(rowIndex).then((fetched) => {
-      if (this.destroyed) return;
-      const resolvedId = fetched.rowId ?? rowId;
-      if (fetched.data == null) {
-        // Row is no longer addressable (transaction removed it mid-edit).
-        // Emit the stopped event so listeners still close their UI state.
-        this.events.emit({ type: 'rowEditingStopped', rowIndex, rowId: resolvedId, data: {} });
-        return;
-      }
-      const rowData = fetched.data as Record<string, unknown>;
-      let anyChanged = false;
-      for (const commit of commits) {
-        const def = this.columnDefsMap.get(commit.colId);
-        if (!def) continue;
-        const field = def.field as string | undefined;
-        const oldValue = field !== undefined ? rowData[field] : undefined;
-        const parsed = def.valueParser
-          ? def.valueParser({ newValue: commit.newRawValue, oldValue, data: rowData as any, colDef: def as any })
-          : commit.newRawValue;
-        if (def.valueSetter) {
-          def.valueSetter({ data: rowData as any, newValue: parsed, oldValue, colDef: def as any });
-        } else if (field !== undefined) {
-          rowData[field] = parsed;
-        }
-        const changed = parsed !== oldValue;
-        if (changed) anyChanged = true;
-        this.events.emit({
-          type: 'cellValueChanged',
-          rowId: resolvedId, colId: commit.colId, oldValue, newValue: parsed,
-          newRawValue: commit.newRawValue, source: 'edit', rowIndex, data: rowData,
-        });
-      }
-      this.events.emit({ type: 'rowEditingStopped', rowIndex, rowId: resolvedId, data: rowData });
-      if (anyChanged) {
-        this.events.emit({ type: 'rowValueChanged', rowIndex, rowId: resolvedId, data: rowData });
-        this.workerCoord.applyTransaction({ update: [rowData], async: false })
-          .catch((err) => { if (!this.destroyed) console.error('[cgrid] row commit-back:', err); });
-      }
-    }).catch((err) => { if (!this.destroyed) console.error('[cgrid] row commit-back fetch:', err); });
-  }
-
-  /** Cycle 5 / Task 10 — full-row cancel. No worker round-trip; emit
-   *  `rowEditingStopped` with the best-effort snapshot we already had. */
-  private handleRowCancel(rowIndex: number, rowId: string, snapshot: unknown): void {
-    this.cgridCanvas.canvas.focus({ preventScroll: true });
-    this.events.emit({ type: 'rowEditingStopped', rowIndex, rowId, data: snapshot });
-  }
-
-  /** Register a custom cell editor. Columns with `cellEditor: name`
-   *  dispatch to `ctor` when edit starts. Built-in names ('text') can be
-   *  overridden by re-registering. */
+  /** Cycle 19 / Task 4 — delegating wrapper. Ctor / synthetic-name intern
+   *  routes through `EditController.registerCellEditor` so the shared
+   *  registry stays the single source of truth. */
   registerCellEditor(name: string, ctor: CellEditorCtor): void {
-    this.cellEditorRegistry.register(name, ctor);
+    this.editController.registerCellEditor(name, ctor);
   }
 
   /** Cycle 8 / Task 3 — register a named comparator. String-serialises
