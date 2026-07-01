@@ -14,7 +14,7 @@
     "@stomp/stompjs": "^7.3.0",
     "ag-grid-community": "^35.3.1",
     "ag-grid-enterprise": "^35.3.1",
-    "cgrid": "*"
+    "@cgrid/kernel": "*"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

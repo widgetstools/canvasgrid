@@ -1,4 +1,4 @@
-import 'cgrid/style.css';
+import '@cgrid/kernel/style.css';
 import { createPositionsGrid, setPositiveOnlyFilter, setPinSelectedToTop } from './positionsGrid';
 import { connectStomp, STOMP_PUBLISH_RATE_PER_SEC } from './stomp';
 

@@ -1,4 +1,4 @@
-import { CGrid, type CColDef } from 'cgrid';
+import { CGrid, type CColDef } from '@cgrid/kernel';
 import type { Feature } from './index';
 import { Client, type IFrame, type IMessage } from '@stomp/stompjs';
 

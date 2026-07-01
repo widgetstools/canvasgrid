@@ -8,7 +8,7 @@ import {
   type ToolPanelParams,
   type IStatusPanelComp,
   type StatusPanelParams,
-} from 'cgrid';
+} from '@cgrid/kernel';
 import type { Position } from './stomp';
 
 /**

@@ -1,4 +1,4 @@
-import { CGrid, registerIcon } from 'cgrid';
+import { CGrid, registerIcon } from '@cgrid/kernel';
 import type { ShowcaseRow } from '../seedData';
 import type { Feature } from './index';
 import { makeRows } from '../seedData';
