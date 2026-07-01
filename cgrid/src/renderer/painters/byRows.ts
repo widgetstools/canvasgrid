@@ -207,6 +207,29 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
     isFocused: false, isSelected: false, isHovered: false, isHeader: false,
   };
 
+  // Cycle 19 / Task 8b — shared per-paint context threaded through
+  // every `paintBand` call in the subgrid loop. Same identity across
+  // every band so the mutated `sharedConfig` + the resolved lookups
+  // stay hot in cache.
+  const bandCtx: PaintBandCtx = {
+    rowBgs,
+    groupStripRows,
+    isFooterRow,
+    config: sharedConfig,
+    sortLookup,
+    columnDefs,
+    cellRenderers,
+    cellData,
+    selection,
+    theme,
+    rowDataSnapshotAt,
+    quickFilterActive,
+    quickFilterLowerTerms,
+    suppressAggFuncInHeader,
+    getColumnGroupOpen: p.getColumnGroupOpen,
+    totalRowCount,
+  };
+
   for (const sb of subgridBands) {
     const isDataBand = sb.rows[0]!.subgrid.isData;
     // Data subgrid bands always clip to the body region (vs.bodyTop..bodyBottom)
@@ -218,15 +241,9 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
     const sgTop = isDataBand ? vs.bodyTop : sb.yTop;
     const sgBottom = isDataBand ? vs.bodyBottom : sb.yBottom;
 
-    paintBand(gc, sb.rows, leftPinned,
-              0, vs.bodyLeft, sgTop, sgBottom,
-              /*clip*/ isDataBand, rowBgs, groupStripRows, isFooterRow, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader, p.getColumnGroupOpen, totalRowCount);
-    paintBand(gc, sb.rows, center,
-              vs.bodyLeft, vs.bodyRight, sgTop, sgBottom,
-              /*clip*/ true, rowBgs, groupStripRows, isFooterRow, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader, p.getColumnGroupOpen, totalRowCount);
-    paintBand(gc, sb.rows, rightPinned,
-              vs.bodyRight, rightEdge, sgTop, sgBottom,
-              /*clip*/ isDataBand, rowBgs, groupStripRows, isFooterRow, sharedConfig, sortLookup, columnDefs, cellRenderers, cellData, selection, theme, rowDataSnapshotAt, quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader, p.getColumnGroupOpen, totalRowCount);
+    paintBand(gc, { rows: sb.rows, cols: leftPinned,  x0: 0,             x1: vs.bodyLeft,  yTop: sgTop, yBottom: sgBottom, clip: isDataBand }, bandCtx);
+    paintBand(gc, { rows: sb.rows, cols: center,      x0: vs.bodyLeft,   x1: vs.bodyRight, yTop: sgTop, yBottom: sgBottom, clip: true },       bandCtx);
+    paintBand(gc, { rows: sb.rows, cols: rightPinned, x0: vs.bodyRight,  x1: rightEdge,    yTop: sgTop, yBottom: sgBottom, clip: isDataBand }, bandCtx);
   }
 
   // Cycle 15 / Task 5 — group-row strip content (chevron + value + count).
@@ -290,32 +307,49 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
   }
 }
 
-function paintBand(
-  gc: CachedContext2D,
-  rows: ViewportRow[],
-  cols: ViewportColumn[],
-  x0: number,
-  x1: number,
-  yTop: number,
-  yBottom: number,
-  clip: boolean,
-  rowBgs: string[],
-  groupStripRows: (import('../cellRenderers/group').GroupCellValue | null)[],
-  isFooterRow: boolean[],
-  config: CellPaintConfig,
-  sortLookup: Map<string, { direction: 'asc' | 'desc'; index: number }>,
-  columnDefs: PainterCtx['columnDefs'],
-  cellRenderers: PainterCtx['cellRenderers'],
-  cellData: PainterCtx['cellData'],
-  selection: PainterCtx['selection'],
-  theme: PainterCtx['theme'],
-  rowDataSnapshotAt: PainterCtx['rowDataSnapshotAt'],
-  quickFilterActive: boolean,
-  quickFilterLowerTerms: readonly string[],
-  suppressAggFuncInHeader: boolean,
-  getColumnGroupOpen: ((groupId: string) => boolean) | undefined,
-  totalRowCount: number,
-): void {
+/** Cycle 19 / Task 8b — geometry + `clip` for a single `paintBand`
+ *  call. Fresh per invocation (three per subgrid band — left-pinned,
+ *  center, right-pinned). */
+interface BandRect {
+  rows: ViewportRow[];
+  cols: ViewportColumn[];
+  x0: number;
+  x1: number;
+  yTop: number;
+  yBottom: number;
+  clip: boolean;
+}
+
+/** Cycle 19 / Task 8b — shared per-paint context threaded through
+ *  every `paintBand` invocation. Same identity across every band so
+ *  the mutated `sharedConfig` + resolved lookups stay hot in cache. */
+interface PaintBandCtx {
+  rowBgs: string[];
+  groupStripRows: (import('../cellRenderers/group').GroupCellValue | null)[];
+  isFooterRow: boolean[];
+  config: CellPaintConfig;
+  sortLookup: Map<string, { direction: 'asc' | 'desc'; index: number }>;
+  columnDefs: PainterCtx['columnDefs'];
+  cellRenderers: PainterCtx['cellRenderers'];
+  cellData: PainterCtx['cellData'];
+  selection: PainterCtx['selection'];
+  theme: PainterCtx['theme'];
+  rowDataSnapshotAt: PainterCtx['rowDataSnapshotAt'];
+  quickFilterActive: boolean;
+  quickFilterLowerTerms: readonly string[];
+  suppressAggFuncInHeader: boolean;
+  getColumnGroupOpen: ((groupId: string) => boolean) | undefined;
+  totalRowCount: number;
+}
+
+function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void {
+  const { rows, cols, x0, x1, yTop, yBottom, clip } = band;
+  const {
+    rowBgs, groupStripRows, isFooterRow, config, sortLookup, columnDefs,
+    cellRenderers, cellData, selection, theme, rowDataSnapshotAt,
+    quickFilterActive, quickFilterLowerTerms, suppressAggFuncInHeader,
+    getColumnGroupOpen, totalRowCount,
+  } = ctx;
   if (cols.length === 0 || rows.length === 0) return;
   if (clip) {
     gc.cache.save();
