@@ -470,7 +470,7 @@ export function defaultFillExtrapolate(sourceValues: unknown[], targetIndex: num
 }
 
 export class CGrid<TRow = any> {
-  private events = new TypedEventEmitter<CGridEvent>();
+  private events = new TypedEventEmitter<CGridEvent<TRow>>();
   /** Cycle 23 / Task 7 — coalesced `stateUpdated` emitter. Subscribes
    *  to every state-affecting event on `this.events` and emits one
    *  `stateUpdated` per rAF tick carrying the full snapshot + the
@@ -1928,9 +1928,9 @@ export class CGrid<TRow = any> {
     const heightsByRowId = this.resolveHeightsForRows([...(t.add ?? []), ...(t.update ?? [])]);
     this.updateRowDataCache(t);
     this.workerCoord.applyTransaction({
-      add: t.add as unknown[],
-      update: t.update as unknown[],
-      remove: (t.remove as TRow[] | undefined)?.map((r) => this.options.getRowId(r)),
+      add: t.add,
+      update: t.update,
+      remove: t.remove?.map((r) => this.options.getRowId(r)),
       async: false,
       heightsByRowId,
     }).then(() => this.recomputeAlwaysPass())
@@ -1942,9 +1942,9 @@ export class CGrid<TRow = any> {
     const heightsByRowId = this.resolveHeightsForRows([...(t.add ?? []), ...(t.update ?? [])]);
     this.updateRowDataCache(t);
     this.workerCoord.applyTransaction({
-      add: t.add as unknown[],
-      update: t.update as unknown[],
-      remove: (t.remove as TRow[] | undefined)?.map((r) => this.options.getRowId(r)),
+      add: t.add,
+      update: t.update,
+      remove: t.remove?.map((r) => this.options.getRowId(r)),
       async: true,
       heightsByRowId,
     }).then(() => this.recomputeAlwaysPass())
@@ -5289,11 +5289,11 @@ export class CGrid<TRow = any> {
 
   // --- Internals ------------------------------------------------------------
 
-  private makeApi(): CGridApi {
+  private makeApi(): CGridApi<TRow> {
     return {
-      setRowData: (r) => this.setRowData(r as TRow[]),
-      applyTransaction: (t) => this.applyTransaction(t as Tx<TRow>),
-      applyTransactionAsync: (t) => this.applyTransactionAsync(t as Tx<TRow>),
+      setRowData: (r) => this.setRowData(r),
+      applyTransaction: (t) => this.applyTransaction(t),
+      applyTransactionAsync: (t) => this.applyTransactionAsync(t),
       flushAsyncTransactions: () => this.flushAsyncTransactions(),
       setSortModel: (s) => this.setSortModel(s),
       setFilterModel: (f) => this.setFilterModel(f),
@@ -5366,19 +5366,19 @@ export class CGrid<TRow = any> {
       getSideBar: () => this.getSideBar(),
       getStatusPanel: <T extends IStatusPanelComp = IStatusPanelComp>(key: string) =>
         this.getStatusPanel<T>(key),
-      getGridOption: (k) => this.getGridOption(k as keyof CGridOptions<TRow>) as any,
-      setGridOption: (k, v) => this.setGridOption(k as keyof CGridOptions<TRow>, v as any),
-      updateGridOptions: (p) => this.updateGridOptions(p as Partial<CGridOptions<TRow>>),
+      getGridOption: (k) => this.getGridOption(k),
+      setGridOption: (k, v) => this.setGridOption(k, v),
+      updateGridOptions: (p) => this.updateGridOptions(p),
       registerCellRenderer: (n, p) => this.registerCellRenderer(n, p),
       registerCellEditor: (n, c) => this.registerCellEditor(n, c),
       registerComparator: <TValue = unknown>(n: string, f: (a: TValue, b: TValue) => number) =>
         this.registerComparator<TValue>(n, f),
       startEditingCell: (r, c) => this.openEditor(r, c),
       stopEditing: (cancel) => this.stopEditing(cancel),
-      on: (t, h) => this.on(t as CGridEvent['type'], h as any),
-      off: (t, h) => this.off(t as CGridEvent['type'], h as any),
-      addEventListener: (t, h) => this.addEventListener(t as CGridEvent['type'], h as any),
-      removeEventListener: (t, h) => this.removeEventListener(t as CGridEvent['type'], h as any),
+      on: (t, h) => this.on(t, h),
+      off: (t, h) => this.off(t, h),
+      addEventListener: (t, h) => this.addEventListener(t, h),
+      removeEventListener: (t, h) => this.removeEventListener(t, h),
       moveColumnByIndex: (f, t) => this.moveColumnByIndex(f, t),
       getColumnState: () => this.getColumnState(),
       getColumnHeaderName: (colId) => this.getColumnHeaderName(colId),
@@ -5414,7 +5414,7 @@ export class CGrid<TRow = any> {
       isPointInColumnHeaderBand: (x, y) => this.isPointInColumnHeaderBand(x, y),
       setColumnHeaderDragHover: (colId, x, y) => this.setColumnHeaderDragHover(colId, x, y),
       commitColumnHeaderDrop: (colId, x) => this.commitColumnHeaderDrop(colId, x),
-    } as CGridApi;
+    } as CGridApi<TRow>;
   }
 
   private toggleColumnGroup(groupId: string): void {
@@ -7279,30 +7279,30 @@ export class CGrid<TRow = any> {
   }
 
   /** Subscribe to a typed grid event. Returns an unsubscribe. */
-  on<E extends CGridEvent['type']>(
+  on<E extends CGridEvent<TRow>['type']>(
     type: E,
-    handler: (e: Extract<CGridEvent, { type: E }>) => void,
+    handler: (e: Extract<CGridEvent<TRow>, { type: E }>) => void,
   ): () => void {
     return this.events.on(type, handler);
   }
   /** Remove a previously-registered listener. */
-  off<E extends CGridEvent['type']>(
+  off<E extends CGridEvent<TRow>['type']>(
     type: E,
-    handler: (e: Extract<CGridEvent, { type: E }>) => void,
+    handler: (e: Extract<CGridEvent<TRow>, { type: E }>) => void,
   ): void {
     this.events.off(type, handler);
   }
   /** Alias for `on`, present for ag-grid API parity. */
-  addEventListener<E extends CGridEvent['type']>(
+  addEventListener<E extends CGridEvent<TRow>['type']>(
     type: E,
-    handler: (e: Extract<CGridEvent, { type: E }>) => void,
+    handler: (e: Extract<CGridEvent<TRow>, { type: E }>) => void,
   ): () => void {
     return this.on(type, handler);
   }
   /** Alias for `off`, present for ag-grid API parity. */
-  removeEventListener<E extends CGridEvent['type']>(
+  removeEventListener<E extends CGridEvent<TRow>['type']>(
     type: E,
-    handler: (e: Extract<CGridEvent, { type: E }>) => void,
+    handler: (e: Extract<CGridEvent<TRow>, { type: E }>) => void,
   ): void {
     this.off(type, handler);
   }
