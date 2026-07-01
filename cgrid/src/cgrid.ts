@@ -1107,6 +1107,38 @@ export class CGrid<TRow = any> {
     // by CGridCanvas, so editor goes on top).
     this.root.appendChild(this.editorContainer);
 
+    // Cycle 15.5 / Task 1 — initialise the grouping state primitive
+    // from the current rowGroupCols (empty at construction time; apps
+    // call `setGroupModel` afterwards). All three grouping UIs read
+    // from / mutate via this object.
+    this.groupingState = new GroupingState({
+      rowGroupColumns: this.groupModel.rowGroupCols,
+    });
+    this.groupingStateUnsubscribe = this.groupingState.on(
+      'groupingStateChanged',
+      (e) => this.handleGroupingStateChanged(e),
+    );
+
+    // Cycle 19 / Task 5a — pivot engine. Owns the canonical PivotState
+    // seeded from the `pivotMode` option (pivot/value columns are
+    // configured afterwards via the imperative API / tool panels), the
+    // pivot-active flag, the saved primary tree, and the cellSpecById
+    // reverse index. Every pivot UI mutates the engine via delegating
+    // methods on CGrid; the engine owns the worker round-trip + panel
+    // fan-out + column-tree swap. Constructed BEFORE the side bar +
+    // status bar + pivot panel because their tool panels read
+    // `pivotEngine.isPivotMode()` synchronously during init (e.g. the
+    // columns tool panel's `buildPivotModeRow` at construction time)
+    // and `applyVerticalInsets` fires during status/pivot panel
+    // construction (via `setReservedSpace` → `isSharingTopStrip`),
+    // which also reads it. The ctor doesn't fire state-change side
+    // effects — the `getPivotPanel` closure resolves lazily to whatever
+    // `this.pivotPanel` holds at call-time.
+    this.pivotEngine = new PivotEngine<TRow>(
+      this.makePivotEngineDeps(),
+      { pivotMode: options.pivotMode === true },
+    );
+
     // Cycle 11 / Task 2 — side bar (DOM panel on the right or left edge
     // hosting tool panels). Mounts when `options.sideBar` resolves to a
     // non-null def via `normalizeSideBarOption`. Wires the geometry
@@ -1140,34 +1172,6 @@ export class CGrid<TRow = any> {
     // mounts / hides / changes position. Attaches to `this.root` AFTER
     // the canvas + editor overlay so its z-order sits above them
     // naturally without explicit z-index plumbing.
-    // Cycle 15.5 / Task 1 — initialise the grouping state primitive
-    // from the current rowGroupCols (empty at construction time; apps
-    // call `setGroupModel` afterwards). All three grouping UIs read
-    // from / mutate via this object.
-    this.groupingState = new GroupingState({
-      rowGroupColumns: this.groupModel.rowGroupCols,
-    });
-    this.groupingStateUnsubscribe = this.groupingState.on(
-      'groupingStateChanged',
-      (e) => this.handleGroupingStateChanged(e),
-    );
-
-    // Cycle 19 / Task 5a — pivot engine. Owns the canonical PivotState
-    // seeded from the `pivotMode` option (pivot/value columns are
-    // configured afterwards via the imperative API / tool panels), the
-    // pivot-active flag, the saved primary tree, and the cellSpecById
-    // reverse index. Every pivot UI mutates the engine via delegating
-    // methods on CGrid; the engine owns the worker round-trip + panel
-    // fan-out + column-tree swap. Constructed BEFORE the status bar +
-    // pivot panel because `applyVerticalInsets` fires during their
-    // construction (via `setReservedSpace` → `isSharingTopStrip`),
-    // which reads `pivotEngine.isPivotMode()`. The ctor doesn't fire
-    // state-change side effects — the `getPivotPanel` closure resolves
-    // lazily to whatever `this.pivotPanel` holds at call-time.
-    this.pivotEngine = new PivotEngine<TRow>(
-      this.makePivotEngineDeps(),
-      { pivotMode: options.pivotMode === true },
-    );
 
     const statusBarDef = normalizeStatusBarOption(options.statusBar);
     if (statusBarDef) {
@@ -3019,9 +3023,16 @@ export class CGrid<TRow = any> {
     //   true / 'suppressHideOnGroup'+'suppressShowOnUngroup' → skip both.
     //   'suppressHideOnGroup' → skip hide only; allow show on ungroup.
     //   'suppressShowOnUngroup' → skip show only; allow hide on group.
+    // Cycle 19 / Task 5b — under pivot mode ALL primaries are auto-hidden
+    // by `PivotEngine`; ungrouping a col must NOT clobber that hide,
+    // regardless of `suppressGroupChangesColumnVisibility`. The hide
+    // branch is still meaningful (it turns a not-yet-hidden col into
+    // a hidden one on the entry path, e.g. `setGroupModel` before
+    // pivot mode ever flipped ON).
     const suppressVis = this.options.suppressGroupChangesColumnVisibility;
     const suppressHide = suppressVis === true || suppressVis === 'suppressHideOnGroup';
-    const suppressShow = suppressVis === true || suppressVis === 'suppressShowOnUngroup';
+    const suppressShow = suppressVis === true || suppressVis === 'suppressShowOnUngroup'
+      || this.pivotEngine.isPivotMode();
     if (toHide.length > 0 && !suppressHide) this.setColumnsVisible(toHide, false);
     if (toShow.length > 0 && !suppressShow) this.setColumnsVisible(toShow, true);
   }
@@ -3122,6 +3133,9 @@ export class CGrid<TRow = any> {
       recomputeViewport: () => this.recomputeViewport(),
       requestRepaint: () => { this.cgridCanvas?.requestRepaint(); },
       applyVerticalInsets: () => this.applyVerticalInsets(),
+      // Task 5b — pivot mode toggle drives the primary auto-hide pass
+      // through the same seam the panel + `applyColumnState` use.
+      setColumnsVisible: (colIds, visible) => this.setColumnsVisible(colIds, visible),
     };
   }
 
@@ -3708,7 +3722,15 @@ export class CGrid<TRow = any> {
       addPivotColumn: (colId) => this.pivotEngine.addPivotColumn(colId),
       removePivotColumn: (colId) => this.pivotEngine.removePivotColumn(colId),
       movePivotColumn: (from, to) => this.pivotEngine.movePivotColumn(from, to),
-      isPivotActive: () => this.pivotEngine.isPivotActive(),
+      // Cycle 19 / Task 5b — the pivot panel's `data-active` reflects
+      // "PivotState is configured to pivot" (mode + ≥1 pivot col + ≥1
+      // value col), not the internal tree-swap flag that only flips
+      // after the worker chunk lands. Task 5a extracted this callback
+      // and inadvertently switched it to the internal `active` field,
+      // which produced a chunk-arrival delay for `data-active='true'`
+      // that the `onlyWhenPivoting` E2E test caught intermittently.
+      // Restored to the state-based check via `isPivotStateActive()`.
+      isPivotActive: () => this.pivotEngine.isPivotStateActive(),
       isPivotMode: () => this.pivotEngine.isPivotMode(),
       tryCrossPanelMove: (colId, x, y) => this.tryCrossPanelMoveFrom('pivot', colId, x, y),
     };

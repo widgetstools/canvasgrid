@@ -234,13 +234,11 @@ test.describe('Cycle 18 / Task 5 — pivot tool panel', () => {
     expect(state.pivotColumns).toEqual([]);
   });
 
-  // TODO(cycle19-task5): this strict AG-v36 semantic (visible-non-role
-  // cols read UNCHECKED in pivot mode) requires pivot-mode-on to also
-  // auto-hide all primary columns — currently unimplemented. The
-  // lenient "visible OR role" semantic is pinned by the showcase
-  // panelDragRouting.spec.ts. Re-enable once PivotEngine extraction
-  // adds the auto-hide pass per the cycle 19 / Task 5 plan.
-  test.fixme('pivotMode-dependent checkbox: pivotMode ON + checking a column with enableRowGroup ADDS row-group (NOT visibility flip)', async ({ page }) => {
+  // Cycle 19 / Task 5b — enabled. `PivotEngine` now auto-hides every
+  // primary column when pivot mode flips ON, and `computeRowChecked`
+  // reads ROLE-only in pivot mode, so the AG-v36 strict semantic
+  // (visible-non-role cols read UNCHECKED under pivot) holds.
+  test('pivotMode-dependent checkbox: pivotMode ON + checking a column with enableRowGroup ADDS row-group (NOT visibility flip)', async ({ page }) => {
     await gridReady(page);
     // Flip pivot mode on via the toggle.
     await page.locator(`${PANEL} .cg-columns-panel-pivot-mode button`).click();
@@ -271,10 +269,9 @@ test.describe('Cycle 18 / Task 5 — pivot tool panel', () => {
     expect(state.rowGroupColumns).toEqual([]);
   });
 
-  // TODO(cycle19-task5): same gap as the row-group variant above — the
-  // strict AG-v36 semantic depends on pivot-mode auto-hiding primary
-  // columns. Re-enable with the PivotEngine extraction.
-  test.fixme('pivotMode-dependent checkbox: pivotMode ON + checking a value-only column ADDS it as value with default sum', async ({ page }) => {
+  // Cycle 19 / Task 5b — enabled. Pairs with the row-group variant
+  // above; same strict semantic now holds for value-only columns.
+  test('pivotMode-dependent checkbox: pivotMode ON + checking a value-only column ADDS it as value with default sum', async ({ page }) => {
     await gridReady(page);
     await page.locator(`${PANEL} .cg-columns-panel-pivot-mode button`).click();
     await waitForFrames(page, 3);

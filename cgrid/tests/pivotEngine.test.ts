@@ -105,6 +105,7 @@ interface Harness {
   recomputeViewport: ReturnType<typeof vi.fn>;
   requestRepaint: ReturnType<typeof vi.fn>;
   applyVerticalInsets: ReturnType<typeof vi.fn>;
+  setColumnsVisible: ReturnType<typeof vi.fn>;
 }
 
 function makeHarness(opts: {
@@ -151,6 +152,17 @@ function makeHarness(opts: {
   const recomputeViewport = vi.fn();
   const requestRepaint = vi.fn();
   const applyVerticalInsets = vi.fn();
+  // Task 5b — the harness models `setColumnsVisible` as a direct
+  // mutation of the tracked column tree's leaves, matching what
+  // CGrid does. The engine's `applyPivotModeVisibility` snapshots
+  // the tree BEFORE the call, so the mutation lands after the
+  // snapshot and the toShow/toHide diff comes out right.
+  const setColumnsVisible = vi.fn((colIds: string[], visible: boolean) => {
+    for (const id of colIds) {
+      const def = columnTree.value.leafById.get(id);
+      if (def) (def as unknown as { hide: boolean }).hide = !visible;
+    }
+  });
   const computeVisibleColumnOrder = vi.fn(
     opts.computeVisibleOrder ?? (() => columnTree.value.leaves.slice()),
   );
@@ -182,6 +194,7 @@ function makeHarness(opts: {
     recomputeViewport: () => recomputeViewport(),
     requestRepaint: () => requestRepaint(),
     applyVerticalInsets: () => applyVerticalInsets(),
+    setColumnsVisible: (ids, visible) => setColumnsVisible(ids, visible),
   };
 
   const engine = new PivotEngine(deps, { pivotMode: opts.pivotMode ?? false });
@@ -194,7 +207,7 @@ function makeHarness(opts: {
     requestViewport, columnTree, columnGroupState, columnDefsMap,
     columnOrder, columnLayout, autoGroupColumns, subscribeColumnGroupState,
     computeVisibleColumnOrder, rebuildSubgridStack, recomputeViewport,
-    requestRepaint, applyVerticalInsets,
+    requestRepaint, applyVerticalInsets, setColumnsVisible,
   };
 }
 
@@ -495,5 +508,87 @@ describe('PivotEngine — lifecycle + destroyed guard', () => {
     // PivotState.destroyed guard — the emitter is torn down anyway.
     h.engine.setPivotMode(true);
     expect(h.seen.length).toBe(0);
+  });
+});
+
+// Cycle 19 / Task 5b — AG-v36 strict pivot-mode semantic. On mode ON
+// every primary column is auto-hidden through `setColumnsVisible`;
+// on mode OFF the pre-pivot hide state is restored. Column mutations
+// (setPivotColumns / addValueColumn) do NOT re-trigger the hide flip
+// even though they route through the same `pivotStateChanged` handler.
+describe('PivotEngine — pivot-mode auto-hide primaries (Task 5b)', () => {
+  it('setPivotMode(true) hides every currently-visible primary and preserves the snapshot', () => {
+    const h = makeHarness();
+    // Baseline — all four primaries are visible.
+    for (const leaf of h.columnTree.value.leaves) {
+      expect(leaf.hide).toBe(false);
+    }
+    h.engine.setPivotMode(true);
+    expect(h.setColumnsVisible).toHaveBeenCalledTimes(1);
+    const [ids, visible] = h.setColumnsVisible.mock.calls[0]!;
+    expect(new Set(ids)).toEqual(new Set(['sector', 'region', 'pnl', 'notional']));
+    expect(visible).toBe(false);
+    for (const leaf of h.columnTree.value.leaves) {
+      expect(leaf.hide).toBe(true);
+    }
+  });
+
+  it('setPivotMode(false) restores primaries that were VISIBLE pre-pivot; pre-hidden primaries stay hidden', () => {
+    const h = makeHarness();
+    // Pre-pivot: hide `pnl` manually (mimics an app that hid it via
+    // panel click / setColumnsVisible before flipping pivot on).
+    (h.columnTree.value.leafById.get('pnl') as unknown as { hide: boolean }).hide = true;
+
+    h.engine.setPivotMode(true);
+    expect(h.setColumnsVisible).toHaveBeenCalledTimes(1);
+    // ON pass hides only the three that were visible.
+    const onIds = h.setColumnsVisible.mock.calls[0]![0] as string[];
+    expect(new Set(onIds)).toEqual(new Set(['sector', 'region', 'notional']));
+
+    h.engine.setPivotMode(false);
+    expect(h.setColumnsVisible).toHaveBeenCalledTimes(2);
+    const [offIds, offVisible] = h.setColumnsVisible.mock.calls[1]!;
+    expect(offVisible).toBe(true);
+    // Only the three that were visible pre-pivot are re-shown. `pnl`
+    // stays hidden because that was its pre-pivot state.
+    expect(new Set(offIds)).toEqual(new Set(['sector', 'region', 'notional']));
+    expect(h.columnTree.value.leafById.get('pnl')?.hide).toBe(true);
+  });
+
+  it('column-role mutations under pivot mode do NOT re-trigger the auto-hide pass', () => {
+    const h = makeHarness();
+    h.engine.setPivotMode(true);
+    expect(h.setColumnsVisible).toHaveBeenCalledTimes(1);
+    // pivotStateChanged fires again for each of these, but the
+    // engine tracks `prevPivotMode` so only the transition itself
+    // drives the visibility flip.
+    h.engine.setPivotColumns(['sector']);
+    h.engine.addValueColumn('pnl', 'sum');
+    h.engine.removePivotColumn('sector');
+    expect(h.setColumnsVisible).toHaveBeenCalledTimes(1);
+  });
+
+  it('no-op setPivotMode(true) when already on triggers no visibility flip', () => {
+    const h = makeHarness({ pivotMode: true });
+    h.engine.setPivotMode(true);
+    expect(h.setColumnsVisible).not.toHaveBeenCalled();
+  });
+
+  it('primaries already hidden at pivot-on time are NOT re-hidden and are preserved as `wasHidden`', () => {
+    const h = makeHarness();
+    // Two primaries already hidden pre-pivot.
+    (h.columnTree.value.leafById.get('sector') as unknown as { hide: boolean }).hide = true;
+    (h.columnTree.value.leafById.get('pnl') as unknown as { hide: boolean }).hide = true;
+    h.engine.setPivotMode(true);
+    const onIds = h.setColumnsVisible.mock.calls[0]![0] as string[];
+    // Only the two that were visible get hidden.
+    expect(new Set(onIds)).toEqual(new Set(['region', 'notional']));
+    h.engine.setPivotMode(false);
+    const offIds = h.setColumnsVisible.mock.calls[1]![0] as string[];
+    // Only the two that were visible pre-pivot get restored.
+    expect(new Set(offIds)).toEqual(new Set(['region', 'notional']));
+    // The originally-hidden two stay hidden.
+    expect(h.columnTree.value.leafById.get('sector')?.hide).toBe(true);
+    expect(h.columnTree.value.leafById.get('pnl')?.hide).toBe(true);
   });
 });

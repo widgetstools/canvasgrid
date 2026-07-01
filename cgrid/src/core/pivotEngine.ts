@@ -26,15 +26,23 @@
 // touch is routed through explicit deps callbacks so the engine stays
 // unaware of CGrid's private fields.
 //
-// Scope note (Cycle 19 / Task 5a — extraction ONLY): the AG-v36 strict
-// role-only checkbox semantic + pivot-mode auto-hide-primaries pass
-// called out in the master plan are intentionally DEFERRED to a
-// follow-up PR that owns the semantic conversation end-to-end (the
-// showcase `panelDragRouting.spec.ts` tests hard-encode the current
-// lenient `visible OR role` semantic + the "hide flag is sole
-// authority" invariant established in commit 89c7a74 — flipping in the
-// same PR would need those tests rewritten). This module is byte-for-
-// byte behaviour-preserving vs the pre-extraction CGrid.
+// Cycle 19 / Task 5b — the pivot-mode-toggle now owns the AG-v36
+// "primaries auto-hide under pivot mode" invariant. When the mode
+// flips ON, every primary leaf's current `def.hide` is snapshotted and
+// hide is set to true through `deps.setColumnsVisible`. When the mode
+// flips OFF, the snapshot restores whatever the hide state was before
+// pivot. Consequences pinned by the columnsPanel side of the same PR:
+//   • `computeRowChecked` becomes role-only under pivot mode
+//     (the "visible OR role" fallback is dropped).
+//   • `handleRowCheckboxClick` no longer calls `setColumnsVisible`
+//     under pivot mode — role assignment is the checkbox's sole job.
+//   • `setGroupModel`'s auto-show-on-ungroup path is gated by pivot
+//     mode so removing a rowGroup role can't fight the primary
+//     auto-hide.
+// The commit 89c7a74 "hide flag is sole authority for visibility"
+// invariant survives untouched: `computeVisibleColumnOrder` still
+// reads only `def.hide`. Pivot mode became an author of that flag —
+// not a second visibility authority.
 
 import type { TypedEventEmitter } from './eventEmitter';
 import type { ColumnTree } from './columnTree';
@@ -130,6 +138,14 @@ export interface PivotEngineDeps<TRow> {
    *  parity — row group panel + pivot panel share one strip in pivot
    *  mode). */
   applyVerticalInsets(): void;
+
+  // ── pivot-mode auto-hide primaries (Task 5b) ─────────────────────────
+  /** Same signature as the public API — the engine calls this on
+   *  pivot-mode flips to drive the primary auto-hide / restore pass
+   *  through the same code path the panel + `applyColumnState` use.
+   *  Routing through CGrid keeps the `columnVisible` event + worker
+   *  updateColumns roundtrip intact. */
+  setColumnsVisible(colIds: string[], visible: boolean): void;
 }
 
 export class PivotEngine<TRow = unknown> {
@@ -150,12 +166,23 @@ export class PivotEngine<TRow = unknown> {
    *  columns + totals options) so columns re-synthesize only when the
    *  distinct-key set or measures actually change. */
   private treeSignature = '';
+  /** Previous pivot mode, tracked so `handleStateChanged` can detect
+   *  a mode transition (off→on / on→off) and drive the primary
+   *  auto-hide pass. Column-mutation events (pivot cols / value cols)
+   *  fire the same state-change handler but must NOT re-trigger the
+   *  hide flip. */
+  private prevPivotMode: boolean;
+  /** Snapshot of every primary leaf's `def.hide` at the moment pivot
+   *  mode flipped ON. On flip OFF the entries are consulted to restore
+   *  the pre-pivot visibility. Empty while pivot mode is OFF. Task 5b. */
+  private preservedPrimaryHide: Map<string, boolean> = new Map();
 
   constructor(
     private readonly deps: PivotEngineDeps<TRow>,
     init: { pivotMode: boolean },
   ) {
     this.state = new PivotState({ pivotMode: init.pivotMode });
+    this.prevPivotMode = init.pivotMode;
     this.unsubscribe = this.state.on('pivotStateChanged', (e) => this.handleStateChanged(e));
   }
 
@@ -163,6 +190,13 @@ export class PivotEngine<TRow = unknown> {
 
   isPivotMode(): boolean { return this.state.isPivotMode(); }
   isPivotActive(): boolean { return this.active; }
+  /** True when PivotState is configured to produce pivot output
+   *  (pivotMode ON AND ≥1 pivot col AND ≥1 value col) — the pre-5a
+   *  "state has enough to activate" semantic used by the pivot panel
+   *  host's `data-active` attribute. Deterministic from state alone;
+   *  flips synchronously when the config changes, unlike `isPivotActive()`
+   *  which only flips after the worker chunk lands. */
+  isPivotStateActive(): boolean { return this.state.isPivotActive(); }
   getPivotColumns(): string[] { return this.state.getPivotColumns(); }
   getValueColumns(): PivotValueColumn[] { return this.state.getValueColumns(); }
   /** Same signature CGrid exposes on the public API (plain object list). */
@@ -336,6 +370,16 @@ export class PivotEngine<TRow = unknown> {
    *  (re)synthesizes the secondary columns. */
   private handleStateChanged(e: PivotStateChangedEvent): void {
     if (this.deps.isDestroyed()) return;
+    // Task 5b — pivot-mode toggle drives the AG-v36 auto-hide-primaries
+    // pass. Detects the transition off the tracked `prevPivotMode` so
+    // pivot/value column mutations (which fire the same event) don't
+    // re-hide primaries. Runs BEFORE the `pivotStateChanged` fanout so
+    // subscribers that read `columnVisible` state (columns panel checks,
+    // status bar column counts) see the flipped hide flags on arrival.
+    if (e.pivotMode !== this.prevPivotMode) {
+      this.prevPivotMode = e.pivotMode;
+      this.applyPivotModeVisibility(e.pivotMode);
+    }
     // Fan the change out as a public event so the columns tool panel +
     // pivot panel + context menu keep their views over PivotState in
     // sync. Fire BEFORE the worker round-trip so subscribers can
@@ -395,6 +439,39 @@ export class PivotEngine<TRow = unknown> {
         this.deps.requestViewport();
       })
       .catch((err) => { if (!this.deps.isDestroyed()) console.error('[cgrid]', err); });
+  }
+
+  /** Task 5b — apply the AG-v36 "primaries auto-hide under pivot mode"
+   *  invariant. On flip ON: snapshot every primary leaf's current
+   *  `def.hide` and hide those currently visible. On flip OFF: restore
+   *  the snapshot, un-hiding leaves that were pre-pivot visible. The
+   *  primary tree source depends on pivot activation state — while
+   *  active the live tree carries synthesized pivot leaves, so we
+   *  consult the saved `primaryColumnTree`; while inactive the live
+   *  tree IS the primary tree. Routing hide flips through
+   *  `deps.setColumnsVisible` reuses the existing `columnVisible`
+   *  event + worker updateColumns roundtrip, keeping downstream
+   *  consumers (columns panel, status bar) in sync via a single seam. */
+  private applyPivotModeVisibility(enteringPivot: boolean): void {
+    if (enteringPivot) {
+      const primaryTree = this.primaryColumnTree ?? this.deps.getColumnTree();
+      const toHide: string[] = [];
+      for (const leaf of primaryTree.leaves) {
+        this.preservedPrimaryHide.set(leaf.colId, leaf.hide === true);
+        if (leaf.hide !== true) toHide.push(leaf.colId);
+      }
+      if (toHide.length > 0) this.deps.setColumnsVisible(toHide, false);
+      return;
+    }
+    // Exit: any primary that was VISIBLE pre-pivot needs restoring.
+    // Pre-hidden leaves stay hidden — `setColumnsVisible` is a no-op
+    // when the target `hide` already matches.
+    const toShow: string[] = [];
+    for (const [colId, wasHidden] of this.preservedPrimaryHide) {
+      if (!wasHidden) toShow.push(colId);
+    }
+    this.preservedPrimaryHide.clear();
+    if (toShow.length > 0) this.deps.setColumnsVisible(toShow, true);
   }
 
   /** Swap the column tree to the synthesized pivot tree: pivot levels

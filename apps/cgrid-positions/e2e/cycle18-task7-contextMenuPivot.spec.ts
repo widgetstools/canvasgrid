@@ -44,6 +44,7 @@ interface GridApiSurface {
   getValueColumns: () => Array<{ colId: string; aggFunc: string }>;
   setPivotMode: (mode: boolean) => void;
   isPivotMode: () => boolean;
+  setColumnsVisible: (colIds: string[], visible: boolean) => void;
 }
 
 async function waitForFrames(page: Page, n = 8): Promise<void> {
@@ -126,6 +127,17 @@ test.describe('Cycle 18 / Task 7 — context menu pivot items', () => {
     });
     await waitForFrames(page, 3);
     await page.waitForSelector('.cg-columns-panel-plz', { state: 'visible' });
+    // Cycle 19 / Task 5b — `setPivotMode(true)` now auto-hides every
+    // primary source column (AG-v36 strict semantic). This test drives
+    // the header context menu on `sector`, so re-expose sector's header
+    // for the click to have a target. In production the user would
+    // reach "Add to Labels" via drag from the columns panel row; the
+    // header-menu path here specifically exercises the context-menu
+    // wiring + sync invariant, not the auto-hide default.
+    await page.evaluate(() => {
+      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.setColumnsVisible(['sector'], true);
+    });
+    await waitForFrames(page, 3);
 
     await rightClickHeader(page, 'sector');
     const addLabel = page.locator(LABEL_SELECTOR).filter({ hasText: /^Add to Labels$/ });
@@ -283,8 +295,15 @@ test.describe('Cycle 18 / Task 7 — context menu pivot items', () => {
 
     // Flip pivot mode on (pivot still inactive: 0 pivot cols + 0 value
     // cols, but the mode flag drives the gate).
+    // Cycle 19 / Task 5b — pivot mode ON auto-hides every primary
+    // (AG-v36 strict semantic); re-expose ticker's header so the
+    // right-click has a target for the assertion below. This test's
+    // focus is the `Scroll to column` gate on pivotMode, not the
+    // auto-hide default.
     await page.evaluate(() => {
-      (window as unknown as { __cgrid: GridApiSurface }).__cgrid.setPivotMode(true);
+      const api = (window as unknown as { __cgrid: GridApiSurface }).__cgrid;
+      api.setPivotMode(true);
+      api.setColumnsVisible(['ticker'], true);
     });
     await waitForFrames(page, 4);
 

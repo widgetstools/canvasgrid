@@ -572,20 +572,15 @@ export class ColumnsToolPanel implements ToolPanel {
    *      reflects "this column is in the pivot" rather than only
    *      "this column paints in the body".
    *
-   *  Note on AG-Grid v36 divergence: v36 flips the pivot-mode
-   *  checkbox to ROLE-ONLY semantics (visible non-role cols read
-   *  unchecked). Two cycle 18 / Task 5 E2E tests pin that strict
-   *  behavior (`cycle18-task5-pivotToolPanel.spec.ts:221, 252`).
-   *  The strict semantic only works coherently if pivot mode also
-   *  auto-hides primary columns, which the current implementation
-   *  does NOT do — see cycle 19 / Task 5 (`PivotEngine` extraction)
-   *  for the future home of that auto-hide pass. Until then this
-   *  method keeps the lenient `visible OR role` semantic that the
-   *  showcase `panelDragRouting.spec.ts` tests pin. */
+   *  Cycle 19 / Task 5b — AG-v36 strict semantics: under pivot mode
+   *  the checkbox reads ROLE-only. Primaries are auto-hidden by
+   *  `PivotEngine` on `setPivotMode(true)`, so the pre-5b "visible OR
+   *  role" fallback becomes redundant AND misleading (a col with no
+   *  role would read checked because visibility hadn't caught up).
+   *  Out of pivot mode the checkbox tracks visibility exactly. */
   private computeRowChecked(entry: CColumnState): boolean {
-    if (entry.hide !== true) return true;
-    if (this.api.isPivotMode?.() === true && this.hasPivotRole(entry.colId)) return true;
-    return false;
+    if (this.api.isPivotMode?.() === true) return this.hasPivotRole(entry.colId);
+    return entry.hide !== true;
   }
 
   /** True when the column is currently assigned ANY pivot-mode role
@@ -601,29 +596,24 @@ export class ColumnsToolPanel implements ToolPanel {
 
   /** Checkbox click router.
    *
-   *  Cardinal principle: the columns side panel's checkbox is the
-   *  single source of truth for whether a column paints. Unchecking
-   *  ALWAYS hides the column in the grid; checking ALWAYS shows it.
-   *  Visibility tracks the checkbox deterministically — no
-   *  conditional bailouts that leave a column visible with an
-   *  unchecked box (or vice versa).
+   *  Out of pivot mode: the checkbox IS the single source of truth
+   *  for column visibility. Click routes straight to
+   *  `setColumnsVisible` — no conditional bailouts that would leave
+   *  a column visible with an unchecked box (or vice versa).
    *
-   *  Under pivot mode, role membership rides alongside visibility:
-   *  unchecking a role-bearing column also removes the role;
-   *  checking a role-eligible column also assigns it (rowGroup
-   *  wins over value; pivot role is reserved for drag, per AG
-   *  parity). The visibility toggle still fires unconditionally so
-   *  the user's panel state and what's on screen always match. */
+   *  Under pivot mode (Cycle 19 / Task 5b — AG-v36 strict semantics):
+   *  the checkbox represents ROLE membership. Checking a role-eligible
+   *  column ADDS the role (rowGroup wins over value; pivot role is
+   *  reserved for drag). Unchecking a role-bearing column REMOVES the
+   *  role. The panel never calls `setColumnsVisible` in pivot mode —
+   *  primary visibility is owned by `PivotEngine`'s auto-hide pass
+   *  (fires on `setPivotMode` transitions). `setGroupModel`'s
+   *  auto-show-on-ungroup is gated by pivot mode for the same reason
+   *  so a role removal can't fight the primary auto-hide. */
   private handleRowCheckboxClick(colId: string, checkbox: HTMLInputElement): void {
     const checked = checkbox.checked;
 
     if (this.api.isPivotMode?.() === true) {
-      // Pivot mode: manage role assignment FIRST. Removing a
-      // row-group role would otherwise auto-restore the column's
-      // visibility (via `setGroupModel`'s show-removed-cols path)
-      // and stomp the hide flag the click is about to set. We do
-      // the role mutation first, then re-apply the user's
-      // visibility intent.
       const groups = this.api.getRowGroupColumns?.() ?? [];
       const values = this.api.getValueColumns?.() ?? [];
       const pivots = this.api.getPivotColumns?.() ?? [];
@@ -643,11 +633,9 @@ export class ColumnsToolPanel implements ToolPanel {
           this.api.addValueColumn?.(colId, aggFunc);
         }
       }
+      return;
     }
 
-    // Visibility ALWAYS tracks the checkbox — pivot mode or not.
-    // Called LAST so it wins over the role-driven auto-show/auto-hide
-    // that `setGroupModel` runs as a side effect.
     this.api.setColumnsVisible([colId], checked);
   }
 
