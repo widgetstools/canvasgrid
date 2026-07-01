@@ -77,9 +77,13 @@ import {
   normalizePivotPanelShow,
   type PivotPanelGridContext,
 } from './interaction/pivotPanel/host';
-import { GroupingState, type GroupingStateChangedEvent } from './core/groupingState';
 import type { PivotValueColumn } from './core/pivotState';
 import { PivotEngine, type PivotEngineDeps, type PivotEngineOptions } from './core/pivotEngine';
+import {
+  GroupingCoordinator,
+  type GroupingCoordinatorDeps,
+  type GroupingCoordinatorOptions,
+} from './core/groupingCoordinator';
 import {
   isPivotResultColumnId, isPivotRowTotalColumnId,
   isPivotResultGroupId,
@@ -111,7 +115,7 @@ import { coerceToNumberArray } from './renderer/cellRenderers/sparkline/coerceTo
 import { decorateHeader } from './renderer/painters/byRows';
 import {
   autoGroupColumnDepthFromId,
-  isAutoGroupColumnId, resolveGroupDisplayType, synthesizeAutoGroupColumns,
+  isAutoGroupColumnId,
 } from './core/autoGroupColumn';
 import { Renderer } from './renderer/renderer';
 import { HitTester } from './interaction/hitTester';
@@ -685,21 +689,17 @@ export class CGrid<TRow = any> {
    *  the cellSelectionChanged fan-out. Deep-cloned on store so a later
    *  in-place mutation can't false-equal. */
   private lastEmittedCellSelectionRanges: SelectionRange[] = [];
-  /** Cycle 15 / Task 4 — current row-group model. Drives auto-group
-   *  column insertion (this task) + worker `setGroupModel` dispatch
-   *  (Task 1). The empty model bypasses every group-aware pass cleanly. */
-  private groupModel: GroupModel = { rowGroupCols: [] };
-  /** Cycle 15.5 / Task 1 — the canonical mutable grouping state shared
-   *  by the three grouping UIs (row group panel, columns tool panel
-   *  Row Groups drop zone, header context menu Group/Un-Group items).
-   *  All three views call the same primitive verbs
-   *  (`addRowGroupColumn`, `removeRowGroupColumn`,
-   *  `moveRowGroupColumn`, `setRowGroupColumnSort`) and subscribe to
-   *  `groupingStateChanged` to re-render. Constructed at init with
-   *  the initial `rowGroupCols`; mutations route through
-   *  `applyGroupingStateChange` so the worker stays in sync. */
-  private groupingState: GroupingState = new GroupingState();
-  private groupingStateUnsubscribe: () => void = () => {};
+  /** Cycle 19 / Task 5-Grouping — grouping subsystem. Owns the current
+   *  `GroupModel` + the canonical `GroupingState` primitive the three
+   *  grouping UIs subscribe to + the synthesized `autoGroupColumns` +
+   *  the `groupRowStripCtx` the body painter reads. Every imperative
+   *  grouping API method on CGrid delegates here; the state-change
+   *  side effects (public event emission, worker round-trip, panel host
+   *  fan-out, expansion mirror reset, auto-hide-on-group / restore-on-
+   *  ungroup) all live inside the coordinator. Late-initialised in the
+   *  constructor so the deps closures resolve after CGrid's own fields
+   *  come online. */
+  private grouping!: GroupingCoordinator<TRow>;
   /** Cycle 19 / Task 5a — pivot subsystem. Owns the canonical PivotState
    *  (pivotMode + pivotColumns + valueColumns) + the pivot-active flag
    *  + the saved primary column tree + the `cellSpecById` reverse index
@@ -710,26 +710,6 @@ export class CGrid<TRow = any> {
    *  Late-initialised in the constructor after `workerCoord` +
    *  `pivotPanel` come online. */
   private pivotEngine!: PivotEngine<TRow>;
-  /** Cycle 15 / Task 4 + Task 5 — synthesized auto-group column(s).
-   *  Length depends on `groupDisplayType`:
-   *    - `'singleColumn'` + grouping active → one column.
-   *    - `'multipleColumns'` + grouping active → one per `rowGroupCols`.
-   *    - `'groupRows'` / `'custom'` / no grouping → empty.
-   *  Inserted at the start of the visible-leaf order by
-   *  `computeVisibleColumnOrder`; rebuilt on every `setGroupModel` /
-   *  `setGridOption('groupDisplayType', …)` /
-   *  `setGridOption('autoGroupColumnDef', …)` call. */
-  private autoGroupColumns: ResolvedColDef<TRow>[] = [];
-  /** Cycle 15 / Task 5 — non-null when `groupDisplayType` resolves to
-   *  `'groupRows'` or `'custom'`. The body painter reads this every
-   *  frame to detect group rows + paint full-row strips spanning the
-   *  visible width. The `lookup` takes a DATA row index (matches
-   *  `cellAt(rowIndex, …)`'s row argument) and returns the
-   *  `GroupCellValue` payload on a group row, `null` on a data row. */
-  private groupRowStripCtx: {
-    renderer: string;
-    lookup: (rowIndex: number) => GroupCellValue | null;
-  } | null = null;
   /** Cycle 15 / Task 7 — main-thread mirror of the worker's persistent
    *  expanded-keys set.
    *    - `null` is the "every group expanded by default" sentinel:
@@ -930,6 +910,18 @@ export class CGrid<TRow = any> {
     this.columnTree = resolveColumnTree(options.columnDefs, options.defaultColDef, options.columnTypes);
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
     this.columnGroupState = new ColumnGroupState(this.columnTree);
+    // Cycle 19 / Task 5-Grouping — grouping coordinator. Constructed
+    // BEFORE `computeVisibleColumnOrder()` at construction because that
+    // method reads `this.grouping.getAutoGroupColumns()` synchronously.
+    // Seeded with empty rowGroupCols; the ctor is inert (no state-change
+    // callbacks fire from the initial-seed values). The deps' worker /
+    // panel / pivot-engine closures resolve lazily to whatever holds
+    // `this.workerCoord` / `this.rowGroupPanel` / `this.pivotEngine`
+    // at call-time.
+    this.grouping = new GroupingCoordinator<TRow>(
+      this.makeGroupingCoordinatorDeps(),
+      { rowGroupCols: [] },
+    );
     this.columnOrder = this.computeVisibleColumnOrder();
 
     // Cycle 8 / Task 2 — seed the sort model from per-column `initialSort` +
@@ -1020,7 +1012,7 @@ export class CGrid<TRow = any> {
       // strip code path with zero overhead. The renderer key defaults to
       // `'group'`; apps override via `CGridOptions.groupRowRenderer` for
       // `'custom'` mode.
-      getGroupRowStrip: () => this.groupRowStripCtx,
+      getGroupRowStrip: () => this.grouping.getGroupRowStripCtx(),
       // Cycle 15 / Task 12 — per-row kind probe. Lets the byRows
       // painter detect per-group footer rows (`rowKind === 3`) without
       // peeking inside cgrid's chunk. Returns 0 (data) outside the
@@ -1107,18 +1099,6 @@ export class CGrid<TRow = any> {
     // by CGridCanvas, so editor goes on top).
     this.root.appendChild(this.editorContainer);
 
-    // Cycle 15.5 / Task 1 — initialise the grouping state primitive
-    // from the current rowGroupCols (empty at construction time; apps
-    // call `setGroupModel` afterwards). All three grouping UIs read
-    // from / mutate via this object.
-    this.groupingState = new GroupingState({
-      rowGroupColumns: this.groupModel.rowGroupCols,
-    });
-    this.groupingStateUnsubscribe = this.groupingState.on(
-      'groupingStateChanged',
-      (e) => this.handleGroupingStateChanged(e),
-    );
-
     // Cycle 19 / Task 5a — pivot engine. Owns the canonical PivotState
     // seeded from the `pivotMode` option (pivot/value columns are
     // configured afterwards via the imperative API / tool panels), the
@@ -1199,8 +1179,8 @@ export class CGrid<TRow = any> {
         this.root,
         ctx,
         rgShow,
-        this.groupingState.getRowGroupColumns(),
-        this.groupingState.getPerLevelSort(),
+        this.grouping.getRowGroupColumns(),
+        this.grouping.getGroupingState().getPerLevelSort(),
         { suppressSort: options.rowGroupPanelSuppressSort === true },
       );
       // Initial top offset = status bar's top inset (zero when no top
@@ -2952,89 +2932,11 @@ export class CGrid<TRow = any> {
    *  no chunk walk. */
   getTotalRowCount(): number { return this.rowDataById.size; }
 
-  /** Cycle 15 — set the row-group model. Stored on the main thread,
-   *  forwarded to the worker (Task 1 wired the dispatch), and used by
-   *  Task 4's column-order resolution to insert the auto-group column
-   *  when grouping is active. An empty `rowGroupCols` array clears
-   *  the auto-group column and bypasses the worker's group passes.
-   *
-   *  Cycle 15 / Task 6 — also syncs the row group panel's chip
-   *  strip so a programmatic `setGroupModel` call from app code
-   *  flows into the visible chips. */
+  /** Cycle 19 / Task 5-Grouping — public grouping API delegates. The
+   *  coordinator owns the model + the worker round-trip + the
+   *  auto-hide-on-group / restore-on-ungroup pass. */
   setGroupModel(g: GroupModel): void {
-    if (this.destroyed) return;
-    // Compute visibility diff BEFORE mutating groupModel so we know which
-    // columns were newly added to groups (should be hidden from the grid)
-    // and which were removed (should be restored to visible).
-    const prevSet = new Set(this.groupModel.rowGroupCols);
-    const nextSet = new Set(g.rowGroupCols);
-    const toHide = g.rowGroupCols.filter((id) => !prevSet.has(id));
-    const toShow = this.groupModel.rowGroupCols.filter((id) => !nextSet.has(id));
-    this.groupModel = { rowGroupCols: [...g.rowGroupCols] };
-    this.rebuildAutoGroupColumn();
-    // Cycle 15.5 / Task 1 — sync the GroupingState primitive so any
-    // subscribed view (panel, tool-panel zone, context menu)
-    // re-renders. The handler short-circuits the round-trip back
-    // through `setGroupModel` (sameOrder === true) so the call is
-    // free of recursive worker dispatch.
-    this.groupingState.setRowGroupColumns(this.groupModel.rowGroupCols);
-    this.rowGroupPanel?.setRowGroupCols(this.groupModel.rowGroupCols);
-    // Cycle 15 / Task 7 — fresh model resets expansion to the
-    // default-all sentinel; the worker does the same on its side. The
-    // reply ships back the full key list so the mirror can serve
-    // `getExpandedKeys()` snapshots without a follow-up round-trip.
-    //
-    // Cycle 15 / Task 9 — the reply ALSO carries the materialised
-    // `expandedKeys` set when `groupDefaultExpanded` /
-    // `groupDefaultExpandedKeys` is configured. Until the reply
-    // lands the mirror sits at the default-all sentinel (consistent
-    // with the worker's intermediate state before defaults are
-    // applied); the reply handler below overrides it with the
-    // explicit set when present.
-    this.expandedKeys = null;
-    // Sync the worker's column metadata BEFORE pushing the new
-    // group model. The pivot-mode role filter on `computeVisibleColumnOrder`
-    // (and the auto-hide on grouped columns) may have pushed the
-    // newly-grouped colId out of `columnOrder` since the last
-    // `updateColumns`; without re-syncing, the worker's GroupPass
-    // rejects an "unknown column id" and the body collapses to
-    // empty-group-key data rows.
-    this.workerCoord.updateColumns(this.workerColumns())
-      .then(() => this.workerCoord.setGroupModel(this.groupModel))
-      .then(({ visibleCount, groupKeys, groupDescendants, expandedKeys }) => {
-      if (this.destroyed) return;
-      this.knownGroupKeys = groupKeys;
-      this.updateGroupDescendantsCache(groupKeys, groupDescendants);
-      // Cycle 15 / Task 9 — re-seed the mirror from the worker's
-      // materialised default. `null` keeps the all-expanded sentinel
-      // (`getExpandedKeys()` derives from `knownGroupKeys`); a
-      // non-null array installs the explicit starting set.
-      this.expandedKeys = expandedKeys === null ? null : new Set(expandedKeys);
-      this.rowCount = visibleCount;
-      this.rowHeightIndex = null;
-      this.recomputeViewport();
-      this.cgridCanvas.requestRepaint();
-      this.requestViewport();
-    }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
-    // Hide columns that are now acting as group levels; restore visibility
-    // for columns removed from grouping. Mirrors ag-grid's default behaviour
-    // so grouped fields don't appear redundantly as standalone grid columns.
-    // Cycle 15.5 / Task 7 — `suppressGroupChangesColumnVisibility` gates this:
-    //   true / 'suppressHideOnGroup'+'suppressShowOnUngroup' → skip both.
-    //   'suppressHideOnGroup' → skip hide only; allow show on ungroup.
-    //   'suppressShowOnUngroup' → skip show only; allow hide on group.
-    // Cycle 19 / Task 5b — under pivot mode ALL primaries are auto-hidden
-    // by `PivotEngine`; ungrouping a col must NOT clobber that hide,
-    // regardless of `suppressGroupChangesColumnVisibility`. The hide
-    // branch is still meaningful (it turns a not-yet-hidden col into
-    // a hidden one on the entry path, e.g. `setGroupModel` before
-    // pivot mode ever flipped ON).
-    const suppressVis = this.options.suppressGroupChangesColumnVisibility;
-    const suppressHide = suppressVis === true || suppressVis === 'suppressHideOnGroup';
-    const suppressShow = suppressVis === true || suppressVis === 'suppressShowOnUngroup'
-      || this.pivotEngine.isPivotMode();
-    if (toHide.length > 0 && !suppressHide) this.setColumnsVisible(toHide, false);
-    if (toShow.length > 0 && !suppressShow) this.setColumnsVisible(toShow, true);
+    if (!this.destroyed) this.grouping.setGroupModel(g);
   }
 
   // ─── Cycle 18 / Task 3 — pivot API + render wiring ─────────────────────
@@ -3122,7 +3024,7 @@ export class CGrid<TRow = any> {
       setColumnGroupState: (state) => { this.columnGroupState = state; },
       getColumnDefsMap: () => this.columnDefsMap,
       setColumnDefsMap: (map) => { this.columnDefsMap = map; },
-      getAutoGroupColumns: () => this.autoGroupColumns,
+      getAutoGroupColumns: () => this.grouping.getAutoGroupColumns(),
       subscribeColumnGroupState: () => this.subscribeColumnGroupState(),
       computeVisibleColumnOrder: () => this.computeVisibleColumnOrder(),
       setColumnOrder: (order) => { this.columnOrder = order; },
@@ -3136,6 +3038,52 @@ export class CGrid<TRow = any> {
       // Task 5b — pivot mode toggle drives the primary auto-hide pass
       // through the same seam the panel + `applyColumnState` use.
       setColumnsVisible: (colIds, visible) => this.setColumnsVisible(colIds, visible),
+    };
+  }
+
+  /** Cycle 19 / Task 5-Grouping — GroupingCoordinator deps bundle.
+   *  Threaded into the coordinator at construction so every reach into
+   *  CGrid state is explicit + auditable. The panel field is read at
+   *  call-time closure — the coordinator is constructed BEFORE the row
+   *  group panel comes online, but state-change callbacks only fire
+   *  after the wiring lands. */
+  private makeGroupingCoordinatorDeps(): GroupingCoordinatorDeps<TRow> {
+    return {
+      events: this.events,
+      isDestroyed: () => this.destroyed,
+      getOptions: (): GroupingCoordinatorOptions => ({
+        suppressGroupChangesColumnVisibility: this.options.suppressGroupChangesColumnVisibility,
+        groupDisplayType: this.options.groupDisplayType,
+        autoGroupColumnDef: this.options.autoGroupColumnDef as
+          GroupingCoordinatorOptions['autoGroupColumnDef'],
+        groupRowRenderer: this.options.groupRowRenderer,
+      }),
+      workerColumns: () => this.workerColumns(),
+      updateWorkerColumns: (cols) =>
+        this.workerCoord.updateColumns(cols as WorkerColumn[]),
+      setWorkerGroupModel: (g) => this.workerCoord.setGroupModel(g),
+      getRowGroupPanel: () => this.rowGroupPanel,
+      getColumnTree: () => this.columnTree,
+      getColumnDefsMap: () => this.columnDefsMap,
+      computeVisibleColumnOrder: () => this.computeVisibleColumnOrder(),
+      setColumnOrder: (order) => { this.columnOrder = order; },
+      getLayoutWidth: () =>
+        this.canvasBounds.width || this.scroller.clientWidth || 800,
+      setColumnLayout: (layout) => { this.columnLayout = layout; },
+      recomputeViewport: () => this.recomputeViewport(),
+      requestRepaint: () => { this.cgridCanvas?.requestRepaint(); },
+      requestViewport: () => this.requestViewport(),
+      setExpandedKeys: (keys) => { this.expandedKeys = keys; },
+      setKnownGroupKeys: (keys) => { this.knownGroupKeys = keys; },
+      updateGroupDescendantsCache: (keys, desc) =>
+        this.updateGroupDescendantsCache(keys, desc),
+      setRowCount: (n) => { this.rowCount = n; },
+      invalidateRowHeightIndex: () => { this.rowHeightIndex = null; },
+      groupCellContextAt: (rowIndex) => this.groupCellContextAt(rowIndex),
+      setColumnsVisible: (colIds, visible) => this.setColumnsVisible(colIds, visible),
+      isPivotMode: () => this.pivotEngine.isPivotMode(),
+      getSortModel: () => this.sortModel,
+      setSortModel: (model) => this.setSortModel(model),
     };
   }
 
@@ -3169,7 +3117,7 @@ export class CGrid<TRow = any> {
     // Re-submit the current group model; the worker will re-apply the
     // groupDefaultExpanded / groupDefaultExpandedKeys defaults it was
     // initialised with, producing a fresh expandedKeys set.
-    this.setGroupModel(this.groupModel);
+    this.setGroupModel(this.grouping.getGroupModel());
   }
 
   expandAll(): void {
@@ -3345,47 +3293,28 @@ export class CGrid<TRow = any> {
     this.cgridCanvas?.requestRepaint();
   }
 
-  /** Cycle 15.5 / Task 1 — primitive grouping mutation: replace the
-   *  entire ordered row-group column list. Routes through the
-   *  GroupingState primitive; the `groupingStateChanged` handler
-   *  ships the new model to the worker. */
+  /** Cycle 19 / Task 5-Grouping — primitive grouping API delegates.
+   *  The coordinator owns the `GroupingState` primitive; the
+   *  `groupingStateChanged` handler downstream ships the model swap
+   *  to the worker (or merges the per-level sort into the sort model
+   *  on a pure-sort change). */
   setRowGroupColumns(columns: string[]): void {
-    if (this.destroyed) return;
-    this.groupingState.setRowGroupColumns(columns);
+    if (!this.destroyed) this.grouping.setRowGroupColumns(columns);
   }
-
-  /** Cycle 15.5 / Task 1 — primitive grouping mutation: append
-   *  `colId` to the row-group column list. */
   addRowGroupColumn(colId: string): void {
-    if (this.destroyed) return;
-    this.groupingState.addRowGroupColumn(colId);
+    if (!this.destroyed) this.grouping.addRowGroupColumn(colId);
   }
-
-  /** Cycle 15.5 / Task 1 — primitive grouping mutation: remove
-   *  `colId` from the row-group column list. */
   removeRowGroupColumn(colId: string): void {
-    if (this.destroyed) return;
-    this.groupingState.removeRowGroupColumn(colId);
+    if (!this.destroyed) this.grouping.removeRowGroupColumn(colId);
   }
-
-  /** Cycle 15.5 / Task 1 — primitive grouping mutation: move the
-   *  column at index `from` to index `to`. */
   moveRowGroupColumn(from: number, to: number): void {
-    if (this.destroyed) return;
-    this.groupingState.moveRowGroupColumn(from, to);
+    if (!this.destroyed) this.grouping.moveRowGroupColumn(from, to);
   }
-
-  /** Cycle 15.5 / Task 1 — primitive grouping mutation: set the
-   *  per-level sort for the row-group level holding `colId`. */
   setRowGroupColumnSort(colId: string, direction: 'asc' | 'desc' | null): void {
-    if (this.destroyed) return;
-    this.groupingState.setRowGroupColumnSort(colId, direction);
+    if (!this.destroyed) this.grouping.setRowGroupColumnSort(colId, direction);
   }
-
-  /** Cycle 15.5 / Task 1 — snapshot of the current row-group column
-   *  list in nesting order. */
   getRowGroupColumns(): string[] {
-    return this.groupingState.getRowGroupColumns();
+    return this.grouping.getRowGroupColumns();
   }
 
   /** Cycle 15.5 / Task 2 — class-level mirror of the public-API getter.
@@ -3670,8 +3599,8 @@ export class CGrid<TRow = any> {
       this.root,
       ctx,
       next,
-      this.groupingState.getRowGroupColumns(),
-      this.groupingState.getPerLevelSort(),
+      this.grouping.getRowGroupColumns(),
+      this.grouping.getGroupingState().getPerLevelSort(),
       { suppressSort: this.options.rowGroupPanelSuppressSort === true },
     );
     this.setRowGroupPanelTop(this.statusBarInsets.top);
@@ -3738,9 +3667,9 @@ export class CGrid<TRow = any> {
 
   /** Cycle 15.5 / Task 1 — build the per-host context object shared by
    *  the construction-time path and the runtime-show-flip path. Routes
-   *  every primitive mutation through `groupingState`; the
-   *  `groupingStateChanged` handler downstream lands the model swap
-   *  on the worker. */
+   *  every primitive mutation through the grouping coordinator's
+   *  `GroupingState`; the coordinator's state-change handler downstream
+   *  lands the model swap on the worker. */
   private makeRowGroupPanelContext(): RowGroupPanelGridContext {
     return {
       setReservedSpace: (side, height) => this.reserveRowGroupPanelSpace(side, height),
@@ -3751,11 +3680,11 @@ export class CGrid<TRow = any> {
       // through to `primaryColumnTree` so the row-group panel still
       // accepts drops of source columns that carry `enableRowGroup`.
       isColumnRowGroupEnabled: (colId) => this.isColumnRowGroupEnabled(colId),
-      addRowGroupColumn: (colId) => this.groupingState.addRowGroupColumn(colId),
-      removeRowGroupColumn: (colId) => this.groupingState.removeRowGroupColumn(colId),
-      moveRowGroupColumn: (from, to) => this.groupingState.moveRowGroupColumn(from, to),
+      addRowGroupColumn: (colId) => this.grouping.addRowGroupColumn(colId),
+      removeRowGroupColumn: (colId) => this.grouping.removeRowGroupColumn(colId),
+      moveRowGroupColumn: (from, to) => this.grouping.moveRowGroupColumn(from, to),
       setRowGroupColumnSort: (colId, direction) =>
-        this.groupingState.setRowGroupColumnSort(colId, direction),
+        this.grouping.setRowGroupColumnSort(colId, direction),
       tryCrossPanelMove: (colId, x, y) => this.tryCrossPanelMoveFrom('rowGroup', colId, x, y),
     };
   }
@@ -3769,55 +3698,6 @@ export class CGrid<TRow = any> {
     if (target === null) return false;
     if (target === fromRole) return false;
     return this.commitPanelMove(fromRole, target, colId);
-  }
-
-  /** Cycle 15.5 / Task 1 — `groupingStateChanged` handler. When the
-   *  ordered column list changes (`source: 'set' | 'add' | 'remove' |
-   *  'move'`), ship a `setGroupModel` round-trip to the worker so the
-   *  visible chunk reflects the new grouping.
-   *
-   *  Cycle 15.5 / Task 9 gap-fill — a pure sort change (`source: 'sort'`)
-   *  now drives a real re-order: the per-level group sort is translated
-   *  into the worker sort model, and `SortPass.applyGrouped` re-sorts each
-   *  group level by the sort entry targeting that level's grouping column.
-   *  Both entry points (the public `setRowGroupColumnSort` API and the
-   *  row group panel pill chevron) funnel through here, so both re-order.
-   *
-   *  The panel host re-renders via `setGroupingState` so the updated chip
-   *  + indicator paint immediately. */
-  private handleGroupingStateChanged(e: GroupingStateChangedEvent): void {
-    if (this.destroyed) return;
-    this.rowGroupPanel?.setGroupingState(e.rowGroupColumns, e.perLevelSort);
-    if (e.source === 'sort') {
-      // Translate the per-level group sort into the worker sort model.
-      // Rebuild the group-column entries from `perLevelSort` (in nesting
-      // order so the outer level sorts first), preserving any leaf-column
-      // sort entries already present in the model.
-      const groupColSet = new Set(e.rowGroupColumns);
-      const nonGroupSort = this.sortModel.filter((s) => !groupColSet.has(s.colId));
-      const groupSort: SortModel = [];
-      e.rowGroupColumns.forEach((colId, i) => {
-        const entry = e.perLevelSort[i];
-        if (entry) groupSort.push({ colId, direction: entry.direction });
-      });
-      this.setSortModel([...groupSort, ...nonGroupSort]);
-    } else {
-      const sameOrder = this.groupModel.rowGroupCols.length === e.rowGroupColumns.length
-        && this.groupModel.rowGroupCols.every((c, i) => c === e.rowGroupColumns[i]);
-      if (!sameOrder) {
-        this.setGroupModel({ rowGroupCols: [...e.rowGroupColumns] });
-      }
-    }
-    // Cycle 15.5 / Task 2 — fan the change out as a public event so
-    // the columns tool panel's Row Groups drop zone (and any other
-    // subscriber) re-renders. The event carries the same source verb
-    // GroupingState emitted so subscribers can branch (e.g. ignore
-    // pure sort decoration when they only mirror membership).
-    this.events.emit({
-      type: 'columnRowGroupChanged',
-      columns: [...e.rowGroupColumns],
-      source: e.source,
-    });
   }
 
   /** Resolve `rowId` to its current visible-row index via the worker, then
@@ -5051,7 +4931,7 @@ export class CGrid<TRow = any> {
     // columnTree.leafById is a fresh Map that only holds user-supplied columns.
     // Re-register the synthesized auto-group columns so painter lookups
     // by colId keep working after any rebuildColumns() call (e.g. reorderColumn).
-    for (const col of this.autoGroupColumns) {
+    for (const col of this.grouping.getAutoGroupColumns()) {
       this.columnDefsMap.set(col.colId, col);
     }
     this.columnGroupState.setTree(this.columnTree);
@@ -5345,11 +5225,10 @@ export class CGrid<TRow = any> {
     // above.
     this.pivotPanel?.destroy();
     this.pivotPanel = null;
-    // Cycle 15.5 / Task 1 — release the grouping primitive's
-    // subscribers + clear its event emitter so a late listener can't
-    // fire on a destroyed grid.
-    this.groupingStateUnsubscribe();
-    this.groupingState.destroy();
+    // Cycle 19 / Task 5-Grouping — release the grouping coordinator's
+    // GroupingState subscribers + clear its event emitter so a late
+    // listener can't fire on a destroyed grid.
+    this.grouping.destroy();
     // Cycle 18 / Task 3 — release the pivot state subscriber + emitter
     // so a late listener can't fire on a destroyed grid.
     // Cycle 19 / Task 5a — release the pivot engine's state subscriber
@@ -5610,75 +5489,11 @@ export class CGrid<TRow = any> {
     // `autoGroupColumnDef: { pinned: 'left' }`. `'groupRows'` /
     // `'custom'` modes synthesize zero columns — the strip paints
     // row-level chrome in the body painter instead.
-    if (this.autoGroupColumns.length > 0) {
-      return [...this.autoGroupColumns, ...visible];
+    const autoGroups = this.grouping.getAutoGroupColumns();
+    if (autoGroups.length > 0) {
+      return [...autoGroups, ...visible];
     }
     return visible;
-  }
-
-  /** Cycle 15 / Task 4 + Task 5 — re-resolve `autoGroupColumns` against
-   *  the current `groupModel` + grid options. The set of synthesized
-   *  columns depends on the resolved `groupDisplayType`:
-   *    - `'singleColumn'` (default) → 1 column at index 0 IF grouping
-   *      is active.
-   *    - `'multipleColumns'` → N columns (one per `rowGroupCols[i]`) at
-   *      indices 0..N-1, each carrying `cellRendererParams.groupColumnDepth`
-   *      so the `'group'` renderer's own-depth filter activates.
-   *    - `'groupRows'` / `'custom'` → no columns; the body painter
-   *      renders group rows as a full-row strip via `groupRowStripCtx`.
-   *
-   *  Also stamps `groupRowStripCtx` for the strip modes, or clears it
-   *  for the column modes. Called by `setGroupModel` and by the
-   *  construction-time auto-group resolution.
-   */
-  private rebuildAutoGroupColumn(): void {
-    const displayType = resolveGroupDisplayType(this.options.groupDisplayType);
-    // Drop any previously-synthesized auto-group columns from the
-    // columnDefsMap before re-synthesizing — switching display types
-    // (e.g. singleColumn → multipleColumns) renames the columns and
-    // leaves stale entries that would shadow the new ones at lookup.
-    for (const col of this.autoGroupColumns) {
-      this.columnDefsMap.delete(col.colId);
-    }
-    const synth = synthesizeAutoGroupColumns<TRow>({
-      groupModel: this.groupModel,
-      groupDisplayType: displayType,
-      override: this.options.autoGroupColumnDef as Partial<CColDef<TRow>> | undefined,
-      headerNames: this.groupModel.rowGroupCols.map((colId) =>
-        this.columnTree.leafById.get(colId)?.headerName),
-    });
-    this.autoGroupColumns = synth.columns;
-    // Mirror the synthesized defs into `columnDefsMap` so the painter's
-    // per-cell lookup resolves the synthesized columns identically to
-    // any other leaf. `columnTree.leafById` doesn't carry synthesized
-    // entries; we maintain them here for the lifetime of the active
-    // group model.
-    for (const col of this.autoGroupColumns) {
-      this.columnDefsMap.set(col.colId, col);
-    }
-    // Cycle 15 / Task 5 — wire the full-row strip lookup for
-    // `'groupRows'` / `'custom'` modes. The `'group'` renderer is the
-    // default strip painter; apps swap it via
-    // `CGridOptions.groupRowRenderer` (e.g. for `'custom'`).
-    if (synth.fullRowStrip) {
-      const renderer = this.options.groupRowRenderer ?? 'group';
-      this.groupRowStripCtx = {
-        renderer,
-        lookup: (rowIndex) => this.groupCellContextAt(rowIndex),
-      };
-    } else {
-      this.groupRowStripCtx = null;
-    }
-    // Re-resolve the visible-leaf order so the next paint reflects the
-    // (now updated) auto-group slot(s). Layout reflows in the same
-    // turn so the new column(s) get a width before the next viewport
-    // request fires.
-    this.columnOrder = this.computeVisibleColumnOrder();
-    this.columnLayout = resolveColumnWidths(
-      this.columnOrder,
-      this.canvasBounds.width || this.scroller.clientWidth || 800,
-    );
-    this.recomputeViewport();
   }
 
   /** Cycle 15 / Task 7 — hit-test the chevron region of an auto-group
@@ -5702,7 +5517,7 @@ export class CGrid<TRow = any> {
    */
   private hitTestGroupChevron(x: number, y: number): { groupKey: string } | null {
     if (!this.chunk) return null;
-    if (this.groupModel.rowGroupCols.length === 0) return null;
+    if (this.grouping.getGroupModel().rowGroupCols.length === 0) return null;
     const vs = this.viewport;
     if (y < vs.bodyTop || y >= vs.bodyBottom) return null;
     let row: ViewportRow | null = null;
@@ -5739,7 +5554,7 @@ export class CGrid<TRow = any> {
     // nothing to expand into), the hit-test must also bail so a
     // click on the chevron's would-be slot stays a normal cell click
     // instead of a stealthy group toggle.
-    const rowGroupDepthCount = this.groupingState.getRowGroupColumns().length;
+    const rowGroupDepthCount = this.grouping.getRowGroupColumns().length;
     if (
       this.pivotEngine.isPivotActive()
       && rowGroupDepthCount > 0
@@ -5951,7 +5766,7 @@ export class CGrid<TRow = any> {
     // hidden content. Non-pivot mode keeps the legacy behaviour:
     // every group row paints its chevron even when it has zero child
     // groups (clicking still toggles to reveal leaf rows).
-    const rowGroupDepthCount = this.groupingState.getRowGroupColumns().length;
+    const rowGroupDepthCount = this.grouping.getRowGroupColumns().length;
     const suppressChevron = rowKind === 1
       && this.pivotEngine.isPivotActive()
       && rowGroupDepthCount > 0
@@ -6056,7 +5871,7 @@ export class CGrid<TRow = any> {
     // Cycle 18 / Task 3 hides ALL primaries under pivot, so the pivot +
     // value columns must be re-appended or the worker loses their fields.
     const extraIds = new Set<string>();
-    for (const id of this.groupModel.rowGroupCols) if (!visibleIds.has(id)) extraIds.add(id);
+    for (const id of this.grouping.getGroupModel().rowGroupCols) if (!visibleIds.has(id)) extraIds.add(id);
     for (const id of this.pivotEngine.getPivotColumns()) if (!visibleIds.has(id)) extraIds.add(id);
     for (const v of this.pivotEngine.getValueColumns()) if (!visibleIds.has(v.colId)) extraIds.add(v.colId);
     const extraGroupCols = [...extraIds]
@@ -6888,7 +6703,7 @@ export class CGrid<TRow = any> {
       this.columnLayout,
       this.sortModel,
       {
-        rowGroupColumns: this.groupingState.getRowGroupColumns(),
+        rowGroupColumns: this.grouping.getRowGroupColumns(),
         pivotColumns: this.pivotEngine.getPivotColumns(),
         valueColumns: this.pivotEngine.getValueColumns(),
       },
@@ -7578,7 +7393,7 @@ export class CGrid<TRow = any> {
     // input that omits any column previously assigned to a role clears
     // that role. The verbs short-circuit when the resulting list is
     // identical to the current one (no spurious event emission).
-    this.groupingState.setRowGroupColumns(rowGroups.map((e) => e.colId));
+    this.grouping.getGroupingState().setRowGroupColumns(rowGroups.map((e) => e.colId));
     this.pivotEngine.setPivotColumns(pivots.map((e) => e.colId));
     this.pivotEngine.setValueColumns(values);
   }
