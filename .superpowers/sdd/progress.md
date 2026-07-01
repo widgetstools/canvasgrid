@@ -236,3 +236,21 @@ Task 5: complete — pushed cycle21b/expression to origin + opened PR
     - kernel tests: 2326/2326 (no diff on packages/kernel/**)
     - E2E: unchanged by construction (apps/ untouched)
 Cycle 21b status: COMPLETE. Ready for review + merge.
+Task 5: complete (commits c8c3c2c..83e89f9, review clean)
+  README + monorepo verify + PR opened.
+  Kernel + apps untouched (git diff main -- packages/kernel/ apps/ empty).
+  PR: https://github.com/widgetstools/canvasgrid/pull/93
+Final whole-branch review (opus): Ready to merge = Yes
+  0 Critical, 0 Important, 8 Minor.
+  All 5 Global Constraints held end-to-end: kernel/apps untouched (L4), no worker enforcement inside package (L7), zero cgrid deps, CSP-safe compile, structuredClone-safe AST with Loc on every emitted node.
+  Public API matches spec §5 with one defensible improvement: EvalError exported as VALUE (class), not TYPE — since consumers need `new` + `instanceof`. Spec §5.1 doc drift noted for follow-up.
+  Reviewer's Minors (all deferrable, none blocking):
+    - packages/expression/package.json missing empty `"dependencies": {}` marker (Task 1 hygiene note; zero-dep constraint still holds since absent key ≡ empty)
+    - compile.ts:135 unreachable throwCompile('unknown-fn') for unknown binary op — code label semantically wrong but unreachable given TS exhaustiveness
+    - compileField typeof coercion aborts on primitive intermediates (e.g. [str.length] returns null); consistent with spec but should be README-noted for Excel-adjacent users
+    - Corpus locks parens-excluded loc for (1+2)*3 — error underlines will exclude parens; cosmetic
+    - Spec §5.1 type block still lists EvalError — update to move out of `export type {}` + note class-vs-type
+    - Loc char offsets are UTF-16 code units, not glyphs — future i18n consideration
+    - AggregateNode.name is stringly-typed — string-literal-union in Cycle 21d for compile-time safety
+    - vitest.config.ts coverage `include: src/**/*.ts` anchor may need re-work when a real build lands (Cycle 21c+)
+Cycle 21b status: COMPLETE. Ready for review + merge.
