@@ -209,3 +209,64 @@ describe('evaluate — error paths', () => {
     }
   });
 });
+
+describe('evaluate — builtins edge cases (coverage)', () => {
+  it('COALESCE returns null when all args are null', () => {
+    expect(evalStr('COALESCE(null, null)')).toBeNull();
+  });
+
+  it('ABS accepts a boolean (coerces to number)', () => {
+    // asNumber(true) → 1; abs(1) = 1
+    expect(evalStr('ABS(true)')).toBe(1);
+  });
+
+  it('ROUND accepts a boolean (coerces to number)', () => {
+    // asNumber(false) → 0
+    expect(evalStr('ROUND(false)')).toBe(0);
+  });
+
+  it('MIN throws on null arg via asNumber(null) path', () => {
+    try {
+      evalStr('MIN(null)');
+      throw new Error('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(EvalError);
+      expect((e as EvalError).code).toBe('runtime');
+    }
+  });
+
+  it('LEN throws on null arg via asString(null) path', () => {
+    try {
+      evalStr('LEN(null)');
+      throw new Error('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(EvalError);
+      expect((e as EvalError).code).toBe('runtime');
+    }
+  });
+
+  it('LOWER throws on null arg via asString(null) path', () => {
+    try {
+      evalStr('LOWER(null)');
+      throw new Error('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(EvalError);
+      expect((e as EvalError).code).toBe('runtime');
+    }
+  });
+
+  it('ABS throws on non-numeric string arg via asNumber NaN path', () => {
+    try {
+      evalStr('ABS("notanumber")');
+      throw new Error('should have thrown');
+    } catch (e) {
+      expect(e).toBeInstanceOf(EvalError);
+      expect((e as EvalError).code).toBe('runtime');
+    }
+  });
+
+  it('UPPER converts number to string via String() path', () => {
+    // asString(42) → String(42) → "42" → "42".toUpperCase() = "42"
+    expect(evalStr('UPPER(42)')).toBe('42');
+  });
+});
