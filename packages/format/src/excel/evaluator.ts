@@ -13,11 +13,12 @@ export interface ExcelEvalResult {
   text: string;
   style: StyleObj | null;
   iconName: string | null;
+  sectionIndex: number;
 }
 
 export function evaluateExcel(tree: ExcelFormatTree, ctx: ExcelEvalContext): ExcelEvalResult {
-  const section = selectSection(tree.sections, ctx.value);
-  if (!section) return { text: '', style: null, iconName: null };
+  const { section, index } = selectSection(tree.sections, ctx.value);
+  if (!section) return { text: '', style: null, iconName: null, sectionIndex: 0 };
 
   const style: StyleObj | null = section.namedColor ? { color: section.namedColor } : null;
 
@@ -26,15 +27,18 @@ export function evaluateExcel(tree: ExcelFormatTree, ctx: ExcelEvalContext): Exc
     ctx.value === undefined ||
     (typeof ctx.value === 'number' && Number.isNaN(ctx.value))
   ) {
-    return { text: '', style, iconName: null };
+    return { text: '', style, iconName: null, sectionIndex: index };
   }
 
   const text = renderSection(section, ctx);
-  return { text, style, iconName: null };
+  return { text, style, iconName: null, sectionIndex: index };
 }
 
-function selectSection(sections: ExcelSection[], value: unknown): ExcelSection | null {
-  if (sections.length === 0) return null;
+function selectSection(
+  sections: ExcelSection[],
+  value: unknown,
+): { section: ExcelSection | null; index: number } {
+  if (sections.length === 0) return { section: null, index: 0 };
 
   // Check whether any section carries an explicit condition.
   const hasAnyCondition = sections.some((s) => s.condition !== undefined);
@@ -42,25 +46,32 @@ function selectSection(sections: ExcelSection[], value: unknown): ExcelSection |
   if (hasAnyCondition) {
     // Explicit-condition mode: first section whose condition matches wins.
     if (typeof value === 'number') {
-      for (const s of sections) {
-        if (s.condition && matchCondition(s.condition, value)) return s;
+      for (let i = 0; i < sections.length; i++) {
+        const s = sections[i]!;
+        if (s.condition && matchCondition(s.condition, value)) return { section: s, index: i };
       }
     }
     // No condition matched — fall back to the first conditionless section, else sections[0].
-    const fallback = sections.find((s) => s.condition === undefined);
-    return fallback ?? sections[0] ?? null;
+    const fallbackIdx = sections.findIndex((s) => s.condition === undefined);
+    const idx = fallbackIdx >= 0 ? fallbackIdx : 0;
+    return { section: sections[idx] ?? null, index: idx };
   }
 
   // Standard Excel positive/negative/zero/text routing.
   if (typeof value === 'string') {
-    return sections[3] ?? sections[0] ?? null;
+    const idx = sections.length > 3 ? 3 : 0;
+    return { section: sections[idx] ?? sections[0] ?? null, index: idx };
   }
   const n = typeof value === 'number' ? value : Number(value);
-  if (!Number.isFinite(n)) return sections[0] ?? null;
-  if (n > 0) return sections[0] ?? null;
-  if (n < 0) return sections[1] ?? sections[0] ?? null;
+  if (!Number.isFinite(n)) return { section: sections[0] ?? null, index: 0 };
+  if (n > 0) return { section: sections[0] ?? null, index: 0 };
+  if (n < 0) {
+    const idx = sections.length > 1 ? 1 : 0;
+    return { section: sections[idx] ?? null, index: idx };
+  }
   // zero
-  return sections[2] ?? sections[0] ?? null;
+  const idx = sections.length > 2 ? 2 : 0;
+  return { section: sections[idx] ?? null, index: idx };
 }
 
 function matchCondition(

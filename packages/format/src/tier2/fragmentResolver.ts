@@ -1,5 +1,5 @@
 import { parse as parseExpr, compile as compileExpr, evaluate as evaluateExpr, type Compiled } from '@cgrid/expression';
-import type { CompositeColDef, Fragment, FragmentStyle, ResolvedFragment, FormatEvalContext, StyleObj, IconRef } from '../types';
+import type { CompositeColDef, Fragment, FragmentStyle, ResolvedFragment, FormatEvalContext, StyleObj, IconRef, CompileFormatOptions } from '../types';
 import { tokenize } from '../tokenizer';
 import { parseExcel } from '../excel/parser';
 import { evaluateExcel } from '../excel/evaluator';
@@ -11,7 +11,8 @@ interface CompiledExprFragment {
   kind: 'expr';
   exprCompiled: Compiled;
   excelTree: ReturnType<typeof parseExcel> | null;
-  iconTokens: Array<{ name: string; dynamicExpr?: string }>;  // Extracted from per-fragment format string
+  /** Per-section icon tokens: sectionIcons[i] holds icons for format section i. */
+  sectionIcons: Array<Array<{ name: string; dynamicExpr?: string }>>;
   staticStyle: FragmentStyle;
   dynamicColor: Tier1Node[] | null;
   dynamicBg: Tier1Node[] | null;
@@ -24,9 +25,13 @@ type CompiledFragment = CompiledStaticFragment | CompiledExprFragment;
 export interface CompiledFragmentPlan {
   fragments: CompiledFragment[];
   cellBackgroundProgram: { nodes: Tier1Node[] } | null;
+  locale: string;
+  currency: string;
 }
 
-export function compileFragments(colDef: CompositeColDef): CompiledFragmentPlan {
+export function compileFragments(colDef: CompositeColDef, opts?: CompileFormatOptions): CompiledFragmentPlan {
+  const locale = opts?.locale ?? 'en-US';
+  const currency = opts?.currency ?? 'USD';
   const compiled: CompiledFragment[] = [];
 
   for (const frag of colDef.fragments) {
@@ -47,15 +52,20 @@ export function compileFragments(colDef: CompositeColDef): CompiledFragmentPlan 
     }
 
     let excelTree: ReturnType<typeof parseExcel> | null = null;
-    const iconTokens: Array<{ name: string; dynamicExpr?: string }> = [];
+    // sectionIcons[i] = icons belonging to format section i (0-based).
+    const sectionIcons: Array<Array<{ name: string; dynamicExpr?: string }>> = [[]];
+    let currentSection = 0;
     if (frag.format !== undefined) {
       // Split tokens: Excel tokens go into excelTree; icon tokens are extracted
-      // so per-fragment format strings can carry {icon:name} (spec §3.4 example).
+      // per section so multi-section formats route icons correctly (spec §3.4).
       const allTokens = tokenize(frag.format);
       const excelTokens = allTokens.filter((t) => t.kind !== 'icon-token');
       for (const t of allTokens) {
-        if (t.kind === 'icon-token') {
-          iconTokens.push({ name: t.name, dynamicExpr: t.dynamicExpr });
+        if (t.kind === 'section-separator') {
+          currentSection++;
+          sectionIcons.push([]);
+        } else if (t.kind === 'icon-token') {
+          sectionIcons[currentSection]!.push({ name: t.name, dynamicExpr: t.dynamicExpr });
         }
       }
       excelTree = parseExcel(excelTokens);
@@ -71,7 +81,7 @@ export function compileFragments(colDef: CompositeColDef): CompiledFragmentPlan 
       kind: 'expr',
       exprCompiled: compileResult.compiled,
       excelTree,
-      iconTokens,
+      sectionIcons,
       staticStyle,
       dynamicColor,
       dynamicBg,
@@ -96,7 +106,7 @@ export function compileFragments(colDef: CompositeColDef): CompiledFragmentPlan 
     }
   }
 
-  return { fragments: compiled, cellBackgroundProgram };
+  return { fragments: compiled, cellBackgroundProgram, locale, currency };
 }
 
 function extractDynamic(
@@ -106,13 +116,19 @@ function extractDynamic(
   const raw = staticStyle[key as keyof FragmentStyle] as unknown;
   if (typeof raw !== 'string') return null;
   if (!raw.startsWith('[') || !raw.endsWith(']')) return null;
+
+  // The [<expr>] pattern was detected — delete the raw property so it
+  // never applies as a literal CSS value, regardless of parse outcome.
+  delete (staticStyle as Record<string, unknown>)[key];
+
   // Shorthand: `[<expr>]` → wrap as Tier 1 bracket with matching channel.
   const interior = raw.slice(1, -1);
   const channel: Tier1Node['channel'] = key === 'background' ? 'bg' : key === 'style' ? 'style' : (key as 'color' | 'weight');
   const result = parseTier1Brackets([{ channel, interior, interiorLoc: { start: 1, end: raw.length - 1 }, loc: { start: 0, end: raw.length } }]);
-  if (!result.ok) return null;
-  // Delete the raw property so it isn't applied as literal.
-  delete (staticStyle as Record<string, unknown>)[key];
+  if (!result.ok) {
+    console.debug(`[cgrid.format] malformed [<expr>] shorthand in fragment style: ${result.error.message}`);
+    return null;
+  }
   return result.nodes;
 }
 
@@ -128,9 +144,11 @@ export function resolveFragments(plan: CompiledFragmentPlan, ctx: FormatEvalCont
       value = null;
     }
     let text: string;
+    let sectionIndex = 0;
     if (frag.excelTree && frag.excelTree.ok) {
-      const result = evaluateExcel(frag.excelTree.tree, { value, locale: 'en-US', currency: 'USD' });
+      const result = evaluateExcel(frag.excelTree.tree, { value, locale: plan.locale, currency: plan.currency });
       text = result.text;
+      sectionIndex = result.sectionIndex;
     } else {
       text = value === null || value === undefined ? '' : String(value);
     }
@@ -154,9 +172,11 @@ export function resolveFragments(plan: CompiledFragmentPlan, ctx: FormatEvalCont
     }
 
     // Icon extracted from per-fragment format string (spec §3.4 example).
+    // Use the section-scoped icons so multi-section formats pick the correct icon.
     let icon: IconRef | undefined;
-    if (frag.iconTokens.length > 0) {
-      const resolved = resolveIcon(frag.iconTokens, { value, row: ctx.row, colId: ctx.colId });
+    const iconsForSection = frag.sectionIcons[sectionIndex] ?? frag.sectionIcons[0] ?? [];
+    if (iconsForSection.length > 0) {
+      const resolved = resolveIcon(iconsForSection, { value, row: ctx.row, colId: ctx.colId });
       if (resolved) icon = resolved;
     }
 

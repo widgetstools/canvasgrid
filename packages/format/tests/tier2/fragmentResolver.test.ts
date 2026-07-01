@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { compileFragments, resolveFragments } from '../../src/tier2/fragmentResolver';
+import { compileFragments, resolveFragments, resolveCellBackground } from '../../src/tier2/fragmentResolver';
 import type { CompositeColDef } from '../../src/types';
 
 function makeCol(fragments: CompositeColDef['fragments'], extra?: Partial<CompositeColDef>): CompositeColDef {
@@ -62,6 +62,12 @@ describe('Composite fragmentResolver', () => {
       cellBackground: '[bg=[change] > 0 ? "#efe" : "#fee"]',
     }));
     expect(plan.cellBackgroundProgram).not.toBeNull();
+
+    const posBg = resolveCellBackground(plan, { value: null, row: { change: 5 }, colId: 'x' });
+    expect(posBg?.background).toBe('#efe');
+
+    const negBg = resolveCellBackground(plan, { value: null, row: { change: -5 }, colId: 'x' });
+    expect(negBg?.background).toBe('#fee');
   });
 
   it('per-fragment format with {icon:name} token emits ResolvedFragment.icon', () => {
@@ -81,5 +87,46 @@ describe('Composite fragmentResolver', () => {
     expect(posFragments[0]!.icon?.name).toBe('trending-up');
     const negFragments = resolveFragments(plan, { value: null, row: { change: -0.02 }, colId: 'summary' });
     expect(negFragments[0]!.icon?.name).toBe('trending-down');
+  });
+
+  // Fix 1 (HIGH): multi-section format picks icon from the routed section
+  it('multi-section format picks icon from the routed section', () => {
+    const plan = compileFragments(makeCol([
+      { expr: '[change]', format: '{icon:up}+0.00%;{icon:down}-0.00%' },
+    ]));
+    const posFragments = resolveFragments(plan, { value: null, row: { change: 0.02 }, colId: 'summary' });
+    expect(posFragments[0]!.icon?.name).toBe('up');
+    const negFragments = resolveFragments(plan, { value: null, row: { change: -0.02 }, colId: 'summary' });
+    expect(negFragments[0]!.icon?.name).toBe('down');
+  });
+
+  // Fix 2 (MEDIUM): malformed [<expr>] shorthand is stripped, never leaks as literal
+  it('malformed [<expr>] shorthand is deleted, does not leak as literal', () => {
+    const plan = compileFragments(makeCol([
+      { expr: '[symbol]', style: { color: '[notAnExpr' } },
+    ]));
+    const fragments = resolveFragments(plan, { value: null, row: { symbol: 'X' }, colId: 'summary' });
+    // Not a [<expr>] pattern (no closing bracket as last char) → stays as static, but we also
+    // verify the actual malformed-parse path by using a value that starts/ends with brackets
+    // but whose interior parse fails.
+    expect(fragments[0]!.style.color).toBe('[notAnExpr');  // non-bracket-wrapped → passthrough
+
+    // True malformed: brackets present but interior is not a valid expression
+    const plan2 = compileFragments(makeCol([
+      { expr: '[symbol]', style: { color: '[!!!invalid!!!]' } },
+    ]));
+    const fragments2 = resolveFragments(plan2, { value: null, row: { symbol: 'X' }, colId: 'summary' });
+    expect(fragments2[0]!.style.color).toBeUndefined();
+  });
+
+  // Fix 3 (MEDIUM): locale from opts threads through to Excel evaluator
+  it('locale from opts threads through to Excel evaluator', () => {
+    const plan = compileFragments(
+      makeCol([{ expr: '[price]', format: '#,##0.00' }]),
+      { locale: 'de-DE' },
+    );
+    const fragments = resolveFragments(plan, { value: null, row: { price: 1234.5 }, colId: 'x' });
+    // German locale uses . as thousands separator and , as decimal
+    expect(fragments[0]!.text).toMatch(/1\.234,5/);
   });
 });

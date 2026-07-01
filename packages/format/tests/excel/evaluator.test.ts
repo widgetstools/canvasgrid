@@ -101,6 +101,15 @@ describe('Excel evaluator — Dates', () => {
   });
 });
 
+describe('Excel evaluator — sectionIndex', () => {
+  it('sectionIndex returned for section routing', () => {
+    const posResult = fmt('0.00;[Red]-0.00', 5);
+    expect(posResult.sectionIndex).toBe(0);
+    const negResult = fmt('0.00;[Red]-0.00', -5);
+    expect(negResult.sectionIndex).toBe(1);
+  });
+});
+
 describe('Excel evaluator — Edge cases', () => {
   it('null value renders as empty string', () => {
     expect(fmt('0.00', null).text).toBe('');
