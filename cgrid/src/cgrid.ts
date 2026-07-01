@@ -31,9 +31,9 @@ import {
   type ColumnOrderConstraints,
 } from './core/columnOrder';
 import {
-  snapshotState, applyStateToTree, cloneStateForReset,
-  type SnapshotLocks, type ChangeRecord,
-} from './core/columnState';
+  ColumnStateManager,
+  type ColumnStateManagerDeps,
+} from './core/columnStateManager';
 import {
   buildSnapshot, migrateSnapshot, STATE_SCHEMA_VERSION, type GridState,
 } from './core/stateSnapshot';
@@ -673,10 +673,12 @@ export class CGrid<TRow = any> {
   private clipboardSuppressedWarned = new Set<string>();
   private selectionUnsubscribe: () => void = () => {};
   private sortModel: SortModel = [];
-  /** Snapshot of every leaf's mutable state taken after the column tree
-   *  resolves at construction. `resetColumnState` replays it to restore
-   *  the "as-coded" layout. Cycle 6 / Task 2. */
-  private initialColumnStateSnapshot: CColumnState[] = [];
+  /** Cycle 19 / Task 5-ColState — column-state round-trip. Owns
+   *  `initialColumnStateSnapshot` + `getColumnState` + `applyColumnState`
+   *  + `resetColumnState` + `applyColumnStateInternal` +
+   *  `applyRoleStateFromColumnState`. Late-initialised in the ctor so
+   *  the deps closures resolve after CGrid's own fields come online. */
+  private colStateManager!: ColumnStateManager<TRow>;
   /** Last bounds we emitted `gridSizeChanged` for. `null` until the initial
    *  setBounds lands — that first call records but does not emit, so external
    *  listeners only see real post-mount size changes. */
@@ -1117,6 +1119,22 @@ export class CGrid<TRow = any> {
     this.pivotEngine = new PivotEngine<TRow>(
       this.makePivotEngineDeps(),
       { pivotMode: options.pivotMode === true },
+    );
+
+    // Cycle 19 / Task 5-ColState — column-state manager. Owns the
+    // Cycle 6 / Task 2 `getColumnState` / `applyColumnState` /
+    // `resetColumnState` round-trip + the `applyRoleStateFromColumnState`
+    // fan-out into GroupingState + PivotState + valueColumns.
+    // Constructed HERE — AFTER the pivot engine so the
+    // `isPivotActive` / `getPrimaryColumnTree` deps closures can resolve,
+    // BEFORE the side bar so `columnsPanel` (which calls
+    // `api.getColumnState()` synchronously at construction) hits a
+    // live manager. The initial-state snapshot is captured at the same
+    // spot the pre-extraction code captured it (end of the ctor after
+    // the full initial `columnLayout` resolves), so
+    // `resetColumnState` replays the as-coded layout.
+    this.colStateManager = new ColumnStateManager<TRow>(
+      this.makeColStateManagerDeps(),
     );
 
     // Cycle 11 / Task 2 — side bar (DOM panel on the right or left edge
@@ -1848,16 +1866,15 @@ export class CGrid<TRow = any> {
       this.updateA11y();
     });
 
-    // Cycle 6 / Task 2 — capture the construction-time column state so
-    // `resetColumnState` can replay the as-coded layout. Snapshotted now
-    // (after the initial `columnLayout` resolves) so hidden / pinned /
-    // width / sort all round-trip on reset, including `initial*` field
-    // defaults that propertyChain already folded into the resolved slots.
-    this.initialColumnStateSnapshot = snapshotState(
-      this.columnTree,
-      this.columnLayout,
-      this.sortModel,
-    );
+    // Cycle 19 / Task 5-ColState — capture the initial column state
+    // snapshot HERE (end of ctor, after the initial `columnLayout` fully
+    // resolves) so `resetColumnState` replays the as-coded hidden /
+    // pinned / width / sort layout — including `initial*` field defaults
+    // that propertyChain already folded into the resolved slots. The
+    // manager itself was constructed earlier (before the side bar) so
+    // `columnsPanel`'s synchronous `api.getColumnState()` reads a live
+    // manager during panel init.
+    this.colStateManager.captureInitialSnapshot();
   }
 
   // --- Public API -----------------------------------------------------------
@@ -6676,38 +6693,11 @@ export class CGrid<TRow = any> {
     this.reorderColumn(colId, toIndex, 'api');
   }
 
-  /** Cycle 6 / Task 2 — serialisable snapshot of every leaf's mutable
-   *  state in declaration order (hidden leaves included).
-   *
-   *  Cycle 18 / Task 8b — the role slots (rowGroup / rowGroupIndex / pivot
-   *  / pivotIndex / aggFunc) source from the runtime GroupingState +
-   *  PivotState primitives. The original Cycle 6 implementation read the
-   *  static colDef slots and missed runtime API mutations — a latent bug
-   *  the tool panel + pivot panel + context menu items all surfaced as
-   *  "Restore doesn't restore".
-   *
-   *  Cycle 18 / Task 9 — under pivot mode the rendered tree is the
-   *  SYNTHESIZED pivot result tree (pivotcol* leaves + the auto-group
-   *  col), NOT the primary user columns. Snapshotting the synthesized
-   *  tree would lose every primary column from the save → the round-
-   *  trip restore couldn't reinstate the pivot/value role lists. AG
-   *  parity: column state always reflects PRIMARY columns. So when
-   *  pivot is active we snapshot against the cached primary tree
-   *  instead. */
+  /** Cycle 19 / Task 5-ColState — column-state snapshot delegate. See
+   *  `ColumnStateManager.getColumnState` for the pivot-primary /
+   *  runtime-role invariants. */
   getColumnState(): CColumnState[] {
-    const treeForSnapshot = this.pivotEngine.isPivotActive() && this.pivotEngine.getPrimaryColumnTree() !== null
-      ? this.pivotEngine.getPrimaryColumnTree()!
-      : this.columnTree;
-    return snapshotState(
-      treeForSnapshot,
-      this.columnLayout,
-      this.sortModel,
-      {
-        rowGroupColumns: this.grouping.getRowGroupColumns(),
-        pivotColumns: this.pivotEngine.getPivotColumns(),
-        valueColumns: this.pivotEngine.getValueColumns(),
-      },
-    );
+    return this.colStateManager.getColumnState();
   }
 
   /** Cycle 23 / Task 5 — full grid state snapshot. Includes columnState,
@@ -6836,23 +6826,14 @@ export class CGrid<TRow = any> {
     this.scroller.scrollTo({ top: 0, left: 0 });
   }
 
-  /** Cycle 6 / Task 2 — restore column state through a single re-layout +
-   *  repaint cycle. Mutates `columnDefsMap` (the same ResolvedColDef
-   *  objects referenced by `columnTree.leafById`) in place, then fans the
-   *  matching events out with `source: 'columnState'`. Returns `false`
-   *  when one or more `state[].colId` entries did not match a known
-   *  leaf. */
+  /** Cycle 19 / Task 5-ColState — column-state restore delegates. See
+   *  `ColumnStateManager.applyColumnState` / `resetColumnState` for the
+   *  single re-layout + repaint cycle + deterministic event fan-out. */
   applyColumnState(params: CApplyColumnStateParams): boolean {
-    return this.applyColumnStateInternal(params, /* emitReset */ false);
+    return this.colStateManager.applyColumnState(params);
   }
-
-  /** Cycle 6 / Task 2 — restore the construction-time snapshot. Fires
-   *  `columnsReset` BEFORE the per-slot change events. */
   resetColumnState(): void {
-    this.applyColumnStateInternal(
-      { state: cloneStateForReset(this.initialColumnStateSnapshot), applyOrder: true },
-      /* emitReset */ true,
-    );
+    this.colStateManager.resetColumnState();
   }
 
   /** Cycle 6 / Task 3 — distribute the canvas drawable width across the
@@ -7137,265 +7118,50 @@ export class CGrid<TRow = any> {
     this.cgridCanvas?.requestRepaint();
   }
 
-  /** Engine entry-point shared by `applyColumnState` and `resetColumnState`.
-   *  Single re-layout: mutates resolved slots → optionally rebuilds the
-   *  column tree → re-runs the visible-column-order + width pass →
-   *  recomputeViewport + requestRepaint → drains the event queue → posts
-   *  the worker column-metadata refresh. */
-  private applyColumnStateInternal(
-    params: CApplyColumnStateParams,
-    emitReset: boolean,
-  ): boolean {
-    // Cycle 18 / Task 9 — under pivot mode the live `columnTree` /
-    // `columnDefsMap` describe the SYNTHESIZED pivot result tree
-    // (pivotcol* leaves + the auto-group column), NOT the primary
-    // user columns. Saved column state always reflects PRIMARY
-    // columns (see `getColumnState` above for the AG-parity rationale),
-    // so apply must validate + mutate against the primary tree's
-    // leaf map under pivot mode. The role fan-out in
-    // `applyRoleStateFromColumnState` then drives the pivot synthesis
-    // to re-build from the restored primary state.
-    const applyTree = this.pivotEngine.isPivotActive() && this.pivotEngine.getPrimaryColumnTree() !== null
-      ? this.pivotEngine.getPrimaryColumnTree()!
-      : this.columnTree;
-    const applyLeafById = applyTree.leafById;
-
-    let allFound = true;
-    if (params.state) {
-      for (const entry of params.state) {
-        if (!applyLeafById.has(entry.colId)) { allFound = false; break; }
-      }
-    }
-
-    const locks: SnapshotLocks = {
-      lockVisibleOf: (id) => (applyLeafById.get(id) as { lockVisible?: boolean })?.lockVisible ?? false,
-      lockPinnedOf: (id) => (applyLeafById.get(id) as { lockPinned?: boolean })?.lockPinned ?? false,
+  /** Cycle 19 / Task 5-ColState — ColumnStateManager deps bundle.
+   *  Threaded into the manager at construction so every reach into
+   *  CGrid state is explicit + auditable. The worker / pivot / grouping
+   *  closures resolve at call-time, matching the PivotEngine /
+   *  GroupingCoordinator pattern. */
+  private makeColStateManagerDeps(): ColumnStateManagerDeps<TRow> {
+    return {
+      events: this.events,
+      isDestroyed: () => this.destroyed,
+      getColumnTree: () => this.columnTree,
+      getColumnOrder: () => this.columnOrder,
+      setColumnOrder: (order) => { this.columnOrder = order; },
+      getColumnLayout: () => this.columnLayout,
+      setColumnLayout: (layout) => { this.columnLayout = layout; },
+      computeVisibleColumnOrder: () => this.computeVisibleColumnOrder(),
+      getLayoutWidth: () =>
+        this.canvasBounds.width || this.scroller.clientWidth || 800,
+      getColumnDefs: () => this.options.columnDefs,
+      setColumnDefs: (defs) => { this.options.columnDefs = defs; },
+      rebuildColumns: () =>
+        this.rebuildColumns({ defaultColDef: this.options.defaultColDef }),
+      buildColumnOrderConstraints: () => this.buildColumnOrderConstraints(),
+      rebuildColumnDefsByLeafOrder: (defs, order) =>
+        rebuildColumnDefsByLeafOrder(defs, order),
+      collectMovedColIds: (o, n) => collectMovedColIds(o, n),
+      getSortModel: () => this.sortModel,
+      setSortModel: (m) => this.setSortModel(m),
+      recomputeViewport: () => this.recomputeViewport(),
+      requestRepaint: () => { this.cgridCanvas?.requestRepaint(); },
+      workerColumns: () => this.workerColumns(),
+      updateWorkerColumns: (cols) =>
+        this.workerCoord.updateColumns(cols as WorkerColumn[]),
+      requestViewport: () => this.requestViewport(),
+      setRowCount: (n) => { this.rowCount = n; },
+      isPivotActive: () => this.pivotEngine.isPivotActive(),
+      getPrimaryColumnTree: () => this.pivotEngine.getPrimaryColumnTree(),
+      getPivotColumns: () => this.pivotEngine.getPivotColumns(),
+      getPivotValueColumns: () => this.pivotEngine.getValueColumns(),
+      setPivotColumns: (cols) => this.pivotEngine.setPivotColumns(cols),
+      setValueColumns: (list) => this.pivotEngine.setValueColumns(list),
+      getGroupingRowGroupColumns: () => this.grouping.getRowGroupColumns(),
+      setGroupingRowGroupColumns: (cols) =>
+        this.grouping.getGroupingState().setRowGroupColumns(cols),
     };
-
-    const oldOrder = this.columnOrder.map((c) => c.colId);
-    const result = applyStateToTree(applyTree, params, locks);
-
-    // Cycle 18 / Task 8b — fan the role slots out to the runtime state
-    // primitives (GroupingState + PivotState). The Cycle 6 columnState
-    // primitive writes the def slots opaquely; without this step
-    // mutations made via `api.addRowGroupColumn` / `addPivotColumn` /
-    // `addValueColumn` did not round-trip through `applyColumnState`.
-    // Semantics: FULL replace — columns NOT present in the input state
-    // (or present with rowGroup:false / pivot:false / aggFunc:null) are
-    // dropped from the role lists. AG-Grid parity Prompt 8.
-    //
-    // pivotMode itself is NOT in CColumnState (per AG parity); it
-    // persists via the `pivotMode` grid option separately. Apps wanting
-    // a single save/restore call use `setPivotMode` + this method.
-    if (params.state) {
-      this.applyRoleStateFromColumnState(params.state);
-    }
-
-    let newDefs = this.options.columnDefs;
-    let leafOrderChanged = false;
-    if (result.newOrder) {
-      // Honor Task-1 locks + marryChildren during the reorder.
-      const constraints = this.buildColumnOrderConstraints();
-      const finalOrder = reorderLeavesByList(this.columnTree, result.newOrder, constraints);
-      const current = Array.from(this.columnTree.leafById.keys());
-      leafOrderChanged = finalOrder.length !== current.length
-        || finalOrder.some((id, i) => id !== current[i]);
-      if (leafOrderChanged) {
-        newDefs = rebuildColumnDefsByLeafOrder(this.options.columnDefs, finalOrder);
-        this.options.columnDefs = newDefs;
-      }
-    }
-
-    if (leafOrderChanged) {
-      this.rebuildColumns({ defaultColDef: this.options.defaultColDef });
-      // rebuildColumns rebuilt the tree from `options.columnDefs` — the
-      // raw `CColDef`s do not carry the runtime width / hide / pinned
-      // mutations `applyStateToTree` just applied to the now-discarded
-      // tree. Re-apply the state against the freshly-resolved leaves so
-      // the round-trip lands in ONE call (without this, the demo's
-      // Restore button needed two clicks to fully restore). The second
-      // call is intentionally a no-op for event reporting — we keep
-      // `result.changes` from the first call as the authoritative
-      // change log.
-      applyStateToTree(this.columnTree, params, locks);
-      // Re-run visibility + width pass after the second mutation pass so
-      // hide flips light up and widths land before the repaint.
-      this.columnOrder = this.computeVisibleColumnOrder();
-      this.columnLayout = resolveColumnWidths(
-        this.columnOrder,
-        this.canvasBounds.width || this.scroller.clientWidth || 800,
-      );
-      this.recomputeViewport();
-      this.cgridCanvas?.requestRepaint();
-    } else {
-      // Mutations on existing ResolvedColDef slots — recompute the visible
-      // column order so a `hide` flip lights up immediately, then rerun
-      // the width pass + viewport.
-      this.columnOrder = this.computeVisibleColumnOrder();
-      this.columnLayout = resolveColumnWidths(
-        this.columnOrder,
-        this.canvasBounds.width || this.scroller.clientWidth || 800,
-      );
-      this.recomputeViewport();
-      this.cgridCanvas?.requestRepaint();
-    }
-
-    // Drain the change queue into typed events. Deterministic order:
-    // columnsReset → columnMoved → columnVisible → columnPinned →
-    // columnResized → sortChanged.
-    if (emitReset) this.events.emit({ type: 'columnsReset' });
-
-    if (leafOrderChanged) {
-      const newOrder = this.columnOrder.map((c) => c.colId);
-      const moved = collectMovedColIds(oldOrder, newOrder);
-      for (const colId of moved) {
-        const toIndex = newOrder.indexOf(colId);
-        this.events.emit({
-          type: 'columnMoved', toIndex, colIds: [colId], source: 'columnState',
-        });
-      }
-    }
-
-    const visibleChanges = result.changes.filter((c) => c.kind === 'hide');
-    if (visibleChanges.length > 0) {
-      // Group by the new visible boolean (CColumnState.hide is the
-      // "should be hidden" flag; the event reports the visible boolean).
-      const shown = visibleChanges.filter((c) => c.newValue === false).map((c) => c.colId);
-      const hidden = visibleChanges.filter((c) => c.newValue === true).map((c) => c.colId);
-      if (shown.length) {
-        this.events.emit({
-          type: 'columnVisible', visible: true, colIds: shown, source: 'columnState',
-        });
-      }
-      if (hidden.length) {
-        this.events.emit({
-          type: 'columnVisible', visible: false, colIds: hidden, source: 'columnState',
-        });
-      }
-    }
-
-    const pinnedChanges = result.changes.filter((c) => c.kind === 'pinned');
-    if (pinnedChanges.length > 0) {
-      const byBucket = new Map<'left' | 'right' | null, string[]>();
-      for (const c of pinnedChanges) {
-        const key = c.newValue as 'left' | 'right' | null;
-        const arr = byBucket.get(key) ?? [];
-        arr.push(c.colId);
-        byBucket.set(key, arr);
-      }
-      for (const [pinned, colIds] of byBucket.entries()) {
-        this.events.emit({
-          type: 'columnPinned', pinned, colIds, source: 'columnState',
-        });
-      }
-    }
-
-    for (const c of result.changes.filter((c) => c.kind === 'width')) {
-      this.events.emit({
-        type: 'columnResized', colId: c.colId, width: c.newValue as number,
-        source: 'columnState',
-      });
-    }
-
-    // Sort: collect every change record's {colId, direction, sortIndex},
-    // drop nulls, and order by sortIndex so multi-column sort restores
-    // in the right precedence. The previous implementation walked the
-    // filtered array with a stale index against the original array,
-    // pairing the wrong colId with each direction.
-    const sortChanges = result.changes.filter((c) => c.kind === 'sort');
-    if (sortChanges.length > 0) {
-      const entries = sortChanges
-        .map((c) => {
-          const v = c.newValue as { direction: 'asc' | 'desc' | null; index: number | null };
-          return { colId: c.colId, direction: v.direction, index: v.index };
-        })
-        .filter((e): e is { colId: string; direction: 'asc' | 'desc'; index: number | null } =>
-          e.direction !== null);
-      entries.sort((a, b) => (a.index ?? 0) - (b.index ?? 0));
-      const next: SortModel = entries.map(({ colId, direction }) => ({ colId, direction }));
-      // Route through setSortModel so the worker re-sorts the chunk —
-      // without this, the rendered rows stay in the pre-restore order
-      // even though the header sort indicator updates. setSortModel also
-      // mutates this.sortModel and emits sortChanged on its own (async
-      // after the worker round-trip), so we no longer emit it here.
-      const same = this.sortModel.length === next.length
-        && this.sortModel.every((e, i) =>
-          e.colId === next[i]!.colId && e.direction === next[i]!.direction);
-      if (!same) this.setSortModel(next);
-    }
-
-    // Push column metadata + visible-set change to the worker so a freshly
-    // hidden column stops getting chunked, and a freshly shown column gets
-    // populated on the next viewport fetch.
-    const displayedSource: 'columnsReset' | 'columnDefsChanged' =
-      emitReset ? 'columnsReset' : 'columnDefsChanged';
-    this.workerCoord?.updateColumns(this.workerColumns())
-      .then(({ visibleCount }) => {
-        this.rowCount = visibleCount;
-        this.recomputeViewport();
-        this.events.emit({ type: 'displayedColumnsChanged', source: displayedSource });
-        this.requestViewport();
-      })
-      .catch((err) => { if (!this.destroyed) console.error('[cgrid] applyColumnState:', err); });
-
-    return allFound;
-  }
-
-  /** Cycle 18 / Task 8b — derive the rowGroupColumns / pivotColumns /
-   *  valueColumns lists from a CColumnState array and replace the
-   *  runtime state primitives in one event tick each. The row-group +
-   *  pivot lists honor the per-entry `rowGroupIndex` / `pivotIndex` for
-   *  ordering (stable for ties; columns without an index sort last).
-   *  Value columns preserve the state input order (no separate index).
-   *
-   *  Routed through `setRowGroupColumns` / `setPivotColumns` /
-   *  `setValueColumns` (batch verbs) so the cross-surface event chain
-   *  fires once per role list — NOT once per column. The tool panel +
-   *  pivot panel + context menu items + row group panel all repaint
-   *  from those events. */
-  private applyRoleStateFromColumnState(state: readonly CColumnState[]): void {
-    interface Indexed { colId: string; index: number; declOrder: number }
-    const rowGroups: Indexed[] = [];
-    const pivots: Indexed[] = [];
-    const values: Array<{ colId: string; aggFunc: string }> = [];
-    // Cycle 18 / Task 9 — under pivot mode `columnDefsMap` covers
-    // synthesized leaves only; validate against the primary tree so
-    // saved state with primary col ids round-trips.
-    const validLeafById = this.pivotEngine.isPivotActive() && this.pivotEngine.getPrimaryColumnTree() !== null
-      ? this.pivotEngine.getPrimaryColumnTree()!.leafById
-      : this.columnDefsMap;
-    state.forEach((entry, declOrder) => {
-      if (!validLeafById.has(entry.colId)) return;
-      if (entry.rowGroup === true) {
-        rowGroups.push({
-          colId: entry.colId,
-          index: entry.rowGroupIndex ?? Number.MAX_SAFE_INTEGER,
-          declOrder,
-        });
-      }
-      if (entry.pivot === true) {
-        pivots.push({
-          colId: entry.colId,
-          index: entry.pivotIndex ?? Number.MAX_SAFE_INTEGER,
-          declOrder,
-        });
-      }
-      if (typeof entry.aggFunc === 'string' && entry.aggFunc.length > 0) {
-        values.push({ colId: entry.colId, aggFunc: entry.aggFunc });
-      }
-    });
-    const sortByIndex = (a: Indexed, b: Indexed) =>
-      (a.index - b.index) || (a.declOrder - b.declOrder);
-    rowGroups.sort(sortByIndex);
-    pivots.sort(sortByIndex);
-
-    // Always call the batch verbs — even on empty lists — so a state
-    // input that omits any column previously assigned to a role clears
-    // that role. The verbs short-circuit when the resulting list is
-    // identical to the current one (no spurious event emission).
-    this.grouping.getGroupingState().setRowGroupColumns(rowGroups.map((e) => e.colId));
-    this.pivotEngine.setPivotColumns(pivots.map((e) => e.colId));
-    this.pivotEngine.setValueColumns(values);
   }
 
   /** Build the per-leaf lock + marryChildren constraints used by Task-1's
