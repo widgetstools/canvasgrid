@@ -1,10 +1,17 @@
 import type { Compiled, EvalContext } from './types';
+import { EvalError } from './types';
 
 /**
  * Execute a Compiled expression against a row context.
- *
- * Cycle 21b — Task 3 implements this. Task 1 ships only the signature.
+ * Compiled.run may throw EvalError; unexpected non-EvalError throws
+ * become EvalError { code: 'runtime' } anchored at the AST root loc.
  */
-export function evaluate(_compiled: Compiled, _ctx: EvalContext): unknown {
-  throw new Error('evaluate: not implemented — landed in Cycle 21b Task 3');
+export function evaluate(compiled: Compiled, ctx: EvalContext): unknown {
+  try {
+    return compiled.run(ctx);
+  } catch (e) {
+    if (e instanceof EvalError) throw e;
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new EvalError('runtime', `unexpected runtime error: ${msg}`, compiled.ast.loc);
+  }
 }
