@@ -78,6 +78,26 @@ const EMPTY_GLYPH = '';
 const CHECKBOX_SIZE = 14;
 const CHECKBOX_GAP = 6;
 
+/** Exported chrome geometry — sole source of truth for the auto-group
+ *  column autosize path (`cgrid.autoSizeColumns` builds an
+ *  `AutosizeGroupContext` from these). Any width term the paint formula
+ *  adds MUST be reflected in the autosize's `chromeBase` / `countGap`
+ *  computation, or the auto-sized column truncates the paint. Keep the
+ *  named constants private above so nothing else in the paint drifts,
+ *  but publish the aggregate the autosize needs. */
+export const GROUP_CELL_GEOMETRY = {
+  /** Static per-cell chrome floor: two horizontal paddings + the
+   *  chevron glyph + its gap. Autosize adds the optional checkbox slot
+   *  on top when the group cell paints a tri-state checkbox. */
+  chromeBaseNoCheckbox: 2 * PADDING + CHEVRON_SIZE + CHEVRON_GAP,
+  /** Extra width the tri-state checkbox slot contributes. Added when
+   *  the auto-group column shows checkboxes (`checkboxLocation ===
+   *  'autoGroupColumn'` AND a group-selects mode is active). */
+  checkboxSlot: CHECKBOX_SIZE + CHECKBOX_GAP,
+  /** Gap between value text and `(count)` suffix. */
+  countGap: COUNT_GAP,
+} as const;
+
 /** Per-row group context threaded through `CellPaintConfig.value` for
  *  the auto-group column. Populated by `cgrid.cellAt()` from the
  *  current chunk's per-row group fields. Carries the row's `rowKind`

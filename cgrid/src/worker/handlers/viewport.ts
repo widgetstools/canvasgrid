@@ -10,7 +10,12 @@ import type { WorkerRequest, WorkerColumn, StickyAncestor, AutosizeColumnRequest
 import { collectViewportTransferables } from '../protocol';
 import { computeGroupVisibleOrder, sliceGroupedViewport, type VisibleRowEntry } from '../viewportSlicer';
 import { offscreenMeasurer } from '../measureText';
-import { measureColumnWidths, type AutosizeColumnSpec } from '../autosize';
+import {
+  measureColumnWidths,
+  type AutosizeColumnSpec,
+  type AutosizeGroupNode,
+} from '../autosize';
+import type { GroupNode } from '../passes/groupPass';
 
 export type ViewportRequest = Extract<WorkerRequest, {
   type:
@@ -193,9 +198,25 @@ export async function handleViewport(
         // Fallback when OffscreenCanvas.measureText is unavailable.
         return (s: string) => s.length * 7;
       };
+      // Auto-group column path: materialise the group-node list once
+      // (reused across every column that carries a `groupContext`). The
+      // main thread only ships the chrome geometry; the worker owns the
+      // tree + the formatted per-node values (same source
+      // `chunk.groupValue[i]` reads from via `buildGroupMetaLookup`), so
+      // both sides format identically without a per-node round-trip.
+      let groupNodes: readonly AutosizeGroupNode[] | null = null;
+      const wantsGroupContext = columns.some((c) => c.groupContext !== undefined);
+      if (wantsGroupContext && helpers.isGroupingActive() && state.groupOutput) {
+        const meta = helpers.buildGroupMetaLookup(
+          state.groupOutput.roots,
+          state.columns,
+          helpers.effectiveExpandedKeys(),
+        );
+        groupNodes = flattenGroupNodes(state.groupOutput.roots, meta);
+      }
       const specs: AutosizeColumnSpec[] = columns.map((c: AutosizeColumnRequest) => {
         const field = fieldByColId.get(c.colId);
-        return {
+        const spec: AutosizeColumnSpec = {
           colId: c.colId,
           headerName: c.headerName,
           font: c.font,
@@ -213,6 +234,23 @@ export async function handleViewport(
             return raw == null ? '' : String(raw);
           },
         };
+        // When the main thread flagged this column as an auto-group
+        // column (via `groupContext`), attach the shared node list +
+        // per-column chrome params. `groupNodes === null` (grouping not
+        // active, or `state.groupOutput` missing) surfaces as an empty
+        // list — the pass then falls back to header/minWidth width,
+        // which matches "there are no group nodes to fit".
+        if (c.groupContext) {
+          spec.groupContext = {
+            chromeBase: c.groupContext.chromeBase,
+            indentUnit: c.groupContext.indentUnit,
+            suppressCount: c.groupContext.suppressCount,
+            countGap: c.groupContext.countGap,
+            groupColumnDepth: c.groupContext.groupColumnDepth,
+            nodes: groupNodes ?? [],
+          };
+        }
+        return spec;
       });
       const widthsMap = measureColumnWidths({
         cols: specs,
@@ -240,4 +278,28 @@ export async function handleViewport(
       return;
     }
   }
+}
+
+/** Depth-first flatten the group tree into `AutosizeGroupNode[]`.
+ *  Uses the metaLookup's formatted values so the measurement input
+ *  matches what `chunk.groupValue[i]` carries into the `'group'`
+ *  renderer — one source of truth for both paths. */
+function flattenGroupNodes(
+  roots: readonly GroupNode[],
+  meta: ReadonlyMap<string, { value: string; childCount: number; isExpanded: boolean; colId: string }>,
+): AutosizeGroupNode[] {
+  const out: AutosizeGroupNode[] = [];
+  const walk = (nodes: readonly GroupNode[]): void => {
+    for (const node of nodes) {
+      const m = meta.get(node.key);
+      out.push({
+        valueFormatted: m?.value ?? '',
+        depth: node.depth,
+        childCount: node.childCount,
+      });
+      if (node.childGroups.length > 0) walk(node.childGroups);
+    }
+  };
+  walk(roots);
+  return out;
 }

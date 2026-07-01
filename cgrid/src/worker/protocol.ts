@@ -298,6 +298,37 @@ export interface AutosizeColumnRequest {
   headerPadding?: number;
   minWidth: number;
   maxWidth: number;
+  /** Present ONLY for the synthesized auto-group column(s). Triggers
+   *  the worker to walk `state.groupOutput.roots` and measure per-node
+   *  paint width (chromeBase + depth × indentUnit + valueFormatted +
+   *  optional count suffix) instead of sampling rows via `row[field]`
+   *  — the auto-group column has no `field`, so the row-sample path
+   *  would collapse to header/minWidth width and truncate the paint.
+   *  See `renderer/cellRenderers/group.ts` for the paint formula
+   *  these fields mirror. */
+  groupContext?: AutosizeGroupContextRequest;
+}
+
+/** Wire-side representation of `AutosizeGroupContext` from
+ *  `worker/autosize.ts`. The `nodes` field is absent — the worker
+ *  materialises it locally from `state.groupOutput.roots`; only the
+ *  main-thread-owned fields (chrome geometry + display-type-driven
+ *  filters) travel across the boundary. */
+export interface AutosizeGroupContextRequest {
+  /** Static per-cell chrome. Sum of 2 × PADDING + CHEVRON_SIZE +
+   *  CHEVRON_GAP (+ CHECKBOX_SIZE + CHECKBOX_GAP when a group-selects
+   *  checkbox is active in the auto-group column). */
+  chromeBase: number;
+  /** Per-depth indent in px (typically `groupIndent` theme token = 14).
+   *  Pass 0 in multipleColumns mode. */
+  indentUnit: number;
+  /** Suppress the `(count)` suffix regardless of childCount. */
+  suppressCount: boolean;
+  /** Gap between value text and `(count)` suffix (constant COUNT_GAP = 4). */
+  countGap: number;
+  /** Only measure nodes at this depth (multipleColumns mode). Omit for
+   *  singleColumn — every depth contributes and the widest wins. */
+  groupColumnDepth?: number;
 }
 
 export type WorkerRequest =
