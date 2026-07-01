@@ -331,7 +331,7 @@ class CGrid<T> {
 ```ts
 // In the host app, not in cgrid library:
 import type { IDataProvider } from '@host/data';
-import type { CGrid } from 'cgrid';
+import type { CGrid } from '@cgrid/kernel';
 
 function bindProviderToGrid<T>(provider: IDataProvider<T>, grid: CGrid<T>) {
   const stops: Array<() => void> = [];

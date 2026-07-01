@@ -21,10 +21,10 @@ The addon imports cgrid like any third-party consumer:
 
 ```ts
 // @cgrid/customizer/src/panels/conditional-styling.ts
-import { ExpressionEngine, type ConditionalRule } from 'cgrid';
+import { ExpressionEngine, type ConditionalRule } from '@cgrid/kernel';
 
 // NOT allowed:
-// import { something } from 'cgrid/src/core/internal/...';
+// import { something } from '@cgrid/kernel/src/core/internal/...';
 ```
 
 ## API-first build discipline
