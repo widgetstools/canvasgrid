@@ -1482,7 +1482,19 @@ export class CGrid<TRow = any> {
         getRowDataSnapshotAt: (rowIndex) => this.rowDataSnapshotAt(rowIndex),
         getCanvasBounds: () => this.canvasBounds,
         getVisibleCellBounds: (rowIndex, colId) => this.getVisibleCellBounds(rowIndex, colId),
+        // `setFocus` is the non-collapsing verb used by `openEditor` /
+        // `openRowEdit` — those paths can be triggered by a mouse
+        // gesture whose trailing click fires immediately after a drag,
+        // and the drag has already installed a multi-cell range that
+        // the following focus move must not clobber. The keyboard
+        // commit-and-move paths (Enter / Tab / Excel-arrow) reach for
+        // `setFocusAndCollapseRanges` below so the range collapses to
+        // a 1×1 at the new focused cell — matching the "one focused
+        // cell at a time" invariant PR #21 (`e81c76d`) established.
         setFocus: (rowIndex, colId) => { this.selection.setFocus(rowIndex, colId); },
+        setFocusAndCollapseRanges: (rowIndex, colId) => {
+          this.selection.setFocusAndCollapseRanges(rowIndex, colId);
+        },
         getFocus: () => ({
           rowIndex: this.selection.state.focusedRowIndex,
           colId: this.selection.state.focusedColId,

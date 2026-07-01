@@ -154,6 +154,49 @@ test.describe('Cycle 9 patch — range collapses on keyboard focus moves', () =>
     expect((await rangesNow(page)).length).toBe(0);
   });
 
+  test('Enter-commit inside the editor collapses a pre-edit wide range to a 1×1 at the next focused cell (two-focused-cells regression)', async ({ page }) => {
+    // Regression: EditController's `deps.setFocus` used to wire to
+    // `SelectionModel.setFocus` (non-collapsing). Pressing Enter to
+    // commit an edit moved focus down but left the pre-edit range
+    // painting the OLD anchor cell — the user saw two blue
+    // rectangles at once. The fix wires `deps.setFocus` to
+    // `setFocusAndCollapseRanges` so the range follows focus.
+    await gridReady(page);
+    const canvas = page.locator(GRID_SELECTOR);
+    // Seed canvas focus so subsequent .press hits the grid.
+    await canvas.click({ position: { x: 80, y: 120 }, force: true });
+
+    // Seed a wide multi-row range with the focus at the top.
+    await seed(
+      page,
+      { rowStart: 1, rowEnd: 4, colIds: ['cusip'] },
+      1,
+      'cusip',
+    );
+    expect((await rangesNow(page)).length).toBe(1);
+    expect((await rangesNow(page))[0]!.rowEnd).toBe(4);
+
+    // Open the editor at the focused cell via F2 (edit mode) and Enter
+    // to commit + move-down without modifying the value.
+    await canvas.press('F2');
+    // The editor's input is mounted in the DOM overlay; type nothing
+    // and commit with Enter so no value change fires (isolates the
+    // regression to the focus + range invariant).
+    await canvas.press('Enter');
+    await waitForFrames(page, 4);
+
+    const after = await rangesNow(page);
+    const focus = await focusNow(page);
+    // Exactly ONE range remains — the pre-edit wide range collapsed
+    // to a 1×1 at the new focused cell. Two ranges here would repro
+    // the reported bug (focus ring on the new cell + range overlay
+    // still on the old anchor).
+    expect(after.length).toBe(1);
+    expect(after[0]!.rowStart).toBe(focus.rowIndex);
+    expect(after[0]!.rowEnd).toBe(focus.rowIndex);
+    expect(after[0]!.colIds).toEqual([focus.colId]);
+  });
+
   test('mouse-driven focus moves DO NOT collapse — multi-cell ranges seeded via the API survive a follow-up click somewhere outside the range', async ({ page }) => {
     // The keyboard-collapse path is gated to keyboard nav. RangeSelection's
     // own mousedown handler REPLACES ranges on plain click; that's expected.
