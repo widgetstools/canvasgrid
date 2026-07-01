@@ -1,8 +1,18 @@
-import type { FormatterTemplateContext, FormatterTemplate } from '../types';
+import type { FormatterTemplateContext, FormatterTemplate, FormatterTemplateDef } from '../types';
+import { getIntlNumberFormat } from './intlCache';
 
-export const PercentTemplate = {
-  name: 'Percent' as const,
+export const PercentTemplate: FormatterTemplateDef = {
+  name: 'Percent',
   factory: (params: FormatterTemplateContext): FormatterTemplate => {
-    throw new Error('not-yet-implemented: templates.PercentTemplate');
+    const options: Intl.NumberFormatOptions = {
+      style: 'percent',
+      minimumFractionDigits: params.digits ?? 0,
+      maximumFractionDigits: params.digits ?? 0,
+    };
+    const fmt = getIntlNumberFormat(params.locale, options);
+    return (value: unknown) => {
+      const n = typeof value === 'number' ? value : Number(value);
+      return Number.isFinite(n) ? fmt.format(n) : '';
+    };
   },
 };

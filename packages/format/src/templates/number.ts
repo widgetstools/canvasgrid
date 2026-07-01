@@ -1,8 +1,18 @@
-import type { FormatterTemplateContext, FormatterTemplate } from '../types';
+import type { FormatterTemplateContext, FormatterTemplate, FormatterTemplateDef } from '../types';
+import { getIntlNumberFormat } from './intlCache';
 
-export const NumberTemplate = {
-  name: 'Number' as const,
+export const NumberTemplate: FormatterTemplateDef = {
+  name: 'Number',
   factory: (params: FormatterTemplateContext): FormatterTemplate => {
-    throw new Error('not-yet-implemented: templates.NumberTemplate');
+    const options: Intl.NumberFormatOptions = {
+      minimumFractionDigits: params.digits ?? 0,
+      maximumFractionDigits: params.digits ?? 0,
+      useGrouping: params.useGrouping ?? false,
+    };
+    const fmt = getIntlNumberFormat(params.locale, options);
+    return (value: unknown) => {
+      const n = typeof value === 'number' ? value : Number(value);
+      return Number.isFinite(n) ? fmt.format(n) : '';
+    };
   },
 };
