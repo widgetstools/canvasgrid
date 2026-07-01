@@ -259,10 +259,19 @@ describe('LargeTextCellEditor', () => {
 });
 
 describe('CheckboxCellEditor', () => {
-  it('mounts an <input type="checkbox"> reflecting the initial boolean', () => {
+  // The editor's GUI is a flex-centered wrapper (so the intrinsically-sized
+  // <input type="checkbox"> lands centered inside the cell's full pixel rect
+  // instead of pinning to the top-left). The <input> is the wrapper's sole
+  // child — tests reach it via `firstElementChild`.
+  it('mounts an <input type="checkbox"> reflecting the initial boolean, centered in a flex wrapper', () => {
     const e = new CheckboxCellEditor();
     mount(e, makeParams<boolean>({ value: true }));
-    const input = e.getGui() as HTMLInputElement;
+    const wrapper = e.getGui() as HTMLDivElement;
+    expect(wrapper.tagName).toBe('DIV');
+    expect(wrapper.style.display).toBe('flex');
+    expect(wrapper.style.alignItems).toBe('center');
+    expect(wrapper.style.justifyContent).toBe('center');
+    const input = wrapper.firstElementChild as HTMLInputElement;
     expect(input.tagName).toBe('INPUT');
     expect(input.type).toBe('checkbox');
     expect(input.checked).toBe(true);
@@ -271,7 +280,7 @@ describe('CheckboxCellEditor', () => {
   it('getValue() returns the current checked state (boolean, not "on")', () => {
     const e = new CheckboxCellEditor();
     mount(e, makeParams<boolean>({ value: false }));
-    const input = e.getGui() as HTMLInputElement;
+    const input = (e.getGui() as HTMLDivElement).firstElementChild as HTMLInputElement;
     input.checked = true;
     expect(e.getValue()).toBe(true);
     input.checked = false;
@@ -282,7 +291,7 @@ describe('CheckboxCellEditor', () => {
     const stopEditing = vi.fn();
     const e = new CheckboxCellEditor();
     mount(e, makeParams<boolean>({ value: false, stopEditing }));
-    const input = e.getGui() as HTMLInputElement;
+    const input = (e.getGui() as HTMLDivElement).firstElementChild as HTMLInputElement;
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     expect(stopEditing).toHaveBeenLastCalledWith(false);
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
