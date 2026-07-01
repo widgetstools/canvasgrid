@@ -2,6 +2,7 @@
   "name": "canvasgrid-workspace",
   "private": true,
   "version": "0.0.0",
+  "packageManager": "npm@10.8.0",
   "workspaces": [
     "cgrid",
     "apps/*"
@@ -16,6 +17,7 @@
   },
   "devDependencies": {
     "eslint": "^9.39.4",
+    "turbo": "^2.10.2",
     "typescript-eslint": "^8.62.1"
   }
 }
