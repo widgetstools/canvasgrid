@@ -1,17 +1,17 @@
-# cgrid
+# @cgrid/kernel
 
 A vanilla-TypeScript canvas-based grid library. No framework dependencies.
 
 ## Install
 
 ```bash
-npm install cgrid
+npm install @cgrid/kernel
 ```
 
 ## Quickstart
 
 ```typescript
-import { CGrid } from 'cgrid';
+import { CGrid } from '@cgrid/kernel';
 
 const grid = new CGrid<{ id: string; name: string; value: number }>(
   document.getElementById('grid')!,

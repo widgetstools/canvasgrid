@@ -8,7 +8,7 @@
 // keeps working through these re-exports.
 
 // External module re-exports — the public surface keeps exporting these
-// from `cgrid` so app code can `import { ICellEditor } from 'cgrid'`
+// from `@cgrid/kernel` so app code can `import { ICellEditor } from '@cgrid/kernel'`
 // without reaching into interaction/*. These don't belong to any single
 // domain file because they're not OUR types; they're the contracts the
 // interaction subsystems own.
