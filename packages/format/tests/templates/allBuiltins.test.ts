@@ -18,21 +18,21 @@ describe('Built-in template factories produce working formatters', () => {
   });
 
   it('Date', () => {
-    const fn = getFormatterTemplate('Date')!.factory({ locale: 'en-US', dateStyle: 'short' });
-    // Use noon UTC so the date stays July 1 regardless of local timezone offset.
-    const result = fn(new Date('2026-07-01T12:00:00Z'));
-    expect(result).toMatch(/7\/1\/26|07\/01\/2026|2026/);
+    const fn = getFormatterTemplate('Date')!.factory({ locale: 'en-US', dateStyle: 'short', timeZone: 'UTC' });
+    const result = fn(new Date('2026-07-01T00:00:00Z'));
+    expect(result).toMatch(/7\/1\/26|07\/01\/2026/);
   });
 
   it('Time', () => {
-    const fn = getFormatterTemplate('Time')!.factory({ locale: 'en-US', timeStyle: 'short' });
-    expect(fn(new Date('2026-07-01T15:30:00Z'))).toMatch(/AM|PM/);
+    const fn = getFormatterTemplate('Time')!.factory({ locale: 'en-US', timeStyle: 'short', timeZone: 'UTC' });
+    const result = fn(new Date('2026-07-01T15:30:00Z'));
+    expect(result).toMatch(/3:30 PM/);
   });
 
   it('DateTime', () => {
-    const fn = getFormatterTemplate('DateTime')!.factory({ locale: 'en-US', dateStyle: 'medium', timeStyle: 'short' });
+    const fn = getFormatterTemplate('DateTime')!.factory({ locale: 'en-US', dateStyle: 'medium', timeStyle: 'short', timeZone: 'UTC' });
     const result = fn(new Date('2026-07-01T15:30:00Z'));
-    expect(result).toMatch(/Jul.*2026/);
+    expect(result).toMatch(/Jul 1, 2026/);
   });
 
   it('RelativeTime', () => {

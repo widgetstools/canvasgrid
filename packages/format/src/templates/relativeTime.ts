@@ -3,7 +3,10 @@ import { getIntlRelativeTimeFormat } from './intlCache';
 
 /**
  * Value shape for RelativeTime: `{ value: number, unit: Intl.RelativeTimeFormatUnit }`
- * or a plain number in seconds relative to now.
+ * or a plain number in seconds. When passed a plain number, it is converted
+ * to days (Math.round(seconds / 86400)) and formatted as days — sub-day
+ * values collapse to "today" via numeric:'auto'. Callers wanting other
+ * units should pass the { value, unit } shape.
  */
 export const RelativeTimeTemplate: FormatterTemplateDef = {
   name: 'RelativeTime',

@@ -114,6 +114,7 @@ export interface FormatterTemplateContext {
   useGrouping?: boolean;
   dateStyle?: 'short' | 'medium' | 'long' | 'full';
   timeStyle?: 'short' | 'medium' | 'long' | 'full';
+  timeZone?: string;
 }
 
 export interface FormatterTemplateDef {

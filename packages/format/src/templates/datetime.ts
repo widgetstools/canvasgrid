@@ -7,6 +7,7 @@ export const DateTimeTemplate: FormatterTemplateDef = {
     const fmt = getIntlDateTimeFormat(params.locale, {
       dateStyle: params.dateStyle ?? 'medium',
       timeStyle: params.timeStyle ?? 'short',
+      timeZone: params.timeZone,
     });
     return (value: unknown) => {
       if (value instanceof Date) return fmt.format(value);

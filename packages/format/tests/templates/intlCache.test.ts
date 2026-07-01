@@ -55,23 +55,32 @@ describe('Intl cache', () => {
     expect(a).toBe(b);
   });
 
-  it('eviction under load', () => {
-    // Insert 600 unique keys — should evict oldest 100 (MAX_ENTRIES=500).
-    // Use useGrouping boolean and minimumFractionDigits (0-20) to vary keys
-    // without exceeding Intl.NumberFormat option ranges.
-    for (let i = 0; i < 600; i++) {
-      getIntlNumberFormat('en-US', {
-        minimumFractionDigits: i % 21,
-        maximumFractionDigits: i % 21,
-        useGrouping: i % 2 === 0,
-        notation: i % 3 === 0 ? 'standard' : i % 3 === 1 ? 'scientific' : 'compact',
-      });
+  it('eviction fires when MAX_ENTRIES exceeded', () => {
+    // First insert — record the instance.
+    const firstInstance = getIntlNumberFormat('en-US', {
+      style: 'currency', currency: 'USD',
+      minimumFractionDigits: 0, maximumFractionDigits: 0,
+    });
+
+    // Insert 600 distinct keys to push the first out.
+    // currencies(6) × min(0-15) × max(min-15) = 6 × 136 = 816 combos > 500.
+    const currencies = ['EUR', 'GBP', 'JPY', 'CHF', 'CAD', 'AUD'];
+    for (const cur of currencies) {
+      for (let min = 0; min <= 15; min++) {
+        for (let max = min; max <= 15; max++) {
+          getIntlNumberFormat('en-US', {
+            style: 'currency', currency: cur,
+            minimumFractionDigits: min, maximumFractionDigits: max,
+          });
+        }
+      }
     }
-    // After inserting 600 unique keys with MAX_ENTRIES=500, the cache should
-    // have evicted the oldest entries. Requesting any key returns the same
-    // instance as a second request (cache is consistent).
-    const before = getIntlNumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-    const after = getIntlNumberFormat('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 0 });
-    expect(before).toBe(after);
+
+    // Re-fetch the first key — should be a fresh instance now (was evicted).
+    const refetched = getIntlNumberFormat('en-US', {
+      style: 'currency', currency: 'USD',
+      minimumFractionDigits: 0, maximumFractionDigits: 0,
+    });
+    expect(refetched).not.toBe(firstInstance);
   });
 });
