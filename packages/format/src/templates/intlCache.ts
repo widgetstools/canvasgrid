@@ -30,7 +30,7 @@ export function getIntlNumberFormat(locale: string, options: Intl.NumberFormatOp
 }
 
 export function getIntlDateTimeFormat(locale: string, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat {
-  const key = 'dtf|' + hashKey([locale, options.dateStyle, options.timeStyle, options.year, options.month, options.day, options.hour, options.minute, options.second, options.hour12]);
+  const key = 'dtf|' + hashKey([locale, options.dateStyle, options.timeStyle, options.year, options.month, options.day, options.hour, options.minute, options.second, options.hour12, options.weekday, options.timeZone]);
   let cached = cache.get(key) as Intl.DateTimeFormat | undefined;
   if (!cached) {
     cached = new Intl.DateTimeFormat(locale, options);
