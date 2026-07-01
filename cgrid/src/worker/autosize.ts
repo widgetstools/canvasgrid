@@ -40,6 +40,72 @@ export interface AutosizeColumnSpec {
    *  formatted text (matching what the renderer paints). Empty strings
    *  contribute zero width. */
   textOf: (rowIndex: number) => string;
+  /** When present, the pass measures the SYNTHESIZED auto-group column
+   *  by walking a pre-flattened list of group nodes instead of sampling
+   *  rows via `textOf`. Auto-group columns have no `field` and paint
+   *  chevron + indent + valueFormatted + optional (count) — chrome the
+   *  regular per-row-field measurement never captures. See the
+   *  `AutosizeGroupContext` docstring for the width formula. */
+  groupContext?: AutosizeGroupContext;
+}
+
+/** One tree node's contribution to the auto-group column autosize.
+ *  The worker flattens `state.groupOutput.roots` into this shape; the
+ *  formatted value matches what `chunk.groupValue[i]` carries into the
+ *  `'group'` renderer, so the measured width reflects real paint output.
+ */
+export interface AutosizeGroupNode {
+  /** Group node's formatted value (same source as `chunk.groupValue[i]`).
+   *  Empty strings contribute zero to the value width but the chrome + indent
+   *  still count (an empty group still paints its chevron). */
+  valueFormatted: string;
+  /** 0-indexed group depth in the tree. Drives the `depth × indentUnit`
+   *  offset in singleColumn mode; ignored (indent=0) in multipleColumns. */
+  depth: number;
+  /** Descendant leaf-row count. Drives the `(count)` suffix width when
+   *  `suppressCount === false`. Zero omits the suffix. */
+  childCount: number;
+}
+
+/** Chrome-aware context for the synthesized auto-group column autosize.
+ *  All width contributions the renderer paints but that don't originate
+ *  from a row-object field live here. The renderer's per-cell paint
+ *  formula (see `renderer/cellRenderers/group.ts`) is:
+ *
+ *    chromeBase + depth × indentUnit + measure(valueFormatted)
+ *      + (childCount > 0 && !suppressCount ? countGap + measure(count) : 0)
+ *
+ *  where `chromeBase` folds in the two horizontal paddings, the chevron
+ *  glyph + gap, and the optional tri-state checkbox slot + gap when
+ *  `checkboxLocation === 'autoGroupColumn'` and a group-selects mode is
+ *  active. The main thread computes `chromeBase` once at request time —
+ *  the worker never needs the individual constants. */
+export interface AutosizeGroupContext {
+  /** Sum of static per-cell chrome in px:
+   *    2 × PADDING + CHEVRON_SIZE + CHEVRON_GAP
+   *    + (hasCheckbox ? CHECKBOX_SIZE + CHECKBOX_GAP : 0)
+   *  Constants live in `renderer/cellRenderers/group.ts`. */
+  chromeBase: number;
+  /** Per-depth indent in px. Typically the `groupIndent` theme token
+   *  (14). Pass 0 in multipleColumns mode — each column owns one depth,
+   *  so the indent lives in the column ORDER rather than in the cell. */
+  indentUnit: number;
+  /** `true` suppresses the `(count)` suffix regardless of `childCount`
+   *  (mirrors `CGridOptions.suppressCount` / `groupRowRendererParams.suppressCount`). */
+  suppressCount: boolean;
+  /** Gap between the value text and the `(count)` suffix in px.
+   *  Constant in the renderer (`COUNT_GAP = 4`). */
+  countGap: number;
+  /** In `'multipleColumns'` mode the auto-group column at slot N only
+   *  paints nodes at `depth === N`. When present, the pass filters the
+   *  `nodes` list to that depth before measuring. Omit in `'singleColumn'`
+   *  mode (all depths contribute; the widest wins). */
+  groupColumnDepth?: number;
+  /** Pre-flattened group tree. The worker walks `state.groupOutput.roots`
+   *  once per request and hands the collected nodes in here — bounds the
+   *  cost at `O(node count)` (typically << 5k, far below the leaf row
+   *  count autosize would otherwise scan). */
+  nodes: readonly AutosizeGroupNode[];
 }
 
 export interface MeasureColumnWidthsParams {
@@ -91,23 +157,39 @@ export function measureColumnWidths(params: MeasureColumnWidthsParams): Map<stri
 
   for (const col of cols) {
     const measure = getMeasurer(col.font);
-    let maxData = 0;
+    let maxRaw = 0;
 
-    const consider = (rowIndex: number): void => {
-      const text = col.textOf(rowIndex);
-      if (!text) return;
-      const w = measureTextCached(text, col.font, measure, cache);
-      if (w > maxData) maxData = w;
-    };
+    if (col.groupContext) {
+      // Auto-group column: walk the pre-flattened group tree instead of
+      // sampling rows via `textOf`. `textOf` on a group column would
+      // return '' for every row (no `field` on the synthesized def), so
+      // the pre-groupContext path silently collapsed to header / minWidth.
+      // The formula below MUST stay in lockstep with `groupCell.paint` in
+      // `renderer/cellRenderers/group.ts` — every additive term there
+      // needs a term here or the resulting width truncates the paint.
+      maxRaw = maxGroupNodeWidth(col.groupContext, col.font, measure, cache);
+    } else {
+      let maxData = 0;
 
-    for (let i = 0; i < sampleHead; i++) consider(i);
-    for (let i = sampleTailStart; i < rowCount; i++) consider(i);
+      const consider = (rowIndex: number): void => {
+        const text = col.textOf(rowIndex);
+        if (!text) return;
+        const w = measureTextCached(text, col.font, measure, cache);
+        if (w > maxData) maxData = w;
+      };
 
-    // Data cells use col.padding; header uses col.headerPadding (defaults to
-    // col.padding). The header padding is typically larger to reserve room for
-    // the sort/unsort caret drawn at the right edge of each header cell.
+      for (let i = 0; i < sampleHead; i++) consider(i);
+      for (let i = sampleTailStart; i < rowCount; i++) consider(i);
+
+      maxRaw = maxData + col.padding;
+    }
+
+    // Header padding uses col.headerPadding (defaults to col.padding).
+    // The header padding is typically larger to reserve room for the
+    // sort/unsort caret drawn at the right edge of each header cell.
+    // Both the group and regular paths compete against the header
+    // measurement so the auto-sized width always fits the label too.
     const hPad = col.headerPadding ?? col.padding;
-    let maxRaw = maxData + col.padding;
     if (!skipHeader && col.headerName) {
       const headerW = measureTextCached(col.headerName, col.font, measure, cache) + hPad;
       if (headerW > maxRaw) maxRaw = headerW;
@@ -118,6 +200,43 @@ export function measureColumnWidths(params: MeasureColumnWidthsParams): Map<stri
   }
 
   return out;
+}
+
+/** Auto-group column width — walks the pre-flattened tree, keeping the
+ *  widest per-node paint width. Terms mirror `groupCell.paint` so a
+ *  change in one MUST land in the other.
+ *
+ *  Per-node paint = chromeBase + depth × indentUnit + measure(value)
+ *    + (childCount > 0 && !suppressCount ? countGap + measure(count) : 0)
+ */
+function maxGroupNodeWidth(
+  ctx: AutosizeGroupContext,
+  font: string,
+  measure: (s: string) => number,
+  cache: MeasureCache | undefined,
+): number {
+  const filterDepth = ctx.groupColumnDepth;
+  let max = 0;
+  for (const n of ctx.nodes) {
+    if (filterDepth !== undefined && n.depth !== filterDepth) continue;
+    // Indent contribution: multipleColumns mode passes indentUnit === 0
+    // (each column owns one depth; indent lives in column order) OR the
+    // filterDepth is set and every kept node has the same depth (also
+    // yielding a uniform contribution). Either way the math still holds:
+    // depth × 0 === 0, and constant depth × indentUnit is a per-node add.
+    const indent = n.depth * ctx.indentUnit;
+    const valueW = n.valueFormatted
+      ? measureTextCached(n.valueFormatted, font, measure, cache)
+      : 0;
+    let countW = 0;
+    if (n.childCount > 0 && !ctx.suppressCount) {
+      const countText = `(${n.childCount.toLocaleString()})`;
+      countW = ctx.countGap + measureTextCached(countText, font, measure, cache);
+    }
+    const total = ctx.chromeBase + indent + valueW + countW;
+    if (total > max) max = total;
+  }
+  return max;
 }
 
 /** Read-through measure with optional LRU cache. Width is keyed as `0` —

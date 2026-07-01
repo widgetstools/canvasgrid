@@ -107,7 +107,7 @@ import {
 import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell, type CellPainter } from './renderer/cellRenderers/registry';
 import { wrapTextCell } from './renderer/cellRenderers/wrapText';
 import { totalsCell } from './renderer/cellRenderers/totals';
-import { groupCell, type GroupCellValue } from './renderer/cellRenderers/group';
+import { groupCell, GROUP_CELL_GEOMETRY, type GroupCellValue } from './renderer/cellRenderers/group';
 import { groupFooterCell } from './renderer/cellRenderers/groupFooter';
 import { sparklineCell } from './renderer/cellRenderers/sparkline';
 import { rowSelectCheckboxCell } from './renderer/cellRenderers/rowSelectCheckbox';
@@ -116,6 +116,7 @@ import { decorateHeader } from './renderer/painters/byRows';
 import {
   autoGroupColumnDepthFromId,
   isAutoGroupColumnId,
+  resolveGroupDisplayType,
 } from './core/autoGroupColumn';
 import { Renderer } from './renderer/renderer';
 import { HitTester } from './interaction/hitTester';
@@ -6899,6 +6900,15 @@ export class CGrid<TRow = any> {
     // HEADER_PADDING(8) + SORT_ICON_PAD(8) + SORT_ICON_SIZE(14) = 30px —
     // ensures the auto-sized width always reserves room for the sort caret.
     const headerPadding = 30;
+    // Auto-group chrome context is computed ONCE across the batch (all
+    // auto-group columns share display type + checkbox slot + count
+    // suppression + theme indent). Individual per-column context clones
+    // this and overlays the multipleColumns depth slot when needed.
+    const groupChromeBase = this.computeGroupAutosizeChromeBase();
+    const groupIndentUnit = this.theme.groupIndent ?? 14;
+    const suppressCount = this.options.suppressCount === true
+      || this.options.groupRowRendererParams?.suppressCount === true;
+    const displayType = resolveGroupDisplayType(this.options.groupDisplayType);
     const requests: AutosizeColumnRequest[] = [];
     for (const key of keys) {
       const def = this.columnDefsMap.get(key);
@@ -6915,7 +6925,7 @@ export class CGrid<TRow = any> {
       // Use the decorated header text (e.g. "sum(Notional)") so the
       // measured width matches exactly what the header painter draws.
       const headerName = decorateHeader(def, this.options.suppressAggFuncInHeader === true);
-      requests.push({
+      const req: AutosizeColumnRequest = {
         colId: def.colId,
         headerName,
         font,
@@ -6923,7 +6933,30 @@ export class CGrid<TRow = any> {
         headerPadding,
         minWidth: def.minWidth,
         maxWidth: Number.isFinite(def.maxWidth) ? def.maxWidth : Number.MAX_SAFE_INTEGER,
-      });
+      };
+      // Auto-group column: attach chrome context so the worker walks
+      // the group tree instead of `row[field]` (which is undefined for
+      // synthesized columns — the pre-fix path collapsed to header or
+      // minWidth and truncated group values, indent, chevron, and
+      // count). The per-column depth slot only fires in
+      // multipleColumns mode; singleColumn measures all depths.
+      if (isAutoGroupColumnId(def.colId)) {
+        // multipleColumns: indent lives in column ORDER, not in the
+        // cell — the renderer paints indentX = 0 in that mode. Pass 0
+        // so autosize agrees. singleColumn: `depth × groupIndent`.
+        const indentUnit = displayType === 'multipleColumns' ? 0 : groupIndentUnit;
+        const depthSlot = displayType === 'multipleColumns'
+          ? (autoGroupColumnDepthFromId(def.colId) ?? undefined)
+          : undefined;
+        req.groupContext = {
+          chromeBase: groupChromeBase,
+          indentUnit,
+          suppressCount,
+          countGap: GROUP_CELL_GEOMETRY.countGap,
+          groupColumnDepth: depthSlot,
+        };
+      }
+      requests.push(req);
     }
     if (requests.length === 0) return;
     let widths: Record<string, number>;
@@ -6972,6 +7005,25 @@ export class CGrid<TRow = any> {
       .filter((c) => !c.suppressAutoSize && !c.hide)
       .map((c) => c.colId);
     return this.autoSizeColumns(keys, skipHeader);
+  }
+
+  /** Per-cell chrome floor for an auto-group column, in CSS px. Sole
+   *  source of truth: the constants published from
+   *  `renderer/cellRenderers/group.ts` via `GROUP_CELL_GEOMETRY`. Adds
+   *  the tri-state checkbox slot when a group-selects checkbox is
+   *  actually painted in the auto-group column (mirrors the gating in
+   *  `groupCellContextAt` — checkboxLocation routes to the auto-group
+   *  column AND a group-selects mode is active). */
+  private computeGroupAutosizeChromeBase(): number {
+    const checkboxLoc = this.options.checkboxLocation ?? 'autoGroupColumn';
+    const groupSelectsMode = this.selection.getGroupSelects();
+    const showCheckboxInGroupCell =
+      checkboxLoc !== 'none'
+      && checkboxLoc !== 'selectionColumn'
+      && (groupSelectsMode !== 'none' || this.selection.isGroupSelectsChildren());
+    let base = GROUP_CELL_GEOMETRY.chromeBaseNoCheckbox;
+    if (showCheckboxInGroupCell) base += GROUP_CELL_GEOMETRY.checkboxSlot;
+    return base;
   }
 
   /** Cycle 6 / Task 5 — flip visibility on every listed leaf in a batch.
