@@ -34,12 +34,15 @@ test.describe('format DSL feature', () => {
     await gotoFeature(page, 'format-dsl');
   });
 
-  test('mounts 5 rows and 7 columns including the composite summary', async ({ page }) => {
+  test('mounts 5 rows and 15 columns including the composite summary', async ({ page }) => {
     const rowCount: number = await page.evaluate(() => (window.__cgrid as any)?.rowCount ?? 0);
     expect(rowCount).toBe(5);
     const colIds: string[] = await page.evaluate(() =>
       Array.from((window.__cgrid as any).columnDefsMap.keys()));
-    expect(colIds).toEqual(['symbol', 'price', 'change', 'changeColor', 'changeIcon', 'volume', 'summary']);
+    expect(colIds).toEqual([
+      'symbol', 'price', 'change', 'changeColor', 'changeIcon', 'volume', 'summary',
+      'changePct', 'updated', 'trend', 'volAbbr', 'qty', 'momentum', 'tier', 'priceEur',
+    ]);
   });
 
   test('Tier 0 — string valueFormatter compiles to a currency formatter', async ({ page }) => {
@@ -137,6 +140,63 @@ test.describe('format DSL feature', () => {
     expect(html).toContain('<table');
     expect(html).toContain('font-weight:bold');
     expect(html).toContain('AAPL');
+  });
+
+  test('Tier 0 — percent, date tokens, and conditional [>1000] sections', async ({ page }) => {
+    expect(await callResolved(page, 'changePct', 'valueFormatter', 0.0169, AAPL)).toBe('1.7%');
+    const dateText = await page.evaluate(() => {
+      const def = (window.__cgrid as any).columnDefsMap.get('updated');
+      return def.valueFormatter({ value: new Date(2026, 6, 1), data: {}, colId: 'updated' });
+    });
+    expect(dateText).toBe('2026-07-01');
+    expect(await callResolved(page, 'trend', 'valueFormatter', 15.3, { change: 15.3 })).toBe('UP 15.30');
+    expect(await callResolved(page, 'trend', 'valueFormatter', -12.75, GOOG)).toBe('DOWN -12.75');
+    expect(await callResolved(page, 'trend', 'valueFormatter', 2.5, AAPL)).toBe('2.50');
+  });
+
+  test('Tier 1 — [bg=], [weight=], [style=], and [if] section selectors', async ({ page }) => {
+    // Resolved styles use the kernel override vocabulary:
+    // bg / fg / fontWeight / fontStyle.
+    const big = { qty: 220 };
+    const small = { qty: 8 };
+    const bigStyle = await callResolved(page, 'qty', 'cellStyleFn', 220, big);
+    expect((bigStyle as any)?.bg).toBe('#fff3cd');
+    expect((bigStyle as any)?.fontWeight).toBe('bold');
+    const smallStyle = await callResolved(page, 'qty', 'cellStyleFn', 8, small);
+    expect((smallStyle as any)?.bg).toBe('transparent');
+    expect((smallStyle as any)?.fontWeight).toBe('normal');
+
+    const downStyle = await callResolved(page, 'momentum', 'cellStyleFn', -12.75, GOOG);
+    expect((downStyle as any)?.fontStyle).toBe('italic');
+
+    expect((await callResolved(page, 'tier', 'valueFormatter', 220, big) as string).trim()).toBe('BLOCK');
+    expect((await callResolved(page, 'tier', 'valueFormatter', 75, { qty: 75 }) as string).trim()).toBe('LOT');
+    expect((await callResolved(page, 'tier', 'valueFormatter', 8, small) as string).trim()).toBe('ODD');
+  });
+
+  test('Tier 2 — composite cellBackground + align resolve per row', async ({ page }) => {
+    const info = await page.evaluate(() => {
+      const def = (window.__cgrid as any).columnDefsMap.get('summary');
+      const program = def?._compositeProgram;
+      const down = { value: null, row: { symbol: 'GOOG', price: 2850.1, change: -12.75 }, colId: 'summary' };
+      const up = { value: null, row: { symbol: 'AAPL', price: 150.25, change: 2.5 }, colId: 'summary' };
+      return {
+        align: def?.compositeAlign,
+        downBg: program?.resolveStyle(down)?.background,
+        upBg: program?.resolveStyle(up)?.background,
+      };
+    });
+    expect(info.align).toBe('left');
+    expect(info.downBg).toBe('#fee2e2');
+    expect(info.upBg).toBe('transparent');
+  });
+
+  test('formatter template registry — Currency + Abbreviated templates', async ({ page }) => {
+    const text = await callResolved(page, 'priceEur', 'valueFormatter', 2850.1, GOOG);
+    // de-DE grouping: dot thousands, comma decimals, trailing €.
+    expect(text).toContain('2.850,10');
+    expect(text).toContain('€');
+    expect(await callResolved(page, 'volAbbr', 'valueFormatter', 45_000_000, AAPL)).toBe('45M');
   });
 
   test('description bar mentions Cycle 21c', async ({ page }) => {
