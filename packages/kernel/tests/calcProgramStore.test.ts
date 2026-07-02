@@ -11,11 +11,12 @@
 //     malformed sources reply with the error envelope and leave the
 //     host alive for subsequent requests.
 
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { CalcProgramStore } from '../src/worker/passes/calcPass';
 import type { WorkerCalcProgram } from '../src/worker/protocol';
 import { createWorkerHost } from '../src/worker/worker';
 import type { WorkerRequest, WorkerResponse, WorkerPush } from '../src/worker/protocol';
+import { WorkerClient } from '../src/worker/client';
 
 const INTERP = `(function evaluateCalcAst(ast, row, aggSlots, prevLookup) {
   if (ast === null) return null;
@@ -251,5 +252,72 @@ describe('worker dispatch — setCalcProgram', () => {
     await flush();
     const reply = outbox.find((m) => 'id' in m && m.id === 2) as WorkerResponse;
     expect(reply.type).toBe('error');
+  });
+});
+
+// ─── Task 11 review backfill (opportunistic Minor) ──────────────────────────
+//
+// Task 10's review flagged two gaps in client-level coverage: the
+// `WorkerClient.setCalcProgram` promise must REJECT (not silently
+// resolve/hang) when the worker replies with an `error` envelope, and a
+// double `install(null)` — through the client, not just the bare store —
+// must stay idempotent (second no-op removal doesn't throw or leave the
+// client's pending-request map in a bad state).
+
+class FakeWorker {
+  private listeners: Array<(e: { data: any }) => void> = [];
+  host = createWorkerHost((msg) => {
+    queueMicrotask(() => this.listeners.forEach((cb) => cb({ data: msg })));
+  });
+  postMessage(msg: any) { this.host.handle(msg); }
+  addEventListener(_t: string, cb: (e: { data: any }) => void) { this.listeners.push(cb); }
+  terminate() {}
+}
+
+function makeClient() {
+  const w = new FakeWorker();
+  const client = new WorkerClient(w as any, {
+    onModelUpdated: vi.fn(), onAsyncTransactionsFlushed: vi.fn(), onError: vi.fn(),
+  });
+  return { w, client };
+}
+
+describe('WorkerClient.setCalcProgram — rejection correlation + idempotency', () => {
+  it('rejects the returned promise (correlated by request id) when the worker replies with an error envelope', async () => {
+    const { client } = makeClient();
+    await client.init({
+      rowIdField: 'id',
+      columns: [{ colId: 'bid', field: 'bid', type: 'number' }],
+    });
+    await expect(
+      client.setCalcProgram(makeProgram({ interpreterSource: 'not a function(' })),
+    ).rejects.toThrow(/failed to deserialise/);
+  });
+
+  it('a rejected setCalcProgram call does not wedge the client — a subsequent valid call still resolves', async () => {
+    const { client } = makeClient();
+    await client.init({
+      rowIdField: 'id',
+      columns: [{ colId: 'bid', field: 'bid', type: 'number' }],
+    });
+    await expect(
+      client.setCalcProgram(makeProgram({ interpreterSource: 'not a function(' })),
+    ).rejects.toThrow();
+    // The failed request's id was consumed by the error reply; a follow-up
+    // call gets a fresh id and must resolve normally.
+    await expect(client.setCalcProgram(makeProgram())).resolves.toBeUndefined();
+  });
+
+  it('install(null) is idempotent through the client — calling it twice in a row both resolve cleanly', async () => {
+    const { client } = makeClient();
+    await client.init({
+      rowIdField: 'id',
+      columns: [{ colId: 'bid', field: 'bid', type: 'number' }],
+    });
+    await client.setCalcProgram(makeProgram());
+    await expect(client.setCalcProgram(null)).resolves.toBeUndefined();
+    // Second null install — the program is already removed; must not
+    // throw, hang, or reject.
+    await expect(client.setCalcProgram(null)).resolves.toBeUndefined();
   });
 });

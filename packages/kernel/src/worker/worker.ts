@@ -87,6 +87,9 @@ export function createWorkerHost(post: PostFn): WorkerHost {
 
   async function buildVisibleAsync(): Promise<string[]> {
     if (!state) return [];
+    // Cycle 21d / Task 11 — CalcPass Stage A: materialise row-local calc
+    // values BEFORE the filter reads them. No program → immediate no-op.
+    state.calc.ensureStageA(state.store, (colId) => state!.columns.find((c) => c.colId === colId)?.field);
     let ids = buildCandidates();
     const alwaysPass = state.alwaysPassIds;
     if (state.externalFilterPresent) {
@@ -421,8 +424,13 @@ export function createWorkerHost(post: PostFn): WorkerHost {
         if (state!.enableCellChangeFlash && tx.update && tx.update.length > 0) {
           stageFlashesForUpdates(state!, tx.update);
         }
+        // Cycle 21d / Task 11 — capture pre-apply rows for PREV([col]).
+        if (tx.update && tx.update.length > 0) {
+          state!.calc.capturePrevForUpdates(store, tx.update);
+        }
         const r = store.apply(tx);
         all.push(r);
+        state!.calc.onTransaction(r);
         // Aggregate cache must drop any row that just mutated so the next
         // QuickFilterPass.apply rebuilds against current values.
         for (const a of r.add)    touched.add(a.rowId);
@@ -533,6 +541,12 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       showOpenedGroup: payload.showOpenedGroup === true,
       groupHideOpenParents: payload.groupHideOpenParents === true,
     };
+    // Cycle 21d / Task 11 — seam wiring: every pass reads calc-column
+    // values through the same CalcProgramStore instance held on state.
+    state.filter.setCalcSource(state.calc);
+    state.sort.setCalcSource(state.calc);
+    state.group.setCalcSource(state.calc);
+    state.slicer.setCalcSource(state.calc);
 
     post({ id, type: 'ready' });
   }

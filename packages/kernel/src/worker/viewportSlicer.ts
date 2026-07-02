@@ -51,6 +51,7 @@ import type { FlatOrderEntry } from './passes/groupPass';
 import type { RowStore } from './dataPipeline';
 import type { ViewportChunk, ViewportRequest, WorkerColumn } from './protocol';
 import { encodeText } from './chunkFormat';
+import type { CalcValueSource } from './passes/calcPass';
 
 /** Entry in the group-aware visible-row list. Same shape as
  *  `FlatOrderEntry` — re-exported for callers that just want to talk
@@ -179,6 +180,11 @@ export function sliceGroupedViewport<TRow>(
    *  the most-recent group becomes the closest non-elided ancestor,
    *  which is the right label to show). */
   showOpenedGroup?: boolean,
+  /** Cycle 21d / Task 11 — CalcPass Stage A/B value seam. When supplied,
+   *  fieldless calc columns fill their chunk slots (numericCols /
+   *  textCols) for `entry.kind === 'row'` slots the same way a data
+   *  column does; group/footer slots keep their zero/`''` defaults. */
+  calcSource?: CalcValueSource,
 ): ViewportChunk {
   const rowStart = Math.max(0, req.rowStart);
   const rowEnd = Math.min(visibleOrder.length, req.rowEnd);
@@ -282,7 +288,37 @@ export function sliceGroupedViewport<TRow>(
 
   for (const colId of req.columns) {
     const col = colIndex.get(colId);
-    if (!col || !col.field) continue;
+    if (!col) continue;
+    // Cycle 21d / Task 11 — fieldless calc columns fill their chunk
+    // slots from the CalcPass cache; row slots only (group/footer keep
+    // their zero/'' defaults, same as data columns above).
+    if (!col.field) {
+      const src = calcSource;
+      if (!src || !src.isCalcCol(colId)) continue;
+      if (col.type === 'number') {
+        const arr = new Float64Array(count);
+        for (let i = 0; i < count; i++) {
+          const entry = visibleOrder[rowStart + i]!;
+          if (entry.kind !== 'row') continue;
+          const rowId = postFilterIds[entry.rowIndex];
+          if (rowId === undefined) continue;
+          arr[i] = Number(src.valueAt(rowId, colId));
+        }
+        numericCols[colId] = arr;
+      } else {
+        const values: string[] = new Array(count);
+        for (let i = 0; i < count; i++) {
+          const entry = visibleOrder[rowStart + i]!;
+          if (entry.kind !== 'row') { values[i] = ''; continue; }
+          const rowId = postFilterIds[entry.rowIndex];
+          if (rowId === undefined) { values[i] = ''; continue; }
+          const v = src.valueAt(rowId, colId);
+          values[i] = v == null ? '' : String(v);
+        }
+        textCols[colId] = encodeText(values);
+      }
+      continue;
+    }
     const field = col.field;
     if (col.type === 'number') {
       const arr = new Float64Array(count);

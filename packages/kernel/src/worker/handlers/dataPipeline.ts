@@ -42,6 +42,9 @@ export async function handleDataPipeline(
   switch (req.type) {
     case 'setRowData': {
       state.store.setAll(req.payload.rows as unknown[], req.payload.heightsByRowId);
+      // Cycle 21d / Task 11 — full data replace invalidates the calc
+      // value cache; next ensureStageA pass does a full recompute.
+      state.calc.onSetRowData();
       // Cycle 7 / Task 8 — a full data replace invalidates any
       // alwaysPass set computed against the previous data.
       state.alwaysPassIds.clear();
@@ -69,7 +72,15 @@ export async function handleDataPipeline(
         if (state.enableCellChangeFlash && update && update.length > 0) {
           helpers.stageFlashesForUpdates(update as unknown[]);
         }
+        // Cycle 21d / Task 11 — capture pre-apply rows for PREV([col]).
+        // Same pre-apply tick point the flash diff uses — flash gates on
+        // `enableCellChangeFlash`, PREV gates on the program's
+        // `usesPrev` inside the hook itself.
+        if (update && update.length > 0) {
+          state.calc.capturePrevForUpdates(state.store, update as unknown[]);
+        }
         const results = state.store.apply({ add: add as unknown[], update: update as unknown[], remove, heightsByRowId });
+        state.calc.onTransaction(results);
         // Cycle 7 / Task 7 — sync transactions need the quick filter
         // aggregate cache invalidated for the touched rows.
         const touched = new Set<string>();
