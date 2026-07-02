@@ -578,3 +578,18 @@ Remaining Cycle 21 work runs in SMALL SESSIONS per docs/superpowers/plans/2026-0
   FACT for 21f-S5 drafting (Task 9): kernel does NOT publicly export 5 individual sparkline painters — only a single 'sparkline' name with internal variant dispatch; charts.ts re-export stubs are honest throws pending the verified mechanism
   NOTE: rating-band/venue hexes are provisional palette choices (catalog fixes only 4 semantic hexes + StatusPill/glyphs); params-overridable
 21f-S1: COMPLETE (session close-out). Plan has Tasks 1-4; branch cycle21f/renderers exists (HEAD c20fc5b); Task 1 reviewed+ledgered. NEXT UNIT: 21f-S2 (execute Tasks 2-4 with reviews).
+21f Task 2: complete (commits 04c85d5..3d360c3, review approved clean)
+  paintUtils (withAlpha/mixHex/labInterpolate/pill/dot/miniBar/fragText) + palette functions + fake-gc calls-log harness; renderers 117/117 (34+13+70); locked values verified (#808080 linear, #777777 LAB midpoint, withThemeAlpha 0.7/1/0.5)
+  Minors carried to final review:
+    - fakeGc clearFill stub is CachedContext2D-interface-mandated (coordinator-verified gc.ts:52) — reviewer nit resolved, no action
+    - pill test asserts arcTo sequence but not the initial moveTo op
+    - labInterpolate monotonicity test tolerance ±1 byte (permissive)
+    - muted semantic color tested by shape only (no locked hex — catalog fixes only 4)
+21f Task 3: complete (commits 3d360c3..7111b1e incl. stable-snapshot fixup, S2 closeout review approved)
+  threading proof 4/4 + ColumnStats heaps + 3-seed parity; fix: for() returns stable snap reference (7111b1e)
+21f Task 4: complete (commits 7111b1e..3945256, S2 closeout review approved)
+  TickHistory Float64Array rings + rowsChanged feed + 2-seed property test; renderers 140/140; kernel/expression/format/rules/calc diff EMPTY
+21f-S2: COMPLETE (user directive: single closeout review at 04c85d5..3945256, no per-task reviewers). S2 verdict: Approved for 21f-S3.
+  Important → first S3 commit: export canonical `ColumnStatSnapshot` from index.ts (types.ts still has legacy `ColumnStatsSnapshot` name on painter params — reconcile at bridge task)
+  Minors carried to final review: Task 2 pill test omits moveTo; lab monotonicity ±1 tolerance; muted color shape-only test
+  NEXT UNIT: 21f-S3 (draft Tasks 5-8 into plan, execute Tasks 5-6)
