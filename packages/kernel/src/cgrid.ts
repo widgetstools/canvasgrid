@@ -141,6 +141,8 @@ import {
   registerFormatCompiler as slotRegisterFormatCompiler,
   type FormatCompiler,
 } from './core/formatCompilerSlot';
+import { registerRuleEngine as slotRegisterRuleEngine, type RuleEngineShape } from './core/ruleEngineSlot';
+import { resolveThemeKind } from './theming/themeKind';
 import {
   registerIconSet as regIcons,
   resolveIcon as resIcon,
@@ -2981,6 +2983,14 @@ export class CGrid<TRow = any> {
    *  no chunk walk. */
   getTotalRowCount(): number { return this.rowDataById.size; }
 
+  /** Cycle 21e / Task 10 — iterate every row in the main-thread
+   *  `rowDataById` mirror (setRowData + all transaction paths keep it in
+   *  sync since Cycle 7 / Task 8). Insertion order. Used by
+   *  @cgrid/rules' wireIntoKernel to seed match counts. */
+  forEachRow(fn: (rowId: string, row: TRow) => void): void {
+    for (const [rowId, row] of this.rowDataById) fn(rowId, row);
+  }
+
   /** Cycle 19 / Task 5-Grouping — public grouping API delegates. The
    *  coordinator owns the model + the worker round-trip + the
    *  auto-hide-on-group / restore-on-ungroup pass. */
@@ -4827,6 +4837,23 @@ export class CGrid<TRow = any> {
     slotRegisterFormatCompiler(fn);
   }
 
+  /** Cycle 21e / Task 10 — register the @cgrid/rules engine adapter into
+   *  the kernel DI slot. Invoked by wireIntoKernel(grid) in @cgrid/rules;
+   *  kernel's applyCellProps fold (Task 11) calls getRuleEngine() to
+   *  obtain it. Apps that never call this see no behavior change. */
+  registerRuleEngine(engine: RuleEngineShape): void {
+    slotRegisterRuleEngine(engine);
+    this.cgridCanvas?.requestRepaint();
+  }
+
+  /** Cycle 21e / Task 10 — binary light/dark kind of the active theme.
+   *  Derived from the root's `cg-theme-*` class (`-dark` suffix
+   *  convention), `matchMedia` for `cg-theme-auto`, or the resolved
+   *  `theme.bg` luminance for custom themes. */
+  getThemeKind(): 'light' | 'dark' {
+    return resolveThemeKind(Array.from(this.root.classList), this.theme.bg);
+  }
+
   /** Cycle 21c / Task 12 — register a named icon set. Delegated to the
    *  module-level icon registry; kernel never auto-registers any set. */
   registerIconSet(name: string, paths: Record<string, string | Path2D>): void {
@@ -5503,6 +5530,9 @@ export class CGrid<TRow = any> {
       updateGridOptions: (p) => this.updateGridOptions(p),
       registerCellRenderer: (n, p) => this.registerCellRenderer(n, p),
       registerFormatCompiler: (fn) => this.registerFormatCompiler(fn),
+      registerRuleEngine: (engine) => this.registerRuleEngine(engine),
+      forEachRow: (fn) => this.forEachRow(fn),
+      getThemeKind: () => this.getThemeKind(),
       registerIconSet: (name, paths) => this.registerIconSet(name, paths),
       resolveIcon: (name, setHint) => this.resolveIcon(name, setHint),
       registerTooltipProvider: (colId, fn) => this.registerTooltipProvider(colId, fn),
