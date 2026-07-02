@@ -1231,3 +1231,279 @@ describe('CalcPass Stage B — Fix 2: delta REMOVE subtracts the removed row fro
     expect(Array.from(reply2.chunk.numericCols.sumAll as ArrayLike<number>)).toEqual([130, 130, 130]);
   });
 });
+
+// ─── Final review Fix 3 — delta add/update outside postFilterIds pollutes
+// visible/group scopes ────────────────────────────────────────────────────
+//
+// `chainFrom` unconditionally includes the 'visible' (and, when grouped,
+// the group chain) cache key for EVERY add/update row, with no check
+// against `postFilterIds` membership. A row that is filtered OUT of the
+// view still gets `addRow`'d into the 'visible' scope's cached state,
+// inflating every SUM/COUNT/etc reader of that scope — e.g. adding a
+// filtered-out row worth 1000 to a visible set that should sum to 30
+// produces 1030 instead.
+//
+// `rowScopeKey` also has no filter-membership awareness: a row that
+// CROSSES the filter boundary via an update (enters or leaves the
+// filtered set) needs its old-scope contribution removed and/or its
+// new-scope contribution added — synthesizing that correctly from a
+// pure delta is complex, so the fix falls back to a full-cause rebuild
+// of the pass whenever a touched row's filter membership changed since
+// the last completed pass (documented tradeoff: O(scope) cost on a
+// boundary-crossing tick, same cost class as a regroup).
+
+describe('CalcPass Stage B — Fix 3: delta respects postFilterIds membership for visible/group scopes', () => {
+  it("store-level: adding a row OUTSIDE postFilterIds does not pollute the 'visible' SUM (reviewer repro: expect 30, not 1030)", () => {
+    interface Row2 { id: string; pnl: number }
+    const store = new RowStore<Row2>('id');
+    store.setAll([
+      { id: '1', pnl: 10 },
+      { id: '2', pnl: 20 },
+    ]);
+    const pnlFieldOf = (colId: string): string | undefined => (colId === 'pnl' ? 'pnl' : undefined);
+    const program: WorkerCalcProgram = {
+      columns: [
+        {
+          colId: 'sumVisible',
+          ast: { kind: 'slot' },
+          prePass: [{ slot: 0, fn: 'sum', colId: 'pnl', scope: { kind: 'visible' } }],
+          cellDataType: 'number',
+          usesPrev: false,
+        },
+      ],
+      interpreterSource: SLOT_INTERP,
+      aggregateSources: [{ name: 'sum', source: SUM_FACTORY }],
+    };
+    const calc = new CalcProgramStore();
+    calc.install(program);
+    // Both rows visible initially: sum = 30.
+    calc.ensureStageB(store, NO_GROUP, ['1', '2'], pnlFieldOf);
+    expect(calc.valueAt('1', 'sumVisible')).toBeCloseTo(30);
+
+    // Add a NEW row worth 1000 that is FILTERED OUT (not in postFilterIds —
+    // e.g. it fails an active column filter). The store gains it, but the
+    // visible set does not.
+    store.apply({ add: [{ id: '3', pnl: 1000 }] });
+    const results = { add: [{ rowId: '3' }], update: [], remove: [] };
+    calc.onTransaction(results);
+    // postFilterIds still excludes row '3' — it was filtered out.
+    calc.ensureStageB(store, NO_GROUP, ['1', '2'], pnlFieldOf);
+
+    // 'visible' sum must stay 30 — row 3 never entered the filtered view.
+    expect(calc.valueAt('1', 'sumVisible')).toBeCloseTo(30);
+  });
+
+  it("worker host: applyTransaction add of a row that fails an active column filter leaves the visible SUM unpolluted", async () => {
+    const { host, outbox } = makeHost();
+    host.handle({
+      id: 1,
+      type: 'init',
+      payload: {
+        columns: [
+          { colId: 'pnl', field: 'pnl', type: 'number' },
+          { colId: 'sumVisible', type: 'number' },
+        ],
+        rowIdField: 'id',
+      },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    host.handle({
+      id: 2, type: 'setCalcProgram',
+      payload: {
+        columns: [
+          {
+            colId: 'sumVisible',
+            ast: { kind: 'slot' },
+            prePass: [{ slot: 0, fn: 'sum', colId: 'pnl', scope: { kind: 'visible' } }],
+            cellDataType: 'number',
+            usesPrev: false,
+          },
+        ],
+        interpreterSource: SLOT_INTERP,
+        aggregateSources: [{ name: 'sum', source: SUM_FACTORY }],
+      },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    host.handle({
+      id: 3, type: 'setRowData',
+      payload: { rows: [{ id: '1', pnl: 10 }, { id: '2', pnl: 20 }] },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    // Filter: pnl <= 100 — excludes any row with pnl > 100.
+    host.handle({
+      id: 4, type: 'setFilterModel',
+      payload: { pnl: { filterType: 'number', type: 'lessThanOrEqual', filter: 100 } },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    host.handle({
+      id: 5, type: 'getViewport',
+      payload: { rowStart: 0, rowEnd: 2, columns: ['pnl', 'sumVisible'] },
+    } as unknown as WorkerRequest);
+    await flush();
+    const reply1 = outbox.find((m) => 'id' in m && m.id === 5) as any;
+    expect(Array.from(reply1.chunk.numericCols.sumVisible as ArrayLike<number>)).toEqual([30, 30]);
+
+    // Sync add of a row that FAILS the filter (pnl 1000 > 100).
+    host.handle({
+      id: 6, type: 'applyTransaction',
+      payload: { add: [{ id: '3', pnl: 1000 }], async: false },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    host.handle({
+      id: 7, type: 'getViewport',
+      payload: { rowStart: 0, rowEnd: 2, columns: ['pnl', 'sumVisible'] },
+    } as unknown as WorkerRequest);
+    await flush();
+    const reply2 = outbox.find((m) => 'id' in m && m.id === 7) as any;
+    // Row 3 is filtered out — visible sum must remain 30, not 1030.
+    expect(Array.from(reply2.chunk.numericCols.sumVisible as ArrayLike<number>)).toEqual([30, 30]);
+  });
+
+  it('row crossing the filter boundary via update: entering the filtered set adds its value to the visible SUM', async () => {
+    const { host, outbox } = makeHost();
+    host.handle({
+      id: 1,
+      type: 'init',
+      payload: {
+        columns: [
+          { colId: 'pnl', field: 'pnl', type: 'number' },
+          { colId: 'sumVisible', type: 'number' },
+        ],
+        rowIdField: 'id',
+      },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    host.handle({
+      id: 2, type: 'setCalcProgram',
+      payload: {
+        columns: [
+          {
+            colId: 'sumVisible',
+            ast: { kind: 'slot' },
+            prePass: [{ slot: 0, fn: 'sum', colId: 'pnl', scope: { kind: 'visible' } }],
+            cellDataType: 'number',
+            usesPrev: false,
+          },
+        ],
+        interpreterSource: SLOT_INTERP,
+        aggregateSources: [{ name: 'sum', source: SUM_FACTORY }],
+      },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    // Row '3' starts OUT of the filtered set (pnl 1000 > 100).
+    host.handle({
+      id: 3, type: 'setRowData',
+      payload: { rows: [{ id: '1', pnl: 10 }, { id: '2', pnl: 20 }, { id: '3', pnl: 1000 }] },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    host.handle({
+      id: 4, type: 'setFilterModel',
+      payload: { pnl: { filterType: 'number', type: 'lessThanOrEqual', filter: 100 } },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    host.handle({
+      id: 5, type: 'getViewport',
+      payload: { rowStart: 0, rowEnd: 2, columns: ['pnl', 'sumVisible'] },
+    } as unknown as WorkerRequest);
+    await flush();
+    const reply1 = outbox.find((m) => 'id' in m && m.id === 5) as any;
+    expect(Array.from(reply1.chunk.numericCols.sumVisible as ArrayLike<number>)).toEqual([30, 30]);
+
+    // Update row '3': pnl 1000 -> 50 — now it CROSSES the filter boundary
+    // and enters the visible set.
+    host.handle({
+      id: 6, type: 'applyTransaction',
+      payload: { update: [{ id: '3', pnl: 50 }], async: false },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    host.handle({
+      id: 7, type: 'getViewport',
+      payload: { rowStart: 0, rowEnd: 3, columns: ['pnl', 'sumVisible'] },
+    } as unknown as WorkerRequest);
+    await flush();
+    const reply2 = outbox.find((m) => 'id' in m && m.id === 7) as any;
+    // Visible set is now rows 1, 2, 3 → sum = 10 + 20 + 50 = 80.
+    expect(Array.from(reply2.chunk.numericCols.sumVisible as ArrayLike<number>)).toEqual([80, 80, 80]);
+  });
+
+  it('row crossing the filter boundary via update: leaving the filtered set removes its value from the visible SUM', async () => {
+    const { host, outbox } = makeHost();
+    host.handle({
+      id: 1,
+      type: 'init',
+      payload: {
+        columns: [
+          { colId: 'pnl', field: 'pnl', type: 'number' },
+          { colId: 'sumVisible', type: 'number' },
+        ],
+        rowIdField: 'id',
+      },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    host.handle({
+      id: 2, type: 'setCalcProgram',
+      payload: {
+        columns: [
+          {
+            colId: 'sumVisible',
+            ast: { kind: 'slot' },
+            prePass: [{ slot: 0, fn: 'sum', colId: 'pnl', scope: { kind: 'visible' } }],
+            cellDataType: 'number',
+            usesPrev: false,
+          },
+        ],
+        interpreterSource: SLOT_INTERP,
+        aggregateSources: [{ name: 'sum', source: SUM_FACTORY }],
+      },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    // Row '3' starts IN the filtered set (pnl 50 <= 100).
+    host.handle({
+      id: 3, type: 'setRowData',
+      payload: { rows: [{ id: '1', pnl: 10 }, { id: '2', pnl: 20 }, { id: '3', pnl: 50 }] },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    host.handle({
+      id: 4, type: 'setFilterModel',
+      payload: { pnl: { filterType: 'number', type: 'lessThanOrEqual', filter: 100 } },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    host.handle({
+      id: 5, type: 'getViewport',
+      payload: { rowStart: 0, rowEnd: 3, columns: ['pnl', 'sumVisible'] },
+    } as unknown as WorkerRequest);
+    await flush();
+    const reply1 = outbox.find((m) => 'id' in m && m.id === 5) as any;
+    expect(Array.from(reply1.chunk.numericCols.sumVisible as ArrayLike<number>)).toEqual([80, 80, 80]);
+
+    // Update row '3': pnl 50 -> 1000 — now it LEAVES the filtered set.
+    host.handle({
+      id: 6, type: 'applyTransaction',
+      payload: { update: [{ id: '3', pnl: 1000 }], async: false },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    host.handle({
+      id: 7, type: 'getViewport',
+      payload: { rowStart: 0, rowEnd: 2, columns: ['pnl', 'sumVisible'] },
+    } as unknown as WorkerRequest);
+    await flush();
+    const reply2 = outbox.find((m) => 'id' in m && m.id === 7) as any;
+    // Visible set is now just rows 1, 2 → sum = 10 + 20 = 30.
+    expect(Array.from(reply2.chunk.numericCols.sumVisible as ArrayLike<number>)).toEqual([30, 30]);
+  });
+});

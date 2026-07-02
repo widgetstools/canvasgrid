@@ -216,6 +216,20 @@ export class CalcProgramStore implements CalcValueSource {
    *  delta pass then cleared — mirrors `stageADirty`'s tick-scoped
    *  consumption. `null` when there's no pending delta to apply. */
   private lastDelta: { add: string[]; update: string[]; remove: string[] } | null = null;
+  /** Final review Fix 3 — the LAST completed `ensureStageB` pass's
+   *  `postFilterIds`, as a Set — used to detect whether a delta-touched
+   *  row's FILTER membership changed since that pass (entered or left
+   *  the filtered/visible set). A pure add/removeRow delta can't
+   *  correctly synthesize an enter/leave transition (the row's OLD
+   *  contribution to 'visible'/group scopes was never fed in, so there's
+   *  nothing to remove; conversely a row that leaves needs its
+   *  contribution un-fed without ever having had an addRow paired to
+   *  it). The robust-simple fix: when any touched row's membership
+   *  changed, force this pass's `cause` to `'full'` — a bump + wholesale
+   *  rebuild — rather than trying to synthesize the transition
+   *  (documented tradeoff: O(scope) cost on a boundary-crossing tick,
+   *  same cost class as a regroup). */
+  private lastVisibleIds = new Set<string>();
 
   /** Install / replace / remove (null) the program. Reconstructs the
    *  interpreter + aggregate factories via `new Function` (the
@@ -367,6 +381,7 @@ export class CalcProgramStore implements CalcValueSource {
     this.aggStates.clear();
     this.rowScopeKey.clear();
     this.parentOfGroup.clear();
+    this.lastVisibleIds.clear();
   }
 
   /** Union add/update rowIds into the dirty set (promoting `'full'`
@@ -466,6 +481,7 @@ export class CalcProgramStore implements CalcValueSource {
     this.rowScopeKey.clear();
     this.parentOfGroup.clear();
     this.groupSignature = '';
+    this.lastVisibleIds.clear();
   }
 
   // ─── Stage B: scope keys ────────────────────────────────────────────
@@ -572,10 +588,33 @@ export class CalcProgramStore implements CalcValueSource {
     const newSignature = grouped ? groupSignatureOf(groupOutput) : '';
     const regrouped = newSignature !== this.groupSignature;
     this.groupSignature = newSignature;
-    const cause: 'delta' | 'full' = (this.pipelineCause === 'delta' && !regrouped) ? 'delta' : 'full';
     const delta = this.lastDelta;
     this.pipelineCause = 'full';
     this.lastDelta = null;
+
+    // Final review Fix 3 — a delta-touched row whose FILTER membership
+    // CHANGED since the last completed pass (entered or left the
+    // filtered/visible set via an update) can't be correctly folded into
+    // the delta path: the 'visible'/group scopes' cached state has
+    // either never seen the row (entering) or still carries its old
+    // contribution with no paired addRow to undo (leaving). Detect any
+    // such crossing among this transaction's UPDATE rows (adds/removes
+    // are membership-safe — see `chainFrom` below) and fall back to a
+    // full-cause rebuild of this whole pass when found. Robust-simple
+    // per the review: bump + wholesale rebuild, not a synthesized
+    // enter/leave delta (documented tradeoff — same O(scope) cost class
+    // as a regroup, only paid on a boundary-crossing tick).
+    const postFilterSet = new Set(postFilterIds);
+    let boundaryCrossed = false;
+    if (delta !== null && !regrouped) {
+      for (const rowId of delta.update) {
+        if (this.lastVisibleIds.has(rowId) !== postFilterSet.has(rowId)) {
+          boundaryCrossed = true;
+          break;
+        }
+      }
+    }
+    const cause: 'delta' | 'full' = (delta !== null && !regrouped && !boundaryCrossed) ? 'delta' : 'full';
 
     const fieldReader = (colId: string): ((rowId: string) => unknown) => {
       const dataField = fieldOf(colId);
@@ -691,8 +730,14 @@ export class CalcProgramStore implements CalcValueSource {
       }
     } else {
       const groupColIds = grouped ? groupColIdsOf(groupOutput) : [];
-      this.applyDeltaToScopes(uniqueSpecs, delta, grouped, groupColIds, fieldOf, memberIdsFor);
+      this.applyDeltaToScopes(uniqueSpecs, delta, grouped, groupColIds, fieldOf, memberIdsFor, postFilterSet);
     }
+
+    // Final review Fix 3 — snapshot this pass's filter membership for the
+    // NEXT pass's boundary-crossing detection (see above). Recorded
+    // unconditionally (both 'full' and 'delta' causes) so the very next
+    // delta pass always compares against a fresh membership set.
+    this.lastVisibleIds = postFilterSet;
 
     // ── per-row eval ──
     const interp = this.interp!;
@@ -758,7 +803,24 @@ export class CalcProgramStore implements CalcValueSource {
    *  every new-chain scope (NEW value); same key: `updateRow(old, new)`
    *  on the unchanged chain. FIRST/LAST entries are O(scope) rescanned
    *  on every touch this pass (documented cost — no delta state kept for
-   *  them, matching the assembler addition's contract). */
+   *  them, matching the assembler addition's contract).
+   *
+   *  **Final review Fix 3.** `chainFrom` used to unconditionally include
+   *  the `'visible'` (+ group tail) cache keys for EVERY touched row,
+   *  with no check against `postFilterSet` — a row that is filtered OUT
+   *  of the view still got `addRow`'d/`removeRow`'d into the 'visible'
+   *  scope's cached state, polluting every reader of that scope (e.g. a
+   *  filtered-out row worth 1000 inflating a visible SUM that should be
+   *  30 up to 1030). `chainFrom` now takes the row's FILTER membership
+   *  (current, for adds; PRE-removal — `lastVisibleIds` — for removes)
+   *  and only appends the visible/group tail when the row actually
+   *  belongs to the filtered view; `'all'` is unconditional (spec: 'all'
+   *  ignores filter/group state entirely). UPDATE rows that CROSS the
+   *  filter boundary never reach this method — `ensureStageB` detects
+   *  that case and forces `cause = 'full'` for the whole pass instead
+   *  (see the `boundaryCrossed` check there); `applyDeltaToScopes`'s
+   *  update branch below can therefore assume `isVisible` is UNCHANGED
+   *  across the transaction for every row it processes. */
   private applyDeltaToScopes(
     uniqueSpecs: Map<string, { fn: string; colId: string; read: (rowId: string) => unknown }>,
     delta: { add: string[]; update: string[]; remove: string[] } | null,
@@ -766,11 +828,14 @@ export class CalcProgramStore implements CalcValueSource {
     groupColIds: readonly string[],
     fieldOf: (colId: string) => string | undefined,
     memberIdsFor: (scopeKey: string) => readonly string[],
+    postFilterSet: ReadonlySet<string>,
   ): void {
     if (delta === null) return;
 
-    const chainFrom = (leafGroupKey: string | undefined): string[] => {
-      const chain = [this.scopeKeyFor('all'), this.scopeKeyFor('visible')];
+    const chainFrom = (leafGroupKey: string | undefined, isVisible: boolean): string[] => {
+      const chain = [this.scopeKeyFor('all')];
+      if (!isVisible) return chain; // filtered out — 'all' only (Fix 3)
+      chain.push(this.scopeKeyFor('visible'));
       if (grouped) {
         let gk = leafGroupKey;
         while (gk !== undefined && gk !== '') {
@@ -813,7 +878,9 @@ export class CalcProgramStore implements CalcValueSource {
     };
 
     for (const rowId of delta.add) {
-      const chain = chainFrom(this.rowScopeKey.get(rowId));
+      // Fix 3 — a NEW row's visibility is its CURRENT postFilterSet
+      // membership (there is no "prior" state to compare against).
+      const chain = chainFrom(this.rowScopeKey.get(rowId), postFilterSet.has(rowId));
       for (const { fn, colId, read } of uniqueSpecs.values()) {
         const value = read(rowId);
         for (const scopeKey of chain) {
@@ -824,7 +891,10 @@ export class CalcProgramStore implements CalcValueSource {
     }
 
     for (const rowId of delta.remove) {
-      const chain = chainFrom(this.rowScopeKey.get(rowId));
+      // Fix 3 — a removed row's visibility is its PRE-removal membership
+      // (`postFilterSet` never contains a removed row, so we must
+      // consult the snapshot from the last completed pass instead).
+      const chain = chainFrom(this.rowScopeKey.get(rowId), this.lastVisibleIds.has(rowId));
       const oldRow = this.tickPrevRowsB.get(rowId);
       for (const { fn, colId, read } of uniqueSpecs.values()) {
         const field = fieldOf(colId);
@@ -844,6 +914,12 @@ export class CalcProgramStore implements CalcValueSource {
       const oldRow = this.tickPrevRowsB.get(rowId);
       const oldGroupKey = oldRow !== undefined ? oldGroupKeyFor(oldRow) : newGroupKey;
       const sameGroup = oldGroupKey === newGroupKey;
+      // Fix 3 — `ensureStageB` guarantees no boundary-crossing update
+      // reaches this method (it forces `cause = 'full'` for the whole
+      // pass instead), so the row's filter membership is UNCHANGED
+      // across this transaction — one membership flag covers both the
+      // old and new chain.
+      const isVisible = postFilterSet.has(rowId);
 
       for (const { fn, colId, read } of uniqueSpecs.values()) {
         const field = fieldOf(colId);
@@ -852,14 +928,14 @@ export class CalcProgramStore implements CalcValueSource {
           ? (field !== undefined ? (oldRow as Record<string, unknown>)[field] : newValue)
           : newValue;
         if (sameGroup) {
-          const chain = chainFrom(newGroupKey);
+          const chain = chainFrom(newGroupKey, isVisible);
           for (const scopeKey of chain) {
             const entry = bumpTouched(fn, colId, read, scopeKey);
             if (entry.impl !== null) entry.state = entry.impl.updateRow(entry.state, oldValue, newValue);
           }
         } else {
-          const oldChain = chainFrom(oldGroupKey);
-          const newChain = chainFrom(newGroupKey);
+          const oldChain = chainFrom(oldGroupKey, isVisible);
+          const newChain = chainFrom(newGroupKey, isVisible);
           // 'all'/'visible' are shared by both chains — an in-place
           // value change there (not a membership change), so use
           // updateRow; only the GROUP-specific tail differs.
