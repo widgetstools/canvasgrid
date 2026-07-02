@@ -26,6 +26,18 @@ function getCompiled(ast: Ast): Compiled {
   return c;
 }
 
+/** Evaluate an `[if <expr>]` section-selector node against a row.
+ *  Returns false (never throws) on eval errors or pure rule-refs so a
+ *  broken predicate degrades to "section doesn't match". */
+export function evaluateIfSelector(node: Tier1Node, ctx: FormatEvalContext): boolean {
+  if (node.ast === null) return false;
+  try {
+    return Boolean(evaluateExpression(getCompiled(node.ast), { row: ctx.row }));
+  } catch {
+    return false;
+  }
+}
+
 export function resolveStyle(nodes: Tier1Node[], ctx: FormatEvalContext): StyleObj | null {
   if (nodes.length === 0) return null;
   let style: StyleObj | null = null;

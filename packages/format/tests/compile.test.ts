@@ -54,6 +54,38 @@ describe('compileFormat — Tier 1', () => {
     const posIcon = r.program.resolveIcon({ value: 100, row: { change: 5 }, colId: 'x' });
     expect(posIcon?.name).toBe('trending-up');
   });
+
+  it('[if <expr>] section selectors route by predicate, not by value sign', () => {
+    const r = compileFormat('[if [qty] > 100] "BLOCK";[if [qty] > 50] "LOT"; "ODD"');
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.error.message);
+
+    const fmt = (qty: number): string =>
+      r.program.formatText({ value: qty, row: { qty }, colId: 'x' }).trim();
+    expect(fmt(220)).toBe('BLOCK');
+    expect(fmt(75)).toBe('LOT');
+    expect(fmt(8)).toBe('ODD');    // all positive values — sign routing would pick section 0
+  });
+
+  it('[if <expr>] falls back to sign routing when every section has a failing selector', () => {
+    const r = compileFormat('[if [qty] > 100] "BIG";[if [qty] > 50] "MID"');
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.error.message);
+    // qty 8 matches neither selector and there is no selector-free
+    // section — standard positive routing picks section 0.
+    const text = r.program.formatText({ value: 8, row: { qty: 8 }, colId: 'x' }).trim();
+    expect(text).toBe('BIG');
+  });
+
+  it('[if <expr>] selection also drives the section style ([Red] etc.)', () => {
+    const r = compileFormat('[if [qty] > 100][Red] 0; 0');
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.error.message);
+    const big = r.program.resolveStyle({ value: 220, row: { qty: 220 }, colId: 'x' });
+    expect(big?.color?.toLowerCase()).toBe('#e53935');
+    const small = r.program.resolveStyle({ value: 8, row: { qty: 8 }, colId: 'x' });
+    expect(small?.color).toBeUndefined();
+  });
 });
 
 describe('compileFormat — errors', () => {

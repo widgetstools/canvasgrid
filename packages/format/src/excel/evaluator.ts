@@ -7,6 +7,11 @@ export interface ExcelEvalContext {
   value: unknown;
   locale: string;
   currency: string;
+  /** Cycle 21c — Tier 1 `[if <expr>]` section selection. When set (and
+   *  in range), overrides the standard sign / `[>N]`-condition routing:
+   *  the caller (compileFormat) has already picked the section by
+   *  evaluating the if-expressions against the row. */
+  forceSectionIndex?: number;
 }
 
 export interface ExcelEvalResult {
@@ -17,7 +22,11 @@ export interface ExcelEvalResult {
 }
 
 export function evaluateExcel(tree: ExcelFormatTree, ctx: ExcelEvalContext): ExcelEvalResult {
-  const { section, index } = selectSection(tree.sections, ctx.value);
+  const forced = ctx.forceSectionIndex;
+  const { section, index } =
+    forced !== undefined && tree.sections[forced] !== undefined
+      ? { section: tree.sections[forced]!, index: forced }
+      : selectSection(tree.sections, ctx.value);
   if (!section) return { text: '', style: null, iconName: null, sectionIndex: 0 };
 
   const style: StyleObj | null = section.namedColor ? { color: section.namedColor } : null;

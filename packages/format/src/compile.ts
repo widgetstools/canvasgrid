@@ -13,7 +13,7 @@ import { tokenize, type Token } from './tokenizer';
 import { parseExcel, type ExcelFormatTree } from './excel/parser';
 import { evaluateExcel } from './excel/evaluator';
 import { parseTier1Brackets, type Tier1Node } from './tier1/parser';
-import { resolveStyle, resolveIcon } from './tier1/resolver';
+import { resolveStyle, resolveIcon, evaluateIfSelector } from './tier1/resolver';
 import { compileFragments, resolveFragments, resolveCellBackground, type CompiledFragmentPlan } from './tier2/fragmentResolver';
 
 export function compileFormat(source: FormatSource, opts?: CompileFormatOptions): CompileFormatResult {
@@ -62,6 +62,41 @@ export function compileFormat(source: FormatSource, opts?: CompileFormatOptions)
   const excelTree = excelResult.tree;
   const tier1Nodes = tier1Result.nodes;
 
+  // Tier 1 `[if <expr>]` section selectors. The brackets were stripped
+  // from the Excel token stream above, which loses their section
+  // membership — recover it by counting section separators before each
+  // bracket's source position. Selection: first section (in order)
+  // whose predicate evaluates true wins; when none match, fall back to
+  // the first section WITHOUT a selector; when every section carries a
+  // failing selector, standard sign routing applies.
+  const separatorStarts = tokens
+    .filter((t) => t.kind === 'section-separator')
+    .map((t) => t.loc.start);
+  const sectionIndexForPos = (pos: number): number => {
+    let idx = 0;
+    for (const s of separatorStarts) {
+      if (pos > s) idx++;
+      else break;
+    }
+    return idx;
+  };
+  const ifSelectors: Array<{ sectionIndex: number; node: Tier1Node }> = [];
+  tier1Nodes.forEach((node) => {
+    if (node.channel !== 'if') return;
+    ifSelectors.push({ sectionIndex: sectionIndexForPos(node.loc.start), node });
+  });
+  const selectIfSection = (ctx: FormatEvalContext): number | undefined => {
+    if (ifSelectors.length === 0) return undefined;
+    for (const s of ifSelectors) {
+      if (evaluateIfSelector(s.node, ctx)) return s.sectionIndex;
+    }
+    const withSelector = new Set(ifSelectors.map((s) => s.sectionIndex));
+    for (let i = 0; i < excelTree.sections.length; i++) {
+      if (!withSelector.has(i)) return i;
+    }
+    return undefined;
+  };
+
   const tier0 = excelTokens.length > 0;
   const tier1 = tier1Nodes.length > 0 || iconTokens.length > 0;
   const tier2 = false;
@@ -70,11 +105,15 @@ export function compileFormat(source: FormatSource, opts?: CompileFormatOptions)
     source,
     tiers: { tier0, tier1, tier2 },
     formatText: (ctx: FormatEvalContext): string => {
-      const result = evaluateExcel(excelTree, { value: ctx.value, locale, currency });
+      const result = evaluateExcel(excelTree, {
+        value: ctx.value, locale, currency, forceSectionIndex: selectIfSection(ctx),
+      });
       return result.text;
     },
     resolveStyle: (ctx: FormatEvalContext): StyleObj | null => {
-      const excelStyle = evaluateExcel(excelTree, { value: ctx.value, locale, currency }).style;
+      const excelStyle = evaluateExcel(excelTree, {
+        value: ctx.value, locale, currency, forceSectionIndex: selectIfSection(ctx),
+      }).style;
       const tier1Style = tier1Nodes.length > 0 ? resolveStyle(tier1Nodes, ctx) : null;
       if (!excelStyle && !tier1Style) return null;
       return { ...excelStyle, ...tier1Style };  // tier1 wins per §3.2 spec
