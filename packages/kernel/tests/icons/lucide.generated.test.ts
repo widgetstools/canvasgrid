@@ -6,6 +6,13 @@ describe('Lucide bundle smoke test', () => {
     expect(Object.keys(lucideBundle).length).toBeGreaterThanOrEqual(1000);
   });
 
+  it('line-only icons like crosshair + battery + voicemail are present (regression: build-lucide line regex)', () => {
+    expect(lucideBundle['crosshair']).toBeDefined();
+    expect(lucideBundle['battery']).toBeDefined();
+    expect(lucideBundle['voicemail']).toBeDefined();
+    expect(lucideBundle['equal']).toBeDefined();
+  });
+
   it('has trending-up + trending-down (referenced by design spec)', () => {
     expect(lucideBundle['trending-up']).toBeDefined();
     expect(lucideBundle['trending-down']).toBeDefined();

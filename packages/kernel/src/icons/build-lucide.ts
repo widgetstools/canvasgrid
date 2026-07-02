@@ -3,7 +3,7 @@
 // Committed to git; regenerate via `npm run prebuild-icons`.
 
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
-import { join, dirname, resolve } from 'node:path';
+import { join, dirname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -73,10 +73,12 @@ function extractPaths(svg: string): string[] {
     }
   }
 
-  // <line x1="..." y1="..." x2="..." y2="..."> → M x1,y1 L x2,y2
-  const reLine = /<line[^>]*\sx1="([^"]+)"[^>]*\sy1="([^"]+)"[^>]*\sx2="([^"]+)"[^>]*\sy2="([^"]+)"/g;
+  // <line x1="..." x2="..." y1="..." y2="..."> → M x1,y1 L x2,y2
+  // NOTE: lucide-static v0.469.0 emits attributes as x1 x2 y1 y2 (not x1 y1 x2 y2).
+  // Capture groups: m[1]=x1, m[2]=x2, m[3]=y1, m[4]=y2.
+  const reLine = /<line[^>]*\sx1="([^"]+)"[^>]*\sx2="([^"]+)"[^>]*\sy1="([^"]+)"[^>]*\sy2="([^"]+)"/g;
   while ((m = reLine.exec(svg)) !== null) {
-    paths.push(`M${m[1] as string},${m[2] as string} L${m[3] as string},${m[4] as string}`);
+    paths.push(`M${m[1] as string},${m[3] as string} L${m[2] as string},${m[4] as string}`);
   }
 
   return paths;
