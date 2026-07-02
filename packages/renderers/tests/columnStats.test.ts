@@ -195,14 +195,36 @@ describe('ColumnStats — non-number values skipped', () => {
   });
 });
 
-describe('ColumnStats — for() returns Readonly snapshot, unwatched colId', () => {
-  it('for() is O(1) — returns the live accumulator directly', () => {
+describe('ColumnStats — for() returns stable live snapshot', () => {
+  it('for() returns the same object reference across calls and after rowsChanged', () => {
     const grid = makeFakeGrid(makeSeedRows());
     const stats = new ColumnStats<PnlRow>(grid.api, ['pnl']);
-    // Calling twice returns same-ish state (idempotent reads)
     const a = stats.for('pnl');
     const b = stats.for('pnl');
-    expect(a.count).toBe(b.count);
+    expect(a).toBe(b);
+    expect(a.count).toBe(5);
+
+    grid.emit({
+      type: 'rowsChanged',
+      added: [{ rowId: 'r6', row: { pnl: 1 } }],
+      updated: [],
+      removed: [],
+      source: 'transaction',
+    });
+
+    const c = stats.for('pnl');
+    expect(c).toBe(a);
+    expect(c.count).toBe(6);
+
+    stats.destroy();
+  });
+
+  it('unwatched colId returns a frozen empty sentinel', () => {
+    const grid = makeFakeGrid(makeSeedRows());
+    const stats = new ColumnStats<PnlRow>(grid.api, ['pnl']);
+    const snap = stats.for('missing');
+    expect(snap.count).toBe(0);
+    expect(Object.isFrozen(snap)).toBe(true);
     stats.destroy();
   });
 });

@@ -102,10 +102,21 @@ interface ColAcc {
   maxAbsH: HeapState;
   sum: number;
   count: number;
+  /** Stable per-column snapshot — `for()` refreshes its fields in place and
+   *  returns this same object every call, so painters calling it once per
+   *  cell repaint allocate nothing. */
+  snap: ColumnStatSnapshot;
 }
 
 function accInit(): ColAcc {
-  return { minH: heapInit(), maxH: heapInit(), maxAbsH: heapInit(), sum: 0, count: 0 };
+  return {
+    minH: heapInit(),
+    maxH: heapInit(),
+    maxAbsH: heapInit(),
+    sum: 0,
+    count: 0,
+    snap: { min: null, max: null, maxAbs: null, sum: null, count: 0 },
+  };
 }
 
 function accAdd(acc: ColAcc, value: unknown): void {
@@ -117,6 +128,12 @@ function accAdd(acc: ColAcc, value: unknown): void {
   acc.count += 1;
 }
 
+// NOTE (phantom removes): a remove/update for a value that was never added
+// is a no-op at the heap level (heapRemove's live-count check), but sum/count
+// here trust the kernel's rowsChanged contract — `removed`/`updated.oldRow`
+// always reflect values previously delivered via seed or `added`. Feeding
+// fabricated removes would drift sum/count; that input cannot occur from the
+// kernel event stream this class subscribes to.
 function accRemove(acc: ColAcc, value: unknown): void {
   if (typeof value !== 'number' || !Number.isFinite(value)) return;
   heapRemove(acc.minH, value);
@@ -126,20 +143,26 @@ function accRemove(acc: ColAcc, value: unknown): void {
   acc.count -= 1;
 }
 
+/** Refreshes `acc.snap` in place (zero allocation) and returns it. */
 function accSnapshot(acc: ColAcc): ColumnStatSnapshot {
+  const snap = acc.snap;
   if (acc.count === 0) {
-    return { min: null, max: null, maxAbs: null, sum: null, count: 0 };
+    snap.min = null;
+    snap.max = null;
+    snap.maxAbs = null;
+    snap.sum = null;
+    snap.count = 0;
+    return snap;
   }
   const minRaw = heapMin(acc.minH);
   const maxNeg = heapMin(acc.maxH);
   const maxAbsNeg = heapMin(acc.maxAbsH);
-  return {
-    min: minRaw,
-    max: maxNeg !== null ? -maxNeg : null,
-    maxAbs: maxAbsNeg !== null ? -maxAbsNeg : null,
-    sum: acc.sum,
-    count: acc.count,
-  };
+  snap.min = minRaw;
+  snap.max = maxNeg !== null ? -maxNeg : null;
+  snap.maxAbs = maxAbsNeg !== null ? -maxAbsNeg : null;
+  snap.sum = acc.sum;
+  snap.count = acc.count;
+  return snap;
 }
 
 // ---------------------------------------------------------------------------
@@ -164,6 +187,11 @@ export interface RowsChangedPayload {
   updated?: ReadonlyArray<{ prev: Record<string, unknown>; next: Record<string, unknown> }>;
   removed?: ReadonlyArray<Record<string, unknown>>;
 }
+
+/** Stable sentinel returned for unwatched colIds — never mutated. */
+const EMPTY_SNAPSHOT: Readonly<ColumnStatSnapshot> = Object.freeze({
+  min: null, max: null, maxAbs: null, sum: null, count: 0,
+});
 
 // ---------------------------------------------------------------------------
 // ColumnStats — public class
@@ -233,13 +261,15 @@ export class ColumnStats<TRow = unknown> {
   }
 
   /**
-   * Returns the current snapshot for one watched column. O(1) — returns the
-   * live accumulator record (amortised heap lazy-pops at finalize time).
-   * Returns null sentinels when the column has no numeric values.
+   * Returns the current snapshot for one watched column. O(1), zero
+   * allocation — refreshes the column's stable snapshot object in place
+   * (amortised heap lazy-pops at finalize time) and returns the SAME
+   * reference every call, so painter closures can call it per repaint at
+   * zero cost. Null sentinels when the column has no numeric values.
    */
   for(colId: string): Readonly<ColumnStatSnapshot> {
     const acc = this._accs.get(colId);
-    if (acc === undefined) return { min: null, max: null, maxAbs: null, sum: null, count: 0 };
+    if (acc === undefined) return EMPTY_SNAPSHOT;
     return accSnapshot(acc);
   }
 
