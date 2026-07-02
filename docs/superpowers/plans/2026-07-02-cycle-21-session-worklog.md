@@ -79,7 +79,7 @@ Preserved recon conclusion: kernel ALREADY ships `exportDataAsCsv/getDataAsCsv/e
 
 ## Progress tracker (update every session)
 
-- [x] 21f-S1 (2026-07-02: plan Tasks 1-4 on main @ ed24add; Task 1 done on cycle21f/renderers @ c20fc5b; name table corrected to 46+5=51; ledger on branch) · [x] 21f-S2 (2026-07-02: Tasks 2-4 @ 3945256, renderers 140/140, single closeout review approved) · [ ] 21f-S3 · [ ] 21f-S4 · [ ] 21f-S5 · [ ] 21f-S6 · [ ] 21f-S7 · [ ] 21f-S8 · [ ] 21f-S9 · [ ] 21f-S10
+- [x] 21f-S1 (2026-07-02: plan Tasks 1-4 on main @ ed24add; Task 1 done on cycle21f/renderers @ c20fc5b; name table corrected to 46+5=51; ledger on branch) · [x] 21f-S2 (2026-07-02: Tasks 2-4 @ 3945256, renderers 140/140, single closeout review approved) · [x] 21f-S3 (2026-07-02: plan Tasks 5-8 @ 8a4d5ac; Tasks 5-6 @ fa23fba, 14 painters, 168/168) · [ ] 21f-S4 · [ ] 21f-S5 · [ ] 21f-S6 · [ ] 21f-S7 · [ ] 21f-S8 · [ ] 21f-S9 · [ ] 21f-S10
 - [ ] 21g-S1 · [ ] 21g-S2 · [ ] 21g-S3 · [ ] 21g-S4 · [ ] 21g-S5 · [ ] 21g-S6
 - [ ] 21h-S1 · [ ] 21h-S2 · [ ] 21h-S3 · [ ] 21h-S4
 - [ ] 21i-S0 (user discussion) · then TBD
