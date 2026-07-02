@@ -454,4 +454,116 @@ describe('AlertsEngine — gates', () => {
     engine.applyChanges(added(['x']));
     expect(events).toHaveLength(0);
   });
+
+  it('a throwing subscriber does not block later subscribers or the rest of applyChanges', () => {
+    const { engine } = makeEngine();
+    engine.setRules([rule({})]);
+    const calls: string[] = [];
+    const seenBySecond: string[] = [];
+    engine.onAlert(() => {
+      calls.push('first');
+      throw new Error('boom');
+    });
+    engine.onAlert((e) => {
+      calls.push('second');
+      seenBySecond.push(e.rowId);
+    });
+    expect(() => engine.applyChanges(added(['a'], ['b']))).not.toThrow();
+    expect(calls).toEqual(['first', 'second', 'first', 'second']);
+    expect(seenBySecond).toEqual(['a', 'b']);
+  });
+});
+
+// ── evaluation modes + settings (Task 8) ────────────────────────────────
+
+describe('AlertsEngine — evaluation modes + settings', () => {
+  it('getSettings returns merged defaults and a defensive copy', () => {
+    const { engine } = makeEngine({ defaultDebounceMs: 50 });
+    const s = engine.getSettings();
+    expect(s.defaultDebounceMs).toBe(50);
+    expect(s.historyLimit).toBe(200);
+    s.enabled = false;               // mutating the copy…
+    s.enabledChannels.toast = false; // …including the nested record…
+    expect(engine.getSettings().enabled).toBe(true);              // …never leaks back
+    expect(engine.getSettings().enabledChannels.toast).toBe(true);
+  });
+
+  it('setSettings shallow-merges scalars and merges enabledChannels per key', () => {
+    const { engine } = makeEngine();
+    engine.setSettings({ defaultDebounceMs: 5, enabledChannels: channels({ toast: false }) });
+    const s = engine.getSettings();
+    expect(s.defaultDebounceMs).toBe(5);
+    expect(s.maxNotificationsPerSecond).toBe(10); // untouched scalar keeps its default
+    expect(s.enabledChannels).toEqual({ toast: false, badge: true, openfin: true });
+  });
+
+  it('paused: applyChanges is a no-op', () => {
+    const { engine, events } = makeEngine({ evaluationMode: 'paused' });
+    engine.setRules([rule({})]);
+    engine.applyChanges(added(['x']));
+    expect(events).toHaveLength(0);
+    engine.flushThrottled(); // nothing was queued either
+    expect(events).toHaveLength(0);
+  });
+
+  it('throttled: queues + coalesces; flushThrottled processes in arrival order then clears', () => {
+    const { engine, events } = makeEngine({ evaluationMode: 'throttled' });
+    engine.setRules([rule({})]);
+    engine.applyChanges(added(['x']));
+    engine.applyChanges(added(['y']));
+    expect(events).toHaveLength(0);
+    engine.flushThrottled();
+    expect(events.map((e) => e.rowId)).toEqual(['x', 'y']); // arrival order preserved
+    engine.flushThrottled(); // queue was cleared by the first flush
+    expect(events).toHaveLength(2);
+  });
+
+  it('switching to paused leaves a previously queued throttled batch untouched', () => {
+    const { engine, events } = makeEngine({ evaluationMode: 'throttled' });
+    engine.setRules([rule({})]);
+    engine.applyChanges(added(['x']));                 // queued
+    engine.setSettings({ evaluationMode: 'paused' });
+    engine.applyChanges(added(['y']));                 // no-op — NOT queued
+    engine.setSettings({ evaluationMode: 'throttled' });
+    engine.flushThrottled();
+    expect(events.map((e) => e.rowId)).toEqual(['x']);
+  });
+
+  it('switching throttled → realtime flushes the queue immediately', () => {
+    const { engine, events } = makeEngine({ evaluationMode: 'throttled' });
+    engine.setRules([rule({})]);
+    engine.applyChanges(added(['x']));
+    expect(events).toHaveLength(0);
+    engine.setSettings({ evaluationMode: 'realtime' });
+    expect(events.map((e) => e.rowId)).toEqual(['x']); // flushed by the transition itself
+    engine.applyChanges(added(['y']));                 // realtime processes directly
+    expect(events).toHaveLength(2);
+  });
+
+  it('changing maxNotificationsPerSecond adjusts the live bucket (clamps stored tokens)', () => {
+    const { engine, events } = makeEngine(); // default cap 10, bucket full
+    engine.setRules([rule({})]);
+    engine.setSettings({ maxNotificationsPerSecond: 1 });
+    engine.applyChanges(added(['a'], ['b'])); // only 1 token survives the clamp
+    expect(events).toHaveLength(1);
+    expect(engine.droppedCount()).toBe(1);
+  });
+
+  it('channel-disabled suppression does not consume the debounce window', () => {
+    const { engine, events } = makeEngine({ enabledChannels: channels({ toast: false }) });
+    engine.setRules([rule({ channels: ['toast'] })]);
+    engine.applyChanges(added(['x'])); // suppressed at the channel gate
+    expect(events).toHaveLength(0);
+    engine.setSettings({ enabledChannels: channels({ toast: true }) });
+    engine.applyChanges(added(['x'])); // same rule + row, zero time elapsed
+    expect(events).toHaveLength(1);    // fires — the suppressed hit never stamped debounce
+  });
+
+  it('lowering historyLimit keeps the newest events', () => {
+    const { engine } = makeEngine();
+    engine.setRules([rule({})]);
+    engine.applyChanges(added(['a'], ['b'], ['c'], ['d'], ['e']));
+    engine.setSettings({ historyLimit: 2 });
+    expect(engine.getHistory().map((e) => e.rowId)).toEqual(['e', 'd']);
+  });
 });

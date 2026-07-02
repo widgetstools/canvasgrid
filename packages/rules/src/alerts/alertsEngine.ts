@@ -116,6 +116,10 @@ export class AlertsEngine {
   // from the newest slot to materialize newest-first.
   private ring: AlertEvent[] = [];
   private nextWrite = 0;
+  /** Throttled-mode queue: one coalesced RowChangeSet (arrival-order concat).
+   *  Row-level squashing is deliberately NOT done — each queued update keeps
+   *  its own ChangeRecords so relativeChange deltas stay per-tick. */
+  private pending: RowChangeSet | null = null;
 
   constructor(opts?: { settings?: Partial<AlertsSettings>; schema?: Schema; now?: () => number }) {
     this.settings = mergeSettings(DEFAULT_ALERTS_SETTINGS, opts?.settings);
@@ -170,19 +174,45 @@ export class AlertsEngine {
   }
 
   getSettings(): AlertsSettings {
-    throw new Error('not-yet-implemented: getSettings ships in Task 8');
+    // Defensive copy — one level deep is the whole shape (scalars + the
+    // enabledChannels record); callers can never mutate engine state.
+    return { ...this.settings, enabledChannels: { ...this.settings.enabledChannels } };
   }
 
-  setSettings(_patch: Partial<AlertsSettings>): void {
-    throw new Error('not-yet-implemented: setSettings ships in Task 8');
+  setSettings(patch: Partial<AlertsSettings>): void {
+    const prev = this.settings;
+    const next = mergeSettings(prev, patch);
+    if (next.historyLimit !== prev.historyLimit) {
+      // Rebuild the ring at the new size keeping the newest events. Must run
+      // BEFORE the settings swap: getHistory() reads prev.historyLimit.
+      const kept = this.getHistory().slice(0, next.historyLimit);
+      this.ring = kept.reverse(); // ring stores oldest-first
+      this.nextWrite = 0;
+    }
+    this.settings = next;
+    if (next.maxNotificationsPerSecond !== prev.maxNotificationsPerSecond) {
+      this.bucket.setCapacity(next.maxNotificationsPerSecond);
+    }
+    if (prev.evaluationMode === 'throttled' && next.evaluationMode === 'realtime') {
+      // The only auto-flushing transition (spec §4.3). paused transitions
+      // never drop or flush the queue; paused → realtime leaves it for an
+      // explicit flushThrottled().
+      this.flushThrottled();
+    }
   }
 
   applyChanges(changes: RowChangeSet): void {
-    if (!this.settings.enabled) return;
-    // Evaluation-mode seam — Task 8 adds the throttled queue + paused/mode
-    // transitions. Until then, anything other than realtime does not process.
-    if (this.settings.evaluationMode !== 'realtime') return;
-    this.process(changes);
+    if (!this.settings.enabled) return; // global kill-switch — nothing queues either
+    switch (this.settings.evaluationMode) {
+      case 'paused':
+        return; // no-op — a queued throttled batch stays untouched
+      case 'throttled':
+        this.enqueue(changes);
+        return;
+      case 'realtime':
+        this.process(changes);
+        return;
+    }
   }
 
   onAlert(fn: (alert: AlertEvent) => void): Unsubscribe {
@@ -215,11 +245,31 @@ export class AlertsEngine {
     return this.dropped;
   }
 
+  /** Throttled mode: the bridge (Task 15) calls this once per animation
+   *  frame. Processes the coalesced batch through the same pipeline, then
+   *  clears. Safe to call in any mode (no-op when nothing is queued). */
   flushThrottled(): void {
-    throw new Error('not-yet-implemented: flushThrottled ships in Task 8');
+    const batch = this.pending;
+    this.pending = null;
+    if (batch === null || !this.settings.enabled) return;
+    this.process(batch);
   }
 
   // ── pipeline ─────────────────────────────────────────────────────────
+
+  private enqueue(changes: RowChangeSet): void {
+    if (this.pending === null) {
+      this.pending = {
+        added: [...changes.added],
+        updated: [...changes.updated],
+        removed: [...changes.removed],
+      };
+      return;
+    }
+    this.pending.added.push(...changes.added);
+    this.pending.updated.push(...changes.updated);
+    this.pending.removed.push(...changes.removed);
+  }
 
   private process(changes: RowChangeSet): void {
     if (!this.settings.enabled) return; // re-checked for Task 8's flush path
@@ -335,7 +385,15 @@ export class AlertsEngine {
     };
     this.pushHistory(event);
     this.unread += 1;
-    for (const fn of [...this.listeners]) fn(event);
+    // A throwing subscriber must not block later subscribers or abort the
+    // rest of applyChanges (Task 7 review fix). Swallow and keep going.
+    for (const fn of [...this.listeners]) {
+      try {
+        fn(event);
+      } catch {
+        // Diagnostic-only; subscribers own their own error reporting.
+      }
+    }
   }
 
   private pushHistory(event: AlertEvent): void {
