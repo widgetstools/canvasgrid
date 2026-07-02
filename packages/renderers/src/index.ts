@@ -95,6 +95,7 @@ export {
 // ─── Category 3: Indicators ───────────────────────────────────────────────────
 export {
   statusDot, quoteQualityDot, staleFlag, directionArrow, structureIconStrip, trafficLightCell,
+  getLastStaleFlagTooltip,
 } from './indicators';
 
 // ─── Category 4: Badges / pills ───────────────────────────────────────────────
