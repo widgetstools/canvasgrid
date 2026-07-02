@@ -254,3 +254,73 @@ Final whole-branch review (opus): Ready to merge = Yes
     - AggregateNode.name is stringly-typed — string-literal-union in Cycle 21d for compile-time safety
     - vitest.config.ts coverage `include: src/**/*.ts` anchor may need re-work when a real build lands (Cycle 21c+)
 Cycle 21b status: COMPLETE. Ready for review + merge.
+
+=== Cycle 21c: @cgrid/format Unified DSL + Kernel Bridge (start 2026-07-01) ===
+Plan: docs/superpowers/plans/2026-07-01-cycle-21c-format.md (commit 19db1e0)
+Spec: docs/superpowers/specs/2026-07-01-cycle-21c-format-design.md (commit 70dbe61)
+Cycle BASE: 19db1e0 (main after plan commit; Cycle 21b merged as PR #93, commit 4fc5c49)
+Branch: cycle21c/format
+Task 1: complete (commits 19db1e0..6f9a597, review approved with 3 Minors)
+  Minors carried to final review:
+    - types.ts missing internal `ParsedFormat` + `IconToken` types (brief Step 5 template didn't include them; will surface when Task 9's compile.ts needs them)
+    - package-lock.json has version skew: @vitest/coverage-v8 lock says ^2.1.9 while package.json says ^2.1.0 (cosmetic; ^2.1.9 satisfies ^2.1.0 constraint)
+    - Task 1 report claimed 15 Token variants; actual count is 14 (non-code, report-only)
+Task 2: complete (commits 6f9a597..d1216ca, review approved with 2 Minors)
+  Minors carried to final review:
+    - excel-corpus.json entry 21 ([$-409]$#,##0.00) missing tokenKinds assertion — impl is correct, but corpus doesn't verify locale-tag path
+    - Dual named-color maps in tokenizer (via namedColors.ts) + parser.ts (inline EXCEL_NAMED_COLORS_INLINE) — sync risk if colors added; recommend re-export from namedColors.ts
+Task 3: complete (commits d1216ca..e66a0df, review approved after 1 fix pass)
+  Implementer commit 12aafaa: excel/evaluator.ts + intlCache.ts real impls; 21/21 evaluator tests
+  Fix commit e66a0df: intlCache hash key now includes weekday + timeZone (production cache-collision bug caught in review); +3 regression tests
+  Concerns carried to final review:
+    - mm heuristic in deriveDateTimeOptions works for date-only corpus but would misclassify mm as month in combined yyyy-mm-dd hh:mm:ss format; must fix before any date-time corpus test lands (likely Task 8/9)
+    - [$USD-409] Excel locale-tagged currency syntax deferred (out of Task 3 brief scope)
+Task 4: complete (commits e66a0df..14860a8, review approved after 1 fix pass)
+  Implementer commit dcf63a3: 9 template factories + registry auto-registration; 21/21 template tests
+  Fix commit 14860a8: 4 review findings closed
+    - Eviction test key generation expanded (currency × min × max = 816 unique keys > 500 MAX_ENTRIES)
+    - Eviction assertion now verifies actual eviction (first instance vs re-fetched)
+    - FormatterTemplateContext.timeZone added; Date/Time/DateTime factories thread it through
+    - allBuiltins date/time/datetime tests now UTC-pinned + day-specific (fixes UTC+12 CI runners)
+    - relativeTime JSDoc corrected (plain number always uses 'day', not "pick best unit")
+Task 5: complete (commits 14860a8..fa85f1b, review clean after 1 plan-bug repair by implementer)
+  Plan bug in brief: findKeywordAtDepth decremented ifDepth on all `then` tokens; broke nested `if X then if Y then A else B else C`.
+  Implementer split into keyword-specific branches — when searching `else`, inner `then` is non-terminal.
+  Reviewer independently verified the fix through a nested trace.
+  Minors carried to final review:
+    - isTokenBoundary(source, i+2) for `if ` detection at sugar.ts:108 is vacuously true (cosmetic)
+    - No test for 4-char hex (#rgba); supported by whitelist, low priority
+    - Recursion on test branch adds correctness beyond brief's minimal spec (accepted)
+Task 6: complete (commits fa85f1b..2fcc301, review approved with 2 Minors)
+  Minors carried to final review:
+    - Pure rule-ref shortcut (ast: null path in parser.ts:25-29) has no test — cheap to add
+    - Test fixtures' interiorLoc.end values are 2-3 chars wider than actual interior length (harmless while translateExprLocToFormatLoc doesn't clamp end, but latent trap)
+  Implementer disclosed: added `!` non-null assertions in test file for noUncheckedIndexedAccess strict TS mode
+Task 7: complete (commits 2fcc301..db7098c, review approved after 1 fix pass)
+  Implementer commit 778a680: Tier 1 style + icon resolver; 14/14 tests + WeakMap compile cache
+  Fix commit db7098c: 2 review findings closed
+    - normalizeWeight NaN guard: `Number.isFinite(v) ? v : 'normal'` on number branch
+    - resolveIcon dynamic result strictly typed as string (rejects boolean false/number/empty)
+    - +4 regression tests
+  Minors carried to final review:
+    - `[style=normal]` produces `{italic: false}` not null (debatable design; explicit override arguable correct)
+    - Dynamic icon path re-parses+re-compiles per call; deferred to Task 9 compileFormat cache per brief
+Task 8: complete (commits db7098c..d3de119, review approved after 1 fix pass)
+  Implementer commit 87d4ebc: composite fragment compiler + resolver; 9/9 tests + 2 brief-bug fixes (double-bracket cellBackground test + TS strict pattern)
+  Fix commit d3de119: 4 review findings closed
+    - HIGH: multi-section icon inversion — evaluator.ts now returns sectionIndex; fragmentResolver stores sectionIcons per section; resolveFragments picks from routed section
+    - MEDIUM: extractDynamic deletes raw [<expr>] key unconditionally when pattern detected — no more silent CSS-string leak
+    - MEDIUM: compileFragments accepts CompileFormatOptions; locale + currency threaded through to evaluateExcel
+    - LOW: cellBackground test now calls resolveCellBackground + asserts eval result
+    - +4 regression tests; evaluator gains 1 test (sectionIndex verification)
+  Minor carried to final review:
+    - sectionIcons Array<Array<>> not serializable for cross-worker compile (not currently used across workers; flag for Cycle 21e)
+Task 9: complete (commits on cycle21c/format)
+  Implementer: public compileFormat + compileCompositeColDef stitching all prior tasks
+  Key finding: brief test strings used [[field]] double-bracket notation which is unsupported by @cgrid/expression parser (uses [field] single-bracket). Tests adjusted to use correct [field] syntax. error test uses [color=!!!] to provoke a genuine expression-parse error.
+  9/9 compile.test.ts tests pass; 150/150 format-package total; typecheck clean; kernel 2326/2326; expression 185/185.
+Phase D→E self-review checkpoint (Cycle 21c): passed
+  - wireIntoKernel signature locked: `export function wireIntoKernel(grid: unknown, opts?: WireOptions): void`
+  - FormatProgram public shape locked: all 4 resolvers + source + tiers fields confirmed in types.ts
+  - CompositeColDef matches spec §4.3: colId, type:'composite', fragments, cellBackground?, align?, overflow?, [key: string]: unknown
+  - No @cgrid/kernel imports from packages/format/src/** (only a comment in bridge.ts)
