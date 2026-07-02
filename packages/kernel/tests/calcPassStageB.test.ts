@@ -829,3 +829,236 @@ describe('worker host — CalcPass Stage B end-to-end', () => {
     expect(leafValues2.map((v) => Math.round(v)).sort((a, b) => a - b)).toEqual(expected2);
   });
 });
+
+// ─── Final review Fix 1 — parameterized aggregate fn resolution ────────────
+//
+// The transform emits parameterized fn strings like 'PERCENTILE(95)'
+// (packages/calc/src/aggTransform.ts:151), but `aggregateSources` ships the
+// BASE factory name ('PERCENTILE') per the registry's arity convention
+// (packages/calc/src/aggregates/registry.ts:130-146: `getAggregate('PERCENTILE(95)')`
+// parses the `NAME(p)` suffix and calls the 1-arg factory with p). Prior to
+// this fix, `CalcProgramStore.entryFor` did a verbatim `factories.get(fn)`
+// lookup — 'PERCENTILE(95)' never matches the 'PERCENTILE' key, so every
+// PERCENTILE program threw 'unresolved aggregate function' and killed
+// `ensureStageB` (and therefore `buildVisibleAsync`) end-to-end.
+
+/** PERCENTILE(p) factory source — same shape @cgrid/calc ships
+ *  (packages/calc/src/aggregates/stats.ts's makePercentile): a
+ *  1-arg factory using PERCENTILE.INC linear interpolation. */
+const PERCENTILE_FACTORY = `(function makePercentile(p) {
+  return {
+    init() { return { values: [] }; },
+    addRow(state, value) {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return state;
+      const values = state.values;
+      let lo = 0, hi = values.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (values[mid] < value) lo = mid + 1; else hi = mid; }
+      values.splice(lo, 0, value);
+      return state;
+    },
+    removeRow(state, value) {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return state;
+      const values = state.values;
+      let lo = 0, hi = values.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (values[mid] < value) lo = mid + 1; else hi = mid; }
+      if (lo < values.length && values[lo] === value) values.splice(lo, 1);
+      return state;
+    },
+    updateRow(state, oldValue, newValue) { return this.addRow(this.removeRow(state, oldValue), newValue); },
+    finalize(state) {
+      const values = state.values;
+      const n = values.length;
+      if (n === 0) return null;
+      const q = Math.min(100, Math.max(0, p));
+      const rank = (q / 100) * (n - 1);
+      const lo = Math.floor(rank);
+      const hi = Math.min(lo + 1, n - 1);
+      return values[lo] + (rank - lo) * (values[hi] - values[lo]);
+    },
+  };
+})`;
+
+/** MEDIAN — zero-arg control: registered under its OWN name (not a
+ *  `NAME(p)` suffix), so `entryFor`'s plain `factories.get(fn)` path
+ *  must keep working unchanged. */
+const MEDIAN_FACTORY = `(function makeMedian() {
+  return {
+    init() { return { values: [] }; },
+    addRow(state, value) {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return state;
+      const values = state.values;
+      let lo = 0, hi = values.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (values[mid] < value) lo = mid + 1; else hi = mid; }
+      values.splice(lo, 0, value);
+      return state;
+    },
+    removeRow(state, value) {
+      if (typeof value !== 'number' || !Number.isFinite(value)) return state;
+      const values = state.values;
+      let lo = 0, hi = values.length;
+      while (lo < hi) { const mid = (lo + hi) >> 1; if (values[mid] < value) lo = mid + 1; else hi = mid; }
+      if (lo < values.length && values[lo] === value) values.splice(lo, 1);
+      return state;
+    },
+    updateRow(state, oldValue, newValue) { return this.addRow(this.removeRow(state, oldValue), newValue); },
+    finalize(state) {
+      const values = state.values;
+      const n = values.length;
+      if (n === 0) return null;
+      const rank = 0.5 * (n - 1);
+      const lo = Math.floor(rank);
+      const hi = Math.min(lo + 1, n - 1);
+      return values[lo] + (rank - lo) * (values[hi] - values[lo]);
+    },
+  };
+})`;
+
+const SLOT_INTERP = `(function evaluateCalcAst(ast, row, aggSlots, prevLookup) {
+  if (ast === null) return null;
+  return aggSlots[0];
+})`;
+
+describe('CalcPass Stage B — Fix 1: parameterized aggregate fn resolution (PERCENTILE(p))', () => {
+  it("store-level: prePass fn 'PERCENTILE(95)' resolves against aggregateSources entry named 'PERCENTILE' (base name) and computes the correct percentile", () => {
+    // pnl values: 10, 20, 100, 200, 300 — 5-element multiset.
+    interface PnlRow { id: string; pnl: number }
+    const store = new RowStore<PnlRow>('id');
+    store.setAll([
+      { id: '1', pnl: 10 },
+      { id: '2', pnl: 20 },
+      { id: '3', pnl: 100 },
+      { id: '4', pnl: 200 },
+      { id: '5', pnl: 300 },
+    ]);
+    const pnlFieldOf = (colId: string): string | undefined => (colId === 'pnl' ? 'pnl' : undefined);
+
+    const program: WorkerCalcProgram = {
+      columns: [
+        {
+          colId: 'p95',
+          ast: { kind: 'slot' },
+          prePass: [{ slot: 0, fn: 'PERCENTILE(95)', colId: 'pnl', scope: { kind: 'all' } }],
+          cellDataType: 'number',
+          usesPrev: false,
+        },
+      ],
+      interpreterSource: SLOT_INTERP,
+      // aggregateSources ships the BASE name only — mirrors the real
+      // @cgrid/calc bridge (registry.ts serializeAggregates()).
+      aggregateSources: [{ name: 'PERCENTILE', source: PERCENTILE_FACTORY }],
+    };
+
+    const calc = new CalcProgramStore();
+    calc.install(program);
+    expect(() => calc.ensureStageB(store, NO_GROUP, ['1', '2', '3', '4', '5'], pnlFieldOf)).not.toThrow();
+
+    // PERCENTILE.INC(95) over [10,20,100,200,300]: rank = 0.95*4 = 3.8
+    // → interpolate between index 3 (200) and index 4 (300): 200 + 0.8*100 = 280.
+    expect(calc.valueAt('1', 'p95')).toBeCloseTo(280);
+  });
+
+  it("MEDIAN (zero-arg control): registered under its own name — unaffected by the NAME(p) parse path", () => {
+    interface PnlRow { id: string; pnl: number }
+    const store = new RowStore<PnlRow>('id');
+    store.setAll([
+      { id: '1', pnl: 10 },
+      { id: '2', pnl: 20 },
+      { id: '3', pnl: 100 },
+      { id: '4', pnl: 200 },
+      { id: '5', pnl: 300 },
+    ]);
+    const pnlFieldOf = (colId: string): string | undefined => (colId === 'pnl' ? 'pnl' : undefined);
+
+    const program: WorkerCalcProgram = {
+      columns: [
+        {
+          colId: 'med',
+          ast: { kind: 'slot' },
+          prePass: [{ slot: 0, fn: 'MEDIAN', colId: 'pnl', scope: { kind: 'all' } }],
+          cellDataType: 'number',
+          usesPrev: false,
+        },
+      ],
+      interpreterSource: SLOT_INTERP,
+      aggregateSources: [{ name: 'MEDIAN', source: MEDIAN_FACTORY }],
+    };
+
+    const calc = new CalcProgramStore();
+    calc.install(program);
+    expect(() => calc.ensureStageB(store, NO_GROUP, ['1', '2', '3', '4', '5'], pnlFieldOf)).not.toThrow();
+    // Median of [10,20,100,200,300] = 100 (middle element).
+    expect(calc.valueAt('1', 'med')).toBeCloseTo(100);
+  });
+
+  it('worker host end-to-end: install → setRowData → getViewport with a real PERCENTILE program computes the correct percentile, no throw', async () => {
+    const { host, outbox } = makeHost();
+    host.handle({
+      id: 1,
+      type: 'init',
+      payload: {
+        columns: [
+          { colId: 'pnl', field: 'pnl', type: 'number' },
+          { colId: 'p95', type: 'number' },
+        ],
+        rowIdField: 'id',
+      },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    host.handle({
+      id: 2, type: 'setCalcProgram',
+      payload: {
+        columns: [
+          {
+            colId: 'p95',
+            ast: { kind: 'slot' },
+            prePass: [{ slot: 0, fn: 'PERCENTILE(95)', colId: 'pnl', scope: { kind: 'all' } }],
+            cellDataType: 'number',
+            usesPrev: false,
+          },
+        ],
+        interpreterSource: SLOT_INTERP,
+        aggregateSources: [{ name: 'PERCENTILE', source: PERCENTILE_FACTORY }],
+      },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    // setCalcProgram's own rowCount reply must NOT be an error envelope —
+    // this is the reviewer's repro: pre-fix, ensureStageB threw inside
+    // invalidateAndCount() and the whole buildVisibleAsync chain died.
+    const installReply = outbox.find((m) => 'id' in m && m.id === 2) as any;
+    expect(installReply).toBeDefined();
+    expect(installReply.type).not.toBe('error');
+
+    host.handle({
+      id: 3, type: 'setRowData',
+      payload: {
+        rows: [
+          { id: '1', pnl: 10 },
+          { id: '2', pnl: 20 },
+          { id: '3', pnl: 100 },
+          { id: '4', pnl: 200 },
+          { id: '5', pnl: 300 },
+        ],
+      },
+    } as unknown as WorkerRequest);
+    await flush();
+    const setRowDataReply = outbox.find((m) => 'id' in m && m.id === 3) as any;
+    expect(setRowDataReply).toBeDefined();
+    expect(setRowDataReply.type).not.toBe('error');
+
+    host.handle({
+      id: 4, type: 'getViewport',
+      payload: { rowStart: 0, rowEnd: 5, columns: ['pnl', 'p95'] },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    const reply = outbox.find((m) => 'id' in m && m.id === 4) as any;
+    expect(reply).toBeDefined();
+    expect(reply.type).toBe('viewport');
+    const values: Float64Array = reply.chunk.numericCols.p95;
+    for (let i = 0; i < values.length; i++) {
+      expect(values[i]).toBeCloseTo(280);
+    }
+  });
+});

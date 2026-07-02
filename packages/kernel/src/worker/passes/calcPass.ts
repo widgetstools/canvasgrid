@@ -106,6 +106,49 @@ function isFirstLast(fn: string): 'first' | 'last' | null {
   return lower === 'first' || lower === 'last' ? lower : null;
 }
 
+/** Final review Fix 1 — parameterized lookup grammar: `NAME(p)`, mirroring
+ *  `packages/calc/src/aggregates/registry.ts`'s `PARAM_NAME_RE` /
+ *  `getAggregate` exactly (reimplemented natively here per the kernel's
+ *  zero-runtime-@cgrid/calc-imports constraint). The transform emits
+ *  parameterized fn strings like `'PERCENTILE(95)'`
+ *  (`packages/calc/src/aggTransform.ts:151`), but `aggregateSources` ships
+ *  the BASE factory name only (`'PERCENTILE'`) — the registry's arity
+ *  convention (a rebuilt factory with `length >= 1` is parameterized) means
+ *  the worker must parse the `(p)` suffix itself and call `factory(p)`. */
+const PARAM_NAME_RE = /^([A-Za-z_][A-Za-z0-9_]*)\((-?\d+(?:\.\d+)?)\)$/;
+
+/** Resolve `fn` (verbatim from the AggSpec — may be a bare name like
+ *  `'SUM'`/`'MEDIAN'` or a parameterized `'NAME(p)'` like `'PERCENTILE(95)'`)
+ *  against `factories` (keyed by BASE name only). Returns the constructed
+ *  `Aggregate` impl, or `undefined` when unresolved (bare name not in
+ *  `factories`, OR a `NAME(p)` suffix whose base name isn't in `factories`,
+ *  OR a malformed/non-finite `p`). Mirrors `registry.ts#getAggregate`'s
+ *  exact/parameterized dispatch, minus the `parameterized` flag the
+ *  registry entry carries (the kernel has no such metadata over the wire —
+ *  arity convention alone: a bare name always resolves via `factory()`
+ *  zero-arg per the landed convention; a `NAME(p)` suffix always resolves
+ *  via `factory(p)`). */
+function resolveAggregateFactory(
+  factories: Map<string, CalcAggregateFactory>,
+  fn: string,
+): ReturnType<CalcAggregateFactory> | undefined {
+  const exact = factories.get(fn);
+  if (exact !== undefined) return exact();
+  const m = PARAM_NAME_RE.exec(fn);
+  if (m === null) return undefined;
+  const baseName = m[1] as string;
+  const base = factories.get(baseName);
+  if (base === undefined) return undefined;
+  const p = Number(m[2] as string);
+  if (!Number.isFinite(p)) return undefined;
+  // `CalcAggregateFactory` is typed as a 0-arg `() => Aggregate` impl, but
+  // the reconstructed function is the ORIGINAL factory source
+  // (`new Function` round-trip of e.g. `makePercentile`) — parameterized
+  // factories declare `(p)`, so call through with the parsed p (arity
+  // convention landed in registry.ts / worker.ts's Task-10 precedent).
+  return (base as unknown as (p: number) => ReturnType<CalcAggregateFactory>)(p);
+}
+
 export class CalcProgramStore implements CalcValueSource {
   private program: WorkerCalcProgram | null = null;
   private interp: CalcInterpreter | null = null;
@@ -428,11 +471,14 @@ export class CalcProgramStore implements CalcValueSource {
         // produced by `firstLastScan` at rebuild/touch sites.
         entry = { state: null, impl: null, dataVersion: 0, finalized: null };
       } else {
-        const factory = this.factories.get(fn);
-        if (factory === undefined) {
+        // Final review Fix 1 — `fn` may be a parameterized `NAME(p)`
+        // string (e.g. 'PERCENTILE(95)') while `factories` is keyed by
+        // BASE name only; `resolveAggregateFactory` implements the same
+        // `NAME(p)` grammar as the calc registry's `getAggregate`.
+        const impl = resolveAggregateFactory(this.factories, fn);
+        if (impl === undefined) {
           throw new Error(`[cgrid] Stage B: unresolved aggregate function '${fn}' (colId '${colId}')`);
         }
-        const impl = factory();
         entry = { state: impl.init(), impl, dataVersion: 0, finalized: null };
       }
       this.aggStates.set(cacheKey, entry);
