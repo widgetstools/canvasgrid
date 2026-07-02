@@ -127,7 +127,7 @@ export type { HitRegion } from './actions';
 export { ColumnStats } from './columnStats';
 export type { RowsChangedPayload } from './columnStats';
 export { TickHistory, DEFAULT_TICK_HISTORY_WINDOW } from './tickHistory';
-export type { TickHistoryOptions } from './tickHistory';
+export type { TickHistoryColumnOptions } from './tickHistory';
 
 // ─── Kernel bridge ────────────────────────────────────────────────────────────
 export { wireRenderersIntoKernel } from './bridge';
