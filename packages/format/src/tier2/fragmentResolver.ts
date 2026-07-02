@@ -153,21 +153,30 @@ export function resolveFragments(plan: CompiledFragmentPlan, ctx: FormatEvalCont
       text = value === null || value === undefined ? '' : String(value);
     }
 
+    // Per-fragment eval context: the fragment's own value, the outer row,
+    // and (Cycle 21e) the rule-ref accessor forwarded from the outer ctx.
+    const fragCtx: FormatEvalContext = {
+      value,
+      row: ctx.row,
+      colId: ctx.colId,
+      resolveRuleRef: ctx.resolveRuleRef,
+    };
+
     const style: FragmentStyle = { ...frag.staticStyle };
     if (frag.dynamicColor) {
-      const s = resolveStyle(frag.dynamicColor, { value, row: ctx.row, colId: ctx.colId });
+      const s = resolveStyle(frag.dynamicColor, fragCtx);
       if (s?.color) style.color = s.color;
     }
     if (frag.dynamicBg) {
-      const s = resolveStyle(frag.dynamicBg, { value, row: ctx.row, colId: ctx.colId });
+      const s = resolveStyle(frag.dynamicBg, fragCtx);
       if (s?.background) style.background = s.background;
     }
     if (frag.dynamicWeight) {
-      const s = resolveStyle(frag.dynamicWeight, { value, row: ctx.row, colId: ctx.colId });
+      const s = resolveStyle(frag.dynamicWeight, fragCtx);
       if (s?.weight !== undefined) style.weight = s.weight;
     }
     if (frag.dynamicItalic) {
-      const s = resolveStyle(frag.dynamicItalic, { value, row: ctx.row, colId: ctx.colId });
+      const s = resolveStyle(frag.dynamicItalic, fragCtx);
       if (s?.italic !== undefined) style.style = s.italic ? 'italic' : 'normal';
     }
 
@@ -176,7 +185,7 @@ export function resolveFragments(plan: CompiledFragmentPlan, ctx: FormatEvalCont
     let icon: IconRef | undefined;
     const iconsForSection = frag.sectionIcons[sectionIndex] ?? frag.sectionIcons[0] ?? [];
     if (iconsForSection.length > 0) {
-      const resolved = resolveIcon(iconsForSection, { value, row: ctx.row, colId: ctx.colId });
+      const resolved = resolveIcon(iconsForSection, fragCtx);
       if (resolved) icon = resolved;
     }
 
