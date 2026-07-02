@@ -73,6 +73,65 @@ describe('CalcEngine — registerCalculatedColumn validation', () => {
   });
 });
 
+describe('CalcEngine — registerCalculatedColumn rejects calc-on-calc references (Task 12 review fix)', () => {
+  it('rejects registering a column whose expression references an ALREADY-registered calc colId', () => {
+    const engine = new CalcEngine(); // no schema — checkField's unknown-field validation is a no-op
+    expect(engine.registerCalculatedColumn(lineTotal()).ok).toBe(true); // lineTotal = [price] * [qty]
+    const r = engine.registerCalculatedColumn({
+      colId: 'lineTotalPlusOne',
+      headerName: 'Line Total + 1',
+      expression: '[lineTotal] + 1',
+    });
+    expect(r.ok).toBe(false);
+    expect(r.errors[0]!).toMatchObject({ colId: 'lineTotalPlusOne', code: 'bad-shape' });
+    expect(r.errors[0]!.message).toBe('calculated columns cannot reference other calculated columns');
+    expect(engine.listCalculatedColumns().map((d) => d.colId)).toEqual(['lineTotal']);
+  });
+
+  it('rejects registering a column whose expression references a calc colId that will be registered LATER (order-independent)', () => {
+    const engine = new CalcEngine();
+    // Register the referencing column FIRST — at this point 'lineTotal'
+    // isn't registered yet, so a naive "check against ALREADY-registered
+    // ids" implementation would let this through.
+    const r1 = engine.registerCalculatedColumn({
+      colId: 'lineTotalPlusOne',
+      headerName: 'Line Total + 1',
+      expression: '[lineTotal] + 1',
+    });
+    expect(r1.ok).toBe(true);
+    // Now register 'lineTotal' — the order-independent check must catch
+    // that an EARLIER-registered column already references this colId.
+    const r2 = engine.registerCalculatedColumn(lineTotal());
+    expect(r2.ok).toBe(false);
+    expect(r2.errors[0]!).toMatchObject({ colId: 'lineTotal', code: 'bad-shape' });
+    expect(r2.errors[0]!.message).toBe('calculated columns cannot reference other calculated columns');
+    expect(engine.listCalculatedColumns().map((d) => d.colId)).toEqual(['lineTotalPlusOne']);
+  });
+
+  it('allows a calc column that references only data-schema fields', () => {
+    const engine = new CalcEngine({ schema: SCHEMA });
+    expect(engine.registerCalculatedColumn(lineTotal()).ok).toBe(true); // [price] * [qty] — data fields only
+  });
+
+  it('allows re-registering after removing the referenced calc column', () => {
+    const engine = new CalcEngine();
+    engine.registerCalculatedColumn(lineTotal());
+    const blocked = engine.registerCalculatedColumn({
+      colId: 'lineTotalPlusOne',
+      headerName: 'Line Total + 1',
+      expression: '[lineTotal] + 1',
+    });
+    expect(blocked.ok).toBe(false);
+    engine.removeCalculatedColumn('lineTotal');
+    const allowed = engine.registerCalculatedColumn({
+      colId: 'lineTotalPlusOne',
+      headerName: 'Line Total + 1',
+      expression: '[lineTotal] + 1',
+    });
+    expect(allowed.ok).toBe(true); // 'lineTotal' is now just an ordinary (unregistered) field reference
+  });
+});
+
 describe('CalcEngine — remove/list/compiledColumns', () => {
   it('removeCalculatedColumn removes; removing an unknown colId is a silent no-op', () => {
     const engine = new CalcEngine();

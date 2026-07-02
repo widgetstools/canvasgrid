@@ -3,6 +3,25 @@
 //
 // Date-free by contract (Global Constraints): the engine never reads a clock;
 // template timestamps arrive via saveTemplate's `now` argument (Task 8).
+//
+// Cycle 21d / Task 12 review fix — calc-on-calc references are REJECTED.
+// A calculated column's expression may only watch DATA fields (or unknown
+// field names when no schema was given); it may never reference another
+// calculated column's colId. `registerCalculatedColumn` checks BOTH
+// directions, order-independently: (1) does the NEW column's
+// `watchedColIds` include an ALREADY-registered calc colId, and (2) does
+// an ALREADY-registered column's `watchedColIds` include the NEW column's
+// colId (covers registering the referencing column FIRST, before the
+// column it references exists). Both fail with `{ code: 'bad-shape',
+// message: 'calculated columns cannot reference other calculated
+// columns' }`. Rationale: the kernel's worker-side CalcPass (Stage A/B)
+// has no defined evaluation ORDER between calc columns within a single
+// pipeline pass — allowing a calc-on-calc reference would make the
+// referencing column's value depend on iteration order (stale on one
+// pass, fresh on the next), an undebuggable correctness hazard. Removing
+// the referenced column (`removeCalculatedColumn`) lifts the restriction
+// for a subsequent registration of the same expression, since the
+// reference then resolves as an ordinary (unregistered) field name.
 
 import type { Schema } from '@cgrid/expression';
 import { compileFormat } from '@cgrid/format';
@@ -88,6 +107,43 @@ export class CalcEngine {
     if (!compiledResult.ok) {
       // Pass the compile error through verbatim with the colId attached.
       return { ok: false, errors: [{ ...compiledResult.error, colId: def.colId }] };
+    }
+
+    // Task 12 review fix — calc columns cannot reference other calc
+    // columns. Checked order-independently in BOTH directions: (a) does
+    // THIS column's expression watch an already-registered calc colId,
+    // and (b) does an already-registered column's expression watch THIS
+    // colId (covers the case where the referencing column was
+    // registered FIRST, before the column it references existed). A
+    // calc-on-calc reference would require Stage A/B to sequence one
+    // calc column's compute after another's within the same pipeline
+    // pass — unsupported today; the kernel's CalcPass has no ordering
+    // between calc columns, so silently allowing this would produce
+    // stale/undefined reads depending on iteration order. See README.
+    const referencedColId = [...compiledResult.compiled.watchedColIds].find((colId) => this.#calcCols.has(colId));
+    if (referencedColId !== undefined) {
+      return {
+        ok: false,
+        errors: [{
+          colId: def.colId,
+          code: 'bad-shape',
+          message: 'calculated columns cannot reference other calculated columns',
+          loc: null,
+        }],
+      };
+    }
+    for (const existing of this.#calcCols.values()) {
+      if (existing.compiled.watchedColIds.has(def.colId)) {
+        return {
+          ok: false,
+          errors: [{
+            colId: def.colId,
+            code: 'bad-shape',
+            message: 'calculated columns cannot reference other calculated columns',
+            loc: null,
+          }],
+        };
+      }
     }
 
     if (def.format !== undefined) {
