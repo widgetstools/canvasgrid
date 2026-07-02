@@ -165,7 +165,11 @@ const pivotMaxGeneratedColumns: number | undefined = pivotMaxRaw !== null
   && Number.isFinite(Number(pivotMaxRaw))
     ? Number(pivotMaxRaw)
     : undefined;
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, groupingDemo, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, rowGroupPanelMarketsGrid, groupSelectsChildren, groupIncludeFooter, groupIncludeTotalFooter, pinning, columnGroups, groupHideOpenParents, isGroupOpenByDefault, suppressCount, suppressGroupChangesColumnVisibility, groupTotalRow, grandTotalRow, pivotDemo, pivotPanelShow, pivotMaxGeneratedColumns });
+// Cycle 21c / Task 18 — `?formatDsl=1` wires @cgrid/format and upgrades
+// the Price column to a Tier 1 DSL string formatter. Opt-in so the
+// existing functional + visual baselines stay byte-stable.
+const formatDsl = search.get('formatDsl') === '1';
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, groupingDemo, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, rowGroupPanelMarketsGrid, groupSelectsChildren, groupIncludeFooter, groupIncludeTotalFooter, pinning, columnGroups, groupHideOpenParents, isGroupOpenByDefault, suppressCount, suppressGroupChangesColumnVisibility, groupTotalRow, grandTotalRow, pivotDemo, pivotPanelShow, pivotMaxGeneratedColumns, formatDsl });
 
 // Toolbar feature-toggle checkboxes. Toggling reloads the page with
 // the matching URL flag set / unset because the structural changes

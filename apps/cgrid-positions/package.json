@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@stomp/stompjs": "^7.1.1",
+    "@cgrid/format": "*",
     "@cgrid/kernel": "*"
   },
   "devDependencies": {
