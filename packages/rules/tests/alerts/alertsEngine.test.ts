@@ -35,7 +35,7 @@ function rule(over: Partial<AlertRule>): AlertRule {
 }
 
 const rel = (over?: Partial<Extract<AlertTrigger, { kind: 'relativeChange' }>>): AlertTrigger => ({
-  kind: 'relativeChange', columnId: 'price', mode: 'ANY_CHANGE',
+  kind: 'relativeChange', colId: 'price', mode: 'ANY_CHANGE',
   threshold: 0, direction: 'both', ...over,
 });
 
@@ -248,7 +248,7 @@ describe('AlertsEngine — relativeChange trigger', () => {
     expect(events).toHaveLength(0);
   });
 
-  it('only ChangeRecords whose colId matches trigger.columnId are considered', () => {
+  it('only ChangeRecords whose colId matches trigger.colId are considered', () => {
     const { engine, events } = makeEngine();
     engine.setRules([rule({ trigger: rel() })]);
     engine.applyChanges(updated('x', { qty: 10, price: 100 }, [['qty', 1, 10]]));

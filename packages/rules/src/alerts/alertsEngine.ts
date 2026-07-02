@@ -60,8 +60,8 @@ function checkShape(rule: AlertRule): RuleValidationError | null {
       }
       return null;
     case 'relativeChange':
-      if (typeof trigger.columnId !== 'string' || trigger.columnId === '') {
-        return bad('relativeChange trigger requires columnId');
+      if (typeof trigger.colId !== 'string' || trigger.colId === '') {
+        return bad('relativeChange trigger requires colId');
       }
       if (trigger.mode !== 'ANY_CHANGE' && trigger.mode !== 'ABSOLUTE_CHANGE' && trigger.mode !== 'PERCENT_CHANGE') {
         return bad('relativeChange mode must be PERCENT_CHANGE | ABSOLUTE_CHANGE | ANY_CHANGE');
@@ -262,7 +262,7 @@ export class AlertsEngine {
     } else if (trigger.kind === 'relativeChange') {
       for (const upd of changes.updated) {
         for (const cell of upd.cells) {
-          if (cell.colId !== trigger.columnId) continue;
+          if (cell.colId !== trigger.colId) continue;
           const oldV = cell.oldValue;
           const newV = cell.newValue;
           if (typeof oldV !== 'number' || typeof newV !== 'number') continue;

@@ -25,7 +25,7 @@ describe('types', () => {
     };
     const alert: AlertRule = {
       id: 'a1', name: 'Big move', enabled: true, priority: 1, severity: 'warning',
-      trigger: { kind: 'relativeChange', columnId: 'price', mode: 'PERCENT_CHANGE', threshold: 5, direction: 'both' },
+      trigger: { kind: 'relativeChange', colId: 'price', mode: 'PERCENT_CHANGE', threshold: 5, direction: 'both' },
       message: '{rule}: {column} moved {prev} → {value} on {rowId}',
       channels: ['toast', 'badge'],
     };

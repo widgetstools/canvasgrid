@@ -87,7 +87,9 @@ export type AlertTrigger =
   | { kind: 'dataChange'; expression: string; columnIds?: string[] }
   | {
       kind: 'relativeChange';
-      columnId: string;
+      /** Column whose ChangeRecords are watched (repo vocabulary: colId;
+       *  the StarUI source doc's `columnId` is not binding here). */
+      colId: string;
       mode: 'PERCENT_CHANGE' | 'ABSOLUTE_CHANGE' | 'ANY_CHANGE';
       /** Required for PERCENT_CHANGE (percent points) and ABSOLUTE_CHANGE;
        *  ignored for ANY_CHANGE. */
