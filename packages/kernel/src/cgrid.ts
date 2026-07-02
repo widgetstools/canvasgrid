@@ -142,6 +142,11 @@ import {
   type FormatCompiler,
 } from './core/formatCompilerSlot';
 import { registerRuleEngine as slotRegisterRuleEngine, type RuleEngineShape } from './core/ruleEngineSlot';
+import {
+  registerCalcProvider as slotRegisterCalcProvider,
+  foldCalcColumnDefs,
+  type CalcProviderShape,
+} from './core/calcSlot';
 import { buildFormatEvalCtx } from './core/formatEvalMemo';
 import { resolveThemeKind } from './theming/themeKind';
 import {
@@ -697,6 +702,11 @@ export class CGrid<TRow = any> {
    *  first invocation so developers notice the gate. */
   private clipboardSuppressedWarned = new Set<string>();
   private selectionUnsubscribe: () => void = () => {};
+  /** Cycle 21d / Task 9 — unsubscribe from the registered calc provider's
+   *  onColumnsChanged; re-registration replaces it (previous unsub called
+   *  first), destroy() releases it. Module-level slot itself is NOT
+   *  cleared on destroy, matching the format/rule slots. */
+  private calcProviderUnsub: (() => void) | null = null;
   private sortModel: SortModel = [];
   /** Cycle 19 / Task 5-ColState — column-state round-trip. Owns
    *  `initialColumnStateSnapshot` + `getColumnState` + `applyColumnState`
@@ -938,7 +948,10 @@ export class CGrid<TRow = any> {
         }
       }
     }
-    this.columnTree = resolveColumnTree(options.columnDefs, options.defaultColDef, options.columnTypes);
+    // Cycle 21d / Task 9 — fold registered calc provider output (synthesized
+    // calc columns + override/template patches) into the def array before
+    // tree resolution. No provider → same-reference pass-through.
+    this.columnTree = resolveColumnTree(foldCalcColumnDefs<CColDef<TRow> | CColGroupDef<TRow>>(options.columnDefs), options.defaultColDef, options.columnTypes);
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
     this.columnGroupState = new ColumnGroupState(this.columnTree);
     // Cycle 19 / Task 5-Grouping — grouping coordinator. Constructed
@@ -4947,6 +4960,35 @@ export class CGrid<TRow = any> {
     this.cgridCanvas?.requestRepaint();
   }
 
+  /** Cycle 21d / Task 9 — register the @cgrid/calc provider into the
+   *  kernel DI slot. Invoked by wireIntoKernel(grid) in @cgrid/calc.
+   *  Registration folds the provider's synthesized calc ColDefs +
+   *  override patches into the column tree (rebuild + worker column
+   *  reship) and re-folds on every provider-side column mutation.
+   *  Apps that never call this see no behavior change. */
+  registerCalcProvider(provider: CalcProviderShape): void {
+    slotRegisterCalcProvider(provider);
+    this.calcProviderUnsub?.();
+    this.calcProviderUnsub = provider.onColumnsChanged(() => this.onCalcColumnsChanged());
+    this.onCalcColumnsChanged();
+  }
+
+  /** Cycle 21d / Task 9 — re-fold calc defs into the tree and reship the
+   *  worker's column metadata. Mirrors the updateGridOptions({columnDefs})
+   *  rebuild sequence. Task 10 appends worker calc-program shipping here. */
+  private onCalcColumnsChanged(): void {
+    this.rebuildColumns({ defaultColDef: this.options.defaultColDef });
+    this.workerCoord.updateColumns(this.workerColumns())
+      .then(({ visibleCount }) => {
+        this.rowCount = visibleCount;
+        this.recomputeViewport();
+        this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
+        this.events.emit({ type: 'displayedColumnsChanged', source: 'columnDefsChanged' });
+        this.requestViewport('columnAggFuncChanged');
+      })
+      .catch((err) => { if (!this.destroyed) console.error('[cgrid] calc updateColumns:', err); });
+  }
+
   /** Cycle 21e / Task 10 — binary light/dark kind of the active theme.
    *  Derived from the root's `cg-theme-*` class (`-dark` suffix
    *  convention), `matchMedia` for `cg-theme-auto`, or the resolved
@@ -5215,7 +5257,8 @@ export class CGrid<TRow = any> {
    *  visible column list, refresh layout, and rebuild the subgrid stack so
    *  any change in group depth lands a matching number of header rows. */
   private rebuildColumns({ defaultColDef }: { defaultColDef?: Partial<any> }): void {
-    this.columnTree = resolveColumnTree(this.options.columnDefs, defaultColDef ?? this.options.defaultColDef, this.options.columnTypes);
+    // Cycle 21d / Task 9 — same calc-provider fold as the constructor path.
+    this.columnTree = resolveColumnTree(foldCalcColumnDefs<CColDef<TRow> | CColGroupDef<TRow>>(this.options.columnDefs), defaultColDef ?? this.options.defaultColDef, this.options.columnTypes);
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
     // columnTree.leafById is a fresh Map that only holds user-supplied columns.
     // Re-register the synthesized auto-group columns so painter lookups
@@ -5476,6 +5519,7 @@ export class CGrid<TRow = any> {
     // event triggered by a layout invalidation) can't hit half-disposed state.
     this.disposables.dispose();
     this.selectionUnsubscribe();
+    this.calcProviderUnsub?.();
     if (this.chunkLRU) this.chunkLRU.clear();
     this.cgridCanvas.destroy();
     this.workerCoord.destroy();
@@ -5632,6 +5676,7 @@ export class CGrid<TRow = any> {
       registerCellRenderer: (n, p) => this.registerCellRenderer(n, p),
       registerFormatCompiler: (fn) => this.registerFormatCompiler(fn),
       registerRuleEngine: (engine) => this.registerRuleEngine(engine),
+      registerCalcProvider: (provider) => this.registerCalcProvider(provider),
       forEachRow: (fn) => this.forEachRow(fn),
       getThemeKind: () => this.getThemeKind(),
       registerIconSet: (name, paths) => this.registerIconSet(name, paths),

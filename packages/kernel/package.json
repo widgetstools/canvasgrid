@@ -29,6 +29,7 @@
     "src"
   ],
   "devDependencies": {
+    "@cgrid/calc": "*",
     "@cgrid/format": "*",
     "@cgrid/rules": "*",
     "@types/node": "^20.0.0",
