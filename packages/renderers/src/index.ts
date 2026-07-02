@@ -133,5 +133,6 @@ export type { TickHistoryColumnOptions } from './tickHistory';
 // ─── Kernel bridge ────────────────────────────────────────────────────────────
 export { wireRenderersIntoKernel } from './bridge';
 export type {
-  RenderersBridgeOptions, RenderersBridgeHandle, RenderersColDefBuilders,
+  RenderersBridgeOptions, RenderersBridgeHandle, RenderersColDefBuilders, RenderersColDef,
 } from './bridge';
+export { THREADING_PROGRAM } from './colDefBuilders';

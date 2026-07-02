@@ -142,3 +142,52 @@ Create `packages/renderers/tests/charts.test.ts` — ≥3 cases per new renderer
 <!-- PHASE-CHECKPOINT -->
 
 <!-- PHASE-DE -->
+
+### Task 13: Kernel bridge — `wireRenderersIntoKernel` + colDef builders
+
+**Goal:** Register all 51 canonical painters, wire ColumnStats/TickHistory from opts, install the action click router, gate the 1s age/relative-time repaint tick, and expose the typed `colDef` builder namespace. ZERO kernel diff — structural grid surface only (mirrors calc/format/rules bridges).
+
+**Verified kernel surfaces (Task 12):**
+- Event: `{ type: 'cellClicked', rowId, colId, value, mouse }` (`types/event.ts`)
+- Context menu: `grid.openContextMenu(items, x, y, hit)` (`cgrid.ts` / `interaction/feature.ts`)
+- Registration: `registerCellRenderer(name, painter)` (`types/api.ts`)
+- Repaint: `refresh()` (rules bridge precedent)
+- Cleanup: `gridPreDestroyed` event (`types/event.ts`)
+
+**Bridge behaviour (spec §2.5):**
+1. Register every `RENDERER_NAMES` entry via `registerCellRenderer` (46 implementations + 5 kernel sparkline re-exports).
+2. Instantiate `ColumnStats` when `opts.statsColumns` is non-empty; `TickHistory` when `opts.historyColumns` has keys. Return live instances on the handle (noop sentinel when unwired).
+3. `colDef` builders emit ready ColDef objects. Multi-field renderers attach a **minimal Tier-2 `_compositeProgram` stub** (Task 3 threading proof) so `rowData`/`rowId`/`themeKind` thread; explicit `cellRenderer` wins. Stats/history columns use `cellRendererSelector` to inject fresh `stats.for(colId)` / `history.get(rowId,colId)` per paint.
+4. Age / relative-time builders increment a gated 1s `refresh()` interval; cleared on `gridPreDestroyed`.
+5. Action router: `cellClicked` → canvas coords (via optional `canvasCoordsFromEvent(mouse)` on the grid surface — showcase wires the real canvas mapping in Task 14) → `resolveHitRegion` → `IconActionSpec.onAction` / `RowMenuCellParams.onOpen`.
+6. Idempotent via `__renderersBridgeWired`; re-call returns the same handle.
+
+**Files:** `packages/renderers/src/bridge.ts` (implement), `packages/renderers/src/colDefBuilders.ts` (new), `packages/renderers/tests/bridge/wire.test.ts` (new — registration table, idempotency, action router, age tick gate + cleanup, colDef threading smoke via `compileCompositeColDef` where applicable).
+
+**Steps:** write failing `wire.test.ts` → implement bridge + builders → green + `git diff main...HEAD -- packages/kernel packages/{expression,format,rules,calc}` empty → commit `feat(renderers): cycle 21f task 13 — kernel bridge + colDef builders`.
+
+---
+
+### Task 14: Showcase demos + E2E
+
+**Goal:** Two feature pages exercising the renderer catalog over live/ticking data; ≥10 new Playwright E2E tests; baseline 131 preserved. Dev server `:5185`.
+
+**Files:** `apps/cgrid-showcase/src/features/{rendererBlotter,rendererCharts}.ts`, registration in showcase router/features index, `@cgrid/renderers` dep, `apps/cgrid-showcase/e2e/{rendererBlotter,rendererCharts}.spec.ts`.
+
+**Acceptance:** `wireRenderersIntoKernel` + `colDef` builders for representative columns per category; window probes (`window.__cgridRenderers` or equivalent plumbing); E2E asserts resolved renderer names + DOM/canvas presence (document canvas pixel limitation from spec §3 — fake-gc unit tests carry draw parity).
+
+**Steps:** write failing E2E → implement features → green showcase E2E (131 + new) → commit `feat(showcase): cycle 21f task 14 — renderer demo pages + E2E`.
+
+---
+
+### Task 15: README + final gates
+
+**Goal:** Replace scaffold README; run full verification gates for the whole branch.
+
+**Files:** `packages/renderers/README.md`.
+
+**Gates (spec §3):** typecheck 21/21, root lint, build 13/13, renderers suite green, kernel/calc/rules/format/expression diff empty vs main, E2E 131+new, no raw NUL bytes, package size logged.
+
+**Steps:** README → run gates → commit `docs(renderers): cycle 21f task 15 — README + verification gates`. Final whole-branch review (fable) follows in 21f-S9.
+
+---
