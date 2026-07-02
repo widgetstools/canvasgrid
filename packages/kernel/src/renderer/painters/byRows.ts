@@ -7,6 +7,38 @@ import { applyCellProps } from '../../core/propertyChain';
 import { HeaderGroupSubgrid } from '../../core/subgrid';
 import { cellMatchesAnyQuickFilterTerm } from '../../worker/dataPipeline';
 import { isPivotResultGroupId } from '../../core/pivotColumns';
+import { resolveIcon as resolveIconPath } from '../../icons/registry';
+
+/** Cycle 21c / Task 16 — pending inline-icon draw for one cell. Resolved
+ *  before the cell painter runs (so the painter's text can shift by the
+ *  icon width via `config.padding`) and drawn after it (so the icon
+ *  sits on top of the cell background the painter laid down). */
+interface PendingCellIcon {
+  path: Path2D;
+  x: number;
+  y: number;
+  size: number;
+  tint: string;
+}
+
+/** Icon slot sizing — 55% of the row height, vertically centered, with
+ *  a 4px gutter between icon and text. Matches the composite renderer's
+ *  Lucide 24×24-viewBox scaling. */
+const CELL_ICON_EDGE_PAD = 6;
+const CELL_ICON_GUTTER = 4;
+
+function drawCellIcon(gc: CachedContext2D, icon: PendingCellIcon): void {
+  gc.cache.save();
+  gc.translate(icon.x, icon.y);
+  const scale = icon.size / 24; // Lucide viewBox is 24×24
+  gc.scale(scale, scale);
+  gc.cache.strokeStyle = icon.tint;
+  gc.cache.lineWidth = 2 / scale;
+  gc.cache.lineCap = 'round';
+  gc.cache.lineJoin = 'round';
+  gc.stroke(icon.path);
+  gc.cache.restore();
+}
 
 /** Cycle 14 / Task 4 — decorate a leaf-column header with its aggFunc
  *  prefix when the column declares `aggFunc` AND the suppress flag is
@@ -628,6 +660,50 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
         config.bg = theme.quickFilterMatchBg;
       }
 
+      // Cycle 21c / Task 16 — inline icon from a compiled format string.
+      // Only data cells on columns whose resolved `cellIcon` fn returns a
+      // registry-resolvable IconRef. The icon claims a slot at the leading
+      // or trailing edge; the text shifts away via `config.padding` (every
+      // built-in painter reads `padding.left/right` with its own default).
+      // Columns without `cellIcon` (the overwhelming majority) skip this
+      // block entirely — no per-cell cost on the hot path.
+      let pendingIcon: PendingCellIcon | null = null;
+      if (
+        row.subgrid.isData
+        && !isFooterRow[r]
+        && typeof def.cellIcon === 'function'
+      ) {
+        let iconRef: { name: string; color?: string; position?: 'leading' | 'trailing' } | null = null;
+        try {
+          iconRef = def.cellIcon({ value, data: (rowData ?? {}) as never, colId: col.colId });
+        } catch {
+          iconRef = null;
+        }
+        if (iconRef && iconRef.name) {
+          const path = resolveIconPath(iconRef.name);
+          if (path) {
+            const iconSize = Math.floor(row.height * 0.55);
+            const position = iconRef.position ?? 'leading';
+            pendingIcon = {
+              path,
+              x: position === 'leading'
+                ? col.left + CELL_ICON_EDGE_PAD
+                : col.left + col.width - CELL_ICON_EDGE_PAD - iconSize,
+              y: row.top + (row.height - iconSize) / 2,
+              size: iconSize,
+              tint: iconRef.color ?? config.fg,
+            };
+            const pad = { ...(config.padding ?? {}) };
+            if (position === 'leading') {
+              pad.left = (pad.left ?? CELL_ICON_EDGE_PAD) + iconSize + CELL_ICON_GUTTER;
+            } else {
+              pad.right = (pad.right ?? CELL_ICON_EDGE_PAD) + iconSize + CELL_ICON_GUTTER;
+            }
+            config.padding = pad;
+          }
+        }
+      }
+
       // Per-cell clip — adjacent columns share the same band clip, so a value
       // wider than its column (long Position ID, fat number) would otherwise
       // bleed into the next cell. Intersection with the band clip means the
@@ -638,6 +714,9 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
       gc.rect(col.left, row.top, col.width, row.height);
       gc.clip();
       cellRenderers.get(rendererName).paint(gc, config);
+      // Cycle 21c / Task 16 — icon draws after the painter so it sits on
+      // top of the cell bg, inside the same clip so it can't bleed.
+      if (pendingIcon) drawCellIcon(gc, pendingIcon);
       gc.cache.restore();
     }
   }
