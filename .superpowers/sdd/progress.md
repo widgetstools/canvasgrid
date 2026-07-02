@@ -461,3 +461,15 @@ Task 17: complete (commit b0f5cad)
     git status: clean modulo known untracked stragglers (apps/cgrid-positions/src/*.js, apps/cgrid-showcase/src/**/*.js emit artifacts, packages/expression/coverage/ gitignored). packages/rules/package.json diff vs main is the Task 15 boundary hardening (@cgrid/kernel dependencies→peerDependencies, +test:coverage script) — build script still the no-op echo, untouched since scaffold semantics.
   SCOPE NOTE: per coordinator instruction, branch NOT pushed and PR NOT opened this task — coordinator runs a final whole-branch review first and will handle push/PR after.
 Cycle 21e status: implementation + verification COMPLETE on branch cycle21e/rules (pending coordinator whole-branch review + push/PR).
+Task 17: complete (commits 5775ffb..b39a37d, gates ALL PASS)
+  README + gates: typecheck 21/21, lint clean, build 13/13, rules 143/143, format 171/171, expression 185/185 untouched, kernel 2474/2474, showcase E2E 125/125, dist 771.49KiB (< 776.12KB budget), boundary greps clean (JSDoc-only dist mentions, 21c precedent), NUL check clean modulo pre-existing pivotPass.ts
+Final whole-branch review (fable): needs-fixes — 2 must-fix dispatched:
+  MF1: composite painter resolveFragments lacks resolveRuleRef (rule-ref colors never painted; E2E proved resolver not paint) — thread rowId/themeKind into CellPaintConfig + shared ctx helper
+  MF2: bridge adapter calls g.getThemeKind() per cell — use kernel-supplied ctx.theme
+  Follow-ups (accepted/logged): endTick-vs-repaint race for diff-aware rules without activeDurationMs (double-rAF or modelUpdated hook); destroy story (slot not cleared, engine dispose, singleton slot with 2 grids); getCellPaintedBg probe memo; auto-recount on modelUpdated after post-wire setRowData; watchedColIdUnion per-tick Set; alerts debounce map pruning; pivotPass.ts NUL; alerts demo interval-driven not STOMP (accepted)
+
+=== SCOPE (user directive 2026-07-02): finish ALL Cycle 21 — remaining after 21e: 21d calc → 21f renderers → 21g edit → 21h export → 21i customizer (dependency order). Each: spec → plan → SDD → gates → PR → squash-merge. Cycle 20 excel-pivot OUT of scope. ===
+Final-review must-fixes: complete (coordinator-implemented after user stopped the fix agent)
+  c8fbaf4 fix(kernel): resolveRuleRef threaded into composite paint + clipboard paths (CellPaintConfig rowId/themeKind; buildFormatEvalCtx exported + shared)
+  1d8b453 fix(rules): bridge adapter uses kernel-supplied ctx.theme (fallback-only getThemeKind)
+  Kernel 2477/2477 (2474 + 3 new painter tests); rules 144/144 (+1 theme-passthrough test); 21e E2E 12/12 against live dev server (earlier "exit 0" was a tail-pipe artifact — server wasn't running; started on :5185)
