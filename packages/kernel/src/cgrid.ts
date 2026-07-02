@@ -1529,7 +1529,11 @@ export class CGrid<TRow = any> {
         }),
         focusCanvas: () => { this.cgridCanvas.canvas.focus({ preventScroll: true }); },
         getRowByIndex: (rowIndex) => this.workerCoord.getRowByIndex(rowIndex),
-        applyTransaction: (payload) => this.workerCoord.applyTransaction(payload),
+        applyTransaction: (payload) => {
+          // Cycle 21e / Task 12 — rowsChanged (source 'edit'), listener-gated.
+          this.mirrorEditCommit(payload.update as TRow[] | undefined);
+          return this.workerCoord.applyTransaction(payload);
+        },
         isDestroyed: () => this.destroyed,
       },
       () => ({
@@ -1954,7 +1958,7 @@ export class CGrid<TRow = any> {
   applyTransaction(t: Tx<TRow>): TransactionResult {
     // Foundation: async only. For sync semantics, callers use the worker's sync path via separate cycle.
     const heightsByRowId = this.resolveHeightsForRows([...(t.add ?? []), ...(t.update ?? [])]);
-    this.updateRowDataCache(t);
+    this.updateRowDataCache(t, 'transaction');
     this.workerCoord.applyTransaction({
       add: t.add,
       update: t.update,
@@ -1968,7 +1972,7 @@ export class CGrid<TRow = any> {
 
   applyTransactionAsync(t: Tx<TRow>): void {
     const heightsByRowId = this.resolveHeightsForRows([...(t.add ?? []), ...(t.update ?? [])]);
-    this.updateRowDataCache(t);
+    this.updateRowDataCache(t, 'transactionAsync');
     this.workerCoord.applyTransaction({
       add: t.add,
       update: t.update,
@@ -1982,22 +1986,97 @@ export class CGrid<TRow = any> {
   /** Cycle 7 / Task 8 — keep `rowDataById` in sync with a transaction.
    *  add / update both write the row in place; remove drops the entry.
    *  Same `getRowId` derivation the worker uses so the keys line up
-   *  across the two caches. Errors in `getRowId` skip the row silently. */
-  private updateRowDataCache(t: Tx<TRow>): void {
+   *  across the two caches. Errors in `getRowId` skip the row silently.
+   *
+   *  Cycle 21e / Task 12 — emits ONE `rowsChanged` per transaction when
+   *  (and only when) a listener is registered. The old-row shallow
+   *  snapshot (`{...prev}`) is captured BEFORE the overwrite. Fully
+   *  listener-gated: without a listener this method is byte-identical
+   *  to its pre-21e body. */
+  private updateRowDataCache(t: Tx<TRow>, source: 'transaction' | 'transactionAsync'): void {
+    if (!this.events.hasListener('rowsChanged')) {
+      if (t.add) {
+        for (const row of t.add) {
+          try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip */ }
+        }
+      }
+      if (t.update) {
+        for (const row of t.update) {
+          try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip */ }
+        }
+      }
+      if (t.remove) {
+        for (const row of t.remove) {
+          try { this.rowDataById.delete(this.options.getRowId(row)); } catch { /* skip */ }
+        }
+      }
+      return;
+    }
+    const added: Array<{ rowId: string; row: TRow }> = [];
+    const updated: Array<{ rowId: string; row: TRow; oldRow: TRow }> = [];
+    const removed: Array<{ rowId: string; row: TRow }> = [];
     if (t.add) {
       for (const row of t.add) {
-        try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip */ }
+        try {
+          const rowId = this.options.getRowId(row);
+          const prev = this.rowDataById.get(rowId);
+          this.rowDataById.set(rowId, row);
+          // A transaction "add" for an already-known rowId is an upsert —
+          // report it as updated so listeners see the old row.
+          if (prev !== undefined) updated.push({ rowId, row, oldRow: { ...prev } });
+          else added.push({ rowId, row });
+        } catch { /* skip */ }
       }
     }
     if (t.update) {
       for (const row of t.update) {
-        try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip */ }
+        try {
+          const rowId = this.options.getRowId(row);
+          const prev = this.rowDataById.get(rowId);
+          this.rowDataById.set(rowId, row);
+          if (prev !== undefined) updated.push({ rowId, row, oldRow: { ...prev } });
+          else added.push({ rowId, row });
+        } catch { /* skip */ }
       }
     }
     if (t.remove) {
       for (const row of t.remove) {
-        try { this.rowDataById.delete(this.options.getRowId(row)); } catch { /* skip */ }
+        try {
+          const rowId = this.options.getRowId(row);
+          const prev = this.rowDataById.get(rowId);
+          this.rowDataById.delete(rowId);
+          removed.push({ rowId, row: prev ?? row });
+        } catch { /* skip */ }
       }
+    }
+    if (added.length > 0 || updated.length > 0 || removed.length > 0) {
+      this.events.emit({ type: 'rowsChanged', added, updated, removed, source });
+    }
+  }
+
+  /** Cycle 21e / Task 12 — mirror an editor commit-back into rowsChanged.
+   *  The edit path historically bypasses updateRowDataCache (the dep at
+   *  the EditController wiring calls workerCoord.applyTransaction
+   *  directly), so `source: 'edit'` is produced here. Fully listener-
+   *  gated, INCLUDING the rowDataById freshening: without a rowsChanged
+   *  listener the mirror keeps its pre-21e (stale-after-edit) behavior
+   *  and this method is a no-op — byte-identical for non-rules apps.
+   *  With a listener, the mirror is updated so consecutive edits report
+   *  correct oldRow values. */
+  private mirrorEditCommit(update: TRow[] | undefined): void {
+    if (!this.events.hasListener('rowsChanged')) return;
+    if (!update || update.length === 0) return;
+    const updated: Array<{ rowId: string; row: TRow; oldRow: TRow }> = [];
+    for (const row of update) {
+      try {
+        const rowId = this.options.getRowId(row);
+        const prev = this.rowDataById.get(rowId);
+        this.rowDataById.set(rowId, row);
+        updated.push({ rowId, row, oldRow: prev !== undefined ? { ...prev } : { ...row } });
+      } catch { /* skip */ }
+    }
+    if (updated.length > 0) {
+      this.events.emit({ type: 'rowsChanged', added: [], updated, removed: [], source: 'edit' });
     }
   }
 
