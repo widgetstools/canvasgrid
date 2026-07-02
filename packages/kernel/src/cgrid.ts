@@ -145,6 +145,11 @@ import {
   registerIconSet as regIcons,
   resolveIcon as resIcon,
 } from './icons/registry';
+import {
+  registerTooltipProvider as regTip,
+  unregisterTooltipProvider as unregTip,
+  type TooltipProviderFn,
+} from './interaction/features/tooltipProvider';
 
 export const CGRID_VERSION = '0.0.0';
 
@@ -4756,6 +4761,19 @@ export class CGrid<TRow = any> {
     return resIcon(name, setHint);
   }
 
+  /** Cycle 21c / Task 14 — register a per-column tooltip provider.
+   *  Fires after a 500ms hover debounce; returns `{ plain }` or
+   *  `{ html }` (or null). Delegated to the module-level provider
+   *  registry consumed by the TooltipProvider chain feature. */
+  registerTooltipProvider(colId: string, fn: TooltipProviderFn): void {
+    regTip(colId, fn);
+  }
+
+  /** Cycle 21c / Task 14 — remove the tooltip provider for `colId`. */
+  unregisterTooltipProvider(colId: string): void {
+    unregTip(colId);
+  }
+
   /** Cycle 22 / Task 3 — runtime per-token override. Apps tune
    *  individual `--cg-*` variables without writing CSS; the patch
    *  lands as inline styles on the grid root so `getComputedStyle`
@@ -5408,6 +5426,8 @@ export class CGrid<TRow = any> {
       registerFormatCompiler: (fn) => this.registerFormatCompiler(fn),
       registerIconSet: (name, paths) => this.registerIconSet(name, paths),
       resolveIcon: (name, setHint) => this.resolveIcon(name, setHint),
+      registerTooltipProvider: (colId, fn) => this.registerTooltipProvider(colId, fn),
+      unregisterTooltipProvider: (colId) => this.unregisterTooltipProvider(colId),
       registerCellEditor: (n, c) => this.registerCellEditor(n, c),
       registerComparator: <TValue = unknown>(n: string, f: (a: TValue, b: TValue) => number) =>
         this.registerComparator<TValue>(n, f),

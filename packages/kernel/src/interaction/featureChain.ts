@@ -43,6 +43,7 @@ import { RightClick } from './features/rightClick';
 import { KeyboardShortcuts } from './features/keyboardShortcuts';
 import { GroupExpandFeature } from './features/groupExpand';
 import { SparklineTooltip } from './features/sparklineTooltip';
+import { TooltipProvider } from './features/tooltipProvider';
 import { CellKeyboardEvents } from './features/cellKeyboardEvents';
 import { RowSelectCheckboxClick } from './features/rowSelectCheckboxClick';
 
@@ -109,6 +110,11 @@ export class FeatureChain {
       // tooltip ahead of OnHover keeps it visible immediately when the
       // pointer enters a sparkline cell.
       .append(new SparklineTooltip())
+      // Cycle 21c / Task 14 — generic per-column tooltip provider hook.
+      // Sits after SparklineTooltip (its specialized sibling) and before
+      // OnHover; forwards every move via `super` so hover state still
+      // updates downstream.
+      .append(new TooltipProvider())
       .append(new OnHover());
 
     const c = grid.canvas.canvas;

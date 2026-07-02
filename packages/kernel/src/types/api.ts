@@ -421,6 +421,19 @@ export interface CGridApi<TRow = any> {
    *  any set or when `Path2D` is unavailable (SSR / Node). */
   resolveIcon(name: string, setHint?: string): Path2D | null;
 
+  /** Cycle 21c / Task 14 — register a per-column tooltip provider.
+   *  The provider fires after a 500ms hover debounce on cells in
+   *  `colId` and returns `{ plain }` or `{ html }` (or null for "no
+   *  tooltip on this cell"). Re-registering the same colId replaces
+   *  the prior provider. */
+  registerTooltipProvider(
+    colId: string,
+    fn: import('../interaction/features/tooltipProvider').TooltipProviderFn,
+  ): void;
+  /** Cycle 21c / Task 14 — remove the tooltip provider for `colId`.
+   *  No-op when none is registered. */
+  unregisterTooltipProvider(colId: string): void;
+
   /** Register a custom cell editor under `name`. Columns referencing it via
    *  `cellEditor: name` will mount this editor when edit starts. Built-in
    *  names ('text' shipped in Cycle 5 Task 1; 'number' / 'date' / 'select' /
