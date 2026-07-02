@@ -7,6 +7,7 @@ import {
   QuickFilterPass, DistinctValuesPass, diffRowFields, PivotPass,
 } from './dataPipeline';
 import type { GroupNode } from './passes/groupPass';
+import { CalcProgramStore } from './passes/calcPass';
 import {
   computeGroupVisibleRowCount,
   type VisibleRowEntry,
@@ -86,6 +87,9 @@ export function createWorkerHost(post: PostFn): WorkerHost {
 
   async function buildVisibleAsync(): Promise<string[]> {
     if (!state) return [];
+    // Cycle 21d / Task 11 — CalcPass Stage A: materialise row-local calc
+    // values BEFORE the filter reads them. No program → immediate no-op.
+    state.calc.ensureStageA(state.store, (colId) => state!.columns.find((c) => c.colId === colId)?.field);
     let ids = buildCandidates();
     const alwaysPass = state.alwaysPassIds;
     if (state.externalFilterPresent) {
@@ -151,6 +155,16 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     } else {
       state.pivotOut = null;
     }
+    // Cycle 21d / Task 12 — CalcPass Stage B: scoped aggregate scalars +
+    // per-row aggregate-dependent values. Runs AFTER grouping (scopes are
+    // defined by the tree) and BEFORE sort (sort sees fresh Stage-B
+    // values). FilterPass ran earlier in this pass, so filtering on a
+    // Stage-B column reads the PREVIOUS pass's values — the documented
+    // one-frame settle (spec §2.3); no reentrant recompute.
+    state.calc.ensureStageB(
+      state.store, state.groupOutput, ids,
+      (colId) => state!.columns.find((c) => c.colId === colId)?.field,
+    );
     // Cycle 15 / Task 11 — group-aware sort. When grouping is active,
     // sort happens inside the group tree (within-bucket child indices +
     // per-level group ordering), NOT across the flat post-filter array.
@@ -420,8 +434,17 @@ export function createWorkerHost(post: PostFn): WorkerHost {
         if (state!.enableCellChangeFlash && tx.update && tx.update.length > 0) {
           stageFlashesForUpdates(state!, tx.update);
         }
+        // Cycle 21d / Task 11 — capture pre-apply rows for PREV([col]).
+        // Final review Fix 2 — also capture removed rows' pre-apply
+        // snapshot (Stage B's delta path needs the OLD value to
+        // `removeRow` the correct scalar out of a cached scope's state;
+        // `store.getById` is undefined POST-apply for a removed row).
+        if ((tx.update && tx.update.length > 0) || (tx.remove && tx.remove.length > 0)) {
+          state!.calc.capturePrevForUpdates(store, tx.update ?? [], tx.remove ?? []);
+        }
         const r = store.apply(tx);
         all.push(r);
+        state!.calc.onTransaction(r);
         // Aggregate cache must drop any row that just mutated so the next
         // QuickFilterPass.apply rebuilds against current values.
         for (const a of r.add)    touched.add(a.rowId);
@@ -506,6 +529,9 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       expandedKeys: null,
       comparators,
       aggFuncs,
+      // Cycle 21d / Task 10 — calc program store, always constructed
+      // (no-program = inert; CalcPass stages gate on hasProgram()).
+      calc:        new CalcProgramStore(),
       agg:         new AggPass(store, payload.columns, aggFuncs),
       slicer:      new ViewportSlicer(store, payload.columns),
       queue,
@@ -529,6 +555,15 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       showOpenedGroup: payload.showOpenedGroup === true,
       groupHideOpenParents: payload.groupHideOpenParents === true,
     };
+    // Cycle 21d / Task 11 — seam wiring: every pass reads calc-column
+    // values through the same CalcProgramStore instance held on state.
+    state.filter.setCalcSource(state.calc);
+    state.sort.setCalcSource(state.calc);
+    state.group.setCalcSource(state.calc);
+    state.slicer.setCalcSource(state.calc);
+    // Cycle 21d / Task 13 review — DistinctValuesPass never got the Task
+    // 11 seam; a calc column's set-filter popup was silently empty.
+    state.distinct.setCalcSource(state.calc);
 
     post({ id, type: 'ready' });
   }

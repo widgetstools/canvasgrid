@@ -340,6 +340,24 @@ export interface AutosizeGroupContextRequest {
   groupColumnDepth?: number;
 }
 
+/** Cycle 21d / Task 10 — serialized calc program shipped by @cgrid/calc's
+ *  bridge (via CGrid.registerCalcProvider → setCalcProgram). `ast` is the
+ *  portable expression AST (plain JSON — 21b guarantee); `interpreterSource`
+ *  and each `aggregateSources[].source` are `Function.prototype.toString()`
+ *  forms reconstructed worker-side via `new Function` (the setAggFuncs /
+ *  registerComparator precedent below — same CSP caveat). */
+export interface WorkerCalcProgram {
+  columns: Array<{
+    colId: string;
+    ast: unknown;
+    prePass: Array<{ slot: number; fn: string; colId: string; scope: { kind: string } }>;
+    cellDataType: 'text' | 'number';
+    usesPrev: boolean;
+  }>;
+  interpreterSource: string;
+  aggregateSources: Array<{ name: string; source: string }>;
+}
+
 export type WorkerRequest =
   | { id: ReqId; type: 'init';             payload: WorkerInitPayload }
   | { id: ReqId; type: 'setRowData';       payload: { rows: unknown[]; heightsByRowId?: Map<string, number> } }
@@ -461,8 +479,11 @@ export type WorkerRequest =
    *  Cached worker-side per `colId`; the cache invalidates whenever
    *  `applyTransaction` lands on the column (or any column — the cache
    *  is wiped wholesale, matching how `QuickFilterPass` handles
-   *  invalidation). */
-  | { id: ReqId; type: 'getDistinctValues'; payload: { colId: string } }
+   *  invalidation).
+   *  Cycle 21d / Task 13 — optional `limit` truncates the REPLY only;
+   *  the worker-side cache always holds the full set so different
+   *  limits share one derivation. */
+  | { id: ReqId; type: 'getDistinctValues'; payload: { colId: string; limit?: number } }
   /** Cycle 4 / Task 11 (cell-flash patch) — flip the cell-flash
    *  diff producer on or off at runtime. When off, `applyTransaction.update`
    *  no longer computes per-row diffs (zero allocation overhead for
@@ -491,6 +512,12 @@ export type WorkerRequest =
    *  aggregation pass on the next `getViewport`. Resolves with the
    *  current visible row count. */
   | { id: ReqId; type: 'setAggFuncs'; payload: { funcs: Array<{ name: string; source: string }> } }
+  /** Cycle 21d / Task 10 — install / replace the worker's calc program
+   *  (calculated-column interpreter + delta-aggregate factories + per-
+   *  column compiled entries). `null` removes the program — the CalcPass
+   *  becomes a zero-cost no-op. Resolves with the current visible row
+   *  count (the rowCount envelope, mirroring setAggFuncs). */
+  | { id: ReqId; type: 'setCalcProgram'; payload: WorkerCalcProgram | null }
   /** Cycle 8 / Task 3 — register a custom comparator under `name`.
    *  `source` is the `Function.prototype.toString()` form of the app's
    *  comparator function; the worker reconstructs the callable via

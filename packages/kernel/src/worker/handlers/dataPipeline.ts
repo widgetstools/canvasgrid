@@ -10,6 +10,10 @@
 // Each case body was moved verbatim from `worker.ts`; the switch shape
 // is preserved so the response envelope + control flow is byte-for-byte
 // identical to the pre-extraction dispatcher.
+//
+// Cycle 21d / Task 10 — setCalcProgram joins this handler (it owns the
+// sibling `new Function` reconstruction messages: setAggFuncs,
+// registerComparator).
 
 import type { HandlerCtx } from '../dispatch';
 import type { WorkerRequest } from '../protocol';
@@ -23,6 +27,7 @@ export type DataPipelineRequest = Extract<WorkerRequest, {
     | 'setEnableCellChangeFlash'
     | 'flashCells'
     | 'setAggFuncs'
+    | 'setCalcProgram'
     | 'registerComparator'
     | 'setSortModel'
     | 'setPostSortRowsPresent'
@@ -37,6 +42,9 @@ export async function handleDataPipeline(
   switch (req.type) {
     case 'setRowData': {
       state.store.setAll(req.payload.rows as unknown[], req.payload.heightsByRowId);
+      // Cycle 21d / Task 11 — full data replace invalidates the calc
+      // value cache; next ensureStageA pass does a full recompute.
+      state.calc.onSetRowData();
       // Cycle 7 / Task 8 — a full data replace invalidates any
       // alwaysPass set computed against the previous data.
       state.alwaysPassIds.clear();
@@ -64,7 +72,18 @@ export async function handleDataPipeline(
         if (state.enableCellChangeFlash && update && update.length > 0) {
           helpers.stageFlashesForUpdates(update as unknown[]);
         }
+        // Cycle 21d / Task 11 — capture pre-apply rows for PREV([col]).
+        // Same pre-apply tick point the flash diff uses — flash gates on
+        // `enableCellChangeFlash`, PREV gates on the program's
+        // `usesPrev` inside the hook itself.
+        // Final review Fix 2 — also capture removed rows' pre-apply
+        // snapshot for Stage B's delta path (see worker.ts's async
+        // flush-fn sibling call site for the full rationale).
+        if ((update && update.length > 0) || (remove && remove.length > 0)) {
+          state.calc.capturePrevForUpdates(state.store, (update as unknown[]) ?? [], remove ?? []);
+        }
         const results = state.store.apply({ add: add as unknown[], update: update as unknown[], remove, heightsByRowId });
+        state.calc.onTransaction(results);
         // Cycle 7 / Task 7 — sync transactions need the quick filter
         // aggregate cache invalidated for the touched rows.
         const touched = new Set<string>();
@@ -176,6 +195,22 @@ export async function handleDataPipeline(
         count: state.store.size(),
         visibleCount: state.visibleCache?.length ?? 0,
       });
+      return;
+    }
+
+    case 'setCalcProgram': {
+      // Cycle 21d / Task 10 — install / replace / remove the calc program.
+      // Reconstruction + smoke eval happen inside CalcProgramStore.install;
+      // failures surface through the same error envelope setAggFuncs uses.
+      try {
+        state.calc.install(req.payload);
+      } catch (err) {
+        post({ id: req.id, type: 'error', error: String((err as Error).message ?? err) });
+        return;
+      }
+      // Program changes redefine cell values for calc columns — rebuild.
+      state.visibleCache = null;
+      post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await helpers.invalidateAndCount() });
       return;
     }
 

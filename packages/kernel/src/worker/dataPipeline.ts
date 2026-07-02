@@ -3,6 +3,7 @@ import type {
   CFilterModelEntry, CTextFilterModel, CNumberFilterModel, CDateFilterModel,
   CMultiConditionFilterModel, CSetFilterModel,
 } from '../types';
+import type { CalcValueSource } from './passes/calcPass';
 
 /**
  * Cycle 7 / Task 1 — the worker's `FilterPass` matcher speaks both the
@@ -471,14 +472,26 @@ export class QuickFilterPass<TRow = any> {
  * `string[]`). Null / undefined values are dropped from the result —
  * "(blank)" handling is a follow-up cycle once the catalog ships
  * `excelMode` parity.
+ *
+ * Cycle 21d / Task 13 review — calc value source seam. A calc column is
+ * fieldless, so before this it always hit the `!col.field` early-return
+ * and answered `[]`. Mirrors FilterPass/SortPass/GroupPass/ViewportSlicer:
+ * `setCalcSource` installs a `CalcValueSource`; `getValues` reads a calc
+ * column's per-row value through `valueAt` instead of `row[field]`.
  */
 export class DistinctValuesPass<TRow = any> {
   private cache = new Map<string, string[]>();
   private colIndex = new Map<string, WorkerColumn>();
+  /** `null` = no calc program installed — same null-check gate the other
+   *  four passes use so the hot loop pays nothing when calc isn't in play. */
+  private calcSource: CalcValueSource | null = null;
 
   constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
     this.setColumns(columns);
   }
+
+  /** Install (or clear, via `null`) the calc-column value source. */
+  setCalcSource(src: CalcValueSource | null): void { this.calcSource = src; }
 
   setColumns(columns: WorkerColumn[]): void {
     this.colIndex.clear();
@@ -491,12 +504,15 @@ export class DistinctValuesPass<TRow = any> {
   /** Returns the distinct stringified values for `colId` in insertion
    *  order — the iteration order of the underlying `Set<string>`, which
    *  matches the first-seen row order. Returns an empty array for
-   *  unknown / field-less columns. */
+   *  unknown columns, and for field-less columns that aren't a calc
+   *  column under the installed calc source (or when no source is
+   *  installed at all). */
   getValues(colId: string): string[] {
     const cached = this.cache.get(colId);
     if (cached !== undefined) return cached;
     const col = this.colIndex.get(colId);
-    if (!col || !col.field) {
+    const isCalcCol = col && !col.field && this.calcSource !== null && this.calcSource.isCalcCol(colId);
+    if (!col || (!col.field && !isCalcCol)) {
       this.cache.set(colId, []);
       return [];
     }
@@ -504,7 +520,9 @@ export class DistinctValuesPass<TRow = any> {
     const seen = new Set<string>();
     const out: string[] = [];
     for (const row of this.store.rows()) {
-      const v = (row as Record<string, unknown>)[field];
+      const v = field !== undefined
+        ? (row as Record<string, unknown>)[field]
+        : this.calcSource!.valueAt(this.store.getRowId(row), colId);
       if (v == null) continue;
       const s = String(v);
       if (seen.has(s)) continue;
@@ -534,10 +552,18 @@ export class FilterPass<TRow = any> {
    *  case-folded text needles, parsed numeric thresholds). Keyed by the
    *  entry object so swapping the model wipes everything via clear(). */
   private compiledSetValues = new Map<CSetFilterModel, Set<string>>();
+  /** Cycle 21d / Task 11 — CalcPass Stage A/B value seam. `null` = no
+   *  calc program installed, the pre-21d skip-guard shape is preserved
+   *  exactly (a null check, not a function call) so the hot loop pays
+   *  nothing when calc isn't in play. */
+  private calcSource: CalcValueSource | null = null;
 
   constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
     this.setColumns(columns);
   }
+
+  /** Install (or clear, via `null`) the calc-column value source. */
+  setCalcSource(src: CalcValueSource | null): void { this.calcSource = src; }
 
   setModel(model: FilterModel): void {
     this.model = model;
@@ -581,8 +607,19 @@ export class FilterPass<TRow = any> {
       let pass = true;
       for (const [colId, rawEntry] of entries) {
         const col = this.colIndex.get(colId);
-        if (!col || !col.field) continue;
-        const value = (row as Record<string, unknown>)[col.field];
+        if (!col) continue;
+        // Cycle 21d / Task 11 — calc columns are fieldless; their values
+        // come from the CalcPass Stage A/B cache. Data columns keep the
+        // direct field read. Fieldless non-calc columns keep the
+        // pre-21d skip (entry contributes no constraint).
+        let value: unknown;
+        if (col.field) {
+          value = (row as Record<string, unknown>)[col.field];
+        } else if (this.calcSource !== null && this.calcSource.isCalcCol(colId)) {
+          value = this.calcSource.valueAt(this.store.getRowId(row), colId);
+        } else {
+          continue;
+        }
         // v2 entries (`filterType` discriminator) go through matchesV2;
         // legacy entries through `matches`. Worker accepts both for the
         // duration of Cycle 7 — Task 2 will remove the legacy branch
@@ -823,6 +860,9 @@ export function diffRowFields(oldRow: unknown, newRow: unknown): Set<string> {
 
 export class ViewportSlicer<TRow = any> {
   private colIndex = new Map<string, WorkerColumn>();
+  /** Cycle 21d / Task 11 — CalcPass Stage A/B value seam. `null` when no
+   *  calc program is installed. */
+  private calcSource: CalcValueSource | null = null;
 
   constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
     this.setColumns(columns);
@@ -832,6 +872,9 @@ export class ViewportSlicer<TRow = any> {
     this.colIndex.clear();
     for (const col of columns) this.colIndex.set(col.colId, col);
   }
+
+  /** Install (or clear, via `null`) the calc-column value source. */
+  setCalcSource(src: CalcValueSource | null): void { this.calcSource = src; }
 
   slice(
     visibleIds: string[],
@@ -882,7 +925,29 @@ export class ViewportSlicer<TRow = any> {
 
     for (const colId of req.columns) {
       const col = this.colIndex.get(colId);
-      if (!col || !col.field) continue;
+      if (!col) continue;
+      // Cycle 21d / Task 11 — calc columns ship like ordinary columns:
+      // numericCols for type 'number', textCols otherwise, values read
+      // from the CalcPass cache instead of a row field.
+      if (!col.field) {
+        const src = this.calcSource;
+        if (!src || !src.isCalcCol(colId)) continue;
+        if (col.type === 'number') {
+          const arr = new Float64Array(count);
+          for (let i = 0; i < count; i++) {
+            arr[i] = Number(src.valueAt(visibleIds[rowStart + i]!, colId));
+          }
+          numericCols[colId] = arr;
+        } else {
+          const values: string[] = new Array(count);
+          for (let i = 0; i < count; i++) {
+            const v = src.valueAt(visibleIds[rowStart + i]!, colId);
+            values[i] = v == null ? '' : String(v);
+          }
+          textCols[colId] = encodeText(values);
+        }
+        continue;
+      }
       if (col.type === 'number') {
         const arr = new Float64Array(count);
         for (let i = 0; i < count; i++) {

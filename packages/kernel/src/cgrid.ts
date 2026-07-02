@@ -128,7 +128,7 @@ import { A11yOverlay } from './interaction/a11yOverlay';
 import { WorkerCoordinator } from './core/workerCoordinator';
 import { EditController } from './core/editController';
 import { wrapTextToHeight } from './worker/measureText';
-import type { WorkerColumn, ViewportChunk, AutosizeColumnRequest, StickyAncestor } from './worker/protocol';
+import type { WorkerColumn, ViewportChunk, AutosizeColumnRequest, StickyAncestor, WorkerCalcProgram } from './worker/protocol';
 import type { IAggFunc, IAggFuncParams } from './types';
 import { decodeText } from './worker/chunkFormat';
 // Cycle 10 / Task 5 — main-side serialise + paste-cell map helpers used when
@@ -142,6 +142,12 @@ import {
   type FormatCompiler,
 } from './core/formatCompilerSlot';
 import { registerRuleEngine as slotRegisterRuleEngine, type RuleEngineShape } from './core/ruleEngineSlot';
+import {
+  registerCalcProvider as slotRegisterCalcProvider,
+  getCalcProvider,
+  foldCalcColumnDefs,
+  type CalcProviderShape,
+} from './core/calcSlot';
 import { buildFormatEvalCtx } from './core/formatEvalMemo';
 import { resolveThemeKind } from './theming/themeKind';
 import {
@@ -697,6 +703,11 @@ export class CGrid<TRow = any> {
    *  first invocation so developers notice the gate. */
   private clipboardSuppressedWarned = new Set<string>();
   private selectionUnsubscribe: () => void = () => {};
+  /** Cycle 21d / Task 9 — unsubscribe from the registered calc provider's
+   *  onColumnsChanged; re-registration replaces it (previous unsub called
+   *  first), destroy() releases it. Module-level slot itself is NOT
+   *  cleared on destroy, matching the format/rule slots. */
+  private calcProviderUnsub: (() => void) | null = null;
   private sortModel: SortModel = [];
   /** Cycle 19 / Task 5-ColState — column-state round-trip. Owns
    *  `initialColumnStateSnapshot` + `getColumnState` + `applyColumnState`
@@ -938,7 +949,10 @@ export class CGrid<TRow = any> {
         }
       }
     }
-    this.columnTree = resolveColumnTree(options.columnDefs, options.defaultColDef, options.columnTypes);
+    // Cycle 21d / Task 9 — fold registered calc provider output (synthesized
+    // calc columns + override/template patches) into the def array before
+    // tree resolution. No provider → same-reference pass-through.
+    this.columnTree = resolveColumnTree(foldCalcColumnDefs<CColDef<TRow> | CColGroupDef<TRow>>(options.columnDefs), options.defaultColDef, options.columnTypes);
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
     this.columnGroupState = new ColumnGroupState(this.columnTree);
     // Cycle 19 / Task 5-Grouping — grouping coordinator. Constructed
@@ -2935,6 +2949,15 @@ export class CGrid<TRow = any> {
   getColumnFilterType(colId: string): 'text' | 'number' | 'date' | 'set' | null {
     const def = this.columnDefsMap.get(colId);
     return resolveFilterType(def);
+  }
+
+  /** Cycle 21d / Task 13 — distinct stringified values for `colId`, in
+   *  first-seen row order (worker DistinctValuesPass; nulls dropped).
+   *  `limit` truncates the reply; the worker cache keeps the full set so
+   *  different limits share one derivation. Public surface for
+   *  @cgrid/calc's typed wrapper + apps. */
+  getDistinctValues(colId: string, limit?: number): Promise<string[]> {
+    return this.workerCoord.getDistinctValues(colId, limit);
   }
 
   /** Cycle 11 / Task 4 — build the filter editor for `colId` for inline
@@ -4947,6 +4970,40 @@ export class CGrid<TRow = any> {
     this.cgridCanvas?.requestRepaint();
   }
 
+  /** Cycle 21d / Task 9 — register the @cgrid/calc provider into the
+   *  kernel DI slot. Invoked by wireIntoKernel(grid) in @cgrid/calc.
+   *  Registration folds the provider's synthesized calc ColDefs +
+   *  override patches into the column tree (rebuild + worker column
+   *  reship) and re-folds on every provider-side column mutation.
+   *  Apps that never call this see no behavior change. */
+  registerCalcProvider(provider: CalcProviderShape): void {
+    slotRegisterCalcProvider(provider);
+    this.calcProviderUnsub?.();
+    this.calcProviderUnsub = provider.onColumnsChanged(() => this.onCalcColumnsChanged());
+    this.onCalcColumnsChanged();
+  }
+
+  /** Cycle 21d / Task 9 — re-fold calc defs into the tree and reship the
+   *  worker's column metadata. Mirrors the updateGridOptions({columnDefs})
+   *  rebuild sequence. Cycle 21d / Task 10 ships the worker calc program
+   *  FIRST so the column reship (which triggers a pipeline rebuild)
+   *  already sees the installed program. */
+  private onCalcColumnsChanged(): void {
+    this.rebuildColumns({ defaultColDef: this.options.defaultColDef });
+    const provider = getCalcProvider();
+    this.workerCoord.setCalcProgram((provider?.workerProgram() ?? null) as WorkerCalcProgram | null)
+      .catch((err) => { if (!this.destroyed) console.error('[cgrid] setCalcProgram:', err); });
+    this.workerCoord.updateColumns(this.workerColumns())
+      .then(({ visibleCount }) => {
+        this.rowCount = visibleCount;
+        this.recomputeViewport();
+        this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
+        this.events.emit({ type: 'displayedColumnsChanged', source: 'columnDefsChanged' });
+        this.requestViewport('columnAggFuncChanged');
+      })
+      .catch((err) => { if (!this.destroyed) console.error('[cgrid] calc updateColumns:', err); });
+  }
+
   /** Cycle 21e / Task 10 — binary light/dark kind of the active theme.
    *  Derived from the root's `cg-theme-*` class (`-dark` suffix
    *  convention), `matchMedia` for `cg-theme-auto`, or the resolved
@@ -5215,7 +5272,8 @@ export class CGrid<TRow = any> {
    *  visible column list, refresh layout, and rebuild the subgrid stack so
    *  any change in group depth lands a matching number of header rows. */
   private rebuildColumns({ defaultColDef }: { defaultColDef?: Partial<any> }): void {
-    this.columnTree = resolveColumnTree(this.options.columnDefs, defaultColDef ?? this.options.defaultColDef, this.options.columnTypes);
+    // Cycle 21d / Task 9 — same calc-provider fold as the constructor path.
+    this.columnTree = resolveColumnTree(foldCalcColumnDefs<CColDef<TRow> | CColGroupDef<TRow>>(this.options.columnDefs), defaultColDef ?? this.options.defaultColDef, this.options.columnTypes);
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
     // columnTree.leafById is a fresh Map that only holds user-supplied columns.
     // Re-register the synthesized auto-group columns so painter lookups
@@ -5476,6 +5534,7 @@ export class CGrid<TRow = any> {
     // event triggered by a layout invalidation) can't hit half-disposed state.
     this.disposables.dispose();
     this.selectionUnsubscribe();
+    this.calcProviderUnsub?.();
     if (this.chunkLRU) this.chunkLRU.clear();
     this.cgridCanvas.destroy();
     this.workerCoord.destroy();
@@ -5632,6 +5691,7 @@ export class CGrid<TRow = any> {
       registerCellRenderer: (n, p) => this.registerCellRenderer(n, p),
       registerFormatCompiler: (fn) => this.registerFormatCompiler(fn),
       registerRuleEngine: (engine) => this.registerRuleEngine(engine),
+      registerCalcProvider: (provider) => this.registerCalcProvider(provider),
       forEachRow: (fn) => this.forEachRow(fn),
       getThemeKind: () => this.getThemeKind(),
       registerIconSet: (name, paths) => this.registerIconSet(name, paths),
@@ -5654,6 +5714,7 @@ export class CGrid<TRow = any> {
       isColumnPivotEnabled: (colId) => this.isColumnPivotEnabled(colId),
       isColumnValueEnabled: (colId) => this.isColumnValueEnabled(colId),
       getColumnFilterType: (colId) => this.getColumnFilterType(colId),
+      getDistinctValues: (colId, limit) => this.getDistinctValues(colId, limit),
       buildColumnFilterEditor: (colId) => this.buildColumnFilterEditor(colId),
       applyColumnState: (p) => this.applyColumnState(p),
       resetColumnState: () => this.resetColumnState(),

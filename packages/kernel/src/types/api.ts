@@ -408,6 +408,18 @@ export interface CGridApi<TRow = any> {
    *  identical behavior to before. */
   registerRuleEngine(engine: import('../core/ruleEngineSlot').RuleEngineShape): void;
 
+  /** Cycle 21d / Task 9 — register the calc provider (supplied by
+   *  @cgrid/calc's wireIntoKernel). Kernel folds its synthesized calc
+   *  columns + override patches into column resolution and ships its
+   *  worker program (Task 10). Apps that never call this see
+   *  identical behavior to before. */
+  registerCalcProvider(provider: import('../core/calcSlot').CalcProviderShape): void;
+
+  /** Cycle 21d / Task 13 — distinct stringified values for `colId`
+   *  (first-seen order, nulls dropped). Optional `limit` truncates the
+   *  reply; the worker-side cache stays full. */
+  getDistinctValues(colId: string, limit?: number): Promise<string[]>;
+
   /** Cycle 21e / Task 10 — iterate the main-thread row mirror
    *  (rowId → row, insertion order). */
   forEachRow(fn: (rowId: string, row: TRow) => void): void;

@@ -15,6 +15,7 @@ import type {
 } from './dataPipeline';
 import type { GroupPassOutput } from './passes/groupPass';
 import type { PivotPassOutput } from './passes/pivotPass';
+import type { CalcProgramStore } from './passes/calcPass';
 import type { WorkerColumn } from './protocol';
 import type { MeasureCache } from './measureText';
 import type { ComparatorRegistry } from './comparatorRegistry';
@@ -87,4 +88,8 @@ export interface State {
   enableCellChangeFlash: boolean;
   /** Cycle 4 / Task 11 — staged changed-field set per rowId. */
   pendingFlashes: Map<string, Set<string>>;
+  /** Cycle 21d / Task 10 — calculated-column program store. Always
+   *  constructed (no-program = inert); CalcPass stages gate on
+   *  `calc.hasProgram()` so absent programs cost nothing. */
+  calc: CalcProgramStore;
 }

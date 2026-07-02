@@ -1,6 +1,6 @@
 import type {
   WorkerRequest, WorkerResponse, WorkerPush, WorkerInitPayload, ViewportRequest, ViewportChunk,
-  WorkerColumn, MeasureTextItem, AutosizeColumnRequest, StickyAncestor,
+  WorkerColumn, MeasureTextItem, AutosizeColumnRequest, StickyAncestor, WorkerCalcProgram,
 } from './protocol';
 import { normalizeViewportChunk } from './protocol';
 export type { StickyAncestor };
@@ -348,10 +348,12 @@ export class WorkerClient {
   /** Cycle 7 / Task 9 — request the column's distinct stringified value
    *  set. Cached worker-side per colId; invalidated whenever a
    *  transaction lands on any column. Backs the set-filter popup's
-   *  checkbox list. */
-  getDistinctValues(colId: string): Promise<string[]> {
+   *  checkbox list.
+   *  Cycle 21d / Task 13 — optional `limit` truncates the reply; the
+   *  worker-side cache always holds the full set. */
+  getDistinctValues(colId: string, limit?: number): Promise<string[]> {
     return this.send<{ values: string[] }>({
-      type: 'getDistinctValues', payload: { colId },
+      type: 'getDistinctValues', payload: { colId, limit },
     }).then((r) => r.values);
   }
 
@@ -401,6 +403,16 @@ export class WorkerClient {
   setAggFuncs(funcs: Array<{ name: string; source: string }>): Promise<void> {
     return this.send<{ visibleCount: number }>({
       type: 'setAggFuncs', payload: { funcs },
+    }).then(() => {});
+  }
+
+  /** Cycle 21d / Task 10 — install / replace (or remove, with null) the
+   *  worker's calculated-column program. Sources are reconstructed
+   *  worker-side via `new Function` (setAggFuncs precedent); a
+   *  reconstruction failure rejects this promise via the error envelope. */
+  setCalcProgram(program: WorkerCalcProgram | null): Promise<void> {
+    return this.send<{ visibleCount: number }>({
+      type: 'setCalcProgram', payload: program,
     }).then(() => {});
   }
 

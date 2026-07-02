@@ -6,7 +6,8 @@
  */
 import { describe, it, expect } from 'vitest';
 import { DistinctValuesPass, RowStore } from '../src/worker/dataPipeline';
-import type { WorkerColumn } from '../src/worker/protocol';
+import { CalcProgramStore } from '../src/worker/passes/calcPass';
+import type { WorkerColumn, WorkerCalcProgram } from '../src/worker/protocol';
 
 interface Row { id: string; ticker: string; price: number }
 
@@ -124,5 +125,112 @@ describe('DistinctValuesPass', () => {
     ];
     const pass = new DistinctValuesPass(store, cols);
     expect(new Set(pass.getValues('v'))).toEqual(new Set(['a', 'b']));
+  });
+});
+
+// ─── Cycle 21d / Task 13 review — calc value source seam ──────────────────
+//
+// DistinctValuesPass never got Task 11's CalcValueSource seam: a calc
+// column is fieldless, so `getValues` hit the `!col.field` early-return
+// and always answered `[]`. Mirrors the FilterPass/SortPass/GroupPass/
+// ViewportSlicer seam tests in tests/calcPassStageA.test.ts.
+
+/** `double` — row-local numeric calc column: `price * 2`. */
+const DOUBLE_INTERP = `(function evaluateCalcAst(ast, row, aggSlots, prevLookup) {
+  if (ast === null) return null;
+  if (ast.kind === 'field') return row[ast.name] * 2;
+  return null;
+})`;
+
+function doubleProgram(): WorkerCalcProgram {
+  return {
+    columns: [
+      {
+        colId: 'double',
+        ast: { kind: 'field', name: 'price' },
+        prePass: [],
+        cellDataType: 'number',
+        usesPrev: false,
+      },
+    ],
+    interpreterSource: DOUBLE_INTERP,
+    aggregateSources: [],
+  };
+}
+
+const fieldOfPrice = (colId: string): string | undefined => (colId === 'price' ? 'price' : undefined);
+
+interface PriceRow { id: string; price: number }
+
+function priceStore(): RowStore<PriceRow> {
+  const store = new RowStore<PriceRow>('id');
+  store.setAll([
+    { id: '1', price: 100 },
+    { id: '2', price: 200 },
+    { id: '3', price: 50 },
+  ]);
+  return store;
+}
+
+describe('DistinctValuesPass — calc column seam', () => {
+  it('with no calc source installed, a fieldless calc column returns [] (pre-21d behavior preserved)', () => {
+    const store = priceStore();
+    const cols: WorkerColumn[] = [{ colId: 'double', type: 'number' }];
+    const pass = new DistinctValuesPass(store, cols);
+    expect(pass.getValues('double')).toEqual([]);
+  });
+
+  it('returns the distinct set of a calc column value once a calc source is installed', () => {
+    const store = priceStore();
+    const calc = new CalcProgramStore();
+    calc.install(doubleProgram());
+    calc.ensureStageA(store, fieldOfPrice);
+
+    const cols: WorkerColumn[] = [{ colId: 'double', type: 'number' }];
+    const pass = new DistinctValuesPass(store, cols);
+    pass.setCalcSource(calc);
+    const values = pass.getValues('double');
+    // price 100/200/50 → double 200/400/100.
+    expect(new Set(values)).toEqual(new Set(['200', '400', '100']));
+  });
+
+  it('respects limit-agnostic full derivation — a data column alongside a calc column both resolve', () => {
+    const store = priceStore();
+    const calc = new CalcProgramStore();
+    calc.install(doubleProgram());
+    calc.ensureStageA(store, fieldOfPrice);
+
+    const cols: WorkerColumn[] = [
+      { colId: 'price', field: 'price', type: 'number' },
+      { colId: 'double', type: 'number' },
+    ];
+    const pass = new DistinctValuesPass(store, cols);
+    pass.setCalcSource(calc);
+    expect(new Set(pass.getValues('price'))).toEqual(new Set(['100', '200', '50']));
+    expect(new Set(pass.getValues('double'))).toEqual(new Set(['200', '400', '100']));
+  });
+
+  it('cache invalidation after a transaction changes a calc input re-derives the distinct set', () => {
+    const store = priceStore();
+    const calc = new CalcProgramStore();
+    calc.install(doubleProgram());
+    calc.ensureStageA(store, fieldOfPrice);
+
+    const cols: WorkerColumn[] = [{ colId: 'double', type: 'number' }];
+    const pass = new DistinctValuesPass(store, cols);
+    pass.setCalcSource(calc);
+    expect(new Set(pass.getValues('double'))).toEqual(new Set(['200', '400', '100']));
+
+    // Mutate row 3's price via a transaction (mirrors the worker's
+    // flush handler: apply → calc.onTransaction → calc.ensureStageA →
+    // distinct.invalidateRows(touched)).
+    const result = store.apply({ update: [{ id: '3', price: 300 }] });
+    calc.onTransaction(result);
+    calc.ensureStageA(store, fieldOfPrice);
+    pass.invalidateRows(result.update.map((u) => u.rowId));
+
+    const values = pass.getValues('double');
+    expect(new Set(values)).toEqual(new Set(['200', '400', '600']));
+    expect(values).not.toContain('100');
   });
 });

@@ -58,6 +58,7 @@ import type {
 import { ComparatorRegistry, type ComparatorFn } from '../comparatorRegistry';
 import { decodePivotResultColumnId } from '../../core/pivotColumns';
 import { encodePivotValueKey, PIVOT_PATH_SEP, type PivotPassOutput } from './pivotPass';
+import type { CalcValueSource } from './calcPass';
 
 interface ResolvedSortEntry {
   entry: SortModelEntry;
@@ -70,6 +71,11 @@ export class SortPass<TRow = any> {
   private model: SortModel = [];
   private colIndex = new Map<string, WorkerColumn>();
   private comparators: ComparatorRegistry;
+  /** Cycle 21d / Task 11 — CalcPass Stage A/B value seam. `null` when no
+   *  calc program is installed — the guard shape at every read site is
+   *  a null check, not a function call, so the hot compare loop pays
+   *  nothing on the common no-calc path. */
+  private calcSource: CalcValueSource | null = null;
 
   /** `comparators` is optional so existing callers (tests, demos) don't have
    *  to thread a registry through every construction. When omitted the
@@ -91,6 +97,9 @@ export class SortPass<TRow = any> {
     for (const col of columns) this.colIndex.set(col.colId, col);
   }
 
+  /** Install (or clear, via `null`) the calc-column value source. */
+  setCalcSource(src: CalcValueSource | null): void { this.calcSource = src; }
+
   apply(inputIds: string[]): string[] {
     if (this.model.length === 0) return inputIds;
     const sorted = inputIds.slice();
@@ -110,9 +119,21 @@ export class SortPass<TRow = any> {
       const bRow = this.store.getById(bId);
       if (!aRow || !bRow) return 0;
       for (const { entry, col, fn } of resolved) {
-        if (!col || !col.field) continue;
-        const av = (aRow as Record<string, unknown>)[col.field];
-        const bv = (bRow as Record<string, unknown>)[col.field];
+        if (!col) continue;
+        // Cycle 21d / Task 11 — same three-way branch as FilterPass:
+        // data column → direct field read; fieldless calc column →
+        // CalcPass cache; fieldless non-calc column → pre-21d skip.
+        let av: unknown;
+        let bv: unknown;
+        if (col.field) {
+          av = (aRow as Record<string, unknown>)[col.field];
+          bv = (bRow as Record<string, unknown>)[col.field];
+        } else if (this.calcSource !== null && this.calcSource.isCalcCol(col.colId)) {
+          av = this.calcSource.valueAt(aId, col.colId);
+          bv = this.calcSource.valueAt(bId, col.colId);
+        } else {
+          continue;
+        }
         const cmp = fn ? fn(av, bv) : compare(av, bv, col.type);
         if (cmp !== 0) return entry.direction === 'asc' ? cmp : -cmp;
       }
@@ -306,7 +327,15 @@ export class SortPass<TRow = any> {
       const rowRec = row as Record<string, unknown> | undefined;
       for (let e = 0; e < resolved.length; e++) {
         const col = resolved[e]!.col;
-        const v = col && col.field && rowRec ? rowRec[col.field] : undefined;
+        // Cycle 21d / Task 11 — data column → direct field read;
+        // fieldless calc column → CalcPass cache; fieldless non-calc
+        // column → `undefined` (pre-21d skip — the entry contributes no
+        // ordering weight, matching the flat-path `continue`).
+        const v = col && col.field && rowRec
+          ? rowRec[col.field]
+          : (col && rowId !== undefined && this.calcSource?.isCalcCol(col.colId)
+              ? this.calcSource.valueAt(rowId, col.colId)
+              : undefined);
         if (isNumericFast[e]) {
           // NaN handling matches `compare()`: a non-numeric coerces
           // to NaN which sorts to the end (numerically + via the

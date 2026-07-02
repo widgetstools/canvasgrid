@@ -110,6 +110,7 @@ export async function handleViewport(
           state.store, colIndex, visIds, visibleOrder, req.payload, pending,
           (key) => metaLookup.get(key),
           state.showOpenedGroup,
+          state.calc.hasProgram() ? state.calc : undefined,
         );
         // Cycle 15 / Task 16 — sticky ancestors from the ordered group
         // tree above firstRow.

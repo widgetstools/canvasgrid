@@ -23,6 +23,7 @@ import { realtimeStomp } from './realtimeStomp';
 import { formatDSL } from './formatDSL';
 import { conditionalStyling } from './conditionalStyling';
 import { alertsFeature } from './alerts';
+import { calculatedColumns } from './calculatedColumns';
 
 export interface Feature {
   id: string;
@@ -58,6 +59,7 @@ export const FEATURES: Feature[] = [
   formatDSL,
   conditionalStyling,
   alertsFeature,
+  calculatedColumns,
 ];
 
 export const FEATURE_MAP = new Map(FEATURES.map((f) => [f.id, f]));

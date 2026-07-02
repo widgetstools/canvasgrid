@@ -44,6 +44,7 @@
 import type { RowStore } from '../dataPipeline';
 import type { WorkerColumn } from '../protocol';
 import type { GroupModel } from '../../types';
+import type { CalcValueSource } from './calcPass';
 
 export interface GroupNode {
   /** Stable composite key — `${colId}:${value}` per level, joined by
@@ -156,10 +157,18 @@ export class GroupPass<TRow = any> {
   private isGroupOpenByDefaultCb:
     | ((params: { key: string; route: string[] }) => boolean)
     | null = null;
+  /** Cycle 21d / Task 11 — CalcPass Stage A/B value seam. `null` when no
+   *  calc program is installed — the guard at the bucket-key read is a
+   *  null check, not a function call, so the hot build loop pays
+   *  nothing on the common no-calc path. */
+  private calcSource: CalcValueSource | null = null;
 
   constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
     this.setColumns(columns);
   }
+
+  /** Install (or clear, via `null`) the calc-column value source. */
+  setCalcSource(src: CalcValueSource | null): void { this.calcSource = src; }
 
   /** Replace the group model. Validates colIds against the current
    *  column metadata and rejects duplicates so a malformed model is
@@ -377,9 +386,14 @@ export class GroupPass<TRow = any> {
       for (let d = 0; d < colCount; d++) {
         const field = fields[d]!;
         const colId = colIds[d]!;
-        const rawValue = field === null
-          ? undefined
-          : (row as Record<string, unknown>)[field];
+        // Cycle 21d / Task 11 — data column → direct field read;
+        // fieldless calc column → CalcPass cache; fieldless non-calc
+        // column → `undefined` (pre-21d "" bucket for every row).
+        const rawValue = field !== null
+          ? (row as Record<string, unknown>)[field]
+          : (this.calcSource !== null && this.calcSource.isCalcCol(colId)
+              ? this.calcSource.valueAt(rowId, colId)
+              : undefined);
         const keyPart = rawValue == null ? '' : '' + rawValue;
         const parentMap = parent.childByKey;
         let bucket = parentMap.get(keyPart);

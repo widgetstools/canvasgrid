@@ -1,4 +1,15 @@
-// @cgrid/calc — empty scaffold (cycle 21a).
-// Implementation lands in a subsequent cycle per the cycle 21 roadmap.
-// See: docs/superpowers/plans/2026-07-01-canvasgrid-cycle-21-modular-monorepo-and-intrinsic-features.md
-export {};
+// @cgrid/calc — public re-exports.
+// See docs/superpowers/specs/2026-07-02-cycle-21d-calc-design.md §3.
+
+export { CalcEngine } from './calcEngine';
+export { compileCalc } from './compile';
+export { registerAggregate, getAggregate, listAggregates } from './aggregates/registry';
+export { wireIntoKernel } from './bridge';
+export { transformAggregates } from './aggTransform';
+export { evaluateCalcAst, INTERPRETER_SOURCE, buildWorkerCalcProgram } from './workerProgram';
+
+export type {
+  CellDataType, CalculatedColumnDef, AggScope, AggSpec, CompiledCalc, CalcValidationError,
+  Aggregate, ColumnOverride, ColumnTemplate, TypeDefaults, WireCalcOptions, Unsubscribe,
+} from './types';
+export type { CompiledCalcColumn, WorkerCalcProgramPayload } from './workerProgram';
