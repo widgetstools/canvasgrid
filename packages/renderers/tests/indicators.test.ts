@@ -7,7 +7,7 @@ import type { FakeGc } from './helpers/fakeGc';
 import { SEMANTIC_COLORS } from '../src/palette';
 import {
   statusDot, quoteQualityDot, staleFlag, directionArrow,
-  structureIconStrip, trafficLightCell, getLastStaleFlagTooltip,
+  structureIconStrip, trafficLightCell, getStaleFlagTooltip,
 } from '../src/indicators';
 
 function baseConfig(overrides: Partial<CellPaintConfig> = {}): CellPaintConfig {
@@ -109,22 +109,26 @@ describe('staleFlag', () => {
   it('applies globalAlpha 0.6 when stale (nominal)', () => {
     staleFlag.paint(gc, baseConfig({
       valueFormatted: '101.25',
+      rowId: 'r1',
+      colId: 'px',
       rowData: { lastTick: 1000 },
       params: { nowMs: 12000, lastTickField: 'lastTick', staleAfterMs: 8000 },
     }));
     expect(gc.calls.some((c) => c.op === 'set:globalAlpha' && c.args[0] === 0.6)).toBe(true);
     expect(gc.calls.some((c) => c.op === 'arc')).toBe(true);
-    expect(getLastStaleFlagTooltip()).toBe('last tick 11s ago');
+    expect(getStaleFlagTooltip('r1', 'px')).toBe('last tick 11s ago');
   });
 
   it('paints normally without alpha when fresh (edge)', () => {
     staleFlag.paint(gc, baseConfig({
       valueFormatted: '101.25',
+      rowId: 'r1',
+      colId: 'px',
       rowData: { lastTick: 9000 },
       params: { nowMs: 10000, lastTickField: 'lastTick', staleAfterMs: 8000 },
     }));
     expect(gc.calls.some((c) => c.op === 'set:globalAlpha')).toBe(false);
-    expect(getLastStaleFlagTooltip()).toBeUndefined();
+    expect(getStaleFlagTooltip('r1', 'px')).toBeUndefined();
   });
 
   it('draws value text before stale icon (variant)', () => {
@@ -191,7 +195,7 @@ describe('structureIconStrip', () => {
       params: { flags: { floater: true, 'make-whole': true } },
     }));
     const texts = gc.calls.filter((c) => c.op === 'fillText').map((c) => c.args[0]);
-    expect(texts).toEqual(expect.arrayContaining(['F', 'M']));
+    expect(texts).toEqual(expect.arrayContaining(['W', 'C']));
   });
 });
 

@@ -16,10 +16,12 @@ type RowsChangedEvent<TRow> = {
   source: 'transaction' | 'transactionAsync' | 'edit';
 };
 
-function makeFakeGrid<TRow>() {
+function makeFakeGrid<TRow>(seed?: Array<{ rowId: string; row: TRow }>) {
   let handler: ((e: RowsChangedEvent<TRow>) => void) | null = null;
   const api = {
-    forEachRow(_fn: (rowId: string, row: TRow) => void) {},
+    forEachRow(fn: (rowId: string, row: TRow) => void) {
+      for (const entry of seed ?? []) fn(entry.rowId, entry.row);
+    },
     getThemeKind() { return 'light' as const; },
     addEventListener(_type: string, h: (e: RowsChangedEvent<TRow>) => void) {
       handler = h;
@@ -36,6 +38,15 @@ function makeFakeGrid<TRow>() {
     },
   };
 }
+
+describe('TickHistory — constructor seed', () => {
+  it('seeds opted-in columns from forEachRow', () => {
+    const grid = makeFakeGrid<PxRow>([{ rowId: 'r1', row: { px: 1.5 } }]);
+    const history = new TickHistory<PxRow>(grid.api, { px: {} });
+    expect([...history.get('r1', 'px')]).toEqual([1.5]);
+    history.destroy();
+  });
+});
 
 describe('TickHistory — ring wrap', () => {
   it('window=3, push [1,2,3,4,5] → get returns [3,4,5]', () => {

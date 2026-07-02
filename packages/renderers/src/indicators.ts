@@ -13,6 +13,7 @@ import type {
   StructureIconStripParams,
   TrafficLightCellParams,
 } from './types';
+import { STRUCTURE_GLYPH_MAP } from './palette';
 
 type Gc = Parameters<CellPainter['paint']>[0];
 
@@ -40,11 +41,25 @@ const colorScratch: Required<SemanticColorMap> = {
   muted: SEMANTIC_COLORS.muted,
 };
 
-/** Bridge Task 13 reads the last stale-flag tooltip computed during paint. */
-let lastStaleFlagTooltip: string | undefined;
+/** Bridge Task 13 reads per-cell stale-flag tooltips keyed by rowId/colId. */
+const staleTooltipByCell = new Map<string, string>();
 
+function staleCellKey(rowId: string | undefined, colId: string | undefined): string | undefined {
+  if (!rowId || !colId) return undefined;
+  return `${rowId}\0${colId}`;
+}
+
+export function getStaleFlagTooltip(
+  rowId: string | undefined,
+  colId: string | undefined,
+): string | undefined {
+  const key = staleCellKey(rowId, colId);
+  return key ? staleTooltipByCell.get(key) : undefined;
+}
+
+/** @deprecated Use getStaleFlagTooltip(rowId, colId). Kept for bridge migration. */
 export function getLastStaleFlagTooltip(): string | undefined {
-  return lastStaleFlagTooltip;
+  return staleTooltipByCell.values().next().value;
 }
 
 function padLeft(p: CellPaintConfig): number {
@@ -151,23 +166,32 @@ function resolveTrafficLightColor(state: 'red' | 'amber' | 'green' | undefined):
   return SEMANTIC_COLORS.muted;
 }
 
+function structureGlyphLabel(
+  key: StructureGlyphKey,
+  overrides?: StructureIconStripParams['glyphOverrides'],
+): string {
+  const iconName = overrides?.[key] ?? STRUCTURE_GLYPH_MAP[key];
+  const token = iconName.split('-').pop() ?? iconName;
+  return (token.charAt(0) || structureAbbrev[key]).toUpperCase();
+}
+
 function paintStructureSlot(
   gc: Gc,
   p: CellPaintConfig,
   key: StructureGlyphKey,
   active: boolean,
   x: number,
+  glyphLabel: string,
 ): number {
   const size = 12;
   const cy = textY(gc, p);
   const color = active ? SEMANTIC_COLORS.warning : SEMANTIC_COLORS.muted;
-  const glyph = structureAbbrev[key];
   gc.cache.strokeStyle = color;
   gc.cache.lineWidth = 1;
   gc.beginPath();
   gc.arc(x + size / 2, cy, size / 2 - 1, 0, Math.PI * 2);
   gc.stroke();
-  fragText(gc, glyph, x + size / 2, cy, {
+  fragText(gc, glyphLabel, x + size / 2, cy, {
     font: `600 8px ${p.font.match(/(\d+px\s+.+)$/)?.[1] ?? 'sans-serif'}`,
     color,
     align: 'center',
@@ -220,7 +244,11 @@ export const staleFlag: CellPainter = {
     const text = p.valueFormatted || String(p.value ?? '');
     const isStale = Number.isFinite(lastMs) && nowMs - lastMs >= staleAfter;
     const ageSec = Number.isFinite(lastMs) ? Math.max(0, Math.floor((nowMs - lastMs) / 1000)) : 0;
-    lastStaleFlagTooltip = isStale ? `last tick ${ageSec}s ago` : undefined;
+    const cellKey = staleCellKey(p.rowId, p.colId);
+    if (cellKey) {
+      if (isStale) staleTooltipByCell.set(cellKey, `last tick ${ageSec}s ago`);
+      else staleTooltipByCell.delete(cellKey);
+    }
 
     if (isStale) {
       gc.cache.save();
@@ -265,7 +293,8 @@ export const structureIconStrip: CellPainter = {
     let x = p.bounds.x + padLeft(p);
     for (const key of STRUCTURE_KEYS) {
       if (!flags[key]) continue;
-      x = paintStructureSlot(gc, p, key, true, x);
+      const label = structureGlyphLabel(key, params.glyphOverrides);
+      x = paintStructureSlot(gc, p, key, true, x, label);
     }
   },
 };

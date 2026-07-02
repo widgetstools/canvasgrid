@@ -2,13 +2,13 @@
 // Four new painters + five thin adapters re-exporting kernel sparkline variants.
 
 import type { CellPaintConfig, CellPainter } from '@cgrid/kernel';
-import { coerceToNumberArray } from '@kernel-src/renderer/cellRenderers/sparkline/coerceToNumberArray';
-import { paintLineSparkline } from '@kernel-src/renderer/cellRenderers/sparkline/lineSparkline';
-import { paintColumnSparkline } from '@kernel-src/renderer/cellRenderers/sparkline/columnSparkline';
-import { paintAreaSparkline } from '@kernel-src/renderer/cellRenderers/sparkline/areaSparkline';
-import { paintBarSparkline } from '@kernel-src/renderer/cellRenderers/sparkline/barSparkline';
-import { paintPieSparkline } from '@kernel-src/renderer/cellRenderers/sparkline/pieSparkline';
-import type { SparklineType } from '@kernel-src/renderer/cellRenderers/sparkline/types';
+import { coerceToNumberArray } from '../../kernel/src/renderer/cellRenderers/sparkline/coerceToNumberArray';
+import { paintLineSparkline } from '../../kernel/src/renderer/cellRenderers/sparkline/lineSparkline';
+import { paintColumnSparkline } from '../../kernel/src/renderer/cellRenderers/sparkline/columnSparkline';
+import { paintAreaSparkline } from '../../kernel/src/renderer/cellRenderers/sparkline/areaSparkline';
+import { paintBarSparkline } from '../../kernel/src/renderer/cellRenderers/sparkline/barSparkline';
+import { paintPieSparkline } from '../../kernel/src/renderer/cellRenderers/sparkline/pieSparkline';
+import type { SparklineType } from '../../kernel/src/renderer/cellRenderers/sparkline/types';
 import { dot, fragText, withAlpha } from './paintUtils';
 import { SEMANTIC_COLORS } from './palette';
 import type {
@@ -29,7 +29,34 @@ const colorScratch: Required<SemanticColorMap> = {
   muted: SEMANTIC_COLORS.muted,
 };
 
-const sparklineParamsScratch: { sparkline?: { type: SparklineType; options?: unknown } } = {};
+const sparklineAdapterParams = {
+  sparkline: { type: 'line' as SparklineType, options: undefined as unknown },
+};
+
+function makeSparklineAdapter(
+  type: SparklineType,
+  paint: (gc: Gc, p: CellPaintConfig) => void,
+): CellPainter {
+  return {
+    paint(gc, p) {
+      const data = coerceToNumberArray(p.value);
+      if (!data) return;
+      const originalValue = p.value;
+      const originalParams = p.params;
+      p.value = data;
+      const prior = (originalParams as { sparkline?: { options?: unknown } } | undefined)?.sparkline;
+      sparklineAdapterParams.sparkline.type = type;
+      sparklineAdapterParams.sparkline.options = prior?.options;
+      p.params = sparklineAdapterParams;
+      try {
+        paint(gc, p);
+      } finally {
+        p.value = originalValue;
+        p.params = originalParams;
+      }
+    },
+  };
+}
 
 function colorsFromParams(overrides?: SemanticColorMap): Required<SemanticColorMap> {
   colorScratch.positive = overrides?.positive ?? SEMANTIC_COLORS.positive;
@@ -56,31 +83,6 @@ function innerBounds(p: CellPaintConfig): { x0: number; y0: number; w: number; h
     y0: p.bounds.y + 2,
     w: p.bounds.w - 4,
     h: p.bounds.h - 4,
-  };
-}
-
-function makeSparklineAdapter(
-  type: SparklineType,
-  paint: (gc: Gc, p: CellPaintConfig) => void,
-): CellPainter {
-  return {
-    paint(gc, p) {
-      const data = coerceToNumberArray(p.value);
-      if (!data) return;
-      const originalValue = p.value;
-      const originalParams = p.params;
-      p.value = data;
-      const base = (typeof originalParams === 'object' && originalParams ? originalParams : {}) as Record<string, unknown>;
-      const prior = (base.sparkline as { options?: unknown } | undefined) ?? {};
-      sparklineParamsScratch.sparkline = { ...prior, type };
-      p.params = { ...base, sparkline: sparklineParamsScratch.sparkline };
-      try {
-        paint(gc, p);
-      } finally {
-        p.value = originalValue;
-        p.params = originalParams;
-      }
-    },
   };
 }
 

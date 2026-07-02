@@ -4,7 +4,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import type { CellPaintConfig } from '@cgrid/kernel';
 import { makeFakeGc } from './helpers/fakeGc';
 import type { FakeGc } from './helpers/fakeGc';
-import { _resetCoerceCacheForTests } from '@kernel-src/renderer/cellRenderers/sparkline/coerceToNumberArray';
+import { _resetCoerceCacheForTests } from '../../kernel/src/renderer/cellRenderers/sparkline/coerceToNumberArray';
 import {
   winLossSparkline, yieldCurveSparkline, krdBarChart, depthLadderCell,
   lineSparkline, columnSparkline, areaSparkline, barSparkline, pieSparkline,

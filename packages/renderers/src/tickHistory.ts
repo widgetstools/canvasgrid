@@ -101,6 +101,12 @@ export class TickHistory<TRow = unknown> {
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     grid.addEventListener('rowsChanged', this._handler as any);
+
+    grid.forEachRow((rowId, row) => {
+      for (const colId of this._windows.keys()) {
+        this._pushFromRow(rowId, colId, row);
+      }
+    });
   }
 
   /** O(1) ring-buffer push for one (rowId, colId) cell. */
