@@ -167,6 +167,65 @@ Create `packages/renderers/tests/badges.test.ts` — StatusPill WORKING/REJECTED
 
 **Steps:** write failing tests → implement → green + zero-kernel-diff → commit `feat(renderers): cycle 21f task 8 — badge category painters`.
 
+### Task 9: Bars / gauges category — 8 painters
+
+**Catalog acceptance (quote VERBATIM in task brief):** catalog §3.5 rows:
+
+| Renderer | Tier | Purpose | Visual | Deps |
+|---|---|---|---|---|
+| **ProgressBarCell** | T1 | 0–100% fill (order fill ratio) | Horizontal fill bar, text overlaid; neutral grey track, green fill at 100% | kernel |
+| **RangeBarCell** | T2 | Position within a range | Horizontal bar with two endpoint labels; marker dot shows current position (52w range, day range) | kernel |
+| **BidirectionalBarCell** | T1 | Centre-zero left-red / right-green | Position size or P&L across visible rows; extends left (short/negative) red, right (long/positive) green; bar width proportional to `abs(value) / max(abs)` in scope | kernel, calc (scope max) |
+| **HeatCell** | T1 | Column-wide gradient background | Full-cell background tint; darkest for extreme values in the column's range; interpolated for middle values; classic heat map | calc (column-wide value range) |
+| **GaugeCell** | T2 | Segmented gauge with tick marker | Horizontal segmented gauge (e.g. `-20bps / 0 / +20bps` zones); coloured tick shows current value; used for implementation shortfall, default probability | kernel |
+| **SpreadBarCell** | T2 | Bid/ask spread-width indicator | Thin bar behind mid price; wider bar as bid/ask spread widens; amber at 1σ, red at 2σ vs rolling average | calc (rolling stats) |
+| **VolumeBar** | T2 | Full-cell horizontal bar for volume | Bar sized to `volume / max(volume)` in scope; text overlays with reverse-out colour | calc (scope max) |
+| **MaturityLadderBar** | T3 | Fixed-income tenor bucket bar | Full-cell segmented bar by tenor bucket (0-1y, 1-3y, 3-5y, 5-10y, 10y+); segment widths = notional at each bucket | calc |
+
+**Files:** Modify `packages/renderers/src/bars.ts` — implement all 8 using `miniBar()`/`dot()`/`labInterpolate()`/`fragText()`. **ProgressBarCell:** `fraction`/`fractionField`, track + fill, green at 100%. **RangeBarCell:** min/max/value fields, marker dot. **BidirectionalBarCell:** `params.stats.maxAbs` scope denominator; degrade to `abs(value)` when stats absent. **HeatCell:** LAB default (`curve:'lab'`), full-cell tint via `labInterpolate(negative,positive,t)`. **GaugeCell:** zone segments + vertical tick. **SpreadBarCell:** spread from bid/ask fields; rolling σ from `params.history.values`. **VolumeBar:** `value/stats.max`; optional reverse-out text. **MaturityLadderBar:** `bucketFields` keyed by `MaturityBucket`.
+
+Create `packages/renderers/tests/bars.test.ts` — ≥3 cases/renderer; HeatCell LAB vs linear; BidirectionalBarCell scope max; SpreadBarCell history band.
+
+**Steps:** write failing tests → implement → green + zero-kernel-diff → commit `feat(renderers): cycle 21f task 9 — bar category painters`.
+
+---
+
+### Task 10: In-cell charts category — 4 new + 5 kernel re-exports
+
+**Catalog acceptance (quote VERBATIM in task brief):** catalog §3.6 rows (new four; line/column/area/bar/pie re-exported per §2.6.5):
+
+| Renderer | Tier | Purpose | Visual | Deps |
+|---|---|---|---|---|
+| **LineSparkline** | T1 | Trend line, ~30–120 points | Thin polyline left-to-right; optional first/last/min/max highlight dots; stroke colour by trend direction | expression (windowed data) |
+| **AreaSparkline** | T1 | Filled trend for cumulative curves | Line + semi-transparent fill below; used for running P&L, cumulative volume | expression |
+| **BarSparkline** | T1 | Column bars per period | Discrete bars, gap between each; positive/negative split at zero line; used for daily volume, per-minute trades | expression |
+| **WinLossSparkline** | T3 | Binary up/down bars | 1px-wide bars, all same height; up green above zero-line, down red below; used for daily P&L strings | expression |
+| **YieldCurveSparkline** | T2 | Multi-tenor yield curve | 6-point line with tenor labels below (`2y 5y 10y 30y`); marker dot on the bond's own tenor; axis is tenor not time | expression, format |
+| **KRDBarChart** | T3 | Key-rate duration grouped bars | Micro histogram per tenor bucket (2y/5y/10y/30y bars); bp-per-tenor sensitivity | expression |
+| **DepthLadderCell** | T2 | Mini order book (3–5 levels) | Vertical mini-ladder; bid volumes left (red bars, right-aligned) / ask right (green bars, left-aligned); sizes on outer edges; prices centre | kernel |
+
+**Files:** Modify `packages/renderers/src/charts.ts`. **Re-exports:** thin adapters delegating to kernel `paint*Sparkline` via `@kernel-src` alias (vitest `fs.allow` + tsconfig paths — same deep-import precedent as Task 3 threading proof); set `params.sparkline.type` per canonical name (`line-sparkline`→`'line'`, `column-sparkline`→`'column'`, etc.); reuse kernel `coerceToNumberArray`. **WinLossSparkline:** read `valuesField` array from rowData. **YieldCurveSparkline:** polyline + tenor labels + optional marker. **KRDBarChart:** signed micro-bars per tenor. **DepthLadderCell:** multi-field bid/ask price/size arrays, `levels` capped at 5.
+
+Create `packages/renderers/tests/charts.test.ts` — ≥3 cases per new renderer; re-export smoke tests assert stroke/fillRect delegation.
+
+**Steps:** write failing tests → implement → green + zero-kernel-diff → commit `feat(renderers): cycle 21f task 10 — chart category painters + sparkline re-exports`.
+
+---
+
+### Task 11: Composite category — 5 painters
+
+**Catalog acceptance:** catalog §3.7 rows (StackedValueCell, PriceQuoteCell, NBBOCell, BenchmarkSpreadCell, PriceChangeComposite). Multi-field via minimal-composite threading (Task 3). Composes numeric/text/badge/bar sub-patterns.
+
+**Files:** `packages/renderers/src/composite.ts` + `tests/composite.test.ts`. Commit `feat(renderers): cycle 21f task 11 — composite category painters`.
+
+---
+
+### Task 12: Action category — 2 painters + hit router stub
+
+**Catalog acceptance:** catalog §3.8 (IconActionCluster, RowMenuCell). Verify kernel `cellClicked` event name + context-menu public API at implementation time. Hit regions ≥24×24; kebab opens context menu or host callback.
+
+**Files:** `packages/renderers/src/actions.ts` + `tests/actions.test.ts`. Commit `feat(renderers): cycle 21f task 12 — action category painters`.
+
 ---
 
 <!-- PHASE-CHECKPOINT -->
