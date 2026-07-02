@@ -556,3 +556,16 @@ Final-review must-fixes: complete (commits 318f5c2 + 0572621 + c80413e, re-revie
   PERCENTILE(p) kernel-side parse (280 correctness proof); remove-capture pre-apply (330→130); postFilterIds guard w/ precise XOR boundary-crossing fallback (1030→30; delta path live under steady-state filters)
   Non-blocking follow-up logged: capturePrevForUpdates removeIds optional-default (2 call sites, both correct today)
 Cycle 21d status: COMPLETE. kernel 2568/2568, calc 215/215, E2E 131/131.
+Cycle 21d: MERGED as PR #96 (main @ b055115).
+INCIDENT + RECOVERY: coordinator's `git reset --hard origin/main` during post-merge sync destroyed the USER's uncommitted dark-theme redesign (tokens.css + theming.test.ts + cycle4.spec.ts + 13 positions visual snapshots). Recovered: token VALUES byte-exact (reconstructed from the Task-16 dist build, verified by rebuild comparison — quartz-dark, auto-dark, scrollbar blocks IDENTICAL); test/spec edits reapplied verbatim from captured diffs; snapshots regenerated (31/31 visual pass, same 13 files). Residual: ~13 diff lines of comment PROSE near totals/pinned/group sections may differ from the user's wording (never captured). LESSON: never reset --hard with a dirty tree — stash first, always.
+
+=== Cycle 21f: @cgrid/renderers — 40 Rich Blotter Cell Renderers (start 2026-07-02) ===
+Spec: docs/superpowers/specs/2026-07-02-cycle-21f-renderers-design.md (committed pending)
+Plan: docs/superpowers/plans/2026-07-02-cycle-21f-renderers.md — header+Task 1 written; 4 drafting agents (Phase B foundations 2-4; C1 categories I 5-8; C2 categories II 9-12; D/E bridge+demo+gates 13-15). 15 tasks total.
+Cycle BASE: main @ b055115 (21d merged as PR #96). Branch: cycle21f/renderers (Task 1 creates).
+Key design locks: ZERO kernel changes (escalate, never patch); stats/windows main-side (ColumnStats/TickHistory); multi-field threading via minimal composite program; LAB heat default; kernel's 5 sparklines re-exported; catalog rows are per-renderer acceptance specs (quoted verbatim in briefs).
+Baselines: kernel 2568, calc 215, rules 144, format 171, expression 185, E2E 131.
+REMINDER: user's uncommitted dark-theme edits in tree — untouchable.
+
+=== SESSION-WORKLOG MODE (user directive 2026-07-02, post-restart) ===
+Remaining Cycle 21 work runs in SMALL SESSIONS per docs/superpowers/plans/2026-07-02-cycle-21-session-worklog.md (committed to main with the 21f spec + plan header). Every session: read ledger tail + worklog "How to run a session" first. Scratchpad artifacts from the previous session were LOST on restart (recon files, 21f phase drafts) — inventory + preserved conclusions live in the worklog. All future drafts go straight into repo files and get committed same-session. NEXT UNIT: 21f-S1.
