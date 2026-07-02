@@ -46,6 +46,11 @@ export interface CellPaintConfig {
   content?: import('../../types').CellContent;
   /** Cycle 27 / Task 3 — decorators overlaid after content. */
   decorators?: import('../../types').CellDecorator[];
+  /** Cycle 21e / Task 11 — see ColCellOverrides.textDecoration. */
+  textDecoration?: 'none' | 'underline' | 'line-through';
+  /** Cycle 21e / Task 11 — rule-engine indicator for this cell, stored by
+   *  the applyCellProps fold; painted by byRows (Task 14). */
+  ruleIndicator?: { iconName: string; color: string; target: string; position: string } | null;
   // What's already painted under this cell (bundle bg). Skip the bg fill
   // when bg === prefillColor (already done by the bundle pass).
   prefillColor: string;
@@ -247,12 +252,15 @@ export const textCell: CellPainter = {
     } else if (p.halign === 'right') {
       gc.cache.textAlign = 'right';
       gc.fillText(p.valueFormatted, p.bounds.x + p.bounds.w - padRight, cy);
+      paintTextDecoration(gc, p, p.bounds.x + p.bounds.w - padRight, cy);
     } else if (p.halign === 'center') {
       gc.cache.textAlign = 'center';
       gc.fillText(p.valueFormatted, p.bounds.x + p.bounds.w / 2, cy);
+      paintTextDecoration(gc, p, p.bounds.x + p.bounds.w / 2, cy);
     } else {
       gc.cache.textAlign = 'left';
       gc.fillText(p.valueFormatted, p.bounds.x + padLeft, cy);
+      paintTextDecoration(gc, p, p.bounds.x + padLeft, cy);
     }
     // Cycle 27 / Task 2 — per-cell border overlay (after content so it
     // sits on top). No-op when p.border is undefined.
@@ -272,6 +280,31 @@ function applyLetterSpacing(gc: CachedContext2D, p: CellPaintConfig): void {
   const ls = p.letterSpacing ?? 0;
   // The DOM property accepts a CSS length string.
   (gc.cache as any).letterSpacing = `${ls}px`;
+}
+
+/** Cycle 21e / Task 11 — draw underline / line-through for the default
+ *  text path. 1px line in the current fg, sized by measureText. Called
+ *  after fillText with the same x/alignment the text used. */
+function paintTextDecoration(
+  gc: CachedContext2D,
+  p: CellPaintConfig,
+  textX: number,
+  cy: number,
+): void {
+  if (!p.textDecoration || p.textDecoration === 'none' || !p.valueFormatted) return;
+  const w = gc.measureText(p.valueFormatted).width;
+  const x0 = p.halign === 'right' ? textX - w
+    : p.halign === 'center' ? textX - w / 2
+    : textX;
+  const y = p.textDecoration === 'underline' ? cy + 2 : cy - 3;
+  gc.cache.save();
+  gc.cache.strokeStyle = p.fg;
+  gc.cache.lineWidth = 1;
+  gc.beginPath();
+  gc.moveTo(x0, y);
+  gc.lineTo(x0 + w, y);
+  gc.stroke();
+  gc.cache.restore();
 }
 
 /** Cycle 27 / Task 3 — render the content-slot payload. Picks renderer
@@ -391,6 +424,7 @@ export const numberCell: CellPainter = {
       renderContentSlot(gc, p, p.content, cy, padLeft, padRight);
     } else {
       gc.fillText(p.valueFormatted, x, cy);
+      paintTextDecoration(gc, p, x, cy);
     }
     // Cycle 27 / Task 2 — per-cell border overlay.
     if (p.border) paintCellBorders(gc, p.bounds, p.border);

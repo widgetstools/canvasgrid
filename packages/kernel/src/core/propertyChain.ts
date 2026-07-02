@@ -7,6 +7,7 @@ import type {
 import type { CellPaintConfig } from '../renderer/cellRenderers/registry';
 import type { ResolvedTheme } from '../theming/cssReader';
 import { getFormatCompiler, type CompositeColDefShape } from './formatCompilerSlot';
+import { getRuleEngine } from './ruleEngineSlot';
 
 export type { ColCellOverrides };
 
@@ -343,6 +344,15 @@ export interface ApplyCellPropsInput {
    *  cell. The header painter renders a centered tri-state checkbox
    *  in place of the column's headerName text. */
   headerCheckboxState?: 'none' | 'partial' | 'all';
+  /** Cycle 21e / Task 11 — string rowId of the data row. Undefined on
+   *  header / totals / pinned / group / footer cells — exactly the cells
+   *  the rule fold must skip. */
+  rowId?: string;
+  /** Cycle 21e / Task 11 — full row for rule-condition evaluation
+   *  (rowDataById mirror; falls back to the visible-column snapshot). */
+  ruleRow?: Record<string, unknown>;
+  /** Cycle 21e / Task 11 — active theme kind for the rule eval ctx. */
+  themeKind?: 'light' | 'dark';
 }
 
 /** Apply a `ColCellOverrides` patch onto the mutable slots of `target`.
@@ -368,6 +378,8 @@ function applyOverridePatch(target: CellPaintConfig, patch: ColCellOverrides): v
   if (patch.halign !== undefined) target.halign = patch.halign;
   if (patch.valign !== undefined) target.valign = patch.valign;
   if (patch.textTransform !== undefined) target.textTransform = patch.textTransform;
+  // Cycle 21e / Task 11 — see ColCellOverrides.textDecoration.
+  if (patch.textDecoration !== undefined) target.textDecoration = patch.textDecoration;
   if (patch.letterSpacing !== undefined) target.letterSpacing = patch.letterSpacing;
   if (patch.lineHeight !== undefined) target.lineHeight = patch.lineHeight;
   if (patch.padding !== undefined) {
@@ -585,6 +597,10 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.border = undefined;
   target.content = undefined;
   target.decorators = undefined;
+  target.textDecoration = undefined;
+  // Cycle 21e / Task 11 — rule-fold outputs, reset per cell (the config
+  // object is reused across the paint loop).
+  target.ruleIndicator = undefined;
 
   // Cycle 14 / Task 1 — totals-row "lift" treatment. Bumps the font
   // weight by +1 stop (body 400 → totals 500 by default) and swaps
@@ -725,6 +741,61 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
           const patch = variantMap.get(rule.className);
           if (patch) applyOverridePatch(target, patch);
         }
+      }
+    }
+
+    // ── 3.5. Cycle 21e / Task 11 — rule-engine fold ──────────────────────
+    // DATA cells only: ctx.rowId is populated exclusively for data-leaf
+    // rows (byRows threads '' → undefined for group/footer chunk entries;
+    // header / totals / pinned / group-footer paths never set it), so the
+    // single guard below is the data-cell discriminator. Slot empty or
+    // `matched` empty → zero-diff behavior (spec §5.2).
+    // Fold position per spec §3.5: AFTER cellClassRules variants, BEFORE
+    // function-form cellStyle — rules beat declarative class styling; an
+    // explicit per-cell cellStyle function stays the app's last word.
+    const ruleEngine = getRuleEngine();
+    if (ruleEngine !== null && ctx.rowId !== undefined) {
+      let ruleResult: ReturnType<typeof ruleEngine.evaluateCell> | null = null;
+      try {
+        ruleResult = ruleEngine.evaluateCell({
+          row: ctx.ruleRow ?? ctx.rowData ?? {},
+          rowId: ctx.rowId,
+          colId: colDef.colId,
+          theme: ctx.themeKind ?? 'light',
+        });
+      } catch {
+        ruleResult = null; // engine errors never break paint
+      }
+      if (ruleResult !== null && ruleResult.matched.length > 0) {
+        const s = ruleResult.style;
+        if (s !== null) {
+          const patch: ColCellOverrides = {};
+          if (s.color !== undefined) patch.fg = s.color;
+          if (s.backgroundColor !== undefined) patch.bg = s.backgroundColor;
+          // fontWeight / fontStyle ride composeFont via applyOverridePatch
+          // — the same breakout-composition path Cycle 27 built; no manual
+          // font-string rebuild needed.
+          if (s.fontWeight !== undefined) patch.fontWeight = s.fontWeight as ColCellOverrides['fontWeight'];
+          if (s.fontStyle !== undefined) patch.fontStyle = s.fontStyle;
+          if (s.textDecoration !== undefined) {
+            patch.textDecoration = s.textDecoration as ColCellOverrides['textDecoration'];
+          }
+          // borderColor/borderStyle → BorderSpec on all four sides.
+          // borderStyle 'none' (or color absent) → no border patch.
+          if (s.borderColor !== undefined && s.borderStyle !== 'none') {
+            patch.border = {
+              all: {
+                width: 1,
+                color: s.borderColor,
+                style: (s.borderStyle ?? 'solid') as import('../types').BorderStyle,
+              },
+            };
+          }
+          applyOverridePatch(target, patch);
+        }
+        // Indicator + formatProgram are stored for the byRows paint path
+        // (Cycle 21e / Task 14) — one evaluateCell per cell, consumed twice.
+        target.ruleIndicator = ruleResult.indicator;
       }
     }
   }

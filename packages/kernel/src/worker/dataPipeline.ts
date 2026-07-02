@@ -865,10 +865,15 @@ export class ViewportSlicer<TRow = any> {
     const groupChildCount = new Uint32Array(count);
     const isExpanded = new Uint8Array(count);
     isExpanded.fill(1);
+    // Cycle 21e / Task 11 — string rowId per chunk slot, parallel to
+    // `rowIds` (numeric id). The flat slicer is data-only, so every
+    // slot is populated in the loop below.
+    const stringRowIds: string[] = new Array<string>(count);
 
     for (let i = 0; i < count; i++) {
       const id = visibleIds[rowStart + i]!;
       rowIds[i] = this.store.getNumericId(id);
+      stringRowIds[i] = id;
       heights[i] = this.store.effectiveShippedHeight(id);
     }
 
@@ -937,6 +942,7 @@ export class ViewportSlicer<TRow = any> {
       rowStart,
       rowCount: count,
       rowIds,
+      stringRowIds,
       rowKinds,
       groupDepth,
       heights,

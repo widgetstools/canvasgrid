@@ -1017,6 +1017,12 @@ export class CGrid<TRow = any> {
       getCanvasWidth: () => this.canvasBounds.width,
       getCanvasHeight: () => this.canvasBounds.height,
       rowDataSnapshotAt: (rowIndex) => this.rowDataSnapshotAt(rowIndex),
+      // Cycle 21e / Task 11 — rule-fold threading: string rowId per data
+      // row, full-row lookup from the rowDataById mirror (the paint
+      // snapshot is visible-columns-only), and the active theme kind.
+      stringRowIdAt: (rowIndex) => this.stringRowIdAt(rowIndex),
+      getRowDataById: (rowId) => this.rowDataById.get(rowId),
+      getThemeKind: () => this.getThemeKind(),
       getQuickFilterLowerTerms: () => this.quickFilterLowerTerms,
       // Cycle 9 / Task 5 — paint a 6×6 fill handle on the last range when
       // enabled. Read per paint so a runtime setGridOption flip lights up
@@ -6655,6 +6661,19 @@ export class CGrid<TRow = any> {
     return `row-${rowIndex}`;
   }
 
+  /** Cycle 21e / Task 11 — real string rowId for a visible data row, from
+   *  the chunk's `stringRowIds` mirror. Returns null for rows outside the
+   *  chunk window and '' for non-data rows (group / footer). NOTE: the
+   *  legacy `rowIdAt` stub above still feeds pointer-event payloads —
+   *  changing it would alter existing event payloads; this accessor is
+   *  additive and rules/flash-only. */
+  private stringRowIdAt(rowIndex: number): string | null {
+    if (!this.chunk) return null;
+    const localIndex = rowIndex - this.chunk.rowStart;
+    if (localIndex < 0 || localIndex >= this.chunk.rowCount) return null;
+    return this.chunk.stringRowIds?.[localIndex] ?? null;
+  }
+
   /** Cycle 24 / Task 4 — subscribe to state-affecting events and feed
    *  human-readable text into the a11y overlay's aria-live region.
    *  The overlay debounces 250ms internally so multiple events
@@ -7644,6 +7663,14 @@ export class CGrid<TRow = any> {
       isHeader: false,
       rowData,
       rowIndex,
+      // Cycle 21e / Task 11 — rule fold participates in the painted-bg
+      // probe so E2E can assert rule styles without reading pixels.
+      rowId: this.stringRowIdAt(rowIndex) || undefined,
+      ruleRow: (() => {
+        const id = this.stringRowIdAt(rowIndex);
+        return id ? (this.rowDataById.get(id) as Record<string, unknown> | undefined) : undefined;
+      })(),
+      themeKind: this.getThemeKind(),
     });
     return throwaway.bg;
   }

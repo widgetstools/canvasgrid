@@ -161,6 +161,15 @@ export interface ViewportChunk {
   rowStart: number;
   rowCount: number;
   rowIds: Uint32Array;                       // numeric row IDs (hashed)
+  /** Cycle 21e / Task 11 — string rowId for each visible row, parallel to
+   *  `rowIds`. Empty string for non-data entries (group / footer rows).
+   *  Rides the structured-clone path like `groupValue` (a string[] is not
+   *  transferable) — see collectViewportTransferables. Gives the main
+   *  thread the worker's string↔numeric mapping for the rule-engine fold
+   *  (evaluation ctx rowId) and per-cell flash overrides (Task 13).
+   *  Optional: absent on chunks from older workers; normalizeViewportChunk
+   *  substitutes per-row `''`. */
+  stringRowIds?: string[];
   rowKinds: Uint8Array;                      // 0 = leaf, 1 = group, 2 = grandTotal, 3 = footer
   groupDepth: Uint8Array;
   numericCols: Record<string, Float64Array>;
@@ -720,7 +729,7 @@ export function collectViewportTransferables(chunk: ViewportChunk): ArrayBufferL
  *  three fields are present after normalization, so the `'group'`
  *  renderer never has to check `?? defaults`. */
 export function normalizeViewportChunk(chunk: ViewportChunk): ViewportChunk {
-  if (chunk.groupValue && chunk.groupChildCount && chunk.isExpanded && chunk.groupKey) {
+  if (chunk.groupValue && chunk.groupChildCount && chunk.isExpanded && chunk.groupKey && chunk.stringRowIds) {
     return chunk;
   }
   const rowCount = chunk.rowCount;
@@ -732,5 +741,6 @@ export function normalizeViewportChunk(chunk: ViewportChunk): ViewportChunk {
     isExpanded.fill(1);
   }
   const groupKey = chunk.groupKey ?? new Array<string>(rowCount).fill('');
-  return { ...chunk, groupValue, groupChildCount, isExpanded, groupKey };
+  const stringRowIds = chunk.stringRowIds ?? new Array<string>(rowCount).fill('');
+  return { ...chunk, groupValue, groupChildCount, isExpanded, groupKey, stringRowIds };
 }

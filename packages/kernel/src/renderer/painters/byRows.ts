@@ -260,6 +260,9 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
     suppressAggFuncInHeader,
     getColumnGroupOpen: p.getColumnGroupOpen,
     totalRowCount,
+    stringRowIdAt: p.stringRowIdAt,
+    getRowDataById: p.getRowDataById,
+    themeKind: p.themeKind,
   };
 
   for (const sb of subgridBands) {
@@ -372,6 +375,9 @@ interface PaintBandCtx {
   suppressAggFuncInHeader: boolean;
   getColumnGroupOpen: ((groupId: string) => boolean) | undefined;
   totalRowCount: number;
+  stringRowIdAt: PainterCtx['stringRowIdAt'];
+  getRowDataById: PainterCtx['getRowDataById'];
+  themeKind: PainterCtx['themeKind'];
 }
 
 function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void {
@@ -494,6 +500,17 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
     // Header rows don't need row data.
     const rowData: Record<string, unknown> | undefined = row.subgrid.isData
       ? rowDataSnapshotAt(row.localRowIndex)
+      : undefined;
+    // Cycle 21e / Task 11 — rule-fold identity. `stringRowIds` is '' for
+    // group/footer chunk entries, so `ruleRowId` is undefined exactly on
+    // the rows the fold must skip. `ruleRow` prefers the full row from
+    // the rowDataById mirror (hidden columns included) and falls back to
+    // the visible-column snapshot.
+    const ruleRowId: string | undefined = row.subgrid.isData
+      ? (ctx.stringRowIdAt?.(row.localRowIndex) || undefined)
+      : undefined;
+    const ruleRow: Record<string, unknown> | undefined = ruleRowId !== undefined
+      ? ((ctx.getRowDataById?.(ruleRowId) as Record<string, unknown> | undefined) ?? rowData)
       : undefined;
 
     for (const col of cols) {
@@ -624,6 +641,11 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
         params,
         rowData,
         rowIndex: row.subgrid.isData ? row.localRowIndex : 0,
+        // Cycle 21e / Task 11 — rule-engine fold inputs. Undefined on
+        // header / totals / pinned / group / footer rows.
+        rowId: ruleRowId,
+        ruleRow,
+        themeKind: ctx.themeKind,
         // Row-select header tri-state checkbox. Resolved on the
         // header row only; non-headers stay `undefined` so the cell
         // / totals / footer paths see the default. State is computed
