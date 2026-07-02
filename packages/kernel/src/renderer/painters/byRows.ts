@@ -8,6 +8,7 @@ import { HeaderGroupSubgrid } from '../../core/subgrid';
 import { cellMatchesAnyQuickFilterTerm } from '../../worker/dataPipeline';
 import { isPivotResultGroupId } from '../../core/pivotColumns';
 import { resolveIcon as resolveIconPath } from '../../icons/registry';
+import { bumpFormatEvalGeneration } from '../../core/formatEvalMemo';
 
 /** Cycle 21c / Task 16 — pending inline-icon draw for one cell. Resolved
  *  before the cell painter runs (so the painter's text can shift by the
@@ -210,6 +211,12 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
     else if (col.pinned === 'right') rightPinned.push(col);
     else center.push(col);
   }
+
+  // Cycle 21e / Task 14 (review fix 1) — advance the format-eval paint
+  // generation once per paint pass: tier-1/tier-2 format programs (row-
+  // dependent output) share one eval per cell WITHIN this pass but never
+  // reuse an eval from a previous pass.
+  bumpFormatEvalGeneration();
 
   // Cycle 21e / Task 14 — first/last visible data column across all
   // bands (left-pinned → center → right-pinned order) for row-start /
