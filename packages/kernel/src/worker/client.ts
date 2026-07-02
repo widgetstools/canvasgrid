@@ -348,10 +348,12 @@ export class WorkerClient {
   /** Cycle 7 / Task 9 — request the column's distinct stringified value
    *  set. Cached worker-side per colId; invalidated whenever a
    *  transaction lands on any column. Backs the set-filter popup's
-   *  checkbox list. */
-  getDistinctValues(colId: string): Promise<string[]> {
+   *  checkbox list.
+   *  Cycle 21d / Task 13 — optional `limit` truncates the reply; the
+   *  worker-side cache always holds the full set. */
+  getDistinctValues(colId: string, limit?: number): Promise<string[]> {
     return this.send<{ values: string[] }>({
-      type: 'getDistinctValues', payload: { colId },
+      type: 'getDistinctValues', payload: { colId, limit },
     }).then((r) => r.values);
   }
 

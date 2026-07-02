@@ -254,8 +254,8 @@ export class WorkerCoordinator {
     return this.client.registerComparator(name, source);
   }
 
-  getDistinctValues(colId: string): Promise<string[]> {
-    return this.client.getDistinctValues(colId);
+  getDistinctValues(colId: string, limit?: number): Promise<string[]> {
+    return this.client.getDistinctValues(colId, limit);
   }
 
   getRowIndexForId(rowId: string): Promise<number> {

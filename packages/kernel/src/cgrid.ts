@@ -2951,6 +2951,15 @@ export class CGrid<TRow = any> {
     return resolveFilterType(def);
   }
 
+  /** Cycle 21d / Task 13 — distinct stringified values for `colId`, in
+   *  first-seen row order (worker DistinctValuesPass; nulls dropped).
+   *  `limit` truncates the reply; the worker cache keeps the full set so
+   *  different limits share one derivation. Public surface for
+   *  @cgrid/calc's typed wrapper + apps. */
+  getDistinctValues(colId: string, limit?: number): Promise<string[]> {
+    return this.workerCoord.getDistinctValues(colId, limit);
+  }
+
   /** Cycle 11 / Task 4 — build the filter editor for `colId` for inline
    *  hosting (FiltersToolPanel). Returns a handle that owns the editor's
    *  GUI element + a `destroy` callback for teardown. The returned GUI
@@ -5705,6 +5714,7 @@ export class CGrid<TRow = any> {
       isColumnPivotEnabled: (colId) => this.isColumnPivotEnabled(colId),
       isColumnValueEnabled: (colId) => this.isColumnValueEnabled(colId),
       getColumnFilterType: (colId) => this.getColumnFilterType(colId),
+      getDistinctValues: (colId, limit) => this.getDistinctValues(colId, limit),
       buildColumnFilterEditor: (colId) => this.buildColumnFilterEditor(colId),
       applyColumnState: (p) => this.applyColumnState(p),
       resetColumnState: () => this.resetColumnState(),

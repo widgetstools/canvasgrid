@@ -479,8 +479,11 @@ export type WorkerRequest =
    *  Cached worker-side per `colId`; the cache invalidates whenever
    *  `applyTransaction` lands on the column (or any column — the cache
    *  is wiped wholesale, matching how `QuickFilterPass` handles
-   *  invalidation). */
-  | { id: ReqId; type: 'getDistinctValues'; payload: { colId: string } }
+   *  invalidation).
+   *  Cycle 21d / Task 13 — optional `limit` truncates the REPLY only;
+   *  the worker-side cache always holds the full set so different
+   *  limits share one derivation. */
+  | { id: ReqId; type: 'getDistinctValues'; payload: { colId: string; limit?: number } }
   /** Cycle 4 / Task 11 (cell-flash patch) — flip the cell-flash
    *  diff producer on or off at runtime. When off, `applyTransaction.update`
    *  no longer computes per-row diffs (zero allocation overhead for

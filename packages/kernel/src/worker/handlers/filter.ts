@@ -83,8 +83,16 @@ export async function handleFilter(
     case 'getDistinctValues': {
       // Cycle 7 / Task 9 — derive (or read the cached) distinct
       // stringified value set for `colId`.
+      // Cycle 21d / Task 13 — `limit` truncates AFTER the cache walk:
+      // the DistinctValuesPass cache keeps the full set so requests
+      // with different limits reuse one derivation.
       const values = state.distinct.getValues(req.payload.colId);
-      post({ id: req.id, type: 'distinctValuesResult', values });
+      const limit = req.payload.limit;
+      post({
+        id: req.id,
+        type: 'distinctValuesResult',
+        values: limit !== undefined && limit < values.length ? values.slice(0, limit) : values,
+      });
       return;
     }
   }
