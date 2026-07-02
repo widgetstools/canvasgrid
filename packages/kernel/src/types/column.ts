@@ -4,6 +4,7 @@
 // (filter params), and the external iCellEditor module.
 
 import type { CellEditorCtor } from '../interaction/editors/iCellEditor';
+import type { Fragment, IconRef } from '@cgrid/format';
 import type {
   CellClass,
   CellClassRules,
@@ -114,7 +115,31 @@ export interface CColDef<TRow = any, TValue = any> {
    */
   cellDataType?: 'text' | 'number';
   valueGetter?: (params: CValueGetterParams<TRow>) => TValue;
-  valueFormatter?: (params: CValueFormatterParams<TRow, TValue>) => string;
+  /** DSL string OR function. String form compiles via @cgrid/format
+   *  at ColDef-resolve time. */
+  valueFormatter?: string | ((params: CValueFormatterParams<TRow, TValue>) => string);
+
+  /** Icon slot; populated by format at ColDef-resolve when {icon:name}
+   *  is present in the format string. */
+  cellIcon?: string | ((params: CValueFormatterParams<TRow, TValue>) => IconRef | null);
+
+  /** Composite discriminant — presence of `type: 'composite'` switches
+   *  the ColDef into composite mode. See also `type?: string | string[]`
+   *  for the named-bundle usage; `'composite'` is a reserved keyword and
+   *  is NOT looked up in `columnTypes`. */
+
+  /** Composite fragments — required when `type === 'composite'`. */
+  fragments?: Fragment[];
+
+  /** Composite cell background — Tier 1 format string (bg=/if= brackets only). */
+  cellBackground?: string;
+
+  /** Composite alignment. */
+  align?: 'left' | 'center' | 'right';
+
+  /** Composite overflow behavior. */
+  overflow?: 'ellipsis' | 'clip';
+
   cellRenderer?: string;
   /**
    * Static params forwarded to the resolved cell renderer as

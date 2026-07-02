@@ -21,6 +21,7 @@
   },
   "files": ["dist", "src"],
   "devDependencies": {
+    "@cgrid/format": "*",
     "@types/node": "^20.0.0",
     "happy-dom": "^15.0.0",
     "typescript": "~5.9.3",
