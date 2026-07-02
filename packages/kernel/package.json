@@ -30,6 +30,7 @@
   ],
   "devDependencies": {
     "@cgrid/format": "*",
+    "@cgrid/rules": "*",
     "@types/node": "^20.0.0",
     "@vitest/coverage-v8": "^2.1.0",
     "happy-dom": "^15.0.0",

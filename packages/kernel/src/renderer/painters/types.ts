@@ -9,7 +9,7 @@ import type { StickyAncestor } from '../../worker/protocol';
 export type CellDataLookup = (
   rowIndex: number,
   colId: string,
-) => { value: unknown; valueFormatted: string; flashAlpha?: number } | null;
+) => { value: unknown; valueFormatted: string; flashAlpha?: number; flashColor?: string } | null;
 
 export interface PainterCtx {
   viewport: ViewportState;
@@ -43,6 +43,15 @@ export interface PainterCtx {
    * row has not been chunked yet. Cycle 6 / Task 7.
    */
   rowDataSnapshotAt: (rowIndex: number) => Record<string, unknown>;
+  /** Cycle 21e / Task 11 — real string rowId for a visible data row
+   *  (chunk `stringRowIds` mirror). `''`/null → row not rule-evaluable. */
+  stringRowIdAt?: (rowIndex: number) => string | null;
+  /** Cycle 21e / Task 11 — full row from the main-thread rowDataById
+   *  mirror. The paint snapshot only covers visible columns; rule
+   *  conditions must see hidden fields too. */
+  getRowDataById?: (rowId: string) => unknown;
+  /** Cycle 21e / Task 11 — active theme kind for rule eval contexts. */
+  themeKind?: 'light' | 'dark';
   /**
    * Cycle 7 / Task 7 — pre-lowercased quick-filter terms. Empty when no
    * quick filter is active. Painter calls `cellMatchesAnyQuickFilterTerm`

@@ -141,6 +141,9 @@ import {
   registerFormatCompiler as slotRegisterFormatCompiler,
   type FormatCompiler,
 } from './core/formatCompilerSlot';
+import { registerRuleEngine as slotRegisterRuleEngine, type RuleEngineShape } from './core/ruleEngineSlot';
+import { buildFormatEvalCtx } from './core/formatEvalMemo';
+import { resolveThemeKind } from './theming/themeKind';
 import {
   registerIconSet as regIcons,
   resolveIcon as resIcon,
@@ -635,6 +638,12 @@ export class CGrid<TRow = any> {
    *  Drained from each `getViewport` chunk's `flashMask` and queried
    *  by the painter's `cellData` callback to produce `flashAlpha`. */
   private flashRegistry: FlashRegistry;
+  /** Cycle 21e / Task 13 — per-call flashCells overrides awaiting the
+   *  next mask ingest. Keyed `${stringRowId}\0${colId}`; the
+   *  `\0*` colId wildcard covers "all columns" calls. `expiresAt`
+   *  bounds staleness (worker round-trip grace included); swept in the
+   *  flash tick loop + lazily on each flashCells call. */
+  private flashOverrides = new Map<string, import('./core/flashRegistry').FlashOverride & { expiresAt: number }>();
   /** Flash tracker for group-row and footer-row aggregate cells.
    *  Keyed by `"${groupKey}\0${colId}"` → flash start time (ms from
    *  performance.now()). Populated when groupTotals values change
@@ -1015,6 +1024,12 @@ export class CGrid<TRow = any> {
       getCanvasWidth: () => this.canvasBounds.width,
       getCanvasHeight: () => this.canvasBounds.height,
       rowDataSnapshotAt: (rowIndex) => this.rowDataSnapshotAt(rowIndex),
+      // Cycle 21e / Task 11 — rule-fold threading: string rowId per data
+      // row, full-row lookup from the rowDataById mirror (the paint
+      // snapshot is visible-columns-only), and the active theme kind.
+      stringRowIdAt: (rowIndex) => this.stringRowIdAt(rowIndex),
+      getRowDataById: (rowId) => this.rowDataById.get(rowId),
+      getThemeKind: () => this.getThemeKind(),
       getQuickFilterLowerTerms: () => this.quickFilterLowerTerms,
       // Cycle 9 / Task 5 — paint a 6×6 fill handle on the last range when
       // enabled. Read per paint so a runtime setGridOption flip lights up
@@ -1521,7 +1536,11 @@ export class CGrid<TRow = any> {
         }),
         focusCanvas: () => { this.cgridCanvas.canvas.focus({ preventScroll: true }); },
         getRowByIndex: (rowIndex) => this.workerCoord.getRowByIndex(rowIndex),
-        applyTransaction: (payload) => this.workerCoord.applyTransaction(payload),
+        applyTransaction: (payload) => {
+          // Cycle 21e / Task 12 — rowsChanged (source 'edit'), listener-gated.
+          this.mirrorEditCommit(payload.update as TRow[] | undefined);
+          return this.workerCoord.applyTransaction(payload);
+        },
         isDestroyed: () => this.destroyed,
       },
       () => ({
@@ -1946,7 +1965,7 @@ export class CGrid<TRow = any> {
   applyTransaction(t: Tx<TRow>): TransactionResult {
     // Foundation: async only. For sync semantics, callers use the worker's sync path via separate cycle.
     const heightsByRowId = this.resolveHeightsForRows([...(t.add ?? []), ...(t.update ?? [])]);
-    this.updateRowDataCache(t);
+    this.updateRowDataCache(t, 'transaction');
     this.workerCoord.applyTransaction({
       add: t.add,
       update: t.update,
@@ -1960,7 +1979,7 @@ export class CGrid<TRow = any> {
 
   applyTransactionAsync(t: Tx<TRow>): void {
     const heightsByRowId = this.resolveHeightsForRows([...(t.add ?? []), ...(t.update ?? [])]);
-    this.updateRowDataCache(t);
+    this.updateRowDataCache(t, 'transactionAsync');
     this.workerCoord.applyTransaction({
       add: t.add,
       update: t.update,
@@ -1974,22 +1993,97 @@ export class CGrid<TRow = any> {
   /** Cycle 7 / Task 8 — keep `rowDataById` in sync with a transaction.
    *  add / update both write the row in place; remove drops the entry.
    *  Same `getRowId` derivation the worker uses so the keys line up
-   *  across the two caches. Errors in `getRowId` skip the row silently. */
-  private updateRowDataCache(t: Tx<TRow>): void {
+   *  across the two caches. Errors in `getRowId` skip the row silently.
+   *
+   *  Cycle 21e / Task 12 — emits ONE `rowsChanged` per transaction when
+   *  (and only when) a listener is registered. The old-row shallow
+   *  snapshot (`{...prev}`) is captured BEFORE the overwrite. Fully
+   *  listener-gated: without a listener this method is byte-identical
+   *  to its pre-21e body. */
+  private updateRowDataCache(t: Tx<TRow>, source: 'transaction' | 'transactionAsync'): void {
+    if (!this.events.hasListener('rowsChanged')) {
+      if (t.add) {
+        for (const row of t.add) {
+          try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip */ }
+        }
+      }
+      if (t.update) {
+        for (const row of t.update) {
+          try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip */ }
+        }
+      }
+      if (t.remove) {
+        for (const row of t.remove) {
+          try { this.rowDataById.delete(this.options.getRowId(row)); } catch { /* skip */ }
+        }
+      }
+      return;
+    }
+    const added: Array<{ rowId: string; row: TRow }> = [];
+    const updated: Array<{ rowId: string; row: TRow; oldRow: TRow }> = [];
+    const removed: Array<{ rowId: string; row: TRow }> = [];
     if (t.add) {
       for (const row of t.add) {
-        try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip */ }
+        try {
+          const rowId = this.options.getRowId(row);
+          const prev = this.rowDataById.get(rowId);
+          this.rowDataById.set(rowId, row);
+          // A transaction "add" for an already-known rowId is an upsert —
+          // report it as updated so listeners see the old row.
+          if (prev !== undefined) updated.push({ rowId, row, oldRow: { ...prev } });
+          else added.push({ rowId, row });
+        } catch { /* skip */ }
       }
     }
     if (t.update) {
       for (const row of t.update) {
-        try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip */ }
+        try {
+          const rowId = this.options.getRowId(row);
+          const prev = this.rowDataById.get(rowId);
+          this.rowDataById.set(rowId, row);
+          if (prev !== undefined) updated.push({ rowId, row, oldRow: { ...prev } });
+          else added.push({ rowId, row });
+        } catch { /* skip */ }
       }
     }
     if (t.remove) {
       for (const row of t.remove) {
-        try { this.rowDataById.delete(this.options.getRowId(row)); } catch { /* skip */ }
+        try {
+          const rowId = this.options.getRowId(row);
+          const prev = this.rowDataById.get(rowId);
+          this.rowDataById.delete(rowId);
+          removed.push({ rowId, row: prev ?? row });
+        } catch { /* skip */ }
       }
+    }
+    if (added.length > 0 || updated.length > 0 || removed.length > 0) {
+      this.events.emit({ type: 'rowsChanged', added, updated, removed, source });
+    }
+  }
+
+  /** Cycle 21e / Task 12 — mirror an editor commit-back into rowsChanged.
+   *  The edit path historically bypasses updateRowDataCache (the dep at
+   *  the EditController wiring calls workerCoord.applyTransaction
+   *  directly), so `source: 'edit'` is produced here. Fully listener-
+   *  gated, INCLUDING the rowDataById freshening: without a rowsChanged
+   *  listener the mirror keeps its pre-21e (stale-after-edit) behavior
+   *  and this method is a no-op — byte-identical for non-rules apps.
+   *  With a listener, the mirror is updated so consecutive edits report
+   *  correct oldRow values. */
+  private mirrorEditCommit(update: TRow[] | undefined): void {
+    if (!this.events.hasListener('rowsChanged')) return;
+    if (!update || update.length === 0) return;
+    const updated: Array<{ rowId: string; row: TRow; oldRow: TRow }> = [];
+    for (const row of update) {
+      try {
+        const rowId = this.options.getRowId(row);
+        const prev = this.rowDataById.get(rowId);
+        this.rowDataById.set(rowId, row);
+        updated.push({ rowId, row, oldRow: prev !== undefined ? { ...prev } : { ...row } });
+      } catch { /* skip */ }
+    }
+    if (updated.length > 0) {
+      this.events.emit({ type: 'rowsChanged', added: [], updated, removed: [], source: 'edit' });
     }
   }
 
@@ -2980,6 +3074,14 @@ export class CGrid<TRow = any> {
    *  cheap under a per-frame status-bar refresh — no worker round-trip,
    *  no chunk walk. */
   getTotalRowCount(): number { return this.rowDataById.size; }
+
+  /** Cycle 21e / Task 10 — iterate every row in the main-thread
+   *  `rowDataById` mirror (setRowData + all transaction paths keep it in
+   *  sync since Cycle 7 / Task 8). Insertion order. Used by
+   *  @cgrid/rules' wireIntoKernel to seed match counts. */
+  forEachRow(fn: (rowId: string, row: TRow) => void): void {
+    for (const [rowId, row] of this.rowDataById) fn(rowId, row);
+  }
 
   /** Cycle 19 / Task 5-Grouping — public grouping API delegates. The
    *  coordinator owns the model + the worker round-trip + the
@@ -4099,7 +4201,16 @@ export class CGrid<TRow = any> {
           const value = rowData[(def.field as string | undefined) ?? colId];
           const program = def._compositeProgram;
           if (program) {
-            const evalCtx = { value, row: rowData, colId };
+            // Cycle 21e / final-review fix — rule-aware ctx so copied
+            // composite fragments carry resolved rule:<ruleId> colors,
+            // matching what the painter shows.
+            const evalCtx = buildFormatEvalCtx({
+              value,
+              data: rowData,
+              colId,
+              rowId: this.stringRowIdAt(rowIndex) ?? undefined,
+              themeKind: this.getThemeKind(),
+            });
             const fragments = program.resolveFragments(evalCtx);
             cells.push({
               text: program.formatText(evalCtx),
@@ -4827,6 +4938,23 @@ export class CGrid<TRow = any> {
     slotRegisterFormatCompiler(fn);
   }
 
+  /** Cycle 21e / Task 10 — register the @cgrid/rules engine adapter into
+   *  the kernel DI slot. Invoked by wireIntoKernel(grid) in @cgrid/rules;
+   *  kernel's applyCellProps fold (Task 11) calls getRuleEngine() to
+   *  obtain it. Apps that never call this see no behavior change. */
+  registerRuleEngine(engine: RuleEngineShape): void {
+    slotRegisterRuleEngine(engine);
+    this.cgridCanvas?.requestRepaint();
+  }
+
+  /** Cycle 21e / Task 10 — binary light/dark kind of the active theme.
+   *  Derived from the root's `cg-theme-*` class (`-dark` suffix
+   *  convention), `matchMedia` for `cg-theme-auto`, or the resolved
+   *  `theme.bg` luminance for custom themes. */
+  getThemeKind(): 'light' | 'dark' {
+    return resolveThemeKind(Array.from(this.root.classList), this.theme.bg);
+  }
+
   /** Cycle 21c / Task 12 — register a named icon set. Delegated to the
    *  module-level icon registry; kernel never auto-registers any set. */
   registerIconSet(name: string, paths: Record<string, string | Path2D>): void {
@@ -5503,6 +5631,9 @@ export class CGrid<TRow = any> {
       updateGridOptions: (p) => this.updateGridOptions(p),
       registerCellRenderer: (n, p) => this.registerCellRenderer(n, p),
       registerFormatCompiler: (fn) => this.registerFormatCompiler(fn),
+      registerRuleEngine: (engine) => this.registerRuleEngine(engine),
+      forEachRow: (fn) => this.forEachRow(fn),
+      getThemeKind: () => this.getThemeKind(),
       registerIconSet: (name, paths) => this.registerIconSet(name, paths),
       resolveIcon: (name, setHint) => this.resolveIcon(name, setHint),
       registerTooltipProvider: (colId, fn) => this.registerTooltipProvider(colId, fn),
@@ -6321,10 +6452,20 @@ export class CGrid<TRow = any> {
     // `registry.getAlpha(numericRowId, colId, now)` to produce flashAlpha
     // per visible cell.
     if (chunk.flashMask) {
+      // Cycle 21e / Task 13 — join per-call flashCells overrides by the
+      // chunk's string rowIds. Zero-cost when the override map is empty
+      // (the common case): no lookup closure is even passed.
+      const hasOverrides = this.flashOverrides.size > 0;
       this.flashRegistry.ingestMask({
         rowIds: chunk.rowIds,
         colIds: cols,
         mask: chunk.flashMask,
+        stringRowIds: hasOverrides ? chunk.stringRowIds : undefined,
+        getOverride: hasOverrides
+          ? (sid, colId) =>
+              this.flashOverrides.get(`${sid}\0${colId}`)
+                ?? this.flashOverrides.get(`${sid}\0*`)
+          : undefined,
       });
       this.startFlashTickLoop();
     }
@@ -6484,6 +6625,12 @@ export class CGrid<TRow = any> {
         }
         if (this.groupFlashMap.size > 0) this.cgridCanvas.requestRepaint();
       }
+      // Cycle 21e / Task 13 — expire staged flash overrides.
+      if (this.flashOverrides.size > 0) {
+        for (const [k, v] of this.flashOverrides) {
+          if (v.expiresAt <= now) this.flashOverrides.delete(k);
+        }
+      }
       if (this.flashRegistry.size() > 0 || this.groupFlashMap.size > 0) {
         this.flashTickHandle = requestAnimationFrame(tick);
       }
@@ -6503,6 +6650,32 @@ export class CGrid<TRow = any> {
     if (this.reducedMotion) return;
     if (!params.rowIds || params.rowIds.length === 0) return;
     const colIds = params.colIds ?? [];
+    // Cycle 21e / Task 13 — stage per-call overrides for the mask-ingest
+    // join. Zero entries (and zero cost) when no override field is set.
+    if (params.color !== undefined || params.mode !== undefined
+      || params.flashDuration !== undefined || params.fadeDuration !== undefined) {
+      const now = performance.now();
+      // Lazy sweep so abandoned overrides can't accumulate.
+      for (const [k, v] of this.flashOverrides) {
+        if (v.expiresAt <= now) this.flashOverrides.delete(k);
+      }
+      const flashDur = params.flashDuration ?? this.options.cellFlashDuration ?? 500;
+      const fadeDur = params.fadeDuration ?? this.options.cellFadeDuration ?? 1000;
+      const override = {
+        color: params.color,
+        mode: params.mode,
+        flashDuration: params.flashDuration,
+        fadeDuration: params.fadeDuration,
+        // Grace for the worker round-trip + next chunk arrival.
+        expiresAt: now + flashDur + fadeDur + 2000,
+      };
+      const colKeys = colIds.length > 0 ? colIds : ['*'];
+      for (const rowId of params.rowIds) {
+        for (const c of colKeys) {
+          this.flashOverrides.set(`${rowId}\0${c}`, override);
+        }
+      }
+    }
     this.workerCoord.flashCells(params.rowIds, colIds)
       .then(() => {
         if (this.destroyed) return;
@@ -6514,7 +6687,7 @@ export class CGrid<TRow = any> {
       .catch((err) => { if (!this.destroyed) console.error('[cgrid] flashCells:', err); });
   }
 
-  private cellAt(rowIndex: number, colId: string): { value: unknown; valueFormatted: string; flashAlpha?: number } | null {
+  private cellAt(rowIndex: number, colId: string): { value: unknown; valueFormatted: string; flashAlpha?: number; flashColor?: string } | null {
     if (!this.chunk) return null;
     const localIndex = rowIndex - this.chunk.rowStart;
     if (localIndex < 0 || localIndex >= this.chunk.rowCount) return null;
@@ -6525,6 +6698,11 @@ export class CGrid<TRow = any> {
     const numericRowId = this.chunk.rowIds[localIndex]!;
     const flashAlpha = this.flashRegistry.getAlpha(numericRowId, colId, performance.now());
     const flash = flashAlpha > 0 ? flashAlpha : undefined;
+    // Cycle 21e / Task 13 — per-call color override rides alongside the
+    // alpha; undefined keeps the theme flashFromColor blend.
+    const flashColor = flash !== undefined
+      ? this.flashRegistry.getColor(numericRowId, colId)
+      : undefined;
     // Cycle 15 / Task 4 + Task 5 — auto-group column reads per-row group
     // context (rowKind / depth / value / childCount / isExpanded) from
     // the chunk's parallel arrays. Returns a typed `GroupCellValue`
@@ -6538,8 +6716,8 @@ export class CGrid<TRow = any> {
     // the renderer handles the own-depth filter.
     if (isAutoGroupColumnId(colId)) {
       const payload = this.groupCellContextAt(rowIndex);
-      if (payload === null) return { value: '', valueFormatted: '', flashAlpha: flash };
-      return { value: payload, valueFormatted: payload.valueFormatted, flashAlpha: flash };
+      if (payload === null) return { value: '', valueFormatted: '', flashAlpha: flash, flashColor };
+      return { value: payload, valueFormatted: payload.valueFormatted, flashAlpha: flash, flashColor };
     }
     // Cycle 18 / Task 3 — pivot result columns read their cross-tab
     // aggregate from `chunk.pivotValues`, addressed by the row's group key
@@ -6552,7 +6730,7 @@ export class CGrid<TRow = any> {
       const pivotValues = this.chunk.pivotValues;
       const kind = this.chunk.rowKinds[localIndex] ?? 0;
       if (!spec || !pivotValues || kind === 0) {
-        return { value: '', valueFormatted: '', flashAlpha: flash };
+        return { value: '', valueFormatted: '', flashAlpha: flash, flashColor };
       }
       const groupKey = this.chunk.groupKey?.[localIndex] ?? '';
       // Cycle 18 / Task 8e — row totals carry `pivotPath: []`; the join
@@ -6563,11 +6741,11 @@ export class CGrid<TRow = any> {
         encodePivotValueKey(groupKey, spec.pivotPath.join(PIVOT_PATH_SEP), spec.valueColId),
       );
       if (raw === undefined || raw === null) {
-        return { value: '', valueFormatted: '', flashAlpha: flash };
+        return { value: '', valueFormatted: '', flashAlpha: flash, flashColor };
       }
       const valueFormatted = typeof raw === 'number' ? this.formatNumber(colId, raw) : String(raw);
       const gFlash = this.groupFlashAlpha(groupKey, colId);
-      return { value: raw, valueFormatted, flashAlpha: gFlash ?? flash };
+      return { value: raw, valueFormatted, flashAlpha: gFlash ?? flash, flashColor };
     }
     // Cycle 15 / Task 12 — footer rows (rowKind === 3) source their
     // per-column values from the per-group totals map (or, for the
@@ -6581,9 +6759,9 @@ export class CGrid<TRow = any> {
     if ((this.chunk.rowKinds[localIndex] ?? 0) === 3) {
       const groupKey = this.chunk.groupKey?.[localIndex] ?? '';
       const entry = this.totalsCellLookup(colId, groupKey);
-      if (entry === null) return { value: '', valueFormatted: '', flashAlpha: flash };
+      if (entry === null) return { value: '', valueFormatted: '', flashAlpha: flash, flashColor };
       const gFlash = this.groupFlashAlpha(groupKey, colId);
-      return { value: entry.value, valueFormatted: entry.valueFormatted, flashAlpha: gFlash ?? flash };
+      return { value: entry.value, valueFormatted: entry.valueFormatted, flashAlpha: gFlash ?? flash, flashColor };
     }
     // Group rows (rowKind === 1) show per-group aggregate values from
     // `chunk.groupTotals` when available — same source as the per-group
@@ -6599,30 +6777,43 @@ export class CGrid<TRow = any> {
         const entry = this.totalsCellLookup(colId, groupKey);
         if (entry !== null) {
           const gFlash = this.groupFlashAlpha(groupKey, colId);
-          return { value: entry.value, valueFormatted: entry.valueFormatted, flashAlpha: gFlash ?? flash };
+          return { value: entry.value, valueFormatted: entry.valueFormatted, flashAlpha: gFlash ?? flash, flashColor };
         }
       }
-      return { value: '', valueFormatted: '', flashAlpha: flash };
+      return { value: '', valueFormatted: '', flashAlpha: flash, flashColor };
     }
     const numeric = this.chunk.numericCols[colId];
     if (numeric) {
       const value = numeric[localIndex]!;
-      return { value, valueFormatted: this.formatNumber(colId, value), flashAlpha: flash };
+      return { value, valueFormatted: this.formatNumber(colId, value), flashAlpha: flash, flashColor };
     }
     const text = this.chunk.textCols[colId];
     if (text) {
       let decoded = this.decodedTextCols.get(colId);
       if (!decoded) { decoded = decodeText(text.offsets, text.bytes); this.decodedTextCols.set(colId, decoded); }
       const value = decoded[localIndex] ?? '';
-      return { value, valueFormatted: value, flashAlpha: flash };
+      return { value, valueFormatted: value, flashAlpha: flash, flashColor };
     }
-    return { value: '', valueFormatted: '', flashAlpha: flash };
+    return { value: '', valueFormatted: '', flashAlpha: flash, flashColor };
   }
 
   private rowIdAt(rowIndex: number): string | null {
     // Foundation: numeric IDs need round-trip via worker. For now, we only support cell-level focus events.
     // Real string IDs need a worker→main mapping deferred to a follow-up cycle.
     return `row-${rowIndex}`;
+  }
+
+  /** Cycle 21e / Task 11 — real string rowId for a visible data row, from
+   *  the chunk's `stringRowIds` mirror. Returns null for rows outside the
+   *  chunk window and '' for non-data rows (group / footer). NOTE: the
+   *  legacy `rowIdAt` stub above still feeds pointer-event payloads —
+   *  changing it would alter existing event payloads; this accessor is
+   *  additive and rules/flash-only. */
+  private stringRowIdAt(rowIndex: number): string | null {
+    if (!this.chunk) return null;
+    const localIndex = rowIndex - this.chunk.rowStart;
+    if (localIndex < 0 || localIndex >= this.chunk.rowCount) return null;
+    return this.chunk.stringRowIds?.[localIndex] ?? null;
   }
 
   /** Cycle 24 / Task 4 — subscribe to state-affecting events and feed
@@ -7614,6 +7805,14 @@ export class CGrid<TRow = any> {
       isHeader: false,
       rowData,
       rowIndex,
+      // Cycle 21e / Task 11 — rule fold participates in the painted-bg
+      // probe so E2E can assert rule styles without reading pixels.
+      rowId: this.stringRowIdAt(rowIndex) || undefined,
+      ruleRow: (() => {
+        const id = this.stringRowIdAt(rowIndex);
+        return id ? (this.rowDataById.get(id) as Record<string, unknown> | undefined) : undefined;
+      })(),
+      themeKind: this.getThemeKind(),
     });
     return throwaway.bg;
   }

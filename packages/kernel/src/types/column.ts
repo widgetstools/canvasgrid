@@ -44,11 +44,19 @@ export interface FlashCellsParams {
   /** Column IDs to flash within each row. When omitted or empty,
    *  every column with a resolved field flashes. */
   colIds?: string[];
-  /** Reserved for a follow-up patch — overrides the global
-   *  `cellFlashDuration` for this batch. Cycle 4 ships the API
-   *  surface; per-call overrides land when a use case lands. */
+  /** Cycle 21e / Task 13 — per-call override of the global
+   *  `cellFlashDuration` for this batch (the Cycle 4 reserve, now live). */
   flashDuration?: number;
+  /** Cycle 21e / Task 13 — per-call override of `cellFadeDuration`. */
   fadeDuration?: number;
+  /** Cycle 21e / Task 13 — per-call flash color; replaces the theme's
+   *  `flashFromColor` blend for these cells only. */
+  color?: string;
+  /** Cycle 21e / Task 13 — alpha curve. `'fade'` (default) is the
+   *  existing hold-then-linear-fade; `'pulse'` is a double sine²
+   *  cycle over the full window; `'glow'` plateaus at full alpha for
+   *  60% of the window then fades linearly. */
+  mode?: 'fade' | 'pulse' | 'glow';
 }
 
 /** Per-column key-event predicate. Return `true` to swallow the event before
@@ -541,6 +549,12 @@ export interface CColGroupDef<TRow = any> {
 export interface CValueGetterParams<TRow> { data: TRow; colId: string }
 export interface CValueFormatterParams<TRow, TValue> {
   data: TRow; value: TValue; colId: string;
+  /** Cycle 21e / Task 14 — string rowId of the data row, when the call
+   *  site knows it (paint path). Enables the format-eval memo + the
+   *  rule:<ruleId> accessor; absent → memo bypass, no rule refs. */
+  rowId?: string;
+  /** Cycle 21e / Task 14 — active theme kind, when known. */
+  themeKind?: 'light' | 'dark';
 }
 
 /** Params passed to `CColDef.valueParser`. */

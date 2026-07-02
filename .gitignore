@@ -30,3 +30,6 @@ playwright-report/
 
 # Local-only: chrome-devtools-mcp scratch screenshots
 .playwright-mcp/
+
+# vitest coverage output
+packages/*/coverage/

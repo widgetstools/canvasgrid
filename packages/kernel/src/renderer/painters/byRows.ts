@@ -8,6 +8,7 @@ import { HeaderGroupSubgrid } from '../../core/subgrid';
 import { cellMatchesAnyQuickFilterTerm } from '../../worker/dataPipeline';
 import { isPivotResultGroupId } from '../../core/pivotColumns';
 import { resolveIcon as resolveIconPath } from '../../icons/registry';
+import { bumpFormatEvalGeneration } from '../../core/formatEvalMemo';
 
 /** Cycle 21c / Task 16 — pending inline-icon draw for one cell. Resolved
  *  before the cell painter runs (so the painter's text can shift by the
@@ -211,6 +212,20 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
     else center.push(col);
   }
 
+  // Cycle 21e / Task 14 (review fix 1) — advance the format-eval paint
+  // generation once per paint pass: tier-1/tier-2 format programs (row-
+  // dependent output) share one eval per cell WITHIN this pass but never
+  // reuse an eval from a previous pass.
+  bumpFormatEvalGeneration();
+
+  // Cycle 21e / Task 14 — first/last visible data column across all
+  // bands (left-pinned → center → right-pinned order) for row-start /
+  // row-end rule indicators.
+  const firstVisibleColId = (leftPinned[0] ?? center[0] ?? rightPinned[0])?.colId;
+  const lastVisibleColId = (rightPinned[rightPinned.length - 1]
+    ?? center[center.length - 1]
+    ?? leftPinned[leftPinned.length - 1])?.colId;
+
   // Pre-compute subgrid bands — group visibleRows by subgrid to get y-range per subgrid.
   // Walk once and group consecutive rows from the same subgrid.
   type SubgridBand = {
@@ -260,6 +275,11 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
     suppressAggFuncInHeader,
     getColumnGroupOpen: p.getColumnGroupOpen,
     totalRowCount,
+    stringRowIdAt: p.stringRowIdAt,
+    getRowDataById: p.getRowDataById,
+    themeKind: p.themeKind,
+    firstVisibleColId,
+    lastVisibleColId,
   };
 
   for (const sb of subgridBands) {
@@ -372,6 +392,13 @@ interface PaintBandCtx {
   suppressAggFuncInHeader: boolean;
   getColumnGroupOpen: ((groupId: string) => boolean) | undefined;
   totalRowCount: number;
+  stringRowIdAt: PainterCtx['stringRowIdAt'];
+  getRowDataById: PainterCtx['getRowDataById'];
+  themeKind: PainterCtx['themeKind'];
+  /** Cycle 21e / Task 14 — first/last visible data colId across all
+   *  bands, for row-start / row-end rule indicator targeting. */
+  firstVisibleColId?: string;
+  lastVisibleColId?: string;
 }
 
 function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void {
@@ -495,6 +522,17 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
     const rowData: Record<string, unknown> | undefined = row.subgrid.isData
       ? rowDataSnapshotAt(row.localRowIndex)
       : undefined;
+    // Cycle 21e / Task 11 — rule-fold identity. `stringRowIds` is '' for
+    // group/footer chunk entries, so `ruleRowId` is undefined exactly on
+    // the rows the fold must skip. `ruleRow` prefers the full row from
+    // the rowDataById mirror (hidden columns included) and falls back to
+    // the visible-column snapshot.
+    const ruleRowId: string | undefined = row.subgrid.isData
+      ? (ctx.stringRowIdAt?.(row.localRowIndex) || undefined)
+      : undefined;
+    const ruleRow: Record<string, unknown> | undefined = ruleRowId !== undefined
+      ? ((ctx.getRowDataById?.(ruleRowId) as Record<string, unknown> | undefined) ?? rowData)
+      : undefined;
 
     for (const col of cols) {
       const def = columnDefs.get(col.colId);
@@ -503,6 +541,7 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
       let value: unknown = '';
       let valueFormatted = '';
       let flashAlpha: number | undefined;
+      let flashColor: string | undefined;
       let sortDirection: 'asc' | 'desc' | undefined;
       let sortIndex: number | undefined;
       let sortTotal: number | undefined;
@@ -535,6 +574,7 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
         value = cell?.value ?? '';
         valueFormatted = cell?.valueFormatted ?? '';
         flashAlpha = cell?.flashAlpha;
+        flashColor = cell?.flashColor;
       } else if (row.subgrid.isTotals) {
         // Cycle 14 / Task 1 — read the totals value through the
         // subgrid's `getCell`, which proxies to the current chunk's
@@ -624,6 +664,11 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
         params,
         rowData,
         rowIndex: row.subgrid.isData ? row.localRowIndex : 0,
+        // Cycle 21e / Task 11 — rule-engine fold inputs. Undefined on
+        // header / totals / pinned / group / footer rows.
+        rowId: ruleRowId,
+        ruleRow,
+        themeKind: ctx.themeKind,
         // Row-select header tri-state checkbox. Resolved on the
         // header row only; non-headers stay `undefined` so the cell
         // / totals / footer paths see the default. State is computed
@@ -638,6 +683,11 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
                 : 'partial')
           : undefined,
       });
+
+      // Cycle 21e / Task 13 — per-call flash color override. applyCellProps
+      // just reset flashFromColor to the theme value, so this is
+      // self-clearing across the reused config object.
+      if (flashColor !== undefined) config.flashFromColor = flashColor;
 
       // Cycle 7 / Task 7 — quick-filter cell highlight. Tints any data
       // cell whose RENDERED text contains an active search term with the
@@ -668,16 +718,42 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
       // Columns without `cellIcon` (the overwhelming majority) skip this
       // block entirely — no per-cell cost on the hot path.
       let pendingIcon: PendingCellIcon | null = null;
+      // Cycle 21e / Task 14 — rule indicator resolution. `cell` targets
+      // paint on the matching cell; `row-start` / `row-end` paint only on
+      // the first / last visible data column of the matching row (the
+      // engine returns the indicator on every cell of a row-scope match;
+      // byRows owns column order, so the filter lives here).
+      let ruleIconRef: { name: string; color?: string; position?: 'leading' | 'trailing' } | null = null;
+      const ri = config.ruleIndicator;
+      if (ri && row.subgrid.isData && !isFooterRow[r]) {
+        const placed =
+          ri.target === 'cell'
+          || (ri.target === 'row-start' && col.colId === ctx.firstVisibleColId)
+          || (ri.target === 'row-end' && col.colId === ctx.lastVisibleColId);
+        if (placed) {
+          ruleIconRef = {
+            name: ri.iconName,
+            color: ri.color,
+            position: ri.position === 'after' ? 'trailing' : 'leading',
+          };
+        }
+      }
       if (
-        row.subgrid.isData
-        && !isFooterRow[r]
-        && typeof def.cellIcon === 'function'
+        ruleIconRef !== null
+        || (row.subgrid.isData
+          && !isFooterRow[r]
+          && typeof def.cellIcon === 'function')
       ) {
-        let iconRef: { name: string; color?: string; position?: 'leading' | 'trailing' } | null = null;
-        try {
-          iconRef = def.cellIcon({ value, data: (rowData ?? {}) as never, colId: col.colId });
-        } catch {
-          iconRef = null;
+        let iconRef: { name: string; color?: string; position?: 'leading' | 'trailing' } | null = ruleIconRef;
+        if (iconRef === null) {
+          try {
+            iconRef = def.cellIcon!({
+              value, data: (rowData ?? {}) as never, colId: col.colId,
+              rowId: ruleRowId, themeKind: ctx.themeKind,
+            });
+          } catch {
+            iconRef = null;
+          }
         }
         if (iconRef && iconRef.name) {
           const path = resolveIconPath(iconRef.name);

@@ -21,6 +21,8 @@ import { a11y } from './a11y';
 import { selectionModes } from './selectionModes';
 import { realtimeStomp } from './realtimeStomp';
 import { formatDSL } from './formatDSL';
+import { conditionalStyling } from './conditionalStyling';
+import { alertsFeature } from './alerts';
 
 export interface Feature {
   id: string;
@@ -54,6 +56,8 @@ export const FEATURES: Feature[] = [
   selectionModes,
   realtimeStomp,
   formatDSL,
+  conditionalStyling,
+  alertsFeature,
 ];
 
 export const FEATURE_MAP = new Map(FEATURES.map((f) => [f.id, f]));

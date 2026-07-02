@@ -44,13 +44,29 @@ export function resolveStyle(nodes: Tier1Node[], ctx: FormatEvalContext): StyleO
 
   for (const node of nodes) {
     if (node.channel === 'if') continue;  // section selector, not a style channel
-    if (node.ast === null) continue;      // pure rule-ref → resolver returns null contribution
 
     let evaluated: unknown;
-    try {
-      evaluated = evaluateExpression(getCompiled(node.ast), { row: ctx.row });
-    } catch {
-      continue;  // per-cell eval error — skip this channel
+    if (node.ast === null) {
+      // Pure rule-ref bracket (Cycle 21e). Consult the optional accessor;
+      // the FIRST non-null resolution feeds this bracket's channel via the
+      // switch below (color or background per the bracket key). Accessor
+      // absent, or every ref resolving null → null contribution — exact
+      // Cycle 21c reserve behavior.
+      if (ctx.resolveRuleRef === undefined) continue;
+      evaluated = null;
+      for (const ref of node.ruleRefs) {
+        const resolved = ctx.resolveRuleRef(ref.ruleId) ?? null;
+        if (resolved !== null) {
+          evaluated = resolved;
+          break;
+        }
+      }
+    } else {
+      try {
+        evaluated = evaluateExpression(getCompiled(node.ast), { row: ctx.row });
+      } catch {
+        continue;  // per-cell eval error — skip this channel
+      }
     }
     if (evaluated === null || evaluated === undefined) continue;
 

@@ -402,6 +402,19 @@ export interface CGridApi<TRow = any> {
    *  identical behavior to before. */
   registerFormatCompiler(fn: import('../core/formatCompilerSlot').FormatCompiler): void;
 
+  /** Cycle 21e / Task 10 — register the rule engine (supplied by
+   *  @cgrid/rules' wireIntoKernel). Kernel consults it in the
+   *  applyCellProps fold (Task 11). Apps that never call this see
+   *  identical behavior to before. */
+  registerRuleEngine(engine: import('../core/ruleEngineSlot').RuleEngineShape): void;
+
+  /** Cycle 21e / Task 10 — iterate the main-thread row mirror
+   *  (rowId → row, insertion order). */
+  forEachRow(fn: (rowId: string, row: TRow) => void): void;
+
+  /** Cycle 21e / Task 10 — binary light/dark kind of the active theme. */
+  getThemeKind(): 'light' | 'dark';
+
   /** Cycle 21c / Task 12 — register a named icon set whose entries are
    *  SVG path strings (lazy-converted to Path2D on first use) or
    *  pre-built Path2D instances. Subsequent `resolveIcon` calls look

@@ -146,3 +146,87 @@ describe('compileCompositeColDef — Tier 2', () => {
     expect(bg?.background).toBe('#efe');
   });
 });
+
+describe('compileFormat — rule refs + hasRuleRefs (Cycle 21e)', () => {
+  it('hasRuleRefs is true for formats whose tier-1 brackets contain rule:<id>', () => {
+    const r = compileFormat('[color=rule:hot] $#,##0.00');
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.error.message);
+    expect(r.program.hasRuleRefs).toBe(true);
+  });
+
+  it('hasRuleRefs is undefined for plain formats (tier 0 and expression-only tier 1)', () => {
+    const plain = compileFormat('0.00');
+    expect(plain.ok).toBe(true);
+    if (!plain.ok) throw new Error(plain.error.message);
+    expect(plain.program.hasRuleRefs).toBeUndefined();
+
+    const tier1 = compileFormat('[color=[change] > 0 ? "#0a7" : "#d33"] 0.00');
+    expect(tier1.ok).toBe(true);
+    if (!tier1.ok) throw new Error(tier1.error.message);
+    expect(tier1.program.hasRuleRefs).toBeUndefined();
+  });
+
+  it('round-trip: [color=rule:hot] resolves through ctx.resolveRuleRef; absent accessor → 21c null contribution', () => {
+    const r = compileFormat('[color=rule:hot] $#,##0.00');
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.error.message);
+
+    // Accessor present + rule matched → live rule color.
+    const style = r.program.resolveStyle({
+      value: 1234.5, row: {}, colId: 'x',
+      resolveRuleRef: (ruleId) => (ruleId === 'hot' ? '#ff0000' : null),
+    });
+    expect(style?.color).toBe('#ff0000');
+
+    // Text path unaffected by the bracket.
+    expect(r.program.formatText({ value: 1234.5, row: {}, colId: 'x' })).toBe('$1,234.50');
+
+    // Accessor absent → exact Cycle 21c reserve behavior.
+    expect(r.program.resolveStyle({ value: 1234.5, row: {}, colId: 'x' })?.color).toBeUndefined();
+  });
+
+  it('mixed bracket: rule:<id> inside a larger expression is baked to literal null (never accessor-resolved); hasRuleRefs still true', () => {
+    // sugar.ts canonicalizes the interior to `[x] > 0 ? null : "#d33"` —
+    // ast !== null, so the resolver takes the expression path; the ref
+    // position contributes null even with an accessor present. Only
+    // whole-interior refs ([color=rule:hot]) get ast === null + accessor
+    // resolution. ruleRefs are still recorded → memo bypass stays correct.
+    const r = compileFormat('[color=[x] > 0 ? rule:hot : "#d33"] 0.00');
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.error.message);
+    expect(r.program.hasRuleRefs).toBe(true);
+
+    const resolveRuleRef = (): string => '#ff0000';
+    // Ternary picks the rule-ref branch → baked null → no color contribution.
+    expect(r.program.resolveStyle({ value: 1, row: { x: 5 }, colId: 'c', resolveRuleRef })?.color)
+      .toBeUndefined();
+    // Ternary picks the literal branch → normal expression result.
+    expect(r.program.resolveStyle({ value: 1, row: { x: -5 }, colId: 'c', resolveRuleRef })?.color)
+      .toBe('#d33');
+  });
+
+  it('composite fragment [rule:<id>] style shorthand resolves via the accessor; program reports hasRuleRefs', () => {
+    const colDef: CompositeColDef = {
+      colId: 'summary',
+      type: 'composite',
+      fragments: [{ expr: '[symbol]', style: { color: '[rule:hot]' } }],
+    };
+    const r = compileCompositeColDef(colDef);
+    expect(r.ok).toBe(true);
+    if (!r.ok) throw new Error(r.error.message);
+    expect(r.program.hasRuleRefs).toBe(true);
+
+    const withAccessor = r.program.resolveFragments({
+      value: null, row: { symbol: 'AAPL' }, colId: 'summary',
+      resolveRuleRef: (ruleId) => (ruleId === 'hot' ? '#ff0000' : null),
+    });
+    expect(withAccessor?.[0]?.text).toBe('AAPL');
+    expect(withAccessor?.[0]?.style.color).toBe('#ff0000');
+
+    // Accessor absent → shorthand contributes nothing (21c behavior).
+    const without = r.program.resolveFragments({ value: null, row: { symbol: 'AAPL' }, colId: 'summary' });
+    expect(without?.[0]?.text).toBe('AAPL');
+    expect(without?.[0]?.style.color).toBeUndefined();
+  });
+});

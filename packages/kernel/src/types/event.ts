@@ -122,6 +122,21 @@ export type CGridEvent<TRow = any> =
       /** Mutated row object as it lives in the worker after the commit. */
       data?: TRow;
     }
+  /** Cycle 21e / Task 12 — one event per transaction that mutated the
+   *  main-thread rowDataById mirror. Listener-gated: the `oldRow`
+   *  shallow snapshot (and all payload arrays) are built ONLY when at
+   *  least one listener is registered — zero overhead for non-rules
+   *  apps. `setRowData` full replaces do NOT emit. `'transactionAsync'`
+   *  emits at applyTransactionAsync() call time (the main-side mirror
+   *  syncs at enqueue; the worker batches internally). `'edit'` emits
+   *  from the editor commit-back path. */
+  | {
+      type: 'rowsChanged';
+      added: Array<{ rowId: string; row: TRow }>;
+      updated: Array<{ rowId: string; row: TRow; oldRow: TRow }>;
+      removed: Array<{ rowId: string; row: TRow }>;
+      source: 'transaction' | 'transactionAsync' | 'edit';
+    }
   | CellEditingStartedEvent<TRow>
   | CellEditingStoppedEvent<TRow>
   | RowEditingStartedEvent<TRow>

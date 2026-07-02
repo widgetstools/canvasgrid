@@ -138,6 +138,11 @@ export interface ColCellOverrides {
   /** Cycle 27 / Task 1 — transform applied to `valueFormatted` before paint:
    *  `'uppercase'` / `'lowercase'` / `'capitalize'` / `'none'` (default). */
   textTransform?: TextTransform;
+  /** Cycle 21e / Task 11 — underline / strike-through drawn by the text
+   *  painters as a 1px line in the text color. `'none'` (default) draws
+   *  nothing. Consumed by the built-in `textCell` / `numberCell`
+   *  painters; custom painters may ignore it. */
+  textDecoration?: 'none' | 'underline' | 'line-through';
   /** Cycle 27 / Task 1 — extra spacing between characters in CSS pixels.
    *  Forwarded to `CanvasRenderingContext2D.letterSpacing` at paint time
    *  (Chromium 99+, Firefox 116+, Safari 16+). */

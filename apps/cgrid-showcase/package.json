@@ -15,7 +15,8 @@
     "ag-grid-community": "^35.3.1",
     "ag-grid-enterprise": "^35.3.1",
     "@cgrid/format": "*",
-    "@cgrid/kernel": "*"
+    "@cgrid/kernel": "*",
+    "@cgrid/rules": "*"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.12.1",

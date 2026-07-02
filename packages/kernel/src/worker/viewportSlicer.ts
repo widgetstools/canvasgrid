@@ -195,6 +195,10 @@ export function sliceGroupedViewport<TRow>(
   const groupChildCount = new Uint32Array(count);
   const isExpanded = new Uint8Array(count);
   isExpanded.fill(1);
+  // Cycle 21e / Task 11 — string rowId per chunk slot, parallel to
+  // `rowIds` (which carries the numeric id). Group / footer entries
+  // leave the empty-string sentinel; only data rows populate it below.
+  const stringRowIds: string[] = new Array<string>(count).fill('');
   // Cycle 15 / Task 7 — composite group key per group row. The chevron
   // click hit-test on main reads this back to drive `setExpanded` +
   // `rowGroupOpened`; data rows hold the empty-string sentinel.
@@ -257,6 +261,7 @@ export function sliceGroupedViewport<TRow>(
     const rowId = postFilterIds[entry.rowIndex];
     if (rowId === undefined) continue;
     rowIds[i] = store.getNumericId(rowId);
+    stringRowIds[i] = rowId;
     heights[i] = store.effectiveShippedHeight(rowId);
     // Cycle 15 / Task 10 — `showOpenedGroup` populates the data row's
     // `groupValue[i]` slot with its leaf-parent's formatted value. The
@@ -358,6 +363,7 @@ export function sliceGroupedViewport<TRow>(
     rowStart,
     rowCount: count,
     rowIds,
+    stringRowIds,
     rowKinds,
     groupDepth,
     heights,

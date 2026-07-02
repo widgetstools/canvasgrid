@@ -52,4 +52,14 @@ describe('TypedEventEmitter', () => {
     ee.emit({ type: 'foo', payload: 1 });
     expect(fn).not.toHaveBeenCalled();
   });
+
+  it('hasListener reflects registration and unsubscription', () => {
+    const ee = new TypedEventEmitter<Ev>();
+    expect(ee.hasListener('foo')).toBe(false);
+    const off = ee.on('foo', () => {});
+    expect(ee.hasListener('foo')).toBe(true);
+    expect(ee.hasListener('bar')).toBe(false);
+    off();
+    expect(ee.hasListener('foo')).toBe(false); // emptied Set reads false
+  });
 });

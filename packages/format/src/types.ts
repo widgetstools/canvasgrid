@@ -34,12 +34,26 @@ export interface FormatProgram {
   resolveFragments: (ctx: FormatEvalContext) => ResolvedFragment[] | null;
   source: FormatSource;
   tiers: { tier0: boolean; tier1: boolean; tier2: boolean };
+  /** Cycle 21e: true when any tier-1 bracket — including fragment-style
+   *  `[<expr>]` shorthands and composite cellBackground — contained a
+   *  `rule:<id>` reference. The kernel uses this to bypass its per-cell
+   *  format-eval memo (Task 14): a rule's matched set can change without
+   *  the cell value changing, so memoized style would go stale. The key
+   *  is absent for plain programs. */
+  hasRuleRefs?: boolean;
 }
 
 export interface FormatEvalContext {
   value: unknown;
   row: Record<string, unknown>;
   colId: string;
+  /** Cycle 21e rule-context accessor. When a rule engine is registered,
+   *  the kernel closes this over the current cell (rowId/colId/theme):
+   *  `resolveRuleRef(id)` returns rule `id`'s theme-resolved style color
+   *  when the rule matches the cell, else null. Absent — or resolving
+   *  null for every ref — a pure rule-ref bracket contributes null,
+   *  exactly the Cycle 21c reserve behavior. */
+  resolveRuleRef?: (ruleId: string) => string | null;
 }
 
 export interface CompileFormatError {
@@ -131,7 +145,10 @@ export interface WireOptions {
 
 // ─── Internal (not exported from index.ts) ─────────────────────────────
 
-/** Reserved for Cycle 21e — rule reference in style expressions. */
+/** Cycle 21e — rule reference in style expressions. Pure-ref brackets
+ *  (whole interior is one `rule:<id>`) parse to `ast: null` and resolve
+ *  through FormatEvalContext.resolveRuleRef; refs inside larger
+ *  expressions are baked to literal `null` by tier1/sugar.ts. */
 export interface RuleRefNode {
   kind: 'rule-ref';
   ruleId: string;

@@ -44,6 +44,14 @@ export interface RendererOpts {
    * Cycle 6 / Task 7.
    */
   rowDataSnapshotAt: (rowIndex: number) => Record<string, unknown>;
+  /** Cycle 21e / Task 11 — real string rowId for a visible data row
+   *  (chunk `stringRowIds` mirror). Forwarded into `PainterCtx`. */
+  stringRowIdAt?: (rowIndex: number) => string | null;
+  /** Cycle 21e / Task 11 — full row from the main-thread rowDataById
+   *  mirror (hidden columns included). Forwarded into `PainterCtx`. */
+  getRowDataById?: (rowId: string) => unknown;
+  /** Cycle 21e / Task 11 — active theme kind for rule eval contexts. */
+  getThemeKind?: () => 'light' | 'dark';
   /**
    * Cycle 7 / Task 7 — current pre-lowercased quick-filter terms (or `[]`
    * when no quick filter is active). Forwarded into `PainterCtx` so the
@@ -149,6 +157,9 @@ export class Renderer {
       sortModel: this.opts.getSortModel(),
       totalRowCount: this.opts.getTotalRowCount?.() ?? 0,
       rowDataSnapshotAt: this.opts.rowDataSnapshotAt,
+      stringRowIdAt: this.opts.stringRowIdAt,
+      getRowDataById: this.opts.getRowDataById,
+      themeKind: this.opts.getThemeKind?.(),
       quickFilterLowerTerms: this.opts.getQuickFilterLowerTerms(),
       showFillHandle: this.opts.getShowFillHandle(),
       suppressAggFuncInHeader: this.opts.getSuppressAggFuncInHeader(),

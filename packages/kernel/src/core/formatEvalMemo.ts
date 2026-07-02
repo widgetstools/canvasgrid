@@ -1,0 +1,117 @@
+// Cycle 21e / Task 14 — per-cell format-eval memo (the carried Cycle 21c
+// perf Minor: formatText + resolveStyle + resolveIcon each re-ran the
+// program per paint). One WeakMap entry per program holding the LAST
+// cell's eval keyed `${rowId}\0${colId}\0${String(value)}\0${theme}`
+// (spec §5.5) — the three compileFormatSlots wrapper lambdas for one cell
+// run back-to-back in a paint pass, so a single-entry memo collapses the
+// triple eval into one. Key mismatch (next cell / changed value / theme
+// flip) recomputes.
+//
+// Bypass rules (correctness over speed):
+//   - program.hasRuleRefs === true — a rule-match change without a value
+//     change must not serve stale colors;
+//   - p.rowId undefined — no cell identity (pinned rows, ad-hoc calls).
+//
+// Cross-paint reuse (review fix pass 1): the key carries only THIS
+// cell's value, but tier-1/tier-2 programs evaluate against the FULL
+// row (`[color=[qty] > 100]` on the price column) — a qty change with
+// an unchanged price must not serve a stale style forever. So:
+//   - pure tier-0 programs (tier0 && !tier1 && !tier2) are
+//     value-determined → their memo entries survive across paint passes;
+//   - tier-1/tier-2 programs additionally stamp the current paint
+//     generation into the key — same cell twice in one pass is still a
+//     single eval (the 21c triple-eval Minor), but the next pass always
+//     re-evaluates. byRows bumps the generation once per paint entry.
+
+import { getRuleEngine } from './ruleEngineSlot';
+import type { FormatEvalCtxShape, FormatProgramShape } from './formatCompilerSlot';
+
+export interface FormatEvalResult {
+  text: string;
+  style: ReturnType<FormatProgramShape['resolveStyle']>;
+  icon: ReturnType<FormatProgramShape['resolveIcon']>;
+}
+
+interface MemoEntry { key: string; result: FormatEvalResult; }
+
+const memo = new WeakMap<FormatProgramShape, MemoEntry>();
+
+/** Monotonic paint-pass counter. Bumped once per byRows paint entry;
+ *  stamped into tier-1/tier-2 memo keys so row-dependent evals never
+ *  survive across paint passes. */
+let generation = 0;
+
+/** Build the eval ctx, closing resolveRuleRef over the rule slot + the
+ *  current cell (spec §5.5). The accessor is only attached when both an
+ *  engine and a cell identity exist. Exported (Cycle 21e final-review
+ *  fix) so the composite painter and the clipboard/export composite
+ *  path build the same rule-aware ctx for `resolveFragments`. */
+export function buildFormatEvalCtx(p: { value: unknown; data: unknown; colId: string; rowId?: string; themeKind?: 'light' | 'dark' }): FormatEvalCtxShape {
+  const engine = getRuleEngine();
+  if (engine === null || p.rowId === undefined) {
+    return { value: p.value, row: p.data, colId: p.colId };
+  }
+  const cellCtx = {
+    row: p.data,
+    rowId: p.rowId,
+    colId: p.colId,
+    theme: p.themeKind ?? 'light',
+  } as const;
+  return {
+    value: p.value,
+    row: p.data,
+    colId: p.colId,
+    resolveRuleRef: (ruleId: string) => engine.resolveRuleRef(ruleId, cellCtx),
+  };
+}
+
+/** Evaluate all three channels of a format program for one cell, memoised
+ *  per (program, rowId, colId, value, theme). */
+export function evalFormatProgram(
+  program: FormatProgramShape,
+  p: { value: unknown; data: unknown; colId: string; rowId?: string; themeKind?: 'light' | 'dark' },
+): FormatEvalResult {
+  const memoable = program.hasRuleRefs !== true && p.rowId !== undefined;
+  if (memoable) {
+    // Pure tier-0 output is a function of the cell value alone → safe to
+    // reuse across paint passes. Tier-1/tier-2 read the full row → scope
+    // the entry to the current paint generation (within-pass sharing
+    // only). `tiers` is defensive-optional for older structural doubles.
+    const t = program.tiers as FormatProgramShape['tiers'] | undefined;
+    const pureTier0 = t !== undefined && t.tier0 && !t.tier1 && !t.tier2;
+    const base = `${p.rowId}\0${p.colId}\0${String(p.value)}\0${p.themeKind ?? 'light'}`;
+    const key = pureTier0 ? base : `${generation}\0${base}`;
+    const hit = memo.get(program);
+    if (hit !== undefined && hit.key === key) return hit.result;
+    const ctx = buildFormatEvalCtx(p);
+    const result: FormatEvalResult = {
+      text: program.formatText(ctx),
+      style: program.resolveStyle(ctx),
+      icon: program.resolveIcon(ctx),
+    };
+    memo.set(program, { key, result });
+    return result;
+  }
+  const ctx = buildFormatEvalCtx(p);
+  return {
+    text: program.formatText(ctx),
+    style: program.resolveStyle(ctx),
+    icon: program.resolveIcon(ctx),
+  };
+}
+
+/** Advance the paint generation. Called once per paint pass at the top
+ *  of the byRows paint entry (review fix pass 1) — invalidates every
+ *  tier-1/tier-2 memo entry from the previous pass while leaving pure
+ *  tier-0 (value-determined) entries reusable. */
+export function bumpFormatEvalGeneration(): void {
+  generation++;
+}
+
+/** Test-only helper — WeakMap has no clear(); recreating is enough
+ *  because tests use fresh program objects per case. Exported for
+ *  symmetry with the slots; intentionally a no-op. */
+export function _resetFormatEvalMemo_forTests(): void {
+  /* WeakMap entries are keyed by program identity; fresh programs
+     per test make explicit clearing unnecessary. */
+}

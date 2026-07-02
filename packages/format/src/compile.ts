@@ -100,10 +100,15 @@ export function compileFormat(source: FormatSource, opts?: CompileFormatOptions)
   const tier0 = excelTokens.length > 0;
   const tier1 = tier1Nodes.length > 0 || iconTokens.length > 0;
   const tier2 = false;
+  // Cycle 21e: any bracket that carried a rule:<id> — pure ([color=rule:hot],
+  // ast === null, accessor-resolved) or mixed (ref baked to literal null by
+  // sugar.ts). Kernel Task 14 uses this to bypass the format-eval memo.
+  const hasRuleRefs = tier1Nodes.some((n) => n.ruleRefs.length > 0);
 
   const program: FormatProgram = {
     source,
     tiers: { tier0, tier1, tier2 },
+    ...(hasRuleRefs ? { hasRuleRefs: true } : {}),
     formatText: (ctx: FormatEvalContext): string => {
       const result = evaluateExcel(excelTree, {
         value: ctx.value, locale, currency, forceSectionIndex: selectIfSection(ctx),
@@ -131,9 +136,22 @@ export function compileFormat(source: FormatSource, opts?: CompileFormatOptions)
 export function compileCompositeColDef(colDef: CompositeColDef, opts?: CompileFormatOptions): CompileFormatResult {
   const plan: CompiledFragmentPlan = compileFragments(colDef, opts);
 
+  // Cycle 21e: composite programs carry rule refs via fragment-style
+  // [<expr>] shorthands (dynamic channels) and the cellBackground program.
+  const nodesHaveRefs = (nodes: Tier1Node[] | null): boolean =>
+    nodes !== null && nodes.some((n) => n.ruleRefs.length > 0);
+  const hasRuleRefs =
+    plan.fragments.some(
+      (f) =>
+        f.kind === 'expr' &&
+        (nodesHaveRefs(f.dynamicColor) || nodesHaveRefs(f.dynamicBg) ||
+         nodesHaveRefs(f.dynamicWeight) || nodesHaveRefs(f.dynamicItalic)),
+    ) || nodesHaveRefs(plan.cellBackgroundProgram?.nodes ?? null);
+
   const program: FormatProgram = {
     source: colDef,
     tiers: { tier0: false, tier1: false, tier2: true },
+    ...(hasRuleRefs ? { hasRuleRefs: true } : {}),
     formatText: (ctx: FormatEvalContext): string => {
       const fragments = resolveFragments(plan, ctx);
       return fragments.map((f) => f.text).join('');

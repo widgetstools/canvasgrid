@@ -271,3 +271,82 @@ describe('compositeCell — overflow', () => {
     expect(text).toBe('Y'.repeat(26));
   });
 });
+
+// ─── Cycle 21e / final-review fix — rule-ref threading into the painter ──
+
+import {
+  registerRuleEngine,
+  _resetRuleEngine_forTests,
+  type RuleEngineShape,
+} from '../src/core/ruleEngineSlot';
+
+describe('compositeCell — resolveRuleRef threading (Cycle 21e)', () => {
+  beforeEach(() => {
+    _resetIconRegistry_forTests();
+    _resetRuleEngine_forTests();
+  });
+
+  /** Program that records the exact ctx resolveFragments receives. */
+  function makeCapturingProgram(captured: unknown[]): FormatProgramShape {
+    return {
+      formatText: () => '',
+      resolveStyle: () => null,
+      resolveIcon: () => null,
+      resolveFragments: (ctx: unknown) => {
+        captured.push(ctx);
+        return [{ text: 'z', style: {} }] as any;
+      },
+      source: 'test',
+      tiers: { tier0: false, tier1: false, tier2: true },
+    };
+  }
+
+  it('attaches resolveRuleRef when an engine is registered and rowId is present', () => {
+    const seen: Array<{ ruleId: string; ctx: unknown }> = [];
+    const engine: RuleEngineShape = {
+      evaluateCell: () => ({ matched: [], style: null, indicator: null, formatProgram: null }),
+      resolveRuleRef: (ruleId, ctx) => { seen.push({ ruleId, ctx }); return '#ff0000'; },
+    };
+    registerRuleEngine(engine);
+    const captured: unknown[] = [];
+    compositeCell.paint(makeGc(), baseConfig({
+      compositeProgram: makeCapturingProgram(captured),
+      rowId: 'r-7',
+      themeKind: 'dark',
+    }));
+    expect(captured).toHaveLength(1);
+    const ctx = captured[0] as {
+      value: unknown; row: unknown; colId: string;
+      resolveRuleRef?: (id: string) => string | null;
+    };
+    expect(typeof ctx.resolveRuleRef).toBe('function');
+    expect(ctx.resolveRuleRef!('hot')).toBe('#ff0000');
+    expect(seen[0]!.ruleId).toBe('hot');
+    expect(seen[0]!.ctx).toMatchObject({ rowId: 'r-7', colId: 'summary', theme: 'dark' });
+  });
+
+  it('degrades to the plain 21c ctx when no engine is registered', () => {
+    const captured: unknown[] = [];
+    compositeCell.paint(makeGc(), baseConfig({
+      compositeProgram: makeCapturingProgram(captured),
+      rowId: 'r-7',
+      themeKind: 'dark',
+    }));
+    const ctx = captured[0] as Record<string, unknown>;
+    expect(ctx.resolveRuleRef).toBeUndefined();
+    expect(ctx).toMatchObject({ colId: 'summary' });
+  });
+
+  it('degrades to the plain 21c ctx when rowId is absent (engine registered)', () => {
+    registerRuleEngine({
+      evaluateCell: () => ({ matched: [], style: null, indicator: null, formatProgram: null }),
+      resolveRuleRef: () => '#ff0000',
+    });
+    const captured: unknown[] = [];
+    compositeCell.paint(makeGc(), baseConfig({
+      compositeProgram: makeCapturingProgram(captured),
+    }));
+    const ctx = captured[0] as Record<string, unknown>;
+    expect(ctx.resolveRuleRef).toBeUndefined();
+  });
+});
