@@ -211,3 +211,187 @@ describe('CalcEngine — structuredClone safety', () => {
     expect(cloned.compiled.watchedColIds.has('price')).toBe(true);  // Set survives structuredClone
   });
 });
+
+// Engine-level suites — everything exercised via the CalcEngine surface only
+// (foldTemplateChain / overrideToKernelPatch have their own unit files above).
+
+describe('CalcEngine — applyOverrides/getOverrides', () => {
+  it('stores overrides and returns clones', () => {
+    const engine = new CalcEngine();
+    const r = engine.applyOverrides([{ colId: 'px', headerName: 'Px', width: 100 }]);
+    expect(r).toEqual({ ok: true, errors: [] });
+    const out = engine.getOverrides();
+    expect(out).toEqual([{ colId: 'px', headerName: 'Px', width: 100 }]);
+    out[0]!.headerName = 'HACKED';
+    expect(engine.getOverrides()[0]!.headerName).toBe('Px');
+  });
+
+  it('rejects an empty colId as bad-shape', () => {
+    const engine = new CalcEngine();
+    const r = engine.applyOverrides([{ colId: '', headerName: 'X' }]);
+    expect(r.ok).toBe(false);
+    expect(r.errors[0]!.code).toBe('bad-shape');
+  });
+
+  it('rejects an invalid format as format-compile and applies NOTHING (atomic)', () => {
+    const engine = new CalcEngine();
+    const r = engine.applyOverrides([
+      { colId: 'ok', headerName: 'fine' },
+      { colId: 'bad', format: '0;0;0;0;0' },
+    ]);
+    expect(r.ok).toBe(false);
+    expect(r.errors[0]).toMatchObject({ code: 'format-compile', colId: 'bad', loc: null });
+    expect(engine.getOverrides()).toEqual([]);            // the valid one was NOT applied
+  });
+
+  it('upserts per colId — a later call replaces that colId wholesale, others untouched', () => {
+    const engine = new CalcEngine();
+    engine.applyOverrides([{ colId: 'a', headerName: 'A', width: 90 }, { colId: 'b', width: 50 }]);
+    engine.applyOverrides([{ colId: 'a', headerName: 'A2' }]);
+    const byId = new Map(engine.getOverrides().map((o) => [o.colId, o]));
+    expect(byId.get('a')).toEqual({ colId: 'a', headerName: 'A2' });  // wholesale — width gone
+    expect(byId.get('b')).toEqual({ colId: 'b', width: 50 });
+  });
+});
+
+describe('CalcEngine — saveTemplate/listTemplates/deleteTemplate', () => {
+  it('stamps createdAt/updatedAt from caller-supplied now (Date-free)', () => {
+    const engine = new CalcEngine();
+    engine.saveTemplate({ id: 'cur', name: 'Currency', overrides: { format: '0.00' }, now: 100 });
+    expect(engine.listTemplates()).toEqual([{
+      id: 'cur', name: 'Currency', overrides: { format: '0.00' }, createdAt: 100, updatedAt: 100,
+    }]);
+  });
+
+  it('re-save of the same id preserves createdAt and bumps updatedAt', () => {
+    const engine = new CalcEngine();
+    engine.saveTemplate({ id: 'cur', name: 'Currency', overrides: { format: '0.00' }, now: 100 });
+    engine.saveTemplate({ id: 'cur', name: 'Currency v2', overrides: { format: '0' }, now: 250 });
+    const [t] = engine.listTemplates();
+    expect(t!.createdAt).toBe(100);
+    expect(t!.updatedAt).toBe(250);
+    expect(t!.name).toBe('Currency v2');
+  });
+
+  it('throws on empty id or a format that does not compile', () => {
+    const engine = new CalcEngine();
+    expect(() => engine.saveTemplate({ id: '', name: 'x', overrides: {}, now: 1 })).toThrow();
+    expect(() => engine.saveTemplate({
+      id: 'bad', name: 'x', overrides: { format: '0;0;0;0;0' }, now: 1,
+    })).toThrow(/format/);
+  });
+
+  it('deleteTemplate removes the template but never prunes assignment refs', () => {
+    const engine = new CalcEngine();
+    engine.saveTemplate({ id: 'cur', name: 'Currency', overrides: { format: '0.00' }, now: 1 });
+    engine.applyTemplate('cur', ['px']);
+    engine.deleteTemplate('cur');
+    expect(engine.listTemplates()).toEqual([]);
+    expect(engine.getOverrides()[0]!.templateIds).toEqual(['cur']);   // dangling ref kept
+    expect(engine.resolvedPatchFor('px', 'number')).toBeNull();      // fold skips it silently
+  });
+});
+
+describe('CalcEngine — applyTemplate', () => {
+  it('creates a bare override where none exists', () => {
+    const engine = new CalcEngine();
+    engine.applyTemplate('cur', ['a', 'b']);
+    expect(engine.getOverrides()).toEqual([
+      { colId: 'a', templateIds: ['cur'] },
+      { colId: 'b', templateIds: ['cur'] },
+    ]);
+  });
+
+  it('appends to an existing chain and dedupes', () => {
+    const engine = new CalcEngine();
+    engine.applyOverrides([{ colId: 'a', headerName: 'A', templateIds: ['t1'] }]);
+    engine.applyTemplate('cur', ['a']);
+    engine.applyTemplate('cur', ['a']);                              // dedupe: no double entry
+    expect(engine.getOverrides()[0]).toEqual({ colId: 'a', headerName: 'A', templateIds: ['t1', 'cur'] });
+  });
+});
+
+describe('CalcEngine — resolvedPatchFor', () => {
+  function seeded(): CalcEngine {
+    const engine = new CalcEngine();
+    engine.saveTemplate({
+      id: 'num-default', name: 'Numeric default',
+      overrides: { format: '0.00', cellStyle: { textAlign: 'right' } }, now: 1,
+    });
+    engine.saveTemplate({
+      id: 'str-default', name: 'String default', overrides: { cellStyle: { textAlign: 'left' } }, now: 1,
+    });
+    engine.saveTemplate({
+      id: 'hot', name: 'Highlight', overrides: { cellStyle: { color: 'orange' }, width: 110 }, now: 1,
+    });
+    engine.setTypeDefaults({ numeric: 'num-default', string: 'str-default', date: 'ghost-date', boolean: 'ghost-bool' });
+    return engine;
+  }
+
+  it('templateIds undefined → typeDefault numeric bucket for kernel "number"', () => {
+    const engine = seeded();
+    expect(engine.resolvedPatchFor('price', 'number')).toEqual({
+      valueFormatter: '0.00',
+      cellStyle: { textAlign: 'right' },
+    });
+  });
+
+  it('templateIds undefined → typeDefault string bucket for kernel "text"', () => {
+    const engine = seeded();
+    expect(engine.resolvedPatchFor('name', 'text')).toEqual({
+      cellStyle: { textAlign: 'left' },
+    });
+  });
+
+  it('date/boolean typeDefault buckets never leak into the two live buckets (honest limitation)', () => {
+    const engine = new CalcEngine();
+    engine.saveTemplate({ id: 'd', name: 'd', overrides: { width: 666 }, now: 1 });
+    engine.setTypeDefaults({ date: 'd', boolean: 'd' });               // only unreachable buckets set
+    expect(engine.resolvedPatchFor('anything', 'number')).toBeNull();
+    expect(engine.resolvedPatchFor('anything', 'text')).toBeNull();
+  });
+
+  it('templateIds [] opts out of the typeDefault', () => {
+    const engine = seeded();
+    engine.applyOverrides([{ colId: 'price', headerName: 'Px', templateIds: [] }]);
+    expect(engine.resolvedPatchFor('price', 'number')).toEqual({ headerName: 'Px' });
+  });
+
+  it('missing template ids in the chain are skipped silently', () => {
+    const engine = seeded();
+    engine.applyOverrides([{ colId: 'price', templateIds: ['no-such-tpl', 'hot'] }]);
+    expect(engine.resolvedPatchFor('price', 'number')).toEqual({
+      cellStyle: { color: 'orange' },
+      width: 110,
+    });
+  });
+
+  it('end-to-end fold: typeDefault < chain < assignment, styles merged per-key', () => {
+    const engine = seeded();
+    engine.applyOverrides([{
+      colId: 'price', headerName: 'Px', width: 120, templateIds: undefined,
+    }]);
+    // templateIds undefined → numeric typeDefault still applies under the assignment
+    expect(engine.resolvedPatchFor('price', 'number')).toEqual({
+      headerName: 'Px',
+      valueFormatter: '0.00',                 // from num-default (assignment silent)
+      cellStyle: { textAlign: 'right' },      // per-key merge survives
+      width: 120,                             // assignment wins
+    });
+  });
+
+  it('pins calc columns non-editable even when an override says editable: true', () => {
+    const engine = new CalcEngine({ schema: SCHEMA });
+    engine.registerCalculatedColumn(lineTotal());
+    engine.applyOverrides([{ colId: 'lineTotal', headerName: 'LT', editable: true }]);
+    expect(engine.resolvedPatchFor('lineTotal', 'number')).toEqual({ headerName: 'LT' });
+    // Same override on a data column keeps editable:
+    engine.applyOverrides([{ colId: 'price', editable: true }]);
+    expect(engine.resolvedPatchFor('price', 'number')).toEqual({ editable: true });
+  });
+
+  it('returns null when nothing applies', () => {
+    const engine = new CalcEngine();
+    expect(engine.resolvedPatchFor('price', 'number')).toBeNull();
+  });
+});

@@ -7,6 +7,8 @@
 import type { Schema } from '@cgrid/expression';
 import { compileFormat } from '@cgrid/format';
 import { compileCalc } from './compile';
+import { foldTemplateChain } from './templates';
+import { overrideToKernelPatch } from './overrides';
 import type {
   CalculatedColumnDef,
   CalcValidationError,
@@ -43,6 +45,9 @@ export class CalcEngine {
   /** Insertion-ordered — registration order IS the accessor order. */
   #calcCols = new Map<string, StoredCalcColumn>();
   #columnListeners = new Set<() => void>();
+  #overrides = new Map<string, ColumnOverride>();     // keyed by colId, insertion-ordered
+  #templates = new Map<string, ColumnTemplate>();     // keyed by template id
+  #typeDefaults: TypeDefaults = {};
 
   constructor(opts?: { schema?: Schema }) {
     this.#schema = opts?.schema ?? null;
@@ -189,35 +194,122 @@ export class CalcEngine {
 
   // ── Overrides + templates (Task 8) ─────────────────────────────────────
 
-  applyOverrides(_overrides: ColumnOverride[]): { ok: boolean; errors: CalcValidationError[] } {
-    throw new Error('not-yet-implemented: applyOverrides ships in Task 8');
+  /** Atomic per call: any invalid entry → nothing stored. Valid calls upsert
+   *  per colId (that colId's override is replaced wholesale). No notification
+   *  — the Task 14 bridge triggers the kernel colDef rebuild itself. */
+  applyOverrides(overrides: ColumnOverride[]): { ok: boolean; errors: CalcValidationError[] } {
+    const errors: CalcValidationError[] = [];
+    for (const override of overrides) {
+      if (typeof override.colId !== 'string' || override.colId.length === 0) {
+        errors.push({
+          colId: null,
+          code: 'bad-shape',
+          message: 'override colId must be a non-empty string',
+          loc: null,
+        });
+        continue;
+      }
+      if (override.format !== undefined) {
+        const fmt = compileFormat(override.format);
+        if (!fmt.ok) {
+          errors.push({
+            colId: override.colId,
+            code: 'format-compile',
+            message: `override format failed to compile: ${fmt.error.message}`,
+            loc: null,
+          });
+        }
+      }
+    }
+    if (errors.length > 0) return { ok: false, errors };
+    for (const override of overrides) this.#overrides.set(override.colId, structuredClone(override));
+    return { ok: true, errors: [] };
   }
 
   getOverrides(): ColumnOverride[] {
-    throw new Error('not-yet-implemented: getOverrides ships in Task 8');
+    return [...this.#overrides.values()].map((override) => structuredClone(override));
   }
 
-  saveTemplate(_spec: Omit<ColumnTemplate, 'createdAt' | 'updatedAt'> & { now: number }): void {
-    throw new Error('not-yet-implemented: saveTemplate ships in Task 8');
+  /** Date-free: the CALLER stamps `now`. Re-save of an existing id preserves
+   *  createdAt and bumps updatedAt. Throws on host-authoring errors (empty id,
+   *  non-compiling format) — void return per the locked spec §3 signature. */
+  saveTemplate(spec: Omit<ColumnTemplate, 'createdAt' | 'updatedAt'> & { now: number }): void {
+    const { now, ...template } = spec;
+    if (typeof template.id !== 'string' || template.id.length === 0) {
+      throw new Error('template id must be a non-empty string');
+    }
+    if (template.overrides.format !== undefined) {
+      const fmt = compileFormat(template.overrides.format);
+      if (!fmt.ok) {
+        throw new Error(`template '${template.id}' format failed to compile: ${fmt.error.message}`);
+      }
+    }
+    const existing = this.#templates.get(template.id);
+    this.#templates.set(template.id, structuredClone({
+      ...template,
+      createdAt: existing?.createdAt ?? now,
+      updatedAt: now,
+    }));
   }
 
-  applyTemplate(_templateId: string, _colIds: string[]): void {
-    throw new Error('not-yet-implemented: applyTemplate ships in Task 8');
+  /** Sets templateIds on the columns' overrides — bare override created where
+   *  none exists; existing chains get the id appended (dedup). NOTE (StarUI 07):
+   *  a column whose templateIds was undefined becomes explicitly chained, so
+   *  the typeDefault stops applying to it. Dangling ids are legal. */
+  applyTemplate(templateId: string, colIds: string[]): void {
+    for (const colId of colIds) {
+      const existing = this.#overrides.get(colId);
+      if (existing === undefined) {
+        this.#overrides.set(colId, { colId, templateIds: [templateId] });
+        continue;
+      }
+      const chain = existing.templateIds ?? [];
+      if (!chain.includes(templateId)) existing.templateIds = [...chain, templateId];
+    }
   }
 
-  deleteTemplate(_templateId: string): void {
-    throw new Error('not-yet-implemented: deleteTemplate ships in Task 8');
+  /** NO cascade (StarUI 07 lifecycle independence): assignment refs stay —
+   *  the fold skips dangling ids; re-saving the template revives them. */
+  deleteTemplate(templateId: string): void {
+    this.#templates.delete(templateId);
   }
 
   listTemplates(): ColumnTemplate[] {
-    throw new Error('not-yet-implemented: listTemplates ships in Task 8');
+    return [...this.#templates.values()].map((template) => structuredClone(template));
   }
 
-  setTypeDefaults(_defaults: TypeDefaults): void {
-    throw new Error('not-yet-implemented: setTypeDefaults ships in Task 8');
+  setTypeDefaults(defaults: TypeDefaults): void {
+    this.#typeDefaults = structuredClone(defaults);
   }
 
-  resolvedPatchFor(_colId: string, _cellDataType: 'text' | 'number'): Record<string, unknown> | null {
-    throw new Error('not-yet-implemented: resolvedPatchFor ships in Task 8');
+  /**
+   * Folded per-column kernel patch (template chain + override), or null.
+   * Called by the Task 9 kernel fold per column, pre-resolveColDefs.
+   *
+   * Two-bucket typeDefault degradation (LOCKED): `TypeDefaults` keeps StarUI's
+   * four buckets, but this accessor takes the KERNEL cellDataType, which is
+   * binary — 'number' → typeDefaults.numeric, 'text' → typeDefaults.string.
+   * The date/boolean buckets are stored and preserved but unreachable until
+   * the kernel grows date/boolean cell data types — an HONEST LIMITATION
+   * documented here + README, not a silent drop.
+   */
+  resolvedPatchFor(colId: string, cellDataType: 'text' | 'number'): Record<string, unknown> | null {
+    const assignment = this.#overrides.get(colId) ?? null;
+    let typeDefaultTemplate: ColumnTemplate | null = null;
+    let chain: ColumnTemplate[] = [];
+    const templateIds = assignment?.templateIds;
+    if (templateIds === undefined) {
+      // undefined → typeDefault bucket applies ([] below opts out).
+      const bucketId = cellDataType === 'number' ? this.#typeDefaults.numeric : this.#typeDefaults.string;
+      typeDefaultTemplate = (bucketId !== undefined ? this.#templates.get(bucketId) : undefined) ?? null;
+    } else {
+      chain = templateIds
+        .map((id) => this.#templates.get(id))
+        .filter((template): template is ColumnTemplate => template !== undefined); // dangling ids skipped silently
+    }
+    if (assignment === null && typeDefaultTemplate === null) return null;
+    const merged = foldTemplateChain(typeDefaultTemplate, chain, assignment ?? { colId });
+    const patch = overrideToKernelPatch(merged, { isCalcColumn: this.#calcCols.has(colId) });
+    return Object.keys(patch).length > 0 ? patch : null;
   }
 }
