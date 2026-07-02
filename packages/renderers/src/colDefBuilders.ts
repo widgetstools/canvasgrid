@@ -36,7 +36,7 @@ const VALUE_ONLY_RENDERERS = new Set<RendererName>([
 
 const STATS_RENDERERS = new Set<RendererName>(['heat', 'bidirectional-bar', 'volume-bar']);
 
-const TIME_RENDERERS = new Set<RendererName>(['age', 'relative-time']);
+const TIME_RENDERERS = new Set<RendererName>(['age', 'relative-time', 'stale-flag']);
 
 export interface ColDefBuilderDeps {
   statsFor(colId: string): Readonly<ColumnStatSnapshot>;
@@ -64,7 +64,6 @@ function baseColDef(
     cellRendererParams: params,
   };
   if (needsRowDataThreading(name, opts?.threadRowData)) {
-    def.type = 'composite';
     def._compositeProgram = THREADING_PROGRAM;
   }
   return def;
