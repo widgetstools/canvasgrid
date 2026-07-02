@@ -6,9 +6,10 @@ export { compileCalc } from './compile';
 export { registerAggregate, getAggregate, listAggregates } from './aggregates/registry';
 export { wireIntoKernel } from './bridge';
 export { transformAggregates } from './aggTransform';
-export { evaluateCalcAst, INTERPRETER_SOURCE } from './workerProgram';
+export { evaluateCalcAst, INTERPRETER_SOURCE, buildWorkerCalcProgram } from './workerProgram';
 
 export type {
   CellDataType, CalculatedColumnDef, AggScope, AggSpec, CompiledCalc, CalcValidationError,
   Aggregate, ColumnOverride, ColumnTemplate, TypeDefaults, WireCalcOptions, Unsubscribe,
 } from './types';
+export type { CompiledCalcColumn, WorkerCalcProgramPayload } from './workerProgram';
