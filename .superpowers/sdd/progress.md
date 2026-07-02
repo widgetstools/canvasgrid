@@ -604,3 +604,26 @@ Remaining Cycle 21 work runs in SMALL SESSIONS per docs/superpowers/plans/2026-0
 21f Task 8: complete (commits 4104e45, review pending)
   7 badge painters + 21 fake-gc tests; STATUS_PILL_MAP/resolvePillColors/RATING_SCALE_BANDS/DEFAULT_VENUE_PALETTE/TIF_COLORS; dashed PENDING; rating case preserved; renderers 195/195; kernel/expression/format/rules/calc diff EMPTY
 21f-S4: COMPLETE (execute Tasks 7-8). 27 foundation painters done (14 numeric+text + 13 indicator+badge). NEXT UNIT: 21f-S5 (draft Tasks 9-12, execute Tasks 9-10).
+21f Task 9: complete (commits 0f14f1a, review pending)
+  8 bar/gauge painters + 24 fake-gc tests; miniBar/labInterpolate/stats+history params; renderers 217/217
+21f Task 10: complete (commits 1ed28ba, review pending)
+  4 new charts + 5 kernel sparkline re-exports via @kernel-src adapters; 15 chart tests; vitest fs.allow + tsconfig paths; renderers 217/217; kernel/expression/format/rules/calc diff EMPTY
+21f-S5: COMPLETE (draft Tasks 9-12 @ branch; execute Tasks 9-10). 44 painters landed (27 foundation + 8 bars + 9 charts). NEXT UNIT: 21f-S6 (execute Tasks 11-12 + Phase→D checkpoint).
+21f Tasks 7-10: review approved (catch-up review fa23fba..1ed28ba + fix e931f9c)
+  Fixes: keyed stale-flag tooltips (getStaleFlagTooltip); sparkline adapter module-scope params; kernel-relative imports; structure glyphOverrides labels; TickHistory constructor seed
+  Carried minor (final review): ageCell resolveSemanticColors hot-path alloc (Task 6, out of scope)
+21f Task 11: complete (commits d19f3f3, review pending)
+  5 composite painters + 15 fake-gc tests; stacked-value/price-quote/nbbo/benchmark-spread/price-change-composite
+21f Task 12: complete (commits a56891b, review pending)
+  icon-action-cluster + row-menu + HitRegionRegistry/resolveHitRegion; 7 action tests; cellClicked + openContextMenu documented for bridge
+21f Phase→D checkpoint: PASSED (branch @ a56891b)
+  Name table: RENDERER_NAMES 51 (46 catalog + 5 kernel re-exports); types.test exports one painter per name; IMPLEMENTED set complete
+  Painter discipline: no inline hex in src outside palette (comments-only in types.ts)
+  Gates: renderers 233/233; typecheck clean; root eslint clean; git diff main...HEAD over kernel/expression/format/rules/calc EMPTY
+21f-S6: COMPLETE. 46 implementation painters + 5 re-exports landed. renderers 233/233. NEXT UNIT: 21f-S7 (draft Tasks 13-15, execute Task 13 bridge).
+21f Task 13: complete (commits fd68848, review pending)
+  wireRenderersIntoKernel: 51 painter registration, ColumnStats/TickHistory from opts, colDef builders (minimal-composite threading, stats/history selectors, age tick gate), cellClicked→resolveHitRegion action router, gridPreDestroyed cleanup; 12 bridge tests; renderers 245/245; kernel/expression/format/rules/calc diff EMPTY
+21f-S7: COMPLETE (plan Tasks 13-15 @ main 9895bfc; execute Task 13). NEXT UNIT: 21f-S8 (execute Task 14 showcase + E2E).
+21f Task 14: complete (commits a5e4eb0..92cb067, review pending)
+  renderer-blotter + renderer-charts showcase pages via renderersWire; 12 E2E probes (bridge handle, resolved names, canvas, rows, tick controls); deleted stale showcase .js emit files shadowing .ts; colDef threading fix (omit type:composite); showcase E2E 142 passed + 1 skipped (143 total); renderers 245/245; kernel/expression/format/rules/calc diff EMPTY
+21f-S8: COMPLETE. showcase 131+12 E2E green. NEXT UNIT: 21f-S9 (Task 15 README + final gates + whole-branch review).
