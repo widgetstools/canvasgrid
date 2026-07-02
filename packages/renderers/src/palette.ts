@@ -14,6 +14,7 @@
 // `glyphOverrides`) so a column config always wins over the palette.
 
 import type { SemanticColorMap, StructureGlyphKey } from './types';
+import { withAlpha } from './paintUtils';
 
 /**
  * Catalog §1 aesthetic bar — the four semantic hexes reserved for signal
@@ -111,3 +112,73 @@ export const DEFAULT_VENUE_PALETTE: Readonly<Record<string, string>> = {
   BATS: '#14b8a6',
   EDGX: '#f0b429',
 };
+
+// ─── Theme-aware palette functions ────────────────────────────────────────────
+
+/**
+ * Returns the catalog §1 semantic color tokens verbatim. The same hex values
+ * are used in both light and dark themes — the catalog does not differentiate
+ * by theme for the four signal hexes or the muted gray.
+ */
+export function resolveSemanticColors(): {
+  positive: string;
+  negative: string;
+  warning: string;
+  info: string;
+  muted: string;
+} {
+  return { ...SEMANTIC_COLORS };
+}
+
+/**
+ * Theme-aware alpha adjustment.
+ *
+ * Dark surfaces read lower-contrast at equal alpha, so dark mode multiplies
+ * the base alpha by a fixed `1.4` factor clamped to `1`. Light mode returns
+ * the alpha unchanged. This is a palette.ts design rule (not a catalog mandate)
+ * so it can be unit-tested independently of any renderer.
+ */
+export function withThemeAlpha(alpha: number, themeKind: 'light' | 'dark'): number {
+  if (themeKind === 'dark') {
+    return Math.min(1, alpha * 1.4);
+  }
+  return alpha;
+}
+
+/**
+ * Resolves a status key to visual `{ bg, fg, border? }` for the given theme.
+ *
+ * Built from the catalog-fixed `STATUS_PILL_MAP` const. For status keys whose
+ * `bg` encodes alpha in an 8-digit hex (`#rrggbbaa`), applies `withThemeAlpha`
+ * to the embedded alpha so dark-theme pills read at higher contrast.
+ * The `fg` hue is never modified across themes.
+ */
+export function resolvePillColors(
+  status: string,
+  themeKind: 'light' | 'dark',
+): { bg: string; fg: string; border?: string } {
+  const style = STATUS_PILL_MAP[status];
+  if (style === undefined) {
+    return { bg: 'transparent', fg: SEMANTIC_COLORS.muted };
+  }
+
+  const rawBg = style.bg;
+  let bg: string;
+
+  if (rawBg === 'transparent') {
+    bg = 'transparent';
+  } else if (rawBg.startsWith('#') && rawBg.length === 9) {
+    // 8-digit hex: #rrggbbaa — extract base color and embedded alpha
+    const hex6 = rawBg.slice(0, 7);
+    const rawAlpha = parseInt(rawBg.slice(7), 16) / 255;
+    const alpha = withThemeAlpha(rawAlpha, themeKind);
+    bg = withAlpha(hex6, alpha);
+  } else {
+    // Plain 6-digit hex or special value: pass through unchanged
+    bg = rawBg;
+  }
+
+  const result: { bg: string; fg: string; border?: string } = { bg, fg: style.fg };
+  if (style.border !== undefined) result.border = style.border;
+  return result;
+}

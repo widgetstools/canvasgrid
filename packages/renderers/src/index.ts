@@ -68,12 +68,16 @@ export {
   STATUS_PILL_MAP,
   RATING_SCALE_BANDS,
   DEFAULT_VENUE_PALETTE,
+  resolveSemanticColors,
+  withThemeAlpha,
+  resolvePillColors,
 } from './palette';
 export type { StatusPillStyle, RatingBand } from './palette';
 
 // ─── Shared paint helpers ────────────────────────────────────────────────────
 export {
-  pill, dot, miniBar, fragText, resolveSemanticColor, interpolateLab,
+  withAlpha, mixHex, labInterpolate,
+  pill, dot, miniBar, fragText,
 } from './paintUtils';
 export type { Gc } from './paintUtils';
 
