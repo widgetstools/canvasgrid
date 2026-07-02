@@ -383,3 +383,81 @@ Task 20: complete
   ESLint no-restricted-imports boundary rule for format → kernel NOT added: eslint.config.mjs is protected by a config-protection hook. Boundary holds by inspection (bridge.ts dynamic import only; zero static kernel imports in packages/format/src).
   Kernel dist: cgrid.js 758K / kernel.css 43K — within the <+2% budget vs Cycle 21a baseline (760.90K); no 'lucide' match in dist bundles.
 Cycle 21c status: COMPLETE.
+
+=== Cycle 21e: @cgrid/rules — Rule Engine + Conditional Styling + Alerts (start 2026-07-01) ===
+Plan: docs/superpowers/plans/2026-07-01-cycle-21e-rules.md (17 tasks)
+Spec: docs/superpowers/specs/2026-07-01-cycle-21e-rules-design.md
+Cycle BASE: a2079f7 (main after plan commit; Cycle 21c merged as PR #94, commit 28d2d5a)
+Branch: cycle21e/rules
+Baselines: kernel 2399/2399 (1 CPU-flaky perf test passes standalone), format 161/161, expression 185/185, showcase E2E 109, turbo typecheck 21/21, build 13/13
+Task 1: complete (commits a2079f7..0e51b92, review approved)
+  Scaffold + all public types + 8 skeletons; 3/3 tests; tsconfig rootDir '.' deviation matches format precedent (reviewer-verified)
+  Minor (fixed inline by coordinator): committed coverage/ HTML untracked + gitignored (packages/*/coverage/)
+Task 2: complete (commits bbfc57b..2604f2c, review approved clean)
+  conditionCompiler: diff-aware AST rewrite + validateRule; 24 new tests (27 pkg total)
+  LEARNED: @cgrid/expression has NO infix AND/OR — infix is &&/||; AND(a,b) is call-style. Later briefs with infix AND in conditions must convert (carry into Task 3-5/7/16 dispatches).
+Task 3: complete (commits 2604f2c..2718665, review approved clean)
+  RuleEngine core: setRules/evaluateCell fold/theme/resolveRuleRef; 16 new tests (43 pkg total)
+  Deviation OK'd: Object.assign in resolveThemeStyle (TS2698 loop-narrowing) — reviewer verified semantics identical
+Task 4: complete (commits 2718665..b6bfcd0, approved after 1 fix pass)
+  matchCounter + recount/applyChanges/diff map/endTick; 52→55 tests
+  HIGH fixed: row-scope #rowMemo (object-identity WeakMap) not invalidated on in-place row mutation → rekeyed Map<rowId,{row,matches}> + per-row deletes in applyChanges; parity repro verified load-bearing
+  LOW observations (final review): #mergedRowCache.delete below empty-cells guard; Map (not WeakMap) means unremoved-row entries don't GC (transaction feed is the contract)
+Task 5: complete (commits b6bfcd0..c50f877, review approved)
+  ExpiryHeap + activeDurationMs windows + FlashDirective emission; 66 pkg tests
+  Info (final review): removed-row expiry entries not proactively evicted from heap — onExpire may fire dead rowIds (harmless repaint no-op; follow-up hardening candidate)
+Phase B complete (Tasks 2-5). Package: 66/66 tests.
+Task 6: complete (commits c50f877..5cd91c5, review approved clean)
+  renderMessage + TokenBucket; 15 new tests (81 pkg total)
+DECISION (coordinator): AlertTrigger.relativeChange field renamed columnId → colId. Repo ESLint vocabulary rule (Cycle 19 8c) beats the StarUI doc field name; our types are new public API. Plan Global Constraints assumed the lint rule wouldn't fire on field names — it does. Carry `colId` into Task 8/15/16 briefs (Phase C/F drafts wrote `columnId`).
+Task 7: complete (commits 5cd91c5..79b7ef1, approved; 2 commits incl. colId rename fix pass)
+  AlertsEngine triggers/debounce/history/onAlert; 36 new tests (117 pkg total); eslint clean after rename
+  Medium carried into Task 8: onAlert listener fan-out lacks try/catch — throwing subscriber skips later listeners AND aborts remaining applyChanges processing; fix + test in Task 8 (before Task 15 kernel wiring)
+Task 8: complete (commits 79b7ef1..918b9dd, review approved clean)
+  Evaluation modes + settings + Task-7 listener-isolation fix; 10 new tests (127 pkg total)
+  Minor noted: no standalone test for flush-while-disabled clearing (guard implemented + verified by reviewer code-read)
+Phase C complete (Tasks 6-8). Package: 127/127.
+Phase C→D checkpoint: PASSED (coordinator-run) — exports match spec §4.1; structuredClone tests present; no Date.now/new Function/eval in src; diff-map lifecycle + fold precedence + alert pipeline order all pinned by named tests; 127/127 + tsc clean.
+Task 9: complete (commits 918b9dd..a659fc8, review approved clean)
+  Phase D done: format resolveRuleRef accessor + hasRuleRefs (conditional-spread absent key) + tier2 fragCtx forwarding; 171/171 (161 baseline + 10)
+  21c reserve test retitled in place; accessor-absent path verified byte-identical
+Task 10: complete (commits a659fc8..b4f1279, review approved)
+  ruleEngineSlot + registerRuleEngine + getThemeKind (themeKind.ts) + forEachRow + @cgrid/rules devDep; kernel 2415/2415 (baseline 2399 + 16)
+  Minor (final review): forEachRow iterates live rowDataById Map — add JSDoc concurrent-mutation caveat
+Task 11: complete (commits b4f1279..8c4fe02, review approved)
+  applyCellProps rule fold + ViewportChunk.stringRowIds (both slicers) + stringRowIdAt + textDecoration channel; kernel 2429/2429 (2415 + 14)
+  Deviations OK'd: textDecoration via applyOverridePatch (brief omission); gc.measureText (brief quoted nonexistent gc.cache.measureText)
+  Low (final review): getThemeKind() runs unconditionally once per Renderer.paint (per-frame, not per-cell) — consider slot-gating; comment at propertyChain.ts:749-751 overstates footer exclusion mechanism (chunk-sentinel, not flag)
+Task 12: complete (commits 8c4fe02..de25ba2, review approved)
+  rowsChanged event (listener-gated, ownKeys-Proxy zero-clone proof) + hasListener + mirrorEditCommit; kernel 2436/2436 (2429 + 7)
+  CARRY INTO TASK 15: same rowId touched twice in one Tx → TWO sequential updated entries (2nd oldRow = intermediate value, not pre-Tx) — bridge's RowChangeSet builder must handle un-deduplicated entries (Low: add doc/test)
+  Verified: async path emits at enqueue (mirror updated synchronously pre-dispatch); edit path fires exactly one rowsChanged; removed rows carry pre-removal data
+Task 13: complete (commits de25ba2..b3737b9, review approved)
+  FlashCellsParams color/mode/flashDuration + flashShaper (fade pinned to original math, verified non-tautological) + override registry w/ \0* wildcard; kernel 2453/2453 (2436 + 17)
+  Low (final review): override entries only expire by time sweep, never on consumption — same-cell natural flash within grace window inherits stale color/mode (bounded, self-healing)
+  Coordinator hygiene commit 后: flashRegistry.ts raw NUL byte (pre-existing on main) → '\0' escape so the file diffs as text; pivotPass.ts has the same pre-existing raw NUL — OUT of cycle scope, follow-up candidate
+Task 14: complete (commits ea98ed9..2c93b00, approved after 1 fix pass; original b5a05d1)
+  Indicator paint (row-start/end via firstVisibleColId) + rule valueFormatter override (fold path, pre-textTransform) + format-eval memo + resolveRuleRef threading; kernel 2474/2474 (2453 + 21)
+  FIXED (coordinator-adjudicated spec gap): memo cross-paint reuse restricted to pure tier-0; tier-1/2 keyed by paint generation (bumpFormatEvalGeneration once per byRows pass); staleness regression watched fail→pass
+  Minor (final review): getCellPaintedBg probes through the memo outside paint passes — stale tier-1/2 result possible if probed post-mutation pre-repaint (untested surface)
+Phase E complete (Tasks 10-14). Kernel 2474/2474.
+Task 15: complete (commits 2c93b00..ec48e71, review approved clean)
+  wireIntoKernel bridge: rowsChanged/cellValueChanged wiring, edit dedupe, arrival-order coalescing (relativeChange sees per-entry deltas), flash directives, endTick post-repaint scheduler, count seeding, onExpire→refresh, idempotent; +watchedColIds() on RuleEngine; rules pkg 143/143
+  Info: KernelGridSurface methods required non-optional (throws on partial grids — documented shape); brief AND-vs-&& fixture typo fixed in landed test
+Task 16: complete (commits ec48e71..5775ffb, review approved clean)
+  conditionalStyling.ts + alerts.ts features + 12 E2E; full showcase suite 125/125 independently re-verified by reviewer (113 pre-existing — plan's 109 was stale 21c note — + 12 new)
+  Brief bugs fixed in landing: infix AND→&&, =→==, [rule:id] fragment shorthand needs brackets, lucide 'triangle-alert' (alert-triangle doesn't exist)
+  NOTE: stale untracked src/features/*.js emit artifacts DELETED FROM DISK (never in git) — they shadowed .ts sources via Vite extensionless resolution and mounted wrong features; disclose to user
+  Minor (final review): bridge seeds match counts at wire time only — setRowData post-wire leaves counts stale until first transaction (setRowData doesn't emit rowsChanged by design); demo re-seeds at feature level
+Task 17: complete (commit b0f5cad)
+  packages/rules/README.md written per brief: quickstart (wire order incl. format for rule:<id> fragments), wire-order/recount caveat, rule + trigger shape tables (colId singular for relativeChange vs columnIds plural elsewhere), condition language (&&/|| infix — NO infix AND/OR, == not =), precedence + kernel fold position, alerts pipeline, host-owns-channel-routing, public API, RuleValidationError codes, cycle reserves.
+  Final verification gates (coordinator baselines used — corrected from stale brief numbers):
+    turbo typecheck 21/21; turbo build 13/13; root `npm run lint` clean (repo's lint task is a root script over packages/*/src+tests and both e2e dirs, not a per-workspace turbo task — ran directly, exit 0).
+    Unit suites: rules 143/143 (coverage: all src/** modules exercised, no 0% module); format 171/171; expression 185/185 (untouched — `git diff main --stat -- packages/expression` empty); kernel 2474/2474 (single run, no flakes hit).
+    Showcase E2E: 125/125 (113 pre-existing + 12 new), vite dev server on :5185.
+    Kernel dist: cgrid.js 790003 bytes = 771.49 KiB (du -k reports 772K) vs 760.90 KB baseline × 1.02 = 776.12 KB budget — within budget (+1.4% growth from rule slot/fold/flash/memo additions across Tasks 10-14).
+    Boundary greps: `grep -rn "from '@cgrid/kernel'" packages/rules/src/` → empty, exit=1 (structural only, kernel moved to peerDependencies in Task 15/17 package.json). `grep -r "@cgrid/rules" packages/kernel/dist/` → 3 matches, all JSDoc comments in cgrid.d.ts/cgrid.js (naming the sibling package that calls into the DI slot) plus source-map path strings — zero import/require statements, same pattern as the pre-existing `@cgrid/format` JSDoc mention at kernel dist line ~14992 from Cycle 21c. No runtime dependency; brief's literal "empty output" expectation didn't anticipate doc comments, but the underlying boundary (no runtime import) holds.
+    Raw NUL check: only packages/kernel/src/worker/passes/pivotPass.ts (pre-existing, out of cycle scope, matches Task 13 note).
+    git status: clean modulo known untracked stragglers (apps/cgrid-positions/src/*.js, apps/cgrid-showcase/src/**/*.js emit artifacts, packages/expression/coverage/ gitignored). packages/rules/package.json diff vs main is the Task 15 boundary hardening (@cgrid/kernel dependencies→peerDependencies, +test:coverage script) — build script still the no-op echo, untouched since scaffold semantics.
+  SCOPE NOTE: per coordinator instruction, branch NOT pushed and PR NOT opened this task — coordinator runs a final whole-branch review first and will handle push/PR after.
+Cycle 21e status: implementation + verification COMPLETE on branch cycle21e/rules (pending coordinator whole-branch review + push/PR).
