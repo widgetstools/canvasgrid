@@ -435,8 +435,12 @@ export function createWorkerHost(post: PostFn): WorkerHost {
           stageFlashesForUpdates(state!, tx.update);
         }
         // Cycle 21d / Task 11 — capture pre-apply rows for PREV([col]).
-        if (tx.update && tx.update.length > 0) {
-          state!.calc.capturePrevForUpdates(store, tx.update);
+        // Final review Fix 2 — also capture removed rows' pre-apply
+        // snapshot (Stage B's delta path needs the OLD value to
+        // `removeRow` the correct scalar out of a cached scope's state;
+        // `store.getById` is undefined POST-apply for a removed row).
+        if ((tx.update && tx.update.length > 0) || (tx.remove && tx.remove.length > 0)) {
+          state!.calc.capturePrevForUpdates(store, tx.update ?? [], tx.remove ?? []);
         }
         const r = store.apply(tx);
         all.push(r);

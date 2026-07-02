@@ -404,16 +404,32 @@ export class CalcProgramStore implements CalcValueSource {
     }
   }
 
-  /** Snapshot the pre-apply row for every update BEFORE `store.apply`
-   *  runs, so a `usesPrev` calc column can read the old value during
-   *  the tick that recomputes it. No-op when no installed column
-   *  actually reads PREV — avoids a snapshot walk on every transaction
-   *  for programs that never use it. Mirrors `stageFlashesForUpdates`'s
-   *  try/catch-skip on `getRowId` (a malformed update row shouldn't
-   *  crash the capture pass). First capture wins within a tick — a
-   *  row updated twice in one batched transaction keeps the earliest
-   *  (truest "old") snapshot. */
-  capturePrevForUpdates(store: RowStore, updates: unknown[]): void {
+  /** Snapshot the pre-apply row for every update AND every to-be-removed
+   *  rowId, BEFORE `store.apply` runs. Updates feed a `usesPrev` calc
+   *  column's old-value read; BOTH updates and removes feed Stage B's
+   *  delta path (`applyDeltaToScopes`), which needs the OLD row's
+   *  aggregate-source value to `removeRow`/`updateRow` the correct
+   *  scalar out of a cached scope's state.
+   *
+   *  Final review Fix 2 — `removeIds` closes the delta-REMOVE-never-
+   *  subtracts gap: prior to this fix, only `updates` were captured, so
+   *  a removed row's `tickPrevRowsB` entry was always absent and
+   *  `applyDeltaToScopes`'s remove branch fell back to
+   *  `read(rowId)` — which resolves through `store.getById(rowId)`,
+   *  already `undefined` POST-removal for a data-field column. The
+   *  factory's `typeof value === 'number'` guard then no-ops
+   *  `removeRow`, leaving the cached scalar stale until the next FULL
+   *  rebuild (reviewer repro: SUM(all) stays 330 after removing rows
+   *  worth 200, instead of settling to 130).
+   *
+   *  No-op when no installed column actually reads PREV AND no column
+   *  has an aggregate dependency — avoids a snapshot walk on every
+   *  transaction for programs that need neither. Mirrors
+   *  `stageFlashesForUpdates`'s try/catch-skip on `getRowId` (a
+   *  malformed update row shouldn't crash the capture pass). First
+   *  capture wins within a tick — a row updated/removed twice in one
+   *  batched transaction keeps the earliest (truest "old") snapshot. */
+  capturePrevForUpdates(store: RowStore, updates: unknown[], removeIds: readonly string[] = []): void {
     if (!this.hasProgram()) return;
     const anyUsesPrev = this.program!.columns.some((c) => c.usesPrev);
     const anyAggCol = this.program!.columns.some((c) => c.prePass.length > 0);
@@ -425,6 +441,17 @@ export class CalcProgramStore implements CalcValueSource {
       if (oldRow === undefined) continue;
       if (anyUsesPrev && !this.tickPrevRows.has(rowId)) this.tickPrevRows.set(rowId, oldRow); // first capture wins
       if (anyAggCol && !this.tickPrevRowsB.has(rowId)) this.tickPrevRowsB.set(rowId, oldRow); // first capture wins
+    }
+    // Removes only ever need Stage B's snapshot (`tickPrevRowsB`) — a
+    // removed row is gone, so no future `ensureStageA` recompute will
+    // ever read PREV for it; `tickPrevRows` stays update-only.
+    if (anyAggCol) {
+      for (const rowId of removeIds) {
+        if (this.tickPrevRowsB.has(rowId)) continue; // first capture wins
+        const oldRow = store.getById(rowId);
+        if (oldRow === undefined) continue;
+        this.tickPrevRowsB.set(rowId, oldRow);
+      }
     }
   }
 

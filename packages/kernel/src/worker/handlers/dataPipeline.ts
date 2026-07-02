@@ -76,8 +76,11 @@ export async function handleDataPipeline(
         // Same pre-apply tick point the flash diff uses — flash gates on
         // `enableCellChangeFlash`, PREV gates on the program's
         // `usesPrev` inside the hook itself.
-        if (update && update.length > 0) {
-          state.calc.capturePrevForUpdates(state.store, update as unknown[]);
+        // Final review Fix 2 — also capture removed rows' pre-apply
+        // snapshot for Stage B's delta path (see worker.ts's async
+        // flush-fn sibling call site for the full rationale).
+        if ((update && update.length > 0) || (remove && remove.length > 0)) {
+          state.calc.capturePrevForUpdates(state.store, (update as unknown[]) ?? [], remove ?? []);
         }
         const results = state.store.apply({ add: add as unknown[], update: update as unknown[], remove, heightsByRowId });
         state.calc.onTransaction(results);

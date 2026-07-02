@@ -1062,3 +1062,172 @@ describe('CalcPass Stage B — Fix 1: parameterized aggregate fn resolution (PER
     }
   });
 });
+
+// ─── Final review Fix 2 — delta REMOVE never subtracts ─────────────────────
+//
+// `capturePrevForUpdates` only ever captured `tx.update` rows into
+// `tickPrevRowsB` — the remove path in `applyDeltaToScopes` later reads
+// `tickPrevRowsB.get(rowId)` (undefined, since removes were never
+// captured) and falls back to `read(rowId)`, which resolves through
+// `store.getById(rowId)` — POST-removal, so `undefined` — for a
+// data-field column. The SUM factory's `typeof value === 'number'` guard
+// then no-ops `removeRow`, so the cached scalar keeps the removed row's
+// contribution until the next FULL rebuild (reviewer's repro: SUM(all)
+// over [10,20,100,200] = 330 expected to become 130 after removing rows
+// 3 and 4 (100+200), but delta leaves it at 330).
+
+describe('CalcPass Stage B — Fix 2: delta REMOVE subtracts the removed row from cached scope state', () => {
+  it("store-level: SUM(all) after a delta remove reflects the removed row's value (reviewer repro: expect 130, not 330)", () => {
+    const store = fixtureStore(); // pnl: 10, 20, 100, 200 → sum 330
+    const program: WorkerCalcProgram = {
+      columns: [
+        {
+          colId: 'sumAll',
+          ast: { kind: 'slot' },
+          prePass: [{ slot: 0, fn: 'sum', colId: 'pnl', scope: { kind: 'all' } }],
+          cellDataType: 'number',
+          usesPrev: false,
+        },
+      ],
+      interpreterSource: SLOT_INTERP,
+      aggregateSources: [{ name: 'sum', source: SUM_FACTORY }],
+    };
+    const calc = new CalcProgramStore();
+    calc.install(program);
+    calc.ensureStageB(store, NO_GROUP, ['1', '2', '3', '4'], fieldOf);
+    expect(calc.valueAt('1', 'sumAll')).toBeCloseTo(330);
+
+    // Remove row '4' (pnl 200) — pre-apply snapshot must be captured
+    // BEFORE store.apply, mirroring the worker.ts / handlers/dataPipeline.ts
+    // call sites' capture-before-apply protocol.
+    calc.capturePrevForUpdates(store, [], ['4']); // no updates this tick — remove-only
+    const results = store.apply({ remove: ['4'] });
+    calc.onTransaction(results);
+    calc.ensureStageB(store, NO_GROUP, ['1', '2', '3'], fieldOf);
+
+    // Expected: 330 - 200 = 130.
+    expect(calc.valueAt('1', 'sumAll')).toBeCloseTo(130);
+  });
+
+  it('two removes in one transaction: SUM(all) subtracts both removed values (reviewer repro shape, remove desk B)', () => {
+    const store = fixtureStore(); // pnl: 10, 20, 100, 200 → sum 330
+    const program: WorkerCalcProgram = {
+      columns: [
+        {
+          colId: 'sumAll',
+          ast: { kind: 'slot' },
+          prePass: [{ slot: 0, fn: 'sum', colId: 'pnl', scope: { kind: 'all' } }],
+          cellDataType: 'number',
+          usesPrev: false,
+        },
+      ],
+      interpreterSource: SLOT_INTERP,
+      aggregateSources: [{ name: 'sum', source: SUM_FACTORY }],
+    };
+    const calc = new CalcProgramStore();
+    calc.install(program);
+    calc.ensureStageB(store, NO_GROUP, ['1', '2', '3', '4'], fieldOf);
+    expect(calc.valueAt('1', 'sumAll')).toBeCloseTo(330);
+
+    // Remove desk B's rows (3: pnl 100, 4: pnl 200) — leaves desk A (10+20=30).
+    calc.capturePrevForUpdates(store, [], ['3', '4']); // capture BEFORE apply
+    const results = store.apply({ remove: ['3', '4'] });
+    calc.onTransaction(results);
+    calc.ensureStageB(store, NO_GROUP, ['1', '2'], fieldOf);
+
+    expect(calc.valueAt('1', 'sumAll')).toBeCloseTo(30);
+  });
+
+  it('grouped scope: removing a row from group A subtracts from group A only, group B untouched', () => {
+    const store = fixtureStore(); // desk A: rows 1,2 (10+20=30); desk B: rows 3,4 (100+200=300)
+    const { out } = groupedByDesk(store, ['1', '2', '3', '4']);
+    const calc = new CalcProgramStore();
+    calc.install(pctProgram('group'));
+    calc.ensureStageB(store, out, ['1', '2', '3', '4'], fieldOf);
+    expect(calc.valueAt('3', 'pctOfGroup')).toBeCloseTo((100 / 300) * 100);
+
+    // Remove row '1' (desk A, pnl 10) — desk A sum should become 20 (row 2 only).
+    calc.capturePrevForUpdates(store, [], ['1']); // capture BEFORE apply
+    const results = store.apply({ remove: ['1'] });
+    calc.onTransaction(results);
+    const { group: group2 } = groupedByDesk(store, ['2', '3', '4']);
+    const out2 = group2.apply(['2', '3', '4']);
+    calc.ensureStageB(store, out2, ['2', '3', '4'], fieldOf);
+
+    // Desk A now just row 2 → sum 20 → row2 = 100%.
+    expect(calc.valueAt('2', 'pctOfGroup')).toBeCloseTo(100);
+    // Desk B untouched — sum still 300.
+    expect(calc.valueAt('3', 'pctOfGroup')).toBeCloseTo((100 / 300) * 100);
+    expect(calc.valueAt('4', 'pctOfGroup')).toBeCloseTo((200 / 300) * 100);
+  });
+
+  it('worker host end-to-end: applyTransaction remove updates a SUM(all) calc column on the next viewport', async () => {
+    const { host, outbox } = makeHost();
+    host.handle({
+      id: 1,
+      type: 'init',
+      payload: {
+        columns: [
+          { colId: 'pnl', field: 'pnl', type: 'number' },
+          { colId: 'sumAll', type: 'number' },
+        ],
+        rowIdField: 'id',
+      },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    host.handle({
+      id: 2, type: 'setCalcProgram',
+      payload: {
+        columns: [
+          {
+            colId: 'sumAll',
+            ast: { kind: 'slot' },
+            prePass: [{ slot: 0, fn: 'sum', colId: 'pnl', scope: { kind: 'all' } }],
+            cellDataType: 'number',
+            usesPrev: false,
+          },
+        ],
+        interpreterSource: SLOT_INTERP,
+        aggregateSources: [{ name: 'sum', source: SUM_FACTORY }],
+      },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    host.handle({
+      id: 3, type: 'setRowData',
+      payload: {
+        rows: [
+          { id: '1', pnl: 10, desk: 'A' },
+          { id: '2', pnl: 20, desk: 'A' },
+          { id: '3', pnl: 100, desk: 'B' },
+          { id: '4', pnl: 200, desk: 'B' },
+        ],
+      },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    host.handle({
+      id: 4, type: 'getViewport',
+      payload: { rowStart: 0, rowEnd: 4, columns: ['pnl', 'sumAll'] },
+    } as unknown as WorkerRequest);
+    await flush();
+    const reply1 = outbox.find((m) => 'id' in m && m.id === 4) as any;
+    expect(Array.from(reply1.chunk.numericCols.sumAll as ArrayLike<number>)).toEqual([330, 330, 330, 330]);
+
+    // Sync remove of row '4' (pnl 200) — delta path.
+    host.handle({
+      id: 5, type: 'applyTransaction',
+      payload: { remove: ['4'], async: false },
+    } as unknown as WorkerRequest);
+    await flush();
+
+    host.handle({
+      id: 6, type: 'getViewport',
+      payload: { rowStart: 0, rowEnd: 3, columns: ['pnl', 'sumAll'] },
+    } as unknown as WorkerRequest);
+    await flush();
+    const reply2 = outbox.find((m) => 'id' in m && m.id === 6) as any;
+    expect(Array.from(reply2.chunk.numericCols.sumAll as ArrayLike<number>)).toEqual([130, 130, 130]);
+  });
+});
