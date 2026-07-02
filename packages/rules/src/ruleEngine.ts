@@ -10,7 +10,9 @@ import { compileFormat } from '@cgrid/format';
 import type { FormatProgram } from '@cgrid/format';
 import { compileCondition, validateRuleShape } from './conditionCompiler';
 import type { CompiledCondition } from './conditionCompiler';
+import { MatchCounter } from './matchCounter';
 import type {
+  ConditionalStyleRule,
   FlashDirective,
   RowChangeSet,
   RuleCellResult,
@@ -72,6 +74,20 @@ export class RuleEngine {
   #rowMemo = new WeakMap<Record<string, unknown>, Map<string, boolean>>();
   /** Eval errors per ruleId since last setRules (getter ships in Task 4). */
   #evalErrors = new Map<string, number>();
+  #counter = new MatchCounter();
+  /** Tick-scoped diff map: rowId → { [colId]: { old } } (spec §3.4).
+   *  First oldValue of the tick wins — '.old' = value at tick start. */
+  #diffByRowId = new Map<string, Record<string, { old: unknown }>>();
+  /** Merged { ...row, __cgridDiff } per rowId within a tick. */
+  #mergedRowCache = new Map<string, { source: Record<string, unknown>; merged: Record<string, unknown> }>();
+  /** Style rules with flash?.enabled or activeDurationMs — the only
+   *  consumers of activations. */
+  #activationTracked: IndexedRule[] = [];
+  /** Currently-true (rule → rows) pairs for activation-tracked rules only.
+   *  Memory bound: O(tracked rules × matching rows). */
+  #lastMatch = new Map<string, Set<string>>();
+  /** Activations collected during applyChanges. Task 5 fills directives from these. */
+  #activations: Array<{ rule: ConditionalStyleRule; rowId: string }> = [];
 
   constructor(opts?: { schema?: Schema; now?: () => number }) {
     this.#schema = opts?.schema;
@@ -140,9 +156,17 @@ export class RuleEngine {
         }
       }
     }
+    this.#activationTracked = indexed.filter(
+      (ir) =>
+        ir.rule.kind === 'style' &&
+        (ir.rule.flash?.enabled === true || ir.rule.activeDurationMs != null),
+    );
     this.#mergedByColId = new Map();
     this.#rowMemo = new WeakMap();
     this.#evalErrors = new Map();
+    this.#counter.resetAll(); // caller re-seeds via recount (bridge does, Task 15)
+    this.#lastMatch = new Map();
+    this.#activations = [];
     return { ok: errors.length === 0, errors };
   }
 
@@ -204,44 +228,167 @@ export class RuleEngine {
   }
 
   /** Single matching gate for evaluateCell + resolveRuleRef.
-   *  Task 4 reroutes this through the diff-map injection; Task 5 adds the
-   *  activeDurationMs window check. */
+   *  Task 5 adds the activeDurationMs window check here. */
   #ruleMatches(ir: IndexedRule, ctx: RuleEvalContext): boolean {
+    return this.#conditionMatches(ir, ctx.rowId, ctx.row);
+  }
+
+  /** Shared by the paint path and the eager counting path. */
+  #conditionMatches(ir: IndexedRule, rowId: string, row: Record<string, unknown>): boolean {
+    if (ir.condition.diffAware) {
+      // Diff-aware rules never match quiescent rows (spec §3.4) and skip
+      // the row-scope memo — their inputs are tick-scoped.
+      const diff = this.#diffByRowId.get(rowId);
+      if (diff === undefined) return false;
+      return ir.condition.matches(this.#evalRow(rowId, row, diff));
+    }
     if (ir.rule.scope.kind === 'row') {
-      let memo = this.#rowMemo.get(ctx.row);
+      let memo = this.#rowMemo.get(row);
       if (!memo) {
         memo = new Map();
-        this.#rowMemo.set(ctx.row, memo);
+        this.#rowMemo.set(row, memo);
       }
       const hit = memo.get(ir.rule.id);
       if (hit !== undefined) return hit;
-      const res = ir.condition.matches(ctx.row);
+      const res = ir.condition.matches(row);
       memo.set(ir.rule.id, res);
       return res;
     }
-    return ir.condition.matches(ctx.row);
+    return ir.condition.matches(row);
   }
 
-  // ─── Tasks 4–5 ─────────────────────────────────────────────────────────
+  /** { ...row, __cgridDiff } — built once per (rowId, row-reference) per tick. */
+  #evalRow(
+    rowId: string,
+    row: Record<string, unknown>,
+    diff: Record<string, { old: unknown }>,
+  ): Record<string, unknown> {
+    const cached = this.#mergedRowCache.get(rowId);
+    if (cached && cached.source === row) return cached.merged;
+    const merged = { ...row, __cgridDiff: diff };
+    this.#mergedRowCache.set(rowId, { source: row, merged });
+    return merged;
+  }
 
-  matchCount(_ruleId: string): number {
-    throw new Error('not-yet-implemented: matchCount ships in Task 4');
+  // ─── Task 4 ────────────────────────────────────────────────────────────
+
+  /** Live "APP N" count over the dataset last supplied via recount/applyChanges.
+   *  Reflects CONDITION matches; Task 5's activeDurationMs paint windows do
+   *  not inflate counts. */
+  matchCount(ruleId: string): number {
+    return this.#counter.count(ruleId);
   }
-  recount(_rows: Iterable<{ rowId: string; row: Record<string, unknown> }>): void {
-    throw new Error('not-yet-implemented: recount ships in Task 4');
+
+  evalErrorCount(ruleId: string): number {
+    return this.#evalErrors.get(ruleId) ?? 0;
   }
-  applyChanges(_changes: RowChangeSet): FlashDirective[] {
-    throw new Error('not-yet-implemented: applyChanges ships in Task 4');
+
+  /** Full-dataset scan (rule change / initial wire). Rebuilds all match counts. */
+  recount(rows: Iterable<{ rowId: string; row: Record<string, unknown> }>): void {
+    this.#counter.resetAll();
+    for (const { rowId, row } of rows) this.#recountRow(rowId, row);
   }
+
+  #recountRow(rowId: string, row: Record<string, unknown>): void {
+    for (const ir of this.#indexed) {
+      this.#counter.setRowMatches(ir.rule.id, rowId, this.#contribution(ir, rowId, row));
+    }
+  }
+
+  /** Cells this rule matches on this row: row scope → 1; cell scope → one
+   *  per scoped colId (the condition is row-level — all or none). */
+  #contribution(ir: IndexedRule, rowId: string, row: Record<string, unknown>): number {
+    if (!this.#conditionMatches(ir, rowId, row)) return 0;
+    return ir.rule.scope.kind === 'row' ? 1 : ir.rule.scope.columnIds.length;
+  }
+
+  /** Transaction feed: updates the tick-scoped diff map, match counts
+   *  (incremental), and activation state. Flash directives land in Task 5. */
+  applyChanges(changes: RowChangeSet): FlashDirective[] {
+    // (a) Diff map — the '__cgridDiff' object the rewritten conditions read.
+    // Shape: { [colId]: { old } }. First old of the tick wins.
+    for (const u of changes.updated) {
+      if (u.cells.length === 0) continue;
+      let diff = this.#diffByRowId.get(u.rowId);
+      if (!diff) {
+        diff = {};
+        this.#diffByRowId.set(u.rowId, diff);
+      }
+      for (const cell of u.cells) {
+        if (!(cell.colId in diff)) diff[cell.colId] = { old: cell.oldValue };
+      }
+      this.#mergedRowCache.delete(u.rowId); // row reference changed — rebuild lazily
+    }
+
+    // (b) + (c) incremental recount with activation detection. Added rows
+    // whose condition matches count as activations (false→true from absence).
+    for (const a of changes.added) {
+      this.#detectActivations(a.rowId, a.row);
+      this.#recountRow(a.rowId, a.row);
+    }
+    for (const u of changes.updated) {
+      this.#detectActivations(u.rowId, u.row);
+      this.#recountRow(u.rowId, u.row);
+    }
+    for (const r of changes.removed) {
+      this.#counter.dropRow(r.rowId);
+      this.#diffByRowId.delete(r.rowId);
+      this.#mergedRowCache.delete(r.rowId);
+      for (const rowStates of this.#lastMatch.values()) rowStates.delete(r.rowId);
+    }
+
+    // Task 5 fills directives from #activations (flash + activeDurationMs).
+    this.#activations.length = 0;
+    return [];
+  }
+
+  #detectActivations(rowId: string, row: Record<string, unknown>): void {
+    for (const ir of this.#activationTracked) {
+      const matchesNow = this.#conditionMatches(ir, rowId, row);
+      let rowStates = this.#lastMatch.get(ir.rule.id);
+      const prev = rowStates?.has(rowId) === true;
+      if (matchesNow && !prev) {
+        // #activationTracked only holds style rules (see setRules filter).
+        this.#activations.push({ rule: ir.rule as ConditionalStyleRule, rowId });
+      }
+      if (matchesNow) {
+        if (!rowStates) {
+          rowStates = new Set();
+          this.#lastMatch.set(ir.rule.id, rowStates);
+        }
+        rowStates.add(rowId);
+      } else {
+        rowStates?.delete(rowId);
+      }
+    }
+  }
+
+  /** Clears the tick-scoped diff map. Bridge calls after the post-transaction
+   *  repaint (Task 15). Paint-side, diff-aware matches decay naturally: their
+   *  conditions read [col.old] → null once cleared (and the quiescent-row
+   *  gate skips them). Counts are eager state, so force diff-aware
+   *  contributions back to zero for affected rows; lastMatch resets so the
+   *  next tick's change re-activates. */
   endTick(): void {
-    throw new Error('not-yet-implemented: endTick ships in Task 4');
+    if (this.#diffByRowId.size === 0) return;
+    const affected = [...this.#diffByRowId.keys()];
+    this.#diffByRowId.clear();
+    this.#mergedRowCache.clear();
+    for (const ir of this.#indexed) {
+      if (!ir.condition.diffAware) continue;
+      const rowStates = this.#lastMatch.get(ir.rule.id);
+      for (const rowId of affected) {
+        this.#counter.setRowMatches(ir.rule.id, rowId, 0);
+        rowStates?.delete(rowId);
+      }
+    }
   }
+
+  // ─── Task 5 ────────────────────────────────────────────────────────────
+
   onExpire(
     _fn: (cells: Array<{ rowId: string; colId: string | null }>) => void,
   ): Unsubscribe {
     throw new Error('not-yet-implemented: onExpire ships in Task 5');
-  }
-  evalErrorCount(_ruleId: string): number {
-    throw new Error('not-yet-implemented: evalErrorCount ships in Task 4');
   }
 }

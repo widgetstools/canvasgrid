@@ -217,3 +217,124 @@ describe('RuleEngine — resolveRuleRef', () => {
     expect(engineWith(ind).resolveRuleRef('ind', ctx())).toBeNull();
   });
 });
+
+// ─── Task 4: match counting ─────────────────────────────────────────────
+
+describe('RuleEngine — match counting (Task 4)', () => {
+  const countRules: StyleRule[] = [
+    styleRule({ id: 'neg', priority: 10 }), // [pnl] < 0, cell scope ['pnl']
+    {
+      kind: 'style',
+      id: 'big',
+      name: 'big',
+      enabled: true,
+      priority: 20,
+      condition: '[price] > 100',
+      scope: { kind: 'row' },
+      style: { base: { backgroundColor: '#fff3e0' } },
+    },
+  ];
+  const seedRows = [
+    { rowId: 'a', row: { pnl: -1, price: 50 } },
+    { rowId: 'b', row: { pnl: 3, price: 150 } },
+    { rowId: 'c', row: { pnl: -9, price: 200 } },
+  ];
+
+  it('recount equals replaying the same rows as an applyChanges add stream (parity)', () => {
+    const full = new RuleEngine();
+    full.setRules(countRules);
+    full.recount(seedRows);
+
+    const incremental = new RuleEngine();
+    incremental.setRules(countRules);
+    for (const r of seedRows) {
+      incremental.applyChanges({ added: [r], updated: [], removed: [] });
+    }
+    for (const ruleId of ['neg', 'big']) {
+      expect(incremental.matchCount(ruleId)).toBe(full.matchCount(ruleId));
+    }
+    expect(full.matchCount('neg')).toBe(2); // rows a + c, one cell each
+    expect(full.matchCount('big')).toBe(2); // rows b + c, row scope
+  });
+
+  it('removal decrements; update flips', () => {
+    const engine = new RuleEngine();
+    engine.setRules(countRules);
+    engine.recount(seedRows);
+    const rowC = seedRows[2]!;
+    engine.applyChanges({ added: [], updated: [], removed: [{ rowId: 'c', row: rowC.row }] });
+    expect(engine.matchCount('neg')).toBe(1);
+    expect(engine.matchCount('big')).toBe(1);
+    engine.applyChanges({
+      added: [],
+      removed: [],
+      updated: [
+        {
+          rowId: 'a',
+          row: { pnl: 5, price: 50 },
+          cells: [{ rowId: 'a', colId: 'pnl', oldValue: -1, newValue: 5 }],
+        },
+      ],
+    });
+    expect(engine.matchCount('neg')).toBe(0);
+  });
+});
+
+// ─── Task 4: tick-scoped diff map ───────────────────────────────────────
+
+describe('RuleEngine — tick-scoped diff map (Task 4)', () => {
+  const tickRule: ConditionalStyleRule = {
+    kind: 'style',
+    id: 'up',
+    name: 'up',
+    enabled: true,
+    priority: 10,
+    condition: '[price.old] != null && [price] > [price.old]',
+    scope: { kind: 'cell', columnIds: ['price'] },
+    style: { base: { color: '#2e7d32' } },
+  };
+
+  it('[price.old] matches during the tick, stops after endTick; counts follow', () => {
+    const engine = new RuleEngine();
+    engine.setRules([tickRule]);
+    const row = { price: 105 };
+    engine.recount([{ rowId: 'a', row }]);
+    expect(engine.matchCount('up')).toBe(0); // quiescent — diff-aware can't match
+
+    engine.applyChanges({
+      added: [],
+      removed: [],
+      updated: [
+        { rowId: 'a', row, cells: [{ rowId: 'a', colId: 'price', oldValue: 100, newValue: 105 }] },
+      ],
+    });
+    const during = engine.evaluateCell({ row, rowId: 'a', colId: 'price', theme: 'light' });
+    expect(during.matched).toEqual(['up']);
+    expect(engine.matchCount('up')).toBe(1);
+
+    engine.endTick();
+    const after = engine.evaluateCell({ row, rowId: 'a', colId: 'price', theme: 'light' });
+    expect(after.matched).toEqual([]); // .old resolves null after the clear
+    expect(engine.matchCount('up')).toBe(0); // eager counts force-recounted
+  });
+
+  it('evalErrorCount increments when a condition throws EvalError', () => {
+    const engine = new RuleEngine();
+    engine.setRules([
+      {
+        kind: 'style',
+        id: 'div',
+        name: 'div',
+        enabled: true,
+        priority: 1,
+        condition: '[a] / [b] > 0',
+        scope: { kind: 'row' },
+        style: { base: { color: '#000000' } },
+      },
+    ]);
+    expect(engine.evalErrorCount('div')).toBe(0);
+    const res = engine.evaluateCell({ row: { a: 1, b: 0 }, rowId: 'x', colId: null, theme: 'light' });
+    expect(res.matched).toEqual([]); // div-by-zero → non-matching
+    expect(engine.evalErrorCount('div')).toBe(1);
+  });
+});
