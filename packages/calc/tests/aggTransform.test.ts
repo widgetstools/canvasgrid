@@ -137,17 +137,28 @@ describe('aggregate shape errors (non-variadic names)', () => {
 });
 
 describe('PERCENTILE parameter channel', () => {
-  it("PERCENTILE([price], 95) → fn 'PERCENTILE(95)'", () => {
-    const res = mustTransform('PERCENTILE([price], 0.95)');
+  it("PERCENTILE([price], 95) → fn 'PERCENTILE(95)' (the literal IS percent points)", () => {
+    const res = mustTransform('PERCENTILE([price], 95)');
     expect(res.prePass).toEqual([
       { slot: 0, fn: 'PERCENTILE(95)', colId: 'price', scope: { kind: 'visible' } },
     ]);
   });
 
-  it("PERCENTILE([price], 0.5, 'all') → param + scope", () => {
-    const res = mustTransform("PERCENTILE([price], 0.5, 'all')");
+  it("PERCENTILE([price], 50, 'all') → param + scope", () => {
+    const res = mustTransform("PERCENTILE([price], 50, 'all')");
     expect(res.prePass[0]!.fn).toBe('PERCENTILE(50)');
     expect(res.prePass[0]!.scope).toEqual({ kind: 'all' });
+  });
+
+  it("PERCENTILE([price], 0.5) is VALID — 0.5 percent points, NOT a fraction reading", () => {
+    const res = mustTransform('PERCENTILE([price], 0.5)');
+    expect(res.prePass[0]!.fn).toBe('PERCENTILE(0.5)');
+  });
+
+  it('PERCENTILE([price], 150) — outside the 0–100 percent-point range → bad-shape', () => {
+    const err = mustFail('PERCENTILE([price], 150)');
+    expect(err.code).toBe('bad-shape');
+    expect(err.message).toMatch(/percent points 0–100/);
   });
 
   it('PERCENTILE([price]) without the percentile → bad-shape', () => {

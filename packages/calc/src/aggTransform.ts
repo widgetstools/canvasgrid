@@ -139,11 +139,15 @@ function rewriteAggregate(node: CallNode, state: TransformState): FieldNode | nu
     const p = rest[0];
     if (p === undefined || p.kind !== 'literal' || typeof p.value !== 'number') {
       fail('bad-shape',
-        'PERCENTILE expects a numeric percentile second argument, e.g. PERCENTILE([price], 0.95)',
+        'PERCENTILE expects a numeric percentile second argument, e.g. PERCENTILE([price], 95)',
         node.loc);
     }
-    // p is a fraction (0.95); the canonical fn suffix is percent POINTS (95).
-    fn = `PERCENTILE(${String(p.value * 100)})`;
+    // The literal IS percent points already (spec §1.1: 0–100; master doc
+    // §6.4 PERCENTILE([latency], 95)) — no fraction conversion.
+    if (!Number.isFinite(p.value) || p.value < 0 || p.value > 100) {
+      fail('bad-shape', 'PERCENTILE expects percent points 0–100', p.loc);
+    }
+    fn = `PERCENTILE(${String(p.value)})`;
     rest = rest.slice(1);
   }
 
