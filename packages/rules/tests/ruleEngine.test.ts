@@ -6,6 +6,7 @@ import type {
   RuleEvalContext,
   StyleRule,
 } from '../src/types';
+import { makeClock } from './helpers/fakeClock';
 
 // ─── Fixtures ───────────────────────────────────────────────────────────
 
@@ -464,5 +465,130 @@ describe('RuleEngine — row-scope memo invalidation (Task 4 review fix)', () =>
     fresh.recount([{ rowId: 'a', row }]);
     expect(engine.matchCount('hi')).toBe(fresh.matchCount('hi'));
     expect(engine.matchCount('rose')).toBe(fresh.matchCount('rose'));
+  });
+});
+
+// ─── Task 5: activeDurationMs + flash directives ────────────────────────
+
+describe('RuleEngine — activeDurationMs (Task 5)', () => {
+  const blinkRule: ConditionalStyleRule = {
+    kind: 'style',
+    id: 'blink',
+    name: 'blink',
+    enabled: true,
+    priority: 1,
+    condition: '[price.old] != null',
+    scope: { kind: 'cell', columnIds: ['price'] },
+    style: { base: { backgroundColor: '#fff9c4' } },
+    activeDurationMs: 1000,
+  };
+  const oneTick = (row: Record<string, unknown>) => ({
+    added: [],
+    removed: [],
+    updated: [
+      { rowId: 'a', row, cells: [{ rowId: 'a', colId: 'price', oldValue: 100, newValue: 105 }] },
+    ],
+  });
+
+  it('match survives endTick for the window, then expires with onExpire cells', () => {
+    const clock = makeClock();
+    const engine = new RuleEngine({
+      now: clock.now,
+      setTimer: clock.setTimer,
+      clearTimer: clock.clearTimer,
+    });
+    engine.setRules([blinkRule]);
+    const expiries: Array<Array<{ rowId: string; colId: string | null }>> = [];
+    engine.onExpire((cells) => expiries.push(cells));
+
+    const row = { price: 105 };
+    engine.applyChanges(oneTick(row));
+    const cellCtx: RuleEvalContext = { row, rowId: 'a', colId: 'price', theme: 'light' };
+    expect(engine.evaluateCell(cellCtx).matched).toEqual(['blink']);
+
+    engine.endTick(); // diff cleared — the active window keeps it matched
+    expect(engine.evaluateCell(cellCtx).matched).toEqual(['blink']);
+
+    clock.advance(1000);
+    expect(expiries).toEqual([[{ rowId: 'a', colId: 'price' }]]);
+    expect(engine.evaluateCell(cellCtx).matched).toEqual([]);
+  });
+
+  it('onExpire unsubscribe stops notifications', () => {
+    const clock = makeClock();
+    const engine = new RuleEngine({
+      now: clock.now,
+      setTimer: clock.setTimer,
+      clearTimer: clock.clearTimer,
+    });
+    engine.setRules([blinkRule]);
+    const seen: unknown[] = [];
+    const un = engine.onExpire((cells) => seen.push(cells));
+    un();
+    engine.applyChanges(oneTick({ price: 105 }));
+    clock.advance(5000);
+    expect(seen).toEqual([]);
+  });
+});
+
+describe('RuleEngine — flash directives (Task 5)', () => {
+  it('fire only on false→true transitions, with the rule flash config', () => {
+    const engine = new RuleEngine();
+    engine.setRules([
+      {
+        kind: 'style',
+        id: 'hot',
+        name: 'hot',
+        enabled: true,
+        priority: 1,
+        condition: '[price] > 100',
+        scope: { kind: 'cell', columnIds: ['price'] },
+        style: { base: { color: '#e65100' } },
+        flash: { enabled: true, target: 'cell', mode: 'pulse', color: '#ff6f00', durationMs: 600 },
+      },
+    ]);
+    const tick = (price: number, oldValue: number) =>
+      engine.applyChanges({
+        added: [],
+        removed: [],
+        updated: [
+          {
+            rowId: 'a',
+            row: { price },
+            cells: [{ rowId: 'a', colId: 'price', oldValue, newValue: price }],
+          },
+        ],
+      });
+
+    const flash = { rowId: 'a', colIds: ['price'], color: '#ff6f00', mode: 'pulse', durationMs: 600 };
+    expect(tick(150, 50)).toEqual([flash]); // false→true
+    expect(tick(160, 150)).toEqual([]); // stays true — no re-flash
+    expect(tick(50, 160)).toEqual([]); // true→false — no flash
+    expect(tick(200, 50)).toEqual([flash]); // re-activation flashes again
+  });
+
+  it('row-target flash directive carries colIds: null', () => {
+    const engine = new RuleEngine();
+    engine.setRules([
+      {
+        kind: 'style',
+        id: 'row-hot',
+        name: 'row-hot',
+        enabled: true,
+        priority: 1,
+        condition: '[price] > 100',
+        scope: { kind: 'row' },
+        style: { base: { color: '#e65100' } },
+        flash: { enabled: true, target: 'row', mode: 'glow', color: '#ffa000', durationMs: 900 },
+      },
+    ]);
+    const directives = engine.applyChanges({
+      added: [{ rowId: 'a', row: { price: 150 } }],
+      updated: [],
+      removed: [],
+    });
+    expect(directives).toEqual([
+      { rowId: 'a', colIds: null, color: '#ffa000', mode: 'glow', durationMs: 900 },
+    ]);
   });
 });

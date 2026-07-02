@@ -10,6 +10,7 @@ import { compileFormat } from '@cgrid/format';
 import type { FormatProgram } from '@cgrid/format';
 import { compileCondition, validateRuleShape } from './conditionCompiler';
 import type { CompiledCondition } from './conditionCompiler';
+import { ExpiryHeap } from './expiryHeap';
 import { MatchCounter } from './matchCounter';
 import type {
   ConditionalStyleRule,
@@ -94,11 +95,29 @@ export class RuleEngine {
   #lastMatch = new Map<string, Set<string>>();
   /** Activations collected during applyChanges. Task 5 fills directives from these. */
   #activations: Array<{ rule: ConditionalStyleRule; rowId: string }> = [];
+  #now: () => number;
+  #expiry: ExpiryHeap;
+  #expireSubs = new Set<(cells: Array<{ rowId: string; colId: string | null }>) => void>();
 
-  constructor(opts?: { schema?: Schema; now?: () => number }) {
+  constructor(opts?: {
+    schema?: Schema;
+    /** Injectable clock. Default is a lazy performance.now wrapper — the
+     *  engine stays Date-free (Global Constraints). */
+    now?: () => number;
+    setTimer?: (fn: () => void, ms: number) => unknown;
+    clearTimer?: (h: unknown) => void;
+  }) {
     this.#schema = opts?.schema;
-    // opts.now is consumed by Task 5 (expiry heap); accepted from the first
-    // shipped task so the constructor contract is stable.
+    this.#now = opts?.now ?? (() => globalThis.performance?.now() ?? 0);
+    this.#expiry = new ExpiryHeap({
+      now: this.#now,
+      setTimer: opts?.setTimer ?? ((fn, ms) => setTimeout(fn, ms)),
+      clearTimer: opts?.clearTimer ?? ((h) => clearTimeout(h as ReturnType<typeof setTimeout>)),
+    });
+    this.#expiry.onExpire((expired) => {
+      const cells = expired.map((e) => ({ rowId: e.rowId, colId: e.colId }));
+      for (const fn of [...this.#expireSubs]) fn(cells);
+    });
   }
 
   /** Replace the rule set. Invalid rules are skipped + reported; valid rules apply. */
@@ -173,6 +192,7 @@ export class RuleEngine {
     this.#counter.resetAll(); // caller re-seeds via recount (bridge does, Task 15)
     this.#lastMatch = new Map();
     this.#activations = [];
+    this.#expiry.clear(); // replaced rules void their active windows
     return { ok: errors.length === 0, errors };
   }
 
@@ -233,9 +253,15 @@ export class RuleEngine {
     return merged;
   }
 
-  /** Single matching gate for evaluateCell + resolveRuleRef.
-   *  Task 5 adds the activeDurationMs window check here. */
+  /** Single matching gate for evaluateCell + resolveRuleRef. An
+   *  activeDurationMs rule stays matched for its window after activation,
+   *  even once endTick cleared the tick's diff (spec §3.1 blink-on-change);
+   *  after expiry it stops matching and onExpire notifies for repaint. */
   #ruleMatches(ir: IndexedRule, ctx: RuleEvalContext): boolean {
+    if (ir.rule.kind === 'style' && ir.rule.activeDurationMs != null) {
+      const activeColId = ir.rule.scope.kind === 'row' ? null : ctx.colId;
+      if (this.#expiry.isActive(ctx.rowId, activeColId, ir.rule.id)) return true;
+    }
     return this.#conditionMatches(ir, ctx.rowId, ctx.row);
   }
 
@@ -354,9 +380,34 @@ export class RuleEngine {
       for (const rowStates of this.#lastMatch.values()) rowStates.delete(r.rowId);
     }
 
-    // Task 5 fills directives from #activations (flash + activeDurationMs).
+    // (d) activations → expiry entries + flash directives (spec §1.1 items 5+8).
+    const directives: FlashDirective[] = [];
+    for (const { rule, rowId } of this.#activations) {
+      const scopedColIds = rule.scope.kind === 'row' ? null : rule.scope.columnIds;
+      if (rule.activeDurationMs != null && rule.activeDurationMs > 0) {
+        const deadline = this.#now() + rule.activeDurationMs;
+        if (scopedColIds === null) {
+          this.#expiry.push({ deadline, rowId, colId: null, ruleId: rule.id });
+        } else {
+          for (const colId of scopedColIds) {
+            this.#expiry.push({ deadline, rowId, colId, ruleId: rule.id });
+          }
+        }
+      }
+      if (rule.flash?.enabled) {
+        directives.push({
+          rowId,
+          // cell target → the rule's matched cell set; row target → whole row.
+          colIds:
+            rule.flash.target === 'row' || scopedColIds === null ? null : scopedColIds.slice(),
+          color: rule.flash.color,
+          mode: rule.flash.mode,
+          durationMs: rule.flash.durationMs,
+        });
+      }
+    }
     this.#activations.length = 0;
-    return [];
+    return directives;
   }
 
   #detectActivations(rowId: string, row: Record<string, unknown>): void {
@@ -403,9 +454,11 @@ export class RuleEngine {
 
   // ─── Task 5 ────────────────────────────────────────────────────────────
 
-  onExpire(
-    _fn: (cells: Array<{ rowId: string; colId: string | null }>) => void,
-  ): Unsubscribe {
-    throw new Error('not-yet-implemented: onExpire ships in Task 5');
+  /** activeDurationMs expiries → bridge repaints those cells. */
+  onExpire(fn: (cells: Array<{ rowId: string; colId: string | null }>) => void): Unsubscribe {
+    this.#expireSubs.add(fn);
+    return () => {
+      this.#expireSubs.delete(fn);
+    };
   }
 }
