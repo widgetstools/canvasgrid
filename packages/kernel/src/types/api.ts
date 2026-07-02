@@ -396,6 +396,12 @@ export interface CGridApi<TRow = any> {
    *  'number', 'checkbox', 'header') can be overridden by re-registering. */
   registerCellRenderer(name: string, painter: import('../renderer/cellRenderers/registry').CellPainter): void;
 
+  /** Cycle 21c / Task 10 — register the format compiler (supplied by
+   *  @cgrid/format's wireIntoKernel). Kernel invokes it in the
+   *  compileFormatSlots pass (Task 11). Apps that never call this see
+   *  identical behavior to before. */
+  registerFormatCompiler(fn: import('../core/formatCompilerSlot').FormatCompiler): void;
+
   /** Register a custom cell editor under `name`. Columns referencing it via
    *  `cellEditor: name` will mount this editor when edit starts. Built-in
    *  names ('text' shipped in Cycle 5 Task 1; 'number' / 'date' / 'select' /

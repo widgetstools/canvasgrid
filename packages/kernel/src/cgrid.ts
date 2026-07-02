@@ -136,6 +136,10 @@ import {
   serializeRanges as serializeRangesPure,
   mapPasteCells,
 } from './worker/passes/clipboardPass';
+import {
+  registerFormatCompiler as slotRegisterFormatCompiler,
+  type FormatCompiler,
+} from './core/formatCompilerSlot';
 
 export const CGRID_VERSION = '0.0.0';
 
@@ -4722,6 +4726,14 @@ export class CGrid<TRow = any> {
     this.cgridCanvas?.requestRepaint();
   }
 
+  /** Cycle 21c / Task 10 — register the @cgrid/format compiler into the
+   *  kernel DI slot. Invoked by wireIntoKernel(grid) in @cgrid/format;
+   *  kernel's compileFormatSlots pass (Task 11) calls getFormatCompiler()
+   *  to obtain it. Apps that never call this see no behavior change. */
+  registerFormatCompiler(fn: FormatCompiler): void {
+    slotRegisterFormatCompiler(fn);
+  }
+
   /** Cycle 22 / Task 3 — runtime per-token override. Apps tune
    *  individual `--cg-*` variables without writing CSS; the patch
    *  lands as inline styles on the grid root so `getComputedStyle`
@@ -5371,6 +5383,7 @@ export class CGrid<TRow = any> {
       setGridOption: (k, v) => this.setGridOption(k, v),
       updateGridOptions: (p) => this.updateGridOptions(p),
       registerCellRenderer: (n, p) => this.registerCellRenderer(n, p),
+      registerFormatCompiler: (fn) => this.registerFormatCompiler(fn),
       registerCellEditor: (n, c) => this.registerCellEditor(n, c),
       registerComparator: <TValue = unknown>(n: string, f: (a: TValue, b: TValue) => number) =>
         this.registerComparator<TValue>(n, f),
