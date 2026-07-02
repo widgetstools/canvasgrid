@@ -125,7 +125,7 @@ export type { HitRegion } from './actions';
 
 // ─── Data helpers ─────────────────────────────────────────────────────────────
 export { ColumnStats } from './columnStats';
-export type { RowsChangedPayload } from './columnStats';
+export type { ColumnStatSnapshot, RowsChangedPayload } from './columnStats';
 export { TickHistory, DEFAULT_TICK_HISTORY_WINDOW } from './tickHistory';
 export type { TickHistoryColumnOptions } from './tickHistory';
 
