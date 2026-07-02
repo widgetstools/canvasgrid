@@ -3,7 +3,6 @@
 
 import type { CellPaintConfig, CellPainter } from '@cgrid/kernel';
 import { withAlpha } from './paintUtils';
-import { SEMANTIC_COLORS } from './palette';
 import type { IconActionClusterParams, RowMenuCellParams } from './types';
 
 type Gc = Parameters<CellPainter['paint']>[0];
@@ -68,10 +67,28 @@ export class HitRegionRegistry {
   clearAll(): void {
     this.byCell.clear();
   }
+
+  /** Evicts every region registered for `rowId` (any colId). Bridge Task 13's
+   *  `rowsChanged` handler calls this per removed rowId (F3) — without it a
+   *  removed row's regions stay resolvable forever (module-global registry,
+   *  never otherwise evicted). */
+  clearForRow(rowId: string | number): void {
+    const prefix = `${String(rowId)}\0`;
+    for (const key of this.byCell.keys()) {
+      if (key.startsWith(prefix)) this.byCell.delete(key);
+    }
+  }
 }
 
 /** Shared registry instance; bridge Task 13 wires cellClicked → resolve(). */
 export const defaultHitRegionRegistry = new HitRegionRegistry();
+
+/** Evicts every hit region registered for `rowId` on the default registry.
+ *  Per-bridge registry instances (rather than one module-global) are a
+ *  logged follow-up (F3). */
+export function clearRegionsForRow(rowId: string | number): void {
+  defaultHitRegionRegistry.clearForRow(rowId);
+}
 
 function paintKebab(gc: Gc, cx: number, cy: number, color: string): void {
   const r = 1.5;
@@ -97,11 +114,19 @@ function paintActionIcon(gc: Gc, cx: number, cy: number, label: string, color: s
   gc.fillText(label.charAt(0).toUpperCase(), cx, cy + 3);
 }
 
-/** Catalog §3.8 IconActionCluster — hover-revealed right-aligned icon cluster. */
+/**
+ * Catalog §3.8 IconActionCluster — hover-revealed right-aligned icon cluster.
+ *
+ * See the `IconActionClusterParams.revealOnHover` doc comment (types.ts) —
+ * the kernel doesn't thread live hover state, so gating on `p.isHovered`
+ * unconditionally would make this painter unreachable. Only gates on
+ * `p.isHovered` when the column opts in via `revealOnHover: true`.
+ */
 export const iconActionCluster: CellPainter = {
   paint(gc, p) {
     const params = (p.params ?? {}) as IconActionClusterParams;
-    if (!p.isHovered || !params.actions?.length) return;
+    if (!params.actions?.length) return;
+    if (params.revealOnHover === true && !p.isHovered) return;
     const rowId = p.rowId ?? '';
     const colId = p.colId ?? '';
     if (rowId !== '' && colId !== '') defaultHitRegionRegistry.clear(rowId, colId);

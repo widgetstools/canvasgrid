@@ -150,7 +150,12 @@ export const bidirectionalBarCell: CellPainter = {
     const row = p.rowData as Record<string, unknown> | undefined;
     const value = rowNumber(row, params.valueField) ?? toNumber(p.value);
     if (value === null) return;
-    const maxAbs = params.stats?.maxAbs && params.stats.maxAbs > 0 ? params.stats.maxAbs : Math.abs(value) || 1;
+    // F6 — params.stats is now the canonical nullable ColumnStatSnapshot;
+    // degrade to the per-value fallback when maxAbs is null/0 (no data seen).
+    const statsMaxAbs = params.stats?.maxAbs;
+    const maxAbs = statsMaxAbs !== null && statsMaxAbs !== undefined && statsMaxAbs > 0
+      ? statsMaxAbs
+      : Math.abs(value) || 1;
     const rect = innerBarRect(p);
     const mid = rect.x + rect.w / 2;
     miniBar(gc, rect.x, rect.y, rect.w, rect.h, 1, TRACK_COLOR);
@@ -178,7 +183,13 @@ export const heatCell: CellPainter = {
     const value = toNumber(p.value);
     const stats = params.stats;
     let t = 0.5;
-    if (value !== null && stats && stats.count > 0 && stats.max > stats.min) {
+    // F6 — stats.min/max are nullable (ColumnStatSnapshot); count > 0
+    // implies they're populated, but the type doesn't let TS infer that,
+    // so check explicitly rather than degrading silently on a bad cast.
+    if (
+      value !== null && stats && stats.count > 0
+      && stats.max !== null && stats.min !== null && stats.max > stats.min
+    ) {
       t = Math.max(0, Math.min(1, (value - stats.min) / (stats.max - stats.min)));
     }
     const curve = params.curve ?? 'lab';
@@ -262,7 +273,9 @@ export const volumeBar: CellPainter = {
     const row = p.rowData as Record<string, unknown> | undefined;
     const value = rowNumber(row, params.valueField) ?? toNumber(p.value);
     if (value === null) return;
-    const max = params.stats?.max && params.stats.max > 0 ? params.stats.max : value;
+    // F6 — degrade to the cell's own value when stats.max is null/0.
+    const statsMax = params.stats?.max;
+    const max = statsMax !== null && statsMax !== undefined && statsMax > 0 ? statsMax : value;
     const frac = Math.max(0, Math.min(1, value / max));
     const rect = innerBarRect(p);
     miniBar(gc, rect.x, rect.y, rect.w, rect.h, frac, withAlpha(SEMANTIC_COLORS.info, 0.45), TRACK_COLOR);

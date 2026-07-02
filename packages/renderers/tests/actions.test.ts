@@ -6,6 +6,7 @@ import { makeFakeGc } from './helpers/fakeGc';
 import type { FakeGc } from './helpers/fakeGc';
 import {
   iconActionCluster, rowMenuCell, HitRegionRegistry, resolveHitRegion,
+  defaultHitRegionRegistry, clearRegionsForRow,
 } from '../src/actions';
 
 function baseConfig(overrides: Partial<CellPaintConfig> = {}): CellPaintConfig {
@@ -33,7 +34,20 @@ describe('iconActionCluster', () => {
   let gc: FakeGc;
   beforeEach(() => { gc = makeFakeGc(); });
 
-  it('paints icons only when hovered (nominal)', () => {
+  it('paints icons by default even when NOT hovered — kernel never threads isHovered:true (F1 nominal)', () => {
+    iconActionCluster.paint(gc, baseConfig({
+      isHovered: false,
+      params: {
+        actions: [
+          { icon: 'x', label: 'Cancel', onAction: () => {} },
+          { icon: 'route', label: 'Route', onAction: () => {} },
+        ],
+      },
+    }));
+    expect(gc.calls.filter((c) => c.op === 'arc').length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('also paints when hovered (nominal)', () => {
     iconActionCluster.paint(gc, baseConfig({
       isHovered: true,
       params: {
@@ -46,12 +60,27 @@ describe('iconActionCluster', () => {
     expect(gc.calls.filter((c) => c.op === 'arc').length).toBeGreaterThanOrEqual(2);
   });
 
-  it('no paint when not hovered (edge)', () => {
+  it('revealOnHover:true + isHovered:false paints nothing (F1 opt-in gate, edge)', () => {
     iconActionCluster.paint(gc, baseConfig({
       isHovered: false,
-      params: { actions: [{ icon: 'x', label: 'Cancel', onAction: () => {} }] },
+      params: {
+        revealOnHover: true,
+        actions: [{ icon: 'x', label: 'Cancel', onAction: () => {} }],
+      },
     }));
     expect(gc.calls.filter((c) => c.op === 'fillText').length).toBe(0);
+    expect(gc.calls.filter((c) => c.op === 'arc').length).toBe(0);
+  });
+
+  it('revealOnHover:true + isHovered:true paints (variant)', () => {
+    iconActionCluster.paint(gc, baseConfig({
+      isHovered: true,
+      params: {
+        revealOnHover: true,
+        actions: [{ icon: 'x', label: 'Cancel', onAction: () => {} }],
+      },
+    }));
+    expect(gc.calls.filter((c) => c.op === 'arc').length).toBeGreaterThanOrEqual(1);
   });
 
   it('registers 24×24 hit regions (variant)', () => {
@@ -103,5 +132,33 @@ describe('HitRegionRegistry', () => {
     });
     registry.clear('a', 'b');
     expect(registry.resolve('a', 'b', 5, 5)).toBeUndefined();
+  });
+
+  it('clearForRow evicts every colId registered for that rowId, leaves other rows alone (F3)', () => {
+    const registry = new HitRegionRegistry();
+    registry.register({ rowId: 'r1', colId: 'actions', actionIndex: 0, bounds: { x: 0, y: 0, w: 10, h: 10 } });
+    registry.register({ rowId: 'r1', colId: 'menu', actionIndex: 0, bounds: { x: 0, y: 0, w: 10, h: 10 } });
+    registry.register({ rowId: 'r2', colId: 'menu', actionIndex: 0, bounds: { x: 0, y: 0, w: 10, h: 10 } });
+    registry.clearForRow('r1');
+    expect(registry.resolve('r1', 'actions', 5, 5)).toBeUndefined();
+    expect(registry.resolve('r1', 'menu', 5, 5)).toBeUndefined();
+    expect(registry.resolve('r2', 'menu', 5, 5)?.rowId).toBe('r2');
+  });
+
+  it('does not confuse rowIds that are string-prefixes of one another (F3 edge)', () => {
+    const registry = new HitRegionRegistry();
+    registry.register({ rowId: 'r1', colId: 'menu', actionIndex: 0, bounds: { x: 0, y: 0, w: 10, h: 10 } });
+    registry.register({ rowId: 'r10', colId: 'menu', actionIndex: 0, bounds: { x: 0, y: 0, w: 10, h: 10 } });
+    registry.clearForRow('r1');
+    expect(registry.resolve('r1', 'menu', 5, 5)).toBeUndefined();
+    expect(registry.resolve('r10', 'menu', 5, 5)?.rowId).toBe('r10');
+  });
+
+  it('clearRegionsForRow evicts on the shared default registry (F3)', () => {
+    defaultHitRegionRegistry.register({
+      rowId: 'shared-1', colId: 'menu', actionIndex: 0, bounds: { x: 0, y: 0, w: 10, h: 10 },
+    });
+    clearRegionsForRow('shared-1');
+    expect(resolveHitRegion('shared-1', 'menu', 5, 5)).toBeUndefined();
   });
 });

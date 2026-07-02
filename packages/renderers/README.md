@@ -58,7 +58,7 @@ returns the same handle (`grid.__renderersBridgeWired` marker).
 |---|---|
 | `colDef.renderer(name, field, params?, opts?)` | Typed ColDef for any `RendererName` |
 | `colDef.price / heat / age / relativeTime / priceQuote` | Shorthand builders |
-| `colDef.iconActionCluster / rowMenu` | Action columns (no rowData threading stub) |
+| `colDef.iconActionCluster / rowMenu` | Action columns — DO attach the `_compositeProgram` threading stub (it's load-bearing here: it's what makes the kernel thread `rowId` into `p.rowId`, which the click router needs to resolve hit regions) |
 | `stats.for(colId)` | Column-wide min/max/maxAbs snapshot (when `statsColumns` wired) |
 | `history.get(rowId, colId)` | Rolling tick history array (when `historyColumns` wired) |
 | `destroy()` | Clears age refresh timer, stats/history subscriptions |
@@ -81,11 +81,27 @@ Both helpers live on the main thread and subscribe to `rowsChanged`:
   `colId` over the full row set (`scope: 'all'`). Injected into bar
   painters via `cellRendererSelector` as `params.stats`.
 - **TickHistory** — bounded `Float64Array` ring buffers per
-  `(rowId, colId)` for opted-in columns. Injected into `spread-bar`
-  and sparkline columns as `params.history`.
+  `(rowId, colId)` for opted-in columns. Injection is **spread-bar
+  only** — the bridge's paint-time wrapper sets `params.history` for
+  `spread-bar` columns specifically (kernel `cellRendererSelector`s
+  receive `data: null`, so per-row injection has to happen at paint
+  time, where `p.rowId` is available). Sparkline columns do NOT get
+  auto-injected history; they read `p.value` directly. `history.get(rowId,
+  colId)` remains available as a manual escape hatch for any column
+  that wants rolling history explicitly (e.g. a sparkline fed from it).
 
 Instantiate the bridge **after** initial `setRowData` so seed scans
 see rows.
+
+**Staleness across a bare `setRowData`:** both helpers subscribe only
+to `rowsChanged`. The kernel's `setRowData` (a full row-set replace)
+emits `modelUpdated`, not `rowsChanged` — so `ColumnStats`/`TickHistory`
+instances DO NOT see rows replaced this way and go stale. This is a
+logged follow-up (full `modelUpdated` reseed); until then, reseed by
+constructing a new `ColumnStats`/`TickHistory` instance (or a fresh
+bridge handle) after a bare `setRowData`. This is a separate cache
+from the bridge's own internal row mirror, which DOES reseed on
+`modelUpdated` (see the final-review fix notes in bridge.ts).
 
 ## Renderer catalog
 
@@ -106,10 +122,11 @@ Visual contracts: `docs/superpowers/plans/2026-07-01-canvasgrid-cell-renderer-ca
 
 ## Action hit routing
 
-Register hit regions inside painters via `registerHitRegion`. The
-bridge listens for `cellClicked`, maps mouse → canvas coords, resolves
-the region, and dispatches `IconActionSpec.onAction` or
-`RowMenuCellParams.onOpen`.
+Register hit regions inside painters via
+`defaultHitRegionRegistry.register(...)` (there is no standalone
+`registerHitRegion` function). The bridge listens for `cellClicked`,
+maps mouse → canvas coords, resolves the region via `resolveHitRegion`,
+and dispatches `IconActionSpec.onAction` or `RowMenuCellParams.onOpen`.
 
 ## Showcase demos
 
@@ -132,6 +149,6 @@ npm run typecheck          # 21/21 packages
 npm run lint               # root eslint
 npm run build              # 13/13 packages
 cd packages/renderers && npm test
-cd apps/cgrid-showcase && npm run test:e2e   # 131 baseline + 12 new
+cd apps/cgrid-showcase && npm run test:e2e   # 147 passed + 17 new (renderer blotter/catalog/charts)
 git diff main...HEAD -- packages/kernel packages/{expression,format,rules,calc}  # must be empty
 ```

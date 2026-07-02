@@ -72,4 +72,75 @@ test.describe('renderer blotter feature', () => {
     await expect(page.getByTestId('btn-renderer-blotter-tick')).toBeVisible();
     await expect(page.getByTestId('btn-renderer-blotter-tick-once')).toBeVisible();
   });
+
+  // Final-review F5 — end-to-end click routing (canvas click → kernel
+  // `cellClicked` → bridge hit-region resolve → RowMenuCellParams.onOpen)
+  // was previously only exercised at the unit level (wireRenderersIntoKernel
+  // bridge tests with a fake grid). This drives the REAL kernel: locate the
+  // row-menu kebab cell via CGrid's public `getCellBoundsAt(rowIndex, colId)`
+  // geometry API, click its canvas-local pixel, and assert the demo's
+  // onOpen callback (wired at rendererBlotter.ts:118-125) actually fired.
+  //
+  // DISCOVERED KERNEL DEFECT (out of scope for @cgrid/renderers — zero
+  // kernel changes permitted in this fix pass): the click DOES reach the
+  // canvas, the kernel DOES resolve it to the right cell, and it DOES emit
+  // `cellClicked` with `colId: 'rowMenu'` — but with `rowId: 'row-0'`, a
+  // synthetic placeholder, instead of the real string rowId ('r1'). See
+  // `packages/kernel/src/cgrid.ts`'s `private rowIdAt(rowIndex)`: it always
+  // returns `` `row-${rowIndex}` `` — a documented "Foundation" stub
+  // ("the real index → rowId reverse lookup is deferred to a later
+  // cycle") that `cellClicked`/`cellDoubleClicked`/`cellMouseOver` all feed
+  // from. Meanwhile the PAINT path threads the REAL string rowId into
+  // `p.rowId` via the newer `stringRowIdAt(rowIndex)` (chunk's
+  // `stringRowIds`, added Cycle 21e/Task 11) — so `rowMenuCell.paint`
+  // registers its hit region under `rowId: 'r1'`, but the bridge's
+  // `cellClicked` handler looks it up under `rowId: 'row-0'`. The mismatch
+  // means `resolveHitRegion` always misses for `onOpen`/`onAction`
+  // callbacks that key off `rowId` in any real (non-fake-grid) app —
+  // this test is the first thing in the repo to exercise that path
+  // end-to-end. Fixing it requires `rowIdAt()` to read `stringRowIdAt()`
+  // when available, which is a `packages/kernel` change and out of scope
+  // here; `test.fail()` below keeps this documented and CI-green while the
+  // kernel fix is pending — it will loudly flip to "unexpected pass" the
+  // day someone lands that fix, which is the signal to remove the
+  // `test.fail()` call.
+  test('clicking the row-menu kebab routes cellClicked to onOpen (F5)', async ({ page }) => {
+    test.fail(true, 'kernel rowIdAt() stub returns synthetic row-N ids for cellClicked; see comment above');
+    await gotoFeature(page, 'renderer-blotter');
+
+    type Bounds = { x: number; y: number; w: number; h: number };
+    const getRowMenuBounds = (): Promise<Bounds | null> => page.evaluate(() => {
+      const g = window.__cgrid as unknown as {
+        getCellBoundsAt: (rowIndex: number, colId: string) => Bounds | null;
+      };
+      return g.getCellBoundsAt(0, 'rowMenu');
+    });
+
+    // The blotter's 13 columns (100px each) overflow the grid's ~1179px
+    // body width at this viewport, so `rowMenu` (the last column) isn't
+    // scrolled into view by default — `getCellBoundsAt` correctly returns
+    // null for an off-screen column. Scroll it into view first; the
+    // kernel's viewport recompute after a programmatic scroll completes
+    // via an async worker round-trip (not synchronous with
+    // `ensureColumnVisible`), so poll rather than reading bounds immediately.
+    await page.evaluate(() => {
+      (window.__cgrid as unknown as {
+        ensureColumnVisible: (colId: string, position?: string) => void;
+      }).ensureColumnVisible('rowMenu', 'end');
+    });
+    await expect.poll(getRowMenuBounds).not.toBeNull();
+    const bounds = (await getRowMenuBounds())!;
+
+    // The kebab is a 20×20 hit region right-aligned in the cell with the
+    // renderer's default 6px right padding (actions.ts KEBAB_SIZE/padding) —
+    // click well inside that region regardless of exact padding.
+    const canvas = page.locator('#grid-host canvas').first();
+    await canvas.click({
+      position: { x: bounds.x + bounds.w - 16, y: bounds.y + bounds.h / 2 },
+    });
+
+    await expect.poll(() => page.evaluate(() => (
+      window as unknown as { __cgridRendererActionLog?: string[] }
+    ).__cgridRendererActionLog ?? [])).toContainEqual('menu:r1');
+  });
 });

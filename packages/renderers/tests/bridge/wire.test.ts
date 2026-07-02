@@ -8,7 +8,7 @@ import {
   rendererPainterTableForTests,
 } from '../../src/bridge';
 import { THREADING_PROGRAM } from '../../src/colDefBuilders';
-import { iconActionCluster, rowMenuCell } from '../../src/actions';
+import { iconActionCluster, rowMenuCell, resolveHitRegion } from '../../src/actions';
 import { makeFakeGc } from '../helpers/fakeGc';
 
 function makeFakeGrid(
@@ -54,6 +54,12 @@ function makeFakeGrid(
       for (const fn of handlers.get(type) ?? []) fn(e);
     },
     _registrations: registrations,
+    // Test-only escape hatch (F2) — the SAME array `forEachRow` iterates,
+    // so mutating it in place simulates a real `setRowData` full-replace:
+    // rowIds stay the same, but the row OBJECT REFERENCES change, which is
+    // exactly what the kernel's real setRowData does and what the bridge's
+    // rowId-keyed mirror can't detect without a modelUpdated subscription.
+    _rows: rows,
   };
 
   return grid;
@@ -171,6 +177,151 @@ describe('wireRenderersIntoKernel — colDef builders', () => {
       cellRenderer: 'stacked-value',
     } as never);
     expect(compiled.ok).toBe(true);
+  });
+});
+
+describe('wireRenderersIntoKernel — F2 modelUpdated reseeds the row mirror', () => {
+  function probeFor(rowId: string, colId: string) {
+    return {
+      value: 98.12,
+      valueFormatted: '98.12',
+      bounds: { x: 0, y: 0, w: 150, h: 28 },
+      font: '12px sans-serif', fg: '#fff', bg: '#000', borderColor: '#000',
+      halign: 'left', prefillColor: '#000',
+      isFocused: false, isSelected: false, isHovered: false, isHeader: false,
+      rowId,
+      colId,
+      rowData: { quote: 98.12 },
+      params: { bidField: 'bid', askField: 'ask', midField: 'mid' },
+    };
+  }
+
+  it('sees fresh values after setRowData replaces the SAME rowId (modelUpdated, no rowsChanged)', () => {
+    const grid = makeFakeGrid([], [
+      { rowId: 'r1', row: { id: 'r1', bid: 98.10, ask: 98.14, mid: 98.12 } },
+    ]);
+    wireRenderersIntoKernel(grid);
+    const wrapped = grid._registrations.get('price-quote') as {
+      paint(gc: unknown, p: Record<string, unknown>): void;
+    };
+    const gcProbe = makeFakeGc();
+
+    // Real CGrid.setRowData clears + repopulates its internal row store and
+    // emits `modelUpdated` (never `rowsChanged`) — simulate exactly that:
+    // same rowId, NEW row object with new values, no rowsChanged event.
+    grid._rows.length = 0;
+    grid._rows.push({ rowId: 'r1', row: { id: 'r1', bid: 99.50, ask: 99.54, mid: 99.52 } });
+    grid.emit('modelUpdated', { type: 'modelUpdated', visibleRowCount: 1 });
+
+    let seenRow: Record<string, unknown> | undefined;
+    const probe = new Proxy(probeFor('r1', 'quote'), {
+      get(t, k) {
+        if (k === 'rowData') seenRow = Reflect.get(t, k) as Record<string, unknown>;
+        return Reflect.get(t, k);
+      },
+      set(t, k, v) { return Reflect.set(t, k, v); },
+    });
+    wrapped.paint(gcProbe, probe as never);
+
+    expect(seenRow?.bid).toBe(99.50);
+  });
+
+  it('WITHOUT a modelUpdated subscription the mirror would stay stale — this is the regression guard', () => {
+    // Same scenario as above but never emits modelUpdated — proves the
+    // fixture setup alone (row-object replacement) doesn't already produce
+    // fresh values; only the modelUpdated handler does.
+    const grid = makeFakeGrid([], [
+      { rowId: 'r1', row: { id: 'r1', bid: 1, ask: 2, mid: 1.5 } },
+    ]);
+    wireRenderersIntoKernel(grid);
+    const wrapped = grid._registrations.get('price-quote') as {
+      paint(gc: unknown, p: Record<string, unknown>): void;
+    };
+    const gcProbe = makeFakeGc();
+
+    grid._rows.length = 0;
+    grid._rows.push({ rowId: 'r1', row: { id: 'r1', bid: 999, ask: 998, mid: 998.5 } });
+    // No modelUpdated emitted.
+
+    let seenRow: Record<string, unknown> | undefined;
+    const probe = new Proxy(probeFor('r1', 'quote'), {
+      get(t, k) {
+        if (k === 'rowData') seenRow = Reflect.get(t, k) as Record<string, unknown>;
+        return Reflect.get(t, k);
+      },
+      set(t, k, v) { return Reflect.set(t, k, v); },
+    });
+    wrapped.paint(gcProbe, probe as never);
+
+    expect(seenRow?.bid).toBe(1); // stale — the old mirrored reference
+  });
+});
+
+describe('wireRenderersIntoKernel — F3 hit-region eviction', () => {
+  it('rowsChanged removed evicts that row\'s action hit regions', () => {
+    const onAction = vi.fn();
+    const columnDefs = [{
+      colId: 'act',
+      field: 'act',
+      cellRenderer: 'icon-action-cluster',
+      cellRendererParams: { actions: [{ icon: 'x', label: 'Cancel', onAction }] },
+    }];
+    const grid = makeFakeGrid(columnDefs);
+    wireRenderersIntoKernel(grid);
+    const gc = makeFakeGc();
+
+    iconActionCluster.paint(gc, {
+      value: null, valueFormatted: '',
+      bounds: { x: 100, y: 10, w: 80, h: 28 },
+      font: '13px sans-serif', fg: '#111', bg: '#fff', borderColor: '#ccc',
+      halign: 'right', prefillColor: '#fff',
+      isFocused: false, isSelected: false, isHovered: false, isHeader: false,
+      rowId: 'r1', colId: 'act',
+      params: columnDefs[0]!.cellRendererParams,
+    });
+
+    grid.setCanvasPoint(154, 24);
+    grid.emit('rowsChanged', {
+      type: 'rowsChanged', added: [], updated: [], removed: [{ rowId: 'r1', row: {} }],
+    });
+    grid.emit('cellClicked', {
+      type: 'cellClicked', rowId: 'r1', colId: 'act', value: null, mouse: {} as MouseEvent,
+    });
+
+    expect(onAction).not.toHaveBeenCalled();
+  });
+
+  it('destroy() clears all hit regions, even for rows the bridge never saw removed', () => {
+    const onAction = vi.fn();
+    const columnDefs = [{
+      colId: 'act',
+      field: 'act',
+      cellRenderer: 'icon-action-cluster',
+      cellRendererParams: { actions: [{ icon: 'x', label: 'Cancel', onAction }] },
+    }];
+    const grid = makeFakeGrid(columnDefs);
+    const handle = wireRenderersIntoKernel(grid);
+    const gc = makeFakeGc();
+
+    iconActionCluster.paint(gc, {
+      value: null, valueFormatted: '',
+      bounds: { x: 100, y: 10, w: 80, h: 28 },
+      font: '13px sans-serif', fg: '#111', bg: '#fff', borderColor: '#ccc',
+      halign: 'right', prefillColor: '#fff',
+      isFocused: false, isSelected: false, isHovered: false, isHeader: false,
+      rowId: 'r1', colId: 'act',
+      params: columnDefs[0]!.cellRendererParams,
+    });
+
+    // The region resolves before destroy (sanity — proves the paint above
+    // actually registered it on the shared default registry).
+    expect(resolveHitRegion('r1', 'act', 154, 24)).toBeDefined();
+
+    handle.destroy();
+
+    // destroy() must sweep the whole shared registry, not just rows this
+    // bridge instance happened to see a rowsChanged `removed` for.
+    expect(resolveHitRegion('r1', 'act', 154, 24)).toBeUndefined();
   });
 });
 

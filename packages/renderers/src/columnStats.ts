@@ -177,17 +177,6 @@ type RowsChangedEvent<TRow> = {
   source: 'transaction' | 'transactionAsync' | 'edit';
 };
 
-/**
- * Row-change payload shape ColumnStats consumes (mirrors kernel's `rowsChanged` event).
- * Re-exported for backwards compatibility with index.ts.
- * @deprecated Use the kernel's own rowsChanged event type directly.
- */
-export interface RowsChangedPayload {
-  added?: ReadonlyArray<Record<string, unknown>>;
-  updated?: ReadonlyArray<{ prev: Record<string, unknown>; next: Record<string, unknown> }>;
-  removed?: ReadonlyArray<Record<string, unknown>>;
-}
-
 /** Stable sentinel returned for unwatched colIds — never mutated. */
 const EMPTY_SNAPSHOT: Readonly<ColumnStatSnapshot> = Object.freeze({
   min: null, max: null, maxAbs: null, sum: null, count: 0,

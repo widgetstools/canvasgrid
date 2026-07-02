@@ -78,14 +78,26 @@ function withStatsSelector(
 ): RenderersColDef {
   const colId = opts?.colId ?? field;
   const def = baseColDef(name, field, params, { colId });
+  // F4c — scratch reused across paints. `params`'s non-`stats` fields are
+  // fixed at colDef-build time (only `stats` varies per frame), so copy
+  // them into a scratch object ONCE here and mutate just `.stats` per
+  // call, instead of allocating a fresh `{component, params: {...}}` pair
+  // every cell every frame. The kernel consumes the returned object
+  // synchronously per cell (see byRows.ts), so reusing/mutating it in
+  // place is safe.
+  const liveParamsScratch: Record<string, unknown> = { ...params };
+  const selectorResult: { component: string; params?: unknown } = { component: name, params };
   def.cellRendererSelector = () => {
     // Prefer live ColumnStats; keep any static params.stats fallback when
     // the column isn't wired (count 0 means "no data seen").
     const live = deps.statsFor(colId);
-    return {
-      component: name,
-      params: live.count > 0 ? { ...params, stats: live } : params,
-    };
+    if (live.count > 0) {
+      liveParamsScratch.stats = live;
+      selectorResult.params = liveParamsScratch;
+    } else {
+      selectorResult.params = params;
+    }
+    return selectorResult;
   };
   return def;
 }
@@ -100,10 +112,14 @@ function withNowMs(
   deps.onTimeRendererUsed();
   const merged = { ...params, nowMs: deps.nowMs() };
   const def = baseColDef(name, field, merged, opts);
-  def.cellRendererSelector = () => ({
-    component: name,
-    params: { ...params, nowMs: deps.nowMs() },
-  });
+  // F4c — scratch reused across paints; see withStatsSelector's comment.
+  // Only `nowMs` varies per frame here.
+  const nowParamsScratch: Record<string, unknown> = { ...params };
+  const selectorResult: { component: string; params: unknown } = { component: name, params: nowParamsScratch };
+  def.cellRendererSelector = () => {
+    nowParamsScratch.nowMs = deps.nowMs();
+    return selectorResult;
+  };
   return def;
 }
 

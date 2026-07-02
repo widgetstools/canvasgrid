@@ -2,7 +2,7 @@
 
 import type { CellPaintConfig, CellPainter } from '@cgrid/kernel';
 import { withAlpha } from './paintUtils';
-import { resolveSemanticColors } from './palette';
+import { SEMANTIC_COLORS } from './palette';
 import type {
   AgeCellParams,
   CurrencyPairCellParams,
@@ -158,12 +158,14 @@ export const ageCell: CellPainter = {
     const row = p.rowData as Record<string, unknown> | undefined;
     const since = row ? Number(row[params.sinceField]) : NaN;
     const elapsed = Number.isFinite(since) ? params.nowMs - since : 0;
-    const colors = resolveSemanticColors();
+    // F4a — read SEMANTIC_COLORS directly; resolveSemanticColors() returns a
+    // fresh `{...SEMANTIC_COLORS}` object per call, which is unnecessary
+    // allocation on this per-cell-per-frame hot path.
     const warn = params.warnAfterMs ?? 30_000;
     const danger = params.dangerAfterMs ?? 300_000;
-    const fg = elapsed >= danger ? colors.negative
-      : elapsed >= warn ? colors.warning
-      : colors.muted;
+    const fg = elapsed >= danger ? SEMANTIC_COLORS.negative
+      : elapsed >= warn ? SEMANTIC_COLORS.warning
+      : SEMANTIC_COLORS.muted;
     gc.cache.fillStyle = fg;
     gc.cache.font = monoFont(p.font);
     gc.cache.textAlign = 'left';

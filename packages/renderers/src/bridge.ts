@@ -31,7 +31,10 @@ import {
 import {
   stackedValueCell, priceQuoteCell, nbboCell, benchmarkSpreadCell, priceChangeComposite,
 } from './composite';
-import { iconActionCluster, rowMenuCell, resolveHitRegion } from './actions';
+import {
+  iconActionCluster, rowMenuCell, resolveHitRegion,
+  clearRegionsForRow, defaultHitRegionRegistry,
+} from './actions';
 import type { IconActionClusterParams, RowMenuCellParams } from './types';
 import { ColumnStats, type ColumnStatSnapshot } from './columnStats';
 import { TickHistory } from './tickHistory';
@@ -231,6 +234,24 @@ export function wireRenderersIntoKernel(
     return row;
   };
 
+  // F4b — scratch objects reused across paints for spread-bar's history
+  // injection. `SpreadBarCellParams`'s shape is fixed (bidField / askField /
+  // history), so mutating known fields in place — rather than
+  // `{...prevParams, history: {values: [...values], window}}` — avoids a
+  // fresh params object + a redundant values-array copy per cell per frame
+  // (`history.get()` already returns a freshly-materialized array; copying
+  // it again was pure waste). Pattern precedent: charts.ts's
+  // `sparklineAdapterParams`. Safe because the kernel consumes
+  // `p.params` synchronously within the same paint call — nothing retains
+  // the reference across cells.
+  const spreadBarHistoryScratch: { values: readonly number[]; window: number } = {
+    values: [],
+    window: 0,
+  };
+  const spreadBarParamsScratch: Record<string, unknown> = {
+    history: spreadBarHistoryScratch,
+  };
+
   // The kernel invokes `cellRendererSelector` with `data: null`, so selectors
   // can't read per-row values either — history injection must happen HERE at
   // paint time, where `p.rowId` is threaded by the composite channel.
@@ -254,10 +275,12 @@ export function wireRenderersIntoKernel(
       if (name === 'spread-bar' && history !== null && mutable.colId !== undefined) {
         const values = history.get(String(rowId), mutable.colId);
         if (values.length > 0) {
-          mutable.params = {
-            ...((prevParams as Record<string, unknown> | undefined) ?? {}),
-            history: { values: [...values], window: values.length },
-          };
+          const base = prevParams as Record<string, unknown> | undefined;
+          spreadBarParamsScratch.bidField = base?.bidField;
+          spreadBarParamsScratch.askField = base?.askField;
+          spreadBarHistoryScratch.values = values;
+          spreadBarHistoryScratch.window = values.length;
+          mutable.params = spreadBarParamsScratch;
         }
       }
       try {
@@ -296,9 +319,31 @@ export function wireRenderersIntoKernel(
     if (e.type !== 'rowsChanged') return;
     for (const { rowId, row } of e.added ?? []) rowMirror.set(rowId, row);
     for (const { rowId, row } of e.updated ?? []) rowMirror.set(rowId, row);
-    for (const { rowId } of e.removed ?? []) rowMirror.delete(rowId);
+    for (const { rowId } of e.removed ?? []) {
+      rowMirror.delete(rowId);
+      // F3 — evict this row's action hit regions too; the module-global
+      // defaultHitRegionRegistry otherwise never sheds removed rows.
+      clearRegionsForRow(rowId);
+    }
   };
   unsubscribers.push(subscribe(g, 'rowsChanged', onRowsChanged));
+
+  // F2 — `setRowData` (a full row-set replace) emits `modelUpdated`, NOT
+  // `rowsChanged` (see cgrid.ts's setRowData vs applyTransaction /
+  // mirrorEditCommit). `mirrorRow` only reseeds the row mirror on a MISS,
+  // so a `setRowData` call that replaces row objects for rowIds already in
+  // the mirror leaves it permanently stale — painters keep seeing the old
+  // row references forever. Clearing on `modelUpdated` forces the next
+  // lookup for every rowId to be a miss, which the existing lazy-reseed
+  // path in `mirrorRow` already handles; resetting `lastReseedMs` ensures
+  // that first post-clear miss isn't swallowed by the 250ms throttle.
+  const onModelUpdated = (raw: unknown): void => {
+    const e = raw as { type: string };
+    if (e.type !== 'modelUpdated') return;
+    rowMirror.clear();
+    lastReseedMs = 0;
+  };
+  unsubscribers.push(subscribe(g, 'modelUpdated', onModelUpdated));
 
   const onCellClicked = (raw: unknown): void => {
     const e = raw as CellClickedEvent;
@@ -349,6 +394,10 @@ export function wireRenderersIntoKernel(
     stats?.destroy();
     history?.destroy();
     rowMirror.clear();
+    // F3 — per-bridge registry instances are a logged follow-up; until
+    // then, evict everything on destroy so a torn-down grid doesn't leak
+    // hit regions the module-global registry would otherwise hold forever.
+    defaultHitRegionRegistry.clearAll();
     delete g.__renderersBridgeWired;
   };
 

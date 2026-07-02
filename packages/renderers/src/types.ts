@@ -10,6 +10,8 @@
 // StaleFlag) take an injected `nowMs` (NowMsParam) threaded by the bridge's gated 1s
 // repaint tick (§2.5); they never read the wall clock themselves.
 
+import type { ColumnStatSnapshot } from './columnStats';
+
 // ─── Name table ─────────────────────────────────────────────────────────────
 
 /**
@@ -73,17 +75,17 @@ export interface NowMsParam {
 }
 
 /**
- * Plain snapshot of `ColumnStats.for(colId)` (§2.4a) — column-wide incremental
- * stats consumed by HeatCell, BidirectionalBarCell, VolumeBar. Serializable
- * (structuredClone-safe): plain numbers only.
+ * @deprecated Use `ColumnStatSnapshot` from `./columnStats` — the canonical
+ * type `ColumnStats.for(colId)` actually returns. This package shipped both
+ * a non-nullable `ColumnStatsSnapshot` (defined here) and the canonical
+ * nullable `ColumnStatSnapshot` (`columnStats.ts`); they diverged (`count: 0`
+ * / no-numeric-values snapshots have `null` min/max/maxAbs/sum, which this
+ * alias's old non-nullable shape couldn't represent). Kept as a type alias —
+ * not a widened re-declaration — so existing imports of the old name still
+ * resolve, but every `stats?:` param field in this file now references
+ * `ColumnStatSnapshot` directly.
  */
-export interface ColumnStatsSnapshot {
-  min: number;
-  max: number;
-  maxAbs: number;
-  sum: number;
-  count: number;
-}
+export type ColumnStatsSnapshot = ColumnStatSnapshot;
 
 /**
  * Plain snapshot of `TickHistory.for(rowId, colId)` (§2.4b) — bounded rolling
@@ -333,13 +335,13 @@ export interface RangeBarCellParams {
 export interface BidirectionalBarCellParams {
   valueField?: string;
   /** Column-wide scope stats wired by the bridge's ColumnStats integration. */
-  stats?: ColumnStatsSnapshot;
+  stats?: ColumnStatSnapshot;
   colors?: SemanticColorMap;
 }
 
 /** Catalog §3.5 HeatCell — column-wide gradient background; LAB interpolation default (§2.6.2). */
 export interface HeatCellParams {
-  stats?: ColumnStatsSnapshot;
+  stats?: ColumnStatSnapshot;
   curve?: 'lab' | 'linear';
   colors?: SemanticColorMap;
 }
@@ -365,7 +367,7 @@ export interface SpreadBarCellParams {
 /** Catalog §3.5 VolumeBar — full-cell bar sized to `volume / max(volume)` in scope. */
 export interface VolumeBarParams {
   valueField?: string;
-  stats?: ColumnStatsSnapshot;
+  stats?: ColumnStatSnapshot;
   /** Reverse-out (inverted) text color where the bar overlaps it. */
   reverseOutText?: boolean;
 }
@@ -462,9 +464,23 @@ export interface IconActionSpec {
   onAction: (rowId: string | number, colId: string) => void;
 }
 
-/** Catalog §3.8 IconActionCluster — hover-revealed right-aligned icon cluster, hit targets ≥24×24. */
+/**
+ * Catalog §3.8 IconActionCluster — hover-revealed right-aligned icon cluster,
+ * hit targets ≥24×24.
+ *
+ * Catalog deviation: the kernel does not yet thread a live per-cell hover
+ * state into `CellPaintConfig` (it hard-codes `isHovered: false` — see
+ * `packages/kernel/src/renderer/painters/byRows.ts`), so gating paint on
+ * `p.isHovered` alone would make this renderer permanently unreachable.
+ * `revealOnHover` defaults to `false` (always visible) until hover-state
+ * threading lands in the kernel (logged follow-up); set it to `true` only
+ * once that support exists, or if a host wires its own hover signal into
+ * `p.isHovered` some other way.
+ */
 export interface IconActionClusterParams {
   actions: IconActionSpec[];
+  /** Default `false` — always visible. See catalog-deviation note above. */
+  revealOnHover?: boolean;
 }
 
 /** Catalog §3.8 RowMenuCell — 20×20 kebab icon; opens the host's context menu on click. */
