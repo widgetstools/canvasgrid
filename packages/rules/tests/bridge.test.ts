@@ -127,7 +127,7 @@ describe('wireIntoKernel', () => {
     expect(alerts.getSettings().defaultDebounceMs).toBe(250);
   });
 
-  it('adapter threads grid.getThemeKind() into the eval ctx', () => {
+  it('adapter falls back to grid.getThemeKind() when ctx omits theme', () => {
     const grid = makeFakeGrid();
     wire(grid);
     const adapter = grid._calls.engines[0] as {
@@ -137,6 +137,26 @@ describe('wireIntoKernel', () => {
     // from the fake grid, resolving NEG_RULE's dark slice.
     const res = adapter.evaluateCell({ row: { pnl: -5 }, rowId: 'r1', colId: 'pnl' });
     expect(res.style?.color).toBe('#ef9a9a');
+  });
+
+  it('adapter uses kernel-supplied ctx.theme without calling getThemeKind (final-review fix)', () => {
+    const grid = makeFakeGrid();
+    let themeKindCalls = 0;
+    const original = grid.getThemeKind;
+    grid.getThemeKind = () => { themeKindCalls += 1; return original(); };
+    wire(grid);
+    const adapter = grid._calls.engines[0] as {
+      evaluateCell(ctx: unknown): { style: { color?: string } | null };
+      resolveRuleRef(ruleId: string, ctx: unknown): string | null;
+    };
+    const wireTimeCalls = themeKindCalls;
+    // Kernel resolves the theme once per frame and passes it in ctx —
+    // the adapter must NOT hit the grid per cell.
+    const res = adapter.evaluateCell({ row: { pnl: -5 }, rowId: 'r1', colId: 'pnl', theme: 'light' });
+    expect(res.style?.color).toBe('#c62828'); // base slice — light has no override
+    const ref = adapter.resolveRuleRef('neg-pnl', { row: { pnl: -5 }, rowId: 'r1', colId: 'pnl', theme: 'dark' });
+    expect(ref).toBe('#ef9a9a');
+    expect(themeKindCalls).toBe(wireTimeCalls);
   });
 
   it('seeds match counts from grid.forEachRow at wire time', () => {

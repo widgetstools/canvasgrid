@@ -166,14 +166,16 @@ export function wireIntoKernel(
   }
 
   // 2. Rule-engine adapter. Kernel's paint path supplies row/rowId/
-  //    colId; the LIVE theme comes from the grid so a theme flip never
-  //    needs re-registration. Shape mirrors kernel's structural
-  //    RuleEngineShape (core/ruleEngineSlot.ts, Task 10).
+  //    colId AND the per-frame theme kind (final-review fix: consume
+  //    ctx.theme instead of calling grid.getThemeKind() per cell —
+  //    classList allocation per visible cell at 60Hz). The grid call
+  //    remains only as a fallback for callers that omit theme. Shape
+  //    mirrors kernel's structural RuleEngineShape (core/ruleEngineSlot.ts).
   g.registerRuleEngine({
-    evaluateCell: (ctx: { row: Record<string, unknown>; rowId: string; colId: string | null }) =>
-      rules.evaluateCell({ row: ctx.row, rowId: ctx.rowId, colId: ctx.colId, theme: g.getThemeKind() }),
-    resolveRuleRef: (ruleId: string, ctx: { row: Record<string, unknown>; rowId: string; colId: string | null }) =>
-      rules.resolveRuleRef(ruleId, { row: ctx.row, rowId: ctx.rowId, colId: ctx.colId, theme: g.getThemeKind() }),
+    evaluateCell: (ctx: { row: Record<string, unknown>; rowId: string; colId: string | null; theme?: 'light' | 'dark' }) =>
+      rules.evaluateCell({ row: ctx.row, rowId: ctx.rowId, colId: ctx.colId, theme: ctx.theme ?? g.getThemeKind() }),
+    resolveRuleRef: (ruleId: string, ctx: { row: Record<string, unknown>; rowId: string; colId: string | null; theme?: 'light' | 'dark' }) =>
+      rules.resolveRuleRef(ruleId, { row: ctx.row, rowId: ctx.rowId, colId: ctx.colId, theme: ctx.theme ?? g.getThemeKind() }),
   });
 
   // 3. Change feed. endTick is coalesced: one post-repaint callback
