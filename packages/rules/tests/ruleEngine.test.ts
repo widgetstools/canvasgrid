@@ -591,4 +591,18 @@ describe('RuleEngine — flash directives (Task 5)', () => {
       { rowId: 'a', colIds: null, color: '#ffa000', mode: 'glow', durationMs: 900 },
     ]);
   });
+
+  // ─── Task 15 ─────────────────────────────────────────────────────────
+
+  it('watchedColIds() unions condition references and cell-scope columnIds', () => {
+    const engine = new RuleEngine();
+    engine.setRules([
+      { kind: 'style', id: 'r1', name: 'r1', enabled: true, priority: 1,
+        condition: '[pnl] < 0 && [qty] > 10', scope: { kind: 'cell', columnIds: ['pnl'] },
+        style: { base: { color: '#c62828' } } },
+      { kind: 'style', id: 'off', name: 'off', enabled: false, priority: 2,
+        condition: '[hidden] = 1', scope: { kind: 'row' }, style: { base: {} } },
+    ]);
+    expect([...engine.watchedColIds()].sort()).toEqual(['pnl', 'qty']);
+  });
 });

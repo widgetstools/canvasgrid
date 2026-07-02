@@ -218,4 +218,12 @@ export interface WireRulesOptions {
   alertRules?: AlertRule[];
   alertsSettings?: Partial<AlertsSettings>;
   schema?: import('@cgrid/expression').Schema;
+  /** Injectable clock for both engines. Default: `() => performance.now()`
+   *  (the wall-clock wrap lives HERE, at the bridge layer — engines stay
+   *  Date-free per the global constraint). */
+  now?: () => number;
+  /** Injectable post-repaint scheduler for `endTick()` / throttled-alert
+   *  flushing. Default: requestAnimationFrame when available, else
+   *  `setTimeout(fn, 0)` (node / vitest). */
+  scheduleAfterRepaint?: (fn: () => void) => void;
 }

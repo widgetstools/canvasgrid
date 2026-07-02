@@ -461,4 +461,19 @@ export class RuleEngine {
       this.#expireSubs.delete(fn);
     };
   }
+
+  // ─── Task 15 ───────────────────────────────────────────────────────────
+
+  /** Union of every enabled rule's condition-referenced colIds plus
+   *  cell-scope columnIds. The bridge diffs exactly these columns. */
+  watchedColIds(): ReadonlySet<string> {
+    const out = new Set<string>();
+    for (const ir of this.#indexed) {
+      for (const colId of ir.condition.watchedColIds) out.add(colId);
+      if (ir.rule.scope.kind === 'cell') {
+        for (const colId of ir.rule.scope.columnIds) out.add(colId);
+      }
+    }
+    return out;
+  }
 }
