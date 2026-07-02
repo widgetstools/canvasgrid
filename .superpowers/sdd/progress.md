@@ -545,3 +545,14 @@ USER DIRECTIVE (2026-07-02): Cycle 21i (customizer) — STOP before spec-writing
   packages/calc/README.md replaces the Cycle 21a scaffold stub — quickstart, calc-on-calc rejection note, DSL cheat sheet (PERCENTILE percent-points canonical form, FIRST/LAST order-aware no-delta-state, scope promotion, PREV tick-scoping + wire-null note, one-frame settle for Stage-B filter only, distinct values on calc columns), reserves, aggregate registry + CSP caveat, typeDefaults raw-format-string bridge + reserved __cgridTypeDefault: prefix caveat, public API, error codes, not-in-this-cycle
   Gates ALL GREEN: typecheck 21/21, root lint clean, build 13/13; calc 215/215, kernel 2557/2557 (no flake hit), rules 144/144, format 171/171, expression 185/185, git diff main...HEAD over expression/rules/format EMPTY; showcase E2E 131/131 (dev server reused on :5185); kernel dist 794150 bytes (ceiling 805803); boundary greps clean (cgrid.js has zero @cgrid/calc import/require; calc/src has zero @cgrid/kernel references); raw-NUL scan clean modulo pre-existing pivotPass.ts; working tree clean modulo known untracked .js emit stragglers + gitignored coverage dirs
   Cycle 21d COMPLETE — branch cycle21d/calc ready for coordinator's whole-branch review pass (not pushed, no PR per task instruction)
+21d Task 16: complete (commits 1247fd2..5f78945, ALL GATES PASS — dist 794150/805803)
+Final whole-branch review (fable): needs-fixes — 3 must-fix dispatched (one fixer):
+  MF1 Critical: CalcProgramStore.entryFor lacks NAME(p) grammar — PERCENTILE(95) programs kill the pipeline (registry parses, kernel doesn't)
+  MF2 Critical: delta remove never subtracts (capture only covers tx.update; post-removal read → undefined → removeRow skipped)
+  MF3 High: out-of-filter deltas pollute visible/group scopes (no postFilterIds membership guard; stale rowScopeKey)
+  Follow-ups (accepted/logged): Stage-B dirtied-scope narrowing for 60Hz×50k (~20-80ms/tick at 50k today — needed before Cycle 20); aggStates growth under group churn; PREV-in-aggregate-column silently nulls (reject at compile or doc); pivot+calc coexistence doc; synthetic template prefix guard; textCols formatter kernel bug report; FIRST/LAST rescan cost → windowed cycle
+  NOTE: uncommitted USER dark-theme redesign in tree (tokens.css + tests + snapshots) — not ours, excluded, disclosed to user
+Final-review must-fixes: complete (commits 318f5c2 + 0572621 + c80413e, re-review approved)
+  PERCENTILE(p) kernel-side parse (280 correctness proof); remove-capture pre-apply (330→130); postFilterIds guard w/ precise XOR boundary-crossing fallback (1030→30; delta path live under steady-state filters)
+  Non-blocking follow-up logged: capturePrevForUpdates removeIds optional-default (2 call sites, both correct today)
+Cycle 21d status: COMPLETE. kernel 2568/2568, calc 215/215, E2E 131/131.
