@@ -128,7 +128,7 @@ import { A11yOverlay } from './interaction/a11yOverlay';
 import { WorkerCoordinator } from './core/workerCoordinator';
 import { EditController } from './core/editController';
 import { wrapTextToHeight } from './worker/measureText';
-import type { WorkerColumn, ViewportChunk, AutosizeColumnRequest, StickyAncestor } from './worker/protocol';
+import type { WorkerColumn, ViewportChunk, AutosizeColumnRequest, StickyAncestor, WorkerCalcProgram } from './worker/protocol';
 import type { IAggFunc, IAggFuncParams } from './types';
 import { decodeText } from './worker/chunkFormat';
 // Cycle 10 / Task 5 — main-side serialise + paste-cell map helpers used when
@@ -144,6 +144,7 @@ import {
 import { registerRuleEngine as slotRegisterRuleEngine, type RuleEngineShape } from './core/ruleEngineSlot';
 import {
   registerCalcProvider as slotRegisterCalcProvider,
+  getCalcProvider,
   foldCalcColumnDefs,
   type CalcProviderShape,
 } from './core/calcSlot';
@@ -4975,9 +4976,14 @@ export class CGrid<TRow = any> {
 
   /** Cycle 21d / Task 9 — re-fold calc defs into the tree and reship the
    *  worker's column metadata. Mirrors the updateGridOptions({columnDefs})
-   *  rebuild sequence. Task 10 appends worker calc-program shipping here. */
+   *  rebuild sequence. Cycle 21d / Task 10 ships the worker calc program
+   *  FIRST so the column reship (which triggers a pipeline rebuild)
+   *  already sees the installed program. */
   private onCalcColumnsChanged(): void {
     this.rebuildColumns({ defaultColDef: this.options.defaultColDef });
+    const provider = getCalcProvider();
+    this.workerCoord.setCalcProgram((provider?.workerProgram() ?? null) as WorkerCalcProgram | null)
+      .catch((err) => { if (!this.destroyed) console.error('[cgrid] setCalcProgram:', err); });
     this.workerCoord.updateColumns(this.workerColumns())
       .then(({ visibleCount }) => {
         this.rowCount = visibleCount;

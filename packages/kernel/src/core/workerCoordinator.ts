@@ -24,7 +24,7 @@ import type { WorkerLike, WorkerClientHandlers } from '../worker/client';
 import { WorkerClient } from '../worker/client';
 import type {
   WorkerColumn, WorkerInitPayload, ViewportChunk, AutosizeColumnRequest,
-  MeasureTextItem, StickyAncestor,
+  MeasureTextItem, StickyAncestor, WorkerCalcProgram,
 } from '../worker/protocol';
 import type {
   TransactionResult, SortModel, FilterModel, GroupModel, SelectionRange,
@@ -234,6 +234,12 @@ export class WorkerCoordinator {
 
   setAggFuncs(funcs: Array<{ name: string; source: string }>): Promise<void> {
     return this.client.setAggFuncs(funcs);
+  }
+
+  /** Cycle 21d / Task 10 — install / replace / remove (null) the worker's
+   *  calc program. Passthrough to WorkerClient.setCalcProgram. */
+  setCalcProgram(program: WorkerCalcProgram | null): Promise<void> {
+    return this.client.setCalcProgram(program);
   }
 
   updateColumns(columns: WorkerColumn[]): Promise<{ visibleCount: number }> {

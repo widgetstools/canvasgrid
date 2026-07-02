@@ -10,6 +10,10 @@
 // Each case body was moved verbatim from `worker.ts`; the switch shape
 // is preserved so the response envelope + control flow is byte-for-byte
 // identical to the pre-extraction dispatcher.
+//
+// Cycle 21d / Task 10 — setCalcProgram joins this handler (it owns the
+// sibling `new Function` reconstruction messages: setAggFuncs,
+// registerComparator).
 
 import type { HandlerCtx } from '../dispatch';
 import type { WorkerRequest } from '../protocol';
@@ -23,6 +27,7 @@ export type DataPipelineRequest = Extract<WorkerRequest, {
     | 'setEnableCellChangeFlash'
     | 'flashCells'
     | 'setAggFuncs'
+    | 'setCalcProgram'
     | 'registerComparator'
     | 'setSortModel'
     | 'setPostSortRowsPresent'
@@ -176,6 +181,22 @@ export async function handleDataPipeline(
         count: state.store.size(),
         visibleCount: state.visibleCache?.length ?? 0,
       });
+      return;
+    }
+
+    case 'setCalcProgram': {
+      // Cycle 21d / Task 10 — install / replace / remove the calc program.
+      // Reconstruction + smoke eval happen inside CalcProgramStore.install;
+      // failures surface through the same error envelope setAggFuncs uses.
+      try {
+        state.calc.install(req.payload);
+      } catch (err) {
+        post({ id: req.id, type: 'error', error: String((err as Error).message ?? err) });
+        return;
+      }
+      // Program changes redefine cell values for calc columns — rebuild.
+      state.visibleCache = null;
+      post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: await helpers.invalidateAndCount() });
       return;
     }
 

@@ -165,6 +165,7 @@ export const dispatchTable: DispatchTable = {
   setEnableCellChangeFlash: handleDataPipeline as Handler,
   flashCells: handleDataPipeline as Handler,
   setAggFuncs: handleDataPipeline as Handler,
+  setCalcProgram: handleDataPipeline as Handler,
   registerComparator: handleDataPipeline as Handler,
   setSortModel: handleDataPipeline as Handler,
   setPostSortRowsPresent: handleDataPipeline as Handler,

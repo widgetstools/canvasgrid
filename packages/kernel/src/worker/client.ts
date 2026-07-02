@@ -1,6 +1,6 @@
 import type {
   WorkerRequest, WorkerResponse, WorkerPush, WorkerInitPayload, ViewportRequest, ViewportChunk,
-  WorkerColumn, MeasureTextItem, AutosizeColumnRequest, StickyAncestor,
+  WorkerColumn, MeasureTextItem, AutosizeColumnRequest, StickyAncestor, WorkerCalcProgram,
 } from './protocol';
 import { normalizeViewportChunk } from './protocol';
 export type { StickyAncestor };
@@ -401,6 +401,16 @@ export class WorkerClient {
   setAggFuncs(funcs: Array<{ name: string; source: string }>): Promise<void> {
     return this.send<{ visibleCount: number }>({
       type: 'setAggFuncs', payload: { funcs },
+    }).then(() => {});
+  }
+
+  /** Cycle 21d / Task 10 — install / replace (or remove, with null) the
+   *  worker's calculated-column program. Sources are reconstructed
+   *  worker-side via `new Function` (setAggFuncs precedent); a
+   *  reconstruction failure rejects this promise via the error envelope. */
+  setCalcProgram(program: WorkerCalcProgram | null): Promise<void> {
+    return this.send<{ visibleCount: number }>({
+      type: 'setCalcProgram', payload: program,
     }).then(() => {});
   }
 

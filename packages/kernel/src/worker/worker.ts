@@ -7,6 +7,7 @@ import {
   QuickFilterPass, DistinctValuesPass, diffRowFields, PivotPass,
 } from './dataPipeline';
 import type { GroupNode } from './passes/groupPass';
+import { CalcProgramStore } from './passes/calcPass';
 import {
   computeGroupVisibleRowCount,
   type VisibleRowEntry,
@@ -506,6 +507,9 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       expandedKeys: null,
       comparators,
       aggFuncs,
+      // Cycle 21d / Task 10 — calc program store, always constructed
+      // (no-program = inert; CalcPass stages gate on hasProgram()).
+      calc:        new CalcProgramStore(),
       agg:         new AggPass(store, payload.columns, aggFuncs),
       slicer:      new ViewportSlicer(store, payload.columns),
       queue,
