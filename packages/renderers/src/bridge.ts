@@ -107,6 +107,13 @@ interface CellClickedEvent {
   mouse: MouseEvent;
 }
 
+interface RowsChangedEventLike {
+  type: string;
+  added?: Array<{ rowId: string; row: Record<string, unknown> }>;
+  updated?: Array<{ rowId: string; row: Record<string, unknown> }>;
+  removed?: Array<{ rowId: string; row: Record<string, unknown> }>;
+}
+
 interface KernelGridSurface {
   registerCellRenderer(name: string, painter: CellPainter): void;
   on?(type: string, handler: (event: unknown) => void): () => void;
@@ -185,10 +192,6 @@ export function wireRenderersIntoKernel(
   const g = grid as KernelGridSurface;
   if (g.__renderersBridgeWired) return g.__renderersBridgeWired;
 
-  for (const name of RENDERER_NAMES) {
-    g.registerCellRenderer(name, PAINTERS[name]);
-  }
-
   const now = opts?.now ?? (() => Date.now());
   let stats: ColumnStats | null = null;
   let history: TickHistory | null = null;
@@ -198,6 +201,76 @@ export function wireRenderersIntoKernel(
   }
   if (opts?.historyColumns && Object.keys(opts.historyColumns).length > 0) {
     history = new TickHistory(g as never, opts.historyColumns);
+  }
+
+  // Kernel paint threading hands painters a VISIBLE-COLUMN snapshot keyed by
+  // colId — not the raw row — so `params.<xxx>Field` lookups (e.g. `bidField:
+  // 'bid'`) miss whenever the field isn't itself a visible column. Maintain a
+  // main-side rowId → raw-row mirror (seeded from `forEachRow`, freshened by
+  // `rowsChanged`) and swap the full row into `p.rowData` before delegating.
+  const rowMirror = new Map<string, Record<string, unknown>>();
+  const seedRowMirror = (): void => {
+    rowMirror.clear();
+    g.forEachRow?.((rowId, row) => rowMirror.set(rowId, row));
+  };
+  seedRowMirror();
+
+  // `setRowData` does not emit `rowsChanged`; reseed on a miss, throttled so
+  // a genuinely-absent rowId can't trigger an O(n) rescan every paint.
+  let lastReseedMs = 0;
+  const mirrorRow = (rowId: string): Record<string, unknown> | undefined => {
+    let row = rowMirror.get(rowId);
+    if (row === undefined && g.forEachRow) {
+      const nowMs = now();
+      if (nowMs - lastReseedMs > 250) {
+        lastReseedMs = nowMs;
+        seedRowMirror();
+        row = rowMirror.get(rowId);
+      }
+    }
+    return row;
+  };
+
+  // The kernel invokes `cellRendererSelector` with `data: null`, so selectors
+  // can't read per-row values either — history injection must happen HERE at
+  // paint time, where `p.rowId` is threaded by the composite channel.
+  const withBridgeThreading = (name: RendererName, painter: CellPainter): CellPainter => ({
+    paint(gc, p) {
+      const mutable = p as {
+        rowData?: Record<string, unknown>;
+        params?: unknown;
+        rowId?: string;
+        colId?: string;
+      };
+      const rowId = mutable.rowId;
+      if (rowId === undefined) {
+        painter.paint(gc, p);
+        return;
+      }
+      const prevRowData = mutable.rowData;
+      const prevParams = mutable.params;
+      const full = mirrorRow(String(rowId));
+      if (full !== undefined) mutable.rowData = full;
+      if (name === 'spread-bar' && history !== null && mutable.colId !== undefined) {
+        const values = history.get(String(rowId), mutable.colId);
+        if (values.length > 0) {
+          mutable.params = {
+            ...((prevParams as Record<string, unknown> | undefined) ?? {}),
+            history: { values: [...values], window: values.length },
+          };
+        }
+      }
+      try {
+        painter.paint(gc, p);
+      } finally {
+        mutable.rowData = prevRowData;
+        mutable.params = prevParams;
+      }
+    },
+  });
+
+  for (const name of RENDERER_NAMES) {
+    g.registerCellRenderer(name, withBridgeThreading(name, PAINTERS[name]));
   }
 
   let ageTimer: ReturnType<typeof setInterval> | null = null;
@@ -217,6 +290,15 @@ export function wireRenderersIntoKernel(
   });
 
   const unsubscribers: Array<() => void> = [];
+
+  const onRowsChanged = (raw: unknown): void => {
+    const e = raw as RowsChangedEventLike;
+    if (e.type !== 'rowsChanged') return;
+    for (const { rowId, row } of e.added ?? []) rowMirror.set(rowId, row);
+    for (const { rowId, row } of e.updated ?? []) rowMirror.set(rowId, row);
+    for (const { rowId } of e.removed ?? []) rowMirror.delete(rowId);
+  };
+  unsubscribers.push(subscribe(g, 'rowsChanged', onRowsChanged));
 
   const onCellClicked = (raw: unknown): void => {
     const e = raw as CellClickedEvent;
@@ -266,6 +348,7 @@ export function wireRenderersIntoKernel(
     ageTimerUsers = 0;
     stats?.destroy();
     history?.destroy();
+    rowMirror.clear();
     delete g.__renderersBridgeWired;
   };
 

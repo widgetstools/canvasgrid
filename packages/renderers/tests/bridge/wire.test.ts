@@ -125,6 +125,43 @@ describe('wireRenderersIntoKernel — colDef builders', () => {
     vi.useRealTimers();
   });
 
+  it('registered painters see the full mirrored row as p.rowData', () => {
+    const grid = makeFakeGrid([], [
+      { rowId: 'r1', row: { id: 'r1', bid: 98.1, ask: 98.14, mid: 98.12 } },
+    ]);
+    wireRenderersIntoKernel(grid);
+    const wrapped = grid._registrations.get('price-quote') as {
+      paint(gc: unknown, p: Record<string, unknown>): void;
+    };
+    let seenRow: unknown;
+    const probe = {
+      value: 98.12,
+      valueFormatted: '98.12',
+      bounds: { x: 0, y: 0, w: 150, h: 28 },
+      font: '12px sans-serif', fg: '#fff', bg: '#000', borderColor: '#000',
+      halign: 'left', prefillColor: '#000',
+      isFocused: false, isSelected: false, isHovered: false, isHeader: false,
+      rowId: 'r1',
+      colId: 'quote',
+      // Kernel threads the visible-column snapshot here — the bridge must
+      // swap in the raw row so field lookups (bid/ask) resolve.
+      rowData: { quote: 98.12 },
+      params: { bidField: 'bid', askField: 'ask', midField: 'mid' },
+    };
+    const gcProbe = makeFakeGc();
+    const origPaint = wrapped.paint.bind(wrapped);
+    origPaint(gcProbe, new Proxy(probe, {
+      get(t, k) {
+        if (k === 'rowData') seenRow = Reflect.get(t, k);
+        return Reflect.get(t, k);
+      },
+      set(t, k, v) { return Reflect.set(t, k, v); },
+    }) as never);
+    expect((seenRow as Record<string, unknown>).bid).toBe(98.1);
+    // Restored after paint (kernel reuses the config object across cells).
+    expect(probe.rowData).toEqual({ quote: 98.12 });
+  });
+
   it('multi-field colDef compiles through @cgrid/format when typed composite', () => {
     const compiled = compileCompositeColDef({
       colId: 'summary',

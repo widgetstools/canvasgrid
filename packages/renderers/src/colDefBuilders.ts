@@ -78,31 +78,13 @@ function withStatsSelector(
 ): RenderersColDef {
   const colId = opts?.colId ?? field;
   const def = baseColDef(name, field, params, { colId });
-  def.cellRendererSelector = () => ({
-    component: name,
-    params: { ...params, stats: deps.statsFor(colId) },
-  });
-  return def;
-}
-
-function withHistorySelector(
-  name: RendererName,
-  field: string,
-  params: Record<string, unknown> | undefined,
-  deps: ColDefBuilderDeps,
-  opts?: { colId?: string; rowIdField?: string },
-): RenderersColDef {
-  const colId = opts?.colId ?? field;
-  const rowIdField = opts?.rowIdField ?? 'id';
-  const def = baseColDef(name, field, params, { colId });
-  def.cellRendererSelector = ({ data, colId: cid }: { data?: unknown; colId?: string }) => {
-    const row = data as Record<string, unknown> | null | undefined;
-    const rowId = row?.[rowIdField] ?? row?.rowId;
-    const historyCol = typeof cid === 'string' ? cid : colId;
-    const values = rowId != null ? deps.historyValues(String(rowId), historyCol) : [];
+  def.cellRendererSelector = () => {
+    // Prefer live ColumnStats; keep any static params.stats fallback when
+    // the column isn't wired (count 0 means "no data seen").
+    const live = deps.statsFor(colId);
     return {
       component: name,
-      params: { ...params, history: { values: [...values] } },
+      params: live.count > 0 ? { ...params, stats: live } : params,
     };
   };
   return def;
@@ -151,7 +133,8 @@ export function createColDefBuilders(deps: ColDefBuilderDeps): RenderersColDefBu
     const p = (params ?? {}) as Record<string, unknown>;
     if (TIME_RENDERERS.has(name)) return withNowMs(name, field, p, deps, opts);
     if (STATS_RENDERERS.has(name)) return withStatsSelector(name, field, p, deps, opts);
-    if (name === 'spread-bar') return withHistorySelector(name, field, p, deps, opts);
+    // spread-bar history is injected at paint time by the bridge wrapper
+    // (kernel selectors receive data: null, so per-row lookup is impossible there).
     return baseColDef(name, field, params, opts);
   };
 

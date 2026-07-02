@@ -249,7 +249,9 @@ export interface DirectionArrowParams {
 
 /** Catalog §3.3 StructureIconStrip — fixed-income feature icon row (glyph map §2.6.6). */
 export interface StructureIconStripParams {
-  flags: Partial<Record<StructureGlyphKey, boolean>>;
+  flags?: Partial<Record<StructureGlyphKey, boolean>>;
+  /** rowData field holding the per-row flags record; `flags` wins when both set. */
+  flagsField?: string;
   /** Overrides `palette.ts`'s `STRUCTURE_GLYPH_MAP` default icon names. */
   glyphOverrides?: Partial<Record<StructureGlyphKey, string>>;
 }

@@ -276,7 +276,7 @@ describe('every params interface is assignable (compile-time proof + smoke check
     expect(quoteQuality.freshField).toBe('fresh');
     expect(stale.staleAfterMs).toBe(8000);
     expect(arrow.direction).toBe('up');
-    expect(structureStrip.flags.callable).toBe(true);
+    expect(structureStrip.flags?.callable).toBe(true);
     expect(trafficLight.state).toBe('green');
   });
 

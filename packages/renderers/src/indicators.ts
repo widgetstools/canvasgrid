@@ -289,7 +289,12 @@ export const directionArrow: CellPainter = {
 export const structureIconStrip: CellPainter = {
   paint(gc, p) {
     const params = (p.params ?? {}) as StructureIconStripParams;
-    const flags = params.flags ?? {};
+    const row = p.rowData as Record<string, unknown> | undefined;
+    const flags = params.flags
+      ?? (params.flagsField && row
+        ? (row[params.flagsField] as StructureIconStripParams['flags'])
+        : undefined)
+      ?? {};
     let x = p.bounds.x + padLeft(p);
     for (const key of STRUCTURE_KEYS) {
       if (!flags[key]) continue;

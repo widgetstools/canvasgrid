@@ -104,22 +104,10 @@ export const rendererBlotter: Feature = {
       colDef.renderer('status-pill', 'status', { statusField: 'status' }) as CColDef<BlotterRow>,
       colDef.renderer('venue-chip', 'venue', { micField: 'venue' }) as CColDef<BlotterRow>,
       colDef.renderer('side-chip', 'side', { sideField: 'side' }) as CColDef<BlotterRow>,
-      {
-        ...(colDef.renderer('traffic-light', 'risk') as CColDef<BlotterRow>),
-        cellRendererSelector: ({ data }) => ({
-          component: 'traffic-light',
-          params: { state: (data as BlotterRow | null | undefined)?.risk ?? 'amber' },
-        }),
-      },
+      colDef.renderer('traffic-light', 'risk', { stateField: 'risk' }) as CColDef<BlotterRow>,
       colDef.renderer('rating-badge', 'rating', {}) as CColDef<BlotterRow>,
       colDef.renderer('stale-flag', 'staleMs', { lastTickField: 'staleMs', staleAfterMs: 30_000 }, { colId: 'stale' }) as CColDef<BlotterRow>,
-      {
-        ...(colDef.renderer('structure-icon-strip', 'structureFlags') as CColDef<BlotterRow>),
-        cellRendererSelector: ({ data }) => ({
-          component: 'structure-icon-strip',
-          params: { flags: (data as BlotterRow | null | undefined)?.structureFlags ?? {} },
-        }),
-      },
+      colDef.renderer('structure-icon-strip', 'structureFlags', { flagsField: 'structureFlags' }) as CColDef<BlotterRow>,
       colDef.iconActionCluster('actions', {
         actions: [{
           icon: 'x',
