@@ -140,6 +140,10 @@ import {
   registerFormatCompiler as slotRegisterFormatCompiler,
   type FormatCompiler,
 } from './core/formatCompilerSlot';
+import {
+  registerIconSet as regIcons,
+  resolveIcon as resIcon,
+} from './icons/registry';
 
 export const CGRID_VERSION = '0.0.0';
 
@@ -4734,6 +4738,19 @@ export class CGrid<TRow = any> {
     slotRegisterFormatCompiler(fn);
   }
 
+  /** Cycle 21c / Task 12 — register a named icon set. Delegated to the
+   *  module-level icon registry; kernel never auto-registers any set. */
+  registerIconSet(name: string, paths: Record<string, string | Path2D>): void {
+    regIcons(name, paths);
+  }
+
+  /** Cycle 21c / Task 12 — resolve an icon name to a cached Path2D
+   *  across all registered sets. Returns null when not found or when
+   *  Path2D is unavailable (SSR / Node). */
+  resolveIcon(name: string, setHint?: string): Path2D | null {
+    return resIcon(name, setHint);
+  }
+
   /** Cycle 22 / Task 3 — runtime per-token override. Apps tune
    *  individual `--cg-*` variables without writing CSS; the patch
    *  lands as inline styles on the grid root so `getComputedStyle`
@@ -5384,6 +5401,8 @@ export class CGrid<TRow = any> {
       updateGridOptions: (p) => this.updateGridOptions(p),
       registerCellRenderer: (n, p) => this.registerCellRenderer(n, p),
       registerFormatCompiler: (fn) => this.registerFormatCompiler(fn),
+      registerIconSet: (name, paths) => this.registerIconSet(name, paths),
+      resolveIcon: (name, setHint) => this.resolveIcon(name, setHint),
       registerCellEditor: (n, c) => this.registerCellEditor(n, c),
       registerComparator: <TValue = unknown>(n: string, f: (a: TValue, b: TValue) => number) =>
         this.registerComparator<TValue>(n, f),
