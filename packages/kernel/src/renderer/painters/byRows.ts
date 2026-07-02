@@ -211,6 +211,14 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
     else center.push(col);
   }
 
+  // Cycle 21e / Task 14 — first/last visible data column across all
+  // bands (left-pinned → center → right-pinned order) for row-start /
+  // row-end rule indicators.
+  const firstVisibleColId = (leftPinned[0] ?? center[0] ?? rightPinned[0])?.colId;
+  const lastVisibleColId = (rightPinned[rightPinned.length - 1]
+    ?? center[center.length - 1]
+    ?? leftPinned[leftPinned.length - 1])?.colId;
+
   // Pre-compute subgrid bands — group visibleRows by subgrid to get y-range per subgrid.
   // Walk once and group consecutive rows from the same subgrid.
   type SubgridBand = {
@@ -263,6 +271,8 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
     stringRowIdAt: p.stringRowIdAt,
     getRowDataById: p.getRowDataById,
     themeKind: p.themeKind,
+    firstVisibleColId,
+    lastVisibleColId,
   };
 
   for (const sb of subgridBands) {
@@ -378,6 +388,10 @@ interface PaintBandCtx {
   stringRowIdAt: PainterCtx['stringRowIdAt'];
   getRowDataById: PainterCtx['getRowDataById'];
   themeKind: PainterCtx['themeKind'];
+  /** Cycle 21e / Task 14 — first/last visible data colId across all
+   *  bands, for row-start / row-end rule indicator targeting. */
+  firstVisibleColId?: string;
+  lastVisibleColId?: string;
 }
 
 function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void {
@@ -697,16 +711,42 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
       // Columns without `cellIcon` (the overwhelming majority) skip this
       // block entirely — no per-cell cost on the hot path.
       let pendingIcon: PendingCellIcon | null = null;
+      // Cycle 21e / Task 14 — rule indicator resolution. `cell` targets
+      // paint on the matching cell; `row-start` / `row-end` paint only on
+      // the first / last visible data column of the matching row (the
+      // engine returns the indicator on every cell of a row-scope match;
+      // byRows owns column order, so the filter lives here).
+      let ruleIconRef: { name: string; color?: string; position?: 'leading' | 'trailing' } | null = null;
+      const ri = config.ruleIndicator;
+      if (ri && row.subgrid.isData && !isFooterRow[r]) {
+        const placed =
+          ri.target === 'cell'
+          || (ri.target === 'row-start' && col.colId === ctx.firstVisibleColId)
+          || (ri.target === 'row-end' && col.colId === ctx.lastVisibleColId);
+        if (placed) {
+          ruleIconRef = {
+            name: ri.iconName,
+            color: ri.color,
+            position: ri.position === 'after' ? 'trailing' : 'leading',
+          };
+        }
+      }
       if (
-        row.subgrid.isData
-        && !isFooterRow[r]
-        && typeof def.cellIcon === 'function'
+        ruleIconRef !== null
+        || (row.subgrid.isData
+          && !isFooterRow[r]
+          && typeof def.cellIcon === 'function')
       ) {
-        let iconRef: { name: string; color?: string; position?: 'leading' | 'trailing' } | null = null;
-        try {
-          iconRef = def.cellIcon({ value, data: (rowData ?? {}) as never, colId: col.colId });
-        } catch {
-          iconRef = null;
+        let iconRef: { name: string; color?: string; position?: 'leading' | 'trailing' } | null = ruleIconRef;
+        if (iconRef === null) {
+          try {
+            iconRef = def.cellIcon!({
+              value, data: (rowData ?? {}) as never, colId: col.colId,
+              rowId: ruleRowId, themeKind: ctx.themeKind,
+            });
+          } catch {
+            iconRef = null;
+          }
         }
         if (iconRef && iconRef.name) {
           const path = resolveIconPath(iconRef.name);

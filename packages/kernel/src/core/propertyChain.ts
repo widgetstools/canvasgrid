@@ -8,6 +8,7 @@ import type { CellPaintConfig } from '../renderer/cellRenderers/registry';
 import type { ResolvedTheme } from '../theming/cssReader';
 import { getFormatCompiler, type CompositeColDefShape } from './formatCompilerSlot';
 import { getRuleEngine } from './ruleEngineSlot';
+import { evalFormatProgram } from './formatEvalMemo';
 
 export type { ColCellOverrides };
 
@@ -652,6 +653,10 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
         value: ctx.value,
         colId: colDef.colId,
         rowIndex: ctx.rowIndex ?? 0,
+        // Cycle 21e / Task 14 — cell identity for the format-eval memo +
+        // rule:<ruleId> accessor. Undefined off the data paint path.
+        rowId: ctx.rowId,
+        themeKind: ctx.themeKind,
       }
     : undefined;
 
@@ -796,6 +801,21 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
         // Indicator + formatProgram are stored for the byRows paint path
         // (Cycle 21e / Task 14) — one evaluateCell per cell, consumed twice.
         target.ruleIndicator = ruleResult.indicator;
+        // Cycle 21e / Task 14 — per-rule valueFormatter: the winning
+        // rule's compiled program replaces the column's formatted text.
+        // Lives here (not in the compileFormatSlots wrappers) so it works
+        // on columns with NO format string of their own. Runs before the
+        // textTransform step, matching the normal formatted-text flow.
+        if (ruleResult.formatProgram !== null && ruleResult.formatProgram !== undefined) {
+          try {
+            const prog = ruleResult.formatProgram as import('./formatCompilerSlot').FormatProgramShape;
+            target.valueFormatted = String(prog.formatText({
+              value: ctx.value,
+              row: ctx.ruleRow ?? ctx.rowData ?? {},
+              colId: colDef.colId,
+            }));
+          } catch { /* formatter errors never break paint */ }
+        }
       }
     }
   }
@@ -928,13 +948,13 @@ function compileFormatSlots<TRow>(
       ...merged,
       _compositeProgram: program,
       valueFormatter: (p: CValueFormatterParams<TRow, unknown>) =>
-        program.formatText({ value: p.value, row: p.data, colId: p.colId }),
+        evalFormatProgram(program, p).text,
       cellStyle: mergeCellStyle(
         typeof merged.cellStyle === 'function'
           ? (merged.cellStyle as (params: CValueFormatterParams<TRow, unknown>) => Record<string, string | number> | undefined)
           : undefined,
         (p: CValueFormatterParams<TRow, unknown>) => {
-          const s = program.resolveStyle({ value: p.value, row: p.data, colId: p.colId });
+          const s = evalFormatProgram(program, p).style;
           if (!s) return undefined;
           return styleObjToRecord(s);
         },
@@ -954,19 +974,19 @@ function compileFormatSlots<TRow>(
     return {
       ...merged,
       valueFormatter: (p: CValueFormatterParams<TRow, unknown>) =>
-        program.formatText({ value: p.value, row: p.data, colId: p.colId }),
+        evalFormatProgram(program, p).text,
       cellStyle: mergeCellStyle(
         typeof merged.cellStyle === 'function'
           ? (merged.cellStyle as (params: CValueFormatterParams<TRow, unknown>) => Record<string, string | number> | undefined)
           : undefined,
         (p: CValueFormatterParams<TRow, unknown>) => {
-          const s = program.resolveStyle({ value: p.value, row: p.data, colId: p.colId });
+          const s = evalFormatProgram(program, p).style;
           if (!s) return undefined;
           return styleObjToRecord(s);
         },
       ),
       cellIcon: (p: CValueFormatterParams<TRow, unknown>) =>
-        program.resolveIcon({ value: p.value, row: p.data, colId: p.colId }) as import('@cgrid/format').IconRef | null,
+        evalFormatProgram(program, p).icon as import('@cgrid/format').IconRef | null,
     } as CColDef<TRow>;
   }
 

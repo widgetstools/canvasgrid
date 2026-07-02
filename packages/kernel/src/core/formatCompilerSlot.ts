@@ -16,19 +16,36 @@ export interface CompositeColDefShape {
   [key: string]: unknown;
 }
 
+/** Cycle 21e / Task 14 — eval context accepted by format programs.
+ *  `resolveRuleRef` is the rule:<ruleId> accessor (spec §5.5) — the
+ *  kernel closes it over the rule slot + current cell; @cgrid/format's
+ *  tier1 resolver consults it when present (Cycle 21e Task 9). */
+export interface FormatEvalCtxShape {
+  value: unknown;
+  row: unknown;
+  colId: string;
+  resolveRuleRef?: (ruleId: string) => string | null;
+}
+
 export interface FormatProgramShape {
-  formatText: (ctx: { value: unknown; row: unknown; colId: string }) => string;
-  resolveStyle: (ctx: { value: unknown; row: unknown; colId: string }) =>
+  formatText: (ctx: FormatEvalCtxShape) => string;
+  resolveStyle: (ctx: FormatEvalCtxShape) =>
     | { color?: string; background?: string; weight?: string | number; italic?: boolean }
     | null;
-  resolveIcon: (ctx: { value: unknown; row: unknown; colId: string }) =>
+  resolveIcon: (ctx: FormatEvalCtxShape) =>
     | { name: string; color?: string; position?: 'leading' | 'trailing' }
     | null;
-  resolveFragments: (ctx: { value: unknown; row: unknown; colId: string }) =>
+  resolveFragments: (ctx: FormatEvalCtxShape) =>
     | Array<{ text: string; style: unknown; icon?: unknown }>
     | null;
   source: unknown;
   tiers: { tier0: boolean; tier1: boolean; tier2: boolean };
+  /** Cycle 21e / Task 14 — true when the program contains rule:<ruleId>
+   *  refs. Such programs bypass the format-eval memo (a matched-set
+   *  change without a value change must not serve stale colors) and
+   *  always receive a resolveRuleRef accessor. Set by @cgrid/format's
+   *  compile() (Task 9); undefined (older compilers) → treated false. */
+  hasRuleRefs?: boolean;
 }
 
 export type FormatCompiler = (

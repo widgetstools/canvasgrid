@@ -549,6 +549,12 @@ export interface CColGroupDef<TRow = any> {
 export interface CValueGetterParams<TRow> { data: TRow; colId: string }
 export interface CValueFormatterParams<TRow, TValue> {
   data: TRow; value: TValue; colId: string;
+  /** Cycle 21e / Task 14 — string rowId of the data row, when the call
+   *  site knows it (paint path). Enables the format-eval memo + the
+   *  rule:<ruleId> accessor; absent → memo bypass, no rule refs. */
+  rowId?: string;
+  /** Cycle 21e / Task 14 — active theme kind, when known. */
+  themeKind?: 'light' | 'dark';
 }
 
 /** Params passed to `CColDef.valueParser`. */

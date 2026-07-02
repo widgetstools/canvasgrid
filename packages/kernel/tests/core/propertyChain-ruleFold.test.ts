@@ -150,4 +150,55 @@ describe('applyCellProps rule fold (Cycle 21e / Task 11)', () => {
     const cfg = freshConfig();
     expect(() => applyCellProps(cfg, baseCtx(def) as any)).not.toThrow();
   });
+
+  it('rule formatProgram overrides valueFormatted (works on a column with no format string)', () => {
+    registerRuleEngine({
+      evaluateCell: () => ({
+        matched: ['rule-1'],
+        style: null,
+        indicator: null,
+        formatProgram: { formatText: () => '▲ 42.00' },
+      }),
+      resolveRuleRef: () => null,
+    });
+    const [def] = resolveColDefs([{ colId: 'px', cellDataType: 'number' }] as any);
+    const cfg = freshConfig();
+    applyCellProps(cfg, baseCtx(def) as any);
+    expect(cfg.valueFormatted).toBe('▲ 42.00');
+  });
+
+  it('rule formatProgram runs before textTransform (transform still applies after)', () => {
+    registerRuleEngine({
+      evaluateCell: () => ({
+        matched: ['rule-1'],
+        style: { textDecoration: undefined } as any,
+        indicator: null,
+        formatProgram: { formatText: () => 'abc' },
+      }),
+      resolveRuleRef: () => null,
+    });
+    const [def] = resolveColDefs([{
+      colId: 'px', cellDataType: 'number',
+      cellStyle: () => ({ textTransform: 'uppercase' }),
+    }] as any);
+    const cfg = freshConfig();
+    applyCellProps(cfg, baseCtx(def) as any);
+    expect(cfg.valueFormatted).toBe('ABC');
+  });
+
+  it('rule formatProgram throw preserves original valueFormatted', () => {
+    registerRuleEngine({
+      evaluateCell: () => ({
+        matched: ['rule-1'],
+        style: null,
+        indicator: null,
+        formatProgram: { formatText: () => { throw new Error('boom'); } },
+      }),
+      resolveRuleRef: () => null,
+    });
+    const [def] = resolveColDefs([{ colId: 'px', cellDataType: 'number' }] as any);
+    const cfg = freshConfig();
+    applyCellProps(cfg, baseCtx(def) as any);
+    expect(cfg.valueFormatted).toBe('-5');
+  });
 });
