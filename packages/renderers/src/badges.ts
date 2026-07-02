@@ -1,55 +1,248 @@
 // @cgrid/renderers — category 4: Badges / pills. Catalog §3.4.
-// Skeleton painters (final signatures; Phase B/C tasks fill in `paint`).
-// Params types: see types.ts (StatusPillParams, RatingBadgeParams, …).
-// Palette data: see palette.ts (STATUS_PILL_MAP, RATING_SCALE_BANDS, DEFAULT_VENUE_PALETTE).
 
-import type { CellPainter } from '@cgrid/kernel';
+import type { CellPaintConfig, CellPainter } from '@cgrid/kernel';
+import { fragText, pill, withAlpha } from './paintUtils';
+import {
+  DEFAULT_VENUE_PALETTE,
+  RATING_SCALE_BANDS,
+  SEMANTIC_COLORS,
+  STATUS_PILL_MAP,
+  resolvePillColors,
+} from './palette';
+import type {
+  RatingBadgeParams,
+  RatingClusterCellParams,
+  SideChipParams,
+  StatusPillParams,
+  TagCellParams,
+  TimeInForcePillParams,
+  VenueChipParams,
+} from './types';
 
-/** Catalog §3.4 StatusPill — params: `StatusPillParams`. */
+type Gc = Parameters<CellPainter['paint']>[0];
+
+const PAD = 6;
+const CHIP_H = 16;
+const SIDE_SIZE = 15;
+
+const TIF_COLORS: Readonly<Record<string, { bg: string; fg: string }>> = {
+  DAY: { bg: withAlpha(SEMANTIC_COLORS.info, 0.15), fg: SEMANTIC_COLORS.info },
+  GTC: { bg: withAlpha(SEMANTIC_COLORS.muted, 0.15), fg: SEMANTIC_COLORS.muted },
+  IOC: { bg: withAlpha(SEMANTIC_COLORS.warning, 0.15), fg: SEMANTIC_COLORS.warning },
+  FOK: { bg: withAlpha(SEMANTIC_COLORS.negative, 0.15), fg: SEMANTIC_COLORS.negative },
+};
+
+const ratingColorScratch = { color: SEMANTIC_COLORS.muted };
+
+function padLeft(p: CellPaintConfig): number {
+  return p.padding?.left ?? PAD;
+}
+
+function fontFamily(baseFont: string): string {
+  return baseFont.match(/(\d+px\s+.+)$/)?.[1] ?? 'sans-serif';
+}
+
+function textY(gc: Gc, p: CellPaintConfig, offset = 0): number {
+  const m = gc.measureText('Mg');
+  return p.bounds.y + p.bounds.h / 2 + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2 + offset;
+}
+
+function rowString(row: Record<string, unknown> | undefined, field?: string): string | undefined {
+  if (!field || !row) return undefined;
+  const v = row[field];
+  return v == null ? undefined : String(v);
+}
+
+function ratingColor(grade: string): string {
+  const band = RATING_SCALE_BANDS.find((b) => b.grade === grade);
+  ratingColorScratch.color = band?.color ?? SEMANTIC_COLORS.muted;
+  return ratingColorScratch.color;
+}
+
+function paintCapsPill(
+  gc: Gc,
+  p: CellPaintConfig,
+  text: string,
+  bg: string,
+  fg: string,
+  x: number,
+  border?: string,
+  dashed?: boolean,
+  uppercase = true,
+): number {
+  const label = uppercase ? text.toUpperCase() : text;
+  const font = `600 10px ${fontFamily(p.font)}`;
+  gc.cache.font = font;
+  const textW = gc.measureText(label).width;
+  const padX = 6;
+  const w = textW + padX * 2;
+  const y = p.bounds.y + (p.bounds.h - CHIP_H) / 2;
+  const radius = 3;
+  pill(gc, x, y, w, CHIP_H, radius, bg, dashed ? undefined : border);
+  if (dashed && border) {
+    gc.cache.strokeStyle = border;
+    gc.setLineDash([3, 2]);
+    gc.beginPath();
+    gc.moveTo(x + radius, y);
+    gc.arcTo(x + w, y, x + w, y + CHIP_H, radius);
+    gc.arcTo(x + w, y + CHIP_H, x, y + CHIP_H, radius);
+    gc.arcTo(x, y + CHIP_H, x, y, radius);
+    gc.arcTo(x, y, x + w, y, radius);
+    gc.closePath();
+    gc.stroke();
+    gc.setLineDash([]);
+  }
+  fragText(gc, label, x + padX, textY(gc, p), { font, color: fg, align: 'left' });
+  return x + w + 4;
+}
+
+function paintRatingBadge(
+  gc: Gc,
+  p: CellPaintConfig,
+  grade: string,
+  x: number,
+): number {
+  const color = ratingColor(grade);
+  const bg = withAlpha(color, 0.18);
+  return paintCapsPill(gc, p, grade, bg, color, x, undefined, undefined, false);
+}
+
+/** Catalog §3.4 StatusPill — order/state label with semantic colour. */
 export const statusPill: CellPainter = {
-  paint() {
-    throw new Error('not implemented: status-pill');
+  paint(gc, p) {
+    const params = (p.params ?? {}) as StatusPillParams;
+    const row = p.rowData as Record<string, unknown> | undefined;
+    const status = (params.status ?? rowString(row, params.statusField) ?? '').toUpperCase();
+    if (!status) return;
+    const themeKind = p.themeKind ?? 'light';
+    const custom = params.statusColors?.[status];
+    const resolved = custom ?? resolvePillColors(status, themeKind);
+    const style = STATUS_PILL_MAP[status];
+    paintCapsPill(
+      gc,
+      p,
+      status,
+      resolved.bg,
+      resolved.fg,
+      p.bounds.x + padLeft(p),
+      resolved.border ?? custom?.border,
+      style?.dashed ?? custom?.dashed,
+    );
   },
 };
 
-/** Catalog §3.4 RatingBadge — params: `RatingBadgeParams`. */
+/** Catalog §3.4 RatingBadge — single agency rating, AAA green → D red. */
 export const ratingBadge: CellPainter = {
-  paint() {
-    throw new Error('not implemented: rating-badge');
+  paint(gc, p) {
+    const params = (p.params ?? {}) as RatingBadgeParams;
+    const grade = params.rating || p.valueFormatted || String(p.value ?? '');
+    if (!grade) return;
+    void params.agency;
+    paintRatingBadge(gc, p, grade, p.bounds.x + padLeft(p));
   },
 };
 
-/** Catalog §3.4 RatingClusterCell — params: `RatingClusterCellParams`. */
+/** Catalog §3.4 RatingClusterCell — three RatingBadges side-by-side. */
 export const ratingClusterCell: CellPainter = {
-  paint() {
-    throw new Error('not implemented: rating-cluster');
+  paint(gc, p) {
+    const params = (p.params ?? {}) as RatingClusterCellParams;
+    const row = p.rowData as Record<string, unknown> | undefined;
+    const entries: Array<{ label: string; grade: string }> = [
+      { label: 'S&P', grade: rowString(row, params.spField) ?? '' },
+      { label: "Moody's", grade: rowString(row, params.moodysField) ?? '' },
+      { label: 'Fitch', grade: rowString(row, params.fitchField) ?? '' },
+    ];
+    let x = p.bounds.x + padLeft(p);
+    const labelOffset = params.showAgencyLabels ? 6 : 0;
+    for (const entry of entries) {
+      if (!entry.grade) continue;
+      const endX = paintRatingBadge(gc, p, entry.grade, x);
+      if (params.showAgencyLabels) {
+        fragText(gc, entry.label, x + (endX - x) / 2, textY(gc, p, labelOffset), {
+          font: `400 10px ${fontFamily(p.font)}`,
+          color: SEMANTIC_COLORS.muted,
+          align: 'center',
+        });
+      }
+      x = endX;
+    }
   },
 };
 
-/** Catalog §3.4 TagCell — params: `TagCellParams`. */
+/** Catalog §3.4 TagCell — generic muted-grey tag. */
 export const tagCell: CellPainter = {
-  paint() {
-    throw new Error('not implemented: tag');
+  paint(gc, p) {
+    const params = (p.params ?? {}) as TagCellParams;
+    const row = p.rowData as Record<string, unknown> | undefined;
+    const text = params.text ?? rowString(row, params.textField) ?? p.valueFormatted ?? String(p.value ?? '');
+    if (!text) return;
+    paintCapsPill(
+      gc,
+      p,
+      text,
+      withAlpha(SEMANTIC_COLORS.muted, 0.12),
+      SEMANTIC_COLORS.muted,
+      p.bounds.x + padLeft(p),
+    );
   },
 };
 
-/** Catalog §3.4 VenueChip — params: `VenueChipParams`. */
+/** Catalog §3.4 VenueChip — execution venue MIC with venue-specific palette. */
 export const venueChip: CellPainter = {
-  paint() {
-    throw new Error('not implemented: venue-chip');
+  paint(gc, p) {
+    const params = (p.params ?? {}) as VenueChipParams;
+    const row = p.rowData as Record<string, unknown> | undefined;
+    const mic = (params.mic ?? rowString(row, params.micField) ?? p.valueFormatted ?? '').toUpperCase();
+    if (!mic) return;
+    const palette = params.venueColors ?? DEFAULT_VENUE_PALETTE;
+    const color = palette[mic] ?? SEMANTIC_COLORS.info;
+    const font = `600 10px ${fontFamily(p.font)}`;
+    gc.cache.font = font;
+    const textW = gc.measureText(mic).width;
+    const w = textW + 12;
+    const x = p.bounds.x + (p.bounds.w - w) / 2;
+    const y = p.bounds.y + (p.bounds.h - CHIP_H) / 2;
+    pill(gc, x, y, w, CHIP_H, 3, withAlpha(color, 0.18));
+    fragText(gc, mic, x + w / 2, textY(gc, p), { font, color, align: 'center' });
   },
 };
 
-/** Catalog §3.4 SideChip — params: `SideChipParams`. */
+/** Catalog §3.4 SideChip — long/short single-char square chip. */
 export const sideChip: CellPainter = {
-  paint() {
-    throw new Error('not implemented: side-chip');
+  paint(gc, p) {
+    const params = (p.params ?? {}) as SideChipParams;
+    const row = p.rowData as Record<string, unknown> | undefined;
+    let side = params.side;
+    if (!side && params.sideField && row) {
+      const raw = String(row[params.sideField] ?? '').toLowerCase();
+      if (raw === 'long' || raw === 'l') side = 'long';
+      if (raw === 'short' || raw === 's') side = 'short';
+    }
+    if (!side) return;
+    const label = side === 'long' ? 'L' : 'S';
+    const bg = side === 'long' ? SEMANTIC_COLORS.positive : SEMANTIC_COLORS.negative;
+    const x = p.bounds.x + padLeft(p);
+    const y = p.bounds.y + (p.bounds.h - SIDE_SIZE) / 2;
+    pill(gc, x, y, SIDE_SIZE, SIDE_SIZE, 2, bg);
+    fragText(gc, label, x + SIDE_SIZE / 2, textY(gc, p), {
+      font: `700 10px ${fontFamily(p.font)}`,
+      color: STATUS_PILL_MAP.REJECTED!.bg,
+      align: 'center',
+    });
   },
 };
 
-/** Catalog §3.4 TimeInForcePill — params: `TimeInForcePillParams`. */
+/** Catalog §3.4 TimeInForcePill — DAY/GTC/IOC/FOK colour-coded pill. */
 export const tifPill: CellPainter = {
-  paint() {
-    throw new Error('not implemented: tif-pill');
+  paint(gc, p) {
+    const params = (p.params ?? {}) as TimeInForcePillParams;
+    const row = p.rowData as Record<string, unknown> | undefined;
+    const tif = (params.tif ?? rowString(row, params.tifField) ?? p.valueFormatted ?? '').toUpperCase();
+    if (!tif) return;
+    const colors = TIF_COLORS[tif] ?? {
+      bg: withAlpha(SEMANTIC_COLORS.muted, 0.12),
+      fg: SEMANTIC_COLORS.muted,
+    };
+    paintCapsPill(gc, p, tif, colors.bg, colors.fg, p.bounds.x + padLeft(p));
   },
 };

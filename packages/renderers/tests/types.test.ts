@@ -172,6 +172,9 @@ describe('every skeleton painter conforms to CellPainter and throws not-implemen
     'number', 'price', 'price-direction', 'pnl', 'delta', 'bps', 'pct-change',
     'fractional-price', 'abbreviated-number',
     'ticker', 'currency-pair', 'timestamp', 'age', 'relative-time',
+    'status-dot', 'quote-quality-dot', 'stale-flag', 'direction-arrow',
+    'structure-icon-strip', 'traffic-light',
+    'status-pill', 'rating-badge', 'rating-cluster', 'tag', 'venue-chip', 'side-chip', 'tif-pill',
   ]);
 
   const painters: Record<string, CellPainter> = {
