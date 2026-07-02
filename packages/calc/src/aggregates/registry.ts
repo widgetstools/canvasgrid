@@ -29,6 +29,9 @@ import type { AggregateFactoryOpts } from './contract';
 import {
   makeAvg, makeCount, makeCountDistinct, makeMax, makeMin, makeSum,
 } from './basic';
+import {
+  makeMedian, makeMode, makePercentile, makeStdev, makeVar,
+} from './stats';
 
 export type AggregateFactory = (p?: number) => Aggregate;
 
@@ -57,6 +60,9 @@ function smokeTest(name: string, source: string, parameterized: boolean): void {
     const inst = parameterized ? rebuilt(50) : rebuilt();
     let s = inst.init();
     s = inst.addRow(s, 1);
+    s = inst.addRow(s, 2);
+    s = inst.updateRow(s, 2, 3);
+    s = inst.removeRow(s, 1);
     inst.finalize(s);
   } catch (e) {
     throw new Error(
@@ -165,6 +171,18 @@ function registerBuiltins(): void {
   for (const [name, factory] of builtins) {
     registerFactory(name, factory, factory.toString(), { force: true, skipSmokeTest: true });
   }
+
+  // Statistical (Task 6). MEDIAN's registered source embeds PERCENTILE's
+  // factory applied at 50 — the LOCAL factory may close over
+  // makePercentile (only the SOURCE must be free-variable-free).
+  registerFactory('PERCENTILE', makePercentile as AggregateFactory, makePercentile.toString(), {
+    parameterized: true, force: true, skipSmokeTest: true,
+  });
+  registerFactory('MEDIAN', makeMedian as AggregateFactory,
+    '() => (' + makePercentile.toString() + ')(50)', { force: true, skipSmokeTest: true });
+  registerFactory('STDEV', makeStdev as AggregateFactory, makeStdev.toString(), { force: true, skipSmokeTest: true });
+  registerFactory('VAR', makeVar as AggregateFactory, makeVar.toString(), { force: true, skipSmokeTest: true });
+  registerFactory('MODE', makeMode as AggregateFactory, makeMode.toString(), { force: true, skipSmokeTest: true });
 }
 
 /** Test/host hook: drop customs, restore built-ins. */

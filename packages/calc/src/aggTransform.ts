@@ -24,6 +24,7 @@
 import type {
   AggregateNode, Ast, AstNode, CallNode, FieldNode, Loc, PrevNode, Schema,
 } from '@cgrid/expression';
+import { expandShareAggregates, isShareAggregateName } from './aggregates/share';
 import type { AggScope, AggSpec, CalcValidationError } from './types';
 
 /** Synthetic injection root for pre-pass aggregate slot reads. */
@@ -209,6 +210,17 @@ function rewriteNode(node: AstNode, state: TransformState): AstNode {
         fail('not-yet-implemented',
           `${node.name} is order-dependent (needs per-scope sorted-window state) and ships with the follow-up window-aggregates cycle`,
           node.loc);
+      }
+      if (isShareAggregateName(node.name)) {
+        // Compile-time expansion (Task 6): PCT_OF_X([e]) → [e] / SUM([e],
+        // 'scope'). Runs BEFORE any slot is interned for this call site —
+        // the synthesized SUM CallNode is re-entered through rewriteNode
+        // so it dedups against user-written SUMs via the normal
+        // internSlot (fn, colId, scope) key. Share names never reach
+        // AggSpec.fn.
+        const expanded = expandShareAggregates(node);
+        if (!expanded.ok) throw new TransformFailure(expanded.error);
+        return rewriteNode(expanded.ast, state);
       }
       if (CALC_AGGREGATE_NAMES.has(node.name)) {
         const rewritten = rewriteAggregate(node, state);

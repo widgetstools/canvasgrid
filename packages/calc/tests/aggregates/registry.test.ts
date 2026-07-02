@@ -88,6 +88,18 @@ describe('aggregate registry', () => {
     expect(getAggregate('BAD')).toBeUndefined(); // nothing half-registered
   });
 
+  it('smoke test exercises removeRow/updateRow too — an impl whose removeRow throws fails at registration', () => {
+    const bad = {
+      init: () => 0,
+      addRow: (s: number, v: unknown) => (typeof v === 'number' ? s + v : s),
+      removeRow: (): number => { throw new Error('boom'); },
+      updateRow: (s: number) => s,
+      finalize: (s: number) => s,
+    } as Aggregate;
+    expect(() => registerAggregate('BAD_REMOVE', bad)).toThrow(/self-contained/);
+    expect(getAggregate('BAD_REMOVE')).toBeUndefined();
+  });
+
   it('accepts self-contained custom impls (globals allowed)', () => {
     registerAggregate('SUM_ABS', selfContainedSumAbs());
     const agg = getAggregate('SUM_ABS')!;
