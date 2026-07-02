@@ -9,7 +9,11 @@
       "types": "./dist/cgrid.d.ts",
       "import": "./dist/cgrid.js"
     },
-    "./style.css": "./dist/kernel.css"
+    "./style.css": "./dist/kernel.css",
+    "./icons/lucide.generated": {
+      "types": "./src/icons/lucide.generated.ts",
+      "import": "./src/icons/lucide.generated.ts"
+    }
   },
   "scripts": {
     "build": "vite build && tsc --emitDeclarationOnly",
