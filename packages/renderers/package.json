@@ -14,16 +14,17 @@
   "scripts": {
     "build": "echo '@cgrid/renderers is a scaffold — no build yet' && exit 0",
     "test": "vitest run --passWithNoTests",
+    "test:coverage": "vitest run --coverage --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@cgrid/kernel": "*",
-    "@cgrid/expression": "*",
-    "@cgrid/format": "*",
-    "@cgrid/calc": "*",
-    "@cgrid/rules": "*"
+    "@cgrid/format": "*"
+  },
+  "peerDependencies": {
+    "@cgrid/kernel": "*"
   },
   "devDependencies": {
+    "@vitest/coverage-v8": "^2.1.0",
     "typescript": "~5.9.3",
     "vitest": "^2.1.0"
   }
