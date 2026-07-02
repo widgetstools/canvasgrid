@@ -24,6 +24,8 @@ import { formatDSL } from './formatDSL';
 import { conditionalStyling } from './conditionalStyling';
 import { alertsFeature } from './alerts';
 import { calculatedColumns } from './calculatedColumns';
+import { rendererBlotter } from './rendererBlotter';
+import { rendererCharts } from './rendererCharts';
 
 export interface Feature {
   id: string;
@@ -60,6 +62,8 @@ export const FEATURES: Feature[] = [
   conditionalStyling,
   alertsFeature,
   calculatedColumns,
+  rendererBlotter,
+  rendererCharts,
 ];
 
 export const FEATURE_MAP = new Map(FEATURES.map((f) => [f.id, f]));
