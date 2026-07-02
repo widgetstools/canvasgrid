@@ -1,63 +1,309 @@
 // @cgrid/renderers — category 5: Bars / gauges. Catalog §3.5.
-// Skeleton painters (final signatures; Phase B/C tasks fill in `paint`).
-// Params types: see types.ts (ProgressBarCellParams, HeatCellParams, …).
-// HeatCell's LAB-space interpolation lives in paintUtils.ts (interpolateLab); HeatCell
-// and BidirectionalBarCell/VolumeBar read column-wide stats via columnStats.ts.
 
-import type { CellPainter } from '@cgrid/kernel';
+import type { CellPaintConfig, CellPainter } from '@cgrid/kernel';
+import { dot, fragText, labInterpolate, miniBar, withAlpha } from './paintUtils';
+import { SEMANTIC_COLORS, STATUS_PILL_MAP } from './palette';
+import type {
+  BidirectionalBarCellParams,
+  GaugeCellParams,
+  HeatCellParams,
+  MaturityBucket,
+  MaturityLadderBarParams,
+  ProgressBarCellParams,
+  RangeBarCellParams,
+  SemanticColorMap,
+  SpreadBarCellParams,
+  VolumeBarParams,
+} from './types';
 
-/** Catalog §3.5 ProgressBarCell — params: `ProgressBarCellParams`. */
+type Gc = Parameters<CellPainter['paint']>[0];
+
+const PAD = 6;
+const BAR_H = 8;
+const TRACK_COLOR = withAlpha(SEMANTIC_COLORS.muted, 0.18);
+
+const MATURITY_ORDER: readonly MaturityBucket[] = [
+  '0-1y', '1-3y', '3-5y', '5-10y', '10y+',
+];
+
+const MATURITY_COLORS: Readonly<Record<MaturityBucket, string>> = {
+  '0-1y': withAlpha(SEMANTIC_COLORS.info, 0.55),
+  '1-3y': withAlpha(SEMANTIC_COLORS.info, 0.75),
+  '3-5y': withAlpha(SEMANTIC_COLORS.warning, 0.65),
+  '5-10y': withAlpha(SEMANTIC_COLORS.warning, 0.85),
+  '10y+': withAlpha(SEMANTIC_COLORS.positive, 0.7),
+};
+
+const colorScratch: Required<SemanticColorMap> = {
+  positive: SEMANTIC_COLORS.positive,
+  negative: SEMANTIC_COLORS.negative,
+  warning: SEMANTIC_COLORS.warning,
+  info: SEMANTIC_COLORS.info,
+  muted: SEMANTIC_COLORS.muted,
+};
+
+function padLeft(p: CellPaintConfig): number {
+  return p.padding?.left ?? PAD;
+}
+
+function padRight(p: CellPaintConfig): number {
+  return p.padding?.right ?? PAD;
+}
+
+function textY(gc: Gc, p: CellPaintConfig): number {
+  const m = gc.measureText('Mg');
+  return p.bounds.y + p.bounds.h / 2 + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
+}
+
+function toNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '') {
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+  }
+  return null;
+}
+
+function rowNumber(row: Record<string, unknown> | undefined, field?: string): number | null {
+  if (!field || !row) return null;
+  return toNumber(row[field]);
+}
+
+function colorsFromParams(overrides?: SemanticColorMap): Required<SemanticColorMap> {
+  colorScratch.positive = overrides?.positive ?? SEMANTIC_COLORS.positive;
+  colorScratch.negative = overrides?.negative ?? SEMANTIC_COLORS.negative;
+  colorScratch.warning = overrides?.warning ?? SEMANTIC_COLORS.warning;
+  colorScratch.info = overrides?.info ?? SEMANTIC_COLORS.info;
+  colorScratch.muted = overrides?.muted ?? SEMANTIC_COLORS.muted;
+  return colorScratch;
+}
+
+function innerBarRect(p: CellPaintConfig): { x: number; y: number; w: number; h: number } {
+  return {
+    x: p.bounds.x + padLeft(p),
+    y: p.bounds.y + (p.bounds.h - BAR_H) / 2,
+    w: p.bounds.w - padLeft(p) - padRight(p),
+    h: BAR_H,
+  };
+}
+
+function rollingMeanStd(values: readonly number[]): { mean: number; std: number } {
+  if (values.length === 0) return { mean: 0, std: 1 };
+  let sum = 0;
+  for (let i = 0; i < values.length; i++) sum += values[i]!;
+  const mean = sum / values.length;
+  let varSum = 0;
+  for (let i = 0; i < values.length; i++) {
+    const d = values[i]! - mean;
+    varSum += d * d;
+  }
+  const std = Math.sqrt(varSum / values.length) || 1;
+  return { mean, std };
+}
+
+/** Catalog §3.5 ProgressBarCell — horizontal fill bar, text overlaid. */
 export const progressBarCell: CellPainter = {
-  paint() {
-    throw new Error('not implemented: progress-bar');
+  paint(gc, p) {
+    const params = (p.params ?? {}) as ProgressBarCellParams;
+    const row = p.rowData as Record<string, unknown> | undefined;
+    const fracRaw = params.fraction ?? rowNumber(row, params.fractionField) ?? toNumber(p.value);
+    const frac = fracRaw === null ? 0 : Math.max(0, Math.min(1, fracRaw));
+    const rect = innerBarRect(p);
+    const fill = frac >= 1 ? SEMANTIC_COLORS.positive : SEMANTIC_COLORS.info;
+    miniBar(gc, rect.x, rect.y, rect.w, rect.h, frac, fill, TRACK_COLOR);
+    if (params.showLabel !== false) {
+      const label = p.valueFormatted || `${Math.round(frac * 100)}%`;
+      fragText(gc, label, rect.x + rect.w / 2, textY(gc, p), {
+        font: p.font,
+        color: p.fg,
+        align: 'center',
+      });
+    }
   },
 };
 
-/** Catalog §3.5 RangeBarCell — params: `RangeBarCellParams`. */
+/** Catalog §3.5 RangeBarCell — range bar with endpoint labels and marker dot. */
 export const rangeBarCell: CellPainter = {
-  paint() {
-    throw new Error('not implemented: range-bar');
+  paint(gc, p) {
+    const params = (p.params ?? {}) as RangeBarCellParams;
+    const row = p.rowData as Record<string, unknown> | undefined;
+    const min = rowNumber(row, params.minField);
+    const max = rowNumber(row, params.maxField);
+    const val = rowNumber(row, params.valueField) ?? toNumber(p.value);
+    const rect = innerBarRect(p);
+    miniBar(gc, rect.x, rect.y, rect.w, rect.h, 1, TRACK_COLOR);
+    if (min !== null && max !== null && val !== null && max > min) {
+      const t = Math.max(0, Math.min(1, (val - min) / (max - min)));
+      const cx = rect.x + t * rect.w;
+      dot(gc, cx, rect.y + rect.h / 2, 3, SEMANTIC_COLORS.info);
+      fragText(gc, String(min), rect.x, textY(gc, p), { font: p.font, color: withAlpha(p.fg, 0.7), align: 'left' });
+      fragText(gc, String(max), rect.x + rect.w, textY(gc, p), { font: p.font, color: withAlpha(p.fg, 0.7), align: 'right' });
+    }
   },
 };
 
-/** Catalog §3.5 BidirectionalBarCell — params: `BidirectionalBarCellParams`. */
+/** Catalog §3.5 BidirectionalBarCell — centre-zero left-red / right-green bar. */
 export const bidirectionalBarCell: CellPainter = {
-  paint() {
-    throw new Error('not implemented: bidirectional-bar');
+  paint(gc, p) {
+    const params = (p.params ?? {}) as BidirectionalBarCellParams;
+    const colors = colorsFromParams(params.colors);
+    const row = p.rowData as Record<string, unknown> | undefined;
+    const value = rowNumber(row, params.valueField) ?? toNumber(p.value);
+    if (value === null) return;
+    const maxAbs = params.stats?.maxAbs && params.stats.maxAbs > 0 ? params.stats.maxAbs : Math.abs(value) || 1;
+    const rect = innerBarRect(p);
+    const mid = rect.x + rect.w / 2;
+    miniBar(gc, rect.x, rect.y, rect.w, rect.h, 1, TRACK_COLOR);
+    const halfW = (Math.abs(value) / maxAbs) * (rect.w / 2);
+    if (value < 0) {
+      miniBar(gc, mid - halfW, rect.y, halfW, rect.h, 1, colors.negative);
+    } else if (value > 0) {
+      miniBar(gc, mid, rect.y, halfW, rect.h, 1, colors.positive);
+    }
+    if (p.valueFormatted) {
+      fragText(gc, p.valueFormatted, p.bounds.x + p.bounds.w - padRight(p), textY(gc, p), {
+        font: p.font,
+        color: p.fg,
+        align: 'right',
+      });
+    }
   },
 };
 
-/** Catalog §3.5 HeatCell — params: `HeatCellParams`. */
+/** Catalog §3.5 HeatCell — column-wide LAB gradient background tint. */
 export const heatCell: CellPainter = {
-  paint() {
-    throw new Error('not implemented: heat');
+  paint(gc, p) {
+    const params = (p.params ?? {}) as HeatCellParams;
+    const colors = colorsFromParams(params.colors);
+    const value = toNumber(p.value);
+    const stats = params.stats;
+    let t = 0.5;
+    if (value !== null && stats && stats.count > 0 && stats.max > stats.min) {
+      t = Math.max(0, Math.min(1, (value - stats.min) / (stats.max - stats.min)));
+    }
+    const curve = params.curve ?? 'lab';
+    const bg = labInterpolate(colors.negative, colors.positive, t, curve);
+    gc.cache.fillStyle = withAlpha(bg, 0.22);
+    gc.fillRect(p.bounds.x, p.bounds.y, p.bounds.w, p.bounds.h);
+    const text = p.valueFormatted || (value === null ? '' : String(value));
+    if (text) {
+      fragText(gc, text, p.bounds.x + p.bounds.w - padRight(p), textY(gc, p), {
+        font: p.font,
+        color: p.fg,
+        align: 'right',
+      });
+    }
   },
 };
 
-/** Catalog §3.5 GaugeCell — params: `GaugeCellParams`. */
+/** Catalog §3.5 GaugeCell — segmented horizontal gauge with tick marker. */
 export const gaugeCell: CellPainter = {
-  paint() {
-    throw new Error('not implemented: gauge');
+  paint(gc, p) {
+    const params = (p.params ?? {}) as GaugeCellParams;
+    const row = p.rowData as Record<string, unknown> | undefined;
+    const value = params.value ?? rowNumber(row, params.valueField) ?? toNumber(p.value);
+    const rect = innerBarRect(p);
+    const zones = params.zones ?? [params.min, 0, params.max];
+    const span = params.max - params.min || 1;
+    for (let i = 0; i < zones.length - 1; i++) {
+      const z0 = zones[i]!;
+      const z1 = zones[i + 1]!;
+      const x0 = rect.x + ((z0 - params.min) / span) * rect.w;
+      const x1 = rect.x + ((z1 - params.min) / span) * rect.w;
+      const zoneColor = z1 <= 0 ? SEMANTIC_COLORS.negative
+        : z0 >= 0 ? SEMANTIC_COLORS.positive
+        : withAlpha(SEMANTIC_COLORS.muted, 0.25);
+      gc.cache.fillStyle = zoneColor;
+      gc.fillRect(x0, rect.y, Math.max(0, x1 - x0), rect.h);
+    }
+    if (value !== null) {
+      const tx = rect.x + ((value - params.min) / span) * rect.w;
+      gc.cache.strokeStyle = p.fg;
+      gc.cache.lineWidth = 2;
+      gc.beginPath();
+      gc.moveTo(tx, rect.y - 2);
+      gc.lineTo(tx, rect.y + rect.h + 2);
+      gc.stroke();
+    }
   },
 };
 
-/** Catalog §3.5 SpreadBarCell — params: `SpreadBarCellParams`. */
+/** Catalog §3.5 SpreadBarCell — spread-width bar; amber 1σ / red 2σ vs rolling average. */
 export const spreadBarCell: CellPainter = {
-  paint() {
-    throw new Error('not implemented: spread-bar');
+  paint(gc, p) {
+    const params = (p.params ?? {}) as SpreadBarCellParams;
+    const row = p.rowData as Record<string, unknown> | undefined;
+    const bid = rowNumber(row, params.bidField);
+    const ask = rowNumber(row, params.askField);
+    if (bid === null || ask === null) return;
+    const spread = ask - bid;
+    const mid = (bid + ask) / 2;
+    const history = params.history?.values ?? [];
+    const { mean, std } = rollingMeanStd(history.length > 0 ? history : [spread]);
+    const z = (spread - mean) / std;
+    let barColor = withAlpha(SEMANTIC_COLORS.muted, 0.35);
+    if (Math.abs(z) >= 2) barColor = withAlpha(SEMANTIC_COLORS.negative, 0.45);
+    else if (Math.abs(z) >= 1) barColor = withAlpha(SEMANTIC_COLORS.warning, 0.45);
+    const rect = innerBarRect(p);
+    const frac = Math.max(0, Math.min(1, spread / (mean + std * 2 || spread || 1)));
+    miniBar(gc, rect.x, rect.y, rect.w, rect.h, frac, barColor, TRACK_COLOR);
+    fragText(gc, p.valueFormatted || String(mid.toFixed(2)), rect.x + rect.w / 2, textY(gc, p), {
+      font: p.font,
+      color: p.fg,
+      align: 'center',
+    });
   },
 };
 
-/** Catalog §3.5 VolumeBar — params: `VolumeBarParams`. */
+/** Catalog §3.5 VolumeBar — bar sized to scope max volume, text overlay. */
 export const volumeBar: CellPainter = {
-  paint() {
-    throw new Error('not implemented: volume-bar');
+  paint(gc, p) {
+    const params = (p.params ?? {}) as VolumeBarParams;
+    const row = p.rowData as Record<string, unknown> | undefined;
+    const value = rowNumber(row, params.valueField) ?? toNumber(p.value);
+    if (value === null) return;
+    const max = params.stats?.max && params.stats.max > 0 ? params.stats.max : value;
+    const frac = Math.max(0, Math.min(1, value / max));
+    const rect = innerBarRect(p);
+    miniBar(gc, rect.x, rect.y, rect.w, rect.h, frac, withAlpha(SEMANTIC_COLORS.info, 0.45), TRACK_COLOR);
+    const text = p.valueFormatted || String(value);
+    const textColor = params.reverseOutText && frac > 0.5 ? reverseOutFg(p) : p.fg;
+    fragText(gc, text, p.bounds.x + p.bounds.w - padRight(p), textY(gc, p), {
+      font: p.font,
+      color: textColor,
+      align: 'right',
+    });
   },
 };
 
-/** Catalog §3.5 MaturityLadderBar — params: `MaturityLadderBarParams`. */
+function reverseOutFg(p: CellPaintConfig): string {
+  return p.themeKind === 'dark' ? p.fg : STATUS_PILL_MAP.REJECTED!.bg;
+}
+
+/** Catalog §3.5 MaturityLadderBar — segmented bar by tenor bucket. */
 export const maturityLadderBar: CellPainter = {
-  paint() {
-    throw new Error('not implemented: maturity-ladder');
+  paint(gc, p) {
+    const params = (p.params ?? {}) as MaturityLadderBarParams;
+    const row = p.rowData as Record<string, unknown> | undefined;
+    const fields = params.bucketFields ?? {};
+    let total = 0;
+    for (const bucket of MATURITY_ORDER) {
+      const v = rowNumber(row, fields[bucket]);
+      if (v !== null && v > 0) total += v;
+    }
+    const rect = innerBarRect(p);
+    if (total <= 0) {
+      miniBar(gc, rect.x, rect.y, rect.w, rect.h, 0, TRACK_COLOR, TRACK_COLOR);
+      return;
+    }
+    let x = rect.x;
+    for (const bucket of MATURITY_ORDER) {
+      const v = rowNumber(row, fields[bucket]) ?? 0;
+      if (v <= 0) continue;
+      const segW = (v / total) * rect.w;
+      gc.cache.fillStyle = MATURITY_COLORS[bucket];
+      gc.fillRect(x, rect.y, segW, rect.h);
+      x += segW;
+    }
   },
 };

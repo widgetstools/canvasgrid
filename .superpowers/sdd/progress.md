@@ -599,3 +599,8 @@ Remaining Cycle 21 work runs in SMALL SESSIONS per docs/superpowers/plans/2026-0
 21f Task 6: complete (commits 3390eba..05ef33c incl. review fix, approved after fix pass)
   5 text painters + 15 fake-gc tests; monoFont full-stack replace; stacked TickerCell + injectable nowMs age/relative/timestamp
 21f-S3: COMPLETE (draft Tasks 5-8 on main @ 8a4d5ac; execute Tasks 5-6 reviewed). 14 painters landed (9+5). NEXT UNIT: 21f-S4 (execute Tasks 7-8).
+21f Task 7: complete (commits fa2ad12, review pending)
+  6 indicator painters + 19 fake-gc tests; dot()/direction glyphs/quote-quality truth table/stale alpha 0.6/structure strip slots/RAG; getLastStaleFlagTooltip bridge hook; renderers 195/195
+21f Task 8: complete (commits 4104e45, review pending)
+  7 badge painters + 21 fake-gc tests; STATUS_PILL_MAP/resolvePillColors/RATING_SCALE_BANDS/DEFAULT_VENUE_PALETTE/TIF_COLORS; dashed PENDING; rating case preserved; renderers 195/195; kernel/expression/format/rules/calc diff EMPTY
+21f-S4: COMPLETE (execute Tasks 7-8). 27 foundation painters done (14 numeric+text + 13 indicator+badge). NEXT UNIT: 21f-S5 (draft Tasks 9-12, execute Tasks 9-10).

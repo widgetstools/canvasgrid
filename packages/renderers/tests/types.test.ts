@@ -175,6 +175,10 @@ describe('every skeleton painter conforms to CellPainter and throws not-implemen
     'status-dot', 'quote-quality-dot', 'stale-flag', 'direction-arrow',
     'structure-icon-strip', 'traffic-light',
     'status-pill', 'rating-badge', 'rating-cluster', 'tag', 'venue-chip', 'side-chip', 'tif-pill',
+    'progress-bar', 'range-bar', 'bidirectional-bar', 'heat', 'gauge',
+    'spread-bar', 'volume-bar', 'maturity-ladder',
+    'win-loss-sparkline', 'yield-curve-sparkline', 'krd-bar-chart', 'depth-ladder',
+    'line-sparkline', 'column-sparkline', 'area-sparkline', 'bar-sparkline', 'pie-sparkline',
   ]);
 
   const painters: Record<string, CellPainter> = {
