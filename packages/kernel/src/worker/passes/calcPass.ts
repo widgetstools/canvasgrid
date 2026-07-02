@@ -15,9 +15,28 @@
 // consult. Stage B (aggregate-dependent calc columns) lands in Task 12
 // and writes into the SAME `values` cache — Stage A only ever touches
 // row-local columns (`prePass.length === 0`).
+//
+// Cycle 21d / Task 12 — CalcPass Stage B. Aggregate-dependent calc
+// columns (`prePass.length > 0`) compute one scalar per SCOPE INSTANCE
+// (all / visible / one-per-group / one-per-parent-group), then evaluate
+// the per-row program with `aggSlots[spec.slot] = scope's finalized
+// scalar`. Runs AFTER GroupPass (scopes are defined by the tree) and
+// BEFORE SortPass (sort sees fresh Stage-B values) — see the `worker.ts`
+// pipeline slot. Scope-key + per-scope data-version canonicalization
+// mirrors `packages/calc/src/scopeKey.ts`'s `scopeKeyOf` / `DataVersionMap`
+// semantics, reimplemented NATIVELY here (coordinator decision: no
+// SCOPE_KEY_SOURCE/DATA_VERSION_MAP_SOURCE shipped over the wire — the
+// kernel has zero runtime @cgrid/calc imports). Delta-aggregate state is
+// cached per scope instance keyed `(fn, colId, scopeKey)` with the
+// current row-group-colId signature folded into group/parent scope keys,
+// so a regroup naturally orphans every stale group/parent entry; a
+// wholesale `aggStates.clear()` on any non-'delta' pipeline cause (full
+// recompute, program swap, setRowData) keeps those orphans from
+// accumulating instead of relying on a prefix-bump sweep.
 
 import type { RowStore } from '../dataPipeline';
 import type { WorkerCalcProgram } from '../protocol';
+import type { GroupNode, GroupPassOutput } from './groupPass';
 
 /** Cycle 21d / Task 11 — the seam FilterPass / SortPass / GroupPass /
  *  both slicers consult for fieldless calc columns. `CalcProgramStore`
@@ -49,6 +68,36 @@ export type CalcAggregateFactory = () => {
   finalize(state: unknown): number | null;
 };
 
+/** Cycle 21d / Task 12 — one cached scope-instance's delta-aggregate
+ *  state. `impl` is the reconstructed factory's instance methods
+ *  (`{ init, addRow, removeRow, updateRow, finalize }` — the Task 5
+ *  cross-task delta contract); `state` is whatever `impl.init()`
+ *  returned, mutated in place by `addRow`/`removeRow`/`updateRow` per
+ *  the factory's own convention (some factories return a NEW state,
+ *  others mutate and return the same reference — Stage B always
+ *  reassigns `entry.state = impl.xxxRow(...)` so both conventions work).
+ *  `dataVersion` bumps on every delta touch; `finalized` is the memoized
+ *  `impl.finalize(state)` scalar, recomputed only when a touch bumped
+ *  the version. */
+interface AggStateEntry {
+  state: unknown;
+  impl: ReturnType<CalcAggregateFactory>;
+  dataVersion: number;
+  finalized: number | null;
+}
+
+/** FIRST/LAST are NOT delta-contract registry impls (assembler addition,
+ *  spec cross-task contract) — Stage B computes them directly as a scan
+ *  over the scope's rows in scope iteration order, skipping nulls.
+ *  Recomputed on every version bump (O(scope) cost; no delta state).
+ *  Case-insensitive match — the AggSpec's `fn` string ships verbatim
+ *  from @cgrid/calc's transform output (Task 2's shippable set uses
+ *  upper-case `FIRST`/`LAST`; tests here use lower-case for brevity). */
+function isFirstLast(fn: string): 'first' | 'last' | null {
+  const lower = fn.toLowerCase();
+  return lower === 'first' || lower === 'last' ? lower : null;
+}
+
 export class CalcProgramStore implements CalcValueSource {
   private program: WorkerCalcProgram | null = null;
   private interp: CalcInterpreter | null = null;
@@ -71,6 +120,51 @@ export class CalcProgramStore implements CalcValueSource {
    *  slice/paint time): PREV is a compute-time concern, so it clears at
    *  the compute site instead. */
   private tickPrevRows = new Map<string, unknown>();
+  /** Stage B's OWN pre-apply row snapshot — kept separate from
+   *  `tickPrevRows` because Stage A (which runs FIRST in the same
+   *  pipeline pass, per `worker.ts`'s `buildVisibleAsync`) consumes and
+   *  clears `tickPrevRows` before Stage B ever runs. Populated
+   *  unconditionally by `capturePrevForUpdates` whenever any installed
+   *  column has `prePass.length > 0` (independent of Stage A's
+   *  `usesPrev` gate) — the delta path needs the OLD row to detect a
+   *  cross-group move (old group key vs new) and to feed `updateRow`'s
+   *  `oldValue` argument. Consumed (and cleared) inside `ensureStageB`. */
+  private tickPrevRowsB = new Map<string, unknown>();
+
+  // ─── Stage B (Cycle 21d / Task 12) ─────────────────────────────────────
+
+  /** `(fn, colId, scopeKey)` → cached delta-aggregate state. `scopeKey`
+   *  already embeds the group signature for `'group'`/`'parent'` scopes
+   *  (see `scopeKeyFor`), so a regroup's key change alone would orphan
+   *  stale entries even without the wholesale clear below — the clear is
+   *  belt-and-suspenders against orphan accumulation across many
+   *  regroups in one session. */
+  private aggStates = new Map<string, AggStateEntry>();
+  /** `'delta'` — the pipeline pass immediately following an
+   *  `onTransaction` call; `ensureStageB` reuses cached entries and only
+   *  touches the transaction's affected scopes. Every other pass
+   *  (`install`, `onSetRowData`, and the default after `ensureStageB`
+   *  consumes a 'delta' pass) is `'full'` — full scope rebuild. */
+  private pipelineCause: 'delta' | 'full' = 'full';
+  /** rowId → leaf group key, as of the LAST `ensureStageB` full/delta
+   *  walk — membership lookup for delta removes (pre-transaction
+   *  membership) and for resolving a row's per-row scope during
+   *  per-row eval. Empty when grouping is bypassed. */
+  private rowScopeKey = new Map<string, string>();
+  /** group key → parent group key, or `''` for a root group's parent
+   *  (the visible/all set — see `parentScopeKeyFor`). Populated by the
+   *  same tree walk that fills `rowScopeKey`. */
+  private parentOfGroup = new Map<string, string>();
+  /** Current row-group colId signature (`rowGroupCols.join('')`, `''`
+   *  when bypassed) — folded into every `'group:'`/`'parent:'` scope key
+   *  so a regroup naturally invalidates every group/parent cache entry
+   *  (mirrors `packages/calc/src/scopeKey.ts`'s documented risk-table
+   *  requirement without shipping that module's source). */
+  private groupSignature = '';
+  /** Last transaction's results, consumed by the very next `ensureStageB`
+   *  delta pass then cleared — mirrors `stageADirty`'s tick-scoped
+   *  consumption. `null` when there's no pending delta to apply. */
+  private lastDelta: { add: string[]; update: string[]; remove: string[] } | null = null;
 
   /** Install / replace / remove (null) the program. Reconstructs the
    *  interpreter + aggregate factories via `new Function` (the
@@ -209,17 +303,29 @@ export class CalcProgramStore implements CalcValueSource {
 
   /** Full data replace — every row-local column needs recompute for
    *  every (new) row on the next `ensureStageA` pass; the value cache
-   *  and any pending PREV capture are stale against the new data. */
+   *  and any pending PREV capture are stale against the new data. Stage
+   *  B: a full replace invalidates every cached scope-instance state
+   *  (membership is entirely stale) — `pipelineCause` stays/returns to
+   *  `'full'` so the next `ensureStageB` rebuilds from scratch. */
   onSetRowData(): void {
     this.stageADirty = 'full';
     this.values.clear();
     this.tickPrevRows.clear();
+    this.pipelineCause = 'full';
+    this.lastDelta = null;
+    this.aggStates.clear();
+    this.rowScopeKey.clear();
+    this.parentOfGroup.clear();
   }
 
   /** Union add/update rowIds into the dirty set (promoting `'full'`
    *  stays `'full'` — a pending full recompute already covers any
    *  newly-touched row). Evict removed rowIds from every column's
-   *  value cache so a stale entry can't leak through `valueAt`. */
+   *  value cache so a stale entry can't leak through `valueAt`. Stage B:
+   *  marks the NEXT `ensureStageB` pass as `'delta'` and stashes the
+   *  touched rowIds so it can feed `addRow`/`removeRow`/`updateRow` to
+   *  just the affected scope instances instead of rebuilding every
+   *  scope wholesale. */
   onTransaction(results: { add: Array<{ rowId: string }>; update: Array<{ rowId: string }>; remove: Array<{ rowId: string }> }): void {
     if (this.stageADirty !== 'full') {
       const dirty = this.stageADirty;
@@ -230,6 +336,20 @@ export class CalcProgramStore implements CalcValueSource {
       for (const colMap of this.values.values()) {
         for (const r of results.remove) colMap.delete(r.rowId);
       }
+    }
+    this.pipelineCause = 'delta';
+    const add = results.add.map((a) => a.rowId);
+    const update = results.update.map((u) => u.rowId);
+    const remove = results.remove.map((r) => r.rowId);
+    if (this.lastDelta === null) {
+      this.lastDelta = { add, update, remove };
+    } else {
+      // Multiple transactions before a pipeline pass consumes them —
+      // union rather than overwrite (mirrors the Stage A dirty-Set
+      // union above).
+      this.lastDelta.add.push(...add);
+      this.lastDelta.update.push(...update);
+      this.lastDelta.remove.push(...remove);
     }
   }
 
@@ -245,14 +365,15 @@ export class CalcProgramStore implements CalcValueSource {
   capturePrevForUpdates(store: RowStore, updates: unknown[]): void {
     if (!this.hasProgram()) return;
     const anyUsesPrev = this.program!.columns.some((c) => c.usesPrev);
-    if (!anyUsesPrev) return;
+    const anyAggCol = this.program!.columns.some((c) => c.prePass.length > 0);
+    if (!anyUsesPrev && !anyAggCol) return;
     for (const newRow of updates) {
       let rowId: string;
       try { rowId = store.getRowId(newRow as never); } catch { continue; }
-      if (this.tickPrevRows.has(rowId)) continue; // first capture wins
       const oldRow = store.getById(rowId);
       if (oldRow === undefined) continue;
-      this.tickPrevRows.set(rowId, oldRow);
+      if (anyUsesPrev && !this.tickPrevRows.has(rowId)) this.tickPrevRows.set(rowId, oldRow); // first capture wins
+      if (anyAggCol && !this.tickPrevRowsB.has(rowId)) this.tickPrevRowsB.set(rowId, oldRow); // first capture wins
     }
   }
 
@@ -261,7 +382,431 @@ export class CalcProgramStore implements CalcValueSource {
     this.values.clear();
     this.tickPrevRows.clear();
     this.preRecomputeSnapshot = undefined;
+    this.pipelineCause = 'full';
+    this.lastDelta = null;
+    this.aggStates.clear();
+    this.rowScopeKey.clear();
+    this.parentOfGroup.clear();
+    this.groupSignature = '';
   }
+
+  // ─── Stage B: scope keys ────────────────────────────────────────────
+
+  /** Mirrors `packages/calc/src/scopeKey.ts`'s `scopeKeyOf` — canonical
+   *  cache key per scope kind. `'group'`/`'parent'` fold the CURRENT
+   *  `groupSignature` in (spec §5 risk table: "scopeKey includes the
+   *  group signature") so a regroup's key change alone orphans stale
+   *  entries — we ALSO wholesale-clear on regroup below (belt-and-
+   *  suspenders, see `ensureStageB`). `'parent'` at the root level
+   *  resolves to the SAME key as `'visible'` — a root group's parent
+   *  instance IS the visible/all-of-view instance (spec: "root groups'
+   *  parent = the visible set"). */
+  private scopeKeyFor(kind: 'all' | 'visible' | 'group', groupKey?: string): string {
+    switch (kind) {
+      case 'all': return 'all';
+      case 'visible': return 'visible';
+      case 'group': return `group:${this.groupSignature}|${groupKey ?? ''}`;
+    }
+  }
+
+  private entryFor(fn: string, colId: string, scopeKey: string): AggStateEntry {
+    const cacheKey = `${fn}|${colId}|${scopeKey}`;
+    let entry = this.aggStates.get(cacheKey);
+    if (entry === undefined) {
+      const factory = this.factories.get(fn);
+      if (factory === undefined) {
+        throw new Error(`[cgrid] Stage B: unresolved aggregate function '${fn}' (colId '${colId}')`);
+      }
+      const impl = factory();
+      entry = { state: impl.init(), impl, dataVersion: 0, finalized: null };
+      this.aggStates.set(cacheKey, entry);
+    }
+    return entry;
+  }
+
+  /** Cycle 21d / Task 12 — CalcPass Stage B. No-op unless a program is
+   *  installed AND at least one column has `prePass.length > 0`.
+   *
+   *  **Scope resolution** (spec §3, cross-task contract with Task 2's
+   *  transform output):
+   *   - `'all'` → every store row (`store.rows()`), regardless of
+   *     filter/group state.
+   *   - `'visible'` → `postFilterIds` — UNLESS grouping is active
+   *     (`!groupOutput.bypassed`), in which case it's PROMOTED to
+   *     `'group'` (spec Q4): a row's "visible" scalar becomes ITS
+   *     group's scalar when grouping partitions the view. Implemented
+   *     as a scope-kind rewrite before key resolution, documented here.
+   *   - `'group'` → one instance per group node, membership from the
+   *     `GroupPassOutput` tree walk (mirrors `AggPass.applyGroups`'
+   *     bottom-up descendant materialisation).
+   *   - `'parent'` → the parent group's instance; a ROOT group's parent
+   *     is the `'visible'` (post-filter) instance — PCT_OF_PARENT at
+   *     root equals PCT_OF_TOTAL-of-visible.
+   *
+   *  **Full vs delta.** Every scope instance is rebuilt from scratch
+   *  (`impl = factory()`, stream `addRow` per member, `finalize`) when
+   *  `pipelineCause !== 'delta'` OR the group signature changed since
+   *  the last pass (a regroup changes MEMBERSHIP, not just which cache
+   *  key addresses a group, so it forces a full rebuild regardless of
+   *  the transaction cause). Otherwise (`pipelineCause === 'delta'`,
+   *  same group signature) cached entries are reused and only the scopes
+   *  touched by the transaction (`onTransaction`'s recorded rowIds) are
+   *  fed `addRow`/`removeRow`/`updateRow` — the cache hit for every
+   *  other scope instance.
+   *
+   *  **FIRST/LAST** (assembler addition — NOT a registry impl; the
+   *  registry has no entry for them). Computed directly as a first/last
+   *  NON-NULL scan over the scope's member rows in scope iteration order
+   *  (store insertion for `'all'`, post-filter order for `'visible'`,
+   *  group-bucket order for `'group'`/`'parent'`) — no delta state,
+   *  O(scope) recompute on every touch (full rebuild OR delta touch).
+   *
+   *  **Per-row eval.** For every row the group tree / postFilterIds
+   *  addresses, `aggSlots[spec.slot] = ` the row's resolved scope
+   *  instance's finalized scalar, then `values[colId][rowId] =
+   *  interp(ast, row, aggSlots, null)` (try/catch → null, matching Stage
+   *  A; Stage B columns don't carry PREV — `usesPrev` columns are
+   *  row-local per the compiler, Stage A's concern). Consumes
+   *  `pipelineCause` + `lastDelta`, resetting to `'full'`/`null` at the
+   *  end — tick-scoped consumption mirroring Stage A's dirty-Set clear. */
+  ensureStageB(
+    store: RowStore,
+    groupOutput: GroupPassOutput,
+    postFilterIds: readonly string[],
+    fieldOf: (colId: string) => string | undefined,
+  ): void {
+    if (!this.hasProgram()) return;
+    const aggCols = this.program!.columns.filter((c) => c.prePass.length > 0);
+    if (aggCols.length === 0) return;
+
+    const grouped = !groupOutput.bypassed;
+    const newSignature = grouped ? groupSignatureOf(groupOutput) : '';
+    const regrouped = newSignature !== this.groupSignature;
+    this.groupSignature = newSignature;
+    const cause: 'delta' | 'full' = (this.pipelineCause === 'delta' && !regrouped) ? 'delta' : 'full';
+    const delta = this.lastDelta;
+    this.pipelineCause = 'full';
+    this.lastDelta = null;
+
+    const fieldReader = (colId: string): ((rowId: string) => unknown) => {
+      const dataField = fieldOf(colId);
+      if (dataField !== undefined) {
+        return (rowId) => {
+          const row = store.getById(rowId);
+          return row === undefined ? undefined : (row as Record<string, unknown>)[dataField];
+        };
+      }
+      // The aggregate source column is itself a row-local calc column —
+      // Stage A already ran earlier in this pass, so `valueAt` is safe.
+      return (rowId) => this.valueAt(rowId, colId);
+    };
+
+    interface ResolvedSpec {
+      slot: number; fn: string; colId: string; kind: 'all' | 'visible' | 'group' | 'parent';
+      read: (rowId: string) => unknown;
+    }
+    const specsByCol = new Map<string, ResolvedSpec[]>();
+    const uniqueSpecs = new Map<string, { fn: string; colId: string; read: (rowId: string) => unknown }>();
+    for (const col of aggCols) {
+      const specs: ResolvedSpec[] = [];
+      for (const spec of col.prePass) {
+        let kind = spec.scope.kind as 'all' | 'visible' | 'group' | 'parent';
+        if (kind === 'visible' && grouped) kind = 'group'; // spec Q4 promotion
+        const read = fieldReader(spec.colId);
+        specs.push({ slot: spec.slot, fn: spec.fn, colId: spec.colId, kind, read });
+        uniqueSpecs.set(`${spec.fn}|${spec.colId}`, { fn: spec.fn, colId: spec.colId, read });
+      }
+      specsByCol.set(col.colId, specs);
+    }
+
+    // ── group membership walk (mirrors AggPass.applyGroups) ──
+    const groupMemberIds = new Map<string, string[]>();
+    if (grouped) {
+      if (cause === 'full') {
+        this.rowScopeKey.clear();
+        this.parentOfGroup.clear();
+      }
+      const collectDescendantIds = (node: GroupNode): string[] => {
+        if (node.childGroups.length === 0) {
+          const idxs = node.childIndices;
+          const out: string[] = new Array(idxs.length);
+          for (let i = 0; i < idxs.length; i++) out[i] = postFilterIds[idxs[i]!]!;
+          for (const id of out) this.rowScopeKey.set(id, node.key);
+          groupMemberIds.set(node.key, out);
+          return out;
+        }
+        const out: string[] = [];
+        for (const child of node.childGroups) {
+          this.parentOfGroup.set(child.key, node.key === '' ? '' : node.key);
+          const childIds = collectDescendantIds(child);
+          for (const id of childIds) out.push(id);
+        }
+        groupMemberIds.set(node.key, out);
+        return out;
+      };
+      for (const root of groupOutput.roots) {
+        this.parentOfGroup.set(root.key, ''); // root's parent = visible/all instance
+        collectDescendantIds(root);
+      }
+    }
+
+    // ── scope-instance compute ──
+    const rebuildScope = (fn: string, colId: string, read: (rowId: string) => unknown, scopeKey: string, memberIds: readonly string[]): void => {
+      const entry = this.entryFor(fn, colId, scopeKey);
+      const firstLast = isFirstLast(fn);
+      entry.state = entry.impl.init();
+      for (const id of memberIds) entry.state = entry.impl.addRow(entry.state, read(id));
+      entry.dataVersion += 1;
+      entry.finalized = firstLast !== null ? firstLastScan(firstLast, memberIds, read) : entry.impl.finalize(entry.state);
+    };
+
+    if (cause === 'full') {
+      this.aggStates.clear();
+      const allIds: string[] = [];
+      for (const row of store.rows()) allIds.push(store.getRowId(row));
+      for (const { fn, colId, read } of uniqueSpecs.values()) {
+        rebuildScope(fn, colId, read, this.scopeKeyFor('all'), allIds);
+        rebuildScope(fn, colId, read, this.scopeKeyFor('visible'), postFilterIds);
+        if (grouped) {
+          for (const [groupKey, memberIds] of groupMemberIds) {
+            rebuildScope(fn, colId, read, this.scopeKeyFor('group', groupKey), memberIds);
+          }
+        }
+      }
+    } else {
+      const groupColIds = grouped ? groupColIdsOf(groupOutput) : [];
+      this.applyDeltaToScopes(uniqueSpecs, delta, grouped, groupColIds, fieldOf);
+    }
+
+    // ── per-row eval ──
+    const interp = this.interp!;
+    const resolveScopeKey = (rowId: string, kind: 'all' | 'visible' | 'group' | 'parent'): string => {
+      if (kind === 'all') return this.scopeKeyFor('all');
+      if (kind === 'visible') return this.scopeKeyFor('visible');
+      const gk = grouped ? this.rowScopeKey.get(rowId) : undefined;
+      if (kind === 'group') {
+        return gk !== undefined ? this.scopeKeyFor('group', gk) : this.scopeKeyFor('visible');
+      }
+      // 'parent'
+      const parentKey = gk !== undefined ? this.parentOfGroup.get(gk) : undefined;
+      return parentKey !== undefined && parentKey !== ''
+        ? this.scopeKeyFor('group', parentKey)
+        : this.scopeKeyFor('visible');
+    };
+
+    const evalIds: string[] = grouped ? Array.from(this.rowScopeKey.keys()) : postFilterIds.slice();
+    for (const col of aggCols) {
+      const specs = specsByCol.get(col.colId)!;
+      let colMap = this.values.get(col.colId);
+      if (!colMap) {
+        colMap = new Map();
+        this.values.set(col.colId, colMap);
+      }
+      for (const rowId of evalIds) {
+        const row = store.getById(rowId);
+        if (row === undefined) continue;
+        const aggSlots: Array<number | null> = new Array(col.prePass.length).fill(null);
+        for (const spec of specs) {
+          const scopeKey = resolveScopeKey(rowId, spec.kind);
+          const entry = this.aggStates.get(`${spec.fn}|${spec.colId}|${scopeKey}`);
+          aggSlots[spec.slot] = entry?.finalized ?? null;
+        }
+        let result: unknown;
+        try {
+          result = interp(col.ast, row as Record<string, unknown>, aggSlots, null);
+        } catch {
+          result = null;
+        }
+        colMap.set(rowId, result);
+      }
+    }
+  }
+
+  /** Delta path — reuse cached scope entries; feed only the transaction's
+   *  touched rowIds to their affected scope instances (`'all'`,
+   *  `'visible'`, and the row's group chain — `'parent'`-scope specs
+   *  read a GROUP entry at eval time, so touching the group chain covers
+   *  them too). Adds use post-transaction membership (current
+   *  `rowScopeKey`, populated by the group walk in `ensureStageB` — a
+   *  same-shape delta transaction doesn't change which bucket a NEW row
+   *  falls into vs the tree GroupPass already built this pass). Removes
+   *  use the row's LAST-KNOWN `rowScopeKey` entry (still present — the
+   *  row was deleted from the store, but membership bookkeeping is
+   *  evicted here, after use). Updates compare the row's OLD group key
+   *  (recomputed from `tickPrevRowsB`'s pre-apply snapshot by mirroring
+   *  GroupPass's own bucket-key construction, `groupKeyOf`) against the
+   *  CURRENT `rowScopeKey` (the new key, already reflecting the updated
+   *  row since GroupPass re-ran before Stage B this pass) to detect a
+   *  cross-group move — different key: `removeRow` from every old-chain
+   *  scope (using the OLD row's aggregate-source value) + `addRow` to
+   *  every new-chain scope (NEW value); same key: `updateRow(old, new)`
+   *  on the unchanged chain. FIRST/LAST entries are O(scope) rescanned
+   *  on every touch this pass (documented cost — no delta state kept for
+   *  them, matching the assembler addition's contract). */
+  private applyDeltaToScopes(
+    uniqueSpecs: Map<string, { fn: string; colId: string; read: (rowId: string) => unknown }>,
+    delta: { add: string[]; update: string[]; remove: string[] } | null,
+    grouped: boolean,
+    groupColIds: readonly string[],
+    fieldOf: (colId: string) => string | undefined,
+  ): void {
+    if (delta === null) return;
+
+    const chainFrom = (leafGroupKey: string | undefined): string[] => {
+      const chain = [this.scopeKeyFor('all'), this.scopeKeyFor('visible')];
+      if (grouped) {
+        let gk = leafGroupKey;
+        while (gk !== undefined && gk !== '') {
+          chain.push(this.scopeKeyFor('group', gk));
+          gk = this.parentOfGroup.get(gk);
+        }
+      }
+      return chain;
+    };
+
+    /** Mirror GroupPass's bucket-key construction (`src/worker/passes/
+     *  groupPass.ts:383-390`): `${colId}:${keyPart}` per level, joined
+     *  `'::'`, over the OLD (pre-apply) row snapshot's field values. */
+    const oldGroupKeyFor = (oldRow: unknown): string | undefined => {
+      if (!grouped || groupColIds.length === 0) return undefined;
+      let key = '';
+      for (const colId of groupColIds) {
+        const field = fieldOf(colId);
+        const rawValue = field !== undefined ? (oldRow as Record<string, unknown>)[field] : undefined;
+        const keyPart = rawValue == null ? '' : '' + rawValue;
+        key = key === '' ? `${colId}:${keyPart}` : `${key}::${colId}:${keyPart}`;
+      }
+      return key;
+    };
+
+    const touched = new Set<string>(); // `${fn}|${colId}|${scopeKey}`
+    const bumpTouched = (fn: string, colId: string, scopeKey: string): AggStateEntry => {
+      const entry = this.entryFor(fn, colId, scopeKey);
+      entry.dataVersion += 1;
+      touched.add(`${fn}|${colId}|${scopeKey}`);
+      return entry;
+    };
+
+    for (const rowId of delta.add) {
+      const chain = chainFrom(this.rowScopeKey.get(rowId));
+      for (const { fn, colId, read } of uniqueSpecs.values()) {
+        const value = read(rowId);
+        for (const scopeKey of chain) {
+          const entry = bumpTouched(fn, colId, scopeKey);
+          entry.state = entry.impl.addRow(entry.state, value);
+        }
+      }
+    }
+
+    for (const rowId of delta.remove) {
+      const chain = chainFrom(this.rowScopeKey.get(rowId));
+      const oldRow = this.tickPrevRowsB.get(rowId);
+      for (const { fn, colId, read } of uniqueSpecs.values()) {
+        const field = fieldOf(colId);
+        const value = oldRow !== undefined
+          ? (field !== undefined ? (oldRow as Record<string, unknown>)[field] : read(rowId))
+          : read(rowId);
+        for (const scopeKey of chain) {
+          const entry = bumpTouched(fn, colId, scopeKey);
+          entry.state = entry.impl.removeRow(entry.state, value);
+        }
+      }
+      this.rowScopeKey.delete(rowId);
+    }
+
+    for (const rowId of delta.update) {
+      const newGroupKey = this.rowScopeKey.get(rowId);
+      const oldRow = this.tickPrevRowsB.get(rowId);
+      const oldGroupKey = oldRow !== undefined ? oldGroupKeyFor(oldRow) : newGroupKey;
+      const sameGroup = oldGroupKey === newGroupKey;
+
+      for (const { fn, colId, read } of uniqueSpecs.values()) {
+        const field = fieldOf(colId);
+        const newValue = read(rowId);
+        const oldValue = oldRow !== undefined
+          ? (field !== undefined ? (oldRow as Record<string, unknown>)[field] : newValue)
+          : newValue;
+        if (sameGroup) {
+          const chain = chainFrom(newGroupKey);
+          for (const scopeKey of chain) {
+            const entry = bumpTouched(fn, colId, scopeKey);
+            entry.state = entry.impl.updateRow(entry.state, oldValue, newValue);
+          }
+        } else {
+          const oldChain = chainFrom(oldGroupKey);
+          const newChain = chainFrom(newGroupKey);
+          // 'all'/'visible' are shared by both chains — an in-place
+          // value change there (not a membership change), so use
+          // updateRow; only the GROUP-specific tail differs.
+          const shared = new Set([this.scopeKeyFor('all'), this.scopeKeyFor('visible')]);
+          for (const scopeKey of oldChain) {
+            if (shared.has(scopeKey)) {
+              const entry = bumpTouched(fn, colId, scopeKey);
+              entry.state = entry.impl.updateRow(entry.state, oldValue, newValue);
+            } else {
+              const entry = bumpTouched(fn, colId, scopeKey);
+              entry.state = entry.impl.removeRow(entry.state, oldValue);
+            }
+          }
+          for (const scopeKey of newChain) {
+            if (shared.has(scopeKey)) continue; // already updateRow'd above
+            const entry = bumpTouched(fn, colId, scopeKey);
+            entry.state = entry.impl.addRow(entry.state, newValue);
+          }
+        }
+      }
+    }
+    this.tickPrevRowsB.clear();
+
+    for (const cacheKey of touched) {
+      const entry = this.aggStates.get(cacheKey);
+      if (entry === undefined) continue;
+      const fn = cacheKey.slice(0, cacheKey.indexOf('|'));
+      if (isFirstLast(fn) !== null) continue; // FIRST/LAST re-scanned by the NEXT full pass — no delta state kept
+      entry.finalized = entry.impl.finalize(entry.state);
+    }
+  }
+}
+
+/** Store-level group-model signature folded into every `'group:'`/
+ *  `'parent:'` Stage-B cache key (spec §5 risk table: "scopeKey includes
+ *  the group signature") — mirrors `packages/calc/src/scopeKey.ts`'s
+ *  documented requirement without shipping that module's source. Built
+ *  from the CURRENT tree's per-level `colId`s (root chain down through
+ *  each level's first child — every node at a given depth shares the
+ *  same `colId`, so one root-to-leaf walk is enough) joined `''`, so two
+ *  different `rowGroupCols` orderings/sets produce different signatures
+ *  and a regroup naturally orphans stale cache entries. Empty string for
+ *  a bypassed (or root-less) tree. */
+function groupColIdsOf(groupOutput: GroupPassOutput): string[] {
+  const colIds: string[] = [];
+  let node: GroupNode | undefined = groupOutput.roots[0];
+  while (node !== undefined) {
+    colIds.push(node.colId);
+    node = node.childGroups[0];
+  }
+  return colIds;
+}
+
+function groupSignatureOf(groupOutput: GroupPassOutput): string {
+  return groupColIdsOf(groupOutput).join('');
+}
+
+/** FIRST/LAST assembler addition — first/last NON-NULL value of
+ *  `read(rowId)` over `memberIds` in the given scope's iteration order
+ *  (store insertion for `'all'`, post-filter order for `'visible'`,
+ *  group-bucket order for `'group'`/`'parent'` — the same order the
+ *  membership arrays above are built in). O(scope) scan; no delta
+ *  state — recomputed on every touch (full rebuild or delta bump). */
+function firstLastScan(which: 'first' | 'last', memberIds: readonly string[], read: (rowId: string) => unknown): number | null {
+  const ids = which === 'last' ? [...memberIds].reverse() : memberIds;
+  for (const id of ids) {
+    const v = read(id);
+    if (v !== null && v !== undefined) {
+      return typeof v === 'number' ? v : (Number.isFinite(Number(v)) ? Number(v) : null);
+    }
+  }
+  return null;
 }
 
 function rebuild(label: string, source: string): unknown {

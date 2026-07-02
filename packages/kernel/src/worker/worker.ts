@@ -155,6 +155,16 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     } else {
       state.pivotOut = null;
     }
+    // Cycle 21d / Task 12 — CalcPass Stage B: scoped aggregate scalars +
+    // per-row aggregate-dependent values. Runs AFTER grouping (scopes are
+    // defined by the tree) and BEFORE sort (sort sees fresh Stage-B
+    // values). FilterPass ran earlier in this pass, so filtering on a
+    // Stage-B column reads the PREVIOUS pass's values — the documented
+    // one-frame settle (spec §2.3); no reentrant recompute.
+    state.calc.ensureStageB(
+      state.store, state.groupOutput, ids,
+      (colId) => state!.columns.find((c) => c.colId === colId)?.field,
+    );
     // Cycle 15 / Task 11 — group-aware sort. When grouping is active,
     // sort happens inside the group tree (within-bucket child indices +
     // per-level group ordering), NOT across the flat post-filter array.
