@@ -627,3 +627,7 @@ Remaining Cycle 21 work runs in SMALL SESSIONS per docs/superpowers/plans/2026-0
 21f Task 14: complete (commits a5e4eb0..92cb067, review pending)
   renderer-blotter + renderer-charts showcase pages via renderersWire; 12 E2E probes (bridge handle, resolved names, canvas, rows, tick controls); deleted stale showcase .js emit files shadowing .ts; colDef threading fix (omit type:composite); showcase E2E 142 passed + 1 skipped (143 total); renderers 245/245; kernel/expression/format/rules/calc diff EMPTY
 21f-S8: COMPLETE. showcase 131+12 E2E green. NEXT UNIT: 21f-S9 (Task 15 README + final gates + whole-branch review).
+21f Task 15: complete (commit 75638ab, README + gates — recovered from interrupted S9 session, gates re-verified by coordinator)
+21f S9 recovery: interrupted session left green in-flight work uncommitted — committed as 03c38bf (coordinator-verified 246/246 + typecheck before commit)
+  Bridge rowData fix: kernel threads a visible-column snapshot, so params field-mapping missed non-visible fields — bridge now keeps a rowsChanged-freshened rowId→raw-row mirror (250ms-throttled reseed on miss) and swaps the full row into p.rowData; StructureIconStrip gains flagsField; + renderer-catalog showcase page (1 row × 51 renderer columns) + E2E
+21f Task 15 gates RE-VERIFIED at 03c38bf: typecheck 21/21, root lint clean, build 13/13, renderers 246/246, showcase E2E 147 passed + 1 known skip (baseline 131 preserved; catalog spec +5), git diff main...HEAD over kernel/expression/format/rules/calc EMPTY, NUL scan clean
