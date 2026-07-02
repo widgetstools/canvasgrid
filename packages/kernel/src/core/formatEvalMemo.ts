@@ -43,8 +43,10 @@ let generation = 0;
 
 /** Build the eval ctx, closing resolveRuleRef over the rule slot + the
  *  current cell (spec §5.5). The accessor is only attached when both an
- *  engine and a cell identity exist. */
-function buildCtx(p: { value: unknown; data: unknown; colId: string; rowId?: string; themeKind?: 'light' | 'dark' }): FormatEvalCtxShape {
+ *  engine and a cell identity exist. Exported (Cycle 21e final-review
+ *  fix) so the composite painter and the clipboard/export composite
+ *  path build the same rule-aware ctx for `resolveFragments`. */
+export function buildFormatEvalCtx(p: { value: unknown; data: unknown; colId: string; rowId?: string; themeKind?: 'light' | 'dark' }): FormatEvalCtxShape {
   const engine = getRuleEngine();
   if (engine === null || p.rowId === undefined) {
     return { value: p.value, row: p.data, colId: p.colId };
@@ -81,7 +83,7 @@ export function evalFormatProgram(
     const key = pureTier0 ? base : `${generation}\0${base}`;
     const hit = memo.get(program);
     if (hit !== undefined && hit.key === key) return hit.result;
-    const ctx = buildCtx(p);
+    const ctx = buildFormatEvalCtx(p);
     const result: FormatEvalResult = {
       text: program.formatText(ctx),
       style: program.resolveStyle(ctx),
@@ -90,7 +92,7 @@ export function evalFormatProgram(
     memo.set(program, { key, result });
     return result;
   }
-  const ctx = buildCtx(p);
+  const ctx = buildFormatEvalCtx(p);
   return {
     text: program.formatText(ctx),
     style: program.resolveStyle(ctx),

@@ -21,6 +21,7 @@ import type { CellPainter, CellPaintConfig } from './registry';
 import { paintBackground } from './registry';
 import type { CachedContext2D } from '../gc';
 import { resolveIcon } from '../../icons/registry';
+import { buildFormatEvalCtx } from '../../core/formatEvalMemo';
 
 /** Structural mirror of format's `FragmentStyle` — kernel never imports
  *  @cgrid/format at runtime, so the shape is re-declared here. */
@@ -154,11 +155,17 @@ export const compositeCell: CellPainter = {
 
     paintBackground(gc, p);
 
-    const fragments = program.resolveFragments({
+    // Cycle 21e / final-review fix — build the ctx through the shared
+    // helper so `resolveRuleRef` (rule:<ruleId> fragment colors) reaches
+    // resolveFragments when a rule engine is registered. With no engine
+    // or no rowId this degrades to the plain 21c ctx shape.
+    const fragments = program.resolveFragments(buildFormatEvalCtx({
       value: p.value,
-      row: p.rowData ?? {},
+      data: p.rowData ?? {},
       colId: p.colId ?? '',
-    }) as Frag[] | null;
+      rowId: p.rowId,
+      themeKind: p.themeKind,
+    })) as Frag[] | null;
     if (!fragments || fragments.length === 0) return;
 
     const { x, y, w, h } = p.bounds;

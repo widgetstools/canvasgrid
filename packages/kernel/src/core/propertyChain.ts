@@ -567,12 +567,18 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
     target.compositeOverflow = colDef.compositeOverflow;
     target.rowData = ctx.rowData;
     target.colId = colDef.colId;
+    // Cycle 21e / final-review fix — cell identity + theme so the
+    // composite painter can attach resolveRuleRef to its fragments ctx.
+    target.rowId = ctx.rowId;
+    target.themeKind = ctx.themeKind;
   } else {
     target.compositeProgram = undefined;
     target.compositeAlign = undefined;
     target.compositeOverflow = undefined;
     target.rowData = undefined;
     target.colId = undefined;
+    target.rowId = undefined;
+    target.themeKind = undefined;
   }
 
   // Theme defaults. Headers paint with the chrome font (Inter by

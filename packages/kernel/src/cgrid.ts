@@ -142,6 +142,7 @@ import {
   type FormatCompiler,
 } from './core/formatCompilerSlot';
 import { registerRuleEngine as slotRegisterRuleEngine, type RuleEngineShape } from './core/ruleEngineSlot';
+import { buildFormatEvalCtx } from './core/formatEvalMemo';
 import { resolveThemeKind } from './theming/themeKind';
 import {
   registerIconSet as regIcons,
@@ -4200,7 +4201,16 @@ export class CGrid<TRow = any> {
           const value = rowData[(def.field as string | undefined) ?? colId];
           const program = def._compositeProgram;
           if (program) {
-            const evalCtx = { value, row: rowData, colId };
+            // Cycle 21e / final-review fix — rule-aware ctx so copied
+            // composite fragments carry resolved rule:<ruleId> colors,
+            // matching what the painter shows.
+            const evalCtx = buildFormatEvalCtx({
+              value,
+              data: rowData,
+              colId,
+              rowId: this.stringRowIdAt(rowIndex) ?? undefined,
+              themeKind: this.getThemeKind(),
+            });
             const fragments = program.resolveFragments(evalCtx);
             cells.push({
               text: program.formatText(evalCtx),

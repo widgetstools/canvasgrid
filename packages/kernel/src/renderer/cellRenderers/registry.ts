@@ -188,6 +188,15 @@ export interface CellPaintConfig {
    */
   rowData?: Record<string, unknown>;
   colId?: string;
+  /**
+   * Cycle 21e / final-review fix — cell identity + theme kind so the
+   * composite painter can thread `resolveRuleRef` into
+   * `program.resolveFragments` (rule:<ruleId> fragment colors).
+   * Populated alongside `compositeProgram`; `undefined` everywhere else
+   * (zero cost on the hot path).
+   */
+  rowId?: string;
+  themeKind?: 'light' | 'dark';
 }
 
 export interface CellPainter {
