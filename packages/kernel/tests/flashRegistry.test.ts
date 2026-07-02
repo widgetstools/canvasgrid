@@ -182,4 +182,71 @@ describe('FlashRegistry', () => {
     registry.flash(43, 'price', 1100);
     expect(registry.size()).toBe(0);
   });
+
+  // ── Cycle 21e / Task 13 — per-call overrides ──────────────────────────
+  describe('per-call overrides', () => {
+    it('flash(..., override) captures per-call flashDuration/fadeDuration — tick prunes at the per-call window, not the global one', () => {
+      const { registry } = buildDeps({ flashDuration: 100, fadeDuration: 200 });
+      // Global window would prune at 1000 + 100 + 200 = 1300. Override
+      // window is much longer: 1000 + 5000 + 5000 = 11000.
+      registry.flash(42, 'price', 1000, { flashDuration: 5000, fadeDuration: 5000 });
+      registry.tick(1300);
+      expect(registry.size()).toBe(1);
+      expect(registry.getAlpha(42, 'price', 1300)).toBe(1);
+      registry.tick(11500);
+      expect(registry.size()).toBe(0);
+    });
+
+    it('getAlpha on an entry with mode "pulse" at startedAt + total*0.25 ≈ 1', () => {
+      const { registry } = buildDeps();
+      registry.flash(42, 'price', 1000, { flashDuration: 500, fadeDuration: 1000, mode: 'pulse' });
+      // total = 1500; quarter point = 375.
+      expect(registry.getAlpha(42, 'price', 1000 + 375)).toBeCloseTo(1, 10);
+    });
+
+    it('getAlpha on an entry with mode "glow" mid-window = 1', () => {
+      const { registry } = buildDeps();
+      registry.flash(42, 'price', 1000, { flashDuration: 500, fadeDuration: 1000, mode: 'glow' });
+      // total = 1500; midpoint = 750, within the 60% plateau (900).
+      expect(registry.getAlpha(42, 'price', 1000 + 750)).toBe(1);
+    });
+
+    it('getColor returns the override color for the flashed cell and undefined otherwise', () => {
+      const { registry } = buildDeps();
+      registry.flash(42, 'price', 1000, { color: '#ff0000' });
+      registry.flash(43, 'price', 1000); // no override
+      expect(registry.getColor(42, 'price')).toBe('#ff0000');
+      expect(registry.getColor(43, 'price')).toBeUndefined();
+      expect(registry.getColor(99, 'price')).toBeUndefined(); // not flashing at all
+    });
+
+    it('ingestMask with stringRowIds + getOverride applies the override only to matching bits', () => {
+      const { registry } = buildDeps({ flashDuration: 100, fadeDuration: 200 });
+      const rowIds = new Uint32Array([10, 20]);
+      const colIds = ['a', 'b'];
+      // Bits: (10,a) and (20,b) set → bit 0 and bit 3.
+      const mask = new Uint8Array([0b00001001]);
+      const stringRowIds = ['r10', 'r20'];
+      registry.ingestMask({
+        rowIds, colIds, mask, now: 5000, stringRowIds,
+        getOverride: (sid, colId) => {
+          if (sid === 'r10' && colId === 'a') return { color: '#00ff00', mode: 'pulse' };
+          return undefined;
+        },
+      });
+      expect(registry.getColor(10, 'a')).toBe('#00ff00');
+      expect(registry.getColor(20, 'b')).toBeUndefined();
+    });
+
+    it('ingestMask without getOverride behaves unchanged (default path regression)', () => {
+      const { registry } = buildDeps();
+      const rowIds = new Uint32Array([10, 20, 30]);
+      const colIds = ['a', 'b', 'c'];
+      const mask = new Uint8Array([0x11, 0x01]);
+      registry.ingestMask({ rowIds, colIds, mask, now: 5000 });
+      expect(registry.size()).toBe(3);
+      expect(registry.getAlpha(10, 'a', 5000)).toBe(1);
+      expect(registry.getColor(10, 'a')).toBeUndefined();
+    });
+  });
 });

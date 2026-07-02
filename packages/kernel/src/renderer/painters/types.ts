@@ -9,7 +9,7 @@ import type { StickyAncestor } from '../../worker/protocol';
 export type CellDataLookup = (
   rowIndex: number,
   colId: string,
-) => { value: unknown; valueFormatted: string; flashAlpha?: number } | null;
+) => { value: unknown; valueFormatted: string; flashAlpha?: number; flashColor?: string } | null;
 
 export interface PainterCtx {
   viewport: ViewportState;

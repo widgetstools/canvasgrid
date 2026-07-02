@@ -637,6 +637,12 @@ export class CGrid<TRow = any> {
    *  Drained from each `getViewport` chunk's `flashMask` and queried
    *  by the painter's `cellData` callback to produce `flashAlpha`. */
   private flashRegistry: FlashRegistry;
+  /** Cycle 21e / Task 13 — per-call flashCells overrides awaiting the
+   *  next mask ingest. Keyed `${stringRowId}\0${colId}`; the
+   *  `\0*` colId wildcard covers "all columns" calls. `expiresAt`
+   *  bounds staleness (worker round-trip grace included); swept in the
+   *  flash tick loop + lazily on each flashCells call. */
+  private flashOverrides = new Map<string, import('./core/flashRegistry').FlashOverride & { expiresAt: number }>();
   /** Flash tracker for group-row and footer-row aggregate cells.
    *  Keyed by `"${groupKey}\0${colId}"` → flash start time (ms from
    *  performance.now()). Populated when groupTotals values change
@@ -6436,10 +6442,20 @@ export class CGrid<TRow = any> {
     // `registry.getAlpha(numericRowId, colId, now)` to produce flashAlpha
     // per visible cell.
     if (chunk.flashMask) {
+      // Cycle 21e / Task 13 — join per-call flashCells overrides by the
+      // chunk's string rowIds. Zero-cost when the override map is empty
+      // (the common case): no lookup closure is even passed.
+      const hasOverrides = this.flashOverrides.size > 0;
       this.flashRegistry.ingestMask({
         rowIds: chunk.rowIds,
         colIds: cols,
         mask: chunk.flashMask,
+        stringRowIds: hasOverrides ? chunk.stringRowIds : undefined,
+        getOverride: hasOverrides
+          ? (sid, colId) =>
+              this.flashOverrides.get(`${sid}\0${colId}`)
+                ?? this.flashOverrides.get(`${sid}\0*`)
+          : undefined,
       });
       this.startFlashTickLoop();
     }
@@ -6599,6 +6615,12 @@ export class CGrid<TRow = any> {
         }
         if (this.groupFlashMap.size > 0) this.cgridCanvas.requestRepaint();
       }
+      // Cycle 21e / Task 13 — expire staged flash overrides.
+      if (this.flashOverrides.size > 0) {
+        for (const [k, v] of this.flashOverrides) {
+          if (v.expiresAt <= now) this.flashOverrides.delete(k);
+        }
+      }
       if (this.flashRegistry.size() > 0 || this.groupFlashMap.size > 0) {
         this.flashTickHandle = requestAnimationFrame(tick);
       }
@@ -6618,6 +6640,32 @@ export class CGrid<TRow = any> {
     if (this.reducedMotion) return;
     if (!params.rowIds || params.rowIds.length === 0) return;
     const colIds = params.colIds ?? [];
+    // Cycle 21e / Task 13 — stage per-call overrides for the mask-ingest
+    // join. Zero entries (and zero cost) when no override field is set.
+    if (params.color !== undefined || params.mode !== undefined
+      || params.flashDuration !== undefined || params.fadeDuration !== undefined) {
+      const now = performance.now();
+      // Lazy sweep so abandoned overrides can't accumulate.
+      for (const [k, v] of this.flashOverrides) {
+        if (v.expiresAt <= now) this.flashOverrides.delete(k);
+      }
+      const flashDur = params.flashDuration ?? this.options.cellFlashDuration ?? 500;
+      const fadeDur = params.fadeDuration ?? this.options.cellFadeDuration ?? 1000;
+      const override = {
+        color: params.color,
+        mode: params.mode,
+        flashDuration: params.flashDuration,
+        fadeDuration: params.fadeDuration,
+        // Grace for the worker round-trip + next chunk arrival.
+        expiresAt: now + flashDur + fadeDur + 2000,
+      };
+      const colKeys = colIds.length > 0 ? colIds : ['*'];
+      for (const rowId of params.rowIds) {
+        for (const c of colKeys) {
+          this.flashOverrides.set(`${rowId}\0${c}`, override);
+        }
+      }
+    }
     this.workerCoord.flashCells(params.rowIds, colIds)
       .then(() => {
         if (this.destroyed) return;
@@ -6629,7 +6677,7 @@ export class CGrid<TRow = any> {
       .catch((err) => { if (!this.destroyed) console.error('[cgrid] flashCells:', err); });
   }
 
-  private cellAt(rowIndex: number, colId: string): { value: unknown; valueFormatted: string; flashAlpha?: number } | null {
+  private cellAt(rowIndex: number, colId: string): { value: unknown; valueFormatted: string; flashAlpha?: number; flashColor?: string } | null {
     if (!this.chunk) return null;
     const localIndex = rowIndex - this.chunk.rowStart;
     if (localIndex < 0 || localIndex >= this.chunk.rowCount) return null;
@@ -6640,6 +6688,11 @@ export class CGrid<TRow = any> {
     const numericRowId = this.chunk.rowIds[localIndex]!;
     const flashAlpha = this.flashRegistry.getAlpha(numericRowId, colId, performance.now());
     const flash = flashAlpha > 0 ? flashAlpha : undefined;
+    // Cycle 21e / Task 13 — per-call color override rides alongside the
+    // alpha; undefined keeps the theme flashFromColor blend.
+    const flashColor = flash !== undefined
+      ? this.flashRegistry.getColor(numericRowId, colId)
+      : undefined;
     // Cycle 15 / Task 4 + Task 5 — auto-group column reads per-row group
     // context (rowKind / depth / value / childCount / isExpanded) from
     // the chunk's parallel arrays. Returns a typed `GroupCellValue`
@@ -6653,8 +6706,8 @@ export class CGrid<TRow = any> {
     // the renderer handles the own-depth filter.
     if (isAutoGroupColumnId(colId)) {
       const payload = this.groupCellContextAt(rowIndex);
-      if (payload === null) return { value: '', valueFormatted: '', flashAlpha: flash };
-      return { value: payload, valueFormatted: payload.valueFormatted, flashAlpha: flash };
+      if (payload === null) return { value: '', valueFormatted: '', flashAlpha: flash, flashColor };
+      return { value: payload, valueFormatted: payload.valueFormatted, flashAlpha: flash, flashColor };
     }
     // Cycle 18 / Task 3 — pivot result columns read their cross-tab
     // aggregate from `chunk.pivotValues`, addressed by the row's group key
@@ -6667,7 +6720,7 @@ export class CGrid<TRow = any> {
       const pivotValues = this.chunk.pivotValues;
       const kind = this.chunk.rowKinds[localIndex] ?? 0;
       if (!spec || !pivotValues || kind === 0) {
-        return { value: '', valueFormatted: '', flashAlpha: flash };
+        return { value: '', valueFormatted: '', flashAlpha: flash, flashColor };
       }
       const groupKey = this.chunk.groupKey?.[localIndex] ?? '';
       // Cycle 18 / Task 8e — row totals carry `pivotPath: []`; the join
@@ -6678,11 +6731,11 @@ export class CGrid<TRow = any> {
         encodePivotValueKey(groupKey, spec.pivotPath.join(PIVOT_PATH_SEP), spec.valueColId),
       );
       if (raw === undefined || raw === null) {
-        return { value: '', valueFormatted: '', flashAlpha: flash };
+        return { value: '', valueFormatted: '', flashAlpha: flash, flashColor };
       }
       const valueFormatted = typeof raw === 'number' ? this.formatNumber(colId, raw) : String(raw);
       const gFlash = this.groupFlashAlpha(groupKey, colId);
-      return { value: raw, valueFormatted, flashAlpha: gFlash ?? flash };
+      return { value: raw, valueFormatted, flashAlpha: gFlash ?? flash, flashColor };
     }
     // Cycle 15 / Task 12 — footer rows (rowKind === 3) source their
     // per-column values from the per-group totals map (or, for the
@@ -6696,9 +6749,9 @@ export class CGrid<TRow = any> {
     if ((this.chunk.rowKinds[localIndex] ?? 0) === 3) {
       const groupKey = this.chunk.groupKey?.[localIndex] ?? '';
       const entry = this.totalsCellLookup(colId, groupKey);
-      if (entry === null) return { value: '', valueFormatted: '', flashAlpha: flash };
+      if (entry === null) return { value: '', valueFormatted: '', flashAlpha: flash, flashColor };
       const gFlash = this.groupFlashAlpha(groupKey, colId);
-      return { value: entry.value, valueFormatted: entry.valueFormatted, flashAlpha: gFlash ?? flash };
+      return { value: entry.value, valueFormatted: entry.valueFormatted, flashAlpha: gFlash ?? flash, flashColor };
     }
     // Group rows (rowKind === 1) show per-group aggregate values from
     // `chunk.groupTotals` when available — same source as the per-group
@@ -6714,24 +6767,24 @@ export class CGrid<TRow = any> {
         const entry = this.totalsCellLookup(colId, groupKey);
         if (entry !== null) {
           const gFlash = this.groupFlashAlpha(groupKey, colId);
-          return { value: entry.value, valueFormatted: entry.valueFormatted, flashAlpha: gFlash ?? flash };
+          return { value: entry.value, valueFormatted: entry.valueFormatted, flashAlpha: gFlash ?? flash, flashColor };
         }
       }
-      return { value: '', valueFormatted: '', flashAlpha: flash };
+      return { value: '', valueFormatted: '', flashAlpha: flash, flashColor };
     }
     const numeric = this.chunk.numericCols[colId];
     if (numeric) {
       const value = numeric[localIndex]!;
-      return { value, valueFormatted: this.formatNumber(colId, value), flashAlpha: flash };
+      return { value, valueFormatted: this.formatNumber(colId, value), flashAlpha: flash, flashColor };
     }
     const text = this.chunk.textCols[colId];
     if (text) {
       let decoded = this.decodedTextCols.get(colId);
       if (!decoded) { decoded = decodeText(text.offsets, text.bytes); this.decodedTextCols.set(colId, decoded); }
       const value = decoded[localIndex] ?? '';
-      return { value, valueFormatted: value, flashAlpha: flash };
+      return { value, valueFormatted: value, flashAlpha: flash, flashColor };
     }
-    return { value: '', valueFormatted: '', flashAlpha: flash };
+    return { value: '', valueFormatted: '', flashAlpha: flash, flashColor };
   }
 
   private rowIdAt(rowIndex: number): string | null {

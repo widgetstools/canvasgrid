@@ -520,6 +520,7 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
       let value: unknown = '';
       let valueFormatted = '';
       let flashAlpha: number | undefined;
+      let flashColor: string | undefined;
       let sortDirection: 'asc' | 'desc' | undefined;
       let sortIndex: number | undefined;
       let sortTotal: number | undefined;
@@ -552,6 +553,7 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
         value = cell?.value ?? '';
         valueFormatted = cell?.valueFormatted ?? '';
         flashAlpha = cell?.flashAlpha;
+        flashColor = cell?.flashColor;
       } else if (row.subgrid.isTotals) {
         // Cycle 14 / Task 1 — read the totals value through the
         // subgrid's `getCell`, which proxies to the current chunk's
@@ -660,6 +662,11 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
                 : 'partial')
           : undefined,
       });
+
+      // Cycle 21e / Task 13 — per-call flash color override. applyCellProps
+      // just reset flashFromColor to the theme value, so this is
+      // self-clearing across the reused config object.
+      if (flashColor !== undefined) config.flashFromColor = flashColor;
 
       // Cycle 7 / Task 7 — quick-filter cell highlight. Tints any data
       // cell whose RENDERED text contains an active search term with the
