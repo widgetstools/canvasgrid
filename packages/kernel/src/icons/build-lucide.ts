@@ -73,13 +73,20 @@ function extractPaths(svg: string): string[] {
     }
   }
 
-  // <line x1="..." x2="..." y1="..." y2="..."> → M x1,y1 L x2,y2
-  // NOTE: lucide-static v0.469.0 emits attributes as x1 x2 y1 y2 (not x1 y1 x2 y2).
-  // Capture groups: m[1]=x1, m[2]=x2, m[3]=y1, m[4]=y2.
-  const reLine = /<line[^>]*\sx1="([^"]+)"[^>]*\sx2="([^"]+)"[^>]*\sy1="([^"]+)"[^>]*\sy2="([^"]+)"/g;
-  while ((m = reLine.exec(svg)) !== null) {
-    paths.push(`M${m[1] as string},${m[3] as string} L${m[2] as string},${m[4] as string}`);
+  // <line> extraction — supports both x1 x2 y1 y2 (140 files in lucide-static
+  // v0.469.0) and x1 y1 x2 y2 (heart-off.svg specifically). Two regexes cover
+  // all observed orderings; deduplicate emitted paths in case a future SVG
+  // file matches both.
+  const reLineXXYY = /<line[^>]*\sx1="([^"]+)"[^>]*\sx2="([^"]+)"[^>]*\sy1="([^"]+)"[^>]*\sy2="([^"]+)"/g;
+  const reLineXYXY = /<line[^>]*\sx1="([^"]+)"[^>]*\sy1="([^"]+)"[^>]*\sx2="([^"]+)"[^>]*\sy2="([^"]+)"/g;
+  const emittedLines = new Set<string>();
+  while ((m = reLineXXYY.exec(svg)) !== null) {
+    emittedLines.add(`M${m[1] as string},${m[3] as string} L${m[2] as string},${m[4] as string}`);
   }
+  while ((m = reLineXYXY.exec(svg)) !== null) {
+    emittedLines.add(`M${m[1] as string},${m[2] as string} L${m[3] as string},${m[4] as string}`);
+  }
+  for (const path of emittedLines) paths.push(path);
 
   return paths;
 }

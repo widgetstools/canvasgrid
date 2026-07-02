@@ -18,6 +18,14 @@ describe('Lucide bundle smoke test', () => {
     expect(lucideBundle['trending-down']).toBeDefined();
   });
 
+  it('heart-off (attribute order regression) contains the diagonal slash line', () => {
+    // heart-off.svg uses x1 y1 x2 y2 order (unlike other line-using files).
+    // Verify the diagonal slash M2,2 L22,22 is present so heart-off is
+    // visually distinct from heart.
+    expect(lucideBundle['heart-off']).toBeDefined();
+    expect(lucideBundle['heart-off']).toContain('M2,2 L22,22');
+  });
+
   it('every entry is a non-empty string', () => {
     for (const [, path] of Object.entries(lucideBundle)) {
       expect(typeof path).toBe('string');
