@@ -472,14 +472,26 @@ export class QuickFilterPass<TRow = any> {
  * `string[]`). Null / undefined values are dropped from the result —
  * "(blank)" handling is a follow-up cycle once the catalog ships
  * `excelMode` parity.
+ *
+ * Cycle 21d / Task 13 review — calc value source seam. A calc column is
+ * fieldless, so before this it always hit the `!col.field` early-return
+ * and answered `[]`. Mirrors FilterPass/SortPass/GroupPass/ViewportSlicer:
+ * `setCalcSource` installs a `CalcValueSource`; `getValues` reads a calc
+ * column's per-row value through `valueAt` instead of `row[field]`.
  */
 export class DistinctValuesPass<TRow = any> {
   private cache = new Map<string, string[]>();
   private colIndex = new Map<string, WorkerColumn>();
+  /** `null` = no calc program installed — same null-check gate the other
+   *  four passes use so the hot loop pays nothing when calc isn't in play. */
+  private calcSource: CalcValueSource | null = null;
 
   constructor(private store: RowStore<TRow>, columns: WorkerColumn[]) {
     this.setColumns(columns);
   }
+
+  /** Install (or clear, via `null`) the calc-column value source. */
+  setCalcSource(src: CalcValueSource | null): void { this.calcSource = src; }
 
   setColumns(columns: WorkerColumn[]): void {
     this.colIndex.clear();
@@ -492,12 +504,15 @@ export class DistinctValuesPass<TRow = any> {
   /** Returns the distinct stringified values for `colId` in insertion
    *  order — the iteration order of the underlying `Set<string>`, which
    *  matches the first-seen row order. Returns an empty array for
-   *  unknown / field-less columns. */
+   *  unknown columns, and for field-less columns that aren't a calc
+   *  column under the installed calc source (or when no source is
+   *  installed at all). */
   getValues(colId: string): string[] {
     const cached = this.cache.get(colId);
     if (cached !== undefined) return cached;
     const col = this.colIndex.get(colId);
-    if (!col || !col.field) {
+    const isCalcCol = col && !col.field && this.calcSource !== null && this.calcSource.isCalcCol(colId);
+    if (!col || (!col.field && !isCalcCol)) {
       this.cache.set(colId, []);
       return [];
     }
@@ -505,7 +520,9 @@ export class DistinctValuesPass<TRow = any> {
     const seen = new Set<string>();
     const out: string[] = [];
     for (const row of this.store.rows()) {
-      const v = (row as Record<string, unknown>)[field];
+      const v = field !== undefined
+        ? (row as Record<string, unknown>)[field]
+        : this.calcSource!.valueAt(this.store.getRowId(row), colId);
       if (v == null) continue;
       const s = String(v);
       if (seen.has(s)) continue;

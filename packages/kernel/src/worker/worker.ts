@@ -557,6 +557,9 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     state.sort.setCalcSource(state.calc);
     state.group.setCalcSource(state.calc);
     state.slicer.setCalcSource(state.calc);
+    // Cycle 21d / Task 13 review — DistinctValuesPass never got the Task
+    // 11 seam; a calc column's set-filter popup was silently empty.
+    state.distinct.setCalcSource(state.calc);
 
     post({ id, type: 'ready' });
   }
