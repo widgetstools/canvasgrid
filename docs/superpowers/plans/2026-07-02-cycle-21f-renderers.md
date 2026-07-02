@@ -66,9 +66,108 @@ Showcase (Task 14): `apps/cgrid-showcase/src/features/{rendererBlotter,rendererC
 
 ---
 
-<!-- PHASE-C1 -->
+## Phase C1 — category I: numeric + text (2 tasks)
+
+### Task 5: Numeric category — 9 painters
+
+**Catalog acceptance (quote VERBATIM in task brief):** catalog §3.1 rows — each renderer's Visual column is the acceptance spec:
+
+| Renderer | Tier | Purpose | Visual |
+|---|---|---|---|
+| **NumberCell** | T1 | General-purpose numeric, precision + sign policy | Tabular figures, right-aligned, format-string-driven precision; currency prefix/suffix at 70% opacity |
+| **PriceCell** | T1 | Ticking price with flash background | NumberCell base; on tick up flashes `#0aa063 @ 25% α` 500ms then fades 1000ms; red on tick down; no flash unchanged |
+| **PriceDirectionCell** | T1 | Ticking price with inline arrow, coloured foreground | Lucide `trending-up` / `trending-down` / `minus` Path2D glyph inline; number foreground colour matches; used in dense columns where background flash would strobe |
+| **PnlCell** | T1 | Signed currency P&L | Right-aligned tabular currency; red foreground negative / green positive; currency symbol muted; sign always shown |
+| **DeltaCell** | T1 | Absolute + percentage change composite | `+0.42 (+1.18%)` in one cell; both values coloured together; percentage slightly muted (~85% opacity) |
+| **BpsCell** | T1 | Basis points, always signed | Right-aligned integer `+12` / `-185`; colour vs zero or configured benchmark; `bps` suffix muted; used everywhere in fixed-income spreads |
+| **PctChangeCell** | T1 | Signed percentage | `+1.18%` two-decimal default; green/red foreground; sign always shown |
+| **FractionalPriceCell** | T2 | Treasury 32nds/64ths convention | `99-16+` renders as "99 and 16.5/32nds"; `+` denotes half-32nd; bond desks read this natively |
+| **AbbreviatedNumberCell** | T1 | K/M/B/T magnitude suffix | `1.2M`, `450K`, `$3.4B`; precision configurable per magnitude; uses format DSL Tier 0 magnitude suffix |
+
+**Files:** Modify `packages/renderers/src/numeric.ts` — replace skeleton throws with real `CellPainter.paint` implementations for all 9 names (`number`, `price`, `price-direction`, `pnl`, `delta`, `bps`, `pct-change`, `fractional-price`, `abbreviated-number`). Shared module-scope scratch only (no per-paint closures/arrays/objects). Import `paintBackground` pattern from kernel registry is NOT available — painters call `gc.fillRect` for bg when needed (PriceCell flash overlay only; others use `p.bg`/`prefillColor` skip like kernel default renderer). Import helpers from `./paintUtils` (`fragText`, `withAlpha`) and `./palette` (`resolveSemanticColors`, `withThemeAlpha`, `SEMANTIC_COLORS`). Type-only `CellPaintConfig`/`CellPainter` from `@cgrid/kernel`.
+
+Implementation contracts (per renderer, beyond catalog Visual):
+- **Shared numeric layout:** right-aligned tabular figures — set `gc.cache.font` to base `p.font` with `'tnum'` feature (append `font-feature-settings:'tnum'` or use a module-scope font string builder mirroring composite's `fragFont` precedent); `textAlign='right'`; x anchor = `p.bounds.x + p.bounds.w - padRight` where `padRight = p.padding?.right ?? 6`; y = vertical middle of cell (same cy math as kernel default text renderer).
+- **NumberCell:** read `NumberCellParams` from `p.params`; primary text = `p.valueFormatted` (host/format owns precision — params `format` is documentation-only this cycle unless valueFormatted empty then stringify `p.value`); apply `signPolicy`; optional `currencyPrefix`/`currencySuffix` as separate muted (`withAlpha(fg,0.7)`) fragments painted left/right of the number via two `fragText` calls measuring suffix width first.
+- **PriceCell:** extends NumberCell paint path; flash bg BEFORE text when `p.flashAlpha > 0` — fill cell bounds with `p.flashFromColor ?? derivedDirectionColor` at `p.flashAlpha` (kernel already drains 500ms sat + 1000ms fade — painter only reads alpha); when flash channel absent derive direction by comparing numeric `p.value` vs `(p.rowData as Record)[prevField]` when `prevField` set (up→positive semantic, down→negative, equal→no flash); unchanged tick = no directional color on text.
+- **PriceDirectionCell:** NO background flash; inline direction glyph BEFORE the number (leading icon slot ~12px); direction from flash channel OR `prevField` delta like PriceCell; foreground color = semantic positive/negative/muted-flat; icon drawing: simple inline Path2D chevrons (triangle up/down, horizontal bar for flat) stroked/filled in semantic color — do NOT import kernel `drawIcon` at runtime (peer boundary); params `iconUp`/`iconDown`/`iconFlat` reserved for bridge Task 13 Lucide wiring, painter uses geometric fallback this task.
+- **PnlCell:** always show explicit sign (`+`/`-`); color fg by sign via `resolveSemanticColors(params.colors)`; currency symbol param (default `'$'`) muted at 70% opacity leading the number.
+- **DeltaCell:** multi-field — reads `absoluteField` + `percentField` from `p.rowData` (requires bridge builder to thread rowData via minimal composite program per Task 3 proof; unit tests supply `rowData` on config directly); formats `+abs (+pct%)` as one right-aligned string with shared semantic color; percent fragment at `params.percentOpacity ?? 0.85` via `withAlpha` on the shared hue.
+- **BpsCell:** integer-rounded bps from `p.value`; sign always; color vs `0` OR vs `(rowData[benchmarkField])` when set; suffix `params.suffix ?? ' bps'` muted trailing.
+- **PctChangeCell:** `precision ?? 2`; sign always; `%` suffix; semantic fg.
+- **FractionalPriceCell:** parse decimal price into whole + 32nds (or 64ths) + optional half-tick (`showHalfTick` default true, trailing `+` in input denotes +0.5 tick); render bond-desk string e.g. `99-16+` → display `99-16+` literally (catalog: "99 and 16.5/32nds" — painter renders the compact desk notation from `valueFormatted` when host supplies it, else derives from numeric `p.value`).
+- **AbbreviatedNumberCell:** magnitude suffix K/M/B/T with configurable `precision`; optional `currencyPrefix`; uses `p.value` numeric path when valueFormatted absent.
+
+Create `packages/renderers/tests/numeric.test.ts` — fake-gc harness; `makePaintConfig()` helper building minimal `CellPaintConfig` + typed params; **≥3 cases per renderer:** nominal, edge (null/NaN/missing rowData field → empty string or dash, no throw), dark-theme variant (`themeKind:'dark'` with `withThemeAlpha` paths where applicable). Assert `gc.calls` sequences (fillStyle/set:font/fillText order). PriceCell: case with `flashAlpha:0.25` + `flashFromColor:'#0aa063'` asserts bg fillRect/globalAlpha before fillText; case with prevField rowData delta up/down/no-change. DeltaCell: requires injected `rowData`. FractionalPriceCell: `99.515625` → `99-16+` display. Run: `npm run test -w @cgrid/renderers`.
+
+**Steps:** write failing `tests/numeric.test.ts` → implement `src/numeric.ts` (all 9) → tsc + renderers suite green + `git diff main...HEAD -- packages/kernel packages/{expression,format,rules,calc}` empty → commit `feat(renderers): cycle 21f task 5 — numeric category painters`.
+
+---
+
+### Task 6: Text / identity category — 5 painters
+
+**Catalog acceptance (quote VERBATIM in task brief):** catalog §3.2 rows:
+
+| Renderer | Tier | Purpose | Visual |
+|---|---|---|---|
+| **TickerCell** | T1 | Symbol + secondary label | Bold primary (13px), muted secondary line below (11px, ~65% opacity); never abbreviate ticker |
+| **CurrencyPairCell** | T2 | FX pair + mono-spaced rate | `EUR/USD  1.0834`; optional flag glyphs; pair in smaller font; rate in mono |
+| **TimestampCell** | T1 | Time-of-day right-aligned | `HH:MM:SS.mmm`; muted date prefix if not today; mono |
+| **AgeCell** | T1 | Live-updating elapsed seconds | `00:04` → `03:12`; neutral <30s, amber <5m, red ≥5m; ticks every 1s discretely |
+| **RelativeTimeCell** | T2 | Human-readable relative time | `"3m ago"`, `"just now"`; refreshes every 1s up to 60s, then 1m intervals |
+
+**Files:** Modify `packages/renderers/src/text.ts` — implement `ticker`, `currency-pair`, `timestamp`, `age`, `relative-time` painters. Helpers: stacked two-line layout function (module scope) — primary line at top third, secondary at bottom third; never truncate ticker (catalog: "never abbreviate"). **TickerCell:** primary = `p.valueFormatted` bold 13px; secondary from `rowData[secondaryField]` at 11px `withAlpha(fg, secondaryOpacity ?? 0.65)`. **CurrencyPairCell:** multi-field via rowData (`pairField`, `rateField`); pair left smaller; rate right mono (`font-family` swap to monospace token in font string); double-space gap; `showFlags` stub OK (no flag glyphs this task — omit draw calls, param reserved). **TimestampCell:** `TimestampCellParams` + injectable `nowMs`; format epoch `p.value` ms → `HH:MM:SS.mmm` when `showMillis!==false`; if calendar day ≠ today (UTC date compare using `nowMs`), prefix muted `YYYY-MM-DD ` (date prefix rule — catalog "if not today"); right-aligned mono; halign right. **AgeCell:** requires `nowMs` + `sinceField`; elapsed = `nowMs - rowData[sinceField]`; display `MM:SS` under 1h else `H:MM:SS`; color neutral below `warnAfterMs` (30s default), warning semantic below `dangerAfterMs` (5m default), danger semantic above. **RelativeTimeCell:** bucketed human strings (`just now`, `Ns ago`, `Nm ago`, `Nh ago`, `Nd ago`); refresh granularity: &lt;60s → 1s buckets; ≥60s → 1m buckets (use injectable `nowMs`, never `Date.now()`).
+
+Create `packages/renderers/tests/text.test.ts` — ≥3 cases each: TickerCell two-line stack asserts two fillText y positions; TimestampCell today vs not-today (fixed nowMs); AgeCell 15s neutral / 120s amber / 400s red; RelativeTimeCell `just now` / `3m ago`; CurrencyPairCell mono rate on right. Dark-theme case per renderer where color differs.
+
+**Steps:** write failing `tests/text.test.ts` → implement `src/text.ts` → tsc + suite green + zero-kernel-diff → commit `feat(renderers): cycle 21f task 6 — text category painters`.
+
+---
 
 <!-- PHASE-C2 -->
+
+### Task 7: Indicators category — 6 painters
+
+**Catalog acceptance (quote VERBATIM in task brief):** catalog §3.3 rows:
+
+| Renderer | Tier | Purpose | Visual |
+|---|---|---|---|
+| **StatusDot** | T1 | 8px filled circle in semantic colour | Optional label after dot; used for connection/health/session state |
+| **QuoteQualityDot** | T2 | Fresh/tight/deep quality indicator | Green fresh+tight+deep / amber thin+wide / red stale+one-sided |
+| **StaleFlag** | T1 | Aged-data indicator | Cell drops to 60% opacity + inline icon; tooltip shows `"last tick 8s ago"` |
+| **DirectionArrow** | T1 | Standalone ▲/▼/▬ | Used inside composites; Lucide Path2D; coloured per direction |
+| **StructureIconStrip** | T2 | Fixed-income feature icons | Inline row of monochrome 12–16px icons (callable, puttable, sinker, floater, step-up, make-whole); tinted amber/blue when active; hover tooltip |
+| **TrafficLightCell** | T2 | Three-state RAG dot | 8px filled circle green/amber/red for risk-limit / margin / credit-line state |
+
+**Files:** Modify `packages/renderers/src/indicators.ts` — implement all 6. Use `dot()` from paintUtils for 8px circles (StatusDot, QuoteQualityDot, TrafficLightCell). **QuoteQualityDot:** derive state from boolean rowData fields (`freshField`, `tightField`, `deepField`, `staleField`, `oneSidedField`) with catalog priority: stale or one-sided → red; else fresh+tight+deep → green; else amber. **StaleFlag:** `globalAlpha=0.6` on entire cell content layer (save/restore); inline stale icon (simple clock/bar Path2D or unicode ⏱); `title`/tooltip string NOT painted on canvas — expose `p.params.tooltip` only if bridge sets host tooltip hook (painter stores computed `"last tick Ns ago"` on a module-scope last pass for bridge Task 13; unit test asserts alpha + icon draw only). **DirectionArrow:** centered ▲/▼/▬ via `dot`/line primitives or Unicode; semantic colors. **StructureIconStrip:** iterate `STRUCTURE_GLYPH_MAP` keys where `params.flags[key]`; 12px icon slots; active tint amber (`SEMANTIC_COLORS.warning`) vs inactive muted; tooltip deferred to bridge. **TrafficLightCell:** `state` param or `stateField` on rowData → RAG palette (green `#0aa063`, amber `#f0b429`, red `#e63946`).
+
+Create `packages/renderers/tests/indicators.test.ts` — ≥3 cases/renderer; QuoteQualityDot truth-table cases; StaleFlag alpha 0.6 assertion; StructureIconStrip two-flag active layout width.
+
+**Steps:** write failing tests → implement → green + zero-kernel-diff → commit `feat(renderers): cycle 21f task 7 — indicator category painters`.
+
+---
+
+### Task 8: Badges / pills category — 7 painters
+
+**Catalog acceptance (quote VERBATIM in task brief):** catalog §3.4 rows:
+
+| Renderer | Tier | Purpose | Visual |
+|---|---|---|---|
+| **StatusPill** | T1 | Order/state label with semantic colour | 2–4px radius pill, 10–11px caps text; `WORKING` cyan, `PART FILL` amber, `FILLED` green, `CANCELLED` grey, `REJECTED` red on white, `PENDING` grey dashed border |
+| **RatingBadge** | T2 | Single agency rating | Small badge; colour-graded AAA green → D red; IG/HY split at BBB-/Baa3 (junk gets orange/red tint); NR/WD muted grey; text labels only (no proprietary logos) |
+| **RatingClusterCell** | T2 | S&P / Moody's / Fitch cluster | Three RatingBadges side-by-side (`AAA / Aa1 / AA`); tight spacing; agency name muted below each in nano text (optional) |
+| **TagCell** | T1 | Generic muted-grey tag | `144A`, `TRACE`, `DELAYED`, `AXE`, arbitrary text |
+| **VenueChip** | T2 | Execution venue MIC | Coloured chip: `XNAS`, `ARCX`, `BATS`, `EDGX`; venue-specific palette |
+| **SideChip** | T2 | Long/short single-char | `L` green background / `S` red background; 14–16px square |
+| **TimeInForcePill** | T2 | Order TIF label | `DAY`, `GTC`, `IOC`, `FOK` colour-coded; hover tooltip expands abbreviation |
+
+**Files:** Modify `packages/renderers/src/badges.ts` — implement all 7 using `pill()` + `fragText()` + palette maps (`STATUS_PILL_MAP`, `resolvePillColors`, `RATING_SCALE_BANDS`, `DEFAULT_VENUE_PALETTE`). **StatusPill:** uppercase label; map lookup via `resolvePillColors(status, p.themeKind ?? 'light')`; dashed border when `PENDING`. **RatingBadge:** grade lookup in `RATING_SCALE_BANDS`; NR/WD muted. **RatingClusterCell:** multi-field rowData (`spField`, `moodysField`, `fitchField` per types.ts); three compact badges in one row; optional nano agency labels (10px muted) — param flag `showAgencyLabels`. **TagCell:** muted grey pill, arbitrary `valueFormatted`. **VenueChip:** MIC lookup in venue palette; centered chip. **SideChip:** 14–16px square pill, `L`/`S` from value. **TimeInForcePill:** TIF color map (module-scope CONST); tooltip deferred.
+
+Create `packages/renderers/tests/badges.test.ts` — StatusPill WORKING/REJECTED/PENDING dashed; RatingBadge AAA vs BB+ vs NR; RatingClusterCell triple layout; SideChip L/S colors; VenueChip XNAS color token.
+
+**Steps:** write failing tests → implement → green + zero-kernel-diff → commit `feat(renderers): cycle 21f task 8 — badge category painters`.
+
+---
 
 <!-- PHASE-CHECKPOINT -->
 
