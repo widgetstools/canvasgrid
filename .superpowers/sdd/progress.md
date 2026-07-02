@@ -593,3 +593,9 @@ Remaining Cycle 21 work runs in SMALL SESSIONS per docs/superpowers/plans/2026-0
   Important → first S3 commit: export canonical `ColumnStatSnapshot` from index.ts (types.ts still has legacy `ColumnStatsSnapshot` name on painter params — reconcile at bridge task)
   Minors carried to final review: Task 2 pill test omits moveTo; lab monotonicity ±1 tolerance; muted color shape-only test
   NEXT UNIT: 21f-S3 (draft Tasks 5-8 into plan, execute Tasks 5-6)
+21f-S3 pre-flight (main @ 8a4d5ac): ColumnStatSnapshot export (a4f2a8b); ledger S2 (34acad8); plan Tasks 5-8 drafted + worklog S2 ticked.
+21f Task 5: complete (commits bcde597..05ef33c incl. review fix, approved after fix pass)
+  9 numeric painters + 27 fake-gc tests; renderers 168/168; fixes: colorScratch hot-path, DeltaCell 85% pct fragment, palette flash fallback, signPolicy preserves valueFormatted
+21f Task 6: complete (commits 3390eba..05ef33c incl. review fix, approved after fix pass)
+  5 text painters + 15 fake-gc tests; monoFont full-stack replace; stacked TickerCell + injectable nowMs age/relative/timestamp
+21f-S3: COMPLETE (draft Tasks 5-8 on main @ 8a4d5ac; execute Tasks 5-6 reviewed). 14 painters landed (9+5). NEXT UNIT: 21f-S4 (execute Tasks 7-8).
