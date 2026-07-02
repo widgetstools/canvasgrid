@@ -110,6 +110,7 @@ import { totalsCell } from './renderer/cellRenderers/totals';
 import { groupCell, GROUP_CELL_GEOMETRY, type GroupCellValue } from './renderer/cellRenderers/group';
 import { groupFooterCell } from './renderer/cellRenderers/groupFooter';
 import { sparklineCell } from './renderer/cellRenderers/sparkline';
+import { compositeCell } from './renderer/cellRenderers/composite';
 import { rowSelectCheckboxCell } from './renderer/cellRenderers/rowSelectCheckbox';
 import { coerceToNumberArray } from './renderer/cellRenderers/sparkline/coerceToNumberArray';
 import { decorateHeader } from './renderer/painters/byRows';
@@ -852,6 +853,10 @@ export class CGrid<TRow = any> {
     // column declaring `checkboxSelection: true`. Reads `p.isSelected`
     // for state (NOT row data); a chain feature claims the click.
     this.cellRenderers.register('rowSelectCheckbox', rowSelectCheckboxCell);
+    // Cycle 21c / Task 13 — composite fragment renderer. Only reached
+    // when a `type: 'composite'` ColDef compiled successfully via the
+    // injected format compiler (see propertyChain.compileFormatSlots).
+    this.cellRenderers.register('composite', compositeCell);
 
     // 2b. Tool-panel registry (Cycle 11 / Task 1). Seed the built-in
     // IDs first, then overwrite the Columns stub with the real

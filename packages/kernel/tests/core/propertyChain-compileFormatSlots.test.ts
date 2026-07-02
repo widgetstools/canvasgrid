@@ -53,11 +53,13 @@ describe('compileFormatSlots — string valueFormatter', () => {
     expect(resolved[0].valueFormatter!({ value: 42, data: {}, colId: 'x' } as any)).toBe('$42.00');
   });
 
-  it('derives cellStyleFn from format program', () => {
+  it('derives cellStyleFn from format program (mapped to ColCellOverrides keys)', () => {
     registerFormatCompiler(fakeCompiler);
     const resolved = resolveColDefs([{ colId: 'x', valueFormatter: '$#,##0.00' }] as any);
     const negStyle = resolved[0].cellStyleFn!({ value: -1, data: {}, colId: 'x', rowIndex: 0 } as any);
-    expect((negStyle as any)?.color).toBe('#e53935');
+    // Task 13 fix — resolveStyle's `color` maps onto the kernel's `fg`
+    // override key so applyOverridePatch actually paints it.
+    expect((negStyle as any)?.fg).toBe('#e53935');
     const posStyle = resolved[0].cellStyleFn!({ value: 1, data: {}, colId: 'x', rowIndex: 0 } as any);
     expect(posStyle).toBeUndefined();
   });
@@ -101,6 +103,40 @@ describe('compileFormatSlots — composite', () => {
     }] as any);
     expect((resolved[0] as any)._compositeProgram).toBeDefined();
     expect(resolved[0].valueFormatter!({ value: null, data: {}, colId: 'x' } as any)).toBe('composite');
+  });
+
+  it("compiled composite routes cellRenderer to 'composite' (Task 13)", () => {
+    registerFormatCompiler(fakeCompiler);
+    const resolved = resolveColDefs([{
+      colId: 'x',
+      type: 'composite',
+      fragments: [{ text: 'a' }],
+      align: 'right',
+      overflow: 'clip',
+    }] as any);
+    expect(resolved[0].cellRenderer).toBe('composite');
+    expect(resolved[0].compositeAlign).toBe('right');
+    expect(resolved[0].compositeOverflow).toBe('clip');
+  });
+
+  it('explicit cellRenderer wins over composite routing', () => {
+    registerFormatCompiler(fakeCompiler);
+    const resolved = resolveColDefs([{
+      colId: 'x',
+      type: 'composite',
+      fragments: [{ text: 'a' }],
+      cellRenderer: 'text',
+    }] as any);
+    expect(resolved[0].cellRenderer).toBe('text');
+  });
+
+  it('composite without compiler falls back to text renderer', () => {
+    const resolved = resolveColDefs([{
+      colId: 'x',
+      type: 'composite',
+      fragments: [{ text: 'a' }],
+    }] as any);
+    expect(resolved[0].cellRenderer).toBe('text');
   });
 
   it('composite with no compiler registered is pass-through', () => {

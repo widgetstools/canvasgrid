@@ -164,6 +164,25 @@ export interface CellPaintConfig {
    * override. Custom painters interpret the shape.
    */
   params?: unknown;
+  /**
+   * Cycle 21c / Task 13 — compiled composite format program for
+   * `type: 'composite'` ColDefs. Threaded by `applyCellProps` from
+   * `ResolvedColDef._compositeProgram`; read ONLY by the `'composite'`
+   * cell renderer. `undefined` on every non-composite cell.
+   */
+  compositeProgram?: import('../../types/formatProgramShape').FormatProgramShape;
+  /** Cycle 21c / Task 13 — composite fragment-run alignment. Default `'left'`. */
+  compositeAlign?: 'left' | 'center' | 'right';
+  /** Cycle 21c / Task 13 — composite overflow behavior. Default `'ellipsis'`. */
+  compositeOverflow?: 'ellipsis' | 'clip';
+  /**
+   * Cycle 21c / Task 13 — row-data snapshot + colId for renderers that
+   * re-evaluate per-row programs at paint time (composite fragments).
+   * Populated only when the column carries a composite program; other
+   * cells leave them `undefined` (zero cost on the hot path).
+   */
+  rowData?: Record<string, unknown>;
+  colId?: string;
 }
 
 export interface CellPainter {
@@ -192,7 +211,7 @@ const SORT_ICON_PAD = 8;
 const PIVOT_CHEVRON_SIZE = 14;
 const PIVOT_CHEVRON_GAP = 4;
 
-function paintBackground(gc: CachedContext2D, p: CellPaintConfig): void {
+export function paintBackground(gc: CachedContext2D, p: CellPaintConfig): void {
   // Skip the per-cell bg fill when the bundle already painted this bg.
   if (p.bg !== p.prefillColor) {
     gc.cache.fillStyle = p.bg;

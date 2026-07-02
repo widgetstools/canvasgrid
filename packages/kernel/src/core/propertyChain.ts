@@ -41,6 +41,12 @@ export interface ResolvedColDef<TRow = any> {
   cellIcon?: (params: CValueFormatterParams<TRow, unknown>) => import('@cgrid/format').IconRef | null;
   /** @internal — populated by compileFormatSlots for composite ColDefs. */
   _compositeProgram?: import('../types/formatProgramShape').FormatProgramShape;
+  /** Composite fragment-run alignment (`CColDef.align`). Only meaningful
+   *  when `_compositeProgram` is set. Cycle 21c / Task 13. */
+  compositeAlign?: 'left' | 'center' | 'right';
+  /** Composite overflow behavior (`CColDef.overflow`). Only meaningful
+   *  when `_compositeProgram` is set. Cycle 21c / Task 13. */
+  compositeOverflow?: 'ellipsis' | 'clip';
   cellRenderer: string;
   /** Static params forwarded to the painter as `CellPaintConfig.params`. */
   cellRendererParams?: unknown;
@@ -539,6 +545,22 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.checkboxCheckedBg = theme.checkboxCheckedBg;
   target.checkboxCheckedFg = theme.checkboxCheckedFg;
   target.params = ctx.params;
+  // Cycle 21c / Task 13 — composite program threading. Populated only
+  // for columns carrying a compiled composite program; explicitly reset
+  // to undefined otherwise (the config object is reused across cells).
+  if (colDef._compositeProgram !== undefined && !ctx.isHeader) {
+    target.compositeProgram = colDef._compositeProgram;
+    target.compositeAlign = colDef.compositeAlign;
+    target.compositeOverflow = colDef.compositeOverflow;
+    target.rowData = ctx.rowData;
+    target.colId = colDef.colId;
+  } else {
+    target.compositeProgram = undefined;
+    target.compositeAlign = undefined;
+    target.compositeOverflow = undefined;
+    target.rowData = undefined;
+    target.colId = undefined;
+  }
 
   // Theme defaults. Headers paint with the chrome font (Inter by
   // default); body cells paint with the cell font (monospace by
@@ -793,13 +815,18 @@ function warnOnce(msg: string): void {
   console.warn(msg);
 }
 
-/** Convert a resolveStyle result object into a plain Record for cellStyle. */
+/** Convert a resolveStyle result object into a `ColCellOverrides`-shaped
+ *  Record for cellStyle. Keys map onto the kernel's canonical override
+ *  vocabulary (`fg` / `bg` / `fontWeight` / `fontStyle`) so
+ *  `applyOverridePatch` actually applies them at paint time
+ *  (Cycle 21c / Task 13 fix — the earlier `color` / `background` keys
+ *  were silently ignored by the patch applier). */
 function styleObjToRecord(s: {
   color?: string; background?: string; weight?: string | number; italic?: boolean;
 }): Record<string, string | number> {
   const out: Record<string, string | number> = {};
-  if (s.color !== undefined) out['color'] = s.color;
-  if (s.background !== undefined) out['background'] = s.background;
+  if (s.color !== undefined) out['fg'] = s.color;
+  if (s.background !== undefined) out['bg'] = s.background;
   if (s.weight !== undefined) out['fontWeight'] = s.weight;
   if (s.italic) out['fontStyle'] = 'italic';
   return out;
@@ -964,6 +991,10 @@ export function resolveColDef<TRow>(
     cellIcon: compiledMerged.cellIcon as ResolvedColDef<TRow>['cellIcon'],
     // @internal composite program — populated by compileFormatSlots.
     _compositeProgram: (compiledMerged as unknown as { _compositeProgram?: ResolvedColDef<TRow>['_compositeProgram'] })._compositeProgram,
+    // Composite alignment + overflow (Cycle 21c / Task 13) — carried
+    // through so the 'composite' renderer can read them off the config.
+    compositeAlign: merged.align,
+    compositeOverflow: merged.overflow,
     valueParser: merged.valueParser as ResolvedColDef<TRow>['valueParser'],
     valueSetter: merged.valueSetter as ResolvedColDef<TRow>['valueSetter'],
     // Row-select checkbox columns FORCE the renderer regardless of
@@ -982,6 +1013,11 @@ export function resolveColDef<TRow>(
       ? 'rowSelectCheckbox'
       : (
         merged.cellRenderer
+        // Cycle 21c / Task 13 — a successfully compiled composite ColDef
+        // routes to the 'composite' renderer unless the app set an
+        // explicit cellRenderer. Compile failure (no _compositeProgram)
+        // falls through to the plain text path so the cell still paints.
+        ?? ((compiledMerged as unknown as { _compositeProgram?: unknown })._compositeProgram !== undefined ? 'composite' : null)
         ?? (merged.wrapText ? 'text-wrap' : null)
         ?? (merged.cellEditor === 'checkbox' ? 'checkbox' : cellDataType)
       ),
