@@ -179,6 +179,8 @@ describe('every skeleton painter conforms to CellPainter and throws not-implemen
     'spread-bar', 'volume-bar', 'maturity-ladder',
     'win-loss-sparkline', 'yield-curve-sparkline', 'krd-bar-chart', 'depth-ladder',
     'line-sparkline', 'column-sparkline', 'area-sparkline', 'bar-sparkline', 'pie-sparkline',
+    'stacked-value', 'price-quote', 'nbbo', 'benchmark-spread', 'price-change-composite',
+    'icon-action-cluster', 'row-menu',
   ]);
 
   const painters: Record<string, CellPainter> = {

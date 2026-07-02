@@ -95,7 +95,7 @@ export {
 // ─── Category 3: Indicators ───────────────────────────────────────────────────
 export {
   statusDot, quoteQualityDot, staleFlag, directionArrow, structureIconStrip, trafficLightCell,
-  getLastStaleFlagTooltip,
+  getStaleFlagTooltip, getLastStaleFlagTooltip,
 } from './indicators';
 
 // ─── Category 4: Badges / pills ───────────────────────────────────────────────
@@ -121,7 +121,7 @@ export {
 } from './composite';
 
 // ─── Category 8: Action ───────────────────────────────────────────────────────
-export { iconActionCluster, rowMenuCell, HitRegionRegistry } from './actions';
+export { iconActionCluster, rowMenuCell, HitRegionRegistry, defaultHitRegionRegistry, resolveHitRegion } from './actions';
 export type { HitRegion } from './actions';
 
 // ─── Data helpers ─────────────────────────────────────────────────────────────
