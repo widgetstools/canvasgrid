@@ -150,6 +150,7 @@ import {
   unregisterTooltipProvider as unregTip,
   type TooltipProviderFn,
 } from './interaction/features/tooltipProvider';
+import { serializeToHtml, type RowExport } from './interaction/features/clipboardSerializer';
 
 export const CGRID_VERSION = '0.0.0';
 
@@ -4039,7 +4040,85 @@ export class CGrid<TRow = any> {
     if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
       throw new Error('clipboard-unavailable');
     }
+    // Cycle 21c / Task 15 — multi-format write when the copied range
+    // touches a composite column. text/plain stays byte-identical to
+    // the plain path (the worker/main-side TSV above); text/html adds
+    // styled <span> runs per composite fragment so Excel / Sheets
+    // paste keeps the formatting. Feature-detected: environments
+    // without ClipboardItem / clipboard.write fall back to writeText.
+    const hasComposite = ranges.some((range) =>
+      range.colIds.some((colId) => this.columnDefsMap.get(colId)?._compositeProgram !== undefined),
+    );
+    if (hasComposite) {
+      const clip = navigator.clipboard as Clipboard & { write?: (items: ClipboardItem[]) => Promise<void> };
+      if (typeof ClipboardItem !== 'undefined' && typeof clip.write === 'function') {
+        const html = await this.serializeRangesToHtml(ranges);
+        const item = new ClipboardItem({
+          'text/plain': new Blob([tsv], { type: 'text/plain' }),
+          'text/html': new Blob([html], { type: 'text/html' }),
+        });
+        await clip.write([item]);
+        return;
+      }
+      console.debug('[cgrid.clipboard] rich copy unavailable, using plain text');
+    }
     await navigator.clipboard.writeText(tsv);
+  }
+
+  /** Cycle 21c / Task 15 — build the text/html clipboard flavor for
+   *  ranges that include composite columns. Fetches the touched rows
+   *  main-side (composite programs are main-thread closures — they
+   *  don't cross postMessage), resolves fragments per composite cell,
+   *  and falls back to formatted plain text for regular columns. */
+  private async serializeRangesToHtml(ranges: SelectionRange[]): Promise<string> {
+    const rowIndexSet = new Set<number>();
+    for (const range of ranges) {
+      for (let i = range.rowStart; i <= range.rowEnd; i++) rowIndexSet.add(i);
+    }
+    const indexArr = Array.from(rowIndexSet);
+    const fetched = await Promise.all(indexArr.map((rowIndex) =>
+      this.workerCoord.getRowByIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
+    ));
+    if (this.destroyed) return '';
+    const rowsByIndex = new Map<number, Record<string, unknown>>();
+    for (const r of fetched) {
+      if (r.data != null) rowsByIndex.set(r.rowIndex, r.data as Record<string, unknown>);
+    }
+
+    const out: RowExport[] = [];
+    for (const range of ranges) {
+      for (let rowIndex = range.rowStart; rowIndex <= range.rowEnd; rowIndex++) {
+        const rowData = rowsByIndex.get(rowIndex) ?? {};
+        const cells: RowExport['cells'] = [];
+        for (const colId of range.colIds) {
+          const def = this.columnDefsMap.get(colId);
+          if (!def) {
+            cells.push({ text: '' });
+            continue;
+          }
+          const value = rowData[(def.field as string | undefined) ?? colId];
+          const program = def._compositeProgram;
+          if (program) {
+            const evalCtx = { value, row: rowData, colId };
+            const fragments = program.resolveFragments(evalCtx);
+            cells.push({
+              text: program.formatText(evalCtx),
+              fragments: (fragments ?? []).map((f) => ({
+                text: f.text,
+                style: (f.style ?? {}) as Record<string, string | number | undefined>,
+              })),
+            });
+            continue;
+          }
+          const text = def.valueFormatter
+            ? def.valueFormatter({ value, data: rowData as TRow, colId })
+            : value == null ? '' : String(value);
+          cells.push({ text });
+        }
+        out.push({ cells });
+      }
+    }
+    return serializeToHtml(out);
   }
 
   // ─── Cycle 20 / Task 3 — public export API ────────────────────────────
