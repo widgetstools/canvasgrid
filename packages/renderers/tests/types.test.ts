@@ -167,6 +167,13 @@ describe('palette data — structuredClone-safety', () => {
 });
 
 describe('every skeleton painter conforms to CellPainter and throws not-implemented', () => {
+  /** Landed in category tasks — no longer skeleton throws. */
+  const IMPLEMENTED = new Set<string>([
+    'number', 'price', 'price-direction', 'pnl', 'delta', 'bps', 'pct-change',
+    'fractional-price', 'abbreviated-number',
+    'ticker', 'currency-pair', 'timestamp', 'age', 'relative-time',
+  ]);
+
   const painters: Record<string, CellPainter> = {
     number: numberCell, price: priceCell, 'price-direction': priceDirectionCell, pnl: pnlCell,
     delta: deltaCell, bps: bpsCell, 'pct-change': pctChangeCell,
@@ -195,6 +202,7 @@ describe('every skeleton painter conforms to CellPainter and throws not-implemen
   });
 
   for (const name of RENDERER_NAMES) {
+    if (IMPLEMENTED.has(name)) continue;
     it(`'${name}' throws 'not implemented: ${name}'`, () => {
       // Skeleton paint() throws before touching gc/p — the fake args are
       // never dereferenced, so `as never` is safe here.
