@@ -140,16 +140,21 @@ function paintDirectionGlyph(
   gc.cache.fillStyle = color;
   gc.cache.lineWidth = 1.5;
   gc.beginPath();
+  // B1 fix — canvas Y grows DOWNWARD, so the apex (single point) of an
+  // 'up' (▲) triangle must sit at the SMALLEST y (cy - size*0.35, visually
+  // top) with its base at the LARGEST y (cy + size*0.35, visually bottom).
+  // The previous code had these swapped, so 'up' painted as ▼. 'down' is
+  // the exact mirror.
   if (dir === 'up') {
-    gc.moveTo(iconX, cy + size * 0.35);
-    gc.lineTo(iconX - size * 0.45, cy - size * 0.35);
-    gc.lineTo(iconX + size * 0.45, cy - size * 0.35);
-    gc.closePath();
-    gc.fill();
-  } else if (dir === 'down') {
     gc.moveTo(iconX, cy - size * 0.35);
     gc.lineTo(iconX - size * 0.45, cy + size * 0.35);
     gc.lineTo(iconX + size * 0.45, cy + size * 0.35);
+    gc.closePath();
+    gc.fill();
+  } else if (dir === 'down') {
+    gc.moveTo(iconX, cy + size * 0.35);
+    gc.lineTo(iconX - size * 0.45, cy - size * 0.35);
+    gc.lineTo(iconX + size * 0.45, cy - size * 0.35);
     gc.closePath();
     gc.fill();
   } else {

@@ -53,6 +53,33 @@ describe('winLossSparkline', () => {
     winLossSparkline.paint(gc, baseConfig({ value: [2, -3], params: { valuesField: 'missing' } }));
     expect(gc.calls.some((c) => c.op === 'fillRect')).toBe(true);
   });
+
+  // B5 — bars are a fixed 2px wide with a 1px gap (packed sparkline strip),
+  // NOT stretched to fill each `w / data.length` slot — the prior layout
+  // produced chunky blocks rather than thin bars at typical data lengths.
+  it('paints fixed 2px-wide bars with a 1px gap (B5 geometry)', () => {
+    winLossSparkline.paint(gc, baseConfig({
+      rowData: { pnl: [1, -1, 2, -2] },
+      params: { valuesField: 'pnl' },
+    }));
+    const rects = gc.calls.filter((c) => c.op === 'fillRect');
+    expect(rects.length).toBe(4);
+    for (const r of rects) expect(Number(r.args[2])).toBe(2);
+    const xs = rects.map((r) => Number(r.args[0])).sort((a, b) => a - b);
+    for (let i = 1; i < xs.length; i++) {
+      expect(xs[i]! - xs[i - 1]!).toBe(3); // 2px bar + 1px gap
+    }
+  });
+
+  it('all bars share the same height regardless of magnitude (B5 geometry)', () => {
+    winLossSparkline.paint(gc, baseConfig({
+      rowData: { pnl: [1, -5, 20, -0.5] },
+      params: { valuesField: 'pnl' },
+    }));
+    const rects = gc.calls.filter((c) => c.op === 'fillRect');
+    const heights = new Set(rects.map((r) => Number(r.args[3])));
+    expect(heights.size).toBe(1);
+  });
 });
 
 describe('yieldCurveSparkline', () => {

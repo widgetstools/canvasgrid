@@ -114,6 +114,38 @@ describe('priceDirectionCell', () => {
     priceDirectionCell.paint(gc, baseConfig({ themeKind: 'dark', fg: '#fff' }));
     expect(fillTexts(gc.calls)).toContain('100.00');
   });
+
+  // B1 fix — canvas Y grows DOWNWARD, so an 'up' (▲) triangle's apex
+  // (the moveTo point) must have the SMALLEST y of the three vertices
+  // (visually the top), with both lineTo base vertices sharing the
+  // LARGEST y (visually the bottom). This deliberately locks in the
+  // corrected geometry — the prior implementation had apex/base swapped,
+  // which painted 'up' as a downward-pointing ▼.
+  it('up triangle apex is the topmost vertex (B1 geometry)', () => {
+    priceDirectionCell.paint(gc, baseConfig({
+      value: 102,
+      rowData: { prev: 100 },
+      params: { prevField: 'prev' },
+    }));
+    const moveTo = gc.calls.find((c) => c.op === 'moveTo')!;
+    const lineTos = gc.calls.filter((c) => c.op === 'lineTo');
+    const apexY = Number(moveTo.args[1]);
+    const baseYs = lineTos.map((c) => Number(c.args[1]));
+    expect(baseYs.every((y) => y > apexY)).toBe(true);
+  });
+
+  it('down triangle apex is the bottommost vertex (B1 geometry)', () => {
+    priceDirectionCell.paint(gc, baseConfig({
+      value: 98,
+      rowData: { prev: 100 },
+      params: { prevField: 'prev' },
+    }));
+    const moveTo = gc.calls.find((c) => c.op === 'moveTo')!;
+    const lineTos = gc.calls.filter((c) => c.op === 'lineTo');
+    const apexY = Number(moveTo.args[1]);
+    const baseYs = lineTos.map((c) => Number(c.args[1]));
+    expect(baseYs.every((y) => y < apexY)).toBe(true);
+  });
 });
 
 describe('pnlCell', () => {

@@ -101,12 +101,63 @@ function paintKebab(gc: Gc, cx: number, cy: number, color: string): void {
   }
 }
 
-function paintActionIcon(gc: Gc, cx: number, cy: number, label: string, color: string, font: string): void {
+/**
+ * B2 — module-level Lucide icon resolver, set by the kernel bridge
+ * (`bridge.ts`'s `wireRenderersIntoKernel`) using the grid's ALREADY-PUBLIC
+ * `resolveIcon(name, setHint)` method (`CGridApi.resolveIcon`, populated by
+ * `@cgrid/format`'s `wireIntoKernel` registering the Lucide bundle under the
+ * `'lucide'` set — see `packages/format/src/bridge.ts`). This is a ZERO
+ * kernel-diff path: renderers imports kernel TYPE-only, so resolution can't
+ * go through a new `CellPaintConfig` channel; instead the bridge (which
+ * already holds the live grid instance) pushes a resolver function in here.
+ * Unset (`null`) in unit tests that exercise the painter directly without a
+ * wired bridge — `paintActionIcon` falls back to the letter badge below.
+ */
+type ActionIconResolver = (name: string, setHint?: string) => Path2D | null;
+let iconResolver: ActionIconResolver | null = null;
+
+/** @internal Called by `wireRenderersIntoKernel` (wire) / `destroy` (unwire). */
+export function setActionIconResolver(resolver: ActionIconResolver | null): void {
+  iconResolver = resolver;
+}
+
+const ICON_SIZE = 14;
+
+function paintActionIcon(
+  gc: Gc,
+  cx: number,
+  cy: number,
+  icon: string | undefined,
+  label: string,
+  color: string,
+  font: string,
+): void {
   gc.cache.strokeStyle = withAlpha(color, 0.35);
   gc.cache.lineWidth = 1;
   gc.beginPath();
   gc.arc(cx, cy, ICON_HIT / 2 - 2, 0, Math.PI * 2);
   gc.stroke();
+
+  const path = icon ? iconResolver?.(icon, 'lucide') ?? null : null;
+  if (path) {
+    // Catalog §2.2 — Path2D glyph centered in the hit circle, stroke-style,
+    // 1.5px, tinted with the cell's fg. Lucide viewBox is 24×24 (mirrors
+    // kernel composite.ts's icon-fragment paint precedent).
+    const scale = ICON_SIZE / 24;
+    gc.cache.save();
+    gc.translate(cx - ICON_SIZE / 2, cy - ICON_SIZE / 2);
+    gc.scale(scale, scale);
+    gc.cache.strokeStyle = color;
+    gc.cache.lineWidth = 1.5 / scale;
+    gc.cache.lineCap = 'round';
+    gc.cache.lineJoin = 'round';
+    gc.stroke(path);
+    gc.cache.restore();
+    return;
+  }
+
+  // Fallback: letter-in-circle, ONLY when the icon name doesn't resolve
+  // (e.g. bridge not wired, or an unknown/typo'd Lucide name).
   gc.cache.fillStyle = color;
   gc.cache.textAlign = 'center';
   gc.cache.textBaseline = 'alphabetic';
@@ -137,7 +188,7 @@ export const iconActionCluster: CellPainter = {
     for (let i = 0; i < count; i++) {
       const action = params.actions[i]!;
       const cx = x + ICON_HIT / 2;
-      paintActionIcon(gc, cx, cy, action.label, p.fg, p.font);
+      paintActionIcon(gc, cx, cy, action.icon, action.label, p.fg, p.font);
       if (rowId !== '' && colId !== '') {
         defaultHitRegionRegistry.register({
           rowId,

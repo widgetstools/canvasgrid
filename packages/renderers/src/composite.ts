@@ -14,7 +14,6 @@ import type {
 type Gc = Parameters<CellPainter['paint']>[0];
 
 const PAD = 6;
-const TRACK = withAlpha(SEMANTIC_COLORS.muted, 0.18);
 
 function padLeft(p: CellPaintConfig): number {
   return p.padding?.left ?? PAD;
@@ -70,16 +69,19 @@ function paintDirectionGlyph(gc: Gc, p: CellPaintConfig, dir: 'up' | 'down' | 'f
   gc.cache.fillStyle = color;
   gc.cache.lineWidth = 1.5;
   gc.beginPath();
+  // B1 fix — canvas Y grows DOWNWARD, so the apex of an 'up' (▲) triangle
+  // must sit at the SMALLEST y (top) with its base at the LARGEST y
+  // (bottom). The previous code had these swapped, so 'up' painted as ▼.
   if (dir === 'up') {
-    gc.moveTo(iconX, cy + size * 0.35);
-    gc.lineTo(iconX - size * 0.45, cy - size * 0.35);
-    gc.lineTo(iconX + size * 0.45, cy - size * 0.35);
-    gc.closePath();
-    gc.fill();
-  } else if (dir === 'down') {
     gc.moveTo(iconX, cy - size * 0.35);
     gc.lineTo(iconX - size * 0.45, cy + size * 0.35);
     gc.lineTo(iconX + size * 0.45, cy + size * 0.35);
+    gc.closePath();
+    gc.fill();
+  } else if (dir === 'down') {
+    gc.moveTo(iconX, cy + size * 0.35);
+    gc.lineTo(iconX - size * 0.45, cy - size * 0.35);
+    gc.lineTo(iconX + size * 0.45, cy - size * 0.35);
     gc.closePath();
     gc.fill();
   } else {
@@ -136,16 +138,30 @@ export const priceQuoteCell: CellPainter = {
     }
     if (mid !== null) {
       const spread = bid !== null && ask !== null ? ask - bid : 0;
-      const barW = Math.min(80, p.bounds.w * 0.4);
-      const barX = p.bounds.x + (p.bounds.w - barW) / 2;
-      const barY = p.bounds.y + p.bounds.h - 10;
-      const frac = Math.max(0, Math.min(1, spread / (params.spreadWarnThreshold ?? 0.05)));
-      miniBar(gc, barX, barY, barW, 4, frac, withAlpha(SEMANTIC_COLORS.warning, 0.45), TRACK);
+      const threshold = params.spreadWarnThreshold ?? 0.05;
+      const exceeds = threshold > 0 && spread > threshold;
+      // B4 — a 2px-high band, width proportional to spread/threshold (capped
+      // at the available width), muted at 20% alpha normally, warning color
+      // at 40% alpha ONLY when the spread exceeds the threshold. Previously
+      // a flat 4px bar, always amber-tinted regardless of severity — a fat
+      // amber smear even for a perfectly normal spread.
+      const availW = Math.min(80, p.bounds.w * 0.4);
+      const barX = p.bounds.x + (p.bounds.w - availW) / 2;
+      const barY = p.bounds.y + p.bounds.h - 8;
+      const frac = threshold > 0 ? Math.max(0, Math.min(1, spread / threshold)) : 0;
+      const bandColor = exceeds
+        ? withAlpha(SEMANTIC_COLORS.warning, 0.4)
+        : withAlpha(SEMANTIC_COLORS.muted, 0.2);
+      miniBar(gc, barX, barY, availW, 2, frac, bandColor);
       gc.cache.textAlign = 'center';
       gc.cache.fillStyle = withAlpha(p.fg, 0.7);
       gc.fillText(mid.toFixed(2), p.bounds.x + p.bounds.w / 2, textYBottom(p));
-      if (params.spreadWarnThreshold !== undefined && spread > params.spreadWarnThreshold) {
-        fragText(gc, 'WIDE', right - 28, textYTop(p), {
+      if (exceeds) {
+        // Bottom row (shared with the centered mid label, which leaves the
+        // right edge free) — NOT the top row, where it used to collide
+        // with the right-aligned ask value (`WIDE` and `112.30` painting
+        // on the same baseline at the same right anchor).
+        fragText(gc, 'WIDE', right, textYBottom(p), {
           font: `600 9px ${p.font.match(/(\d+px\s+.+)$/)?.[1] ?? 'sans-serif'}`,
           color: SEMANTIC_COLORS.warning,
           align: 'right',
@@ -214,13 +230,22 @@ export const benchmarkSpreadCell: CellPainter = {
     if (bps !== null) {
       const fg = bps > 0 ? SEMANTIC_COLORS.positive : bps < 0 ? SEMANTIC_COLORS.negative : p.fg;
       const bpsText = `${signedText(bps, 0)} bps`;
+      const startX = p.bounds.x + padLeft(p);
+      // B3 — the bps number always paints in full; only the trailing
+      // benchmark tag (`vs T 4.25 05/34`) truncates with an ellipsis via
+      // fragText's maxWidth, so it never clips mid-glyph past the cell edge.
       gc.cache.fillStyle = fg;
-      gc.fillText(bpsText, p.bounds.x + padLeft(p), y);
+      gc.fillText(bpsText, startX, y);
       if (benchmark) {
-        const prefix = ' vs ';
-        const x = p.bounds.x + padLeft(p) + gc.measureText(bpsText).width;
-        gc.cache.fillStyle = withAlpha(p.fg, 0.65);
-        gc.fillText(`${prefix}${benchmark}`, x, y);
+        const bpsWidth = gc.measureText(bpsText).width;
+        const x = startX + bpsWidth;
+        const maxWidth = Math.max(0, p.bounds.x + p.bounds.w - padRight(p) - x);
+        fragText(gc, ` vs ${benchmark}`, x, y, {
+          font: p.font,
+          color: withAlpha(p.fg, 0.65),
+          align: 'left',
+          maxWidth,
+        });
       }
     }
   },

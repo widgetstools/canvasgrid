@@ -8,7 +8,7 @@ import {
   rendererPainterTableForTests,
 } from '../../src/bridge';
 import { THREADING_PROGRAM } from '../../src/colDefBuilders';
-import { iconActionCluster, rowMenuCell, resolveHitRegion } from '../../src/actions';
+import { iconActionCluster, rowMenuCell, resolveHitRegion, setActionIconResolver } from '../../src/actions';
 import { makeFakeGc } from '../helpers/fakeGc';
 
 function makeFakeGrid(
@@ -440,5 +440,54 @@ describe('wireRenderersIntoKernel — destroy cleanup', () => {
     const handle = wireRenderersIntoKernel(grid, { statsColumns: ['pnl'] });
     expect(() => handle.destroy()).not.toThrow();
     expect(grid.__renderersBridgeWired).toBeUndefined();
+  });
+});
+
+describe('wireRenderersIntoKernel — B2 icon resolver threading', () => {
+  afterEach(() => { setActionIconResolver(null); });
+
+  it('threads the grid\'s public resolveIcon through to IconActionCluster (zero kernel diff)', () => {
+    const fakePath = {} as Path2D;
+    const grid = makeFakeGrid() as ReturnType<typeof makeFakeGrid> & {
+      resolveIcon(name: string, setHint?: string): Path2D | null;
+    };
+    grid.resolveIcon = (name: string) => (name === 'route' ? fakePath : null);
+    wireRenderersIntoKernel(grid);
+
+    const gc = makeFakeGc();
+    iconActionCluster.paint(gc, {
+      value: null, valueFormatted: '',
+      bounds: { x: 0, y: 0, w: 40, h: 28 },
+      font: '13px sans-serif', fg: '#111', bg: '#fff', borderColor: '#ccc',
+      halign: 'right', prefillColor: '#fff',
+      isFocused: false, isSelected: false, isHovered: false, isHeader: false,
+      rowId: 'r1', colId: 'act',
+      params: { actions: [{ icon: 'route', label: 'Route', onAction: () => {} }] },
+    });
+
+    expect(gc.calls.some((c) => c.op === 'stroke' && c.args[0] === fakePath)).toBe(true);
+  });
+
+  it('destroy() unwires the resolver — subsequent paints fall back to the letter badge', () => {
+    const fakePath = {} as Path2D;
+    const grid = makeFakeGrid() as ReturnType<typeof makeFakeGrid> & {
+      resolveIcon(name: string, setHint?: string): Path2D | null;
+    };
+    grid.resolveIcon = () => fakePath;
+    const handle = wireRenderersIntoKernel(grid);
+    handle.destroy();
+
+    const gc = makeFakeGc();
+    iconActionCluster.paint(gc, {
+      value: null, valueFormatted: '',
+      bounds: { x: 0, y: 0, w: 40, h: 28 },
+      font: '13px sans-serif', fg: '#111', bg: '#fff', borderColor: '#ccc',
+      halign: 'right', prefillColor: '#fff',
+      isFocused: false, isSelected: false, isHovered: false, isHeader: false,
+      rowId: 'r1', colId: 'act',
+      params: { actions: [{ icon: 'route', label: 'Route', onAction: () => {} }] },
+    });
+
+    expect(gc.calls.some((c) => c.op === 'fillText' && c.args[0] === 'R')).toBe(true);
   });
 });

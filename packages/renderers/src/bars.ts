@@ -101,6 +101,10 @@ function rollingMeanStd(values: readonly number[]): { mean: number; std: number 
   return { mean, std };
 }
 
+/** Fraction past which a right-aligned label sits ON the fill rather than
+ *  in the empty track — B6's "never straddles the fill boundary" rule. */
+const LABEL_ON_FILL_THRESHOLD = 0.8;
+
 /** Catalog §3.5 ProgressBarCell — horizontal fill bar, text overlaid. */
 export const progressBarCell: CellPainter = {
   paint(gc, p) {
@@ -112,11 +116,16 @@ export const progressBarCell: CellPainter = {
     const fill = frac >= 1 ? SEMANTIC_COLORS.positive : SEMANTIC_COLORS.info;
     miniBar(gc, rect.x, rect.y, rect.w, rect.h, frac, fill, TRACK_COLOR);
     if (params.showLabel !== false) {
-      const label = p.valueFormatted || `${Math.round(frac * 100)}%`;
-      fragText(gc, label, rect.x + rect.w / 2, textY(gc, p), {
+      // B6 — render as a percent (never the raw `0.72` fraction), drawn
+      // AFTER the track/fill, right-aligned so it normally sits on the
+      // empty side of the bar; once the fill crosses ~80% it would overlap
+      // the label zone, so switch to a contrast color drawn ON the fill.
+      const label = `${Math.round(frac * 100)}%`;
+      const onFill = frac > LABEL_ON_FILL_THRESHOLD;
+      fragText(gc, label, rect.x + rect.w, textY(gc, p), {
         font: p.font,
-        color: p.fg,
-        align: 'center',
+        color: onFill ? reverseOutFg(p) : p.fg,
+        align: 'right',
       });
     }
   },
@@ -258,10 +267,14 @@ export const spreadBarCell: CellPainter = {
     const rect = innerBarRect(p);
     const frac = Math.max(0, Math.min(1, spread / (mean + std * 2 || spread || 1)));
     miniBar(gc, rect.x, rect.y, rect.w, rect.h, frac, barColor, TRACK_COLOR);
-    fragText(gc, p.valueFormatted || String(mid.toFixed(2)), rect.x + rect.w / 2, textY(gc, p), {
+    // B6 — right-align outside the fill (same rule as progressBar/volumeBar)
+    // instead of centering, so the mid-price label never straddles the
+    // fill boundary; switch to a contrast color once the fill crosses it.
+    const onFill = frac > LABEL_ON_FILL_THRESHOLD;
+    fragText(gc, p.valueFormatted || String(mid.toFixed(2)), rect.x + rect.w, textY(gc, p), {
       font: p.font,
-      color: p.fg,
-      align: 'center',
+      color: onFill ? reverseOutFg(p) : p.fg,
+      align: 'right',
     });
   },
 };
@@ -280,10 +293,14 @@ export const volumeBar: CellPainter = {
     const rect = innerBarRect(p);
     miniBar(gc, rect.x, rect.y, rect.w, rect.h, frac, withAlpha(SEMANTIC_COLORS.info, 0.45), TRACK_COLOR);
     const text = p.valueFormatted || String(value);
-    const textColor = params.reverseOutText && frac > 0.5 ? reverseOutFg(p) : p.fg;
+    // B6 — the label never straddles the fill boundary by default (not
+    // opt-in): once the bar crosses ~80%, the right-aligned label sits ON
+    // the fill and needs the contrast color. `reverseOutText: false`
+    // explicitly opts back out of the auto-contrast.
+    const onFill = params.reverseOutText !== false && frac > LABEL_ON_FILL_THRESHOLD;
     fragText(gc, text, p.bounds.x + p.bounds.w - padRight(p), textY(gc, p), {
       font: p.font,
-      color: textColor,
+      color: onFill ? reverseOutFg(p) : p.fg,
       align: 'right',
     });
   },

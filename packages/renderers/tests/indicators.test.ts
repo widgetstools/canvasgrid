@@ -59,6 +59,21 @@ describe('statusDot', () => {
     }));
     expect(dotFillColors(gc.calls)).toContain(SEMANTIC_COLORS.warning);
   });
+
+  // B7 — a label-less dot is a standalone glyph indicator; it centers
+  // horizontally in the cell (bounds.w=120 → cx=60). With a label, the
+  // glyph+text pair keeps its left-aligned layout (directionArrow precedent).
+  it('centers the dot horizontally when there is no label (B7)', () => {
+    statusDot.paint(gc, baseConfig({ params: { color: SEMANTIC_COLORS.positive } }));
+    const arc = gc.calls.find((c) => c.op === 'arc')!;
+    expect(Number(arc.args[0])).toBe(60);
+  });
+
+  it('stays left-aligned when a label is present (B7)', () => {
+    statusDot.paint(gc, baseConfig({ params: { color: SEMANTIC_COLORS.positive, label: 'Live' } }));
+    const arc = gc.calls.find((c) => c.op === 'arc')!;
+    expect(Number(arc.args[0])).toBeLessThan(60);
+  });
 });
 
 describe('quoteQualityDot', () => {
@@ -99,6 +114,16 @@ describe('quoteQualityDot', () => {
       },
     }));
     expect(dotFillColors(gc.calls)).toContain(SEMANTIC_COLORS.negative);
+  });
+
+  // B7 — standalone glyph indicator; centers horizontally (bounds.w=120 → cx=60).
+  it('centers the dot horizontally in the cell (B7)', () => {
+    quoteQualityDot.paint(gc, baseConfig({
+      rowData: { fresh: true, tight: true, deep: true },
+      params: { freshField: 'fresh', tightField: 'tight', deepField: 'deep' },
+    }));
+    const arc = gc.calls.find((c) => c.op === 'arc')!;
+    expect(Number(arc.args[0])).toBe(60);
   });
 });
 
@@ -166,6 +191,25 @@ describe('directionArrow', () => {
     }));
     expect(gc.calls.some((c) => c.op === 'set:fillStyle' && c.args[0] === SEMANTIC_COLORS.negative)).toBe(true);
   });
+
+  // B1 fix — canvas Y grows DOWNWARD; an 'up' (▲) apex must be the
+  // topmost (smallest-y) vertex, mirrored for 'down'. Deliberately locks
+  // in the corrected geometry (the prior code painted 'up' as ▼).
+  it('up triangle apex is the topmost vertex (B1 geometry)', () => {
+    directionArrow.paint(gc, baseConfig({ params: { direction: 'up' } }));
+    const moveTo = gc.calls.find((c) => c.op === 'moveTo')!;
+    const lineTos = gc.calls.filter((c) => c.op === 'lineTo');
+    const apexY = Number(moveTo.args[1]);
+    expect(lineTos.every((c) => Number(c.args[1]) > apexY)).toBe(true);
+  });
+
+  it('down triangle apex is the bottommost vertex (B1 geometry)', () => {
+    directionArrow.paint(gc, baseConfig({ params: { direction: 'down' } }));
+    const moveTo = gc.calls.find((c) => c.op === 'moveTo')!;
+    const lineTos = gc.calls.filter((c) => c.op === 'lineTo');
+    const apexY = Number(moveTo.args[1]);
+    expect(lineTos.every((c) => Number(c.args[1]) < apexY)).toBe(true);
+  });
 });
 
 describe('structureIconStrip', () => {
@@ -219,5 +263,12 @@ describe('trafficLightCell', () => {
   it('paints red state (variant)', () => {
     trafficLightCell.paint(gc, baseConfig({ params: { state: 'red' } }));
     expect(dotFillColors(gc.calls)).toContain(SEMANTIC_COLORS.negative);
+  });
+
+  // B7 — standalone glyph indicator; centers horizontally (bounds.w=120 → cx=60).
+  it('centers the dot horizontally in the cell (B7)', () => {
+    trafficLightCell.paint(gc, baseConfig({ params: { state: 'green' } }));
+    const arc = gc.calls.find((c) => c.op === 'arc')!;
+    expect(Number(arc.args[0])).toBe(60);
   });
 });

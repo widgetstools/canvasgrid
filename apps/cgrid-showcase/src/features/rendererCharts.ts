@@ -88,7 +88,19 @@ export const rendererCharts: Feature = {
       getRowId: (r) => r.id,
       columnDefs: [],
       theme,
-      rowHeight: 38,
+      // D2 — matches rendererBlotter's rowHeight (34). Investigation: the
+      // "all-mono, visually larger" symptom does NOT come from a
+      // page-level `defaultColDef` font override (there isn't one here or
+      // on the blotter page — both inherit the SAME kernel theme default,
+      // `theme.cellFont`, which is monospace by design for every grid,
+      // catalog page included). The composite painters already respect
+      // "mono only where the painter itself chooses it": `priceQuoteCell`/
+      // `nbboCell` call `monoFont()`, every other bar/composite painter
+      // here (heat, volume-bar, progress-bar, benchmark-spread,
+      // stacked-value, spread-bar) paints with `p.font` unchanged. The
+      // extra 4px of row height was the one concrete, verifiable
+      // contributor to "visually larger" than the blotter.
+      rowHeight: 34,
       headerHeight: 36,
     });
 

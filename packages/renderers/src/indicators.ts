@@ -106,16 +106,19 @@ function paintDirectionGlyph(
   gc.cache.fillStyle = color;
   gc.cache.lineWidth = 1.5;
   gc.beginPath();
+  // B1 fix — canvas Y grows DOWNWARD, so the apex of an 'up' (▲) triangle
+  // must sit at the SMALLEST y (top) with its base at the LARGEST y
+  // (bottom). The previous code had these swapped, so 'up' painted as ▼.
   if (dir === 'up') {
-    gc.moveTo(iconX, cy + size * 0.35);
-    gc.lineTo(iconX - size * 0.45, cy - size * 0.35);
-    gc.lineTo(iconX + size * 0.45, cy - size * 0.35);
-    gc.closePath();
-    gc.fill();
-  } else if (dir === 'down') {
     gc.moveTo(iconX, cy - size * 0.35);
     gc.lineTo(iconX - size * 0.45, cy + size * 0.35);
     gc.lineTo(iconX + size * 0.45, cy + size * 0.35);
+    gc.closePath();
+    gc.fill();
+  } else if (dir === 'down') {
+    gc.moveTo(iconX, cy + size * 0.35);
+    gc.lineTo(iconX - size * 0.45, cy - size * 0.35);
+    gc.lineTo(iconX + size * 0.45, cy - size * 0.35);
     gc.closePath();
     gc.fill();
   } else {
@@ -208,15 +211,21 @@ export const statusDot: CellPainter = {
       ?? rowString(row, params.colorField)
       ?? SEMANTIC_COLORS.info;
     const label = params.label ?? rowString(row, params.labelField) ?? '';
-    const cx = p.bounds.x + padLeft(p) + DOT_R;
     const cy = textY(gc, p);
-    dot(gc, cx, cy, DOT_R, color);
     if (label) {
+      // B7 — glyph + text reads left-to-right (directionArrow precedent);
+      // only the label-less standalone dot centers.
+      const cx = p.bounds.x + padLeft(p) + DOT_R;
+      dot(gc, cx, cy, DOT_R, color);
       fragText(gc, label, cx + DOT_R + 6, cy, {
         font: p.font,
         color: p.fg,
         align: 'left',
       });
+    } else {
+      // B7 — standalone glyph indicators center horizontally in the cell.
+      const cx = p.bounds.x + p.bounds.w / 2;
+      dot(gc, cx, cy, DOT_R, color);
     }
   },
 };
@@ -227,7 +236,8 @@ export const quoteQualityDot: CellPainter = {
     const params = (p.params ?? {}) as QuoteQualityDotParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const color = quoteQualityColor(row, params);
-    const cx = p.bounds.x + padLeft(p) + DOT_R;
+    // B7 — standalone glyph indicator; center horizontally in the cell.
+    const cx = p.bounds.x + p.bounds.w / 2;
     dot(gc, cx, textY(gc, p), DOT_R, color);
   },
 };
@@ -314,7 +324,8 @@ export const trafficLightCell: CellPainter = {
       const raw = row[params.stateField];
       if (raw === 'red' || raw === 'amber' || raw === 'green') state = raw;
     }
-    const cx = p.bounds.x + padLeft(p) + DOT_R;
+    // B7 — standalone glyph indicator; center horizontally in the cell.
+    const cx = p.bounds.x + p.bounds.w / 2;
     dot(gc, cx, textY(gc, p), DOT_R, resolveTrafficLightColor(state));
   },
 };

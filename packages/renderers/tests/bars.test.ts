@@ -51,6 +51,22 @@ describe('progressBarCell', () => {
     }));
     expect(gc.calls.some((c) => c.op === 'fillRect')).toBe(true);
   });
+
+  // B6 — label renders as a percent (never the raw `0.72` fraction) and is
+  // right-aligned, drawn AFTER the track/fill.
+  it('renders the label as a percent, right-aligned (B6)', () => {
+    progressBarCell.paint(gc, baseConfig({ params: { fraction: 0.72 } }));
+    expect(gc.calls.some((c) => c.op === 'fillText' && c.args[0] === '72%')).toBe(true);
+    expect(gc.calls.some((c) => c.op === 'set:textAlign' && c.args[0] === 'right')).toBe(true);
+  });
+
+  it('draws the fill/track before the label (B6 z-order)', () => {
+    progressBarCell.paint(gc, baseConfig({ params: { fraction: 0.5 } }));
+    const fillIdx = gc.calls.findIndex((c) => c.op === 'fillRect');
+    const textIdx = gc.calls.findIndex((c) => c.op === 'fillText');
+    expect(fillIdx).toBeGreaterThanOrEqual(0);
+    expect(textIdx).toBeGreaterThan(fillIdx);
+  });
 });
 
 describe('rangeBarCell', () => {

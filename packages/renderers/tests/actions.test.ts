@@ -1,12 +1,12 @@
 // @cgrid/renderers — action category tests (Cycle 21f / Task 12).
 
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import type { CellPaintConfig } from '@cgrid/kernel';
 import { makeFakeGc } from './helpers/fakeGc';
 import type { FakeGc } from './helpers/fakeGc';
 import {
   iconActionCluster, rowMenuCell, HitRegionRegistry, resolveHitRegion,
-  defaultHitRegionRegistry, clearRegionsForRow,
+  defaultHitRegionRegistry, clearRegionsForRow, setActionIconResolver,
 } from '../src/actions';
 
 function baseConfig(overrides: Partial<CellPaintConfig> = {}): CellPaintConfig {
@@ -93,6 +93,41 @@ describe('iconActionCluster', () => {
     const region = resolveHitRegion('r9', 'act', 130, 14);
     expect(region?.bounds.w).toBe(24);
     expect(region?.bounds.h).toBe(24);
+  });
+
+  // B2 — falls back to the letter-in-circle badge (no resolver wired, e.g.
+  // this describe block never calls setActionIconResolver).
+  it('falls back to the letter badge when no icon resolver is wired (B2 fallback)', () => {
+    iconActionCluster.paint(gc, baseConfig({
+      params: { actions: [{ icon: 'x', label: 'Cancel', onAction: () => {} }] },
+    }));
+    expect(gc.calls.some((c) => c.op === 'fillText' && c.args[0] === 'C')).toBe(true);
+    // The hit-circle outline still strokes; only a resolved icon Path2D
+    // (never present here, since no resolver is wired) would stroke.
+    expect(gc.calls.some((c) => c.op === 'stroke' && c.args.length > 0)).toBe(false);
+  });
+
+  describe('with a wired icon resolver', () => {
+    const fakePath = {} as Path2D;
+
+    afterEach(() => { setActionIconResolver(null); });
+
+    it('strokes the resolved Lucide Path2D instead of the letter badge (B2)', () => {
+      setActionIconResolver((name) => (name === 'x' ? fakePath : null));
+      iconActionCluster.paint(gc, baseConfig({
+        params: { actions: [{ icon: 'x', label: 'Cancel', onAction: () => {} }] },
+      }));
+      expect(gc.calls.some((c) => c.op === 'stroke' && c.args[0] === fakePath)).toBe(true);
+      expect(gc.calls.some((c) => c.op === 'fillText' && c.args[0] === 'C')).toBe(false);
+    });
+
+    it('falls back to the letter badge when the icon name does not resolve (B2 unknown name)', () => {
+      setActionIconResolver(() => null);
+      iconActionCluster.paint(gc, baseConfig({
+        params: { actions: [{ icon: 'not-a-real-icon', label: 'Cancel', onAction: () => {} }] },
+      }));
+      expect(gc.calls.some((c) => c.op === 'fillText' && c.args[0] === 'C')).toBe(true);
+    });
   });
 });
 

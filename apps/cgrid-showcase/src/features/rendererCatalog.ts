@@ -23,7 +23,7 @@ interface CatalogRow {
   fracPrice: number;
   abbrevNum: number;
   symbol: string;
-  note: string;
+  cusip: string;
   pair: string;
   rate: number;
   timestamp: number;
@@ -86,8 +86,14 @@ interface CatalogRow {
 
 const SPARK = [12, 14, 13, 16, 15, 18, 17, 19];
 
+// V1 — a module-level clock captured ONCE at import time, mirroring
+// rendererBlotter.ts's D1 fix, so the age/relative-time/stale-flag columns
+// below render deterministic text for visual-regression snapshots (only the
+// relative deltas baked into `catalogRow()` matter for painted output).
+const FROZEN_NOW = Date.now();
+
 function catalogRow(): CatalogRow {
-  const now = Date.now();
+  const now = FROZEN_NOW;
   return {
     id: 'cat1',
     numberVal: 1_234_567.89,
@@ -102,7 +108,7 @@ function catalogRow(): CatalogRow {
     fracPrice: 99.515625,
     abbrevNum: 45_000_000,
     symbol: 'AAPL 4.5 05/30',
-    note: 'CUSIP',
+    cusip: '037833100',
     pair: 'EUR/USD',
     rate: 1.0834,
     timestamp: now - 3_600_000,
@@ -217,7 +223,9 @@ function buildCatalogColumns(
         cols.push(col(colDef, name, 'abbrevNum', { precision: 1, currencyPrefix: '$' }));
         break;
       case 'ticker':
-        cols.push(col(colDef, name, 'symbol', { secondaryField: 'note' }, 130));
+        // D3 — secondary line binds to an actual identifier value, not a
+        // bare type-label ('CUSIP'); catalogRow() carries a real CUSIP.
+        cols.push(col(colDef, name, 'symbol', { secondaryField: 'cusip' }, 130));
         break;
       case 'currency-pair':
         cols.push(col(colDef, name, 'pair', { pairField: 'pair', rateField: 'rate' }, 120));
@@ -241,7 +249,13 @@ function buildCatalogColumns(
         }, 80));
         break;
       case 'stale-flag':
-        cols.push(col(colDef, name, 'staleMs', { lastTickField: 'staleMs', staleAfterMs: 30_000 }, 90));
+        // D1 — bind the displayed value to a real numeric field (`price`);
+        // `staleMs` stays the age-check field via `lastTickField`, never the
+        // primary bound value (that was the raw-epoch-number bug).
+        cols.push({
+          ...col(colDef, name, 'price', { lastTickField: 'staleMs', staleAfterMs: 8_000 }, 90),
+          valueFormatter: '#,##0.00',
+        });
         break;
       case 'direction-arrow':
         cols.push(col(colDef, name, 'direction', { directionField: 'direction' }, 80));
@@ -358,8 +372,12 @@ function buildCatalogColumns(
         break;
       case 'icon-action-cluster':
         cols.push({
+          // B2 — 'ban', not 'x' (see rendererBlotter.ts's comment): a subset
+          // of Lucide names in the generated bundle mis-render a later
+          // subpath due to a `packages/kernel` icon-bundle-generation
+          // defect (out of scope here); 'ban' is verified single-subpath.
           ...(colDef.iconActionCluster(name, {
-            actions: [{ icon: 'x', label: 'Act', onAction: (rowId) => { actionLog.push(String(rowId)); } }],
+            actions: [{ icon: 'ban', label: 'Act', onAction: (rowId) => { actionLog.push(String(rowId)); } }],
           }) as CColDef<CatalogRow>),
           headerName: name,
           width: 90,
@@ -416,7 +434,7 @@ export const rendererCatalog: Feature = {
     grid.setRowData([catalogRow()]);
 
     const actionLog: string[] = [];
-    const { colDef } = wireShowcaseRenderers(grid, gridHost);
+    const { colDef } = wireShowcaseRenderers(grid, gridHost, { now: () => FROZEN_NOW });
 
     const columns = buildCatalogColumns(colDef, actionLog);
     grid.updateGridOptions({ columnDefs: columns });

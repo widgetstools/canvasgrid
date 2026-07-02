@@ -33,7 +33,7 @@ import {
 } from './composite';
 import {
   iconActionCluster, rowMenuCell, resolveHitRegion,
-  clearRegionsForRow, defaultHitRegionRegistry,
+  clearRegionsForRow, defaultHitRegionRegistry, setActionIconResolver,
 } from './actions';
 import type { IconActionClusterParams, RowMenuCellParams } from './types';
 import { ColumnStats, type ColumnStatSnapshot } from './columnStats';
@@ -128,6 +128,11 @@ interface KernelGridSurface {
   openContextMenu?: (items: unknown[], x: number, y: number, hit: unknown) => void;
   /** Maps a DOM click to grid-canvas coordinates for hit-region resolution. */
   canvasCoordsFromEvent?: (mouse: MouseEvent) => { x: number; y: number } | undefined;
+  /** B2 — CGridApi's already-public icon lookup (populated by `@cgrid/format`'s
+   *  `wireIntoKernel` registering the Lucide bundle). Threaded into actions.ts's
+   *  `setActionIconResolver` so IconActionCluster paints real Lucide glyphs
+   *  without any new kernel surface. */
+  resolveIcon?(name: string, setHint?: string): unknown;
   __renderersBridgeWired?: RenderersBridgeHandle;
 }
 
@@ -296,6 +301,13 @@ export function wireRenderersIntoKernel(
     g.registerCellRenderer(name, withBridgeThreading(name, PAINTERS[name]));
   }
 
+  // B2 — wire IconActionCluster's Lucide resolution through the grid's own
+  // (already-public) `resolveIcon` API. Last-wired grid wins on the
+  // module-level singleton; only one showcase grid is ever mounted at a
+  // time (features tear down their predecessor before mounting), and
+  // `destroy()` below clears it so a torn-down grid never lingers.
+  setActionIconResolver((name, setHint) => (g.resolveIcon?.(name, setHint) as Path2D | null) ?? null);
+
   let ageTimer: ReturnType<typeof setInterval> | null = null;
   let ageTimerUsers = 0;
 
@@ -398,6 +410,7 @@ export function wireRenderersIntoKernel(
     // then, evict everything on destroy so a torn-down grid doesn't leak
     // hit regions the module-global registry would otherwise hold forever.
     defaultHitRegionRegistry.clearAll();
+    setActionIconResolver(null);
     delete g.__renderersBridgeWired;
   };
 

@@ -138,7 +138,13 @@ export const ratingBadge: CellPainter = {
     const grade = params.rating || p.valueFormatted || String(p.value ?? '');
     if (!grade) return;
     void params.agency;
-    paintRatingBadge(gc, p, grade, p.bounds.x + padLeft(p));
+    // B7 — standalone glyph indicator; center the pill horizontally in the
+    // cell. Mirrors paintCapsPill's own width formula (measureText + 2×padX)
+    // since that helper doesn't expose a measure-only variant.
+    gc.cache.font = `600 10px ${fontFamily(p.font)}`;
+    const w = gc.measureText(grade).width + 12;
+    const x = p.bounds.x + (p.bounds.w - w) / 2;
+    paintRatingBadge(gc, p, grade, x);
   },
 };
 

@@ -84,6 +84,35 @@ describe('priceQuoteCell', () => {
       rowData: undefined,
     }))).not.toThrow();
   });
+
+  // B4 — the spread band is a thin 2px bar, muted at 20% alpha when the
+  // spread is within threshold — NOT the previous flat 4px, always
+  // amber-tinted (0.45 alpha) block regardless of severity.
+  it('paints a muted 2px band when the spread is within threshold (B4)', () => {
+    priceQuoteCell.paint(gc, baseConfig({
+      rowData: { bid: 100, ask: 100.02, mid: 100.01 },
+      params: { bidField: 'bid', askField: 'ask', midField: 'mid', spreadWarnThreshold: 0.05 },
+    }));
+    const bandRect = gc.calls.find((c) => c.op === 'fillRect' && Number(c.args[3]) === 2);
+    expect(bandRect).toBeDefined();
+    const fillIdx = gc.calls.indexOf(bandRect!);
+    const colorCall = [...gc.calls.slice(0, fillIdx)].reverse()
+      .find((c) => c.op === 'set:fillStyle');
+    expect(String(colorCall?.args[0])).toMatch(/rgba\(138,143,152,0\.2\)/);
+  });
+
+  it('paints a warning-tinted band at 40% alpha when the spread exceeds threshold (B4)', () => {
+    priceQuoteCell.paint(gc, baseConfig({
+      rowData: { bid: 100, ask: 100.2, mid: 100.1 },
+      params: { bidField: 'bid', askField: 'ask', midField: 'mid', spreadWarnThreshold: 0.05 },
+    }));
+    const bandRect = gc.calls.find((c) => c.op === 'fillRect' && Number(c.args[3]) === 2);
+    expect(bandRect).toBeDefined();
+    const fillIdx = gc.calls.indexOf(bandRect!);
+    const colorCall = [...gc.calls.slice(0, fillIdx)].reverse()
+      .find((c) => c.op === 'set:fillStyle');
+    expect(String(colorCall?.args[0])).toMatch(/rgba\(240,180,41,0\.4\)/);
+  });
 });
 
 describe('nbboCell', () => {
@@ -155,6 +184,31 @@ describe('benchmarkSpreadCell', () => {
       rowData: {},
       params: { bpsField: 'bps', benchmarkLabelField: 'bench' },
     }))).not.toThrow();
+  });
+
+  // B3 — the bps number always paints in full (never truncated); only the
+  // trailing benchmark tag ellipsizes when the cell is too narrow to fit
+  // it, instead of clipping mid-glyph past the cell edge.
+  it('truncates the benchmark tag with an ellipsis in a narrow cell, keeping bps intact (B3)', () => {
+    benchmarkSpreadCell.paint(gc, baseConfig({
+      bounds: { x: 0, y: 0, w: 70, h: 28 },
+      rowData: { bps: 185, bench: 'T 4.25 05/34' },
+      params: { bpsField: 'bps', benchmarkLabelField: 'bench' },
+    }));
+    const texts = gc.calls.filter((c) => c.op === 'fillText').map((c) => String(c.args[0]));
+    expect(texts.some((t) => t === '+185 bps')).toBe(true);
+    expect(texts.some((t) => t.endsWith('…'))).toBe(true);
+  });
+
+  it('does not truncate when the benchmark tag fits (B3 nominal-width)', () => {
+    benchmarkSpreadCell.paint(gc, baseConfig({
+      bounds: { x: 0, y: 0, w: 400, h: 28 },
+      rowData: { bps: 185, bench: 'T 4.25 05/34' },
+      params: { bpsField: 'bps', benchmarkLabelField: 'bench' },
+    }));
+    const texts = gc.calls.filter((c) => c.op === 'fillText').map((c) => String(c.args[0]));
+    expect(texts.some((t) => t.includes('T 4.25 05/34'))).toBe(true);
+    expect(texts.some((t) => t.endsWith('…'))).toBe(false);
   });
 });
 

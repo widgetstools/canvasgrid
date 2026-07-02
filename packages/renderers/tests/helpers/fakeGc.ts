@@ -53,8 +53,18 @@ export function makeFakeGc(overrides: Partial<CanvasRenderingContext2D> = {}): F
 
   const ctx: Record<string, unknown> = {
     calls,
-    // measureText — deterministic at 7px/char, excluded from calls
-    measureText: vi.fn((text: string) => ({ width: text.length * 7 })),
+    // measureText — deterministic at 7px/char, excluded from calls.
+    // `actualBoundingBoxAscent`/`Descent` are included (fixed, deterministic
+    // values) so painters' `textY()` helpers — which compute a vertical
+    // midpoint via `(ascent - descent) / 2` — resolve to a real number
+    // instead of NaN (the DOM TextMetrics fields are absent on a bare
+    // `{ width }` mock, and NaN arithmetic silently propagates through
+    // every geometry computation derived from it).
+    measureText: vi.fn((text: string) => ({
+      width: text.length * 7,
+      actualBoundingBoxAscent: 9,
+      actualBoundingBoxDescent: 2,
+    })),
     // save/restore — stack bookkeeping, not drawing ops per the brief
     save: vi.fn(),
     restore: vi.fn(),

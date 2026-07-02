@@ -86,7 +86,16 @@ function innerBounds(p: CellPaintConfig): { x0: number; y0: number; w: number; h
   };
 }
 
-/** Catalog §3.6 WinLossSparkline — 1px-wide binary up/down bars. */
+const WIN_LOSS_BAR_W = 2;
+const WIN_LOSS_GAP = 1;
+
+/**
+ * Catalog §3.6 WinLossSparkline — 2px-wide binary up/down bars, all the same
+ * height, packed with a 1px gap and centered as a group in the cell (B5 —
+ * the previous slot-filling layout stretched each bar to `w / data.length`,
+ * which read as chunky blocks rather than a sparkline strip at typical
+ * data lengths).
+ */
 export const winLossSparkline: CellPainter = {
   paint(gc, p) {
     const params = (p.params ?? {}) as WinLossSparklineParams;
@@ -96,15 +105,16 @@ export const winLossSparkline: CellPainter = {
     if (!data || data.length === 0) return;
     const { x0, y0, w, h } = innerBounds(p);
     const midY = y0 + h / 2;
-    const slotW = Math.max(1, w / data.length);
+    const barH = h * 0.32;
+    const totalW = data.length * WIN_LOSS_BAR_W + Math.max(0, data.length - 1) * WIN_LOSS_GAP;
+    const startX = x0 + Math.max(0, (w - totalW) / 2);
     for (let i = 0; i < data.length; i++) {
       const v = data[i]!;
       const color = v >= 0 ? colors.positive : colors.negative;
-      const x = x0 + i * slotW;
-      const y = v >= 0 ? midY - h * 0.35 : midY;
-      const barH = h * 0.35;
+      const x = startX + i * (WIN_LOSS_BAR_W + WIN_LOSS_GAP);
+      const y = v >= 0 ? midY - barH : midY;
       gc.cache.fillStyle = color;
-      gc.fillRect(x, y, Math.max(1, slotW - 0.5), barH);
+      gc.fillRect(x, y, WIN_LOSS_BAR_W, barH);
     }
     gc.cache.strokeStyle = withAlpha(colors.muted, 0.5);
     gc.cache.lineWidth = 1;

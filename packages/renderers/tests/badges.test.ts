@@ -78,6 +78,17 @@ describe('ratingBadge', () => {
     ratingBadge.paint(gc, baseConfig({ params: { rating: 'NR' } }));
     expect(pillFills(gc.calls).some((c) => c.includes('8a8f98') || c.startsWith('rgba(138, 143, 152'))).toBe(true);
   });
+
+  // B7 — standalone glyph indicator; the pill centers horizontally in the
+  // cell rather than hugging the left edge. fakeGc's measureText is
+  // 7px/char: 'AAA'.width=21, pill width=21+12=33, bounds.w=140 →
+  // x=(140-33)/2=53.5, and `pill()`'s first path op is `moveTo(x+radius, y)`
+  // with radius=3 → 56.5 (far from the old left-aligned ~9).
+  it('centers the pill horizontally in the cell (B7)', () => {
+    ratingBadge.paint(gc, baseConfig({ params: { rating: 'AAA' } }));
+    const moveTo = gc.calls.find((c) => c.op === 'moveTo')!;
+    expect(Number(moveTo.args[0])).toBeCloseTo(56.5, 5);
+  });
 });
 
 describe('ratingClusterCell', () => {
