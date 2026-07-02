@@ -110,6 +110,7 @@ import { totalsCell } from './renderer/cellRenderers/totals';
 import { groupCell, GROUP_CELL_GEOMETRY, type GroupCellValue } from './renderer/cellRenderers/group';
 import { groupFooterCell } from './renderer/cellRenderers/groupFooter';
 import { sparklineCell } from './renderer/cellRenderers/sparkline';
+import { compositeCell } from './renderer/cellRenderers/composite';
 import { rowSelectCheckboxCell } from './renderer/cellRenderers/rowSelectCheckbox';
 import { coerceToNumberArray } from './renderer/cellRenderers/sparkline/coerceToNumberArray';
 import { decorateHeader } from './renderer/painters/byRows';
@@ -136,6 +137,20 @@ import {
   serializeRanges as serializeRangesPure,
   mapPasteCells,
 } from './worker/passes/clipboardPass';
+import {
+  registerFormatCompiler as slotRegisterFormatCompiler,
+  type FormatCompiler,
+} from './core/formatCompilerSlot';
+import {
+  registerIconSet as regIcons,
+  resolveIcon as resIcon,
+} from './icons/registry';
+import {
+  registerTooltipProvider as regTip,
+  unregisterTooltipProvider as unregTip,
+  type TooltipProviderFn,
+} from './interaction/features/tooltipProvider';
+import { serializeToHtml, type RowExport } from './interaction/features/clipboardSerializer';
 
 export const CGRID_VERSION = '0.0.0';
 
@@ -844,6 +859,10 @@ export class CGrid<TRow = any> {
     // column declaring `checkboxSelection: true`. Reads `p.isSelected`
     // for state (NOT row data); a chain feature claims the click.
     this.cellRenderers.register('rowSelectCheckbox', rowSelectCheckboxCell);
+    // Cycle 21c / Task 13 — composite fragment renderer. Only reached
+    // when a `type: 'composite'` ColDef compiled successfully via the
+    // injected format compiler (see propertyChain.compileFormatSlots).
+    this.cellRenderers.register('composite', compositeCell);
 
     // 2b. Tool-panel registry (Cycle 11 / Task 1). Seed the built-in
     // IDs first, then overwrite the Columns stub with the real
@@ -4021,7 +4040,85 @@ export class CGrid<TRow = any> {
     if (typeof navigator === 'undefined' || !navigator.clipboard?.writeText) {
       throw new Error('clipboard-unavailable');
     }
+    // Cycle 21c / Task 15 — multi-format write when the copied range
+    // touches a composite column. text/plain stays byte-identical to
+    // the plain path (the worker/main-side TSV above); text/html adds
+    // styled <span> runs per composite fragment so Excel / Sheets
+    // paste keeps the formatting. Feature-detected: environments
+    // without ClipboardItem / clipboard.write fall back to writeText.
+    const hasComposite = ranges.some((range) =>
+      range.colIds.some((colId) => this.columnDefsMap.get(colId)?._compositeProgram !== undefined),
+    );
+    if (hasComposite) {
+      const clip = navigator.clipboard as Clipboard & { write?: (items: ClipboardItem[]) => Promise<void> };
+      if (typeof ClipboardItem !== 'undefined' && typeof clip.write === 'function') {
+        const html = await this.serializeRangesToHtml(ranges);
+        const item = new ClipboardItem({
+          'text/plain': new Blob([tsv], { type: 'text/plain' }),
+          'text/html': new Blob([html], { type: 'text/html' }),
+        });
+        await clip.write([item]);
+        return;
+      }
+      console.debug('[cgrid.clipboard] rich copy unavailable, using plain text');
+    }
     await navigator.clipboard.writeText(tsv);
+  }
+
+  /** Cycle 21c / Task 15 — build the text/html clipboard flavor for
+   *  ranges that include composite columns. Fetches the touched rows
+   *  main-side (composite programs are main-thread closures — they
+   *  don't cross postMessage), resolves fragments per composite cell,
+   *  and falls back to formatted plain text for regular columns. */
+  private async serializeRangesToHtml(ranges: SelectionRange[]): Promise<string> {
+    const rowIndexSet = new Set<number>();
+    for (const range of ranges) {
+      for (let i = range.rowStart; i <= range.rowEnd; i++) rowIndexSet.add(i);
+    }
+    const indexArr = Array.from(rowIndexSet);
+    const fetched = await Promise.all(indexArr.map((rowIndex) =>
+      this.workerCoord.getRowByIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
+    ));
+    if (this.destroyed) return '';
+    const rowsByIndex = new Map<number, Record<string, unknown>>();
+    for (const r of fetched) {
+      if (r.data != null) rowsByIndex.set(r.rowIndex, r.data as Record<string, unknown>);
+    }
+
+    const out: RowExport[] = [];
+    for (const range of ranges) {
+      for (let rowIndex = range.rowStart; rowIndex <= range.rowEnd; rowIndex++) {
+        const rowData = rowsByIndex.get(rowIndex) ?? {};
+        const cells: RowExport['cells'] = [];
+        for (const colId of range.colIds) {
+          const def = this.columnDefsMap.get(colId);
+          if (!def) {
+            cells.push({ text: '' });
+            continue;
+          }
+          const value = rowData[(def.field as string | undefined) ?? colId];
+          const program = def._compositeProgram;
+          if (program) {
+            const evalCtx = { value, row: rowData, colId };
+            const fragments = program.resolveFragments(evalCtx);
+            cells.push({
+              text: program.formatText(evalCtx),
+              fragments: (fragments ?? []).map((f) => ({
+                text: f.text,
+                style: (f.style ?? {}) as Record<string, string | number | undefined>,
+              })),
+            });
+            continue;
+          }
+          const text = def.valueFormatter
+            ? def.valueFormatter({ value, data: rowData as TRow, colId })
+            : value == null ? '' : String(value);
+          cells.push({ text });
+        }
+        out.push({ cells });
+      }
+    }
+    return serializeToHtml(out);
   }
 
   // ─── Cycle 20 / Task 3 — public export API ────────────────────────────
@@ -4722,6 +4819,40 @@ export class CGrid<TRow = any> {
     this.cgridCanvas?.requestRepaint();
   }
 
+  /** Cycle 21c / Task 10 — register the @cgrid/format compiler into the
+   *  kernel DI slot. Invoked by wireIntoKernel(grid) in @cgrid/format;
+   *  kernel's compileFormatSlots pass (Task 11) calls getFormatCompiler()
+   *  to obtain it. Apps that never call this see no behavior change. */
+  registerFormatCompiler(fn: FormatCompiler): void {
+    slotRegisterFormatCompiler(fn);
+  }
+
+  /** Cycle 21c / Task 12 — register a named icon set. Delegated to the
+   *  module-level icon registry; kernel never auto-registers any set. */
+  registerIconSet(name: string, paths: Record<string, string | Path2D>): void {
+    regIcons(name, paths);
+  }
+
+  /** Cycle 21c / Task 12 — resolve an icon name to a cached Path2D
+   *  across all registered sets. Returns null when not found or when
+   *  Path2D is unavailable (SSR / Node). */
+  resolveIcon(name: string, setHint?: string): Path2D | null {
+    return resIcon(name, setHint);
+  }
+
+  /** Cycle 21c / Task 14 — register a per-column tooltip provider.
+   *  Fires after a 500ms hover debounce; returns `{ plain }` or
+   *  `{ html }` (or null). Delegated to the module-level provider
+   *  registry consumed by the TooltipProvider chain feature. */
+  registerTooltipProvider(colId: string, fn: TooltipProviderFn): void {
+    regTip(colId, fn);
+  }
+
+  /** Cycle 21c / Task 14 — remove the tooltip provider for `colId`. */
+  unregisterTooltipProvider(colId: string): void {
+    unregTip(colId);
+  }
+
   /** Cycle 22 / Task 3 — runtime per-token override. Apps tune
    *  individual `--cg-*` variables without writing CSS; the patch
    *  lands as inline styles on the grid root so `getComputedStyle`
@@ -5371,6 +5502,11 @@ export class CGrid<TRow = any> {
       setGridOption: (k, v) => this.setGridOption(k, v),
       updateGridOptions: (p) => this.updateGridOptions(p),
       registerCellRenderer: (n, p) => this.registerCellRenderer(n, p),
+      registerFormatCompiler: (fn) => this.registerFormatCompiler(fn),
+      registerIconSet: (name, paths) => this.registerIconSet(name, paths),
+      resolveIcon: (name, setHint) => this.resolveIcon(name, setHint),
+      registerTooltipProvider: (colId, fn) => this.registerTooltipProvider(colId, fn),
+      unregisterTooltipProvider: (colId) => this.unregisterTooltipProvider(colId),
       registerCellEditor: (n, c) => this.registerCellEditor(n, c),
       registerComparator: <TValue = unknown>(n: string, f: (a: TValue, b: TValue) => number) =>
         this.registerComparator<TValue>(n, f),

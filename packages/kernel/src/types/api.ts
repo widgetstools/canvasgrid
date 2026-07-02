@@ -396,6 +396,44 @@ export interface CGridApi<TRow = any> {
    *  'number', 'checkbox', 'header') can be overridden by re-registering. */
   registerCellRenderer(name: string, painter: import('../renderer/cellRenderers/registry').CellPainter): void;
 
+  /** Cycle 21c / Task 10 — register the format compiler (supplied by
+   *  @cgrid/format's wireIntoKernel). Kernel invokes it in the
+   *  compileFormatSlots pass (Task 11). Apps that never call this see
+   *  identical behavior to before. */
+  registerFormatCompiler(fn: import('../core/formatCompilerSlot').FormatCompiler): void;
+
+  /** Cycle 21c / Task 12 — register a named icon set whose entries are
+   *  SVG path strings (lazy-converted to Path2D on first use) or
+   *  pre-built Path2D instances. Subsequent `resolveIcon` calls look
+   *  up icons by name across all registered sets.
+   *
+   *  Kernel never auto-registers any icon set; `@cgrid/format`'s
+   *  `wireIntoKernel` registers the Lucide bundle. Apps that supply
+   *  additional icon sets (e.g. a custom Phosphor bundle) call this
+   *  at init time alongside `wireIntoKernel`. Re-registering under
+   *  the same `name` replaces the prior set. */
+  registerIconSet(name: string, paths: Record<string, string | Path2D>): void;
+  /** Cycle 21c / Task 12 — look up an icon by name across all
+   *  registered icon sets. When `setHint` is provided the named set
+   *  is searched first before falling back to insertion order.
+   *  Returns a cached `Path2D` (lazy-constructed on first access from
+   *  the string path data) or `null` when the name is not found in
+   *  any set or when `Path2D` is unavailable (SSR / Node). */
+  resolveIcon(name: string, setHint?: string): Path2D | null;
+
+  /** Cycle 21c / Task 14 — register a per-column tooltip provider.
+   *  The provider fires after a 500ms hover debounce on cells in
+   *  `colId` and returns `{ plain }` or `{ html }` (or null for "no
+   *  tooltip on this cell"). Re-registering the same colId replaces
+   *  the prior provider. */
+  registerTooltipProvider(
+    colId: string,
+    fn: import('../interaction/features/tooltipProvider').TooltipProviderFn,
+  ): void;
+  /** Cycle 21c / Task 14 — remove the tooltip provider for `colId`.
+   *  No-op when none is registered. */
+  unregisterTooltipProvider(colId: string): void;
+
   /** Register a custom cell editor under `name`. Columns referencing it via
    *  `cellEditor: name` will mount this editor when edit starts. Built-in
    *  names ('text' shipped in Cycle 5 Task 1; 'number' / 'date' / 'select' /

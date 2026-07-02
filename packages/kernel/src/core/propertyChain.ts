@@ -6,6 +6,7 @@ import type {
 } from '../types';
 import type { CellPaintConfig } from '../renderer/cellRenderers/registry';
 import type { ResolvedTheme } from '../theming/cssReader';
+import { getFormatCompiler, type CompositeColDefShape } from './formatCompilerSlot';
 
 export type { ColCellOverrides };
 
@@ -34,7 +35,18 @@ export interface ResolvedColDef<TRow = any> {
    */
   cellDataType: 'text' | 'number';
   valueGetter?: (params: CValueGetterParams<TRow>) => unknown;
+  /** Narrowed to function form only — string is compiled by compileFormatSlots. */
   valueFormatter?: (params: CValueFormatterParams<TRow, unknown>) => string;
+  /** Icon resolver derived from the format string by compileFormatSlots. */
+  cellIcon?: (params: CValueFormatterParams<TRow, unknown>) => import('@cgrid/format').IconRef | null;
+  /** @internal — populated by compileFormatSlots for composite ColDefs. */
+  _compositeProgram?: import('../types/formatProgramShape').FormatProgramShape;
+  /** Composite fragment-run alignment (`CColDef.align`). Only meaningful
+   *  when `_compositeProgram` is set. Cycle 21c / Task 13. */
+  compositeAlign?: 'left' | 'center' | 'right';
+  /** Composite overflow behavior (`CColDef.overflow`). Only meaningful
+   *  when `_compositeProgram` is set. Cycle 21c / Task 13. */
+  compositeOverflow?: 'ellipsis' | 'clip';
   cellRenderer: string;
   /** Static params forwarded to the painter as `CellPaintConfig.params`. */
   cellRendererParams?: unknown;
@@ -533,6 +545,22 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.checkboxCheckedBg = theme.checkboxCheckedBg;
   target.checkboxCheckedFg = theme.checkboxCheckedFg;
   target.params = ctx.params;
+  // Cycle 21c / Task 13 — composite program threading. Populated only
+  // for columns carrying a compiled composite program; explicitly reset
+  // to undefined otherwise (the config object is reused across cells).
+  if (colDef._compositeProgram !== undefined && !ctx.isHeader) {
+    target.compositeProgram = colDef._compositeProgram;
+    target.compositeAlign = colDef.compositeAlign;
+    target.compositeOverflow = colDef.compositeOverflow;
+    target.rowData = ctx.rowData;
+    target.colId = colDef.colId;
+  } else {
+    target.compositeProgram = undefined;
+    target.compositeAlign = undefined;
+    target.compositeOverflow = undefined;
+    target.rowData = undefined;
+    target.colId = undefined;
+  }
 
   // Theme defaults. Headers paint with the chrome font (Inter by
   // default); body cells paint with the cell font (monospace by
@@ -763,6 +791,127 @@ function compileCellClassRules(
   return entries.map(([className, predicate]) => ({ className, predicate: predicate as CompiledClassRule['predicate'] }));
 }
 
+/** Merge kernel's `cellStyle` with format's derived style function.
+ *  Format's style is applied first; user's cellStyle overlays and wins
+ *  on any explicit non-undefined field. Only wired from compileFormatSlots;
+ *  not used by the paint path. */
+function mergeCellStyle<TRow>(
+  userFn: ((params: CValueFormatterParams<TRow, unknown>) => Record<string, string | number> | undefined) | undefined,
+  formatFn: (params: CValueFormatterParams<TRow, unknown>) => Record<string, string | number> | undefined,
+): (params: CValueFormatterParams<TRow, unknown>) => Record<string, string | number> | undefined {
+  return (params) => {
+    const fromFormat = formatFn(params) ?? {};
+    if (!userFn) return Object.keys(fromFormat).length > 0 ? fromFormat : undefined;
+    const fromUser = userFn(params) ?? {};
+    const merged: Record<string, string | number> = { ...fromFormat, ...fromUser };
+    return Object.keys(merged).length > 0 ? merged : undefined;
+  };
+}
+
+const _warnedMessages = new Set<string>();
+function warnOnce(msg: string): void {
+  if (_warnedMessages.has(msg)) return;
+  _warnedMessages.add(msg);
+  console.warn(msg);
+}
+
+/** Convert a resolveStyle result object into a `ColCellOverrides`-shaped
+ *  Record for cellStyle. Keys map onto the kernel's canonical override
+ *  vocabulary (`fg` / `bg` / `fontWeight` / `fontStyle`) so
+ *  `applyOverridePatch` actually applies them at paint time
+ *  (Cycle 21c / Task 13 fix — the earlier `color` / `background` keys
+ *  were silently ignored by the patch applier). */
+function styleObjToRecord(s: {
+  color?: string; background?: string; weight?: string | number; italic?: boolean;
+}): Record<string, string | number> {
+  const out: Record<string, string | number> = {};
+  if (s.color !== undefined) out['fg'] = s.color;
+  if (s.background !== undefined) out['bg'] = s.background;
+  if (s.weight !== undefined) out['fontWeight'] = s.weight;
+  if (s.italic) out['fontStyle'] = 'italic';
+  return out;
+}
+
+/** ColDef-resolve pass: compile string-form `valueFormatter` and
+ *  `type: 'composite'` ColDefs via the registered format compiler.
+ *  When no compiler is registered (getFormatCompiler() → null), this
+ *  is a pure pass-through — behaviour is byte-identical to pre-task-11.
+ *  Cycle 21c / Task 11. */
+function compileFormatSlots<TRow>(
+  merged: CColDef<TRow>,
+  resolvedColId: string,
+): CColDef<TRow> {
+  const compiler = getFormatCompiler();
+  if (!compiler) return merged;
+
+  // Composite path
+  if (merged.type === 'composite') {
+    const composite = merged as unknown as CompositeColDefShape;
+    const res = compiler({ ...composite, colId: resolvedColId });
+    if (!res.ok) {
+      warnOnce(`[cgrid.format] composite ColDef ${resolvedColId} failed to compile: ${res.error.message}`);
+      return merged;
+    }
+    const program = res.program;
+    return {
+      ...merged,
+      _compositeProgram: program,
+      valueFormatter: (p: CValueFormatterParams<TRow, unknown>) =>
+        program.formatText({ value: p.value, row: p.data, colId: p.colId }),
+      cellStyle: mergeCellStyle(
+        typeof merged.cellStyle === 'function'
+          ? (merged.cellStyle as (params: CValueFormatterParams<TRow, unknown>) => Record<string, string | number> | undefined)
+          : undefined,
+        (p: CValueFormatterParams<TRow, unknown>) => {
+          const s = program.resolveStyle({ value: p.value, row: p.data, colId: p.colId });
+          if (!s) return undefined;
+          return styleObjToRecord(s);
+        },
+      ),
+    } as CColDef<TRow>;
+  }
+
+  // Tier 0/1 path — string valueFormatter
+  if (typeof merged.valueFormatter === 'string') {
+    const src = merged.valueFormatter;
+    const res = compiler(src);
+    if (!res.ok) {
+      warnOnce(`[cgrid.format] valueFormatter for ${resolvedColId} failed to compile: ${res.error.message}`);
+      return merged;
+    }
+    const program = res.program;
+    return {
+      ...merged,
+      valueFormatter: (p: CValueFormatterParams<TRow, unknown>) =>
+        program.formatText({ value: p.value, row: p.data, colId: p.colId }),
+      cellStyle: mergeCellStyle(
+        typeof merged.cellStyle === 'function'
+          ? (merged.cellStyle as (params: CValueFormatterParams<TRow, unknown>) => Record<string, string | number> | undefined)
+          : undefined,
+        (p: CValueFormatterParams<TRow, unknown>) => {
+          const s = program.resolveStyle({ value: p.value, row: p.data, colId: p.colId });
+          if (!s) return undefined;
+          return styleObjToRecord(s);
+        },
+      ),
+      cellIcon: (p: CValueFormatterParams<TRow, unknown>) =>
+        program.resolveIcon({ value: p.value, row: p.data, colId: p.colId }) as import('@cgrid/format').IconRef | null,
+    } as CColDef<TRow>;
+  }
+
+  return merged;
+}
+
+/** Convenience wrapper — resolves an array of ColDefs with no defaults.
+ *  Used primarily in tests. Cycle 21c / Task 11. */
+export function resolveColDefs<TRow>(
+  colDefs: CColDef<TRow>[],
+  defaultColDef: Partial<CColDef<TRow>> = {},
+  columnTypes: Record<string, Partial<CColDef<TRow>>> = {},
+): ResolvedColDef<TRow>[] {
+  return colDefs.map(cd => resolveColDef(cd, defaultColDef, columnTypes));
+}
+
 export function resolveColDef<TRow>(
   colDef: CColDef<TRow>,
   defaultColDef: Partial<CColDef<TRow>> = {},
@@ -790,6 +939,11 @@ export function resolveColDef<TRow>(
       typeBundle = { ...typeBundle, cellDataType: name };
       continue;
     }
+    // Reserved keyword — 'composite' is handled by compileFormatSlots, not
+    // the columnTypes bundle lookup. Skip without throwing.
+    if (name === 'composite') {
+      continue;
+    }
     throw new Error(`[cgrid] unknown column type '${name}' (not declared in CGridOptions.columnTypes)`);
   }
 
@@ -814,6 +968,12 @@ export function resolveColDef<TRow>(
   const resolvedPinned = merged.pinned ?? initialPinnedResolved;
   const resolvedHide = merged.hide ?? merged.initialHide ?? false;
 
+  // Cycle 21c / Task 11 — run format compilation pass on the merged ColDef.
+  // When no compiler is registered this is a pass-through. The result may
+  // update valueFormatter (string → function), cellStyle (user fn merged with
+  // format-derived fn), cellIcon (derived fn), and _compositeProgram.
+  const compiledMerged = compileFormatSlots(merged, colId);
+
   return {
     colId,
     field: merged.field,
@@ -825,7 +985,16 @@ export function resolveColDef<TRow>(
     pinned: resolvedPinned,
     cellDataType,
     valueGetter: merged.valueGetter as ResolvedColDef<TRow>['valueGetter'],
-    valueFormatter: merged.valueFormatter as ResolvedColDef<TRow>['valueFormatter'],
+    // Use compiledMerged.valueFormatter — may have been compiled from a DSL string.
+    valueFormatter: compiledMerged.valueFormatter as ResolvedColDef<TRow>['valueFormatter'],
+    // Icon slot — derived by compileFormatSlots when format string has {icon:...}.
+    cellIcon: compiledMerged.cellIcon as ResolvedColDef<TRow>['cellIcon'],
+    // @internal composite program — populated by compileFormatSlots.
+    _compositeProgram: (compiledMerged as unknown as { _compositeProgram?: ResolvedColDef<TRow>['_compositeProgram'] })._compositeProgram,
+    // Composite alignment + overflow (Cycle 21c / Task 13) — carried
+    // through so the 'composite' renderer can read them off the config.
+    compositeAlign: merged.align,
+    compositeOverflow: merged.overflow,
     valueParser: merged.valueParser as ResolvedColDef<TRow>['valueParser'],
     valueSetter: merged.valueSetter as ResolvedColDef<TRow>['valueSetter'],
     // Row-select checkbox columns FORCE the renderer regardless of
@@ -844,6 +1013,11 @@ export function resolveColDef<TRow>(
       ? 'rowSelectCheckbox'
       : (
         merged.cellRenderer
+        // Cycle 21c / Task 13 — a successfully compiled composite ColDef
+        // routes to the 'composite' renderer unless the app set an
+        // explicit cellRenderer. Compile failure (no _compositeProgram)
+        // falls through to the plain text path so the cell still paints.
+        ?? ((compiledMerged as unknown as { _compositeProgram?: unknown })._compositeProgram !== undefined ? 'composite' : null)
         ?? (merged.wrapText ? 'text-wrap' : null)
         ?? (merged.cellEditor === 'checkbox' ? 'checkbox' : cellDataType)
       ),
@@ -870,11 +1044,14 @@ export function resolveColDef<TRow>(
     cellEditor: merged.cellEditor as ResolvedColDef<TRow>['cellEditor'],
     cellEditorParams: merged.cellEditorParams as ResolvedColDef<TRow>['cellEditorParams'],
     // Split cellStyle into object form vs function form.
-    cellStyle: typeof merged.cellStyle === 'object' && merged.cellStyle !== null
-      ? merged.cellStyle as ColCellOverrides
+    // compiledMerged.cellStyle may be a merged function from compileFormatSlots;
+    // if so it goes into cellStyleFn (function form); if still an object it goes
+    // into cellStyle (object form). Either way the paint path picks it up.
+    cellStyle: typeof compiledMerged.cellStyle === 'object' && compiledMerged.cellStyle !== null
+      ? compiledMerged.cellStyle as ColCellOverrides
       : undefined,
-    cellStyleFn: typeof merged.cellStyle === 'function'
-      ? merged.cellStyle as CellStyleFunc
+    cellStyleFn: typeof compiledMerged.cellStyle === 'function'
+      ? compiledMerged.cellStyle as CellStyleFunc
       : undefined,
     // Cycle 27 / Task 1 — split headerStyle into object form vs function form.
     headerStyle: typeof merged.headerStyle === 'object' && merged.headerStyle !== null

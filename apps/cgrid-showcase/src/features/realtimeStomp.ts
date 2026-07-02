@@ -1,4 +1,5 @@
 import { CGrid, type CColDef } from '@cgrid/kernel';
+import { wireIntoKernel } from '@cgrid/format';
 import type { Feature } from './index';
 import { Client, type IFrame, type IMessage } from '@stomp/stompjs';
 
@@ -34,8 +35,20 @@ const COLUMNS: CColDef<Position>[] = [
   { colId: 'notionalAmount', field: 'notionalAmount', headerName: 'Notional', cellDataType: 'number', width: 130, filter: 'number', enableValue: true, aggFunc: 'sum' },
   { colId: 'marketValue',    field: 'marketValue',    headerName: 'Market Value', cellDataType: 'number', width: 140, filter: 'number', enableValue: true, aggFunc: 'sum' },
   { colId: 'pnl',            field: 'pnl',            headerName: 'P&L',          cellDataType: 'number', width: 110, filter: 'number', enableValue: true, aggFunc: 'sum' },
-  { colId: 'dailyPnl',       field: 'dailyPnl',       headerName: 'Daily P&L',    cellDataType: 'number', width: 110, filter: 'number', enableValue: true, aggFunc: 'sum' },
-  { colId: 'currentPrice',   field: 'currentPrice',   headerName: 'Price',        cellDataType: 'number', width: 90,  filter: 'number' },
+  // Cycle 21c / Task 18 — two columns upgraded to @cgrid/format DSL
+  // strings so the demo proves DSL rendering under live STOMP ticks:
+  //   • dailyPnl — Tier 1: per-row color expression by sign.
+  //   • currentPrice — Tier 0: plain Excel currency code.
+  {
+    colId: 'dailyPnl', field: 'dailyPnl', headerName: 'Daily P&L', cellDataType: 'number',
+    width: 110, filter: 'number', enableValue: true, aggFunc: 'sum',
+    valueFormatter: '[color=[dailyPnl] >= 0 ? "#16a34a" : "#dc2626"] $#,##0.00',
+  },
+  {
+    colId: 'currentPrice', field: 'currentPrice', headerName: 'Price', cellDataType: 'number',
+    width: 90, filter: 'number',
+    valueFormatter: '$#,##0.00',
+  },
 ];
 
 export const realtimeStomp: Feature = {
@@ -55,6 +68,14 @@ export const realtimeStomp: Feature = {
       pivotMode: false,
       enableCellChangeFlash: true,
     } as never);
+
+    // Cycle 21c / Task 18 — register the @cgrid/format compiler and
+    // re-issue the defs: string valueFormatters compile during column
+    // resolution, which already ran once during construction (before
+    // the compiler existed). The re-issue recompiles the two DSL
+    // columns; the rest resolve byte-identically.
+    wireIntoKernel(grid);
+    grid.updateGridOptions({ columnDefs: COLUMNS });
 
     // ─── Connection state ──────────────────────────────────────────────────
     let client: Client | null = null;

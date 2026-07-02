@@ -254,3 +254,132 @@ Final whole-branch review (opus): Ready to merge = Yes
     - AggregateNode.name is stringly-typed — string-literal-union in Cycle 21d for compile-time safety
     - vitest.config.ts coverage `include: src/**/*.ts` anchor may need re-work when a real build lands (Cycle 21c+)
 Cycle 21b status: COMPLETE. Ready for review + merge.
+
+=== Cycle 21c: @cgrid/format Unified DSL + Kernel Bridge (start 2026-07-01) ===
+Plan: docs/superpowers/plans/2026-07-01-cycle-21c-format.md (commit 19db1e0)
+Spec: docs/superpowers/specs/2026-07-01-cycle-21c-format-design.md (commit 70dbe61)
+Cycle BASE: 19db1e0 (main after plan commit; Cycle 21b merged as PR #93, commit 4fc5c49)
+Branch: cycle21c/format
+Task 1: complete (commits 19db1e0..6f9a597, review approved with 3 Minors)
+  Minors carried to final review:
+    - types.ts missing internal `ParsedFormat` + `IconToken` types (brief Step 5 template didn't include them; will surface when Task 9's compile.ts needs them)
+    - package-lock.json has version skew: @vitest/coverage-v8 lock says ^2.1.9 while package.json says ^2.1.0 (cosmetic; ^2.1.9 satisfies ^2.1.0 constraint)
+    - Task 1 report claimed 15 Token variants; actual count is 14 (non-code, report-only)
+Task 2: complete (commits 6f9a597..d1216ca, review approved with 2 Minors)
+  Minors carried to final review:
+    - excel-corpus.json entry 21 ([$-409]$#,##0.00) missing tokenKinds assertion — impl is correct, but corpus doesn't verify locale-tag path
+    - Dual named-color maps in tokenizer (via namedColors.ts) + parser.ts (inline EXCEL_NAMED_COLORS_INLINE) — sync risk if colors added; recommend re-export from namedColors.ts
+Task 3: complete (commits d1216ca..e66a0df, review approved after 1 fix pass)
+  Implementer commit 12aafaa: excel/evaluator.ts + intlCache.ts real impls; 21/21 evaluator tests
+  Fix commit e66a0df: intlCache hash key now includes weekday + timeZone (production cache-collision bug caught in review); +3 regression tests
+  Concerns carried to final review:
+    - mm heuristic in deriveDateTimeOptions works for date-only corpus but would misclassify mm as month in combined yyyy-mm-dd hh:mm:ss format; must fix before any date-time corpus test lands (likely Task 8/9)
+    - [$USD-409] Excel locale-tagged currency syntax deferred (out of Task 3 brief scope)
+Task 4: complete (commits e66a0df..14860a8, review approved after 1 fix pass)
+  Implementer commit dcf63a3: 9 template factories + registry auto-registration; 21/21 template tests
+  Fix commit 14860a8: 4 review findings closed
+    - Eviction test key generation expanded (currency × min × max = 816 unique keys > 500 MAX_ENTRIES)
+    - Eviction assertion now verifies actual eviction (first instance vs re-fetched)
+    - FormatterTemplateContext.timeZone added; Date/Time/DateTime factories thread it through
+    - allBuiltins date/time/datetime tests now UTC-pinned + day-specific (fixes UTC+12 CI runners)
+    - relativeTime JSDoc corrected (plain number always uses 'day', not "pick best unit")
+Task 5: complete (commits 14860a8..fa85f1b, review clean after 1 plan-bug repair by implementer)
+  Plan bug in brief: findKeywordAtDepth decremented ifDepth on all `then` tokens; broke nested `if X then if Y then A else B else C`.
+  Implementer split into keyword-specific branches — when searching `else`, inner `then` is non-terminal.
+  Reviewer independently verified the fix through a nested trace.
+  Minors carried to final review:
+    - isTokenBoundary(source, i+2) for `if ` detection at sugar.ts:108 is vacuously true (cosmetic)
+    - No test for 4-char hex (#rgba); supported by whitelist, low priority
+    - Recursion on test branch adds correctness beyond brief's minimal spec (accepted)
+Task 6: complete (commits fa85f1b..2fcc301, review approved with 2 Minors)
+  Minors carried to final review:
+    - Pure rule-ref shortcut (ast: null path in parser.ts:25-29) has no test — cheap to add
+    - Test fixtures' interiorLoc.end values are 2-3 chars wider than actual interior length (harmless while translateExprLocToFormatLoc doesn't clamp end, but latent trap)
+  Implementer disclosed: added `!` non-null assertions in test file for noUncheckedIndexedAccess strict TS mode
+Task 7: complete (commits 2fcc301..db7098c, review approved after 1 fix pass)
+  Implementer commit 778a680: Tier 1 style + icon resolver; 14/14 tests + WeakMap compile cache
+  Fix commit db7098c: 2 review findings closed
+    - normalizeWeight NaN guard: `Number.isFinite(v) ? v : 'normal'` on number branch
+    - resolveIcon dynamic result strictly typed as string (rejects boolean false/number/empty)
+    - +4 regression tests
+  Minors carried to final review:
+    - `[style=normal]` produces `{italic: false}` not null (debatable design; explicit override arguable correct)
+    - Dynamic icon path re-parses+re-compiles per call; deferred to Task 9 compileFormat cache per brief
+Task 8: complete (commits db7098c..d3de119, review approved after 1 fix pass)
+  Implementer commit 87d4ebc: composite fragment compiler + resolver; 9/9 tests + 2 brief-bug fixes (double-bracket cellBackground test + TS strict pattern)
+  Fix commit d3de119: 4 review findings closed
+    - HIGH: multi-section icon inversion — evaluator.ts now returns sectionIndex; fragmentResolver stores sectionIcons per section; resolveFragments picks from routed section
+    - MEDIUM: extractDynamic deletes raw [<expr>] key unconditionally when pattern detected — no more silent CSS-string leak
+    - MEDIUM: compileFragments accepts CompileFormatOptions; locale + currency threaded through to evaluateExcel
+    - LOW: cellBackground test now calls resolveCellBackground + asserts eval result
+    - +4 regression tests; evaluator gains 1 test (sectionIndex verification)
+  Minor carried to final review:
+    - sectionIcons Array<Array<>> not serializable for cross-worker compile (not currently used across workers; flag for Cycle 21e)
+Task 9: complete (commits on cycle21c/format)
+  Implementer: public compileFormat + compileCompositeColDef stitching all prior tasks
+  Key finding: brief test strings used [[field]] double-bracket notation which is unsupported by @cgrid/expression parser (uses [field] single-bracket). Tests adjusted to use correct [field] syntax. error test uses [color=!!!] to provoke a genuine expression-parse error.
+  9/9 compile.test.ts tests pass; 150/150 format-package total; typecheck clean; kernel 2326/2326; expression 185/185.
+Phase D→E self-review checkpoint (Cycle 21c): passed
+  - wireIntoKernel signature locked: `export function wireIntoKernel(grid: unknown, opts?: WireOptions): void`
+  - FormatProgram public shape locked: all 4 resolvers + source + tiers fields confirmed in types.ts
+  - CompositeColDef matches spec §4.3: colId, type:'composite', fragments, cellBackground?, align?, overflow?, [key: string]: unknown
+  - No @cgrid/kernel imports from packages/format/src/** (only a comment in bridge.ts)
+Task 9: complete (commits d3de119..dc44a57, review approved with 2 Minors)
+  Implementer commit dc44a57: public compileFormat + compileCompositeColDef; 9/9 compile tests + 2 brief-bug fixes (double-bracket test strings, error-surface test)
+  Phase D→E self-review checkpoint: PASSED
+    - wireIntoKernel signature locked (still throws Task 1 not-yet-implemented; real body in Task 17)
+    - FormatProgram public shape locked
+    - CompositeColDef matches spec §4.3
+    - No @cgrid/kernel runtime imports in packages/format/src/**
+  Minors carried to final review:
+    - Two dead type imports in compile.ts:13,15 (ExcelFormatTree, Tier1Node) — will warn under verbatimModuleSyntax
+    - Double evaluateExcel call per paint cycle (formatText + resolveStyle each call independently) — perf concern for 60Hz × 50k rows, memoize in Cycle 21e
+Task 10: complete (commits dc44a57..3c82218, review approved clean)
+  Kernel format-compiler DI slot; 3 new slot tests + 2326 baseline preserved = 2329 total.
+  No @cgrid/format runtime import — kernel uses structural type aliases only.
+  Alias `slotRegisterFormatCompiler` (more descriptive than brief's `slotRegister`) — cosmetic deviation.
+Task 11: complete (commits 3c82218..a314505, review approved with 3 non-blocking observations)
+  ColDef broadening + compileFormatSlots pass; 8 new tests → kernel 2337/2337
+  Deviations from brief (both good calls):
+    - type: 'composite' handled by single-field type discriminant (avoids collision with existing type?: string|string[] field); typeNames loop skips 'composite' explicitly
+    - FragmentStyle not imported (unused); resolveColDefs() convenience wrapper added
+    - packages/kernel/package.json: @cgrid/format added as devDependency for TypeScript type resolution ONLY (zero runtime imports; verified)
+  Report file was overwritten by stale Cycle 2 task-11 report — commit message treated as authoritative
+  Observations carried to final review:
+    - Static-object cellStyle silently dropped when format compiler active; if user writes cellStyle: { color: 'red' } on a formatted column, static style discarded without warning (worth documenting or path-splitting in Task 13/16)
+    - _warnedMessages Set has no test-reset hook — latent trap if future tests assert warn call counts
+    - Array-form type: ['composite', ...] doesn't trigger composite path (intentional, undocumented)
+Task 12: complete (commits a314505..e5ccdd0, review approved after 2 fix passes)
+  Implementer commit ee6d800: icon registry + Lucide build; 9 new tests → kernel 2346
+  Fix commit f33aa0c: reLine regex reordered (x1 x2 y1 y2); dead resolve import removed; regen bundle 1460→1506 (+46 icons); +1 regression test → kernel 2347
+  Fix commit e5ccdd0: two-regex approach handles BOTH x1-x2-y1-y2 AND x1-y1-x2-y2 orderings (heart-off.svg still uses old order); Set-based dedup; regen; +1 regression test → kernel 2348
+    - Icon count now 1546 (fixes the initial +46 estimate underrun caused by dropping heart-off)
+  Kernel 2348 total tests; expression 185/185; 1 pre-existing flaky perf skip (aggIncremental.perf, unrelated)
+Task 13: complete (commits e5ccdd0..643074a)
+  Composite cell renderer registered under 'composite'; resolveColDef routes type:'composite' + _compositeProgram to it by default.
+  Fixed styleObjToRecord key mismatch (format compiler emits color/background; ColCellOverrides consumes fg/bg) — Tier 1 colors were silently dropped pre-fix.
+  ResolvedColDef gains compositeAlign / compositeOverflow; CellPaintConfig threads compositeProgram + rowData + colId.
+Task 14: complete (commits 643074a..124e1f1)
+  TooltipProvider feature (500ms hover debounce, pooled #cgrid-tooltip-provider DOM node, plain + html payloads) inserted into the feature chain after SparklineTooltip.
+  Public API: grid.registerTooltipProvider(colId, fn) / unregisterTooltipProvider(colId).
+Task 15: complete (commits 124e1f1..5b7e850)
+  Multi-format clipboard: copySelectedRangesToClipboard detects composite columns in the selection and writes ClipboardItem { text/plain: TSV, text/html: styled <span> runs }; falls back to writeText when ClipboardItem is unavailable.
+  clipboardSerializer.ts pure helpers (serializeToTsv / serializeToHtml) + unit tests.
+Task 16: complete (commits 5b7e850..317f99e)
+  byRows painter renders colDef.cellIcon inline (leading/trailing): pads CellPaintConfig before the main painter, strokes the Path2D after it inside the same clip. Unresolvable/throwing cellIcon functions degrade to text-only.
+Task 17: complete (commits 317f99e..1dc9286)
+  wireIntoKernel(grid, opts?) bridge: registers the format compiler (error branch massaged to kernel's { message, loc } shape), dynamically imports the Lucide bundle from kernel's ./icons/lucide.generated subpath (non-fatal on failure), registers additionalIconSets synchronously. Idempotent via __formatBridgeWired.
+  kernel/package.json exports the ./icons/lucide.generated subpath.
+Task 18: complete (commit 7097573)
+  Showcase formatDSL feature (7 columns across all 3 tiers + composite tooltip provider) + 9-scenario E2E spec (resolved-def assertions, tooltip overlay, multi-format clipboard).
+  realtimeStomp feature: dailyPnl → Tier 1 color expression, currentPrice → Tier 0 currency; new E2E spec proves DSL under live STOMP ticks (skips server-free).
+  positions: opt-in ?formatDsl=1 upgrades Price to Tier 1 DSL; gated so functional + visual baselines stay byte-stable.
+  Showcase E2E 109/109 (98 baseline + 11 new).
+Task 19: complete (commit fa56d24)
+  packages/format/README.md: quickstart (construct → wire → updateGridOptions ordering), verified grammar cheat sheet, API + error surfaces, cycle reserves.
+Task 20: complete
+  turbo typecheck 21/21; lint clean; turbo build 13/13; kernel 2399/2399, format 158/158, expression 185/185 (one turbo-parallel run flaked a perf timing assertion in groupingPerf.test.ts — passes standalone, CPU-load artifact).
+  Positions full suite is flaky under parallel load against the shared STOMP server (timeout-pattern failures, different spec sets per run, all pass in isolation) — pre-existing infra issue, not a cycle regression; boot + clipboard smoke specs pass serially.
+  ESLint no-restricted-imports boundary rule for format → kernel NOT added: eslint.config.mjs is protected by a config-protection hook. Boundary holds by inspection (bridge.ts dynamic import only; zero static kernel imports in packages/format/src).
+  Kernel dist: cgrid.js 758K / kernel.css 43K — within the <+2% budget vs Cycle 21a baseline (760.90K); no 'lucide' match in dist bundles.
+Cycle 21c status: COMPLETE.

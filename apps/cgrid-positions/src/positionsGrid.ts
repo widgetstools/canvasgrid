@@ -9,6 +9,7 @@ import {
   type IStatusPanelComp,
   type StatusPanelParams,
 } from '@cgrid/kernel';
+import { wireIntoKernel } from '@cgrid/format';
 import type { Position } from './stomp';
 
 /**
@@ -169,6 +170,12 @@ const pnlPill: CellPainter = {
  *     `cellClass: 'warning'` (pale-yellow bg on Daily). Off by
  *     default so the default demo isn't visually busy. */
 export interface PositionsGridOptions {
+  /** Cycle 21c / Task 18 — `?formatDsl=1` wires @cgrid/format into the
+   *  kernel and upgrades the Price column to a Tier 1 DSL string
+   *  formatter (`[color=<expr>] $#,##0.00` — green/red by dailyPnl
+   *  sign), verifying real-time STOMP ticks under DSL rendering. Off
+   *  by default so the functional + visual baselines stay byte-stable. */
+  formatDsl?: boolean;
   editType?: 'fullRow';
   variableHeights?: boolean;
   autoHeight?: boolean;
@@ -993,6 +1000,21 @@ export function createPositionsGrid(
 
   const grid = new CGrid<Position>(container, options);
   grid.registerCellRenderer('pnlPill', pnlPill);
+  // Cycle 21c / Task 18 — `?formatDsl=1` upgrades the Price column to a
+  // Tier 1 DSL string formatter. The compiler registers via
+  // wireIntoKernel AFTER construction, so the initial resolve pass saw
+  // no compiler — re-issue the defs through updateGridOptions to
+  // recompile with the DSL string in place. Green/red tracks the row's
+  // dailyPnl sign on every STOMP tick.
+  if (opts.formatDsl) {
+    wireIntoKernel(grid);
+    const upgraded = (options.columnDefs as Array<Record<string, unknown>>).map((def) =>
+      def.field === 'currentPrice'
+        ? { ...def, valueFormatter: '[color=[dailyPnl] >= 0 ? "#0a7" : "#d33"] $#,##0.00' }
+        : def,
+    );
+    grid.updateGridOptions({ columnDefs: upgraded as CGridOptions<Position>['columnDefs'] });
+  }
   // Cycle 8 / Task 3 — register a natural-order comparator so the ticker
   // column sorts "TICK2" before "TICK10" instead of "TICK10" before
   // "TICK2". The function string-serialises to the worker via

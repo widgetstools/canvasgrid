@@ -9,23 +9,34 @@
       "types": "./dist/cgrid.d.ts",
       "import": "./dist/cgrid.js"
     },
-    "./style.css": "./dist/kernel.css"
+    "./style.css": "./dist/kernel.css",
+    "./icons/lucide.generated": {
+      "types": "./src/icons/lucide.generated.ts",
+      "import": "./src/icons/lucide.generated.ts"
+    }
   },
   "scripts": {
     "build": "vite build && tsc --emitDeclarationOnly",
     "build:watch": "vite build --watch",
+    "prebuild-icons": "tsx src/icons/build-lucide.ts",
     "test": "vitest run --passWithNoTests",
     "test:watch": "vitest",
     "bench": "vitest bench --run bench/",
     "typecheck": "tsc --noEmit"
   },
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "devDependencies": {
+    "@cgrid/format": "*",
     "@types/node": "^20.0.0",
+    "@vitest/coverage-v8": "^2.1.0",
     "happy-dom": "^15.0.0",
+    "lucide-static": "^0.469.0",
+    "tsx": "^4.22.4",
     "typescript": "~5.9.3",
     "vite": "^7.3.2",
-    "vitest": "^2.1.0",
-    "@vitest/coverage-v8": "^2.1.0"
+    "vitest": "^2.1.0"
   }
 }

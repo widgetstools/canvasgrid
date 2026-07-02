@@ -20,6 +20,7 @@ import { eventsState } from './eventsState';
 import { a11y } from './a11y';
 import { selectionModes } from './selectionModes';
 import { realtimeStomp } from './realtimeStomp';
+import { formatDSL } from './formatDSL';
 
 export interface Feature {
   id: string;
@@ -52,6 +53,7 @@ export const FEATURES: Feature[] = [
   a11y,
   selectionModes,
   realtimeStomp,
+  formatDSL,
 ];
 
 export const FEATURE_MAP = new Map(FEATURES.map((f) => [f.id, f]));
