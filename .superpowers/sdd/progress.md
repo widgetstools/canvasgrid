@@ -473,3 +473,75 @@ Final-review must-fixes: complete (coordinator-implemented after user stopped th
   c8fbaf4 fix(kernel): resolveRuleRef threaded into composite paint + clipboard paths (CellPaintConfig rowId/themeKind; buildFormatEvalCtx exported + shared)
   1d8b453 fix(rules): bridge adapter uses kernel-supplied ctx.theme (fallback-only getThemeKind)
   Kernel 2477/2477 (2474 + 3 new painter tests); rules 144/144 (+1 theme-passthrough test); 21e E2E 12/12 against live dev server (earlier "exit 0" was a tail-pipe artifact — server wasn't running; started on :5185)
+
+=== Cycle 21d: @cgrid/calc — Calculated Columns + Delta Aggregates + Overrides/Templates (start 2026-07-02) ===
+Spec: docs/superpowers/specs/2026-07-02-cycle-21d-calc-design.md (committed pending)
+Plan: docs/superpowers/plans/2026-07-02-cycle-21d-calc.md — header+Task 1 written; Phases B-F drafting via 5 agents (16 tasks total)
+Cycle BASE: main @ e68231e (21e merged as PR #95)
+Branch (to be created in Task 1): cycle21d/calc
+Baselines: kernel 2477, rules 144, format 171, expression 185, showcase E2E 125, dist ceiling 805803 bytes
+Key design locks: worker-side eval via serialized self-contained interpreter (aggFunc precedent); two-stage CalcPass (A row-local pre-filter, B aggregates post-group, visible→group promotion); aggregate-site AST rewrite to FieldNode ['__cgridAgg', slot] so expression pkg stays untouched; order-dependent aggregates + window scopes + t-digest = grammar-honest reserves
+PARALLEL PREP (user directive): requirement-recon for 21f/21g/21h/21i dispatched 2026-07-02 → scratchpad/recon-21{f,g,h,i}-*.md. Specs+plans stay just-in-time per cycle (plan anchors drift; 21f/21h/21i reference APIs 21d/21f create). Execution remains sequential.
+21d plan ASSEMBLED (6844 lines, 16 tasks) + reconciled: PERCENTILE canonical 'PERCENTILE(<p>)' percent-points (B flipped to C's form); scopeKeyOf(scope, ctx) supersedes Task-1 skeleton; FIRST/LAST Stage-B ownership added to Task 12 (ASSEMBLER ADDITION block); spec corrected: pipeline filter→group→sort (settle = filter only), getDistinctValues is NEW public API. Spec+plan committed to main.
+Ready to execute: Task 1 creates branch cycle21d/calc.
+21d Task 1: complete (commits f7392f8..4863cad, review approved clean)
+  Scaffold + spec-§3 types verbatim + 13 skeleton modules; 7/7 tests; types.ts byte-verified vs spec
+21d Task 2: implemented (c50b486, 55 new tests) — coordinator caught a CONTRACT BUG before review: brief's stale fraction fixtures led the implementer to multiply the PERCENTILE literal by 100; authoritative contract is percent points as-written (PERCENTILE([x], 95) → 'PERCENTILE(95)'); fix pass dispatched (drop ×100, [0,100] validation, fixture updates + 0.5-percent regression test). Review follows the fix.
+NOTE for Task 5/6 briefs: same stale-fraction risk — verify percentile fixtures use percent points.
+21d Task 2: complete (commits 4863cad..0d6d363, 2 commits incl. PERCENTILE percent-points fix, review approved)
+  aggTransform: rewrite/scope sugar/interning/reserves; 57 aggTransform tests (64 pkg total)
+  Low doc notes (final review): header comment overstates structuredClone (spread rebuild); double-transform silently no-ops (undocumented single-use contract)
+21d Task 3: complete (commits 0d6d363..a31aad1, review approved clean)
+  compileCalc + evaluatePerRow reference evaluator; 18 new tests (82 pkg total)
+  Parity contract confirmed: EvalError→null is the reference; non-EvalError rethrow branch unreachable (expression.evaluate wraps all throws)
+21d Task 4: complete (commits a31aad1..0bb4c4b, review approved)
+  Worker interpreter (zero-free-vars, AST-audited) + 240-case seeded parity + payload builder; 20 new tests (102 pkg total)
+  Low (final review): LCG generator lacks multi-segment dotted row-field paths (loop provably identical to expression.compileField); COALESCE-all-null uncovered (unreachable via parser)
+Phase B complete (Tasks 2-4). calc 102/102.
+21d Task 5: complete (commits 0bb4c4b..46f4fd2, review approved)
+  Registry (serialization + parameterized-name grammar + force policy) + 6 basic delta aggregates; 19 new tests (121 pkg total)
+  Low → folded into Task 6: register-time smokeTest only exercises init/addRow/finalize — extend to removeRow/updateRow before MEDIAN/PERCENTILE land
+21d Task 6: complete (commits 46f4fd2..36e4bb0, review approved)
+  Stats (multiset percentiles, Welford downdate, MODE) + share expansion (in rewriteNode call case — adjudicated correct vs single-pass landed transform) + scopeKey/DataVersionMap + smokeTest hardening; 29 new tests (150 pkg total)
+  Deviations OK'd: share expansion placement; ScopeKeyContext.groupSignature dropped (group signature rides composite groupKey per Tasks 11-12 plan text)
+Phase C complete (Tasks 5-6). calc 150/150.
+21d Task 7: complete (commits 36e4bb0..82d7176, approved after 1 fix pass)
+  CalcEngine calc-column half + kernel-ready accessors; 18 new tests (168 pkg total)
+  HIGH fixed: compiledColumns() leaked live store refs → per-call defensive clones (structuredClone def/ast/prePass, fresh Set); fresh-accessor regression tests
+  Adjudicated (no change): currency/percent→'text' binary mapping is a documented deliberate degradation (numeric presentation via valueFormatter)
+21d Task 8: complete (commits 82d7176..ddb1f15, review approved clean)
+  Template chain fold + overrideToKernelPatch + resolvedPatchFor + engine methods; 34 new tests (202 pkg total)
+Phase D complete (Tasks 7-8). calc 202/202.
+Phase D→E checkpoint: PASSED (coordinator-run) — serialization discipline clean (no Date.now/Math.random/NULs), PERCENTILE paren-form consistent across transform+registry, parity tests present, 202/202 + tsc + eslint clean.
+21d Task 9: complete (commits ddb1f15..69d4200, review approved)
+  calcSlot + registerCalcProvider + colDef fold (both resolveColumnTree sites) + devDep; kernel 2491/2491 (2477 + 14)
+  Deviation OK'd: foldCalcColumnDefs generic widened to T extends object (CColGroupDef union; explicit type args preserve safety)
+  Limitations documented (final review): fold doesn't recurse into group children (patches on grouped cols no-op — future brief if needed); position hint = append-only sort among synthesized (matches brief); slot deliberately not cleared on destroy (21e precedent)
+21d Task 10: implemented (4b5e886, kernel 2507 = 2491+16) — SEAM DECISION for Task 12: SCOPE_KEY_SOURCE/DATA_VERSION_MAP_SOURCE not in payload; resolution = worker-side calcPass implements scope-key construction + version map natively in kernel code (they're plain logic over JSON AggSpec scopes — no serialized shipping needed); calc-side SOURCE exports become unused belt-and-braces (note in README/final review).
+21d Task 10: complete (commits 69d4200..4b5e886, review approved)
+  setCalcProgram protocol + CalcProgramStore (atomic install, wholesale swap, real-smoke reconstruction); kernel 2507/2507
+  Minor test gaps to backfill opportunistically in Task 11/12: client-level rejection correlation; double-remove idempotency
+21d Task 11: complete (commits 4b5e886..81c0f18, review approved)
+  CalcPass Stage A: 6 seam sites (filter/sort×2/group/slicers×2), rowId-keyed value cache w/ eviction, PREV tick capture, zero-cost no-program guards verified; kernel 2523/2523 (2507+16); backfills included
+  Minor → folded into Task 12: calc-referencing-calc silently reads undefined — add engine-side validation (registerCalculatedColumn rejects expressions watching another calc colId → 'bad-shape') + doc
+USER DIRECTIVE (2026-07-02): Cycle 21i (customizer) — STOP before spec-writing and discuss the implementation with the user first (batched decision points from recon-21i: UI stack framework-free-vs-Lit/WebAwesome/Monaco; panel attachment model sidebar/settings-sheet/popout; reducer wiring; host hooks; 5 engine-API gaps). Do NOT auto-execute 21i.
+21d Task 12: REWORK in flight (commits c1963de+682a1a8 rejected on 1 Critical) — FIRST/LAST throws at runtime (entryFor demands a factory that by design doesn't exist; firstLastScan dead code; the 3 mandated tests were omitted). All other Stage B semantics independently verified correct (delta parity, parent depth≥2, promotion re-keying, group-move+value same tick, PCT_OF_GROUP sums, calc-on-calc order-independent). Fix pass dispatched: stub entry bypassing factory path + mandated tests + report correction.
+21d Task 12: complete (commits 81c0f18..8175376, approved after fix pass; original c1963de+682a1a8 + fix 8175376)
+  Stage B: scoped delta aggregates + version cache + promotion + native scope keys + calc-on-calc rejection (calc side); kernel 2541/2541 (2523+12+6), calc 206/206
+  CRITICAL fixed: FIRST/LAST bypass factory path (stub impl:null → firstLastScan; version-bump-only deltas); 6 mandated tests incl. no-factory regression; report false claim corrected
+  Perf note carried to Task 15: FIRST/LAST O(scope) rescan per bump — sanity-check at demo scale
+21d Task 13: complete (commits 8175376..ecd50cd, review approved with note)
+  Public getDistinctValues(colId, limit?) end-to-end (reply-time slice, cache reuse proven) + calc program lifecycle tests; kernel 2553/2553 (2541+12)
+  Medium → folded into Task 14: DistinctValuesPass lacks the calcSource seam (calc columns return []) — wire like the other 4 passes + cache invalidation on Stage A recompute + test
+21d Task 14: complete (commits ecd50cd..0cbb2f6 [pre-fix 600084b + bridge], review approved)
+  wireIntoKernel calc bridge (null-program uninstall path load-bearing; typeDefaults via reserved __cgridTypeDefault:<bucket> synthetic templates; 5 silent mutators wrapped for re-fold/re-ship, no double-wrap) + DistinctValuesPass calcSource pre-fix; kernel 2557/2557, calc 215/215
+  Low (final review): reserved synthetic template-id prefix collidable by hosts (silent typeDefault corruption) — hardening candidate (reject/warn on reserved prefix)
+21d Task 15: complete (commits 0cbb2f6..1247fd2, review approved)
+  calculatedColumns showcase feature (4 surfaces) + 6 E2E; full suite 131/131 (125 baseline + 6, run twice)
+  Adaptations verified as landed behavior: pctOfSector aggregates [qty] (calc-on-calc rejected by design — FOLLOW-UP: dependency-ordered eval in a future cycle); cellDataType binary degradation; PREV-unresolved rides Float64 as 0 (engine-level null intact)
+  Low (final review): kernel cellAt never applies compiled valueFormatter to textCols-backed columns (latent, deferred kernel bug report)
+  Note: stale untracked .js emit files under showcase/src deleted from disk again (Vite shadowing — same as 21e Task 16)
+21d Task 16: complete (commit 5fd11e7, README + full verification gates)
+  packages/calc/README.md replaces the Cycle 21a scaffold stub — quickstart, calc-on-calc rejection note, DSL cheat sheet (PERCENTILE percent-points canonical form, FIRST/LAST order-aware no-delta-state, scope promotion, PREV tick-scoping + wire-null note, one-frame settle for Stage-B filter only, distinct values on calc columns), reserves, aggregate registry + CSP caveat, typeDefaults raw-format-string bridge + reserved __cgridTypeDefault: prefix caveat, public API, error codes, not-in-this-cycle
+  Gates ALL GREEN: typecheck 21/21, root lint clean, build 13/13; calc 215/215, kernel 2557/2557 (no flake hit), rules 144/144, format 171/171, expression 185/185, git diff main...HEAD over expression/rules/format EMPTY; showcase E2E 131/131 (dev server reused on :5185); kernel dist 794150 bytes (ceiling 805803); boundary greps clean (cgrid.js has zero @cgrid/calc import/require; calc/src has zero @cgrid/kernel references); raw-NUL scan clean modulo pre-existing pivotPass.ts; working tree clean modulo known untracked .js emit stragglers + gitignored coverage dirs
+  Cycle 21d COMPLETE — branch cycle21d/calc ready for coordinator's whole-branch review pass (not pushed, no PR per task instruction)
