@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { CalcEngine } from '../src/calcEngine';
+import { buildWorkerCalcProgram } from '../src/workerProgram';
 import type { CalculatedColumnDef, CellDataType } from '../src/types';
 import type { Schema } from '@cgrid/expression';
 
@@ -98,6 +99,42 @@ describe('CalcEngine — remove/list/compiledColumns', () => {
     engine.registerCalculatedColumn(lineTotal());
     engine.listCalculatedColumns()[0]!.headerName = 'HACKED';
     expect(engine.listCalculatedColumns()[0]!.headerName).toBe('Line Total');
+  });
+
+  it('compiledColumns returns defensive copies — mutating them does not touch the store', () => {
+    const engine = new CalcEngine({ schema: SCHEMA });
+    engine.registerCalculatedColumn(lineTotal());
+    const stolen = engine.compiledColumns()[0]!;
+    stolen.def.headerName = 'HACKED';
+    (stolen.compiled.watchedColIds as Set<string>).add('hacked');
+    (stolen.compiled.ast as { kind: string }).kind = 'hacked';
+    const fresh = engine.compiledColumns()[0]!;
+    expect(fresh.def.headerName).toBe('Line Total');
+    expect(fresh.compiled.watchedColIds.has('hacked')).toBe(false);
+    expect(fresh.compiled.ast.kind).not.toBe('hacked');
+    expect(engine.listCalculatedColumns()[0]!.headerName).toBe('Line Total');
+  });
+
+  it('mutating a returned prePass does not corrupt subsequent buildWorkerCalcProgram output', () => {
+    const engine = new CalcEngine({ schema: SCHEMA });
+    engine.registerCalculatedColumn(lineTotal({ colId: 'share', expression: '[price] / SUM([price])' }));
+    const stolen = engine.compiledColumns()[0]!;
+    expect(stolen.compiled.prePass).toHaveLength(1);
+    stolen.compiled.prePass[0]!.fn = 'HACKED';
+    stolen.compiled.prePass[0]!.slot = 99;
+
+    const program = buildWorkerCalcProgram(
+      engine.compiledColumns().map((c) => ({
+        colId: c.def.colId,
+        ast: c.compiled.ast,
+        prePass: c.compiled.prePass,
+        cellDataType: c.compiled.cellDataType,
+        usesPrev: c.compiled.usesPrev,
+      })),
+    );
+    expect(program.columns[0]!.prePass).toEqual([
+      { slot: 0, fn: 'SUM', colId: 'price', scope: { kind: 'visible' } },
+    ]);
   });
 });
 

@@ -124,12 +124,26 @@ export class CalcEngine {
    * Registration-ordered `{ def, compiled }` pairs — same order as
    * `synthesizedColDefs()`, so the Task 14 bridge zips index `i` with
    * `compiledColumns()[i].def.position` for insertion hints and ships
-   * `compiled` (plain-JSON ast + prePass) to the worker. Treat entries as
-   * immutable — the array is frozen; the entries are the live store.
+   * `compiled` (plain-JSON ast + prePass) to the worker.
+   *
+   * Every entry is a fully defensive copy — mutating a returned def, ast,
+   * prePass, or watchedColIds never touches the store. Consequently object
+   * identity is NOT stable across calls: consumers serialize the ast/prePass
+   * JSON; nothing may rely on identity (evaluatePerRow's per-CompiledCalc
+   * runner cache simply recompiles a fresh copy lazily, by design).
    */
   compiledColumns(): ReadonlyArray<{ def: CalculatedColumnDef; compiled: CompiledCalc }> {
     return Object.freeze(
-      [...this.#calcCols.values()].map((entry) => ({ def: entry.def, compiled: entry.compiled })),
+      [...this.#calcCols.values()].map((entry) => ({
+        def: structuredClone(entry.def),
+        compiled: {
+          ast: structuredClone(entry.compiled.ast),
+          prePass: structuredClone(entry.compiled.prePass),
+          watchedColIds: new Set(entry.compiled.watchedColIds),
+          usesPrev: entry.compiled.usesPrev,
+          cellDataType: entry.compiled.cellDataType,
+        },
+      })),
     );
   }
 
