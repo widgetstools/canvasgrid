@@ -338,3 +338,131 @@ describe('RuleEngine — tick-scoped diff map (Task 4)', () => {
     expect(engine.evalErrorCount('div')).toBe(1);
   });
 });
+
+// ─── Task 4 review fix: row-scope memo invalidation on in-place mutation ──
+
+describe('RuleEngine — row-scope memo invalidation (Task 4 review fix)', () => {
+  const priceRule: ConditionalStyleRule = {
+    kind: 'style',
+    id: 'hot',
+    name: 'hot',
+    enabled: true,
+    priority: 10,
+    condition: '[price] > 100',
+    scope: { kind: 'row' },
+    style: { base: { backgroundColor: '#fff3e0' } },
+  };
+
+  it('evaluateCell + matchCount reflect an in-place mutation reported via applyChanges (reviewer repro)', () => {
+    const engine = new RuleEngine();
+    engine.setRules([priceRule]);
+
+    // The kernel mutates row objects in place — same identity across ticks.
+    const row: Record<string, unknown> = { price: 50 };
+    engine.recount([{ rowId: 'a', row }]);
+    expect(engine.matchCount('hot')).toBe(0);
+
+    // Warm the row-scope memo pre-mutation (paint pass reads a non-match).
+    const before = engine.evaluateCell({ row, rowId: 'a', colId: null, theme: 'light' });
+    expect(before.matched).toEqual([]);
+
+    // Mutate the SAME object in place, then report the update.
+    row.price = 150;
+    engine.applyChanges({
+      added: [],
+      removed: [],
+      updated: [
+        { rowId: 'a', row, cells: [{ rowId: 'a', colId: 'price', oldValue: 50, newValue: 150 }] },
+      ],
+    });
+
+    const after = engine.evaluateCell({ row, rowId: 'a', colId: null, theme: 'light' });
+    expect(after.matched).toEqual(['hot']);
+    expect(engine.matchCount('hot')).toBe(1);
+
+    // Parity: a fresh engine's recount over the same (now-mutated) rows
+    // must agree with the incrementally-updated engine's matchCount.
+    const fresh = new RuleEngine();
+    fresh.setRules([priceRule]);
+    fresh.recount([{ rowId: 'a', row }]);
+    expect(engine.matchCount('hot')).toBe(fresh.matchCount('hot'));
+  });
+
+  it('removed rows drop their row-scope memo entry (no leak / stale reuse)', () => {
+    const engine = new RuleEngine();
+    engine.setRules([priceRule]);
+    const row: Record<string, unknown> = { price: 150 };
+    engine.recount([{ rowId: 'a', row }]);
+    engine.evaluateCell({ row, rowId: 'a', colId: null, theme: 'light' }); // warm memo
+    expect(engine.matchCount('hot')).toBe(1);
+
+    engine.applyChanges({ added: [], updated: [], removed: [{ rowId: 'a', row }] });
+    expect(engine.matchCount('hot')).toBe(0);
+
+    // Same rowId reused for a fresh, non-matching row object — must not
+    // resurrect the removed row's stale memoized `true`.
+    const row2: Record<string, unknown> = { price: 10 };
+    engine.applyChanges({ added: [{ rowId: 'a', row: row2 }], updated: [], removed: [] });
+    const res = engine.evaluateCell({ row: row2, rowId: 'a', colId: null, theme: 'light' });
+    expect(res.matched).toEqual([]);
+    expect(engine.matchCount('hot')).toBe(0);
+  });
+
+  it('endTick: diff-aware decay is correct even when the base row object was memoized by a row-scope rule pre-tick', () => {
+    const diffRule: ConditionalStyleRule = {
+      kind: 'style',
+      id: 'rose',
+      name: 'rose',
+      enabled: true,
+      priority: 10,
+      condition: '[price.old] != null && [price] > [price.old]',
+      scope: { kind: 'row' },
+      style: { base: { color: '#2e7d32' } },
+    };
+    const staticRowRule: ConditionalStyleRule = {
+      kind: 'style',
+      id: 'hi',
+      name: 'hi',
+      enabled: true,
+      priority: 5,
+      condition: '[price] > 100',
+      scope: { kind: 'row' },
+      style: { base: { backgroundColor: '#fff3e0' } },
+    };
+    const engine = new RuleEngine();
+    engine.setRules([diffRule, staticRowRule]);
+
+    const row: Record<string, unknown> = { price: 105 };
+    engine.recount([{ rowId: 'a', row }]);
+
+    // Warm the row-scope memo pre-tick via the non-diff-aware rule
+    // (`staticRowRule`) on the base row object — this is the memo entry
+    // the finding warned could go stale across a tick boundary.
+    const preTick = engine.evaluateCell({ row, rowId: 'a', colId: null, theme: 'light' });
+    expect(preTick.matched).toEqual(['hi']);
+
+    engine.applyChanges({
+      added: [],
+      removed: [],
+      updated: [
+        { rowId: 'a', row, cells: [{ rowId: 'a', colId: 'price', oldValue: 100, newValue: 105 }] },
+      ],
+    });
+    const during = engine.evaluateCell({ row, rowId: 'a', colId: null, theme: 'light' });
+    expect(during.matched).toEqual(['hi', 'rose']);
+    expect(engine.matchCount('rose')).toBe(1);
+
+    engine.endTick();
+    const after = engine.evaluateCell({ row, rowId: 'a', colId: null, theme: 'light' });
+    // diff-aware rule decays after endTick; the memoized non-diff-aware
+    // rule's match must remain correct (it was never diff-dependent).
+    expect(after.matched).toEqual(['hi']);
+    expect(engine.matchCount('rose')).toBe(0);
+
+    const fresh = new RuleEngine();
+    fresh.setRules([diffRule, staticRowRule]);
+    fresh.recount([{ rowId: 'a', row }]);
+    expect(engine.matchCount('hi')).toBe(fresh.matchCount('hi'));
+    expect(engine.matchCount('rose')).toBe(fresh.matchCount('rose'));
+  });
+});

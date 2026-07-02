@@ -70,8 +70,14 @@ export class RuleEngine {
   #rowScope: IndexedRule[] = [];
   /** Lazily merged (row-scope + cell-scope) candidate lists per colId. */
   #mergedByColId = new Map<string, IndexedRule[]>();
-  /** Row-scope condition memo, keyed by row object identity (paint pass). */
-  #rowMemo = new WeakMap<Record<string, unknown>, Map<string, boolean>>();
+  /** Row-scope condition memo, keyed by rowId (paint pass). The kernel
+   *  mutates row objects in place — same identity across updates — so a
+   *  WeakMap keyed by object identity would serve stale booleans after a
+   *  mutation. Keying by rowId lets applyChanges/removal invalidate
+   *  precisely; the stored `row` reference guards against a rowId being
+   *  reused with a genuinely different row object without an explicit
+   *  invalidation call. */
+  #rowMemo = new Map<string, { row: Record<string, unknown>; matches: Map<string, boolean> }>();
   /** Eval errors per ruleId since last setRules (getter ships in Task 4). */
   #evalErrors = new Map<string, number>();
   #counter = new MatchCounter();
@@ -162,7 +168,7 @@ export class RuleEngine {
         (ir.rule.flash?.enabled === true || ir.rule.activeDurationMs != null),
     );
     this.#mergedByColId = new Map();
-    this.#rowMemo = new WeakMap();
+    this.#rowMemo = new Map();
     this.#evalErrors = new Map();
     this.#counter.resetAll(); // caller re-seeds via recount (bridge does, Task 15)
     this.#lastMatch = new Map();
@@ -243,15 +249,18 @@ export class RuleEngine {
       return ir.condition.matches(this.#evalRow(rowId, row, diff));
     }
     if (ir.rule.scope.kind === 'row') {
-      let memo = this.#rowMemo.get(row);
-      if (!memo) {
-        memo = new Map();
-        this.#rowMemo.set(row, memo);
+      let entry = this.#rowMemo.get(rowId);
+      if (!entry || entry.row !== row) {
+        // Different (or first-seen) row object for this rowId — stale
+        // entries (e.g. a rowId reused for a new object without an explicit
+        // invalidation) must not leak matches from the old object.
+        entry = { row, matches: new Map() };
+        this.#rowMemo.set(rowId, entry);
       }
-      const hit = memo.get(ir.rule.id);
+      const hit = entry.matches.get(ir.rule.id);
       if (hit !== undefined) return hit;
       const res = ir.condition.matches(row);
-      memo.set(ir.rule.id, res);
+      entry.matches.set(ir.rule.id, res);
       return res;
     }
     return ir.condition.matches(row);
@@ -308,6 +317,13 @@ export class RuleEngine {
     // (a) Diff map — the '__cgridDiff' object the rewritten conditions read.
     // Shape: { [colId]: { old } }. First old of the tick wins.
     for (const u of changes.updated) {
+      // The kernel mutates row objects in place (same identity across
+      // updates), so the row-scope memo — keyed by rowId, gated by object
+      // identity — would otherwise serve the pre-mutation booleans it
+      // cached under the old field values. Drop it unconditionally for
+      // every reported update, before recount/activation detection reads
+      // through #conditionMatches below.
+      this.#rowMemo.delete(u.rowId);
       if (u.cells.length === 0) continue;
       let diff = this.#diffByRowId.get(u.rowId);
       if (!diff) {
@@ -334,6 +350,7 @@ export class RuleEngine {
       this.#counter.dropRow(r.rowId);
       this.#diffByRowId.delete(r.rowId);
       this.#mergedRowCache.delete(r.rowId);
+      this.#rowMemo.delete(r.rowId);
       for (const rowStates of this.#lastMatch.values()) rowStates.delete(r.rowId);
     }
 
