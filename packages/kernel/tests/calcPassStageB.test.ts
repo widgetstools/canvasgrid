@@ -478,6 +478,175 @@ describe('CalcPass Stage B — one-frame settle (case 9)', () => {
   });
 });
 
+// ─── FIRST/LAST (assembler addition: Stage-B-computed, NO registry factory) ──
+
+interface NullableRow { id: string; pnl: number | null; desk: string }
+
+const nullableFieldOf = (colId: string): string | undefined => {
+  if (colId === 'pnl') return 'pnl';
+  if (colId === 'desk') return 'desk';
+  return undefined;
+};
+
+/** Two-column FIRST/LAST program. CRITICAL contract under test:
+ *  `aggregateSources` deliberately does NOT contain 'FIRST'/'LAST' —
+ *  they are NOT delta-contract registry impls (the registry has no entry
+ *  for them); Stage B computes them directly via an order-aware scan. */
+function firstLastProgram(scopeKind: string): WorkerCalcProgram {
+  return {
+    columns: [
+      {
+        colId: 'firstPnl',
+        ast: { kind: 'slot' },
+        prePass: [{ slot: 0, fn: 'FIRST', colId: 'pnl', scope: { kind: scopeKind } }],
+        cellDataType: 'number',
+        usesPrev: false,
+      },
+      {
+        colId: 'lastPnl',
+        ast: { kind: 'slot' },
+        prePass: [{ slot: 0, fn: 'LAST', colId: 'pnl', scope: { kind: scopeKind } }],
+        cellDataType: 'number',
+        usesPrev: false,
+      },
+    ],
+    interpreterSource: `(function evaluateCalcAst(ast, row, aggSlots, prevLookup) {
+      if (ast === null) return null;
+      return aggSlots[0];
+    })`,
+    aggregateSources: [], // NO factory for FIRST/LAST — by design
+  };
+}
+
+describe('CalcPass Stage B — FIRST/LAST (no registry factory; assembler addition)', () => {
+  it("per scope 'all' incl. null-skipping: first/last NON-NULL value in store insertion order", () => {
+    const store = new RowStore<NullableRow>('id');
+    store.setAll([
+      { id: '1', pnl: null, desk: 'A' }, // null head — skipped
+      { id: '2', pnl: 20, desk: 'A' },
+      { id: '3', pnl: 30, desk: 'B' },
+      { id: '4', pnl: null, desk: 'B' }, // null tail — skipped by LAST
+    ]);
+    const calc = new CalcProgramStore();
+    calc.install(firstLastProgram('all'));
+    calc.ensureStageB(store, NO_GROUP, ['1', '2', '3', '4'], nullableFieldOf);
+    expect(calc.valueAt('1', 'firstPnl')).toBe(20); // first NON-NULL
+    expect(calc.valueAt('1', 'lastPnl')).toBe(30);  // last NON-NULL
+  });
+
+  it("per scope 'visible': post-filter order, null-skipping", () => {
+    const store = new RowStore<NullableRow>('id');
+    store.setAll([
+      { id: '1', pnl: 10, desk: 'A' },
+      { id: '2', pnl: null, desk: 'A' },
+      { id: '3', pnl: 30, desk: 'B' },
+    ]);
+    const calc = new CalcProgramStore();
+    calc.install(firstLastProgram('visible'));
+    // Filter removed row '1' — visible order starts at the null row '2'.
+    calc.ensureStageB(store, NO_GROUP, ['2', '3'], nullableFieldOf);
+    expect(calc.valueAt('2', 'firstPnl')).toBe(30); // '2' is null → skipped
+    expect(calc.valueAt('2', 'lastPnl')).toBe(30);
+  });
+
+  it("per scope 'group': group-bucket order, null-skipping, per-group scalars", () => {
+    const store = new RowStore<NullableRow>('id');
+    store.setAll([
+      { id: '1', pnl: null, desk: 'A' },
+      { id: '2', pnl: 20, desk: 'A' },
+      { id: '3', pnl: 100, desk: 'B' },
+      { id: '4', pnl: 200, desk: 'B' },
+    ]);
+    const cols: WorkerColumn[] = [
+      { colId: 'pnl', field: 'pnl', type: 'number' },
+      { colId: 'desk', field: 'desk', type: 'text' },
+    ];
+    const group = new GroupPass<NullableRow>(store, cols);
+    group.setModel({ rowGroupCols: ['desk'] });
+    const ids = ['1', '2', '3', '4'];
+    const out = group.apply(ids);
+
+    const calc = new CalcProgramStore();
+    calc.install(firstLastProgram('group'));
+    calc.ensureStageB(store, out, ids, nullableFieldOf);
+    // Group A: FIRST skips row 1's null → 20; LAST → 20.
+    expect(calc.valueAt('1', 'firstPnl')).toBe(20);
+    expect(calc.valueAt('2', 'lastPnl')).toBe(20);
+    // Group B: FIRST → 100, LAST → 200.
+    expect(calc.valueAt('3', 'firstPnl')).toBe(100);
+    expect(calc.valueAt('4', 'lastPnl')).toBe(200);
+  });
+
+  it('tick update changing the head row value → recompute observed (delta path)', () => {
+    const store = new RowStore<NullableRow>('id');
+    store.setAll([
+      { id: '1', pnl: 10, desk: 'A' },
+      { id: '2', pnl: 20, desk: 'A' },
+    ]);
+    const calc = new CalcProgramStore();
+    calc.install(firstLastProgram('all'));
+    calc.ensureStageB(store, NO_GROUP, ['1', '2'], nullableFieldOf);
+    expect(calc.valueAt('1', 'firstPnl')).toBe(10);
+
+    const newRow1 = { id: '1', pnl: 99, desk: 'A' };
+    calc.capturePrevForUpdates(store, [newRow1]);
+    const results = store.apply({ update: [newRow1] });
+    calc.onTransaction(results);
+    calc.ensureStageB(store, NO_GROUP, ['1', '2'], nullableFieldOf);
+    // The head row's value changed — FIRST must be RECOMPUTED (O(scope)
+    // rescan on version bump; no stale cached scalar).
+    expect(calc.valueAt('1', 'firstPnl')).toBe(99);
+    expect(calc.valueAt('2', 'firstPnl')).toBe(99);
+  });
+
+  it('row removed at head → FIRST becomes the next non-null value (delta path)', () => {
+    const store = new RowStore<NullableRow>('id');
+    store.setAll([
+      { id: '1', pnl: 10, desk: 'A' },
+      { id: '2', pnl: 20, desk: 'A' },
+      { id: '3', pnl: 30, desk: 'A' },
+    ]);
+    const calc = new CalcProgramStore();
+    calc.install(firstLastProgram('visible'));
+    calc.ensureStageB(store, NO_GROUP, ['1', '2', '3'], nullableFieldOf);
+    expect(calc.valueAt('1', 'firstPnl')).toBe(10);
+
+    const results = store.apply({ remove: ['1'] });
+    calc.onTransaction(results);
+    calc.ensureStageB(store, NO_GROUP, ['2', '3'], nullableFieldOf);
+    expect(calc.valueAt('2', 'firstPnl')).toBe(20); // head removed → next
+    expect(calc.valueAt('3', 'lastPnl')).toBe(30);
+  });
+
+  it('regression: mixed program (SUM + FIRST) whose aggregateSources contains ONLY sum installs + evaluates without throwing', () => {
+    const store = fixtureStore(); // pnl: 10, 20, 100, 200
+    const program: WorkerCalcProgram = {
+      columns: [
+        {
+          colId: 'mixed',
+          ast: { kind: 'mixed' },
+          prePass: [
+            { slot: 0, fn: 'sum', colId: 'pnl', scope: { kind: 'all' } },
+            { slot: 1, fn: 'FIRST', colId: 'pnl', scope: { kind: 'all' } },
+          ],
+          cellDataType: 'number',
+          usesPrev: false,
+        },
+      ],
+      interpreterSource: `(function evaluateCalcAst(ast, row, aggSlots, prevLookup) {
+        if (ast === null) return null;
+        return aggSlots[0] * 1000 + aggSlots[1];
+      })`,
+      aggregateSources: [{ name: 'sum', source: SUM_FACTORY }], // no 'FIRST' entry — by design
+    };
+    const calc = new CalcProgramStore();
+    calc.install(program);
+    expect(() => calc.ensureStageB(store, NO_GROUP, ['1', '2', '3', '4'], fieldOf)).not.toThrow();
+    // sum(all) = 330, FIRST(all) = 10 → 330 * 1000 + 10.
+    expect(calc.valueAt('1', 'mixed')).toBe(330 * 1000 + 10);
+  });
+});
+
 // ─── Worker-level integration (Step 6) ──────────────────────────────────────
 
 function makeHost() {

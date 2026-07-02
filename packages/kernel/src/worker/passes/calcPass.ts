@@ -78,10 +78,18 @@ export type CalcAggregateFactory = () => {
  *  reassigns `entry.state = impl.xxxRow(...)` so both conventions work).
  *  `dataVersion` bumps on every delta touch; `finalized` is the memoized
  *  `impl.finalize(state)` scalar, recomputed only when a touch bumped
- *  the version. */
+ *  the version.
+ *
+ *  **`impl: null` — the FIRST/LAST stub form.** FIRST/LAST are NOT
+ *  registry factory impls by design (assembler addition — the registry
+ *  has no entry for them), so their entries carry NO factory instance
+ *  and NO delta state: `state` stays `null`, delta events only bump
+ *  `dataVersion`, and `finalized` is always produced by `firstLastScan`
+ *  (an O(scope) order-aware rescan) at every full rebuild AND every
+ *  delta touch. */
 interface AggStateEntry {
   state: unknown;
-  impl: ReturnType<CalcAggregateFactory>;
+  impl: ReturnType<CalcAggregateFactory> | null;
   dataVersion: number;
   finalized: number | null;
 }
@@ -413,12 +421,20 @@ export class CalcProgramStore implements CalcValueSource {
     const cacheKey = `${fn}|${colId}|${scopeKey}`;
     let entry = this.aggStates.get(cacheKey);
     if (entry === undefined) {
-      const factory = this.factories.get(fn);
-      if (factory === undefined) {
-        throw new Error(`[cgrid] Stage B: unresolved aggregate function '${fn}' (colId '${colId}')`);
+      if (isFirstLast(fn) !== null) {
+        // FIRST/LAST bypass the factory path entirely (assembler
+        // addition: NOT registry impls — no factory exists by design).
+        // Stub entry: no impl, no delta state; `finalized` is always
+        // produced by `firstLastScan` at rebuild/touch sites.
+        entry = { state: null, impl: null, dataVersion: 0, finalized: null };
+      } else {
+        const factory = this.factories.get(fn);
+        if (factory === undefined) {
+          throw new Error(`[cgrid] Stage B: unresolved aggregate function '${fn}' (colId '${colId}')`);
+        }
+        const impl = factory();
+        entry = { state: impl.init(), impl, dataVersion: 0, finalized: null };
       }
-      const impl = factory();
-      entry = { state: impl.init(), impl, dataVersion: 0, finalized: null };
       this.aggStates.set(cacheKey, entry);
     }
     return entry;
@@ -554,18 +570,45 @@ export class CalcProgramStore implements CalcValueSource {
     const rebuildScope = (fn: string, colId: string, read: (rowId: string) => unknown, scopeKey: string, memberIds: readonly string[]): void => {
       const entry = this.entryFor(fn, colId, scopeKey);
       const firstLast = isFirstLast(fn);
-      entry.state = entry.impl.init();
-      for (const id of memberIds) entry.state = entry.impl.addRow(entry.state, read(id));
+      if (firstLast !== null) {
+        // FIRST/LAST stub entry (impl === null) — no delta state to
+        // stream; the scalar IS the order-aware scan.
+        entry.dataVersion += 1;
+        entry.finalized = firstLastScan(firstLast, memberIds, read);
+        return;
+      }
+      const impl = entry.impl!;
+      entry.state = impl.init();
+      for (const id of memberIds) entry.state = impl.addRow(entry.state, read(id));
       entry.dataVersion += 1;
-      entry.finalized = firstLast !== null ? firstLastScan(firstLast, memberIds, read) : entry.impl.finalize(entry.state);
+      entry.finalized = impl.finalize(entry.state);
+    };
+
+    // Scope-instance membership resolver — shared by the full-rebuild
+    // path and the delta path's FIRST/LAST rescans ('all' rebuilt lazily
+    // from the store, POST-transaction; 'visible' is this pass's fresh
+    // postFilterIds; group keys resolve through this pass's fresh walk).
+    let lazyAllIds: string[] | null = null;
+    const memberIdsFor = (scopeKey: string): readonly string[] => {
+      if (scopeKey === 'all') {
+        if (lazyAllIds === null) {
+          lazyAllIds = [];
+          for (const row of store.rows()) lazyAllIds.push(store.getRowId(row));
+        }
+        return lazyAllIds;
+      }
+      if (scopeKey === 'visible') return postFilterIds;
+      const groupPrefix = `group:${this.groupSignature}|`;
+      if (scopeKey.startsWith(groupPrefix)) {
+        return groupMemberIds.get(scopeKey.slice(groupPrefix.length)) ?? [];
+      }
+      return [];
     };
 
     if (cause === 'full') {
       this.aggStates.clear();
-      const allIds: string[] = [];
-      for (const row of store.rows()) allIds.push(store.getRowId(row));
       for (const { fn, colId, read } of uniqueSpecs.values()) {
-        rebuildScope(fn, colId, read, this.scopeKeyFor('all'), allIds);
+        rebuildScope(fn, colId, read, this.scopeKeyFor('all'), memberIdsFor('all'));
         rebuildScope(fn, colId, read, this.scopeKeyFor('visible'), postFilterIds);
         if (grouped) {
           for (const [groupKey, memberIds] of groupMemberIds) {
@@ -575,7 +618,7 @@ export class CalcProgramStore implements CalcValueSource {
       }
     } else {
       const groupColIds = grouped ? groupColIdsOf(groupOutput) : [];
-      this.applyDeltaToScopes(uniqueSpecs, delta, grouped, groupColIds, fieldOf);
+      this.applyDeltaToScopes(uniqueSpecs, delta, grouped, groupColIds, fieldOf, memberIdsFor);
     }
 
     // ── per-row eval ──
@@ -649,6 +692,7 @@ export class CalcProgramStore implements CalcValueSource {
     grouped: boolean,
     groupColIds: readonly string[],
     fieldOf: (colId: string) => string | undefined,
+    memberIdsFor: (scopeKey: string) => readonly string[],
   ): void {
     if (delta === null) return;
 
@@ -679,11 +723,19 @@ export class CalcProgramStore implements CalcValueSource {
       return key;
     };
 
-    const touched = new Set<string>(); // `${fn}|${colId}|${scopeKey}`
-    const bumpTouched = (fn: string, colId: string, scopeKey: string): AggStateEntry => {
+    // Touched-entry bookkeeping keyed by cache key, carrying enough
+    // metadata to re-finalize below (FIRST/LAST need the scopeKey to
+    // resolve membership for their rescan + the read fn — a bare
+    // Set<string> can't reconstruct a scopeKey that itself contains
+    // the `|` delimiter, e.g. `group:desk|desk:A`).
+    const touched = new Map<string, { fn: string; colId: string; scopeKey: string; read: (rowId: string) => unknown }>();
+    /** Bump the entry's version + record it for re-finalization.
+     *  FIRST/LAST stub entries (impl === null) get ONLY the bump —
+     *  callers must guard their impl state math on `entry.impl`. */
+    const bumpTouched = (fn: string, colId: string, read: (rowId: string) => unknown, scopeKey: string): AggStateEntry => {
       const entry = this.entryFor(fn, colId, scopeKey);
       entry.dataVersion += 1;
-      touched.add(`${fn}|${colId}|${scopeKey}`);
+      touched.set(`${fn}|${colId}|${scopeKey}`, { fn, colId, scopeKey, read });
       return entry;
     };
 
@@ -692,8 +744,8 @@ export class CalcProgramStore implements CalcValueSource {
       for (const { fn, colId, read } of uniqueSpecs.values()) {
         const value = read(rowId);
         for (const scopeKey of chain) {
-          const entry = bumpTouched(fn, colId, scopeKey);
-          entry.state = entry.impl.addRow(entry.state, value);
+          const entry = bumpTouched(fn, colId, read, scopeKey);
+          if (entry.impl !== null) entry.state = entry.impl.addRow(entry.state, value);
         }
       }
     }
@@ -707,8 +759,8 @@ export class CalcProgramStore implements CalcValueSource {
           ? (field !== undefined ? (oldRow as Record<string, unknown>)[field] : read(rowId))
           : read(rowId);
         for (const scopeKey of chain) {
-          const entry = bumpTouched(fn, colId, scopeKey);
-          entry.state = entry.impl.removeRow(entry.state, value);
+          const entry = bumpTouched(fn, colId, read, scopeKey);
+          if (entry.impl !== null) entry.state = entry.impl.removeRow(entry.state, value);
         }
       }
       this.rowScopeKey.delete(rowId);
@@ -729,8 +781,8 @@ export class CalcProgramStore implements CalcValueSource {
         if (sameGroup) {
           const chain = chainFrom(newGroupKey);
           for (const scopeKey of chain) {
-            const entry = bumpTouched(fn, colId, scopeKey);
-            entry.state = entry.impl.updateRow(entry.state, oldValue, newValue);
+            const entry = bumpTouched(fn, colId, read, scopeKey);
+            if (entry.impl !== null) entry.state = entry.impl.updateRow(entry.state, oldValue, newValue);
           }
         } else {
           const oldChain = chainFrom(oldGroupKey);
@@ -740,30 +792,33 @@ export class CalcProgramStore implements CalcValueSource {
           // updateRow; only the GROUP-specific tail differs.
           const shared = new Set([this.scopeKeyFor('all'), this.scopeKeyFor('visible')]);
           for (const scopeKey of oldChain) {
-            if (shared.has(scopeKey)) {
-              const entry = bumpTouched(fn, colId, scopeKey);
-              entry.state = entry.impl.updateRow(entry.state, oldValue, newValue);
-            } else {
-              const entry = bumpTouched(fn, colId, scopeKey);
-              entry.state = entry.impl.removeRow(entry.state, oldValue);
-            }
+            const entry = bumpTouched(fn, colId, read, scopeKey);
+            if (entry.impl === null) continue; // FIRST/LAST: bump-only; rescan below
+            entry.state = shared.has(scopeKey)
+              ? entry.impl.updateRow(entry.state, oldValue, newValue)
+              : entry.impl.removeRow(entry.state, oldValue);
           }
           for (const scopeKey of newChain) {
             if (shared.has(scopeKey)) continue; // already updateRow'd above
-            const entry = bumpTouched(fn, colId, scopeKey);
-            entry.state = entry.impl.addRow(entry.state, newValue);
+            const entry = bumpTouched(fn, colId, read, scopeKey);
+            if (entry.impl !== null) entry.state = entry.impl.addRow(entry.state, newValue);
           }
         }
       }
     }
     this.tickPrevRowsB.clear();
 
-    for (const cacheKey of touched) {
-      const entry = this.aggStates.get(cacheKey);
+    // Re-finalize every touched entry. FIRST/LAST (impl === null): the
+    // ASSEMBLER ADDITION's recompute-on-version-bump — an O(scope)
+    // order-aware rescan over the scope's CURRENT (post-transaction)
+    // membership; everything else memoizes `impl.finalize(state)`.
+    for (const { fn, colId, scopeKey, read } of touched.values()) {
+      const entry = this.aggStates.get(`${fn}|${colId}|${scopeKey}`);
       if (entry === undefined) continue;
-      const fn = cacheKey.slice(0, cacheKey.indexOf('|'));
-      if (isFirstLast(fn) !== null) continue; // FIRST/LAST re-scanned by the NEXT full pass — no delta state kept
-      entry.finalized = entry.impl.finalize(entry.state);
+      const firstLast = isFirstLast(fn);
+      entry.finalized = firstLast !== null
+        ? firstLastScan(firstLast, memberIdsFor(scopeKey), read)
+        : entry.impl!.finalize(entry.state);
     }
   }
 }
