@@ -106,8 +106,11 @@ describe('timestampCell', () => {
     timestampCell.paint(gc, baseConfig({
       value: noonUtc,
       params: { nowMs: noonUtc + 1000 },
+      font: "13px 'Inter', system-ui, sans-serif",
     }));
     expect(gc.calls.some((c) => c.op === 'fillText' && String(c.args[0]).includes('12:00:00'))).toBe(true);
+    const monoFontCall = gc.calls.find((c) => c.op === 'set:font' && String(c.args[0]).startsWith('13px ui-monospace'));
+    expect(monoFontCall).toBeDefined();
   });
 
   it('prefixes date when not today (edge)', () => {

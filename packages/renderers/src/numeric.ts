@@ -2,7 +2,7 @@
 
 import type { CellPaintConfig, CellPainter } from '@cgrid/kernel';
 import { fragText, withAlpha } from './paintUtils';
-import { resolveSemanticColors } from './palette';
+import { SEMANTIC_COLORS } from './palette';
 import type {
   AbbreviatedNumberCellParams,
   BpsCellParams,
@@ -19,6 +19,21 @@ import type {
 type Gc = Parameters<CellPainter['paint']>[0];
 
 const PAD = 6;
+
+const MAGNITUDE_UNITS: ReadonlyArray<readonly [number, string]> = [
+  [1e12, 'T'],
+  [1e9, 'B'],
+  [1e6, 'M'],
+  [1e3, 'K'],
+];
+
+const colorScratch: Required<SemanticColorMap> = {
+  positive: SEMANTIC_COLORS.positive,
+  negative: SEMANTIC_COLORS.negative,
+  warning: SEMANTIC_COLORS.warning,
+  info: SEMANTIC_COLORS.info,
+  muted: SEMANTIC_COLORS.muted,
+};
 
 function padRight(p: CellPaintConfig): number {
   return p.padding?.right ?? PAD;
@@ -51,7 +66,7 @@ function paintFlashOverlay(gc: Gc, p: CellPaintConfig, fallbackColor?: string): 
   if (!p.flashAlpha || p.flashAlpha <= 0) return;
   gc.cache.save();
   gc.cache.globalAlpha = p.flashAlpha;
-  gc.cache.fillStyle = p.flashFromColor ?? fallbackColor ?? '#fef3c7';
+  gc.cache.fillStyle = p.flashFromColor ?? fallbackColor ?? withAlpha(SEMANTIC_COLORS.warning, 0.25);
   gc.fillRect(p.bounds.x, p.bounds.y, p.bounds.w, p.bounds.h);
   gc.cache.restore();
 }
@@ -93,13 +108,18 @@ function tickDirection(
   return 'flat';
 }
 
-function colorsFromParams(overrides?: SemanticColorMap) {
-  return { ...resolveSemanticColors(), ...overrides };
+function colorsFromParams(overrides?: SemanticColorMap): Required<SemanticColorMap> {
+  colorScratch.positive = overrides?.positive ?? SEMANTIC_COLORS.positive;
+  colorScratch.negative = overrides?.negative ?? SEMANTIC_COLORS.negative;
+  colorScratch.warning = overrides?.warning ?? SEMANTIC_COLORS.warning;
+  colorScratch.info = overrides?.info ?? SEMANTIC_COLORS.info;
+  colorScratch.muted = overrides?.muted ?? SEMANTIC_COLORS.muted;
+  return colorScratch;
 }
 
 function semanticFg(
   sign: number,
-  colors: ReturnType<typeof resolveSemanticColors>,
+  colors: Required<SemanticColorMap>,
 ): string {
   if (sign > 0) return colors.positive;
   if (sign < 0) return colors.negative;
@@ -151,12 +171,15 @@ function paintNumberCellCore(gc: Gc, p: CellPaintConfig, params: NumberCellParam
   let text = primaryNumericText(p);
   const n = toNumber(p.value);
   if (params.signPolicy === 'always' && n !== null) {
-    text = signedNumberText(n);
+    if (text && !/^[+-]/.test(text)) {
+      text = n > 0 ? `+${text}` : n < 0 && !text.startsWith('-') ? `-${text}` : text;
+    }
   } else if (params.signPolicy === 'negative-only' && n !== null && n < 0 && !text.startsWith('-')) {
     text = `-${text.replace(/^\+/, '')}`;
   }
   const fg = p.fg;
   const right = p.bounds.x + p.bounds.w - padRight(p);
+  if (!text) return;
   let x = right;
   if (params.currencySuffix) {
     fragText(gc, params.currencySuffix, x, textY(gc, p), {
@@ -180,13 +203,7 @@ function paintNumberCellCore(gc: Gc, p: CellPaintConfig, params: NumberCellParam
 function formatAbbreviated(n: number, precision: number, prefix: string): string {
   const abs = Math.abs(n);
   const sign = n < 0 ? '-' : '';
-  const units: Array<[number, string]> = [
-    [1e12, 'T'],
-    [1e9, 'B'],
-    [1e6, 'M'],
-    [1e3, 'K'],
-  ];
-  for (const [threshold, suffix] of units) {
+  for (const [threshold, suffix] of MAGNITUDE_UNITS) {
     if (abs >= threshold) {
       return `${sign}${prefix}${(abs / threshold).toFixed(precision)}${suffix}`;
     }
@@ -295,7 +312,17 @@ export const deltaCell: CellPainter = {
     const pctText = pct === null ? '—' : `${signedNumberText(pct, 2)}%`;
     const sign = abs ?? pct ?? 0;
     const fg = semanticFg(sign, colors);
-    paintRightText(gc, p, `${absText} (${pctText})`, fg);
+    const pctPart = ` (${pctText})`;
+    const right = p.bounds.x + p.bounds.w - padRight(p);
+    const y = textY(gc, p);
+    gc.cache.font = tabularFont(p.font);
+    gc.cache.textAlign = 'right';
+    gc.cache.textBaseline = 'alphabetic';
+    const pctW = gc.measureText(pctPart).width;
+    gc.cache.fillStyle = withAlpha(fg, params.percentOpacity ?? 0.85);
+    gc.fillText(pctPart, right, y);
+    gc.cache.fillStyle = fg;
+    gc.fillText(absText, right - pctW, y);
   },
 };
 

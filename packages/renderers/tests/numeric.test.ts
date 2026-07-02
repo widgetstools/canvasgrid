@@ -47,13 +47,13 @@ describe('numberCell', () => {
     expect(fillTexts(gc.calls)).toHaveLength(0);
   });
 
-  it('applies currency prefix/suffix at muted opacity (dark theme fg)', () => {
+  it('applies signPolicy always without destroying host formatting (variant)', () => {
     numberCell.paint(gc, baseConfig({
-      params: { currencyPrefix: '$', currencySuffix: ' USD' },
-      themeKind: 'dark',
-      fg: '#ffffff',
+      value: 1234.56,
+      valueFormatted: '1,234.56',
+      params: { signPolicy: 'always' },
     }));
-    expect(fillTexts(gc.calls)).toEqual(expect.arrayContaining(['100.00', ' USD']));
+    expect(fillTexts(gc.calls)).toContain('+1,234.56');
   });
 });
 
@@ -145,7 +145,10 @@ describe('deltaCell', () => {
       rowData: { chg: 0.42, pct: 1.18 },
       params: { absoluteField: 'chg', percentField: 'pct' },
     }));
-    expect(fillTexts(gc.calls)[0]).toMatch(/\+0\.42 \(\+1\.18%\)/);
+    const texts = fillTexts(gc.calls);
+    expect(texts.some((t) => t === '+0.42')).toBe(true);
+    expect(texts.some((t) => t === ' (+1.18%)')).toBe(true);
+    expect(gc.calls.filter((c) => c.op === 'set:fillStyle').length).toBeGreaterThanOrEqual(2);
   });
 
   it('missing fields — em dash (edge)', () => {
@@ -162,7 +165,7 @@ describe('deltaCell', () => {
       rowData: { chg: -1, pct: -2 },
       params: { absoluteField: 'chg', percentField: 'pct' },
     }));
-    expect(fillTexts(gc.calls).length).toBe(1);
+    expect(fillTexts(gc.calls).length).toBe(2);
   });
 });
 

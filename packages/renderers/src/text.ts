@@ -37,7 +37,7 @@ function textYMiddle(gc: Gc, p: CellPaintConfig): number {
 }
 
 function monoFont(baseFont: string): string {
-  return baseFont.replace(/([^,]+)$/, 'ui-monospace, SFMono-Regular, Menlo, monospace');
+  return baseFont.replace(/(\d+(?:\.\d+)?px)\s+.+$/, '$1 ui-monospace, SFMono-Regular, Menlo, monospace');
 }
 
 function formatTimestamp(ms: number, showMillis: boolean): string {
