@@ -248,10 +248,10 @@ describe('ColumnsToolPanel — pivot mode toggle (Cycle 18 / Task 5)', () => {
     hosts.push(panel);
     const btn = root.querySelector<HTMLButtonElement>('.cg-columns-panel-toggle')!;
     btn.click();
-    expect(api.setPivotMode).toHaveBeenCalledWith(true);
+    expect(api.setPivotMode).toHaveBeenCalledWith(true, { discardSettings: true });
     expect(btn.getAttribute('aria-pressed')).toBe('true');
     btn.click();
-    expect(api.setPivotMode).toHaveBeenCalledWith(false);
+    expect(api.setPivotMode).toHaveBeenCalledWith(false, { discardSettings: true });
     expect(btn.getAttribute('aria-pressed')).toBe('false');
   });
 

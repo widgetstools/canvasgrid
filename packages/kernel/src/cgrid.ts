@@ -3232,8 +3232,32 @@ export class CGrid<TRow = any> {
   // ─── Cycle 18 / Task 3 — pivot API + render wiring ─────────────────────
 
   isPivotMode(): boolean { return this.pivotEngine.isPivotMode(); }
-  setPivotMode(pivotMode: boolean): void {
-    if (!this.destroyed) this.pivotEngine.setPivotMode(pivotMode);
+  setPivotMode(pivotMode: boolean, opts?: { discardSettings?: boolean }): void {
+    if (this.destroyed) return;
+    // Cycle 21i / Phase 1 (user directive) — `discardSettings` (passed by
+    // the Pivot Mode toggle in the columns tool panel, i.e. a user-driven
+    // switch) gives a clean slate on the mode change so table-mode state
+    // never leaks into pivot and vice versa. Programmatic setup
+    // (`setPivotColumns(...); setPivotMode(true)`) omits it and keeps the
+    // configured pivot. Clears the data-shaping config (row groups, pivot
+    // + value roles, sort, filter); on → table every column becomes
+    // visible with no grouping; on → pivot every role is cleared so the
+    // tool panel reads "all deselected". Layout (widths/order/pinning) is
+    // preserved.
+    if (opts?.discardSettings && this.pivotEngine.isPivotMode() !== pivotMode) {
+      this.setRowGroupColumns([]);
+      this.setPivotColumns([]);
+      for (const v of this.getValueColumns()) this.removeValueColumn(v.colId);
+      this.setSortModel([]);
+      this.setFilterModel({});
+      if (!pivotMode) {
+        const primaryIds = this.getColumnState()
+          .map((c) => c.colId)
+          .filter((id) => !isAutoGroupColumnId(id) && !id.startsWith('pivotcol'));
+        this.setColumnsVisible(primaryIds, true);
+      }
+    }
+    this.pivotEngine.setPivotMode(pivotMode);
   }
   getPivotColumns(): string[] { return this.pivotEngine.getPivotColumns(); }
   setPivotColumns(colIds: string[]): void {
@@ -5881,7 +5905,7 @@ export class CGrid<TRow = any> {
       getRowGroupColumns: () => this.getRowGroupColumns(),
       // Cycle 18 / Task 3 — pivot API.
       isPivotMode: () => this.isPivotMode(),
-      setPivotMode: (m) => this.setPivotMode(m),
+      setPivotMode: (m, opts) => this.setPivotMode(m, opts),
       getPivotColumns: () => this.getPivotColumns(),
       setPivotColumns: (cols) => this.setPivotColumns(cols),
       addPivotColumn: (colId) => this.addPivotColumn(colId),

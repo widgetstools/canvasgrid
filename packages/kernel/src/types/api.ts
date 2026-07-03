@@ -75,7 +75,7 @@ export interface CGridApi<TRow = any> {
   isPivotMode(): boolean;
   /** Turn pivot mode on / off. A pivot only produces a matrix when at
    *  least one pivot column AND one value column are also set. */
-  setPivotMode(pivotMode: boolean): void;
+  setPivotMode(pivotMode: boolean, opts?: { discardSettings?: boolean }): void;
   /** Snapshot of the ordered pivot (Column Label) columns. Fresh array. */
   getPivotColumns(): string[];
   /** Replace the ordered pivot column list wholesale. */

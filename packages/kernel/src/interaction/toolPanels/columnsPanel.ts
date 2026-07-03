@@ -192,7 +192,11 @@ export class ColumnsToolPanel implements ToolPanel {
       // the aria state on the next tick, which is a no-op when the api
       // accepted the mutation.
       btn.setAttribute('aria-pressed', String(next));
-      this.api.setPivotMode?.(next);
+      // Cycle 21i — a user-driven mode switch discards the current
+      // grouping / pivot / sort / filter and resets column selection for
+      // the target mode (clean slate). Programmatic setPivotMode keeps its
+      // config.
+      this.api.setPivotMode?.(next, { discardSettings: true });
     });
     this.pivotModeBtn = btn;
     const label = document.createElement('span');

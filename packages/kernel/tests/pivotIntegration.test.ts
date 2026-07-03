@@ -682,4 +682,43 @@ describe('CGrid pivot — render integration', () => {
     grid.destroy();
     restore();
   });
+
+  it('setPivotMode({ discardSettings }) clears grouping/pivot/values/sort on switch (Cycle 21i)', async () => {
+    const { grid, restore } = buildWiredGrid();
+    await tick();
+    grid.setRowGroupColumns(['region']);
+    grid.setPivotColumns(['sector']);
+    grid.addValueColumn('pnl', 'sum');
+    grid.setSortModel([{ colId: 'pnl', sort: 'desc' }]);
+    grid.setPivotMode(true);
+    await tick();
+
+    // User-driven switch OFF → clean slate: no grouping/pivot/values, all
+    // columns visible.
+    grid.setPivotMode(false, { discardSettings: true });
+    await tick();
+    expect(grid.isPivotMode()).toBe(false);
+    expect(grid.getRowGroupColumns()).toEqual([]);
+    expect(grid.getPivotColumns()).toEqual([]);
+    expect(grid.getValueColumns()).toEqual([]);
+    expect(grid.getSortModel()).toEqual([]);
+    expect(grid.getColumnState().every((c) => c.hide !== true)).toBe(true);
+
+    grid.destroy();
+    restore();
+  });
+
+  it('setPivotMode WITHOUT discardSettings keeps the configured pivot (programmatic setup)', async () => {
+    const { grid, restore } = buildWiredGrid();
+    await tick();
+    grid.setPivotColumns(['sector']);
+    grid.addValueColumn('pnl', 'sum');
+    // Plain programmatic enable must NOT wipe the just-configured pivot.
+    grid.setPivotMode(true);
+    await tick();
+    expect(grid.getPivotColumns()).toEqual(['sector']);
+    expect(grid.getValueColumns()).toEqual([{ colId: 'pnl', aggFunc: 'sum' }]);
+    grid.destroy();
+    restore();
+  });
 });
