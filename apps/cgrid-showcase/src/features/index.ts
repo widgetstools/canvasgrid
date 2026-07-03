@@ -27,6 +27,7 @@ import { calculatedColumns } from './calculatedColumns';
 import { rendererBlotter } from './rendererBlotter';
 import { rendererCharts } from './rendererCharts';
 import { rendererCatalog } from './rendererCatalog';
+import { editBlotter } from './editBlotter';
 
 export interface Feature {
   id: string;
@@ -66,6 +67,7 @@ export const FEATURES: Feature[] = [
   rendererBlotter,
   rendererCharts,
   rendererCatalog,
+  editBlotter,
 ];
 
 export const FEATURE_MAP = new Map(FEATURES.map((f) => [f.id, f]));
