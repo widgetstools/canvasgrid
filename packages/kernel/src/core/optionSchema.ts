@@ -30,7 +30,32 @@ export interface GridOptionsAccessor {
    *  an empty "auto" input, with a dynamic baseline that tracks density. */
   getDefaultRowHeight?(): number;
   getDefaultHeaderHeight?(): number;
+  /** Theme-token accessors for the data-colour fields (row selection,
+   *  cell range, flash). `resolveThemeColor` returns the effective value
+   *  (override or computed default); `setThemeColor` applies an override;
+   *  `getThemeColorOverride` returns only an explicit override (for the
+   *  modified diff-rail baseline). When absent, the Colours band is
+   *  omitted. */
+  resolveThemeColor?(token: string): string;
+  setThemeColor?(token: string, value: string): void;
+  getThemeColorOverride?(token: string): string | undefined;
 }
+
+interface ColorFieldSpec {
+  token: string;
+  label: string;
+  hint?: string;
+}
+
+/** Data-colour fields — these keep colour (unlike the monochrome chrome)
+ *  and are user-configurable via the native color picker. Each maps to a
+ *  `--cg-*` theme token applied live through `setThemeParams`. */
+const COLOR_FIELDS: ColorFieldSpec[] = [
+  { token: '--cg-row-selected-bg', label: 'Row selection', hint: 'Selected row background' },
+  { token: '--cg-range-fill-color', label: 'Cell range fill', hint: 'Range selection interior' },
+  { token: '--cg-range-border-color', label: 'Cell range border' },
+  { token: '--cg-flash-from-color', label: 'Cell flash', hint: 'Change-flash colour' },
+];
 
 /** Runtime options that deliberately do NOT appear in the panel. The drift
  *  guard asserts RUNTIME_OPTION_SET == schema keys ∪ this list. */
@@ -319,6 +344,29 @@ export function buildGridOptionsSchema(api: GridOptionsAccessor): SettingsSectio
       };
     }),
   });
+
+  // Colours band — data colours via the native color picker (theme
+  // tokens). Only when the accessor exposes the theme-colour surface.
+  if (api.resolveThemeColor && api.setThemeColor) {
+    const resolve = api.resolveThemeColor.bind(api);
+    const setColor = api.setThemeColor.bind(api);
+    const getOverride = api.getThemeColorOverride?.bind(api);
+    bands.push({
+      id: 'colors',
+      title: 'Colours',
+      fields: COLOR_FIELDS.map((spec): SettingsField => ({
+        key: spec.token,
+        label: spec.label,
+        type: 'color',
+        hint: spec.hint,
+        // Baseline = explicit override if present, else the resolved
+        // theme default — so the diff rail marks only user-set colours.
+        defaultValue: () => getOverride?.(spec.token) ?? resolve(spec.token),
+        get: () => resolve(spec.token),
+        set: (value) => setColor(spec.token, String(value)),
+      })),
+    });
+  }
 
   return { id: 'gridOptions', title: 'Grid Options', bands };
 }

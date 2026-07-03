@@ -10,7 +10,7 @@
  * select.
  */
 
-export type SettingsFieldType = 'switch' | 'checkbox' | 'text' | 'number' | 'select';
+export type SettingsFieldType = 'switch' | 'checkbox' | 'text' | 'number' | 'select' | 'color';
 
 export interface SettingsSelectOption {
   value: string;

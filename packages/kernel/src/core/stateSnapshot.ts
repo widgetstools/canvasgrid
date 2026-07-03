@@ -66,6 +66,11 @@ export interface GridState {
   // before column state applies.
   gridOptions?: Record<string, unknown>;
 
+  // Theme token overrides set via `setThemeParams` (Cycle 21i / Phase 1) —
+  // data colours (row selection, cell range, flash) configured through the
+  // Grid Options color picker. Restored alongside gridOptions.
+  themeParams?: Record<string, string>;
+
   // Cell ranges + focused cell (Cycle 9).
   cellSelection?: {
     ranges: SelectionRange[];
@@ -99,6 +104,8 @@ export interface StateSnapshotSources {
   getScrollPosition(): { top: number; left: number };
   /** Cycle 21i / Phase 1 — runtime-touched, persistable option values. */
   getRuntimeOptions?(): Record<string, unknown>;
+  /** Cycle 21i / Phase 1 — theme token overrides set via setThemeParams. */
+  getThemeParams?(): Record<string, string>;
 }
 
 /** Schema migrations. Each entry runs over a snapshot whose
@@ -165,6 +172,11 @@ export function buildSnapshot(sources: StateSnapshotSources): GridState {
   const runtimeOptions = sources.getRuntimeOptions?.();
   if (runtimeOptions && Object.keys(runtimeOptions).length > 0) {
     snapshot.gridOptions = runtimeOptions;
+  }
+
+  const themeParams = sources.getThemeParams?.();
+  if (themeParams && Object.keys(themeParams).length > 0) {
+    snapshot.themeParams = themeParams;
   }
 
   const ranges = sources.getCellRanges();

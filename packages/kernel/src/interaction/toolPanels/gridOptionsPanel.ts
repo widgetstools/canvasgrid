@@ -21,9 +21,29 @@ export class GridOptionsToolPanel implements ToolPanel {
   private modifiedOnly = false;
 
   init(params: ToolPanelParams): void {
-    const api = params.api as GridOptionsAccessor;
+    const rawApi = params.api as GridOptionsAccessor & {
+      setThemeParams?(patch: Record<string, string>): void;
+      getThemeParams?(): Record<string, string>;
+    };
     this.root = document.createElement('div');
     this.root.className = 'cg-settings-panel';
+
+    // Theme-colour surface for the Colours band: resolve effective values
+    // from the panel's own computed style (tokens inherit down the theme
+    // root), apply overrides via the grid's setThemeParams. Only wired
+    // when the API exposes theme params (else the band is omitted).
+    const api: GridOptionsAccessor = rawApi;
+    if (rawApi.setThemeParams && rawApi.getThemeParams) {
+      const setThemeParams = rawApi.setThemeParams.bind(rawApi);
+      const getThemeParams = rawApi.getThemeParams.bind(rawApi);
+      api.resolveThemeColor = (token) => {
+        const override = getThemeParams()[token];
+        if (override) return override;
+        return getComputedStyle(this.root).getPropertyValue(token).trim();
+      };
+      api.setThemeColor = (token, value) => setThemeParams({ [token]: value });
+      api.getThemeColorOverride = (token) => getThemeParams()[token];
+    }
 
     // After any commit, refresh the WHOLE form (not just the changed row):
     // fields can depend on each other — e.g. a Density change moves the

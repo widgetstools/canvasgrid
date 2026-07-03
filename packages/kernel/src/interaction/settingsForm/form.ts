@@ -22,6 +22,7 @@ import type {
   SettingsSection,
 } from '../../types/settingsSchema';
 import { isFieldModified, resolveFieldDefault } from '../../types/settingsSchema';
+import { ColorPickerControl } from './colorPicker';
 
 interface FieldRow {
   field: SettingsField;
@@ -294,6 +295,14 @@ export class SettingsForm {
             const v = field.get();
             select.value = typeof v === 'string' ? v : String(v ?? '');
           },
+        };
+      }
+      case 'color': {
+        const picker = new ColorPickerControl(String(field.get() ?? ''), (rgba) => commit(rgba));
+        picker.el.id = controlId;
+        return {
+          control: picker.el,
+          sync: () => picker.setValue(String(field.get() ?? '')),
         };
       }
       case 'text':

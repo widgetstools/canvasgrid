@@ -5153,6 +5153,10 @@ export class CGrid<TRow = any> {
     this.theme = this.cssReader.read();
     this.recomputeViewport();
     this.cgridCanvas.requestRepaint();
+    // Cycle 21i / Phase 1 — theme-token overrides ride in the GridState
+    // `themeParams` slice; dirty the autosave bus so color-picker edits
+    // in the Grid Options panel survive reload.
+    this.stateUpdatedBus?.markChanged('themeParams');
   }
 
   /** Cycle 22 / Task 3 — read the currently-set inline overrides. Returns
@@ -5853,6 +5857,8 @@ export class CGrid<TRow = any> {
       registerCalcProvider: (provider) => this.registerCalcProvider(provider),
       forEachRow: (fn) => this.forEachRow(fn),
       getThemeKind: () => this.getThemeKind(),
+      setThemeParams: (patch) => this.setThemeParams(patch),
+      getThemeParams: () => this.getThemeParams(),
       getDefaultRowHeight: () => this.theme.rowHeight,
       getDefaultHeaderHeight: () => this.theme.headerHeight,
       registerIconSet: (name, paths) => this.registerIconSet(name, paths),
@@ -7303,6 +7309,7 @@ export class CGrid<TRow = any> {
       getSelectedRowIds: () => this.getSelectedRowIds(),
       getScrollPosition: () => this.viewportManager.getScrollPosition(),
       getRuntimeOptions: () => Object.fromEntries(this.runtimeTouchedOptions),
+      getThemeParams: () => this.getThemeParams(),
     });
   }
 
@@ -7335,6 +7342,11 @@ export class CGrid<TRow = any> {
           console.warn(`[cgrid] setState: skipped gridOptions['${key}']`, err);
         }
       }
+    }
+
+    // 0b. theme token overrides (Cycle 21i / Phase 1) — data colours.
+    if (migrated.themeParams) {
+      this.setThemeParams(migrated.themeParams);
     }
 
     // 1. columnState (defines columns + their geometry).

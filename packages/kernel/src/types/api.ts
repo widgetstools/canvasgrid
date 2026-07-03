@@ -432,6 +432,13 @@ export interface CGridApi<TRow = any> {
   /** Cycle 21e / Task 10 — binary light/dark kind of the active theme. */
   getThemeKind(): 'light' | 'dark';
 
+  /** Cycle 21i / Phase 1 — apply `--cg-*` theme token overrides (e.g.
+   *  data colours: row selection, cell range, flash). Live + repaints. */
+  setThemeParams(patch: Readonly<Record<string, string>>): void;
+  /** Cycle 21i / Phase 1 — the currently-set theme token overrides
+   *  (only values set via `setThemeParams`, not resolved tokens). */
+  getThemeParams(): Record<string, string>;
+
   /** Cycle 21i / Phase 1 — the theme/density-resolved row height that
    *  applies when `rowHeight` is not set. Tracks density swaps. */
   getDefaultRowHeight(): number;
