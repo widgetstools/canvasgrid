@@ -11,9 +11,9 @@
 5. **Standing constraints (all cycles):** expression grammar `&&`/`||`, `==`/`!=` (no AND/OR/=); `colId` vocabulary; Date-free engines (injectable now); no raw NUL bytes (`\0` escapes); seeded LCG in tests; known CPU-flaky kernel perf tests → re-run standalone; showcase sources are `.ts` (delete stale `.js` emit stragglers from disk if Vite shadows, never commit them); showcase dev server manual on :5185, positions on :5175.
 6. **Session end:** append a ledger entry (what completed, commits, next unit id), even if the unit is unfinished.
 
-## Baselines (main @ `b055115`)
+## Baselines (main @ `4bfe5b9`)
 
-kernel 2568 · calc 215 · rules 144 · format 171 · expression 185 · showcase E2E 131 · typecheck 21/21 · build 13/13 · kernel dist 794150 B. Merged: 21a-e (#92-95), 21d (#96).
+kernel 2568 · calc 215 · rules 144 · format 171 · expression 185 · renderers 277 · showcase E2E 148 (+6 visual) · typecheck 21/21 · build 13/13 · kernel dist 794150 B. Merged: 21a-e (#92-95), 21d (#96), 21f (#97). PENDING: kernel bugfix PR #98 (rowIdAt + lucide; post-merge → kernel 2574, dist 795405, tripwire genuinely green).
 
 ## Lost-artifact inventory (from the 2026-07-02 restart)
 
@@ -79,7 +79,7 @@ Preserved recon conclusion: kernel ALREADY ships `exportDataAsCsv/getDataAsCsv/e
 
 ## Progress tracker (update every session)
 
-- [x] 21f-S1 (2026-07-02: plan Tasks 1-4 on main @ ed24add; Task 1 done on cycle21f/renderers @ c20fc5b; name table corrected to 46+5=51; ledger on branch) · [x] 21f-S2 (2026-07-02: Tasks 2-4 @ 3945256, renderers 140/140, single closeout review approved) · [x] 21f-S3 (2026-07-02: plan Tasks 5-8 @ 8a4d5ac; Tasks 5-6 @ fa23fba, 14 painters, 168/168) · [x] 21f-S4 (2026-07-02: Tasks 7-8 @ 4104e45, 27 foundation painters, 195/195) · [x] 21f-S5 (2026-07-02: plan Tasks 9-12 @ 3ecc0b0; Tasks 9-10 @ 1ed28ba, 44 painters, 217/217) · [x] 21f-S6 (2026-07-02: catch-up review fa23fba..1ed28ba + Tasks 11-12 @ a56891b, 46 impl painters, 233/233, Phase→D checkpoint passed) · [x] 21f-S7 (2026-07-02: plan Tasks 13-15 @ 9895bfc; Task 13 bridge @ fd68848, 245/245) · [x] 21f-S8 (2026-07-02: Task 14 showcase @ 92cb067, 12 new E2E, 142 passed + 1 skipped) · [x] 21f-S9 (2026-07-02: S9 recovered — task 15 gates re-verified, in-flight bridge rowData fix + renderer-catalog page committed 03c38bf; fable whole-branch review needs-fixes → fix wave a5ba6af → re-review READY TO MERGE; renderers 255/255, E2E 147+; KERNEL ESCALATION pending user: rowIdAt() stub breaks action-click routing, see ledger) · [ ] 21f-S10
+- [x] 21f-S1 (2026-07-02: plan Tasks 1-4 on main @ ed24add; Task 1 done on cycle21f/renderers @ c20fc5b; name table corrected to 46+5=51; ledger on branch) · [x] 21f-S2 (2026-07-02: Tasks 2-4 @ 3945256, renderers 140/140, single closeout review approved) · [x] 21f-S3 (2026-07-02: plan Tasks 5-8 @ 8a4d5ac; Tasks 5-6 @ fa23fba, 14 painters, 168/168) · [x] 21f-S4 (2026-07-02: Tasks 7-8 @ 4104e45, 27 foundation painters, 195/195) · [x] 21f-S5 (2026-07-02: plan Tasks 9-12 @ 3ecc0b0; Tasks 9-10 @ 1ed28ba, 44 painters, 217/217) · [x] 21f-S6 (2026-07-02: catch-up review fa23fba..1ed28ba + Tasks 11-12 @ a56891b, 46 impl painters, 233/233, Phase→D checkpoint passed) · [x] 21f-S7 (2026-07-02: plan Tasks 13-15 @ 9895bfc; Task 13 bridge @ fd68848, 245/245) · [x] 21f-S8 (2026-07-02: Task 14 showcase @ 92cb067, 12 new E2E, 142 passed + 1 skipped) · [x] 21f-S9 (2026-07-02: S9 recovered — task 15 gates re-verified, in-flight bridge rowData fix + renderer-catalog page committed 03c38bf; fable whole-branch review needs-fixes → fix wave a5ba6af → re-review READY TO MERGE; renderers 255/255, E2E 147+; KERNEL ESCALATION pending user: rowIdAt() stub breaks action-click routing, see ledger) · [x] 21f-S10 (2026-07-02: 21f squash-merged as PR #97 @ 4bfe5b9; visual-polish wave + S9 recovery included; kernel escalations split to PR #98)
 - [ ] 21g-S1 · [ ] 21g-S2 · [ ] 21g-S3 · [ ] 21g-S4 · [ ] 21g-S5 · [ ] 21g-S6
 - [ ] 21h-S1 · [ ] 21h-S2 · [ ] 21h-S3 · [ ] 21h-S4
 - [ ] 21i-S0 (user discussion) · then TBD
