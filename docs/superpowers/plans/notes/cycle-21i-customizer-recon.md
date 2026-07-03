@@ -181,8 +181,18 @@ See discussion summary presented 2026-07-03; decisions to be recorded in the
   recreate → assert range/focus/scroll survived. Adds
   `onModuleChange(moduleId)` + aggregate `isDirty()` for cross-panel refresh
   and host ConfigManager wiring.
-- **D-D Scope trim**: #17 saved-filters (needs a new engine store — build or
-  defer), #19 strip-to-row-filter, alerts channels (host hooks only).
+- **D-D Scope — DECIDED 2026-07-03 (user): NOTHING is dropped from 21i.**
+  The exercise is native-vs-plugin ASSIGNMENT only. #17: saved-filters
+  STORE is native engine surface, pill toolbar UI is an enterprise plugin.
+  #19: row-filter panel ships as plugin; provider/date sections are
+  replaced by D-G app-registered Custom Settings slices. Full assignment:
+  NATIVE = Phase -1 API wave, D-H persistence, schema engine + Custom
+  Settings, #08 Grid Options tab, basic formatting toolbar, saved-filters
+  store, contextual-entry wiring. ENTERPRISE plugins = #01-#07, #09-#16
+  (editing suite + Visual Excel + full Formatting composer), #17 UI, #19
+  row-filter, Layout/Profile selector (new), data-provider selector (new),
+  OpenFin config (new). #18 Column Selector dialog: proposed enterprise
+  (kernel columns tool panel stays the free path) — pending user confirm.
 - **D-E License/positioning — DECIDED 2026-07-03 (user): two-tier
   native/enterprise split.** NATIVE (free, kernel conventions, vanilla DOM,
   zero deps): Grid Options sidebar tab (schema-driven), BASIC formatting
