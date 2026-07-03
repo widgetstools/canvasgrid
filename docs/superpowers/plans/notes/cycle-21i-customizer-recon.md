@@ -183,8 +183,23 @@ See discussion summary presented 2026-07-03; decisions to be recorded in the
   and host ConfigManager wiring.
 - **D-D Scope trim**: #17 saved-filters (needs a new engine store — build or
   defer), #19 strip-to-row-filter, alerts channels (host hooks only).
-- **D-E License/positioning**: customizer package MIT like the rest, or
-  reserved for a commercial tier (docs leave TBD).
+- **D-E License/positioning — DECIDED 2026-07-03 (user): two-tier
+  native/enterprise split.** NATIVE (free, kernel conventions, vanilla DOM,
+  zero deps): Grid Options sidebar tab (schema-driven), BASIC formatting
+  toolbar (quick-apply: alignment, number presets, decimals, emphasis,
+  fg/bg color), the schema engine + D-G Custom Settings renderer (app
+  extensibility is a FREE capability), and all tie points (tool-panel
+  registry, module-state registry, context-menu API, theme tokens).
+  ENTERPRISE (paid, separate plugin packages, Lit + Web Awesome + CM6 per
+  D-B — stack now scoped to enterprise suite only): Layout/Profile selector
+  (NEW deliverable — named GridState documents + switcher + host
+  ConfigManager adapter), data-provider selector, OpenFin integration
+  config, Column Customizer, Column Groups, Conditional Styling, Alerts,
+  Calculated Columns, full Formatting Toolbar composer
+  (templates/library/popout). "Organically tied, not an afterthought" =
+  plugins consume ONLY the native public surfaces (Phase -1 API wave is the
+  tie), share the one state document + theme system + panel chrome;
+  API-first discipline (no deep imports; missing API → engine PR) CI-enforced.
 - **D-G App-extensible config — DECIDED 2026-07-03 (user).** (1) The D-C
   module-state registry accepts HOST-registered namespaced slices
   (`app:*`, versioned envelopes, migration hooks) so app-level features
