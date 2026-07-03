@@ -96,8 +96,10 @@ export interface EditControllerDeps<TRow> {
    *  the `oldValue` carried in `cellEditingStarted` / `cellEditingStopped`
    *  / `cellValueChanged`. `null` when the cell hasn't been chunked yet. */
   getCellAt(rowIndex: number, colId: string): { value: unknown; valueFormatted: string } | null;
-  /** Best-effort row id at `rowIndex`; falls back to `row-${rowIndex}`
-   *  upstream when the worker hasn't materialised a stable string id. */
+  /** Row id at `rowIndex` — the real string id from the worker's chunk
+   *  mapping when available; upstream callers fall back to
+   *  `row-${rowIndex}` only when it isn't (row outside the loaded chunk
+   *  window). */
   getRowIdAt(rowIndex: number): string | null;
   /** Per-cell snapshot built from the current viewport chunk — used as
    *  the row-edit coordinator's `rowData` + as the cancel-path fallback

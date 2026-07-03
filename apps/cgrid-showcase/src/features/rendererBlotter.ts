@@ -140,20 +140,8 @@ export const rendererBlotter: Feature = {
       } as CColDef<BlotterRow>,
       colDef.renderer('structure-icon-strip', 'structureFlags', { flagsField: 'structureFlags' }) as CColDef<BlotterRow>,
       colDef.iconActionCluster('actions', {
-        // B2 — 'ban' (not 'x'): the generated Lucide bundle
-        // (packages/kernel/src/icons/lucide.generated.ts) concatenates each
-        // icon's original multi-<path> SVG into one Path2D string; a
-        // handful of names — including 'x' — have a later subpath's
-        // lowercase relative `m` misinterpreted as relative-to-the-prior-
-        // subpath's endpoint once concatenated (SVG only treats a leading
-        // `m` as absolute when it's literally the first command of an
-        // independent path element). That's a `packages/kernel` bundle-
-        // generation defect, out of scope for a zero-kernel-diff fix here.
-        // 'ban' is single-subpath (verified safe) and, combined with this
-        // painter's own stroked hit-region ring, reads as a clear
-        // cancel/no-entry glyph.
         actions: [{
-          icon: 'ban',
+          icon: 'x',
           label: 'Cancel',
           onAction: (rowId) => { actionLog.push(String(rowId)); },
         }],
