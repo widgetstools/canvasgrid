@@ -21,7 +21,7 @@ import type {
   SettingsField,
   SettingsSection,
 } from '../../types/settingsSchema';
-import { isFieldModified } from '../../types/settingsSchema';
+import { isFieldModified, resolveFieldDefault } from '../../types/settingsSchema';
 
 interface FieldRow {
   field: SettingsField;
@@ -156,7 +156,7 @@ export class SettingsForm {
 
     // Hover/focus reset affordance — only when a concrete default exists.
     let resetBtn: HTMLButtonElement | null = null;
-    if (field.defaultValue !== undefined) {
+    if (resolveFieldDefault(field) !== undefined) {
       resetBtn = document.createElement('button');
       resetBtn.type = 'button';
       resetBtn.className = 'cg-settings-row-reset';
@@ -195,7 +195,7 @@ export class SettingsForm {
       this.onAfterChange?.();
     };
 
-    resetBtn?.addEventListener('click', () => commitFn(field.defaultValue));
+    resetBtn?.addEventListener('click', () => commitFn(resolveFieldDefault(field)));
 
     controlWrap.appendChild(control);
     if (resetBtn) controlWrap.appendChild(resetBtn);
@@ -250,12 +250,12 @@ export class SettingsForm {
         if (field.min !== undefined) input.min = String(field.min);
         if (field.max !== undefined) input.max = String(field.max);
         if (field.step !== undefined) input.step = String(field.step);
-        if (field.defaultValue === undefined) input.placeholder = 'auto';
+        if (resolveFieldDefault(field) === undefined) input.placeholder = 'auto';
         input.addEventListener('change', () => {
           if (input.value === '') {
             // Empty = revert to default when one exists; otherwise "auto"
             // (undefined) — the option resolver falls back internally.
-            commit(field.defaultValue);
+            commit(resolveFieldDefault(field));
             return;
           }
           const n = Number(input.value);

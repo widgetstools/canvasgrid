@@ -25,7 +25,13 @@ export class GridOptionsToolPanel implements ToolPanel {
     this.root = document.createElement('div');
     this.root.className = 'cg-settings-panel';
 
-    this.form = new SettingsForm(buildGridOptionsSchema(api), () => this.syncModifiedPill());
+    // After any commit, refresh the WHOLE form (not just the changed row):
+    // fields can depend on each other — e.g. a Density change moves the
+    // theme-resolved defaults shown by Row height / Header height.
+    this.form = new SettingsForm(buildGridOptionsSchema(api), () => {
+      this.form?.refresh();
+      this.syncModifiedPill();
+    });
 
     this.root.appendChild(this.buildHeader());
     const scroller = document.createElement('div');

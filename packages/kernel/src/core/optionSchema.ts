@@ -25,6 +25,11 @@ import type {
 export interface GridOptionsAccessor {
   getGridOption(key: string): unknown;
   setGridOption(key: string, value: unknown): void;
+  /** Theme/density-resolved fallbacks — when present, the Row height /
+   *  Header height fields display the live effective default instead of
+   *  an empty "auto" input, with a dynamic baseline that tracks density. */
+  getDefaultRowHeight?(): number;
+  getDefaultHeaderHeight?(): number;
 }
 
 /** Runtime options that deliberately do NOT appear in the panel. The drift
@@ -86,8 +91,8 @@ const OPTION_BANDS: BandSpec[] = [
         toControl: (v) => v ?? 'normal',
         fromControl: (v) => (v === 'normal' ? undefined : v),
       },
-      { key: 'rowHeight', label: 'Row height', type: 'number', min: 16, max: 80, step: 1, hint: 'Empty = density default' },
-      { key: 'headerHeight', label: 'Header height', type: 'number', min: 20, max: 80, step: 1, hint: 'Empty = density default' },
+      { key: 'rowHeight', label: 'Row height', type: 'number', min: 16, max: 80, step: 1, hint: 'px · follows density until changed' },
+      { key: 'headerHeight', label: 'Header height', type: 'number', min: 20, max: 80, step: 1, hint: 'px · follows density until changed' },
       { key: 'animateRows', label: 'Animate rows', type: 'switch', kernelDefault: false },
       {
         key: 'domLayout', label: 'Layout', type: 'select', kernelDefault: 'normal',
@@ -243,6 +248,29 @@ export function buildGridOptionsSchema(api: GridOptionsAccessor): SettingsSectio
     id: band.id,
     title: band.title,
     fields: band.fields.map((spec): SettingsField => {
+      // Row/header height show the LIVE theme/density-resolved value and
+      // baseline against it dynamically — the diff rail marks only an
+      // explicit override, and the shown default follows density swaps.
+      const themeDefault =
+        spec.key === 'rowHeight' && api.getDefaultRowHeight
+          ? () => api.getDefaultRowHeight!()
+          : spec.key === 'headerHeight' && api.getDefaultHeaderHeight
+            ? () => api.getDefaultHeaderHeight!()
+            : null;
+      if (themeDefault) {
+        return {
+          key: spec.key,
+          label: spec.label,
+          type: spec.type,
+          hint: spec.hint,
+          min: spec.min,
+          max: spec.max,
+          step: spec.step,
+          defaultValue: themeDefault,
+          get: () => (api.getGridOption(spec.key) as number | undefined) ?? themeDefault(),
+          set: (value) => api.setGridOption(spec.key, value),
+        };
+      }
       const toControl = spec.toControl ?? ((v: unknown) => v ?? spec.kernelDefault);
       const fromControl = spec.fromControl ?? ((v: unknown) => v);
       const baseline = toControl(api.getGridOption(spec.key));

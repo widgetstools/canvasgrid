@@ -432,6 +432,13 @@ export interface CGridApi<TRow = any> {
   /** Cycle 21e / Task 10 — binary light/dark kind of the active theme. */
   getThemeKind(): 'light' | 'dark';
 
+  /** Cycle 21i / Phase 1 — the theme/density-resolved row height that
+   *  applies when `rowHeight` is not set. Tracks density swaps. */
+  getDefaultRowHeight(): number;
+  /** Cycle 21i / Phase 1 — the theme/density-resolved header height that
+   *  applies when `headerHeight` is not set. */
+  getDefaultHeaderHeight(): number;
+
   /** Cycle 21c / Task 12 — register a named icon set whose entries are
    *  SVG path strings (lazy-converted to Path2D on first use) or
    *  pre-built Path2D instances. Subsequent `resolveIcon` calls look
