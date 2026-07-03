@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>cgrid · Customizer Demo</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <div class="app" data-theme="dark">
+      <header>
+        <h1>cgrid — Customizer Demo</h1>
+        <div class="actions">
+          <button id="theme" data-testid="btn-theme">Light theme</button>
+          <button id="reset-state" data-testid="btn-reset-state">Reset saved state</button>
+          <span class="status-pill" data-testid="status-pill">
+            <span data-testid="status-phase">connecting…</span>
+            <span class="status-sep">·</span>
+            <span data-testid="status-rows">Rows: —</span>
+            <span class="status-sep">·</span>
+            <span data-testid="status-ups">0 upd/s</span>
+          </span>
+        </div>
+      </header>
+      <div id="grid" class="grid-host"></div>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
