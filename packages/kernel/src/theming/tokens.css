@@ -1209,39 +1209,44 @@
   overflow-x: hidden;
   padding: 4px 0;
 }
+/* Cycle 21i / Phase 1 — reorganized column row: grip · label · checkbox.
+ * Roomier rows, a rounded hover/selected pill inset from the panel edges,
+ * and a custom rounded accent checkbox on the RIGHT — a deliberate move
+ * away from the AG-style checkbox-left list toward a modern selector. */
 .cg-columns-panel-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 12px;
-  cursor: default;
+  gap: 10px;
+  padding: 7px 10px;
+  margin: 1px 6px;
+  border-radius: 6px;
+  cursor: pointer;
   user-select: none;
 }
 .cg-columns-panel-row:hover {
-  background: var(--cg-row-hover-bg);
+  background: color-mix(in srgb, var(--cg-fg-color) 7%, transparent);
 }
 .cg-columns-panel-row--lifted {
   /* Row is "in the air" — keep its DOM slot so layout doesn't shift, but
    * hide the row itself so there's no double-render with the ghost. */
   visibility: hidden;
 }
-.cg-columns-panel-row-checkbox {
-  flex: 0 0 auto;
-  margin: 0;
-  accent-color: var(--cg-focus-ring-color);
-  cursor: pointer;
-}
 .cg-columns-panel-row-handle {
   display: inline-block;
   width: 10px;
-  height: 14px;
+  height: 16px;
   flex: 0 0 auto;
   cursor: grab;
-  opacity: 0.55;
+  opacity: 0;
+  color: color-mix(in srgb, var(--cg-fg-color) 55%, transparent);
   background-image: radial-gradient(circle, currentColor 1.1px, transparent 1.4px);
-  background-size: 4px 4px;
-  background-position: 1px 1px;
+  background-size: 5px 5px;
+  background-position: center;
   background-repeat: repeat;
+  transition: opacity 120ms ease;
+}
+.cg-columns-panel-row:hover .cg-columns-panel-row-handle {
+  opacity: 0.85;
 }
 .cg-columns-panel-row-handle:active {
   cursor: grabbing;
@@ -1253,6 +1258,65 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+/* Custom rounded accent checkbox — appearance:none so `.checked` still
+ * drives the refresh / select-all JS while the paint is fully ours. */
+.cg-columns-panel-row-checkbox,
+.cg-columns-panel-select-all {
+  flex: 0 0 auto;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  border: 1.5px solid color-mix(in srgb, var(--cg-fg-color) 38%, transparent);
+  border-radius: 5px;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.cg-columns-panel-row-checkbox:hover,
+.cg-columns-panel-select-all:hover {
+  border-color: color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
+}
+.cg-columns-panel-row-checkbox:checked,
+.cg-columns-panel-select-all:checked {
+  background: var(--cg-focus-ring-color);
+  border-color: var(--cg-focus-ring-color);
+}
+.cg-columns-panel-row-checkbox:checked::after,
+.cg-columns-panel-select-all:checked::after {
+  content: '';
+  position: absolute;
+  left: 5px;
+  top: 1.5px;
+  width: 5px;
+  height: 9px;
+  border: solid var(--cg-bg-color);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.cg-columns-panel-row-checkbox:focus-visible,
+.cg-columns-panel-select-all:focus-visible {
+  outline: 2px solid var(--cg-focus-ring-color);
+  outline-offset: 1px;
+}
+/* Indeterminate select-all (some columns hidden) — a centered dash. */
+.cg-columns-panel-select-all:indeterminate {
+  background: var(--cg-focus-ring-color);
+  border-color: var(--cg-focus-ring-color);
+}
+.cg-columns-panel-select-all:indeterminate::after {
+  content: '';
+  position: absolute;
+  left: 3.5px;
+  top: 7px;
+  width: 9px;
+  height: 2px;
+  background: var(--cg-bg-color);
+  border: none;
+  transform: none;
 }
 /* Floating drag ghost — shared by column-list row drags AND pill drag-outs.
  * Styled to match the row-group zone pill exactly (same height, border,
