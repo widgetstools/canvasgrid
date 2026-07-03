@@ -117,6 +117,20 @@ resetBtn.addEventListener('click', () => {
   location.reload();
 });
 
+// ─── Demo switches ───────────────────────────────────────────────────────
+// Live updates: pause/resume applying the STOMP stream to the grid.
+let liveUpdates = true;
+const liveSwitch = document.getElementById('live-updates') as HTMLInputElement;
+liveSwitch.addEventListener('change', () => { liveUpdates = liveSwitch.checked; });
+
+// Editable: toggle defaultColDef.editable so the whole grid becomes
+// read-only or editable on demand.
+const editableSwitch = document.getElementById('editable') as HTMLInputElement;
+editableSwitch.addEventListener('change', () => {
+  const dcd = (grid.getGridOption('defaultColDef') ?? {}) as Record<string, unknown>;
+  grid.setGridOption('defaultColDef', { ...dcd, editable: editableSwitch.checked });
+});
+
 // ─── STOMP feed ──────────────────────────────────────────────────────────
 let updatesThisSecond = 0;
 setInterval(() => {
@@ -132,6 +146,7 @@ connectStomp({
     statusRows.textContent = `Rows: ${rows.length.toLocaleString()}`;
   },
   onLiveUpdate: (updates) => {
+    if (!liveUpdates) return; // paused — drop the batch, keep the grid static
     updates.forEach(decorateWithCategoricals);
     grid.applyTransactionAsync({ update: updates });
     updatesThisSecond += updates.length;

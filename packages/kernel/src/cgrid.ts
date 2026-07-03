@@ -1585,6 +1585,7 @@ export class CGrid<TRow = any> {
         root: this.root,
         editorContainer: this.editorContainer,
         getColumnDef: (colId) => this.columnDefsMap.get(colId),
+        isPivotMode: () => this.pivotEngine.isPivotMode(),
         getColumnOrder: () => this.columnOrder,
         getRowCount: () => this.rowCount,
         getVisibleColumns: () => this.viewport.visibleColumns,

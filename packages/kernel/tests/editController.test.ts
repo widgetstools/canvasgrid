@@ -90,6 +90,7 @@ function makeHarness(opts: {
   rows?: Record<number, Record<string, unknown>>;
   options?: EditOptions;
   rowCount?: number;
+  pivotMode?: boolean;
 } = {}): Harness {
   const root = document.createElement('div');
   const editorContainer = document.createElement('div');
@@ -145,6 +146,7 @@ function makeHarness(opts: {
     root,
     editorContainer,
     getColumnDef: (colId) => columns.find((c) => c.colId === colId),
+    isPivotMode: () => opts.pivotMode === true,
     getColumnOrder: () => columns,
     getRowCount: () => rowCount,
     getVisibleColumns: () => columns.map((c, i) => ({
@@ -218,6 +220,12 @@ describe('EditController — isCellEditable', () => {
     const h = makeHarness({
       columns: [editableCol('name', { editable: () => { throw new Error('boom'); } })],
     });
+    expect(h.controller.isCellEditable(0, 'name')).toBe(false);
+  });
+
+  it('returns false for every cell in pivot mode (Cycle 21i — pivot is read-only)', () => {
+    const h = makeHarness({ pivotMode: true });
+    // 'name' is statically editable, but pivot mode gates it off.
     expect(h.controller.isCellEditable(0, 'name')).toBe(false);
   });
 });

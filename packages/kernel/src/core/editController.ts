@@ -88,6 +88,11 @@ export interface EditControllerDeps<TRow> {
 
   // --- Column + row + cell read access (per-edit lookups). ----------------
   getColumnDef(colId: string): ResolvedColDef<TRow> | undefined;
+  /** Cycle 21i / Phase 1 — pivot mode gate. When pivot mode is on, every
+   *  cell is read-only (the visible cells are cross-tab aggregates, not
+   *  source data). Optional so pre-existing test harnesses without pivot
+   *  wiring keep working (treated as "not pivoting"). */
+  isPivotMode?(): boolean;
   getColumnOrder(): ReadonlyArray<ResolvedColDef<TRow>>;
   getRowCount(): number;
   getVisibleColumns(): ReadonlyArray<EditViewportColumn>;
@@ -411,6 +416,9 @@ export class EditController<TRow = unknown> {
    *  current `{ data, colId, rowIndex, value }`. Returns `false` for
    *  unknown columns. */
   isCellEditable(rowIndex: number, colId: string): boolean {
+    // Cycle 21i / Phase 1 — pivot mode is read-only: visible cells are
+    // cross-tab aggregates, not editable source data.
+    if (this.deps.isPivotMode?.() === true) return false;
     const def = this.deps.getColumnDef(colId);
     if (!def) return false;
     const e = def.editable;
