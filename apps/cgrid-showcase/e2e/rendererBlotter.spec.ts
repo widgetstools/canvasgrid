@@ -81,31 +81,16 @@ test.describe('renderer blotter feature', () => {
   // geometry API, click its canvas-local pixel, and assert the demo's
   // onOpen callback (wired at rendererBlotter.ts:118-125) actually fired.
   //
-  // DISCOVERED KERNEL DEFECT (out of scope for @cgrid/renderers — zero
-  // kernel changes permitted in this fix pass): the click DOES reach the
-  // canvas, the kernel DOES resolve it to the right cell, and it DOES emit
-  // `cellClicked` with `colId: 'rowMenu'` — but with `rowId: 'row-0'`, a
-  // synthetic placeholder, instead of the real string rowId ('r1'). See
-  // `packages/kernel/src/cgrid.ts`'s `private rowIdAt(rowIndex)`: it always
-  // returns `` `row-${rowIndex}` `` — a documented "Foundation" stub
-  // ("the real index → rowId reverse lookup is deferred to a later
-  // cycle") that `cellClicked`/`cellDoubleClicked`/`cellMouseOver` all feed
-  // from. Meanwhile the PAINT path threads the REAL string rowId into
-  // `p.rowId` via the newer `stringRowIdAt(rowIndex)` (chunk's
-  // `stringRowIds`, added Cycle 21e/Task 11) — so `rowMenuCell.paint`
-  // registers its hit region under `rowId: 'r1'`, but the bridge's
-  // `cellClicked` handler looks it up under `rowId: 'row-0'`. The mismatch
-  // means `resolveHitRegion` always misses for `onOpen`/`onAction`
-  // callbacks that key off `rowId` in any real (non-fake-grid) app —
-  // this test is the first thing in the repo to exercise that path
-  // end-to-end. Fixing it requires `rowIdAt()` to read `stringRowIdAt()`
-  // when available, which is a `packages/kernel` change and out of scope
-  // here; `test.fail()` below keeps this documented and CI-green while the
-  // kernel fix is pending — it will loudly flip to "unexpected pass" the
-  // day someone lands that fix, which is the signal to remove the
-  // `test.fail()` call.
+  // This used to be a documented `test.fail()` tripwire: the kernel's
+  // `cellClicked` payload carried a synthetic `row-0` rowId instead of the
+  // real string rowId ('r1') that the paint path (and therefore the
+  // renderer's hit-region registration) used, so `onOpen`/`onAction`
+  // callbacks could never resolve. Fixed in `packages/kernel/src/cgrid.ts`
+  // — `rowIdAt()` now delegates to the real chunk-backed string id
+  // (`stringRowIdAt()`), falling back to the synthetic id only outside the
+  // loaded viewport window. This test now asserts the real, working
+  // behavior.
   test('clicking the row-menu kebab routes cellClicked to onOpen (F5)', async ({ page }) => {
-    test.fail(true, 'kernel rowIdAt() stub returns synthetic row-N ids for cellClicked; see comment above');
     await gotoFeature(page, 'renderer-blotter');
 
     type Bounds = { x: number; y: number; w: number; h: number };

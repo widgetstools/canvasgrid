@@ -372,12 +372,8 @@ function buildCatalogColumns(
         break;
       case 'icon-action-cluster':
         cols.push({
-          // B2 — 'ban', not 'x' (see rendererBlotter.ts's comment): a subset
-          // of Lucide names in the generated bundle mis-render a later
-          // subpath due to a `packages/kernel` icon-bundle-generation
-          // defect (out of scope here); 'ban' is verified single-subpath.
           ...(colDef.iconActionCluster(name, {
-            actions: [{ icon: 'ban', label: 'Act', onAction: (rowId) => { actionLog.push(String(rowId)); } }],
+            actions: [{ icon: 'x', label: 'Act', onAction: (rowId) => { actionLog.push(String(rowId)); } }],
           }) as CColDef<CatalogRow>),
           headerName: name,
           width: 90,
