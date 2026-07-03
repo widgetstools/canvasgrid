@@ -54,3 +54,6 @@ export {
   buildBulkUpdatePatches,
   makeDistinctValuesFeed,
 } from './bulkUpdate';
+
+export { makeExpressionEvaluate, resolveNudgeForCell, buildNudgePatches } from './plusMinus';
+export type { NudgeEvaluate } from './plusMinus';
