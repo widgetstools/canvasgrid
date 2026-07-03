@@ -239,7 +239,7 @@ See discussion summary presented 2026-07-03; decisions to be recorded in the
   The user names a feature increment; it is implemented per the locked
   decisions into a STANDALONE DEMO APP the user tests hands-on; feedback
   (modify/add/remove) iterates in place before the next increment. Demo
-  app: new `apps/cgrid-customizer-demo`, fed by `stomp-view-server`
+  app: new `apps/cgrid-customizer-demo`, fed by `stomp-view-server` (lives at /Users/develop/wfh/starui/apps/stomp-view-server, runs prebuilt from dist/)
   (ws://localhost:8081 — same source as cgrid-positions) for realistic
   live-ticking data. UX gates replace big-bang delivery; code reviews stay
   batched per standing directive; /frontend-design precedes each visual
