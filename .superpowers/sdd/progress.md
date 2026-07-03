@@ -666,3 +666,14 @@ Follow-ups logged (final review + re-review): N1 modelUpdated reseed thrash on t
 21g Task 4: complete (d0d52d3, review at closeout)
   preview.ts: previewPatches (pure classification, no grid access) + combineValidators (fail-fast invalid, worst-of warning); 9 tests
 21g-S3: COMPLETE. Engine I landed: journal/cascade/patches/preview. edit suite 48/48; tsc clean; root typecheck 21/21; kernel-diff gate EMPTY at every task. NEXT UNIT: 21g-S4 (execute Tasks 5-9 engine II, no per-task reviews).
+21g Task 5: complete (54c3f9a, review at closeout)
+  numericOps (StarUI parity: finite-current for ALL ops incl 'set', non-finite result -> null) + smartEdit (async collectTargetCells: ranges union, ONE batched getRowsByIndex, focused fallback, numeric+editable filter) + shared tests/helpers/fakeGrid.ts; 17 tests
+21g Task 6: complete (5117b5c, review at closeout)
+  magnitude: strict-regex K/M/B parser (1e3B rejected, plain numbers pass) + applyMagnitudeColDefTransforms (original-parser-first, new objects numeric-only, frozen-input proof); 9 tests
+21g Task 7: complete (0d7771a, review at closeout)
+  bulkUpdate: text/number/date/dateTime targets (boolean excluded, undefined=text), Number-with-''-guard ('0' parses, StarUI parseFloat-falsy bug avoided w/ mandatory comment), Date-free leap/century calendar validation, no-cache distinct feed; shared collectCellsByType walk factored out of smartEdit (allowed exception, Task 5 API+tests intact)
+21g Task 8: complete (dd4138b, review at closeout)
+  plusMinus: makeExpressionEvaluate (Map compile cache incl null-on-parse-fail, strict ===true, throw->false, REAL @cgrid/expression in tests) + resolveNudgeForCell (first-enabled-match, colId-OR-field scope, gate-false falls through) + buildNudgePatches (asymmetric steps); package's only runtime expression import
+21g Task 9: complete (62b640c, review at closeout)
+  shortcuts: case-insensitive letter match, identical-to-nudges scope rule, conflict detection (empty-or-intersect overlap, first wins, disabled ignored, non-shadowing omitted), type-level op-union lock
+21g-S4: COMPLETE. Engine II landed: full Phase A-C engine surface shipped. edit suite 127/127; tsc clean; root typecheck 21/21; kernel-diff gate EMPTY at every task. NEXT UNIT: 21g-S5 (Task 10 kernel seam getRowsByIndex — re-check PR #98 FIRST, shares cgrid.ts; then Task 11 bridge).
