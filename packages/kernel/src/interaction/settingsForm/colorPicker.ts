@@ -94,7 +94,9 @@ export class ColorPickerControl {
   private popover: HTMLElement | null = null;
   private hsva: HSVA;
   private closeOnDocClick = (e: MouseEvent) => {
-    if (this.popover && !this.el.contains(e.target as Node)) this.close();
+    const t = e.target as Node;
+    // Popover is portaled to <body>, so exclude BOTH the trigger and it.
+    if (this.popover && !this.el.contains(t) && !this.popover.contains(t)) this.close();
   };
 
   constructor(initial: string, private readonly onChange: (rgba: string) => void) {
@@ -112,9 +114,15 @@ export class ColorPickerControl {
     this.swatch.addEventListener('click', () => this.toggle());
   }
 
-  /** Update the control from an external value (e.g. form refresh). */
+  /** Update the control from an external value (e.g. form refresh). Skips
+   *  when the value already matches our own output — otherwise a form
+   *  refresh triggered by our own commit would re-seed HSVA from RGBA and
+   *  lose hue at s=0/v=0 mid-drag. */
   setValue(value: string): void {
-    this.hsva = rgbToHsv(parseColor(value) ?? { r: 128, g: 128, b: 128, a: 1 });
+    const incoming = parseColor(value);
+    if (!incoming) return;
+    if (rgbaToString(incoming) === this.current()) return;
+    this.hsva = rgbToHsv(incoming);
     this.paintSwatch();
     if (this.popover) this.paintPopover();
   }
@@ -142,18 +150,50 @@ export class ColorPickerControl {
     if (this.popover) this.close(); else this.open();
   }
 
+  private reposition = () => {
+    if (!this.popover) return;
+    // Fixed positioning anchored to the swatch, flipped/clamped to stay in
+    // the viewport — so a swatch near the bottom of a scrolling panel never
+    // needs the popover scrolled into view.
+    const pop = this.popover;
+    const anchor = this.swatch.getBoundingClientRect();
+    const w = pop.offsetWidth;
+    const h = pop.offsetHeight;
+    const margin = 8;
+    const spaceBelow = window.innerHeight - anchor.bottom;
+    const top = spaceBelow >= h + margin || spaceBelow >= anchor.top
+      ? anchor.bottom + 6
+      : Math.max(margin, anchor.top - h - 6);
+    let left = anchor.right - w;
+    left = Math.min(Math.max(margin, left), window.innerWidth - w - margin);
+    pop.style.top = `${Math.max(margin, top)}px`;
+    pop.style.left = `${left}px`;
+  };
+
   private open(): void {
     this.popover = document.createElement('div');
     this.popover.className = 'cg-colorpicker-popover';
+    // Portaled to <body> — carry the grid's theme class so the class-based
+    // --cg-* tokens still resolve outside the theme root.
+    const themeClass = this.el.closest('[class*="cg-theme-"]')?.className.match(/cg-theme-[\w-]+/)?.[0];
+    if (themeClass) this.popover.classList.add(themeClass);
     this.buildPopover(this.popover);
-    this.el.appendChild(this.popover);
+    // Mount at document.body so the panel's `overflow` never clips it.
+    document.body.appendChild(this.popover);
     this.paintPopover();
+    this.reposition();
     // Defer so this very click doesn't immediately close it.
-    setTimeout(() => document.addEventListener('mousedown', this.closeOnDocClick), 0);
+    setTimeout(() => {
+      document.addEventListener('mousedown', this.closeOnDocClick);
+      window.addEventListener('resize', this.reposition);
+      window.addEventListener('scroll', this.reposition, true);
+    }, 0);
   }
 
   private close(): void {
     document.removeEventListener('mousedown', this.closeOnDocClick);
+    window.removeEventListener('resize', this.reposition);
+    window.removeEventListener('scroll', this.reposition, true);
     this.popover?.remove();
     this.popover = null;
   }

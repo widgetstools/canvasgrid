@@ -2123,10 +2123,12 @@
   height: 22px;
 }
 .cg-colorpicker-popover {
-  position: absolute;
-  top: calc(100% + 6px);
-  right: 0;
-  z-index: 40;
+  /* Portaled to <body> + JS-positioned (fixed) so a swatch near the
+   * bottom of a scrolling panel never clips the popover. */
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2147483000;
   width: 200px;
   padding: 10px;
   display: flex;
