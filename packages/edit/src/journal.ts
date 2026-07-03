@@ -91,10 +91,27 @@ export class EditJournal {
     return entry;
   }
 
-  /** STUB — cascade body lands in Task 3 (spec §3.2). Not a keystroke-path API,
-   *  so the throw does not violate the null-on-failure discipline. */
-  undoEntry(_entryId: string): EditJournalEntry[] {
-    throw new Error('not-yet-implemented');
+  /** Cascades undo back through `entryId` inclusive (spec §3.2): pops `past`
+   *  newest→oldest, applying + pushing each popped entry onto `future` as its
+   *  OWN applier call (one Tx per entry — trivially correct over overlapping
+   *  cells), then notifies listeners ONCE for the whole cascade. Unknown id
+   *  (not present in `past`) is a no-op: `[]`, no applier call, no notify.
+   *  `future` ends up LIFO with the target on top, so `redo()` replays
+   *  oldest-of-cascade first — original chronological order, no extra code. */
+  undoEntry(entryId: string): EditJournalEntry[] {
+    const targetIndex = this.past.findIndex((e) => e.id === entryId);
+    if (targetIndex === -1) return [];
+
+    const undone: EditJournalEntry[] = [];
+    while (this.past.length > targetIndex) {
+      const entry = this.past.pop();
+      if (!entry) break;
+      this.applyPatchesFn(entry.patches, 'undo');
+      this.future.push(entry);
+      undone.push(entry);
+    }
+    this.notify();
+    return undone;
   }
 
   canUndo(): boolean {

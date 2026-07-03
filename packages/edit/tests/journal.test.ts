@@ -230,10 +230,93 @@ describe('EditJournal — undo/redo stacks', () => {
   });
 });
 
-describe('EditJournal — undoEntry (Task 2 stub)', () => {
-  it('throws not-yet-implemented (replaced by the Task 3 cascade suite)', () => {
-    const { journal } = makeJournal();
+describe('EditJournal — undoEntry cascade', () => {
+  it('cascades undo through overlapping cells in newest-to-oldest order', () => {
+    const store: Record<string, Record<string, unknown>> = { r1: { px: 1 } };
+    const applier = vi.fn((patches: CellPatch[], direction: 'forward' | 'undo') => {
+      for (const p of patches) {
+        store[p.rowId]![p.field] = direction === 'forward' ? p.newValue : p.oldValue;
+      }
+    });
+    const settings: DataChangeHistorySettings = structuredClone(DEFAULT_EDIT_SETTINGS.history);
+    const journal = new EditJournal({ applyPatches: applier, getHistorySettings: () => settings });
+
+    const p1: CellPatch = { rowId: 'r1', colId: 'px', field: 'px', oldValue: 1, newValue: 2 };
+    const p2: CellPatch = { rowId: 'r1', colId: 'px', field: 'px', oldValue: 2, newValue: 3 };
+    const p3: CellPatch = { rowId: 'r1', colId: 'px', field: 'px', oldValue: 3, newValue: 4 };
+    const e1 = journal.record({ source: 'smart-edit', label: 'e1', patches: [p1] });
+    applier([p1], 'forward');
+    const e2 = journal.record({ source: 'smart-edit', label: 'e2', patches: [p2] });
+    applier([p2], 'forward');
+    const e3 = journal.record({ source: 'smart-edit', label: 'e3', patches: [p3] });
+    applier([p3], 'forward');
+    applier.mockClear();
+
+    expect(store.r1!.px).toBe(4);
+    const undone = journal.undoEntry(e1!.id);
+    expect(undone).toEqual([e3, e2, e1]);
+    expect(store.r1!.px).toBe(1);
+    expect(journal.canUndo()).toBe(false);
+    expect(journal.canRedo()).toBe(true);
+
+    // one applier call PER entry, never a coalesced batch
+    expect(applier).toHaveBeenCalledTimes(3);
+    expect(applier).toHaveBeenNthCalledWith(1, e3!.patches, 'undo');
+    expect(applier).toHaveBeenNthCalledWith(2, e2!.patches, 'undo');
+    expect(applier).toHaveBeenNthCalledWith(3, e1!.patches, 'undo');
+
+    // redo replays forward in original chronological order
+    expect(journal.redo()).toEqual(e1);
+    expect(applier).toHaveBeenNthCalledWith(4, e1!.patches, 'forward');
+    expect(journal.redo()).toEqual(e2);
+    expect(applier).toHaveBeenNthCalledWith(5, e2!.patches, 'forward');
+    expect(journal.redo()).toEqual(e3);
+    expect(applier).toHaveBeenNthCalledWith(6, e3!.patches, 'forward');
+    expect(store.r1!.px).toBe(4);
+    expect(journal.redo()).toBeNull();
+  });
+
+  it('cascade target = newest degenerates to a plain undo()', () => {
+    const { journal, applier } = makeJournal();
+    const e1 = journal.record({ source: 'smart-edit', label: 'e1', patches: [patch({ rowId: 'r1' })] });
+    const e2 = journal.record({ source: 'smart-edit', label: 'e2', patches: [patch({ rowId: 'r2' })] });
+    const e3 = journal.record({ source: 'smart-edit', label: 'e3', patches: [patch({ rowId: 'r3' })] });
+    applier.mockClear();
+
+    const undone = journal.undoEntry(e3!.id);
+    expect(undone).toEqual([e3]);
+    expect(applier).toHaveBeenCalledTimes(1);
+    expect(journal.entries()).toEqual([e1, e2]);
+  });
+
+  it('unknown entry id is a no-op: [] returned, no applier call, no listener fire, state unchanged', () => {
+    const { journal, applier } = makeJournal();
     journal.record({ source: 'smart-edit', label: 'e1', patches: [patch()] });
-    expect(() => journal.undoEntry('e1')).toThrow('not-yet-implemented');
+    const listener = vi.fn();
+    journal.subscribe(listener);
+    applier.mockClear();
+
+    const entriesBefore = journal.entries();
+    const canRedoBefore = journal.canRedo();
+    const result = journal.undoEntry('nope');
+    expect(result).toEqual([]);
+    expect(applier).not.toHaveBeenCalled();
+    expect(listener).not.toHaveBeenCalled();
+    expect(journal.entries()).toEqual(entriesBefore);
+    expect(journal.canRedo()).toBe(canRedoBefore);
+  });
+
+  it('notifies listeners exactly once across a multi-entry cascade', () => {
+    const { journal, applier } = makeJournal();
+    const e1 = journal.record({ source: 'smart-edit', label: 'e1', patches: [patch({ rowId: 'r1' })] });
+    journal.record({ source: 'smart-edit', label: 'e2', patches: [patch({ rowId: 'r2' })] });
+    journal.record({ source: 'smart-edit', label: 'e3', patches: [patch({ rowId: 'r3' })] });
+
+    const listener = vi.fn();
+    journal.subscribe(listener);
+    applier.mockClear();
+
+    journal.undoEntry(e1!.id);
+    expect(listener).toHaveBeenCalledTimes(1);
   });
 });

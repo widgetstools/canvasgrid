@@ -28,3 +28,11 @@ export type {
 
 export { EditJournal } from './journal';
 export type { EditJournalOptions } from './journal';
+
+export {
+  dedupePatches,
+  buildPatchesFromTargets,
+  buildRowUpdatesFromPatches,
+  assertSingleColumnSelection,
+} from './patches';
+export type { CellTarget } from './patches';
