@@ -90,7 +90,7 @@ const grid = new CGrid<Position>(gridHost, {
   theme: dark ? 'cg-theme-quartz-dark' : 'cg-theme-quartz',
   defaultColDef: { resizable: true, sortable: true, flex: 1, minWidth: 80 },
   rowGroupPanelShow: 'always',
-  sideBar: { toolPanels: ['columns', 'filters'] },
+  sideBar: { toolPanels: ['columns', 'filters', 'gridOptions'] },
   enableCellChangeFlash: true,
   cellSelection: {},
 });

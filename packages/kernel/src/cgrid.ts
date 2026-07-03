@@ -63,6 +63,7 @@ import { ContextMenuHost } from './interaction/contextMenu/host';
 import { ToolPanelRegistry } from './interaction/toolPanels/registry';
 import { ColumnsToolPanel } from './interaction/toolPanels/columnsPanel';
 import { FiltersToolPanel } from './interaction/toolPanels/filtersPanel';
+import { GridOptionsToolPanel } from './interaction/toolPanels/gridOptionsPanel';
 import { SideBarHost, normalizeSideBarOption, type SideBarGridContext } from './interaction/sideBar/host';
 import { StatusBarHost, normalizeStatusBarOption, type StatusBarGridContext } from './interaction/statusBar/host';
 import { StatusPanelRegistry } from './interaction/statusBar/registry';
@@ -196,6 +197,33 @@ export type { GridState } from './core/stateSnapshot';
 export { STATE_SCHEMA_VERSION } from './core/stateSnapshot';
 export type { StateStorageAdapter, PersistStateOptions } from './core/statePersistence';
 export { LocalStorageStateAdapter } from './core/statePersistence';
+
+/** Cycle 21i / Phase 1 — runtime options that never enter the GridState
+ *  `gridOptions` slice: data inputs, callbacks/functions (not
+ *  serializable), and `theme` (app chrome owns the toggle; persisting it
+ *  would fight the host's own theme storage). */
+const NON_PERSISTABLE_RUNTIME_OPTIONS: ReadonlySet<string> = new Set([
+  'rowData',
+  'pinnedTopRowData',
+  'pinnedBottomRowData',
+  'context',
+  'loading',
+  'debug',
+  'quickFilterText',
+  'aggFuncs',
+  'fillOperation',
+  'getContextMenuItems',
+  'processCellForClipboard',
+  'processCellFromClipboard',
+  'theme',
+]);
+export type {
+  SettingsSection,
+  SettingsBand,
+  SettingsField,
+  SettingsFieldType,
+  SettingsSelectOption,
+} from './types/settingsSchema';
 export type {
   SelectionConfig,
   SingleRowSelectionConfig,
@@ -507,6 +535,10 @@ export class CGrid<TRow = any> {
   /** Cycle 21i / Phase 1 — restore-then-autosave persistence (gridId +
    *  persistState options). Null when persistence is not enabled. */
   private statePersistence: import('./core/statePersistence').StatePersistenceController | null = null;
+  /** Cycle 21i / Phase 1 — runtime options touched via setGridOption /
+   *  updateGridOptions (persistable keys only). Feeds the `gridOptions`
+   *  slice of the GridState snapshot. */
+  private runtimeTouchedOptions = new Map<string, unknown>();
   private columnTree!: ColumnTree;
   private columnGroupState!: ColumnGroupState;
   private columnDefsMap: Map<string, ResolvedColDef<TRow>> = new Map();
@@ -899,6 +931,8 @@ export class CGrid<TRow = any> {
     this.toolPanelRegistry.seedBuiltIns();
     this.toolPanelRegistry.register('agColumnsToolPanel', ColumnsToolPanel);
     this.toolPanelRegistry.register('agFiltersToolPanel', FiltersToolPanel);
+    // Cycle 21i / Phase 1 — native Grid Options settings tab.
+    this.toolPanelRegistry.register('agGridOptionsToolPanel', GridOptionsToolPanel);
     if (options.components) {
       for (const [id, ctor] of Object.entries(options.components)) {
         this.toolPanelRegistry.register(id, ctor);
@@ -5169,6 +5203,13 @@ export class CGrid<TRow = any> {
     }
     this.options[key] = value;
     applyRuntimeOption(this.runtimeTarget(), key as any, value);
+    // Cycle 21i / Phase 1 — record the touch for the GridState
+    // `gridOptions` slice + dirty the coalesced autosave bus. Data
+    // inputs / callbacks / theme (app chrome) never persist.
+    if (!NON_PERSISTABLE_RUNTIME_OPTIONS.has(key as string)) {
+      this.runtimeTouchedOptions.set(key as string, value);
+      this.stateUpdatedBus?.markChanged('gridOptions');
+    }
   }
 
   /** Batch-update grid options. `columnDefs` is honored only via this
@@ -7202,6 +7243,7 @@ export class CGrid<TRow = any> {
       getFocusedCell: () => this.getFocusedCell(),
       getSelectedRowIds: () => this.getSelectedRowIds(),
       getScrollPosition: () => this.viewportManager.getScrollPosition(),
+      getRuntimeOptions: () => Object.fromEntries(this.runtimeTouchedOptions),
     });
   }
 
@@ -7221,6 +7263,20 @@ export class CGrid<TRow = any> {
     // events (filterChanged + sortChanged + ...) collapses into one
     // emission via the bus's rAF debounce.
     this.stateUpdatedBus?.setNextSource('api');
+
+    // 0. runtime options (Cycle 21i / Phase 1) — FIRST so option-driven
+    // layout (row heights, panels, defaultColDef) settles before column
+    // state applies on top. Each key applies independently; one bad
+    // value degrades to a warning, not a dropped restore.
+    if (migrated.gridOptions) {
+      for (const [key, value] of Object.entries(migrated.gridOptions)) {
+        try {
+          this.setGridOption(key as keyof CGridOptions<TRow>, value as never);
+        } catch (err) {
+          console.warn(`[cgrid] setState: skipped gridOptions['${key}']`, err);
+        }
+      }
+    }
 
     // 1. columnState (defines columns + their geometry).
     if (migrated.columnState) {

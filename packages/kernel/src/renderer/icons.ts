@@ -25,7 +25,8 @@ export type IconName =
   | 'layout-grid'
   | 'list-filter'
   | 'sigma'
-  | 'columns-3';
+  | 'columns-3'
+  | 'sliders-horizontal';
 
 const PATHS: Record<IconName, string> = {
   // Sort ascending
@@ -54,6 +55,10 @@ const PATHS: Record<IconName, string> = {
   // (Cycle 18 / Task 5). Lucide `columns-3` path: a frame with two
   // inner vertical dividers (echoes "column headers / pivot labels").
   'columns-3': 'M21 4H3v16h18V4z M15 4v16 M9 4v16',
+  // Mixer sliders — used for the Grid Options tool-panel sidebar tab
+  // (Cycle 21i / Phase 1). Lucide `sliders-horizontal`.
+  'sliders-horizontal':
+    'M21 4L14 4 M10 4L3 4 M21 12L12 12 M8 12L3 12 M21 20L16 20 M12 20L3 20 M14 2L14 6 M8 10L8 14 M16 18L16 22',
 };
 
 /** Cycle 27 / Task 3 — runtime-registered icons. Layered ON TOP of the

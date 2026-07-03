@@ -1766,6 +1766,270 @@
   border-radius: 3px;
 }
 
+/* Cycle 21i / Phase 1 — settings form + Grid Options tool panel.
+ *
+ * Design notes (21i design pass): quartz-native chrome, every color off
+ * an existing --cg-* token so both themes inherit automatically. Band
+ * headers are 11px uppercase eyebrows; numeric inputs use the grid's
+ * mono face (terminal DNA — numbers are mono everywhere in the grid).
+ *
+ * Signature element — the MODIFIED DIFF RAIL: rows whose value differs
+ * from their baseline carry a 2px accent tick on the left edge (echoing
+ * the grid's cell-change flash), a hover ↺ reset, and roll up into
+ * per-band count chips + the header "Modified" filter pill. */
+.cg-settings-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--cg-bg-color);
+  color: var(--cg-fg-color);
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  overflow: hidden;
+  --cg-settings-accent: var(--cg-focus-ring-color);
+}
+.cg-settings-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--cg-border-color);
+  flex: 0 0 auto;
+}
+.cg-settings-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: var(--cg-font-size-sm);
+  color: var(--cg-fg-color);
+  background: color-mix(in srgb, var(--cg-fg-color) 5%, transparent);
+  border: 1px solid var(--cg-border-color);
+  border-radius: 4px;
+  outline: none;
+}
+.cg-settings-search:focus {
+  border-color: var(--cg-settings-accent);
+}
+.cg-settings-modified-pill {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: var(--cg-font-size-sm);
+  color: var(--cg-fg-color);
+  background: transparent;
+  border: 1px solid var(--cg-border-color);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  opacity: 0.75;
+}
+.cg-settings-modified-pill[data-has-modified] {
+  opacity: 1;
+  border-color: color-mix(in srgb, var(--cg-settings-accent) 55%, transparent);
+}
+.cg-settings-modified-pill[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--cg-settings-accent) 18%, transparent);
+  border-color: var(--cg-settings-accent);
+  opacity: 1;
+}
+.cg-settings-panel-scroller {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.cg-settings-band {
+  border-bottom: 1px solid color-mix(in srgb, var(--cg-border-color) 60%, transparent);
+}
+.cg-settings-band-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 10px 6px;
+  font-family: var(--cg-font-family);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--cg-fg-color) 62%, transparent);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+.cg-settings-band-header:hover {
+  color: var(--cg-fg-color);
+}
+.cg-settings-band-chevron {
+  flex: 0 0 auto;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  transition: transform 120ms ease;
+}
+.cg-settings-band-header[aria-expanded="false"] .cg-settings-band-chevron {
+  transform: rotate(-90deg);
+}
+.cg-settings-band-title {
+  flex: 1 1 auto;
+}
+.cg-settings-band-chip {
+  flex: 0 0 auto;
+  min-width: 16px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-align: center;
+  color: var(--cg-bg-color);
+  background: var(--cg-settings-accent);
+  border-radius: 999px;
+}
+.cg-settings-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 5px 12px;
+}
+.cg-settings-row:hover {
+  background: var(--cg-row-hover-bg);
+}
+/* The diff rail — a 2px accent tick marking changed-from-baseline rows. */
+.cg-settings-row[data-modified]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--cg-settings-accent);
+}
+.cg-settings-row-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.cg-settings-row-label label {
+  font-size: var(--cg-font-size-sm);
+  line-height: 1.35;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cg-settings-row-hint {
+  font-size: 10px;
+  line-height: 1.3;
+  color: color-mix(in srgb, var(--cg-fg-color) 50%, transparent);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cg-settings-row-control {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.cg-settings-row-reset {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  color: color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  opacity: 0;
+}
+.cg-settings-row:hover .cg-settings-row-reset,
+.cg-settings-row-reset:focus-visible {
+  opacity: 1;
+}
+.cg-settings-row-reset:hover {
+  color: var(--cg-fg-color);
+  background: color-mix(in srgb, var(--cg-fg-color) 10%, transparent);
+}
+/* Toggle — same vocabulary as the columns panel's Pivot Mode switch. */
+.cg-settings-toggle {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cg-fg-color) 30%, transparent);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  flex: 0 0 auto;
+  transition: background 120ms ease;
+}
+.cg-settings-toggle[aria-pressed="true"] {
+  background: var(--cg-settings-accent);
+}
+.cg-settings-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--cg-bg-color);
+  transition: transform 120ms ease;
+}
+.cg-settings-toggle[aria-pressed="true"] .cg-settings-toggle-knob {
+  transform: translateX(12px);
+}
+.cg-settings-checkbox {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--cg-settings-accent);
+  cursor: pointer;
+}
+.cg-settings-input {
+  padding: 3px 6px;
+  font-size: var(--cg-font-size-sm);
+  color: var(--cg-fg-color);
+  background: color-mix(in srgb, var(--cg-fg-color) 5%, transparent);
+  border: 1px solid var(--cg-border-color);
+  border-radius: 4px;
+  outline: none;
+}
+.cg-settings-input:focus {
+  border-color: var(--cg-settings-accent);
+}
+.cg-settings-input-number {
+  width: 72px;
+  font-family: var(--cg-cell-font-family);
+  text-align: right;
+}
+.cg-settings-input-text {
+  width: 110px;
+}
+.cg-settings-select {
+  max-width: 130px;
+  font-family: inherit;
+  cursor: pointer;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cg-settings-band-chevron,
+  .cg-settings-toggle,
+  .cg-settings-toggle-knob {
+    transition: none;
+  }
+}
+
 /* Cycle 13 / Task 1 — status bar shell. Mounts as a sibling of the
  * canvas inside `CGrid.root`, pinned to the bottom (or top) edge.
  *

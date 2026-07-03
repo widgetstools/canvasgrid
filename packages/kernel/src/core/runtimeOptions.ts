@@ -408,7 +408,7 @@ export function isRuntimeOption(key: string): key is RuntimeOption {
   return RUNTIME_OPTION_SET.has(key as RuntimeOption);
 }
 
-const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
+export const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'theme', 'density', 'rowHeight', 'headerHeight', 'defaultColDef',
   'animateRows', 'rowSelection',
   'suppressRowClickSelection', 'rowMultiSelectWithClick',
