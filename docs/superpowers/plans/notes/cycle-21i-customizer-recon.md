@@ -231,7 +231,29 @@ See discussion summary presented 2026-07-03; decisions to be recorded in the
   replaces StarUI's hardcoded provider-host/date-settings sections with a
   generic mechanism (also further shrinks #19).
 - **D-F Engine-API gap wave**: land the missing public surfaces (see §4) as
-  a pre-phase or per-panel PRs.
+  a pre-phase or per-panel PRs. Amended by the interactive model (below):
+  the wave is split — each interactive phase lands only its own engine
+  prerequisites, so the user is never waiting on plumbing for features they
+  can't see yet.
+- **EXECUTION MODEL — DECIDED 2026-07-03 (user): interactive phases.**
+  The user names a feature increment; it is implemented per the locked
+  decisions into a STANDALONE DEMO APP the user tests hands-on; feedback
+  (modify/add/remove) iterates in place before the next increment. Demo
+  app: new `apps/cgrid-customizer-demo`, fed by `stomp-view-server`
+  (ws://localhost:8081 — same source as cgrid-positions) for realistic
+  live-ticking data. UX gates replace big-bang delivery; code reviews stay
+  batched per standing directive; /frontend-design precedes each visual
+  build.
+- **PHASE 1 — DECIDED 2026-07-03 (user): Grid Options editor + basic
+  formatting toolbar (both NATIVE tier).** Scope: vanilla schema engine
+  (field vocab switch/input/checkbox/select + number/enum variants),
+  Grid Options sidebar tab over the runtime whitelist + defaultColDef
+  fan-out (~60 fields, band-collapsible, searchable), basic formatting
+  toolbar (alignment, number-format presets, decimals ±, emphasis, fg/bg
+  color quick-apply), plus their engine prerequisites only: option
+  introspection (getGridOption read-back — verify existence in S1),
+  gridId + persistState (D-H) so settings visibly survive reload in the
+  demo, and the demo app scaffold with STOMP feed.
 - **D-H Native state persistence — DECIDED 2026-07-03 (user).** New kernel
   options `gridId: string` (unique instance identity, storage key
   `cgrid:state:<gridId>`) + `persistState: boolean | {adapter, debounceMs,
