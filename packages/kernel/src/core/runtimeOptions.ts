@@ -88,7 +88,9 @@ export type RuntimeOption =
   | 'pivotGrandTotals'
   | 'domLayout'
   | 'groupSelectsChildren'
-  | 'suppressCount';
+  | 'suppressCount'
+  | 'singleClickEdit'
+  | 'suppressClickEdit';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
  *  import on `CGrid` (cgrid.ts imports this module). */
@@ -329,6 +331,13 @@ export function applyRuntimeOption<TRow>(
       // label changes).
       target.refreshLayout();
       return;
+    case 'singleClickEdit':
+    case 'suppressClickEdit':
+      // Cycle 21i / Phase 1 — storage-only. EditTrigger reads
+      // `getEditingFlags()` (→ options.singleClickEdit / suppressClickEdit)
+      // at click time, so a runtime flip takes effect on the next click
+      // with no re-render needed.
+      return;
     case 'suppressCount':
       // Cycle 15.5 / Task 7 — toggle the `(n)` child-count badge on group
       // rows. The group cell-renderer params builder reads
@@ -448,5 +457,5 @@ export const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOpt
   'pivotGrandTotals',
   'domLayout',
   'groupSelectsChildren',
-  'suppressCount',
+  'suppressCount', 'singleClickEdit', 'suppressClickEdit',
 ]);

@@ -152,6 +152,20 @@ const OPTION_BANDS: BandSpec[] = [
     ],
   },
   {
+    id: 'editing',
+    title: 'Editing',
+    fields: [
+      {
+        key: 'singleClickEdit', label: 'Edit trigger', type: 'select', kernelDefault: 'double',
+        hint: 'How a cell enters edit mode',
+        options: opts(['double', 'Double click'], ['single', 'Single click']),
+        toControl: (v) => (v === true ? 'single' : 'double'),
+        fromControl: (v) => v === 'single',
+      },
+      { key: 'suppressClickEdit', label: 'Disable click editing', type: 'switch', kernelDefault: false, hint: 'Edit only via F2 / Enter' },
+    ],
+  },
+  {
     id: 'clipboardFill',
     title: 'Clipboard & fill',
     fields: [
