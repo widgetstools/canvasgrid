@@ -691,3 +691,10 @@ Follow-ups logged (final review + re-review): N1 modelUpdated reseed thrash on t
   Post-#98 obligations (recorded in baselines note): rebase #98 over 21g's cgrid.ts changes BEFORE merging it; on #98 merge, all 4 tripwires (renderers F5 + edit E2E 4/5/8) flip to unexpected-pass -> convert to plain green tests; nudges/shortcuts go live against the real kernel — do a manual smoke on the edit-blotter page then.
   Carried minors (from closeout review, for 21h/21i triage): programmatic redo replays pre-parse computed value (undo exact everywhere; full fix = record post-parse values, pinned-semantics change); applied==0 still records entry; journal copies array not patch objects; preventDefault precedes empty-patch check (spec-consistent).
 NEXT UNIT: 21h-S1 (@cgrid/export recon redo + spec) — or user may prioritize merging PR #98 first (recommended: rebase + merge #98, flip tripwires, smoke nudges live).
+=== Kernel bugfix follow-up (branch kernel/rowid-and-lucide-fix, stacked on 21f) ===
+Kernel fixes: complete (commits aef9efc..b2bb496, review APPROVED zero findings)
+  rowIdAt() delegates to stringRowIdAt at the source (cgrid.ts:6879-6881; all ~12 call sites uniform; synthetic row-N only as falsy fallback); real-event-path unit test (cellClickedRowId.test.ts)
+  lucide join-seam corruption: 449/1506 icons fixed via extracted lucidePathJoin.ts (M-seam rewrite + relative continuation re-anchor); regression test cross-validates ENTIRE bundle against upstream SVGs; demo reverted ban→x (screenshot-verified)
+  Tripwire flipped to genuinely-passing (menu:r1 asserted); noEmit added to both app tsconfigs (root cause of .js stragglers)
+  Gates: kernel 2574/2574 (2568+6), renderers 277/277, tsc 21/21, lint, build 13/13 (dist 795405/805803), E2E 148+1skip, visual green
+PENDING USER: (1) merge PR #97 (21f squash — coordinator merge was permission-blocked); (2) after #97 lands: rebase kernel/rowid-and-lucide-fix onto main, open + merge kernel PR; then worklog baselines update + S10 tick close-out
