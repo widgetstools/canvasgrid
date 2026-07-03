@@ -54,6 +54,47 @@ describe('SelectionModel', () => {
     expect(fn).toHaveBeenCalledOnce();
   });
 
+  describe('UI-selection ID persistence via resolver (Cycle 21i)', () => {
+    // Regression: UI selection (selectSingle/toggleMulti/range) used to clear
+    // the id shadow, so the next modelUpdated → rebuildIndices wiped the
+    // highlight. Under a live feed (constant modelUpdated) selection flashed
+    // then reverted. With a resolver wired, UI selection records ids.
+    const idOf = (i: number) => `r${i}`;
+
+    it('selectSingle records the row id and survives rebuildIndices', () => {
+      const m = new SelectionModel('multiple');
+      m.setRowIdResolver(idOf);
+      m.selectSingle(3);
+      expect(m.getPersistentSelectedRowIds()).toEqual(['r3']);
+      // A modelUpdated where r3 is now at index 7 → highlight follows the id.
+      m.rebuildIndices(new Map([['r3', 7]]));
+      expect(Array.from(m.state.selectedRowIndices)).toEqual([7]);
+    });
+
+    it('without a resolver, selectSingle stays legacy (id shadow empty)', () => {
+      const m = new SelectionModel('multiple');
+      m.selectSingle(3);
+      expect(m.getPersistentSelectedRowIds()).toEqual([]);
+    });
+
+    it('toggleMulti keeps the id set in sync with the indices', () => {
+      const m = new SelectionModel('multiple');
+      m.setRowIdResolver(idOf);
+      m.toggleMulti(1);
+      m.toggleMulti(2);
+      expect(m.getPersistentSelectedRowIds().sort()).toEqual(['r1', 'r2']);
+      m.toggleMulti(1); // deselect
+      expect(m.getPersistentSelectedRowIds()).toEqual(['r2']);
+    });
+
+    it('range records every id in the span', () => {
+      const m = new SelectionModel('multiple');
+      m.setRowIdResolver(idOf);
+      m.range(2, 4);
+      expect(m.getPersistentSelectedRowIds().sort()).toEqual(['r2', 'r3', 'r4']);
+    });
+  });
+
   describe('ID-keyed persistence (Task 7)', () => {
     it('setSelectedRowIds stores ids + paint indices and fires onChange', () => {
       const m = new SelectionModel('multiple');

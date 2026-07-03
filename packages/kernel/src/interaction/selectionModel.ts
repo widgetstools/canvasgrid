@@ -83,8 +83,35 @@ export class SelectionModel {
    *  `'filteredDescendants'` mode. Intersection gates which descendants
    *  get selected / count toward the tri-state. */
   private _filteredIds: ReadonlySet<string> | null = null;
+  /** Cycle 21i / Phase 1 — main-thread index→rowId resolver. When set,
+   *  the UI-driven setters (selectSingle / toggleMulti / range) record the
+   *  selected row IDs so the selection survives `modelUpdated` (live
+   *  transactions fire it constantly; `rebuildIndices` rebuilds the paint
+   *  indices from these IDs). Was impossible when those setters were
+   *  written — `rowIdAt` now resolves visible rows on the main thread. */
+  private _resolveRowId: ((rowIndex: number) => string | null) | null = null;
 
   constructor(private mode: SelectionMode) {}
+
+  /** Cycle 21i / Phase 1 — inject the index→rowId resolver (cgrid wires
+   *  `rowIdAt`). Enables UI selection to persist across `modelUpdated`. */
+  setRowIdResolver(fn: ((rowIndex: number) => string | null) | null): void {
+    this._resolveRowId = fn;
+  }
+
+  /** Rebuild `_selectedRowIds` from the current paint indices via the
+   *  resolver. No-op (clears IDs, legacy behaviour) when no resolver is
+   *  wired. Called by the UI setters so a following `modelUpdated`
+   *  preserves the selection instead of wiping it. */
+  private syncIdsFromIndices(): void {
+    if (!this._resolveRowId) { this._selectedRowIds.clear(); return; }
+    const ids = new Set<string>();
+    for (const idx of this._state.selectedRowIndices) {
+      const id = this._resolveRowId(idx);
+      if (id != null) ids.add(id);
+    }
+    this._selectedRowIds = ids;
+  }
 
   get state(): Readonly<SelectionState> { return this._state; }
   /** Cycle 24 / Task 1 — expose the current selection mode so callers
@@ -120,10 +147,11 @@ export class SelectionModel {
     if (this._state.focusedRowIndex === rowIndex && this._state.focusedColId === colId) return;
     this._state.focusedRowIndex = rowIndex;
     this._state.focusedColId = colId;
-    // UI-driven focus has no rowId on the main thread (would need a reverse
-    // chunk lookup that doesn't exist yet) — drop the persistent id so
-    // rebuildIndices doesn't reinstate a stale focus row.
-    this._focusedRowId = null;
+    // Cycle 21i — record the focused rowId (via the resolver) so the focus
+    // ring survives `modelUpdated`; null when no resolver / no row.
+    this._focusedRowId = rowIndex != null && this._resolveRowId
+      ? this._resolveRowId(rowIndex)
+      : null;
     this.emit();
   }
 
@@ -146,7 +174,8 @@ export class SelectionModel {
     if (!focusChanged && alreadyCollapsed) return;
     this._state.focusedRowIndex = rowIndex;
     this._state.focusedColId = colId;
-    this._focusedRowId = null;
+    // Cycle 21i — record focused rowId so the focus ring survives modelUpdated.
+    this._focusedRowId = this._resolveRowId ? this._resolveRowId(rowIndex) : null;
     if (!alreadyCollapsed) {
       this._state.ranges = [{ rowStart: rowIndex, rowEnd: rowIndex, colIds: [colId] }];
     }
@@ -157,7 +186,7 @@ export class SelectionModel {
     if (this.mode === 'none') return;
     this._state.selectedRowIndices.clear();
     this._state.selectedRowIndices.add(rowIndex);
-    this._selectedRowIds.clear();
+    this.syncIdsFromIndices();
     this.emit();
   }
 
@@ -166,10 +195,10 @@ export class SelectionModel {
     if (this.mode === 'single') return this.selectSingle(rowIndex);
     if (this._state.selectedRowIndices.has(rowIndex)) this._state.selectedRowIndices.delete(rowIndex);
     else this._state.selectedRowIndices.add(rowIndex);
-    // UI-driven toggles can't carry rowIds (no reverse index→id lookup on the
-    // main thread), so persistent set is cleared — survival across re-sorts is
-    // an API-only contract for Cycle 4.
-    this._selectedRowIds.clear();
+    // Cycle 21i — record the row IDs (via the injected resolver) so the
+    // toggle survives `modelUpdated`; falls back to clearing when no
+    // resolver is wired.
+    this.syncIdsFromIndices();
     this.emit();
   }
 
@@ -178,7 +207,7 @@ export class SelectionModel {
     const lo = Math.min(fromRowIndex, toRowIndex);
     const hi = Math.max(fromRowIndex, toRowIndex);
     for (let i = lo; i <= hi; i++) this._state.selectedRowIndices.add(i);
-    this._selectedRowIds.clear();
+    this.syncIdsFromIndices();
     this.emit();
   }
 

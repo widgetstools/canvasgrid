@@ -1068,6 +1068,10 @@ export class CGrid<TRow = any> {
 
     // 5. Selection
     this.selection = new SelectionModel(options.rowSelection ?? 'none');
+    // Cycle 21i / Phase 1 — let UI-driven selection record row IDs so it
+    // survives `modelUpdated` (live transactions fire it constantly). The
+    // resolver maps a visible row index → its string rowId from the chunk.
+    this.selection.setRowIdResolver((rowIndex) => this.rowIdAt(rowIndex));
 
     // 6. Renderer — no canvas, no paint loop; just the per-frame paint logic.
     this.renderer = new Renderer({
