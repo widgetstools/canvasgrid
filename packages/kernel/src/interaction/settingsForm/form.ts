@@ -154,7 +154,12 @@ export class SettingsForm {
     const controlWrap = document.createElement('div');
     controlWrap.className = 'cg-settings-row-control';
 
-    // Hover/focus reset affordance — only when a concrete default exists.
+    // Reset affordance lives in a PERMANENTLY reserved action gutter so
+    // its appearance never shifts the control column — every row's edit
+    // box shares the same right edge. The button toggles visibility (not
+    // layout) and only exists when a concrete default can be restored.
+    const actions = document.createElement('span');
+    actions.className = 'cg-settings-row-actions';
     let resetBtn: HTMLButtonElement | null = null;
     if (resolveFieldDefault(field) !== undefined) {
       resetBtn = document.createElement('button');
@@ -163,6 +168,8 @@ export class SettingsForm {
       resetBtn.title = 'Reset to default';
       resetBtn.setAttribute('aria-label', `Reset ${field.label} to default`);
       resetBtn.textContent = '↺';
+      resetBtn.setAttribute('data-visible', 'false');
+      actions.appendChild(resetBtn);
     }
 
     // `commit` needs the entry (built below); the control gets a stable
@@ -179,7 +186,7 @@ export class SettingsForm {
         syncControl();
         const modified = isFieldModified(field);
         row.toggleAttribute('data-modified', modified);
-        if (resetBtn) resetBtn.hidden = !modified;
+        resetBtn?.setAttribute('data-visible', String(modified));
       },
     };
 
@@ -198,7 +205,7 @@ export class SettingsForm {
     resetBtn?.addEventListener('click', () => commitFn(resolveFieldDefault(field)));
 
     controlWrap.appendChild(control);
-    if (resetBtn) controlWrap.appendChild(resetBtn);
+    controlWrap.appendChild(actions);
     row.append(labelWrap, controlWrap);
     this.rows.push(entry);
     entry.sync();

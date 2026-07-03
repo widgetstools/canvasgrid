@@ -85,7 +85,7 @@ describe('SettingsForm', () => {
     expect(chip.textContent).toBe('1');
 
     const reset = q<HTMLButtonElement>(row, '.cg-settings-row-reset');
-    expect(reset.hidden).toBe(false);
+    expect(reset.getAttribute('data-visible')).toBe('true');
     reset.click();
     expect(store.alpha).toBe(false);
     expect(row.hasAttribute('data-modified')).toBe(false);

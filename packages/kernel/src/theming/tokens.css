@@ -1939,8 +1939,18 @@
   align-items: center;
   gap: 4px;
 }
-.cg-settings-row-reset {
+/* Permanently reserved action gutter — the reset button toggles
+ * VISIBILITY only, never layout, so every row's control shares the same
+ * right edge whether or not the ↺ is showing. */
+.cg-settings-row-actions {
   flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.cg-settings-row-reset {
   width: 18px;
   height: 18px;
   padding: 0;
@@ -1951,11 +1961,10 @@
   border: none;
   border-radius: 3px;
   cursor: pointer;
-  opacity: 0;
+  visibility: hidden;
 }
-.cg-settings-row:hover .cg-settings-row-reset,
-.cg-settings-row-reset:focus-visible {
-  opacity: 1;
+.cg-settings-row-reset[data-visible="true"] {
+  visibility: visible;
 }
 .cg-settings-row-reset:hover {
   color: var(--cg-fg-color);
