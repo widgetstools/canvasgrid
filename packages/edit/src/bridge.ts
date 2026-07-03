@@ -309,9 +309,34 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
   // as its applier. Forward commits (smart-edit/bulk-update/plus-minus/
   // shortcut) also call this DIRECTLY (one call per action = one
   // applyTransaction per journal entry). ─────────────────────────────────
-  function applyDirection(patches: CellPatch[], direction: 'forward' | 'undo'): void {
+  //
+  // Parser discipline (closeout review, cycle 21g): the kernel ONLY ever
+  // feeds `valueParser` FRESH editor-raw input — see
+  // `editController.ts:289-330`'s `onCommit`, which parses the raw editor
+  // value exactly once (`def.valueParser({ newValue, oldValue, data,
+  // colDef })`) and then emits `cellValueChanged` with the ALREADY-PARSED
+  // value as `newValue`. Every `CellPatch` the bridge feeds back through
+  // the journal is therefore either (a) a facade/router INITIAL forward
+  // apply, where `patch.newValue` is a freshly-computed raw value that has
+  // never seen `valueParser` (smart-edit/bulk-update/nudge/shortcut), or
+  // (b) a value that was already committed once and is being REPLAYED
+  // (undo of any entry, or redo of any entry) — for `cell-editor`-sourced
+  // entries specifically, `patch.newValue` is already POST-parse (mirrors
+  // the kernel event above). Re-running `valueParser` on a replay would
+  // double-transform non-idempotent parsers (e.g. a `/100` parser turning
+  // into `/10000` on redo). Rule: the parser runs ONLY when `mode ===
+  // 'initial'` — journal replay (`undo()`/`redo()`/`undoEntry()`) always
+  // binds `mode: 'replay'` and never re-parses, writing the stored value
+  // verbatim through the `valueSetter` path (the setter itself still runs —
+  // only the parser is skipped).
+  // Returns the number of patches that actually landed in a row (rows
+  // missing from the mirror — removed since recording — contribute 0; see
+  // the `commitAndMaybeRecord` caller, which threads this into the
+  // facades' `applied` count instead of the raw pre-dedup/pre-mirror-check
+  // `patches.length`).
+  function applyDirection(patches: CellPatch[], direction: 'forward' | 'undo', mode: 'initial' | 'replay'): number {
     const deduped = dedupePatches(patches);
-    if (deduped.length === 0) return;
+    if (deduped.length === 0) return 0;
 
     const byRowId = new Map<string, CellPatch[]>();
     for (const patch of deduped) {
@@ -321,6 +346,7 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
     }
 
     const updates: Record<string, unknown>[] = [];
+    let writtenCount = 0;
     for (const [rowId, rowPatches] of byRowId) {
       const mirrorRow = rowMirror.get(rowId);
       if (!mirrorRow) continue; // removed since recording — skip, do not throw
@@ -329,7 +355,7 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
         const def = findLeafColDef(colDefs(), patch.colId);
         const rawNewValue = direction === 'forward' ? patch.newValue : patch.oldValue;
         const rawOldValue = direction === 'forward' ? patch.oldValue : patch.newValue;
-        const parsed = def?.valueParser
+        const parsed = mode === 'initial' && def?.valueParser
           ? def.valueParser({ newValue: rawNewValue, oldValue: rawOldValue, data: clone, colDef: def })
           : rawNewValue;
         if (def?.valueSetter) {
@@ -341,8 +367,9 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
         }
       }
       updates.push(clone);
+      writtenCount += rowPatches.length;
     }
-    if (updates.length === 0) return;
+    if (updates.length === 0) return 0;
 
     // Selection snapshot/restore (§3.3) around EVERY programmatic apply.
     const snapshotRanges = g.getCellRanges();
@@ -360,10 +387,14 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
     for (const range of snapshotRanges) g.addCellRange(range);
     if (snapshotFocused) g.setFocusedCell(snapshotFocused.rowId, snapshotFocused.colId);
     g.setSelectedRowIds(snapshotSelectedRowIds);
+    return writtenCount;
   }
 
   const journal = new EditJournal({
-    applyPatches: applyDirection,
+    // Journal replay (undo/redo/undoEntry) is NEVER a facade-originated
+    // fresh-input apply — always 'replay' (see the `applyDirection`
+    // parser-discipline comment above). Return value discarded — `void`.
+    applyPatches: (replayPatches, direction) => { applyDirection(replayPatches, direction, 'replay'); },
     getHistorySettings: () => settings.history,
     now,
   });
@@ -373,10 +404,14 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
     source: EditJournalEntry['source'],
     label: string,
     recordHistory: boolean,
-  ): EditJournalEntry | null {
-    applyDirection(patches, 'forward');
-    if (!recordHistory) return null;
-    return journal.record({ source, label, patches });
+  ): { applied: number; entry: EditJournalEntry | null } {
+    // The ONE 'initial' apply site — every facade/router forward commit
+    // (smart-edit/bulk-update/plus-minus/shortcut) is fresh-computed input,
+    // so the parser runs here. `applied` is the ACTUAL written-patch count
+    // (post-dedup, mirror-present rows only) — not the raw candidate count.
+    const applied = applyDirection(patches, 'forward', 'initial');
+    if (!recordHistory) return { applied, entry: null };
+    return { applied, entry: journal.record({ source, label, patches }) };
   }
 
   // ─── Key router (§3.1) ──────────────────────────────────────────────────
@@ -388,6 +423,11 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
     if (!meta) return null;
     const rowData = rowMirror.get(rowId);
     if (!rowData) return null;
+    // Spec §2.3 — every patch target passes `isCellEditable` at build. A
+    // non-editable cell behaves like "no match": the caller's scope/gate
+    // checks run AFTER this returns null, so `preventDefault` is never
+    // called and the key falls through to normal type-to-edit.
+    if (!resolveEditable(colId, focus.rowIndex, rowData, value)) return null;
     return {
       rowId, colId, field: meta.field, value,
       rowIndex: focus.rowIndex, rowData, cellDataType: meta.cellDataType,
@@ -496,8 +536,7 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
       const patches = buildSmartEditPatches(targets, op, operand);
       if (patches.length === 0) return { applied: 0, entry: null };
       const label = `${SMART_EDIT_OP_SYMBOL[op]} ${operand}`;
-      const entry = commitAndMaybeRecord(patches, 'smart-edit', label, settings.smartEdit.recordHistory);
-      return { applied: patches.length, entry };
+      return commitAndMaybeRecord(patches, 'smart-edit', label, settings.smartEdit.recordHistory);
     },
   };
 
@@ -516,8 +555,7 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
       const patches = buildBulkUpdatePatches(targets, newValue);
       if (patches.length === 0) return { applied: 0, entry: null };
       const label = `Set = ${String(newValue)}`;
-      const entry = commitAndMaybeRecord(patches, 'bulk-update', label, settings.bulkUpdate.recordHistory);
-      return { applied: patches.length, entry };
+      return commitAndMaybeRecord(patches, 'bulk-update', label, settings.bulkUpdate.recordHistory);
     },
   };
 

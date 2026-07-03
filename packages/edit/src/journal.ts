@@ -59,7 +59,10 @@ export class EditJournal {
       timestamp: this.now(),
       source: input.source,
       label: input.label,
-      patches: input.patches,
+      // Defensive copy (closeout review): the caller's array is not stored
+      // by reference — mutating it after `record()` returns must not affect
+      // the journal entry.
+      patches: [...input.patches],
     };
 
     this.past.push(entry);

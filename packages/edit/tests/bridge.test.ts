@@ -15,11 +15,16 @@ const rows: FakeRow[] = [
   { id: 'r2', qty: 30, price: 3.5, trader: 'carol', status: 'active' },
 ];
 
+// All editable by default (kernel parity: an unset `editable` resolves to
+// `false`, `editController.ts:407-428` — the shared fixture opts every
+// column IN so existing nudge/shortcut/smart-edit/bulk-update tests keep
+// exercising a normal editable grid; the editability-gate regression test
+// below overrides `qty` to `editable: false` explicitly).
 const colDefs: FakeColDef[] = [
-  { colId: 'qty', field: 'qty', cellDataType: 'number' },
-  { colId: 'price', field: 'price', cellDataType: 'number' },
-  { colId: 'trader', field: 'trader', cellDataType: 'text' },
-  { colId: 'status', field: 'status', cellDataType: 'text' },
+  { colId: 'qty', field: 'qty', cellDataType: 'number', editable: true },
+  { colId: 'price', field: 'price', cellDataType: 'number', editable: true },
+  { colId: 'trader', field: 'trader', cellDataType: 'text', editable: true },
+  { colId: 'status', field: 'status', cellDataType: 'text', editable: true },
 ];
 
 function makeGrid(overrides?: Partial<{ rows: FakeRow[]; colDefs: FakeColDef[] }>) {
@@ -249,6 +254,26 @@ describe('wireEditIntoKernel — round B: key router (spec §3.1)', () => {
     expect(handle.journal.entries()[0]!.source).toBe('shortcut');
   });
 
+  it('editability gate (closeout review): a non-editable numeric cell behaves like no-match — no preventDefault, no Tx, no journal entry', () => {
+    const lockedColDefs: FakeColDef[] = [
+      { colId: 'qty', field: 'qty', cellDataType: 'number', editable: false },
+      colDefs[1]!, colDefs[2]!, colDefs[3]!,
+    ];
+    const fake = makeGrid({ colDefs: lockedColDefs });
+    const handle = wireEditIntoKernel(fake.grid, {
+      // Empty scope — matches ALL numeric editable columns, so this nudge
+      // WOULD match 'qty' if editability weren't consulted.
+      nudges: [{ id: 'n1', name: 'any numeric', enabled: true, scope: { columnIds: [] }, incrementStep: 1 }],
+    });
+    fake.setRanges(focusRange(0, 'qty'));
+    const e = keyEvent('+');
+    fake.emit('cellKeyDown', { type: 'cellKeyDown', rowId: 'r0', colId: 'qty', value: 10, event: e });
+
+    expect(e.preventDefault).not.toHaveBeenCalled();
+    expect(fake.applyTransactionSpy).not.toHaveBeenCalled();
+    expect(handle.journal.entries()).toHaveLength(0);
+  });
+
   it('preventDefault discipline (assert the negative): unmatched key / non-scoped column / gated-false / feature-disabled never intercept', () => {
     const fake = makeGrid();
     wireEditIntoKernel(fake.grid, {
@@ -456,6 +481,57 @@ describe('wireEditIntoKernel — round C: commit pipeline + selection restore (s
     expect(fake.applyTransactionSpy).toHaveBeenCalledTimes(3);
     const redoTx = fake.applyTransactionSpy.mock.calls[2]![0] as { update: Array<Record<string, unknown>> };
     expect(redoTx.update.map((r) => r.qty).sort()).toEqual([15, 25]);
+  });
+
+  it('parser discipline (closeout review): journal replay (undo/redo) never re-parses a non-idempotent valueParser', async () => {
+    const notionalColDef: FakeColDef = {
+      colId: 'notional', field: 'notional', cellDataType: 'number',
+      valueParser: (p) => (typeof p.newValue === 'number' ? p.newValue / 100 : p.newValue),
+    };
+    const seededRows = rows.map((r) => ({ ...r, notional: 500 }));
+    const fake = makeGrid({ colDefs: [...colDefs, notionalColDef], rows: seededRows });
+    const handle = wireEditIntoKernel(fake.grid);
+
+    // Simulate the kernel's own cell-editor commit (editController.ts:289-330):
+    // the emitted `newValue` is ALREADY post-parse (parsed exactly once,
+    // inside the kernel, before `cellValueChanged` fires).
+    fake.emit('cellValueChanged', {
+      type: 'cellValueChanged', rowId: 'r0', colId: 'notional', oldValue: 500, newValue: 5, source: 'edit',
+    });
+    expect(handle.journal.entries()).toHaveLength(1);
+
+    // Undo must restore `oldValue` EXACTLY. Under the old "always parse"
+    // behavior this would double-transform: parser(500) = 5, wrongly
+    // leaving the cell at 5 instead of restoring 500.
+    handle.journal.undo();
+    const undoTx = fake.applyTransactionSpy.mock.calls[0]![0] as { update: Array<Record<string, unknown>> };
+    expect(undoTx.update[0]!.notional).toBe(500);
+
+    // Redo must restore `newValue` EXACTLY. Under the old behavior this
+    // would double-transform: parser(5) = 0.05, instead of replaying the
+    // already-parsed 5.
+    handle.journal.redo();
+    const redoTx = fake.applyTransactionSpy.mock.calls[1]![0] as { update: Array<Record<string, unknown>> };
+    expect(redoTx.update[0]!.notional).toBe(5);
+  });
+
+  it('parser discipline (closeout review): a smart-edit INITIAL forward apply still runs valueParser (freshly-computed input)', async () => {
+    const notionalColDef: FakeColDef = {
+      colId: 'notional', field: 'notional', cellDataType: 'number',
+      valueParser: (p) => (typeof p.newValue === 'number' ? p.newValue / 100 : p.newValue),
+    };
+    const seededRows = rows.map((r) => ({ ...r, notional: 500 }));
+    const fake = makeGrid({ colDefs: [...colDefs, notionalColDef], rows: seededRows });
+    const handle = wireEditIntoKernel(fake.grid);
+
+    const result = await handle.smartEdit.apply(
+      [{ rowId: 'r0', colId: 'notional', field: 'notional', value: 500, rowIndex: 0, rowData: {}, cellDataType: 'number' }],
+      'set',
+      1000,
+    );
+    expect(result.applied).toBe(1);
+    const tx = fake.applyTransactionSpy.mock.calls[0]![0] as { update: Array<Record<string, unknown>> };
+    expect(tx.update[0]!.notional).toBe(10); // 1000 parsed via /100 — parser DID run
   });
 
   it('undo skips rows missing from the mirror, without throwing', async () => {

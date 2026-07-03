@@ -44,6 +44,21 @@ describe('EditJournal — record basics', () => {
     expect(applier).not.toHaveBeenCalled();
   });
 
+  it('defensive copy: mutating the caller-supplied patches array after record() does not affect the stored entry', () => {
+    const { journal } = makeJournal();
+    const inputPatches = [patch({ rowId: 'r1' })];
+    const entry = journal.record({ source: 'smart-edit', label: '× 1.1', patches: inputPatches });
+    expect(entry?.patches).not.toBe(inputPatches); // not the same array reference — a defensive copy
+
+    // Mutate the caller's array itself (push/splice) after record() returns.
+    inputPatches.push(patch({ rowId: 'r2' }));
+    inputPatches.length = 0;
+
+    // The stored entry's `patches` array is unaffected by either mutation.
+    expect(journal.entries()[0]!.patches).toHaveLength(1);
+    expect(journal.entries()[0]!.patches[0]!.rowId).toBe('r1');
+  });
+
   it('uses injected now/nextId when provided; falls back to Date-free defaults otherwise', () => {
     const ids = ['x1', 'x2'];
     let i = 0;
