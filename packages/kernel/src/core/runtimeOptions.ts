@@ -44,6 +44,7 @@ export type RuntimeOption =
   | 'headerHeight'
   | 'defaultColDef'
   | 'animateRows'
+  | 'suppressRowHoverHighlight'
   | 'rowSelection'
   | 'suppressRowClickSelection'
   | 'rowMultiSelectWithClick'
@@ -264,6 +265,12 @@ export function applyRuntimeOption<TRow>(
       // / `isRowMultiSelectWithClick`, so a flip lights up on the
       // next click without further wiring.
       return;
+    case 'suppressRowHoverHighlight':
+      // Painter reads `options.suppressRowHoverHighlight` via the
+      // getHoveredRowIndex gate each paint; repaint so a live toggle
+      // clears/enables the highlight immediately.
+      target.refreshLayout();
+      return;
     case 'animateRows':
     case 'cellFlashDuration':
     case 'cellFadeDuration':
@@ -410,7 +417,7 @@ export function isRuntimeOption(key: string): key is RuntimeOption {
 
 export const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'theme', 'density', 'rowHeight', 'headerHeight', 'defaultColDef',
-  'animateRows', 'rowSelection',
+  'animateRows', 'suppressRowHoverHighlight', 'rowSelection',
   'suppressRowClickSelection', 'rowMultiSelectWithClick',
   'suppressColumnVirtualisation', 'suppressRowVirtualisation',
   'enableCellChangeFlash', 'cellFlashDuration', 'cellFadeDuration',

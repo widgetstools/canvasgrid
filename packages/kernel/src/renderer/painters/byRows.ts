@@ -144,9 +144,14 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
       rowBgs[r] = theme.headerBg;
     } else if (row.subgrid.isData) {
       const dataIdx = row.localRowIndex;
+      // Cycle 21i / Phase 1 — hover highlight sits below selection: a
+      // selected row keeps its selection bg; an unselected hovered row
+      // gets `--cg-row-hover-bg`; otherwise the alt/base zebra.
       rowBgs[r] = selectedRowIndices.has(dataIdx)
         ? theme.rowSelectedBg
-        : (dataIdx % 2 === 1 ? theme.rowAltBg : theme.bg);
+        : dataIdx === p.hoveredRowIndex
+          ? theme.rowHoverBg
+          : (dataIdx % 2 === 1 ? theme.rowAltBg : theme.bg);
     } else if (row.subgrid.isTotals) {
       // Cycle 14 / Task 1 — the "hairline lift": a 3% slate tint that
       // gives the totals row its visual signature without competing

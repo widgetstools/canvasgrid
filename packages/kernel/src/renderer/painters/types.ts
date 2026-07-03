@@ -26,6 +26,11 @@ export interface PainterCtx {
      *  paint translucent fill + opaque border per contiguous rect. */
     ranges: SelectionRange[];
   };
+  /** Cycle 21i / Phase 1 — hovered data-row index (or null / absent).
+   *  When set, the byRows painter draws the `--cg-row-hover-bg` band on
+   *  that row (below selection). Already gated by
+   *  `suppressRowHoverHighlight` upstream. */
+  hoveredRowIndex?: number | null;
   /** Total visible row count after filter/sort. Used by the header
    *  painter for the row-select header tri-state checkbox: state
    *  resolves to `'all'` when selectedRowIndices.size === this

@@ -540,6 +540,10 @@ export class CGrid<TRow = any> {
    *  updateGridOptions (persistable keys only). Feeds the `gridOptions`
    *  slice of the GridState snapshot. */
   private runtimeTouchedOptions = new Map<string, unknown>();
+  /** Cycle 21i / Phase 1 — data-row index currently under the pointer
+   *  (null when off any data row). Drives the row-hover highlight;
+   *  forced null when `suppressRowHoverHighlight`. */
+  private hoveredRowIndex: number | null = null;
   private columnTree!: ColumnTree;
   private columnGroupState!: ColumnGroupState;
   private columnDefsMap: Map<string, ResolvedColDef<TRow>> = new Map();
@@ -1073,6 +1077,8 @@ export class CGrid<TRow = any> {
       cellRenderers: this.cellRenderers,
       cellData: (rowIndex, colId) => this.cellAt(rowIndex, colId),
       getSelection: () => this.selection.state,
+      getHoveredRowIndex: () =>
+        this.options.suppressRowHoverHighlight ? null : this.hoveredRowIndex,
       getSortModel: () => this.sortModel,
       getTotalRowCount: () => this.rowCount,
       getCanvasWidth: () => this.canvasBounds.width,
@@ -1418,6 +1424,10 @@ export class CGrid<TRow = any> {
         this.emitRowMouseOverFromHover(rowIndex, mouse),
       emitRowMouseOut: (rowIndex, mouse) =>
         this.emitRowMouseOutFromHover(rowIndex, mouse),
+      setHoveredRow: (rowIndex) => {
+        // Suppressed → never track (stays null so the painter skips it).
+        this.hoveredRowIndex = this.options.suppressRowHoverHighlight ? null : rowIndex;
+      },
       // Cycle 23 / Task 4 — cell keyboard events. The CellKeyboardEvents
       // feature sits at the HEAD of the chain; it returns the
       // `event.defaultPrevented` flag back upstream so the chain can

@@ -51,6 +51,7 @@ interface ColorFieldSpec {
  *  and are user-configurable via the native color picker. Each maps to a
  *  `--cg-*` theme token applied live through `setThemeParams`. */
 const COLOR_FIELDS: ColorFieldSpec[] = [
+  { token: '--cg-row-hover-bg', label: 'Row hover', hint: 'Hovered row background' },
   { token: '--cg-row-selected-bg', label: 'Row selection', hint: 'Selected row background' },
   { token: '--cg-range-fill-color', label: 'Cell range fill', hint: 'Range selection interior' },
   { token: '--cg-range-border-color', label: 'Cell range border' },
@@ -119,6 +120,7 @@ const OPTION_BANDS: BandSpec[] = [
       { key: 'rowHeight', label: 'Row height', type: 'number', min: 16, max: 80, step: 1, hint: 'px · follows density until changed' },
       { key: 'headerHeight', label: 'Header height', type: 'number', min: 20, max: 80, step: 1, hint: 'px · follows density until changed' },
       { key: 'animateRows', label: 'Animate rows', type: 'switch', kernelDefault: false },
+      { key: 'suppressRowHoverHighlight', label: 'Row hover highlight', type: 'switch', kernelDefault: false, hint: 'On = highlight the row under the pointer', toControl: (v) => v !== true, fromControl: (v) => v !== true },
       {
         key: 'domLayout', label: 'Layout', type: 'select', kernelDefault: 'normal',
         options: opts(['normal', 'Normal'], ['print', 'Print']),

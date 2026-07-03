@@ -190,6 +190,13 @@ export interface CGridOptions<TRow = any> {
   /** Hint to skip CSS-animated row transitions. Runtime-mutable; storage-only
    *  in Cycle 4 (no read site yet; downstream cycles consume). */
   animateRows?: boolean;
+  /**
+   * Cycle 21i / Phase 1 — when `true`, disables the row-hover highlight
+   * (the `--cg-row-hover-bg` band the painter draws under the pointer's
+   * data row). Default `false` (hover highlight ON). Runtime-mutable.
+   * AG-Grid parity name.
+   */
+  suppressRowHoverHighlight?: boolean;
   /** Render every center column regardless of horizontal scroll position.
    *  Useful for screenshot tests and CSV-style exports where the painter
    *  needs every column visible at once. Pinned columns are unaffected. */

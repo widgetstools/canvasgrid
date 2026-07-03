@@ -245,6 +245,54 @@ describe('paintCellsByRows — prefillColor propagation', () => {
       expect(cfg.prefillColor).toBe(theme.rowAltBg);
     }
   });
+
+  it('paints rowHoverBg on the hovered data row (Cycle 21i)', () => {
+    const captured: CellPaintConfig[] = [];
+    const spyRenderer = { paint: (_gc: CachedContext2D, p: CellPaintConfig) => { captured.push({ ...p, bounds: { ...p.bounds } }); } };
+    const spyReg = new CellRendererRegistry();
+    spyReg.register('text', spyRenderer);
+    spyReg.register('number', spyRenderer);
+    spyReg.register('header', spyRenderer);
+
+    const vs = makeVsAltRows(); // data rows at localRowIndex 1, 3, 5
+    const gc = fakeGc();
+    paintCellsByRows(gc, {
+      viewport: vs, theme, columnDefs: cols, cellRenderers: spyReg,
+      cellData, selection, hoveredRowIndex: 3, sortModel: [],
+      rowDataSnapshotAt: () => ({}), quickFilterLowerTerms: [],
+    });
+
+    // The hovered row's cells get rowHoverBg; the other alt rows stay
+    // rowAltBg — so both colours appear in the capture.
+    const prefills = new Set(captured.map((c) => c.prefillColor));
+    expect(prefills.has(theme.rowHoverBg)).toBe(true);
+    expect(prefills.has(theme.rowAltBg)).toBe(true);
+  });
+
+  it('selection wins over hover on the same row (Cycle 21i)', () => {
+    const captured: CellPaintConfig[] = [];
+    const spyRenderer = { paint: (_gc: CachedContext2D, p: CellPaintConfig) => { captured.push({ ...p, bounds: { ...p.bounds } }); } };
+    const spyReg = new CellRendererRegistry();
+    spyReg.register('text', spyRenderer);
+    spyReg.register('number', spyRenderer);
+    spyReg.register('header', spyRenderer);
+
+    const vs = makeVsAltRows();
+    const gc = fakeGc();
+    paintCellsByRows(gc, {
+      viewport: vs, theme, columnDefs: cols, cellRenderers: spyReg,
+      cellData,
+      selection: { focusedRowIndex: null, focusedColId: null, selectedRowIndices: new Set([3]) },
+      hoveredRowIndex: 3, sortModel: [],
+      rowDataSnapshotAt: () => ({}), quickFilterLowerTerms: [],
+    });
+
+    // Row 3 is both selected and hovered → selection bg present, hover
+    // bg absent (selection wins).
+    const prefills = new Set(captured.map((c) => c.prefillColor));
+    expect(prefills.has(theme.rowSelectedBg)).toBe(true);
+    expect(prefills.has(theme.rowHoverBg)).toBe(false);
+  });
 });
 
 // ─── Column cellStyle override ─────────────────────────────────────────────────
