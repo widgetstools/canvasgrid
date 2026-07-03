@@ -1,5 +1,6 @@
 import type { CachedContext2D } from '../gc';
 import { drawIcon, hasIcon } from '../icons';
+import { wrapHeaderLines, fontPxSize, HEADER_LINE_HEIGHT_FACTOR } from './headerWrap';
 import { paintCellBorders } from '../painters/cellBordersPainter';
 import { paintCellDecorators } from '../painters/cellDecoratorsPainter';
 import type { CellContent } from '../../types';
@@ -61,6 +62,8 @@ export interface CellPaintConfig {
   isHeader: boolean;
   // Header-only adornments (ignored by data renderers)
   iconColor?: string;
+  /** Cycle 21i / Phase 1 — wrap header text to the column width. */
+  wrapHeader?: boolean;
   sortDirection?: 'asc' | 'desc';
   /** Cycle 8 / Task 1 — 1-indexed sort position when the cell's column
    *  participates in a multi-column sort (e.g. `2` means "second sort
@@ -595,7 +598,28 @@ export const headerCell: CellPainter = {
       );
       textX = p.bounds.x + HEADER_PADDING + PIVOT_CHEVRON_SIZE + PIVOT_CHEVRON_GAP;
     }
-    gc.fillText(p.valueFormatted, textX, cy);
+    // Cycle 21i / Phase 1 — wrapped multi-line header. Lines share the
+    // exact wrap algorithm the auto-header-height computation uses
+    // (headerWrap.ts) so painted lines always fit the measured height.
+    if (p.wrapHeader) {
+      const maxW = Math.max(8, p.bounds.x + p.bounds.w - SORT_ICON_PAD - SORT_ICON_SIZE - textX);
+      const lines = wrapHeaderLines((t) => gc.measureText(t).width, p.valueFormatted, maxW);
+      if (lines.length > 1) {
+        const lineH = Math.round(fontPxSize(p.font) * HEADER_LINE_HEIGHT_FACTOR);
+        const blockH = lines.length * lineH;
+        let ly = p.bounds.y + Math.max(0, (p.bounds.h - blockH) / 2) + lineH / 2;
+        const maxY = p.bounds.y + p.bounds.h - lineH / 2 + 1;
+        for (const line of lines) {
+          if (ly > maxY) break; // clip: header row shorter than the block
+          gc.fillText(line, textX, ly);
+          ly += lineH;
+        }
+      } else {
+        gc.fillText(p.valueFormatted, textX, cy);
+      }
+    } else {
+      gc.fillText(p.valueFormatted, textX, cy);
+    }
     if (p.sortDirection) {
       const iconCx = p.bounds.x + p.bounds.w - SORT_ICON_PAD - SORT_ICON_SIZE / 2;
       drawIcon(

@@ -645,6 +645,9 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
           && selection.selectedRowIndices.has(row.localRowIndex),
         isHovered: false,
         isHeader: row.subgrid.isHeader,
+        // Cycle 21i / Phase 1 — leaf header wraps its text when the
+        // resolved def opts in (directly or via defaultColDef).
+        wrapHeader: row.subgrid.isHeader && def.wrapHeaderText === true,
         // Cycle 14 / Task 1 — totals rows trigger the "lift" treatment
         // in `applyCellProps`: +1 font-weight stop + totalsFg.
         isTotals: row.subgrid.isTotals,

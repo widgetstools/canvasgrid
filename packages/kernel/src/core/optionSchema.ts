@@ -223,6 +223,8 @@ const DEFAULT_COL_DEF_FIELDS: Array<{
   { prop: 'editable', label: 'Editable', type: 'checkbox' },
   { prop: 'suppressMovable', label: 'Lock position', type: 'checkbox' },
   { prop: 'wrapText', label: 'Wrap text', type: 'checkbox' },
+  { prop: 'wrapHeaderText', label: 'Wrap header text', type: 'checkbox', hint: 'Multi-line column headers' },
+  { prop: 'autoHeaderHeight', label: 'Auto header height', type: 'checkbox', hint: 'Header row fits wrapped text' },
   { prop: 'enableRowGroup', label: 'Groupable', type: 'checkbox', hint: 'Drag into row groups' },
   { prop: 'enablePivot', label: 'Pivotable', type: 'checkbox', hint: 'Drag into column labels' },
   { prop: 'enableValue', label: 'Aggregatable', type: 'checkbox', hint: 'Drag into values' },

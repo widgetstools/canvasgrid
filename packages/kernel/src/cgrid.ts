@@ -38,6 +38,7 @@ import {
   buildSnapshot, migrateSnapshot, STATE_SCHEMA_VERSION, type GridState,
 } from './core/stateSnapshot';
 import { StateUpdatedBus } from './core/stateUpdatedBus';
+import { computeAutoHeaderHeight } from './renderer/cellRenderers/headerWrap';
 import type { CColumnState, CApplyColumnStateParams, ISizeColumnsToFitParams } from './types';
 import type { CColDef, CColGroupDef } from './types';
 import {
@@ -1346,7 +1347,7 @@ export class CGrid<TRow = any> {
       },
       getOverlayHost: () => this.editorContainer,
       getHeaderName: (colId) => this.columnDefsMap.get(colId)?.headerName,
-      getLeafHeaderHeight: () => this.options.headerHeight ?? this.theme.headerHeight,
+      getLeafHeaderHeight: () => this.effectiveLeafHeaderHeight(),
       getLeafHeaderTop: () => {
         const leaf = this.viewport.visibleRows.find(
           (r) => !r.subgrid.isData && !('getGroupIdAt' in r.subgrid),
@@ -3759,7 +3760,7 @@ export class CGrid<TRow = any> {
       (r) => !r.subgrid.isData && !('getGroupIdAt' in r.subgrid),
     );
     const leafTop = leaf ? leaf.top : 0;
-    const leafHeight = this.options.headerHeight ?? this.theme.headerHeight;
+    const leafHeight = this.effectiveLeafHeaderHeight();
     const top = rect.top + leafTop;
     return clientY >= top && clientY <= top + leafHeight;
   }
@@ -5393,6 +5394,53 @@ export class CGrid<TRow = any> {
   /** Rebuild the subgrid stack so the header-group row count matches the
    *  current `columnTree.maxDepth`. Data + leaf header subgrids are
    *  callback-driven and therefore re-pickable as-is. */
+  /** Cycle 21i / Phase 1 — auto header height. Lazy measuring ctx +
+   *  signature-keyed cache; recomputes only when a wrap-enabled column's
+   *  width / header text / font / base height changes. */
+  private headerMeasureCtx: CanvasRenderingContext2D | null = null;
+  private autoHeaderHeightCache: { signature: string; height: number } | null = null;
+
+  /** Leaf header row height: base (options.headerHeight ?? theme) unless
+   *  a visible column sets `wrapHeaderText` + `autoHeaderHeight`, in which
+   *  case the row grows to the tallest wrapped header. Group header rows
+   *  always use the base height. */
+  private effectiveLeafHeaderHeight(): number {
+    const base = this.options.headerHeight ?? this.theme.headerHeight;
+    const cols = this.viewport?.visibleColumns;
+    if (!cols || cols.length === 0) return base;
+    const suppress = this.options.suppressAggFuncInHeader === true;
+    const wrapCols: Array<{ colId: string; width: number; text: string }> = [];
+    let signature = `${this.theme.font}|${base}`;
+    for (const c of cols) {
+      const def = this.columnDefsMap.get(c.colId);
+      if (def?.wrapHeaderText !== true || def?.autoHeaderHeight !== true) continue;
+      // Measure the DECORATED text (`sum(P&L)`) — exactly what paints.
+      const text = decorateHeader(def, suppress);
+      wrapCols.push({ colId: c.colId, width: c.width, text });
+      signature += `|${c.colId}:${c.width}:${text}`;
+    }
+    if (wrapCols.length === 0) return base;
+    if (this.autoHeaderHeightCache?.signature === signature) {
+      return this.autoHeaderHeightCache.height;
+    }
+    if (!this.headerMeasureCtx) {
+      this.headerMeasureCtx = document.createElement('canvas').getContext('2d');
+    }
+    const ctx = this.headerMeasureCtx;
+    if (!ctx) return base;
+    ctx.font = this.theme.font;
+    const byId = new Map(wrapCols.map((w) => [w.colId, w.text]));
+    const height = computeAutoHeaderHeight({
+      columns: wrapCols,
+      wrapText: (colId) => byId.get(colId) ?? null,
+      measure: (t) => ctx.measureText(t).width,
+      font: this.theme.font,
+      baseHeight: base,
+    });
+    this.autoHeaderHeightCache = { signature, height };
+    return height;
+  }
+
   private rebuildSubgridStack(): void {
     const stack: Subgrid[] = [];
     for (let depth = 0; depth < this.columnTree.maxDepth; depth++) {
@@ -5405,7 +5453,7 @@ export class CGrid<TRow = any> {
     }
     stack.push(new HeaderSubgrid(
       this.columnDefsMap as Map<string, ResolvedColDef>,
-      () => this.options.headerHeight ?? this.theme.headerHeight,
+      () => this.effectiveLeafHeaderHeight(),
     ));
     // Cycle 7 / Task 1 — floating-filter row sits between the leaf header
     // and the data subgrid. Enabled when the grid-wide option is set OR
