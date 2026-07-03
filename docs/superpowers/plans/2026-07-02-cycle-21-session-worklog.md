@@ -11,9 +11,9 @@
 5. **Standing constraints (all cycles):** expression grammar `&&`/`||`, `==`/`!=` (no AND/OR/=); `colId` vocabulary; Date-free engines (injectable now); no raw NUL bytes (`\0` escapes); seeded LCG in tests; known CPU-flaky kernel perf tests → re-run standalone; showcase sources are `.ts` (delete stale `.js` emit stragglers from disk if Vite shadows, never commit them); showcase dev server manual on :5185, positions on :5175.
 6. **Session end:** append a ledger entry (what completed, commits, next unit id), even if the unit is unfinished.
 
-## Baselines (main @ `b737741`)
+## Baselines (main @ `f7e5c9e`)
 
-kernel 2575 · calc 215 · rules 144 · format 171 · expression 185 · renderers 277 · edit 161 · showcase E2E 158 (+6 visual; incl. 4 expected-fail #98 tripwires: renderers F5 + edit 4/5/8) · typecheck 21/21 · build 13/13. Merged: 21a-e (#92-95), 21d (#96), 21f (#97), 21g (#98 → renumbered: 21g is #99). PENDING: kernel bugfix PR #98 (rowIdAt + lucide; touches cgrid.ts which 21g also modified — REBASE #98 before merging; post-merge → kernel 2581, all 4 tripwires flip to unexpected-pass and must be converted to plain green tests, nudges/shortcuts become live against the real kernel).
+kernel 2581 · calc 215 · rules 144 · format 171 · expression 185 · renderers 277 · edit 161 · showcase E2E 158 all-real (+6 visual; NO tripwires remain — all flipped to genuinely-passing) · typecheck 21/21 · build 13/13. Merged: 21a-e (#92-95), 21d (#96), 21f (#97), 21g (#99), kernel rowIdAt+lucide (#98, rebased over 21g + tripwires flipped on-branch). Nudges/shortcuts live against the real kernel (E2E-verified). No pending PRs.
 
 ## Lost-artifact inventory (from the 2026-07-02 restart)
 

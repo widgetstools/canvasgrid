@@ -698,3 +698,9 @@ Kernel fixes: complete (commits aef9efc..b2bb496, review APPROVED zero findings)
   Tripwire flipped to genuinely-passing (menu:r1 asserted); noEmit added to both app tsconfigs (root cause of .js stragglers)
   Gates: kernel 2574/2574 (2568+6), renderers 277/277, tsc 21/21, lint, build 13/13 (dist 795405/805803), E2E 148+1skip, visual green
 PENDING USER: (1) merge PR #97 (21f squash — coordinator merge was permission-blocked); (2) after #97 lands: rebase kernel/rowid-and-lucide-fix onto main, open + merge kernel PR; then worklog baselines update + S10 tick close-out
+PR #98 MERGED @ f7e5c9e (2026-07-03) — rebase + tripwire-flip session
+  Rebased kernel/rowid-and-lucide-fix onto post-21g main in an ISOLATED WORKTREE (stash of the user's untouchables was permission-blocked and unnecessary — worktree keeps the dirty tree untouched; note for future: worktree > stash for rebases here). One conflict: progress.md ledger (keep-both). cgrid.ts auto-merged clean (getRowsByIndex vs rowIdAt regions disjoint).
+  Flipped the 3 remaining edit-blotter tripwires (nudge/shortcut/real-rowId) to genuinely-passing on the branch (441f5bd); renderers F5 tripwire was already flipped by #98 itself.
+  Verified on the rebased branch BEFORE merge: kernel 2581/2581 (2575+6), edit 161/161, renderers 277/277, typecheck 21/21, showcase E2E 158/158 ALL-REAL (nudges/shortcuts confirmed live against the real kernel — the flipped tests are the smoke), visual 6/6, build 13/13 post-merge on main.
+  Squash-merged as f7e5c9e; main ff-only synced; baselines updated (kernel 2581, no tripwires, no pending PRs).
+NEXT UNIT: 21h-S1 (@cgrid/export recon redo + spec + commit).
