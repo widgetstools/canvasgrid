@@ -22,19 +22,12 @@ import { gotoFeature } from './helpers';
 // `rowsChanged`) — the synthetic id never matches, so the lookup misses,
 // `buildFocusedTarget` returns `null`, and `tryNudge` / `tryShortcut` return
 // BEFORE calling `preventDefault()`. Net effect, confirmed by manually
-// exercising the running dev server before writing these tests: a nudge or
-// shortcut key NEVER intercepts against a real (non-fake) kernel — the key
-// always falls through to KeyPaging's type-to-edit fallback, for every row,
-// active-gated or not. `cell-editor` (editController's `fetched.rowId`,
-// worker-sourced) and `smart-edit`/`bulk-update` (Task 10's `getRowsByIndex`,
-// also worker-sourced) do NOT go through `rowIdAt()` and are UNAFFECTED —
-// confirmed those three sources carry real ids today (tests 1/2/3/7 below
-// pass for real). Tests 4, 5, and 8 exercise the two affected sources
-// (plus-minus, shortcut) and are `test.fail()`-marked per the 21f
-// documented-red-kept-CI-green pattern; they will flip to unexpected-pass
-// the day `rowIdAt()` is fixed to read `stringRowIdAt()` (PR #98), which is
-// the signal to remove `test.fail()` and delete this comment block's nudge/
-// shortcut caveat.
+// exercising the running dev server before writing these tests. HISTORY:
+// tests 4, 5, and 8 were originally `test.fail()` tripwires because the
+// kernel's `rowIdAt()` stub fed synthetic `row-N` ids into `cellKeyDown`,
+// so nudges/shortcuts could never intercept against a real kernel. PR #98
+// fixed `rowIdAt()` to delegate to `stringRowIdAt()`, and the tripwires
+// were flipped to genuinely-passing tests on that PR's branch.
 
 const EDITOR_INPUT = '.cg-editor-overlay input';
 
@@ -173,10 +166,6 @@ test.describe('edit blotter feature', () => {
   });
 
   test('expression-gated + nudge: active row nudges price, inactive row opens the editor instead', async ({ page }) => {
-    test.fail(true, 'kernel rowIdAt() stub returns synthetic row-N ids fed into cellKeyDown; the bridge\'s '
-      + 'rowMirror lookup (keyed by real ids) always misses, so plus-minus nudges never intercept against a '
-      + 'real kernel today (see the file-level comment above) — unblocks when PR #98 fixes rowIdAt()');
-
     // Row 0 (e1) is `status: 'active'` — [status] == "active" gate passes,
     // so `+` should nudge price by +0.25 and record a 'plus-minus' entry
     // WITHOUT opening the editor.
@@ -202,10 +191,6 @@ test.describe('edit blotter feature', () => {
   });
 
   test('scoped shortcut letter: "q" nudges qty +10 in scope, opens the editor out of scope', async ({ page }) => {
-    test.fail(true, 'kernel rowIdAt() stub returns synthetic row-N ids fed into cellKeyDown; the bridge\'s '
-      + 'rowMirror lookup (keyed by real ids) always misses, so letter shortcuts never intercept against a '
-      + 'real kernel today (see the file-level comment above) — unblocks when PR #98 fixes rowIdAt()');
-
     // "q" is scoped to `qty` — pressing it while `qty` is focused adds 10
     // and records a 'shortcut' entry.
     await clickCell(page, 0, 'qty');
@@ -254,18 +239,10 @@ test.describe('edit blotter feature', () => {
     expect(after).toEqual(before);
   });
 
-  // Real-rowId tripwire (PR #98) — same root cause as the two `test.fail()`
-  // tests above (nudge/shortcut cellKeyDown rowIds are synthesized by the
-  // kernel's `rowIdAt()` stub), exercised via a THIRD action (qty minus-
-  // nudge) so it isn't a literal duplicate of tests 4/5. Today, the '-'
-  // key never intercepts at all (zero new journal entries) — once PR #98
-  // fixes `rowIdAt()` to read `stringRowIdAt()`, this will both intercept
-  // AND carry the row's real string id, flipping this test to an
-  // unexpected pass (the signal to delete `test.fail()`).
-  test('real-rowId tripwire: a qty minus-nudge patch carries the real string rowId, not row-N', async ({ page }) => {
-    test.fail(true, 'kernel rowIdAt() stub returns synthetic row-N ids for cellKeyDown; see the file-level '
-      + 'comment above (same root cause as the plus-minus / shortcut test.fail()s) — unblocks when PR #98 merges');
-
+  // Real-rowId proof (PR #98 landed) — exercised via a qty minus-nudge so
+  // it isn't a literal duplicate of the plus/shortcut tests: the patch must
+  // carry the row's real string id, never the legacy synthetic `row-N`.
+  test('real-rowId proof: a qty minus-nudge patch carries the real string rowId, not row-N', async ({ page }) => {
     await clickCell(page, 0, 'qty');
     const before = await cellValue(page, 0, 'qty');
     await page.keyboard.press('-');
