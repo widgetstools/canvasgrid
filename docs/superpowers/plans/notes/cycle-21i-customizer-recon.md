@@ -143,8 +143,20 @@ sidebar chrome classes already tokenized.
 See discussion summary presented 2026-07-03; decisions to be recorded in the
 21i spec once made:
 
-- **D-A Panel attachment**: kernel sidebar tool-panels vs standalone
-  settings-sheet (Cockpit) owned by the customizer vs hybrid.
+- **D-A Panel attachment — DECIDED 2026-07-03 (user):** hybrid, with
+  layered entry (contextual right-click → scoped panel; toolbars for
+  frequent actions; full surface behind that). **Grid Options (#08) is a
+  kernel sidebar tool-panel TAB**, not a settings-sheet module: schema-driven
+  (port StarUI's declarative field schema + band search,
+  `react-grid/.../general-settings/fieldSchema.tsx`), scoped to
+  runtime-mutable options only. ~60 fields at launch: ~35 whitelist options
+  + ~27 fanned out from the single `defaultColDef` entry; StarUI marketsgrid
+  exposes 92 across 10 bands — the ~30 remainder are cgrid feature gaps
+  (pagination, advanced filter, SSRM, tooltips) or construction-only options
+  → tracked as a runtime-promotion wish list, panel picks them up
+  automatically as they land. Master-detail panels stay in the wider
+  settings surface; add global settings search + "modified only" filter as
+  deltas to the docs' design.
 - **D-B Stack**: adopt the docs' Lit + Web Awesome (+ Monaco lazy,
   SortableJS) vs framework-free vanilla TS matching kernel ethos vs Lit-only.
 - **D-C State/persistence contract**: which of the config-manager surface
