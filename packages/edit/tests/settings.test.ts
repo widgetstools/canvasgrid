@@ -59,6 +59,22 @@ describe('mergeEditSettings', () => {
     expect(merged).toEqual(DEFAULT_EDIT_SETTINGS);
     expect(merged).not.toBe(DEFAULT_EDIT_SETTINGS);
     expect(merged.history).not.toBe(DEFAULT_EDIT_SETTINGS.history);
+    expect(merged.history.recordSources).not.toBe(DEFAULT_EDIT_SETTINGS.history.recordSources);
+    expect(merged.smartEdit).not.toBe(DEFAULT_EDIT_SETTINGS.smartEdit);
+    expect(merged.smartEdit.enabledOps).not.toBe(DEFAULT_EDIT_SETTINGS.smartEdit.enabledOps);
+    expect(merged.bulkUpdate).not.toBe(DEFAULT_EDIT_SETTINGS.bulkUpdate);
+    expect(merged.plusMinus).not.toBe(DEFAULT_EDIT_SETTINGS.plusMinus);
+    expect(merged.shortcuts).not.toBe(DEFAULT_EDIT_SETTINGS.shortcuts);
+  });
+
+  it('mutating a merge result never corrupts DEFAULT_EDIT_SETTINGS (no aliasing)', () => {
+    const merged = mergeEditSettings();
+    merged.smartEdit.enabledOps.push('add');
+    merged.history.recordSources.stream = true;
+    expect(DEFAULT_EDIT_SETTINGS.smartEdit.enabledOps).toEqual([
+      'multiply', 'divide', 'add', 'subtract', 'set',
+    ]);
+    expect(DEFAULT_EDIT_SETTINGS.history.recordSources.stream).toBe(false);
   });
 
   it('applies a partial merge for a single nested field, leaving siblings default', () => {

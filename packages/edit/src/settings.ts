@@ -86,7 +86,7 @@ export function mergeEditSettings(partial?: DeepPartial<EditSettings>): EditSett
   const smartEdit: SmartEditSettings = {
     ...defaults.smartEdit,
     ...smartEditPartial,
-    enabledOps: filteredOps && filteredOps.length > 0 ? filteredOps : defaults.smartEdit.enabledOps,
+    enabledOps: filteredOps && filteredOps.length > 0 ? filteredOps : [...defaults.smartEdit.enabledOps],
   };
 
   const bulkUpdate: BulkUpdateSettings = { ...defaults.bulkUpdate, ...partial?.bulkUpdate };
