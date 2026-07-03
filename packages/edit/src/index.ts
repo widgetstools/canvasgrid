@@ -36,3 +36,6 @@ export {
   assertSingleColumnSelection,
 } from './patches';
 export type { CellTarget } from './patches';
+
+export { previewPatches, combineValidators } from './preview';
+export type { PreviewRow } from './preview';
