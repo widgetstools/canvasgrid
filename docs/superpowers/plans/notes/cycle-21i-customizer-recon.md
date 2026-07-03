@@ -215,3 +215,16 @@ See discussion summary presented 2026-07-03; decisions to be recorded in the
   generic mechanism (also further shrinks #19).
 - **D-F Engine-API gap wave**: land the missing public surfaces (see §4) as
   a pre-phase or per-panel PRs.
+- **D-H Native state persistence — DECIDED 2026-07-03 (user).** New kernel
+  options `gridId: string` (unique instance identity, storage key
+  `cgrid:state:<gridId>`) + `persistState: boolean | {adapter, debounceMs,
+  exclude}`. Autosave = debounced subscriber on the existing coalesced
+  `stateUpdated` bus writing the D-C TOTAL-state document; restore on
+  construction via `adapter.load(gridId)` → ordered `setState()`. Default
+  adapter = localStorage; public `StateStorageAdapter {load, save, clear}`
+  lets container apps plug config services (REST/IndexedDB/host
+  ConfigManager). `getState/setState/onStateChange` public for manual
+  control. Last-write-wins by default; multi-tab/locking is host-adapter
+  territory. NATIVE tier; part of the Phase -1 wave. Verified 2026-07-03:
+  kernel has NO gridId concept and zero localStorage code today;
+  `stateUpdated` bus (cgrid.ts:499-504,861) is the ready-made autosave hook.
