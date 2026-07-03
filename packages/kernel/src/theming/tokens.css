@@ -1231,25 +1231,34 @@
    * hide the row itself so there's no double-render with the ghost. */
   visibility: hidden;
 }
-.cg-columns-panel-row-handle {
+/* Unified drag-grip — one glyph shared by the column-list rows, all zone
+ * pills (row groups / values / column labels), and the top row-group +
+ * pivot panel chips. Cycle 21i / Phase 1: single 2×3 dot pattern, one
+ * resting opacity, so every draggable handle reads identically. */
+.cg-columns-panel-row-handle,
+.cg-columns-panel-rgz-pill-handle,
+.cg-columns-panel-pill-handle,
+.cg-row-group-panel-chip-handle {
+  flex: 0 0 auto;
   display: inline-block;
   width: 10px;
-  height: 16px;
-  flex: 0 0 auto;
+  height: 14px;
   cursor: grab;
-  opacity: 0.4;
-  color: color-mix(in srgb, var(--cg-fg-color) 55%, transparent);
+  opacity: 0.6;
   background-image: radial-gradient(circle, currentColor 1.1px, transparent 1.4px);
-  background-size: 5px 5px;
-  background-position: center;
+  background-size: 4px 4px;
+  background-position: 1px 1px;
   background-repeat: repeat;
   transition: opacity 120ms ease;
 }
-.cg-columns-panel-row:hover .cg-columns-panel-row-handle {
-  opacity: 0.85;
-}
-.cg-columns-panel-row-handle:active {
+.cg-columns-panel-row-handle:active,
+.cg-columns-panel-rgz-pill-handle:active,
+.cg-columns-panel-pill-handle:active,
+.cg-row-group-panel-chip-handle:active {
   cursor: grabbing;
+}
+.cg-columns-panel-row:hover .cg-columns-panel-row-handle {
+  opacity: 0.9;
 }
 .cg-columns-panel-row-label {
   flex: 1 1 auto;
@@ -1510,21 +1519,7 @@
   border-color: color-mix(in srgb, var(--cg-border-color) 80%, transparent);
 }
 /* Drag handle — same dot-grid as column-list row handles. */
-.cg-columns-panel-rgz-pill-handle {
-  flex: 0 0 auto;
-  display: inline-block;
-  width: 10px;
-  height: 14px;
-  opacity: 0.45;
-  cursor: grab;
-  background-image: radial-gradient(circle, currentColor 1.1px, transparent 1.4px);
-  background-size: 4px 4px;
-  background-position: 1px 1px;
-  background-repeat: repeat;
-}
-.cg-columns-panel-rgz-pill-handle:active {
-  cursor: grabbing;
-}
+/* handle styles unified at the top of the columns-panel block */
 .cg-columns-panel-rgz-pill--lifted {
   visibility: hidden;
 }
@@ -1651,21 +1646,7 @@
   background: var(--cg-row-hover-bg);
   border-color: color-mix(in srgb, var(--cg-border-color) 80%, transparent);
 }
-.cg-columns-panel-pill-handle {
-  flex: 0 0 auto;
-  display: inline-block;
-  width: 10px;
-  height: 14px;
-  opacity: 0.45;
-  cursor: grab;
-  background-image: radial-gradient(circle, currentColor 1.1px, transparent 1.4px);
-  background-size: 4px 4px;
-  background-position: 1px 1px;
-  background-repeat: repeat;
-}
-.cg-columns-panel-pill-handle:active {
-  cursor: grabbing;
-}
+/* handle styles unified at the top of the columns-panel block */
 .cg-columns-panel-pill-label {
   flex: 1 1 auto;
   font-family: var(--cg-font-family);
@@ -2453,21 +2434,8 @@
   background: var(--cg-row-group-chip-active-bg);
   cursor: grabbing;
 }
-.cg-row-group-panel-chip-handle {
-  /* Dot-grid drag-handle — same radial-gradient pattern as the column
-   * list drag handles and the col-drag-ghost icon. Renders as a 2-col
-   * × 3-row grid of dots sized to the narrower 22px chip. */
-  flex: 0 0 auto;
-  display: inline-block;
-  width: 8px;
-  height: 12px;
-  opacity: 0.45;
-  cursor: grab;
-  background-image: radial-gradient(circle, currentColor 1.1px, transparent 1.4px);
-  background-size: 4px 4px;
-  background-position: 0px 0px;
-  background-repeat: repeat;
-}
+/* .cg-row-group-panel-chip-handle unified with the column-panel grips
+ * (see the shared rule in the columns-panel block). */
 .cg-row-group-panel-chip-label {
   font-family: var(--cg-font-family);
   font-size: var(--cg-font-size-sm);
