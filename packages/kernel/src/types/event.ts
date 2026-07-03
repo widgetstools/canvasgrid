@@ -11,8 +11,9 @@ import type { FilterModel } from './filter';
 import type { TransactionResult } from './api';
 
 /** Fires before the editor's DOM mounts. Cycle 5 wiring uses `rowIndex` as
- *  the primary positional identity; `rowId` is best-effort (synthetic
- *  `row-${idx}` until the worker→main rowId map lands). */
+ *  the primary positional identity; `rowId` is the real string id from the
+ *  worker's chunk mapping when available, falling back to synthetic
+ *  `row-${idx}` only for rows outside the currently-loaded chunk window. */
 export interface CellEditingStartedEvent<TRow = unknown> {
   type: 'cellEditingStarted';
   rowIndex: number;

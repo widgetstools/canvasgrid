@@ -3936,9 +3936,8 @@ export class CGrid<TRow = any> {
   getSelectedRowIds(): string[] {
     // Prefer the persistent id set populated by `setSelectedRowIds(...)`. When
     // selection came from UI clicks the persistent set is empty — fall back to
-    // synthetic `row-${idx}` ids so existing callers (e.g. demo's status bar)
-    // keep working. The real index → rowId reverse lookup is deferred to a
-    // later cycle when the chunk carries string rowIds.
+    // `rowIdAt`, which resolves the real string id from the loaded chunk and
+    // only synthesizes `row-${idx}` for indices outside that window.
     const persistent = this.selection.getPersistentSelectedRowIds();
     if (persistent.length > 0) return persistent;
     const out: string[] = [];
@@ -6889,18 +6888,35 @@ export class CGrid<TRow = any> {
     return { value: '', valueFormatted: '', flashAlpha: flash, flashColor };
   }
 
+  /** Kernel bugfix follow-up (post-21f) — this used to be a permanent stub
+   *  (`` `row-${rowIndex}` ``) that every pointer/keyboard event builder
+   *  (cellClicked, cellDoubleClicked, cellKeyDown/Press, cellMouseOver/Out,
+   *  rowMouseOver/Out) fed into its payload. The paint pipeline, meanwhile,
+   *  already had the REAL string rowId via `stringRowIdAt` (chunk's
+   *  `stringRowIds` mirror) — @cgrid/renderers keys its hit regions on that
+   *  real id. Result: hit regions registered under 'r1' while clicks
+   *  resolved 'row-0', so action callbacks (onAction/onOpen) could never
+   *  correlate a click back to its row.
+   *
+   *  Fix: delegate to the real mapping first, falling back to the
+   *  synthetic `row-${rowIndex}` only when no real id is available (group /
+   *  footer rows, where `stringRowIdAt` returns `''`, or a row outside the
+   *  currently-loaded chunk window, where it returns `null` — e.g.
+   *  `getSelectedRowIds()`/`getFocusedCell()` can be asked about indices
+   *  that scrolled out of the loaded window). This preserves the public
+   *  signature/contract (always returns a non-null string for any in-range
+   *  index) while making on-screen interactions agree with what the paint
+   *  path — and therefore renderer hit-testing — actually used. */
   private rowIdAt(rowIndex: number): string | null {
-    // Foundation: numeric IDs need round-trip via worker. For now, we only support cell-level focus events.
-    // Real string IDs need a worker→main mapping deferred to a follow-up cycle.
-    return `row-${rowIndex}`;
+    const real = this.stringRowIdAt(rowIndex);
+    return real ? real : `row-${rowIndex}`;
   }
 
   /** Cycle 21e / Task 11 — real string rowId for a visible data row, from
    *  the chunk's `stringRowIds` mirror. Returns null for rows outside the
-   *  chunk window and '' for non-data rows (group / footer). NOTE: the
-   *  legacy `rowIdAt` stub above still feeds pointer-event payloads —
-   *  changing it would alter existing event payloads; this accessor is
-   *  additive and rules/flash-only. */
+   *  chunk window and '' for non-data rows (group / footer). Also the
+   *  source `rowIdAt` (above) now delegates to, for pointer/keyboard event
+   *  payloads. */
   private stringRowIdAt(rowIndex: number): string | null {
     if (!this.chunk) return null;
     const localIndex = rowIndex - this.chunk.rowStart;
