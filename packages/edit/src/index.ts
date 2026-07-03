@@ -57,3 +57,10 @@ export {
 
 export { makeExpressionEvaluate, resolveNudgeForCell, buildNudgePatches } from './plusMinus';
 export type { NudgeEvaluate } from './plusMinus';
+
+export {
+  collectShortcutKeys,
+  matchShortcutForCell,
+  buildShortcutPatches,
+  detectShortcutConflicts,
+} from './shortcuts';
