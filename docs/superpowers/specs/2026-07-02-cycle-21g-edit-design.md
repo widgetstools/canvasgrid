@@ -26,7 +26,7 @@
 
 ### 1.2 Non-goals
 
-- **Kernel changes: NONE** (§3.6). Gate: `git diff main...HEAD -- packages/kernel packages/{expression,format,rules,calc}` EMPTY. If an implementer discovers a genuine kernel need, STOP and escalate (no-retroactive-layering: the kernel gets the real feature, coordinator decision — not a task-level bolt-on).
+- **Kernel changes: ONE approved seam only** (§3.6a — public `getRowsByIndex` accessor; genuine intrinsic need, settled per the no-retroactive-layering rule). Gate: `git diff main...HEAD -- packages/kernel` shows ONLY the §3.6a addition + its tests; `packages/{expression,format,rules,calc}` EMPTY. If an implementer discovers any OTHER kernel need, STOP and escalate (no-retroactive-layering: the kernel gets the real feature, coordinator decision — not a task-level bolt-on).
 - **Customizer panels/toolbars** (plus-minus editor, shortcuts editor, smart-edit/bulk-update/history toolbars) — 21i. The showcase demo uses plain harness controls, not 21i surfaces. The engine API is shaped so 21i consumes it black-box (recon Part B).
 - **StarUI's `unifyUndo` flag** — dropped; kernel has no competing built-in undo (recon C.8).
 - **Journal persistence** — session-only in-memory (StarUI parity); settings persistence is host/21i territory.
@@ -180,9 +180,22 @@ The bridge maintains its own `Map<rowId, row>`: seeded from `forEachRow()`, fres
 - `stream`: `rowsChanged` with `source: 'transaction'|'transactionAsync'` (host live feeds) — recordable only when `recordSources.stream` (default OFF; floods the journal otherwise). Entries built from the event's `updated[].oldRow` snapshots.
 - `shouldRecord(source, settings)` consulted on every `record()`; suspended ≠ disabled (suspended keeps `past[]` intact).
 
-### 3.6 Kernel-diff verdict: ZERO
+### 3.6 Kernel-diff verdict: near-zero — ONE genuine seam
 
-Everything rides on landed public API: `cellKeyDown` / `cellValueChanged` / `rowsChanged` / `modelUpdated`; `applyTransaction(Async)`; `forEachRow`; `getDistinctValues(colId, limit)` (21d); selection get/set; `isCellEditable`; colDef `valueParser`/`valueSetter`/`editable`/`suppressKeyboardEvent`. Two nice-to-haves noted for the escalation log, NOT taken: (a) `field` on the `cellValueChanged` payload (derivable from colDef), (b) real rowIds in event payloads (already fixed by PR #98). Neither crosses the "genuinely needs intrinsic support" bar.
+Everything EXCEPT range→row expansion rides on landed public API: `cellKeyDown` / `cellValueChanged` / `rowsChanged` / `modelUpdated`; `applyTransaction(Async)`; `forEachRow`; `getDistinctValues(colId, limit)` (21d); selection get/set; `isCellEditable`; colDef `valueParser`/`valueSetter`/`editable`/`suppressKeyboardEvent`. Two nice-to-haves noted for the escalation log, NOT taken: (a) `field` on the `cellValueChanged` payload (derivable from colDef), (b) real rowIds in event payloads (already fixed by PR #98). Neither crosses the "genuinely needs intrinsic support" bar.
+
+#### 3.6a Approved kernel seam: public `getRowsByIndex` (range→row expansion)
+
+**Discovered at plan time (2026-07-02, S2).** `SelectionRange` is `{rowStart, rowEnd, colIds}` in **visible-order indices**, and visible order (post-filter/sort) is worker-owned state. There is NO public visible-index→row surface: `getCellValue(rowIndex, colId)` is viewport-chunk-only (`api.ts:711-713`, null outside the chunk — a header-click column range spans all rows), and the kernel's OWN range-writing features resolve rows via the private `workerCoord.getRowByIndex` batch pattern (fill handle `cgrid.ts:2387-2425` `commitFill`; clipboard `cgrid.ts:4424-4438` `serializeRangesMainSide`). An addon cannot reconstruct visible order without reimplementing worker filter/sort main-side — wrong by design. Smart-edit and bulk-update target collection over ranges is core 21g scope, so this is a genuine intrinsic need, not a convenience: per the no-retroactive-layering rule, **the kernel gets the real feature**:
+
+```ts
+/** Fetch full rows by current visible-order index (batched worker
+ *  round-trip). One entry per requested index, order preserved;
+ *  null for out-of-range indexes. */
+getRowsByIndex(rowIndexes: number[]): Promise<Array<{ rowIndex: number; rowId: string; data: TRow } | null>>;
+```
+
+Thin public promotion of the existing internal mechanism (Promise.all over `workerCoord.getRowByIndex`, dedupe input indexes, destroyed-guard → resolve `[]`), generically useful to any addon that consumes `getCellRanges()` — NOT an edit-shaped hook. Lands as its own reviewed kernel task inside the 21g branch, with kernel-side tests. Consequence for the engine: `collectTargetCells`/`collectBulkUpdateTargets` are **async** (they await the fetch); plus/minus and shortcuts stay sync (focused-cell only — `cellKeyDown` already carries `rowId`/`value`, and the bridge mirror has the row).
 
 ---
 
@@ -190,7 +203,7 @@ Everything rides on landed public API: `cellKeyDown` / `cellValueChanged` / `row
 
 ### 4.1 Shape (renderers-bridge template, recon C.10)
 
-- Structural `KernelGridSurface` interface over public API only: `on/addEventListener`, `applyTransaction`, `forEachRow`, `getCellRanges`/`addCellRange`/`clearCellRanges`, `getFocusedCell`/`setFocusedCell`, `getSelectedRowIds`/`setSelectedRowIds`, `isCellEditable`, `getDistinctValues`, colDef resolution for `valueParser`/`valueSetter`/`editable`/`cellDataType`.
+- Structural `KernelGridSurface` interface over public API only: `on/addEventListener`, `applyTransaction`, `forEachRow`, `getRowsByIndex` (§3.6a), `getCellRanges`/`addCellRange`/`clearCellRanges`, `getFocusedCell`/`setFocusedCell`, `getSelectedRowIds`/`setSelectedRowIds`, `isCellEditable`, `getDistinctValues`, colDef resolution for `valueParser`/`valueSetter`/`editable`/`cellDataType`.
 - Idempotency guard (`grid.__editBridgeWired` handle, return on re-call); `subscribe()` with `on` → `addEventListener` fallback; `destroy()` tears down listeners + journal subscription.
 - `opts`: settings trio + `nudges[]` + `shortcuts[]` + `validators?` + `now?` + `evaluate?` (expression engine override; defaults to `@cgrid/expression`).
 
@@ -211,9 +224,9 @@ One `edit-blotter` showcase page (plain harness controls — NOT 21i surfaces): 
 
 - Engine units per module (journal semantics incl. cascade + monitor + record-after-undo clears future; dedupe order; parser edge cases: `1.5M`, `-2k`, `1e3B`-invalid, divide-by-zero, `Object.is` NaN/-0 guards; nudge first-match + expression gate + throw-skips; shortcut conflicts) — structural fakes, seeded LCG, injected now.
 - Bridge tests against a fake grid surface (renderers `wire.test.ts` precedent): key routing + preventDefault discipline, mirror freshening incl. `modelUpdated` clear, replay guard, valueParser/valueSetter replication parity with an editor-path fixture, selection snapshot/restore.
-- Gates: package suite green; typecheck; root eslint; showcase E2E baseline 148 (+6 visual) preserved + new specs; **zero-kernel-diff proof** `git diff main...HEAD -- packages/kernel packages/{expression,format,rules,calc}` EMPTY; NUL scan.
+- Gates: package suite green; typecheck; root eslint; showcase E2E baseline 148 (+6 visual) preserved + new specs; **kernel-diff proof** `git diff main...HEAD -- packages/kernel` contains ONLY the §3.6a `getRowsByIndex` addition + tests, `packages/{expression,format,rules,calc}` EMPTY; NUL scan.
 
-## §7 Task decomposition sketch (~11 tasks; final split in the 21g plan, worklog S2–S6)
+## §7 Task decomposition sketch (~12 tasks; final split in the 21g plan, worklog S2–S6)
 
 1. Scaffold + `types.ts` + settings defaults/merge + `shouldRecord`.
 2. Journal core (stacks, limits, monitor, subscribe, record-clears-future).
@@ -224,5 +237,6 @@ One `edit-blotter` showcase page (plain harness controls — NOT 21i surfaces): 
 7. Bulk-update (targets, type-aware parse, patches, distinct feed adapter).
 8. Plus/minus (resolve + patches, expression gate via injectable evaluate).
 9. Shortcuts (match, patches, conflict detection).
-10. Bridge (mirror, key router, journal feeds, commit pipeline, selection restore, handle).
-11. Showcase page + E2E; README; gates + final whole-branch review.
+10. Kernel seam (§3.6a): public `getRowsByIndex` + kernel tests (own review gate; the cycle's ONLY kernel diff).
+11. Bridge (mirror, key router, journal feeds, commit pipeline, selection restore, handle).
+12. Showcase page + E2E; README; gates + final whole-branch review.
