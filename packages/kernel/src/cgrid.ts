@@ -864,7 +864,7 @@ export class CGrid<TRow = any> {
     }
 
     this.scroller = document.createElement('div');
-    this.scroller.className = 'cg-scroller';
+    this.scroller.className = 'cg-scroller cg-scrollbar';
     // overflow:scroll (not auto) so scrollbar gutters are reserved unconditionally —
     // macOS overlay scrollbars otherwise disappear when idle and the user can't
     // see they're scrollable. The webkit-scrollbar styles in tokens.css then

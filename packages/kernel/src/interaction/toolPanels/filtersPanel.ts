@@ -108,7 +108,7 @@ export class FiltersToolPanel implements ToolPanel {
     }
 
     this.listEl = document.createElement('div');
-    this.listEl.className = 'cg-filters-panel-list';
+    this.listEl.className = 'cg-filters-panel-list cg-scrollbar';
     this.root.appendChild(this.listEl);
     this.buildRows();
 

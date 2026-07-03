@@ -74,7 +74,7 @@ export class ColumnVisibilityPanel {
     // `flex: 0 0 auto` and collapse the list).
     this.searchRow = deps.params.suppressColumnFilter ? null : this.buildSearchRow();
     this.listEl = document.createElement('div');
-    this.listEl.className = 'cg-columns-panel-list';
+    this.listEl.className = 'cg-columns-panel-list cg-scrollbar';
     this.buildRows();
     this.syncSelectAll();
 

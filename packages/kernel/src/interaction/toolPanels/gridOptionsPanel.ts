@@ -35,7 +35,7 @@ export class GridOptionsToolPanel implements ToolPanel {
 
     this.root.appendChild(this.buildHeader());
     const scroller = document.createElement('div');
-    scroller.className = 'cg-settings-panel-scroller';
+    scroller.className = 'cg-settings-panel-scroller cg-scrollbar';
     scroller.appendChild(this.form.root);
     this.root.appendChild(scroller);
     this.syncModifiedPill();

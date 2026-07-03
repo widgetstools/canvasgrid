@@ -577,40 +577,45 @@
  * `-webkit-appearance: none` is what makes the visible scrollbar honour
  * our 12 px width on macOS instead of falling back to a 0-width overlay
  * that only flashes on scroll (regression flagged on 2026-06-26). */
-.cg-scroller::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Cycle 21i / Phase 1 — ONE shared scrollbar class for every scrollable
+ * grid surface: the body scroller AND all side-panel scrollers (columns,
+ * filters, grid options) carry `cg-scrollbar`. 8px flat thumb (no radius),
+ * themed off the same tokens so every scrollbar in the grid reads as one
+ * system. `.cg-scroller` keeps the class too for the body viewport. */
+.cg-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
   -webkit-appearance: none;
 }
-.cg-scroller::-webkit-scrollbar-thumb {
+.cg-scrollbar::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.4);
   border-radius: 0;
 }
-.cg-scroller::-webkit-scrollbar-track {
+.cg-scrollbar::-webkit-scrollbar-track {
   background: rgba(0, 0, 0, 0.08);
 }
-.cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-thumb {
+.cg-theme-quartz-dark .cg-scrollbar::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.32);
 }
-.cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-thumb:hover {
+.cg-theme-quartz-dark .cg-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.48);
 }
-.cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-track {
+.cg-theme-quartz-dark .cg-scrollbar::-webkit-scrollbar-track {
   background: rgba(255, 255, 255, 0.06);
 }
-.cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-corner {
+.cg-theme-quartz-dark .cg-scrollbar::-webkit-scrollbar-corner {
   background: rgba(255, 255, 255, 0.06);
 }
-.cg-theme-quartz .cg-scroller::-webkit-scrollbar-thumb {
+.cg-theme-quartz .cg-scrollbar::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.4);
 }
-.cg-theme-quartz .cg-scroller::-webkit-scrollbar-thumb:hover {
+.cg-theme-quartz .cg-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.55);
 }
-.cg-theme-quartz .cg-scroller::-webkit-scrollbar-track {
+.cg-theme-quartz .cg-scrollbar::-webkit-scrollbar-track {
   background: rgba(0, 0, 0, 0.08);
 }
-.cg-theme-quartz .cg-scroller::-webkit-scrollbar-corner {
+.cg-theme-quartz .cg-scrollbar::-webkit-scrollbar-corner {
   background: rgba(0, 0, 0, 0.08);
 }
 
@@ -621,10 +626,12 @@
  * which reverts macOS to its 0-width overlay scrollbar). The @supports
  * gate uses Firefox-only `-moz-appearance` so Chromium skips the block. */
 @supports (-moz-appearance: none) {
-  .cg-theme-quartz-dark .cg-scroller {
+  .cg-theme-quartz-dark .cg-scrollbar {
+    scrollbar-width: thin;
     scrollbar-color: #4a5b7a #0d1a33;
   }
-  .cg-theme-quartz .cg-scroller {
+  .cg-theme-quartz .cg-scrollbar {
+    scrollbar-width: thin;
     scrollbar-color: #b5bdc6 #eceff2;
   }
 }
