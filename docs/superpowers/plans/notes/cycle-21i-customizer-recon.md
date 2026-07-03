@@ -236,12 +236,17 @@ See discussion summary presented 2026-07-03; decisions to be recorded in the
   prerequisites, so the user is never waiting on plumbing for features they
   can't see yet.
 - **EXECUTION MODEL — DECIDED 2026-07-03 (user): interactive phases.**
-  The user names a feature increment; it is implemented per the locked
-  decisions into a STANDALONE DEMO APP the user tests hands-on; feedback
-  (modify/add/remove) iterates in place before the next increment. Demo
-  app: new `apps/cgrid-customizer-demo`, fed by `stomp-view-server` (lives at /Users/develop/wfh/starui/apps/stomp-view-server, runs prebuilt from dist/)
-  (ws://localhost:8081 — same source as cgrid-positions) for realistic
-  live-ticking data. UX gates replace big-bang delivery; code reviews stay
+  The user names a feature increment; it is implemented IN CGRID ITSELF
+  (native tier → `@cgrid/kernel`, enterprise tier → plugin packages),
+  exactly as it ships to consumers. A NEW STANDALONE DEMO APP is the pure
+  TESTBED: a thin consumer with ZERO feature code — it only instantiates
+  CGrid with the new features enabled, so what the user tests is literally
+  what ships. Feedback (modify/add/remove) iterates on the cgrid packages
+  before the next increment. Demo app: new `apps/cgrid-customizer-demo`,
+  fed by `stomp-view-server` (lives at
+  /Users/develop/wfh/starui/apps/stomp-view-server, runs prebuilt from
+  dist/; ws://localhost:8081 — same source as cgrid-positions) for
+  realistic live-ticking data. UX gates replace big-bang delivery; code reviews stay
   batched per standing directive; /frontend-design precedes each visual
   build.
 - **PHASE 1 — DECIDED 2026-07-03 (user): Grid Options editor + basic
