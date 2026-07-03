@@ -39,3 +39,8 @@ export type { CellTarget } from './patches';
 
 export { previewPatches, combineValidators } from './preview';
 export type { PreviewRow } from './preview';
+
+export { applyNumericOp, isNumericCellDataType } from './numericOps';
+
+export { collectTargetCells, buildSmartEditPatches } from './smartEdit';
+export type { TargetSurface } from './smartEdit';
