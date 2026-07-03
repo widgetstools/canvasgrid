@@ -95,10 +95,10 @@ describe('ColumnsToolPanel', () => {
     expect(root.querySelector('.cg-columns-panel-list')).not.toBeNull();
     const sections = Array.from(root.querySelectorAll('.cg-columns-panel-section-header'))
       .map((el) => el.textContent?.trim());
-    // Cycle 18 / Task 9 follow-up — AG-Grid parity for tool panel
-    // section order. Row dimension first, then Values, then Column
-    // Labels — matches the convention pivot users expect.
-    expect(sections).toEqual(['Row Groups', 'Values', 'Column Labels']);
+    // Cycle 21i / Phase 1 — Column Labels zone removed from the tool
+    // panel (it lives in the top pivot strip's split-right half now).
+    // Row Groups + Values remain.
+    expect(sections).toEqual(['Row Groups', 'Values']);
   });
 
   it('renders one row per columnState entry in order, with the headerName label and the visibility checkbox reflecting `hide`', () => {
@@ -266,18 +266,18 @@ describe('ColumnsToolPanel', () => {
     expect(subscribedTypes).not.toContain('columnMoved');
   });
 
-  it('Column Labels + Values + Row Groups drop zones render with their empty-state placeholder text', () => {
+  it('Values + Row Groups drop zones render with their empty-state placeholder text', () => {
     const api = makeApi();
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
     const dropZones = Array.from(root.querySelectorAll<HTMLElement>('.cg-columns-panel-drop-zone'));
-    // Cycle 18 / Task 5 — three live drop zones (Column Labels, Values,
-    // Row Groups). Empty-state placeholders read the canonical strings.
-    expect(dropZones.length).toBe(3);
+    // Cycle 21i / Phase 1 — two live drop zones (Values, Row Groups).
+    // Column Labels moved to the top pivot strip.
+    expect(dropZones.length).toBe(2);
     const texts = dropZones.map((z) => z.textContent?.trim());
-    expect(texts).toContain('Drag here to set column labels');
     expect(texts).toContain('Drag here to aggregate');
     expect(texts).toContain('Drag here to set row groups');
+    expect(texts).not.toContain('Drag here to set column labels');
   });
 
   it('Pivot Mode toggle click flips the data-active attribute (visual stub — wired to api.setPivotMode in Cycle 16)', () => {
