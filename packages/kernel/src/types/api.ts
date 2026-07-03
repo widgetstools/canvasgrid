@@ -420,6 +420,11 @@ export interface CGridApi<TRow = any> {
    *  reply; the worker-side cache stays full. */
   getDistinctValues(colId: string, limit?: number): Promise<string[]>;
 
+  /** Cycle 21g / Task 10 — fetch full rows by current visible-order index
+   *  (batched worker round-trip). One entry per requested index, order
+   *  preserved; null for out-of-range indexes. */
+  getRowsByIndex(rowIndexes: number[]): Promise<Array<{ rowIndex: number; rowId: string; data: TRow } | null>>;
+
   /** Cycle 21e / Task 10 — iterate the main-thread row mirror
    *  (rowId → row, insertion order). */
   forEachRow(fn: (rowId: string, row: TRow) => void): void;

@@ -2960,6 +2960,36 @@ export class CGrid<TRow = any> {
     return this.workerCoord.getDistinctValues(colId, limit);
   }
 
+  /** Cycle 21g / Task 10 — fetch full rows by current visible-order index
+   *  (batched worker round-trip). One entry per requested index, order
+   *  preserved; null for out-of-range indexes. Dedupes indexes before
+   *  fetching — one `workerCoord.getRowByIndex` per UNIQUE index,
+   *  `Promise.all`'d (precedents: `serializeRangesMainSide`'s Set-dedupe
+   *  + parallel batch, `commitFill`'s parallel fetch) — then maps results
+   *  back onto every requested (possibly duplicate) input index. Guards
+   *  at entry AND after the `Promise.all`: a destroy mid-flight resolves
+   *  an all-null array of `rowIndexes.length` rather than mapping stale
+   *  fetches, keeping 1:1 alignment with the input even on the teardown
+   *  path. Empty input resolves `[]` with no worker traffic. */
+  getRowsByIndex(rowIndexes: number[]): Promise<Array<{ rowIndex: number; rowId: string; data: TRow } | null>> {
+    if (this.destroyed) return Promise.resolve(rowIndexes.map(() => null));
+    if (rowIndexes.length === 0) return Promise.resolve([]);
+    const uniqueIndexes = Array.from(new Set(rowIndexes));
+    return Promise.all(
+      uniqueIndexes.map((rowIndex) =>
+        this.workerCoord.getRowByIndex(rowIndex).then((r) => ({ rowIndex, ...r })),
+      ),
+    ).then((fetched) => {
+      if (this.destroyed) return rowIndexes.map(() => null);
+      const byIndex = new Map(fetched.map((f) => [f.rowIndex, f]));
+      return rowIndexes.map((rowIndex) => {
+        const f = byIndex.get(rowIndex);
+        if (!f || f.rowId == null || f.data == null) return null;
+        return { rowIndex, rowId: f.rowId, data: f.data as TRow };
+      });
+    });
+  }
+
   /** Cycle 11 / Task 4 — build the filter editor for `colId` for inline
    *  hosting (FiltersToolPanel). Returns a handle that owns the editor's
    *  GUI element + a `destroy` callback for teardown. The returned GUI
@@ -5715,6 +5745,7 @@ export class CGrid<TRow = any> {
       isColumnValueEnabled: (colId) => this.isColumnValueEnabled(colId),
       getColumnFilterType: (colId) => this.getColumnFilterType(colId),
       getDistinctValues: (colId, limit) => this.getDistinctValues(colId, limit),
+      getRowsByIndex: (idx) => this.getRowsByIndex(idx),
       buildColumnFilterEditor: (colId) => this.buildColumnFilterEditor(colId),
       applyColumnState: (p) => this.applyColumnState(p),
       resetColumnState: () => this.resetColumnState(),
