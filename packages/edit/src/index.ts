@@ -25,3 +25,6 @@ export type {
   PatchValidator,
   EditSettings,
 } from './types';
+
+export { EditJournal } from './journal';
+export type { EditJournalOptions } from './journal';
