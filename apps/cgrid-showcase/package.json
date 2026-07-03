@@ -16,6 +16,7 @@
     "ag-grid-community": "^35.3.1",
     "ag-grid-enterprise": "^35.3.1",
     "@cgrid/calc": "*",
+    "@cgrid/edit": "*",
     "@cgrid/format": "*",
     "@cgrid/kernel": "*",
     "@cgrid/renderers": "*",
