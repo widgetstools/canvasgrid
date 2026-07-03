@@ -185,5 +185,18 @@ See discussion summary presented 2026-07-03; decisions to be recorded in the
   defer), #19 strip-to-row-filter, alerts channels (host hooks only).
 - **D-E License/positioning**: customizer package MIT like the rest, or
   reserved for a commercial tier (docs leave TBD).
+- **D-G App-extensible config — DECIDED 2026-07-03 (user).** (1) The D-C
+  module-state registry accepts HOST-registered namespaced slices
+  (`app:*`, versioned envelopes, migration hooks) so app-level features
+  (e.g. marketsgrid live/historical data providers) save into the SAME
+  grid-state document — one profile/layout captures engine + app config;
+  `onModuleChange('app:…')` is the app's reaction hook (cgrid stores/edits/
+  notifies, never interprets). (2) The customizer ships a schema-driven
+  Custom Settings section: `registerSettingsSection({id, title, fields})`
+  with field vocabulary **switch | input (text/number) | checkbox | select**
+  (extensible later); rendered by the same declarative schema engine as the
+  Grid Options tab (D-A), same chrome/theming/dirty-save lifecycle. This
+  replaces StarUI's hardcoded provider-host/date-settings sections with a
+  generic mechanism (also further shrinks #19).
 - **D-F Engine-API gap wave**: land the missing public surfaces (see §4) as
   a pre-phase or per-panel PRs.
