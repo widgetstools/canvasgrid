@@ -168,9 +168,19 @@ See discussion summary presented 2026-07-03; decisions to be recorded in the
   colors anywhere; both modes get e2e visual coverage. Guardrails: all UI
   deps confined to `@cgrid/customizer` (CI-enforced — no engine package may
   import them); Web Awesome free-core components verified at spec time.
-- **D-C State/persistence contract**: which of the config-manager surface
-  (`getModuleState`/`onModuleChange`/`isDirty`/...) lands in kernel vs a
-  customizer-owned store; profile envelope formalization.
+- **D-C State/persistence — DECIDED 2026-07-03 (user): C1 with a TOTAL-STATE
+  requirement.** Kernel module-state registry: engines register versioned
+  `{version, data}` slices; `getState()` returns the COMPLETE grid document
+  (kernel slices — column/filter/sort/group/pivot/expansion/**cell selection
+  ranges + focused cell**/row selection/scroll/sideBar — plus module slices:
+  rules, calc columns, format templates, edit settings, renderer
+  assignments); one `setState()` restores everything, so a reload resumes
+  the exact prior session incl. selected cell range. Kernel already persists
+  cellSelection/rowSelection/scroll (stateSnapshot.ts:36-72) — close the
+  known holes (sidebar panel widths) and pin with an e2e: save → destroy →
+  recreate → assert range/focus/scroll survived. Adds
+  `onModuleChange(moduleId)` + aggregate `isDirty()` for cross-panel refresh
+  and host ConfigManager wiring.
 - **D-D Scope trim**: #17 saved-filters (needs a new engine store — build or
   defer), #19 strip-to-row-filter, alerts channels (host hooks only).
 - **D-E License/positioning**: customizer package MIT like the rest, or
