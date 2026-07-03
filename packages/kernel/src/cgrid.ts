@@ -4270,9 +4270,16 @@ export class CGrid<TRow = any> {
     // `transformCell`. Without the option, the worker still owns the
     // serialise hop (the perf-budgeted path).
     const transform = this.options.processCellForClipboard;
-    const body = transform
-      ? await this.serializeRangesMainSide(ranges, delimiter, transform)
-      : await this.workerCoord.clipboardSerialize(ranges, delimiter);
+    // Cycle 21i / Phase 1 — under active pivot the visible cells are
+    // cross-tab aggregates that live in the chunk (not in the leaf source
+    // rows the worker/main-side leaf serializers read), so those paths
+    // return blank cells. Serialize "what you see" via `cellAt`, which
+    // resolves pivot result cells + the auto-group column + formatting.
+    const body = this.pivotEngine.isPivotActive()
+      ? this.serializeRangesViaCellAt(ranges, delimiter, transform)
+      : transform
+        ? await this.serializeRangesMainSide(ranges, delimiter, transform)
+        : await this.workerCoord.clipboardSerialize(ranges, delimiter);
     // Cycle 21i / Phase 1 — "Copy with Headers" prepends a header row of
     // the selected columns' header names (in column order), delimiter- and
     // newline-joined to match the body TSV.
@@ -4309,6 +4316,50 @@ export class CGrid<TRow = any> {
       console.debug('[cgrid.clipboard] rich copy unavailable, using plain text');
     }
     await navigator.clipboard.writeText(tsv);
+  }
+
+  /** Cycle 21i / Phase 1 — serialize ranges from the painter's own cell
+   *  resolver (`cellAt`), so pivot cross-tab cells, group/auto-group
+   *  cells, and totals serialize as their displayed value. Reuses the
+   *  pure serializer by projecting each cell's value onto a per-row
+   *  object keyed by colId (field === colId). Cells outside the loaded
+   *  chunk resolve to '' (the pivot matrix is small and typically fully
+   *  loaded). `transform` (processCellForClipboard) still applies. */
+  private serializeRangesViaCellAt(
+    ranges: SelectionRange[],
+    delimiter: string,
+    transform: CGridOptions<TRow>['processCellForClipboard'],
+  ): string {
+    const rows: Array<Record<string, unknown> | undefined> = [];
+    const colIds = new Set<string>();
+    for (const range of ranges) {
+      for (const id of range.colIds) colIds.add(id);
+      for (let rowIndex = range.rowStart; rowIndex <= range.rowEnd; rowIndex++) {
+        if (rows[rowIndex] !== undefined) continue;
+        const obj: Record<string, unknown> = {};
+        for (const id of range.colIds) {
+          const cell = this.cellAt(rowIndex, id);
+          // Primitive value (pivot aggregate number, plain text) copies
+          // raw so it pastes as a number; the auto-group / group cells
+          // carry an object value whose label lives in valueFormatted.
+          obj[id] = cell == null
+            ? ''
+            : (cell.value !== null && typeof cell.value === 'object'
+                ? cell.valueFormatted
+                : cell.value);
+        }
+        rows[rowIndex] = obj;
+      }
+    }
+    const columnsById = new Map<string, { field?: string }>();
+    for (const id of colIds) columnsById.set(id, { field: id });
+    return serializeRangesPure(rows, columnsById, ranges, delimiter, transform
+      ? (params) => transform({
+          value: params.value,
+          node: { rowIndex: params.node.rowIndex, data: params.node.data as TRow },
+          column: { colId: params.column.colId },
+        })
+      : undefined);
   }
 
   /** Cycle 21i / Phase 1 — the header row for "Copy with Headers": the
