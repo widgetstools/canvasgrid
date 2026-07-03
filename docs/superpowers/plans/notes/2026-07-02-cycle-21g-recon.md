@@ -174,7 +174,7 @@ Public (`types/api.ts`): `getCellRanges(): SelectionRange[]` (`:280`; `{rowStart
 
 ### C.9 Editable / value hooks
 
-- `editable?: boolean | ({data, colId, rowIndex, value}) => boolean` (`types/column.ts:272/34-36`); resolved by `EditController.isCellEditable` (`editController.ts:411-428`), public bridge `cgrid.ts:1423`.
+- `editable?: boolean | ({data, colId, rowIndex, value}) => boolean` (`types/column.ts:272/34-36`); resolved by `EditController.isCellEditable` (`editController.ts:411-428`). ~~public bridge `cgrid.ts:1423`~~ **CORRECTION (plan-time code check, 21g-S2): `cgrid.ts:1423` is the internal feature-deps object, NOT an api bridge — `isCellEditable` is private (`cgrid.ts:7649`) and absent from `types/api.ts`. Same for `isEditing()` (private `isAnyEditOpen`, `cgrid.ts:7672`). The edit bridge replicates editability addon-side from resolved colDefs and derives its editing flag from `cellEditingStarted`/`cellEditingStopped` events.**
 - `valueParser({newValue, oldValue, data, colDef})` (`types/column.ts:386/561-569`); `valueSetter({data, newValue, oldValue, colDef})` (`:394/571+`).
 - **Kernel runs valueParser/valueSetter ONLY inside the editor commit path** (`editController.ts:303-312`). Programmatic patches (smart-edit/bulk-update/nudges) bypass the editor → `@cgrid/edit` must apply the same parser→setter contract itself before building transaction payloads, or programmatic edits diverge from interactive ones. Correctness requirement for the spec.
 

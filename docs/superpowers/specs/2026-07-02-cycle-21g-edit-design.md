@@ -195,7 +195,7 @@ Everything EXCEPT range→row expansion rides on landed public API: `cellKeyDown
 getRowsByIndex(rowIndexes: number[]): Promise<Array<{ rowIndex: number; rowId: string; data: TRow } | null>>;
 ```
 
-Thin public promotion of the existing internal mechanism (Promise.all over `workerCoord.getRowByIndex`, dedupe input indexes, destroyed-guard → resolve `[]`), generically useful to any addon that consumes `getCellRanges()` — NOT an edit-shaped hook. Lands as its own reviewed kernel task inside the 21g branch, with kernel-side tests. Consequence for the engine: `collectTargetCells`/`collectBulkUpdateTargets` are **async** (they await the fetch); plus/minus and shortcuts stay sync (focused-cell only — `cellKeyDown` already carries `rowId`/`value`, and the bridge mirror has the row).
+Thin public promotion of the existing internal mechanism (Promise.all over `workerCoord.getRowByIndex`, dedupe input indexes, destroyed-guard → resolve an ALL-NULL array of input length, preserving the 1:1 alignment pin; corrected at plan time — an empty-array guard would contradict the alignment contract), generically useful to any addon that consumes `getCellRanges()` — NOT an edit-shaped hook. Lands as its own reviewed kernel task inside the 21g branch, with kernel-side tests. Consequence for the engine: `collectTargetCells`/`collectBulkUpdateTargets` are **async** (they await the fetch); plus/minus and shortcuts stay sync (focused-cell only — `cellKeyDown` already carries `rowId`/`value`, and the bridge mirror has the row).
 
 ---
 
@@ -203,7 +203,7 @@ Thin public promotion of the existing internal mechanism (Promise.all over `work
 
 ### 4.1 Shape (renderers-bridge template, recon C.10)
 
-- Structural `KernelGridSurface` interface over public API only: `on/addEventListener`, `applyTransaction`, `forEachRow`, `getRowsByIndex` (§3.6a), `getCellRanges`/`addCellRange`/`clearCellRanges`, `getFocusedCell`/`setFocusedCell`, `getSelectedRowIds`/`setSelectedRowIds`, `isCellEditable`, `getDistinctValues`, colDef resolution for `valueParser`/`valueSetter`/`editable`/`cellDataType`.
+- Structural `KernelGridSurface` interface over public API only: `on/addEventListener`, `applyTransaction`, `forEachRow`, `getRowsByIndex` (§3.6a), `getCellRanges`/`addCellRange`/`clearCellRanges`, `getFocusedCell`/`setFocusedCell`, `getSelectedRowIds`/`setSelectedRowIds`, `getDistinctValues`, colDef resolution for `valueParser`/`valueSetter`/`editable`/`cellDataType` (via `getGridOption('columnDefs')`, renderers leaf-walk precedent). Plan-time corrections (code-verified): `isCellEditable` and `isEditing` are NOT public — the bridge replicates editability addon-side from resolved colDefs (static bool / callback with `{data, colId, rowIndex, value}` from the mirror; throw/unknown-col → false) and derives its editing flag from the public `cellEditingStarted`/`cellEditingStopped` events; focused-cell rowIndex is synthesized from the focus-collapsed 1×1 range in `getCellRanges()`.
 - Idempotency guard (`grid.__editBridgeWired` handle, return on re-call); `subscribe()` with `on` → `addEventListener` fallback; `destroy()` tears down listeners + journal subscription.
 - `opts`: settings trio + `nudges[]` + `shortcuts[]` + `validators?` + `now?` + `evaluate?` (expression engine override; defaults to `@cgrid/expression`).
 
