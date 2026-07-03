@@ -123,12 +123,18 @@ export class ColumnsToolPanel implements ToolPanel {
       });
       this.root.appendChild(this.valuesPanel.getGui());
     }
-    // Cycle 21i / Phase 1 — the Column Labels zone is intentionally NOT
-    // mounted here. Column-labels config lives solely in the top pivot
-    // strip (the split-right half that appears on pivot mode), so the
-    // tool panel no longer duplicates it. `pivotColumnsPanel` stays null;
-    // `currentDropZoneSpecs` skips it, and column-row drags route to the
-    // top strip via the external pivot-panel router.
+    // Cycle 21i / Phase 1 (user directive, revised) — the Column Labels
+    // zone lives in the side panel (below Values) AND in the top pivot
+    // strip's split-right half. Both surfaces accept column-label drags.
+    if (!this.params.suppressPivots) {
+      this.pivotColumnsPanel = new PivotColumnsZonePanel({
+        api: this.api,
+        resolveLabel: (colId) => this.resolveLabel(colId),
+        rootHost: this.root,
+        isColumnPivotable: (colId) => this.api.isColumnPivotEnabled?.(colId) === true,
+      });
+      this.root.appendChild(this.pivotColumnsPanel.getGui());
+    }
 
     // Pivot state subscription: keep the Pivot Mode toggle's aria state
     // in sync with any external mutation. Every zone panel already
