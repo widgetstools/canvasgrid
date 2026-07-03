@@ -157,8 +157,17 @@ See discussion summary presented 2026-07-03; decisions to be recorded in the
   automatically as they land. Master-detail panels stay in the wider
   settings surface; add global settings search + "modified only" filter as
   deltas to the docs' design.
-- **D-B Stack**: adopt the docs' Lit + Web Awesome (+ Monaco lazy,
-  SortableJS) vs framework-free vanilla TS matching kernel ethos vs Lit-only.
+- **D-B Stack — DECIDED 2026-07-03 (user): B1 with two amendments.**
+  Lit (BSD-3) + Web Awesome free core (MIT, pin stable release) +
+  SortableJS; **CodeMirror 6 replaces Monaco** for the ExpressionEditor
+  (~40-50KB gz vs ~2.5MB, shadow-DOM-native — Monaco fights Lit shadow
+  roots, CM6 composes; autocomplete + lint extensions + small custom DSL
+  language). **Hard theming requirement:** dark + light modes via a single
+  token bridge mapping `--wa-*`/chrome vars onto kernel `--cg-*` tokens;
+  customizer follows `getThemeKind()` and flips with the grid; no hardcoded
+  colors anywhere; both modes get e2e visual coverage. Guardrails: all UI
+  deps confined to `@cgrid/customizer` (CI-enforced — no engine package may
+  import them); Web Awesome free-core components verified at spec time.
 - **D-C State/persistence contract**: which of the config-manager surface
   (`getModuleState`/`onModuleChange`/`isDirty`/...) lands in kernel vs a
   customizer-owned store; profile envelope formalization.
