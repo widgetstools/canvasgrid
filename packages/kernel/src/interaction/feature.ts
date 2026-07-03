@@ -269,7 +269,7 @@ export interface CGridLike {
    *  feature calls this from a Ctrl+C / Cmd+C keydown so the browser's
    *  Async Clipboard API sees an active user-gesture stack. Cycle 10 /
    *  Task 3. */
-  copySelectedRangesToClipboard(): Promise<void>;
+  copySelectedRangesToClipboard(opts?: { includeHeaders?: boolean }): Promise<void>;
 
   /** Read from `navigator.clipboard.readText`, parse on the worker, and
    *  apply as `applyTransaction({ update })` anchored at the focused

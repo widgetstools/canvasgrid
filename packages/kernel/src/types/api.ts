@@ -241,7 +241,7 @@ export interface CGridApi<TRow = any> {
    *  Backs both the Ctrl+C shortcut and the default `Copy` context-menu
    *  item. Apps that ship their own clipboard layer set
    *  `suppressClipboardApi: true` (Task 6) so this becomes a no-op. */
-  copySelectedRangesToClipboard(): Promise<void>;
+  copySelectedRangesToClipboard(opts?: { includeHeaders?: boolean }): Promise<void>;
 
   /** Cycle 10 / Task 4 — read the system clipboard, parse the payload
    *  (TSV by default; CSV when `clipboardDelimiter` overrides) on the

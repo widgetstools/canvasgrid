@@ -123,6 +123,16 @@ describe('buildDefaultMenuItems', () => {
     const copyItem = items.find((i) => i.name === 'Copy')!;
     copyItem.action!(makeParams({ colId: 'a' }));
     expect(copy).toHaveBeenCalledTimes(1);
+    expect(copy).toHaveBeenCalledWith(); // no headers
+  });
+
+  it('Copy with Headers routes with { includeHeaders: true } (Cycle 21i)', () => {
+    const { grid, copy } = makeGridStub();
+    const items = buildDefaultMenuItems(grid, makeParams({ colId: 'a' }));
+    const item = items.find((i) => i.name === 'Copy with Headers')!;
+    item.action!(makeParams({ colId: 'a' }));
+    expect(copy).toHaveBeenCalledTimes(1);
+    expect(copy).toHaveBeenCalledWith({ includeHeaders: true });
   });
 
   it('Paste action routes to grid.pasteFromClipboard() (Cycle 10 / Task 4)', () => {

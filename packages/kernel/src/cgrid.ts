@@ -4248,7 +4248,7 @@ export class CGrid<TRow = any> {
    *  Splits the work three ways: worker does the per-cell value lookup
    *  + RFC-4180 quoting + buffer joins (off the main thread); main
    *  does the clipboard write inside the caller's user-gesture stack. */
-  async copySelectedRangesToClipboard(): Promise<void> {
+  async copySelectedRangesToClipboard(opts?: { includeHeaders?: boolean }): Promise<void> {
     if (this.destroyed) return;
     // Cycle 10 / Task 6 — `suppressClipboardApi` rejects every clipboard
     // entry point before any work happens. Apps that ship their own
@@ -4270,9 +4270,15 @@ export class CGrid<TRow = any> {
     // `transformCell`. Without the option, the worker still owns the
     // serialise hop (the perf-budgeted path).
     const transform = this.options.processCellForClipboard;
-    const tsv = transform
+    const body = transform
       ? await this.serializeRangesMainSide(ranges, delimiter, transform)
       : await this.workerCoord.clipboardSerialize(ranges, delimiter);
+    // Cycle 21i / Phase 1 — "Copy with Headers" prepends a header row of
+    // the selected columns' header names (in column order), delimiter- and
+    // newline-joined to match the body TSV.
+    const tsv = opts?.includeHeaders
+      ? `${this.clipboardHeaderLine(ranges, delimiter)}\n${body}`
+      : body;
     // `navigator.clipboard.writeText` requires a user gesture in every
     // mainstream browser; the keyboard / menu handlers already run
     // inside one. Apps that invoke this from a `setTimeout` get a
@@ -4292,7 +4298,7 @@ export class CGrid<TRow = any> {
     if (hasComposite) {
       const clip = navigator.clipboard as Clipboard & { write?: (items: ClipboardItem[]) => Promise<void> };
       if (typeof ClipboardItem !== 'undefined' && typeof clip.write === 'function') {
-        const html = await this.serializeRangesToHtml(ranges);
+        const html = await this.serializeRangesToHtml(ranges, opts?.includeHeaders === true);
         const item = new ClipboardItem({
           'text/plain': new Blob([tsv], { type: 'text/plain' }),
           'text/html': new Blob([html], { type: 'text/html' }),
@@ -4305,12 +4311,25 @@ export class CGrid<TRow = any> {
     await navigator.clipboard.writeText(tsv);
   }
 
+  /** Cycle 21i / Phase 1 — the header row for "Copy with Headers": the
+   *  distinct column headerNames touched by `ranges`, ordered by the
+   *  grid's column order, joined by `delimiter`. */
+  private clipboardHeaderLine(ranges: SelectionRange[], delimiter: string): string {
+    const orderIdx = new Map(this.columnOrder.map((c, i) => [c.colId, i]));
+    const ids = [...new Set(ranges.flatMap((r) => r.colIds))].sort(
+      (a, b) => (orderIdx.get(a) ?? 0) - (orderIdx.get(b) ?? 0),
+    );
+    return ids
+      .map((id) => this.columnDefsMap.get(id)?.headerName ?? id)
+      .join(delimiter);
+  }
+
   /** Cycle 21c / Task 15 — build the text/html clipboard flavor for
    *  ranges that include composite columns. Fetches the touched rows
    *  main-side (composite programs are main-thread closures — they
    *  don't cross postMessage), resolves fragments per composite cell,
    *  and falls back to formatted plain text for regular columns. */
-  private async serializeRangesToHtml(ranges: SelectionRange[]): Promise<string> {
+  private async serializeRangesToHtml(ranges: SelectionRange[], includeHeaders = false): Promise<string> {
     const rowIndexSet = new Set<number>();
     for (const range of ranges) {
       for (let i = range.rowStart; i <= range.rowEnd; i++) rowIndexSet.add(i);
@@ -4366,6 +4385,15 @@ export class CGrid<TRow = any> {
         }
         out.push({ cells });
       }
+    }
+    if (includeHeaders) {
+      const orderIdx = new Map(this.columnOrder.map((c, i) => [c.colId, i]));
+      const ids = [...new Set(ranges.flatMap((r) => r.colIds))].sort(
+        (a, b) => (orderIdx.get(a) ?? 0) - (orderIdx.get(b) ?? 0),
+      );
+      out.unshift({
+        cells: ids.map((id) => ({ text: this.columnDefsMap.get(id)?.headerName ?? id })),
+      });
     }
     return serializeToHtml(out);
   }

@@ -40,7 +40,7 @@ export interface DefaultMenuGrid {
   setColumnsPinned(keys: string[], pinned: 'left' | 'right' | null): void;
   /** Cycle 10 / Task 3 — serialise the current range selection to the
    *  system clipboard. The Copy default-menu item routes here. */
-  copySelectedRangesToClipboard(): Promise<void>;
+  copySelectedRangesToClipboard(opts?: { includeHeaders?: boolean }): Promise<void>;
   /** Cycle 10 / Task 4 — read the system clipboard + apply via
    *  `applyTransaction` rooted at the focused cell. The Paste
    *  default-menu item routes here. */
@@ -122,7 +122,12 @@ export function buildDefaultMenuItems(
     {
       name: 'Copy with Headers',
       icon: '⎘',
-      action: () => { console.debug('[clipboard] copy-with-headers (stub — wired in Task 3)'); },
+      action: () => {
+        void grid.copySelectedRangesToClipboard({ includeHeaders: true }).catch((err) => {
+          if (err instanceof Error && err.message === 'no-ranges') return;
+          console.warn('[cgrid] copySelectedRangesToClipboard (headers):', err);
+        });
+      },
     },
     {
       name: 'Paste',
