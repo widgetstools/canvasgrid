@@ -659,3 +659,10 @@ Follow-ups logged (final review + re-review): N1 modelUpdated reseed thrash on t
   USER DIRECTIVE (mid-S2, binds S3-S6): NO per-task reviewers from Task 2 on — single closeout review of all tasks together when the batch is done (21f-S2 precedent). Fix waves batched at closeout.
   PR #98 still OPEN (re-checked at S2 start and by Task-10 drafter). Re-check at each session start; hard dep for Tasks 11-12; Task 10 shares cgrid.ts so merge deliberately.
   NEXT UNIT: 21g-S3 (execute Tasks 2-4 engine I, no per-task reviews; ledger lines per task).
+21g Task 2: complete (bc00bdf, NO per-task review per user directive — closeout review pending)
+  EditJournal core: dual past/future stacks, decoupled monitor list (cap 100), live-read shouldRecord gating, subscribe/notify, injectable now/nextId (Date-free); 15 tests; undoEntry stubbed not-yet-implemented per plan
+21g Task 3: complete (374973f, review at closeout)
+  patches.ts: CellTarget + dedupePatches (nested-Map key, no delimiter collision) + buildPatchesFromTargets (null-skip + Object.is guard, NaN/-0 edges locked) + buildRowUpdatesFromPatches + assertSingleColumnSelection; cascade undoEntry body (one applier call PER entry, LIFO future -> redo order free, notify once); 8+4 tests (plan's 6 cascade cases covered, 10/13 folded into case 9's run per plan text)
+21g Task 4: complete (d0d52d3, review at closeout)
+  preview.ts: previewPatches (pure classification, no grid access) + combineValidators (fail-fast invalid, worst-of warning); 9 tests
+21g-S3: COMPLETE. Engine I landed: journal/cascade/patches/preview. edit suite 48/48; tsc clean; root typecheck 21/21; kernel-diff gate EMPTY at every task. NEXT UNIT: 21g-S4 (execute Tasks 5-9 engine II, no per-task reviews).
