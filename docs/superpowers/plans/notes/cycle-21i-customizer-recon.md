@@ -191,8 +191,15 @@ See discussion summary presented 2026-07-03; decisions to be recorded in the
   store, contextual-entry wiring. ENTERPRISE plugins = #01-#07, #09-#16
   (editing suite + Visual Excel + full Formatting composer), #17 UI, #19
   row-filter, Layout/Profile selector (new), data-provider selector (new),
-  OpenFin config (new). #18 Column Selector dialog: proposed enterprise
-  (kernel columns tool panel stays the free path) — pending user confirm.
+  OpenFin config (new). #18 Column Selector dialog: enterprise — CONFIRMED
+  by user 2026-07-03, with a native requirement attached: the kernel columns
+  tool panel must render COLUMN GROUPS as a collapsible tree (group nodes
+  with tri-state visibility checkboxes, leaves nested), live-reflecting
+  runtime group changes made by the enterprise Column Groups plugin.
+  Verified 2026-07-03: today's visibilityPanel.ts is a flat list with zero
+  column-group awareness → native workstream item. Corollary engine
+  contract: runtime column-group CRUD must be a public surface emitting
+  change events.
 - **D-E License/positioning — DECIDED 2026-07-03 (user): two-tier
   native/enterprise split.** NATIVE (free, kernel conventions, vanilla DOM,
   zero deps): Grid Options sidebar tab (schema-driven), BASIC formatting
