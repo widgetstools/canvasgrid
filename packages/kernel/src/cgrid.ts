@@ -194,6 +194,8 @@ export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/regi
 // Cycle 23 / Tasks 5-6 — state-snapshot public types.
 export type { GridState } from './core/stateSnapshot';
 export { STATE_SCHEMA_VERSION } from './core/stateSnapshot';
+export type { StateStorageAdapter, PersistStateOptions } from './core/statePersistence';
+export { LocalStorageStateAdapter } from './core/statePersistence';
 export type {
   SelectionConfig,
   SingleRowSelectionConfig,
@@ -502,6 +504,9 @@ export class CGrid<TRow = any> {
    *  merged changedKeys. Lazily constructed in the constructor body
    *  so `this.getState()` is bound by the time it subscribes. */
   private stateUpdatedBus!: StateUpdatedBus;
+  /** Cycle 21i / Phase 1 — restore-then-autosave persistence (gridId +
+   *  persistState options). Null when persistence is not enabled. */
+  private statePersistence: import('./core/statePersistence').StatePersistenceController | null = null;
   private columnTree!: ColumnTree;
   private columnGroupState!: ColumnGroupState;
   private columnDefsMap: Map<string, ResolvedColDef<TRow>> = new Map();
@@ -1858,6 +1863,29 @@ export class CGrid<TRow = any> {
         // stateUpdated event reads source: 'init', not 'ui'.
         this.stateUpdatedBus?.setNextSource('init');
         this.setState(options.initialState);
+      }
+      // Cycle 21i / Phase 1 — persistState: restore the saved snapshot
+      // (AFTER initialState so the user's last session wins over the
+      // app default), then arm the debounced autosave. Autosave only
+      // arms once restore resolves, so construction-time stateUpdated
+      // emits can't clobber the saved snapshot.
+      if (options.persistState) {
+        if (!options.gridId) {
+          console.warn("[cgrid] persistState requires a 'gridId' — persistence disabled");
+        } else {
+          const { StatePersistenceController } = await import('./core/statePersistence');
+          const persistOpts = options.persistState === true ? {} : options.persistState;
+          this.statePersistence = new StatePersistenceController(options.gridId, persistOpts, {
+            applyState: (state) => {
+              this.stateUpdatedBus?.setNextSource('init');
+              this.setState(state);
+            },
+            onStateUpdated: (fn) =>
+              this.events.on('stateUpdated', (ev) =>
+                fn((ev as unknown as { state: GridState }).state)),
+          });
+          await this.statePersistence.restore();
+        }
       }
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
 
@@ -5558,6 +5586,10 @@ export class CGrid<TRow = any> {
     // event surface now means apps can wire listeners against a stable shape.
     this.events.emit({ type: 'gridPreDestroyed', state: {} });
     this.destroyed = true;
+    // Cycle 21i / Phase 1 — flush any pending autosave BEFORE teardown so
+    // the last user change survives an immediate page unload.
+    this.statePersistence?.destroy();
+    this.statePersistence = null;
     // Tear down every listener / RAF / timer routed through the registry
     // FIRST so callbacks fired during the rest of destroy() (e.g. a scroll
     // event triggered by a layout invalidation) can't hit half-disposed state.
@@ -7258,6 +7290,14 @@ export class CGrid<TRow = any> {
    *  dedicated `resetColumnState` path so the as-coded layout
    *  (sort, pin, visibility) comes back exactly as the constructor
    *  saw it. */
+  /** Cycle 21i / Phase 1 — delete the persisted snapshot for this grid's
+   *  `gridId` (and cancel any pending autosave write). Does not change the
+   *  live grid state; pair with `resetState()` + a reload for a full
+   *  factory reset. No-op when persistence isn't enabled. */
+  clearPersistedState(): void {
+    this.statePersistence?.clear();
+  }
+
   resetState(): void {
     this.resetColumnState();
     this.setFilterModel({});

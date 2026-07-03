@@ -83,6 +83,8 @@ const savedTheme = localStorage.getItem('custdemo:theme');
 let dark = savedTheme !== 'light';
 
 const grid = new CGrid<Position>(gridHost, {
+  gridId: 'customizer-demo',
+  persistState: true,
   getRowId: (r) => r.positionId,
   columnDefs,
   theme: dark ? 'cg-theme-quartz-dark' : 'cg-theme-quartz',
@@ -108,9 +110,7 @@ applyTheme();
 themeBtn.addEventListener('click', () => { dark = !dark; applyTheme(); });
 
 resetBtn.addEventListener('click', () => {
-  // T2 will replace this with grid.clearPersistedState() once the kernel
-  // persistState feature lands; until then it clears the demo's own key.
-  localStorage.removeItem('cgrid:state:customizer-demo');
+  grid.clearPersistedState();
   location.reload();
 });
 
