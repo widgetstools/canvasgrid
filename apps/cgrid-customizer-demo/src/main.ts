@@ -88,7 +88,10 @@ const grid = new CGrid<Position>(gridHost, {
   getRowId: (r) => r.positionId,
   columnDefs,
   theme: dark ? 'cg-theme-quartz-dark' : 'cg-theme-quartz',
-  defaultColDef: { resizable: true, sortable: true, flex: 1, minWidth: 80 },
+  // editable: true so the testbed can exercise the edit trigger (single /
+  // double click) out of the box; group / totals / pivot cells stay
+  // read-only via the editable predicate.
+  defaultColDef: { resizable: true, sortable: true, editable: true, flex: 1, minWidth: 80 },
   rowGroupPanelShow: 'always',
   sideBar: { toolPanels: ['columns', 'filters', 'gridOptions'] },
   enableCellChangeFlash: true,
