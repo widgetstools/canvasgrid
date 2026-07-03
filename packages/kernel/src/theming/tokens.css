@@ -40,7 +40,11 @@
   --cg-grid-line-color: #e3e8eb;
   --cg-row-hover-bg: #eef1f3;
   --cg-row-selected-bg: rgb(56 132 195 / 22%);
-  --cg-focus-ring-color: #3b82f6;
+  /* Cycle 21i / Phase 1 — monochromatic UI chrome: the accent is the
+   * theme foreground, so toggles / tabs / pills / checkboxes / focus
+   * rings read as one neutral system. Data colours (row selection,
+   * cell range, flash) keep their own configurable tokens below. */
+  --cg-focus-ring-color: var(--cg-fg-color);
   --cg-focus-ring-width: 2px;
   --cg-flash-from-color: #fef3c7;
   --cg-flash-to-color: rgba(254, 243, 199, 0);
@@ -195,7 +199,7 @@
   --cg-grid-line-color: #373a3b;
   --cg-row-hover-bg: #2a2d2e;
   --cg-row-selected-bg: rgb(38 79 120 / 50%);
-  --cg-focus-ring-color: #007fd4;
+  --cg-focus-ring-color: var(--cg-fg-color);
   --cg-focus-ring-width: 2px;
   --cg-flash-from-color: #b8860b;
   --cg-flash-to-color: rgba(184, 134, 11, 0);
@@ -838,7 +842,7 @@
 }
 .cg-filter-popup-button-apply {
   background: var(--cg-focus-ring-color);
-  color: #ffffff;
+  color: var(--cg-bg-color);
   border-color: var(--cg-focus-ring-color);
 }
 .cg-filter-popup-button-apply:hover {
