@@ -569,3 +569,81 @@ REMINDER: user's uncommitted dark-theme edits in tree — untouchable.
 
 === SESSION-WORKLOG MODE (user directive 2026-07-02, post-restart) ===
 Remaining Cycle 21 work runs in SMALL SESSIONS per docs/superpowers/plans/2026-07-02-cycle-21-session-worklog.md (committed to main with the 21f spec + plan header). Every session: read ledger tail + worklog "How to run a session" first. Scratchpad artifacts from the previous session were LOST on restart (recon files, 21f phase drafts) — inventory + preserved conclusions live in the worklog. All future drafts go straight into repo files and get committed same-session. NEXT UNIT: 21f-S1.
+21f pre-flight: plan Task 1 name-table arithmetic corrected on main (ed24add) — catalog enumerates 46 new implementations (49 rows − 3 kernel-shipped sparklines) + 5 kernel re-export names = 51; test asserts 51 (was 45; "40" in titles is a stale headline count)
+21f Phase B drafted (Tasks 2-4: paintUtils+palette+fakeGc / threading proof+ColumnStats / TickHistory) into the plan on main (ed24add) — drafter probe-verified: propertyChain.ts:1109-1117 explicit-cellRenderer-wins + threading gate keys on _compositeProgram only; tsconfig rootDir must be DROPPED (not "."); LAB midpoint #000→#fff = #777777 (not #808080) as the load-bearing test value; heap+lazy-delete min/max per calc basic.ts:100-181 reimplemented locally (no calc dep)
+21f Task 1: complete (commits ed24add..709f43a + fixup c20fc5b, review approved)
+  Scaffold+types+name table(51)+palette data+skeletons+index; renderers 70/70, typecheck 21/21; kernel/expression/format/rules/calc diff EMPTY; tsconfig rootDir dropped (probe-verified TS6059 fix, authorized in dispatch)
+  Important fixed by coordinator: tests/.gitkeep deletion was left uncommitted while the report claimed it committed — committed as c20fc5b
+  Minor (logged for final review): StatusPillParams.statusColors duplicates palette's StatusPillStyle shape (cycle-avoidance tradeoff); throw-message convention inconsistent between painters ('not implemented: <name>') and classes ('not-yet-implemented: ...')
+  FACT for 21f-S5 drafting (Task 9): kernel does NOT publicly export 5 individual sparkline painters — only a single 'sparkline' name with internal variant dispatch; charts.ts re-export stubs are honest throws pending the verified mechanism
+  NOTE: rating-band/venue hexes are provisional palette choices (catalog fixes only 4 semantic hexes + StatusPill/glyphs); params-overridable
+21f-S1: COMPLETE (session close-out). Plan has Tasks 1-4; branch cycle21f/renderers exists (HEAD c20fc5b); Task 1 reviewed+ledgered. NEXT UNIT: 21f-S2 (execute Tasks 2-4 with reviews).
+21f Task 2: complete (commits 04c85d5..3d360c3, review approved clean)
+  paintUtils (withAlpha/mixHex/labInterpolate/pill/dot/miniBar/fragText) + palette functions + fake-gc calls-log harness; renderers 117/117 (34+13+70); locked values verified (#808080 linear, #777777 LAB midpoint, withThemeAlpha 0.7/1/0.5)
+  Minors carried to final review:
+    - fakeGc clearFill stub is CachedContext2D-interface-mandated (coordinator-verified gc.ts:52) — reviewer nit resolved, no action
+    - pill test asserts arcTo sequence but not the initial moveTo op
+    - labInterpolate monotonicity test tolerance ±1 byte (permissive)
+    - muted semantic color tested by shape only (no locked hex — catalog fixes only 4)
+21f Task 3: complete (commits 3d360c3..7111b1e incl. stable-snapshot fixup, S2 closeout review approved)
+  threading proof 4/4 + ColumnStats heaps + 3-seed parity; fix: for() returns stable snap reference (7111b1e)
+21f Task 4: complete (commits 7111b1e..3945256, S2 closeout review approved)
+  TickHistory Float64Array rings + rowsChanged feed + 2-seed property test; renderers 140/140; kernel/expression/format/rules/calc diff EMPTY
+21f-S2: COMPLETE (user directive: single closeout review at 04c85d5..3945256, no per-task reviewers). S2 verdict: Approved for 21f-S3.
+  Important → first S3 commit: export canonical `ColumnStatSnapshot` from index.ts (types.ts still has legacy `ColumnStatsSnapshot` name on painter params — reconcile at bridge task)
+  Minors carried to final review: Task 2 pill test omits moveTo; lab monotonicity ±1 tolerance; muted color shape-only test
+  NEXT UNIT: 21f-S3 (draft Tasks 5-8 into plan, execute Tasks 5-6)
+21f-S3 pre-flight (main @ 8a4d5ac): ColumnStatSnapshot export (a4f2a8b); ledger S2 (34acad8); plan Tasks 5-8 drafted + worklog S2 ticked.
+21f Task 5: complete (commits bcde597..05ef33c incl. review fix, approved after fix pass)
+  9 numeric painters + 27 fake-gc tests; renderers 168/168; fixes: colorScratch hot-path, DeltaCell 85% pct fragment, palette flash fallback, signPolicy preserves valueFormatted
+21f Task 6: complete (commits 3390eba..05ef33c incl. review fix, approved after fix pass)
+  5 text painters + 15 fake-gc tests; monoFont full-stack replace; stacked TickerCell + injectable nowMs age/relative/timestamp
+21f-S3: COMPLETE (draft Tasks 5-8 on main @ 8a4d5ac; execute Tasks 5-6 reviewed). 14 painters landed (9+5). NEXT UNIT: 21f-S4 (execute Tasks 7-8).
+21f Task 7: complete (commits fa2ad12, review pending)
+  6 indicator painters + 19 fake-gc tests; dot()/direction glyphs/quote-quality truth table/stale alpha 0.6/structure strip slots/RAG; getLastStaleFlagTooltip bridge hook; renderers 195/195
+21f Task 8: complete (commits 4104e45, review pending)
+  7 badge painters + 21 fake-gc tests; STATUS_PILL_MAP/resolvePillColors/RATING_SCALE_BANDS/DEFAULT_VENUE_PALETTE/TIF_COLORS; dashed PENDING; rating case preserved; renderers 195/195; kernel/expression/format/rules/calc diff EMPTY
+21f-S4: COMPLETE (execute Tasks 7-8). 27 foundation painters done (14 numeric+text + 13 indicator+badge). NEXT UNIT: 21f-S5 (draft Tasks 9-12, execute Tasks 9-10).
+21f Task 9: complete (commits 0f14f1a, review pending)
+  8 bar/gauge painters + 24 fake-gc tests; miniBar/labInterpolate/stats+history params; renderers 217/217
+21f Task 10: complete (commits 1ed28ba, review pending)
+  4 new charts + 5 kernel sparkline re-exports via @kernel-src adapters; 15 chart tests; vitest fs.allow + tsconfig paths; renderers 217/217; kernel/expression/format/rules/calc diff EMPTY
+21f-S5: COMPLETE (draft Tasks 9-12 @ branch; execute Tasks 9-10). 44 painters landed (27 foundation + 8 bars + 9 charts). NEXT UNIT: 21f-S6 (execute Tasks 11-12 + Phase→D checkpoint).
+21f Tasks 7-10: review approved (catch-up review fa23fba..1ed28ba + fix e931f9c)
+  Fixes: keyed stale-flag tooltips (getStaleFlagTooltip); sparkline adapter module-scope params; kernel-relative imports; structure glyphOverrides labels; TickHistory constructor seed
+  Carried minor (final review): ageCell resolveSemanticColors hot-path alloc (Task 6, out of scope)
+21f Task 11: complete (commits d19f3f3, review pending)
+  5 composite painters + 15 fake-gc tests; stacked-value/price-quote/nbbo/benchmark-spread/price-change-composite
+21f Task 12: complete (commits a56891b, review pending)
+  icon-action-cluster + row-menu + HitRegionRegistry/resolveHitRegion; 7 action tests; cellClicked + openContextMenu documented for bridge
+21f Phase→D checkpoint: PASSED (branch @ a56891b)
+  Name table: RENDERER_NAMES 51 (46 catalog + 5 kernel re-exports); types.test exports one painter per name; IMPLEMENTED set complete
+  Painter discipline: no inline hex in src outside palette (comments-only in types.ts)
+  Gates: renderers 233/233; typecheck clean; root eslint clean; git diff main...HEAD over kernel/expression/format/rules/calc EMPTY
+21f-S6: COMPLETE. 46 implementation painters + 5 re-exports landed. renderers 233/233. NEXT UNIT: 21f-S7 (draft Tasks 13-15, execute Task 13 bridge).
+21f Task 13: complete (commits fd68848, review pending)
+  wireRenderersIntoKernel: 51 painter registration, ColumnStats/TickHistory from opts, colDef builders (minimal-composite threading, stats/history selectors, age tick gate), cellClicked→resolveHitRegion action router, gridPreDestroyed cleanup; 12 bridge tests; renderers 245/245; kernel/expression/format/rules/calc diff EMPTY
+21f-S7: COMPLETE (plan Tasks 13-15 @ main 9895bfc; execute Task 13). NEXT UNIT: 21f-S8 (execute Task 14 showcase + E2E).
+21f Task 14: complete (commits a5e4eb0..92cb067, review pending)
+  renderer-blotter + renderer-charts showcase pages via renderersWire; 12 E2E probes (bridge handle, resolved names, canvas, rows, tick controls); deleted stale showcase .js emit files shadowing .ts; colDef threading fix (omit type:composite); showcase E2E 142 passed + 1 skipped (143 total); renderers 245/245; kernel/expression/format/rules/calc diff EMPTY
+21f-S8: COMPLETE. showcase 131+12 E2E green. NEXT UNIT: 21f-S9 (Task 15 README + final gates + whole-branch review).
+21f Task 15: complete (commit 75638ab, README + gates — recovered from interrupted S9 session, gates re-verified by coordinator)
+21f S9 recovery: interrupted session left green in-flight work uncommitted — committed as 03c38bf (coordinator-verified 246/246 + typecheck before commit)
+  Bridge rowData fix: kernel threads a visible-column snapshot, so params field-mapping missed non-visible fields — bridge now keeps a rowsChanged-freshened rowId→raw-row mirror (250ms-throttled reseed on miss) and swaps the full row into p.rowData; StructureIconStrip gains flagsField; + renderer-catalog showcase page (1 row × 51 renderer columns) + E2E
+21f Task 15 gates RE-VERIFIED at 03c38bf: typecheck 21/21, root lint clean, build 13/13, renderers 246/246, showcase E2E 147 passed + 1 known skip (baseline 131 preserved; catalog spec +5), git diff main...HEAD over kernel/expression/format/rules/calc EMPTY, NUL scan clean
+21f final whole-branch review (fable, ed24add..03c38bf): needs-fixes — 2 Critical + 4 Important dispatched as one fix wave
+  C1 iconActionCluster unreachable (kernel never paints isHovered:true); C2 row mirror permanently stale after same-rowId setRowData (kernel emits modelUpdated, not rowsChanged); I1 hit-region registry leak; I3 hot-path allocs (incl. ageCell resolveSemanticColors — claimed fixed in 05ef33c, was not); I4 click routing never exercised E2E; triage#7 dual snapshot types unreconciled
+Final-review fix wave: complete (commit a5ba6af, re-review verdict READY TO MERGE)
+  revealOnHover default-false gate; modelUpdated→rowMirror.clear reseed + regression-guarded wire tests; clearForRow eviction + clearAll on destroy; scratch-object allocs (per-colDef, aliasing-checked); ColumnStatsSnapshot deprecated alias of canonical nullable ColumnStatSnapshot + dead RowsChangedPayload removed; README corrections; renderers 255/255, tsc clean both pkgs, renderer E2E 17 pass + 1 test.fail() tripwire
+KERNEL ESCALATION (blocks real-app action clicks; NOT fixed per zero-kernel-diff lock — USER DECISION pending):
+  cgrid.ts:6861 rowIdAt() is a Foundation stub returning synthetic `row-${rowIndex}`; cellClicked (cgrid.ts:1348-1349) uses it while paint-time hit regions key on real stringRowIdAt() (cgrid.ts:6876) → onAction/onOpen can never fire in real apps. Pinned by test.fail() tripwire in rendererBlotter.spec.ts (flips to unexpected-pass when kernel fixed). Independently verified by final reviewer.
+Follow-ups logged (final review + re-review): N1 modelUpdated reseed thrash on ticking grids (sawRowsChanged skip-flag fix sketched — needed before Cycle 20 60Hz×50k); N2 lastReseedMs=0 fragile under injected near-zero clocks (mirrorDirty flag); N3 spread-bar scratch copies only bid/ask fields (add own-keys test); N4 clearForRow O(keys) bulk-remove; I2 sparkline history injection decision; per-bridge hit-region registries; kernel src deep-import packaging debt; composite WIDE-tag overlap; ageTimerUsers dead counter + build-time interval start; F5 companion passing test pinning cellClicked shape up to kernel boundary; kernel hover-state threading (unlocks revealOnHover)
+21f-S9: COMPLETE. Gates green at a5ba6af; final review + fix wave + re-review done. NEXT UNIT: 21f-S10 (push, PR, squash-merge, ff-only sync, baselines update) — AWAITING USER GO + rowIdAt() decision.
+21f visual polish wave: complete (commit 0b87bc3, review approved; coordinator screenshot audit was the trigger — user directive)
+  Audit found (draw-sequence-test blind spots): direction glyphs INVERTED (canvas y-down; tests had enshrined wrong vertex order — flipped to correct in numeric/indicators; composite fixed identically); IconActionCluster painted letter badges not Lucide (now resolves via pre-existing public CGridApi.resolveIcon captured at bridge-wire time — zero kernel diff); benchmark-spread clipped mid-glyph (fragText maxWidth ellipsis); price-quote spread band fat smear → 2px 20%/40% alpha proportional; win-loss chunky blocks → 2px bars/1px gap/32% height around zero-line; bar labels straddling fill → percent, right-aligned, reverse-out past 80%; dots/ratings centered; demo staleMs raw epoch → lastPx+clock w/ frozen injectable now; charts page font normalized; ticker secondary real CUSIPs
+  NEW INFRA: apps/cgrid-showcase/e2e-visual (6 deterministic #grid-host snapshots, 3 pages × light/dark, separate config; functional E2E stays 148); baselines committed
+  Verified: renderers 277/277; tsc clean both; E2E 148; visual 6/6 stable; kernel/expression/format/rules/calc diff EMPTY; coordinator re-audited screenshots both themes — all fixes confirmed on-screen
+  KERNEL ESCALATION #2 (user decision, alongside rowIdAt): lucide.generated.ts mis-concatenates multi-path SVGs — several icon names (incl. 'x') mis-render; demo switched to verified 'ban' icon as workaround
+  Env note: 31 stale untracked .js emit stragglers were shadowing showcase .ts sources on the dev server (deleted; root cause = missing noEmit in showcase tsconfig build path — follow-up)
+  Minor (logged): composite.ts paintDirectionGlyph lacks its own vertex-order regression test (fix identical to tested copies)
+21f status: READY FOR S10 (merge verdict stands; visual quality bar now met). Pending user: rowIdAt() + lucide-bundle kernel fixes (recommend standalone kernel bugfix PR post-merge); S10 go.

@@ -2,8 +2,10 @@
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
     "outDir": "dist",
-    "rootDir": "src",
-    "noEmit": true
+    "noEmit": true,
+    "paths": {
+      "@kernel-src/*": ["../kernel/src/*"]
+    }
   },
   "include": ["src/**/*", "tests/**/*"],
   "exclude": ["dist", "node_modules"]
