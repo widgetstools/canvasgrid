@@ -64,3 +64,6 @@ export {
   buildShortcutPatches,
   detectShortcutConflicts,
 } from './shortcuts';
+
+export { wireEditIntoKernel } from './bridge';
+export type { WireEditOptions, EditBridgeHandle } from './bridge';
