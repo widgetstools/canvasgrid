@@ -46,3 +46,11 @@ export { collectTargetCells, buildSmartEditPatches } from './smartEdit';
 export type { TargetSurface } from './smartEdit';
 
 export { parseMagnitudeSuffix, applyMagnitudeColDefTransforms } from './magnitude';
+
+export {
+  collectBulkUpdateTargets,
+  bulkUpdateValueKind,
+  parseBulkUpdateValue,
+  buildBulkUpdatePatches,
+  makeDistinctValuesFeed,
+} from './bulkUpdate';

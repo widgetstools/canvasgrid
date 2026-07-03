@@ -6,6 +6,11 @@
 // TargetSurface is a structural, engine-side projection of the bridge's grid
 // surface — Task 7 (bulk-update) reuses it, Task 11's bridge implements it
 // over the kernel grid. No kernel imports here (engine discipline holds).
+//
+// `collectCellsByType` factors the ranges-first collection walk out so
+// Task 7's `collectBulkUpdateTargets` (bulkUpdate.ts) can reuse it with a
+// different cell-data-type filter instead of duplicating the walk — the
+// PUBLIC `collectTargetCells` signature/behavior below is unchanged.
 
 import type { CellTarget } from './patches';
 import { buildPatchesFromTargets } from './patches';
@@ -31,6 +36,19 @@ export interface TargetSurface {
  *  fetched row is missing/out-of-range; dedupes the final target list by
  *  rowId+colId. */
 export async function collectTargetCells(surface: TargetSurface): Promise<CellTarget[]> {
+  return collectCellsByType(surface, isNumericCellDataType);
+}
+
+/** Shared ranges-first collection walk (spec §3.6a), parameterized by a
+ *  cell-data-type inclusion predicate. `collectTargetCells` above binds
+ *  `isNumericCellDataType`; Task 7's `collectBulkUpdateTargets`
+ *  (bulkUpdate.ts) binds its own text/number/date/dateTime filter. Every
+ *  OTHER behavior — batching, editable filter, colMeta-null skip,
+ *  null-fetch skip, rowId+colId dedupe — is identical between callers. */
+export async function collectCellsByType(
+  surface: TargetSurface,
+  includeType: (cellDataType?: string) => boolean,
+): Promise<CellTarget[]> {
   const ranges = surface.getCellRanges();
 
   const wanted: Array<{ rowIndex: number; colId: string }> = [];
@@ -69,7 +87,7 @@ export async function collectTargetCells(surface: TargetSurface): Promise<CellTa
     if (!meta) continue;
     const row = rowByIndex.get(cell.rowIndex);
     if (!row) continue;
-    if (!isNumericCellDataType(meta.cellDataType)) continue;
+    if (!includeType(meta.cellDataType)) continue;
     if (!surface.isCellEditable(cell.rowIndex, cell.colId)) continue;
 
     let seenColIds = seenByRowId.get(row.rowId);
