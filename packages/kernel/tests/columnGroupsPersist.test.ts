@@ -137,6 +137,37 @@ describe('column-group structure persists through getState/setState', () => {
     g.destroy();
   });
 
+  it('removing EVERY group from a grid AUTHORED with groups persists the flat overlay — the authored groups do not resurrect on restore (2026-07-04 user report)', () => {
+    const grouped: (CColDef | CColGroupDef)[] = [
+      { groupId: 'G', headerName: 'Grp', children: [
+        { colId: 'b', field: 'b' }, { colId: 'c', field: 'c' },
+      ] },
+      { colId: 'a', field: 'a' },
+    ];
+    const g1 = mount(grouped);
+    const api1 = (g1 as any).makeApi();
+    // User deletes every group (panel Apply projects a flat def list).
+    api1.updateGridOptions({ columnDefs: [
+      { colId: 'b', field: 'b' }, { colId: 'c', field: 'c' }, { colId: 'a', field: 'a' },
+    ] });
+    const snapshot = g1.getState();
+    // The FLAT overlay must persist (constructed-with-groups grid), so
+    // restore can override the authored grouped defs.
+    const defs = groupDefsOf(snapshot);
+    expect(defs).toBeDefined();
+    expect(defs.some((n: any) => n.kind === 'group')).toBe(false);
+    g1.destroy();
+
+    // Fresh grid with the SAME authored grouped defs (a reload).
+    const g2 = mount(grouped);
+    const api2 = (g2 as any).makeApi();
+    expect(api2.getColumnGroupDefs().some((d: any) => d.children)).toBe(true);
+    g2.setState(snapshot);
+    expect(api2.getColumnGroupDefs().some((d: any) => d.children)).toBe(false);
+    expect(api2.getColumnGroupDefs().map((d: any) => d.colId)).toEqual(['b', 'c', 'a']);
+    g2.destroy();
+  });
+
   it('drops a group whose leaves are gone from a NEW base and still surfaces new base columns', () => {
     const g1 = mount(base);
     const api1 = (g1 as any).makeApi();

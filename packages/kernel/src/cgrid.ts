@@ -1049,17 +1049,24 @@ export class CGrid<TRow = any> {
     // the module-state registry (formerly the dedicated columnGroupDefs /
     // columnGroupOpen GridState fields; the v3→v4 snapshot migrator
     // relocates legacy snapshots into this envelope). `get()` omits the
-    // slice entirely when no group exists so snapshots stay compact;
-    // `set()` reuses the exact rehydrate → updateGridOptions path the
-    // Column Groups panel's Apply uses, then layers the runtime
-    // open/collapse state on top (open state applies AFTER the tree
-    // rebuild so a user's collapse wins over `openByDefault`).
+    // slice when the grid has no groups AND never had any (a flat grid
+    // persists nothing, keeping snapshots compact) — but a grid whose
+    // AUTHORED defs carry groups persists even a FLAT overlay, so
+    // "user removed every group" survives a reload instead of the
+    // constructor's grouped defs resurrecting (and re-inflating the
+    // header band; user report 2026-07-04). `set()` reuses the exact
+    // rehydrate → updateGridOptions path the Column Groups panel's
+    // Apply uses, then layers the runtime open/collapse state on top
+    // (open state applies AFTER the tree rebuild so a user's collapse
+    // wins over `openByDefault`).
+    const constructedWithGroups = flattenColumnGroups(options.columnDefs ?? [])
+      .some((n) => n.kind === 'group');
     this.moduleStateRegistry.register({
       id: 'columnGroups',
       version: 1,
       get: () => {
         const defs = toSerializedColumnGroupNodes(flattenColumnGroups(this.options.columnDefs ?? []));
-        if (!defs.some((n) => n.kind === 'group')) return undefined;
+        if (!defs.some((n) => n.kind === 'group') && !constructedWithGroups) return undefined;
         const open = this.columnGroupState.getState();
         return open.length > 0 ? { defs, open } : { defs };
       },
