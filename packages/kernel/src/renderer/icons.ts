@@ -18,6 +18,7 @@ export type IconName =
   | 'chevron-up'
   | 'chevron-down'
   | 'chevron-right'
+  | 'chevron-left'
   | 'chevrons-up-down'
   | 'filter'
   | 'menu'
@@ -37,6 +38,9 @@ const PATHS: Record<IconName, string> = {
   // (right-pointing). Lucide `chevron-right` path. Vocabulary continuity
   // with the existing sort chevrons: same stroke / line-cap.
   'chevron-right': 'M9 18l6-6-6-6',
+  // Task 10 — column-group header caret, expanded state (left-pointing;
+  // click collapses). Lucide `chevron-left` path.
+  'chevron-left': 'M15 18l-6-6 6-6',
   // Unsorted indicator (two stacked chevrons)
   'chevrons-up-down': 'M7 15l5 5 5-5 M7 9l5-5 5 5',
   // Filter funnel (catalog filter area, future)

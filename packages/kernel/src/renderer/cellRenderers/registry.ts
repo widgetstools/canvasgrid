@@ -85,15 +85,18 @@ export interface CellPaintConfig {
    *  black/white depending on the active theme). Only meaningful when
    *  `unSortIcon === true`. */
   unSortIconColor?: string;
-  /** Cycle 18 / Task 4 — pivot column-group expand/collapse affordance.
-   *  Set ONLY on synthesized pivot column-group headers that own a
-   *  `columnGroupShow:'closed'` "group total" leaf (i.e. branch pivot
-   *  groups). `'open'` paints a chevron-down to indicate the group is
-   *  expanded; `'closed'` paints a chevron-right. The header click
-   *  already routes through `toggleColumnGroup(groupId)` —
-   *  `interaction/features/headerClick.ts` — so the chevron is the
-   *  visual cue for the existing hit-testable group region. Design note:
-   *  `docs/superpowers/plans/notes/cycle-18-pivoting-design.md` (Task 4). */
+  /** Cycle 18 / Task 4; broadened Task 10 — column-group expand/collapse
+   *  affordance. Despite the name, NOT pivot-only: set on ANY column-group
+   *  header (pivot result group OR regular authored group) whose collapse
+   *  has a visible effect — see `groupHasToggleEffect` in
+   *  `renderer/painters/byRows.ts`. `'open'` paints a leading
+   *  `chevron-left` (click to collapse); `'closed'` paints a leading
+   *  `chevron-right` (click to expand) — horizontal carets, ag-grid style.
+   *  The header click already routes through `toggleColumnGroup(groupId)`
+   *  — `interaction/features/headerClick.ts` — so the caret is the visual
+   *  cue for the existing hit-testable group region. Design notes:
+   *  `docs/superpowers/plans/notes/cycle-18-pivoting-design.md` (Task 4,
+   *  original pivot-only version) and Task 10 (this broadening). */
   pivotGroupExpand?: 'open' | 'closed';
   /** Row-select header checkbox state, set ONLY on the header cell of
    *  columns declaring `headerCheckboxSelection: true`. `undefined`
@@ -590,9 +593,14 @@ export const headerCell: CellPainter = {
     let textX = p.bounds.x + HEADER_PADDING;
     if (p.pivotGroupExpand !== undefined) {
       const iconCx = p.bounds.x + HEADER_PADDING + PIVOT_CHEVRON_SIZE / 2;
+      // Task 10 — horizontal carets for ALL column-group headers (pivot
+      // result groups AND regular authored groups): 'open' → chevron-left
+      // (click collapses), 'closed' → chevron-right (click expands). No
+      // existing test pins the prior chevron-down/right pivot-only look,
+      // so both flavors unify on the same horizontal vocabulary.
       drawIcon(
         gc,
-        p.pivotGroupExpand === 'open' ? 'chevron-down' : 'chevron-right',
+        p.pivotGroupExpand === 'open' ? 'chevron-left' : 'chevron-right',
         iconCx, cy, PIVOT_CHEVRON_SIZE,
         { color: p.iconColor ?? p.fg, strokeWidth: 2 },
       );

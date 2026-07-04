@@ -71,9 +71,15 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
       {
         groupId: 'valuation',
         headerName: 'Valuation',
+        // Task 10 — starts OPEN so the seeded grid shows marketValue by
+        // default; the caret's collapse affordance is what hides it.
+        openByDefault: true,
         children: [
           num('Notional', 'notionalAmount', { valueFormatter: '#,##0', aggFunc: 'sum' }),
-          num('Mkt Value', 'marketValue', { valueFormatter: '#,##0', aggFunc: 'sum' }),
+          // Task 10 — `columnGroupShow: 'open'` so collapsing "Valuation"
+          // has a visible effect (this column drops out of the viewport)
+          // and the group header caret has something real to demonstrate.
+          num('Mkt Value', 'marketValue', { valueFormatter: '#,##0', aggFunc: 'sum', columnGroupShow: 'open' }),
         ],
       },
       num('P&L', 'pnl', { aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)' }),

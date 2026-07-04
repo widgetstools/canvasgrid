@@ -3,12 +3,33 @@ import type { CachedContext2D } from '../gc';
 import type { ViewportColumn, ViewportRow } from '../../core/viewport';
 import type { CellPaintConfig } from '../cellRenderers/registry';
 import type { ResolvedColDef } from '../../core/propertyChain';
+import type { ResolvedColGroupDef } from '../../core/columnTree';
 import { applyCellProps } from '../../core/propertyChain';
 import { HeaderGroupSubgrid } from '../../core/subgrid';
 import { cellMatchesAnyQuickFilterTerm } from '../../worker/dataPipeline';
 import { isPivotResultGroupId } from '../../core/pivotColumns';
 import { resolveIcon as resolveIconPath } from '../../icons/registry';
 import { bumpFormatEvalGeneration } from '../../core/formatEvalMemo';
+
+/** Task 10 — `true` when toggling `groupDef`'s open/closed state has a
+ *  visible effect on the columns underneath it, i.e. AG-Grid's rule for
+ *  "does this group get a caret": a direct sub-group child (collapsing
+ *  hides everything under the descendant groups), OR a direct leaf child
+ *  whose `columnGroupShow` is `'open'` or `'closed'` (a leaf that only
+ *  shows in one of the two states). A group whose children are ALL
+ *  always-visible leaves has nothing to hide, so no caret paints — matching
+ *  ag-grid (and avoiding a pointless affordance on regular column groups).
+ *  Exported for unit coverage. Used by the REGULAR (non-pivot) group-header
+ *  branch below; the pivot branch keeps its own narrower check (`'closed'`
+ *  fallback leaf only — pivot groups never emit `'open'`-tagged leaves) so
+ *  pivot rendering is untouched. */
+export function groupHasToggleEffect(groupDef: Pick<ResolvedColGroupDef, 'children'>): boolean {
+  return groupDef.children.some(
+    (c) =>
+      c.kind === 'group' ||
+      (c.kind === 'leaf' && (c.colDef.columnGroupShow === 'open' || c.colDef.columnGroupShow === 'closed')),
+  );
+}
 
 /** Cycle 21c / Task 16 — pending inline-icon draw for one cell. Resolved
  *  before the cell painter runs (so the painter's text can shift by the
@@ -495,6 +516,17 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
             if (hasBranchChild || hasClosedLeaf) {
               pivotGroupExpand = getColumnGroupOpen(groupDef.groupId) ? 'open' : 'closed';
             }
+          } else if (groupDef && getColumnGroupOpen && groupHasToggleEffect(groupDef)) {
+            // Task 10 — REGULAR (non-pivot) column-group caret. AG-Grid
+            // parity: any group whose collapse would actually hide a
+            // column (a sub-group child, or a direct `columnGroupShow`
+            // 'open'/'closed' leaf) gets the same leading caret affordance
+            // pivot groups already had. Reuses the `pivotGroupExpand` config
+            // field (see its doc comment in registry.ts) to keep the paint
+            // path — and the click hit-test already wired in
+            // `interaction/features/headerClick.ts` → `toggleColumnGroup` —
+            // unchanged.
+            pivotGroupExpand = getColumnGroupOpen(groupDef.groupId) ? 'open' : 'closed';
           }
           applyCellProps(config, {
             theme,

@@ -377,3 +377,63 @@ test('drag an ungrouped column onto a group row to nest it', async ({ page }) =>
   expect(risk).toBeTruthy();
   expect(risk!.children?.some((c: AnyDef) => c.colId === 'cusip')).toBe(true);
 });
+
+// Task 10 — regular column-group headers now paint a leading horizontal
+// expand/collapse caret (chevron-left open / chevron-right closed), same
+// as pivot result groups already had. The caret pixel isn't DOM-assertable
+// on a canvas surface, so this journey asserts the underlying behavior the
+// caret communicates: collapsing "Valuation" (which owns a
+// `columnGroupShow:'open'` child — see `src/main.ts`) actually drops that
+// column out of the rendered viewport, and reopening brings it back.
+// `getHeaderBoundsAt(colId)` is the real runtime-visibility signal here —
+// it returns non-null bounds only while the column is in the current
+// column order (see `CGridApi.getHeaderBoundsAt`'s doc comment).
+test('collapsing "Valuation" hides its columnGroupShow:"open" column; reopening restores it', async ({ page }) => {
+  await waitForGridReady(page);
+
+  const groupState = await page.evaluate(() =>
+    (window as unknown as { __cgapi: any }).__cgapi.getColumnGroupState(),
+  );
+  const valuation = groupState.find((s: AnyDef) => s.groupId === 'valuation');
+  expect(valuation, 'seeded "valuation" group should report open state').toBeTruthy();
+  expect(valuation.open).toBe(true);
+
+  // Open: the 'open'-tagged marketValue column is in the visible header order.
+  const boundsWhileOpen = await page.evaluate(() =>
+    (window as unknown as { __cgapi: any }).__cgapi.getHeaderBoundsAt('marketValue'),
+  );
+  expect(boundsWhileOpen, 'marketValue should be visible while its group is open').not.toBeNull();
+
+  // Collapse "Valuation" via the same primitive the panel/click path uses.
+  await page.evaluate(() =>
+    (window as unknown as { __cgapi: any }).__cgapi.setColumnGroupState([{ groupId: 'valuation', open: false }]),
+  );
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as { __cgapi: any }).__cgapi.getHeaderBoundsAt('marketValue')),
+    )
+    .toBeNull();
+
+  const stateAfterCollapse = await page.evaluate(() =>
+    (window as unknown as { __cgapi: any }).__cgapi.getColumnGroupState(),
+  );
+  expect(stateAfterCollapse.find((s: AnyDef) => s.groupId === 'valuation').open).toBe(false);
+
+  // Reopen: the column reappears and its own def/state are unaffected —
+  // only runtime visibility toggled, not the authored columnDefs.
+  await page.evaluate(() =>
+    (window as unknown as { __cgapi: any }).__cgapi.setColumnGroupState([{ groupId: 'valuation', open: true }]),
+  );
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => (window as unknown as { __cgapi: any }).__cgapi.getHeaderBoundsAt('marketValue')),
+    )
+    .not.toBeNull();
+
+  const defsAfter = await getColumnGroupDefs(page);
+  const marketValue = findNode(defsAfter, (d) => d.colId === 'marketValue');
+  expect(marketValue).toBeTruthy();
+  expect(marketValue!.columnGroupShow).toBe('open');
+});
