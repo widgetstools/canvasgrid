@@ -520,17 +520,21 @@ describe('ColumnGroupsToolPanel', () => {
     expect(apply.disabled).toBe(true);
   });
 
-  it('clicking "+ Group" enables Apply and Apply pushes columnDefs once', () => {
+  it('clicking "+ Group" dirties the model and enables Apply', () => {
+    const panel = new ColumnGroupsToolPanel();
+    panel.init(makeParams(vi.fn()));
+    (panel.getGui().querySelector('[data-cg-add-group]') as HTMLButtonElement).click();
+    const apply = panel.getGui().querySelector('[data-cg-apply]') as HTMLButtonElement;
+    expect(apply.disabled).toBe(false);
+  });
+
+  it('Apply on an empty new group is validation-blocked (no write)', () => {
     const onApply = vi.fn();
     const panel = new ColumnGroupsToolPanel();
     panel.init(makeParams(onApply));
     (panel.getGui().querySelector('[data-cg-add-group]') as HTMLButtonElement).click();
-    const apply = panel.getGui().querySelector('[data-cg-apply]') as HTMLButtonElement;
-    expect(apply.disabled).toBe(false);
-    apply.click();
-    // new empty group blocks Apply via validation → still 0 calls; add a name+child path is covered in E2E.
-    // Here we assert validation guarded the write:
-    expect(onApply).toHaveBeenCalledTimes(0);
+    (panel.getGui().querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+    expect(onApply).toHaveBeenCalledTimes(0); // empty group fails validate()
   });
 
   it('Reset re-seeds from getColumnGroupDefs and disables Apply', () => {
@@ -574,7 +578,11 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   private resetBtn!: HTMLButtonElement;
   private api!: Pick<CGridApi, 'getColumnGroupDefs' | 'updateGridOptions'>;
   private nodes: Node[] = [];
-  private baseline: (CColDef | CColGroupDef)[] = [];
+  /** Canonical JSON of the last-applied projected tree — comparing against
+   *  `project(nodes)` (also projected) makes seed→dirty reliably false even
+   *  though raw defs and projected defs differ by key order / dropped
+   *  undefineds. */
+  private baseline = '';
   private selectedGroupId: string | null = null;
 
   init(params: ToolPanelParams): void {
@@ -593,8 +601,9 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   destroy(): void { this.root.remove(); }
 
   private seed(): void {
-    this.baseline = this.api.getColumnGroupDefs();
-    this.nodes = flatten(structuredClone(this.baseline));
+    const defs = this.api.getColumnGroupDefs();
+    this.nodes = flatten(structuredClone(defs));
+    this.baseline = JSON.stringify(project(this.nodes)); // canonical, not raw defs
     this.selectedGroupId = null;
     this.render();
   }
@@ -602,14 +611,15 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   private mutate(fn: (n: Node[]) => Node[]): void { this.nodes = fn(this.nodes); this.render(); }
 
   private get dirty(): boolean {
-    return JSON.stringify(project(this.nodes)) !== JSON.stringify(this.baseline);
+    return JSON.stringify(project(this.nodes)) !== this.baseline;
   }
 
   private onApply(): void {
     const res = validate(this.nodes);
     if (!res.ok) { this.flagGroup(res.groupId, res.message); return; }
-    this.api.updateGridOptions({ columnDefs: project(this.nodes) });
-    this.baseline = project(this.nodes);
+    const defs = project(this.nodes);
+    this.api.updateGridOptions({ columnDefs: defs });
+    this.baseline = JSON.stringify(defs);
     this.render();
   }
 
