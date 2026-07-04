@@ -1100,3 +1100,106 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 **Task 6 self-review:** overlay carries NO functions (defs rehydrated from live base); reuses tested `flatten`/`project`; `rehydrate` handles dropped colIds + newly-added columns + empty-group prune to fixpoint; only persists when a group exists; schema version bumped; restore ordered before `columnState`; E2E fixme flipped.
+
+---
+
+## Task 7: Expose `columnGroupShow` per-column in the editor (expand/collapse visibility)
+
+**Provenance:** added 2026-07-03 per user request — support ag-grid's column-group expand/collapse where "some columns are always visible" and others show only when the group is open/closed. **The engine already implements this**: `CColDef.columnGroupShow?: 'open' | 'closed' | null` exists (`types/column.ts:416`) and `resolveVisibleLeaves` (`core/columnGroupState.ts`) enforces the exact semantics — `null`/absent = always visible, `'open'` = visible only while every ancestor group is open, `'closed'` = visible only when the parent is collapsed (with cascading collapse). `openByDefault` is already editable (Task 4 Style band). This task is EDITOR-ONLY: expose the per-column `columnGroupShow` authoring control. No kernel change.
+
+**UX (user chose BOTH):** an inline 3-state control on each column row that sits inside a group, AND the same control mirrored in the selected group's Style band as a "Children visibility" list. Ungrouped columns show no control. Both surfaces read/write the same `ColumnNode` field, so a `render()` after any edit keeps them in sync.
+
+**Files:**
+- Modify: `packages/kernel/src/interaction/columnGroups/model.ts` (add `columnGroupShow` to `ColumnNode`; `flatten` reads `d.columnGroupShow`; `project` writes it; add `setColumnGroupShow`)
+- Modify: `packages/kernel/src/interaction/toolPanels/columnGroupsPanel.ts` (inline control on grouped column rows; children-visibility list in the Style band)
+- Modify: `packages/kernel/tests/columnGroupsModel.test.ts` and `tests/columnGroupsToolPanel.test.ts`
+- Modify: `apps/cgrid-customizer-demo/e2e/columnGroups.spec.ts` (add a columnGroupShow journey)
+
+**Interfaces:**
+- `ColumnNode` gains `columnGroupShow?: 'open' | 'closed' | null`.
+- `setColumnGroupShow(nodes: Node[], colId: string, value: 'open' | 'closed' | null): Node[]` — pure, returns a new array (mirrors `setHidden`).
+- `flatten` copies `d.columnGroupShow` onto the ColumnNode; `project` writes `leaf.columnGroupShow` only when set (preserve round-trip identity — omit when `undefined`; a stored `null` means explicit "always", write it only if the base def had it).
+
+- [ ] **Step 1: Model — failing test**
+
+Add to `tests/columnGroupsModel.test.ts`:
+
+```ts
+import { setColumnGroupShow } from '../src/interaction/columnGroups/model';
+
+describe('columnGroupShow round-trip + mutation', () => {
+  const defs: (CColDef | CColGroupDef)[] = [
+    { groupId: 'g', headerName: 'G', children: [
+      { colId: 'a', field: 'a', columnGroupShow: 'open' },
+      { colId: 'b', field: 'b' }, // absent = always visible
+    ] },
+  ];
+  it('round-trips columnGroupShow through flatten/project', () => {
+    expect(project(flatten(defs))).toEqual(defs);
+  });
+  it('flatten carries columnGroupShow onto the ColumnNode', () => {
+    const a = flatten(defs).find((n) => n.kind === 'column' && (n as any).colId === 'a') as any;
+    expect(a.columnGroupShow).toBe('open');
+  });
+  it('setColumnGroupShow updates one column and projects it', () => {
+    const nodes = setColumnGroupShow(flatten(defs), 'b', 'closed');
+    const g = project(nodes)[0] as CColGroupDef;
+    const b = g.children.find((c) => (c as CColDef).colId === 'b') as CColDef;
+    expect(b.columnGroupShow).toBe('closed');
+  });
+  it('setting back to null (always) is representable', () => {
+    const nodes = setColumnGroupShow(flatten(defs), 'a', null);
+    const g = project(nodes)[0] as CColGroupDef;
+    const a = g.children.find((c) => (c as CColDef).colId === 'a') as CColDef;
+    expect(a.columnGroupShow ?? null).toBeNull();
+  });
+});
+```
+
+- [ ] **Step 2: Run → fail** — `npx vitest run tests/columnGroupsModel.test.ts --root packages/kernel` (missing `setColumnGroupShow` / field).
+
+- [ ] **Step 3: Implement in `model.ts`**
+
+- `ColumnNode`: add `columnGroupShow?: 'open' | 'closed' | null;`
+- `flatten` leaf branch: add `columnGroupShow: d.columnGroupShow,` to the pushed ColumnNode.
+- `project` leaf: after building `leaf`, `if (n.columnGroupShow !== undefined) leaf.columnGroupShow = n.columnGroupShow;` (mirrors the `hide` handling — omit when undefined so identity holds; write an explicit `null` since that is a meaningful "always" the base def carried).
+- Add:
+  ```ts
+  export function setColumnGroupShow(
+    nodes: Node[], colId: string, value: 'open' | 'closed' | null,
+  ): Node[] {
+    return nodes.map((n) => (n.kind === 'column' && n.colId === colId ? { ...n, columnGroupShow: value } : n));
+  }
+  ```
+- Note the `SerializedNode`/`rehydrate`/`toSerializedNodes` path from Task 6: `columnGroupShow` is a plain-data field on `ColumnNode`, so it is INCLUDED in the persisted overlay automatically (it is not `def`, not a function) and survives `rehydrate` via the `{ ...s, def }` spread. Add one assertion to `tests/columnGroupsPersist.test.ts` that a column's `columnGroupShow` survives getState→setState onto a fresh grid.
+
+- [ ] **Step 4: Run → pass** (model + persist suites).
+
+- [ ] **Step 5: Panel — failing test**
+
+Add to `tests/columnGroupsToolPanel.test.ts`: after init with a seeded group containing a column, assert an inline `columnGroupShow` control exists on a grouped column row (`[data-cg-node="<colId>"] [data-cg-groupshow]`) and NOT on an ungrouped column row; changing it (set the `<select>` value + dispatch `change`, or click the segmented control) dirties the model (Apply enables) and, after Apply, the projected def carries the chosen `columnGroupShow`. Add a second assertion that selecting the group renders a children-visibility list in `[data-cg-style]` (`[data-cg-child-show="<colId>"]`) whose control reflects/writes the same value.
+
+- [ ] **Step 6: Implement in `columnGroupsPanel.ts`**
+
+- **Inline control:** in the column-row builder, when the column's `parentId` is non-null (inside a group), append a compact 3-state control tagged `data-cg-groupshow` with options Always (`null`) / When open (`'open'`) / When collapsed (`'closed'`). Use a native `<select>` styled with existing tokens (reuse `.cg-settings-*` select styling) OR a small segmented button group consistent with the Style band toggles. On change → `this.mutate((ns) => setColumnGroupShow(ns, colId, value))`. Do NOT render it for `parentId === null` rows.
+- **Style-band mirror:** in `renderStyle()` (Task 4), after the header fields, add a "Children visibility" section listing the selected group's direct + nested descendant columns, each with the same 3-state control tagged `data-cg-child-show="<colId>"`, wired to the same `setColumnGroupShow`. Keep it tokens-only; label copy: section "Children visibility", options "Always" / "When open" / "When collapsed".
+- Keyboard-accessible + focus ring (same floor as Task 3/4). Both controls funnel through one helper so they never diverge.
+
+- [ ] **Step 7: Run → pass** (panel suite). Also run full kernel suite `npm test --workspace=@cgrid/kernel`.
+
+- [ ] **Step 8: CSS (tokens only)** — add any `.cg-colgroups-groupshow` / children-list rules to `theming/tokens.css`, reusing existing tokens; no literal colors.
+
+- [ ] **Step 9: E2E journey**
+
+In `apps/cgrid-customizer-demo/e2e/columnGroups.spec.ts` add a test: open the tab, set a grouped column's inline control to "When collapsed", Apply, assert via `getColumnGroupDefs()` that the column's def has `columnGroupShow: 'closed'`; reload and assert it persisted. If the grid exposes a visible-columns/leaf API on `window.__cgapi`, additionally collapse the group (via `setColumnGroupState` or the header toggle) and assert the column's runtime visibility flips; otherwise the def+persist assertion suffices (runtime `resolveVisibleLeaves` semantics are already unit-covered in the kernel). Rebuild the kernel (`npm run build --workspace=@cgrid/kernel`) before running so the demo's `dist` sees the change. Run `npm run test:e2e --workspace=apps/cgrid-customizer-demo`.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add packages/kernel/src/interaction/columnGroups/model.ts packages/kernel/src/interaction/toolPanels/columnGroupsPanel.ts packages/kernel/src/theming/tokens.css packages/kernel/tests/columnGroupsModel.test.ts packages/kernel/tests/columnGroupsToolPanel.test.ts packages/kernel/tests/columnGroupsPersist.test.ts apps/cgrid-customizer-demo/e2e/columnGroups.spec.ts
+git commit -m "feat(kernel): edit columnGroupShow (always/open/closed) per column in Column Groups panel
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+```
+
+**Task 7 self-review:** engine already enforces `columnGroupShow` (no kernel behavior change); model round-trips the field + persists via the Task 6 overlay automatically; BOTH UI surfaces (inline + Style band) write one shared helper; ungrouped rows omit the control; tokens-only, keyboard-accessible; E2E asserts def + persistence.
