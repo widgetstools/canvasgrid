@@ -65,6 +65,7 @@ import { FloatingFilterOverlay } from './interaction/floatingFilterOverlay';
 import { PopupHost } from './interaction/editors/popupHost';
 import { FilterPopupHost } from './interaction/filters/filterPopupHost';
 import { ContextMenuHost } from './interaction/contextMenu/host';
+import { ToolbarHost, type ToolbarGridContext } from './interaction/toolbar/host';
 import { ToolPanelRegistry } from './interaction/toolPanels/registry';
 import { ColumnsToolPanel } from './interaction/toolPanels/columnsPanel';
 import { FiltersToolPanel } from './interaction/toolPanels/filtersPanel';
@@ -230,6 +231,11 @@ export type {
   SettingsFieldType,
   SettingsSelectOption,
 } from './types/settingsSchema';
+// Cycle 21i Phase 2 / T1 — the intrinsic toolbar strip host. Apps get
+// the instance via `grid.getToolbar()`; the class type is exported so
+// helpers can be typed without reaching into kernel internals.
+export { ToolbarHost } from './interaction/toolbar/host';
+export type { ToolbarGridContext } from './interaction/toolbar/host';
 export type {
   SelectionConfig,
   SingleRowSelectionConfig,
@@ -652,6 +658,19 @@ export class CGrid<TRow = any> {
    *  entries reference via `statusPanel`. The status bar host reads
    *  this registry to instantiate panels on demand. */
   private statusPanelRegistry: StatusPanelRegistry;
+  /** Cycle 21i Phase 2 / T1 — toolbar host (DOM strip at the VERY top
+   *  of the grid, above the top status bar + pivot panel + row group
+   *  panel + column headers). Intrinsic: mounts by default on every
+   *  grid; `null` only when the app opts out via `toolbar: false`.
+   *  Reserves a top inset via `reserveToolbarSpace` so all sibling
+   *  chrome + the canvas region shift down in lock-step. Plain DOM —
+   *  not a canvas element, not a subgrid. */
+  private toolbarHost: ToolbarHost | null = null;
+  /** Cycle 21i Phase 2 / T1 — reserved top inset (CSS px) contributed
+   *  by the toolbar. Applied ABOVE `statusBarInsets.top` in
+   *  `applyVerticalInsets` so the visual order is: toolbar → top
+   *  status bar → pivot panel → row group panel → headers → body. */
+  private toolbarTopInset = 0;
   /** Cycle 13 / Task 1 — status-bar host (DOM strip on the bottom or
    *  top edge that houses status panels). `null` when `options.statusBar`
    *  resolves to off. Reserves a top/bottom inset on the canvas region
@@ -1272,6 +1291,20 @@ export class CGrid<TRow = any> {
       this.sideBar = new SideBarHost(this.root, ctx, sideBarDef);
     }
 
+    // Cycle 21i Phase 2 / T1 — intrinsic toolbar strip at the very top
+    // of the grid. Mounts by DEFAULT on every grid; apps opt out via
+    // `toolbar: false`. A plain DOM strip following the status-bar /
+    // row-group-panel host pattern (reserve-space inset — NOT a canvas
+    // subgrid). Attaches to `this.root` after the canvas + editor
+    // overlay so its z-order sits above them naturally.
+    if (options.toolbar !== false) {
+      this.toolbarHost = new ToolbarHost(
+        this.root,
+        this.makeToolbarContext(),
+        options.toolbarHeight !== undefined ? { height: options.toolbarHeight } : undefined,
+      );
+    }
+
     // Cycle 13 / Task 1 — status bar (DOM strip on the bottom or top
     // edge hosting status panels). Mounts when `options.statusBar`
     // resolves to a non-null def via `normalizeStatusBarOption`. Wires
@@ -1313,7 +1346,7 @@ export class CGrid<TRow = any> {
       // Initial top offset = status bar's top inset (zero when no top
       // status bar). The panel's own `style.top` is updated whenever
       // the top status bar's inset changes.
-      this.setRowGroupPanelTop(this.statusBarInsets.top);
+      this.setRowGroupPanelTop(this.toolbarTopInset + this.statusBarInsets.top);
     }
 
     // Cycle 18 / Task 6 — pivot panel host (top-of-grid drop strip
@@ -1339,7 +1372,7 @@ export class CGrid<TRow = any> {
         this.pivotEngine.getPivotColumns(),
         { showOnPivotMode: !ppExplicit },
       );
-      this.setPivotPanelTop(this.statusBarInsets.top);
+      this.setPivotPanelTop(this.toolbarTopInset + this.statusBarInsets.top);
     }
 
     // 8. Hit-test + input
@@ -3928,7 +3961,7 @@ export class CGrid<TRow = any> {
       this.grouping.getGroupingState().getPerLevelSort(),
       { suppressSort: this.options.rowGroupPanelSuppressSort === true },
     );
-    this.setRowGroupPanelTop(this.statusBarInsets.top);
+    this.setRowGroupPanelTop(this.toolbarTopInset + this.statusBarInsets.top);
   }
 
   /** Cycle 18 / Task 6 — runtime swap of `pivotPanelShow`. When the
@@ -3955,7 +3988,7 @@ export class CGrid<TRow = any> {
       next,
       this.pivotEngine.getPivotColumns(),
     );
-    this.setPivotPanelTop(this.statusBarInsets.top);
+    this.setPivotPanelTop(this.toolbarTopInset + this.statusBarInsets.top);
   }
 
   /** Cycle 18 / Task 6 — build the per-host context object shared by
@@ -5088,6 +5121,60 @@ export class CGrid<TRow = any> {
     this.applyVerticalInsets();
   }
 
+  /** Cycle 21i Phase 2 / T1 — the toolbar strip's reservation channel.
+   *  Same shape as the status-bar / row-group-panel reservations; the
+   *  toolbar contributes the TOPMOST inset. Canvas-destroy-safe: the
+   *  `applyVerticalInsets` body null-guards `cgridCanvas`, so the
+   *  host's release call during `destroy()` lands cleanly. */
+  private reserveToolbarSpace(side: 'top', height: number): void {
+    if (side !== 'top') return;
+    if (this.toolbarTopInset === height) return;
+    this.toolbarTopInset = height;
+    this.applyVerticalInsets();
+  }
+
+  /** Cycle 21i Phase 2 / T1 — context handed to ToolbarHost. Keeps the
+   *  host framework-agnostic: reservation callback + typed event
+   *  fan-in, no CGrid import. */
+  private makeToolbarContext(): ToolbarGridContext {
+    return {
+      setReservedSpace: (side, height) => this.reserveToolbarSpace(side, height),
+      emit: (event) => this.events.emit(event),
+    };
+  }
+
+  /** Cycle 21i Phase 2 / T1 — runtime `toolbar` / `toolbarHeight`
+   *  flips route here from the runtime-options apply table. Mounts,
+   *  unmounts, or re-sizes the strip; each path re-emits the
+   *  reservation so the grid body reflows. */
+  updateToolbar(): void {
+    const enabled = this.options.toolbar !== false;
+    if (enabled && !this.toolbarHost) {
+      this.toolbarHost = new ToolbarHost(
+        this.root,
+        this.makeToolbarContext(),
+        this.options.toolbarHeight !== undefined ? { height: this.options.toolbarHeight } : undefined,
+      );
+      return;
+    }
+    if (!enabled && this.toolbarHost) {
+      this.toolbarHost.destroy();
+      this.toolbarHost = null;
+      return;
+    }
+    this.toolbarHost?.updateHeight(this.options.toolbarHeight);
+  }
+
+  /** Cycle 21i Phase 2 / T1 — the intrinsic toolbar strip host, or
+   *  `null` when the app opted out via `toolbar: false` (or after
+   *  destroy). Apps subscribe to the intrinsic controls via
+   *  `onSave` / `onDateChange` and add their own content via
+   *  `addButton` / `addIconButton` / `addDivider` / `addSpacer` /
+   *  `addContent`. */
+  getToolbar(): ToolbarHost | null {
+    return this.toolbarHost;
+  }
+
   /** Cycle 15 / Task 6 — recompute and apply the combined top +
    *  bottom insets to the scroller, editor overlay, canvas host,
    *  and the row group panel's own top offset. Top inset is the
@@ -5102,12 +5189,21 @@ export class CGrid<TRow = any> {
     // left half, column labels on the right half, separated by a
     // thin hairline). Saves the second 32 px of vertical inset.
     const sharing = this.isSharingTopStrip();
-    const stripTop = this.statusBarInsets.top;
+    // Cycle 21i Phase 2 / T1 — the toolbar is the TOPMOST strip; the
+    // top status bar parks just below it, so every downstream offset
+    // (pivot panel, row group panel, scroller, canvas) folds the
+    // toolbar inset in through `stripTop`.
+    const toolbarTop = this.toolbarTopInset;
+    const stripTop = toolbarTop + this.statusBarInsets.top;
     const panelInset = sharing
       ? Math.max(this.pivotPanelTopInset, this.rowGroupPanelTopInset)
       : this.pivotPanelTopInset + this.rowGroupPanelTopInset;
     const top = stripTop + panelInset;
     const bottom = this.statusBarInsets.bottom;
+    // A top-positioned status bar pins itself `top: 0` via CSS; shift
+    // it below the toolbar. Bottom-positioned bars are unaffected.
+    const sbTopEl = this.root.querySelector('.cg-status-bar[data-position="top"]') as HTMLElement | null;
+    if (sbTopEl) sbTopEl.style.top = `${toolbarTop}px`;
     this.scroller.style.top = `${top}px`;
     this.scroller.style.bottom = `${bottom}px`;
     this.editorContainer.style.top = `${top}px`;
@@ -5450,6 +5546,7 @@ export class CGrid<TRow = any> {
       },
       updateRowGroupPanelShow: (value) => this.updateRowGroupPanelShow(value),
       updatePivotPanelShow: (value) => this.updatePivotPanelShow(value),
+      updateToolbar: () => this.updateToolbar(),
       updatePivotMaxGeneratedColumns: (value) => this.pivotEngine.updateMaxGeneratedColumns(value),
       updateStrictPivotColumnOrder: (value) => this.pivotEngine.updateStrictColumnOrder(value),
       updatePivotTotalsOption: () => this.pivotEngine.updateTotalsOption(),
@@ -5864,6 +5961,12 @@ export class CGrid<TRow = any> {
     // reserveStatusBarSpace bails out gracefully if the host's release
     // call lands after cgridCanvas.destroy.
     this.statusBar?.destroy();
+    // Cycle 21i Phase 2 / T1 — release the toolbar's top inset + remove
+    // its DOM. destroy() calls back into reserveToolbarSpace(0), which
+    // is canvas-destroy-safe via the same null-guard as the other
+    // strips.
+    this.toolbarHost?.destroy();
+    this.toolbarHost = null;
     // Cycle 15 / Task 6 — release the row group panel's top inset
     // + remove its DOM. The host's destroy() calls back into
     // reserveRowGroupPanelSpace(0) which is canvas-destroy-safe via

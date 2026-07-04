@@ -53,6 +53,12 @@ async function openColumnGroupsTab(page: Page): Promise<void> {
  *  (`DRAG_THRESHOLD_PX` in columnGroupsPanel.ts) — a plain mousedown+mouseup
  *  with no meaningful movement never starts a drag session there. */
 async function dragOnto(page: Page, source: Locator, target: Locator): Promise<void> {
+  // The panel's node list can be taller than its visible scroll area
+  // (chrome above the grid — e.g. the intrinsic toolbar — shrinks it
+  // further). Raw-coordinate mouse events on an off-screen row hit
+  // nothing, so bring both endpoints into view before measuring.
+  await source.scrollIntoViewIfNeeded();
+  await target.scrollIntoViewIfNeeded();
   const sBox = await source.boundingBox();
   const tBox = await target.boundingBox();
   if (!sBox || !tBox) throw new Error('dragOnto: source or target has no bounding box');

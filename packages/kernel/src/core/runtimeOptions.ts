@@ -79,6 +79,8 @@ export type RuntimeOption =
   | 'suppressAggFuncInHeader'
   | 'rowGroupPanelShow'
   | 'rowGroupPanelSuppressSort'
+  | 'toolbar'
+  | 'toolbarHeight'
   | 'pivotPanelShow'
   | 'pivotMaxGeneratedColumns'
   | 'enableStrictPivotColumnOrder'
@@ -152,6 +154,11 @@ export interface RuntimeOptionTarget<TRow = any> {
    *  CGrid normalises the value (undefined / `'never'` → unmount;
    *  otherwise mount-or-update). */
   updateRowGroupPanelShow(value: 'always' | 'onlyWhenGrouping' | 'never' | undefined): void;
+  /** Cycle 21i Phase 2 / T1 — re-resolve the intrinsic toolbar strip
+   *  from the current `options.toolbar` / `options.toolbarHeight`.
+   *  CGrid mounts (`toolbar !== false` with no host), unmounts
+   *  (`toolbar: false` with a live host), or re-sizes in place. */
+  updateToolbar(): void;
   /** Cycle 18 / Task 6 — hand the runtime pivot-panel show mode to
    *  CGrid so it can mount / unmount / setShowMode on the host. */
   updatePivotPanelShow(value: 'always' | 'onlyWhenPivoting' | 'never' | undefined): void;
@@ -364,6 +371,13 @@ export function applyRuntimeOption<TRow>(
         value as 'always' | 'onlyWhenGrouping' | 'never' | undefined,
       );
       return;
+    case 'toolbar':
+    case 'toolbarHeight':
+      // Cycle 21i Phase 2 / T1 — runtime mount / unmount / re-size of
+      // the intrinsic toolbar strip. The new value is already stored in
+      // `target.options[key]`; updateToolbar reads both fields back.
+      target.updateToolbar();
+      return;
     case 'pivotPanelShow':
       // Cycle 18 / Task 6 — runtime mount / unmount / show-mode swap
       // for the pivot panel (top-of-grid drop strip).
@@ -451,6 +465,8 @@ export const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOpt
   'suppressAggFuncInHeader',
   'rowGroupPanelShow',
   'rowGroupPanelSuppressSort',
+  'toolbar',
+  'toolbarHeight',
   'pivotPanelShow',
   'pivotMaxGeneratedColumns',
   'enableStrictPivotColumnOrder',

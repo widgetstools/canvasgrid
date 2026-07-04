@@ -1091,5 +1091,18 @@ export function createPositionsGrid(
   if (opts.groupingDemo) {
     grid.setGroupModel({ rowGroupCols: ['ticker'] });
   }
+
+  // Cycle 21i Phase 2 / T1 — the toolbar (save button + business-date
+  // picker) is intrinsic to every cgrid; the app only subscribes.
+  // Reference usage for the typed-event alternative:
+  //   grid.addEventListener('toolbarSave', (e) => ...).
+  const toolbar = grid.getToolbar();
+  toolbar?.onSave(() => {
+    console.log('Save clicked — business date', toolbar.getDate());
+  });
+  toolbar?.onDateChange((isoDate) => {
+    console.log('Business date changed to', isoDate);
+  });
+
   return grid;
 }
