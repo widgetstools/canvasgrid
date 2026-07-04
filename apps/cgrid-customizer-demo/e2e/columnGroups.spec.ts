@@ -128,23 +128,17 @@ test('create a group, move a column into it, and Apply writes it to the grid', a
   expect(custom!.children?.some((c: AnyDef) => c.colId === 'cusip')).toBe(true);
 });
 
-// `persistState`'s GridState snapshot (packages/kernel/src/core/
-// stateSnapshot.ts) only carries `columnState` (per-leaf geometry: width,
-// hide, pinned, sort…) plus whatever lands in `runtimeTouchedOptions` via
-// `setGridOption`. `columnDefs` is deliberately in `INITIAL_ONLY_OPTIONS`
-// (packages/kernel/src/cgrid.ts) and `updateGridOptions({ columnDefs })` —
-// the ONLY way the Column Groups panel's Apply writes structural changes —
-// special-cases it (cgrid.ts `updateGridOptions`, ~line 5359) and never
-// calls `setGridOption`, so it never reaches `runtimeTouchedOptions` /
-// `GridState.gridOptions`. Verified directly: after Apply-ing a new
-// "Custom" group + drag-moved column, `localStorage['cgrid:state:
-// customizer-demo']` contains a `columnState` array with no trace of the
-// new group at all. Column-GROUP STRUCTURE edits made via this panel
-// therefore do not survive a reload today — a missing kernel capability
-// (not a demo/test bug), out of this task's file scope
-// (apps/cgrid-customizer-demo/ only) to fix. Left here, unskipped in body,
-// as the acceptance test for whenever that kernel support lands.
-test.fixme(
+// Cycle 21i / Task 6 — `updateGridOptions({ columnDefs })` (the Column
+// Groups panel's ONLY Apply path) now emits `columnDefsChanged`, which the
+// `stateUpdatedBus` maps to the `columnGroupDefs` GridState key (see
+// `EVENT_TO_KEY` in packages/kernel/src/core/stateUpdatedBus.ts). `getState()`
+// captures the flattened, def-stripped group overlay
+// (`GridState.columnGroupDefs`) whenever at least one GROUP exists, and
+// `setState()` rehydrates it (by colId, against the live base columnDefs)
+// and re-applies it through the same columnDefs-rebuild path BEFORE
+// `columnState` restores per-leaf geometry. So a "Custom" group created via
+// this panel now survives a reload.
+test(
   'column-group structure created via the panel persists across reload',
   async ({ page }) => {
     await createAndPopulateCustomGroup(page);

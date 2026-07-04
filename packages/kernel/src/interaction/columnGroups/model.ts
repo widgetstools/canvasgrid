@@ -198,6 +198,68 @@ export function resolveDrop(
   return { parentId, order: order < 0 ? siblings.length : order };
 }
 
+/** Distributes `Omit` over a union so each member loses `K` independently,
+ *  instead of collapsing to the (much smaller) set of keys common to every
+ *  member — the pitfall of writing `Omit<A | B, K>` directly. */
+type DistributiveOmit<T, K extends keyof any> = T extends unknown ? Omit<T, K> : never;
+
+/** Cycle 21i / Task 6 — serializable overlay shape for persistence: every
+ *  `Node` field EXCEPT the frozen `def` reference (functions/closures never
+ *  survive JSON, and the def is re-derivable from the app's live base
+ *  columnDefs by colId — see `rehydrate`). Still a discriminated union on
+ *  `kind` (GroupNode already carries no `def`, so it's unaffected). */
+export type SerializedNode = DistributiveOmit<Node, 'def'>;
+
+/** Strip the frozen `def` reference from every column node so a flat model
+ *  is safe to `JSON.stringify` into a persisted snapshot. Group nodes pass
+ *  through unchanged (they never carried `def`). */
+export function toSerializedNodes(nodes: Node[]): SerializedNode[] {
+  return nodes.map((n) => {
+    if (n.kind === 'column') {
+      const { def: _def, ...rest } = n;
+      return rest;
+    }
+    return n;
+  });
+}
+
+/** Rebuild editable Nodes from a persisted overlay + the app's current
+ *  base column defs. Column nodes get their `def` reattached by colId;
+ *  overlay columns whose colId is gone from the base are dropped; base
+ *  leaves absent from the overlay are appended as ungrouped so columns
+ *  added to the app after the snapshot was saved still surface. Groups
+ *  that end up childless (because every descendant was dropped) are
+ *  pruned — recursively to a fixpoint, since pruning an inner group can
+ *  empty out its parent in turn. */
+export function rehydrate(overlay: SerializedNode[], baseDefs: (CColDef | CColGroupDef)[]): Node[] {
+  const baseLeaves = flatten(baseDefs).filter((n): n is ColumnNode => n.kind === 'column');
+  const defByColId = new Map(baseLeaves.map((n) => [n.colId, n.def]));
+  let nodes: Node[] = [];
+  const seen = new Set<string>();
+  for (const s of overlay) {
+    if (s.kind === 'group') { nodes.push({ ...s }); continue; }
+    const def = defByColId.get(s.colId);
+    if (!def) continue; // colId gone from base → drop
+    seen.add(s.colId);
+    nodes.push({ ...s, def });
+  }
+  // Append base leaves missing from the overlay, ungrouped, after existing top-level nodes.
+  let tailOrder = nodes.filter((n) => n.parentId === null).length;
+  for (const leaf of baseLeaves) {
+    if (seen.has(leaf.colId)) continue;
+    nodes.push({ ...leaf, parentId: null, order: tailOrder++ });
+  }
+  // Prune groups that reference no surviving children — to a fixpoint, since
+  // removing an empty inner group can leave its own parent childless too.
+  for (;;) {
+    const hasChild = (id: string) => nodes.some((n) => n.parentId === id);
+    const before = nodes.length;
+    nodes = nodes.filter((n) => n.kind === 'column' || hasChild(n.id));
+    if (nodes.length === before) break;
+  }
+  return nodes;
+}
+
 export function validate(nodes: Node[]): { ok: true } | { ok: false; groupId: string; message: string } {
   for (const n of nodes) {
     if (n.kind === 'group') {

@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest';
 import {
   flatten, project, createGroup, deleteGroup, moveNode, setHidden,
   setColumnHeaderName, setGroupStyle, canDrop, validate, renameGroup,
-  resolveDrop,
-  type Node, type GroupNode,
+  resolveDrop, rehydrate,
+  type Node, type GroupNode, type SerializedNode,
 } from '../src/interaction/columnGroups/model';
 import type { CColDef, CColGroupDef } from '../src/types';
 
@@ -261,5 +261,62 @@ describe('resolveDrop', () => {
     const a = nodes.find((n) => n.kind === 'column' && (n as any).colId === 'a')!;
     expect(resolveDrop(nodes, a.id, a.id, false)).toBeNull();
     expect(resolveDrop(nodes, a.id, 'nope', false)).toBeNull();
+  });
+});
+
+describe('rehydrate (persist overlay → nodes)', () => {
+  const base: (CColDef | CColGroupDef)[] = [
+    { colId: 'a', field: 'a', valueFormatter: () => 'X' }, // function survives
+    { colId: 'b', field: 'b' },
+    { colId: 'c', field: 'c' },
+  ];
+  it('reattaches def by colId and round-trips through project', () => {
+    // overlay: group g wraps b+c, a stays ungrouped
+    const overlay: SerializedNode[] = [
+      { id: 'a', kind: 'column', parentId: null, order: 0, colId: 'a', headerName: 'a' },
+      { id: 'g', kind: 'group', parentId: null, order: 1, headerName: 'G' },
+      { id: 'b', kind: 'column', parentId: 'g', order: 0, colId: 'b', headerName: 'b' },
+      { id: 'c', kind: 'column', parentId: 'g', order: 1, colId: 'c', headerName: 'c' },
+    ];
+    const defs = project(rehydrate(overlay, base));
+    const g = defs.find((d): d is CColGroupDef => (d as any).groupId === 'g')!;
+    expect(g.children.map((c) => (c as CColDef).colId)).toEqual(['b', 'c']);
+    // the function-valued field on 'a' is preserved (came from baseDefs, not overlay)
+    const a = defs.find((d) => (d as CColDef).colId === 'a') as CColDef;
+    expect(typeof a.valueFormatter).toBe('function');
+  });
+  it('drops overlay entries whose colId no longer exists in base', () => {
+    const overlay: SerializedNode[] = [
+      { id: 'gone', kind: 'column', parentId: null, order: 0, colId: 'gone', headerName: 'gone' },
+      { id: 'a', kind: 'column', parentId: null, order: 1, colId: 'a', headerName: 'a' },
+    ];
+    const defs = project(rehydrate(overlay, base));
+    expect(defs.some((d) => (d as CColDef).colId === 'gone')).toBe(false);
+  });
+  it('appends base leaves missing from the overlay as ungrouped', () => {
+    const overlay: SerializedNode[] = [
+      { id: 'a', kind: 'column', parentId: null, order: 0, colId: 'a', headerName: 'a' },
+    ]; // b, c missing
+    const defs = project(rehydrate(overlay, base));
+    expect(defs.some((d) => (d as CColDef).colId === 'b')).toBe(true);
+    expect(defs.some((d) => (d as CColDef).colId === 'c')).toBe(true);
+  });
+  it('prunes nested empty groups to a fixpoint (grandparent also empties out)', () => {
+    // outer wraps inner wraps 'gone' only — once 'gone' is dropped, 'inner'
+    // becomes empty, and once 'inner' is pruned, 'outer' becomes empty too.
+    const overlay: SerializedNode[] = [
+      { id: 'outer', kind: 'group', parentId: null, order: 0, headerName: 'Outer' },
+      { id: 'inner', kind: 'group', parentId: 'outer', order: 0, headerName: 'Inner' },
+      { id: 'gone', kind: 'column', parentId: 'inner', order: 0, colId: 'gone', headerName: 'gone' },
+      { id: 'a', kind: 'column', parentId: null, order: 1, colId: 'a', headerName: 'a' },
+    ];
+    const nodes = rehydrate(overlay, base);
+    expect(nodes.some((n) => n.id === 'outer')).toBe(false);
+    expect(nodes.some((n) => n.id === 'inner')).toBe(false);
+    const defs = project(nodes);
+    // every base leaf still surfaces (b, c appended ungrouped; a present)
+    expect(defs.some((d) => (d as CColDef).colId === 'a')).toBe(true);
+    expect(defs.some((d) => (d as CColDef).colId === 'b')).toBe(true);
+    expect(defs.some((d) => (d as CColDef).colId === 'c')).toBe(true);
   });
 });

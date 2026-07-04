@@ -38,6 +38,10 @@ import {
   buildSnapshot, migrateSnapshot, STATE_SCHEMA_VERSION, type GridState,
 } from './core/stateSnapshot';
 import { StateUpdatedBus } from './core/stateUpdatedBus';
+import {
+  flatten as flattenColumnGroups, project as projectColumnGroups,
+  rehydrate as rehydrateColumnGroups, toSerializedNodes as toSerializedColumnGroupNodes,
+} from './interaction/columnGroups/model';
 import { computeAutoHeaderHeight } from './renderer/cellRenderers/headerWrap';
 import type { CColumnState, CApplyColumnStateParams, ISizeColumnsToFitParams } from './types';
 import type { CColDef, CColGroupDef } from './types';
@@ -5361,6 +5365,13 @@ export class CGrid<TRow = any> {
       this.options.columnDefs = partial.columnDefs;
       if ('defaultColDef' in partial) this.options.defaultColDef = partial.defaultColDef;
       this.rebuildColumns({ defaultColDef: newDefault });
+      // Cycle 21i / Task 6 — dirty the `columnGroupDefs` GridState slice
+      // (see EVENT_TO_KEY in stateUpdatedBus.ts) so structural group edits
+      // made through this path — the Column Groups panel's Apply, and the
+      // `setState` restore below — survive a getState()/setState()
+      // round-trip. Emitted synchronously right after the tree rebuild,
+      // not gated on the worker round-trip.
+      this.events.emit({ type: 'columnDefsChanged' });
       this.workerCoord.updateColumns(this.workerColumns())
         .then(({ visibleCount }) => {
           this.rowCount = visibleCount;
@@ -7421,6 +7432,8 @@ export class CGrid<TRow = any> {
   getState(): GridState {
     return buildSnapshot({
       getColumnState: () => this.getColumnState(),
+      getColumnGroupOverlay: () =>
+        toSerializedColumnGroupNodes(flattenColumnGroups(this.options.columnDefs ?? [])),
       getFilterModel: () => this.getFilterModel(),
       getSortModel: () => this.getSortModel(),
       getRowGroupColumns: () => this.getRowGroupColumns(),
@@ -7472,6 +7485,23 @@ export class CGrid<TRow = any> {
     // 0b. theme token overrides (Cycle 21i / Phase 1) — data colours.
     if (migrated.themeParams) {
       this.setThemeParams(migrated.themeParams);
+    }
+
+    // 0c. column-GROUP structure overlay (Cycle 21i / Task 6) — BEFORE
+    // columnState so per-leaf width/hide/pinned settle on top of the
+    // restored group hierarchy rather than the other way around.
+    // Rehydrates the persisted flat overlay against the app's CURRENT
+    // base `columnDefs` (by colId) and applies it through the exact same
+    // columnDefs-rebuild path `updateGridOptions({ columnDefs })` uses —
+    // reusing that path also fires `columnDefsChanged`, which re-marks
+    // `columnGroupDefs` dirty; harmless (not a loop — the bus coalesces
+    // per rAF frame and this restore's own emit is tagged with the same
+    // 'api'/'init' source already set above, matching how the sibling
+    // columnState/filterModel/etc. restores below also re-dirty their
+    // own keys as a side effect of reusing their normal apply path).
+    if (migrated.columnGroupDefs) {
+      const rehydrated = rehydrateColumnGroups(migrated.columnGroupDefs, this.options.columnDefs ?? []);
+      this.updateGridOptions({ columnDefs: projectColumnGroups(rehydrated) });
     }
 
     // 1. columnState (defines columns + their geometry).

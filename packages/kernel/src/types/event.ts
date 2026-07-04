@@ -260,6 +260,17 @@ export type CGridEvent<TRow = any> =
    *  / `columnVisible` / `columnPinned` / `columnResized` / `sortChanged`).
    *  Cycle 6 / Task 2. */
   | { type: 'columnsReset' }
+  /** Cycle 21i / Task 6 — fires once per `updateGridOptions({ columnDefs })`
+   *  call (the Column Groups panel's Apply path, and the kernel's own
+   *  `setState` restore of `GridState.columnGroupDefs`), AFTER the column
+   *  tree rebuild lands. Carries no payload — listeners that need the new
+   *  tree call `api.getColumnGroupDefs()`. Exists purely to dirty the
+   *  `stateUpdatedBus`'s `columnGroupDefs` key (see `EVENT_TO_KEY` in
+   *  `core/stateUpdatedBus.ts`) so structural group edits survive a
+   *  `getState()`/`setState()` round-trip; distinct from
+   *  `displayedColumnsChanged`'s `'columnDefsChanged'` SOURCE tag, which
+   *  is a different (pre-existing) event entirely. */
+  | { type: 'columnDefsChanged' }
   /** Fires after a column changes its index in the flat visible-leaf order.
    *  `toIndex` is the resolved final index AFTER `lockPosition` /
    *  `marryChildren` clamping; it may differ from the drag's drop target
