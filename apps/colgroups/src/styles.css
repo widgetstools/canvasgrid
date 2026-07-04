@@ -30,6 +30,11 @@ body {
   min-height: 0;
 }
 
+/* Span-height group headers override theme resize-handle height in AG Grid CSS. */
+.grid-wrap .ag-header-cell-resize::after {
+  display: none;
+}
+
 .masthead {
   display: flex;
   align-items: flex-start;
