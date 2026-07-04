@@ -177,6 +177,27 @@ export function canDrop(nodes: Node[], dragId: string, targetParentId: string | 
   return true;
 }
 
+/** Resolve a drop gesture to (parentId, order) for moveNode(). `targetId`
+ *  is the row the pointer released on; `onGroupHeader` is true when the drop
+ *  landed on a group ROW itself (→ append inside that group) vs between rows
+ *  (→ insert before the target in its parent). `order` is expressed in the
+ *  destination parent's PRE-move full sibling ordering, per moveNode's contract. */
+export function resolveDrop(
+  nodes: Node[], dragId: string, targetId: string, onGroupHeader: boolean,
+): { parentId: string | null; order: number } | null {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const target = byId.get(targetId);
+  if (!target || dragId === targetId) return null;
+  if (onGroupHeader && target.kind === 'group') {
+    const kids = nodes.filter((n) => n.parentId === target.id).sort((a, b) => a.order - b.order);
+    return { parentId: target.id, order: kids.length }; // append at end
+  }
+  const parentId = target.parentId;
+  const siblings = nodes.filter((n) => n.parentId === parentId).sort((a, b) => a.order - b.order);
+  const order = siblings.findIndex((s) => s.id === targetId); // PRE-move index, includes dragId
+  return { parentId, order: order < 0 ? siblings.length : order };
+}
+
 export function validate(nodes: Node[]): { ok: true } | { ok: false; groupId: string; message: string } {
   for (const n of nodes) {
     if (n.kind === 'group') {

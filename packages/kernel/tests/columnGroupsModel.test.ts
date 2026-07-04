@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   flatten, project, createGroup, deleteGroup, moveNode, setHidden,
   setColumnHeaderName, setGroupStyle, canDrop, validate, renameGroup,
+  resolveDrop,
   type Node, type GroupNode,
 } from '../src/interaction/columnGroups/model';
 import type { CColDef, CColGroupDef } from '../src/types';
@@ -186,5 +187,79 @@ describe('validation', () => {
   it('validate returns ok:true when every group has at least one child', () => {
     const res = validate(flatten(nested));
     expect(res).toEqual({ ok: true });
+  });
+});
+
+describe('resolveDrop', () => {
+  const abc: (CColDef | CColGroupDef)[] = [
+    { groupId: 'g', headerName: 'G', children: [
+      { colId: 'a', field: 'a' }, { colId: 'b', field: 'b' }, { colId: 'c', field: 'c' },
+    ] },
+  ];
+
+  it('same-parent FORWARD reorder: dragging first item onto the last is NOT a no-op', () => {
+    const nodes = flatten(abc);
+    const a = nodes.find((n) => n.kind === 'column' && (n as any).colId === 'a')!;
+    const c = nodes.find((n) => n.kind === 'column' && (n as any).colId === 'c')!;
+    const resolved = resolveDrop(nodes, a.id, c.id, false)!;
+    expect(resolved).not.toBeNull();
+    const moved = moveNode(nodes, a.id, resolved.parentId, resolved.order);
+    const g = project(moved)[0] as CColGroupDef;
+    const order = g.children.map((ch) => (ch as CColDef).colId);
+    // must actually move 'a' — not a no-op — landing at/after 'b'
+    expect(order).not.toEqual(['a', 'b', 'c']);
+    expect(order).toEqual(['b', 'a', 'c']);
+  });
+
+  it('same-parent BACKWARD reorder: dragging last item onto the first', () => {
+    const nodes = flatten(abc);
+    const a = nodes.find((n) => n.kind === 'column' && (n as any).colId === 'a')!;
+    const c = nodes.find((n) => n.kind === 'column' && (n as any).colId === 'c')!;
+    const resolved = resolveDrop(nodes, c.id, a.id, false)!;
+    const moved = moveNode(nodes, c.id, resolved.parentId, resolved.order);
+    const g = project(moved)[0] as CColGroupDef;
+    const order = g.children.map((ch) => (ch as CColDef).colId);
+    expect(order).toEqual(['c', 'a', 'b']);
+  });
+
+  it('cross-parent move: dropping a top-level column between two group children', () => {
+    const defs: (CColDef | CColGroupDef)[] = [
+      { colId: 'sym', field: 'sym' },
+      { groupId: 'g', headerName: 'G', children: [
+        { colId: 'a', field: 'a' }, { colId: 'b', field: 'b' },
+      ] },
+    ];
+    const nodes = flatten(defs);
+    const sym = nodes.find((n) => n.kind === 'column' && (n as any).colId === 'sym')!;
+    const b = nodes.find((n) => n.kind === 'column' && (n as any).colId === 'b')!;
+    const resolved = resolveDrop(nodes, sym.id, b.id, false)!;
+    expect(resolved.parentId).toBe((nodes.find((n) => n.kind === 'group') as GroupNode).id);
+    const moved = moveNode(nodes, sym.id, resolved.parentId, resolved.order);
+    const g = project(moved).find((d): d is CColGroupDef => (d as any).groupId === 'g')!;
+    expect(g.children.map((ch) => (ch as CColDef).colId)).toEqual(['a', 'sym', 'b']);
+  });
+
+  it('drop onto a group header appends inside it', () => {
+    const nodes = flatten(abc);
+    const g = nodes.find((n) => n.kind === 'group') as GroupNode;
+    const risk = createGroup(nodes, null, 'Risk');
+    const riskId = (risk.find((n) => n.kind === 'group' && (n as GroupNode).headerName === 'Risk') as GroupNode).id;
+    const a = risk.find((n) => n.kind === 'column' && (n as any).colId === 'a')!;
+    const resolved = resolveDrop(risk, a.id, riskId, true)!;
+    expect(resolved.parentId).toBe(riskId);
+    expect(resolved.order).toBe(0); // Risk starts empty
+    const moved = moveNode(risk, a.id, resolved.parentId, resolved.order);
+    const riskDef = project(moved).find((d): d is CColGroupDef => (d as any).groupId === riskId)!;
+    expect(riskDef.children.map((ch) => (ch as CColDef).colId)).toEqual(['a']);
+    // sanity: 'g' still has b, c only
+    const gDef = project(moved).find((d): d is CColGroupDef => (d as any).groupId === g.id)!;
+    expect(gDef.children.map((ch) => (ch as CColDef).colId)).toEqual(['b', 'c']);
+  });
+
+  it('returns null when target does not exist or equals dragId', () => {
+    const nodes = flatten(abc);
+    const a = nodes.find((n) => n.kind === 'column' && (n as any).colId === 'a')!;
+    expect(resolveDrop(nodes, a.id, a.id, false)).toBeNull();
+    expect(resolveDrop(nodes, a.id, 'nope', false)).toBeNull();
   });
 });

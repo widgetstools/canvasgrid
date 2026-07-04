@@ -11,7 +11,7 @@
 import type { ToolPanel, ToolPanelParams } from './types';
 import {
   flatten, project, createGroup, deleteGroup, moveNode,
-  setHidden, setColumnHeaderName, renameGroup, validate, canDrop,
+  setHidden, setColumnHeaderName, renameGroup, validate, canDrop, resolveDrop,
   type Node, type GroupNode, type ColumnNode,
 } from '../columnGroups/model';
 import type { CGridApi } from '../../types';
@@ -25,6 +25,19 @@ interface DragState {
   offsetX: number;
   offsetY: number;
 }
+
+/** A mousedown that hasn't yet moved past the drag threshold — a plain
+ *  click (mousedown+mouseup with no meaningful movement) never promotes to
+ *  a real drag session, so it doesn't churn the DOM with a body-level ghost. */
+interface PendingDrag {
+  node: Node;
+  row: HTMLElement;
+  startX: number;
+  startY: number;
+}
+
+/** Minimum pointer travel (px) before a mousedown becomes a drag session. */
+const DRAG_THRESHOLD_PX = 4;
 
 export class ColumnGroupsToolPanel implements ToolPanel {
   private root!: HTMLElement;
@@ -40,9 +53,17 @@ export class ColumnGroupsToolPanel implements ToolPanel {
    *  undefineds. */
   private baseline = '';
   private selectedGroupId: string | null = null;
+  /** VIEW-STATE only (not part of the model): ids of groups the user has
+   *  collapsed. Must survive `mutate()`/`render()` so an edit elsewhere in
+   *  the tree doesn't silently re-expand every group. Reset on `seed()`
+   *  since the tree is re-seeded from defs at that point. */
+  private collapsed = new Set<string>();
   private drag: DragState | null = null;
+  private pending: PendingDrag | null = null;
   private readonly onDragMove = (e: MouseEvent) => this.handleDragMove(e);
   private readonly onDragEnd = (e: MouseEvent) => this.handleDragEnd(e);
+  private readonly onPendingMove = (e: MouseEvent) => this.handlePendingMove(e);
+  private readonly onPendingUp = () => this.cancelPendingDrag();
 
   init(params: ToolPanelParams): void {
     this.api = params.api as unknown as typeof this.api;
@@ -61,8 +82,11 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   destroy(): void {
     document.removeEventListener('mousemove', this.onDragMove);
     document.removeEventListener('mouseup', this.onDragEnd);
+    document.removeEventListener('mousemove', this.onPendingMove);
+    document.removeEventListener('mouseup', this.onPendingUp);
     this.drag?.ghost.remove();
     this.drag = null;
+    this.pending = null;
     this.root.remove();
   }
 
@@ -71,6 +95,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     this.nodes = flatten(structuredClone(defs));
     this.baseline = JSON.stringify(project(this.nodes)); // canonical, not raw defs
     this.selectedGroupId = null;
+    this.collapsed = new Set();
     this.render();
   }
 
@@ -100,20 +125,29 @@ export class ColumnGroupsToolPanel implements ToolPanel {
       return;
     }
     // Render top-level (parentId null) then recurse by parentId, ordered by order.
-    const renderLevel = (parentId: string | null, depth: number) => {
+    // `hiddenByAncestor` propagates down: a node is hidden if ANY ancestor is
+    // collapsed, but each group's OWN collapsed flag only governs whether ITS
+    // children are hidden — a collapsed subgroup nested inside a collapsed
+    // ancestor stays independently collapsed once the ancestor re-expands.
+    const renderLevel = (parentId: string | null, depth: number, hiddenByAncestor: boolean) => {
       this.nodes.filter((n) => n.parentId === parentId).sort((a, b) => a.order - b.order)
-        .forEach((n) => { this.tree.appendChild(this.rowFor(n, depth)); renderLevel(n.id, depth + 1); });
+        .forEach((n) => {
+          this.tree.appendChild(this.rowFor(n, depth, hiddenByAncestor));
+          const childHidden = hiddenByAncestor || (n.kind === 'group' && this.collapsed.has(n.id));
+          renderLevel(n.id, depth + 1, childHidden);
+        });
     };
-    renderLevel(null, 0);
+    renderLevel(null, 0, false);
     this.applyBtn.disabled = !this.dirty;
     this.renderStyleSection();
   }
 
-  private rowFor(n: Node, depth: number): HTMLElement {
+  private rowFor(n: Node, depth: number, hidden: boolean): HTMLElement {
     const row = el('div', 'cg-colgroups-row');
     row.setAttribute('data-cg-node', n.id);
     row.setAttribute('data-kind', n.kind);
     row.style.paddingInlineStart = `calc(12px + ${depth} * 16px)`;
+    if (hidden) row.style.display = 'none';
 
     // Nesting spine — one hairline guide per ancestor depth level.
     for (let d = 0; d < depth; d += 1) {
@@ -189,15 +223,15 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     const chevron = document.createElement('button');
     chevron.type = 'button';
     chevron.className = 'cg-colgroups-chevron';
-    chevron.setAttribute('aria-expanded', 'true');
+    chevron.setAttribute('aria-expanded', String(!this.collapsed.has(n.id)));
     chevron.setAttribute('aria-label', 'Toggle group');
     chevron.addEventListener('click', (e) => {
       e.stopPropagation();
-      const expanded = chevron.getAttribute('aria-expanded') === 'true';
-      chevron.setAttribute('aria-expanded', String(!expanded));
-      // Collapse/expand is a pure view concern (no model field yet) —
-      // toggle visibility of descendant rows via a data attribute walk.
-      this.toggleCollapse(n.id, expanded);
+      // Collapse/expand is panel VIEW-STATE (not model state) so it must
+      // survive `render()` on every mutation — see `this.collapsed`.
+      if (this.collapsed.has(n.id)) this.collapsed.delete(n.id);
+      else this.collapsed.add(n.id);
+      this.render();
     });
     wrap.appendChild(chevron);
 
@@ -236,6 +270,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     del.addEventListener('click', (e) => {
       e.stopPropagation();
       if (this.selectedGroupId === n.id) this.selectedGroupId = null;
+      this.collapsed.delete(n.id);
       this.mutate((ns) => deleteGroup(ns, n.id));
     });
     actions.appendChild(del);
@@ -281,23 +316,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     if (errorEl) errorEl.textContent = message;
   }
 
-  private toggleCollapse(groupId: string, wasExpanded: boolean): void {
-    // Walk descendants of groupId and toggle their row display.
-    const collapse = wasExpanded; // becoming collapsed
-    const descendantIds = new Set<string>();
-    const collectChildren = (parentId: string) => {
-      for (const child of this.nodes.filter((n) => n.parentId === parentId)) {
-        descendantIds.add(child.id);
-        collectChildren(child.id);
-      }
-    };
-    collectChildren(groupId);
-    for (const id of descendantIds) {
-      const row = this.tree.querySelector(`[data-cg-node="${cssEscape(id)}"]`) as HTMLElement | null;
-      if (row) row.style.display = collapse ? 'none' : '';
-    }
-  }
-
   // ── Drag & drop ────────────────────────────────────────────────────
 
   private wireDrag(row: HTMLElement, n: Node): void {
@@ -309,9 +327,32 @@ export class ColumnGroupsToolPanel implements ToolPanel {
       const e = evt as MouseEvent;
       const target = e.target as HTMLElement;
       if (n.kind === 'group' && (target.closest('button') || target.closest('input'))) return;
-      e.preventDefault();
-      this.beginDrag(e, n, row);
+      // Don't start a drag session (body-level ghost etc.) on a plain
+      // mousedown — only promote to a real drag once the pointer has moved
+      // past DRAG_THRESHOLD_PX, so a simple click-to-select stays cheap.
+      this.pending = { node: n, row, startX: e.clientX, startY: e.clientY };
+      document.addEventListener('mousemove', this.onPendingMove);
+      document.addEventListener('mouseup', this.onPendingUp);
     });
+  }
+
+  private handlePendingMove(e: MouseEvent): void {
+    const p = this.pending;
+    if (!p) return;
+    const dx = e.clientX - p.startX;
+    const dy = e.clientY - p.startY;
+    if (Math.hypot(dx, dy) <= DRAG_THRESHOLD_PX) return;
+    document.removeEventListener('mousemove', this.onPendingMove);
+    document.removeEventListener('mouseup', this.onPendingUp);
+    this.pending = null;
+    e.preventDefault();
+    this.beginDrag(e, p.node, p.row);
+  }
+
+  private cancelPendingDrag(): void {
+    document.removeEventListener('mousemove', this.onPendingMove);
+    document.removeEventListener('mouseup', this.onPendingUp);
+    this.pending = null;
   }
 
   private beginDrag(e: MouseEvent, n: Node, row: HTMLElement): void {
@@ -373,12 +414,10 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     if (targetId === drag.id) return;
     const targetNode = this.nodes.find((x) => x.id === targetId);
     if (!targetNode) return;
-    const targetParentId = targetNode.kind === 'group' ? targetNode.id : targetNode.parentId;
-    const siblings = this.nodes.filter((x) => x.parentId === targetParentId && x.id !== drag.id);
-    const targetOrder = targetNode.kind === 'group'
-      ? siblings.length // dropped ONTO a group header -> append at end of its children
-      : Math.max(0, siblings.sort((a, b) => a.order - b.order).findIndex((s) => s.id === targetId));
-    this.mutate((ns) => moveNode(ns, drag.id, targetParentId, targetOrder));
+    const onGroupHeader = targetNode.kind === 'group';
+    const resolved = resolveDrop(this.nodes, drag.id, targetId, onGroupHeader);
+    if (!resolved || !canDrop(this.nodes, drag.id, resolved.parentId)) return;
+    this.mutate((ns) => moveNode(ns, drag.id, resolved.parentId, resolved.order));
   }
 }
 

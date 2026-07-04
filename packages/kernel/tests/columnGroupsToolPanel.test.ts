@@ -60,4 +60,32 @@ describe('ColumnGroupsToolPanel', () => {
     expect(apply.disabled).toBe(true);
     expect(panel.getGui().querySelectorAll('[data-cg-node]').length).toBe(4);
   });
+
+  it('collapsing a group survives a subsequent mutation/re-render', () => {
+    const panel = new ColumnGroupsToolPanel();
+    panel.init(makeParams(vi.fn()));
+    const gui = panel.getGui();
+    const tradeRow = gui.querySelector('[data-cg-node="trade"]') as HTMLElement;
+    const chevron = tradeRow.querySelector('.cg-colgroups-chevron') as HTMLButtonElement;
+    expect(chevron.getAttribute('aria-expanded')).toBe('true');
+
+    // Collapse the 'trade' group. Clicking re-renders the tree (fresh DOM
+    // nodes), so re-query rather than reuse the stale `chevron` reference.
+    chevron.click();
+    const chevronAfterCollapse = (gui.querySelector('[data-cg-node="trade"]') as HTMLElement)
+      .querySelector('.cg-colgroups-chevron') as HTMLButtonElement;
+    expect(chevronAfterCollapse.getAttribute('aria-expanded')).toBe('false');
+    const bidRowBefore = gui.querySelector('[data-cg-node="bid"]') as HTMLElement;
+    expect(bidRowBefore.style.display).toBe('none');
+
+    // Trigger an unrelated edit that re-renders the whole tree.
+    (gui.querySelector('[data-cg-add-group]') as HTMLButtonElement).click();
+
+    // The 'trade' group must still be collapsed after the re-render.
+    const tradeRowAfter = gui.querySelector('[data-cg-node="trade"]') as HTMLElement;
+    const chevronAfter = tradeRowAfter.querySelector('.cg-colgroups-chevron') as HTMLButtonElement;
+    expect(chevronAfter.getAttribute('aria-expanded')).toBe('false');
+    const bidRowAfter = gui.querySelector('[data-cg-node="bid"]') as HTMLElement;
+    expect(bidRowAfter.style.display).toBe('none');
+  });
 });
