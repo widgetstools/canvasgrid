@@ -68,6 +68,7 @@ import { PopupHost } from './interaction/editors/popupHost';
 import { FilterPopupHost } from './interaction/filters/filterPopupHost';
 import { ContextMenuHost } from './interaction/contextMenu/host';
 import { ToolbarHost, type ToolbarGridContext } from './interaction/toolbar/host';
+import { ModalHost } from './interaction/modalHost';
 import { ToolPanelRegistry } from './interaction/toolPanels/registry';
 import { ColumnsToolPanel } from './interaction/toolPanels/columnsPanel';
 import { FiltersToolPanel } from './interaction/toolPanels/filtersPanel';
@@ -244,6 +245,9 @@ export type {
 // helpers can be typed without reaching into kernel internals.
 export { ToolbarHost } from './interaction/toolbar/host';
 export type { ToolbarGridContext } from './interaction/toolbar/host';
+// Cycle 21i Phase 2 / T4 — modal primitive. Instance via grid.getModal().
+export { ModalHost } from './interaction/modalHost';
+export type { ModalOpenOptions, ModalCloseReason } from './interaction/modalHost';
 export type {
   SelectionConfig,
   SingleRowSelectionConfig,
@@ -689,6 +693,10 @@ export class CGrid<TRow = any> {
    *  `applyVerticalInsets` so the visual order is: toolbar → top
    *  status bar → pivot panel → row group panel → headers → body. */
   private toolbarTopInset = 0;
+  /** Cycle 21i Phase 2 / T4 — generic modal primitive (backdrop +
+   *  centered dialog on the grid root). Lazily constructed on first
+   *  `getModal()` — grids that never open a dialog pay nothing. */
+  private modalHost: ModalHost | null = null;
   /** Cycle 13 / Task 1 — status-bar host (DOM strip on the bottom or
    *  top edge that houses status panels). `null` when `options.statusBar`
    *  resolves to off. Reserves a top/bottom inset on the canvas region
@@ -5258,6 +5266,15 @@ export class CGrid<TRow = any> {
     return this.toolbarHost;
   }
 
+  /** Cycle 21i Phase 2 / T4 — the grid's modal primitive. Lazily
+   *  created; one modal at a time. `open(content, { title, onClose,
+   *  ... })` mounts caller-owned DOM in a themed, focus-trapped dialog
+   *  over a backdrop covering the grid. */
+  getModal(): ModalHost {
+    this.modalHost ??= new ModalHost(this.root);
+    return this.modalHost;
+  }
+
   /** Cycle 15 / Task 6 — recompute and apply the combined top +
    *  bottom insets to the scroller, editor overlay, canvas host,
    *  and the row group panel's own top offset. Top inset is the
@@ -6105,6 +6122,9 @@ export class CGrid<TRow = any> {
     // strips.
     this.toolbarHost?.destroy();
     this.toolbarHost = null;
+    // Cycle 21i Phase 2 / T4 — close + release any open modal.
+    this.modalHost?.destroy();
+    this.modalHost = null;
     // Cycle 15 / Task 6 — release the row group panel's top inset
     // + remove its DOM. The host's destroy() calls back into
     // reserveRowGroupPanelSpace(0) which is canvas-destroy-safe via
@@ -6246,6 +6266,7 @@ export class CGrid<TRow = any> {
       getState: () => this.getState(),
       setState: (snapshot) => this.setState(snapshot),
       listCellRenderers: () => this.listCellRenderers(),
+      getModal: () => this.getModal(),
       forEachColumnGroup: (callback) => this.forEachColumnGroup(callback),
       setThemeParams: (patch) => this.setThemeParams(patch),
       getThemeParams: () => this.getThemeParams(),

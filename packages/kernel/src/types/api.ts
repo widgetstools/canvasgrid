@@ -464,6 +464,12 @@ export interface CGridApi<TRow = any> {
    *  migrated). */
   setState(snapshot: import('../core/stateSnapshot').GridState): void;
 
+  /** Cycle 21i Phase 2 / T4 — the grid's modal primitive (lazily
+   *  created, one modal at a time): themed backdrop + centered dialog
+   *  with focus trap, ESC/backdrop dismiss, and focus restore. Panels
+   *  open dialogs (Column Selector, confirmations) through this. */
+  getModal(): import('../interaction/modalHost').ModalHost;
+
   /** Cycle 21c / Task 10 — register the format compiler (supplied by
    *  @cgrid/format's wireIntoKernel). Kernel invokes it in the
    *  compileFormatSlots pass (Task 11). Apps that never call this see

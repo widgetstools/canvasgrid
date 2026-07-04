@@ -139,6 +139,21 @@ const grid = new CGrid<Position>(gridHost, {
 wireFormat(grid);
 grid.updateGridOptions({ columnDefs });
 
+// Cycle 21i Phase 2 / T4 — modal-primitive smoke: a toolbar start-zone
+// button opens a themed dialog through grid.getModal(). Exercises the
+// intrinsic toolbar's app API + the modal chrome (focus trap, ESC /
+// backdrop / ✕ dismissal) on live data. Consumer API only.
+grid.getToolbar()?.addIconButton('badge-info', () => {
+  const content = document.createElement('div');
+  content.innerHTML = `
+    <p style="margin:0 0 10px">Zero-feature-code consumer testbed for the cgrid customizer
+    (Cycle 21i). Live STOMP positions, persisted state under
+    <code>cgrid:state:customizer-demo</code>.</p>
+    <p style="margin:0">Intrinsic chrome on display: toolbar (save + business date),
+    status bar (counts + aggregates), Grid Options / Column Groups editors.</p>`;
+  grid.getModal().open(content, { title: 'About this demo', width: 460 });
+}, { title: 'About this demo', className: 'demo-about' });
+
 function applyTheme() {
   appEl.dataset.theme = dark ? 'dark' : 'light';
   themeBtn.textContent = dark ? 'Light theme' : 'Dark theme';
