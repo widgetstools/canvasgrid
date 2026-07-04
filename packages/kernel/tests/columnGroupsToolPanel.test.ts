@@ -18,6 +18,22 @@ function makeParams(onApply: ReturnType<typeof vi.fn>) {
   } as unknown as ToolPanelParams;
 }
 
+/** Top level interleaves group / column / group — the shape that used to
+ *  mislabel the second group under a stale "Ungrouped" eyebrow (Fix 2). */
+function makeInterleavedParams(onApply: ReturnType<typeof vi.fn>) {
+  const defs: (CColDef | CColGroupDef)[] = [
+    { groupId: 'groupA', headerName: 'Group A', children: [{ colId: 'a1', field: 'a1' }] },
+    { colId: 'mid', field: 'mid', headerName: 'Mid' },
+    { groupId: 'groupB', headerName: 'Group B', children: [{ colId: 'b1', field: 'b1' }] },
+  ];
+  return {
+    api: {
+      getColumnGroupDefs: () => defs,
+      updateGridOptions: onApply,
+    },
+  } as unknown as ToolPanelParams;
+}
+
 describe('ColumnGroupsToolPanel', () => {
   it('renders a row per group and per column', () => {
     const panel = new ColumnGroupsToolPanel();
@@ -117,6 +133,35 @@ describe('ColumnGroupsToolPanel', () => {
       const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
       const bid = trade.children.find((c: { colId?: string }) => c.colId === 'bid');
       expect(bid.columnGroupShow).toBe('open');
+    });
+  });
+
+  describe('Depth-0 eyebrow runs (Fix 2)', () => {
+    it('labels each contiguous top-level run, not just the first-seen kind', () => {
+      const panel = new ColumnGroupsToolPanel();
+      panel.init(makeInterleavedParams(vi.fn()));
+      const gui = panel.getGui();
+
+      // Walk the tree in DOM order and record eyebrows + the node kind of
+      // the very next `[data-cg-node]` row, so we can assert each eyebrow
+      // immediately precedes a run of the kind it names.
+      const children = Array.from(gui.querySelector('.cg-colgroups-tree')!.children);
+      const seen: Array<{ text: string; nextKind: string | null }> = [];
+      children.forEach((node, i) => {
+        if (node.classList.contains('cg-colgroups-eyebrow')) {
+          const next = children.slice(i + 1).find((c) => c.hasAttribute('data-cg-node'));
+          seen.push({ text: node.textContent ?? '', nextKind: next?.getAttribute('data-kind') ?? null });
+        }
+      });
+
+      expect(seen.map((s) => s.text)).toEqual(['Groups', 'Ungrouped', 'Groups']);
+      seen.forEach((s) => {
+        const expectedKind = s.text === 'Ungrouped' ? 'column' : 'group';
+        expect(s.nextKind).toBe(expectedKind);
+      });
+
+      // groupB (the second, previously-mislabeled group) is a real group.
+      expect(gui.querySelector('[data-cg-node="groupB"]')!.getAttribute('data-kind')).toBe('group');
     });
   });
 
@@ -341,6 +386,110 @@ describe('ColumnGroupsToolPanel', () => {
         const { columnDefs } = onApply.mock.calls[0][0];
         const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
         expect(trade.headerStyle.border.all).toEqual({ width: 2, style: 'dashed', color: 'rgb(255, 0, 0)' });
+      });
+    });
+
+    describe('Fix 3 — colour commits do not tear down the Style band mid-drag', () => {
+      it('a Fill colour commit flips dirty and writes headerStyle.bg WITHOUT rebuilding the Style band', () => {
+        const onApply = vi.fn();
+        const panel = new ColumnGroupsToolPanel();
+        panel.init(makeParams(onApply));
+        const gui = panel.getGui();
+        (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
+        const style = gui.querySelector('[data-cg-style]')!;
+
+        const bgSwatch = style.querySelector('[data-cg-field="bg"] .cg-colorpicker-swatch') as HTMLButtonElement;
+        bgSwatch.click();
+        const popover = document.querySelector('.cg-colorpicker-popover') as HTMLElement;
+        const bgHex = popover.querySelector('.cg-colorpicker-hex') as HTMLInputElement;
+        bgHex.value = '#112233';
+        bgHex.dispatchEvent(new Event('change')); // simulates a drag emitting onChange
+
+        // The Style band must NOT have been rebuilt: the swatch queried
+        // fresh from the (unchanged) style-section element is the exact
+        // same DOM node as before the commit, and the still-open popover
+        // survives (a `renderStyle()` rebuild would have torn both down).
+        expect(style.querySelector('[data-cg-field="bg"] .cg-colorpicker-swatch')).toBe(bgSwatch);
+        expect(document.body.contains(popover)).toBe(true);
+        expect(document.querySelector('.cg-colorpicker-popover')).toBe(popover);
+
+        const apply = gui.querySelector('[data-cg-apply]') as HTMLButtonElement;
+        expect(apply.disabled).toBe(false);
+        apply.click();
+        const { columnDefs } = onApply.mock.calls[0][0];
+        const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
+        expect(trade.headerStyle.bg).toBe('rgb(17, 34, 51)');
+
+        document.querySelectorAll('.cg-colorpicker-popover').forEach((p) => p.remove());
+      });
+
+      it('a Text colour commit writes headerStyle.fg without throwing', () => {
+        const onApply = vi.fn();
+        const panel = new ColumnGroupsToolPanel();
+        panel.init(makeParams(onApply));
+        const gui = panel.getGui();
+        (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
+        const style = gui.querySelector('[data-cg-style]')!;
+
+        const fgSwatch = style.querySelector('[data-cg-field="fg"] .cg-colorpicker-swatch') as HTMLButtonElement;
+        fgSwatch.click();
+        const fgHex = document.querySelector('.cg-colorpicker-popover .cg-colorpicker-hex') as HTMLInputElement;
+        fgHex.value = '#00ff00';
+        expect(() => fgHex.dispatchEvent(new Event('change'))).not.toThrow();
+        document.querySelectorAll('.cg-colorpicker-popover').forEach((p) => p.remove());
+
+        (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+        const { columnDefs } = onApply.mock.calls[0][0];
+        const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
+        expect(trade.headerStyle.fg).toBe('rgb(0, 255, 0)');
+      });
+
+      it('a Border colour commit writes headerStyle.border.<edge>.color and does not rebuild the Style band', () => {
+        const onApply = vi.fn();
+        const panel = new ColumnGroupsToolPanel();
+        panel.init(makeParams(onApply));
+        const gui = panel.getGui();
+        (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
+        let style = gui.querySelector('[data-cg-style]')!;
+        // Select the "top" edge before writing its colour.
+        (style.querySelector('[data-cg-border-edge="top"]') as HTMLButtonElement).click();
+        style = gui.querySelector('[data-cg-style]')!; // edge-select IS a structural render
+
+        const borderSwatch = style.querySelector('[data-cg-field="borderColor"] .cg-colorpicker-swatch') as HTMLButtonElement;
+        borderSwatch.click();
+        const popover = document.querySelector('.cg-colorpicker-popover') as HTMLElement;
+        const hex = popover.querySelector('.cg-colorpicker-hex') as HTMLInputElement;
+        hex.value = '#abcdef';
+        hex.dispatchEvent(new Event('change'));
+
+        expect(style.querySelector('[data-cg-field="borderColor"] .cg-colorpicker-swatch')).toBe(borderSwatch);
+        expect(document.body.contains(popover)).toBe(true);
+
+        document.querySelectorAll('.cg-colorpicker-popover').forEach((p) => p.remove());
+        (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+        const { columnDefs } = onApply.mock.calls[0][0];
+        const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
+        expect(trade.headerStyle.border.top.color).toBe('rgb(171, 205, 239)');
+      });
+    });
+
+    describe('Fix 4 — distinct colour-swatch aria-labels', () => {
+      it('gives the Fill/Text/Border swatches distinct aria-labels instead of the generic default', () => {
+        const panel = new ColumnGroupsToolPanel();
+        panel.init(makeParams(vi.fn()));
+        const gui = panel.getGui();
+        (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
+        const style = gui.querySelector('[data-cg-style]')!;
+
+        const bg = style.querySelector('[data-cg-field="bg"] .cg-colorpicker-swatch')!;
+        const fg = style.querySelector('[data-cg-field="fg"] .cg-colorpicker-swatch')!;
+        const border = style.querySelector('[data-cg-field="borderColor"] .cg-colorpicker-swatch')!;
+
+        expect(bg.getAttribute('aria-label')).toBe('Background colour');
+        expect(fg.getAttribute('aria-label')).toBe('Text colour');
+        expect(border.getAttribute('aria-label')).toMatch(/border colour$/i);
+        // No two swatches share the generic default anymore.
+        expect(new Set([bg, fg, border].map((s) => s.getAttribute('aria-label'))).size).toBe(3);
       });
     });
 

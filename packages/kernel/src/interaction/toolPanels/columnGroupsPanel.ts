@@ -56,6 +56,23 @@ export function pruneBorder(spec: BorderSpec | undefined): BorderSpec | undefine
   return out.top || out.right || out.bottom || out.left || out.all ? out : undefined;
 }
 
+/** Pure — the effective spec for one side of a box-model border: an
+ *  explicit per-side entry wins over the `all` fallback. Shared by the
+ *  border cluster's live preview builder AND `refreshBorderPreview()`'s
+ *  no-rebuild live-commit path so both stay in lockstep. */
+function effectiveBorderSide(
+  border: BorderSpec | undefined,
+  side: 'top' | 'right' | 'bottom' | 'left',
+): BorderSpec['all'] | undefined {
+  return border?.[side] ?? border?.all;
+}
+
+/** Pure — CSS shorthand for one border side, or `'none'` when unset/zero. */
+function borderSideToCss(s: BorderSpec['all'] | undefined): string {
+  if (!s || !s.width || s.width <= 0) return 'none';
+  return `${s.width}px ${s.style ?? 'solid'} ${s.color ?? 'currentColor'}`;
+}
+
 interface DragState {
   id: string;
   kind: NodeKind;
@@ -188,19 +205,17 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     const renderLevel = (parentId: string | null, depth: number, hiddenByAncestor: boolean) => {
       const sibs = this.nodes.filter((n) => n.parentId === parentId).sort((a, b) => a.order - b.order);
       // Depth-0 eyebrows keep ungrouped columns and groups from blurring into
-      // one flat list. Emitted lazily in document order so an interleaved
-      // seed (a column between two groups) still labels each cluster once.
-      let ungroupedEyebrow = false;
-      let groupsEyebrow = false;
+      // one flat list. Top-level rows can interleave (a column dragged out
+      // of a group can land between two groups), so an eyebrow is emitted
+      // before each CONTIGUOUS RUN of a kind — not just once in first-seen
+      // order — so e.g. `[group, column, group]` renders
+      // `Groups → group1 → Ungrouped → column → Groups → group2` and never
+      // mislabels the second group under a stale "Ungrouped" eyebrow.
+      let prevKind: NodeKind | null = null;
       sibs.forEach((n) => {
-        if (depth === 0) {
-          if (n.kind === 'column' && !ungroupedEyebrow) {
-            this.tree.appendChild(eyebrow('Ungrouped'));
-            ungroupedEyebrow = true;
-          } else if (n.kind === 'group' && !groupsEyebrow) {
-            this.tree.appendChild(eyebrow('Groups'));
-            groupsEyebrow = true;
-          }
+        if (depth === 0 && n.kind !== prevKind) {
+          this.tree.appendChild(eyebrow(n.kind === 'column' ? 'Ungrouped' : 'Groups'));
+          prevKind = n.kind;
         }
         this.tree.appendChild(this.rowFor(n, depth, hiddenByAncestor));
         const childHidden = hiddenByAncestor || (n.kind === 'group' && this.collapsed.has(n.id));
@@ -287,6 +302,10 @@ export class ColumnGroupsToolPanel implements ToolPanel {
    *  through `this.mutate(...)` like every other panel edit — Apply-only
    *  discipline: nothing here writes to the grid). */
   private renderStyle(): void {
+    // Destroy every live picker before dropping the reference — each one
+    // owns a document/window listener set (+ a body-portaled popover), so
+    // resetting the array without destroying first would orphan them.
+    this.stylePickers.forEach((p) => p.destroy());
     this.stylePickers = [];
     this.styleSection.replaceChildren();
     this.styleSection.removeAttribute('data-for');
@@ -304,8 +323,16 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     const patch = (
       p: Partial<Pick<GroupNode, 'headerStyle' | 'headerClass' | 'openByDefault' | 'marryChildren'>>,
     ) => this.mutate((ns) => setGroupStyle(ns, g.id, p));
+    // Merges against the group's CURRENT headerStyle (read from `ns` at
+    // write-time), not the `g` snapshot closed over when the Style band was
+    // built — a colour field may have already live-committed a change via
+    // `commitStyleLive` (Fix 3) without rebuilding this closure, and merging
+    // off a stale `g.headerStyle` here would silently clobber it.
     const patchStyle = (facet: Partial<NonNullable<GroupNode['headerStyle']>>) =>
-      patch({ headerStyle: { ...g.headerStyle, ...facet } });
+      this.mutate((ns) => {
+        const cur = ns.find((x) => x.id === g.id) as GroupNode | undefined;
+        return setGroupStyle(ns, g.id, { headerStyle: { ...cur?.headerStyle, ...facet } });
+      });
 
     this.styleSection.appendChild(this.buildFillTextCluster(g, patchStyle));
     this.styleSection.appendChild(this.buildBorderCluster(g, patch));
@@ -334,6 +361,45 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     }
   }
 
+  /** Colour-picker commit path (Fix 3) — writes to the model WITHOUT
+   *  rebuilding the Style-band DOM. `ColorPickerControl` emits `onChange` on
+   *  every `pointermove` while the user drags inside its body-portaled
+   *  popover; the ordinary `mutate() -> render() -> renderStyle()` path
+   *  calls `styleSection.replaceChildren()`, which would tear the open
+   *  popover (and its swatch) out from under an in-flight drag. This path
+   *  sets the model, keeps the Apply button's dirty state in sync, and
+   *  refreshes only the cheap border-preview inline styles — nothing else
+   *  in the Style band is touched, so an open popover survives.
+   *  Apply-only discipline still holds: this writes ONLY to `this.nodes`,
+   *  never the grid (see `onApply`). */
+  private commitStyleLive(fn: (n: Node[]) => Node[]): void {
+    this.nodes = fn(this.nodes);
+    this.applyBtn.disabled = !this.dirty;
+    this.refreshBorderPreview();
+  }
+
+  /** Repaints the border-preview cell's inline styles (bg/fg/per-side
+   *  border) for the currently selected group from `this.nodes` — the one
+   *  piece of Style-band DOM a live colour commit needs to keep current,
+   *  without rebuilding anything else. No-op if the border cluster isn't
+   *  mounted (e.g. no group selected). */
+  private refreshBorderPreview(): void {
+    if (!this.selectedGroupId) return;
+    const g = this.nodes.find((n) => n.id === this.selectedGroupId && n.kind === 'group') as
+      | GroupNode
+      | undefined;
+    if (!g) return;
+    const preview = this.styleSection.querySelector('.cg-colgroups-border-preview') as HTMLElement | null;
+    if (!preview) return;
+    preview.style.background = g.headerStyle?.bg ?? '';
+    preview.style.color = g.headerStyle?.fg ?? '';
+    const border = g.headerStyle?.border;
+    preview.style.borderTop = borderSideToCss(effectiveBorderSide(border, 'top'));
+    preview.style.borderRight = borderSideToCss(effectiveBorderSide(border, 'right'));
+    preview.style.borderBottom = borderSideToCss(effectiveBorderSide(border, 'bottom'));
+    preview.style.borderLeft = borderSideToCss(effectiveBorderSide(border, 'left'));
+  }
+
   // ── Style band clusters ────────────────────────────────────────────
 
   /** FILL & TEXT cluster: bg/fg swatches, a B/I/U segment, size + alignment. */
@@ -344,12 +410,24 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     const cluster = el('div', 'cg-colgroups-cluster');
     cluster.appendChild(eyebrow('Fill & text', 'cg-colgroups-cluster-eyebrow'));
 
+    // Colour edits commit through `commitStyleLive` (Fix 3): the picker
+    // emits `onChange` on every pointermove of a drag, and the ordinary
+    // `mutate() -> render() -> renderStyle()` path would tear the portaled
+    // popover out from under the user mid-drag. Reads the CURRENT node from
+    // `ns` (not the closed-over `g`) so back-to-back live commits compose
+    // instead of clobbering each other off a stale snapshot.
+    const patchStyleLive = (facet: Partial<NonNullable<GroupNode['headerStyle']>>) =>
+      this.commitStyleLive((ns) => {
+        const cur = ns.find((x) => x.id === g.id) as GroupNode | undefined;
+        return setGroupStyle(ns, g.id, { headerStyle: { ...cur?.headerStyle, ...facet } });
+      });
+
     // Row 1 — Background + Text colour swatches, side by side.
     const colorRow = el('div', 'cg-colgroups-field-row');
     colorRow.appendChild(this.colorField('bg', 'Fill', g.headerStyle?.bg,
-      (rgba) => patchStyle({ bg: rgba })));
+      (rgba) => patchStyleLive({ bg: rgba }), 'Background colour'));
     colorRow.appendChild(this.colorField('fg', 'Text', g.headerStyle?.fg,
-      (rgba) => patchStyle({ fg: rgba })));
+      (rgba) => patchStyleLive({ fg: rgba }), 'Text colour'));
     cluster.appendChild(colorRow);
 
     // Row 2 — B / I / U segment + alignment icon segment.
@@ -394,26 +472,11 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     cluster.appendChild(styleRow);
 
     // Row 3 — Font size.
-    const sizeRow = el('div', 'cg-colgroups-field');
-    sizeRow.setAttribute('data-cg-field', 'fontSize');
-    const sizeLabel = labelEl('cg-colgroups-field-label');
-    sizeLabel.textContent = 'Size';
-    const size = document.createElement('input');
-    size.type = 'number';
-    size.className = 'cg-settings-input cg-settings-input-number';
-    size.min = '8'; size.max = '32';
-    size.setAttribute('aria-label', 'Font size');
-    const sz = g.headerStyle?.fontSize;
-    size.value = typeof sz === 'number' ? String(sz) : '';
-    size.placeholder = 'auto';
-    size.addEventListener('change', () => {
-      const n = size.value === '' ? undefined : Number(size.value);
-      patchStyle({ fontSize: n && Number.isFinite(n) ? n : undefined });
-    });
-    const sizeId = uid();
-    size.id = sizeId; sizeLabel.htmlFor = sizeId;
-    sizeRow.append(sizeLabel, size);
-    cluster.appendChild(sizeRow);
+    cluster.appendChild(this.numberField(
+      'fontSize', 'Size', g.headerStyle?.fontSize, 'Font size', 8, 32, 'auto',
+      (n) => (n && Number.isFinite(n) ? n : undefined),
+      (n) => patchStyle({ fontSize: n }),
+    ));
 
     return cluster;
   }
@@ -432,21 +495,14 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     editor.setAttribute('data-cg-border', '');
     const border = g.headerStyle?.border;
 
-    // Effective side for the preview: explicit side wins over `all`.
-    const eff = (side: 'top' | 'right' | 'bottom' | 'left') => border?.[side] ?? border?.all;
-    const sideCss = (s: BorderSpec['all'] | undefined): string => {
-      if (!s || !s.width || s.width <= 0) return 'none';
-      return `${s.width}px ${s.style ?? 'solid'} ${s.color ?? 'currentColor'}`;
-    };
-
     const stage = el('div', 'cg-colgroups-border-stage');
     const preview = el('div', 'cg-colgroups-border-preview');
     if (g.headerStyle?.bg) preview.style.background = g.headerStyle.bg;
     if (g.headerStyle?.fg) preview.style.color = g.headerStyle.fg;
-    preview.style.borderTop = sideCss(eff('top'));
-    preview.style.borderRight = sideCss(eff('right'));
-    preview.style.borderBottom = sideCss(eff('bottom'));
-    preview.style.borderLeft = sideCss(eff('left'));
+    preview.style.borderTop = borderSideToCss(effectiveBorderSide(border, 'top'));
+    preview.style.borderRight = borderSideToCss(effectiveBorderSide(border, 'right'));
+    preview.style.borderBottom = borderSideToCss(effectiveBorderSide(border, 'bottom'));
+    preview.style.borderLeft = borderSideToCss(effectiveBorderSide(border, 'left'));
     const previewLabel = el('span', 'cg-colgroups-border-preview-label');
     previewLabel.textContent = g.headerName || 'Header';
     preview.appendChild(previewLabel);
@@ -485,32 +541,40 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     // Width / style / colour — read & write the SELECTED edge.
     const edge = this.selectedEdge;
     const side = border?.[edge];
-    const writeSide = (facet: 'width' | 'style' | 'color', value: number | string | undefined) => {
-      const nextSide = { ...border?.[edge], [facet]: value };
-      const nextBorder = pruneBorder({ ...border, [edge]: nextSide });
-      patch({ headerStyle: { ...g.headerStyle, border: nextBorder } });
+    // Reads the CURRENT border off `ns` at write-time rather than the
+    // closed-over `border`/`g` snapshot — a colour edit may already have
+    // live-committed a change via `commitStyleLive` without rebuilding this
+    // closure (Fix 3), and merging off stale state here would clobber it.
+    const writeSide = (facet: 'width' | 'style', value: number | string | undefined) => {
+      this.mutate((ns) => {
+        const cur = ns.find((x) => x.id === g.id) as GroupNode | undefined;
+        const curBorder = cur?.headerStyle?.border;
+        const nextSide = { ...curBorder?.[edge], [facet]: value };
+        const nextBorder = pruneBorder({ ...curBorder, [edge]: nextSide });
+        return setGroupStyle(ns, g.id, { headerStyle: { ...cur?.headerStyle, border: nextBorder } });
+      });
+    };
+    // Border colour, specifically, commits through `commitStyleLive` (Fix 3)
+    // instead of `writeSide`/`patch` — same no-rebuild-mid-drag reasoning as
+    // the Fill/Text swatches above. Reads the CURRENT border off `ns` so
+    // consecutive live commits (a hue/alpha drag) compose correctly.
+    const writeSideColorLive = (value: string | undefined) => {
+      this.commitStyleLive((ns) => {
+        const cur = ns.find((x) => x.id === g.id) as GroupNode | undefined;
+        const curBorder = cur?.headerStyle?.border;
+        const nextSide = { ...curBorder?.[edge], color: value };
+        const nextBorder = pruneBorder({ ...curBorder, [edge]: nextSide });
+        return setGroupStyle(ns, g.id, { headerStyle: { ...cur?.headerStyle, border: nextBorder } });
+      });
     };
 
     const fields = el('div', 'cg-colgroups-border-fields');
 
-    const widthWrap = el('div', 'cg-colgroups-field');
-    widthWrap.setAttribute('data-cg-field', 'borderWidth');
-    const widthLabel = labelEl('cg-colgroups-field-label');
-    widthLabel.textContent = 'Width';
-    const width = document.createElement('input');
-    width.type = 'number';
-    width.className = 'cg-settings-input cg-settings-input-number';
-    width.min = '0'; width.max = '8';
-    width.setAttribute('aria-label', `${cap(edge)} border width`);
-    width.value = typeof side?.width === 'number' ? String(side.width) : '';
-    width.placeholder = '0';
-    width.addEventListener('change', () => {
-      const n = width.value === '' ? undefined : Number(width.value);
-      writeSide('width', n && Number.isFinite(n) && n > 0 ? n : undefined);
-    });
-    const widthId = uid(); width.id = widthId; widthLabel.htmlFor = widthId;
-    widthWrap.append(widthLabel, width);
-    fields.appendChild(widthWrap);
+    fields.appendChild(this.numberField(
+      'borderWidth', 'Width', side?.width, `${cap(edge)} border width`, 0, 8, '0',
+      (n) => (Number.isFinite(n) && n > 0 ? n : undefined),
+      (n) => writeSide('width', n),
+    ));
 
     const styleWrap = el('div', 'cg-colgroups-field');
     styleWrap.setAttribute('data-cg-field', 'borderStyle');
@@ -531,7 +595,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     fields.appendChild(styleWrap);
 
     fields.appendChild(this.colorField('borderColor', 'Colour', side?.color,
-      (rgba) => writeSide('color', rgba)));
+      writeSideColorLive, `${cap(edge)} border colour`));
 
     editor.appendChild(fields);
     cluster.appendChild(editor);
@@ -555,12 +619,16 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   // ── Style band control builders ────────────────────────────────────
 
   /** A labelled colour swatch wrapped in `data-cg-field="{key}"`, backed by
-   *  the shared `ColorPickerControl` (the E2E depends on `.cg-colorpicker-swatch`). */
+   *  the shared `ColorPickerControl` (the E2E depends on `.cg-colorpicker-swatch`).
+   *  `swatchAriaLabel`, when given, overrides the control's generic default
+   *  ("Choose colour") so the Fill/Text/Border swatches co-present in this
+   *  band read distinctly to a screen reader (Fix 4). */
   private colorField(
     key: string,
     label: string,
     value: string | undefined,
     onChange: (rgba: string) => void,
+    swatchAriaLabel?: string,
   ): HTMLElement {
     const wrap = el('div', 'cg-colgroups-field cg-colgroups-field-color');
     wrap.setAttribute('data-cg-field', key);
@@ -568,7 +636,49 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     lbl.textContent = label;
     const picker = new ColorPickerControl(value ?? '', onChange);
     this.stylePickers.push(picker);
+    if (swatchAriaLabel) {
+      picker.el.querySelector('.cg-colorpicker-swatch')?.setAttribute('aria-label', swatchAriaLabel);
+    }
     wrap.append(lbl, picker.el);
+    return wrap;
+  }
+
+  /** A labelled `<input type="number">` wrapped in `data-cg-field="{key}"`
+   *  (Fix 5) — shared by the Fill & text cluster's Size field and the
+   *  Border cluster's edge-scoped Width field, which were near-identical
+   *  hand-rolled blocks. `normalize` maps the raw parsed number to the
+   *  facet's valid domain (or `undefined` to clear it, e.g. Size allows any
+   *  finite non-zero value while Width additionally requires `n > 0`);
+   *  `onCommit` receives that normalized value and decides how to write it
+   *  (a plain `patchStyle`, or the border cluster's edge-scoped `writeSide`). */
+  private numberField(
+    key: string,
+    label: string,
+    value: number | undefined,
+    ariaLabel: string,
+    min: number,
+    max: number,
+    placeholder: string,
+    normalize: (n: number) => number | undefined,
+    onCommit: (n: number | undefined) => void,
+  ): HTMLElement {
+    const wrap = el('div', 'cg-colgroups-field');
+    wrap.setAttribute('data-cg-field', key);
+    const lbl = labelEl('cg-colgroups-field-label');
+    lbl.textContent = label;
+    const input = document.createElement('input');
+    input.type = 'number';
+    input.className = 'cg-settings-input cg-settings-input-number';
+    input.min = String(min); input.max = String(max);
+    input.setAttribute('aria-label', ariaLabel);
+    input.value = typeof value === 'number' ? String(value) : '';
+    input.placeholder = placeholder;
+    input.addEventListener('change', () => {
+      const raw = input.value === '' ? undefined : Number(input.value);
+      onCommit(raw === undefined ? undefined : normalize(raw));
+    });
+    const id = uid(); input.id = id; lbl.htmlFor = id;
+    wrap.append(lbl, input);
     return wrap;
   }
 

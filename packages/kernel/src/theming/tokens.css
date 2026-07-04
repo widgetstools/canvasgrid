@@ -2403,9 +2403,9 @@
   width: 0;
   height: 0;
   padding: 0;
-  border-left: 4px solid transparent;
-  border-right: 4px solid transparent;
-  border-top: 5px solid currentColor;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid currentColor;
   border-bottom: none;
   background: transparent;
   cursor: pointer;
@@ -2428,7 +2428,7 @@
   color: color-mix(in srgb, var(--cg-fg-color) 45%, transparent);
   cursor: grab;
   user-select: none;
-  font-size: var(--cg-font-size-sm);
+  font-size: 15px;
   line-height: 1;
 }
 
@@ -2438,8 +2438,8 @@
   align-items: center;
 }
 .cg-colgroups-checkbox {
-  width: 14px;
-  height: 14px;
+  width: 15px;
+  height: 15px;
   margin: 0;
   accent-color: var(--cg-settings-accent);
   cursor: pointer;
@@ -2490,7 +2490,7 @@
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 4px;
   margin-inline-start: auto;
   opacity: 0;
 }
@@ -2504,16 +2504,24 @@
     transition: opacity 120ms ease;
   }
 }
+/* One coherent interactive-icon scale for the whole panel: a ~24px hit
+ * target with a ~15px glyph — matching the `.cg-colgroups-seg-btn` segment
+ * height below (24px) and the alignment icon's own 15x15 SVG, so the group-
+ * manipulation icons (⚙ style / ＋ subgroup / ✕ delete) read at the same
+ * visual weight as the column-config controls, never smaller. */
 .cg-colgroups-action {
-  width: 18px;
-  height: 18px;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
-  font-size: 12px;
+  font-size: 15px;
   line-height: 1;
   color: color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
   background: transparent;
   border: none;
-  border-radius: 3px;
+  border-radius: 5px;
   cursor: pointer;
 }
 .cg-colgroups-action:hover {
@@ -2629,15 +2637,18 @@
   overflow: hidden;
   background: color-mix(in srgb, var(--cg-fg-color) 4%, transparent);
 }
+/* Same ~24px hit-target / ~15px glyph family as `.cg-colgroups-action`
+ * above — a tightened min-width/padding keeps the ●◐○ / B-I-U segment
+ * compact so it doesn't visually dominate the row (Fix 1). */
 .cg-colgroups-seg-btn {
-  min-width: 26px;
+  min-width: 24px;
   height: 24px;
-  padding: 0 7px;
+  padding: 0 6px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   font: inherit;
-  font-size: var(--cg-font-size-sm);
+  font-size: 15px;
   line-height: 1;
   color: color-mix(in srgb, var(--cg-fg-color) 78%, transparent);
   background: transparent;
