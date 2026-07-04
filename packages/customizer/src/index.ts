@@ -19,3 +19,4 @@ export {
   type CgcChangeDetail,
 } from './components';
 export { litToolPanel, CgcPanelElement, gridApiContext } from './litToolPanel';
+export { smartEditToolPanel } from './panels/smartEdit';

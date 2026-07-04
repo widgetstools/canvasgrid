@@ -12,8 +12,13 @@
  * `detail.value` — the panel owns state + writes to the engine.
  */
 import { LitElement, html, nothing } from 'lit';
-import { property } from 'lit/decorators.js';
 import { chromeBase, bandStyles, rowStyles, switchStyles, inputStyles } from './styles';
+
+// NOTE: classic `static properties` (not decorators) throughout — this
+// package ships source-direct into arbitrary consumer vite configs, and
+// esbuild passes TC39 decorators through untransformed (browsers can't
+// parse them). `declare` keeps class fields from shadowing Lit's
+// reactive accessors under useDefineForClassFields.
 
 /** Fired by every control on user input. */
 export interface CgcChangeDetail {
@@ -31,9 +36,19 @@ function emitChange(el: HTMLElement, value: unknown): void {
 /** Collapsible section band (`<cgc-band title="Editing">…rows…</cgc-band>`). */
 export class CgcBand extends LitElement {
   static override styles = [chromeBase, bandStyles];
+  static override properties = {
+    bandTitle: { type: String, attribute: 'band-title' },
+    collapsed: { type: Boolean, reflect: true },
+  };
 
-  @property({ type: String, attribute: 'band-title' }) accessor bandTitle = '';
-  @property({ type: Boolean, reflect: true }) accessor collapsed = false;
+  declare bandTitle: string;
+  declare collapsed: boolean;
+
+  constructor() {
+    super();
+    this.bandTitle = '';
+    this.collapsed = false;
+  }
 
   override render() {
     return html`
@@ -55,10 +70,22 @@ export class CgcBand extends LitElement {
  *  right. Set the `modified` attribute for the diff-rail tick. */
 export class CgcField extends LitElement {
   static override styles = [chromeBase, rowStyles];
+  static override properties = {
+    label: { type: String },
+    hint: { type: String },
+    modified: { type: Boolean, reflect: true },
+  };
 
-  @property({ type: String }) accessor label = '';
-  @property({ type: String }) accessor hint = '';
-  @property({ type: Boolean, reflect: true }) accessor modified = false;
+  declare label: string;
+  declare hint: string;
+  declare modified: boolean;
+
+  constructor() {
+    super();
+    this.label = '';
+    this.hint = '';
+    this.modified = false;
+  }
 
   override render() {
     return html`
@@ -75,9 +102,19 @@ export class CgcField extends LitElement {
  *  with the flipped boolean. */
 export class CgcSwitch extends LitElement {
   static override styles = [chromeBase, switchStyles];
+  static override properties = {
+    checked: { type: Boolean },
+    ariaLabelText: { type: String, attribute: 'aria-label' },
+  };
 
-  @property({ type: Boolean }) accessor checked = false;
-  @property({ type: String, attribute: 'aria-label' }) accessor ariaLabelText = '';
+  declare checked: boolean;
+  declare ariaLabelText: string;
+
+  constructor() {
+    super();
+    this.checked = false;
+    this.ariaLabelText = '';
+  }
 
   override render() {
     return html`
@@ -97,10 +134,22 @@ export class CgcSwitch extends LitElement {
 /** Select. `options` is `[{ value, label }]`; emits the selected value. */
 export class CgcSelect extends LitElement {
   static override styles = [chromeBase, inputStyles];
+  static override properties = {
+    options: { attribute: false },
+    value: { type: String },
+    ariaLabelText: { type: String, attribute: 'aria-label' },
+  };
 
-  @property({ attribute: false }) accessor options: Array<{ value: string; label: string }> = [];
-  @property({ type: String }) accessor value = '';
-  @property({ type: String, attribute: 'aria-label' }) accessor ariaLabelText = '';
+  declare options: Array<{ value: string; label: string }>;
+  declare value: string;
+  declare ariaLabelText: string;
+
+  constructor() {
+    super();
+    this.options = [];
+    this.value = '';
+    this.ariaLabelText = '';
+  }
 
   override render() {
     return html`
@@ -120,13 +169,31 @@ export class CgcSelect extends LitElement {
 /** Number input. Emits a number (or undefined when cleared). */
 export class CgcNumber extends LitElement {
   static override styles = [chromeBase, inputStyles];
+  static override properties = {
+    value: { type: Number },
+    min: { type: Number },
+    max: { type: Number },
+    step: { type: Number },
+    placeholder: { type: String },
+    ariaLabelText: { type: String, attribute: 'aria-label' },
+  };
 
-  @property({ type: Number }) accessor value: number | undefined = undefined;
-  @property({ type: Number }) accessor min: number | undefined = undefined;
-  @property({ type: Number }) accessor max: number | undefined = undefined;
-  @property({ type: Number }) accessor step: number | undefined = undefined;
-  @property({ type: String }) accessor placeholder = '';
-  @property({ type: String, attribute: 'aria-label' }) accessor ariaLabelText = '';
+  declare value: number | undefined;
+  declare min: number | undefined;
+  declare max: number | undefined;
+  declare step: number | undefined;
+  declare placeholder: string;
+  declare ariaLabelText: string;
+
+  constructor() {
+    super();
+    this.value = undefined;
+    this.min = undefined;
+    this.max = undefined;
+    this.step = undefined;
+    this.placeholder = '';
+    this.ariaLabelText = '';
+  }
 
   override render() {
     return html`

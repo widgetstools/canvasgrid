@@ -11,6 +11,8 @@
 import { CGrid, formatPrice32, type CColDef, type CColGroupDef } from '@cgrid/kernel';
 import '@cgrid/kernel/style.css';
 import { wireIntoKernel as wireFormat } from '@cgrid/format';
+import { wireEditIntoKernel, type EditBridgeHandle } from '@cgrid/edit';
+import { smartEditToolPanel } from '@cgrid/customizer';
 import { connectStomp, STOMP_PUBLISH_RATE_PER_SEC, type Position } from './stomp';
 
 const DESKS = ['RATES', 'CREDIT', 'FX', 'EQD'];
@@ -118,6 +120,11 @@ const statusUps = document.querySelector<HTMLElement>('[data-testid="status-ups"
 const savedTheme = localStorage.getItem('custdemo:theme');
 let dark = savedTheme !== 'light';
 
+// Cycle 21i Phase 2 / T6 — the Smart Edit panel factory takes a GETTER
+// because tool-panel components go into the constructor while
+// wireEditIntoKernel(grid) can only run after construction.
+let editHandle: EditBridgeHandle | undefined;
+
 const grid = new CGrid<Position>(gridHost, {
   gridId: 'customizer-demo',
   persistState: true,
@@ -129,7 +136,11 @@ const grid = new CGrid<Position>(gridHost, {
   // read-only via the editable predicate.
   defaultColDef: { resizable: true, sortable: true, editable: true, flex: 1, minWidth: 80 },
   rowGroupPanelShow: 'always',
-  sideBar: { toolPanels: ['columns', 'filters', 'gridOptions', 'columnGroups'] },
+  components: { smartEdit: smartEditToolPanel(() => editHandle) },
+  sideBar: { toolPanels: [
+    'columns', 'filters', 'gridOptions', 'columnGroups',
+    { id: 'smartEdit', labelDefault: 'Smart Edit', toolPanel: 'smartEdit' },
+  ] },
   enableCellChangeFlash: true,
   cellSelection: {},
 });
@@ -138,6 +149,11 @@ const grid = new CGrid<Position>(gridHost, {
 // string valueFormatters ('#,##0.00', '[Red]…') compile through the DSL.
 wireFormat(grid);
 grid.updateGridOptions({ columnDefs });
+
+// Cycle 21i Phase 2 / T6 — wire the edit engine; its settings persist
+// through the kernel module-state registry (GridState.modules.editSettings)
+// with zero code here, and the Smart Edit side-bar tab edits them live.
+editHandle = wireEditIntoKernel(grid);
 
 // Cycle 21i Phase 2 / T4 — modal-primitive smoke: a toolbar start-zone
 // button opens a themed dialog through grid.getModal(). Exercises the
