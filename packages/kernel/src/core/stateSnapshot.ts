@@ -18,12 +18,13 @@ import type {
   CColumnState, SortModel, FilterModel, SelectionRange,
 } from '../types';
 import type { SerializedNode } from '../interaction/columnGroups/model';
+import type { ModuleStateEnvelope } from './moduleState';
 
 /** Bump this whenever any GridState field's shape changes
  *  (renamed key, value-type change, mandatory new field). Keep
  *  `core/stateMigrations.ts` in sync — every bump needs a migrator
  *  for the prior version. */
-export const STATE_SCHEMA_VERSION = 3;
+export const STATE_SCHEMA_VERSION = 4;
 
 export interface GridState {
   /** Schema version of the snapshot. Apps round-tripping snapshots
@@ -36,30 +37,28 @@ export interface GridState {
   // per-column knobs.
   columnState?: CColumnState[];
 
-  // Column-GROUP structure overlay (Cycle 21i / Task 6) — the flattened
-  // `flatten()` output of the app's live `columnDefs` tree, with each
-  // column node's `def` reference stripped (functions never survive
-  // JSON; `rehydrate()` reattaches `def` from the CURRENT base
-  // columnDefs by colId on restore). Captures group hierarchy + group
-  // `headerStyle`/`headerClass`/etc — the structural edits the Column
-  // Groups panel's Apply makes that `columnState` alone can't carry.
-  // Present only when at least one GROUP exists (a flat grid persists
-  // nothing here, keeping snapshots compact). Restored BEFORE
-  // `columnState` so per-leaf width/hide/pinned settle on top of the
-  // restored structure.
+  // Column-GROUP structure overlay (Cycle 21i / Task 6).
+  // @deprecated v3 — Phase 2 / T2 moved this slice into
+  // `modules.columnGroups.data.defs`; the v3→v4 migrator relocates it.
+  // Kept OPTIONAL so pre-Phase-2 snapshots still typecheck as input.
   columnGroupDefs?: SerializedNode[];
 
-  // Column-GROUP runtime open/collapse state (Cycle 21i / Task 8) — the
-  // live `{groupId, open}` state for every group currently in the tree
-  // (from `ColumnGroupState.getState()`), independent of each group's
-  // authored `openByDefault` (which only seeds a FRESH grid; it doesn't
-  // reflect a user's runtime collapse/expand). Present only when at
-  // least one group exists. Restored AFTER `columnGroupDefs` (the group
-  // must exist before its open-state can apply) so a user's runtime
-  // collapse wins over the def's `openByDefault` even though the
-  // `columnGroupDefs` restore's tree rebuild re-seeds open-state from
-  // `openByDefault` for any group whose id survives the swap.
+  // Column-GROUP runtime open/collapse state (Cycle 21i / Task 8).
+  // @deprecated v3 — Phase 2 / T2 moved this slice into
+  // `modules.columnGroups.data.open`; the v3→v4 migrator relocates it.
   columnGroupOpen?: { groupId: string; open: boolean }[];
+
+  // Engine-owned module slices (Cycle 21i Phase 2 / T2) — one named,
+  // versioned envelope per registered `StateModule` (rules, calc,
+  // column formatting, edit journal, … as they land). The kernel's
+  // own built-in slice is `columnGroups` ({ defs, open } — the Task
+  // 6/8 overlay relocated behind the registry). Envelope shape
+  // matches the StarUI ConfigManager profile bundle: per-module
+  // `{ version, data }`. Restored right after gridOptions/themeParams
+  // and BEFORE `columnState`, so structural module slices (column
+  // groups) settle before per-leaf geometry applies on top. Restore
+  // degrades gracefully per-slice — see `ModuleStateRegistry.restore`.
+  modules?: Record<string, ModuleStateEnvelope>;
 
   // Filter pipeline (Cycle 7).
   filterModel?: FilterModel;
@@ -116,14 +115,13 @@ export interface GridState {
  *  back into the CGrid class file. */
 export interface StateSnapshotSources {
   getColumnState(): CColumnState[];
-  /** Cycle 21i / Task 6 — the flattened, def-stripped column-GROUP
-   *  overlay (see `GridState.columnGroupDefs`). Optional so grids built
-   *  before this field existed still satisfy the interface. */
-  getColumnGroupOverlay?(): SerializedNode[];
-  /** Cycle 21i / Task 8 — the live column-GROUP open/collapse state (see
-   *  `GridState.columnGroupOpen`). Optional so grids built before this
-   *  field existed still satisfy the interface. */
-  getColumnGroupOpenState?(): { groupId: string; open: boolean }[];
+  /** Cycle 21i Phase 2 / T2 — every registered module's `{version,
+   *  data}` envelope (see `GridState.modules`). The kernel's own
+   *  column-groups slice (formerly the dedicated
+   *  `getColumnGroupOverlay` / `getColumnGroupOpenState` sources)
+   *  rides this too. Optional so test harnesses without a registry
+   *  still satisfy the interface. */
+  getModuleState?(): Record<string, ModuleStateEnvelope> | undefined;
   getFilterModel(): FilterModel;
   getSortModel(): SortModel;
   getRowGroupColumns(): string[];
@@ -158,6 +156,23 @@ export const STATE_MIGRATIONS: Record<number, (s: GridState) => GridState> = {
   // unchanged (it simply lacks the runtime open/collapse overlay, exactly
   // like a flat grid's own snapshot omits it). Identity migrator.
   2: (s) => s,
+  // v3 -> v4 (Cycle 21i Phase 2 / T2): the column-group overlay moved
+  // behind the module-state registry. Relocate the legacy top-level
+  // `columnGroupDefs` / `columnGroupOpen` fields into the
+  // `modules.columnGroups` envelope (module version 1) so `setState`
+  // has ONE restore path. Snapshots without groups pass through
+  // unchanged.
+  3: (s) => {
+    const { columnGroupDefs, columnGroupOpen, ...rest } = s;
+    if (!columnGroupDefs && !columnGroupOpen) return s;
+    const data: { defs?: unknown; open?: unknown } = {};
+    if (columnGroupDefs) data.defs = columnGroupDefs;
+    if (columnGroupOpen) data.open = columnGroupOpen;
+    return {
+      ...rest,
+      modules: { ...rest.modules, columnGroups: { version: 1, data } },
+    };
+  },
 };
 
 /** Forward-migrate a snapshot from its stored version to the current
@@ -194,15 +209,8 @@ export function buildSnapshot(sources: StateSnapshotSources): GridState {
   const columnState = sources.getColumnState();
   if (columnState.length > 0) snapshot.columnState = columnState;
 
-  const groupOverlay = sources.getColumnGroupOverlay?.();
-  if (groupOverlay && groupOverlay.some((n) => n.kind === 'group')) {
-    snapshot.columnGroupDefs = groupOverlay;
-  }
-
-  const groupOpenState = sources.getColumnGroupOpenState?.();
-  if (groupOpenState && groupOpenState.length > 0) {
-    snapshot.columnGroupOpen = groupOpenState;
-  }
+  const modules = sources.getModuleState?.();
+  if (modules) snapshot.modules = modules;
 
   const filterModel = sources.getFilterModel();
   if (Object.keys(filterModel).length > 0) snapshot.filterModel = filterModel;

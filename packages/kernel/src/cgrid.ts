@@ -42,6 +42,8 @@ import {
   flatten as flattenColumnGroups, project as projectColumnGroups,
   rehydrate as rehydrateColumnGroups, toSerializedNodes as toSerializedColumnGroupNodes,
 } from './interaction/columnGroups/model';
+import type { SerializedNode } from './interaction/columnGroups/model';
+import { ModuleStateRegistry, type StateModule } from './core/moduleState';
 import { computeAutoHeaderHeight } from './renderer/cellRenderers/headerWrap';
 import type { CColumnState, CApplyColumnStateParams, ISizeColumnsToFitParams } from './types';
 import type { CColDef, CColGroupDef } from './types';
@@ -202,6 +204,11 @@ export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/regi
 // Cycle 23 / Tasks 5-6 — state-snapshot public types.
 export type { GridState } from './core/stateSnapshot';
 export { STATE_SCHEMA_VERSION } from './core/stateSnapshot';
+// Cycle 21i Phase 2 / T2 — module-state registry surface. Engines
+// register slices via `grid.registerStateModule(...)`; the types are
+// exported so engine packages can declare modules without reaching
+// into kernel internals.
+export type { StateModule, ModuleStateEnvelope } from './core/moduleState';
 export type { StateStorageAdapter, PersistStateOptions } from './core/statePersistence';
 export { LocalStorageStateAdapter } from './core/statePersistence';
 
@@ -541,6 +548,16 @@ export function defaultFillExtrapolate(sourceValues: unknown[], targetIndex: num
 
 export class CGrid<TRow = any> {
   private events = new TypedEventEmitter<CGridEvent<TRow>>();
+  /** Cycle 21i Phase 2 / T2 — named, versioned engine-state slices that
+   *  fold into `GridState.modules` (see `core/moduleState.ts`). The
+   *  kernel registers its own `columnGroups` slice at construction;
+   *  engines (rules / calc / format / edit) register theirs via
+   *  `registerStateModule`. `notifyChanged` fans a `moduleStateChanged`
+   *  event into the stateUpdated bus so slices ride the persistState
+   *  autosave with zero extra plumbing. */
+  private moduleStateRegistry = new ModuleStateRegistry((moduleId) =>
+    this.events.emit({ type: 'moduleStateChanged', moduleId }),
+  );
   /** Cycle 23 / Task 7 — coalesced `stateUpdated` emitter. Subscribes
    *  to every state-affecting event on `this.events` and emits one
    *  `stateUpdated` per rAF tick carrying the full snapshot + the
@@ -1028,6 +1045,35 @@ export class CGrid<TRow = any> {
     this.columnTree = resolveColumnTree(foldCalcColumnDefs<CColDef<TRow> | CColGroupDef<TRow>>(options.columnDefs), options.defaultColDef, options.columnTypes);
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
     this.columnGroupState = new ColumnGroupState(this.columnTree);
+    // Cycle 21i Phase 2 / T2 — the kernel's own column-groups slice rides
+    // the module-state registry (formerly the dedicated columnGroupDefs /
+    // columnGroupOpen GridState fields; the v3→v4 snapshot migrator
+    // relocates legacy snapshots into this envelope). `get()` omits the
+    // slice entirely when no group exists so snapshots stay compact;
+    // `set()` reuses the exact rehydrate → updateGridOptions path the
+    // Column Groups panel's Apply uses, then layers the runtime
+    // open/collapse state on top (open state applies AFTER the tree
+    // rebuild so a user's collapse wins over `openByDefault`).
+    this.moduleStateRegistry.register({
+      id: 'columnGroups',
+      version: 1,
+      get: () => {
+        const defs = toSerializedColumnGroupNodes(flattenColumnGroups(this.options.columnDefs ?? []));
+        if (!defs.some((n) => n.kind === 'group')) return undefined;
+        const open = this.columnGroupState.getState();
+        return open.length > 0 ? { defs, open } : { defs };
+      },
+      set: (data) => {
+        const slice = data as { defs?: SerializedNode[]; open?: { groupId: string; open: boolean }[] };
+        if (slice?.defs) {
+          const rehydrated = rehydrateColumnGroups(slice.defs, this.options.columnDefs ?? []);
+          this.updateGridOptions({ columnDefs: projectColumnGroups(rehydrated) });
+        }
+        if (slice?.open) {
+          this.columnGroupState.apply(slice.open);
+        }
+      },
+    });
     // Cycle 19 / Task 5-Grouping — grouping coordinator. Constructed
     // BEFORE `computeVisibleColumnOrder()` at construction because that
     // method reads `this.grouping.getAutoGroupColumns()` synchronously.
@@ -7542,6 +7588,25 @@ export class CGrid<TRow = any> {
     return this.colStateManager.getColumnState();
   }
 
+  /** Cycle 21i Phase 2 / T2 — register a named, versioned engine-state
+   *  slice that folds into `GridState.modules` and rides the
+   *  persistState autosave. `get()` returning `undefined` omits the
+   *  slice; `set(data, version)` restores it (throwing skips that
+   *  slice only). Returns an unregister function. After a mutation
+   *  that has no mapped grid event, call
+   *  `notifyModuleStateChanged(id)` so the autosave runs. */
+  registerStateModule(module: StateModule): () => void {
+    return this.moduleStateRegistry.register(module);
+  }
+
+  /** Cycle 21i Phase 2 / T2 — signal that a registered module's state
+   *  changed. Emits the typed `moduleStateChanged` event, which the
+   *  stateUpdated bus maps to the `modules` snapshot key (debounced
+   *  autosave follows when `persistState` is on). */
+  notifyModuleStateChanged(moduleId: string): void {
+    this.moduleStateRegistry.notifyChanged(moduleId);
+  }
+
   /** Cycle 23 / Task 5 — full grid state snapshot. Includes columnState,
    *  filter / sort / group model, pivot mode + cols, expanded routes,
    *  side bar + selection + scroll position. Round-trippable through
@@ -7552,9 +7617,7 @@ export class CGrid<TRow = any> {
   getState(): GridState {
     return buildSnapshot({
       getColumnState: () => this.getColumnState(),
-      getColumnGroupOverlay: () =>
-        toSerializedColumnGroupNodes(flattenColumnGroups(this.options.columnDefs ?? [])),
-      getColumnGroupOpenState: () => this.columnGroupState.getState(),
+      getModuleState: () => this.moduleStateRegistry.snapshot(),
       getFilterModel: () => this.getFilterModel(),
       getSortModel: () => this.getSortModel(),
       getRowGroupColumns: () => this.getRowGroupColumns(),
@@ -7608,34 +7671,22 @@ export class CGrid<TRow = any> {
       this.setThemeParams(migrated.themeParams);
     }
 
-    // 0c. column-GROUP structure overlay (Cycle 21i / Task 6) — BEFORE
-    // columnState so per-leaf width/hide/pinned settle on top of the
-    // restored group hierarchy rather than the other way around.
-    // Rehydrates the persisted flat overlay against the app's CURRENT
-    // base `columnDefs` (by colId) and applies it through the exact same
-    // columnDefs-rebuild path `updateGridOptions({ columnDefs })` uses —
-    // reusing that path also fires `columnDefsChanged`, which re-marks
-    // `columnGroupDefs` dirty; harmless (not a loop — the bus coalesces
-    // per rAF frame and this restore's own emit is tagged with the same
-    // 'api'/'init' source already set above, matching how the sibling
-    // columnState/filterModel/etc. restores below also re-dirty their
-    // own keys as a side effect of reusing their normal apply path).
-    if (migrated.columnGroupDefs) {
-      const rehydrated = rehydrateColumnGroups(migrated.columnGroupDefs, this.options.columnDefs ?? []);
-      this.updateGridOptions({ columnDefs: projectColumnGroups(rehydrated) });
-    }
-
-    // 0d. column-GROUP runtime open/collapse state (Cycle 21i / Task 8) —
-    // AFTER columnGroupDefs so the groups it names already exist (the
-    // `columnGroupDefs` restore's tree rebuild calls `ColumnGroupState
-    // .setTree`, which re-seeds from each group's `openByDefault` for any
-    // id that didn't survive the swap and PRESERVES the live open state for
-    // ids that did). Applying this persisted array last means the user's
-    // runtime collapse/expand always wins over `openByDefault`, matching
-    // how columnState settles on top of the restored group hierarchy below.
-    // `apply()` silently skips groupIds no longer in the tree.
-    if (migrated.columnGroupOpen) {
-      this.columnGroupState.apply(migrated.columnGroupOpen);
+    // 0c. module slices (Cycle 21i Phase 2 / T2) — engine-owned state
+    // envelopes, including the kernel's own `columnGroups` slice (the
+    // Task 6/8 overlay relocated behind the registry; legacy top-level
+    // `columnGroupDefs`/`columnGroupOpen` fields arrive here via the
+    // v3→v4 migrator). Positioned BEFORE columnState so structural
+    // slices (group hierarchy) settle before per-leaf width/hide/pinned
+    // apply on top. The columnGroups slice reuses the exact
+    // `updateGridOptions({ columnDefs })` path the panel's Apply uses —
+    // that path re-fires `columnDefsChanged`, which re-marks the
+    // `modules` key dirty; harmless (the bus coalesces per rAF frame and
+    // this restore's own emit is tagged with the 'api'/'init' source set
+    // above, matching how the sibling restores below re-dirty their own
+    // keys). Restore degrades gracefully per-slice: unknown module ids
+    // and throwing `set()`s warn + skip without dropping the rest.
+    if (migrated.modules) {
+      this.moduleStateRegistry.restore(migrated.modules);
     }
 
     // 1. columnState (defines columns + their geometry).

@@ -395,8 +395,11 @@ test('collapsing a group at runtime persists its open/collapse state across relo
     (window as unknown as { __cgapi: any }).__cgapi.setColumnGroupState([{ groupId: 'trade', open: false }]),
   );
 
+  // Phase 2 / T2 — open/collapse state persists inside the module-state
+  // envelope (`modules.columnGroups.data.open`), so wait for the
+  // collapsed entry itself rather than the legacy top-level key.
   await page.waitForFunction(
-    (key) => (localStorage.getItem(key) ?? '').includes('"columnGroupOpen"'),
+    (key) => (localStorage.getItem(key) ?? '').includes('"groupId":"trade","open":false'),
     STORAGE_KEY,
     { timeout: 5_000 },
   );

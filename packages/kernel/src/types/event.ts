@@ -457,6 +457,11 @@ export type CGridEvent<TRow = any> =
       visible: boolean;
       source: 'api' | 'sideBarButtonClicked';
     }
+  /** Cycle 21i Phase 2 / T2 — fires when a registered state module
+   *  signals a change via `notifyModuleStateChanged(id)`. The
+   *  stateUpdated bus maps this to the `modules` snapshot key so the
+   *  slice rides the persistState autosave. */
+  | { type: 'moduleStateChanged'; moduleId: string }
   /** Cycle 21i Phase 2 / T1 — fires when the intrinsic toolbar save
    *  button is clicked. `date` is the current value of the intrinsic
    *  business-date picker (`YYYY-MM-DD`). Fires alongside any handlers
