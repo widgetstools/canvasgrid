@@ -85,15 +85,22 @@ export interface CellPaintConfig {
    *  black/white depending on the active theme). Only meaningful when
    *  `unSortIcon === true`. */
   unSortIconColor?: string;
-  /** Cycle 18 / Task 4 — pivot column-group expand/collapse affordance.
-   *  Set ONLY on synthesized pivot column-group headers that own a
-   *  `columnGroupShow:'closed'` "group total" leaf (i.e. branch pivot
-   *  groups). `'open'` paints a chevron-down to indicate the group is
-   *  expanded; `'closed'` paints a chevron-right. The header click
+  /** Cycle 18 / Task 4; broadened Task 10; repositioned post-Task-10 fix —
+   *  column-group expand/collapse affordance. Despite the name, NOT
+   *  pivot-only: set on ANY column-group header (pivot result group OR
+   *  regular authored group) whose collapse has a visible effect — see
+   *  `groupHasToggleEffect` in `renderer/painters/byRows.ts`. `'open'`
+   *  paints a `chevron-left` (click to collapse); `'closed'` paints a
+   *  `chevron-right` (click to expand) — horizontal carets, ag-grid style,
+   *  drawn IMMEDIATELY AFTER the (possibly ellipsized) caption — the
+   *  cell's trailing edge is only a defensive clamp, not the caret's
+   *  primary anchor. The header click
    *  already routes through `toggleColumnGroup(groupId)` —
-   *  `interaction/features/headerClick.ts` — so the chevron is the
-   *  visual cue for the existing hit-testable group region. Design note:
-   *  `docs/superpowers/plans/notes/cycle-18-pivoting-design.md` (Task 4). */
+   *  `interaction/features/headerClick.ts` — so the caret is the visual
+   *  cue for the existing hit-testable group region. Design notes:
+   *  `docs/superpowers/plans/notes/cycle-18-pivoting-design.md` (Task 4,
+   *  original pivot-only version) and Task 10 (broadening to all groups,
+   *  originally drawn leading before this fix moved it trailing). */
   pivotGroupExpand?: 'open' | 'closed';
   /** Row-select header checkbox state, set ONLY on the header cell of
    *  columns declaring `headerCheckboxSelection: true`. `undefined`
@@ -227,6 +234,32 @@ const SORT_ICON_PAD = 8;
  *  visual rhythm. */
 const PIVOT_CHEVRON_SIZE = 14;
 const PIVOT_CHEVRON_GAP = 4;
+
+/** Task 11 — pure ellipsis-fit helper shared by the column-group header
+ *  caption path. Binary-searches the largest prefix of `text` whose
+ *  rendered width (prefix + `'…'`) is `<= maxW`, using the caller-supplied
+ *  `measure` (so it works with any font/canvas context, and is trivially
+ *  unit-testable with a synthetic measure function). Returns `text`
+ *  unchanged when it already fits, and `'…'` (or `''` when `maxW <= 0`)
+ *  at the extreme low end. */
+export function ellipsizeToWidth(measure: (t: string) => number, text: string, maxW: number): string {
+  if (maxW <= 0) return '';
+  if (measure(text) <= maxW) return text;
+  const ell = '…';
+  let lo = 0, hi = text.length;
+  // largest prefix whose width + ellipsis fits
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (measure(text.slice(0, mid) + ell) <= maxW) lo = mid; else hi = mid - 1;
+  }
+  // When no prefix fits, only fall back to a bare ellipsis if the ellipsis
+  // glyph itself fits within maxW — otherwise even '…' alone would overflow
+  // the reserved width (narrow column-group span), which would just push
+  // the overflow onto the caret clamp again. Draw nothing rather than
+  // something over-width.
+  if (lo === 0) return measure(ell) <= maxW ? ell : '';
+  return text.slice(0, lo) + ell;
+}
 
 export function paintBackground(gc: CachedContext2D, p: CellPaintConfig): void {
   // Skip the per-cell bg fill when the bundle already painted this bg.
@@ -587,22 +620,33 @@ export const headerCell: CellPainter = {
       }
       return;
     }
-    let textX = p.bounds.x + HEADER_PADDING;
-    if (p.pivotGroupExpand !== undefined) {
-      const iconCx = p.bounds.x + HEADER_PADDING + PIVOT_CHEVRON_SIZE / 2;
-      drawIcon(
-        gc,
-        p.pivotGroupExpand === 'open' ? 'chevron-down' : 'chevron-right',
-        iconCx, cy, PIVOT_CHEVRON_SIZE,
-        { color: p.iconColor ?? p.fg, strokeWidth: 2 },
-      );
-      textX = p.bounds.x + HEADER_PADDING + PIVOT_CHEVRON_SIZE + PIVOT_CHEVRON_GAP;
-    }
+    const textX = p.bounds.x + HEADER_PADDING;
+    // The column-group expand/collapse caret is painted AFTER the caption
+    // (further below, once the caption width is measured) so it sits
+    // immediately to the right of the group name — ag-grid style.
+    // Task 11 — for a single-line group-header caret, the caret's footprint
+    // is reserved in the caption's rendered width UP FRONT (ellipsizing the
+    // caption if needed) rather than only clamping the caret's own position
+    // to the cell's right edge. That old clamp-only approach let a long
+    // caption draw straight through/under the caret; reserving the space
+    // first guarantees the caret never overlaps drawn text. Gated strictly
+    // on `pivotGroupExpand !== undefined && !wrapHeader` — leaf headers,
+    // sort/unsort carets and the wrapped multi-line path are untouched.
+    const caption = (p.pivotGroupExpand !== undefined && !p.wrapHeader)
+      ? ellipsizeToWidth(
+        (t) => gc.measureText(t).width,
+        p.valueFormatted,
+        Math.max(0, p.bounds.w - HEADER_PADDING - (PIVOT_CHEVRON_GAP + PIVOT_CHEVRON_SIZE + HEADER_PADDING)),
+      )
+      : p.valueFormatted;
     // Cycle 21i / Phase 1 — wrapped multi-line header. Lines share the
     // exact wrap algorithm the auto-header-height computation uses
     // (headerWrap.ts) so painted lines always fit the measured height.
     if (p.wrapHeader) {
-      const maxW = Math.max(8, p.bounds.x + p.bounds.w - SORT_ICON_PAD - SORT_ICON_SIZE - textX);
+      const trailingReserve = p.pivotGroupExpand !== undefined
+        ? PIVOT_CHEVRON_SIZE + PIVOT_CHEVRON_GAP
+        : SORT_ICON_PAD + SORT_ICON_SIZE;
+      const maxW = Math.max(8, p.bounds.x + p.bounds.w - trailingReserve - textX);
       const lines = wrapHeaderLines((t) => gc.measureText(t).width, p.valueFormatted, maxW);
       if (lines.length > 1) {
         const lineH = Math.round(fontPxSize(p.font) * HEADER_LINE_HEIGHT_FACTOR);
@@ -618,7 +662,29 @@ export const headerCell: CellPainter = {
         gc.fillText(p.valueFormatted, textX, cy);
       }
     } else {
-      gc.fillText(p.valueFormatted, textX, cy);
+      gc.fillText(caption, textX, cy);
+    }
+    if (p.pivotGroupExpand !== undefined) {
+      // Task 10 — horizontal expand/collapse caret for ALL column-group
+      // headers (pivot result groups AND regular authored groups):
+      // 'open' → chevron-left (click collapses), 'closed' → chevron-right
+      // (click expands). Positioned IMMEDIATELY AFTER the DRAWN caption
+      // (Task 11: possibly ellipsized above so its footprint is already
+      // reserved), clamped to the cell's right edge as a defensive
+      // belt-and-suspenders bound (the reservation above already keeps the
+      // caret inside the cell for the non-wrap path).
+      const capW = gc.measureText(caption).width;
+      const maxIconCx = p.bounds.x + p.bounds.w - HEADER_PADDING - PIVOT_CHEVRON_SIZE / 2;
+      const iconCx = Math.min(
+        textX + capW + PIVOT_CHEVRON_GAP + PIVOT_CHEVRON_SIZE / 2,
+        maxIconCx,
+      );
+      drawIcon(
+        gc,
+        p.pivotGroupExpand === 'open' ? 'chevron-left' : 'chevron-right',
+        iconCx, cy, PIVOT_CHEVRON_SIZE,
+        { color: p.iconColor ?? p.fg, strokeWidth: 2 },
+      );
     }
     if (p.sortDirection) {
       const iconCx = p.bounds.x + p.bounds.w - SORT_ICON_PAD - SORT_ICON_SIZE / 2;

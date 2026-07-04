@@ -106,22 +106,26 @@ export class ColumnGroupState {
 }
 
 /**
- * Visible leaf colIds given the tree + current group state. Each leaf is kept
- * iff its `columnGroupShow` is compatible with the open/closed state of its
- * ancestor groups, where:
+ * Visible leaf colIds given the tree + current group state — AG-Grid
+ * semantics, evaluated PER LEVEL against the IMMEDIATE parent only:
  *
- * - `columnGroupShow: undefined` — always visible regardless of state.
- * - `columnGroupShow: 'open'` — visible iff EVERY ancestor group is open.
- *   Closing ANY ancestor (immediate parent or higher) hides the leaf —
- *   this is the cascading-collapse semantic pivot column groups depend on
- *   (Cycle 18 / Task 4): collapsing a top-level pivot group hides every
- *   leaf underneath, not only the leaves whose immediate parent is the
- *   collapsed group.
- * - `columnGroupShow: 'closed'` — visible iff the IMMEDIATE parent is
- *   closed AND no STRICT ancestor (above the immediate parent) is closed.
- *   The second clause stops nested "group total" leaves from doubling up
- *   when an outer pivot group is also collapsed (the outer total takes
- *   over).
+ * - A child (leaf OR sub-group) with `columnGroupShow: 'open'` is shown
+ *   only while its immediate parent group is open; `'closed'` only while
+ *   the parent is closed; `null`/undefined children are always shown
+ *   regardless of the parent's state.
+ * - A hidden sub-group hides its ENTIRE subtree — that is the only way an
+ *   ancestor's state reaches deeper levels. An untagged sub-group is
+ *   never hidden by its parent's toggle, so each group's expand/collapse
+ *   stays independent of its ancestors (the pre-Cycle-28 cascading rule
+ *   — "an `'open'` leaf needs EVERY ancestor open" — coupled nested
+ *   groups to their parents and is gone).
+ *
+ * Pivot collapse (Cycle 18 / Task 4) still cascades, but via the group
+ * tags: `synthesizePivotColumns` stamps every nested pivot sub-group
+ * `columnGroupShow: 'open'`, so collapsing a branch hides the child
+ * groups (and with them, their subtrees) while the branch's own
+ * `'closed'` totals leaf appears. Nested totals can't double up: the
+ * inner group is hidden outright when the outer one closes.
  *
  * Leaves without a parent group (top-level ungrouped) always appear.
  * Order matches `tree.leaves` (= declaration order).
@@ -130,53 +134,22 @@ export function resolveVisibleLeaves(
   tree: ColumnTree,
   state: ColumnGroupState,
 ): string[] {
-  const ancestorsByLeaf = buildAncestorIndex(tree);
   const out: string[] = [];
-  for (const leaf of tree.leaves) {
-    const show = leaf.columnGroupShow ?? null;
-    const ancestors = ancestorsByLeaf.get(leaf.colId) ?? [];
-    if (ancestors.length === 0 || show == null) {
-      out.push(leaf.colId);
-      continue;
-    }
-    const immediateParent = ancestors[ancestors.length - 1]!;
-    const immediateOpen = state.isOpen(immediateParent.groupId);
-    // 'open' leaves: hide if ANY ancestor (including immediate parent) is closed.
-    if (show === 'open') {
-      let anyClosed = false;
-      for (const a of ancestors) {
-        if (!state.isOpen(a.groupId)) { anyClosed = true; break; }
-      }
-      if (anyClosed) continue;
-      out.push(leaf.colId);
-      continue;
-    }
-    // 'closed' leaves: require immediate parent closed AND no STRICT ancestor closed.
-    if (show === 'closed') {
-      if (immediateOpen) continue;
-      let strictAncestorClosed = false;
-      for (let i = 0; i < ancestors.length - 1; i++) {
-        if (!state.isOpen(ancestors[i]!.groupId)) { strictAncestorClosed = true; break; }
-      }
-      if (strictAncestorClosed) continue;
-      out.push(leaf.colId);
-      continue;
-    }
-  }
-  return out;
-}
+  const childVisible = (
+    show: 'open' | 'closed' | null | undefined,
+    parentOpen: boolean,
+  ): boolean =>
+    show == null || (show === 'open' ? parentOpen : !parentOpen);
 
-/** Build a `colId → root→immediate-parent ancestor chain` map by walking the tree once. */
-function buildAncestorIndex(tree: ColumnTree): Map<string, ResolvedColGroupDef[]> {
-  const out = new Map<string, ResolvedColGroupDef[]>();
-  function walk(node: ColumnTreeNode, ancestors: ResolvedColGroupDef[]): void {
+  function walk(node: ColumnTreeNode, parent: ResolvedColGroupDef | null): void {
+    const show = node.kind === 'leaf' ? node.colDef.columnGroupShow : node.columnGroupShow;
+    if (parent && !childVisible(show, state.isOpen(parent.groupId))) return;
     if (node.kind === 'leaf') {
-      if (ancestors.length > 0) out.set(node.colDef.colId, ancestors);
+      out.push(node.colDef.colId);
       return;
     }
-    const childAncestors = [...ancestors, node];
-    for (const child of node.children) walk(child, childAncestors);
+    for (const child of node.children) walk(child, node);
   }
-  for (const root of tree.roots) walk(root, []);
+  for (const root of tree.roots) walk(root, null);
   return out;
 }

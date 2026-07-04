@@ -10,6 +10,7 @@
   "scripts": {
     "dev:showcase": "npm run dev --workspace=cgrid-showcase",
     "dev:positions": "npm run dev --workspace=cgrid-positions",
+    "dev:colgroups": "npm run dev --workspace=colgroups",
     "build": "turbo run build",
     "build:kernel": "npm run build --workspace=@cgrid/kernel",
     "test": "turbo run test",

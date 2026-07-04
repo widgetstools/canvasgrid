@@ -176,9 +176,10 @@
 }
 
 .cg-theme-quartz-dark {
-  /* VS Code Dark Modern palette — editor.background #1e1e1e family.
-   * focusBorder: #007fd4 · sideBar: #252526 · list.hover: #2a2d2e
-   * editorLineNumber: #858585 · selection: #264f78 */
+  /* Cycle 21 / Financial dark theme — premium navy palette inspired by
+   * professional trading platforms. Deep navy background (#0F1419) with
+   * soft off-white foreground (#E8EBEF) creates sophisticated data display.
+   * Subtle state shifts (hover, selected) rather than dramatic changes. */
   color-scheme: dark;
   /* Inter (chrome / DOM panels / canvas-painted headers). Falls
    * back to the system UI sans-serif when Inter isn't loaded —
@@ -193,15 +194,15 @@
   --cg-font-size-sm: 12px;
   --cg-row-height: 32px;
   --cg-header-height: 40px;
-  --cg-fg-color: #d4d4d4;
-  --cg-bg-color: #1e1e1e;
-  --cg-row-alt-bg: #1e1e1e;
-  --cg-header-bg: #252526;
-  --cg-header-fg: #d4d4d4;
-  --cg-border-color: #454545;
-  --cg-grid-line-color: #373a3b;
-  --cg-row-hover-bg: #2a2d2e;
-  --cg-row-selected-bg: rgb(38 79 120 / 50%);
+  --cg-fg-color: #e8ebef;
+  --cg-bg-color: #0f1419;
+  --cg-row-alt-bg: #0f1419;
+  --cg-header-bg: #141b24;
+  --cg-header-fg: #e8ebef;
+  --cg-border-color: #2d3d50;
+  --cg-grid-line-color: color-mix(in srgb, #1a2332 90%, #ffffff 10%);
+  --cg-row-hover-bg: #1a2332;
+  --cg-row-selected-bg: rgb(59 130 246 / 22%);
   --cg-chrome-accent: color-mix(in srgb, var(--cg-fg-color) 60%, var(--cg-bg-color));
   --cg-focus-ring-color: var(--cg-chrome-accent);
   --cg-focus-ring-width: 2px;
@@ -211,27 +212,27 @@
   --cg-resizer-hot-zone: 4px;
   --cg-scrollbar-thickness: 6px;
   --cg-floating-filter-bg: color-mix(in srgb, var(--cg-header-bg) 60%, transparent);
-  --cg-floating-filter-border: color-mix(in srgb, var(--cg-border-color) 80%, transparent);
-  --cg-floating-filter-placeholder: #6e7681;
+  --cg-floating-filter-border: var(--cg-border-color);
+  --cg-floating-filter-placeholder: #94a3b8;
   --cg-quick-filter-match-bg: #4d3700;
-  --cg-unsort-icon-color: rgba(212, 212, 212, 0.4);
-  --cg-range-fill-color: rgb(0 127 212 / 20%);
+  --cg-unsort-icon-color: rgba(232, 235, 239, 0.4);
+  --cg-range-fill-color: rgb(59 130 246 / 20%);
   --cg-range-border-color: #007fd4;
-  /* Totals — sideBar.background lift + editorLineNumber muted fg. */
-  --cg-totals-bg: #252526;
-  --cg-totals-fg: #e8e8e8;
-  --cg-totals-border-top: #454545;
-  --cg-totals-fg-muted: #858585;
+  /* Totals — navy lift + light muted fg. */
+  --cg-totals-bg: #141b24;
+  --cg-totals-fg: #e8ebef;
+  --cg-totals-border-top: #2d3d50;
+  --cg-totals-fg-muted: #94a3b8;
   --cg-totals-font-weight: 500;
-  /* Pinned rows — single step above editor background. */
-  --cg-pinned-row-bg: #2c2c2c;
+  /* Pinned rows — single step above body bg. */
+  --cg-pinned-row-bg: #141b24;
   --cg-pinned-row-fg: var(--cg-fg-color);
   --cg-pinned-row-border: var(--cg-totals-border-top);
   /* Group rows — same as header so spine reads as structural chrome. */
   --cg-group-chevron-color: var(--cg-totals-fg-muted);
   --cg-group-count-color: var(--cg-totals-fg-muted);
   --cg-group-indent: 14px;
-  --cg-group-row-bg: #252526;
+  --cg-group-row-bg: #141b24;
   --cg-group-checkbox-border-color: var(--cg-fg-color);
   --cg-group-checkbox-check-color: var(--cg-fg-color);
   --cg-group-checkbox-indeterminate-color: var(--cg-fg-color);
@@ -243,18 +244,18 @@
   /* Cycle 22 / Task 1 — dark-mode counterparts. Inputs aliased to a
    * subtle lift over body bg; tooltip stays slate (same family as
    * light mode) so the popover reads consistently across themes. */
-  --cg-input-bg: #2a2d2e;
+  --cg-input-bg: #1a2332;
   --cg-input-fg: var(--cg-fg-color);
   --cg-input-border: var(--cg-border-color);
   --cg-input-focus-border: var(--cg-focus-ring-color);
-  --cg-input-disabled-bg: #232323;
-  --cg-tooltip-bg: rgba(40, 44, 52, 0.96);
+  --cg-input-disabled-bg: #0f1419;
+  --cg-tooltip-bg: rgba(20, 27, 36, 0.96);
   --cg-tooltip-fg: #f8fafc;
   --cg-tooltip-border: rgba(255, 255, 255, 0.08);
   --cg-checkbox-checked-bg: transparent;
   --cg-checkbox-checked-fg: var(--cg-fg-color);
   --cg-cell-horizontal-border-color: transparent;
-  --cg-popup-bg: #252526;
+  --cg-popup-bg: #141b24;
   --cg-popup-border: var(--cg-border-color);
   --cg-menu-hover-bg: var(--cg-row-hover-bg);
   /* Cycle 22 / Task 2 — density baseline. Overridden per density class. */
@@ -1073,7 +1074,7 @@
 .cg-side-bar-tab-label {
   writing-mode: vertical-rl;
   padding-block: 4px;
-  font-size: 10px;
+  font-size: var(--cg-font-size-sm);
   font-weight: 500;
   letter-spacing: 0.04em;
   line-height: 1;
@@ -2230,6 +2231,639 @@
   display: grid;
   grid-template-columns: repeat(4, 1fr);
   gap: 5px;
+}
+
+/* Cycle 21i — Column Groups tool panel (built-in `agColumnGroupsToolPanel`,
+ * sidebar shortcut `'columnGroups'`). Mirrors the `.cg-settings-panel`
+ * idiom verbatim (chrome, row rhythm, diff-rail device) so the tab feels
+ * native alongside Options. See
+ * `docs/superpowers/plans/notes/cycle-21i-column-groups-design.md`
+ * (or the task-3 design-guidance note) for the full rationale — the one
+ * distinctive, content-true device here is the nesting spine: a hairline
+ * vertical guide per ancestor depth level, encoding real tree depth. */
+.cg-colgroups-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--cg-bg-color);
+  color: var(--cg-fg-color);
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  overflow: hidden;
+  --cg-settings-accent: var(--cg-focus-ring-color);
+}
+.cg-colgroups-toolbar {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--cg-border-color);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.cg-colgroups-tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.cg-colgroups-footer {
+  padding: 8px 10px;
+  border-top: 1px solid var(--cg-border-color);
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+
+/* Generic tokened button pair — reused wherever the kernel needs a
+ * plain action button (this is the first panel to need one; other
+ * panels roll bespoke button classes per-surface). */
+.cg-btn {
+  padding: 5px 10px;
+  font: inherit;
+  font-size: var(--cg-font-size-sm);
+  color: var(--cg-fg-color);
+  background: transparent;
+  border: 1px solid var(--cg-border-color);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.cg-btn:hover {
+  background: var(--cg-row-hover-bg);
+}
+.cg-btn-primary {
+  color: var(--cg-bg-color);
+  background: var(--cg-settings-accent);
+  border-color: var(--cg-settings-accent);
+}
+.cg-btn-primary:hover {
+  background: var(--cg-settings-accent);
+  opacity: 0.9;
+}
+.cg-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.cg-btn:focus-visible {
+  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
+  outline-offset: -1px;
+}
+
+/* Cluster eyebrow above the two top-level tree clusters (Ungrouped / Groups)
+ * — same 11px tracked-uppercase idiom as the settings band headers, so the
+ * two kinds of rows never blur into one flat list. */
+.cg-colgroups-eyebrow {
+  padding: 10px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--cg-fg-color) 55%, transparent);
+  user-select: none;
+}
+.cg-colgroups-eyebrow:first-child {
+  padding-top: 6px;
+}
+
+.cg-colgroups-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 5px 12px;
+}
+.cg-colgroups-row:hover {
+  background: var(--cg-row-hover-bg);
+}
+/* Group rows read as subtle bands anchored by a left spine: a hairline in
+ * the resting state, promoted to a 2px accent when the group is selected
+ * (its Style band is showing) — the same diff-rail device as
+ * `.cg-settings-row[data-modified]::before`. */
+.cg-colgroups-row[data-kind="group"]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: color-mix(in srgb, var(--cg-border-color) 90%, transparent);
+}
+.cg-colgroups-row[data-kind="group"] {
+  background: color-mix(in srgb, var(--cg-fg-color) 3%, transparent);
+}
+.cg-colgroups-row[data-selected]::before {
+  background: var(--cg-settings-accent);
+}
+.cg-colgroups-row[data-selected] {
+  background: color-mix(in srgb, var(--cg-settings-accent) 8%, transparent);
+}
+/* Drop-target outline — accept = focus ring; reject = amber. Same
+ * vocabulary as `.cg-pivot-panel[data-drop]`. */
+.cg-colgroups-row[data-drop="accept"] {
+  box-shadow: inset 0 0 0 2px var(--cg-pivot-panel-drop-border);
+}
+.cg-colgroups-row[data-drop="reject"] {
+  box-shadow: inset 0 0 0 2px var(--cg-pivot-panel-drop-border-reject);
+}
+/* Drag source — dim in place while the ghost tracks the pointer. */
+.cg-colgroups-row-source {
+  opacity: 0.4;
+}
+/* Floating drag ghost — cloned row, positioned fixed under the pointer. */
+.cg-colgroups-row-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 2147483600;
+  background: var(--cg-row-group-chip-ghost-bg, var(--cg-header-bg));
+  box-shadow: var(--cg-row-group-chip-ghost-shadow, 0 4px 8px rgba(0, 0, 0, 0.12));
+  opacity: var(--cg-row-group-chip-ghost-opacity, 0.92);
+  cursor: grabbing;
+}
+
+/* Nesting spine — one 1px vertical guide per ancestor depth level. */
+.cg-colgroups-guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--cg-border-color) 70%, transparent);
+  pointer-events: none;
+}
+
+.cg-colgroups-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cg-colgroups-chevron {
+  flex: 0 0 auto;
+  width: 0;
+  height: 0;
+  padding: 0;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid currentColor;
+  border-bottom: none;
+  background: transparent;
+  cursor: pointer;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cg-colgroups-chevron {
+    transition: transform 120ms ease;
+  }
+}
+.cg-colgroups-chevron[aria-expanded="false"] {
+  transform: rotate(-90deg);
+}
+.cg-colgroups-chevron:focus-visible {
+  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.cg-colgroups-handle {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  color: color-mix(in srgb, var(--cg-fg-color) 45%, transparent);
+  cursor: grab;
+  user-select: none;
+  line-height: 1;
+}
+/* Every interactive glyph renders through this one class at a single size,
+ * so all panel icons (● ◐ ○ state, gear / ＋ / ✕ actions, grip) are identical
+ * — replacing unicode glyphs whose per-character metrics differ. */
+.cg-colgroups-ic {
+  width: 14px;
+  height: 14px;
+  display: block;
+  flex: 0 0 auto;
+}
+.cg-colgroups-action,
+.cg-colgroups-seg-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.cg-colgroups-checkbox-label {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+}
+.cg-colgroups-checkbox {
+  width: 15px;
+  height: 15px;
+  margin: 0;
+  accent-color: var(--cg-settings-accent);
+  cursor: pointer;
+}
+.cg-colgroups-checkbox:focus-visible {
+  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
+  outline-offset: 1px;
+}
+
+.cg-colgroups-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: var(--cg-font-size-sm);
+  color: var(--cg-fg-color);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  outline: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cg-colgroups-name-group {
+  font-weight: 500;
+}
+.cg-colgroups-name:hover {
+  border-color: color-mix(in srgb, var(--cg-border-color) 80%, transparent);
+}
+.cg-colgroups-name:focus-visible,
+.cg-colgroups-name:focus {
+  border-color: var(--cg-settings-accent);
+  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
+  outline-offset: -1px;
+}
+
+.cg-colgroups-error {
+  flex: 0 0 auto;
+  color: var(--cg-editor-invalid-color);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+/* Action cluster (＋ subgroup / edit style / ✕) — hover/focus-revealed so
+ * idle group rows stay calm. Kept keyboard-reachable: revealed on
+ * :focus-within and while the group is selected, too. */
+.cg-colgroups-row-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-inline-start: auto;
+  opacity: 0;
+}
+.cg-colgroups-row:hover .cg-colgroups-row-actions,
+.cg-colgroups-row:focus-within .cg-colgroups-row-actions,
+.cg-colgroups-row[data-selected] .cg-colgroups-row-actions {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cg-colgroups-row-actions {
+    transition: opacity 120ms ease;
+  }
+}
+/* One coherent interactive-icon scale for the whole panel: a ~24px hit
+ * target with a ~15px glyph — matching the `.cg-colgroups-seg-btn` segment
+ * height below (24px) and the alignment icon's own 15x15 SVG, so the group-
+ * manipulation icons (⚙ style / ＋ subgroup / ✕ delete) read at the same
+ * visual weight as the column-config controls, never smaller. */
+.cg-colgroups-action {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  font-size: 15px;
+  line-height: 1;
+  color: color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+}
+.cg-colgroups-action:hover {
+  color: var(--cg-fg-color);
+  background: color-mix(in srgb, var(--cg-fg-color) 10%, transparent);
+}
+.cg-colgroups-action:focus-visible {
+  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
+  outline-offset: -1px;
+}
+
+.cg-colgroups-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+  color: var(--cg-row-group-panel-empty-fg);
+  font-size: var(--cg-font-size-sm);
+}
+
+/* Style band (Task 4) — per-group header styling, mounted below the tree
+ * and above the footer when a group is selected. Empty (no selection)
+ * collapses to nothing so it never reserves layout space. Reuses the
+ * `.cg-settings-*` classes from the Phase 1 SettingsForm engine verbatim —
+ * `--cg-settings-accent` is aliased on `.cg-colgroups-panel` above so those
+ * rules resolve identically here. */
+.cg-colgroups-style:empty {
+  display: none;
+}
+.cg-colgroups-style {
+  flex: 0 0 auto;
+  max-height: 45%;
+  overflow-y: auto;
+  border-top: 1px solid var(--cg-border-color);
+  padding: 8px 10px 4px;
+}
+.cg-colgroups-style-title {
+  font-size: var(--cg-font-size-sm);
+  font-weight: 600;
+  color: var(--cg-fg-color);
+  margin: 0 0 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Group-select affordance (the keyboard-reachable "edit style" button) —
+ * lit in the accent color while its group is selected, mirroring the
+ * row's own tick-rail state. */
+.cg-colgroups-action[data-cg-select][aria-pressed="true"] {
+  color: var(--cg-settings-accent);
+}
+
+/* ── Style band clusters ──────────────────────────────────────────────
+ * The Style band is a stack of titled clusters (Fill & text / Border /
+ * Behavior / Children visibility). Each opens with a muted eyebrow in the
+ * same tracked-uppercase idiom as the tree eyebrows + settings bands. */
+.cg-colgroups-cluster {
+  padding: 8px 0;
+  border-top: 1px solid color-mix(in srgb, var(--cg-border-color) 55%, transparent);
+}
+.cg-colgroups-cluster:first-of-type {
+  border-top: none;
+  padding-top: 2px;
+}
+.cg-colgroups-cluster-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--cg-fg-color) 55%, transparent);
+  margin: 0 0 8px;
+  user-select: none;
+}
+.cg-colgroups-field-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.cg-colgroups-field-row:last-child {
+  margin-bottom: 0;
+}
+.cg-colgroups-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.cg-colgroups-field-color {
+  flex: 1 1 0;
+}
+.cg-colgroups-field-color .cg-colorpicker,
+.cg-colgroups-field-color .cg-colorpicker-swatch {
+  width: 100%;
+}
+.cg-colgroups-field-label {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--cg-fg-color) 62%, transparent);
+  white-space: nowrap;
+}
+
+/* ── Segmented controls (B/I/U, alignment, group-visibility) ──────────
+ * A tight row of buttons sharing a single hairline frame — the accent
+ * pressed-state gives one crisp affordance for the selected member. */
+.cg-colgroups-seg {
+  display: inline-flex;
+  align-items: stretch;
+  flex: 0 0 auto;
+  border: 1px solid var(--cg-border-color);
+  border-radius: 5px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--cg-fg-color) 4%, transparent);
+}
+/* Same ~24px hit-target / ~15px glyph family as `.cg-colgroups-action`
+ * above — a tightened min-width/padding keeps the ●◐○ / B-I-U segment
+ * compact so it doesn't visually dominate the row (Fix 1). */
+.cg-colgroups-seg-btn {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  font-size: 15px;
+  line-height: 1;
+  color: color-mix(in srgb, var(--cg-fg-color) 78%, transparent);
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--cg-border-color);
+  cursor: pointer;
+}
+.cg-colgroups-seg-btn:first-child {
+  border-left: none;
+}
+.cg-colgroups-seg-btn:hover {
+  background: color-mix(in srgb, var(--cg-fg-color) 8%, transparent);
+  color: var(--cg-fg-color);
+}
+.cg-colgroups-seg-btn[aria-pressed="true"] {
+  color: var(--cg-bg-color);
+  background: var(--cg-settings-accent);
+}
+.cg-colgroups-seg-btn:focus-visible {
+  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
+  outline-offset: -2px;
+  z-index: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cg-colgroups-seg-btn {
+    transition: background 120ms ease, color 120ms ease;
+  }
+}
+.cg-colgroups-seg-bold { font-weight: 700; }
+.cg-colgroups-seg-italic { font-style: italic; font-family: serif; }
+.cg-colgroups-seg-underline { text-decoration: underline; }
+.cg-colgroups-seg-icon {
+  padding: 0 6px;
+}
+.cg-colgroups-seg-icon svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+/* ── Border box-model editor (the signature control) ──────────────────
+ * A live preview of the group header cell, ringed by four clickable edge
+ * strips + an All toggle, over width/style/colour controls that read and
+ * write whichever edge is selected. */
+.cg-colgroups-border {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cg-colgroups-border-stage {
+  position: relative;
+  align-self: center;
+  width: 148px;
+  height: 60px;
+  padding: 8px;
+}
+.cg-colgroups-border-preview {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  background: var(--cg-header-bg);
+  color: var(--cg-fg-color);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cg-border-color) 60%, transparent);
+  overflow: hidden;
+}
+.cg-colgroups-border-preview-label {
+  font-size: var(--cg-font-size-sm);
+  font-weight: 500;
+  padding: 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* Edge hit strips — thin transparent buttons hugging each side of the
+ * preview; the selected edge lights up in the accent colour. */
+.cg-colgroups-edge {
+  position: absolute;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.cg-colgroups-edge::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--cg-fg-color) 38%, transparent);
+  transition: background 110ms ease;
+}
+.cg-colgroups-edge:hover::after {
+  background: color-mix(in srgb, var(--cg-fg-color) 62%, transparent);
+}
+.cg-colgroups-edge[aria-pressed="true"]::after {
+  background: var(--cg-settings-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cg-settings-accent) 28%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cg-colgroups-edge::after { transition: none; }
+}
+.cg-colgroups-edge:focus-visible {
+  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
+  outline-offset: 1px;
+}
+.cg-colgroups-edge-top,
+.cg-colgroups-edge-bottom {
+  left: 6px;
+  right: 6px;
+  height: 10px;
+}
+.cg-colgroups-edge-top { top: -1px; }
+.cg-colgroups-edge-top::after,
+.cg-colgroups-edge-bottom::after { height: 4px; }
+.cg-colgroups-edge-bottom { bottom: -1px; }
+.cg-colgroups-edge-left,
+.cg-colgroups-edge-right {
+  top: 6px;
+  bottom: 6px;
+  width: 10px;
+}
+.cg-colgroups-edge-left::after,
+.cg-colgroups-edge-right::after { width: 4px; }
+.cg-colgroups-edge-left { left: -1px; }
+.cg-colgroups-edge-right { right: -1px; }
+.cg-colgroups-edge-all {
+  align-self: center;
+  min-width: 0;
+  padding: 3px 14px;
+  border: 1px solid var(--cg-border-color);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--cg-fg-color) 4%, transparent);
+}
+/* Names which side the width/style/colour controls write to. */
+.cg-colgroups-border-caption {
+  align-self: center;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--cg-fg-color) 55%, transparent);
+}
+.cg-colgroups-border-fields {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+.cg-colgroups-border-fields .cg-colgroups-field-color {
+  flex: 1 1 0;
+}
+
+/* ── Behavior switches ────────────────────────────────────────────────*/
+.cg-colgroups-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+}
+.cg-colgroups-switch-label {
+  font-size: var(--cg-font-size-sm);
+  color: var(--cg-fg-color);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Task 7 — `columnGroupShow` (always/open/closed) authoring, now a compact
+ * 3-state segment (● Always · ◐ Open · ○ Closed) reused by BOTH the inline
+ * tree-row control and the Style band's "Children visibility" mirror. */
+.cg-colgroups-groupshow {
+  flex: 0 0 auto;
+}
+.cg-colgroups-childshow-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.cg-colgroups-childshow-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 2px 0;
+}
+.cg-colgroups-childshow-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--cg-font-size-sm);
+  color: var(--cg-fg-color);
 }
 
 /* Cycle 13 / Task 1 — status bar shell. Mounts as a sibling of the

@@ -143,14 +143,12 @@ describe('resolveVisibleLeaves', () => {
     expect(resolveVisibleLeaves(tree, state)).toEqual(['visible-when-inner-open']);
   });
 
-  // Cycle 18 / Task 4 — pivot column-group collapse cascades through the
-  // ancestor chain. A leaf with `columnGroupShow: 'open'` deep under
-  // multiple groups hides whenever ANY ancestor group is closed, not only
-  // its immediate parent. Mirrors AG-Grid's pivot collapse: collapsing a
-  // top-level pivot group hides every leaf under it regardless of the
-  // deeper-group states. Cite:
-  // docs/superpowers/plans/notes/cycle-18-pivoting-design.md (Task 4).
-  it('cascading collapse: closing an ANCESTOR hides "open" leaves under any descendant', () => {
+  // Cycle 28 — AG-Grid per-level semantics: `columnGroupShow` is evaluated
+  // against the IMMEDIATE parent only. An UNTAGGED nested group is never
+  // hidden by its parent's toggle, so its own expand/collapse state stays
+  // fully independent of the ancestors' states (the bug fix for "nested
+  // group toggle is not independent of the parent group").
+  it('per-level semantics: closing an ANCESTOR does not affect leaves of an untagged nested group', () => {
     const tree = resolveColumnTree([
       {
         groupId: 'outer', openByDefault: true,
@@ -166,43 +164,65 @@ describe('resolveVisibleLeaves', () => {
       },
     ]);
     const state = new ColumnGroupState(tree);
-    // Both open initially → 'open-only' is visible (no ancestor closed) and
-    // 'closed-only' is hidden (immediate parent is open).
+    // Both open initially → 'open-only' visible (immediate parent open),
+    // 'closed-only' hidden.
     expect(resolveVisibleLeaves(tree, state)).toEqual(['open-only']);
 
-    // Close OUTER (strict ancestor of 'open-only'). Inner is still open,
-    // but 'open-only' must hide because its grandparent is closed —
-    // cascading behaviour. 'closed-only' also stays hidden because its
-    // immediate parent (inner) is still open.
+    // Close OUTER. `inner` carries no columnGroupShow, so it stays fully
+    // visible — its leaves keep answering to `inner`'s own state only.
     state.setOpen('outer', false);
-    expect(resolveVisibleLeaves(tree, state)).toEqual([]);
+    expect(resolveVisibleLeaves(tree, state)).toEqual(['open-only']);
+
+    // Toggling `inner` while `outer` is closed works independently.
+    state.setOpen('inner', false);
+    expect(resolveVisibleLeaves(tree, state)).toEqual(['closed-only']);
   });
 
-  it('cascading collapse: a "closed" leaf hides when a STRICT ancestor is also closed', () => {
-    // Mirrors pivot totals: a level-1 EQ_total leaf should hide when the
-    // level-0 TECH group is closed (the TECH_total at level 0 takes over).
+  // Cycle 28 — a sub-group TAGGED `columnGroupShow: 'open'` hides (with its
+  // entire subtree) when its immediate parent closes. This is how pivot
+  // collapse cascades now: `synthesizePivotColumns` stamps nested pivot
+  // groups 'open'.
+  it('a sub-group tagged "open" hides its whole subtree when the parent closes', () => {
     const tree = resolveColumnTree([
       {
         groupId: 'tech', openByDefault: false,
         children: [
           { field: 'tech-total', columnGroupShow: 'closed' },
           {
-            groupId: 'eq', openByDefault: false,
+            groupId: 'eq', openByDefault: false, columnGroupShow: 'open',
             children: [{ field: 'eq-total', columnGroupShow: 'closed' }],
           },
         ],
       },
     ]);
     const state = new ColumnGroupState(tree);
-    // TECH closed + EQ closed → only the TOP-level 'tech-total' shows;
-    // the deeper 'eq-total' is suppressed because TECH (strict ancestor)
-    // is also closed.
+    // TECH closed → 'tech-total' shows; EQ (tagged 'open') is hidden with
+    // its subtree, so the deeper 'eq-total' cannot double up.
     expect(resolveVisibleLeaves(tree, state)).toEqual(['tech-total']);
 
     // Expand TECH (EQ still closed) → tech-total hides (immediate parent
-    // open), eq-total now shows (immediate parent EQ closed, no strict
-    // ancestor closed).
+    // open), EQ becomes visible and its own closed state reveals eq-total.
     state.setOpen('tech', true);
     expect(resolveVisibleLeaves(tree, state)).toEqual(['eq-total']);
+  });
+
+  it('a sub-group tagged "closed" shows only while the parent is closed', () => {
+    const tree = resolveColumnTree([
+      {
+        groupId: 'risk', openByDefault: true,
+        children: [
+          { field: 'dv01' },
+          {
+            groupId: 'scenario', columnGroupShow: 'closed',
+            children: [{ field: 'up100bp' }, { field: 'down100bp' }],
+          },
+        ],
+      },
+    ]);
+    const state = new ColumnGroupState(tree);
+    // risk open → scenario ('closed') hidden.
+    expect(resolveVisibleLeaves(tree, state)).toEqual(['dv01']);
+    state.setOpen('risk', false);
+    expect(resolveVisibleLeaves(tree, state)).toEqual(['dv01', 'up100bp', 'down100bp']);
   });
 });

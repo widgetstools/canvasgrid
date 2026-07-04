@@ -8,7 +8,7 @@
  * done through the public API, that's a kernel gap to fix in the kernel,
  * never worked around here.
  */
-import { CGrid, formatPrice32, type CColDef } from '@cgrid/kernel';
+import { CGrid, formatPrice32, type CColDef, type CColGroupDef } from '@cgrid/kernel';
 import '@cgrid/kernel/style.css';
 import { wireIntoKernel as wireFormat } from '@cgrid/format';
 import { connectStomp, STOMP_PUBLISH_RATE_PER_SEC, type Position } from './stomp';
@@ -51,7 +51,11 @@ const cat = (headerName: string, field: keyof Position): CColDef<Position> => ({
   enablePivot: true,
 });
 
-const columnDefs: CColDef<Position>[] = [
+// Cycle 21i / Task 5 — seed a couple of NESTED column groups so the new
+// "Column Groups" tab opens with real content to inspect/edit. Everything
+// else stays flat/ungrouped. Only the placement changed — the underlying
+// `num(...)`/`cat(...)` call sites (and their options) are untouched.
+const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
   { colId: 'positionId', field: 'positionId', headerName: 'Position', pinned: 'left', width: 130 },
   { colId: 'ticker', field: 'ticker', headerName: 'Ticker', cellDataType: 'text', enableRowGroup: true, enablePivot: true, width: 90 },
   { colId: 'cusip', field: 'cusip', headerName: 'CUSIP', cellDataType: 'text', width: 110 },
@@ -59,8 +63,29 @@ const columnDefs: CColDef<Position>[] = [
   cat('Region', 'region'),
   cat('Ccy', 'currency'),
   cat('Trader', 'trader'),
-  num('Notional', 'notionalAmount', { valueFormatter: '#,##0', aggFunc: 'sum' }),
-  num('Mkt Value', 'marketValue', { valueFormatter: '#,##0', aggFunc: 'sum' }),
+  {
+    groupId: 'trade',
+    headerName: 'Trade',
+    openByDefault: true,
+    children: [
+      {
+        groupId: 'valuation',
+        headerName: 'Valuation',
+        // Task 10 — starts OPEN so the seeded grid shows marketValue by
+        // default; the caret's collapse affordance is what hides it.
+        openByDefault: true,
+        children: [
+          num('Notional', 'notionalAmount', { valueFormatter: '#,##0', aggFunc: 'sum' }),
+          // Task 10 — `columnGroupShow: 'open'` so collapsing "Valuation"
+          // has a visible effect (this column drops out of the viewport)
+          // and the group header caret has something real to demonstrate.
+          num('Mkt Value', 'marketValue', { valueFormatter: '#,##0', aggFunc: 'sum', columnGroupShow: 'open' }),
+        ],
+      },
+      num('P&L', 'pnl', { aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)' }),
+      num('Daily P&L', 'dailyPnl', { aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)' }),
+    ],
+  },
   // Price uses the reference 32nds bond editor: displayed as `101-16`, edited
   // in the same notation. Try it with the Edit trigger set to "Excel-style"
   // in the Grid Options panel — type a digit to enter quick-entry, F2 /
@@ -69,13 +94,17 @@ const columnDefs: CColDef<Position>[] = [
     cellEditor: 'price32',
     valueFormatter: (p: { value: unknown }) => formatPrice32(p.value as number),
   }),
-  num('P&L', 'pnl', { aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)' }),
-  num('Daily P&L', 'dailyPnl', { aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)' }),
   num('Unrealized', 'unrealizedPnl', { aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)' }),
-  num('Yield', 'yield', { valueFormatter: '0.000' }),
-  num('Spread', 'spread'),
-  num('DV01', 'dv01', { aggFunc: 'sum' }),
-  num('PV01', 'pv01', { aggFunc: 'sum' }),
+  {
+    groupId: 'risk',
+    headerName: 'Risk',
+    children: [
+      num('DV01', 'dv01', { aggFunc: 'sum' }),
+      num('PV01', 'pv01', { aggFunc: 'sum' }),
+      num('Yield', 'yield', { valueFormatter: '0.000' }),
+      num('Spread', 'spread'),
+    ],
+  },
 ];
 
 const appEl = document.querySelector<HTMLDivElement>('.app')!;
@@ -100,7 +129,7 @@ const grid = new CGrid<Position>(gridHost, {
   // read-only via the editable predicate.
   defaultColDef: { resizable: true, sortable: true, editable: true, flex: 1, minWidth: 80 },
   rowGroupPanelShow: 'always',
-  sideBar: { toolPanels: ['columns', 'filters', 'gridOptions'] },
+  sideBar: { toolPanels: ['columns', 'filters', 'gridOptions', 'columnGroups'] },
   enableCellChangeFlash: true,
   cellSelection: {},
 });
@@ -160,6 +189,12 @@ connectStomp({
   },
 });
 
-// Console access for poking at the public API while testing.
+// Console access for poking at the public API while testing, and hooks the
+// hermetic E2E suite drives (see apps/cgrid-customizer-demo/e2e/). `__cgapi`
+// is the object handed to `gridReady` (has `getColumnGroupDefs()` etc.) —
+// distinct from `__cgrid`, which is the CGrid instance itself.
 (window as unknown as { __cgrid: unknown }).__cgrid = grid;
-(window as unknown as { __cgridReady: boolean }).__cgridReady = true;
+grid.on('gridReady', (e) => {
+  (window as unknown as { __cgapi: unknown }).__cgapi = e.api;
+  (window as unknown as { __cgridReady: boolean }).__cgridReady = true;
+});

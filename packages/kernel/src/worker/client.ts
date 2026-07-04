@@ -501,6 +501,20 @@ export class WorkerClient {
     }).then((r) => r.widths);
   }
 
+  /** Autosize formatted-measurement support — fetch the RAW cell values
+   *  of the autosize sample window (head + tail of the visible set) for
+   *  the listed field columns. Main formats + measures them with the
+   *  document's fonts so the resolved widths fit the painted text. */
+  autosizeSampleValues(
+    colIds: string[],
+    maxSampleSize?: number,
+  ): Promise<{ values: Record<string, unknown[]>; rowCount: number }> {
+    return this.send<{ values: Record<string, unknown[]>; rowCount: number }>({
+      type: 'autosizeSample',
+      payload: { colIds, maxSampleSize },
+    }).then((r) => ({ values: r.values, rowCount: r.rowCount }));
+  }
+
   /** Batched variant of `getRowIndexForId`. Returns one index per input id,
    *  in the same order. Indices are -1 for unknown / filtered ids. Used by
    *  `setSelectedRowIds([...])` and by the modelUpdated rebuild path. */

@@ -634,6 +634,63 @@ describe('paintCellsByRows — HeaderGroupSubgrid span paint', () => {
     expect(captured[0]!.valueFormatted).toBe('P&L');
     expect(captured[0]!.isHeader).toBe(true);
   });
+
+  it('ungrouped leaf headers span the full header height beside a group row (AG span-height)', () => {
+    const tree = resolveColumnTree([
+      { field: 'id' },
+      { groupId: 'pnl', headerName: 'P&L',
+        children: [{ field: 'daily' }, { field: 'mtd' }] },
+    ]);
+    const groupSubgrid = new HeaderGroupSubgrid(() => tree, () => 24, 0, () => ['id', 'daily', 'mtd']);
+
+    const captured: CellPaintConfig[] = [];
+    const headerSpy = vi.fn((_gc: CachedContext2D, p: CellPaintConfig) => {
+      captured.push({ ...p, bounds: { ...p.bounds } });
+    });
+    const spyReg = new CellRendererRegistry();
+    spyReg.register('header', { paint: headerSpy });
+    spyReg.register('text', { paint: vi.fn() });
+    spyReg.register('number', { paint: vi.fn() });
+
+    const colDefs = new Map<string, ResolvedColDef>([
+      ['id',    { colId: 'id',    headerName: 'ID',    minWidth: 30, maxWidth: Infinity, type: 'text',   cellRenderer: 'text',   sortable: true, resizable: true, editable: false }],
+      ['daily', { colId: 'daily', headerName: 'Daily', minWidth: 30, maxWidth: Infinity, type: 'number', cellRenderer: 'number', sortable: true, resizable: true, editable: false }],
+      ['mtd',   { colId: 'mtd',   headerName: 'MTD',   minWidth: 30, maxWidth: Infinity, type: 'number', cellRenderer: 'number', sortable: true, resizable: true, editable: false }],
+    ]);
+
+    const vs: ViewportState = {
+      visibleColumns: [
+        { colId: 'id',    index: 0, left: 0,   right: 60,  width: 60 },
+        { colId: 'daily', index: 1, left: 60,  right: 160, width: 100 },
+        { colId: 'mtd',   index: 2, left: 160, right: 260, width: 100 },
+      ],
+      visibleRows: [
+        { rowIndex: 0, subgrid: groupSubgrid, localRowIndex: 0, top: 0, bottom: 24, height: 24 },
+        { rowIndex: 1, subgrid: headerSubgrid, localRowIndex: 0, top: 24, bottom: 56, height: 32 },
+      ],
+      firstRow: 0, lastRow: -1,
+      scrollLeft: 0, scrollTop: 0,
+      bodyLeft: 0, bodyRight: 260, bodyTop: 56, bodyBottom: 56, bodyWidth: 260, bodyHeight: 0,
+      contentWidth: 260, contentHeight: 0, maxScrollLeft: 0, maxScrollTop: 0,
+    };
+
+    const gc = fakeGc();
+    paintCellsByRows(gc, {
+      viewport: vs, theme, columnDefs: colDefs, cellRenderers: spyReg,
+      cellData, selection, sortModel: [], rowDataSnapshotAt: () => ({}), quickFilterLowerTerms: [],
+    });
+
+    // Leaf header cells: ungrouped 'id' spans the FULL header height
+    // (y=0, h=56); grouped 'daily'/'mtd' stay in the leaf row (y=24, h=32).
+    const idCell = captured.find((c) => c.valueFormatted === 'ID');
+    expect(idCell).toBeDefined();
+    expect(idCell!.bounds.y).toBe(0);
+    expect(idCell!.bounds.h).toBe(56);
+    const dailyCell = captured.find((c) => c.valueFormatted === 'Daily');
+    expect(dailyCell).toBeDefined();
+    expect(dailyCell!.bounds.y).toBe(24);
+    expect(dailyCell!.bounds.h).toBe(32);
+  });
 });
 
 // ─── paintGridLines tests (carried over + new header→body separator test) ─────
@@ -680,10 +737,14 @@ describe('paintGridLines', () => {
     expect(fullHeightVerticals.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('paints a vertical at group boundaries in the group-header row, none inside a span', () => {
-    // Group 'pnl' spans daily + mtd; ytd is ungrouped. Expect a vertical
-    // between mtd (last in group) and ytd (ungrouped), but NONE between
-    // daily and mtd (both inside 'pnl').
+  it('starts each vertical where the two columns\' group ancestry diverges (AG span-height borders)', () => {
+    // Group 'pnl' spans daily + mtd; id and ytd are ungrouped. AG-Grid
+    // parity semantics:
+    //   id|daily  — ancestry diverges at depth 0 (null vs pnl) → the border
+    //               spans the FULL header height (from the group row's top).
+    //   daily|mtd — both inside 'pnl' → the border starts at the leaf row
+    //               top only (the merged group cell above stays whole).
+    //   mtd|ytd   — diverges at depth 0 (pnl vs null) → full height again.
     const tree = resolveColumnTree([
       { field: 'id' },
       { groupId: 'pnl', headerName: 'P&L', children: [{ field: 'daily' }, { field: 'mtd' }] },
@@ -714,14 +775,55 @@ describe('paintGridLines', () => {
     const c = fakeGc();
     paintGridLines(c, { viewport: vs, theme, columnDefs: colDefs, cellRenderers: makeReg(), cellData, selection: selectionEmpty, sortModel: [] });
     const calls = (c.fillRect as any).mock.calls as number[][];
-    // Group-header row spans y=[0,24]. Verticals in it have h=24, w=1.
-    const inGroupRow = calls.filter(([, y, w, h]) => y === 0 && w === 1 && h === 24);
-    // Expected boundaries: id|daily (null→pnl), mtd|ytd (pnl→null) = 2.
-    // NOT expected: daily|mtd (both pnl), ytd|<no neighbour>.
-    expect(inGroupRow.length).toBe(2);
-    // Verify the x positions: id.right=60 → x=59, mtd.right=260 → x=259.
-    const xs = inGroupRow.map((c) => c[0]).sort((a, b) => a - b);
-    expect(xs).toEqual([59, 259]);
+    const verticals = calls.filter(([, , w]) => w === 1);
+    // Full-height borders (y=0, h=56 — through the group row + leaf row down
+    // to lastRowBottom=bodyTop=56) at id.right=60 → x=59 and mtd.right=260 → x=259.
+    const fullHeight = verticals.filter(([, y, , h]) => y === 0 && h === 56).map((c) => c[0]).sort((a, b) => a! - b!);
+    expect(fullHeight).toEqual([59, 259]);
+    // Leaf-row-only border (y=24, h=32) between daily|mtd at daily.right=160 → x=159.
+    const leafOnly = verticals.filter(([, y, , h]) => y === 24 && h === 32).map((c) => c[0]);
+    expect(leafOnly).toEqual([159]);
+  });
+
+  it('group-row bottom horizontal spans only the grouped columns, not span-height cells', () => {
+    // Same tree: the horizontal at the group row's bottom (y=23) must span
+    // only daily..mtd (x 60..260) — NOT the full width. The ungrouped id and
+    // ytd render as span-height cells that the line must not slice through.
+    const tree = resolveColumnTree([
+      { field: 'id' },
+      { groupId: 'pnl', headerName: 'P&L', children: [{ field: 'daily' }, { field: 'mtd' }] },
+      { field: 'ytd' },
+    ]);
+    const groupSubgrid = new HeaderGroupSubgrid(
+      () => tree, () => 24, 0, () => ['id', 'daily', 'mtd', 'ytd'],
+    );
+    const colDefs = new Map<string, ResolvedColDef>(
+      tree.leaves.map((l) => [l.colId, l as ResolvedColDef]),
+    );
+    const vs: ViewportState = {
+      visibleColumns: [
+        { colId: 'id',    index: 0, left: 0,   right: 60,  width: 60 },
+        { colId: 'daily', index: 1, left: 60,  right: 160, width: 100 },
+        { colId: 'mtd',   index: 2, left: 160, right: 260, width: 100 },
+        { colId: 'ytd',   index: 3, left: 260, right: 360, width: 100 },
+      ],
+      visibleRows: [
+        { rowIndex: 0, subgrid: groupSubgrid, localRowIndex: 0, top: 0, bottom: 24, height: 24 },
+        { rowIndex: 1, subgrid: headerSubgrid, localRowIndex: 0, top: 24, bottom: 56, height: 32 },
+      ],
+      firstRow: 0, lastRow: -1,
+      scrollLeft: 0, scrollTop: 0,
+      bodyLeft: 0, bodyRight: 360, bodyTop: 56, bodyBottom: 56, bodyWidth: 360, bodyHeight: 0,
+      contentWidth: 360, contentHeight: 0, maxScrollLeft: 0, maxScrollTop: 0,
+    };
+    const c = fakeGc();
+    paintGridLines(c, { viewport: vs, theme, columnDefs: colDefs, cellRenderers: makeReg(), cellData, selection: selectionEmpty, sortModel: [] });
+    const calls = (c.fillRect as any).mock.calls as number[][];
+    // Group-row bottom lands at y = Math.round(24) - 1 = 23, height 1.
+    const groupRowBottoms = calls.filter(([, y, , h]) => y === 23 && h === 1);
+    expect(groupRowBottoms.length).toBe(1);
+    expect(groupRowBottoms[0]![0]).toBe(60);   // starts at daily.left
+    expect(groupRowBottoms[0]![2]).toBe(200);  // spans to mtd.right (260 - 60)
   });
 
   it('paints a horizontal line at every header row bottom', () => {

@@ -16,7 +16,7 @@ import type { ToolPanel, SideBarDef } from './interaction/toolPanels/types';
 import { TypedEventEmitter } from './core/eventEmitter';
 import { DisposableRegistry } from './core/disposable';
 import { ViewportManager } from './core/viewportManager';
-import { type ResolvedColDef, applyCellProps } from './core/propertyChain';
+import { type ResolvedColDef, applyCellProps, composeFont } from './core/propertyChain';
 import { resolveColumnTree, isColGroupDef, type ColumnTree } from './core/columnTree';
 import { resolveSelection } from './core/selectionConfig';
 import {
@@ -38,6 +38,10 @@ import {
   buildSnapshot, migrateSnapshot, STATE_SCHEMA_VERSION, type GridState,
 } from './core/stateSnapshot';
 import { StateUpdatedBus } from './core/stateUpdatedBus';
+import {
+  flatten as flattenColumnGroups, project as projectColumnGroups,
+  rehydrate as rehydrateColumnGroups, toSerializedNodes as toSerializedColumnGroupNodes,
+} from './interaction/columnGroups/model';
 import { computeAutoHeaderHeight } from './renderer/cellRenderers/headerWrap';
 import type { CColumnState, CApplyColumnStateParams, ISizeColumnsToFitParams } from './types';
 import type { CColDef, CColGroupDef } from './types';
@@ -65,6 +69,7 @@ import { ToolPanelRegistry } from './interaction/toolPanels/registry';
 import { ColumnsToolPanel } from './interaction/toolPanels/columnsPanel';
 import { FiltersToolPanel } from './interaction/toolPanels/filtersPanel';
 import { GridOptionsToolPanel } from './interaction/toolPanels/gridOptionsPanel';
+import { ColumnGroupsToolPanel } from './interaction/toolPanels/columnGroupsPanel';
 import { SideBarHost, normalizeSideBarOption, type SideBarGridContext } from './interaction/sideBar/host';
 import { StatusBarHost, normalizeStatusBarOption, type StatusBarGridContext } from './interaction/statusBar/host';
 import { StatusPanelRegistry } from './interaction/statusBar/registry';
@@ -941,6 +946,8 @@ export class CGrid<TRow = any> {
     this.toolPanelRegistry.register('agFiltersToolPanel', FiltersToolPanel);
     // Cycle 21i / Phase 1 — native Grid Options settings tab.
     this.toolPanelRegistry.register('agGridOptionsToolPanel', GridOptionsToolPanel);
+    // Cycle 21i — native Column Groups editor tab.
+    this.toolPanelRegistry.register('agColumnGroupsToolPanel', ColumnGroupsToolPanel);
     if (options.components) {
       for (const [id, ctor] of Object.entries(options.components)) {
         this.toolPanelRegistry.register(id, ctor);
@@ -5358,6 +5365,13 @@ export class CGrid<TRow = any> {
       this.options.columnDefs = partial.columnDefs;
       if ('defaultColDef' in partial) this.options.defaultColDef = partial.defaultColDef;
       this.rebuildColumns({ defaultColDef: newDefault });
+      // Cycle 21i / Task 6 — dirty the `columnGroupDefs` GridState slice
+      // (see EVENT_TO_KEY in stateUpdatedBus.ts) so structural group edits
+      // made through this path — the Column Groups panel's Apply, and the
+      // `setState` restore below — survive a getState()/setState()
+      // round-trip. Emitted synchronously right after the tree rebuild,
+      // not gated on the worker round-trip.
+      this.events.emit({ type: 'columnDefsChanged' });
       this.workerCoord.updateColumns(this.workerColumns())
         .then(({ visibleCount }) => {
           this.rowCount = visibleCount;
@@ -5794,11 +5808,15 @@ export class CGrid<TRow = any> {
    *  globally; only the grid-wide default (off) combined with no column
    *  opting in collapses the row to zero height. */
   private isFloatingFilterEnabled(): boolean {
+    // Cycle 21 / Floating filter visible by default unless explicitly disabled
+    if (this.options.floatingFilter === false) return false;
     if (this.options.floatingFilter === true) return true;
+    // Default: floating filter is enabled unless all columns opt out
     for (const col of this.columnOrder) {
-      if (col.floatingFilter === true) return true;
+      if (col.floatingFilter === false) continue;
+      return true; // Show if any column doesn't explicitly disable it
     }
-    return false;
+    return true; // Default to showing floating filter row
   }
 
   destroy(): void {
@@ -5958,6 +5976,7 @@ export class CGrid<TRow = any> {
       getColumnGroupState: () => this.columnGroupState.getState(),
       setColumnGroupState: (s) => { this.columnGroupState.apply(s); },
       resetColumnGroupState: () => this.columnGroupState.reset(),
+      getColumnGroupDefs: () => this.options.columnDefs ?? [],
       refreshToolPanel: (id) => this.refreshToolPanel(id),
       getToolPanelInstance: (id) => this.getToolPanelInstance(id),
       isSideBarVisible: () => this.isSideBarVisible(),
@@ -6101,9 +6120,22 @@ export class CGrid<TRow = any> {
         this.events.emit({ type: 'columnGroupOpened', groupId: c.groupId, open: c.open });
       }
       this.events.emit({ type: 'displayedColumnsChanged', source: 'columnGroupOpened' });
-      // Re-fetch the chunk for the new visible-column set so newly-shown
-      // leaves get data instead of blank cells until the next scroll tick.
-      if (this.workerCoord) this.requestViewport();
+      // Re-ship the worker's column metadata BEFORE re-fetching the chunk.
+      // `workerColumns()` starts from the VISIBLE column order, so a leaf
+      // hidden at init time (e.g. the grid booted from saved state with its
+      // group collapsed) is absent from the worker's colIndex; a toggle that
+      // reveals it would otherwise request values for a column the worker
+      // doesn't know, leaving the cells permanently blank. Mirrors the
+      // `setColumnsVisible` / column-move paths.
+      if (this.workerCoord) {
+        this.workerCoord.updateColumns(this.workerColumns())
+          .then(({ visibleCount }) => {
+            this.rowCount = visibleCount;
+            this.recomputeViewport();
+            this.requestViewport();
+          })
+          .catch((err) => { if (!this.destroyed) console.error('[cgrid] columnGroup updateColumns:', err); });
+      }
     });
   }
 
@@ -7417,6 +7449,9 @@ export class CGrid<TRow = any> {
   getState(): GridState {
     return buildSnapshot({
       getColumnState: () => this.getColumnState(),
+      getColumnGroupOverlay: () =>
+        toSerializedColumnGroupNodes(flattenColumnGroups(this.options.columnDefs ?? [])),
+      getColumnGroupOpenState: () => this.columnGroupState.getState(),
       getFilterModel: () => this.getFilterModel(),
       getSortModel: () => this.getSortModel(),
       getRowGroupColumns: () => this.getRowGroupColumns(),
@@ -7468,6 +7503,36 @@ export class CGrid<TRow = any> {
     // 0b. theme token overrides (Cycle 21i / Phase 1) — data colours.
     if (migrated.themeParams) {
       this.setThemeParams(migrated.themeParams);
+    }
+
+    // 0c. column-GROUP structure overlay (Cycle 21i / Task 6) — BEFORE
+    // columnState so per-leaf width/hide/pinned settle on top of the
+    // restored group hierarchy rather than the other way around.
+    // Rehydrates the persisted flat overlay against the app's CURRENT
+    // base `columnDefs` (by colId) and applies it through the exact same
+    // columnDefs-rebuild path `updateGridOptions({ columnDefs })` uses —
+    // reusing that path also fires `columnDefsChanged`, which re-marks
+    // `columnGroupDefs` dirty; harmless (not a loop — the bus coalesces
+    // per rAF frame and this restore's own emit is tagged with the same
+    // 'api'/'init' source already set above, matching how the sibling
+    // columnState/filterModel/etc. restores below also re-dirty their
+    // own keys as a side effect of reusing their normal apply path).
+    if (migrated.columnGroupDefs) {
+      const rehydrated = rehydrateColumnGroups(migrated.columnGroupDefs, this.options.columnDefs ?? []);
+      this.updateGridOptions({ columnDefs: projectColumnGroups(rehydrated) });
+    }
+
+    // 0d. column-GROUP runtime open/collapse state (Cycle 21i / Task 8) —
+    // AFTER columnGroupDefs so the groups it names already exist (the
+    // `columnGroupDefs` restore's tree rebuild calls `ColumnGroupState
+    // .setTree`, which re-seeds from each group's `openByDefault` for any
+    // id that didn't survive the swap and PRESERVES the live open state for
+    // ids that did). Applying this persisted array last means the user's
+    // runtime collapse/expand always wins over `openByDefault`, matching
+    // how columnState settles on top of the restored group hierarchy below.
+    // `apply()` silently skips groupIds no longer in the tree.
+    if (migrated.columnGroupOpen) {
+      this.columnGroupState.apply(migrated.columnGroupOpen);
     }
 
     // 1. columnState (defines columns + their geometry).
@@ -7632,38 +7697,27 @@ export class CGrid<TRow = any> {
     const suppressCount = this.options.suppressCount === true
       || this.options.groupRowRendererParams?.suppressCount === true;
     const displayType = resolveGroupDisplayType(this.options.groupDisplayType);
-    const requests: AutosizeColumnRequest[] = [];
+    // Formatted-measurement split: the worker only sees RAW `row[field]`
+    // values, but the painter draws `valueFormatter` output ("(2,230,893)"
+    // vs "-2230893") in the document's fonts (which the worker's
+    // OffscreenCanvas may not have loaded). Measuring raw text therefore
+    // under-sizes formatter-lengthened columns — the "autosize clips my
+    // cells" bug. Regular columns now measure MAIN-SIDE: the worker ships
+    // the sample window's raw values back, main formats each through the
+    // same path `cellAt` uses at paint time and measures with the real
+    // document fonts. Auto-group columns keep the worker pass — their
+    // formatted values + chrome geometry already live worker-side.
+    const groupRequests: AutosizeColumnRequest[] = [];
+    const mainDefs: Array<ResolvedColDef<TRow>> = [];
     for (const key of keys) {
       const def = this.columnDefsMap.get(key);
       if (!def) continue;
       if (def.hide) continue;
       if (def.suppressAutoSize) continue;
-      // Cell text dominates column-width measurement (longer + more
-      // rows); use the cell font so the resolved width fits the data.
-      // The header text gets measured with the same font, which can
-      // slightly over-pad when the chrome font is narrower than the
-      // cell font — accepted as a small UX tax over under-measuring
-      // cells.
-      const font = def.cellStyle?.font ?? this.theme.cellFont ?? this.theme.font;
-      // Use the decorated header text (e.g. "sum(Notional)") so the
-      // measured width matches exactly what the header painter draws.
-      const headerName = decorateHeader(def, this.options.suppressAggFuncInHeader === true);
-      const req: AutosizeColumnRequest = {
-        colId: def.colId,
-        headerName,
-        font,
-        padding,
-        headerPadding,
-        minWidth: def.minWidth,
-        maxWidth: Number.isFinite(def.maxWidth) ? def.maxWidth : Number.MAX_SAFE_INTEGER,
-      };
-      // Auto-group column: attach chrome context so the worker walks
-      // the group tree instead of `row[field]` (which is undefined for
-      // synthesized columns — the pre-fix path collapsed to header or
-      // minWidth and truncated group values, indent, chevron, and
-      // count). The per-column depth slot only fires in
-      // multipleColumns mode; singleColumn measures all depths.
       if (isAutoGroupColumnId(def.colId)) {
+        // Use the decorated header text (e.g. "sum(Notional)") so the
+        // measured width matches exactly what the header painter draws.
+        const headerName = decorateHeader(def, this.options.suppressAggFuncInHeader === true);
         // multipleColumns: indent lives in column ORDER, not in the
         // cell — the renderer paints indentX = 0 in that mode. Pass 0
         // so autosize agrees. singleColumn: `depth × groupIndent`.
@@ -7671,37 +7725,80 @@ export class CGrid<TRow = any> {
         const depthSlot = displayType === 'multipleColumns'
           ? (autoGroupColumnDepthFromId(def.colId) ?? undefined)
           : undefined;
-        req.groupContext = {
-          chromeBase: groupChromeBase,
-          indentUnit,
-          suppressCount,
-          countGap: GROUP_CELL_GEOMETRY.countGap,
-          groupColumnDepth: depthSlot,
-        };
+        groupRequests.push({
+          colId: def.colId,
+          headerName,
+          font: def.cellStyle?.font ?? this.theme.cellFont ?? this.theme.font,
+          padding,
+          headerPadding,
+          minWidth: def.minWidth,
+          maxWidth: Number.isFinite(def.maxWidth) ? def.maxWidth : Number.MAX_SAFE_INTEGER,
+          groupContext: {
+            chromeBase: groupChromeBase,
+            indentUnit,
+            suppressCount,
+            countGap: GROUP_CELL_GEOMETRY.countGap,
+            groupColumnDepth: depthSlot,
+          },
+        });
+      } else {
+        mainDefs.push(def);
       }
-      requests.push(req);
     }
-    if (requests.length === 0) return;
-    let widths: Record<string, number>;
+    if (groupRequests.length === 0 && mainDefs.length === 0) return;
+    const widths: Record<string, number> = {};
     try {
-      widths = await this.workerCoord.autosizeColumns(requests, skipHeader);
+      const jobs: Array<Promise<void>> = [];
+      if (groupRequests.length > 0) {
+        jobs.push(
+          this.workerCoord.autosizeColumns(groupRequests, skipHeader)
+            .then((w) => { Object.assign(widths, w); }),
+        );
+      }
+      if (mainDefs.length > 0) {
+        const ctx = this.autosizeMeasureCtx();
+        if (ctx) {
+          jobs.push(
+            this.measureColumnsMainSide(mainDefs, skipHeader, padding, headerPadding, ctx)
+              .then((w) => { Object.assign(widths, w); }),
+          );
+        } else {
+          // No 2D canvas available (non-DOM test envs) — fall back to
+          // the legacy worker raw-text measurement.
+          const legacy: AutosizeColumnRequest[] = mainDefs.map((def) => ({
+            colId: def.colId,
+            headerName: decorateHeader(def, this.options.suppressAggFuncInHeader === true),
+            font: def.cellStyle?.font ?? this.theme.cellFont ?? this.theme.font,
+            padding,
+            headerPadding,
+            minWidth: def.minWidth,
+            maxWidth: Number.isFinite(def.maxWidth) ? def.maxWidth : Number.MAX_SAFE_INTEGER,
+          }));
+          jobs.push(
+            this.workerCoord.autosizeColumns(legacy, skipHeader)
+              .then((w) => { Object.assign(widths, w); }),
+          );
+        }
+      }
+      await Promise.all(jobs);
     } catch (err) {
       if (!this.destroyed) console.error('[cgrid] autoSizeColumns:', err);
       return;
     }
     if (this.destroyed) return;
     const changes: Array<{ colId: string; width: number }> = [];
-    for (const req of requests) {
-      const measured = widths[req.colId];
+    for (const [colId, measured] of Object.entries(widths)) {
       if (measured == null) continue;
-      // Worker already clamped to min/max; re-clamp defensively in case
-      // main-side bounds drifted while the round-trip was in flight.
-      const clamped = Math.max(req.minWidth, Math.min(req.maxWidth, Math.ceil(measured)));
-      const def = this.columnDefsMap.get(req.colId);
+      const def = this.columnDefsMap.get(colId);
       if (!def) continue;
+      // Both measurement paths already clamp to min/max; re-clamp
+      // defensively in case main-side bounds drifted while the
+      // round-trip was in flight.
+      const maxW = Number.isFinite(def.maxWidth) ? def.maxWidth : Number.MAX_SAFE_INTEGER;
+      const clamped = Math.max(def.minWidth, Math.min(maxW, Math.ceil(measured)));
       if (def.width === clamped) continue;
       def.width = clamped;
-      changes.push({ colId: req.colId, width: clamped });
+      changes.push({ colId: def.colId, width: clamped });
     }
     if (changes.length === 0) return;
     this.columnLayout = resolveColumnWidths(
@@ -7747,6 +7844,101 @@ export class CGrid<TRow = any> {
     let base = GROUP_CELL_GEOMETRY.chromeBaseNoCheckbox;
     if (showCheckboxInGroupCell) base += GROUP_CELL_GEOMETRY.checkboxSlot;
     return base;
+  }
+
+  /** Shared main-thread 2D measuring context for the autosize pass.
+   *  Reuses the auto-header-height context (font is re-set before every
+   *  measurement anyway). Null in non-DOM environments — callers fall
+   *  back to the worker's raw-text measurement. */
+  private autosizeMeasureCtx(): CanvasRenderingContext2D | null {
+    if (!this.headerMeasureCtx) {
+      try {
+        this.headerMeasureCtx = document.createElement('canvas').getContext('2d');
+      } catch {
+        this.headerMeasureCtx = null;
+      }
+    }
+    return this.headerMeasureCtx;
+  }
+
+  /** Main-side autosize measurement for regular (non-auto-group) leaves.
+   *
+   *  Fetches the sample window's RAW cell values from the worker (head +
+   *  tail of the visible set, same window `measureColumnWidths` walks),
+   *  then reproduces the PAINT text/font per value:
+   *    - number columns run `formatNumber` (the column's `valueFormatter`,
+   *      exactly what `cellAt` feeds the renderer);
+   *    - text columns paint the raw string verbatim (`cellAt` parity);
+   *    - the font starts from the static cellStyle composed over the
+   *      theme cell font, and per-value `cellStyleFn` font patches (e.g.
+   *      a P&L column bolding losses) are honoured via `composeFont`.
+   *  The header competes with the CHROME font (what the header painter
+   *  uses) + `headerPadding`; results are `minWidth`/`maxWidth`-clamped.
+   *  Fieldless columns (pivot results, calc columns) contribute no cell
+   *  values and resolve to header-or-minWidth — same as before. */
+  private async measureColumnsMainSide(
+    defs: Array<ResolvedColDef<TRow>>,
+    skipHeader: boolean,
+    padding: number,
+    headerPadding: number,
+    ctx: CanvasRenderingContext2D,
+  ): Promise<Record<string, number>> {
+    const { values } = await this.workerCoord.autosizeSampleValues(defs.map((d) => d.colId));
+    const cache = new Map<string, number>();
+    let currentFont = '';
+    const measure = (text: string, font: string): number => {
+      const key = `${font}|${text}`;
+      const hit = cache.get(key);
+      if (hit !== undefined) return hit;
+      if (currentFont !== font) { ctx.font = font; currentFont = font; }
+      const w = ctx.measureText(text).width;
+      cache.set(key, w);
+      return w;
+    };
+    const themeCellFont = this.theme.cellFont ?? this.theme.font;
+    const out: Record<string, number> = {};
+    for (const def of defs) {
+      const baseFont = def.cellStyle ? composeFont(def.cellStyle, themeCellFont) : themeCellFont;
+      const isNumber = def.cellDataType === 'number';
+      let maxData = 0;
+      for (const v of values[def.colId] ?? []) {
+        const text = isNumber && typeof v === 'number'
+          ? this.formatNumber(def.colId, v)
+          : String(v);
+        if (!text) continue;
+        let font = baseFont;
+        if (def.cellStyleFn) {
+          // Per-value style function — the painter runs it per cell, so a
+          // weight/size patch (bold losses) widens the painted text. Data
+          // rides as undefined, mirroring `formatNumber`'s formatter call;
+          // style functions that throw on it just keep the base font.
+          try {
+            const patch = def.cellStyleFn({ value: v, colId: def.colId, data: undefined as unknown as TRow } as never);
+            if (patch && (patch.font !== undefined || patch.fontFamily !== undefined
+              || patch.fontSize !== undefined || patch.fontWeight !== undefined
+              || patch.fontStyle !== undefined)) {
+              font = composeFont(patch, baseFont);
+            }
+          } catch { /* style errors never break autosize */ }
+        }
+        const w = measure(text, font);
+        if (w > maxData) maxData = w;
+      }
+      let maxRaw = maxData + padding;
+      if (!skipHeader) {
+        const headerName = decorateHeader(def, this.options.suppressAggFuncInHeader === true);
+        if (headerName) {
+          const headerFont = def.headerStyle
+            ? composeFont(def.headerStyle, this.theme.font)
+            : this.theme.font;
+          const headerW = measure(headerName, headerFont) + headerPadding;
+          if (headerW > maxRaw) maxRaw = headerW;
+        }
+      }
+      const maxW = Number.isFinite(def.maxWidth) ? def.maxWidth : Number.MAX_SAFE_INTEGER;
+      out[def.colId] = Math.max(def.minWidth, Math.min(maxW, maxRaw));
+    }
+    return out;
   }
 
   /** Cycle 6 / Task 5 — flip visibility on every listed leaf in a batch.

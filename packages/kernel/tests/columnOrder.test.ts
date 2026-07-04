@@ -93,6 +93,55 @@ describe('columnOrder', () => {
     expect(i).toBe(2);
   });
 
+  it('a foreign column cannot split a married group (AG parity) — snaps to nearest edge', () => {
+    // Married group 'g' spans ['b', 'c'] at indices 1..2. Dragging the
+    // ungrouped 'a' to toIndex 1 would land it between b and c (post-removal
+    // order [b, c, d], insertion at 1 splits the pair) — snap to the group's
+    // near edge instead.
+    const constraints: ColumnOrderConstraints = {
+      ...noConstraints,
+      marryGroupOf: (id) => (id === 'b' || id === 'c' ? 'g' : null),
+      leafIdsOfGroup: (gid) => (gid === 'g' ? ['b', 'c'] : []),
+    };
+    const i = resolveLegalDropIndex(
+      ['a', 'b', 'c', 'd'],
+      { colId: 'a', toIndex: 1 },
+      constraints,
+    );
+    expect(i).toBe(0); // before the group — nearest edge
+  });
+
+  it('a foreign column dropped past a married group lands after it unchanged', () => {
+    const constraints: ColumnOrderConstraints = {
+      ...noConstraints,
+      marryGroupOf: (id) => (id === 'b' || id === 'c' ? 'g' : null),
+      leafIdsOfGroup: (gid) => (gid === 'g' ? ['b', 'c'] : []),
+    };
+    // Post-removal order [b, c, d]; insertion at 2 lands AFTER c — legal.
+    const i = resolveLegalDropIndex(
+      ['a', 'b', 'c', 'd'],
+      { colId: 'a', toIndex: 2 },
+      constraints,
+    );
+    expect(i).toBe(2);
+  });
+
+  it('a foreign column dragged from the right snaps out of a married group middle', () => {
+    const constraints: ColumnOrderConstraints = {
+      ...noConstraints,
+      marryGroupOf: (id) => (id === 'b' || id === 'c' ? 'g' : null),
+      leafIdsOfGroup: (gid) => (gid === 'g' ? ['b', 'c'] : []),
+    };
+    // Dragging 'd' (index 3) to toIndex 2: post-removal order [a, b, c],
+    // group span 1..2, insertion at 2 splits b|c → snap (equidistant → lo).
+    const i = resolveLegalDropIndex(
+      ['a', 'b', 'c', 'd'],
+      { colId: 'd', toIndex: 2 },
+      constraints,
+    );
+    expect(i).toBe(1); // before the group
+  });
+
   it('reorderLeavesByList preserves order for missing entries', () => {
     const out = reorderLeavesByList(
       {

@@ -49,7 +49,7 @@ describe('worker dispatch — coverage', () => {
       'setGroupModel', 'setExpandedKeys', 'setEmitGroupDescendants',
       'setStrictPivotColumnOrder', 'setPivotMaxGeneratedColumns', 'setPivotModel',
       'getViewport', 'getRowIndexForId', 'getRowByIndex',
-      'getRowIndicesForIds', 'autosize', 'measureTextResponse',
+      'getRowIndicesForIds', 'autosize', 'autosizeSample', 'measureTextResponse',
       'clipboardDeserialize', 'clipboardSerialize',
       'exportData', 'getExportRows',
     ]);

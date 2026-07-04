@@ -559,6 +559,15 @@ export interface CColGroupDef<TRow = any> {
    * `headerStyle` field on `CColDef`.
    */
   headerStyle?: ColCellOverrides | HeaderStyleFunc;
+  /**
+   * AG-Grid parity — show/hide this SUB-GROUP based on the open/closed
+   * state of its IMMEDIATE parent group. `'open'` → visible only while
+   * the parent is open; `'closed'` → only while the parent is closed;
+   * `null`/undefined → always visible. A hidden sub-group hides its
+   * entire subtree. Evaluated per level, so each group's own toggle is
+   * independent of its ancestors' states.
+   */
+  columnGroupShow?: 'open' | 'closed' | null;
 }
 
 export interface CValueGetterParams<TRow> { data: TRow; colId: string }

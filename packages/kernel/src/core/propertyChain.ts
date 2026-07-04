@@ -339,11 +339,16 @@ export interface ApplyCellPropsInput {
    */
   groupHeaderStyleFn?: (params: { colId: string }) => ColCellOverrides | null | undefined;
   /**
-   * Cycle 18 / Task 4 — set to `'open'` / `'closed'` when this group-header
-   * cell belongs to a pivot result group that owns a
-   * `columnGroupShow:'closed'` totals leaf (a branch pivot group). The
-   * header painter draws a chevron-down / chevron-right at the left of
-   * the cell so the user can see the group is collapsible. Plumbed
+   * Cycle 18 / Task 4; broadened Task 10 — set to `'open'` / `'closed'`
+   * when this group-header cell belongs to a column group whose collapse
+   * has a visible effect: EITHER a pivot result group that owns a
+   * `columnGroupShow:'closed'` totals leaf (a branch pivot group), OR
+   * (Task 10) any REGULAR column group with a sub-group child or a direct
+   * `columnGroupShow:'open'`/`'closed'` leaf — see `groupHasToggleEffect`
+   * in `renderer/painters/byRows.ts`. Despite the name, this field is NOT
+   * pivot-only; it's the shared expand/collapse-caret signal for any
+   * column-group header. The header painter draws a leading caret at the
+   * left of the cell so the user can see the group is collapsible. Plumbed
    * through to `CellPaintConfig.pivotGroupExpand`. Threaded by
    * `renderer/painters/byRows.ts` once per group header per paint.
    */

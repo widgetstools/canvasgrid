@@ -30,6 +30,8 @@ const EVENT_TO_KEY: Record<string, StateKey> = {
   columnPinned: 'columnState',
   columnVisible: 'columnState',
   columnsReset: 'columnState',
+  columnDefsChanged: 'columnGroupDefs',
+  columnGroupOpened: 'columnGroupOpen',
   columnRowGroupChanged: 'rowGroupColumns',
   pivotStateChanged: 'pivotCols',
   rowGroupOpened: 'expandedRouteIds',

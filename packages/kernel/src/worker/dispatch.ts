@@ -196,6 +196,7 @@ export const dispatchTable: DispatchTable = {
   getRowByIndex: handleViewport as Handler,
   getRowIndicesForIds: handleViewport as Handler,
   autosize: handleViewport as Handler,
+  autosizeSample: handleViewport as Handler,
   measureTextResponse: handleViewport as Handler,
 
   // ── Clipboard domain ──────────────────────────────────────────────────────

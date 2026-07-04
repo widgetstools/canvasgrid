@@ -32,23 +32,49 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
   }
 
   // Locate the LEAF-header row top — the last header subgrid is the leaf
-  // header; any rows above it are group-header rows. Verticals start at the
-  // leaf-header top so group-header cells (which span multiple leaves) read
-  // as one merged rect instead of being sliced by per-leaf separators. When
-  // there are no header subgrids, fall back to 0 (no header at all).
+  // header; any rows above it are group-header rows. Collect the group-header
+  // rows (those exposing `getGroupIdAt`) top→bottom: the vertical-separator
+  // pass below walks them to find where two adjacent columns' group ancestry
+  // diverges, which is where their shared merged cell (if any) ends and an
+  // explicit border must begin — AG-Grid's "span height" border semantics.
   let leafHeaderTop = 0;
+  const groupHeaderRows: GroupHeaderRowRef[] = [];
   for (const row of vs.visibleRows) {
-    if (row.subgrid.isHeader) leafHeaderTop = row.top;
+    if (!row.subgrid.isHeader) continue;
+    leafHeaderTop = row.top;
+    const sg = row.subgrid as { getGroupIdAt?: (colId: string) => string | null };
+    if (typeof sg.getGroupIdAt === 'function') {
+      groupHeaderRows.push({
+        top: row.top,
+        bottom: row.bottom,
+        getGroupIdAt: sg.getGroupIdAt.bind(sg),
+      });
+    }
+  }
+
+  // Split visible columns into pinned/center bands once — both the
+  // horizontal (group-row segments) and vertical passes below are per-band.
+  const leftPinned: typeof vs.visibleColumns = [];
+  const center: typeof vs.visibleColumns = [];
+  const rightPinned: typeof vs.visibleColumns = [];
+  for (let i = 0; i < vs.visibleColumns.length; i++) {
+    const col = vs.visibleColumns[i]!;
+    if (col.pinned === 'left') leftPinned.push(col);
+    else if (col.pinned === 'right') rightPinned.push(col);
+    else center.push(col);
   }
 
   // Horizontals — one per visible row bottom for BOTH header and data rows.
-  // The bottom of group-header rows visually separates depth levels above the
-  // leaf header. Skip data rows whose bottom lands outside the body region
-  // (overscan rows above/below). Pinned rows (Cycle 14 / Task 2) paint
-  // gridlines too so multi-pinned stacks read as connected member rows; the
-  // structural border pass below overpaints the body-side edge with
-  // `pinnedRowBorder` so the transition between the pinned stack and the
-  // scrollable body reads as a single deliberate hairline.
+  // Group-header rows are the exception (AG-Grid parity): the line below a
+  // group row only spans the columns that actually HAVE a group cell at that
+  // depth. Columns whose ancestry ended above render as one tall merged leaf
+  // cell (span-height) and must not be sliced by a full-width horizontal.
+  // Skip data rows whose bottom lands outside the body region (overscan
+  // rows above/below). Pinned rows (Cycle 14 / Task 2) paint gridlines too
+  // so multi-pinned stacks read as connected member rows; the structural
+  // border pass below overpaints the body-side edge with `pinnedRowBorder`
+  // so the transition between the pinned stack and the scrollable body
+  // reads as a single deliberate hairline.
   gc.cache.fillStyle = theme.gridLineColor;
   for (const row of vs.visibleRows) {
     if (row.subgrid.isData) {
@@ -57,6 +83,14 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
       continue; // totals/footer skip the per-row gridline (totals draws its own border below)
     }
     const y = Math.round(row.bottom) - 1;
+    const sg = row.subgrid as { getGroupIdAt?: (colId: string) => string | null };
+    if (row.subgrid.isHeader && typeof sg.getGroupIdAt === 'function') {
+      const getGroupIdAt = sg.getGroupIdAt.bind(sg);
+      paintGroupRowBottomInBand(gc, leftPinned, 0, vs.bodyLeft, y, getGroupIdAt);
+      paintGroupRowBottomInBand(gc, center, vs.bodyLeft, vs.bodyRight, y, getGroupIdAt);
+      paintGroupRowBottomInBand(gc, rightPinned, vs.bodyRight, rightEdge, y, getGroupIdAt);
+      continue;
+    }
     gc.fillRect(0, y, rightEdge, 1);
   }
 
@@ -93,18 +127,16 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
   }
 
   // Verticals — one band at a time so out-of-band column lines stay clipped.
-  // Span from leafHeaderTop to the bottom of the LAST rendered row so column
-  // separators don't bleed into empty canvas below the data.
-  // Cycle 25 / Task 5 — single-pass split instead of three .filter walks.
-  const leftPinned: typeof vs.visibleColumns = [];
-  const center: typeof vs.visibleColumns = [];
-  const rightPinned: typeof vs.visibleColumns = [];
-  for (let i = 0; i < vs.visibleColumns.length; i++) {
-    const col = vs.visibleColumns[i]!;
-    if (col.pinned === 'left') leftPinned.push(col);
-    else if (col.pinned === 'right') rightPinned.push(col);
-    else center.push(col);
-  }
+  // Span from the pair's border top (see `verticalTopForPair`) to the bottom
+  // of the LAST rendered row so column separators don't bleed into empty
+  // canvas below the data.
+  //
+  // AG-Grid parity: the separator between two adjacent columns starts at the
+  // top of the FIRST header row where their group ancestry diverges — or
+  // where both ancestries end (two span-height cells side by side). Inside a
+  // shared merged group cell no line paints; at a group boundary the line
+  // starts at that group row's top, so every group reads as a bordered
+  // island containing its children.
 
   // Compute the bottom of the last visible non-header row; if there are no
   // data/totals rows yet, fall back to bodyTop (verticals span header only).
@@ -115,23 +147,9 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
     if (b > lastRowBottom) lastRowBottom = b;
   }
 
-  paintVerticalsInBand(gc, leftPinned, 0, vs.bodyLeft, leafHeaderTop, lastRowBottom, theme.gridLineColor);
-  paintVerticalsInBand(gc, center, vs.bodyLeft, vs.bodyRight, leafHeaderTop, lastRowBottom, theme.gridLineColor);
-  paintVerticalsInBand(gc, rightPinned, vs.bodyRight, rightEdge, leafHeaderTop, lastRowBottom, theme.gridLineColor);
-
-  // Group-header rows: paint verticals ONLY at group boundaries (where two
-  // adjacent leaves resolve to different groups at this depth). Inside a
-  // group span the cells stay merged. Cells where both neighbours are
-  // ungrouped at this depth also stay un-divided so the row reads quietly
-  // outside the grouped regions.
-  for (const row of vs.visibleRows) {
-    if (!row.subgrid.isHeader) continue;
-    const sg = row.subgrid as { getGroupIdAt?: (colId: string) => string | null };
-    if (typeof sg.getGroupIdAt !== 'function') continue;
-    paintGroupBoundariesInBand(gc, leftPinned, 0, vs.bodyLeft, row.top, row.bottom, sg, theme.gridLineColor);
-    paintGroupBoundariesInBand(gc, center, vs.bodyLeft, vs.bodyRight, row.top, row.bottom, sg, theme.gridLineColor);
-    paintGroupBoundariesInBand(gc, rightPinned, vs.bodyRight, rightEdge, row.top, row.bottom, sg, theme.gridLineColor);
-  }
+  paintVerticalsInBand(gc, leftPinned, 0, vs.bodyLeft, leafHeaderTop, lastRowBottom, theme.gridLineColor, groupHeaderRows);
+  paintVerticalsInBand(gc, center, vs.bodyLeft, vs.bodyRight, leafHeaderTop, lastRowBottom, theme.gridLineColor, groupHeaderRows);
+  paintVerticalsInBand(gc, rightPinned, vs.bodyRight, rightEdge, leafHeaderTop, lastRowBottom, theme.gridLineColor, groupHeaderRows);
 
   // Pinned-band edges — heavier line via theme.borderColor. Stop at
   // lastRowBottom (same as verticals) so the divider doesn't extend into
@@ -185,60 +203,102 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
   }
 }
 
+/** One group-header row's geometry + groupId probe, top→bottom ordered. */
+interface GroupHeaderRowRef {
+  top: number;
+  bottom: number;
+  getGroupIdAt: (colId: string) => string | null;
+}
+
+/** Where the vertical separator between two adjacent columns starts.
+ *
+ *  Walk the group-header rows top→bottom:
+ *  - same non-null groupId on both sides → still inside a shared merged
+ *    group cell; keep walking (no border at this depth).
+ *  - differing groupIds → ancestry diverges here; the border starts at
+ *    this row's top (group boundary, or group vs span-height cell).
+ *  - both null → both columns' ancestry ended above; they render as two
+ *    adjacent span-height leaf cells from this row down, separated by a
+ *    border starting here (AG-Grid `headerColumnBorder` semantics).
+ *
+ *  Two leaves sharing every group row (same innermost group) divide only
+ *  from the leaf-header row down. */
+function verticalTopForPair(
+  a: ViewportColumn,
+  b: ViewportColumn,
+  groupHeaderRows: GroupHeaderRowRef[],
+  leafHeaderTop: number,
+): number {
+  for (const row of groupHeaderRows) {
+    const ga = row.getGroupIdAt(a.colId);
+    const gb = row.getGroupIdAt(b.colId);
+    if (ga === gb && ga !== null) continue;
+    return row.top;
+  }
+  return leafHeaderTop;
+}
+
 function paintVerticalsInBand(
   gc: CachedContext2D,
   cols: ViewportColumn[],
   bandLeft: number,
   bandRight: number,
-  top: number,
+  leafHeaderTop: number,
   bottom: number,
   color: string,
+  groupHeaderRows: GroupHeaderRowRef[],
 ): void {
   if (cols.length <= 1) return;
   gc.cache.save();
   gc.beginPath();
-  gc.rect(bandLeft, top, bandRight - bandLeft, bottom - top);
+  const clipTop = groupHeaderRows.length > 0
+    ? Math.min(leafHeaderTop, groupHeaderRows[0]!.top)
+    : leafHeaderTop;
+  gc.rect(bandLeft, clipTop, bandRight - bandLeft, bottom - clipTop);
   gc.clip();
   gc.cache.fillStyle = color;
   // Skip the last column — its right edge is the band boundary (or the viewport
   // edge for the rightmost band) and is either drawn as a band-edge line or
   // doesn't need one at all.
   for (let i = 0; i < cols.length - 1; i++) {
+    const top = verticalTopForPair(cols[i]!, cols[i + 1]!, groupHeaderRows, leafHeaderTop);
     const x = Math.round(cols[i]!.right) - 1;
     gc.fillRect(x, top, 1, bottom - top);
   }
   gc.cache.restore();
 }
 
-/** Paint verticals only at group boundaries in a group-header row.
- *  A boundary exists between adjacent columns whose groupId at this row's
- *  depth differs (and at least one is non-null). Inside a contiguous group
- *  span both neighbours share the same groupId — no vertical. Between two
- *  ungrouped columns both are null — also no vertical, so the un-grouped
- *  area of the group-header reads as one quiet strip. */
-function paintGroupBoundariesInBand(
+/** Paint the horizontal line at a group-header row's bottom, but only
+ *  across columns that HAVE a group cell at this row's depth. Columns
+ *  whose ancestry ended above are span-height leaf cells — the line must
+ *  not slice through them. Adjacent grouped columns merge into one run
+ *  (the border under two side-by-side group cells is continuous). */
+function paintGroupRowBottomInBand(
   gc: CachedContext2D,
   cols: ViewportColumn[],
   bandLeft: number,
   bandRight: number,
-  top: number,
-  bottom: number,
-  subgrid: { getGroupIdAt?: (colId: string) => string | null },
-  color: string,
+  y: number,
+  getGroupIdAt: (colId: string) => string | null,
 ): void {
-  if (cols.length <= 1 || !subgrid.getGroupIdAt) return;
+  if (cols.length === 0) return;
   gc.cache.save();
   gc.beginPath();
-  gc.rect(bandLeft, top, bandRight - bandLeft, bottom - top);
+  gc.rect(bandLeft, y, bandRight - bandLeft, 1);
   gc.clip();
-  gc.cache.fillStyle = color;
-  for (let i = 0; i < cols.length - 1; i++) {
-    const a = subgrid.getGroupIdAt(cols[i]!.colId);
-    const b = subgrid.getGroupIdAt(cols[i + 1]!.colId);
-    if (a === b) continue;
-    // a !== b — at least one side belongs to a group; emit a boundary line.
-    const x = Math.round(cols[i]!.right) - 1;
-    gc.fillRect(x, top, 1, bottom - top);
+  let runLeft: number | null = null;
+  let runRight = 0;
+  for (const col of cols) {
+    if (getGroupIdAt(col.colId) !== null) {
+      if (runLeft === null) runLeft = col.left;
+      runRight = col.right;
+    } else if (runLeft !== null) {
+      gc.fillRect(Math.round(runLeft), y, Math.round(runRight) - Math.round(runLeft), 1);
+      runLeft = null;
+    }
+  }
+  if (runLeft !== null) {
+    gc.fillRect(Math.round(runLeft), y, Math.round(runRight) - Math.round(runLeft), 1);
   }
   gc.cache.restore();
 }
