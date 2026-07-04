@@ -1073,7 +1073,7 @@
 .cg-side-bar-tab-label {
   writing-mode: vertical-rl;
   padding-block: 4px;
-  font-size: 10px;
+  font-size: var(--cg-font-size-sm);
   font-weight: 500;
   letter-spacing: 0.04em;
   line-height: 1;
