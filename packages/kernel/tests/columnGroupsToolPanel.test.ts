@@ -89,6 +89,37 @@ describe('ColumnGroupsToolPanel', () => {
     expect(bidRowAfter.style.display).toBe('none');
   });
 
+  describe('columnGroupShow inline control', () => {
+    it('renders on a grouped column row and NOT on an ungrouped column row', () => {
+      const panel = new ColumnGroupsToolPanel();
+      panel.init(makeParams(vi.fn()));
+      const gui = panel.getGui();
+      expect(gui.querySelector('[data-cg-node="bid"] [data-cg-groupshow]')).toBeTruthy();
+      expect(gui.querySelector('[data-cg-node="sym"] [data-cg-groupshow]')).toBeNull();
+    });
+
+    it('changing the inline control dirties the model and Apply projects the chosen value', () => {
+      const onApply = vi.fn();
+      const panel = new ColumnGroupsToolPanel();
+      panel.init(makeParams(onApply));
+      const gui = panel.getGui();
+      const select = gui.querySelector('[data-cg-node="bid"] [data-cg-groupshow]') as HTMLSelectElement;
+      expect(select.value).toBe(''); // always (unset)
+
+      select.value = 'open';
+      select.dispatchEvent(new Event('change'));
+
+      const apply = gui.querySelector('[data-cg-apply]') as HTMLButtonElement;
+      expect(apply.disabled).toBe(false);
+      apply.click();
+
+      const { columnDefs } = onApply.mock.calls[0][0];
+      const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
+      const bid = trade.children.find((c: { colId?: string }) => c.colId === 'bid');
+      expect(bid.columnGroupShow).toBe('open');
+    });
+  });
+
   describe('Style band', () => {
     // Note: the group-select control is a real <button> (see the
     // keyboard-accessibility test below); the switch fields it exposes are
@@ -163,6 +194,37 @@ describe('ColumnGroupsToolPanel', () => {
       expect(trade.marryChildren).toBe(true);
       expect(trade.openByDefault).toBe(true);
       expect(trade.headerStyle.fontWeight).toBe('bold');
+    });
+
+    it('renders a "Children visibility" list bound to the selected group\'s columns, sharing setColumnGroupShow', () => {
+      const onApply = vi.fn();
+      const panel = new ColumnGroupsToolPanel();
+      panel.init(makeParams(onApply));
+      const gui = panel.getGui();
+      (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
+
+      const style = gui.querySelector('[data-cg-style]')!;
+      const bidChild = style.querySelector('[data-cg-child-show="bid"]') as HTMLSelectElement;
+      expect(bidChild).toBeTruthy();
+      expect(bidChild.tagName).toBe('SELECT');
+      expect(bidChild.value).toBe(''); // always (unset)
+
+      bidChild.value = 'closed';
+      bidChild.dispatchEvent(new Event('change'));
+
+      const apply = gui.querySelector('[data-cg-apply]') as HTMLButtonElement;
+      expect(apply.disabled).toBe(false);
+
+      // Same helper wrote it — the inline control on the 'bid' row must
+      // now reflect the identical value too (both surfaces never diverge).
+      const inline = gui.querySelector('[data-cg-node="bid"] [data-cg-groupshow]') as HTMLSelectElement;
+      expect(inline.value).toBe('closed');
+
+      apply.click();
+      const { columnDefs } = onApply.mock.calls[0][0];
+      const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
+      const bid = trade.children.find((c: { colId?: string }) => c.colId === 'bid');
+      expect(bid.columnGroupShow).toBe('closed');
     });
 
     it('switching selection to a different group rebinds the Style section', () => {

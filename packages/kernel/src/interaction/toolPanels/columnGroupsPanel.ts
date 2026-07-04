@@ -18,7 +18,7 @@ import type { ToolPanel, ToolPanelParams } from './types';
 import {
   flatten, project, createGroup, deleteGroup, moveNode,
   setHidden, setColumnHeaderName, renameGroup, validate, canDrop, resolveDrop,
-  setGroupStyle,
+  setGroupStyle, setColumnGroupShow,
   type Node, type GroupNode, type ColumnNode,
 } from '../columnGroups/model';
 import type { CGridApi } from '../../types';
@@ -291,6 +291,47 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     this.styleForm.root.querySelectorAll('[data-field-key]').forEach((n) =>
       n.setAttribute('data-cg-field', n.getAttribute('data-field-key')!));
     this.styleSection.appendChild(this.styleForm.root);
+
+    // "Children visibility" — mirrors the inline `columnGroupShow` control
+    // (see `buildGroupShowControl`) for every column nested (directly or
+    // transitively) under the selected group, so a user styling a group can
+    // also author its columns' expand/collapse visibility from one place.
+    const children = this.descendantColumns(g.id);
+    if (children.length > 0) {
+      const childTitle = el('div', 'cg-colgroups-childshow-title');
+      childTitle.textContent = 'Children visibility';
+      this.styleSection.appendChild(childTitle);
+
+      const list = el('div', 'cg-colgroups-childshow-list');
+      children.forEach((c) => {
+        const row = el('div', 'cg-colgroups-childshow-row');
+        const label = document.createElement('label');
+        label.className = 'cg-colgroups-childshow-label';
+        label.textContent = c.headerName;
+        row.appendChild(label);
+        row.appendChild(this.buildGroupShowControl(c.colId, c.columnGroupShow, 'child'));
+        list.appendChild(row);
+      });
+      this.styleSection.appendChild(list);
+    }
+  }
+
+  /** All column (leaf) descendants of group `groupId`, direct + nested,
+   *  depth-first in sibling order — used to populate the Style band's
+   *  "Children visibility" list. */
+  private descendantColumns(groupId: string): ColumnNode[] {
+    const out: ColumnNode[] = [];
+    const walk = (parentId: string) => {
+      this.nodes
+        .filter((n) => n.parentId === parentId)
+        .sort((a, b) => a.order - b.order)
+        .forEach((n) => {
+          if (n.kind === 'column') out.push(n);
+          else walk(n.id);
+        });
+    };
+    walk(groupId);
+    return out;
   }
 
   // ── Row builders ───────────────────────────────────────────────────
@@ -403,7 +444,50 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     name.addEventListener('change', () => this.mutate((ns) => setColumnHeaderName(ns, n.colId, name.value)));
     wrap.appendChild(name);
 
+    // Expand/collapse visibility (`columnGroupShow`) only makes sense for a
+    // column that lives INSIDE a group — an ungrouped (top-level) column has
+    // no group to open/close relative to, so no control is rendered for it.
+    if (n.parentId !== null) {
+      wrap.appendChild(this.buildGroupShowControl(n.colId, n.columnGroupShow, 'inline'));
+    }
+
     return wrap;
+  }
+
+  /** Shared control builder for BOTH `columnGroupShow` UI surfaces — the
+   *  inline per-row control (`variant: 'inline'`, tagged `data-cg-groupshow`)
+   *  and the Style band's "Children visibility" mirror (`variant: 'child'`,
+   *  tagged `data-cg-child-show="<colId>"`). Both funnel through this one
+   *  helper so the two surfaces can never diverge: same options, same
+   *  `setColumnGroupShow` write, and — because every write triggers
+   *  `mutate()` -> `render()` -> `renderStyle()` — each surface always
+   *  reflects the other's latest edit. */
+  private buildGroupShowControl(
+    colId: string,
+    value: 'open' | 'closed' | null | undefined,
+    variant: 'inline' | 'child',
+  ): HTMLSelectElement {
+    const select = document.createElement('select');
+    select.className = 'cg-settings-input cg-settings-select cg-colgroups-groupshow';
+    if (variant === 'inline') select.setAttribute('data-cg-groupshow', '');
+    else select.setAttribute('data-cg-child-show', colId);
+    select.setAttribute('aria-label', 'Column group visibility');
+    ([
+      { value: '', label: 'Always' },
+      { value: 'open', label: 'When open' },
+      { value: 'closed', label: 'When collapsed' },
+    ] as const).forEach((opt) => {
+      const o = document.createElement('option');
+      o.value = opt.value;
+      o.textContent = opt.label;
+      select.appendChild(o);
+    });
+    select.value = value ?? '';
+    select.addEventListener('change', () => {
+      const v = select.value === '' ? null : (select.value as 'open' | 'closed');
+      this.mutate((ns) => setColumnGroupShow(ns, colId, v));
+    });
+    return select;
   }
 
   private flagGroup(groupId: string, message: string): void {

@@ -2527,6 +2527,44 @@
   color: var(--cg-settings-accent);
 }
 
+/* Task 7 — `columnGroupShow` (always/open/closed) authoring. The inline
+ * per-row control and the Style band's "Children visibility" mirror share
+ * these rules; both reuse `.cg-settings-input`/`.cg-settings-select` (the
+ * Phase 1 SettingsForm select styling) so they read as native chrome. */
+.cg-colgroups-groupshow {
+  flex: 0 0 auto;
+  max-width: 112px;
+}
+.cg-colgroups-childshow-title {
+  font-size: var(--cg-font-size-sm);
+  font-weight: 500;
+  color: var(--cg-fg-color);
+  margin: 10px 0 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cg-colgroups-childshow-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.cg-colgroups-childshow-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 3px 0;
+}
+.cg-colgroups-childshow-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--cg-font-size-sm);
+  color: var(--cg-fg-color);
+}
+
 /* Cycle 13 / Task 1 — status bar shell. Mounts as a sibling of the
  * canvas inside `CGrid.root`, pinned to the bottom (or top) edge.
  *

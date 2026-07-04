@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   flatten, project, createGroup, deleteGroup, moveNode, setHidden,
   setColumnHeaderName, setGroupStyle, canDrop, validate, renameGroup,
-  resolveDrop, rehydrate,
+  resolveDrop, rehydrate, setColumnGroupShow,
   type Node, type GroupNode, type SerializedNode,
 } from '../src/interaction/columnGroups/model';
 import type { CColDef, CColGroupDef } from '../src/types';
@@ -261,6 +261,34 @@ describe('resolveDrop', () => {
     const a = nodes.find((n) => n.kind === 'column' && (n as any).colId === 'a')!;
     expect(resolveDrop(nodes, a.id, a.id, false)).toBeNull();
     expect(resolveDrop(nodes, a.id, 'nope', false)).toBeNull();
+  });
+});
+
+describe('columnGroupShow round-trip + mutation', () => {
+  const defs: (CColDef | CColGroupDef)[] = [
+    { groupId: 'g', headerName: 'G', children: [
+      { colId: 'a', field: 'a', columnGroupShow: 'open' },
+      { colId: 'b', field: 'b' }, // absent = always visible
+    ] },
+  ];
+  it('round-trips columnGroupShow through flatten/project', () => {
+    expect(project(flatten(defs))).toEqual(defs);
+  });
+  it('flatten carries columnGroupShow onto the ColumnNode', () => {
+    const a = flatten(defs).find((n) => n.kind === 'column' && (n as any).colId === 'a') as any;
+    expect(a.columnGroupShow).toBe('open');
+  });
+  it('setColumnGroupShow updates one column and projects it', () => {
+    const nodes = setColumnGroupShow(flatten(defs), 'b', 'closed');
+    const g = project(nodes)[0] as CColGroupDef;
+    const b = g.children.find((c) => (c as CColDef).colId === 'b') as CColDef;
+    expect(b.columnGroupShow).toBe('closed');
+  });
+  it('setting back to null (always) is representable', () => {
+    const nodes = setColumnGroupShow(flatten(defs), 'a', null);
+    const g = project(nodes)[0] as CColGroupDef;
+    const a = g.children.find((c) => (c as CColDef).colId === 'a') as CColDef;
+    expect(a.columnGroupShow ?? null).toBeNull();
   });
 });
 

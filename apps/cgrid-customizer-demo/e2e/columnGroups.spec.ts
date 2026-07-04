@@ -215,6 +215,48 @@ test('group header styling: bold + background color apply to headerStyle', async
   expect(trade!.headerStyle?.bg).toBe('rgb(255, 0, 0)');
 });
 
+// Task 7 — `columnGroupShow` (always/open/closed) authoring. 'pnl' is a
+// direct child of the seeded 'trade' group (see apps/cgrid-customizer-demo/
+// src/main.ts), so it carries the inline `data-cg-groupshow` control. The
+// kernel already ENFORCES the runtime open/closed semantics
+// (`resolveVisibleLeaves`, unit-covered) — this journey only proves the
+// editor round-trips the authored value through Apply and persistence.
+test('setting a grouped column\'s columnGroupShow to "When collapsed" persists across reload', async ({ page }) => {
+  await openColumnGroupsTab(page);
+
+  const groupShow = page.locator('[data-cg-node="pnl"] [data-cg-groupshow]');
+  await expect(groupShow).toBeVisible();
+  await groupShow.selectOption('closed');
+
+  const applyBtn = page.locator('[data-cg-apply]');
+  await expect(applyBtn).toBeEnabled();
+  await applyBtn.click();
+
+  const defs = await getColumnGroupDefs(page);
+  const pnl = findNode(defs, (d) => d.colId === 'pnl');
+  expect(pnl).toBeTruthy();
+  expect(pnl!.columnGroupShow).toBe('closed');
+
+  await page.waitForFunction(
+    (key) => (localStorage.getItem(key) ?? '').includes('"closed"'),
+    STORAGE_KEY,
+    { timeout: 5_000 },
+  );
+
+  await page.reload();
+  await waitForGridReady(page);
+
+  let defsAfterReload: AnyDef[] = [];
+  let pnlAfterReload: AnyDef | null = null;
+  await expect
+    .poll(async () => {
+      defsAfterReload = await getColumnGroupDefs(page);
+      pnlAfterReload = findNode(defsAfterReload, (d) => d.colId === 'pnl');
+      return pnlAfterReload?.columnGroupShow ?? null;
+    }, { timeout: 10_000 })
+    .toBe('closed');
+});
+
 test('drag an ungrouped column onto a group row to nest it', async ({ page }) => {
   await openColumnGroupsTab(page);
 

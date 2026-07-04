@@ -113,6 +113,33 @@ describe('column-group structure persists through getState/setState', () => {
     g2.destroy();
   });
 
+  it('columnGroupShow survives getState -> setState onto a fresh grid', () => {
+    const g1 = mount(base);
+    const api1 = (g1 as any).makeApi();
+    api1.updateGridOptions({ columnDefs: [
+      { groupId: 'G', headerName: 'Grp', children: [
+        { colId: 'a', field: 'a', columnGroupShow: 'open' },
+        { colId: 'b', field: 'b', columnGroupShow: 'closed' },
+        { colId: 'c', field: 'c' }, // always visible
+      ] },
+    ] });
+    const snapshot = g1.getState();
+    g1.destroy();
+
+    const g2 = mount(base);
+    const api2 = (g2 as any).makeApi();
+    g2.setState(snapshot);
+    const defs = api2.getColumnGroupDefs();
+    const grp = defs.find((d: any) => d.groupId === 'G');
+    const a = grp.children.find((c: any) => c.colId === 'a');
+    const b = grp.children.find((c: any) => c.colId === 'b');
+    const c = grp.children.find((c: any) => c.colId === 'c');
+    expect(a.columnGroupShow).toBe('open');
+    expect(b.columnGroupShow).toBe('closed');
+    expect(c.columnGroupShow).toBeUndefined();
+    g2.destroy();
+  });
+
   it('strips a function-valued group headerStyle/headerClass from the persisted overlay, but keeps plain-object styling', () => {
     const g = mount(base);
     const api = (g as any).makeApi();

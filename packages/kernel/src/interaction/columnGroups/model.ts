@@ -29,6 +29,13 @@ export interface ColumnNode {
   colId: string;
   headerName: string;
   hide?: boolean;
+  /** ag-grid-parity expand/collapse visibility: `undefined`/omitted and
+   *  `null` both mean "always visible"; `'open'` shows the column only
+   *  while every ancestor group is open; `'closed'` shows it only while
+   *  the parent is collapsed. Purely editor/model state — the KERNEL
+   *  (`resolveVisibleLeaves` in `core/columnGroupState.ts`) already
+   *  enforces the runtime semantics from `CColDef.columnGroupShow`. */
+  columnGroupShow?: 'open' | 'closed' | null;
   /** Frozen reference to the original leaf def — every non-editor field
    *  (field, cellRenderer, valueFormatter, width…) is carried through
    *  project() unchanged. */
@@ -62,7 +69,7 @@ export function flatten(defs: (CColDef | CColGroupDef)[]): Node[] {
         out.push({
           id: cid, kind: 'column', parentId, order,
           colId: cid, headerName: d.headerName ?? cid,
-          hide: d.hide, def: d,
+          hide: d.hide, columnGroupShow: d.columnGroupShow, def: d,
         });
       }
     });
@@ -92,6 +99,10 @@ export function project(nodes: Node[]): (CColDef | CColGroupDef)[] {
         const defaultHeaderName = n.def.headerName ?? n.colId;
         if (n.headerName !== defaultHeaderName) leaf.headerName = n.headerName;
         if (n.hide !== undefined) leaf.hide = n.hide;
+        // Omit when undefined (identity round-trip for defs that never had
+        // the field); a stored `null` is a MEANINGFUL "always visible" the
+        // base def explicitly carried, so it is written back verbatim.
+        if (n.columnGroupShow !== undefined) leaf.columnGroupShow = n.columnGroupShow;
         return leaf;
       });
   return childrenOf(null);
@@ -146,6 +157,14 @@ export function moveNode(nodes: Node[], id: string, newParentId: string | null, 
 
 export function setHidden(nodes: Node[], colId: string, hide: boolean): Node[] {
   return clone(nodes).map((n) => (n.kind === 'column' && n.colId === colId ? { ...n, hide } : n));
+}
+
+/** Pure — sets `columnGroupShow` on the one column matching `colId`, leaving
+ *  every other node untouched. `null` is the explicit "always visible"
+ *  choice (as opposed to `undefined`, which the model never sets from the
+ *  editor — see `project()`'s round-trip note). */
+export function setColumnGroupShow(nodes: Node[], colId: string, value: 'open' | 'closed' | null): Node[] {
+  return clone(nodes).map((n) => (n.kind === 'column' && n.colId === colId ? { ...n, columnGroupShow: value } : n));
 }
 
 export function setColumnHeaderName(nodes: Node[], colId: string, headerName: string): Node[] {
