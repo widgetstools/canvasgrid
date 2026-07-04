@@ -5111,15 +5111,16 @@ export class CGrid<TRow = any> {
     // current status-bar bottom reservation flows through the same
     // setHostBounds call so a side-bar reflow can't drop the bar inset.
     if (this.cgridCanvas) {
-      // Cycle 15 / Task 6 + Cycle 18 / Task 6 — fold the status-bar
-      // top + pivot-panel top + row-group-panel top contributions
-      // through the same call so a side-bar reflow doesn't drop any
-      // of the three insets.
+      // Cycle 15 / Task 6 + Cycle 18 / Task 6 + Cycle 21i Phase 2 / T1 —
+      // the full top-strip stack (toolbar + status bar + pivot panel +
+      // row group panel, incl. the pivot-mode shared-strip collapse)
+      // flows through the SAME helper `applyVerticalInsets` uses, so a
+      // side-bar reflow can never drop one of the insets and drift the
+      // canvas out from under the DOM overlays (floating filters,
+      // editors).
       this.cgridCanvas.setHostBounds({
         left,
-        top: this.statusBarInsets.top
-          + this.pivotPanelTopInset
-          + this.rowGroupPanelTopInset,
+        top: this.computeTopInset(),
         bottom: this.statusBarInsets.bottom,
       });
     }
@@ -5241,10 +5242,7 @@ export class CGrid<TRow = any> {
     // toolbar inset in through `stripTop`.
     const toolbarTop = this.toolbarTopInset;
     const stripTop = toolbarTop + this.statusBarInsets.top;
-    const panelInset = sharing
-      ? Math.max(this.pivotPanelTopInset, this.rowGroupPanelTopInset)
-      : this.pivotPanelTopInset + this.rowGroupPanelTopInset;
-    const top = stripTop + panelInset;
+    const top = this.computeTopInset();
     const bottom = this.statusBarInsets.bottom;
     // A top-positioned status bar pins itself `top: 0` via CSS; shift
     // it below the toolbar. Bottom-positioned bars are unaffected.
@@ -5283,6 +5281,20 @@ export class CGrid<TRow = any> {
       if (rgEl) rgEl.classList.remove('cg-row-group-panel--split-left');
       if (pvEl) pvEl.classList.remove('cg-pivot-panel--split-right');
     }
+  }
+
+  /** Cycle 21i Phase 2 / T1 — the ONE formula for the canvas region's
+   *  total top inset: toolbar + top status bar + pivot/row-group panel
+   *  strips (collapsed to one 32px strip when pivot mode shares it).
+   *  Used by BOTH `applyVerticalInsets` and `reserveSideBarSpace` so
+   *  the two reflow paths can never disagree — a drift here shows up
+   *  as the canvas sliding out from under the DOM overlays (floating
+   *  filters, editors) the moment a side-bar reflow fires. */
+  private computeTopInset(): number {
+    const panelInset = this.isSharingTopStrip()
+      ? Math.max(this.pivotPanelTopInset, this.rowGroupPanelTopInset)
+      : this.pivotPanelTopInset + this.rowGroupPanelTopInset;
+    return this.toolbarTopInset + this.statusBarInsets.top + panelInset;
   }
 
   /** AG-Grid parity — true when the row group panel and pivot panel
