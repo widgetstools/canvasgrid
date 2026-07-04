@@ -460,9 +460,6 @@ export function createPositionsGrid(
     // without collapsing the row itself.
     defaultColDef: { floatingFilter: true },
     floatingFilter: true,
-    // Cycle 21i / Customization — enable toolbar for save button
-    toolbar: true,
-    toolbarHeight: 40,
     columnDefs: [
       // Cycle 6 / Task 1: positionId opts out of drag-reorder. Pinned-left
       // is already a strong visual signal that this column shouldn't move;

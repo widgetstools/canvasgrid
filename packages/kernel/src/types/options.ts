@@ -60,14 +60,16 @@ export interface CGridOptions<TRow = any> {
   rowHeight?: number;
   headerHeight?: number;
   /**
-   * When `true`, displays a toolbar at the top of the grid above the column
-   * headers. Use `toolbarHeight` to customize the toolbar height. Defaults to
-   * `false`. Cycle 21i / Customization.
+   * When `false`, hides the toolbar at the top of the grid above the column
+   * headers. Defaults to `true` (toolbar is visible). Use `toolbarHeight` to
+   * customize the toolbar height. Set to `false` to hide the toolbar entirely.
+   * Cycle 21i / Customization.
    */
   toolbar?: boolean;
   /**
-   * Pixel height of the toolbar row. Defaults to `40`. Only used when
-   * `toolbar: true`. Cycle 21i / Customization.
+   * Pixel height of the toolbar row. Defaults to `40`. The toolbar is always
+   * part of the grid structure; this controls its visible height.
+   * Cycle 21i / Customization.
    */
   toolbarHeight?: number;
   rowSelection?: 'none' | 'single' | 'multiple';

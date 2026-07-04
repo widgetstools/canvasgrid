@@ -1680,12 +1680,12 @@ export class CGrid<TRow = any> {
     this.contextMenuHost = new ContextMenuHost(this.editorContainer);
 
     // Cycle 21i / Customization — toolbar overlay. Mounts at the top of
-    // the grid above column headers. When toolbar option is true, creates
-    // a toolbar instance for apps to populate with buttons and controls.
-    if (this.options.toolbar) {
+    // the grid above column headers. Visible by default unless explicitly
+    // disabled via toolbar: false. Apps can customize height or hide entirely.
+    if (this.options.toolbar !== false) {
       this.toolbarOverlay = new ToolbarOverlay(this.editorContainer, {
         getToolbarHeight: () => this.options.toolbarHeight ?? 40,
-        getIsVisible: () => this.options.toolbar ?? false,
+        getIsVisible: () => this.options.toolbar !== false,
       });
     }
 
@@ -5614,10 +5614,11 @@ export class CGrid<TRow = any> {
   private rebuildSubgridStack(): void {
     const stack: Subgrid[] = [];
     // Cycle 21i / Customization — toolbar sits at the very top of the grid
-    if (this.options.toolbar) {
+    // Visible by default unless explicitly hidden via toolbar: false
+    if (this.options.toolbar !== false) {
       stack.push(new ToolbarSubgrid(
         () => this.options.toolbarHeight ?? 40,
-        () => this.options.toolbar ?? false,
+        () => this.options.toolbar !== false,
       ));
     }
     for (let depth = 0; depth < this.columnTree.maxDepth; depth++) {
