@@ -113,6 +113,21 @@ body {
   border-color: rgb(251 146 60 / 30%);
 }
 
+.legend-note {
+  max-width: 78ch;
+  line-height: 1.5;
+}
+
+.legend-note b {
+  color: #e2e8f0;
+  font-weight: 600;
+}
+
+.legend-note .caret-hint {
+  color: #2dd4bf;
+  font-weight: 700;
+}
+
 .legend-note code {
   background: #161b2b;
   border: 1px solid #2b3348;

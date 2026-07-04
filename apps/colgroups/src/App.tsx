@@ -45,7 +45,12 @@ export function App() {
         <span className="chip chip-always">Always visible</span>
         <span className="chip chip-open">Shows when open ▸</span>
         <span className="chip chip-closed">Shows when closed ◂</span>
-        <span className="legend-note">Groups #3 (closed) &amp; #4 (open) differ by <code>openByDefault</code>. Group #6 “Risk &amp; Analytics” mixes leaf fields and nested sub-groups, each in its own state.</span>
+        <span className="legend-note">
+          Click a group header’s caret (<span className="caret-hint">▸</span>) to expand or collapse it.{' '}
+          <b>Book&nbsp;&amp;&nbsp;Coverage</b> starts collapsed, <b>Valuation</b> starts open (
+          <code>openByDefault</code>).{' '}
+          <b>Risk&nbsp;&amp;&nbsp;Analytics</b> mixes leaf fields and nested sub-groups, each in its own state.
+        </span>
       </div>
 
       <div className="grid-wrap" data-testid="grid-wrap">
