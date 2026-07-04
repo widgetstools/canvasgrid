@@ -20,3 +20,5 @@ export {
 } from './components';
 export { litToolPanel, CgcPanelElement, gridApiContext } from './litToolPanel';
 export { smartEditToolPanel } from './panels/smartEdit';
+export { bulkUpdateToolPanel } from './panels/bulkUpdate';
+export { switchRow, numberRow, type SwitchRowSpec, type NumberRowSpec } from './panels/rows';

@@ -12,7 +12,7 @@ import { CGrid, formatPrice32, type CColDef, type CColGroupDef } from '@cgrid/ke
 import '@cgrid/kernel/style.css';
 import { wireIntoKernel as wireFormat } from '@cgrid/format';
 import { wireEditIntoKernel, type EditBridgeHandle } from '@cgrid/edit';
-import { smartEditToolPanel } from '@cgrid/customizer';
+import { smartEditToolPanel, bulkUpdateToolPanel } from '@cgrid/customizer';
 import { connectStomp, STOMP_PUBLISH_RATE_PER_SEC, type Position } from './stomp';
 
 const DESKS = ['RATES', 'CREDIT', 'FX', 'EQD'];
@@ -136,10 +136,14 @@ const grid = new CGrid<Position>(gridHost, {
   // read-only via the editable predicate.
   defaultColDef: { resizable: true, sortable: true, editable: true, flex: 1, minWidth: 80 },
   rowGroupPanelShow: 'always',
-  components: { smartEdit: smartEditToolPanel(() => editHandle) },
+  components: {
+    smartEdit: smartEditToolPanel(() => editHandle),
+    bulkUpdate: bulkUpdateToolPanel(() => editHandle),
+  },
   sideBar: { toolPanels: [
     'columns', 'filters', 'gridOptions', 'columnGroups',
     { id: 'smartEdit', labelDefault: 'Smart Edit', toolPanel: 'smartEdit' },
+    { id: 'bulkUpdate', labelDefault: 'Bulk Update', toolPanel: 'bulkUpdate' },
   ] },
   enableCellChangeFlash: true,
   cellSelection: {},

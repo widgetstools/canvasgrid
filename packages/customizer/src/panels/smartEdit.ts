@@ -23,6 +23,7 @@ import type { EditBridgeHandle, SmartEditOp, SmartEditSettings } from '@cgrid/ed
 import { DEFAULT_EDIT_SETTINGS } from '@cgrid/edit';
 import { CgcPanelElement, litToolPanel } from '../litToolPanel';
 import { chromeBase } from '../styles';
+import { switchRow, numberRow } from './rows';
 
 const OP_LABELS: Array<{ op: SmartEditOp; glyph: string; title: string }> = [
   { op: 'multiply', glyph: '×', title: 'Multiply' },
@@ -103,21 +104,21 @@ export function smartEditToolPanel(getHandle: () => EditBridgeHandle | undefined
         || s.enabledOps.some((op) => !d.enabledOps.includes(op));
       return html`
         <cgc-band band-title="Global">
-          <cgc-field label="Enabled" hint="Smart-edit toolbar + gestures" ?modified=${s.enabled !== d.enabled}>
-            <cgc-switch .checked=${s.enabled} aria-label="Enabled"
-              @cgc-change=${(e: CustomEvent<{ value: unknown }>) => this.patch({ enabled: e.detail.value === true })}></cgc-switch>
-          </cgc-field>
-          <cgc-field label="Increment step" hint="± nudge amount" ?modified=${s.incrementStep !== d.incrementStep}>
-            <cgc-number .value=${s.incrementStep} min="0" step="0.0001" aria-label="Increment step"
-              @cgc-change=${(e: CustomEvent<{ value: unknown }>) => {
-                const v = e.detail.value;
-                if (typeof v === 'number' && Number.isFinite(v)) this.patch({ incrementStep: v });
-              }}></cgc-number>
-          </cgc-field>
-          <cgc-field label="K/M/B shortcuts" hint="1.5M parses as 1,500,000" ?modified=${s.magnitudeShortcutsEnabled !== d.magnitudeShortcutsEnabled}>
-            <cgc-switch .checked=${s.magnitudeShortcutsEnabled} aria-label="K/M/B shortcuts"
-              @cgc-change=${(e: CustomEvent<{ value: unknown }>) => this.patch({ magnitudeShortcutsEnabled: e.detail.value === true })}></cgc-switch>
-          </cgc-field>
+          ${switchRow({
+            label: 'Enabled', hint: 'Smart-edit toolbar + gestures',
+            value: s.enabled, defaultValue: d.enabled,
+            onChange: (v) => this.patch({ enabled: v }),
+          })}
+          ${numberRow({
+            label: 'Increment step', hint: '± nudge amount', step: 0.0001,
+            value: s.incrementStep, defaultValue: d.incrementStep,
+            onChange: (v) => this.patch({ incrementStep: v }),
+          })}
+          ${switchRow({
+            label: 'K/M/B shortcuts', hint: '1.5M parses as 1,500,000',
+            value: s.magnitudeShortcutsEnabled, defaultValue: d.magnitudeShortcutsEnabled,
+            onChange: (v) => this.patch({ magnitudeShortcutsEnabled: v }),
+          })}
         </cgc-band>
         <cgc-band band-title="Operations">
           <cgc-field label="Toolbar ops" hint="At least one stays on" ?modified=${opsModified}>
@@ -131,25 +132,26 @@ export function smartEditToolPanel(getHandle: () => EditBridgeHandle | undefined
           </cgc-field>
         </cgc-band>
         <cgc-band band-title="Safety">
-          <cgc-field label="Confirm above" hint="cells · 0 = never ask" ?modified=${s.confirmThreshold !== d.confirmThreshold}>
-            <cgc-number .value=${s.confirmThreshold} min="0" step="1" aria-label="Confirm above"
-              @cgc-change=${(e: CustomEvent<{ value: unknown }>) => {
-                const v = e.detail.value;
-                if (typeof v === 'number' && Number.isFinite(v) && v >= 0) this.patch({ confirmThreshold: v });
-              }}></cgc-number>
-          </cgc-field>
-          <cgc-field label="Single column" hint="Targets must share one column" ?modified=${s.enforceSingleColumn !== d.enforceSingleColumn}>
-            <cgc-switch .checked=${s.enforceSingleColumn} aria-label="Single column"
-              @cgc-change=${(e: CustomEvent<{ value: unknown }>) => this.patch({ enforceSingleColumn: e.detail.value === true })}></cgc-switch>
-          </cgc-field>
-          <cgc-field label="Preview before apply" ?modified=${s.previewBeforeApply !== d.previewBeforeApply}>
-            <cgc-switch .checked=${s.previewBeforeApply} aria-label="Preview before apply"
-              @cgc-change=${(e: CustomEvent<{ value: unknown }>) => this.patch({ previewBeforeApply: e.detail.value === true })}></cgc-switch>
-          </cgc-field>
-          <cgc-field label="Record history" hint="Journal entries for undo" ?modified=${s.recordHistory !== d.recordHistory}>
-            <cgc-switch .checked=${s.recordHistory} aria-label="Record history"
-              @cgc-change=${(e: CustomEvent<{ value: unknown }>) => this.patch({ recordHistory: e.detail.value === true })}></cgc-switch>
-          </cgc-field>
+          ${numberRow({
+            label: 'Confirm above', hint: 'cells · 0 = never ask',
+            value: s.confirmThreshold, defaultValue: d.confirmThreshold,
+            onChange: (v) => this.patch({ confirmThreshold: v }),
+          })}
+          ${switchRow({
+            label: 'Single column', hint: 'Targets must share one column',
+            value: s.enforceSingleColumn, defaultValue: d.enforceSingleColumn,
+            onChange: (v) => this.patch({ enforceSingleColumn: v }),
+          })}
+          ${switchRow({
+            label: 'Preview before apply',
+            value: s.previewBeforeApply, defaultValue: d.previewBeforeApply,
+            onChange: (v) => this.patch({ previewBeforeApply: v }),
+          })}
+          ${switchRow({
+            label: 'Record history', hint: 'Journal entries for undo',
+            value: s.recordHistory, defaultValue: d.recordHistory,
+            onChange: (v) => this.patch({ recordHistory: v }),
+          })}
         </cgc-band>
       `;
     }
