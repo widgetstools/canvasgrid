@@ -133,6 +133,13 @@ const OPTION_BANDS: BandSpec[] = [
       // ON (opt-out), so the switch reads `!== false`.
       { key: 'toolbar', label: 'Toolbar', type: 'switch', kernelDefault: true, hint: 'Top strip with save + business date', toControl: (v) => v !== false, fromControl: (v) => (v === true ? undefined : false) },
       { key: 'toolbarHeight', label: 'Toolbar height', type: 'number', min: 28, max: 80, step: 1, hint: 'px · theme default 40 until changed' },
+      // Cycle 21i Phase 2 — the status bar is intrinsic (default ON).
+      // Switch-off writes `false`; switch-on writes `undefined` so the
+      // option reverts to the default def (an app-authored custom def is
+      // also restored by `undefined` only across reloads — mid-session
+      // the runtime-touched value wins; acceptable for a visibility
+      // toggle).
+      { key: 'statusBar', label: 'Status bar', type: 'switch', kernelDefault: true, hint: 'Bottom strip with row counts + aggregates', toControl: (v) => v !== false, fromControl: (v) => (v === true ? undefined : false) },
       {
         key: 'domLayout', label: 'Layout', type: 'select', kernelDefault: 'normal',
         options: opts(['normal', 'Normal'], ['print', 'Print']),

@@ -198,6 +198,27 @@ describe('CGrid.setGridOption — runtime options apply', () => {
     teardown(grid, host);
   });
 
+  it('statusBar is intrinsic (mounted by default) and runtime-toggleable (Cycle 21i Phase 2)', () => {
+    const { grid, host } = mountGrid();
+    // Intrinsic: no statusBar option → the default bar mounts.
+    expect(host.querySelector('.cg-status-bar')).not.toBeNull();
+    grid.setGridOption('statusBar', false);
+    expect(host.querySelector('.cg-status-bar')).toBeNull();
+    grid.setGridOption('statusBar', undefined as never);
+    expect(host.querySelector('.cg-status-bar')).not.toBeNull();
+    teardown(grid, host);
+  });
+
+  it('toolbar is intrinsic (mounted by default) and runtime-toggleable (Cycle 21i Phase 2 / T1)', () => {
+    const { grid, host } = mountGrid();
+    expect(host.querySelector('.cg-toolbar')).not.toBeNull();
+    grid.setGridOption('toolbar', false);
+    expect(host.querySelector('.cg-toolbar')).toBeNull();
+    grid.setGridOption('toolbar', true);
+    expect(host.querySelector('.cg-toolbar')).not.toBeNull();
+    teardown(grid, host);
+  });
+
   it('suppressColumnVirtualisation / suppressRowVirtualisation persist as flags', () => {
     const { grid, host } = mountGrid();
     const api = (grid as any).makeApi();

@@ -81,6 +81,7 @@ export type RuntimeOption =
   | 'rowGroupPanelSuppressSort'
   | 'toolbar'
   | 'toolbarHeight'
+  | 'statusBar'
   | 'pivotPanelShow'
   | 'pivotMaxGeneratedColumns'
   | 'enableStrictPivotColumnOrder'
@@ -154,6 +155,10 @@ export interface RuntimeOptionTarget<TRow = any> {
    *  CGrid normalises the value (undefined / `'never'` → unmount;
    *  otherwise mount-or-update). */
   updateRowGroupPanelShow(value: 'always' | 'onlyWhenGrouping' | 'never' | undefined): void;
+  /** Cycle 21i Phase 2 — re-resolve the status bar from the current
+   *  `options.statusBar` (intrinsic default-on; `false` opts out).
+   *  CGrid mounts, unmounts, or swaps the def on the live host. */
+  updateStatusBar(): void;
   /** Cycle 21i Phase 2 / T1 — re-resolve the intrinsic toolbar strip
    *  from the current `options.toolbar` / `options.toolbarHeight`.
    *  CGrid mounts (`toolbar !== false` with no host), unmounts
@@ -371,6 +376,12 @@ export function applyRuntimeOption<TRow>(
         value as 'always' | 'onlyWhenGrouping' | 'never' | undefined,
       );
       return;
+    case 'statusBar':
+      // Cycle 21i Phase 2 — runtime mount / unmount / def swap for the
+      // intrinsic status bar. The new value is already stored in
+      // `target.options.statusBar`; updateStatusBar re-normalizes it.
+      target.updateStatusBar();
+      return;
     case 'toolbar':
     case 'toolbarHeight':
       // Cycle 21i Phase 2 / T1 — runtime mount / unmount / re-size of
@@ -467,6 +478,7 @@ export const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOpt
   'rowGroupPanelSuppressSort',
   'toolbar',
   'toolbarHeight',
+  'statusBar',
   'pivotPanelShow',
   'pivotMaxGeneratedColumns',
   'enableStrictPivotColumnOrder',

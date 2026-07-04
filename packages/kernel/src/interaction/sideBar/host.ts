@@ -376,6 +376,16 @@ export class SideBarHost {
     this.bar.style.top = top > 0 ? `${top}px` : '';
   }
 
+  /** Cycle 21i Phase 2 — lift the side bar's bottom edge by `bottom`
+   *  CSS px so it clears a bottom status bar. Without this the bar's
+   *  `bottom: 0` CSS puts panel footers (the Column Groups Apply/Reset
+   *  row) UNDER the status strip, making them unclickable. Called from
+   *  cgrid's `applyVerticalInsets` alongside `setTopOffset`. */
+  setBottomOffset(bottom: number): void {
+    if (this.destroyed) return;
+    this.bar.style.bottom = bottom > 0 ? `${bottom}px` : '';
+  }
+
   /** Switch the side bar to the opposite edge. Re-mounts the DOM as a
    *  whole so CSS rules anchored on `[data-position]` apply, and tells
    *  the host grid to release the old edge reservation + take the new

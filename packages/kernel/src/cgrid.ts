@@ -1366,14 +1366,13 @@ export class CGrid<TRow = any> {
     // the canvas + editor overlay so its z-order sits above them
     // naturally without explicit z-index plumbing.
 
+    // Cycle 21i Phase 2 — the status bar is intrinsic: `undefined`
+    // normalizes to the default def (row counts + selection/aggregates),
+    // `statusBar: false` opts out. Runtime flips route through
+    // `updateStatusBar()`.
     const statusBarDef = normalizeStatusBarOption(options.statusBar);
     if (statusBarDef) {
-      const ctx: StatusBarGridContext = {
-        registry: this.statusPanelRegistry,
-        api: this.makeApi(),
-        setReservedSpace: (side, height) => this.reserveStatusBarSpace(side, height),
-      };
-      this.statusBar = new StatusBarHost(this.root, ctx, statusBarDef);
+      this.statusBar = new StatusBarHost(this.root, this.makeStatusBarContext(), statusBarDef);
     }
 
     // Cycle 15 / Task 6 — row group panel (DOM strip ABOVE the
@@ -5197,6 +5196,35 @@ export class CGrid<TRow = any> {
     };
   }
 
+  /** Cycle 21i Phase 2 — context handed to StatusBarHost. Shared by the
+   *  constructor mount and the runtime `statusBar` apply path. */
+  private makeStatusBarContext(): StatusBarGridContext {
+    return {
+      registry: this.statusPanelRegistry,
+      api: this.makeApi(),
+      setReservedSpace: (side, height) => this.reserveStatusBarSpace(side, height),
+    };
+  }
+
+  /** Cycle 21i Phase 2 — runtime `statusBar` flips route here from the
+   *  runtime-options apply table. Re-normalizes the option (intrinsic
+   *  default-on; `false` opts out) and mounts, unmounts, or swaps the
+   *  def on the live host; the reservation release/re-emit reflows the
+   *  grid body. */
+  updateStatusBar(): void {
+    const def = normalizeStatusBarOption(this.options.statusBar);
+    if (!def) {
+      this.statusBar?.destroy();
+      this.statusBar = null;
+      return;
+    }
+    if (this.statusBar) {
+      this.statusBar.setStatusBarDef(def);
+      return;
+    }
+    this.statusBar = new StatusBarHost(this.root, this.makeStatusBarContext(), def);
+  }
+
   /** Cycle 21i Phase 2 / T1 — runtime `toolbar` / `toolbarHeight`
    *  flips route here from the runtime-options apply table. Mounts,
    *  unmounts, or re-sizes the strip; each path re-emits the
@@ -5269,6 +5297,9 @@ export class CGrid<TRow = any> {
     // The side bar must start below the panels so the tab strip is not
     // visually occluded. Use the same `top` value as the scroller.
     this.sideBar?.setTopOffset(top);
+    // Cycle 21i Phase 2 — and end above a bottom status bar, so panel
+    // footers (Apply/Reset) stay visible + clickable.
+    this.sideBar?.setBottomOffset(bottom);
     const rgEl = this.root.querySelector('.cg-row-group-panel') as HTMLElement | null;
     const pvEl = this.root.querySelector('.cg-pivot-panel') as HTMLElement | null;
     if (sharing) {
@@ -5612,6 +5643,7 @@ export class CGrid<TRow = any> {
       updateRowGroupPanelShow: (value) => this.updateRowGroupPanelShow(value),
       updatePivotPanelShow: (value) => this.updatePivotPanelShow(value),
       updateToolbar: () => this.updateToolbar(),
+      updateStatusBar: () => this.updateStatusBar(),
       updatePivotMaxGeneratedColumns: (value) => this.pivotEngine.updateMaxGeneratedColumns(value),
       updateStrictPivotColumnOrder: (value) => this.pivotEngine.updateStrictColumnOrder(value),
       updatePivotTotalsOption: () => this.pivotEngine.updateTotalsOption(),

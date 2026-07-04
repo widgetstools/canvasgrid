@@ -366,14 +366,34 @@ export class StatusBarHost {
   }
 }
 
+/** Cycle 21i Phase 2 — the intrinsic default status bar every grid
+ *  shows unless the app opts out (`statusBar: false`) or supplies its
+ *  own def. Canonical financial-blotter reading: row counts on the
+ *  left, selection + range aggregates on the right. Returned fresh per
+ *  call so hosts can't share/mutate one def object. */
+export function defaultStatusBarDef(): StatusBarDef {
+  return {
+    statusPanels: [
+      { key: 'agTotalAndFilteredRowCountComponent', statusPanel: 'agTotalAndFilteredRowCountComponent', align: 'left' },
+      { key: 'agSelectedRowCountComponent', statusPanel: 'agSelectedRowCountComponent', align: 'right' },
+      { key: 'agAggregationComponent', statusPanel: 'agAggregationComponent', align: 'right' },
+    ],
+    position: 'bottom',
+  };
+}
+
 /** Resolve `CGridOptions.statusBar` (which accepts loose shapes —
  *  `boolean | StatusBarDef`) into a canonical `StatusBarDef`, or `null`
  *  when the option is off. Mirrors `normalizeSideBarOption`'s acceptance
- *  shape so apps that flip both surfaces feel consistent. */
+ *  shape so apps that flip both surfaces feel consistent.
+ *
+ *  Cycle 21i Phase 2 — the status bar is intrinsic: `undefined` (and
+ *  the `true` shorthand) resolve to `defaultStatusBarDef()` so every
+ *  grid ships the bar by default; `false` is the explicit opt-out. */
 export function normalizeStatusBarOption(
   opt: boolean | StatusBarDef | undefined,
 ): StatusBarDef | null {
-  if (opt == null || opt === false) return null;
-  if (opt === true) return { statusPanels: [] };
+  if (opt === false) return null;
+  if (opt == null || opt === true) return defaultStatusBarDef();
   return opt;
 }

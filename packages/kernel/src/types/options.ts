@@ -534,14 +534,17 @@ export interface CGridOptions<TRow = any> {
   sideBar?: SideBarDef | string | string[] | boolean;
 
   /** Cycle 13 / Task 1 — status bar configuration. Accepts the canonical
-   *  `StatusBarDef` object or the boolean shorthand `true` (= empty bar
-   *  at the default `'bottom'` position, panels supplied later via
-   *  `setStatusBarDef`). `false` / omitted disables the status bar
-   *  entirely (no DOM mount, no canvas inset). Built-in panel keys
-   *  (`agTotalRowCountComponent`, `agFilteredRowCountComponent`,
+   *  `StatusBarDef` object or a boolean.
+   *
+   *  Cycle 21i Phase 2 — the status bar is an intrinsic part of every
+   *  cgrid instance: omitted (or `true`) resolves to the default def —
+   *  total/filtered row counts on the left, selected count + range
+   *  aggregates on the right, pinned to the bottom edge. Set `false`
+   *  to opt OUT (no DOM mount, no canvas inset). Built-in panel keys:
+   *  `agTotalRowCountComponent`, `agFilteredRowCountComponent`,
    *  `agSelectedRowCountComponent`, `agTotalAndFilteredRowCountComponent`,
-   *  `agAggregationComponent`) land in Cycle 13 Tasks 2 + 3; until then
-   *  a bar with built-in keys renders the inert stubs. */
+   *  `agAggregationComponent`. Runtime-settable via
+   *  `setGridOption('statusBar', …)`. */
   statusBar?: StatusBarDef | boolean;
 
   /** Cycle 21i Phase 2 / T1 — the intrinsic toolbar strip at the VERY

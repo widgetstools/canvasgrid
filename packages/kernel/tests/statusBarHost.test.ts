@@ -333,11 +333,23 @@ describe('StatusBarHost', () => {
   });
 
   it('normalizeStatusBarOption maps boolean/undefined acceptance shapes to a canonical def or null', () => {
-    expect(normalizeStatusBarOption(undefined)).toBeNull();
+    // Cycle 21i Phase 2 — the status bar is intrinsic: undefined / true
+    // resolve to the DEFAULT def (counts left, selection + aggregates
+    // right, bottom edge); only the explicit `false` opts out.
     expect(normalizeStatusBarOption(false)).toBeNull();
+    const defaultDef = normalizeStatusBarOption(undefined);
+    expect(defaultDef).not.toBeNull();
+    expect(defaultDef!.position).toBe('bottom');
+    expect(defaultDef!.statusPanels.map((p) => p.statusPanel)).toEqual([
+      'agTotalAndFilteredRowCountComponent',
+      'agSelectedRowCountComponent',
+      'agAggregationComponent',
+    ]);
     const trueDef = normalizeStatusBarOption(true);
     expect(trueDef).not.toBeNull();
-    expect(trueDef!.statusPanels).toEqual([]);
+    expect(trueDef!.statusPanels).toEqual(defaultDef!.statusPanels);
+    // Fresh def per call — hosts can't share/mutate one object.
+    expect(trueDef).not.toBe(defaultDef);
     const explicit = normalizeStatusBarOption({
       statusPanels: [{ key: 'k', statusPanel: 'countPanel' }],
       position: 'top',
