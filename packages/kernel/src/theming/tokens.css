@@ -176,9 +176,10 @@
 }
 
 .cg-theme-quartz-dark {
-  /* VS Code Dark Modern palette — editor.background #1e1e1e family.
-   * focusBorder: #007fd4 · sideBar: #252526 · list.hover: #2a2d2e
-   * editorLineNumber: #858585 · selection: #264f78 */
+  /* Cycle 21 / Financial dark theme — premium navy palette inspired by
+   * professional trading platforms. Deep navy background (#0F1419) with
+   * soft off-white foreground (#E8EBEF) creates sophisticated data display.
+   * Subtle state shifts (hover, selected) rather than dramatic changes. */
   color-scheme: dark;
   /* Inter (chrome / DOM panels / canvas-painted headers). Falls
    * back to the system UI sans-serif when Inter isn't loaded —
@@ -193,15 +194,15 @@
   --cg-font-size-sm: 12px;
   --cg-row-height: 32px;
   --cg-header-height: 40px;
-  --cg-fg-color: #d4d4d4;
-  --cg-bg-color: #1e1e1e;
-  --cg-row-alt-bg: #1e1e1e;
-  --cg-header-bg: #252526;
-  --cg-header-fg: #d4d4d4;
-  --cg-border-color: #454545;
-  --cg-grid-line-color: #373a3b;
-  --cg-row-hover-bg: #2a2d2e;
-  --cg-row-selected-bg: rgb(38 79 120 / 50%);
+  --cg-fg-color: #e8ebef;
+  --cg-bg-color: #0f1419;
+  --cg-row-alt-bg: #0f1419;
+  --cg-header-bg: #141b24;
+  --cg-header-fg: #e8ebef;
+  --cg-border-color: #2d3d50;
+  --cg-grid-line-color: color-mix(in srgb, #1a2332 90%, #ffffff 10%);
+  --cg-row-hover-bg: #1a2332;
+  --cg-row-selected-bg: rgb(59 130 246 / 22%);
   --cg-chrome-accent: color-mix(in srgb, var(--cg-fg-color) 60%, var(--cg-bg-color));
   --cg-focus-ring-color: var(--cg-chrome-accent);
   --cg-focus-ring-width: 2px;
@@ -211,27 +212,27 @@
   --cg-resizer-hot-zone: 4px;
   --cg-scrollbar-thickness: 6px;
   --cg-floating-filter-bg: color-mix(in srgb, var(--cg-header-bg) 60%, transparent);
-  --cg-floating-filter-border: color-mix(in srgb, var(--cg-border-color) 80%, transparent);
-  --cg-floating-filter-placeholder: #6e7681;
+  --cg-floating-filter-border: var(--cg-border-color);
+  --cg-floating-filter-placeholder: #94a3b8;
   --cg-quick-filter-match-bg: #4d3700;
-  --cg-unsort-icon-color: rgba(212, 212, 212, 0.4);
-  --cg-range-fill-color: rgb(0 127 212 / 20%);
+  --cg-unsort-icon-color: rgba(232, 235, 239, 0.4);
+  --cg-range-fill-color: rgb(59 130 246 / 20%);
   --cg-range-border-color: #007fd4;
-  /* Totals — sideBar.background lift + editorLineNumber muted fg. */
-  --cg-totals-bg: #252526;
-  --cg-totals-fg: #e8e8e8;
-  --cg-totals-border-top: #454545;
-  --cg-totals-fg-muted: #858585;
+  /* Totals — navy lift + light muted fg. */
+  --cg-totals-bg: #141b24;
+  --cg-totals-fg: #e8ebef;
+  --cg-totals-border-top: #2d3d50;
+  --cg-totals-fg-muted: #94a3b8;
   --cg-totals-font-weight: 500;
-  /* Pinned rows — single step above editor background. */
-  --cg-pinned-row-bg: #2c2c2c;
+  /* Pinned rows — single step above body bg. */
+  --cg-pinned-row-bg: #141b24;
   --cg-pinned-row-fg: var(--cg-fg-color);
   --cg-pinned-row-border: var(--cg-totals-border-top);
   /* Group rows — same as header so spine reads as structural chrome. */
   --cg-group-chevron-color: var(--cg-totals-fg-muted);
   --cg-group-count-color: var(--cg-totals-fg-muted);
   --cg-group-indent: 14px;
-  --cg-group-row-bg: #252526;
+  --cg-group-row-bg: #141b24;
   --cg-group-checkbox-border-color: var(--cg-fg-color);
   --cg-group-checkbox-check-color: var(--cg-fg-color);
   --cg-group-checkbox-indeterminate-color: var(--cg-fg-color);
@@ -243,18 +244,18 @@
   /* Cycle 22 / Task 1 — dark-mode counterparts. Inputs aliased to a
    * subtle lift over body bg; tooltip stays slate (same family as
    * light mode) so the popover reads consistently across themes. */
-  --cg-input-bg: #2a2d2e;
+  --cg-input-bg: #1a2332;
   --cg-input-fg: var(--cg-fg-color);
   --cg-input-border: var(--cg-border-color);
   --cg-input-focus-border: var(--cg-focus-ring-color);
-  --cg-input-disabled-bg: #232323;
-  --cg-tooltip-bg: rgba(40, 44, 52, 0.96);
+  --cg-input-disabled-bg: #0f1419;
+  --cg-tooltip-bg: rgba(20, 27, 36, 0.96);
   --cg-tooltip-fg: #f8fafc;
   --cg-tooltip-border: rgba(255, 255, 255, 0.08);
   --cg-checkbox-checked-bg: transparent;
   --cg-checkbox-checked-fg: var(--cg-fg-color);
   --cg-cell-horizontal-border-color: transparent;
-  --cg-popup-bg: #252526;
+  --cg-popup-bg: #141b24;
   --cg-popup-border: var(--cg-border-color);
   --cg-menu-hover-bg: var(--cg-row-hover-bg);
   /* Cycle 22 / Task 2 — density baseline. Overridden per density class. */

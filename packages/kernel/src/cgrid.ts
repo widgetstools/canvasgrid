@@ -5808,11 +5808,15 @@ export class CGrid<TRow = any> {
    *  globally; only the grid-wide default (off) combined with no column
    *  opting in collapses the row to zero height. */
   private isFloatingFilterEnabled(): boolean {
+    // Cycle 21 / Floating filter visible by default unless explicitly disabled
+    if (this.options.floatingFilter === false) return false;
     if (this.options.floatingFilter === true) return true;
+    // Default: floating filter is enabled unless all columns opt out
     for (const col of this.columnOrder) {
-      if (col.floatingFilter === true) return true;
+      if (col.floatingFilter === false) continue;
+      return true; // Show if any column doesn't explicitly disable it
     }
-    return false;
+    return true; // Default to showing floating filter row
   }
 
   destroy(): void {

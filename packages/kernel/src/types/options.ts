@@ -290,10 +290,12 @@ export interface CGridOptions<TRow = any> {
    *  Cycle 8 / Task 2. */
   sortingOrder?: Array<'asc' | 'desc' | null>;
 
-  /** Grid-wide default for the floating-filter row. When `true`, every
-   *  column with a default-resolved filter renders a floating-filter
-   *  `<input>` beneath the leaf-header row. Per-column
-   *  `CColDef.floatingFilter` wins over this. Cycle 7 / Task 1. */
+  /** Grid-wide default for the floating-filter row. Defaults to `true`
+   *  (visible). When `false`, hides the floating-filter row entirely.
+   *  When `true` or `undefined`, every column renders a floating-filter
+   *  `<input>` beneath the leaf-header row unless the column explicitly
+   *  sets `floatingFilter: false`. Per-column `CColDef.floatingFilter`
+   *  wins over this. Cycle 7 / Task 1. */
   floatingFilter?: boolean;
   /** Pixel height of the floating-filter row. Defaults to `28`. Forwarded
    *  to `FloatingFilterSubgrid` + `FloatingFilterOverlay`. Cycle 7 / Task 1. */
