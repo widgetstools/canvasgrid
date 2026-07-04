@@ -5,16 +5,25 @@
  *
  * Visual/UX contract mirrors `.cg-settings-panel` (see
  * `packages/kernel/src/theming/tokens.css` — `.cg-colgroups-*` rules sit
- * right after the `.cg-settings-*` block). The Style band for a selected
- * group (`buildStyleSection`) is a stub here — Task 4 fills it in.
+ * right after the `.cg-settings-*` block). Selecting a group (via the
+ * keyboard-reachable `data-cg-select` button on its row) reveals a
+ * per-group Style band (`renderStyle`) built on the Phase 1
+ * `SettingsForm` engine, editing `headerStyle`/`headerClass`/
+ * `openByDefault`/`marryChildren` on the selected `GroupNode`. Every edit
+ * routes through `this.mutate(...)` like any other panel change, so it
+ * participates in dirty/Apply — this panel never writes to the grid
+ * except on Apply.
  */
 import type { ToolPanel, ToolPanelParams } from './types';
 import {
   flatten, project, createGroup, deleteGroup, moveNode,
   setHidden, setColumnHeaderName, renameGroup, validate, canDrop, resolveDrop,
+  setGroupStyle,
   type Node, type GroupNode, type ColumnNode,
 } from '../columnGroups/model';
 import type { CGridApi } from '../../types';
+import { SettingsForm } from '../settingsForm/form';
+import type { SettingsField, SettingsSection } from '../../types/settingsSchema';
 
 type NodeKind = Node['kind'];
 
@@ -43,6 +52,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   private root!: HTMLElement;
   private tree!: HTMLElement;
   private styleSection!: HTMLElement;
+  private styleForm: SettingsForm | null = null;
   private applyBtn!: HTMLButtonElement;
   private resetBtn!: HTMLButtonElement;
   private api!: Pick<CGridApi, 'getColumnGroupDefs' | 'updateGridOptions'>;
@@ -87,6 +97,8 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     this.drag?.ghost.remove();
     this.drag = null;
     this.pending = null;
+    this.styleForm?.destroy();
+    this.styleForm = null;
     this.root.remove();
   }
 
@@ -100,6 +112,14 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   }
 
   private mutate(fn: (n: Node[]) => Node[]): void { this.nodes = fn(this.nodes); this.render(); }
+
+  /** Toggle selection: selecting the already-selected group deselects it
+   *  (hides the Style band). Selection is panel VIEW-STATE, not part of
+   *  the editable model. */
+  private selectGroup(id: string): void {
+    this.selectedGroupId = this.selectedGroupId === id ? null : id;
+    this.render();
+  }
 
   private get dirty(): boolean {
     return JSON.stringify(project(this.nodes)) !== this.baseline;
@@ -121,7 +141,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
       empty.textContent = 'No column groups yet. Create one to organize columns.';
       this.tree.appendChild(empty);
       this.applyBtn.disabled = !this.dirty;
-      this.renderStyleSection();
+      this.renderStyle();
       return;
     }
     // Render top-level (parentId null) then recurse by parentId, ordered by order.
@@ -139,7 +159,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     };
     renderLevel(null, 0, false);
     this.applyBtn.disabled = !this.dirty;
-    this.renderStyleSection();
+    this.renderStyle();
   }
 
   private rowFor(n: Node, depth: number, hidden: boolean): HTMLElement {
@@ -159,12 +179,13 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     if (n.kind === 'group') {
       row.appendChild(this.groupControls(n as GroupNode));
       if (this.selectedGroupId === n.id) row.setAttribute('data-selected', '');
-      row.tabIndex = -1;
+      // Mouse convenience: clicking anywhere on the row's non-interactive
+      // surface also selects it. The REAL keyboard-reachable affordance is
+      // the `data-cg-select` button built in `groupControls()` below.
       row.addEventListener('click', (e) => {
         const target = e.target as HTMLElement;
         if (target.closest('button') || target.closest('input')) return;
-        this.selectedGroupId = this.selectedGroupId === n.id ? null : n.id;
-        this.render();
+        this.selectGroup(n.id);
       });
     } else {
       row.appendChild(this.columnControls(n as ColumnNode));
@@ -200,19 +221,76 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     return footer;
   }
 
-  /** Stub — Task 4 renders the per-group Style band here, keyed off
-   *  `this.selectedGroupId`. The container always exists so the hook is
-   *  stable for the next task. */
+  /** Container for the per-group Style band, keyed off
+   *  `this.selectedGroupId`. Always present (stable hook); empty and
+   *  collapsed to nothing (`.cg-colgroups-style:empty`) when no group is
+   *  selected. */
   private buildStyleSection(): HTMLElement {
     const section = el('div', 'cg-colgroups-style');
     section.setAttribute('data-cg-style', '');
     return section;
   }
 
-  private renderStyleSection(): void {
-    // Task 4 will populate `this.styleSection` from `this.selectedGroupId`.
-    // For now, keep the stub container empty.
+  /** Rebuilds the Style band for `this.selectedGroupId` from the CURRENT
+   *  `this.nodes` — called at the end of every `render()` so it re-syncs
+   *  after any mutation (including its own field edits, which route
+   *  through `this.mutate(...)` like every other panel edit — Apply-only
+   *  discipline: nothing here writes to the grid). */
+  private renderStyle(): void {
+    this.styleForm?.destroy();
+    this.styleForm = null;
     this.styleSection.replaceChildren();
+    this.styleSection.removeAttribute('data-for');
+    if (!this.selectedGroupId) return;
+    const g = this.nodes.find((n) => n.id === this.selectedGroupId && n.kind === 'group') as
+      | GroupNode
+      | undefined;
+    if (!g) { this.selectedGroupId = null; return; }
+    this.styleSection.setAttribute('data-for', g.id);
+
+    const title = el('div', 'cg-colgroups-style-title');
+    title.textContent = `Style — ${g.headerName}`;
+    this.styleSection.appendChild(title);
+
+    const patch = (
+      p: Partial<Pick<GroupNode, 'headerStyle' | 'headerClass' | 'openByDefault' | 'marryChildren'>>,
+    ) => this.mutate((ns) => setGroupStyle(ns, g.id, p));
+
+    const section: SettingsSection = {
+      id: 'cg-group-style',
+      title: `Style — ${g.headerName}`,
+      bands: [{
+        id: 'header',
+        title: 'Header',
+        fields: [
+          field('bg', 'Background', 'color',
+            () => g.headerStyle?.bg,
+            (v) => patch({ headerStyle: { ...g.headerStyle, bg: v as string } })),
+          field('fg', 'Text colour', 'color',
+            () => g.headerStyle?.fg,
+            (v) => patch({ headerStyle: { ...g.headerStyle, fg: v as string } })),
+          field('fontWeight', 'Bold', 'switch',
+            () => g.headerStyle?.fontWeight === 'bold',
+            (v) => patch({ headerStyle: { ...g.headerStyle, fontWeight: v ? 'bold' : undefined } }),
+            false),
+          field('marryChildren', 'Marry children', 'switch',
+            () => g.marryChildren === true,
+            (v) => patch({ marryChildren: v as boolean }),
+            false),
+          field('openByDefault', 'Open by default', 'switch',
+            () => g.openByDefault === true,
+            (v) => patch({ openByDefault: v as boolean }),
+            false),
+        ],
+      }],
+    };
+    this.styleForm = new SettingsForm(section);
+    // Tag every field row with `data-cg-field` (mirroring the underlying
+    // `data-field-key` the settings-form renderer emits) so this panel's
+    // own tests have a stable, namespaced selector.
+    this.styleForm.root.querySelectorAll('[data-field-key]').forEach((n) =>
+      n.setAttribute('data-cg-field', n.getAttribute('data-field-key')!));
+    this.styleSection.appendChild(this.styleForm.root);
   }
 
   // ── Row builders ───────────────────────────────────────────────────
@@ -248,6 +326,23 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     wrap.appendChild(errorEl);
 
     const actions = el('div', 'cg-colgroups-row-actions');
+
+    // Keyboard-reachable selection affordance: a real <button> (not a
+    // click-only row) so choosing a group to style works via Tab + Enter/
+    // Space, with a visible focus ring (`.cg-colgroups-action:focus-visible`).
+    const selectBtn = document.createElement('button');
+    selectBtn.type = 'button';
+    selectBtn.className = 'cg-colgroups-action';
+    selectBtn.textContent = '⚙';
+    selectBtn.title = 'Edit group style';
+    selectBtn.setAttribute('aria-label', 'Edit group style');
+    selectBtn.setAttribute('data-cg-select', '');
+    selectBtn.setAttribute('aria-pressed', String(this.selectedGroupId === n.id));
+    selectBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.selectGroup(n.id);
+    });
+    actions.appendChild(selectBtn);
 
     const addSub = document.createElement('button');
     addSub.type = 'button';
@@ -425,4 +520,19 @@ function el(tag: string, cls: string): HTMLElement { const e = document.createEl
 
 function cssEscape(s: string): string {
   return s.replace(/["\\]/g, '\\$&');
+}
+
+/** Build a `SettingsField` for the group Style band. `defaultValue` (when
+ *  given) is what an "unset" value reads as — e.g. `false` for the boolean
+ *  switches, so a group that has never had the flag touched doesn't render
+ *  as already-modified. */
+function field(
+  key: string,
+  label: string,
+  type: SettingsField['type'],
+  get: () => unknown,
+  set: (value: unknown) => void,
+  defaultValue?: unknown,
+): SettingsField {
+  return { key, label, type, get, set, defaultValue };
 }

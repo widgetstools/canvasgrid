@@ -88,4 +88,98 @@ describe('ColumnGroupsToolPanel', () => {
     const bidRowAfter = gui.querySelector('[data-cg-node="bid"]') as HTMLElement;
     expect(bidRowAfter.style.display).toBe('none');
   });
+
+  describe('Style band', () => {
+    // Note: the group-select control is a real <button> (see the
+    // keyboard-accessibility test below); the switch fields it exposes are
+    // `.cg-settings-toggle` buttons (aria-pressed), not <input> checkboxes
+    // — verified against `settingsForm/form.ts` before writing these.
+
+    it('the group-select affordance is a real, keyboard-reachable <button> (not tabindex=-1)', () => {
+      const panel = new ColumnGroupsToolPanel();
+      panel.init(makeParams(vi.fn()));
+      const select = panel.getGui().querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement;
+      // A native <button> is focusable/keyboard-activatable (Enter/Space)
+      // by default — unlike Task 3's row, which was `tabIndex=-1` with
+      // click-only select. Assert there's no explicit opt-out.
+      expect(select.tagName).toBe('BUTTON');
+      expect(select.getAttribute('tabindex')).toBeNull();
+      expect((select as HTMLButtonElement).disabled).toBe(false);
+    });
+
+    it('selecting a group reveals a Style section bound to that group, and marks the row [data-selected]', () => {
+      const panel = new ColumnGroupsToolPanel();
+      panel.init(makeParams(vi.fn()));
+      const gui = panel.getGui();
+      (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
+
+      const style = gui.querySelector('[data-cg-style]')!;
+      expect(style.getAttribute('data-for')).toBe('trade');
+      expect((gui.querySelector('[data-cg-node="trade"]') as HTMLElement).hasAttribute('data-selected')).toBe(true);
+
+      // Toggling marryChildren dirties the model (routes through mutate()/
+      // setGroupStyle, same as any other panel edit — Apply-only discipline).
+      const marry = style.querySelector('[data-cg-field="marryChildren"] .cg-settings-toggle') as HTMLButtonElement;
+      expect(marry.getAttribute('aria-pressed')).toBe('false');
+      marry.click();
+      const apply = gui.querySelector('[data-cg-apply]') as HTMLButtonElement;
+      expect(apply.disabled).toBe(false);
+    });
+
+    it('clicking the select button again deselects and empties the Style band', () => {
+      const panel = new ColumnGroupsToolPanel();
+      panel.init(makeParams(vi.fn()));
+      const gui = panel.getGui();
+      const select = () => gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement;
+      select().click();
+      expect(gui.querySelector('[data-cg-style]')!.getAttribute('data-for')).toBe('trade');
+
+      select().click();
+      const style = gui.querySelector('[data-cg-style]')!;
+      expect(style.getAttribute('data-for')).toBeNull();
+      expect(style.children.length).toBe(0);
+      expect((gui.querySelector('[data-cg-node="trade"]') as HTMLElement).hasAttribute('data-selected')).toBe(false);
+    });
+
+    it('Apply projects the styled group headerStyle/marryChildren/openByDefault into columnDefs', () => {
+      const onApply = vi.fn();
+      const panel = new ColumnGroupsToolPanel();
+      panel.init(makeParams(onApply));
+      const gui = panel.getGui();
+      (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
+      let style = gui.querySelector('[data-cg-style]')!;
+
+      (style.querySelector('[data-cg-field="marryChildren"] .cg-settings-toggle') as HTMLButtonElement).click();
+      // The Style band is rebuilt on every mutation — re-query it.
+      style = gui.querySelector('[data-cg-style]')!;
+      (style.querySelector('[data-cg-field="openByDefault"] .cg-settings-toggle') as HTMLButtonElement).click();
+      style = gui.querySelector('[data-cg-style]')!;
+      (style.querySelector('[data-cg-field="fontWeight"] .cg-settings-toggle') as HTMLButtonElement).click();
+
+      (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+      expect(onApply).toHaveBeenCalledTimes(1);
+      const { columnDefs } = onApply.mock.calls[0][0];
+      const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
+      expect(trade.marryChildren).toBe(true);
+      expect(trade.openByDefault).toBe(true);
+      expect(trade.headerStyle.fontWeight).toBe('bold');
+    });
+
+    it('switching selection to a different group rebinds the Style section', () => {
+      const panel = new ColumnGroupsToolPanel();
+      panel.init(makeParams(vi.fn()));
+      const gui = panel.getGui();
+      (gui.querySelector('[data-cg-add-group]') as HTMLButtonElement).click(); // creates a second group
+      const groupIds = Array.from(gui.querySelectorAll('[data-kind="group"]')).map((n) => n.getAttribute('data-cg-node'));
+      expect(groupIds.length).toBe(2);
+      const [firstId, secondId] = groupIds as [string, string];
+
+      (gui.querySelector(`[data-cg-node="${firstId}"] [data-cg-select]`) as HTMLElement).click();
+      expect(gui.querySelector('[data-cg-style]')!.getAttribute('data-for')).toBe(firstId);
+
+      (gui.querySelector(`[data-cg-node="${secondId}"] [data-cg-select]`) as HTMLElement).click();
+      expect(gui.querySelector('[data-cg-style]')!.getAttribute('data-for')).toBe(secondId);
+      expect((gui.querySelector(`[data-cg-node="${firstId}"]`) as HTMLElement).hasAttribute('data-selected')).toBe(false);
+    });
+  });
 });
