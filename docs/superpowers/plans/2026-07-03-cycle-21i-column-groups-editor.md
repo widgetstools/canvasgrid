@@ -1203,3 +1203,44 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 ```
 
 **Task 7 self-review:** engine already enforces `columnGroupShow` (no kernel behavior change); model round-trips the field + persists via the Task 6 overlay automatically; BOTH UI surfaces (inline + Style band) write one shared helper; ungrouped rows omit the control; tokens-only, keyboard-accessible; E2E asserts def + persistence.
+
+---
+
+## Task 8: Persist runtime group open/collapse state
+
+**Provenance:** added 2026-07-04 after comparing to StarUI's column-groups module, whose `openGroupIds` persists the user's RUNTIME expand/collapse. Ours (through Task 7) only persists authored `openByDefault`, so a group the user collapses at runtime reopens on reload. Close the gap: persist the live column-group open state.
+
+**Seams (verified):** the kernel emits `{ type: 'columnGroupOpened', groupId, open }` on toggle (`cgrid.ts:6116`); `api.getColumnGroupState(): {groupId,open}[]` and `api.setColumnGroupState(state)` already exist. Persistence pattern mirrors Task 6.
+
+**Files:** `core/stateSnapshot.ts`, `core/stateUpdatedBus.ts`, `cgrid.ts`, `tests/columnGroupsPersist.test.ts`, `apps/cgrid-customizer-demo/e2e/columnGroups.spec.ts`.
+
+- [ ] **Step 1: Round-trip test (fail first)** — in `tests/columnGroupsPersist.test.ts`: mount a grid with a group, `setColumnGroupState([{groupId, open:false}])`, `getState()` → assert `state.columnGroupOpen` contains `{groupId, open:false}`; mount a SECOND grid with the same base defs + the same group overlay, `setState(state)` → assert `getColumnGroupState()` reflects `open:false`. Run `npx vitest run tests/columnGroupsPersist.test.ts --root packages/kernel`.
+- [ ] **Step 2: GridState field** — add `columnGroupOpen?: { groupId: string; open: boolean }[]` to `GridState` (stateSnapshot.ts), add `getColumnGroupOpenState?(): {groupId:string;open:boolean}[]` to `StateSnapshotSources`, include in `buildSnapshot` only when non-empty AND at least one entry differs from the group's `openByDefault` is NOT required — persist the full live state array when any group exists (simplest, deterministic). Bump `STATE_SCHEMA_VERSION`, add identity migrator for the previous version.
+- [ ] **Step 3: Dirty wiring** — `EVENT_TO_KEY['columnGroupOpened'] = 'columnGroupOpen'` in stateUpdatedBus.ts. (`columnGroupOpened` already fires on toggle — confirm the bus subscribes to it.)
+- [ ] **Step 4: Source + restore in cgrid.ts** — source: `getColumnGroupOpenState: () => this.columnGroupState.getState()` (or the api's `getColumnGroupState`). Restore in `setState`: after the `columnGroupDefs` restore (groups must exist first), call `this.setColumnGroupState(snapshot.columnGroupOpen)` under the same restore-suppression the other slices use. Order: columnGroupDefs → columnGroupOpen → columnState.
+- [ ] **Step 5: Run** — persist suite + full kernel suite `npm test --workspace=@cgrid/kernel` green.
+- [ ] **Step 6: E2E** — in `columnGroups.spec.ts`: collapse a group at runtime (via `window.__cgapi.setColumnGroupState([{groupId:'trade',open:false}])` or the header toggle), reload, assert `getColumnGroupState()` still has `trade` closed. Rebuild kernel (`npm run build --workspace=@cgrid/kernel`) before E2E.
+- [ ] **Step 7: Commit** — `feat(kernel): persist runtime column-group open/collapse state across reload` + Co-Authored-By trailer.
+
+## Task 9: Enrich group-header Style band to StarUI parity
+
+**Provenance:** StarUI's `GroupHeaderStyle` exposes bold/italic/underline/fontSize/color/background/align/per-side-borders. Ours (Task 4) exposes bg/fg/bold only. The kernel's `ColCellOverrides` already supports the rest — wire them into the Style band. (This task adds an ALL-SIDES border for parity; per-side borders are a possible further enhancement, noted, not built here.)
+
+**`ColCellOverrides` fields to expose (confirmed in `types/cell.ts`):** `fontStyle` ('italic'|'normal'), `textDecoration` ('underline'|'none'), `fontSize` (number px), `halign` ('left'|'center'|'right'), `border` (`BorderSpec` — use `border.all = { width, color, style }`).
+
+**Files:** `packages/kernel/src/interaction/toolPanels/columnGroupsPanel.ts` (extend `renderStyle()`'s Header band), `tests/columnGroupsToolPanel.test.ts`, optionally `theming/tokens.css`.
+
+- [ ] **Step 1: Panel tests (fail first)** — in `tests/columnGroupsToolPanel.test.ts`: select a group, assert new Style fields exist (`[data-cg-field="fontStyle"]`, `"textDecoration"`, `"fontSize"`, `"halign"`, and border fields `"borderWidth"`, `"borderColor"`, `"borderStyle"`). Toggle Italic → assert projected group `headerStyle.fontStyle === 'italic'`; set alignment "center" → `headerStyle.halign === 'center'`; set font size 14 → `headerStyle.fontSize === 14`; set border width 2 + style dashed + a color → `headerStyle.border.all` = `{ width: 2, style: 'dashed', color: <c> }`. Run `npx vitest run tests/columnGroupsToolPanel.test.ts --root packages/kernel`.
+- [ ] **Step 2: Implement in `renderStyle()`** — extend the Header `SettingsBand` with fields (reuse the existing `field(...)` helper + settingsForm control types):
+  - `field('fontStyle', 'Italic', 'switch', () => g.headerStyle?.fontStyle === 'italic', v => patch({ headerStyle: { ...g.headerStyle, fontStyle: v ? 'italic' : undefined } }))`
+  - `field('textDecoration', 'Underline', 'switch', () => g.headerStyle?.textDecoration === 'underline', v => patch({ headerStyle: { ...g.headerStyle, textDecoration: v ? 'underline' : undefined } }))`
+  - `field('fontSize', 'Font size', 'number', () => g.headerStyle?.fontSize, v => patch({ headerStyle: { ...g.headerStyle, fontSize: v as number || undefined } }))` (min 8, max 32)
+  - `field('halign', 'Alignment', 'select', () => g.headerStyle?.halign ?? 'left', v => patch({ headerStyle: { ...g.headerStyle, halign: v as any } }))` with options left/center/right
+  - Border group (three fields writing `border.all`): `borderWidth` (number, 0-8), `borderStyle` (select solid/dashed/dotted/double), `borderColor` (color). Each reads/writes `g.headerStyle?.border?.all?.<facet>` and composes `patch({ headerStyle: { ...g.headerStyle, border: { all: { ...g.headerStyle?.border?.all, <facet>: v } } } })`. A width of 0 (or undefined) means no border.
+  - Keep undefined-omission so unset facets don't bloat `headerStyle` (round-trip identity + lean snapshot).
+- [ ] **Step 3: Run** — panel suite + full kernel suite green. Confirm `flatten`/`project` still round-trip (these are plain `ColCellOverrides` facets, already covered).
+- [ ] **Step 4: Persistence** — these facets ride the Task 6 overlay automatically (plain data on `GroupNode.headerStyle`). Add one persist assertion that a group's `headerStyle.fontStyle`/`border` survive getState→setState.
+- [ ] **Step 5: E2E (optional but preferred)** — set Italic + a dashed border on a group, Apply, assert via `getColumnGroupDefs()` the `headerStyle` carries them; reload → persisted. Rebuild kernel first.
+- [ ] **Step 6: Commit** — `feat(kernel): enrich group-header Style band (italic/underline/size/align/border)` + Co-Authored-By trailer.
+
+**Note (transparency):** per-side borders (StarUI supports top/right/bottom/left independently) are simplified here to an all-sides border. `ColCellOverrides.border` supports per-side, so a future enhancement can add a per-side matrix; flagged, not built.
