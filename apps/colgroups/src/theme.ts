@@ -18,5 +18,4 @@ export const darkTheme = themeQuartz.withParams(
     spacing: 6,
     wrapperBorderRadius: 6,
   },
-  'dark',
 );
