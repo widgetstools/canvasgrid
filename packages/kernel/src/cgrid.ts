@@ -5958,6 +5958,7 @@ export class CGrid<TRow = any> {
       getColumnGroupState: () => this.columnGroupState.getState(),
       setColumnGroupState: (s) => { this.columnGroupState.apply(s); },
       resetColumnGroupState: () => this.columnGroupState.reset(),
+      getColumnGroupDefs: () => this.options.columnDefs ?? [],
       refreshToolPanel: (id) => this.refreshToolPanel(id),
       getToolPanelInstance: (id) => this.getToolPanelInstance(id),
       isSideBarVisible: () => this.isSideBarVisible(),

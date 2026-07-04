@@ -9,6 +9,8 @@ import type { ToolPanel, SideBarDef } from '../interaction/toolPanels/types';
 import type { IStatusPanelComp } from '../interaction/statusBar/types';
 import type {
   CApplyColumnStateParams,
+  CColDef,
+  CColGroupDef,
   CColumnState,
   FlashCellsParams,
   ISizeColumnsToFitParams,
@@ -293,6 +295,12 @@ export interface CGridApi<TRow = any> {
   setTheme(themeClass: string): void;
   destroy(): void;
 
+  /** Cycle 21i — the current authored column-def tree (leaves and
+   *  groups, arbitrarily nested), as last set at construction or via
+   *  `updateGridOptions({ columnDefs })`. The Column Groups editor seeds
+   *  its working model from this. Returns the live reference — callers
+   *  must not mutate it; clone before editing. */
+  getColumnGroupDefs(): (CColDef<TRow> | CColGroupDef<TRow>)[];
   getColumnGroupState(): { groupId: string; open: boolean }[];
   setColumnGroupState(state: { groupId: string; open: boolean }[]): void;
   resetColumnGroupState(): void;
