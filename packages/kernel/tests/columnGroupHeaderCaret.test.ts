@@ -195,6 +195,25 @@ describe('ellipsizeToWidth', () => {
     expect(ellipsizeToWidth(measure, 'Group', 0)).toBe('');
     expect(ellipsizeToWidth(measure, 'Group', -5)).toBe('');
   });
+
+  // Edge-case fix — a positive maxW that is still narrower than the
+  // ellipsis glyph itself (reachable for a very narrow column-group span).
+  // The binary search bottoms out at lo === 0; returning a bare '…' there
+  // would measure WIDER than maxW and reintroduce the caret/caption
+  // overlap this feature exists to prevent. Empty string is the correct
+  // fallback — draw nothing rather than something over-width.
+  it('returns empty string (not an over-width ellipsis) when the ellipsis itself does not fit maxW', () => {
+    const narrowMeasure = (t: string) => (t === '…' ? 12 : t.length * 10);
+    const result = ellipsizeToWidth(narrowMeasure, 'Valuation', 8);
+    expect(result).toBe('');
+    expect(narrowMeasure(result)).toBeLessThanOrEqual(8);
+  });
+
+  it('returns the bare ellipsis when it fits maxW exactly', () => {
+    const narrowMeasure = (t: string) => (t === '…' ? 12 : t.length * 10);
+    const result = ellipsizeToWidth(narrowMeasure, 'Valuation', 12);
+    expect(result).toBe('…');
+  });
 });
 
 describe('headerCell.paint — Task 11 caret space reservation (group headers)', () => {

@@ -92,8 +92,9 @@ export interface CellPaintConfig {
    *  `groupHasToggleEffect` in `renderer/painters/byRows.ts`. `'open'`
    *  paints a `chevron-left` (click to collapse); `'closed'` paints a
    *  `chevron-right` (click to expand) — horizontal carets, ag-grid style,
-   *  drawn TRAILING / after the caption (right-aligned at the
-   *  group-header cell's trailing edge, not leading). The header click
+   *  drawn IMMEDIATELY AFTER the (possibly ellipsized) caption — the
+   *  cell's trailing edge is only a defensive clamp, not the caret's
+   *  primary anchor. The header click
    *  already routes through `toggleColumnGroup(groupId)` —
    *  `interaction/features/headerClick.ts` — so the caret is the visual
    *  cue for the existing hit-testable group region. Design notes:
@@ -251,7 +252,13 @@ export function ellipsizeToWidth(measure: (t: string) => number, text: string, m
     const mid = Math.ceil((lo + hi) / 2);
     if (measure(text.slice(0, mid) + ell) <= maxW) lo = mid; else hi = mid - 1;
   }
-  return lo === 0 ? ell : text.slice(0, lo) + ell;
+  // When no prefix fits, only fall back to a bare ellipsis if the ellipsis
+  // glyph itself fits within maxW — otherwise even '…' alone would overflow
+  // the reserved width (narrow column-group span), which would just push
+  // the overflow onto the caret clamp again. Draw nothing rather than
+  // something over-width.
+  if (lo === 0) return measure(ell) <= maxW ? ell : '';
+  return text.slice(0, lo) + ell;
 }
 
 export function paintBackground(gc: CachedContext2D, p: CellPaintConfig): void {
