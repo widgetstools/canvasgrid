@@ -531,8 +531,17 @@ function expandToolPanelShortcut(name: string): ToolPanelDef {
         iconKey: 'settings',
         toolPanel: 'agGridOptionsToolPanel',
       };
+    case 'columnGroups':
+      // Cycle 21i — native Column Groups editor tab (after Options).
+      return {
+        id: 'agColumnGroupsToolPanel',
+        labelDefault: 'Column Groups',
+        labelKey: 'columnGroups',
+        iconKey: 'group',
+        toolPanel: 'agColumnGroupsToolPanel',
+      };
     default:
-      throw new Error(`[cgrid] unknown SideBarDef.toolPanels shortcut: '${name}' (expected 'columns', 'filters' or 'gridOptions')`);
+      throw new Error(`[cgrid] unknown SideBarDef.toolPanels shortcut: '${name}' (expected 'columns', 'filters', 'gridOptions' or 'columnGroups')`);
   }
 }
 

@@ -65,6 +65,7 @@ import { ToolPanelRegistry } from './interaction/toolPanels/registry';
 import { ColumnsToolPanel } from './interaction/toolPanels/columnsPanel';
 import { FiltersToolPanel } from './interaction/toolPanels/filtersPanel';
 import { GridOptionsToolPanel } from './interaction/toolPanels/gridOptionsPanel';
+import { ColumnGroupsToolPanel } from './interaction/toolPanels/columnGroupsPanel';
 import { SideBarHost, normalizeSideBarOption, type SideBarGridContext } from './interaction/sideBar/host';
 import { StatusBarHost, normalizeStatusBarOption, type StatusBarGridContext } from './interaction/statusBar/host';
 import { StatusPanelRegistry } from './interaction/statusBar/registry';
@@ -941,6 +942,8 @@ export class CGrid<TRow = any> {
     this.toolPanelRegistry.register('agFiltersToolPanel', FiltersToolPanel);
     // Cycle 21i / Phase 1 — native Grid Options settings tab.
     this.toolPanelRegistry.register('agGridOptionsToolPanel', GridOptionsToolPanel);
+    // Cycle 21i — native Column Groups editor tab.
+    this.toolPanelRegistry.register('agColumnGroupsToolPanel', ColumnGroupsToolPanel);
     if (options.components) {
       for (const [id, ctor] of Object.entries(options.components)) {
         this.toolPanelRegistry.register(id, ctor);

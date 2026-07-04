@@ -2232,6 +2232,274 @@
   gap: 5px;
 }
 
+/* Cycle 21i — Column Groups tool panel (built-in `agColumnGroupsToolPanel`,
+ * sidebar shortcut `'columnGroups'`). Mirrors the `.cg-settings-panel`
+ * idiom verbatim (chrome, row rhythm, diff-rail device) so the tab feels
+ * native alongside Options. See
+ * `docs/superpowers/plans/notes/cycle-21i-column-groups-design.md`
+ * (or the task-3 design-guidance note) for the full rationale — the one
+ * distinctive, content-true device here is the nesting spine: a hairline
+ * vertical guide per ancestor depth level, encoding real tree depth. */
+.cg-colgroups-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--cg-bg-color);
+  color: var(--cg-fg-color);
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  overflow: hidden;
+  --cg-settings-accent: var(--cg-focus-ring-color);
+}
+.cg-colgroups-toolbar {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--cg-border-color);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+}
+.cg-colgroups-tree {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.cg-colgroups-footer {
+  padding: 8px 10px;
+  border-top: 1px solid var(--cg-border-color);
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  flex: 0 0 auto;
+}
+
+/* Generic tokened button pair — reused wherever the kernel needs a
+ * plain action button (this is the first panel to need one; other
+ * panels roll bespoke button classes per-surface). */
+.cg-btn {
+  padding: 5px 10px;
+  font: inherit;
+  font-size: var(--cg-font-size-sm);
+  color: var(--cg-fg-color);
+  background: transparent;
+  border: 1px solid var(--cg-border-color);
+  border-radius: 4px;
+  cursor: pointer;
+}
+.cg-btn:hover {
+  background: var(--cg-row-hover-bg);
+}
+.cg-btn-primary {
+  color: var(--cg-bg-color);
+  background: var(--cg-settings-accent);
+  border-color: var(--cg-settings-accent);
+}
+.cg-btn-primary:hover {
+  background: var(--cg-settings-accent);
+  opacity: 0.9;
+}
+.cg-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.cg-btn:focus-visible {
+  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
+  outline-offset: -1px;
+}
+
+.cg-colgroups-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 5px 12px;
+}
+.cg-colgroups-row:hover {
+  background: var(--cg-row-hover-bg);
+}
+/* Selected group (its Style band is showing) — same diff-rail device as
+ * `.cg-settings-row[data-modified]::before`. */
+.cg-colgroups-row[data-selected]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--cg-settings-accent);
+}
+/* Drop-target outline — accept = focus ring; reject = amber. Same
+ * vocabulary as `.cg-pivot-panel[data-drop]`. */
+.cg-colgroups-row[data-drop="accept"] {
+  box-shadow: inset 0 0 0 2px var(--cg-pivot-panel-drop-border);
+}
+.cg-colgroups-row[data-drop="reject"] {
+  box-shadow: inset 0 0 0 2px var(--cg-pivot-panel-drop-border-reject);
+}
+/* Drag source — dim in place while the ghost tracks the pointer. */
+.cg-colgroups-row-source {
+  opacity: 0.4;
+}
+/* Floating drag ghost — cloned row, positioned fixed under the pointer. */
+.cg-colgroups-row-ghost {
+  position: fixed;
+  pointer-events: none;
+  z-index: 2147483600;
+  background: var(--cg-row-group-chip-ghost-bg, var(--cg-header-bg));
+  box-shadow: var(--cg-row-group-chip-ghost-shadow, 0 4px 8px rgba(0, 0, 0, 0.12));
+  opacity: var(--cg-row-group-chip-ghost-opacity, 0.92);
+  cursor: grabbing;
+}
+
+/* Nesting spine — one 1px vertical guide per ancestor depth level. */
+.cg-colgroups-guide {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: color-mix(in srgb, var(--cg-border-color) 70%, transparent);
+  pointer-events: none;
+}
+
+.cg-colgroups-row-main {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.cg-colgroups-chevron {
+  flex: 0 0 auto;
+  width: 0;
+  height: 0;
+  padding: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  border-bottom: none;
+  background: transparent;
+  cursor: pointer;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cg-colgroups-chevron {
+    transition: transform 120ms ease;
+  }
+}
+.cg-colgroups-chevron[aria-expanded="false"] {
+  transform: rotate(-90deg);
+}
+.cg-colgroups-chevron:focus-visible {
+  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
+  outline-offset: 2px;
+}
+
+.cg-colgroups-handle {
+  flex: 0 0 auto;
+  color: color-mix(in srgb, var(--cg-fg-color) 45%, transparent);
+  cursor: grab;
+  user-select: none;
+  font-size: var(--cg-font-size-sm);
+  line-height: 1;
+}
+
+.cg-colgroups-checkbox-label {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+}
+.cg-colgroups-checkbox {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--cg-settings-accent);
+  cursor: pointer;
+}
+.cg-colgroups-checkbox:focus-visible {
+  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
+  outline-offset: 1px;
+}
+
+.cg-colgroups-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 3px 6px;
+  font: inherit;
+  font-size: var(--cg-font-size-sm);
+  color: var(--cg-fg-color);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  outline: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cg-colgroups-name-group {
+  font-weight: 500;
+}
+.cg-colgroups-name:hover {
+  border-color: color-mix(in srgb, var(--cg-border-color) 80%, transparent);
+}
+.cg-colgroups-name:focus-visible,
+.cg-colgroups-name:focus {
+  border-color: var(--cg-settings-accent);
+  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
+  outline-offset: -1px;
+}
+
+.cg-colgroups-error {
+  flex: 0 0 auto;
+  color: var(--cg-editor-invalid-color);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.cg-colgroups-row-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-inline-start: auto;
+}
+.cg-colgroups-action {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  color: color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.cg-colgroups-action:hover {
+  color: var(--cg-fg-color);
+  background: color-mix(in srgb, var(--cg-fg-color) 10%, transparent);
+}
+.cg-colgroups-action:focus-visible {
+  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
+  outline-offset: -1px;
+}
+
+.cg-colgroups-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  padding: 24px;
+  text-align: center;
+  color: var(--cg-row-group-panel-empty-fg);
+  font-size: var(--cg-font-size-sm);
+}
+
+/* Style band stub (Task 4 fills this in). */
+.cg-colgroups-style:empty {
+  display: none;
+}
+
 /* Cycle 13 / Task 1 — status bar shell. Mounts as a sibling of the
  * canvas inside `CGrid.root`, pinned to the bottom (or top) edge.
  *
