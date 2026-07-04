@@ -2729,14 +2729,19 @@
   position: absolute;
   inset: 0;
   margin: auto;
-  border-radius: 2px;
-  background: color-mix(in srgb, var(--cg-fg-color) 22%, transparent);
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--cg-fg-color) 38%, transparent);
+  transition: background 110ms ease;
 }
 .cg-colgroups-edge:hover::after {
-  background: color-mix(in srgb, var(--cg-fg-color) 40%, transparent);
+  background: color-mix(in srgb, var(--cg-fg-color) 62%, transparent);
 }
 .cg-colgroups-edge[aria-pressed="true"]::after {
   background: var(--cg-settings-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cg-settings-accent) 28%, transparent);
+}
+@media (prefers-reduced-motion: reduce) {
+  .cg-colgroups-edge::after { transition: none; }
 }
 .cg-colgroups-edge:focus-visible {
   outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
@@ -2744,31 +2749,40 @@
 }
 .cg-colgroups-edge-top,
 .cg-colgroups-edge-bottom {
-  left: 8px;
-  right: 8px;
-  height: 8px;
+  left: 6px;
+  right: 6px;
+  height: 10px;
 }
-.cg-colgroups-edge-top { top: 0; }
+.cg-colgroups-edge-top { top: -1px; }
 .cg-colgroups-edge-top::after,
-.cg-colgroups-edge-bottom::after { height: 3px; }
-.cg-colgroups-edge-bottom { bottom: 0; }
+.cg-colgroups-edge-bottom::after { height: 4px; }
+.cg-colgroups-edge-bottom { bottom: -1px; }
 .cg-colgroups-edge-left,
 .cg-colgroups-edge-right {
-  top: 8px;
-  bottom: 8px;
-  width: 8px;
+  top: 6px;
+  bottom: 6px;
+  width: 10px;
 }
 .cg-colgroups-edge-left::after,
-.cg-colgroups-edge-right::after { width: 3px; }
-.cg-colgroups-edge-left { left: 0; }
-.cg-colgroups-edge-right { right: 0; }
+.cg-colgroups-edge-right::after { width: 4px; }
+.cg-colgroups-edge-left { left: -1px; }
+.cg-colgroups-edge-right { right: -1px; }
 .cg-colgroups-edge-all {
   align-self: center;
   min-width: 0;
-  padding: 0 12px;
+  padding: 3px 14px;
   border: 1px solid var(--cg-border-color);
-  border-radius: 5px;
+  border-radius: 999px;
   background: color-mix(in srgb, var(--cg-fg-color) 4%, transparent);
+}
+/* Names which side the width/style/colour controls write to. */
+.cg-colgroups-border-caption {
+  align-self: center;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--cg-fg-color) 55%, transparent);
 }
 .cg-colgroups-border-fields {
   display: flex;

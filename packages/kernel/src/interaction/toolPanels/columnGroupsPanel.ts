@@ -474,6 +474,14 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     allBtn.addEventListener('click', () => { this.selectedEdge = 'all'; this.render(); });
     editor.appendChild(allBtn);
 
+    // Caption — makes the box-model editor legible: names the side the
+    // Width / Style / Colour controls below currently write to.
+    const caption = el('div', 'cg-colgroups-border-caption');
+    caption.textContent = this.selectedEdge === 'all'
+      ? 'Editing all sides'
+      : `Editing ${this.selectedEdge} border`;
+    editor.appendChild(caption);
+
     // Width / style / colour — read & write the SELECTED edge.
     const edge = this.selectedEdge;
     const side = border?.[edge];
