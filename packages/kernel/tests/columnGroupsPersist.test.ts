@@ -166,3 +166,86 @@ describe('column-group structure persists through getState/setState', () => {
     g.destroy();
   });
 });
+
+describe('column-group RUNTIME open/collapse state persists through getState/setState (Task 8)', () => {
+  const base: (CColDef | CColGroupDef)[] = [
+    { colId: 'a', field: 'a' }, { colId: 'b', field: 'b' }, { colId: 'c', field: 'c' },
+  ];
+  const withGroup: (CColDef | CColGroupDef)[] = [
+    { groupId: 'G', headerName: 'Grp', children: [
+      { colId: 'b', field: 'b' }, { colId: 'c', field: 'c' },
+    ] },
+    { colId: 'a', field: 'a' },
+  ];
+
+  it('round-trips a collapsed group onto a fresh grid with the same group overlay', () => {
+    const g1 = mount(withGroup);
+    const api1 = (g1 as any).makeApi();
+    api1.setColumnGroupState([{ groupId: 'G', open: false }]);
+    const snapshot = g1.getState();
+    expect(snapshot.columnGroupOpen).toContainEqual({ groupId: 'G', open: false });
+    g1.destroy();
+
+    const g2 = mount(withGroup);       // fresh grid, SAME group overlay already present
+    const api2 = (g2 as any).makeApi();
+    g2.setState(snapshot);
+    const state2 = api2.getColumnGroupState();
+    expect(state2).toContainEqual({ groupId: 'G', open: false });
+    g2.destroy();
+  });
+
+  it('does not persist columnGroupOpen when the grid has no groups', () => {
+    const g = mount(base);
+    const snapshot = g.getState();
+    expect(snapshot.columnGroupOpen).toBeUndefined();
+    g.destroy();
+  });
+
+  it('persisted open:false wins over a group authored with openByDefault:true (ordering proof)', () => {
+    const defaultOpen: (CColDef | CColGroupDef)[] = [
+      { groupId: 'G', headerName: 'Grp', openByDefault: true, children: [
+        { colId: 'b', field: 'b' }, { colId: 'c', field: 'c' },
+      ] },
+      { colId: 'a', field: 'a' },
+    ];
+    const snapshot = {
+      version: 3,
+      columnGroupOpen: [{ groupId: 'G', open: false }],
+    } as any;
+
+    const g = mount(defaultOpen);
+    const api = (g as any).makeApi();
+    // Sanity: freshly-constructed grid honors openByDefault: true.
+    expect(api.getColumnGroupState()).toContainEqual({ groupId: 'G', open: true });
+
+    g.setState(snapshot);
+    expect(api.getColumnGroupState()).toContainEqual({ groupId: 'G', open: false });
+    g.destroy();
+  });
+
+  it('columnGroupOpen restore survives a columnGroupDefs structural restore in the same setState call', () => {
+    const g1 = mount(withGroup);
+    const api1 = (g1 as any).makeApi();
+    // Rename the group's header via updateGridOptions (like the panel's Apply), then collapse it.
+    api1.updateGridOptions({ columnDefs: [
+      { groupId: 'G', headerName: 'Renamed', children: [
+        { colId: 'b', field: 'b' }, { colId: 'c', field: 'c' },
+      ] },
+      { colId: 'a', field: 'a' },
+    ] });
+    api1.setColumnGroupState([{ groupId: 'G', open: false }]);
+    const snapshot = g1.getState();
+    expect(snapshot.columnGroupDefs?.some((n: any) => n.kind === 'group' && n.headerName === 'Renamed')).toBe(true);
+    expect(snapshot.columnGroupOpen).toContainEqual({ groupId: 'G', open: false });
+    g1.destroy();
+
+    // Fresh grid seeded with the ORIGINAL (non-renamed) overlay + openByDefault true.
+    const g2 = mount(withGroup);
+    const api2 = (g2 as any).makeApi();
+    g2.setState(snapshot);
+    const defs2 = api2.getColumnGroupDefs();
+    expect(defs2.find((d: any) => d.groupId === 'G')?.headerName).toBe('Renamed');
+    expect(api2.getColumnGroupState()).toContainEqual({ groupId: 'G', open: false });
+    g2.destroy();
+  });
+});

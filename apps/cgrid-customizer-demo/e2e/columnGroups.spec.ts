@@ -257,6 +257,48 @@ test('setting a grouped column\'s columnGroupShow to "When collapsed" persists a
     .toBe('closed');
 });
 
+// Cycle 21i / Task 8 — the RUNTIME open/collapse state of a column group
+// (as opposed to its authored `openByDefault`, covered by Task 6/7 above)
+// now persists too: `columnGroupOpened` (fired by `ColumnGroupState`'s
+// `apply`/`toggle`) maps to the `columnGroupOpen` GridState key, and
+// `setState()` re-applies it AFTER the `columnGroupDefs` structural
+// restore so the user's runtime collapse wins over `openByDefault`.
+test('collapsing a group at runtime persists its open/collapse state across reload', async ({ page }) => {
+  await waitForGridReady(page);
+
+  const initialState = await page.evaluate(() =>
+    (window as unknown as { __cgapi: any }).__cgapi.getColumnGroupState(),
+  );
+  const trade = initialState.find((s: AnyDef) => s.groupId === 'trade');
+  expect(trade, 'seeded "trade" group should report open state').toBeTruthy();
+  expect(trade.open).toBe(true);
+
+  await page.evaluate(() =>
+    (window as unknown as { __cgapi: any }).__cgapi.setColumnGroupState([{ groupId: 'trade', open: false }]),
+  );
+
+  await page.waitForFunction(
+    (key) => (localStorage.getItem(key) ?? '').includes('"columnGroupOpen"'),
+    STORAGE_KEY,
+    { timeout: 5_000 },
+  );
+
+  await page.reload();
+  await waitForGridReady(page);
+
+  let stateAfterReload: AnyDef[] = [];
+  let tradeAfterReload: AnyDef | null = null;
+  await expect
+    .poll(async () => {
+      stateAfterReload = await page.evaluate(() =>
+        (window as unknown as { __cgapi: any }).__cgapi.getColumnGroupState(),
+      );
+      tradeAfterReload = stateAfterReload.find((s: AnyDef) => s.groupId === 'trade') ?? null;
+      return tradeAfterReload?.open ?? null;
+    }, { timeout: 10_000 })
+    .toBe(false);
+});
+
 test('drag an ungrouped column onto a group row to nest it', async ({ page }) => {
   await openColumnGroupsTab(page);
 

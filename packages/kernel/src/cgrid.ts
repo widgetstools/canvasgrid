@@ -7434,6 +7434,7 @@ export class CGrid<TRow = any> {
       getColumnState: () => this.getColumnState(),
       getColumnGroupOverlay: () =>
         toSerializedColumnGroupNodes(flattenColumnGroups(this.options.columnDefs ?? [])),
+      getColumnGroupOpenState: () => this.columnGroupState.getState(),
       getFilterModel: () => this.getFilterModel(),
       getSortModel: () => this.getSortModel(),
       getRowGroupColumns: () => this.getRowGroupColumns(),
@@ -7502,6 +7503,19 @@ export class CGrid<TRow = any> {
     if (migrated.columnGroupDefs) {
       const rehydrated = rehydrateColumnGroups(migrated.columnGroupDefs, this.options.columnDefs ?? []);
       this.updateGridOptions({ columnDefs: projectColumnGroups(rehydrated) });
+    }
+
+    // 0d. column-GROUP runtime open/collapse state (Cycle 21i / Task 8) —
+    // AFTER columnGroupDefs so the groups it names already exist (the
+    // `columnGroupDefs` restore's tree rebuild calls `ColumnGroupState
+    // .setTree`, which re-seeds from each group's `openByDefault` for any
+    // id that didn't survive the swap and PRESERVES the live open state for
+    // ids that did). Applying this persisted array last means the user's
+    // runtime collapse/expand always wins over `openByDefault`, matching
+    // how columnState settles on top of the restored group hierarchy below.
+    // `apply()` silently skips groupIds no longer in the tree.
+    if (migrated.columnGroupOpen) {
+      this.columnGroupState.apply(migrated.columnGroupOpen);
     }
 
     // 1. columnState (defines columns + their geometry).

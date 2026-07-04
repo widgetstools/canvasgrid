@@ -23,7 +23,7 @@ import type { SerializedNode } from '../interaction/columnGroups/model';
  *  (renamed key, value-type change, mandatory new field). Keep
  *  `core/stateMigrations.ts` in sync — every bump needs a migrator
  *  for the prior version. */
-export const STATE_SCHEMA_VERSION = 2;
+export const STATE_SCHEMA_VERSION = 3;
 
 export interface GridState {
   /** Schema version of the snapshot. Apps round-tripping snapshots
@@ -48,6 +48,18 @@ export interface GridState {
   // `columnState` so per-leaf width/hide/pinned settle on top of the
   // restored structure.
   columnGroupDefs?: SerializedNode[];
+
+  // Column-GROUP runtime open/collapse state (Cycle 21i / Task 8) — the
+  // live `{groupId, open}` state for every group currently in the tree
+  // (from `ColumnGroupState.getState()`), independent of each group's
+  // authored `openByDefault` (which only seeds a FRESH grid; it doesn't
+  // reflect a user's runtime collapse/expand). Present only when at
+  // least one group exists. Restored AFTER `columnGroupDefs` (the group
+  // must exist before its open-state can apply) so a user's runtime
+  // collapse wins over the def's `openByDefault` even though the
+  // `columnGroupDefs` restore's tree rebuild re-seeds open-state from
+  // `openByDefault` for any group whose id survives the swap.
+  columnGroupOpen?: { groupId: string; open: boolean }[];
 
   // Filter pipeline (Cycle 7).
   filterModel?: FilterModel;
@@ -108,6 +120,10 @@ export interface StateSnapshotSources {
    *  overlay (see `GridState.columnGroupDefs`). Optional so grids built
    *  before this field existed still satisfy the interface. */
   getColumnGroupOverlay?(): SerializedNode[];
+  /** Cycle 21i / Task 8 — the live column-GROUP open/collapse state (see
+   *  `GridState.columnGroupOpen`). Optional so grids built before this
+   *  field existed still satisfy the interface. */
+  getColumnGroupOpenState?(): { groupId: string; open: boolean }[];
   getFilterModel(): FilterModel;
   getSortModel(): SortModel;
   getRowGroupColumns(): string[];
@@ -137,6 +153,11 @@ export const STATE_MIGRATIONS: Record<number, (s: GridState) => GridState> = {
   // grid's own snapshot omits it). Identity migrator; `migrateSnapshot`
   // stamps the bumped `version` on the result.
   1: (s) => s,
+  // v2 -> v3 (Cycle 21i / Task 8): added the OPTIONAL `columnGroupOpen`
+  // field. No shape change to any existing field — a v2 snapshot restores
+  // unchanged (it simply lacks the runtime open/collapse overlay, exactly
+  // like a flat grid's own snapshot omits it). Identity migrator.
+  2: (s) => s,
 };
 
 /** Forward-migrate a snapshot from its stored version to the current
@@ -176,6 +197,11 @@ export function buildSnapshot(sources: StateSnapshotSources): GridState {
   const groupOverlay = sources.getColumnGroupOverlay?.();
   if (groupOverlay && groupOverlay.some((n) => n.kind === 'group')) {
     snapshot.columnGroupDefs = groupOverlay;
+  }
+
+  const groupOpenState = sources.getColumnGroupOpenState?.();
+  if (groupOpenState && groupOpenState.length > 0) {
+    snapshot.columnGroupOpen = groupOpenState;
   }
 
   const filterModel = sources.getFilterModel();
