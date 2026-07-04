@@ -40,6 +40,25 @@ export function listIconSets(): string[] {
   return insertionOrder.slice();
 }
 
+/** Cycle 21i Phase 2 / T3 — enumerate registered icon NAMES (the recon's
+ *  missing `listIcons()`; `resolveIcon` was lookup-only, so an icon
+ *  picker had no way to know what exists). With `setName`, the names in
+ *  that set only (empty array for an unknown set); without, the deduped
+ *  union across every set in resolution order. */
+export function listIcons(setName?: string): string[] {
+  if (setName !== undefined) {
+    const set = sets.get(setName);
+    return set ? Array.from(set.keys()) : [];
+  }
+  const seen = new Set<string>();
+  for (const name of insertionOrder) {
+    const set = sets.get(name);
+    if (!set) continue;
+    for (const icon of set.keys()) seen.add(icon);
+  }
+  return Array.from(seen);
+}
+
 /** Test-only helper. */
 export function _resetIconRegistry_forTests(): void {
   sets.clear();

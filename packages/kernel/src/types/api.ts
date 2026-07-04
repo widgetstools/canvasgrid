@@ -33,6 +33,36 @@ export interface TransactionResult {
   remove: { rowId: string }[];
 }
 
+/** Cycle 21i Phase 2 / T3 — one live column-GROUP node handed to the
+ *  `forEachColumnGroup` walk. Snapshot semantics: mutating a node does
+ *  not write back to the grid (use `updateGridOptions({ columnDefs })`
+ *  or `setColumnGroupOpened` for mutations). */
+export interface ColumnGroupWalkNode {
+  groupId: string;
+  headerName: string;
+  /** Depth from root — top-level groups are 0. */
+  depth: number;
+  /** Live runtime open/collapse state (NOT the authored `openByDefault`). */
+  open: boolean;
+  /** Visibility of this sub-group relative to its parent's open state. */
+  columnGroupShow: 'open' | 'closed' | null;
+  /** Direct child GROUP ids, declaration order. */
+  childGroupIds: string[];
+  /** Every leaf colId underneath (transitively), render order. */
+  leafColIds: string[];
+}
+
+/**
+ * The public API surface handed to `gridReady` listeners, tool panels,
+ * status panels, and every other extension point.
+ *
+ * Two-tier contract (Cycle 21i Phase 2 / T3): `CGridApi` is THE surface
+ * customizer panels + engine packages code against — anything a panel
+ * needs belongs here, not on the `CGrid` class. Class-tier members are
+ * an implementation detail reachable only by kernel-internal wiring;
+ * reaching for the class from a panel is a smell that the API is
+ * missing a method (add it here instead).
+ */
 export interface CGridApi<TRow = any> {
   setRowData(rows: TRow[]): void;
   applyTransaction(t: Tx<TRow>): TransactionResult;
@@ -42,6 +72,12 @@ export interface CGridApi<TRow = any> {
   setSortModel(s: SortModel): void;
   setFilterModel(f: FilterModel): void;
   setGroupModel(g: GroupModel): void;
+  /** Cycle 21i Phase 2 / T3 — aggregate sort-model read (per-column
+   *  reads existed; panels also need the whole ordered model). */
+  getSortModel(): SortModel;
+  /** Cycle 21i Phase 2 / T3 — aggregate filter-model read, matching
+   *  `setFilterModel`'s shape. */
+  getFilterModel(): FilterModel;
 
   /** Cycle 15.5 / Task 1 — primitive grouping mutation: replace the
    *  entire ordered row-group column list. Equivalent to
@@ -404,6 +440,30 @@ export interface CGridApi<TRow = any> {
    *  'number', 'checkbox', 'header') can be overridden by re-registering. */
   registerCellRenderer(name: string, painter: import('../renderer/cellRenderers/registry').CellPainter): void;
 
+  /** Cycle 21i Phase 2 / T3 — instance-truth renderer enumeration:
+   *  built-ins plus everything registered on THIS grid, registration
+   *  order. Renderer pickers read this (the static `RENDERER_NAMES`
+   *  catalog can't know about app registrations). */
+  listCellRenderers(): string[];
+
+  /** Cycle 21i Phase 2 / T3 — pre-order depth-first walk over the LIVE
+   *  column-GROUP hierarchy (groups only; leaves ride along as
+   *  `leafColIds`). The one traversal editors need that
+   *  `getColumnGroupDefs` (raw defs tree) and `getColumnGroupState`
+   *  (flat open list) don't give directly: structure + depth + live
+   *  open state in a single visit. */
+  forEachColumnGroup(callback: (node: ColumnGroupWalkNode) => void): void;
+
+  /** Cycle 23 / Task 5, widened to the API in Cycle 21i Phase 2 / T3 —
+   *  full grid state snapshot (see `GridState`). Round-trippable
+   *  through `setState`. */
+  getState(): import('../core/stateSnapshot').GridState;
+
+  /** Cycle 23 / Task 6, widened to the API in Cycle 21i Phase 2 / T3 —
+   *  restore a state snapshot (ordered, partial-tolerant, forward-
+   *  migrated). */
+  setState(snapshot: import('../core/stateSnapshot').GridState): void;
+
   /** Cycle 21c / Task 10 — register the format compiler (supplied by
    *  @cgrid/format's wireIntoKernel). Kernel invokes it in the
    *  compileFormatSlots pass (Task 11). Apps that never call this see
@@ -472,6 +532,12 @@ export interface CGridApi<TRow = any> {
    *  the string path data) or `null` when the name is not found in
    *  any set or when `Path2D` is unavailable (SSR / Node). */
   resolveIcon(name: string, setHint?: string): Path2D | null;
+
+  /** Cycle 21i Phase 2 / T3 — enumerate registered icon names (icon
+   *  pickers need what exists; `resolveIcon` is lookup-only). With
+   *  `setName`, that set's names (empty array for an unknown set);
+   *  without, the deduped union across all sets in resolution order. */
+  listIcons(setName?: string): string[];
 
   /** Cycle 21c / Task 14 — register a per-column tooltip provider.
    *  The provider fires after a 500ms hover debounce on cells in

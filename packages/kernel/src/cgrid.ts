@@ -17,7 +17,7 @@ import { TypedEventEmitter } from './core/eventEmitter';
 import { DisposableRegistry } from './core/disposable';
 import { ViewportManager } from './core/viewportManager';
 import { type ResolvedColDef, applyCellProps, composeFont } from './core/propertyChain';
-import { resolveColumnTree, isColGroupDef, type ColumnTree } from './core/columnTree';
+import { resolveColumnTree, isColGroupDef, type ColumnTree, type ColumnTreeNode, type ResolvedColGroupDef } from './core/columnTree';
 import { resolveSelection } from './core/selectionConfig';
 import {
   commitPanelMove as commitPanelMoveHelper,
@@ -45,7 +45,7 @@ import {
 import type { SerializedNode } from './interaction/columnGroups/model';
 import { ModuleStateRegistry, type StateModule } from './core/moduleState';
 import { computeAutoHeaderHeight } from './renderer/cellRenderers/headerWrap';
-import type { CColumnState, CApplyColumnStateParams, ISizeColumnsToFitParams } from './types';
+import type { CColumnState, CApplyColumnStateParams, ISizeColumnsToFitParams, ColumnGroupWalkNode } from './types';
 import type { CColDef, CColGroupDef } from './types';
 import {
   INITIAL_ONLY_OPTIONS, applyRuntimeOption, isRuntimeOption,
@@ -163,6 +163,7 @@ import { resolveThemeKind } from './theming/themeKind';
 import {
   registerIconSet as regIcons,
   resolveIcon as resIcon,
+  listIcons as listRegisteredIcons,
 } from './icons/registry';
 import {
   registerTooltipProvider as regTip,
@@ -5374,6 +5375,38 @@ export class CGrid<TRow = any> {
     this.cgridCanvas?.requestRepaint();
   }
 
+  /** Cycle 21i Phase 2 / T3 — instance-truth renderer enumeration:
+   *  built-ins plus everything registered on THIS grid, in
+   *  registration order. */
+  listCellRenderers(): string[] {
+    return this.cellRenderers.list();
+  }
+
+  /** Cycle 21i Phase 2 / T3 — pre-order depth-first walk over the live
+   *  column-GROUP hierarchy. Each visit hands a snapshot node carrying
+   *  structure (`childGroupIds` / `leafColIds` / `depth`), the authored
+   *  `columnGroupShow`, and the LIVE runtime `open` state — the single
+   *  traversal group editors need without stitching
+   *  `getColumnGroupDefs` + `getColumnGroupState` themselves. */
+  forEachColumnGroup(callback: (node: ColumnGroupWalkNode) => void): void {
+    const visit = (node: ColumnTreeNode): void => {
+      if (node.kind !== 'group') return;
+      callback({
+        groupId: node.groupId,
+        headerName: node.headerName,
+        depth: node.depth,
+        open: this.columnGroupState.isOpen(node.groupId),
+        columnGroupShow: node.columnGroupShow,
+        childGroupIds: node.children
+          .filter((c): c is ResolvedColGroupDef => c.kind === 'group')
+          .map((c) => c.groupId),
+        leafColIds: node.leafColIds.slice(),
+      });
+      for (const child of node.children) visit(child);
+    };
+    for (const root of this.columnTree.roots) visit(root);
+  }
+
   /** Cycle 21c / Task 10 — register the @cgrid/format compiler into the
    *  kernel DI slot. Invoked by wireIntoKernel(grid) in @cgrid/format;
    *  kernel's compileFormatSlots pass (Task 11) calls getFormatCompiler()
@@ -5444,6 +5477,14 @@ export class CGrid<TRow = any> {
    *  Path2D is unavailable (SSR / Node). */
   resolveIcon(name: string, setHint?: string): Path2D | null {
     return resIcon(name, setHint);
+  }
+
+  /** Cycle 21i Phase 2 / T3 — enumerate registered icon names (icon
+   *  pickers need to know what exists; `resolveIcon` is lookup-only).
+   *  With `setName`, that set's names; without, the deduped union
+   *  across all sets in resolution order. */
+  listIcons(setName?: string): string[] {
+    return listRegisteredIcons(setName);
   }
 
   /** Cycle 21c / Task 14 — register a per-column tooltip provider.
@@ -6197,12 +6238,22 @@ export class CGrid<TRow = any> {
       registerCalcProvider: (provider) => this.registerCalcProvider(provider),
       forEachRow: (fn) => this.forEachRow(fn),
       getThemeKind: () => this.getThemeKind(),
+      // Cycle 21i Phase 2 / T3 — Tier B widening: these existed
+      // class-only; customizer panels code against CGridApi, so the
+      // aggregate reads + state round-trip belong here.
+      getSortModel: () => this.getSortModel(),
+      getFilterModel: () => this.getFilterModel(),
+      getState: () => this.getState(),
+      setState: (snapshot) => this.setState(snapshot),
+      listCellRenderers: () => this.listCellRenderers(),
+      forEachColumnGroup: (callback) => this.forEachColumnGroup(callback),
       setThemeParams: (patch) => this.setThemeParams(patch),
       getThemeParams: () => this.getThemeParams(),
       getDefaultRowHeight: () => this.theme.rowHeight,
       getDefaultHeaderHeight: () => this.theme.headerHeight,
       registerIconSet: (name, paths) => this.registerIconSet(name, paths),
       resolveIcon: (name, setHint) => this.resolveIcon(name, setHint),
+      listIcons: (setName) => this.listIcons(setName),
       registerTooltipProvider: (colId, fn) => this.registerTooltipProvider(colId, fn),
       unregisterTooltipProvider: (colId) => this.unregisterTooltipProvider(colId),
       registerCellEditor: (n, c) => this.registerCellEditor(n, c),
