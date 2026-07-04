@@ -234,6 +234,26 @@ const SORT_ICON_PAD = 8;
 const PIVOT_CHEVRON_SIZE = 14;
 const PIVOT_CHEVRON_GAP = 4;
 
+/** Task 11 — pure ellipsis-fit helper shared by the column-group header
+ *  caption path. Binary-searches the largest prefix of `text` whose
+ *  rendered width (prefix + `'…'`) is `<= maxW`, using the caller-supplied
+ *  `measure` (so it works with any font/canvas context, and is trivially
+ *  unit-testable with a synthetic measure function). Returns `text`
+ *  unchanged when it already fits, and `'…'` (or `''` when `maxW <= 0`)
+ *  at the extreme low end. */
+export function ellipsizeToWidth(measure: (t: string) => number, text: string, maxW: number): string {
+  if (maxW <= 0) return '';
+  if (measure(text) <= maxW) return text;
+  const ell = '…';
+  let lo = 0, hi = text.length;
+  // largest prefix whose width + ellipsis fits
+  while (lo < hi) {
+    const mid = Math.ceil((lo + hi) / 2);
+    if (measure(text.slice(0, mid) + ell) <= maxW) lo = mid; else hi = mid - 1;
+  }
+  return lo === 0 ? ell : text.slice(0, lo) + ell;
+}
+
 export function paintBackground(gc: CachedContext2D, p: CellPaintConfig): void {
   // Skip the per-cell bg fill when the bundle already painted this bg.
   if (p.bg !== p.prefillColor) {
@@ -597,6 +617,21 @@ export const headerCell: CellPainter = {
     // The column-group expand/collapse caret is painted AFTER the caption
     // (further below, once the caption width is measured) so it sits
     // immediately to the right of the group name — ag-grid style.
+    // Task 11 — for a single-line group-header caret, the caret's footprint
+    // is reserved in the caption's rendered width UP FRONT (ellipsizing the
+    // caption if needed) rather than only clamping the caret's own position
+    // to the cell's right edge. That old clamp-only approach let a long
+    // caption draw straight through/under the caret; reserving the space
+    // first guarantees the caret never overlaps drawn text. Gated strictly
+    // on `pivotGroupExpand !== undefined && !wrapHeader` — leaf headers,
+    // sort/unsort carets and the wrapped multi-line path are untouched.
+    const caption = (p.pivotGroupExpand !== undefined && !p.wrapHeader)
+      ? ellipsizeToWidth(
+        (t) => gc.measureText(t).width,
+        p.valueFormatted,
+        Math.max(0, p.bounds.w - HEADER_PADDING - (PIVOT_CHEVRON_GAP + PIVOT_CHEVRON_SIZE + HEADER_PADDING)),
+      )
+      : p.valueFormatted;
     // Cycle 21i / Phase 1 — wrapped multi-line header. Lines share the
     // exact wrap algorithm the auto-header-height computation uses
     // (headerWrap.ts) so painted lines always fit the measured height.
@@ -620,17 +655,18 @@ export const headerCell: CellPainter = {
         gc.fillText(p.valueFormatted, textX, cy);
       }
     } else {
-      gc.fillText(p.valueFormatted, textX, cy);
+      gc.fillText(caption, textX, cy);
     }
     if (p.pivotGroupExpand !== undefined) {
       // Task 10 — horizontal expand/collapse caret for ALL column-group
       // headers (pivot result groups AND regular authored groups):
       // 'open' → chevron-left (click collapses), 'closed' → chevron-right
-      // (click expands). Positioned IMMEDIATELY AFTER the caption: measure
-      // the group name and place the chevron just past its trailing edge,
-      // clamped to the cell's right edge so a very long caption falls back
-      // to the edge instead of overflowing the group span.
-      const capW = gc.measureText(p.valueFormatted).width;
+      // (click expands). Positioned IMMEDIATELY AFTER the DRAWN caption
+      // (Task 11: possibly ellipsized above so its footprint is already
+      // reserved), clamped to the cell's right edge as a defensive
+      // belt-and-suspenders bound (the reservation above already keeps the
+      // caret inside the cell for the non-wrap path).
+      const capW = gc.measureText(caption).width;
       const maxIconCx = p.bounds.x + p.bounds.w - HEADER_PADDING - PIVOT_CHEVRON_SIZE / 2;
       const iconCx = Math.min(
         textX + capW + PIVOT_CHEVRON_GAP + PIVOT_CHEVRON_SIZE / 2,
