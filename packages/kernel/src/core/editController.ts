@@ -282,6 +282,9 @@ export class EditController<TRow = unknown> {
       mode,
     };
     const canvasBounds = this.deps.getCanvasBounds();
+    // The mode border only shows under Excel-style editing; ordinary
+    // single/double-click editors mount without a mode class.
+    const modeClass = this.getOptions().enableExcelEditing ? mode : undefined;
     this.editor.open({
       editorName,
       rowData: cell?.value !== undefined ? { [colId]: cell.value } : {},
@@ -290,6 +293,7 @@ export class EditController<TRow = unknown> {
       cellBounds: { x: col.left, y: row.top, w: col.width, h: row.height },
       params: this.resolveEditorParams(def, ({} as TRow)),
       charPress,
+      modeClass,
       cellEditorPopup: (def as { cellEditorPopup?: boolean }).cellEditorPopup,
       cellEditorPopupPosition: (def as { cellEditorPopupPosition?: 'over' | 'under' }).cellEditorPopupPosition,
       viewportBounds: { width: canvasBounds.width, height: canvasBounds.height },
@@ -660,7 +664,13 @@ export class EditController<TRow = unknown> {
         ev.stopPropagation();
         const { rowIndex: fr, colId: fc } = this.deps.getFocus();
         this.stopEditing(false);
-        if (opts.enterNavigatesVerticallyAfterEdit && fr != null && fc != null) {
+        // A rejected commit keeps the editor open — don't navigate away.
+        if (this.isOpen()) return;
+        // Excel commits + descends on Enter (Shift+Enter ascends); the
+        // legacy `enterNavigatesVerticallyAfterEdit` flag drives the same
+        // move outside Excel mode.
+        if ((opts.enterNavigatesVerticallyAfterEdit || opts.enableExcelEditing)
+            && fr != null && fc != null) {
           const dir = ev.shiftKey ? -1 : 1;
           const rowCount = this.deps.getRowCount();
           this.deps.setFocusAndCollapseRanges(
@@ -675,6 +685,8 @@ export class EditController<TRow = unknown> {
         ev.stopPropagation();
         const { rowIndex: fr, colId: fc } = this.deps.getFocus();
         this.stopEditing(false);
+        // Rejected commit stays put rather than tabbing away.
+        if (this.isOpen()) return;
         if (fr != null && fc != null) {
           const dir = ev.shiftKey ? 'backward' : 'forward';
           const next = this.nextEditableCell(fr, fc, dir);
@@ -700,6 +712,9 @@ export class EditController<TRow = unknown> {
         ev.stopPropagation();
         const { rowIndex: fr, colId: fc } = this.deps.getFocus();
         this.stopEditing(false);
+        // Validation gate — a rejected commit keeps the editor open; don't
+        // navigate away from an invalid cell.
+        if (this.isOpen()) return;
         if (fr == null || fc == null) return;
         const cols = this.deps.getColumnOrder().map((c) => c.colId);
         const rowCount = this.deps.getRowCount();
@@ -724,6 +739,9 @@ export class EditController<TRow = unknown> {
     this.deps.disposables.addListener(this.editorContainer, 'mousedown', () => {
       if (this.activeEdit?.mode === 'enter') {
         this.activeEdit.mode = 'edit';
+        // Reflect the one-way flip on the editor border so the mode
+        // indicator matches the now-caret-navigable state.
+        this.editor.setMode('edit');
       }
     });
   }

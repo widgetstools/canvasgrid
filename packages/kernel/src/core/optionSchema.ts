@@ -77,6 +77,7 @@ export const GRID_OPTIONS_SCHEMA_EXCLUDED: ReadonlyMap<RuntimeOption, string> = 
   ['aggFuncs', 'function registry, not a scalar setting'],
   ['cellSelection', 'object option; revisit when a dedicated control exists'],
   ['defaultColDef', 'covered — fanned out into the Default column band'],
+  ['enableExcelEditing', 'covered — surfaced as the Excel-style option of the Edit trigger select'],
 ] as Array<[RuntimeOption, string]>);
 
 const opts = (...pairs: Array<[string, string]>): SettingsSelectOption[] =>
@@ -97,6 +98,13 @@ interface FieldSpec {
   toControl?: (v: unknown) => unknown;
   /** Map control value → option value. */
   fromControl?: (v: unknown) => unknown;
+  /** Escape hatch for a control that spans MORE than one grid option (e.g.
+   *  the Edit trigger select, which reflects `singleClickEdit` +
+   *  `enableExcelEditing` as one 3-way choice). When present these replace
+   *  the key-based get/set; the extra option keys must be listed in
+   *  GRID_OPTIONS_SCHEMA_EXCLUDED so the drift guard stays balanced. */
+  getRaw?: (api: GridOptionsAccessor) => unknown;
+  setRaw?: (api: GridOptionsAccessor, value: unknown) => void;
 }
 
 interface BandSpec {
@@ -156,11 +164,28 @@ const OPTION_BANDS: BandSpec[] = [
     title: 'Editing',
     fields: [
       {
+        // Spans two options: `enableExcelEditing` (Excel-style) takes
+        // priority, otherwise `singleClickEdit` picks single vs double.
+        // `enableExcelEditing` is listed in GRID_OPTIONS_SCHEMA_EXCLUDED
+        // because it is surfaced here rather than as its own control.
         key: 'singleClickEdit', label: 'Edit trigger', type: 'select', kernelDefault: 'double',
         hint: 'How a cell enters edit mode',
-        options: opts(['double', 'Double click'], ['single', 'Single click']),
-        toControl: (v) => (v === true ? 'single' : 'double'),
-        fromControl: (v) => v === 'single',
+        options: opts(
+          ['double', 'Double click'],
+          ['single', 'Single click'],
+          ['excel', 'Excel-style'],
+        ),
+        getRaw: (api) => {
+          if (api.getGridOption('enableExcelEditing') === true) return 'excel';
+          return api.getGridOption('singleClickEdit') === true ? 'single' : 'double';
+        },
+        setRaw: (api, value) => {
+          const excel = value === 'excel';
+          api.setGridOption('enableExcelEditing', excel);
+          // Excel entry is double-click / F2 / type-to-edit, so single-click
+          // edit is turned off when Excel-style is selected.
+          api.setGridOption('singleClickEdit', value === 'single');
+        },
       },
       { key: 'suppressClickEdit', label: 'Disable click editing', type: 'switch', kernelDefault: false, hint: 'Edit only via F2 / Enter' },
     ],
@@ -312,6 +337,25 @@ export function buildGridOptionsSchema(api: GridOptionsAccessor): SettingsSectio
           defaultValue: themeDefault,
           get: () => (api.getGridOption(spec.key) as number | undefined) ?? themeDefault(),
           set: (value) => api.setGridOption(spec.key, value),
+        };
+      }
+      // Multi-option controls (getRaw/setRaw) bypass the single-key path
+      // and read/write several grid options as one composite control value.
+      if (spec.getRaw && spec.setRaw) {
+        const getRaw = spec.getRaw;
+        const setRaw = spec.setRaw;
+        return {
+          key: spec.key,
+          label: spec.label,
+          type: spec.type,
+          hint: spec.hint,
+          options: spec.options,
+          min: spec.min,
+          max: spec.max,
+          step: spec.step,
+          defaultValue: getRaw(api),
+          get: () => getRaw(api),
+          set: (value) => setRaw(api, value),
         };
       }
       const toControl = spec.toControl ?? ((v: unknown) => v ?? spec.kernelDefault);

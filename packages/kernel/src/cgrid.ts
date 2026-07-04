@@ -233,6 +233,9 @@ export type {
   RowCheckboxCallback,
 } from './core/selectionConfig';
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
+// price32 — reference bond-price (32nds) editor + its parse/format helpers so
+// hosts can format the display value to match the editor's notation.
+export { Price32CellEditor, parsePrice32, formatPrice32 } from './interaction/editors/builtins/price32';
 
 // Cycle 27 / Task 1 + 2 + 3 — cell styling expansion types.
 export type {

@@ -90,7 +90,8 @@ export type RuntimeOption =
   | 'groupSelectsChildren'
   | 'suppressCount'
   | 'singleClickEdit'
-  | 'suppressClickEdit';
+  | 'suppressClickEdit'
+  | 'enableExcelEditing';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
  *  import on `CGrid` (cgrid.ts imports this module). */
@@ -333,10 +334,12 @@ export function applyRuntimeOption<TRow>(
       return;
     case 'singleClickEdit':
     case 'suppressClickEdit':
+    case 'enableExcelEditing':
       // Cycle 21i / Phase 1 — storage-only. EditTrigger reads
       // `getEditingFlags()` (→ options.singleClickEdit / suppressClickEdit)
-      // at click time, so a runtime flip takes effect on the next click
-      // with no re-render needed.
+      // at click time, and EditController reads `options.enableExcelEditing`
+      // at edit-start / keydown, so a runtime flip takes effect on the next
+      // interaction with no re-render needed.
       return;
     case 'suppressCount':
       // Cycle 15.5 / Task 7 — toggle the `(n)` child-count badge on group
@@ -457,5 +460,5 @@ export const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOpt
   'pivotGrandTotals',
   'domLayout',
   'groupSelectsChildren',
-  'suppressCount', 'singleClickEdit', 'suppressClickEdit',
+  'suppressCount', 'singleClickEdit', 'suppressClickEdit', 'enableExcelEditing',
 ]);

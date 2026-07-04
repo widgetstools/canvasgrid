@@ -458,6 +458,21 @@ describe('EditController — keydown matrix', () => {
     expect(h.controller.isOpen()).toBe(false);
   });
 
+  it('Excel-mode Enter commits + descends one row (Shift+Enter ascends)', async () => {
+    const h = makeHarness({ options: { enableExcelEditing: true } });
+    h.controller.openEditor(0, 'name');
+    fireKey(h.root, 'Enter');
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.focus).toEqual({ rowIndex: 1, colId: 'name' });
+    expect(h.controller.isOpen()).toBe(false);
+
+    // Shift+Enter ascends.
+    h.controller.openEditor(1, 'name');
+    fireKey(h.root, 'Enter', { shiftKey: true });
+    await new Promise((r) => setTimeout(r, 0));
+    expect(h.focus).toEqual({ rowIndex: 0, colId: 'name' });
+  });
+
   it('Tab commits + advances to the next editable cell, then re-opens the editor (default)', async () => {
     const h = makeHarness();
     h.controller.openEditor(0, 'name');

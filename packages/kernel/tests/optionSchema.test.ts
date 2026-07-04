@@ -77,6 +77,34 @@ describe('buildGridOptionsSchema', () => {
     expect(totals.get()).toBe('off');
   });
 
+  it('Edit trigger select spans singleClickEdit + enableExcelEditing (3-way)', () => {
+    const api = makeAccessor();
+    const field = () => buildGridOptionsSchema(api).bands
+      .flatMap((b) => b.fields)
+      .find((f) => f.key === 'singleClickEdit')!;
+
+    // Default: double click (both flags off/false).
+    expect(field().get()).toBe('double');
+
+    // Single click sets singleClickEdit, clears Excel.
+    field().set('single');
+    expect(api.store.singleClickEdit).toBe(true);
+    expect(api.store.enableExcelEditing).toBe(false);
+    expect(field().get()).toBe('single');
+
+    // Excel-style sets enableExcelEditing and turns single-click off.
+    field().set('excel');
+    expect(api.store.enableExcelEditing).toBe(true);
+    expect(api.store.singleClickEdit).toBe(false);
+    expect(field().get()).toBe('excel'); // Excel wins the readback
+
+    // Back to double click clears both.
+    field().set('double');
+    expect(api.store.singleClickEdit).toBe(false);
+    expect(api.store.enableExcelEditing).toBe(false);
+    expect(field().get()).toBe('double');
+  });
+
   it('baselines modified-state at build time (app config is unmodified)', () => {
     const api = makeAccessor({ enableCellChangeFlash: true });
     const schema = buildGridOptionsSchema(api);

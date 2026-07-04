@@ -8,7 +8,7 @@
  * done through the public API, that's a kernel gap to fix in the kernel,
  * never worked around here.
  */
-import { CGrid, type CColDef } from '@cgrid/kernel';
+import { CGrid, formatPrice32, type CColDef } from '@cgrid/kernel';
 import '@cgrid/kernel/style.css';
 import { wireIntoKernel as wireFormat } from '@cgrid/format';
 import { connectStomp, STOMP_PUBLISH_RATE_PER_SEC, type Position } from './stomp';
@@ -61,7 +61,14 @@ const columnDefs: CColDef<Position>[] = [
   cat('Trader', 'trader'),
   num('Notional', 'notionalAmount', { valueFormatter: '#,##0', aggFunc: 'sum' }),
   num('Mkt Value', 'marketValue', { valueFormatter: '#,##0', aggFunc: 'sum' }),
-  num('Price', 'currentPrice'),
+  // Price uses the reference 32nds bond editor: displayed as `101-16`, edited
+  // in the same notation. Try it with the Edit trigger set to "Excel-style"
+  // in the Grid Options panel — type a digit to enter quick-entry, F2 /
+  // double-click to caret-edit, and enter e.g. `101-16+` (half-tick).
+  num('Price', 'currentPrice', {
+    cellEditor: 'price32',
+    valueFormatter: (p: { value: unknown }) => formatPrice32(p.value as number),
+  }),
   num('P&L', 'pnl', { aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)' }),
   num('Daily P&L', 'dailyPnl', { aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)' }),
   num('Unrealized', 'unrealizedPnl', { aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)' }),

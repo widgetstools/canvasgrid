@@ -163,4 +163,50 @@ describe('EditorOverlay (registry-driven)', () => {
     expect(onCancel).toHaveBeenCalled();
     expect(overlay.isOpen()).toBe(false);
   });
+
+  it('marks the wrapper with the Excel mode class + flips via setMode', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const reg = new CellEditorRegistry();
+    CellEditorRegistry.seed(reg);
+    const overlay = new EditorOverlay(host, reg);
+    overlay.open({
+      editorName: 'text', rowData: {}, colId: 'a', value: 'v',
+      cellBounds: { x: 0, y: 0, w: 50, h: 20 }, params: {}, charPress: 'v',
+      modeClass: 'enter', onCommit: vi.fn(), onCancel: vi.fn(),
+    });
+    const wrapper = host.querySelector('.cg-editor-overlay') as HTMLElement;
+    expect(wrapper.classList.contains('cg-editor--enter')).toBe(true);
+    // One-way promotion enter → edit.
+    overlay.setMode('edit');
+    expect(wrapper.classList.contains('cg-editor--enter')).toBe(false);
+    expect(wrapper.classList.contains('cg-editor--edit')).toBe(true);
+    overlay.close();
+  });
+
+  it('keeps the editor open + flags invalid when isValid() is false', () => {
+    const host = document.createElement('div');
+    document.body.appendChild(host);
+    const reg = new CellEditorRegistry();
+    CellEditorRegistry.seed(reg);
+    // price32 rejects unparseable text via isValid().
+    const overlay = new EditorOverlay(host, reg);
+    const onCommit = vi.fn();
+    overlay.open({
+      editorName: 'price32', rowData: {}, colId: 'p', value: 101.5,
+      cellBounds: { x: 0, y: 0, w: 50, h: 20 }, params: {}, charPress: null,
+      modeClass: 'edit', onCommit, onCancel: vi.fn(),
+    });
+    const input = host.querySelector('input') as HTMLInputElement;
+    input.value = '101-99'; // out-of-range ticks → invalid
+    overlay.commit();
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(overlay.isOpen()).toBe(true);
+    const wrapper = host.querySelector('.cg-editor-overlay') as HTMLElement;
+    expect(wrapper.classList.contains('cg-editor--invalid')).toBe(true);
+    // Correcting the value lets the commit through, clearing the flag.
+    input.value = '101-16';
+    overlay.commit();
+    expect(onCommit).toHaveBeenCalledWith(101.5);
+  });
 });
