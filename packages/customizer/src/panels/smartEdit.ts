@@ -17,7 +17,7 @@
  * `wireEditIntoKernel(grid)` can only run after construction — the
  * getter resolves lazily at first render.
  */
-import { html, css, nothing } from 'lit';
+import { html, css } from 'lit';
 import type { ToolPanel } from '@cgrid/kernel';
 import type { EditBridgeHandle, SmartEditOp, SmartEditSettings } from '@cgrid/edit';
 import { DEFAULT_EDIT_SETTINGS } from '@cgrid/edit';
@@ -33,14 +33,16 @@ const OP_LABELS: Array<{ op: SmartEditOp; glyph: string; title: string }> = [
   { op: 'set', glyph: 'Set', title: 'Set value' },
 ];
 
-/** Per-factory-call unique tags: custom elements bind a tag to ONE
- *  constructor, and each grid's panel class closes over its own handle
- *  getter. */
-let tagCounter = 0;
+/** Module-level element class with the handle getter as an INSTANCE
+ *  property (assigned via litToolPanel's setup hook): one stable tag
+ *  serves every grid. customElements.define is permanent, so per-grid
+ *  classes/tags would grow the registry forever and pin each grid's
+ *  closures past destroy(). */
+class SmartEditPanel extends CgcPanelElement {
+  /** Grid-specific bridge accessor — assigned per instance. */
+  getHandle: (() => EditBridgeHandle | undefined) | undefined;
 
-export function smartEditToolPanel(getHandle: () => EditBridgeHandle | undefined): new () => ToolPanel {
-  class SmartEditPanel extends CgcPanelElement {
-    static override styles = [chromeBase, css`
+  static override styles = [chromeBase, css`
       :host {
         display: block;
       }
@@ -78,11 +80,11 @@ export function smartEditToolPanel(getHandle: () => EditBridgeHandle | undefined
     `];
 
     private get settings(): SmartEditSettings | null {
-      return getHandle()?.getSettings().smartEdit ?? null;
+      return this.getHandle?.()?.getSettings().smartEdit ?? null;
     }
 
     private patch(partial: Partial<SmartEditSettings>): void {
-      getHandle()?.updateSettings({ smartEdit: partial });
+      this.getHandle?.()?.updateSettings({ smartEdit: partial });
       this.requestUpdate();
     }
 
@@ -157,5 +159,8 @@ export function smartEditToolPanel(getHandle: () => EditBridgeHandle | undefined
     }
   }
 
-  return litToolPanel(`cgc-smart-edit-panel-${tagCounter++}`, SmartEditPanel);
+export function smartEditToolPanel(getHandle: () => EditBridgeHandle | undefined): new () => ToolPanel {
+  return litToolPanel('cgc-smart-edit-panel', SmartEditPanel, (el) => {
+    (el as SmartEditPanel).getHandle = getHandle;
+  });
 }

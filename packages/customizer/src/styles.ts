@@ -148,7 +148,7 @@ export const switchStyles = css`
     flex: 0 0 auto;
     transition: background 120ms ease;
   }
-  button[aria-pressed='true'] {
+  button[aria-checked='true'] {
     background: var(--cgc-accent);
   }
   button:focus-visible {
@@ -165,7 +165,7 @@ export const switchStyles = css`
     background: var(--cg-bg-color);
     transition: transform 120ms ease;
   }
-  button[aria-pressed='true'] .knob {
+  button[aria-checked='true'] .knob {
     transform: translateX(12px);
   }
   @media (prefers-reduced-motion: reduce) {

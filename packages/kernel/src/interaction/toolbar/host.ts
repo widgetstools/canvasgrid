@@ -150,7 +150,13 @@ export class ToolbarHost {
     this.endZone.appendChild(this.saveButton);
 
     this.root.appendChild(this.bar);
-    this.reportReservation();
+    // Construction-time reservation uses the configured height directly —
+    // measuring here (getBoundingClientRect) would force a synchronous
+    // layout mid-CGrid-construction, once per grid, interleaved with the
+    // status bar / panel mounts that follow. Post-construction changes
+    // (updateHeight / setVisible / CSS token overrides picked up on the
+    // next reservation) go through the measuring path.
+    this.ctx.setReservedSpace('top', this.explicitHeight ?? DEFAULT_HEIGHT);
   }
 
   /** Resolved strip height in CSS px when visible; `0` when hidden.

@@ -17,11 +17,14 @@ import { CgcPanelElement, litToolPanel } from '../litToolPanel';
 import { chromeBase } from '../styles';
 import { switchRow, numberRow } from './rows';
 
-let tagCounter = 0;
+/** Module-level element class; grid-specific handle getter arrives as
+ *  an INSTANCE property via litToolPanel's setup hook — one stable tag
+ *  serves every grid (see smartEdit.ts for the rationale). */
+class BulkUpdatePanel extends CgcPanelElement {
+  /** Grid-specific bridge accessor — assigned per instance. */
+  getHandle: (() => EditBridgeHandle | undefined) | undefined;
 
-export function bulkUpdateToolPanel(getHandle: () => EditBridgeHandle | undefined): new () => ToolPanel {
-  class BulkUpdatePanel extends CgcPanelElement {
-    static override styles = [chromeBase, css`
+  static override styles = [chromeBase, css`
       :host {
         display: block;
       }
@@ -33,11 +36,11 @@ export function bulkUpdateToolPanel(getHandle: () => EditBridgeHandle | undefine
     `];
 
     private get settings(): BulkUpdateSettings | null {
-      return getHandle()?.getSettings().bulkUpdate ?? null;
+      return this.getHandle?.()?.getSettings().bulkUpdate ?? null;
     }
 
     private patch(partial: Partial<BulkUpdateSettings>): void {
-      getHandle()?.updateSettings({ bulkUpdate: partial });
+      this.getHandle?.()?.updateSettings({ bulkUpdate: partial });
       this.requestUpdate();
     }
 
@@ -86,5 +89,8 @@ export function bulkUpdateToolPanel(getHandle: () => EditBridgeHandle | undefine
     }
   }
 
-  return litToolPanel(`cgc-bulk-update-panel-${tagCounter++}`, BulkUpdatePanel);
+export function bulkUpdateToolPanel(getHandle: () => EditBridgeHandle | undefined): new () => ToolPanel {
+  return litToolPanel('cgc-bulk-update-panel', BulkUpdatePanel, (el) => {
+    (el as BulkUpdatePanel).getHandle = getHandle;
+  });
 }

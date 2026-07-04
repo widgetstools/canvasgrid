@@ -608,6 +608,7 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
     getSettings: () => mergeEditSettings(settings),
     updateSettings: (partial) => {
       settings = mergeEditSettings(deepMergeOverCurrent(partial));
+      settingsTouched = true;
       // Cycle 21i Phase 2 / T6 — mark the persisted slice dirty so the
       // kernel's stateUpdated -> persistState autosave runs.
       g.notifyModuleStateChanged?.('editSettings');
@@ -627,13 +628,18 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
   // omits the slice while settings equal the defaults so snapshots stay
   // compact; `set()` runs the same defensive merge as host-supplied
   // settings (unknown keys dropped, ops filtered).
-  const defaultsJson = JSON.stringify(mergeEditSettings());
+  // Dirty flag maintained at the two mutation sites instead of a
+  // JSON.stringify comparison in get(): snapshots run once per coalesced
+  // stateUpdated rAF flush (column-resize / range-select drags feed the
+  // bus per frame), so get() must be allocation-free.
+  let settingsTouched = JSON.stringify(settings) !== JSON.stringify(mergeEditSettings());
   const unregisterStateModule = g.registerStateModule?.({
     id: 'editSettings',
     version: 1,
-    get: () => (JSON.stringify(settings) === defaultsJson ? undefined : settings),
+    get: () => (settingsTouched ? settings : undefined),
     set: (data) => {
       settings = mergeEditSettings(data as Parameters<typeof mergeEditSettings>[0]);
+      settingsTouched = true;
     },
   });
   unsubscribers.push(() => unregisterStateModule?.());

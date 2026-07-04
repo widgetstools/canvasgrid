@@ -78,17 +78,24 @@ describe('ModuleStateRegistry', () => {
     expect(mod.received[0]?.version).toBe(1);
   });
 
-  it('unknown module ids warn and skip; the rest still restore', () => {
-    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+  it('unknown module ids are BUFFERED (not dropped); the rest still restore', () => {
     const registry = new ModuleStateRegistry();
     const mod = makeModule('known');
     registry.register(mod);
     registry.restore({
-      ghost: { version: 1, data: {} },
+      ghost: { version: 2, data: { keep: true } },
       known: { version: 1, data: 'yes' },
     });
     expect(mod.received).toEqual([{ data: 'yes', version: 1 }]);
-    expect(warn).toHaveBeenCalledWith(expect.stringContaining("'ghost'"));
+    // The unclaimed slice survives in snapshots so autosave can't erase it…
+    expect(registry.snapshot()!.ghost).toEqual({ version: 2, data: { keep: true } });
+    // …and a late-registering module receives it (wireEditIntoKernel
+    // after an await is a supported pattern).
+    const ghost = makeModule('ghost');
+    registry.register(ghost);
+    expect(ghost.received).toEqual([{ data: { keep: true }, version: 2 }]);
+    // Once claimed, the live module owns the slice (get() takes over).
+    expect(registry.snapshot()!.ghost).toEqual({ version: 1, data: { marker: 'ghost' } });
   });
 
   it('a throwing set() warns and skips that slice; the rest still restore', () => {

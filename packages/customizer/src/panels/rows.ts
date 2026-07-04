@@ -44,7 +44,15 @@ export function numberRow(spec: NumberRowSpec): TemplateResult {
       <cgc-number .value=${spec.value} min=${spec.min ?? 0} step=${spec.step ?? 1} aria-label=${spec.label}
         @cgc-change=${(e: CustomEvent<CgcChangeDetail>) => {
           const v = e.detail.value;
-          if (typeof v === 'number' && Number.isFinite(v) && v >= (spec.min ?? 0)) spec.onChange(v);
+          if (typeof v === 'number' && Number.isFinite(v) && v >= (spec.min ?? 0)) {
+            spec.onChange(v);
+            return;
+          }
+          // Cleared/invalid input: snap the control back to the engine
+          // value — silently keeping the typed text would leave the
+          // visible value desynced from the setting actually in force.
+          const control = e.target as HTMLElement & { value: number | undefined };
+          control.value = spec.value;
         }}></cgc-number>
     </cgc-field>
   `;

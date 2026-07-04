@@ -45,6 +45,13 @@ export class CgcPanelElement extends LitElement {
 export function litToolPanel(
   tagName: string,
   elementCtor: new () => CgcPanelElement,
+  /** Per-instance configuration (e.g. assigning a grid-specific handle
+   *  getter). Runs after construction, before mount. Keeping per-grid
+   *  state on the INSTANCE — never in the element class — lets one
+   *  stable tag serve every grid: customElements.define is permanent,
+   *  so per-grid classes would grow the registry forever and pin each
+   *  grid's closures past destroy(). */
+  setup?: (element: CgcPanelElement) => void,
 ): new () => ToolPanel {
   return class LitToolPanelAdapter implements ToolPanel {
     private element: CgcPanelElement | null = null;
@@ -60,6 +67,7 @@ export function litToolPanel(
       this.gui.style.cssText = 'display:flex; flex-direction:column; width:100%; height:100%; overflow-y:auto;';
       this.element = document.createElement(tagName) as CgcPanelElement;
       this.element.api = params.api as CGridApi;
+      setup?.(this.element);
       // Provide the api via context for nested components.
       new ContextProvider(this.element, { context: gridApiContext, initialValue: params.api as CGridApi });
       this.gui.appendChild(this.element);

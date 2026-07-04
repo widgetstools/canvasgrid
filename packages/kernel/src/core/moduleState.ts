@@ -58,6 +58,15 @@ export interface StateModule {
 
 export class ModuleStateRegistry {
   private modules = new Map<string, StateModule>();
+  /** Slices restored (or migrated) before their module registered.
+   *  Retained so (a) a LATE-registering module still receives its
+   *  persisted state — engines commonly wire after the grid's async
+   *  persistState restore has already run — and (b) `snapshot()`
+   *  carries the slice through, so the next autosave can't silently
+   *  erase state belonging to a module that never registered this
+   *  session. Keyed by module id; replaced by live modules on
+   *  registration. */
+  private orphans = new Map<string, ModuleStateEnvelope>();
 
   constructor(
     /** Called by `notifyChanged` so the grid can fan a
@@ -75,6 +84,17 @@ export class ModuleStateRegistry {
       console.warn(`[cgrid] state module '${module.id}' re-registered — replacing the previous registration`);
     }
     this.modules.set(module.id, module);
+    // Deliver state that was restored before this module existed —
+    // the registry buffers unclaimed slices instead of dropping them.
+    const orphan = this.orphans.get(module.id);
+    if (orphan) {
+      this.orphans.delete(module.id);
+      try {
+        module.set(orphan.data, orphan.version ?? 1);
+      } catch (err) {
+        console.warn(`[cgrid] state module '${module.id}': buffered restore failed — slice dropped`, err);
+      }
+    }
     return () => {
       if (this.modules.get(module.id) === module) this.modules.delete(module.id);
     };
@@ -94,6 +114,11 @@ export class ModuleStateRegistry {
    *  snapshot stays compact. */
   snapshot(): Record<string, ModuleStateEnvelope> | undefined {
     let out: Record<string, ModuleStateEnvelope> | undefined;
+    // Unclaimed slices pass through verbatim so an autosave taken
+    // before their module registers never erases persisted state.
+    for (const [id, envelope] of this.orphans) {
+      (out ??= {})[id] = envelope;
+    }
     for (const [id, module] of this.modules) {
       try {
         const data = module.get();
@@ -112,7 +137,9 @@ export class ModuleStateRegistry {
     for (const [id, envelope] of Object.entries(modules)) {
       const module = this.modules.get(id);
       if (!module) {
-        console.warn(`[cgrid] setState: no state module registered for '${id}' — slice skipped`);
+        // Buffer, don't drop — the owning engine may register later
+        // (wireEditIntoKernel after an await is a supported pattern).
+        this.orphans.set(id, envelope);
         continue;
       }
       try {

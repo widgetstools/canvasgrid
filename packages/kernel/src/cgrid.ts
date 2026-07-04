@@ -1068,14 +1068,33 @@ export class CGrid<TRow = any> {
     // Apply uses, then layers the runtime open/collapse state on top
     // (open state applies AFTER the tree rebuild so a user's collapse
     // wins over `openByDefault`).
-    const constructedWithGroups = flattenColumnGroups(options.columnDefs ?? [])
+    // Sticky: flips true the first time ANY snapshot sees groups —
+    // covers grids whose grouped defs arrive AFTER construction via
+    // updateGridOptions (a pattern the repo's own apps use). Without
+    // it, "user removed every group" wouldn't persist for those grids
+    // and the authored groups would resurrect on reload.
+    let everHadGroups = flattenColumnGroups(options.columnDefs ?? [])
       .some((n) => n.kind === 'group');
+    // Serialization cache keyed by the columnDefs array REFERENCE:
+    // snapshots run once per coalesced stateUpdated rAF flush (resize /
+    // range-select drags feed the bus per frame), while the defs array
+    // only changes identity through the updateGridOptions swap path —
+    // re-walking the whole column tree per frame is pure GC pressure.
+    let defsCacheKey: unknown = null;
+    let defsCache: SerializedNode[] = [];
     this.moduleStateRegistry.register({
       id: 'columnGroups',
       version: 1,
       get: () => {
-        const defs = toSerializedColumnGroupNodes(flattenColumnGroups(this.options.columnDefs ?? []));
-        if (!defs.some((n) => n.kind === 'group') && !constructedWithGroups) return undefined;
+        const currentDefs = this.options.columnDefs ?? [];
+        if (currentDefs !== defsCacheKey) {
+          defsCacheKey = currentDefs;
+          defsCache = toSerializedColumnGroupNodes(flattenColumnGroups(currentDefs));
+        }
+        const defs = defsCache;
+        const hasGroups = defs.some((n) => n.kind === 'group');
+        everHadGroups ||= hasGroups;
+        if (!hasGroups && !everHadGroups) return undefined;
         const open = this.columnGroupState.getState();
         return open.length > 0 ? { defs, open } : { defs };
       },
@@ -5298,9 +5317,10 @@ export class CGrid<TRow = any> {
     const top = this.computeTopInset();
     const bottom = this.statusBarInsets.bottom;
     // A top-positioned status bar pins itself `top: 0` via CSS; shift
-    // it below the toolbar. Bottom-positioned bars are unaffected.
-    const sbTopEl = this.root.querySelector('.cg-status-bar[data-position="top"]') as HTMLElement | null;
-    if (sbTopEl) sbTopEl.style.top = `${toolbarTop}px`;
+    // it below the toolbar through the host (which also clears the
+    // inline top on a top→bottom flip — a stale inline `top` would
+    // override the CSS `bottom: 0`).
+    this.statusBar?.setTopOffset(toolbarTop);
     this.scroller.style.top = `${top}px`;
     this.scroller.style.bottom = `${bottom}px`;
     this.editorContainer.style.top = `${top}px`;

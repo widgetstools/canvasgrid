@@ -121,7 +121,7 @@ export class CgcSwitch extends LitElement {
       <button
         type="button"
         role="switch"
-        aria-pressed=${this.checked ? 'true' : 'false'}
+        aria-checked=${this.checked ? 'true' : 'false'}
         aria-label=${this.ariaLabelText || nothing}
         @click=${() => emitChange(this, !this.checked)}
       >

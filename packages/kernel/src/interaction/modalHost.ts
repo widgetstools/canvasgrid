@@ -47,6 +47,13 @@ const FOCUSABLE = [
 /** Focusable descendants in DOCUMENT order. The explicit sort matters:
  *  happy-dom returns comma-list query matches in selector-list order,
  *  not document order, which would corrupt trap cycling under test. */
+/** Page-level stack of OPEN hosts. Each host adds a document-capture
+ *  keydown listener; without coordination, one Escape would close the
+ *  modals of every grid on the page (stopPropagation cannot silence
+ *  sibling listeners on the same node). Only the top of this stack —
+ *  the most recently opened modal — handles keys. */
+const openModalStack: ModalHost[] = [];
+
 function focusablesIn(scope: Element): HTMLElement[] {
   return Array.from(scope.querySelectorAll<HTMLElement>(FOCUSABLE)).sort((a, b) =>
     a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING ? -1 : 1);
@@ -126,6 +133,7 @@ export class ModalHost {
 
     this.backdrop.appendChild(this.dialog);
     this.root.appendChild(this.backdrop);
+    openModalStack.push(this);
     // Trap at the document level (capture) so the trap holds even when
     // focus is on the dialog wrapper itself.
     document.addEventListener('keydown', this.onKeyDown, true);
@@ -138,6 +146,8 @@ export class ModalHost {
 
   close(reason: ModalCloseReason = 'api'): void {
     if (!this.dialog) return;
+    const stackIndex = openModalStack.indexOf(this);
+    if (stackIndex >= 0) openModalStack.splice(stackIndex, 1);
     document.removeEventListener('keydown', this.onKeyDown, true);
     this.backdrop?.remove();
     this.backdrop = null;
@@ -158,6 +168,8 @@ export class ModalHost {
 
   private handleKeyDown(e: KeyboardEvent): void {
     if (!this.dialog) return;
+    // Only the topmost open modal on the page owns the keyboard.
+    if (openModalStack[openModalStack.length - 1] !== this) return;
     if (e.key === 'Escape' && this.closeOnEscape) {
       e.stopPropagation();
       e.preventDefault();

@@ -162,18 +162,27 @@ export const STATE_MIGRATIONS: Record<number, (s: GridState) => GridState> = {
   // `modules.columnGroups` envelope (module version 1) so `setState`
   // has ONE restore path. Snapshots without groups pass through
   // unchanged.
-  3: (s) => {
-    const { columnGroupDefs, columnGroupOpen, ...rest } = s;
-    if (!columnGroupDefs && !columnGroupOpen) return s;
-    const data: { defs?: unknown; open?: unknown } = {};
-    if (columnGroupDefs) data.defs = columnGroupDefs;
-    if (columnGroupOpen) data.open = columnGroupOpen;
-    return {
-      ...rest,
-      modules: { ...rest.modules, columnGroups: { version: 1, data } },
-    };
-  },
+  3: (s) => relocateLegacyGroupFields(s),
 };
+
+/** Move the deprecated top-level `columnGroupDefs` / `columnGroupOpen`
+ *  fields into the `modules.columnGroups` envelope. Runs as the v3→v4
+ *  migrator AND unconditionally in `migrateSnapshot` — a snapshot
+ *  composed programmatically at v4 with the (still-typed, deprecated)
+ *  legacy fields would otherwise typecheck but silently drop them. An
+ *  existing `modules.columnGroups` envelope wins over legacy fields. */
+function relocateLegacyGroupFields(s: GridState): GridState {
+  const { columnGroupDefs, columnGroupOpen, ...rest } = s;
+  if (!columnGroupDefs && !columnGroupOpen) return s;
+  if (rest.modules?.columnGroups) return rest as GridState;
+  const data: { defs?: unknown; open?: unknown } = {};
+  if (columnGroupDefs) data.defs = columnGroupDefs;
+  if (columnGroupOpen) data.open = columnGroupOpen;
+  return {
+    ...rest,
+    modules: { ...rest.modules, columnGroups: { version: 1, data } },
+  };
+}
 
 /** Forward-migrate a snapshot from its stored version to the current
  *  schema version. Snapshots already at the current version flow
@@ -196,6 +205,9 @@ export function migrateSnapshot(snapshot: GridState): GridState {
     current = step(current);
     v++;
   }
+  // Deprecated fields are relocated regardless of the stored version —
+  // see relocateLegacyGroupFields.
+  current = relocateLegacyGroupFields(current);
   return { ...current, version: STATE_SCHEMA_VERSION };
 }
 
