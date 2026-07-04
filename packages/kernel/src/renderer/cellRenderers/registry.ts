@@ -594,25 +594,9 @@ export const headerCell: CellPainter = {
       return;
     }
     const textX = p.bounds.x + HEADER_PADDING;
-    if (p.pivotGroupExpand !== undefined) {
-      const iconCx = p.bounds.x + p.bounds.w - HEADER_PADDING - PIVOT_CHEVRON_SIZE / 2;
-      // Task 10 — horizontal carets for ALL column-group headers (pivot
-      // result groups AND regular authored groups): 'open' → chevron-left
-      // (click collapses), 'closed' → chevron-right (click expands). No
-      // existing test pins the prior chevron-down/right pivot-only look,
-      // so both flavors unify on the same horizontal vocabulary.
-      // Fix (post-Task 10) — drawn TRAILING / after the caption, ag-grid
-      // style: right-aligned at the group-header cell's trailing edge.
-      // The caption keeps its normal leading start (`textX` above is no
-      // longer shifted); see the `maxW` reservation below for how long
-      // captions avoid overlapping this trailing caret.
-      drawIcon(
-        gc,
-        p.pivotGroupExpand === 'open' ? 'chevron-left' : 'chevron-right',
-        iconCx, cy, PIVOT_CHEVRON_SIZE,
-        { color: p.iconColor ?? p.fg, strokeWidth: 2 },
-      );
-    }
+    // The column-group expand/collapse caret is painted AFTER the caption
+    // (further below, once the caption width is measured) so it sits
+    // immediately to the right of the group name — ag-grid style.
     // Cycle 21i / Phase 1 — wrapped multi-line header. Lines share the
     // exact wrap algorithm the auto-header-height computation uses
     // (headerWrap.ts) so painted lines always fit the measured height.
@@ -637,6 +621,27 @@ export const headerCell: CellPainter = {
       }
     } else {
       gc.fillText(p.valueFormatted, textX, cy);
+    }
+    if (p.pivotGroupExpand !== undefined) {
+      // Task 10 — horizontal expand/collapse caret for ALL column-group
+      // headers (pivot result groups AND regular authored groups):
+      // 'open' → chevron-left (click collapses), 'closed' → chevron-right
+      // (click expands). Positioned IMMEDIATELY AFTER the caption: measure
+      // the group name and place the chevron just past its trailing edge,
+      // clamped to the cell's right edge so a very long caption falls back
+      // to the edge instead of overflowing the group span.
+      const capW = gc.measureText(p.valueFormatted).width;
+      const maxIconCx = p.bounds.x + p.bounds.w - HEADER_PADDING - PIVOT_CHEVRON_SIZE / 2;
+      const iconCx = Math.min(
+        textX + capW + PIVOT_CHEVRON_GAP + PIVOT_CHEVRON_SIZE / 2,
+        maxIconCx,
+      );
+      drawIcon(
+        gc,
+        p.pivotGroupExpand === 'open' ? 'chevron-left' : 'chevron-right',
+        iconCx, cy, PIVOT_CHEVRON_SIZE,
+        { color: p.iconColor ?? p.fg, strokeWidth: 2 },
+      );
     }
     if (p.sortDirection) {
       const iconCx = p.bounds.x + p.bounds.w - SORT_ICON_PAD - SORT_ICON_SIZE / 2;
