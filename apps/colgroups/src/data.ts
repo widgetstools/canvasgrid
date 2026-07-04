@@ -27,6 +27,8 @@ export interface PositionRow {
   gamma: number;
   vega: number;
   theta: number;
+  up100bp: number;
+  down100bp: number;
   sector: string;
   rating: string;
   maturity: string;
@@ -97,6 +99,8 @@ export function makeRows(count = 200): PositionRow[] {
       gamma: Number((r() * 0.5).toFixed(3)),
       vega: Number((r() * 1000).toFixed(0)),
       theta: Number((-r() * 500).toFixed(0)),
+      up100bp: Number((r() * 40 - 20).toFixed(2)),
+      down100bp: Number((r() * 40 - 20).toFixed(2)),
       sector: pick(SECTORS, r),
       rating: pick(RATINGS, r),
       maturity: `${year}-${month}-${day}`,
