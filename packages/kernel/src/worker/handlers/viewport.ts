@@ -24,6 +24,7 @@ export type ViewportRequest = Extract<WorkerRequest, {
     | 'getRowByIndex'
     | 'getRowIndicesForIds'
     | 'autosize'
+    | 'autosizeSample'
     | 'measureTextResponse';
 }>;
 
@@ -264,6 +265,48 @@ export async function handleViewport(
       const widths: Record<string, number> = {};
       for (const [colId, w] of widthsMap.entries()) widths[colId] = w;
       post({ id: req.id, type: 'autosizeResult', widths });
+      return;
+    }
+
+    case 'autosizeSample': {
+      // Autosize formatted-measurement support — ship the RAW cell
+      // values of the sample window back to main. Main owns the
+      // `valueFormatter` functions (they can't cross the worker
+      // boundary) and the document's loaded fonts, so it formats +
+      // measures there. Window shape mirrors `measureColumnWidths`:
+      // head half + tail half of the visible set, capped at
+      // `maxSampleSize` (default 5,000).
+      const { colIds, maxSampleSize } = req.payload;
+      const ids = await helpers.visibleAsync();
+      const cap = maxSampleSize ?? 5_000;
+      const half = Math.max(0, Math.floor(cap / 2));
+      const sampleHead = Math.min(ids.length, half);
+      const sampleTailStart = Math.max(sampleHead, ids.length - half);
+      const fieldOf = new Map<string, string | undefined>();
+      for (const c of state.columns) fieldOf.set(c.colId, c.field);
+      const values: Record<string, unknown[]> = {};
+      const wanted: Array<{ colId: string; field: string; out: unknown[] }> = [];
+      for (const colId of colIds) {
+        const out: unknown[] = [];
+        values[colId] = out;
+        const field = fieldOf.get(colId);
+        if (field) wanted.push({ colId, field, out });
+      }
+      if (wanted.length > 0) {
+        const collect = (rowIndex: number): void => {
+          const rowId = ids[rowIndex];
+          if (rowId === undefined) return;
+          const row = state.store.getById(rowId) as Record<string, unknown> | undefined;
+          if (!row) return;
+          for (const w of wanted) {
+            const raw = row[w.field];
+            if (raw != null) w.out.push(raw);
+          }
+        };
+        for (let i = 0; i < sampleHead; i++) collect(i);
+        for (let i = sampleTailStart; i < ids.length; i++) collect(i);
+      }
+      post({ id: req.id, type: 'autosizeSampleResult', values, rowCount: ids.length });
       return;
     }
 

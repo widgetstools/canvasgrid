@@ -276,6 +276,12 @@ export class WorkerCoordinator {
     return this.client.autosizeColumns(columns, skipHeader, maxSampleSize);
   }
 
+  autosizeSampleValues(
+    colIds: string[], maxSampleSize?: number,
+  ): Promise<{ values: Record<string, unknown[]>; rowCount: number }> {
+    return this.client.autosizeSampleValues(colIds, maxSampleSize);
+  }
+
   clipboardSerialize(ranges: SelectionRange[], delimiter: string): Promise<string> {
     return this.client.clipboardSerialize(ranges, delimiter);
   }

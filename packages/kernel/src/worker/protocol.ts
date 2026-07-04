@@ -446,6 +446,15 @@ export type WorkerRequest =
         maxSampleSize?: number;
       };
     }
+  /** Autosize formatted-measurement support — main asks the worker for
+   *  the RAW cell values of the autosize sample window (head 2,500 +
+   *  tail 2,500 visible rows by default) for the listed field columns.
+   *  Main then formats each value through the column's `valueFormatter`
+   *  (functions can't cross the worker boundary) and measures with the
+   *  document's fonts — so the resolved width fits what the painter
+   *  actually draws, not the raw `String(row[field])`. Fieldless
+   *  columns come back as empty arrays. */
+  | { id: ReqId; type: 'autosizeSample'; payload: { colIds: string[]; maxSampleSize?: number } }
   /** Cycle 7 / Task 8 — toggle the external-filter round-trip on the worker.
    *  When `present: true`, the worker's filter pipeline suspends after
    *  applying column + quick filters and pushes the candidate rowIds to
@@ -664,6 +673,10 @@ export type WorkerResponse =
    *  autosize widths. Widths are already `text + padding` clamped to the
    *  column's `minWidth` / `maxWidth`. */
   | { id: ReqId; type: 'autosizeResult';      widths: Record<string, number> }
+  /** Reply to `autosizeSample` — per-column raw values across the sample
+   *  window (nulls dropped), plus the total visible-row count so main
+   *  can tell a truncated sample from a full scan. */
+  | { id: ReqId; type: 'autosizeSampleResult'; values: Record<string, unknown[]>; rowCount: number }
   /** Cycle 7 / Task 9 — distinct stringified values for a column.
    *  Values are in store-iteration order; null / undefined cells are
    *  dropped. */
