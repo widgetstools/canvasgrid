@@ -188,9 +188,9 @@ test('group header styling: bold + background color apply to headerStyle', async
   await page.locator('[data-cg-node="trade"] [data-cg-select]').click();
   await expect(page.locator('[data-cg-style][data-for="trade"]')).toBeVisible();
 
-  // Bold switch.
-  await page.locator('[data-cg-field="fontWeight"] .cg-settings-toggle').click();
-  await expect(page.locator('[data-cg-field="fontWeight"] .cg-settings-toggle')).toHaveAttribute(
+  // Bold — now a segment toggle button carrying data-cg-field directly.
+  await page.locator('[data-cg-field="fontWeight"]').click();
+  await expect(page.locator('[data-cg-field="fontWeight"]')).toHaveAttribute(
     'aria-pressed',
     'true',
   );
@@ -225,14 +225,16 @@ test('group header styling: italic + dashed border apply to headerStyle and pers
   await page.locator('[data-cg-node="trade"] [data-cg-select]').click();
   await expect(page.locator('[data-cg-style][data-for="trade"]')).toBeVisible();
 
-  // Italic switch.
-  await page.locator('[data-cg-field="fontStyle"] .cg-settings-toggle').click();
-  await expect(page.locator('[data-cg-field="fontStyle"] .cg-settings-toggle')).toHaveAttribute(
+  // Italic — segment toggle button carrying data-cg-field directly.
+  await page.locator('[data-cg-field="fontStyle"]').click();
+  await expect(page.locator('[data-cg-field="fontStyle"]')).toHaveAttribute(
     'aria-pressed',
     'true',
   );
 
-  // Border width + style (native number/select controls).
+  // Border box-model editor — the "All sides" edge is selected by default,
+  // so width/style/colour compose a single border.all object. Width + style
+  // (native number/select controls).
   await page.locator('[data-cg-field="borderWidth"] input').fill('2');
   await page.locator('[data-cg-field="borderWidth"] input').blur();
   await page.locator('[data-cg-field="borderStyle"] select').selectOption('dashed');
@@ -275,6 +277,55 @@ test('group header styling: italic + dashed border apply to headerStyle and pers
   expect(tradeAfterReload!.headerStyle?.fontStyle).toBe('italic');
 });
 
+// Task 12 — the box-model border editor writes a single selected side.
+// Clicking the "top" edge target scopes width/style to headerStyle.border.top
+// (leaving border.all untouched), which then survives Apply + a reload.
+test('group header styling: a per-side (top) border applies to headerStyle.border.top and persists', async ({ page }) => {
+  await openColumnGroupsTab(page);
+
+  await page.locator('[data-cg-node="trade"] [data-cg-select]').click();
+  await expect(page.locator('[data-cg-style][data-for="trade"]')).toBeVisible();
+
+  // Select the top edge of the box-model preview, then set width + style.
+  await page.locator('[data-cg-border] [data-cg-border-edge="top"]').click();
+  await expect(page.locator('[data-cg-border] [data-cg-border-edge="top"]')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+  await page.locator('[data-cg-field="borderWidth"] input').fill('3');
+  await page.locator('[data-cg-field="borderWidth"] input').blur();
+  await page.locator('[data-cg-field="borderStyle"] select').selectOption('dotted');
+
+  const applyBtn = page.locator('[data-cg-apply]');
+  await expect(applyBtn).toBeEnabled();
+  await applyBtn.click();
+
+  const defs = await getColumnGroupDefs(page);
+  const trade = findNode(defs, (d) => d.groupId === 'trade');
+  expect(trade).toBeTruthy();
+  expect(trade!.headerStyle?.border?.top).toEqual({ width: 3, style: 'dotted' });
+  expect(trade!.headerStyle?.border?.all).toBeUndefined();
+
+  await page.waitForFunction(
+    (key) => (localStorage.getItem(key) ?? '').includes('"dotted"'),
+    STORAGE_KEY,
+    { timeout: 5_000 },
+  );
+
+  await page.reload();
+  await waitForGridReady(page);
+
+  let tradeAfterReload: AnyDef | null = null;
+  await expect
+    .poll(async () => {
+      const reloaded = await getColumnGroupDefs(page);
+      tradeAfterReload = findNode(reloaded, (d) => d.groupId === 'trade');
+      return tradeAfterReload?.headerStyle?.border?.top?.style ?? null;
+    }, { timeout: 10_000 })
+    .toBe('dotted');
+  expect(tradeAfterReload!.headerStyle?.border?.top?.width).toBe(3);
+});
+
 // Task 7 — `columnGroupShow` (always/open/closed) authoring. 'pnl' is a
 // direct child of the seeded 'trade' group (see apps/cgrid-customizer-demo/
 // src/main.ts), so it carries the inline `data-cg-groupshow` control. The
@@ -284,9 +335,10 @@ test('group header styling: italic + dashed border apply to headerStyle and pers
 test('setting a grouped column\'s columnGroupShow to "When collapsed" persists across reload', async ({ page }) => {
   await openColumnGroupsTab(page);
 
+  // `columnGroupShow` is now a 3-state segment (● Always · ◐ Open · ○ Closed).
   const groupShow = page.locator('[data-cg-node="pnl"] [data-cg-groupshow]');
   await expect(groupShow).toBeVisible();
-  await groupShow.selectOption('closed');
+  await groupShow.locator('[data-value="closed"]').click();
 
   const applyBtn = page.locator('[data-cg-apply]');
   await expect(applyBtn).toBeEnabled();

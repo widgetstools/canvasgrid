@@ -2308,6 +2308,22 @@
   outline-offset: -1px;
 }
 
+/* Cluster eyebrow above the two top-level tree clusters (Ungrouped / Groups)
+ * — same 11px tracked-uppercase idiom as the settings band headers, so the
+ * two kinds of rows never blur into one flat list. */
+.cg-colgroups-eyebrow {
+  padding: 10px 10px 4px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--cg-fg-color) 55%, transparent);
+  user-select: none;
+}
+.cg-colgroups-eyebrow:first-child {
+  padding-top: 6px;
+}
+
 .cg-colgroups-row {
   position: relative;
   display: flex;
@@ -2318,9 +2334,11 @@
 .cg-colgroups-row:hover {
   background: var(--cg-row-hover-bg);
 }
-/* Selected group (its Style band is showing) — same diff-rail device as
+/* Group rows read as subtle bands anchored by a left spine: a hairline in
+ * the resting state, promoted to a 2px accent when the group is selected
+ * (its Style band is showing) — the same diff-rail device as
  * `.cg-settings-row[data-modified]::before`. */
-.cg-colgroups-row[data-selected]::before {
+.cg-colgroups-row[data-kind="group"]::before {
   content: '';
   position: absolute;
   left: 0;
@@ -2328,7 +2346,16 @@
   bottom: 4px;
   width: 2px;
   border-radius: 1px;
+  background: color-mix(in srgb, var(--cg-border-color) 90%, transparent);
+}
+.cg-colgroups-row[data-kind="group"] {
+  background: color-mix(in srgb, var(--cg-fg-color) 3%, transparent);
+}
+.cg-colgroups-row[data-selected]::before {
   background: var(--cg-settings-accent);
+}
+.cg-colgroups-row[data-selected] {
+  background: color-mix(in srgb, var(--cg-settings-accent) 8%, transparent);
 }
 /* Drop-target outline — accept = focus ring; reject = amber. Same
  * vocabulary as `.cg-pivot-panel[data-drop]`. */
@@ -2456,12 +2483,26 @@
   white-space: nowrap;
 }
 
+/* Action cluster (＋ subgroup / edit style / ✕) — hover/focus-revealed so
+ * idle group rows stay calm. Kept keyboard-reachable: revealed on
+ * :focus-within and while the group is selected, too. */
 .cg-colgroups-row-actions {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
   gap: 2px;
   margin-inline-start: auto;
+  opacity: 0;
+}
+.cg-colgroups-row:hover .cg-colgroups-row-actions,
+.cg-colgroups-row:focus-within .cg-colgroups-row-actions,
+.cg-colgroups-row[data-selected] .cg-colgroups-row-actions {
+  opacity: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cg-colgroups-row-actions {
+    transition: opacity 120ms ease;
+  }
 }
 .cg-colgroups-action {
   width: 18px;
@@ -2513,9 +2554,9 @@
 }
 .cg-colgroups-style-title {
   font-size: var(--cg-font-size-sm);
-  font-weight: 500;
+  font-weight: 600;
   color: var(--cg-fg-color);
-  margin: 0 0 6px;
+  margin: 0 0 4px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2527,34 +2568,252 @@
   color: var(--cg-settings-accent);
 }
 
-/* Task 7 — `columnGroupShow` (always/open/closed) authoring. The inline
- * per-row control and the Style band's "Children visibility" mirror share
- * these rules; both reuse `.cg-settings-input`/`.cg-settings-select` (the
- * Phase 1 SettingsForm select styling) so they read as native chrome. */
-.cg-colgroups-groupshow {
-  flex: 0 0 auto;
-  max-width: 112px;
+/* ── Style band clusters ──────────────────────────────────────────────
+ * The Style band is a stack of titled clusters (Fill & text / Border /
+ * Behavior / Children visibility). Each opens with a muted eyebrow in the
+ * same tracked-uppercase idiom as the tree eyebrows + settings bands. */
+.cg-colgroups-cluster {
+  padding: 8px 0;
+  border-top: 1px solid color-mix(in srgb, var(--cg-border-color) 55%, transparent);
 }
-.cg-colgroups-childshow-title {
+.cg-colgroups-cluster:first-of-type {
+  border-top: none;
+  padding-top: 2px;
+}
+.cg-colgroups-cluster-eyebrow {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--cg-fg-color) 55%, transparent);
+  margin: 0 0 8px;
+  user-select: none;
+}
+.cg-colgroups-field-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  margin-bottom: 8px;
+}
+.cg-colgroups-field-row:last-child {
+  margin-bottom: 0;
+}
+.cg-colgroups-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.cg-colgroups-field-color {
+  flex: 1 1 0;
+}
+.cg-colgroups-field-color .cg-colorpicker,
+.cg-colgroups-field-color .cg-colorpicker-swatch {
+  width: 100%;
+}
+.cg-colgroups-field-label {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--cg-fg-color) 62%, transparent);
+  white-space: nowrap;
+}
+
+/* ── Segmented controls (B/I/U, alignment, group-visibility) ──────────
+ * A tight row of buttons sharing a single hairline frame — the accent
+ * pressed-state gives one crisp affordance for the selected member. */
+.cg-colgroups-seg {
+  display: inline-flex;
+  align-items: stretch;
+  flex: 0 0 auto;
+  border: 1px solid var(--cg-border-color);
+  border-radius: 5px;
+  overflow: hidden;
+  background: color-mix(in srgb, var(--cg-fg-color) 4%, transparent);
+}
+.cg-colgroups-seg-btn {
+  min-width: 26px;
+  height: 24px;
+  padding: 0 7px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font: inherit;
+  font-size: var(--cg-font-size-sm);
+  line-height: 1;
+  color: color-mix(in srgb, var(--cg-fg-color) 78%, transparent);
+  background: transparent;
+  border: none;
+  border-left: 1px solid var(--cg-border-color);
+  cursor: pointer;
+}
+.cg-colgroups-seg-btn:first-child {
+  border-left: none;
+}
+.cg-colgroups-seg-btn:hover {
+  background: color-mix(in srgb, var(--cg-fg-color) 8%, transparent);
+  color: var(--cg-fg-color);
+}
+.cg-colgroups-seg-btn[aria-pressed="true"] {
+  color: var(--cg-bg-color);
+  background: var(--cg-settings-accent);
+}
+.cg-colgroups-seg-btn:focus-visible {
+  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
+  outline-offset: -2px;
+  z-index: 1;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cg-colgroups-seg-btn {
+    transition: background 120ms ease, color 120ms ease;
+  }
+}
+.cg-colgroups-seg-bold { font-weight: 700; }
+.cg-colgroups-seg-italic { font-style: italic; font-family: serif; }
+.cg-colgroups-seg-underline { text-decoration: underline; }
+.cg-colgroups-seg-icon {
+  padding: 0 6px;
+}
+.cg-colgroups-seg-icon svg {
+  width: 15px;
+  height: 15px;
+  display: block;
+}
+
+/* ── Border box-model editor (the signature control) ──────────────────
+ * A live preview of the group header cell, ringed by four clickable edge
+ * strips + an All toggle, over width/style/colour controls that read and
+ * write whichever edge is selected. */
+.cg-colgroups-border {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.cg-colgroups-border-stage {
+  position: relative;
+  align-self: center;
+  width: 148px;
+  height: 60px;
+  padding: 8px;
+}
+.cg-colgroups-border-preview {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 5px;
+  background: var(--cg-header-bg);
+  color: var(--cg-fg-color);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cg-border-color) 60%, transparent);
+  overflow: hidden;
+}
+.cg-colgroups-border-preview-label {
   font-size: var(--cg-font-size-sm);
   font-weight: 500;
-  color: var(--cg-fg-color);
-  margin: 10px 0 6px;
+  padding: 0 6px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* Edge hit strips — thin transparent buttons hugging each side of the
+ * preview; the selected edge lights up in the accent colour. */
+.cg-colgroups-edge {
+  position: absolute;
+  padding: 0;
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+}
+.cg-colgroups-edge::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--cg-fg-color) 22%, transparent);
+}
+.cg-colgroups-edge:hover::after {
+  background: color-mix(in srgb, var(--cg-fg-color) 40%, transparent);
+}
+.cg-colgroups-edge[aria-pressed="true"]::after {
+  background: var(--cg-settings-accent);
+}
+.cg-colgroups-edge:focus-visible {
+  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
+  outline-offset: 1px;
+}
+.cg-colgroups-edge-top,
+.cg-colgroups-edge-bottom {
+  left: 8px;
+  right: 8px;
+  height: 8px;
+}
+.cg-colgroups-edge-top { top: 0; }
+.cg-colgroups-edge-top::after,
+.cg-colgroups-edge-bottom::after { height: 3px; }
+.cg-colgroups-edge-bottom { bottom: 0; }
+.cg-colgroups-edge-left,
+.cg-colgroups-edge-right {
+  top: 8px;
+  bottom: 8px;
+  width: 8px;
+}
+.cg-colgroups-edge-left::after,
+.cg-colgroups-edge-right::after { width: 3px; }
+.cg-colgroups-edge-left { left: 0; }
+.cg-colgroups-edge-right { right: 0; }
+.cg-colgroups-edge-all {
+  align-self: center;
+  min-width: 0;
+  padding: 0 12px;
+  border: 1px solid var(--cg-border-color);
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--cg-fg-color) 4%, transparent);
+}
+.cg-colgroups-border-fields {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
+}
+.cg-colgroups-border-fields .cg-colgroups-field-color {
+  flex: 1 1 0;
+}
+
+/* ── Behavior switches ────────────────────────────────────────────────*/
+.cg-colgroups-switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+}
+.cg-colgroups-switch-label {
+  font-size: var(--cg-font-size-sm);
+  color: var(--cg-fg-color);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+/* Task 7 — `columnGroupShow` (always/open/closed) authoring, now a compact
+ * 3-state segment (● Always · ◐ Open · ○ Closed) reused by BOTH the inline
+ * tree-row control and the Style band's "Children visibility" mirror. */
+.cg-colgroups-groupshow {
+  flex: 0 0 auto;
+}
 .cg-colgroups-childshow-list {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
 .cg-colgroups-childshow-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  padding: 3px 0;
+  padding: 2px 0;
 }
 .cg-colgroups-childshow-label {
   min-width: 0;

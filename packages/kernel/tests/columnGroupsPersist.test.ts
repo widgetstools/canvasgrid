@@ -100,6 +100,28 @@ describe('column-group structure persists through getState/setState', () => {
     g2.destroy();
   });
 
+  it('Task 12 — a per-side headerStyle.border.top survives getState -> setState onto a fresh grid', () => {
+    const g1 = mount(base);
+    const api1 = (g1 as any).makeApi();
+    api1.updateGridOptions({ columnDefs: [
+      { colId: 'a', field: 'a' },
+      {
+        groupId: 'G', headerName: 'Grp',
+        headerStyle: { border: { top: { width: 3, style: 'dotted', color: 'rgb(10, 20, 30)' } } },
+        children: [{ colId: 'b', field: 'b' }, { colId: 'c', field: 'c' }],
+      },
+    ] });
+    const snapshot = g1.getState();
+    g1.destroy();
+
+    const g2 = mount(base);
+    const api2 = (g2 as any).makeApi();
+    g2.setState(snapshot);
+    const grp = api2.getColumnGroupDefs().find((d: any) => d.groupId === 'G');
+    expect(grp.headerStyle.border).toEqual({ top: { width: 3, style: 'dotted', color: 'rgb(10, 20, 30)' } });
+    g2.destroy();
+  });
+
   it('does not persist a columnGroupDefs overlay when the grid stays flat (no groups)', () => {
     const g = mount(base);
     const snapshot = g.getState();

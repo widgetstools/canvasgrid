@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { ColumnGroupsToolPanel } from '../src/interaction/toolPanels/columnGroupsPanel';
+import { ColumnGroupsToolPanel, pruneBorder } from '../src/interaction/toolPanels/columnGroupsPanel';
 import type { ToolPanelParams } from '../src/interaction/toolPanels/types';
 import type { CColDef, CColGroupDef } from '../src/types';
 
@@ -103,11 +103,11 @@ describe('ColumnGroupsToolPanel', () => {
       const panel = new ColumnGroupsToolPanel();
       panel.init(makeParams(onApply));
       const gui = panel.getGui();
-      const select = gui.querySelector('[data-cg-node="bid"] [data-cg-groupshow]') as HTMLSelectElement;
-      expect(select.value).toBe(''); // always (unset)
+      const seg = gui.querySelector('[data-cg-node="bid"] [data-cg-groupshow]') as HTMLElement;
+      // 3-state segment: ● Always (default pressed) · ◐ Open · ○ Closed.
+      expect(seg.querySelector('[data-value=""]')!.getAttribute('aria-pressed')).toBe('true');
 
-      select.value = 'open';
-      select.dispatchEvent(new Event('change'));
+      (seg.querySelector('[data-value="open"]') as HTMLButtonElement).click();
 
       const apply = gui.querySelector('[data-cg-apply]') as HTMLButtonElement;
       expect(apply.disabled).toBe(false);
@@ -185,7 +185,8 @@ describe('ColumnGroupsToolPanel', () => {
       style = gui.querySelector('[data-cg-style]')!;
       (style.querySelector('[data-cg-field="openByDefault"] .cg-settings-toggle') as HTMLButtonElement).click();
       style = gui.querySelector('[data-cg-style]')!;
-      (style.querySelector('[data-cg-field="fontWeight"] .cg-settings-toggle') as HTMLButtonElement).click();
+      // Bold is now a segment toggle button carrying data-cg-field directly.
+      (style.querySelector('[data-cg-field="fontWeight"]') as HTMLButtonElement).click();
 
       (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
       expect(onApply).toHaveBeenCalledTimes(1);
@@ -204,21 +205,20 @@ describe('ColumnGroupsToolPanel', () => {
       (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
 
       const style = gui.querySelector('[data-cg-style]')!;
-      const bidChild = style.querySelector('[data-cg-child-show="bid"]') as HTMLSelectElement;
+      const bidChild = style.querySelector('[data-cg-child-show="bid"]') as HTMLElement;
       expect(bidChild).toBeTruthy();
-      expect(bidChild.tagName).toBe('SELECT');
-      expect(bidChild.value).toBe(''); // always (unset)
+      // 3-state segment (● Always default · ◐ Open · ○ Closed).
+      expect(bidChild.querySelector('[data-value=""]')!.getAttribute('aria-pressed')).toBe('true');
 
-      bidChild.value = 'closed';
-      bidChild.dispatchEvent(new Event('change'));
+      (bidChild.querySelector('[data-value="closed"]') as HTMLButtonElement).click();
 
       const apply = gui.querySelector('[data-cg-apply]') as HTMLButtonElement;
       expect(apply.disabled).toBe(false);
 
       // Same helper wrote it — the inline control on the 'bid' row must
       // now reflect the identical value too (both surfaces never diverge).
-      const inline = gui.querySelector('[data-cg-node="bid"] [data-cg-groupshow]') as HTMLSelectElement;
-      expect(inline.value).toBe('closed');
+      const inline = gui.querySelector('[data-cg-node="bid"] [data-cg-groupshow]') as HTMLElement;
+      expect(inline.querySelector('[data-value="closed"]')!.getAttribute('aria-pressed')).toBe('true');
 
       apply.click();
       const { columnDefs } = onApply.mock.calls[0][0];
@@ -260,11 +260,12 @@ describe('ColumnGroupsToolPanel', () => {
         bgHex.dispatchEvent(new Event('change'));
         document.querySelectorAll('.cg-colorpicker-popover').forEach((p) => p.remove());
 
-        // Bold next (existing Task 4 field) — then Italic (new).
+        // Bold next (existing Task 4 field) — then Italic (new). Both are
+        // segment toggle buttons carrying data-cg-field directly.
         style = gui.querySelector('[data-cg-style]')!;
-        (style.querySelector('[data-cg-field="fontWeight"] .cg-settings-toggle') as HTMLButtonElement).click();
+        (style.querySelector('[data-cg-field="fontWeight"]') as HTMLButtonElement).click();
         style = gui.querySelector('[data-cg-style]')!;
-        (style.querySelector('[data-cg-field="fontStyle"] .cg-settings-toggle') as HTMLButtonElement).click();
+        (style.querySelector('[data-cg-field="fontStyle"]') as HTMLButtonElement).click();
 
         (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
         const { columnDefs } = onApply.mock.calls[0][0];
@@ -281,7 +282,7 @@ describe('ColumnGroupsToolPanel', () => {
         const gui = panel.getGui();
         (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
         const style = gui.querySelector('[data-cg-style]')!;
-        (style.querySelector('[data-cg-field="textDecoration"] .cg-settings-toggle') as HTMLButtonElement).click();
+        (style.querySelector('[data-cg-field="textDecoration"]') as HTMLButtonElement).click();
         (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
         const { columnDefs } = onApply.mock.calls[0][0];
         const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
@@ -301,9 +302,8 @@ describe('ColumnGroupsToolPanel', () => {
         sizeInput.dispatchEvent(new Event('change'));
 
         style = gui.querySelector('[data-cg-style]')!;
-        const alignSelect = style.querySelector('[data-cg-field="halign"] select') as HTMLSelectElement;
-        alignSelect.value = 'center';
-        alignSelect.dispatchEvent(new Event('change'));
+        // Alignment is now an icon segmented control (left/center/right).
+        (style.querySelector('[data-cg-field="halign"] [data-align="center"]') as HTMLButtonElement).click();
 
         (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
         const { columnDefs } = onApply.mock.calls[0][0];
@@ -341,6 +341,93 @@ describe('ColumnGroupsToolPanel', () => {
         const { columnDefs } = onApply.mock.calls[0][0];
         const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
         expect(trade.headerStyle.border.all).toEqual({ width: 2, style: 'dashed', color: 'rgb(255, 0, 0)' });
+      });
+    });
+
+    // Task 12 — the box-model border editor. Clicking an edge target selects
+    // it; the width/style/colour controls then read & write that one side.
+    describe('Task 12 — box-model border editor', () => {
+      function selectAndStyleGroup(onApply = vi.fn()) {
+        const panel = new ColumnGroupsToolPanel();
+        panel.init(makeParams(onApply));
+        const gui = panel.getGui();
+        (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
+        return { gui, onApply };
+      }
+      const style = (gui: HTMLElement) => gui.querySelector('[data-cg-style]')!;
+      const setWidth = (gui: HTMLElement, v: string) => {
+        const w = style(gui).querySelector('[data-cg-field="borderWidth"] input') as HTMLInputElement;
+        w.value = v;
+        w.dispatchEvent(new Event('change'));
+      };
+      const setStyle = (gui: HTMLElement, v: string) => {
+        const s = style(gui).querySelector('[data-cg-field="borderStyle"] select') as HTMLSelectElement;
+        s.value = v;
+        s.dispatchEvent(new Event('change'));
+      };
+      const clickEdge = (gui: HTMLElement, edge: string) =>
+        (style(gui).querySelector(`[data-cg-border-edge="${edge}"]`) as HTMLButtonElement).click();
+      const applied = (onApply: ReturnType<typeof vi.fn>) => {
+        const { columnDefs } = onApply.mock.calls[0][0];
+        return columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
+      };
+
+      it('defaults to the "all" edge (its target is pressed on open)', () => {
+        const { gui } = selectAndStyleGroup();
+        expect(style(gui).querySelector('[data-cg-border]')).toBeTruthy();
+        expect(style(gui).querySelector('[data-cg-border-edge="all"]')!.getAttribute('aria-pressed')).toBe('true');
+        expect(style(gui).querySelector('[data-cg-border-edge="top"]')!.getAttribute('aria-pressed')).toBe('false');
+      });
+
+      it('selecting the top edge then setting width/style writes headerStyle.border.top (not .all)', () => {
+        const { gui, onApply } = selectAndStyleGroup();
+        clickEdge(gui, 'top');
+        expect(style(gui).querySelector('[data-cg-border-edge="top"]')!.getAttribute('aria-pressed')).toBe('true');
+        setWidth(gui, '3');
+        setStyle(gui, 'dotted');
+        (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+        const trade = applied(onApply);
+        expect(trade.headerStyle.border.top).toEqual({ width: 3, style: 'dotted' });
+        expect(trade.headerStyle.border.all).toBeUndefined();
+      });
+
+      it('editing two different edges keeps both — no cross-side clobber', () => {
+        const { gui, onApply } = selectAndStyleGroup();
+        clickEdge(gui, 'top');
+        setWidth(gui, '3');
+        clickEdge(gui, 'bottom');
+        // Selecting a different edge reads THAT edge (empty) — the width
+        // input must not still show the top edge's value.
+        expect((style(gui).querySelector('[data-cg-field="borderWidth"] input') as HTMLInputElement).value).toBe('');
+        setWidth(gui, '1');
+        (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+        const trade = applied(onApply);
+        expect(trade.headerStyle.border.top).toEqual({ width: 3 });
+        expect(trade.headerStyle.border.bottom).toEqual({ width: 1 });
+      });
+
+      it('setting a side width back to 0 prunes the side away (and empties border)', () => {
+        const { gui, onApply } = selectAndStyleGroup();
+        clickEdge(gui, 'left');
+        setWidth(gui, '4');
+        setWidth(gui, '0');
+        (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+        const trade = applied(onApply);
+        expect(trade.headerStyle?.border).toBeUndefined();
+      });
+    });
+
+    describe('pruneBorder (pure)', () => {
+      it('returns undefined for nullish/empty specs', () => {
+        expect(pruneBorder(undefined)).toBeUndefined();
+        expect(pruneBorder({})).toBeUndefined();
+        expect(pruneBorder({ all: {}, top: { width: 0 } })).toBeUndefined();
+      });
+      it('drops non-positive widths but keeps other facets, and drops all-empty sides', () => {
+        expect(pruneBorder({ top: { width: 2 }, bottom: {} })).toEqual({ top: { width: 2 } });
+        expect(pruneBorder({ top: { width: 0, style: 'dashed' } })).toEqual({ top: { style: 'dashed' } });
+        expect(pruneBorder({ right: { width: 1, color: 'rgb(1, 2, 3)', style: 'solid' } }))
+          .toEqual({ right: { width: 1, color: 'rgb(1, 2, 3)', style: 'solid' } });
       });
     });
 

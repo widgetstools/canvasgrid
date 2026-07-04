@@ -22,11 +22,39 @@ import {
   type Node, type GroupNode, type ColumnNode,
 } from '../columnGroups/model';
 import type { CGridApi } from '../../types';
-import { SettingsForm } from '../settingsForm/form';
-import type { SettingsField, SettingsSection } from '../../types/settingsSchema';
-import type { BorderStyle } from '../../types/cell';
+import { ColorPickerControl } from '../settingsForm/colorPicker';
+import type { BorderSpec, BorderStyle } from '../../types/cell';
 
 type NodeKind = Node['kind'];
+
+/** One editable side of the box-model border editor, or the `all` fallback. */
+type BorderEdge = 'all' | 'top' | 'right' | 'bottom' | 'left';
+
+/**
+ * Pure — normalize a `BorderSpec` to its lean, canonical form so the model
+ * never carries empty husks (which would break round-trip identity and
+ * bloat persisted snapshots):
+ *  - a side's `width` of `0` / non-positive / non-finite is dropped;
+ *  - a `color` that is empty-string is dropped;
+ *  - a side that ends with no meaningful facet is removed entirely;
+ *  - if every side is removed, the whole spec collapses to `undefined`.
+ */
+export function pruneBorder(spec: BorderSpec | undefined): BorderSpec | undefined {
+  if (!spec) return undefined;
+  const out: BorderSpec = {};
+  for (const side of ['top', 'right', 'bottom', 'left', 'all'] as const) {
+    const s = spec[side];
+    if (!s) continue;
+    const cleaned: BorderSpec['all'] = {};
+    if (typeof s.width === 'number' && Number.isFinite(s.width) && s.width > 0) cleaned.width = s.width;
+    if (typeof s.color === 'string' && s.color !== '') cleaned.color = s.color;
+    if (s.style !== undefined) cleaned.style = s.style;
+    if (cleaned.width !== undefined || cleaned.color !== undefined || cleaned.style !== undefined) {
+      out[side] = cleaned;
+    }
+  }
+  return out.top || out.right || out.bottom || out.left || out.all ? out : undefined;
+}
 
 interface DragState {
   id: string;
@@ -53,7 +81,14 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   private root!: HTMLElement;
   private tree!: HTMLElement;
   private styleSection!: HTMLElement;
-  private styleForm: SettingsForm | null = null;
+  /** Live colour-picker controls in the current Style band — destroyed on
+   *  panel teardown so no portaled popover outlives the panel. Reset (not
+   *  destroyed) on each `renderStyle()` rebuild so an in-flight popover the
+   *  user is dragging is never yanked mid-interaction. */
+  private stylePickers: ColorPickerControl[] = [];
+  /** Which border edge the box-model editor is currently editing. VIEW-STATE
+   *  only (default `'all'`); survives `mutate()`/`render()`. */
+  private selectedEdge: BorderEdge = 'all';
   private applyBtn!: HTMLButtonElement;
   private resetBtn!: HTMLButtonElement;
   private api!: Pick<CGridApi, 'getColumnGroupDefs' | 'updateGridOptions'>;
@@ -98,8 +133,8 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     this.drag?.ghost.remove();
     this.drag = null;
     this.pending = null;
-    this.styleForm?.destroy();
-    this.styleForm = null;
+    this.stylePickers.forEach((p) => p.destroy());
+    this.stylePickers = [];
     this.root.remove();
   }
 
@@ -151,12 +186,26 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     // children are hidden — a collapsed subgroup nested inside a collapsed
     // ancestor stays independently collapsed once the ancestor re-expands.
     const renderLevel = (parentId: string | null, depth: number, hiddenByAncestor: boolean) => {
-      this.nodes.filter((n) => n.parentId === parentId).sort((a, b) => a.order - b.order)
-        .forEach((n) => {
-          this.tree.appendChild(this.rowFor(n, depth, hiddenByAncestor));
-          const childHidden = hiddenByAncestor || (n.kind === 'group' && this.collapsed.has(n.id));
-          renderLevel(n.id, depth + 1, childHidden);
-        });
+      const sibs = this.nodes.filter((n) => n.parentId === parentId).sort((a, b) => a.order - b.order);
+      // Depth-0 eyebrows keep ungrouped columns and groups from blurring into
+      // one flat list. Emitted lazily in document order so an interleaved
+      // seed (a column between two groups) still labels each cluster once.
+      let ungroupedEyebrow = false;
+      let groupsEyebrow = false;
+      sibs.forEach((n) => {
+        if (depth === 0) {
+          if (n.kind === 'column' && !ungroupedEyebrow) {
+            this.tree.appendChild(eyebrow('Ungrouped'));
+            ungroupedEyebrow = true;
+          } else if (n.kind === 'group' && !groupsEyebrow) {
+            this.tree.appendChild(eyebrow('Groups'));
+            groupsEyebrow = true;
+          }
+        }
+        this.tree.appendChild(this.rowFor(n, depth, hiddenByAncestor));
+        const childHidden = hiddenByAncestor || (n.kind === 'group' && this.collapsed.has(n.id));
+        renderLevel(n.id, depth + 1, childHidden);
+      });
     };
     renderLevel(null, 0, false);
     this.applyBtn.disabled = !this.dirty;
@@ -238,8 +287,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
    *  through `this.mutate(...)` like every other panel edit — Apply-only
    *  discipline: nothing here writes to the grid). */
   private renderStyle(): void {
-    this.styleForm?.destroy();
-    this.styleForm = null;
+    this.stylePickers = [];
     this.styleSection.replaceChildren();
     this.styleSection.removeAttribute('data-for');
     if (!this.selectedGroupId) return;
@@ -256,97 +304,12 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     const patch = (
       p: Partial<Pick<GroupNode, 'headerStyle' | 'headerClass' | 'openByDefault' | 'marryChildren'>>,
     ) => this.mutate((ns) => setGroupStyle(ns, g.id, p));
+    const patchStyle = (facet: Partial<NonNullable<GroupNode['headerStyle']>>) =>
+      patch({ headerStyle: { ...g.headerStyle, ...facet } });
 
-    const section: SettingsSection = {
-      id: 'cg-group-style',
-      title: `Style — ${g.headerName}`,
-      bands: [{
-        id: 'header',
-        title: 'Header',
-        fields: [
-          field('bg', 'Background', 'color',
-            () => g.headerStyle?.bg,
-            (v) => patch({ headerStyle: { ...g.headerStyle, bg: v as string } })),
-          field('fg', 'Text colour', 'color',
-            () => g.headerStyle?.fg,
-            (v) => patch({ headerStyle: { ...g.headerStyle, fg: v as string } })),
-          field('fontWeight', 'Bold', 'switch',
-            () => g.headerStyle?.fontWeight === 'bold',
-            (v) => patch({ headerStyle: { ...g.headerStyle, fontWeight: v ? 'bold' : undefined } }),
-            false),
-          field('fontStyle', 'Italic', 'switch',
-            () => g.headerStyle?.fontStyle === 'italic',
-            (v) => patch({ headerStyle: { ...g.headerStyle, fontStyle: v ? 'italic' : undefined } }),
-            false),
-          field('textDecoration', 'Underline', 'switch',
-            () => g.headerStyle?.textDecoration === 'underline',
-            (v) => patch({ headerStyle: { ...g.headerStyle, textDecoration: v ? 'underline' : undefined } }),
-            false),
-          field('fontSize', 'Font size', 'number',
-            () => g.headerStyle?.fontSize,
-            (v) => patch({ headerStyle: { ...g.headerStyle, fontSize: (v as number) || undefined } }),
-            undefined, { min: 8, max: 32 }),
-          field('halign', 'Alignment', 'select',
-            () => g.headerStyle?.halign ?? 'left',
-            (v) => patch({ headerStyle: { ...g.headerStyle, halign: v as 'left' | 'center' | 'right' } }),
-            undefined, {
-              options: [
-                { value: 'left', label: 'Left' },
-                { value: 'center', label: 'Center' },
-                { value: 'right', label: 'Right' },
-              ],
-            }),
-          field('borderWidth', 'Border width', 'number',
-            () => g.headerStyle?.border?.all?.width,
-            (v) => patch({
-              headerStyle: {
-                ...g.headerStyle,
-                border: { all: { ...g.headerStyle?.border?.all, width: (v as number) || undefined } },
-              },
-            }),
-            undefined, { min: 0, max: 8 }),
-          field('borderStyle', 'Border style', 'select',
-            () => g.headerStyle?.border?.all?.style ?? 'solid',
-            (v) => patch({
-              headerStyle: {
-                ...g.headerStyle,
-                border: { all: { ...g.headerStyle?.border?.all, style: v as BorderStyle } },
-              },
-            }),
-            undefined, {
-              options: [
-                { value: 'solid', label: 'Solid' },
-                { value: 'dashed', label: 'Dashed' },
-                { value: 'dotted', label: 'Dotted' },
-                { value: 'double', label: 'Double' },
-              ],
-            }),
-          field('borderColor', 'Border colour', 'color',
-            () => g.headerStyle?.border?.all?.color,
-            (v) => patch({
-              headerStyle: {
-                ...g.headerStyle,
-                border: { all: { ...g.headerStyle?.border?.all, color: v as string } },
-              },
-            })),
-          field('marryChildren', 'Marry children', 'switch',
-            () => g.marryChildren === true,
-            (v) => patch({ marryChildren: v as boolean }),
-            false),
-          field('openByDefault', 'Open by default', 'switch',
-            () => g.openByDefault === true,
-            (v) => patch({ openByDefault: v as boolean }),
-            false),
-        ],
-      }],
-    };
-    this.styleForm = new SettingsForm(section);
-    // Tag every field row with `data-cg-field` (mirroring the underlying
-    // `data-field-key` the settings-form renderer emits) so this panel's
-    // own tests have a stable, namespaced selector.
-    this.styleForm.root.querySelectorAll('[data-field-key]').forEach((n) =>
-      n.setAttribute('data-cg-field', n.getAttribute('data-field-key')!));
-    this.styleSection.appendChild(this.styleForm.root);
+    this.styleSection.appendChild(this.buildFillTextCluster(g, patchStyle));
+    this.styleSection.appendChild(this.buildBorderCluster(g, patch));
+    this.styleSection.appendChild(this.buildBehaviorCluster(g, patch));
 
     // "Children visibility" — mirrors the inline `columnGroupShow` control
     // (see `buildGroupShowControl`) for every column nested (directly or
@@ -354,10 +317,8 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     // also author its columns' expand/collapse visibility from one place.
     const children = this.descendantColumns(g.id);
     if (children.length > 0) {
-      const childTitle = el('div', 'cg-colgroups-childshow-title');
-      childTitle.textContent = 'Children visibility';
-      this.styleSection.appendChild(childTitle);
-
+      const cluster = el('div', 'cg-colgroups-cluster');
+      cluster.appendChild(eyebrow('Children visibility', 'cg-colgroups-cluster-eyebrow'));
       const list = el('div', 'cg-colgroups-childshow-list');
       children.forEach((c) => {
         const row = el('div', 'cg-colgroups-childshow-row');
@@ -368,8 +329,290 @@ export class ColumnGroupsToolPanel implements ToolPanel {
         row.appendChild(this.buildGroupShowControl(c.colId, c.columnGroupShow, 'child'));
         list.appendChild(row);
       });
-      this.styleSection.appendChild(list);
+      cluster.appendChild(list);
+      this.styleSection.appendChild(cluster);
     }
+  }
+
+  // ── Style band clusters ────────────────────────────────────────────
+
+  /** FILL & TEXT cluster: bg/fg swatches, a B/I/U segment, size + alignment. */
+  private buildFillTextCluster(
+    g: GroupNode,
+    patchStyle: (facet: Partial<NonNullable<GroupNode['headerStyle']>>) => void,
+  ): HTMLElement {
+    const cluster = el('div', 'cg-colgroups-cluster');
+    cluster.appendChild(eyebrow('Fill & text', 'cg-colgroups-cluster-eyebrow'));
+
+    // Row 1 — Background + Text colour swatches, side by side.
+    const colorRow = el('div', 'cg-colgroups-field-row');
+    colorRow.appendChild(this.colorField('bg', 'Fill', g.headerStyle?.bg,
+      (rgba) => patchStyle({ bg: rgba })));
+    colorRow.appendChild(this.colorField('fg', 'Text', g.headerStyle?.fg,
+      (rgba) => patchStyle({ fg: rgba })));
+    cluster.appendChild(colorRow);
+
+    // Row 2 — B / I / U segment + alignment icon segment.
+    const styleRow = el('div', 'cg-colgroups-field-row');
+
+    const biu = el('div', 'cg-colgroups-seg');
+    biu.setAttribute('role', 'group');
+    biu.setAttribute('aria-label', 'Text style');
+    biu.appendChild(this.toggleSegBtn('fontWeight', 'B', 'Bold', 'cg-colgroups-seg-bold',
+      g.headerStyle?.fontWeight === 'bold',
+      (on) => patchStyle({ fontWeight: on ? 'bold' : undefined })));
+    biu.appendChild(this.toggleSegBtn('fontStyle', 'I', 'Italic', 'cg-colgroups-seg-italic',
+      g.headerStyle?.fontStyle === 'italic',
+      (on) => patchStyle({ fontStyle: on ? 'italic' : undefined })));
+    biu.appendChild(this.toggleSegBtn('textDecoration', 'U', 'Underline', 'cg-colgroups-seg-underline',
+      g.headerStyle?.textDecoration === 'underline',
+      (on) => patchStyle({ textDecoration: on ? 'underline' : undefined })));
+    styleRow.appendChild(biu);
+
+    const align = el('div', 'cg-colgroups-seg');
+    align.setAttribute('data-cg-field', 'halign');
+    align.setAttribute('role', 'group');
+    align.setAttribute('aria-label', 'Alignment');
+    const cur = g.headerStyle?.halign ?? 'left';
+    ([
+      ['left', 'Align left', ALIGN_LEFT_SVG],
+      ['center', 'Align center', ALIGN_CENTER_SVG],
+      ['right', 'Align right', ALIGN_RIGHT_SVG],
+    ] as const).forEach(([value, label, svg]) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'cg-colgroups-seg-btn cg-colgroups-seg-icon';
+      b.setAttribute('data-align', value);
+      b.setAttribute('aria-label', label);
+      b.title = label;
+      b.setAttribute('aria-pressed', String(cur === value));
+      b.innerHTML = svg;
+      b.addEventListener('click', () => patchStyle({ halign: value }));
+      align.appendChild(b);
+    });
+    styleRow.appendChild(align);
+    cluster.appendChild(styleRow);
+
+    // Row 3 — Font size.
+    const sizeRow = el('div', 'cg-colgroups-field');
+    sizeRow.setAttribute('data-cg-field', 'fontSize');
+    const sizeLabel = labelEl('cg-colgroups-field-label');
+    sizeLabel.textContent = 'Size';
+    const size = document.createElement('input');
+    size.type = 'number';
+    size.className = 'cg-settings-input cg-settings-input-number';
+    size.min = '8'; size.max = '32';
+    size.setAttribute('aria-label', 'Font size');
+    const sz = g.headerStyle?.fontSize;
+    size.value = typeof sz === 'number' ? String(sz) : '';
+    size.placeholder = 'auto';
+    size.addEventListener('change', () => {
+      const n = size.value === '' ? undefined : Number(size.value);
+      patchStyle({ fontSize: n && Number.isFinite(n) ? n : undefined });
+    });
+    const sizeId = uid();
+    size.id = sizeId; sizeLabel.htmlFor = sizeId;
+    sizeRow.append(sizeLabel, size);
+    cluster.appendChild(sizeRow);
+
+    return cluster;
+  }
+
+  /** BORDER cluster — the signature box-model editor: a live preview cell
+   *  with four clickable edge strips + an `All` toggle, and width/style/
+   *  colour controls that read & write the currently selected edge. */
+  private buildBorderCluster(
+    g: GroupNode,
+    patch: (p: Partial<Pick<GroupNode, 'headerStyle'>>) => void,
+  ): HTMLElement {
+    const cluster = el('div', 'cg-colgroups-cluster');
+    cluster.appendChild(eyebrow('Border', 'cg-colgroups-cluster-eyebrow'));
+
+    const editor = el('div', 'cg-colgroups-border');
+    editor.setAttribute('data-cg-border', '');
+    const border = g.headerStyle?.border;
+
+    // Effective side for the preview: explicit side wins over `all`.
+    const eff = (side: 'top' | 'right' | 'bottom' | 'left') => border?.[side] ?? border?.all;
+    const sideCss = (s: BorderSpec['all'] | undefined): string => {
+      if (!s || !s.width || s.width <= 0) return 'none';
+      return `${s.width}px ${s.style ?? 'solid'} ${s.color ?? 'currentColor'}`;
+    };
+
+    const stage = el('div', 'cg-colgroups-border-stage');
+    const preview = el('div', 'cg-colgroups-border-preview');
+    if (g.headerStyle?.bg) preview.style.background = g.headerStyle.bg;
+    if (g.headerStyle?.fg) preview.style.color = g.headerStyle.fg;
+    preview.style.borderTop = sideCss(eff('top'));
+    preview.style.borderRight = sideCss(eff('right'));
+    preview.style.borderBottom = sideCss(eff('bottom'));
+    preview.style.borderLeft = sideCss(eff('left'));
+    const previewLabel = el('span', 'cg-colgroups-border-preview-label');
+    previewLabel.textContent = g.headerName || 'Header';
+    preview.appendChild(previewLabel);
+    stage.appendChild(preview);
+
+    (['top', 'right', 'bottom', 'left'] as const).forEach((edge) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = `cg-colgroups-edge cg-colgroups-edge-${edge}`;
+      b.setAttribute('data-cg-border-edge', edge);
+      b.setAttribute('aria-label', `${cap(edge)} border`);
+      b.setAttribute('aria-pressed', String(this.selectedEdge === edge));
+      b.addEventListener('click', () => { this.selectedEdge = edge; this.render(); });
+      stage.appendChild(b);
+    });
+    editor.appendChild(stage);
+
+    const allBtn = document.createElement('button');
+    allBtn.type = 'button';
+    allBtn.className = 'cg-colgroups-seg-btn cg-colgroups-edge-all';
+    allBtn.setAttribute('data-cg-border-edge', 'all');
+    allBtn.textContent = 'All sides';
+    allBtn.setAttribute('aria-label', 'All borders');
+    allBtn.setAttribute('aria-pressed', String(this.selectedEdge === 'all'));
+    allBtn.addEventListener('click', () => { this.selectedEdge = 'all'; this.render(); });
+    editor.appendChild(allBtn);
+
+    // Width / style / colour — read & write the SELECTED edge.
+    const edge = this.selectedEdge;
+    const side = border?.[edge];
+    const writeSide = (facet: 'width' | 'style' | 'color', value: number | string | undefined) => {
+      const nextSide = { ...border?.[edge], [facet]: value };
+      const nextBorder = pruneBorder({ ...border, [edge]: nextSide });
+      patch({ headerStyle: { ...g.headerStyle, border: nextBorder } });
+    };
+
+    const fields = el('div', 'cg-colgroups-border-fields');
+
+    const widthWrap = el('div', 'cg-colgroups-field');
+    widthWrap.setAttribute('data-cg-field', 'borderWidth');
+    const widthLabel = labelEl('cg-colgroups-field-label');
+    widthLabel.textContent = 'Width';
+    const width = document.createElement('input');
+    width.type = 'number';
+    width.className = 'cg-settings-input cg-settings-input-number';
+    width.min = '0'; width.max = '8';
+    width.setAttribute('aria-label', `${cap(edge)} border width`);
+    width.value = typeof side?.width === 'number' ? String(side.width) : '';
+    width.placeholder = '0';
+    width.addEventListener('change', () => {
+      const n = width.value === '' ? undefined : Number(width.value);
+      writeSide('width', n && Number.isFinite(n) && n > 0 ? n : undefined);
+    });
+    const widthId = uid(); width.id = widthId; widthLabel.htmlFor = widthId;
+    widthWrap.append(widthLabel, width);
+    fields.appendChild(widthWrap);
+
+    const styleWrap = el('div', 'cg-colgroups-field');
+    styleWrap.setAttribute('data-cg-field', 'borderStyle');
+    const styleLabel = labelEl('cg-colgroups-field-label');
+    styleLabel.textContent = 'Style';
+    const styleSel = document.createElement('select');
+    styleSel.className = 'cg-settings-input cg-settings-select';
+    styleSel.setAttribute('aria-label', `${cap(edge)} border style`);
+    (['solid', 'dashed', 'dotted', 'double'] as const).forEach((v) => {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = cap(v);
+      styleSel.appendChild(o);
+    });
+    styleSel.value = side?.style ?? 'solid';
+    styleSel.addEventListener('change', () => writeSide('style', styleSel.value as BorderStyle));
+    const styleId = uid(); styleSel.id = styleId; styleLabel.htmlFor = styleId;
+    styleWrap.append(styleLabel, styleSel);
+    fields.appendChild(styleWrap);
+
+    fields.appendChild(this.colorField('borderColor', 'Colour', side?.color,
+      (rgba) => writeSide('color', rgba)));
+
+    editor.appendChild(fields);
+    cluster.appendChild(editor);
+    return cluster;
+  }
+
+  /** BEHAVIOR cluster: marryChildren + openByDefault switches. */
+  private buildBehaviorCluster(
+    g: GroupNode,
+    patch: (p: Partial<Pick<GroupNode, 'openByDefault' | 'marryChildren'>>) => void,
+  ): HTMLElement {
+    const cluster = el('div', 'cg-colgroups-cluster');
+    cluster.appendChild(eyebrow('Behavior', 'cg-colgroups-cluster-eyebrow'));
+    cluster.appendChild(this.switchRow('marryChildren', 'Keep columns together',
+      g.marryChildren === true, (on) => patch({ marryChildren: on })));
+    cluster.appendChild(this.switchRow('openByDefault', 'Expanded by default',
+      g.openByDefault === true, (on) => patch({ openByDefault: on })));
+    return cluster;
+  }
+
+  // ── Style band control builders ────────────────────────────────────
+
+  /** A labelled colour swatch wrapped in `data-cg-field="{key}"`, backed by
+   *  the shared `ColorPickerControl` (the E2E depends on `.cg-colorpicker-swatch`). */
+  private colorField(
+    key: string,
+    label: string,
+    value: string | undefined,
+    onChange: (rgba: string) => void,
+  ): HTMLElement {
+    const wrap = el('div', 'cg-colgroups-field cg-colgroups-field-color');
+    wrap.setAttribute('data-cg-field', key);
+    const lbl = el('span', 'cg-colgroups-field-label');
+    lbl.textContent = label;
+    const picker = new ColorPickerControl(value ?? '', onChange);
+    this.stylePickers.push(picker);
+    wrap.append(lbl, picker.el);
+    return wrap;
+  }
+
+  /** A single toggle in the B/I/U segment: a button carrying `data-cg-field`
+   *  directly, `aria-pressed`, styled per the letter. */
+  private toggleSegBtn(
+    key: string,
+    glyph: string,
+    label: string,
+    extraClass: string,
+    active: boolean,
+    onToggle: (on: boolean) => void,
+  ): HTMLButtonElement {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = `cg-colgroups-seg-btn ${extraClass}`;
+    b.setAttribute('data-cg-field', key);
+    b.textContent = glyph;
+    b.title = label;
+    b.setAttribute('aria-label', label);
+    b.setAttribute('aria-pressed', String(active));
+    b.addEventListener('click', () => onToggle(b.getAttribute('aria-pressed') !== 'true'));
+    return b;
+  }
+
+  /** A label-left / pill-switch-right row wrapped in `data-cg-field="{key}"`.
+   *  The switch reuses the `.cg-settings-toggle` idiom (aria-pressed pill). */
+  private switchRow(
+    key: string,
+    label: string,
+    active: boolean,
+    onToggle: (on: boolean) => void,
+  ): HTMLElement {
+    const row = el('div', 'cg-colgroups-switch-row');
+    row.setAttribute('data-cg-field', key);
+    const lbl = labelEl('cg-colgroups-switch-label');
+    lbl.textContent = label;
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cg-settings-toggle';
+    btn.setAttribute('aria-label', label);
+    btn.setAttribute('aria-pressed', String(active));
+    const knob = el('span', 'cg-settings-toggle-knob');
+    btn.appendChild(knob);
+    btn.addEventListener('click', () => {
+      const next = btn.getAttribute('aria-pressed') !== 'true';
+      btn.setAttribute('aria-pressed', String(next));
+      onToggle(next);
+    });
+    const btnId = uid(); btn.id = btnId; lbl.htmlFor = btnId;
+    row.append(lbl, btn);
+    return row;
   }
 
   /** All column (leaf) descendants of group `groupId`, direct + nested,
@@ -522,28 +765,34 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     colId: string,
     value: 'open' | 'closed' | null | undefined,
     variant: 'inline' | 'child',
-  ): HTMLSelectElement {
-    const select = document.createElement('select');
-    select.className = 'cg-settings-input cg-settings-select cg-colgroups-groupshow';
-    if (variant === 'inline') select.setAttribute('data-cg-groupshow', '');
-    else select.setAttribute('data-cg-child-show', colId);
-    select.setAttribute('aria-label', 'Column group visibility');
+  ): HTMLElement {
+    const seg = el('div', 'cg-colgroups-seg cg-colgroups-groupshow');
+    if (variant === 'inline') seg.setAttribute('data-cg-groupshow', '');
+    else seg.setAttribute('data-cg-child-show', colId);
+    seg.setAttribute('role', 'group');
+    seg.setAttribute('aria-label', 'Column group visibility');
+    const cur = value ?? '';
     ([
-      { value: '', label: 'Always' },
-      { value: 'open', label: 'When open' },
-      { value: 'closed', label: 'When collapsed' },
+      { v: '', glyph: '●', title: 'Always visible' },
+      { v: 'open', glyph: '◐', title: 'Show when open' },
+      { v: 'closed', glyph: '○', title: 'Show when collapsed' },
     ] as const).forEach((opt) => {
-      const o = document.createElement('option');
-      o.value = opt.value;
-      o.textContent = opt.label;
-      select.appendChild(o);
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'cg-colgroups-seg-btn';
+      b.textContent = opt.glyph;
+      b.title = opt.title;
+      b.setAttribute('aria-label', opt.title);
+      b.setAttribute('data-value', opt.v);
+      b.setAttribute('aria-pressed', String(cur === opt.v));
+      b.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const v = opt.v === '' ? null : (opt.v as 'open' | 'closed');
+        this.mutate((ns) => setColumnGroupShow(ns, colId, v));
+      });
+      seg.appendChild(b);
     });
-    select.value = value ?? '';
-    select.addEventListener('change', () => {
-      const v = select.value === '' ? null : (select.value as 'open' | 'closed');
-      this.mutate((ns) => setColumnGroupShow(ns, colId, v));
-    });
-    return select;
+    return seg;
   }
 
   private flagGroup(groupId: string, message: string): void {
@@ -679,25 +928,29 @@ function cloneDefsTree<T>(value: T): T {
 
 function el(tag: string, cls: string): HTMLElement { const e = document.createElement(tag); e.className = cls; return e; }
 
+function labelEl(cls: string): HTMLLabelElement { const e = document.createElement('label'); e.className = cls; return e; }
+
+/** A cluster/section eyebrow (11px, 600, uppercase, tracked, muted). */
+function eyebrow(text: string, cls = 'cg-colgroups-eyebrow'): HTMLElement {
+  const e = el('div', cls);
+  e.textContent = text;
+  return e;
+}
+
+let controlSeq = 0;
+const uid = (): string => `cg-colgroups-ctl-${++controlSeq}`;
+
+const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
 function cssEscape(s: string): string {
   return s.replace(/["\\]/g, '\\$&');
 }
 
-/** Build a `SettingsField` for the group Style band. `defaultValue` (when
- *  given) is what an "unset" value reads as — e.g. `false` for the boolean
- *  switches, so a group that has never had the flag touched doesn't render
- *  as already-modified. `extra` (Task 9) carries the remaining
- *  `SettingsField` facets a plain switch/color field doesn't need — numeric
- *  bounds (`min`/`max`/`step`) for `'number'` fields and `options` for
- *  `'select'` fields. */
-function field(
-  key: string,
-  label: string,
-  type: SettingsField['type'],
-  get: () => unknown,
-  set: (value: unknown) => void,
-  defaultValue?: unknown,
-  extra?: Pick<SettingsField, 'min' | 'max' | 'step' | 'options'>,
-): SettingsField {
-  return { key, label, type, get, set, defaultValue, ...extra };
-}
+// Alignment glyphs for the halign icon segment — currentColor-driven so both
+// themes get correct contrast for free. Rows encode left/center/right ragging.
+const ALIGN_LEFT_SVG =
+  '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/></g></svg>';
+const ALIGN_CENTER_SVG =
+  '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M4.5 8h7M3.5 12h9"/></g></svg>';
+const ALIGN_RIGHT_SVG =
+  '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M6.5 8h7M4.5 12h9"/></g></svg>';
