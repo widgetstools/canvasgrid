@@ -56,6 +56,9 @@ const WHEEL_LOCK_IDLE_MS = 150;
 
 export class FeatureChain {
   private head: Feature;
+  /** Cycle 21i / Phase 1 — kept for `mouseleave` to clear the row-hover
+   *  highlight + fire the trailing mouse-out events. */
+  private onHover!: OnHover;
   private mouseIsDown = false;
   /** Axis the current wheel gesture is locked to. `null` between gestures so
    *  the next event re-detects the dominant axis. */
@@ -115,12 +118,13 @@ export class FeatureChain {
       // OnHover; forwards every move via `super` so hover state still
       // updates downstream.
       .append(new TooltipProvider())
-      .append(new OnHover());
+      .append((this.onHover = new OnHover()));
 
     const c = grid.canvas.canvas;
     c.tabIndex = 0;
     c.addEventListener('mousedown', this.onMouseDown);
     c.addEventListener('mousemove', this.onMouseMove);
+    c.addEventListener('mouseleave', this.onMouseLeave);
     c.addEventListener('click', this.onClick);
     c.addEventListener('dblclick', this.onDoubleClick);
     c.addEventListener('contextmenu', this.onContextMenu);
@@ -132,6 +136,7 @@ export class FeatureChain {
     const c = this.grid.canvas.canvas;
     c.removeEventListener('mousedown', this.onMouseDown);
     c.removeEventListener('mousemove', this.onMouseMove);
+    c.removeEventListener('mouseleave', this.onMouseLeave);
     c.removeEventListener('click', this.onClick);
     c.removeEventListener('dblclick', this.onDoubleClick);
     c.removeEventListener('contextmenu', this.onContextMenu);
@@ -173,6 +178,13 @@ export class FeatureChain {
     window.removeEventListener('mousemove', this.onWindowMouseMove);
     window.removeEventListener('mouseup', this.onWindowMouseUp);
     this.head.handleMouseUp(this.buildCtx(e));
+  };
+
+  private onMouseLeave = (e: MouseEvent): void => {
+    // Pointer left the canvas — clear the row-hover highlight (and fire
+    // the trailing mouse-out events for the last hovered cell/row).
+    if (this.mouseIsDown) return;
+    this.onHover.reset(this.grid, e);
   };
 
   private onMouseMove = (e: MouseEvent): void => {

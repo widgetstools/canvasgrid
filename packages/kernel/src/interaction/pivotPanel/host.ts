@@ -141,15 +141,26 @@ export class PivotPanelHost {
   private readonly onPointerCancel: (e: PointerEvent) => void;
   private destroyed = false;
 
+  /** Cycle 21i / Phase 1 — when true, `'onlyWhenPivoting'` keys its
+   *  visibility off pivot MODE (not pivot-active-with-values), so the
+   *  empty "Column Labels" half of the split top strip appears the
+   *  moment the user enables pivot mode. Set by the grid when the panel
+   *  is auto-created alongside the row-group panel (no explicit
+   *  `pivotPanelShow`). Explicit `pivotPanelShow` keeps the AG contract
+   *  (visible only when actually pivoting). */
+  private readonly showOnPivotMode: boolean;
+
   constructor(
     root: HTMLElement,
     ctx: PivotPanelGridContext,
     show: PivotPanelShow,
     initialPivotColumns: string[],
+    opts?: { showOnPivotMode?: boolean },
   ) {
     this.root = root;
     this.ctx = ctx;
     this.show = show;
+    this.showOnPivotMode = opts?.showOnPivotMode === true;
     this.pivotColumns = [...initialPivotColumns];
 
     this.panel = document.createElement('div');
@@ -190,8 +201,16 @@ export class PivotPanelHost {
     if (this.destroyed) return false;
     if (this.show === 'never') return false;
     if (this.show === 'always') return true;
-    // 'onlyWhenPivoting' — fully hide while inactive.
-    return this.ctx.isPivotActive();
+    // 'onlyWhenPivoting' — hide while inactive. In showOnPivotMode the
+    // trigger is pivot MODE (empty column-labels half on toggle);
+    // otherwise pivot-active-with-values (AG contract).
+    return this.pivotShown();
+  }
+
+  /** The `'onlyWhenPivoting'` visibility trigger: pivot mode when the
+   *  panel is the auto-split column-labels half, else pivot-active. */
+  private pivotShown(): boolean {
+    return this.showOnPivotMode ? this.ctx.isPivotMode() : this.ctx.isPivotActive();
   }
 
   /** Receive a fresh ordered pivot column list from PivotState.
@@ -314,7 +333,7 @@ export class PivotPanelHost {
    *  'onlyWhenPivoting' accepts only when pivot is active. */
   private acceptsDrops(): boolean {
     if (this.show === 'always') return true;
-    if (this.show === 'onlyWhenPivoting') return this.ctx.isPivotActive();
+    if (this.show === 'onlyWhenPivoting') return this.pivotShown();
     return false;
   }
 
@@ -326,7 +345,7 @@ export class PivotPanelHost {
   private shouldPaintContent(): boolean {
     if (this.show === 'always') return true;
     if (this.show === 'onlyWhenPivoting') {
-      return this.ctx.isPivotActive() || this.pivotColumns.length > 0;
+      return this.pivotShown() || this.pivotColumns.length > 0;
     }
     return false;
   }

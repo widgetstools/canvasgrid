@@ -378,6 +378,21 @@ export interface CColDef<TRow = any, TValue = any> {
    */
   wrapText?: boolean;
   /**
+   * Cycle 21i / Phase 1 — wrap the HEADER text to the column width instead
+   * of clipping it. Multi-line headers draw within the header row; pair
+   * with `autoHeaderHeight: true` (or a taller `headerHeight`) so every
+   * line is visible. Honored via `defaultColDef` for all columns.
+   */
+  wrapHeaderText?: boolean;
+  /**
+   * Cycle 21i / Phase 1 — grow the leaf header row to fit this column's
+   * wrapped header text. The header row height becomes the tallest wrapped
+   * header among visible columns that set this (floored at the configured
+   * `headerHeight` / theme default). Only meaningful with
+   * `wrapHeaderText: true`.
+   */
+  autoHeaderHeight?: boolean;
+  /**
    * Convert the editor's emitted value into the typed value to commit. Runs
    * before `valueSetter`. Receives the value already cast by the editor
    * (`Number()` for `type: 'number'`, raw string for text). Return the value

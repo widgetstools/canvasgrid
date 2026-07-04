@@ -58,6 +58,19 @@ export interface GridState {
     visible: boolean;
   };
 
+  // Runtime-touched grid options (Cycle 21i / Phase 1). Only options
+  // changed via `setGridOption` / `updateGridOptions` after construction,
+  // and only JSON-serializable non-data keys (see
+  // NON_PERSISTABLE_RUNTIME_OPTIONS in cgrid.ts). Restored FIRST on
+  // `setState` so option-driven layout (row heights, panels) settles
+  // before column state applies.
+  gridOptions?: Record<string, unknown>;
+
+  // Theme token overrides set via `setThemeParams` (Cycle 21i / Phase 1) —
+  // data colours (row selection, cell range, flash) configured through the
+  // Grid Options color picker. Restored alongside gridOptions.
+  themeParams?: Record<string, string>;
+
   // Cell ranges + focused cell (Cycle 9).
   cellSelection?: {
     ranges: SelectionRange[];
@@ -89,6 +102,10 @@ export interface StateSnapshotSources {
   getFocusedCell(): { rowId: string; colId: string } | null;
   getSelectedRowIds(): string[];
   getScrollPosition(): { top: number; left: number };
+  /** Cycle 21i / Phase 1 — runtime-touched, persistable option values. */
+  getRuntimeOptions?(): Record<string, unknown>;
+  /** Cycle 21i / Phase 1 — theme token overrides set via setThemeParams. */
+  getThemeParams?(): Record<string, string>;
 }
 
 /** Schema migrations. Each entry runs over a snapshot whose
@@ -151,6 +168,16 @@ export function buildSnapshot(sources: StateSnapshotSources): GridState {
   const opened = sources.getOpenedToolPanel();
   const visible = sources.isSideBarVisible();
   if (opened !== null || visible) snapshot.sideBar = { openedToolPanel: opened, visible };
+
+  const runtimeOptions = sources.getRuntimeOptions?.();
+  if (runtimeOptions && Object.keys(runtimeOptions).length > 0) {
+    snapshot.gridOptions = runtimeOptions;
+  }
+
+  const themeParams = sources.getThemeParams?.();
+  if (themeParams && Object.keys(themeParams).length > 0) {
+    snapshot.themeParams = themeParams;
+  }
 
   const ranges = sources.getCellRanges();
   const focused = sources.getFocusedCell();

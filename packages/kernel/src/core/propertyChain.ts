@@ -178,6 +178,12 @@ export interface ResolvedColDef<TRow = any> {
    *  height for every visible row in this column and contributes the result
    *  into the row's resolved height. Cycle 5 / Task 8. */
   autoHeight?: boolean;
+  /** See `CColDef.wrapHeaderText` (Cycle 21i / Phase 1). Header cell
+   *  wraps its text to the column width. */
+  wrapHeaderText?: boolean;
+  /** See `CColDef.autoHeaderHeight` (Cycle 21i / Phase 1). Leaf header
+   *  row grows to fit this column's wrapped header. */
+  autoHeaderHeight?: boolean;
   /** See `CColDef.wrapText`. When true, the cell renderer paints multi-line
    *  wrapped text. Auto-selects the `'text-wrap'` renderer when no
    *  `cellRenderer` is set explicitly. Cycle 5 / Task 9. */
@@ -277,6 +283,9 @@ export interface ApplyCellPropsInput {
    *  `TotalsSubgrid` (the existing flag), never both. */
   isGroupFooter?: boolean;
   iconColor?: string;
+  /** Cycle 21i / Phase 1 — header cell wraps its text to the column
+   *  width (colDef.wrapHeaderText). Header rows only. */
+  wrapHeader?: boolean;
   sortDirection?: 'asc' | 'desc';
   /** Cycle 8 / Task 1 — 1-indexed sort position; threaded into the
    *  resulting `CellPaintConfig.sortIndex` so the header painter can
@@ -525,6 +534,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.isHovered = ctx.isHovered;
   target.isHeader = ctx.isHeader;
   target.iconColor = ctx.iconColor;
+  target.wrapHeader = ctx.wrapHeader;
   target.sortDirection = ctx.sortDirection;
   target.sortIndex = ctx.sortIndex;
   target.sortTotal = ctx.sortTotal;
@@ -1163,6 +1173,8 @@ export function resolveColDef<TRow>(
     ...compileHeaderClass(merged.headerClass as HeaderClass | undefined),
     autoHeight: merged.autoHeight,
     wrapText: merged.wrapText,
+    wrapHeaderText: merged.wrapHeaderText,
+    autoHeaderHeight: merged.autoHeaderHeight,
     columnGroupShow: merged.columnGroupShow ?? null,
     suppressMovable: merged.suppressMovable ?? false,
     lockPosition: merged.lockPosition === true || merged.lockPosition === 'left'

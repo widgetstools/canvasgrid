@@ -95,9 +95,8 @@ describe('ColumnsToolPanel', () => {
     expect(root.querySelector('.cg-columns-panel-list')).not.toBeNull();
     const sections = Array.from(root.querySelectorAll('.cg-columns-panel-section-header'))
       .map((el) => el.textContent?.trim());
-    // Cycle 18 / Task 9 follow-up — AG-Grid parity for tool panel
-    // section order. Row dimension first, then Values, then Column
-    // Labels — matches the convention pivot users expect.
+    // Cycle 21i / Phase 1 (revised) — Column Labels zone lives in the
+    // side panel (below Values) AND the top pivot strip.
     expect(sections).toEqual(['Row Groups', 'Values', 'Column Labels']);
   });
 
@@ -271,13 +270,12 @@ describe('ColumnsToolPanel', () => {
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
     const dropZones = Array.from(root.querySelectorAll<HTMLElement>('.cg-columns-panel-drop-zone'));
-    // Cycle 18 / Task 5 — three live drop zones (Column Labels, Values,
-    // Row Groups). Empty-state placeholders read the canonical strings.
+    // Cycle 21i / Phase 1 (revised) — three live drop zones.
     expect(dropZones.length).toBe(3);
     const texts = dropZones.map((z) => z.textContent?.trim());
-    expect(texts).toContain('Drag here to set column labels');
     expect(texts).toContain('Drag here to aggregate');
     expect(texts).toContain('Drag here to set row groups');
+    expect(texts).toContain('Drag here to set column labels');
   });
 
   it('Pivot Mode toggle click flips the data-active attribute (visual stub — wired to api.setPivotMode in Cycle 16)', () => {

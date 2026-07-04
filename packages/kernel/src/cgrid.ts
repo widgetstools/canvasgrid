@@ -38,6 +38,7 @@ import {
   buildSnapshot, migrateSnapshot, STATE_SCHEMA_VERSION, type GridState,
 } from './core/stateSnapshot';
 import { StateUpdatedBus } from './core/stateUpdatedBus';
+import { computeAutoHeaderHeight } from './renderer/cellRenderers/headerWrap';
 import type { CColumnState, CApplyColumnStateParams, ISizeColumnsToFitParams } from './types';
 import type { CColDef, CColGroupDef } from './types';
 import {
@@ -63,6 +64,7 @@ import { ContextMenuHost } from './interaction/contextMenu/host';
 import { ToolPanelRegistry } from './interaction/toolPanels/registry';
 import { ColumnsToolPanel } from './interaction/toolPanels/columnsPanel';
 import { FiltersToolPanel } from './interaction/toolPanels/filtersPanel';
+import { GridOptionsToolPanel } from './interaction/toolPanels/gridOptionsPanel';
 import { SideBarHost, normalizeSideBarOption, type SideBarGridContext } from './interaction/sideBar/host';
 import { StatusBarHost, normalizeStatusBarOption, type StatusBarGridContext } from './interaction/statusBar/host';
 import { StatusPanelRegistry } from './interaction/statusBar/registry';
@@ -194,6 +196,35 @@ export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/regi
 // Cycle 23 / Tasks 5-6 — state-snapshot public types.
 export type { GridState } from './core/stateSnapshot';
 export { STATE_SCHEMA_VERSION } from './core/stateSnapshot';
+export type { StateStorageAdapter, PersistStateOptions } from './core/statePersistence';
+export { LocalStorageStateAdapter } from './core/statePersistence';
+
+/** Cycle 21i / Phase 1 — runtime options that never enter the GridState
+ *  `gridOptions` slice: data inputs, callbacks/functions (not
+ *  serializable), and `theme` (app chrome owns the toggle; persisting it
+ *  would fight the host's own theme storage). */
+const NON_PERSISTABLE_RUNTIME_OPTIONS: ReadonlySet<string> = new Set([
+  'rowData',
+  'pinnedTopRowData',
+  'pinnedBottomRowData',
+  'context',
+  'loading',
+  'debug',
+  'quickFilterText',
+  'aggFuncs',
+  'fillOperation',
+  'getContextMenuItems',
+  'processCellForClipboard',
+  'processCellFromClipboard',
+  'theme',
+]);
+export type {
+  SettingsSection,
+  SettingsBand,
+  SettingsField,
+  SettingsFieldType,
+  SettingsSelectOption,
+} from './types/settingsSchema';
 export type {
   SelectionConfig,
   SingleRowSelectionConfig,
@@ -202,6 +233,9 @@ export type {
   RowCheckboxCallback,
 } from './core/selectionConfig';
 export type { ICellEditor, ICellEditorParams, CellEditorCtor } from './interaction/editors/iCellEditor';
+// price32 — reference bond-price (32nds) editor + its parse/format helpers so
+// hosts can format the display value to match the editor's notation.
+export { Price32CellEditor, parsePrice32, formatPrice32 } from './interaction/editors/builtins/price32';
 
 // Cycle 27 / Task 1 + 2 + 3 — cell styling expansion types.
 export type {
@@ -502,6 +536,17 @@ export class CGrid<TRow = any> {
    *  merged changedKeys. Lazily constructed in the constructor body
    *  so `this.getState()` is bound by the time it subscribes. */
   private stateUpdatedBus!: StateUpdatedBus;
+  /** Cycle 21i / Phase 1 — restore-then-autosave persistence (gridId +
+   *  persistState options). Null when persistence is not enabled. */
+  private statePersistence: import('./core/statePersistence').StatePersistenceController | null = null;
+  /** Cycle 21i / Phase 1 — runtime options touched via setGridOption /
+   *  updateGridOptions (persistable keys only). Feeds the `gridOptions`
+   *  slice of the GridState snapshot. */
+  private runtimeTouchedOptions = new Map<string, unknown>();
+  /** Cycle 21i / Phase 1 — data-row index currently under the pointer
+   *  (null when off any data row). Drives the row-hover highlight;
+   *  forced null when `suppressRowHoverHighlight`. */
+  private hoveredRowIndex: number | null = null;
   private columnTree!: ColumnTree;
   private columnGroupState!: ColumnGroupState;
   private columnDefsMap: Map<string, ResolvedColDef<TRow>> = new Map();
@@ -826,7 +871,7 @@ export class CGrid<TRow = any> {
     }
 
     this.scroller = document.createElement('div');
-    this.scroller.className = 'cg-scroller';
+    this.scroller.className = 'cg-scroller cg-scrollbar';
     // overflow:scroll (not auto) so scrollbar gutters are reserved unconditionally —
     // macOS overlay scrollbars otherwise disappear when idle and the user can't
     // see they're scrollable. The webkit-scrollbar styles in tokens.css then
@@ -894,6 +939,8 @@ export class CGrid<TRow = any> {
     this.toolPanelRegistry.seedBuiltIns();
     this.toolPanelRegistry.register('agColumnsToolPanel', ColumnsToolPanel);
     this.toolPanelRegistry.register('agFiltersToolPanel', FiltersToolPanel);
+    // Cycle 21i / Phase 1 — native Grid Options settings tab.
+    this.toolPanelRegistry.register('agGridOptionsToolPanel', GridOptionsToolPanel);
     if (options.components) {
       for (const [id, ctor] of Object.entries(options.components)) {
         this.toolPanelRegistry.register(id, ctor);
@@ -1024,6 +1071,10 @@ export class CGrid<TRow = any> {
 
     // 5. Selection
     this.selection = new SelectionModel(options.rowSelection ?? 'none');
+    // Cycle 21i / Phase 1 — let UI-driven selection record row IDs so it
+    // survives `modelUpdated` (live transactions fire it constantly). The
+    // resolver maps a visible row index → its string rowId from the chunk.
+    this.selection.setRowIdResolver((rowIndex) => this.rowIdAt(rowIndex));
 
     // 6. Renderer — no canvas, no paint loop; just the per-frame paint logic.
     this.renderer = new Renderer({
@@ -1033,6 +1084,8 @@ export class CGrid<TRow = any> {
       cellRenderers: this.cellRenderers,
       cellData: (rowIndex, colId) => this.cellAt(rowIndex, colId),
       getSelection: () => this.selection.state,
+      getHoveredRowIndex: () =>
+        this.options.suppressRowHoverHighlight ? null : this.hoveredRowIndex,
       getSortModel: () => this.sortModel,
       getTotalRowCount: () => this.rowCount,
       getCanvasWidth: () => this.canvasBounds.width,
@@ -1261,7 +1314,15 @@ export class CGrid<TRow = any> {
     // dimension). Constructed AFTER the row group panel so visibility
     // reservations land in the right order: row group panel reserves
     // first, pivot panel reserves on top of that.
-    const ppShow = normalizePivotPanelShow(options.pivotPanelShow);
+    // Cycle 21i / Phase 1 — when the app shows the row-group panel but
+    // does NOT set `pivotPanelShow`, auto-provide the column-labels strip
+    // as the split-right half that appears on pivot mode. The tool panel
+    // no longer carries a Column Labels zone, so this top strip is the
+    // single column-labels surface. Explicit `pivotPanelShow` keeps the
+    // AG contract (visible only when actually pivoting).
+    const ppExplicit = options.pivotPanelShow !== undefined;
+    const ppShow = normalizePivotPanelShow(options.pivotPanelShow)
+      ?? (!ppExplicit && rgShow !== null ? 'onlyWhenPivoting' : null);
     if (ppShow !== null) {
       const ctx: PivotPanelGridContext = this.makePivotPanelContext();
       this.pivotPanel = new PivotPanelHost(
@@ -1269,6 +1330,7 @@ export class CGrid<TRow = any> {
         ctx,
         ppShow,
         this.pivotEngine.getPivotColumns(),
+        { showOnPivotMode: !ppExplicit },
       );
       this.setPivotPanelTop(this.statusBarInsets.top);
     }
@@ -1307,7 +1369,7 @@ export class CGrid<TRow = any> {
       },
       getOverlayHost: () => this.editorContainer,
       getHeaderName: (colId) => this.columnDefsMap.get(colId)?.headerName,
-      getLeafHeaderHeight: () => this.options.headerHeight ?? this.theme.headerHeight,
+      getLeafHeaderHeight: () => this.effectiveLeafHeaderHeight(),
       getLeafHeaderTop: () => {
         const leaf = this.viewport.visibleRows.find(
           (r) => !r.subgrid.isData && !('getGroupIdAt' in r.subgrid),
@@ -1369,6 +1431,10 @@ export class CGrid<TRow = any> {
         this.emitRowMouseOverFromHover(rowIndex, mouse),
       emitRowMouseOut: (rowIndex, mouse) =>
         this.emitRowMouseOutFromHover(rowIndex, mouse),
+      setHoveredRow: (rowIndex) => {
+        // Suppressed → never track (stays null so the painter skips it).
+        this.hoveredRowIndex = this.options.suppressRowHoverHighlight ? null : rowIndex;
+      },
       // Cycle 23 / Task 4 — cell keyboard events. The CellKeyboardEvents
       // feature sits at the HEAD of the chain; it returns the
       // `event.defaultPrevented` flag back upstream so the chain can
@@ -1522,6 +1588,7 @@ export class CGrid<TRow = any> {
         root: this.root,
         editorContainer: this.editorContainer,
         getColumnDef: (colId) => this.columnDefsMap.get(colId),
+        isPivotMode: () => this.pivotEngine.isPivotMode(),
         getColumnOrder: () => this.columnOrder,
         getRowCount: () => this.rowCount,
         getVisibleColumns: () => this.viewport.visibleColumns,
@@ -1858,6 +1925,29 @@ export class CGrid<TRow = any> {
         // stateUpdated event reads source: 'init', not 'ui'.
         this.stateUpdatedBus?.setNextSource('init');
         this.setState(options.initialState);
+      }
+      // Cycle 21i / Phase 1 — persistState: restore the saved snapshot
+      // (AFTER initialState so the user's last session wins over the
+      // app default), then arm the debounced autosave. Autosave only
+      // arms once restore resolves, so construction-time stateUpdated
+      // emits can't clobber the saved snapshot.
+      if (options.persistState) {
+        if (!options.gridId) {
+          console.warn("[cgrid] persistState requires a 'gridId' — persistence disabled");
+        } else {
+          const { StatePersistenceController } = await import('./core/statePersistence');
+          const persistOpts = options.persistState === true ? {} : options.persistState;
+          this.statePersistence = new StatePersistenceController(options.gridId, persistOpts, {
+            applyState: (state) => {
+              this.stateUpdatedBus?.setNextSource('init');
+              this.setState(state);
+            },
+            onStateUpdated: (fn) =>
+              this.events.on('stateUpdated', (ev) =>
+                fn((ev as unknown as { state: GridState }).state)),
+          });
+          await this.statePersistence.restore();
+        }
       }
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
 
@@ -3146,8 +3236,32 @@ export class CGrid<TRow = any> {
   // ─── Cycle 18 / Task 3 — pivot API + render wiring ─────────────────────
 
   isPivotMode(): boolean { return this.pivotEngine.isPivotMode(); }
-  setPivotMode(pivotMode: boolean): void {
-    if (!this.destroyed) this.pivotEngine.setPivotMode(pivotMode);
+  setPivotMode(pivotMode: boolean, opts?: { discardSettings?: boolean }): void {
+    if (this.destroyed) return;
+    // Cycle 21i / Phase 1 (user directive) — `discardSettings` (passed by
+    // the Pivot Mode toggle in the columns tool panel, i.e. a user-driven
+    // switch) gives a clean slate on the mode change so table-mode state
+    // never leaks into pivot and vice versa. Programmatic setup
+    // (`setPivotColumns(...); setPivotMode(true)`) omits it and keeps the
+    // configured pivot. Clears the data-shaping config (row groups, pivot
+    // + value roles, sort, filter); on → table every column becomes
+    // visible with no grouping; on → pivot every role is cleared so the
+    // tool panel reads "all deselected". Layout (widths/order/pinning) is
+    // preserved.
+    if (opts?.discardSettings && this.pivotEngine.isPivotMode() !== pivotMode) {
+      this.setRowGroupColumns([]);
+      this.setPivotColumns([]);
+      for (const v of this.getValueColumns()) this.removeValueColumn(v.colId);
+      this.setSortModel([]);
+      this.setFilterModel({});
+      if (!pivotMode) {
+        const primaryIds = this.getColumnState()
+          .map((c) => c.colId)
+          .filter((id) => !isAutoGroupColumnId(id) && !id.startsWith('pivotcol'));
+        this.setColumnsVisible(primaryIds, true);
+      }
+    }
+    this.pivotEngine.setPivotMode(pivotMode);
   }
   getPivotColumns(): string[] { return this.pivotEngine.getPivotColumns(); }
   setPivotColumns(colIds: string[]): void {
@@ -3697,7 +3811,7 @@ export class CGrid<TRow = any> {
       (r) => !r.subgrid.isData && !('getGroupIdAt' in r.subgrid),
     );
     const leafTop = leaf ? leaf.top : 0;
-    const leafHeight = this.options.headerHeight ?? this.theme.headerHeight;
+    const leafHeight = this.effectiveLeafHeaderHeight();
     const top = rect.top + leafTop;
     return clientY >= top && clientY <= top + leafHeight;
   }
@@ -4162,7 +4276,7 @@ export class CGrid<TRow = any> {
    *  Splits the work three ways: worker does the per-cell value lookup
    *  + RFC-4180 quoting + buffer joins (off the main thread); main
    *  does the clipboard write inside the caller's user-gesture stack. */
-  async copySelectedRangesToClipboard(): Promise<void> {
+  async copySelectedRangesToClipboard(opts?: { includeHeaders?: boolean }): Promise<void> {
     if (this.destroyed) return;
     // Cycle 10 / Task 6 — `suppressClipboardApi` rejects every clipboard
     // entry point before any work happens. Apps that ship their own
@@ -4184,9 +4298,22 @@ export class CGrid<TRow = any> {
     // `transformCell`. Without the option, the worker still owns the
     // serialise hop (the perf-budgeted path).
     const transform = this.options.processCellForClipboard;
-    const tsv = transform
-      ? await this.serializeRangesMainSide(ranges, delimiter, transform)
-      : await this.workerCoord.clipboardSerialize(ranges, delimiter);
+    // Cycle 21i / Phase 1 — under active pivot the visible cells are
+    // cross-tab aggregates that live in the chunk (not in the leaf source
+    // rows the worker/main-side leaf serializers read), so those paths
+    // return blank cells. Serialize "what you see" via `cellAt`, which
+    // resolves pivot result cells + the auto-group column + formatting.
+    const body = this.pivotEngine.isPivotActive()
+      ? this.serializeRangesViaCellAt(ranges, delimiter, transform)
+      : transform
+        ? await this.serializeRangesMainSide(ranges, delimiter, transform)
+        : await this.workerCoord.clipboardSerialize(ranges, delimiter);
+    // Cycle 21i / Phase 1 — "Copy with Headers" prepends a header row of
+    // the selected columns' header names (in column order), delimiter- and
+    // newline-joined to match the body TSV.
+    const tsv = opts?.includeHeaders
+      ? `${this.clipboardHeaderLine(ranges, delimiter)}\n${body}`
+      : body;
     // `navigator.clipboard.writeText` requires a user gesture in every
     // mainstream browser; the keyboard / menu handlers already run
     // inside one. Apps that invoke this from a `setTimeout` get a
@@ -4206,7 +4333,7 @@ export class CGrid<TRow = any> {
     if (hasComposite) {
       const clip = navigator.clipboard as Clipboard & { write?: (items: ClipboardItem[]) => Promise<void> };
       if (typeof ClipboardItem !== 'undefined' && typeof clip.write === 'function') {
-        const html = await this.serializeRangesToHtml(ranges);
+        const html = await this.serializeRangesToHtml(ranges, opts?.includeHeaders === true);
         const item = new ClipboardItem({
           'text/plain': new Blob([tsv], { type: 'text/plain' }),
           'text/html': new Blob([html], { type: 'text/html' }),
@@ -4219,12 +4346,69 @@ export class CGrid<TRow = any> {
     await navigator.clipboard.writeText(tsv);
   }
 
+  /** Cycle 21i / Phase 1 — serialize ranges from the painter's own cell
+   *  resolver (`cellAt`), so pivot cross-tab cells, group/auto-group
+   *  cells, and totals serialize as their displayed value. Reuses the
+   *  pure serializer by projecting each cell's value onto a per-row
+   *  object keyed by colId (field === colId). Cells outside the loaded
+   *  chunk resolve to '' (the pivot matrix is small and typically fully
+   *  loaded). `transform` (processCellForClipboard) still applies. */
+  private serializeRangesViaCellAt(
+    ranges: SelectionRange[],
+    delimiter: string,
+    transform: CGridOptions<TRow>['processCellForClipboard'],
+  ): string {
+    const rows: Array<Record<string, unknown> | undefined> = [];
+    const colIds = new Set<string>();
+    for (const range of ranges) {
+      for (const id of range.colIds) colIds.add(id);
+      for (let rowIndex = range.rowStart; rowIndex <= range.rowEnd; rowIndex++) {
+        if (rows[rowIndex] !== undefined) continue;
+        const obj: Record<string, unknown> = {};
+        for (const id of range.colIds) {
+          const cell = this.cellAt(rowIndex, id);
+          // Primitive value (pivot aggregate number, plain text) copies
+          // raw so it pastes as a number; the auto-group / group cells
+          // carry an object value whose label lives in valueFormatted.
+          obj[id] = cell == null
+            ? ''
+            : (cell.value !== null && typeof cell.value === 'object'
+                ? cell.valueFormatted
+                : cell.value);
+        }
+        rows[rowIndex] = obj;
+      }
+    }
+    const columnsById = new Map<string, { field?: string }>();
+    for (const id of colIds) columnsById.set(id, { field: id });
+    return serializeRangesPure(rows, columnsById, ranges, delimiter, transform
+      ? (params) => transform({
+          value: params.value,
+          node: { rowIndex: params.node.rowIndex, data: params.node.data as TRow },
+          column: { colId: params.column.colId },
+        })
+      : undefined);
+  }
+
+  /** Cycle 21i / Phase 1 — the header row for "Copy with Headers": the
+   *  distinct column headerNames touched by `ranges`, ordered by the
+   *  grid's column order, joined by `delimiter`. */
+  private clipboardHeaderLine(ranges: SelectionRange[], delimiter: string): string {
+    const orderIdx = new Map(this.columnOrder.map((c, i) => [c.colId, i]));
+    const ids = [...new Set(ranges.flatMap((r) => r.colIds))].sort(
+      (a, b) => (orderIdx.get(a) ?? 0) - (orderIdx.get(b) ?? 0),
+    );
+    return ids
+      .map((id) => this.columnDefsMap.get(id)?.headerName ?? id)
+      .join(delimiter);
+  }
+
   /** Cycle 21c / Task 15 — build the text/html clipboard flavor for
    *  ranges that include composite columns. Fetches the touched rows
    *  main-side (composite programs are main-thread closures — they
    *  don't cross postMessage), resolves fragments per composite cell,
    *  and falls back to formatted plain text for regular columns. */
-  private async serializeRangesToHtml(ranges: SelectionRange[]): Promise<string> {
+  private async serializeRangesToHtml(ranges: SelectionRange[], includeHeaders = false): Promise<string> {
     const rowIndexSet = new Set<number>();
     for (const range of ranges) {
       for (let i = range.rowStart; i <= range.rowEnd; i++) rowIndexSet.add(i);
@@ -4280,6 +4464,15 @@ export class CGrid<TRow = any> {
         }
         out.push({ cells });
       }
+    }
+    if (includeHeaders) {
+      const orderIdx = new Map(this.columnOrder.map((c, i) => [c.colId, i]));
+      const ids = [...new Set(ranges.flatMap((r) => r.colIds))].sort(
+        (a, b) => (orderIdx.get(a) ?? 0) - (orderIdx.get(b) ?? 0),
+      );
+      out.unshift({
+        cells: ids.map((id) => ({ text: this.columnDefsMap.get(id)?.headerName ?? id })),
+      });
     }
     return serializeToHtml(out);
   }
@@ -5081,6 +5274,10 @@ export class CGrid<TRow = any> {
     this.theme = this.cssReader.read();
     this.recomputeViewport();
     this.cgridCanvas.requestRepaint();
+    // Cycle 21i / Phase 1 — theme-token overrides ride in the GridState
+    // `themeParams` slice; dirty the autosave bus so color-picker edits
+    // in the Grid Options panel survive reload.
+    this.stateUpdatedBus?.markChanged('themeParams');
   }
 
   /** Cycle 22 / Task 3 — read the currently-set inline overrides. Returns
@@ -5141,6 +5338,13 @@ export class CGrid<TRow = any> {
     }
     this.options[key] = value;
     applyRuntimeOption(this.runtimeTarget(), key as any, value);
+    // Cycle 21i / Phase 1 — record the touch for the GridState
+    // `gridOptions` slice + dirty the coalesced autosave bus. Data
+    // inputs / callbacks / theme (app chrome) never persist.
+    if (!NON_PERSISTABLE_RUNTIME_OPTIONS.has(key as string)) {
+      this.runtimeTouchedOptions.set(key as string, value);
+      this.stateUpdatedBus?.markChanged('gridOptions');
+    }
   }
 
   /** Batch-update grid options. `columnDefs` is honored only via this
@@ -5324,6 +5528,53 @@ export class CGrid<TRow = any> {
   /** Rebuild the subgrid stack so the header-group row count matches the
    *  current `columnTree.maxDepth`. Data + leaf header subgrids are
    *  callback-driven and therefore re-pickable as-is. */
+  /** Cycle 21i / Phase 1 — auto header height. Lazy measuring ctx +
+   *  signature-keyed cache; recomputes only when a wrap-enabled column's
+   *  width / header text / font / base height changes. */
+  private headerMeasureCtx: CanvasRenderingContext2D | null = null;
+  private autoHeaderHeightCache: { signature: string; height: number } | null = null;
+
+  /** Leaf header row height: base (options.headerHeight ?? theme) unless
+   *  a visible column sets `wrapHeaderText` + `autoHeaderHeight`, in which
+   *  case the row grows to the tallest wrapped header. Group header rows
+   *  always use the base height. */
+  private effectiveLeafHeaderHeight(): number {
+    const base = this.options.headerHeight ?? this.theme.headerHeight;
+    const cols = this.viewport?.visibleColumns;
+    if (!cols || cols.length === 0) return base;
+    const suppress = this.options.suppressAggFuncInHeader === true;
+    const wrapCols: Array<{ colId: string; width: number; text: string }> = [];
+    let signature = `${this.theme.font}|${base}`;
+    for (const c of cols) {
+      const def = this.columnDefsMap.get(c.colId);
+      if (def?.wrapHeaderText !== true || def?.autoHeaderHeight !== true) continue;
+      // Measure the DECORATED text (`sum(P&L)`) — exactly what paints.
+      const text = decorateHeader(def, suppress);
+      wrapCols.push({ colId: c.colId, width: c.width, text });
+      signature += `|${c.colId}:${c.width}:${text}`;
+    }
+    if (wrapCols.length === 0) return base;
+    if (this.autoHeaderHeightCache?.signature === signature) {
+      return this.autoHeaderHeightCache.height;
+    }
+    if (!this.headerMeasureCtx) {
+      this.headerMeasureCtx = document.createElement('canvas').getContext('2d');
+    }
+    const ctx = this.headerMeasureCtx;
+    if (!ctx) return base;
+    ctx.font = this.theme.font;
+    const byId = new Map(wrapCols.map((w) => [w.colId, w.text]));
+    const height = computeAutoHeaderHeight({
+      columns: wrapCols,
+      wrapText: (colId) => byId.get(colId) ?? null,
+      measure: (t) => ctx.measureText(t).width,
+      font: this.theme.font,
+      baseHeight: base,
+    });
+    this.autoHeaderHeightCache = { signature, height };
+    return height;
+  }
+
   private rebuildSubgridStack(): void {
     const stack: Subgrid[] = [];
     for (let depth = 0; depth < this.columnTree.maxDepth; depth++) {
@@ -5336,7 +5587,7 @@ export class CGrid<TRow = any> {
     }
     stack.push(new HeaderSubgrid(
       this.columnDefsMap as Map<string, ResolvedColDef>,
-      () => this.options.headerHeight ?? this.theme.headerHeight,
+      () => this.effectiveLeafHeaderHeight(),
     ));
     // Cycle 7 / Task 1 — floating-filter row sits between the leaf header
     // and the data subgrid. Enabled when the grid-wide option is set OR
@@ -5558,6 +5809,10 @@ export class CGrid<TRow = any> {
     // event surface now means apps can wire listeners against a stable shape.
     this.events.emit({ type: 'gridPreDestroyed', state: {} });
     this.destroyed = true;
+    // Cycle 21i / Phase 1 — flush any pending autosave BEFORE teardown so
+    // the last user change survives an immediate page unload.
+    this.statePersistence?.destroy();
+    this.statePersistence = null;
     // Tear down every listener / RAF / timer routed through the registry
     // FIRST so callbacks fired during the rest of destroy() (e.g. a scroll
     // event triggered by a layout invalidation) can't hit half-disposed state.
@@ -5654,7 +5909,7 @@ export class CGrid<TRow = any> {
       getRowGroupColumns: () => this.getRowGroupColumns(),
       // Cycle 18 / Task 3 — pivot API.
       isPivotMode: () => this.isPivotMode(),
-      setPivotMode: (m) => this.setPivotMode(m),
+      setPivotMode: (m, opts) => this.setPivotMode(m, opts),
       getPivotColumns: () => this.getPivotColumns(),
       setPivotColumns: (cols) => this.setPivotColumns(cols),
       addPivotColumn: (colId) => this.addPivotColumn(colId),
@@ -5723,6 +5978,10 @@ export class CGrid<TRow = any> {
       registerCalcProvider: (provider) => this.registerCalcProvider(provider),
       forEachRow: (fn) => this.forEachRow(fn),
       getThemeKind: () => this.getThemeKind(),
+      setThemeParams: (patch) => this.setThemeParams(patch),
+      getThemeParams: () => this.getThemeParams(),
+      getDefaultRowHeight: () => this.theme.rowHeight,
+      getDefaultHeaderHeight: () => this.theme.headerHeight,
       registerIconSet: (name, paths) => this.registerIconSet(name, paths),
       resolveIcon: (name, setHint) => this.resolveIcon(name, setHint),
       registerTooltipProvider: (colId, fn) => this.registerTooltipProvider(colId, fn),
@@ -7170,6 +7429,8 @@ export class CGrid<TRow = any> {
       getFocusedCell: () => this.getFocusedCell(),
       getSelectedRowIds: () => this.getSelectedRowIds(),
       getScrollPosition: () => this.viewportManager.getScrollPosition(),
+      getRuntimeOptions: () => Object.fromEntries(this.runtimeTouchedOptions),
+      getThemeParams: () => this.getThemeParams(),
     });
   }
 
@@ -7189,6 +7450,25 @@ export class CGrid<TRow = any> {
     // events (filterChanged + sortChanged + ...) collapses into one
     // emission via the bus's rAF debounce.
     this.stateUpdatedBus?.setNextSource('api');
+
+    // 0. runtime options (Cycle 21i / Phase 1) — FIRST so option-driven
+    // layout (row heights, panels, defaultColDef) settles before column
+    // state applies on top. Each key applies independently; one bad
+    // value degrades to a warning, not a dropped restore.
+    if (migrated.gridOptions) {
+      for (const [key, value] of Object.entries(migrated.gridOptions)) {
+        try {
+          this.setGridOption(key as keyof CGridOptions<TRow>, value as never);
+        } catch (err) {
+          console.warn(`[cgrid] setState: skipped gridOptions['${key}']`, err);
+        }
+      }
+    }
+
+    // 0b. theme token overrides (Cycle 21i / Phase 1) — data colours.
+    if (migrated.themeParams) {
+      this.setThemeParams(migrated.themeParams);
+    }
 
     // 1. columnState (defines columns + their geometry).
     if (migrated.columnState) {
@@ -7258,6 +7538,14 @@ export class CGrid<TRow = any> {
    *  dedicated `resetColumnState` path so the as-coded layout
    *  (sort, pin, visibility) comes back exactly as the constructor
    *  saw it. */
+  /** Cycle 21i / Phase 1 — delete the persisted snapshot for this grid's
+   *  `gridId` (and cancel any pending autosave write). Does not change the
+   *  live grid state; pair with `resetState()` + a reload for a full
+   *  factory reset. No-op when persistence isn't enabled. */
+  clearPersistedState(): void {
+    this.statePersistence?.clear();
+  }
+
   resetState(): void {
     this.resetColumnState();
     this.setFilterModel({});

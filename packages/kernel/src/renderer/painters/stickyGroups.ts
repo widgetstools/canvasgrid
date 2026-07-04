@@ -43,13 +43,21 @@ export function paintStickyGroups(gc: CachedContext2D, p: PainterCtx): void {
   const { bodyTop, bodyLeft, bodyRight } = p.viewport;
   const theme = p.theme;
   const rowH = theme.rowHeight;
-  const bandW = bodyRight - bodyLeft;
+  // Cycle 21i — the group label lives in the auto-group column, which is
+  // pinned-left (index 0) by default. Anchor the band + label to THAT
+  // column's left, not `bodyLeft` (the start of the scrolling body): with
+  // a second pinned-left column present, `bodyLeft` sits past the group
+  // column and the label would render out in the value columns.
+  const autoGroupCol = p.viewport.visibleColumns.find((c) =>
+    c.colId.startsWith('ag-Grid-AutoColumn'));
+  const bandLeft = autoGroupCol ? Math.min(autoGroupCol.left, bodyLeft) : bodyLeft;
+  const bandW = bodyRight - bandLeft;
   const totalH = ancestors.length * rowH + SHADOW_HEIGHT;
 
   // Clip to the band + shadow zone.
   gc.cache.save();
   gc.beginPath();
-  gc.rect(bodyLeft, bodyTop, bandW, totalH);
+  gc.rect(bandLeft, bodyTop, bandW, totalH);
   gc.clip();
 
   // Track the bottom edge of the last painted row for the shadow.
@@ -84,16 +92,16 @@ export function paintStickyGroups(gc: CachedContext2D, p: PainterCtx): void {
 
     // Background.
     gc.cache.fillStyle = theme.groupRowBg ?? theme.bg;
-    gc.fillRect(bodyLeft, paintY, bandW, rowH);
+    gc.fillRect(bandLeft, paintY, bandW, rowH);
 
     // Bottom separator (hairline gridline).
     gc.cache.fillStyle = theme.gridLineColor;
-    gc.fillRect(bodyLeft, paintY + rowH - 1, bandW, 1);
+    gc.fillRect(bandLeft, paintY + rowH - 1, bandW, 1);
 
     // Chevron icon.
     const cy = paintY + rowH / 2;
     const indentX = ancestor.depth * INDENT_UNIT;
-    const left = bodyLeft + PADDING + indentX;
+    const left = bandLeft + PADDING + indentX;
     const chevronCx = left + CHEVRON_SIZE / 2;
     drawIcon(
       gc,
@@ -147,7 +155,7 @@ export function paintStickyGroups(gc: CachedContext2D, p: PainterCtx): void {
   gradient.addColorStop(0, 'rgba(0,0,0,0.10)');
   gradient.addColorStop(1, 'rgba(0,0,0,0)');
   gc.cache.fillStyle = gradient;
-  gc.fillRect(bodyLeft, lastRowBottom, bandW, SHADOW_HEIGHT);
+  gc.fillRect(bandLeft, lastRowBottom, bandW, SHADOW_HEIGHT);
 
   gc.cache.restore();
 }

@@ -32,6 +32,10 @@ export interface ICellEditor<TRow = unknown, TValue = unknown> {
   destroy(): void;
 
   /** Optional hooks — see docs/catalog/06-cell-editing.md for semantics. */
+  /** Return false to reject a commit: the host keeps the editor open and
+   *  adds `cg-editor--invalid`, so a bad value never navigates away. When
+   *  absent the value is always considered committable. */
+  isValid?(): boolean;
   isPopup?(): boolean;
   getPopupPosition?(): 'over' | 'under';
   afterGuiAttached?(): void;

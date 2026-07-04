@@ -26,6 +26,19 @@ function sameHover(a: HoverKey, b: HoverKey): boolean {
 export class OnHover extends Feature {
   private lastHover: HoverKey = null;
 
+  /** Cycle 21i / Phase 1 — pointer left the grid: fire the OUT events for
+   *  the last hovered cell/row, clear the row-hover highlight, repaint. */
+  reset(grid: CGridEventCtx['grid'], raw: MouseEvent): void {
+    const prev = this.lastHover;
+    if (prev?.kind === 'cell') {
+      grid.emitCellMouseOut?.(prev.rowIndex, prev.colId, raw);
+      grid.emitRowMouseOut?.(prev.rowIndex, raw);
+    }
+    this.lastHover = null;
+    grid.setHoveredRow?.(null);
+    grid.canvas.requestRepaint();
+  }
+
   override handleMouseMove(ctx: CGridEventCtx): void {
     // Cursor: header hover → pointer. ColumnResizing's `col-resize` is set
     // earlier in the chain and overrides this for the resize hot zone.
@@ -53,6 +66,9 @@ export class OnHover extends Feature {
       if (prevRow !== nextRow) {
         if (prevRow !== null) ctx.grid.emitRowMouseOut?.(prevRow, raw);
         if (nextRow !== null) ctx.grid.emitRowMouseOver?.(nextRow, raw);
+        // Cycle 21i / Phase 1 — record the hovered data row for the
+        // row-hover highlight paint (grid no-ops when suppressed).
+        ctx.grid.setHoveredRow?.(nextRow);
       }
       this.lastHover = key;
       ctx.grid.canvas.requestRepaint();

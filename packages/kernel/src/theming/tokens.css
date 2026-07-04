@@ -40,8 +40,15 @@
   --cg-grid-line-color: #e3e8eb;
   --cg-row-hover-bg: #eef1f3;
   --cg-row-selected-bg: rgb(56 132 195 / 22%);
-  --cg-focus-ring-color: #3b82f6;
+  /* Cycle 21i / Phase 1 — monochromatic UI chrome: the accent is a neutral
+   * mid-grey (foreground mixed toward the background), so toggles / tabs /
+   * pills / checkboxes / focus rings read as one grey system — no pure
+   * black/white highlights. Data colours (row selection, cell range, flash)
+   * keep their own configurable tokens below. */
+  --cg-chrome-accent: color-mix(in srgb, var(--cg-fg-color) 60%, var(--cg-bg-color));
+  --cg-focus-ring-color: var(--cg-chrome-accent);
   --cg-focus-ring-width: 2px;
+  --cg-editor-invalid-color: #d64545;
   --cg-flash-from-color: #fef3c7;
   --cg-flash-to-color: rgba(254, 243, 199, 0);
   --cg-resizer-hot-zone: 4px;
@@ -195,8 +202,10 @@
   --cg-grid-line-color: #373a3b;
   --cg-row-hover-bg: #2a2d2e;
   --cg-row-selected-bg: rgb(38 79 120 / 50%);
-  --cg-focus-ring-color: #007fd4;
+  --cg-chrome-accent: color-mix(in srgb, var(--cg-fg-color) 60%, var(--cg-bg-color));
+  --cg-focus-ring-color: var(--cg-chrome-accent);
   --cg-focus-ring-width: 2px;
+  --cg-editor-invalid-color: #f87171;
   --cg-flash-from-color: #b8860b;
   --cg-flash-to-color: rgba(184, 134, 11, 0);
   --cg-resizer-hot-zone: 4px;
@@ -577,40 +586,45 @@
  * `-webkit-appearance: none` is what makes the visible scrollbar honour
  * our 12 px width on macOS instead of falling back to a 0-width overlay
  * that only flashes on scroll (regression flagged on 2026-06-26). */
-.cg-scroller::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* Cycle 21i / Phase 1 — ONE shared scrollbar class for every scrollable
+ * grid surface: the body scroller AND all side-panel scrollers (columns,
+ * filters, grid options) carry `cg-scrollbar`. 8px flat thumb (no radius),
+ * themed off the same tokens so every scrollbar in the grid reads as one
+ * system. `.cg-scroller` keeps the class too for the body viewport. */
+.cg-scrollbar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
   -webkit-appearance: none;
 }
-.cg-scroller::-webkit-scrollbar-thumb {
+.cg-scrollbar::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.4);
   border-radius: 0;
 }
-.cg-scroller::-webkit-scrollbar-track {
+.cg-scrollbar::-webkit-scrollbar-track {
   background: rgba(0, 0, 0, 0.08);
 }
-.cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-thumb {
+.cg-theme-quartz-dark .cg-scrollbar::-webkit-scrollbar-thumb {
   background: rgba(255, 255, 255, 0.32);
 }
-.cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-thumb:hover {
+.cg-theme-quartz-dark .cg-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(255, 255, 255, 0.48);
 }
-.cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-track {
+.cg-theme-quartz-dark .cg-scrollbar::-webkit-scrollbar-track {
   background: rgba(255, 255, 255, 0.06);
 }
-.cg-theme-quartz-dark .cg-scroller::-webkit-scrollbar-corner {
+.cg-theme-quartz-dark .cg-scrollbar::-webkit-scrollbar-corner {
   background: rgba(255, 255, 255, 0.06);
 }
-.cg-theme-quartz .cg-scroller::-webkit-scrollbar-thumb {
+.cg-theme-quartz .cg-scrollbar::-webkit-scrollbar-thumb {
   background: rgba(0, 0, 0, 0.4);
 }
-.cg-theme-quartz .cg-scroller::-webkit-scrollbar-thumb:hover {
+.cg-theme-quartz .cg-scrollbar::-webkit-scrollbar-thumb:hover {
   background: rgba(0, 0, 0, 0.55);
 }
-.cg-theme-quartz .cg-scroller::-webkit-scrollbar-track {
+.cg-theme-quartz .cg-scrollbar::-webkit-scrollbar-track {
   background: rgba(0, 0, 0, 0.08);
 }
-.cg-theme-quartz .cg-scroller::-webkit-scrollbar-corner {
+.cg-theme-quartz .cg-scrollbar::-webkit-scrollbar-corner {
   background: rgba(0, 0, 0, 0.08);
 }
 
@@ -621,10 +635,12 @@
  * which reverts macOS to its 0-width overlay scrollbar). The @supports
  * gate uses Firefox-only `-moz-appearance` so Chromium skips the block. */
 @supports (-moz-appearance: none) {
-  .cg-theme-quartz-dark .cg-scroller {
+  .cg-theme-quartz-dark .cg-scrollbar {
+    scrollbar-width: thin;
     scrollbar-color: #4a5b7a #0d1a33;
   }
-  .cg-theme-quartz .cg-scroller {
+  .cg-theme-quartz .cg-scrollbar {
+    scrollbar-width: thin;
     scrollbar-color: #b5bdc6 #eceff2;
   }
 }
@@ -831,7 +847,7 @@
 }
 .cg-filter-popup-button-apply {
   background: var(--cg-focus-ring-color);
-  color: #ffffff;
+  color: var(--cg-bg-color);
   border-color: var(--cg-focus-ring-color);
 }
 .cg-filter-popup-button-apply:hover {
@@ -1022,6 +1038,9 @@
   color: color-mix(in srgb, var(--cg-fg-color) 75%, transparent);
   border: none;
   border-left: 2px solid transparent;
+  /* Flat corners — the focus-visible outline follows this radius, so 0
+   * keeps the tab (and its outline) square, not the UA-default rounding. */
+  border-radius: 0;
   cursor: pointer;
   font-family: inherit;
   line-height: 1;
@@ -1036,9 +1055,11 @@
   outline-offset: -2px;
 }
 .cg-side-bar-tab[aria-pressed="true"] {
-  color: var(--cg-focus-ring-color);
+  /* Full foreground text keeps the active tab the most prominent (inactive
+   * tabs sit at 75%); the grey chrome accent carries the marker + tint. */
+  color: var(--cg-fg-color);
   border-left: 2px solid var(--cg-focus-ring-color);
-  background: color-mix(in srgb, var(--cg-focus-ring-color) 8%, transparent);
+  background: color-mix(in srgb, var(--cg-focus-ring-color) 12%, transparent);
 }
 .cg-side-bar-tab-icon {
   display: flex;
@@ -1066,6 +1087,13 @@
   display: flex;
   flex-direction: column;
   background: var(--cg-bg-color);
+  /* Breathing room on the tab-strip side so the panel's scrollbar doesn't
+   * ride flush against the tabs border. Mirrored for a left-docked sidebar. */
+  padding-right: 6px;
+}
+.cg-side-bar[data-position="left"] .cg-side-bar-panel {
+  padding-right: 0;
+  padding-left: 6px;
 }
 .cg-side-bar-resize {
   width: 3px;
@@ -1209,42 +1237,56 @@
   overflow-x: hidden;
   padding: 4px 0;
 }
+/* Cycle 21i / Phase 1 — reorganized column row: grip · label · checkbox.
+ * Roomier rows, a rounded hover/selected pill inset from the panel edges,
+ * and a custom rounded accent checkbox on the RIGHT — a deliberate move
+ * away from the AG-style checkbox-left list toward a modern selector. */
 .cg-columns-panel-row {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 12px;
-  cursor: default;
+  gap: 10px;
+  padding: 7px 10px;
+  margin: 1px 6px;
+  border-radius: 6px;
+  cursor: pointer;
   user-select: none;
 }
 .cg-columns-panel-row:hover {
-  background: var(--cg-row-hover-bg);
+  background: color-mix(in srgb, var(--cg-fg-color) 7%, transparent);
 }
 .cg-columns-panel-row--lifted {
   /* Row is "in the air" — keep its DOM slot so layout doesn't shift, but
    * hide the row itself so there's no double-render with the ghost. */
   visibility: hidden;
 }
-.cg-columns-panel-row-checkbox {
+/* Unified drag-grip — one glyph shared by the column-list rows, all zone
+ * pills (row groups / values / column labels), and the top row-group +
+ * pivot panel chips. Cycle 21i / Phase 1: single 2×3 dot pattern, one
+ * resting opacity, so every draggable handle reads identically. */
+.cg-columns-panel-row-handle,
+.cg-columns-panel-rgz-pill-handle,
+.cg-columns-panel-pill-handle,
+.cg-row-group-panel-chip-handle {
   flex: 0 0 auto;
-  margin: 0;
-  accent-color: var(--cg-focus-ring-color);
-  cursor: pointer;
-}
-.cg-columns-panel-row-handle {
   display: inline-block;
   width: 10px;
   height: 14px;
-  flex: 0 0 auto;
   cursor: grab;
-  opacity: 0.55;
+  opacity: 0.6;
   background-image: radial-gradient(circle, currentColor 1.1px, transparent 1.4px);
   background-size: 4px 4px;
   background-position: 1px 1px;
   background-repeat: repeat;
+  transition: opacity 120ms ease;
 }
-.cg-columns-panel-row-handle:active {
+.cg-columns-panel-row-handle:active,
+.cg-columns-panel-rgz-pill-handle:active,
+.cg-columns-panel-pill-handle:active,
+.cg-row-group-panel-chip-handle:active {
   cursor: grabbing;
+}
+.cg-columns-panel-row:hover .cg-columns-panel-row-handle {
+  opacity: 0.9;
 }
 .cg-columns-panel-row-label {
   flex: 1 1 auto;
@@ -1253,6 +1295,68 @@
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+/* Custom rounded accent checkbox — appearance:none so `.checked` still
+ * drives the refresh / select-all JS while the paint is fully ours. */
+.cg-columns-panel-row-checkbox,
+.cg-columns-panel-select-all {
+  flex: 0 0 auto;
+  appearance: none;
+  -webkit-appearance: none;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  border: 1.5px solid color-mix(in srgb, var(--cg-fg-color) 40%, transparent);
+  border-radius: 2px;
+  background: transparent;
+  cursor: pointer;
+  position: relative;
+  transition: background 120ms ease, border-color 120ms ease;
+}
+.cg-columns-panel-row-checkbox:hover,
+.cg-columns-panel-select-all:hover {
+  border-color: color-mix(in srgb, var(--cg-fg-color) 65%, transparent);
+}
+/* Monochrome checked state — filled with the neutral grey chrome accent
+ * (fg fallback for a11y themes that keep a solid highlight), check drawn in
+ * the panel background, so the list stays grey with no pure-black/white box. */
+.cg-columns-panel-row-checkbox:checked,
+.cg-columns-panel-select-all:checked {
+  background: var(--cg-chrome-accent, var(--cg-fg-color));
+  border-color: var(--cg-chrome-accent, var(--cg-fg-color));
+}
+.cg-columns-panel-row-checkbox:checked::after,
+.cg-columns-panel-select-all:checked::after {
+  content: '';
+  position: absolute;
+  left: 4.5px;
+  top: 1px;
+  width: 5px;
+  height: 9px;
+  border: solid var(--cg-bg-color);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+.cg-columns-panel-row-checkbox:focus-visible,
+.cg-columns-panel-select-all:focus-visible {
+  outline: 2px solid var(--cg-focus-ring-color);
+  outline-offset: 1px;
+}
+/* Indeterminate select-all (some columns hidden) — a centered dash. */
+.cg-columns-panel-select-all:indeterminate {
+  background: var(--cg-chrome-accent, var(--cg-fg-color));
+  border-color: var(--cg-chrome-accent, var(--cg-fg-color));
+}
+.cg-columns-panel-select-all:indeterminate::after {
+  content: '';
+  position: absolute;
+  left: 3.5px;
+  top: 7px;
+  width: 9px;
+  height: 2px;
+  background: var(--cg-bg-color);
+  border: none;
+  transform: none;
 }
 /* Floating drag ghost — shared by column-list row drags AND pill drag-outs.
  * Styled to match the row-group zone pill exactly (same height, border,
@@ -1444,21 +1548,7 @@
   border-color: color-mix(in srgb, var(--cg-border-color) 80%, transparent);
 }
 /* Drag handle — same dot-grid as column-list row handles. */
-.cg-columns-panel-rgz-pill-handle {
-  flex: 0 0 auto;
-  display: inline-block;
-  width: 10px;
-  height: 14px;
-  opacity: 0.45;
-  cursor: grab;
-  background-image: radial-gradient(circle, currentColor 1.1px, transparent 1.4px);
-  background-size: 4px 4px;
-  background-position: 1px 1px;
-  background-repeat: repeat;
-}
-.cg-columns-panel-rgz-pill-handle:active {
-  cursor: grabbing;
-}
+/* handle styles unified at the top of the columns-panel block */
 .cg-columns-panel-rgz-pill--lifted {
   visibility: hidden;
 }
@@ -1585,21 +1675,7 @@
   background: var(--cg-row-hover-bg);
   border-color: color-mix(in srgb, var(--cg-border-color) 80%, transparent);
 }
-.cg-columns-panel-pill-handle {
-  flex: 0 0 auto;
-  display: inline-block;
-  width: 10px;
-  height: 14px;
-  opacity: 0.45;
-  cursor: grab;
-  background-image: radial-gradient(circle, currentColor 1.1px, transparent 1.4px);
-  background-size: 4px 4px;
-  background-position: 1px 1px;
-  background-repeat: repeat;
-}
-.cg-columns-panel-pill-handle:active {
-  cursor: grabbing;
-}
+/* handle styles unified at the top of the columns-panel block */
 .cg-columns-panel-pill-label {
   flex: 1 1 auto;
   font-family: var(--cg-font-family);
@@ -1764,6 +1840,396 @@
   background: color-mix(in srgb, var(--cg-bg-color) 90%, white 10%);
   border: 1px solid var(--cg-border-color);
   border-radius: 3px;
+}
+
+/* Cycle 21i / Phase 1 — settings form + Grid Options tool panel.
+ *
+ * Design notes (21i design pass): quartz-native chrome, every color off
+ * an existing --cg-* token so both themes inherit automatically. Band
+ * headers are 11px uppercase eyebrows; numeric inputs use the grid's
+ * mono face (terminal DNA — numbers are mono everywhere in the grid).
+ *
+ * Signature element — the MODIFIED DIFF RAIL: rows whose value differs
+ * from their baseline carry a 2px accent tick on the left edge (echoing
+ * the grid's cell-change flash), a hover ↺ reset, and roll up into
+ * per-band count chips + the header "Modified" filter pill. */
+.cg-settings-panel {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background: var(--cg-bg-color);
+  color: var(--cg-fg-color);
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  overflow: hidden;
+  --cg-settings-accent: var(--cg-focus-ring-color);
+}
+.cg-settings-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--cg-border-color);
+  flex: 0 0 auto;
+}
+.cg-settings-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: var(--cg-font-size-sm);
+  color: var(--cg-fg-color);
+  background: color-mix(in srgb, var(--cg-fg-color) 5%, transparent);
+  border: 1px solid var(--cg-border-color);
+  border-radius: 4px;
+  outline: none;
+}
+.cg-settings-search:focus {
+  border-color: var(--cg-settings-accent);
+}
+.cg-settings-modified-pill {
+  flex: 0 0 auto;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: var(--cg-font-size-sm);
+  color: var(--cg-fg-color);
+  background: transparent;
+  border: 1px solid var(--cg-border-color);
+  border-radius: 999px;
+  cursor: pointer;
+  white-space: nowrap;
+  opacity: 0.75;
+}
+.cg-settings-modified-pill[data-has-modified] {
+  opacity: 1;
+  border-color: color-mix(in srgb, var(--cg-settings-accent) 55%, transparent);
+}
+.cg-settings-modified-pill[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--cg-settings-accent) 18%, transparent);
+  border-color: var(--cg-settings-accent);
+  opacity: 1;
+}
+.cg-settings-panel-scroller {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+.cg-settings-band {
+  border-bottom: 1px solid color-mix(in srgb, var(--cg-border-color) 60%, transparent);
+}
+.cg-settings-band-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 8px 10px 6px;
+  font-family: var(--cg-font-family);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--cg-fg-color) 62%, transparent);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+}
+.cg-settings-band-header:hover {
+  color: var(--cg-fg-color);
+}
+.cg-settings-band-chevron {
+  flex: 0 0 auto;
+  width: 0;
+  height: 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  transition: transform 120ms ease;
+}
+.cg-settings-band-header[aria-expanded="false"] .cg-settings-band-chevron {
+  transform: rotate(-90deg);
+}
+.cg-settings-band-title {
+  flex: 1 1 auto;
+}
+.cg-settings-band-chip {
+  flex: 0 0 auto;
+  min-width: 16px;
+  padding: 1px 5px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-align: center;
+  color: var(--cg-bg-color);
+  background: var(--cg-settings-accent);
+  border-radius: 999px;
+}
+.cg-settings-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px 5px 12px;
+}
+.cg-settings-row:hover {
+  background: var(--cg-row-hover-bg);
+}
+/* The diff rail — a 2px accent tick marking changed-from-baseline rows. */
+.cg-settings-row[data-modified]::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 4px;
+  bottom: 4px;
+  width: 2px;
+  border-radius: 1px;
+  background: var(--cg-settings-accent);
+}
+.cg-settings-row-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.cg-settings-row-label label {
+  font-size: var(--cg-font-size-sm);
+  line-height: 1.35;
+  cursor: pointer;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cg-settings-row-hint {
+  font-size: 10px;
+  line-height: 1.3;
+  color: color-mix(in srgb, var(--cg-fg-color) 50%, transparent);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cg-settings-row-control {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+/* Permanently reserved action gutter — the reset button toggles
+ * VISIBILITY only, never layout, so every row's control shares the same
+ * right edge whether or not the ↺ is showing. */
+.cg-settings-row-actions {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.cg-settings-row-reset {
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  font-size: 12px;
+  line-height: 1;
+  color: color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
+  background: transparent;
+  border: none;
+  border-radius: 3px;
+  cursor: pointer;
+  visibility: hidden;
+}
+.cg-settings-row-reset[data-visible="true"] {
+  visibility: visible;
+}
+.cg-settings-row-reset:hover {
+  color: var(--cg-fg-color);
+  background: color-mix(in srgb, var(--cg-fg-color) 10%, transparent);
+}
+/* Toggle — same vocabulary as the columns panel's Pivot Mode switch. */
+.cg-settings-toggle {
+  position: relative;
+  width: 28px;
+  height: 16px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--cg-fg-color) 30%, transparent);
+  border: none;
+  cursor: pointer;
+  padding: 0;
+  flex: 0 0 auto;
+  transition: background 120ms ease;
+}
+.cg-settings-toggle[aria-pressed="true"] {
+  background: var(--cg-settings-accent);
+}
+.cg-settings-toggle-knob {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--cg-bg-color);
+  transition: transform 120ms ease;
+}
+.cg-settings-toggle[aria-pressed="true"] .cg-settings-toggle-knob {
+  transform: translateX(12px);
+}
+.cg-settings-checkbox {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--cg-settings-accent);
+  cursor: pointer;
+}
+.cg-settings-input {
+  padding: 3px 6px;
+  font-size: var(--cg-font-size-sm);
+  color: var(--cg-fg-color);
+  background: color-mix(in srgb, var(--cg-fg-color) 5%, transparent);
+  border: 1px solid var(--cg-border-color);
+  border-radius: 4px;
+  outline: none;
+}
+.cg-settings-input:focus {
+  border-color: var(--cg-settings-accent);
+}
+.cg-settings-input-number {
+  width: 72px;
+  font-family: var(--cg-cell-font-family);
+  text-align: right;
+}
+.cg-settings-input-text {
+  width: 110px;
+}
+.cg-settings-select {
+  max-width: 130px;
+  font-family: inherit;
+  cursor: pointer;
+}
+@media (prefers-reduced-motion: reduce) {
+  .cg-settings-band-chevron,
+  .cg-settings-toggle,
+  .cg-settings-toggle-knob {
+    transition: none;
+  }
+}
+
+/* Cycle 21i / Phase 1 — native color picker (Colours band). Trigger
+ * swatch + a popover with SV pad, hue + alpha sliders, hex field, and
+ * presets. A checkerboard shows through alpha on every swatch. */
+.cg-colorpicker {
+  position: relative;
+  flex: 0 0 auto;
+}
+.cg-colorpicker-swatch,
+.cg-colorpicker-preset {
+  --cg-cp-color: transparent;
+  width: 40px;
+  height: 20px;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--cg-fg-color) 30%, transparent);
+  border-radius: 4px;
+  cursor: pointer;
+  background-image:
+    linear-gradient(var(--cg-cp-color), var(--cg-cp-color)),
+    conic-gradient(#0000 90deg, #7773 0 180deg, #0000 0 270deg, #7773 0);
+  background-size: 100% 100%, 8px 8px;
+}
+.cg-colorpicker-preset {
+  width: 100%;
+  height: 22px;
+}
+.cg-colorpicker-popover {
+  /* Portaled to <body> + JS-positioned (fixed) so a swatch near the
+   * bottom of a scrolling panel never clips the popover. */
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 2147483000;
+  width: 200px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--cg-bg-color);
+  border: 1px solid var(--cg-border-color);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+}
+.cg-colorpicker-sv {
+  --cg-cp-hue: #f00;
+  position: relative;
+  width: 100%;
+  height: 120px;
+  border-radius: 5px;
+  cursor: crosshair;
+  background:
+    linear-gradient(to top, #000, transparent),
+    linear-gradient(to right, #fff, transparent),
+    var(--cg-cp-hue);
+  touch-action: none;
+}
+.cg-colorpicker-sv-thumb {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border: 2px solid #fff;
+  border-radius: 50%;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+.cg-colorpicker-hue,
+.cg-colorpicker-alpha {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%;
+  height: 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  outline: none;
+}
+.cg-colorpicker-hue {
+  background: linear-gradient(to right,
+    #f00 0%, #ff0 17%, #0f0 33%, #0ff 50%, #00f 67%, #f0f 83%, #f00 100%);
+}
+.cg-colorpicker-alpha {
+  --cg-cp-solid: #888;
+  background-image:
+    linear-gradient(to right, transparent, var(--cg-cp-solid)),
+    conic-gradient(#0000 90deg, #7773 0 180deg, #0000 0 270deg, #7773 0);
+  background-size: 100% 100%, 8px 8px;
+}
+.cg-colorpicker-hue::-webkit-slider-thumb,
+.cg-colorpicker-alpha::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 12px;
+  height: 16px;
+  border-radius: 3px;
+  background: var(--cg-bg-color);
+  border: 1.5px solid var(--cg-fg-color);
+  cursor: pointer;
+}
+.cg-colorpicker-hex {
+  padding: 4px 6px;
+  font-family: var(--cg-cell-font-family);
+  font-size: var(--cg-font-size-sm);
+  color: var(--cg-fg-color);
+  background: color-mix(in srgb, var(--cg-fg-color) 5%, transparent);
+  border: 1px solid var(--cg-border-color);
+  border-radius: 4px;
+  outline: none;
+}
+.cg-colorpicker-hex:focus {
+  border-color: var(--cg-focus-ring-color);
+}
+.cg-colorpicker-presets {
+  /* 4 per row → wraps to a second row as the list grows, instead of
+   * overflowing the popover width. */
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 5px;
 }
 
 /* Cycle 13 / Task 1 — status bar shell. Mounts as a sibling of the
@@ -2114,21 +2580,8 @@
   background: var(--cg-row-group-chip-active-bg);
   cursor: grabbing;
 }
-.cg-row-group-panel-chip-handle {
-  /* Dot-grid drag-handle — same radial-gradient pattern as the column
-   * list drag handles and the col-drag-ghost icon. Renders as a 2-col
-   * × 3-row grid of dots sized to the narrower 22px chip. */
-  flex: 0 0 auto;
-  display: inline-block;
-  width: 8px;
-  height: 12px;
-  opacity: 0.45;
-  cursor: grab;
-  background-image: radial-gradient(circle, currentColor 1.1px, transparent 1.4px);
-  background-size: 4px 4px;
-  background-position: 0px 0px;
-  background-repeat: repeat;
-}
+/* .cg-row-group-panel-chip-handle unified with the column-panel grips
+ * (see the shared rule in the columns-panel block). */
 .cg-row-group-panel-chip-label {
   font-family: var(--cg-font-family);
   font-size: var(--cg-font-size-sm);
@@ -2415,4 +2868,22 @@
   .cg-grid .cg-group-footer-portal {
     break-after: page;
   }
+}
+
+/* ── Excel-style edit sub-mode indicator ─────────────────────────────────── */
+/* The editor's own outline is set inline, so the mode signal rides on        */
+/* box-shadow instead (which layers cleanly over the inline outline). The     */
+/* mode class sits on the inline wrapper (`.cg-editor-overlay`) and, in popup  */
+/* mode, directly on the editor GUI — hence both selector forms below.        */
+/* enter = quick-entry (arrows commit): the plain focus ring, no extra frame. */
+/* edit  = caret navigation: a second inner hairline reads as a deeper state. */
+.cg-editor--edit .cg-cell-editor,
+.cg-cell-editor.cg-editor--edit {
+  box-shadow: inset 0 0 0 1px var(--cg-focus-ring-color);
+}
+/* invalid = rejected commit: an unmistakable ring in the semantic error hue, */
+/* holding the editor open until the value parses.                            */
+.cg-editor--invalid .cg-cell-editor,
+.cg-cell-editor.cg-editor--invalid {
+  box-shadow: 0 0 0 2px var(--cg-editor-invalid-color);
 }

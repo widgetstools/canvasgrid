@@ -6,6 +6,7 @@ import { DateStringCellEditor } from './builtins/dateString';
 import { SelectCellEditor } from './builtins/select';
 import { LargeTextCellEditor } from './builtins/largeText';
 import { CheckboxCellEditor } from './builtins/checkbox';
+import { Price32CellEditor } from './builtins/price32';
 
 export class CellEditorRegistry {
   private map = new Map<string, CellEditorCtor>();
@@ -32,5 +33,6 @@ export class CellEditorRegistry {
     reg.register('select', SelectCellEditor as unknown as CellEditorCtor);
     reg.register('largeText', LargeTextCellEditor);
     reg.register('checkbox', CheckboxCellEditor);
+    reg.register('price32', Price32CellEditor);
   }
 }

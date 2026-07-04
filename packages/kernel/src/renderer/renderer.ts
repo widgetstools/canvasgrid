@@ -31,6 +31,10 @@ export interface RendererOpts {
     ranges: SelectionRange[];
   };
   getSortModel: () => SortModel;
+  /** Cycle 21i / Phase 1 — hovered data-row index (or null). Already
+   *  gated by `suppressRowHoverHighlight` at the grid, so the painter
+   *  paints the hover band whenever this is non-null. */
+  getHoveredRowIndex?: () => number | null;
   /** Total visible row count after filter/sort. Used by the header
    *  painter for the row-select header tri-state checkbox. */
   getTotalRowCount?: () => number;
@@ -154,6 +158,7 @@ export class Renderer {
       cellRenderers: this.opts.cellRenderers,
       cellData: this.opts.cellData,
       selection: this.opts.getSelection(),
+      hoveredRowIndex: this.opts.getHoveredRowIndex?.() ?? null,
       sortModel: this.opts.getSortModel(),
       totalRowCount: this.opts.getTotalRowCount?.() ?? 0,
       rowDataSnapshotAt: this.opts.rowDataSnapshotAt,

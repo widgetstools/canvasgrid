@@ -146,6 +146,28 @@ export interface CGridOptions<TRow = any> {
    */
   initialState?: import('../core/stateSnapshot').GridState;
   /**
+   * Cycle 21i / Phase 1 — unique identity for this grid instance.
+   * Namespaces persisted state (`cgrid:state:<gridId>` under the default
+   * localStorage adapter) so several grids on one page — or one grid
+   * across sessions — keep their configuration separate. Required for
+   * `persistState`; has no effect on its own.
+   */
+  gridId?: string;
+  /**
+   * Cycle 21i / Phase 1 — native state persistence. When enabled (and
+   * `gridId` is set), the grid restores its saved `GridState` snapshot at
+   * construction (applied AFTER `initialState`, so a user's last session
+   * wins over the app-provided default) and autosaves the full snapshot,
+   * debounced (default 500ms), on every coalesced `stateUpdated` emit.
+   *
+   * `true` uses the built-in localStorage adapter; the object form swaps
+   * in a custom `StateStorageAdapter` (config service, IndexedDB, …) and
+   * tunes the debounce. Failures degrade to console warnings — the grid
+   * never breaks because storage did. Last-write-wins; multi-tab
+   * coordination belongs in the host's adapter.
+   */
+  persistState?: boolean | import('../core/statePersistence').PersistStateOptions;
+  /**
    * Cycle 24 / Task 3 — `aria-label` applied to the grid's
    * role="grid" element in the a11y overlay. Screen readers read this
    * as the grid's name. Defaults to no label (the overlay has no
@@ -168,6 +190,13 @@ export interface CGridOptions<TRow = any> {
   /** Hint to skip CSS-animated row transitions. Runtime-mutable; storage-only
    *  in Cycle 4 (no read site yet; downstream cycles consume). */
   animateRows?: boolean;
+  /**
+   * Cycle 21i / Phase 1 — when `true`, disables the row-hover highlight
+   * (the `--cg-row-hover-bg` band the painter draws under the pointer's
+   * data row). Default `false` (hover highlight ON). Runtime-mutable.
+   * AG-Grid parity name.
+   */
+  suppressRowHoverHighlight?: boolean;
   /** Render every center column regardless of horizontal scroll position.
    *  Useful for screenshot tests and CSV-style exports where the painter
    *  needs every column visible at once. Pinned columns are unaffected. */

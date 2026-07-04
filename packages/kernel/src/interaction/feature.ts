@@ -162,6 +162,10 @@ export interface CGridLike {
   emitCellMouseOut?(rowIndex: number, colId: string, e: MouseEvent): void;
   emitRowMouseOver?(rowIndex: number, e: MouseEvent): void;
   emitRowMouseOut?(rowIndex: number, e: MouseEvent): void;
+  /** Cycle 21i / Phase 1 — record the hovered data-row index (or null
+   *  when off any data row) so the painter can render the row-hover
+   *  highlight. No-op / null when `suppressRowHoverHighlight`. */
+  setHoveredRow?(rowIndex: number | null): void;
   /** Cycle 23 / Task 4 — fan out a cellKeyDown for the focused cell.
    *  Returns `true` when the listener called `event.preventDefault()`
    *  so the chain can short-circuit and skip downstream key handlers. */
@@ -265,7 +269,7 @@ export interface CGridLike {
    *  feature calls this from a Ctrl+C / Cmd+C keydown so the browser's
    *  Async Clipboard API sees an active user-gesture stack. Cycle 10 /
    *  Task 3. */
-  copySelectedRangesToClipboard(): Promise<void>;
+  copySelectedRangesToClipboard(opts?: { includeHeaders?: boolean }): Promise<void>;
 
   /** Read from `navigator.clipboard.readText`, parse on the worker, and
    *  apply as `applyTransaction({ update })` anchored at the focused

@@ -74,7 +74,7 @@ export class ColumnVisibilityPanel {
     // `flex: 0 0 auto` and collapse the list).
     this.searchRow = deps.params.suppressColumnFilter ? null : this.buildSearchRow();
     this.listEl = document.createElement('div');
-    this.listEl.className = 'cg-columns-panel-list';
+    this.listEl.className = 'cg-columns-panel-list cg-scrollbar';
     this.buildRows();
     this.syncSelectAll();
 
@@ -216,17 +216,10 @@ export class ColumnVisibilityPanel {
     el.className = 'cg-columns-panel-row';
     el.dataset.colId = entry.colId;
 
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.className = 'cg-columns-panel-row-checkbox';
-    checkbox.checked = this.computeRowChecked(entry);
-    checkbox.setAttribute('aria-label', this.deps.resolveLabel(entry.colId));
-    checkbox.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.handleRowCheckboxClick(entry.colId, checkbox);
-    });
-    el.appendChild(checkbox);
-
+    // Cycle 21i / Phase 1 — row layout is grip → label → checkbox (right),
+    // moving away from the AG-style checkbox-left row. The checkbox stays a
+    // native <input> (restyled via appearance:none) so the refresh /
+    // select-all logic that reads `.checked` is unchanged.
     if (!this.deps.params.suppressColumnMove) {
       const handle = document.createElement('span');
       handle.className = 'cg-columns-panel-row-handle';
@@ -239,6 +232,27 @@ export class ColumnVisibilityPanel {
     label.className = 'cg-columns-panel-row-label';
     label.textContent = this.deps.resolveLabel(entry.colId);
     el.appendChild(label);
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'cg-columns-panel-row-checkbox';
+    checkbox.checked = this.computeRowChecked(entry);
+    checkbox.setAttribute('aria-label', this.deps.resolveLabel(entry.colId));
+    checkbox.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.handleRowCheckboxClick(entry.colId, checkbox);
+    });
+    el.appendChild(checkbox);
+
+    // Whole-row click toggles visibility (except on the grip, which drags).
+    // Modern column-selector affordance — the entire row is the hit target,
+    // not just the checkbox.
+    el.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target === checkbox || target.classList.contains('cg-columns-panel-row-handle')) return;
+      checkbox.checked = !checkbox.checked;
+      this.handleRowCheckboxClick(entry.colId, checkbox);
+    });
 
     return { el, checkbox, label };
   }

@@ -24,6 +24,11 @@ export const INITIAL_ONLY_OPTIONS: ReadonlySet<keyof CGridOptions<any>> = new Se
   'columnDefs',
   'getRowId',
   'worker',
+  // Cycle 21i / Phase 1 — persistence identity + wiring happen once at
+  // construction; re-keying a live grid's storage or re-arming autosave
+  // mid-session has no sound semantics (which snapshot would win?).
+  'gridId',
+  'persistState',
   // Cycle 22 / Task 5 — shadow-root attach happens once at construction
   // and the rebuild cost (re-parent every overlay + re-attach worker
   // listeners) outweighs any plausible runtime flip use case.
@@ -39,6 +44,7 @@ export type RuntimeOption =
   | 'headerHeight'
   | 'defaultColDef'
   | 'animateRows'
+  | 'suppressRowHoverHighlight'
   | 'rowSelection'
   | 'suppressRowClickSelection'
   | 'rowMultiSelectWithClick'
@@ -82,7 +88,10 @@ export type RuntimeOption =
   | 'pivotGrandTotals'
   | 'domLayout'
   | 'groupSelectsChildren'
-  | 'suppressCount';
+  | 'suppressCount'
+  | 'singleClickEdit'
+  | 'suppressClickEdit'
+  | 'enableExcelEditing';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
  *  import on `CGrid` (cgrid.ts imports this module). */
@@ -259,6 +268,12 @@ export function applyRuntimeOption<TRow>(
       // / `isRowMultiSelectWithClick`, so a flip lights up on the
       // next click without further wiring.
       return;
+    case 'suppressRowHoverHighlight':
+      // Painter reads `options.suppressRowHoverHighlight` via the
+      // getHoveredRowIndex gate each paint; repaint so a live toggle
+      // clears/enables the highlight immediately.
+      target.refreshLayout();
+      return;
     case 'animateRows':
     case 'cellFlashDuration':
     case 'cellFadeDuration':
@@ -316,6 +331,15 @@ export function applyRuntimeOption<TRow>(
       // (the aggFunc resolution stays worker-side; only the visible
       // label changes).
       target.refreshLayout();
+      return;
+    case 'singleClickEdit':
+    case 'suppressClickEdit':
+    case 'enableExcelEditing':
+      // Cycle 21i / Phase 1 — storage-only. EditTrigger reads
+      // `getEditingFlags()` (→ options.singleClickEdit / suppressClickEdit)
+      // at click time, and EditController reads `options.enableExcelEditing`
+      // at edit-start / keydown, so a runtime flip takes effect on the next
+      // interaction with no re-render needed.
       return;
     case 'suppressCount':
       // Cycle 15.5 / Task 7 — toggle the `(n)` child-count badge on group
@@ -403,9 +427,9 @@ export function isRuntimeOption(key: string): key is RuntimeOption {
   return RUNTIME_OPTION_SET.has(key as RuntimeOption);
 }
 
-const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
+export const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'theme', 'density', 'rowHeight', 'headerHeight', 'defaultColDef',
-  'animateRows', 'rowSelection',
+  'animateRows', 'suppressRowHoverHighlight', 'rowSelection',
   'suppressRowClickSelection', 'rowMultiSelectWithClick',
   'suppressColumnVirtualisation', 'suppressRowVirtualisation',
   'enableCellChangeFlash', 'cellFlashDuration', 'cellFadeDuration',
@@ -436,5 +460,5 @@ const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOption>([
   'pivotGrandTotals',
   'domLayout',
   'groupSelectsChildren',
-  'suppressCount',
+  'suppressCount', 'singleClickEdit', 'suppressClickEdit', 'enableExcelEditing',
 ]);

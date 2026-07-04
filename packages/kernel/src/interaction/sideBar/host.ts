@@ -66,8 +66,9 @@ const DEFAULT_MAX_WIDTH = 800;
 
 /** Maps the built-in iconKey values on ToolPanelDef to icon registry names. */
 const BUILT_IN_ICON_MAP: Record<string, IconName> = {
-  columns: 'layout-grid',
-  filter:  'list-filter',
+  columns:  'layout-grid',
+  filter:   'list-filter',
+  settings: 'sliders-horizontal',
 };
 
 /** Per-tool-panel slot — the resolved def + (when mounted) the live
@@ -521,8 +522,17 @@ function expandToolPanelShortcut(name: string): ToolPanelDef {
         iconKey: 'filter',
         toolPanel: 'agFiltersToolPanel',
       };
+    case 'gridOptions':
+      // Cycle 21i / Phase 1 — native Grid Options settings tab.
+      return {
+        id: 'agGridOptionsToolPanel',
+        labelDefault: 'Options',
+        labelKey: 'gridOptions',
+        iconKey: 'settings',
+        toolPanel: 'agGridOptionsToolPanel',
+      };
     default:
-      throw new Error(`[cgrid] unknown SideBarDef.toolPanels shortcut: '${name}' (expected 'columns' or 'filters')`);
+      throw new Error(`[cgrid] unknown SideBarDef.toolPanels shortcut: '${name}' (expected 'columns', 'filters' or 'gridOptions')`);
   }
 }
 

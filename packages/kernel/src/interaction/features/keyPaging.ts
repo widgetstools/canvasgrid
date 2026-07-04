@@ -51,7 +51,12 @@ export class KeyPaging extends Feature {
           return;
         case 'Enter': {
           ctx.grid.stopEditing(false);
-          if (flags.enterNavigatesVerticallyAfterEdit && fr != null && fc != null) {
+          // A rejected commit keeps the editor open — don't navigate away
+          // from an invalid cell.
+          if (ctx.grid.isEditing()) { e.preventDefault(); return; }
+          // Excel commits + descends on Enter (Shift+Enter ascends).
+          if ((flags.enterNavigatesVerticallyAfterEdit || flags.enableExcelEditing)
+              && fr != null && fc != null) {
             const dir = e.shiftKey ? -1 : 1;
             sel.setFocusAndCollapseRanges(Math.max(0, Math.min(rowCount - 1, fr + dir)), fc);
           }
@@ -60,6 +65,7 @@ export class KeyPaging extends Feature {
         }
         case 'Tab': {
           ctx.grid.stopEditing(false);
+          if (ctx.grid.isEditing()) { e.preventDefault(); return; }
           if (fr != null && fc != null) {
             const dir = e.shiftKey ? 'backward' : 'forward';
             const next = ctx.grid.nextEditableCell(fr, fc, dir);

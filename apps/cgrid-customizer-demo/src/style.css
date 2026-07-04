@@ -1,0 +1,68 @@
+*, *::before, *::after { box-sizing: border-box }
+html, body { margin: 0; height: 100%; font-family: Inter, system-ui, sans-serif; }
+
+/* Theme-aware chrome — the demo chrome follows the same light/dark toggle
+ * as the grid so panel theming can be judged in context. */
+.app {
+  --demo-bg: #0b1220;
+  --demo-panel: #1e293b;
+  --demo-border: #334155;
+  --demo-fg: #e2e8f0;
+  --demo-faint: #64748b;
+}
+.app[data-theme='light'] {
+  --demo-bg: #f1f5f9;
+  --demo-panel: #ffffff;
+  --demo-border: #cbd5e1;
+  --demo-fg: #0f172a;
+  --demo-faint: #94a3b8;
+}
+
+.app {
+  display: flex; flex-direction: column; height: 100%;
+  padding: 12px; gap: 8px;
+  background: var(--demo-bg); color: var(--demo-fg);
+}
+header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+header h1 { margin: 0; font-size: 18px; font-weight: 600; }
+.actions { display: inline-flex; align-items: center; gap: 8px; }
+
+.grid-host {
+  flex: 1;
+  min-height: 0;
+  border: 1px solid var(--demo-border);
+  border-radius: 6px;
+}
+
+button {
+  padding: 6px 12px;
+  border: 1px solid var(--demo-border);
+  background: var(--demo-panel);
+  color: var(--demo-fg);
+  border-radius: 4px;
+  cursor: pointer;
+}
+button:hover { filter: brightness(1.1); }
+
+.status-pill {
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 4px 10px;
+  border: 1px solid var(--demo-border);
+  border-radius: 999px;
+  background: var(--demo-panel);
+  color: var(--demo-fg);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px; line-height: 1.4;
+}
+.status-pill .status-sep { color: var(--demo-faint); }
+
+.demo-switch {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  color: var(--demo-fg);
+  cursor: pointer;
+  user-select: none;
+}
+.demo-switch input { margin: 0; cursor: pointer; accent-color: #64748b; }

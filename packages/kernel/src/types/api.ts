@@ -75,7 +75,7 @@ export interface CGridApi<TRow = any> {
   isPivotMode(): boolean;
   /** Turn pivot mode on / off. A pivot only produces a matrix when at
    *  least one pivot column AND one value column are also set. */
-  setPivotMode(pivotMode: boolean): void;
+  setPivotMode(pivotMode: boolean, opts?: { discardSettings?: boolean }): void;
   /** Snapshot of the ordered pivot (Column Label) columns. Fresh array. */
   getPivotColumns(): string[];
   /** Replace the ordered pivot column list wholesale. */
@@ -241,7 +241,7 @@ export interface CGridApi<TRow = any> {
    *  Backs both the Ctrl+C shortcut and the default `Copy` context-menu
    *  item. Apps that ship their own clipboard layer set
    *  `suppressClipboardApi: true` (Task 6) so this becomes a no-op. */
-  copySelectedRangesToClipboard(): Promise<void>;
+  copySelectedRangesToClipboard(opts?: { includeHeaders?: boolean }): Promise<void>;
 
   /** Cycle 10 / Task 4 — read the system clipboard, parse the payload
    *  (TSV by default; CSV when `clipboardDelimiter` overrides) on the
@@ -431,6 +431,20 @@ export interface CGridApi<TRow = any> {
 
   /** Cycle 21e / Task 10 — binary light/dark kind of the active theme. */
   getThemeKind(): 'light' | 'dark';
+
+  /** Cycle 21i / Phase 1 — apply `--cg-*` theme token overrides (e.g.
+   *  data colours: row selection, cell range, flash). Live + repaints. */
+  setThemeParams(patch: Readonly<Record<string, string>>): void;
+  /** Cycle 21i / Phase 1 — the currently-set theme token overrides
+   *  (only values set via `setThemeParams`, not resolved tokens). */
+  getThemeParams(): Record<string, string>;
+
+  /** Cycle 21i / Phase 1 — the theme/density-resolved row height that
+   *  applies when `rowHeight` is not set. Tracks density swaps. */
+  getDefaultRowHeight(): number;
+  /** Cycle 21i / Phase 1 — the theme/density-resolved header height that
+   *  applies when `headerHeight` is not set. */
+  getDefaultHeaderHeight(): number;
 
   /** Cycle 21c / Task 12 — register a named icon set whose entries are
    *  SVG path strings (lazy-converted to Path2D on first use) or

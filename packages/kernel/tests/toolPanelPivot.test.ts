@@ -248,10 +248,10 @@ describe('ColumnsToolPanel — pivot mode toggle (Cycle 18 / Task 5)', () => {
     hosts.push(panel);
     const btn = root.querySelector<HTMLButtonElement>('.cg-columns-panel-toggle')!;
     btn.click();
-    expect(api.setPivotMode).toHaveBeenCalledWith(true);
+    expect(api.setPivotMode).toHaveBeenCalledWith(true, { discardSettings: true });
     expect(btn.getAttribute('aria-pressed')).toBe('true');
     btn.click();
-    expect(api.setPivotMode).toHaveBeenCalledWith(false);
+    expect(api.setPivotMode).toHaveBeenCalledWith(false, { discardSettings: true });
     expect(btn.getAttribute('aria-pressed')).toBe('false');
   });
 
@@ -282,150 +282,9 @@ describe('ColumnsToolPanel — pivot mode toggle (Cycle 18 / Task 5)', () => {
   });
 });
 
-describe('ColumnsToolPanel — Column Labels drop zone (Cycle 18 / Task 5)', () => {
-  let hosts: ColumnsToolPanel[] = [];
-  beforeEach(() => { hosts = []; });
-  afterEach(() => {
-    for (const p of hosts) { try { p.destroy(); } catch { /* noop */ } }
-    document.body.replaceChildren();
-  });
-
-  it('zone renders with role="list", aria-label, and empty-state placeholder when no pivot columns set', () => {
-    const api = makeApi();
-    const { panel, root } = mountPanel(api);
-    hosts.push(panel);
-    const zone = root.querySelector<HTMLElement>('.cg-columns-panel-plz');
-    expect(zone).not.toBeNull();
-    expect(zone!.getAttribute('role')).toBe('list');
-    expect(zone!.getAttribute('aria-label')).toBe('Pivot column labels');
-    const empty = zone!.querySelector<HTMLElement>('.cg-columns-panel-plz-empty');
-    expect(empty?.textContent).toBe('Drag here to set column labels');
-    expect(zone!.querySelectorAll('.cg-columns-panel-plz-pill').length).toBe(0);
-  });
-
-  it('renders one pill per getPivotColumns() entry in order with headerName label', () => {
-    const api = makeApi({ pivotColumns: ['year', 'sport'] });
-    const { panel, root } = mountPanel(api);
-    hosts.push(panel);
-    const pills = Array.from(root.querySelectorAll<HTMLElement>('.cg-columns-panel-plz-pill'));
-    expect(pills.map((p) => p.dataset.colId)).toEqual(['year', 'sport']);
-    const labels = pills.map((p) => p.querySelector<HTMLElement>('.cg-columns-panel-plz-pill-label')?.textContent);
-    expect(labels).toEqual(['Year', 'Sport']);
-  });
-
-  it('pill `×` click calls api.removePivotColumn(colId)', () => {
-    const api = makeApi({ pivotColumns: ['year'] });
-    const { panel, root } = mountPanel(api);
-    hosts.push(panel);
-    const pill = root.querySelector<HTMLElement>('.cg-columns-panel-plz-pill[data-col-id="year"]')!;
-    const remove = pill.querySelector<HTMLButtonElement>('.cg-columns-panel-plz-pill-remove')!;
-    remove.click();
-    expect(api.removePivotColumn).toHaveBeenCalledWith('year');
-  });
-
-  it('subscribes to pivotStateChanged and re-renders pills when state mutates externally', () => {
-    const api = makeApi();
-    const { panel, root } = mountPanel(api);
-    hosts.push(panel);
-    expect(root.querySelectorAll('.cg-columns-panel-plz-pill').length).toBe(0);
-    api.addPivotColumn('country');
-    const pills = Array.from(root.querySelectorAll<HTMLElement>('.cg-columns-panel-plz-pill'));
-    expect(pills.map((p) => p.dataset.colId)).toEqual(['country']);
-  });
-
-  it('drag a column-list row into the zone calls api.addPivotColumn for a pivot-enabled column', () => {
-    const api = makeApi();
-    const { panel, root } = mountPanel(api);
-    hosts.push(panel);
-    pinZoneRect(root, '.cg-columns-panel-plz', { left: 0, top: 200, right: 240, bottom: 280 });
-    const handle = root.querySelector<HTMLElement>('.cg-columns-panel-row[data-col-id="country"] .cg-columns-panel-row-handle')!;
-    handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: 50, bubbles: true }));
-    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 100, clientY: 240 }));
-    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 100, clientY: 240 }));
-    expect(api.addPivotColumn).toHaveBeenCalledWith('country');
-  });
-
-  it('drag a non-pivot-enabled column shows reject state and does NOT call addPivotColumn', () => {
-    // `age` is in valueable, not pivotable in defaults.
-    const api = makeApi();
-    const { panel, root } = mountPanel(api);
-    hosts.push(panel);
-    pinZoneRect(root, '.cg-columns-panel-plz', { left: 0, top: 200, right: 240, bottom: 280 });
-    const handle = root.querySelector<HTMLElement>('.cg-columns-panel-row[data-col-id="age"] .cg-columns-panel-row-handle')!;
-    handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: 50, bubbles: true }));
-    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 100, clientY: 240 }));
-    const zone = root.querySelector<HTMLElement>('.cg-columns-panel-plz')!;
-    expect(zone.dataset.drop).toBe('reject');
-    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 100, clientY: 240 }));
-    expect(api.addPivotColumn).not.toHaveBeenCalled();
-    expect(zone.dataset.drop).toBeUndefined();
-  });
-
-  it('drag-into-zone for an already-pivoted column is rejected (no double-add)', () => {
-    const api = makeApi({ pivotColumns: ['year'] });
-    const { panel, root } = mountPanel(api);
-    hosts.push(panel);
-    pinZoneRect(root, '.cg-columns-panel-plz', { left: 0, top: 200, right: 240, bottom: 280 });
-    const handle = root.querySelector<HTMLElement>('.cg-columns-panel-row[data-col-id="year"] .cg-columns-panel-row-handle')!;
-    handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: 50, bubbles: true }));
-    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 100, clientY: 240 }));
-    const zone = root.querySelector<HTMLElement>('.cg-columns-panel-plz')!;
-    expect(zone.dataset.drop).toBe('reject');
-    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 100, clientY: 240 }));
-    expect(api.addPivotColumn).not.toHaveBeenCalled();
-  });
-
-  it('pill drag-OUT of the zone calls api.removePivotColumn', () => {
-    const api = makeApi({ pivotColumns: ['year'] });
-    const { panel, root } = mountPanel(api);
-    hosts.push(panel);
-    pinZoneRect(root, '.cg-columns-panel-plz', { left: 0, top: 200, right: 240, bottom: 280 });
-    const pill = root.querySelector<HTMLElement>('.cg-columns-panel-plz-pill[data-col-id="year"]')!;
-    pill.dispatchEvent(new MouseEvent('mousedown', { clientX: 100, clientY: 240, bubbles: true }));
-    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 110, clientY: 250 }));
-    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 500, clientY: 500 }));
-    expect(api.removePivotColumn).toHaveBeenCalledWith('year');
-  });
-
-  it('pill drag released INSIDE the zone does NOT remove (within-zone release is a no-op for Task 5)', () => {
-    const api = makeApi({ pivotColumns: ['year', 'sport'] });
-    const { panel, root } = mountPanel(api);
-    hosts.push(panel);
-    pinZoneRect(root, '.cg-columns-panel-plz', { left: 0, top: 200, right: 240, bottom: 280 });
-    const pill = root.querySelector<HTMLElement>('.cg-columns-panel-plz-pill[data-col-id="year"]')!;
-    pill.dispatchEvent(new MouseEvent('mousedown', { clientX: 100, clientY: 240, bubbles: true }));
-    window.dispatchEvent(new MouseEvent('mousemove', { clientX: 100, clientY: 250 }));
-    window.dispatchEvent(new MouseEvent('mouseup', { clientX: 100, clientY: 250 }));
-    expect(api.removePivotColumn).not.toHaveBeenCalled();
-  });
-
-  it('removing the last pill returns the empty-state placeholder', () => {
-    const api = makeApi({ pivotColumns: ['year'] });
-    const { panel, root } = mountPanel(api);
-    hosts.push(panel);
-    expect(root.querySelector('.cg-columns-panel-plz-empty')).toBeNull();
-    api.removePivotColumn('year');
-    const empty = root.querySelector<HTMLElement>('.cg-columns-panel-plz-empty');
-    expect(empty?.textContent).toBe('Drag here to set column labels');
-  });
-
-  it('suppressPivots: true omits the entire Column Labels zone', () => {
-    const api = makeApi({ pivotColumns: ['year'] });
-    const { panel, root } = mountPanel(api, { suppressPivots: true });
-    hosts.push(panel);
-    expect(root.querySelector('.cg-columns-panel-plz')).toBeNull();
-  });
-
-  it('section header reads "Column Labels" and carries an SVG icon element', () => {
-    const api = makeApi();
-    const { panel, root } = mountPanel(api);
-    hosts.push(panel);
-    const header = root.querySelector<HTMLElement>('.cg-columns-panel-section-header--pivots');
-    expect(header).not.toBeNull();
-    expect(header!.textContent?.trim()).toBe('Column Labels');
-    expect(header!.querySelector('.cg-columns-panel-section-header-icon svg')).not.toBeNull();
-  });
-});
+// Cycle 21i / Phase 1 — the Column Labels drop zone was removed from
+// the columns tool panel (column-labels config lives in the top pivot
+// strip's split-right half). Its former render/drag tests are dropped.
 
 describe('ColumnsToolPanel — Values drop zone (Cycle 18 / Task 5)', () => {
   let hosts: ColumnsToolPanel[] = [];
