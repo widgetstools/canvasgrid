@@ -58,9 +58,10 @@ export function flatten(defs: (CColDef | CColGroupDef)[]): Node[] {
         });
         walk(d.children, id);
       } else {
+        const cid = d.colId ?? d.field!;
         out.push({
-          id: d.colId!, kind: 'column', parentId, order,
-          colId: d.colId!, headerName: d.headerName ?? d.colId!,
+          id: cid, kind: 'column', parentId, order,
+          colId: cid, headerName: d.headerName ?? cid,
           hide: d.hide, def: d,
         });
       }
@@ -84,7 +85,12 @@ export function project(nodes: Node[]): (CColDef | CColGroupDef)[] {
           if (n.headerClass !== undefined) g.headerClass = n.headerClass;
           return g;
         }
-        const leaf: CColDef = { ...n.def, colId: n.colId, headerName: n.headerName };
+        const leaf: CColDef = { ...n.def };
+        // Only stamp headerName if it diverges from the def's own default
+        // (headerName ?? colId) — this keeps round-trip identity exact for
+        // defs that never had an explicit headerName (e.g. field-only cols).
+        const defaultHeaderName = n.def.headerName ?? n.colId;
+        if (n.headerName !== defaultHeaderName) leaf.headerName = n.headerName;
         if (n.hide !== undefined) leaf.hide = n.hide;
         return leaf;
       });
@@ -123,6 +129,15 @@ export function deleteGroup(nodes: Node[], id: string): Node[] {
   return reindex(next);
 }
 
+/**
+ * Reparents/reorders `id` under `newParentId`.
+ *
+ * `newOrder` contract: it is the index — within the destination parent's
+ * CURRENT sibling ordering (i.e. before the moved node is spliced in) — of
+ * the sibling the moved node should land BEFORE. Pass `siblings.length` to
+ * append at the end. E.g. for siblings [a, b, c], moveNode(..., a, parent, 2)
+ * moves `a` to land before index 2 (`c`), producing [b, a, c].
+ */
 export function moveNode(nodes: Node[], id: string, newParentId: string | null, newOrder: number): Node[] {
   if (!canDrop(nodes, id, newParentId)) return nodes;
   const next = clone(nodes).map((n) => (n.id === id ? { ...n, parentId: newParentId, order: newOrder - 0.5 } : n));

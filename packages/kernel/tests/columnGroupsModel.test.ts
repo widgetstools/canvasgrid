@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   flatten, project, createGroup, deleteGroup, moveNode, setHidden,
-  setColumnHeaderName, setGroupStyle, canDrop, validate,
+  setColumnHeaderName, setGroupStyle, canDrop, validate, renameGroup,
   type Node, type GroupNode,
 } from '../src/interaction/columnGroups/model';
 import type { CColDef, CColGroupDef } from '../src/types';
@@ -57,6 +57,21 @@ describe('mutations', () => {
     expect(moved.find((n) => n.id === last.id)!.parentId).toBe(riskId);
   });
 
+  it('moveNode reorders within the same parent (insert-before-index contract)', () => {
+    const defs: (CColDef | CColGroupDef)[] = [
+      { groupId: 'g', headerName: 'G', children: [
+        { colId: 'a', field: 'a' }, { colId: 'b', field: 'b' }, { colId: 'c', field: 'c' },
+      ] },
+    ];
+    const nodes = flatten(defs);
+    const g = nodes.find((n) => n.kind === 'group')!;
+    const a = nodes.find((n) => (n as any).colId === 'a')!;
+    // move 'a' to land before 'c' (index 2) → order a,b,c becomes b,a,c
+    const moved = moveNode(nodes, a.id, g.id, 2);
+    const order = project(moved)[0] as CColGroupDef;
+    expect(order.children.map((c) => (c as CColDef).colId)).toEqual(['b', 'a', 'c']);
+  });
+
   it('deleteGroup reparents children to the group parent (no orphans)', () => {
     const nodes = flatten(nested);
     const prices = nodes.find((n) => n.kind === 'group' && (n as GroupNode).headerName === 'Prices') as GroupNode;
@@ -81,6 +96,20 @@ describe('mutations', () => {
     expect((defs[0] as CColDef).headerName).toBe('Ticker');
   });
 
+  it('renameGroup changes only that group headerName', () => {
+    const nodes0 = flatten(nested);
+    const trade = nodes0.find((n) => (n as GroupNode).headerName === 'Trade') as GroupNode;
+    const prices = nodes0.find((n) => (n as GroupNode).headerName === 'Prices') as GroupNode;
+    const nodes = renameGroup(nodes0, trade.id, 'Deals');
+    const tradeAfter = nodes.find((n) => n.id === trade.id) as GroupNode;
+    const pricesAfter = nodes.find((n) => n.id === prices.id) as GroupNode;
+    expect(tradeAfter.headerName).toBe('Deals');
+    expect(tradeAfter.parentId).toBe(trade.parentId);
+    expect(tradeAfter.order).toBe(trade.order);
+    // untouched sibling/other-field state
+    expect(pricesAfter.headerName).toBe('Prices');
+  });
+
   it('setGroupStyle writes headerStyle on project', () => {
     const nodes0 = flatten(nested);
     const trade = nodes0.find((n) => (n as GroupNode).headerName === 'Trade') as GroupNode;
@@ -88,6 +117,43 @@ describe('mutations', () => {
     const defs = project(nodes);
     const g = defs.find((d): d is CColGroupDef => (d as any).groupId === 'trade')!;
     expect((g.headerStyle as any).backgroundColor).toBe('#123');
+  });
+});
+
+describe('colId-less columns (field-only)', () => {
+  it('round-trips a column defined by field only (no colId)', () => {
+    const defs: (CColDef | CColGroupDef)[] = [
+      { field: 'pnl', headerName: 'P&L' },
+      { groupId: 'g', headerName: 'G', children: [{ field: 'qty' }] },
+    ];
+    expect(project(flatten(defs))).toEqual(defs);
+  });
+
+  it('flatten derives id/colId from field when colId is absent', () => {
+    const defs: (CColDef | CColGroupDef)[] = [{ field: 'pnl', headerName: 'P&L' }];
+    const nodes = flatten(defs);
+    const pnl = nodes.find((n) => n.kind === 'column' && (n as any).colId === 'pnl');
+    expect(pnl).toBeDefined();
+  });
+
+  it('rename/move keyed on a field-only column works (id-keyed lookups do not collide)', () => {
+    const defs: (CColDef | CColGroupDef)[] = [
+      { field: 'pnl', headerName: 'P&L' },
+      { field: 'qty', headerName: 'Qty' },
+    ];
+    let nodes = flatten(defs);
+    nodes = setColumnHeaderName(nodes, 'pnl', 'Profit & Loss');
+    const risk = createGroup(nodes, null, 'Risk');
+    const riskId = (risk.find((n) => n.kind === 'group' && (n as GroupNode).headerName === 'Risk') as GroupNode).id;
+    const pnl = risk.find((n) => n.kind === 'column' && (n as any).colId === 'pnl')!;
+    const moved = moveNode(risk, pnl.id, riskId, 0);
+    expect(moved.find((n) => n.id === pnl.id)!.parentId).toBe(riskId);
+    const defsOut = project(moved);
+    const g = defsOut.find((d): d is CColGroupDef => (d as any).groupId === riskId)!;
+    expect((g.children[0] as CColDef).headerName).toBe('Profit & Loss');
+    // 'qty' remains untouched and distinguishable — proves no id collision
+    const qty = moved.find((n) => n.kind === 'column' && (n as any).colId === 'qty')!;
+    expect(qty.id).not.toBe(pnl.id);
   });
 });
 
@@ -104,5 +170,21 @@ describe('validation', () => {
     const nodes = createGroup(flatten(nested), null, 'Empty');
     const res = validate(nodes);
     expect(res.ok).toBe(false);
+  });
+
+  it('canDrop rejects a column leaving a marryChildren:true group', () => {
+    const defs: (CColDef | CColGroupDef)[] = [
+      { groupId: 'm', headerName: 'Married', marryChildren: true, children: [
+        { colId: 'x', field: 'x' }, { colId: 'y', field: 'y' },
+      ] },
+    ];
+    const nodes = flatten(defs);
+    const x = nodes.find((n) => n.kind === 'column' && (n as any).colId === 'x')!;
+    expect(canDrop(nodes, x.id, null)).toBe(false);
+  });
+
+  it('validate returns ok:true when every group has at least one child', () => {
+    const res = validate(flatten(nested));
+    expect(res).toEqual({ ok: true });
   });
 });
