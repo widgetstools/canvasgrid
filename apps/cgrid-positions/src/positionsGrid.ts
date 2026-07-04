@@ -460,6 +460,9 @@ export function createPositionsGrid(
     // without collapsing the row itself.
     defaultColDef: { floatingFilter: true },
     floatingFilter: true,
+    // Cycle 21i / Customization — enable toolbar for save button
+    toolbar: true,
+    toolbarHeight: 40,
     columnDefs: [
       // Cycle 6 / Task 1: positionId opts out of drag-reorder. Pinned-left
       // is already a strong visual signal that this column shouldn't move;
@@ -1091,5 +1094,19 @@ export function createPositionsGrid(
   if (opts.groupingDemo) {
     grid.setGroupModel({ rowGroupCols: ['ticker'] });
   }
+
+  // Cycle 21i / Customization — setup toolbar with save button on the right
+  const toolbar = grid.getToolbar();
+  if (toolbar) {
+    // Add a spacer to push the save button to the right edge
+    toolbar.addSpacer();
+    // Add save button on the right edge
+    toolbar.addButton('Save', () => {
+      console.log('Save button clicked');
+      // Placeholder for save functionality
+      alert('Save functionality would go here');
+    }, { title: 'Save all changes' });
+  }
+
   return grid;
 }
