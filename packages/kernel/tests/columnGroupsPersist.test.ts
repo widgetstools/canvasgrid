@@ -77,6 +77,29 @@ describe('column-group structure persists through getState/setState', () => {
     g2.destroy();
   });
 
+  it('Task 9 — headerStyle.fontStyle/border survive getState -> setState onto a fresh grid', () => {
+    const g1 = mount(base);
+    const api1 = (g1 as any).makeApi();
+    api1.updateGridOptions({ columnDefs: [
+      { colId: 'a', field: 'a' },
+      {
+        groupId: 'G', headerName: 'Grp',
+        headerStyle: { fontStyle: 'italic', border: { all: { width: 2, style: 'dashed', color: 'rgb(255, 0, 0)' } } },
+        children: [{ colId: 'b', field: 'b' }, { colId: 'c', field: 'c' }],
+      },
+    ] });
+    const snapshot = g1.getState();
+    g1.destroy();
+
+    const g2 = mount(base);
+    const api2 = (g2 as any).makeApi();
+    g2.setState(snapshot);
+    const grp = api2.getColumnGroupDefs().find((d: any) => d.groupId === 'G');
+    expect(grp.headerStyle.fontStyle).toBe('italic');
+    expect(grp.headerStyle.border).toEqual({ all: { width: 2, style: 'dashed', color: 'rgb(255, 0, 0)' } });
+    g2.destroy();
+  });
+
   it('does not persist a columnGroupDefs overlay when the grid stays flat (no groups)', () => {
     const g = mount(base);
     const snapshot = g.getState();

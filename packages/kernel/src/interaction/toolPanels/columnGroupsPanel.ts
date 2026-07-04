@@ -24,6 +24,7 @@ import {
 import type { CGridApi } from '../../types';
 import { SettingsForm } from '../settingsForm/form';
 import type { SettingsField, SettingsSection } from '../../types/settingsSchema';
+import type { BorderStyle } from '../../types/cell';
 
 type NodeKind = Node['kind'];
 
@@ -273,6 +274,61 @@ export class ColumnGroupsToolPanel implements ToolPanel {
             () => g.headerStyle?.fontWeight === 'bold',
             (v) => patch({ headerStyle: { ...g.headerStyle, fontWeight: v ? 'bold' : undefined } }),
             false),
+          field('fontStyle', 'Italic', 'switch',
+            () => g.headerStyle?.fontStyle === 'italic',
+            (v) => patch({ headerStyle: { ...g.headerStyle, fontStyle: v ? 'italic' : undefined } }),
+            false),
+          field('textDecoration', 'Underline', 'switch',
+            () => g.headerStyle?.textDecoration === 'underline',
+            (v) => patch({ headerStyle: { ...g.headerStyle, textDecoration: v ? 'underline' : undefined } }),
+            false),
+          field('fontSize', 'Font size', 'number',
+            () => g.headerStyle?.fontSize,
+            (v) => patch({ headerStyle: { ...g.headerStyle, fontSize: (v as number) || undefined } }),
+            undefined, { min: 8, max: 32 }),
+          field('halign', 'Alignment', 'select',
+            () => g.headerStyle?.halign ?? 'left',
+            (v) => patch({ headerStyle: { ...g.headerStyle, halign: v as 'left' | 'center' | 'right' } }),
+            undefined, {
+              options: [
+                { value: 'left', label: 'Left' },
+                { value: 'center', label: 'Center' },
+                { value: 'right', label: 'Right' },
+              ],
+            }),
+          field('borderWidth', 'Border width', 'number',
+            () => g.headerStyle?.border?.all?.width,
+            (v) => patch({
+              headerStyle: {
+                ...g.headerStyle,
+                border: { all: { ...g.headerStyle?.border?.all, width: (v as number) || undefined } },
+              },
+            }),
+            undefined, { min: 0, max: 8 }),
+          field('borderStyle', 'Border style', 'select',
+            () => g.headerStyle?.border?.all?.style ?? 'solid',
+            (v) => patch({
+              headerStyle: {
+                ...g.headerStyle,
+                border: { all: { ...g.headerStyle?.border?.all, style: v as BorderStyle } },
+              },
+            }),
+            undefined, {
+              options: [
+                { value: 'solid', label: 'Solid' },
+                { value: 'dashed', label: 'Dashed' },
+                { value: 'dotted', label: 'Dotted' },
+                { value: 'double', label: 'Double' },
+              ],
+            }),
+          field('borderColor', 'Border colour', 'color',
+            () => g.headerStyle?.border?.all?.color,
+            (v) => patch({
+              headerStyle: {
+                ...g.headerStyle,
+                border: { all: { ...g.headerStyle?.border?.all, color: v as string } },
+              },
+            })),
           field('marryChildren', 'Marry children', 'switch',
             () => g.marryChildren === true,
             (v) => patch({ marryChildren: v as boolean }),
@@ -630,7 +686,10 @@ function cssEscape(s: string): string {
 /** Build a `SettingsField` for the group Style band. `defaultValue` (when
  *  given) is what an "unset" value reads as — e.g. `false` for the boolean
  *  switches, so a group that has never had the flag touched doesn't render
- *  as already-modified. */
+ *  as already-modified. `extra` (Task 9) carries the remaining
+ *  `SettingsField` facets a plain switch/color field doesn't need — numeric
+ *  bounds (`min`/`max`/`step`) for `'number'` fields and `options` for
+ *  `'select'` fields. */
 function field(
   key: string,
   label: string,
@@ -638,6 +697,7 @@ function field(
   get: () => unknown,
   set: (value: unknown) => void,
   defaultValue?: unknown,
+  extra?: Pick<SettingsField, 'min' | 'max' | 'step' | 'options'>,
 ): SettingsField {
-  return { key, label, type, get, set, defaultValue };
+  return { key, label, type, get, set, defaultValue, ...extra };
 }

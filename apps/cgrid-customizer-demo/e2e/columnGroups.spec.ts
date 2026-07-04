@@ -215,6 +215,66 @@ test('group header styling: bold + background color apply to headerStyle', async
   expect(trade!.headerStyle?.bg).toBe('rgb(255, 0, 0)');
 });
 
+// Task 9 — StarUI parity: italic/underline/fontSize/alignment/border added
+// to the Style band's Header section. This journey exercises Italic (switch)
+// + an all-sides dashed border (three fields composing one `border.all`
+// object), then proves both survive Apply and a reload.
+test('group header styling: italic + dashed border apply to headerStyle and persist across reload', async ({ page }) => {
+  await openColumnGroupsTab(page);
+
+  await page.locator('[data-cg-node="trade"] [data-cg-select]').click();
+  await expect(page.locator('[data-cg-style][data-for="trade"]')).toBeVisible();
+
+  // Italic switch.
+  await page.locator('[data-cg-field="fontStyle"] .cg-settings-toggle').click();
+  await expect(page.locator('[data-cg-field="fontStyle"] .cg-settings-toggle')).toHaveAttribute(
+    'aria-pressed',
+    'true',
+  );
+
+  // Border width + style (native number/select controls).
+  await page.locator('[data-cg-field="borderWidth"] input').fill('2');
+  await page.locator('[data-cg-field="borderWidth"] input').blur();
+  await page.locator('[data-cg-field="borderStyle"] select').selectOption('dashed');
+
+  // Border colour — same colour-picker idiom as the Background field above.
+  await page.locator('[data-cg-field="borderColor"] .cg-colorpicker-swatch').click();
+  const borderHex = page.locator('.cg-colorpicker-popover .cg-colorpicker-hex');
+  await expect(borderHex).toBeVisible();
+  await borderHex.fill('#00ff00');
+  await borderHex.press('Tab');
+
+  const applyBtn = page.locator('[data-cg-apply]');
+  await expect(applyBtn).toBeEnabled();
+  await applyBtn.click();
+
+  const defs = await getColumnGroupDefs(page);
+  const trade = findNode(defs, (d) => d.groupId === 'trade');
+  expect(trade).toBeTruthy();
+  expect(trade!.headerStyle?.fontStyle).toBe('italic');
+  expect(trade!.headerStyle?.border?.all).toEqual({ width: 2, style: 'dashed', color: 'rgb(0, 255, 0)' });
+
+  await page.waitForFunction(
+    (key) => (localStorage.getItem(key) ?? '').includes('"dashed"'),
+    STORAGE_KEY,
+    { timeout: 5_000 },
+  );
+
+  await page.reload();
+  await waitForGridReady(page);
+
+  let defsAfterReload: AnyDef[] = [];
+  let tradeAfterReload: AnyDef | null = null;
+  await expect
+    .poll(async () => {
+      defsAfterReload = await getColumnGroupDefs(page);
+      tradeAfterReload = findNode(defsAfterReload, (d) => d.groupId === 'trade');
+      return tradeAfterReload?.headerStyle?.border?.all?.style ?? null;
+    }, { timeout: 10_000 })
+    .toBe('dashed');
+  expect(tradeAfterReload!.headerStyle?.fontStyle).toBe('italic');
+});
+
 // Task 7 — `columnGroupShow` (always/open/closed) authoring. 'pnl' is a
 // direct child of the seeded 'trade' group (see apps/cgrid-customizer-demo/
 // src/main.ts), so it carries the inline `data-cg-groupshow` control. The

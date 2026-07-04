@@ -227,6 +227,123 @@ describe('ColumnGroupsToolPanel', () => {
       expect(bid.columnGroupShow).toBe('closed');
     });
 
+    // Task 9 — StarUI parity: italic/underline/fontSize/alignment/border.
+    describe('Task 9 — enriched Style band', () => {
+      it('exposes Italic/Underline/FontSize/Alignment/Border fields', () => {
+        const panel = new ColumnGroupsToolPanel();
+        panel.init(makeParams(vi.fn()));
+        const gui = panel.getGui();
+        (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
+        const style = gui.querySelector('[data-cg-style]')!;
+        for (const key of [
+          'fontStyle', 'textDecoration', 'fontSize', 'halign',
+          'borderWidth', 'borderStyle', 'borderColor',
+        ]) {
+          expect(style.querySelector(`[data-cg-field="${key}"]`)).toBeTruthy();
+        }
+      });
+
+      it('toggling Italic sets headerStyle.fontStyle without wiping a previously-set Background/Bold (merge correctness)', () => {
+        const onApply = vi.fn();
+        const panel = new ColumnGroupsToolPanel();
+        panel.init(makeParams(onApply));
+        const gui = panel.getGui();
+        (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
+        let style = gui.querySelector('[data-cg-style]')!;
+
+        // Set Background first via the colour-picker control: click the
+        // swatch to open the portaled popover, type a hex value, commit.
+        const bgSwatch = style.querySelector('[data-cg-field="bg"] .cg-colorpicker-swatch') as HTMLButtonElement;
+        bgSwatch.click();
+        const bgHex = document.querySelector('.cg-colorpicker-popover .cg-colorpicker-hex') as HTMLInputElement;
+        bgHex.value = '#112233';
+        bgHex.dispatchEvent(new Event('change'));
+        document.querySelectorAll('.cg-colorpicker-popover').forEach((p) => p.remove());
+
+        // Bold next (existing Task 4 field) — then Italic (new).
+        style = gui.querySelector('[data-cg-style]')!;
+        (style.querySelector('[data-cg-field="fontWeight"] .cg-settings-toggle') as HTMLButtonElement).click();
+        style = gui.querySelector('[data-cg-style]')!;
+        (style.querySelector('[data-cg-field="fontStyle"] .cg-settings-toggle') as HTMLButtonElement).click();
+
+        (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+        const { columnDefs } = onApply.mock.calls[0][0];
+        const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
+        expect(trade.headerStyle.fontStyle).toBe('italic');
+        expect(trade.headerStyle.fontWeight).toBe('bold'); // not wiped
+        expect(trade.headerStyle.bg).toBe('rgb(17, 34, 51)'); // not wiped
+      });
+
+      it('toggling Underline sets headerStyle.textDecoration', () => {
+        const onApply = vi.fn();
+        const panel = new ColumnGroupsToolPanel();
+        panel.init(makeParams(onApply));
+        const gui = panel.getGui();
+        (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
+        const style = gui.querySelector('[data-cg-style]')!;
+        (style.querySelector('[data-cg-field="textDecoration"] .cg-settings-toggle') as HTMLButtonElement).click();
+        (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+        const { columnDefs } = onApply.mock.calls[0][0];
+        const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
+        expect(trade.headerStyle.textDecoration).toBe('underline');
+      });
+
+      it('setting Font size and Alignment writes headerStyle.fontSize/halign', () => {
+        const onApply = vi.fn();
+        const panel = new ColumnGroupsToolPanel();
+        panel.init(makeParams(onApply));
+        const gui = panel.getGui();
+        (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
+        let style = gui.querySelector('[data-cg-style]')!;
+
+        const sizeInput = style.querySelector('[data-cg-field="fontSize"] input') as HTMLInputElement;
+        sizeInput.value = '14';
+        sizeInput.dispatchEvent(new Event('change'));
+
+        style = gui.querySelector('[data-cg-style]')!;
+        const alignSelect = style.querySelector('[data-cg-field="halign"] select') as HTMLSelectElement;
+        alignSelect.value = 'center';
+        alignSelect.dispatchEvent(new Event('change'));
+
+        (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+        const { columnDefs } = onApply.mock.calls[0][0];
+        const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
+        expect(trade.headerStyle.fontSize).toBe(14);
+        expect(trade.headerStyle.halign).toBe('center');
+      });
+
+      it('setting Border width/style/colour composes a single headerStyle.border.all object', () => {
+        const onApply = vi.fn();
+        const panel = new ColumnGroupsToolPanel();
+        panel.init(makeParams(onApply));
+        const gui = panel.getGui();
+        (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
+        let style = gui.querySelector('[data-cg-style]')!;
+
+        const widthInput = style.querySelector('[data-cg-field="borderWidth"] input') as HTMLInputElement;
+        widthInput.value = '2';
+        widthInput.dispatchEvent(new Event('change'));
+
+        style = gui.querySelector('[data-cg-style]')!;
+        const styleSelect = style.querySelector('[data-cg-field="borderStyle"] select') as HTMLSelectElement;
+        styleSelect.value = 'dashed';
+        styleSelect.dispatchEvent(new Event('change'));
+
+        style = gui.querySelector('[data-cg-style]')!;
+        const colorSwatch = style.querySelector('[data-cg-field="borderColor"] .cg-colorpicker-swatch') as HTMLButtonElement;
+        colorSwatch.click();
+        const colorHex = document.querySelector('.cg-colorpicker-popover .cg-colorpicker-hex') as HTMLInputElement;
+        colorHex.value = '#ff0000';
+        colorHex.dispatchEvent(new Event('change'));
+        document.querySelectorAll('.cg-colorpicker-popover').forEach((p) => p.remove());
+
+        (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
+        const { columnDefs } = onApply.mock.calls[0][0];
+        const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
+        expect(trade.headerStyle.border.all).toEqual({ width: 2, style: 'dashed', color: 'rgb(255, 0, 0)' });
+      });
+    });
+
     it('switching selection to a different group rebinds the Style section', () => {
       const panel = new ColumnGroupsToolPanel();
       panel.init(makeParams(vi.fn()));
