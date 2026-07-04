@@ -248,4 +248,60 @@ describe('column-group RUNTIME open/collapse state persists through getState/set
     expect(api2.getColumnGroupState()).toContainEqual({ groupId: 'G', open: false });
     g2.destroy();
   });
+
+  it('restore ordering: an overlay-only group (absent from the target base) reseeds from openByDefault via the columnGroupDefs restore, then columnGroupOpen overrides it — closed wins', () => {
+    // Grid A: FLAT base (no groups at all). Group G is authored purely
+    // through updateGridOptions, so it only ever exists via the
+    // `columnGroupDefs` overlay, never via base columnDefs.
+    const g1 = mount(base);
+    const api1 = (g1 as any).makeApi();
+    api1.updateGridOptions({ columnDefs: [
+      { groupId: 'G', headerName: 'Grp', openByDefault: true, children: [
+        { colId: 'b', field: 'b' }, { colId: 'c', field: 'c' },
+      ] },
+      { colId: 'a', field: 'a' },
+    ] });
+    api1.setColumnGroupState([{ groupId: 'G', open: false }]);
+    const snapshot = g1.getState();
+    expect(snapshot.columnGroupDefs?.some((n: any) =>
+      n.kind === 'group' && n.id === 'G' && n.openByDefault === true,
+    )).toBe(true);
+    expect(snapshot.columnGroupOpen).toContainEqual({ groupId: 'G', open: false });
+    g1.destroy();
+
+    // Grid B: mounted with the SAME FLAT base defs — group G does NOT
+    // exist in B's live tree until the columnGroupDefs restore rebuilds it
+    // (reseeding open state from openByDefault: true). The columnGroupOpen
+    // restore must then run AFTER and override that reseed to `false`. If
+    // the two restore blocks in setState were ever swapped, columnGroupOpen
+    // would apply first against a tree that doesn't have G yet (a no-op),
+    // and the later columnGroupDefs restore would leave G open — this
+    // assertion is what catches that regression.
+    const g2 = mount(base);
+    const api2 = (g2 as any).makeApi();
+    g2.setState(snapshot);
+    expect(api2.getColumnGroupState()).toContainEqual({ groupId: 'G', open: false });
+    g2.destroy();
+  });
+
+  it('restore ordering (inverse guard): persisted open:true overrides an overlay-only group authored with openByDefault:false', () => {
+    const g1 = mount(base);
+    const api1 = (g1 as any).makeApi();
+    api1.updateGridOptions({ columnDefs: [
+      { groupId: 'H', headerName: 'Grp2', openByDefault: false, children: [
+        { colId: 'b', field: 'b' }, { colId: 'c', field: 'c' },
+      ] },
+      { colId: 'a', field: 'a' },
+    ] });
+    api1.setColumnGroupState([{ groupId: 'H', open: true }]);
+    const snapshot = g1.getState();
+    expect(snapshot.columnGroupOpen).toContainEqual({ groupId: 'H', open: true });
+    g1.destroy();
+
+    const g2 = mount(base);
+    const api2 = (g2 as any).makeApi();
+    g2.setState(snapshot);
+    expect(api2.getColumnGroupState()).toContainEqual({ groupId: 'H', open: true });
+    g2.destroy();
+  });
 });
