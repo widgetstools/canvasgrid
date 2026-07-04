@@ -210,16 +210,43 @@ type DistributiveOmit<T, K extends keyof any> = T extends unknown ? Omit<T, K> :
  *  `kind` (GroupNode already carries no `def`, so it's unaffected). */
 export type SerializedNode = DistributiveOmit<Node, 'def'>;
 
+/** One-time warn guard: function-form group `headerStyle`/`headerClass`
+ *  can't survive `JSON.stringify` (it silently drops function values), so
+ *  the persisted overlay must never carry them. We warn once per process
+ *  rather than per offending group to avoid spamming callers who apply
+ *  the same columnDefs on every render. */
+let warnedAboutFunctionGroupStyle = false;
+
 /** Strip the frozen `def` reference from every column node so a flat model
  *  is safe to `JSON.stringify` into a persisted snapshot. Group nodes pass
- *  through unchanged (they never carried `def`). */
+ *  through mostly unchanged, EXCEPT function-valued `headerStyle`/
+ *  `headerClass` are omitted — those are live closures that `flatten()`
+ *  copies through for in-memory editing, but persistence only accepts
+ *  plain data; a function silently vanishes under `JSON.stringify` on
+ *  the app's own localStorage write, so we drop it here explicitly and
+ *  warn once instead of shipping a snapshot that quietly loses styling. */
 export function toSerializedNodes(nodes: Node[]): SerializedNode[] {
   return nodes.map((n) => {
     if (n.kind === 'column') {
       const { def: _def, ...rest } = n;
       return rest;
     }
-    return n;
+    const hasFnStyle = typeof n.headerStyle === 'function';
+    const hasFnClass = typeof n.headerClass === 'function';
+    if (!hasFnStyle && !hasFnClass) return n;
+    if (!warnedAboutFunctionGroupStyle) {
+      warnedAboutFunctionGroupStyle = true;
+      // eslint-disable-next-line no-console
+      console.warn(
+        '[cgrid] Column group headerStyle/headerClass functions are not persisted in ' +
+        'getState()\'s columnGroupDefs overlay — only plain-object/string styling round-trips ' +
+        'through JSON. Function-form group styling must be reapplied by the app after setState().',
+      );
+    }
+    const out: GroupNode = { ...n };
+    if (hasFnStyle) delete out.headerStyle;
+    if (hasFnClass) delete out.headerClass;
+    return out;
   });
 }
 

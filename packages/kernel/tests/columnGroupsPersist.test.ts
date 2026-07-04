@@ -112,4 +112,30 @@ describe('column-group structure persists through getState/setState', () => {
     expect(defs.some((d: any) => d.colId === 'd')).toBe(true);
     g2.destroy();
   });
+
+  it('strips a function-valued group headerStyle/headerClass from the persisted overlay, but keeps plain-object styling', () => {
+    const g = mount(base);
+    const api = (g as any).makeApi();
+    api.updateGridOptions({ columnDefs: [
+      { groupId: 'Fn', headerName: 'FnGroup', headerStyle: () => ({ bg: '#111' }), headerClass: () => 'live-cls', children: [
+        { colId: 'a', field: 'a' },
+      ] },
+      { groupId: 'Plain', headerName: 'PlainGroup', headerStyle: { bg: '#222' }, headerClass: 'static-cls', children: [
+        { colId: 'b', field: 'b' }, { colId: 'c', field: 'c' },
+      ] },
+    ] });
+    const snapshot = g.getState();
+    expect(() => JSON.stringify(snapshot)).not.toThrow();
+
+    const nodes = snapshot.columnGroupDefs as any[];
+    const fnGroup = nodes.find((n) => n.kind === 'group' && n.headerName === 'FnGroup');
+    const plainGroup = nodes.find((n) => n.kind === 'group' && n.headerName === 'PlainGroup');
+    expect(fnGroup).toBeDefined();
+    expect(fnGroup.headerStyle).toBeUndefined();
+    expect(fnGroup.headerClass).toBeUndefined();
+    expect(plainGroup).toBeDefined();
+    expect(plainGroup.headerStyle).toEqual({ bg: '#222' });
+    expect(plainGroup.headerClass).toBe('static-cls');
+    g.destroy();
+  });
 });
