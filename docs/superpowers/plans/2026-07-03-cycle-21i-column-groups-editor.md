@@ -896,3 +896,207 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - **Apply-only invariant:** the panel writes only in `onApply`; `dirty` compares `project(nodes)` vs `baseline` so Reset/round-trips settle to disabled.
 - **Type consistency:** `flatten`/`project`/`createGroup`/`deleteGroup`/`moveNode`/`setHidden`/`setColumnHeaderName`/`setGroupStyle`/`canDrop`/`validate`, `Node`/`GroupNode`/`ColumnNode` are used identically across Tasks 2–4. Panel id `agColumnGroupsToolPanel` and shortcut `'columnGroups'` are consistent across T3 host.ts + cgrid.ts.
 - **Open confirmations for the implementer (cheap greps, not blockers):** (a) exact `data-` attribute `settingsForm/form.ts` emits per field (Task 4 Step 3); (b) the kernel stylesheet file that hosts `.cg-settings-panel` (Task 3 Step 7); (c) the demo's E2E harness location (Task 5 Step 3).
+
+---
+
+## Task 6: Persist column-group structure across reload
+
+**Provenance:** added 2026-07-03 after the Task 5 E2E proved that spec §5/§6's "persistence is free via the Phase 1 path" was WRONG. `columnDefs` is in `INITIAL_ONLY_OPTIONS`, and `updateGridOptions({columnDefs})` never feeds the persisted `GridState` — so group hierarchy + group `headerStyle` are lost on reload (leaf hide/order still persist via `columnState`). User decision (D-H) requires persistence; user chose to fix now.
+
+**Approach (reuses Task 2's tested model):** persist a serializable flat **overlay** = the `flatten()` output with the `def` reference stripped (`SerializedNode = Omit<Node,'def'>`). On restore, rehydrate each `ColumnNode.def` by looking up the app's CURRENT base leaf defs by `colId`, then `project()` back to a `columnDefs` tree and apply it. This keeps functions out of the snapshot (defs come from live base defs, not the snapshot) and reuses the one tested projection.
+
+**Files:**
+- Modify: `packages/kernel/src/core/stateSnapshot.ts` (add `GridState.columnGroupDefs?`, add source method, include in `buildSnapshot`, bump `STATE_SCHEMA_VERSION`)
+- Modify: `packages/kernel/src/core/stateUpdatedBus.ts` (map a columnDefs-changed event → `'columnGroupDefs'`)
+- Modify: `packages/kernel/src/cgrid.ts` (implement the source; emit the dirty event on runtime `updateGridOptions({columnDefs})`; restore in the `setState` path via the internal columnDefs rebuild, suppressing a re-save)
+- Modify: `packages/kernel/src/interaction/columnGroups/model.ts` (export a `SerializedNode` type + `rehydrate(overlay, baseDefs): Node[]` helper — pure, testable)
+- Test: `packages/kernel/tests/columnGroupsPersist.test.ts`
+- Modify: `apps/cgrid-customizer-demo/e2e/columnGroups.spec.ts` (flip the `test.fixme` persistence test to a real passing test)
+
+**Interfaces:**
+- Consumes: `flatten`, `project`, `Node` (Task 2); `GridState`, `StateSnapshotSources`, `buildSnapshot`, `STATE_SCHEMA_VERSION` (stateSnapshot.ts); the `EVENT_TO_KEY` map (stateUpdatedBus.ts); `this.options.columnDefs`, the internal columnDefs rebuild path used by `updateGridOptions` (cgrid.ts).
+- Produces:
+  - `type SerializedNode = Omit<Node, 'def'>` (exported from model.ts).
+  - `rehydrate(overlay: SerializedNode[], baseDefs: (CColDef|CColGroupDef)[]): Node[]` — reattaches each column node's `def` from `baseDefs` by `colId`; drops overlay column nodes whose `colId` is absent from `baseDefs`; appends any base leaf not present in the overlay as an ungrouped node (so columns added after the snapshot was saved still appear).
+  - `GridState.columnGroupDefs?: SerializedNode[]`.
+  - `StateSnapshotSources.getColumnGroupOverlay?(): SerializedNode[]`.
+
+- [ ] **Step 1: Write the failing model test for `rehydrate`**
+
+Add to `packages/kernel/tests/columnGroupsModel.test.ts`:
+
+```ts
+import { rehydrate, type SerializedNode } from '../src/interaction/columnGroups/model';
+
+describe('rehydrate (persist overlay → nodes)', () => {
+  const base: (CColDef | CColGroupDef)[] = [
+    { colId: 'a', field: 'a', valueFormatter: () => 'X' }, // function survives
+    { colId: 'b', field: 'b' },
+    { colId: 'c', field: 'c' },
+  ];
+  it('reattaches def by colId and round-trips through project', () => {
+    // overlay: group g wraps b+c, a stays ungrouped
+    const overlay: SerializedNode[] = [
+      { id: 'a', kind: 'column', parentId: null, order: 0, colId: 'a', headerName: 'a' },
+      { id: 'g', kind: 'group', parentId: null, order: 1, headerName: 'G' },
+      { id: 'b', kind: 'column', parentId: 'g', order: 0, colId: 'b', headerName: 'b' },
+      { id: 'c', kind: 'column', parentId: 'g', order: 1, colId: 'c', headerName: 'c' },
+    ];
+    const defs = project(rehydrate(overlay, base));
+    const g = defs.find((d): d is CColGroupDef => (d as any).groupId === 'g')!;
+    expect(g.children.map((c) => (c as CColDef).colId)).toEqual(['b', 'c']);
+    // the function-valued field on 'a' is preserved (came from baseDefs, not overlay)
+    const a = defs.find((d) => (d as CColDef).colId === 'a') as CColDef;
+    expect(typeof a.valueFormatter).toBe('function');
+  });
+  it('drops overlay entries whose colId no longer exists in base', () => {
+    const overlay: SerializedNode[] = [
+      { id: 'gone', kind: 'column', parentId: null, order: 0, colId: 'gone', headerName: 'gone' },
+      { id: 'a', kind: 'column', parentId: null, order: 1, colId: 'a', headerName: 'a' },
+    ];
+    const defs = project(rehydrate(overlay, base));
+    expect(defs.some((d) => (d as CColDef).colId === 'gone')).toBe(false);
+  });
+  it('appends base leaves missing from the overlay as ungrouped', () => {
+    const overlay: SerializedNode[] = [
+      { id: 'a', kind: 'column', parentId: null, order: 0, colId: 'a', headerName: 'a' },
+    ]; // b, c missing
+    const defs = project(rehydrate(overlay, base));
+    expect(defs.some((d) => (d as CColDef).colId === 'b')).toBe(true);
+    expect(defs.some((d) => (d as CColDef).colId === 'c')).toBe(true);
+  });
+});
+```
+
+- [ ] **Step 2: Run to verify it fails**
+
+Run: `npx vitest run tests/columnGroupsModel.test.ts --root packages/kernel`
+Expected: FAIL — `rehydrate` / `SerializedNode` not exported.
+
+- [ ] **Step 3: Implement `SerializedNode` + `rehydrate` in `model.ts`**
+
+```ts
+export type SerializedNode = Omit<Node, 'def'>;
+
+/** Rebuild editable Nodes from a persisted overlay + the app's current
+ *  base column defs. Column nodes get their `def` reattached by colId;
+ *  overlay columns whose colId is gone are dropped; base leaves absent
+ *  from the overlay are appended as ungrouped so newly-added columns
+ *  still surface after a restore. Groups that end up empty are pruned by
+ *  the caller via validate()/project() (project simply emits no children;
+ *  a downstream prune drops childless groups — see below). */
+export function rehydrate(overlay: SerializedNode[], baseDefs: (CColDef | CColGroupDef)[]): Node[] {
+  const baseLeaves = flatten(baseDefs).filter((n): n is ColumnNode => n.kind === 'column');
+  const defByColId = new Map(baseLeaves.map((n) => [n.colId, n.def]));
+  const nodes: Node[] = [];
+  const seen = new Set<string>();
+  for (const s of overlay) {
+    if (s.kind === 'group') { nodes.push({ ...s } as GroupNode); continue; }
+    const def = defByColId.get(s.colId);
+    if (!def) continue; // colId gone from base → drop
+    seen.add(s.colId);
+    nodes.push({ ...s, def } as ColumnNode);
+  }
+  // Append base leaves missing from the overlay, ungrouped, after existing top-level nodes.
+  let tailOrder = nodes.filter((n) => n.parentId === null).length;
+  for (const leaf of baseLeaves) {
+    if (seen.has(leaf.colId)) continue;
+    nodes.push({ ...leaf, parentId: null, order: tailOrder++ });
+  }
+  // Prune groups that reference no surviving children (e.g. all their columns were dropped).
+  const hasChild = (id: string) => nodes.some((n) => n.parentId === id);
+  return nodes.filter((n) => n.kind === 'column' || hasChild(n.id));
+}
+```
+
+Note: the prune only removes leaf-empty groups one level; if a nested subgroup becomes empty its parent may also become empty — run the prune to a fixpoint (loop until no group is removed) to be safe. Implement the fixpoint loop.
+
+- [ ] **Step 4: Run to verify pass**
+
+Run: `npx vitest run tests/columnGroupsModel.test.ts --root packages/kernel`
+Expected: PASS (all, including the 3 new).
+
+- [ ] **Step 5: Wire GridState + snapshot source (kernel state layer)**
+
+In `stateSnapshot.ts`:
+- Add to `GridState`: `columnGroupDefs?: SerializedNode[];` (import the type from `../interaction/columnGroups/model`). Place it near `columnState` with a comment.
+- Add to `StateSnapshotSources`: `getColumnGroupOverlay?(): SerializedNode[];`
+- In `buildSnapshot`, after `columnState`: 
+  ```ts
+  const groupOverlay = sources.getColumnGroupOverlay?.();
+  if (groupOverlay && groupOverlay.some((n) => n.kind === 'group')) snapshot.columnGroupDefs = groupOverlay;
+  ```
+  (Only persist when at least one GROUP exists — a purely flat grid writes nothing, keeping snapshots compact.)
+- Bump `STATE_SCHEMA_VERSION` by 1. Leave `STATE_MIGRATIONS` empty (new optional field; old snapshots simply lack it).
+
+- [ ] **Step 6: Dirty-bus mapping + emit on runtime columnDefs change**
+
+- In `stateUpdatedBus.ts` `EVENT_TO_KEY`, add: `columnDefsChanged: 'columnGroupDefs',`.
+- In `cgrid.ts` `updateGridOptions`, when `partial.columnDefs` is present (the branch at ~line 5358 that sets `this.options.columnDefs`), after the tree rebuild emit the event so the bus schedules a save: `this.events.emit({ type: 'columnDefsChanged' } as any);` (match the existing event-emit idiom in cgrid.ts; add `columnDefsChanged` to the event union if the codebase requires typed events — grep how `columnMoved` is declared/emitted and mirror it).
+
+- [ ] **Step 7: Implement the source + restore in `cgrid.ts`**
+
+- Source: add to the `StateSnapshotSources` object cgrid builds — `getColumnGroupOverlay: () => flatten(this.options.columnDefs ?? []).map(({ def, ...rest }) => rest)` (import `flatten` from `./interaction/columnGroups/model`). Stripping `def` yields `SerializedNode`.
+- Restore: in the `setState` application path (grep for where `columnState`/`gridOptions` are consumed from the incoming snapshot), when `snapshot.columnGroupDefs` is present, compute `const defs = project(rehydrate(snapshot.columnGroupDefs, this.options.columnDefs ?? []))` and apply it through the SAME internal columnDefs rebuild `updateGridOptions({columnDefs})` uses — but WITHOUT re-triggering a persist save (restores run under the bus's `init` source; ensure the apply path doesn't emit a user `columnDefsChanged` that would immediately re-save, or emit it with the init source). Apply the group overlay BEFORE `columnState` restore so leaf width/hide/pinned from `columnState` settle on top of the restored structure. Verify ordering against how the existing restore sequences `gridOptions` (first) → `columnState`.
+
+- [ ] **Step 8: Kernel persistence round-trip test**
+
+Create `packages/kernel/tests/columnGroupsPersist.test.ts`:
+
+```ts
+import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { CGrid } from '../src/cgrid';
+import type { CColDef, CColGroupDef } from '../src/types';
+
+// (mirror the Worker/canvas/getRowId mock setup used by runtimeOptions.test.ts)
+
+function mount(columnDefs: (CColDef | CColGroupDef)[]) {
+  const el = document.createElement('div'); document.body.appendChild(el);
+  return new CGrid(el, { columnDefs, rowData: [], getRowId: (r: any) => r.id });
+}
+
+describe('column-group structure persists through getState/setState', () => {
+  const base: (CColDef | CColGroupDef)[] = [
+    { colId: 'a', field: 'a' }, { colId: 'b', field: 'b' }, { colId: 'c', field: 'c' },
+  ];
+  it('restores an edited group tree onto a fresh grid with the same base defs', () => {
+    const g1 = mount(base);
+    const api1 = (g1 as any).makeApi();
+    // simulate a panel Apply: wrap b+c into group G with a header style
+    api1.updateGridOptions({ columnDefs: [
+      { colId: 'a', field: 'a' },
+      { groupId: 'G', headerName: 'Grp', headerStyle: { bg: '#123456' }, children: [
+        { colId: 'b', field: 'b' }, { colId: 'c', field: 'c' },
+      ] },
+    ] });
+    const snapshot = api1.getState();
+    expect(snapshot.columnGroupDefs?.some((n: any) => n.kind === 'group')).toBe(true);
+
+    const g2 = mount(base);            // fresh grid, SAME base defs (functions intact)
+    const api2 = (g2 as any).makeApi();
+    api2.setState(snapshot);
+    const defs = api2.getColumnGroupDefs();
+    const grp = defs.find((d: any) => d.groupId === 'G');
+    expect(grp).toBeDefined();
+    expect(grp.children.map((c: any) => c.colId)).toEqual(['b', 'c']);
+    expect(grp.headerStyle.bg).toBe('#123456');
+  });
+});
+```
+
+Run: `npx vitest run tests/columnGroupsPersist.test.ts --root packages/kernel` → PASS. Then the FULL suite `npm test --workspace=@cgrid/kernel` → all green (state snapshot version bump must not break existing state tests; if a snapshot-version assertion exists, update it).
+
+- [ ] **Step 9: Flip the Task 5 E2E `test.fixme` to a passing test**
+
+In `apps/cgrid-customizer-demo/e2e/columnGroups.spec.ts`, change the `test.fixme(...)` persistence case to `test(...)`, run `npm run test:e2e --workspace=apps/cgrid-customizer-demo`, confirm the create→Apply→reload→still-present journey now passes. If a selector/timing tweak is needed, make it.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add packages/kernel/src/core/stateSnapshot.ts packages/kernel/src/core/stateUpdatedBus.ts packages/kernel/src/cgrid.ts packages/kernel/src/interaction/columnGroups/model.ts packages/kernel/tests/columnGroupsModel.test.ts packages/kernel/tests/columnGroupsPersist.test.ts apps/cgrid-customizer-demo/e2e/columnGroups.spec.ts
+git commit -m "feat(kernel): persist column-group structure overlay across reload
+
+Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
+```
+
+**Task 6 self-review:** overlay carries NO functions (defs rehydrated from live base); reuses tested `flatten`/`project`; `rehydrate` handles dropped colIds + newly-added columns + empty-group prune to fixpoint; only persists when a group exists; schema version bumped; restore ordered before `columnState`; E2E fixme flipped.

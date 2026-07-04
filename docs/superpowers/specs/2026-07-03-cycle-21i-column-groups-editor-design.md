@@ -147,12 +147,20 @@ open tab ─► api.getColumnGroupDefs() ─► flatten() ─► Node[] (working
                                                      Node[]'
 Apply ─► project(Node[]') ─► api.updateGridOptions({ columnDefs })  ─► one re-layout
 Reset ─► flatten(lastAppliedDefs) ─► Node[]
-persist ─► existing Phase 1 persistState path already round-trips columnDefs
+persist ─► GridState.columnGroupDefs (serializable overlay: flatten() minus
+           `def`) captured on the columnDefs-changed dirty event; restored via
+           rehydrate(overlay, baseDefs) → project() → internal columnDefs rebuild
            + getColumnGroupState()/setColumnGroupState() for open/closed
 ```
 
-No new persistence code: the group tree already serializes through the
-Phase 1 `persistState` snapshot.
+**Persistence correction (2026-07-03):** the original assumption that the
+group tree persists "for free" via the Phase 1 snapshot was WRONG — `columnDefs`
+is `INITIAL_ONLY_OPTIONS` and `updateGridOptions({columnDefs})` does not feed
+`GridState`. The Task 5 E2E proved group structure + group `headerStyle` are lost
+on reload (leaf hide/order still persist via `columnState`). **Task 6** adds a
+serializable `GridState.columnGroupDefs` overlay (functions excluded — leaf defs
+are rehydrated from the app's live base defs by `colId`), closing the gap and
+satisfying decision D-H.
 
 ## 5. Error handling & edge cases
 - **Empty group** on Apply → validation blocks Apply, inline message on the
