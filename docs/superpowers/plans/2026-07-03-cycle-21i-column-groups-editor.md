@@ -1244,3 +1244,36 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - [ ] **Step 6: Commit** — `feat(kernel): enrich group-header Style band (italic/underline/size/align/border)` + Co-Authored-By trailer.
 
 **Note (transparency):** per-side borders (StarUI supports top/right/bottom/left independently) are simplified here to an all-sides border. `ColCellOverrides.border` supports per-side, so a future enhancement can add a per-side matrix; flagged, not built.
+
+---
+
+## Task 10: Render horizontal expand/collapse caret on regular column-group headers
+
+**Provenance:** added 2026-07-04 per user request — like ag-grid, a column-group HEADER must show a horizontal caret in front of its caption to expand/collapse the columns within the group. Today the caret is painted ONLY for pivot result groups (`byRows.ts` `isPivotResultGroupId` guard); regular column groups toggle on click but show no affordance.
+
+**Verified state:**
+- Caret paint: `renderer/cellRenderers/registry.ts:591-599` draws the caret LEADING (shifts `textX` right) when `pivotGroupExpand !== undefined`, using `chevron-down` (open) / `chevron-right` (closed).
+- Condition: `byRows.ts:480-497` sets `pivotGroupExpand` only when `isPivotResultGroupId(groupDef.groupId)` AND the group has a branch child or a `columnGroupShow:'closed'` leaf.
+- Toggle: `interaction/features/headerClick.ts:64` toggles via `canToggleColumnGroup` (returns `true` for all non-pivot groups) → `toggleColumnGroup`. Already works for regular groups.
+- `getColumnGroupOpen(groupId) => columnGroupState.isOpen(groupId)` (`cgrid.ts:1151`) works for ANY group.
+- Icons (`renderer/icons.ts`): `chevron-right` exists (`M9 18l6-6-6-6`); **`chevron-left` does NOT** — must be added.
+
+**Design:** paint the caret for a REGULAR column group when toggling has a visible effect — i.e. the group has ≥1 direct child leaf with `columnGroupShow` `'open'` or `'closed'`, OR a sub-group child (matches ag-grid: no caret when all children are always-visible). Use HORIZONTAL carets per the user + ag-grid: **open → `chevron-left`** (click to collapse), **closed → `chevron-right`** (click to expand). Leave pivot-group behavior unchanged.
+
+**Files:** `renderer/icons.ts`, `renderer/painters/byRows.ts`, `renderer/cellRenderers/registry.ts`, `packages/kernel/tests/` (painter/registry unit test), `apps/cgrid-customizer-demo/src/main.ts` (seed a `columnGroupShow` child so the caret is visible), `apps/cgrid-customizer-demo/e2e/columnGroups.spec.ts`.
+
+- [ ] **Step 1: Add `chevron-left` icon** — in `renderer/icons.ts` add `| 'chevron-left'` to the union and the path `'chevron-left': 'M15 18l-6-6 6-6'` (Lucide left chevron). Add a test in the icons test (if one exists) or rely on the painter test.
+
+- [ ] **Step 2: Failing unit test** — in a new/existing painter test (`packages/kernel/tests/columnGroupHeaderCaret.test.ts`), construct a grid whose columnDefs have (a) a regular group with a child `columnGroupShow:'open'` leaf, (b) a regular group with all-`always` children, (c) a nested subgroup. Paint the header (or invoke the header-cell config builder the painter uses) and assert: group (a) and (c) get a caret (the group-expand prop is set); group (b) does NOT. Assert open state → `chevron-left`, collapsed → `chevron-right`. If direct painter invocation is impractical in happy-dom, unit-test the extracted predicate (see Step 3) + the icon mapping instead, and cover the visual in the E2E. Run `npx vitest run tests/columnGroupHeaderCaret.test.ts --root packages/kernel`.
+
+- [ ] **Step 3: Extract a predicate + broaden the condition in `byRows.ts`** — add a small pure helper (co-located, exported for the test) e.g. `groupHasToggleEffect(groupDef): boolean` = `groupDef.children.some(c => c.kind === 'group') || groupDef.children.some(c => c.kind === 'leaf' && (c.colDef.columnGroupShow === 'open' || c.colDef.columnGroupShow === 'closed'))`. In the group-header branch (~480-497), set the expand prop for a REGULAR group (`!isPivotResultGroupId(groupDef.groupId)`) when `getColumnGroupOpen && groupHasToggleEffect(groupDef)`, value `getColumnGroupOpen(groupDef.groupId) ? 'open' : 'closed'`. Keep the existing pivot branch as-is (unchanged behavior). Reuse the SAME `pivotGroupExpand` config field to carry the value (minimal blast radius) — add a doc comment on the field (`registry.ts` / `propertyChain.ts`) noting it now covers regular column groups too, OR rename to `groupExpand` if the reviewer/implementer judges the rename low-risk (update all references + tests). Prefer keeping the field name to avoid churn; the comment must be updated regardless so the name isn't misleading.
+
+- [ ] **Step 4: Horizontal caret icons in `registry.ts`** — change the group-expand caret mapping (registry.ts:595) so COLUMN-group carets are horizontal: `open → 'chevron-left'`, `closed → 'chevron-right'`. Pivot groups: keep their existing look OR unify to horizontal — choose unify (horizontal for all column-group carets) for consistency, unless a pivot test asserts the down/right icons (then keep pivot as chevron-down/right and branch on `isPivotResultGroupId`). Verify no existing pivot snapshot/test breaks; if one does, branch the icon choice.
+
+- [ ] **Step 5: Run** — the new painter test + full kernel suite `npm test --workspace=@cgrid/kernel` (stay green; currently 2702). Fix any pivot-caret test that asserts the old icon by branching pivot vs regular.
+
+- [ ] **Step 6: Demo seed + E2E** — in `apps/cgrid-customizer-demo/src/main.ts`, give one column inside the seeded `Trade`/`Valuation` group a `columnGroupShow: 'open'` (so collapsing the group hides it and the caret has an effect). In `columnGroups.spec.ts`, add a test: open the group (default), assert (via a canvas-independent signal — e.g. `window.__cgapi.getColumnGroupState()` shows the group open and `getColumnGroupDefs()`/visible-columns reflect the 'open' child visible), then `window.__cgapi.toggleColumnGroup('valuation')` (or click), assert the group is now closed and the `columnGroupShow:'open'` column is no longer in the visible set. (The caret pixel itself isn't DOM-assertable on canvas; assert the behavior + that `getColumnGroupOpen` flips. A screenshot is captured for visual confirmation.) **Rebuild kernel first**. Run `npm run test:e2e --workspace=apps/cgrid-customizer-demo`.
+
+- [ ] **Step 7: Commit** — `feat(kernel): expand/collapse caret on regular column-group headers (ag-grid parity)` + Co-Authored-By trailer.
+
+**Task 10 self-review:** caret shows only when the group has a `columnGroupShow`/subgroup child (ag-grid parity, no pointless carets); horizontal carets (chevron-left open / chevron-right closed) per the user; leading position reuses the existing draw path; pivot behavior preserved; toggle already wired; demo seeds a `columnGroupShow` child so the affordance is visible.
