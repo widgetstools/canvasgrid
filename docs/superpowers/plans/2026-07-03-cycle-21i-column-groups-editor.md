@@ -1277,3 +1277,24 @@ Co-Authored-By: Claude Opus 4.8 (1M context) <noreply@anthropic.com>"
 - [ ] **Step 7: Commit** — `feat(kernel): expand/collapse caret on regular column-group headers (ag-grid parity)` + Co-Authored-By trailer.
 
 **Task 10 self-review:** caret shows only when the group has a `columnGroupShow`/subgroup child (ag-grid parity, no pointless carets); horizontal carets (chevron-left open / chevron-right closed) per the user; leading position reuses the existing draw path; pivot behavior preserved; toggle already wired; demo seeds a `columnGroupShow` child so the affordance is visible.
+
+---
+
+## Task 11: Reserve caret space in the column-group header caption (no caret/caption overlap)
+
+**Provenance:** added 2026-07-04 per user — the group-header expand/collapse caret must not overlap the caption. Today the caption is cell-clipped at the group's right edge and the caret is clamped to that edge, so a long caption (narrow group span) is overdrawn by the caret. The group caption spans multiple leaf columns, so a per-leaf `minWidth` can't reliably reserve the caret's space — the robust fix is to reserve the caret footprint in the caption's rendered width and ellipsize.
+
+**Change (in `packages/kernel/src/renderer/cellRenderers/registry.ts`, the shared header-cell paint — apply ONLY when `p.pivotGroupExpand !== undefined`, i.e. a group header with a caret; leaf/sort headers and caretless groups keep current behavior):**
+- Compute the caption's max width reserving the caret footprint on the right: `maxCapW = p.bounds.w - HEADER_PADDING - (PIVOT_CHEVRON_GAP + PIVOT_CHEVRON_SIZE + HEADER_PADDING)` (left pad + caret gap + caret + right pad). Floor at 0.
+- If `gc.measureText(caption).width > maxCapW`, ellipsize the caption (trim characters from the end + append `'…'`) until it fits `maxCapW`. Draw the ellipsized caption at `textX`.
+- Place the caret immediately after the DRAWN (possibly ellipsized) caption: `iconCx = min(textX + drawnCapW + PIVOT_CHEVRON_GAP + PIVOT_CHEVRON_SIZE/2, p.bounds.x + p.bounds.w - HEADER_PADDING - PIVOT_CHEVRON_SIZE/2)`. Because the caption is capped at `maxCapW`, the caret always fits without overlap.
+- Add a small pure helper `ellipsizeToWidth(measure: (t:string)=>number, text: string, maxW: number): string` (co-locate + export for the test), or reuse the composite-cell ellipsis pass if cleanly reusable. Linear trim is fine (group captions are short).
+- The `wrapHeader` multi-line path already reserves `PIVOT_CHEVRON_SIZE + PIVOT_CHEVRON_GAP` in its `maxW` — leave it; optionally align the reserve with the new single-line reserve.
+
+- [ ] **Step 1: Failing unit test** — `packages/kernel/tests/columnGroupHeaderCaret.test.ts` (or a sibling): (a) `ellipsizeToWidth` trims + appends `…` and the result measures `<= maxW`; returns the input unchanged when it already fits. (b) Header-paint wiring: with a spy/measure, a NARROW group-header cell (bounds.w small) with `pivotGroupExpand` set draws a caption whose measured width `<= maxCapW` (i.e. it was reserved/ellipsized) and the caret's `iconCx` is `<= bounds.x + bounds.w - HEADER_PADDING - PIVOT_CHEVRON_SIZE/2` (inside the cell, not over the caption). A WIDE cell draws the full caption + caret after it. Run `npx vitest run tests/columnGroupHeaderCaret.test.ts --root packages/kernel`.
+- [ ] **Step 2: Implement** the reservation + `ellipsizeToWidth` per above.
+- [ ] **Step 3: Run** the caret test + FULL kernel suite `npm test --workspace=@cgrid/kernel` (stay green; currently 2710). Confirm NO change to leaf/sort-header rendering (the reservation is gated on `pivotGroupExpand !== undefined`).
+- [ ] **Step 4: Visual + E2E** — rebuild kernel (`npm run build --workspace=@cgrid/kernel`); in the demo, narrow the `Valuation` group (or rely on a long caption) and confirm via screenshot the caret sits after an ellipsized caption without overlap; keep the existing E2E green (`npm run test:e2e --workspace=apps/cgrid-customizer-demo`).
+- [ ] **Step 5: Commit** — `fix(kernel): reserve caret space in column-group header caption (no overlap)` + Co-Authored-By trailer.
+
+**Task 11 self-review:** gated strictly on group-header carets (no leaf-header regression); caption ellipsizes to reserve the caret footprint; caret placed immediately after the drawn caption, always inside the cell; pure `ellipsizeToWidth` unit-tested; visual + E2E confirmed.
