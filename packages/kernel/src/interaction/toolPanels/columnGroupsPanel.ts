@@ -73,6 +73,52 @@ function borderSideToCss(s: BorderSpec['all'] | undefined): string {
   return `${s.width}px ${s.style ?? 'solid'} ${s.color ?? 'currentColor'}`;
 }
 
+// ── Icon system ─────────────────────────────────────────────────────────────
+// Every interactive glyph in the panel renders as an inline SVG on a shared
+// 24-unit viewBox at a single CSS size (`.cg-colgroups-ic`, 14px). Unicode
+// glyphs (●/◐/○/⚙/＋/✕) render at inconsistent, font-dependent sizes; SVG on
+// one coordinate space + one render size makes every icon identical.
+const SVG_NS = 'http://www.w3.org/2000/svg';
+function svgEl<K extends keyof SVGElementTagNameMap>(
+  tag: K, attrs: Record<string, string>,
+): SVGElementTagNameMap[K] {
+  const e = document.createElementNS(SVG_NS, tag);
+  for (const [k, v] of Object.entries(attrs)) e.setAttribute(k, v);
+  return e;
+}
+function icon(...children: SVGElement[]): SVGSVGElement {
+  const svg = svgEl('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' });
+  svg.setAttribute('class', 'cg-colgroups-ic');
+  children.forEach((c) => svg.appendChild(c));
+  return svg;
+}
+const strokeAttrs = { fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' } as const;
+/** columnGroupShow state icons — identical circle (r=8), differing only by
+ *  fill so all three read at exactly the same size. */
+function iconGroupShow(kind: 'always' | 'open' | 'closed'): SVGSVGElement {
+  if (kind === 'always') return icon(svgEl('circle', { cx: '12', cy: '12', r: '8', fill: 'currentColor' }));
+  const ring = svgEl('circle', { cx: '12', cy: '12', r: '8', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' });
+  if (kind === 'closed') return icon(ring);
+  // 'open' — ring + filled left half (top→bottom arc sweeping left, closed).
+  return icon(ring, svgEl('path', { d: 'M12 4 A8 8 0 0 0 12 20 Z', fill: 'currentColor' }));
+}
+function iconGear(): SVGSVGElement {
+  return icon(
+    svgEl('circle', { cx: '12', cy: '12', r: '3', ...strokeAttrs }),
+    svgEl('path', {
+      d: 'M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z',
+      ...strokeAttrs,
+    }),
+  );
+}
+function iconPlus(): SVGSVGElement { return icon(svgEl('path', { d: 'M12 5v14M5 12h14', ...strokeAttrs })); }
+function iconClose(): SVGSVGElement { return icon(svgEl('path', { d: 'M18 6 6 18M6 6l12 12', ...strokeAttrs })); }
+function iconGrip(): SVGSVGElement {
+  const dots = [[9, 6], [15, 6], [9, 12], [15, 12], [9, 18], [15, 18]]
+    .map(([x, y]) => svgEl('circle', { cx: String(x), cy: String(y), r: '1.4', fill: 'currentColor' }));
+  return icon(...dots);
+}
+
 interface DragState {
   id: string;
   kind: NodeKind;
@@ -791,7 +837,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     const selectBtn = document.createElement('button');
     selectBtn.type = 'button';
     selectBtn.className = 'cg-colgroups-action';
-    selectBtn.textContent = '⚙';
+    selectBtn.appendChild(iconGear());
     selectBtn.title = 'Edit group style';
     selectBtn.setAttribute('aria-label', 'Edit group style');
     selectBtn.setAttribute('data-cg-select', '');
@@ -805,7 +851,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     const addSub = document.createElement('button');
     addSub.type = 'button';
     addSub.className = 'cg-colgroups-action';
-    addSub.textContent = '+';
+    addSub.appendChild(iconPlus());
     addSub.title = 'Add subgroup';
     addSub.setAttribute('aria-label', 'Add subgroup');
     addSub.addEventListener('click', (e) => {
@@ -817,7 +863,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     const del = document.createElement('button');
     del.type = 'button';
     del.className = 'cg-colgroups-action';
-    del.textContent = '✕';
+    del.appendChild(iconClose());
     del.title = 'Delete group';
     del.setAttribute('aria-label', 'Delete group');
     del.addEventListener('click', (e) => {
@@ -837,7 +883,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
 
     const handle = el('span', 'cg-colgroups-handle');
     handle.setAttribute('aria-hidden', 'true');
-    handle.textContent = '⋮⋮';
+    handle.appendChild(iconGrip());
     wrap.appendChild(handle);
 
     const checkboxLabel = document.createElement('label');
@@ -891,14 +937,14 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     seg.setAttribute('aria-label', 'Column group visibility');
     const cur = value ?? '';
     ([
-      { v: '', glyph: '●', title: 'Always visible' },
-      { v: 'open', glyph: '◐', title: 'Show when open' },
-      { v: 'closed', glyph: '○', title: 'Show when collapsed' },
+      { v: '', kind: 'always', title: 'Always visible' },
+      { v: 'open', kind: 'open', title: 'Show when open' },
+      { v: 'closed', kind: 'closed', title: 'Show when collapsed' },
     ] as const).forEach((opt) => {
       const b = document.createElement('button');
       b.type = 'button';
-      b.className = 'cg-colgroups-seg-btn';
-      b.textContent = opt.glyph;
+      b.className = 'cg-colgroups-seg-btn cg-colgroups-seg-icon';
+      b.appendChild(iconGroupShow(opt.kind));
       b.title = opt.title;
       b.setAttribute('aria-label', opt.title);
       b.setAttribute('data-value', opt.v);

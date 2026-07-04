@@ -2425,11 +2425,27 @@
 
 .cg-colgroups-handle {
   flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
   color: color-mix(in srgb, var(--cg-fg-color) 45%, transparent);
   cursor: grab;
   user-select: none;
-  font-size: 15px;
   line-height: 1;
+}
+/* Every interactive glyph renders through this one class at a single size,
+ * so all panel icons (● ◐ ○ state, gear / ＋ / ✕ actions, grip) are identical
+ * — replacing unicode glyphs whose per-character metrics differ. */
+.cg-colgroups-ic {
+  width: 14px;
+  height: 14px;
+  display: block;
+  flex: 0 0 auto;
+}
+.cg-colgroups-action,
+.cg-colgroups-seg-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .cg-colgroups-checkbox-label {
