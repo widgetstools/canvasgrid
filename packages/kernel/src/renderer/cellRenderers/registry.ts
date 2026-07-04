@@ -85,18 +85,21 @@ export interface CellPaintConfig {
    *  black/white depending on the active theme). Only meaningful when
    *  `unSortIcon === true`. */
   unSortIconColor?: string;
-  /** Cycle 18 / Task 4; broadened Task 10 — column-group expand/collapse
-   *  affordance. Despite the name, NOT pivot-only: set on ANY column-group
-   *  header (pivot result group OR regular authored group) whose collapse
-   *  has a visible effect — see `groupHasToggleEffect` in
-   *  `renderer/painters/byRows.ts`. `'open'` paints a leading
-   *  `chevron-left` (click to collapse); `'closed'` paints a leading
-   *  `chevron-right` (click to expand) — horizontal carets, ag-grid style.
-   *  The header click already routes through `toggleColumnGroup(groupId)`
-   *  — `interaction/features/headerClick.ts` — so the caret is the visual
+  /** Cycle 18 / Task 4; broadened Task 10; repositioned post-Task-10 fix —
+   *  column-group expand/collapse affordance. Despite the name, NOT
+   *  pivot-only: set on ANY column-group header (pivot result group OR
+   *  regular authored group) whose collapse has a visible effect — see
+   *  `groupHasToggleEffect` in `renderer/painters/byRows.ts`. `'open'`
+   *  paints a `chevron-left` (click to collapse); `'closed'` paints a
+   *  `chevron-right` (click to expand) — horizontal carets, ag-grid style,
+   *  drawn TRAILING / after the caption (right-aligned at the
+   *  group-header cell's trailing edge, not leading). The header click
+   *  already routes through `toggleColumnGroup(groupId)` —
+   *  `interaction/features/headerClick.ts` — so the caret is the visual
    *  cue for the existing hit-testable group region. Design notes:
    *  `docs/superpowers/plans/notes/cycle-18-pivoting-design.md` (Task 4,
-   *  original pivot-only version) and Task 10 (this broadening). */
+   *  original pivot-only version) and Task 10 (broadening to all groups,
+   *  originally drawn leading before this fix moved it trailing). */
   pivotGroupExpand?: 'open' | 'closed';
   /** Row-select header checkbox state, set ONLY on the header cell of
    *  columns declaring `headerCheckboxSelection: true`. `undefined`
@@ -590,27 +593,34 @@ export const headerCell: CellPainter = {
       }
       return;
     }
-    let textX = p.bounds.x + HEADER_PADDING;
+    const textX = p.bounds.x + HEADER_PADDING;
     if (p.pivotGroupExpand !== undefined) {
-      const iconCx = p.bounds.x + HEADER_PADDING + PIVOT_CHEVRON_SIZE / 2;
+      const iconCx = p.bounds.x + p.bounds.w - HEADER_PADDING - PIVOT_CHEVRON_SIZE / 2;
       // Task 10 — horizontal carets for ALL column-group headers (pivot
       // result groups AND regular authored groups): 'open' → chevron-left
       // (click collapses), 'closed' → chevron-right (click expands). No
       // existing test pins the prior chevron-down/right pivot-only look,
       // so both flavors unify on the same horizontal vocabulary.
+      // Fix (post-Task 10) — drawn TRAILING / after the caption, ag-grid
+      // style: right-aligned at the group-header cell's trailing edge.
+      // The caption keeps its normal leading start (`textX` above is no
+      // longer shifted); see the `maxW` reservation below for how long
+      // captions avoid overlapping this trailing caret.
       drawIcon(
         gc,
         p.pivotGroupExpand === 'open' ? 'chevron-left' : 'chevron-right',
         iconCx, cy, PIVOT_CHEVRON_SIZE,
         { color: p.iconColor ?? p.fg, strokeWidth: 2 },
       );
-      textX = p.bounds.x + HEADER_PADDING + PIVOT_CHEVRON_SIZE + PIVOT_CHEVRON_GAP;
     }
     // Cycle 21i / Phase 1 — wrapped multi-line header. Lines share the
     // exact wrap algorithm the auto-header-height computation uses
     // (headerWrap.ts) so painted lines always fit the measured height.
     if (p.wrapHeader) {
-      const maxW = Math.max(8, p.bounds.x + p.bounds.w - SORT_ICON_PAD - SORT_ICON_SIZE - textX);
+      const trailingReserve = p.pivotGroupExpand !== undefined
+        ? PIVOT_CHEVRON_SIZE + PIVOT_CHEVRON_GAP
+        : SORT_ICON_PAD + SORT_ICON_SIZE;
+      const maxW = Math.max(8, p.bounds.x + p.bounds.w - trailingReserve - textX);
       const lines = wrapHeaderLines((t) => gc.measureText(t).width, p.valueFormatted, maxW);
       if (lines.length > 1) {
         const lineH = Math.round(fontPxSize(p.font) * HEADER_LINE_HEIGHT_FACTOR);
