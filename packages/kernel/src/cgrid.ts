@@ -61,7 +61,9 @@ import {
 import { RowHeightIndex } from './core/rowHeightIndex';
 import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, TotalsSubgrid, PinnedRowsSubgrid, type Subgrid, type SubgridCell } from './core/subgrid';
 import { FloatingFilterSubgrid } from './core/floatingFilterSubgrid';
+import { ToolbarSubgrid } from './core/toolbarSubgrid';
 import { FloatingFilterOverlay } from './interaction/floatingFilterOverlay';
+import { ToolbarOverlay } from './interaction/toolbarOverlay';
 import { PopupHost } from './interaction/editors/popupHost';
 import { FilterPopupHost } from './interaction/filters/filterPopupHost';
 import { ContextMenuHost } from './interaction/contextMenu/host';
@@ -617,6 +619,9 @@ export class CGrid<TRow = any> {
    *  floating-filter row. Mounts onto the same `editorContainer` host so
    *  it stacks above the canvas; positions per `transform: translate`. */
   private floatingFilterOverlay: FloatingFilterOverlay;
+  /** Cycle 21i / Customization — toolbar overlay. Mounts at the top of the
+   *  grid above column headers. Provides buttons and custom controls. */
+  private toolbarOverlay: ToolbarOverlay | null = null;
   /** Cycle 7 / Task 3 — orchestrates per-column filter popups (number /
    *  date / text / multi / set). Owns its own PopupHost instance so it
    *  can mount + unmount independently of the editor's popup. */
@@ -1673,6 +1678,16 @@ export class CGrid<TRow = any> {
     // overlay container so menus stack above the canvas + share the
     // same DOM host as the editor and filter popup.
     this.contextMenuHost = new ContextMenuHost(this.editorContainer);
+
+    // Cycle 21i / Customization — toolbar overlay. Mounts at the top of
+    // the grid above column headers. When toolbar option is true, creates
+    // a toolbar instance for apps to populate with buttons and controls.
+    if (this.options.toolbar) {
+      this.toolbarOverlay = new ToolbarOverlay(this.editorContainer, {
+        getToolbarHeight: () => this.options.toolbarHeight ?? 40,
+        getIsVisible: () => this.options.toolbar ?? false,
+      });
+    }
 
     // Cycle 4 / Task 11 (cell-flash patch) — FlashRegistry tracks
     // active cell-flash animations. Deps are live-read closures so
@@ -4938,6 +4953,13 @@ export class CGrid<TRow = any> {
     return this.sideBar?.getInstance(id) ?? null;
   }
 
+  /** Cycle 21i / Customization — returns the toolbar overlay instance so
+   *  apps can add buttons, dividers, and custom content. Returns `null`
+   *  when `toolbar: false` or when the grid is destroyed. */
+  getToolbar(): ToolbarOverlay | null {
+    return this.toolbarOverlay ?? null;
+  }
+
   /** Cycle 11 / Task 6 — `true` when the side bar is mounted AND
    *  visible (i.e. NOT in `display: none`). Returns `false` when no
    *  side bar is configured at all, when `hiddenByDefault: true`, or
@@ -5591,6 +5613,13 @@ export class CGrid<TRow = any> {
 
   private rebuildSubgridStack(): void {
     const stack: Subgrid[] = [];
+    // Cycle 21i / Customization — toolbar sits at the very top of the grid
+    if (this.options.toolbar) {
+      stack.push(new ToolbarSubgrid(
+        () => this.options.toolbarHeight ?? 40,
+        () => this.options.toolbar ?? false,
+      ));
+    }
     for (let depth = 0; depth < this.columnTree.maxDepth; depth++) {
       stack.push(new HeaderGroupSubgrid(
         () => this.columnTree,

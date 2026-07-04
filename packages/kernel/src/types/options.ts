@@ -59,6 +59,17 @@ export interface CGridOptions<TRow = any> {
   getRowId: (row: TRow) => string;
   rowHeight?: number;
   headerHeight?: number;
+  /**
+   * When `true`, displays a toolbar at the top of the grid above the column
+   * headers. Use `toolbarHeight` to customize the toolbar height. Defaults to
+   * `false`. Cycle 21i / Customization.
+   */
+  toolbar?: boolean;
+  /**
+   * Pixel height of the toolbar row. Defaults to `40`. Only used when
+   * `toolbar: true`. Cycle 21i / Customization.
+   */
+  toolbarHeight?: number;
   rowSelection?: 'none' | 'single' | 'multiple';
   /**
    * Unified selection configuration. Mirrors ag-grid v33+'s `selection`
