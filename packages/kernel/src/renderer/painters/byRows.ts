@@ -13,22 +13,22 @@ import { bumpFormatEvalGeneration } from '../../core/formatEvalMemo';
 
 /** Task 10 — `true` when toggling `groupDef`'s open/closed state has a
  *  visible effect on the columns underneath it, i.e. AG-Grid's rule for
- *  "does this group get a caret": a direct sub-group child (collapsing
- *  hides everything under the descendant groups), OR a direct leaf child
- *  whose `columnGroupShow` is `'open'` or `'closed'` (a leaf that only
- *  shows in one of the two states). A group whose children are ALL
- *  always-visible leaves has nothing to hide, so no caret paints — matching
- *  ag-grid (and avoiding a pointless affordance on regular column groups).
+ *  "does this group get a caret": a DIRECT child — leaf OR sub-group —
+ *  whose `columnGroupShow` is `'open'` or `'closed'` (something that only
+ *  shows in one of the two states). Cycle 28 — `columnGroupShow` is
+ *  evaluated per level against the immediate parent only, so an UNTAGGED
+ *  sub-group child no longer counts: collapsing the parent leaves it (and
+ *  its subtree) fully visible, exactly like AG-Grid, and its own toggle
+ *  stays independent of the parent's. A group whose children are ALL
+ *  always-visible has nothing to hide, so no caret paints.
  *  Exported for unit coverage. Used by the REGULAR (non-pivot) group-header
- *  branch below; the pivot branch keeps its own narrower check (`'closed'`
- *  fallback leaf only — pivot groups never emit `'open'`-tagged leaves) so
- *  pivot rendering is untouched. */
+ *  branch below; the pivot branch keeps its own check (branch child group
+ *  or `'closed'` fallback totals leaf) so pivot rendering is untouched. */
 export function groupHasToggleEffect(groupDef: Pick<ResolvedColGroupDef, 'children'>): boolean {
-  return groupDef.children.some(
-    (c) =>
-      c.kind === 'group' ||
-      (c.kind === 'leaf' && (c.colDef.columnGroupShow === 'open' || c.colDef.columnGroupShow === 'closed')),
-  );
+  return groupDef.children.some((c) => {
+    const show = c.kind === 'group' ? c.columnGroupShow : c.colDef.columnGroupShow;
+    return show === 'open' || show === 'closed';
+  });
 }
 
 /** Cycle 21c / Task 16 — pending inline-icon draw for one cell. Resolved
@@ -252,6 +252,15 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
     ?? center[center.length - 1]
     ?? leftPinned[leftPinned.length - 1])?.colId;
 
+  // Collect group-header rows (top→bottom) for span-height leaf cells —
+  // see `PaintBandCtx.groupHeaderRows`.
+  const groupHeaderRows: { top: number; subgrid: HeaderGroupSubgrid }[] = [];
+  for (const row of vs.visibleRows) {
+    if (row.subgrid instanceof HeaderGroupSubgrid) {
+      groupHeaderRows.push({ top: row.top, subgrid: row.subgrid });
+    }
+  }
+
   // Pre-compute subgrid bands — group visibleRows by subgrid to get y-range per subgrid.
   // Walk once and group consecutive rows from the same subgrid.
   type SubgridBand = {
@@ -306,6 +315,7 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
     themeKind: p.themeKind,
     firstVisibleColId,
     lastVisibleColId,
+    groupHeaderRows,
   };
 
   for (const sb of subgridBands) {
@@ -316,7 +326,17 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
     // the right-pinned band (which previously had clip:false) leaks data values
     // alongside the leaf header labels. Header bands keep their natural extent
     // and don't need clipping — their rows always have top >= 0.
-    const sgTop = isDataBand ? vs.bodyTop : sb.yTop;
+    //
+    // The LEAF-header band opens its clip up to the first group-header row's
+    // top: span-height leaf cells (see paintBand) extend ABOVE the leaf row
+    // and must not be cut by a clip anchored at the leaf row's own top.
+    const isLeafHeaderBand = sb.rows[0]!.subgrid.isHeader
+      && !(sb.rows[0]!.subgrid instanceof HeaderGroupSubgrid);
+    const sgTop = isDataBand
+      ? vs.bodyTop
+      : (isLeafHeaderBand && groupHeaderRows.length > 0
+          ? Math.min(sb.yTop, groupHeaderRows[0]!.top)
+          : sb.yTop);
     const sgBottom = isDataBand ? vs.bodyBottom : sb.yBottom;
 
     paintBand(gc, { rows: sb.rows, cols: leftPinned,  x0: 0,             x1: vs.bodyLeft,  yTop: sgTop, yBottom: sgBottom, clip: isDataBand }, bandCtx);
@@ -421,6 +441,11 @@ interface PaintBandCtx {
   stringRowIdAt: PainterCtx['stringRowIdAt'];
   getRowDataById: PainterCtx['getRowDataById'];
   themeKind: PainterCtx['themeKind'];
+  /** Group-header rows (top→bottom) — the leaf-header paint uses these to
+   *  render span-height cells (AG-Grid parity): a leaf whose group ancestry
+   *  ends above the deepest group row extends its cell UP to the first row
+   *  where it has no group, label vertically centered in the taller rect. */
+  groupHeaderRows: { top: number; subgrid: HeaderGroupSubgrid }[];
   /** Cycle 21e / Task 14 — first/last visible data colId across all
    *  bands, for row-start / row-end rule indicator targeting. */
   firstVisibleColId?: string;
@@ -665,12 +690,29 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
         params = def.cellRendererParams;
       }
 
+      // Span-height leaf header cells (AG-Grid parity). A leaf whose group
+      // ancestry ends above the deepest group row extends its header cell
+      // UP to the top of the first group row where it has no group — an
+      // ungrouped column beside groups spans the full header height; a
+      // direct leaf child of a depth-0 group beside a depth-1 sub-group
+      // spans the sub-group row + the leaf row. Group paths are prefix-
+      // contiguous so the first null marks the span start.
+      let cellTop = row.top;
+      if (row.subgrid.isHeader) {
+        for (const ghr of ctx.groupHeaderRows) {
+          if (ghr.subgrid.getGroupIdAt(col.colId) === null) {
+            cellTop = ghr.top;
+            break;
+          }
+        }
+      }
+
       applyCellProps(config, {
         theme,
         colDef: def,
         value,
         valueFormatted,
-        x: col.left, y: row.top, w: col.width, h: row.height,
+        x: col.left, y: cellTop, w: col.width, h: row.bottom - cellTop,
         rowBg,
         prefillColor: rowBg,
         isFocused: row.subgrid.isData
@@ -825,9 +867,12 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
       // bleed into the next cell. Intersection with the band clip means the
       // cell never paints outside [col.left, col.right] ∩ [x0, x1] or below
       // the row band — correct under both horizontal and vertical scroll.
+      // Span-height header cells clip from `cellTop` (the extended rect's
+      // top), not `row.top` — the vertically-centered label sits ABOVE the
+      // leaf row and must not be cut.
       gc.cache.save();
       gc.beginPath();
-      gc.rect(col.left, row.top, col.width, row.height);
+      gc.rect(col.left, cellTop, col.width, row.bottom - cellTop);
       gc.clip();
       cellRenderers.get(rendererName).paint(gc, config);
       // Cycle 21c / Task 16 — icon draws after the painter so it sits on

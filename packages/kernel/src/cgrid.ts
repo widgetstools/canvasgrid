@@ -6116,9 +6116,22 @@ export class CGrid<TRow = any> {
         this.events.emit({ type: 'columnGroupOpened', groupId: c.groupId, open: c.open });
       }
       this.events.emit({ type: 'displayedColumnsChanged', source: 'columnGroupOpened' });
-      // Re-fetch the chunk for the new visible-column set so newly-shown
-      // leaves get data instead of blank cells until the next scroll tick.
-      if (this.workerCoord) this.requestViewport();
+      // Re-ship the worker's column metadata BEFORE re-fetching the chunk.
+      // `workerColumns()` starts from the VISIBLE column order, so a leaf
+      // hidden at init time (e.g. the grid booted from saved state with its
+      // group collapsed) is absent from the worker's colIndex; a toggle that
+      // reveals it would otherwise request values for a column the worker
+      // doesn't know, leaving the cells permanently blank. Mirrors the
+      // `setColumnsVisible` / column-move paths.
+      if (this.workerCoord) {
+        this.workerCoord.updateColumns(this.workerColumns())
+          .then(({ visibleCount }) => {
+            this.rowCount = visibleCount;
+            this.recomputeViewport();
+            this.requestViewport();
+          })
+          .catch((err) => { if (!this.destroyed) console.error('[cgrid] columnGroup updateColumns:', err); });
+      }
     });
   }
 

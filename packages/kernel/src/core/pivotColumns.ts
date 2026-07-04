@@ -274,6 +274,11 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
         openByDefault: true,
         children: buildValueLeaves(node.path, hasAncestorBranch ? 'open' : undefined),
       };
+      // Cycle 28 — AG per-level `columnGroupShow` semantics: the parent
+      // branch hides this whole sub-group (and its subtree) on collapse
+      // via the group-level 'open' tag, replacing the old cascading-leaf
+      // rule in `resolveVisibleLeaves`.
+      if (hasAncestorBranch) leafGroup.columnGroupShow = 'open';
       // Cycle 18 / Task 8f — app group-def hook fires AFTER children
       // are built so apps can re-read leaf shape if they want.
       processGroupDef?.(leafGroup);
@@ -324,6 +329,9 @@ export function synthesizePivotColumns<TRow = unknown>(input: {
       openByDefault,
       children: orderedChildren,
     };
+    // Cycle 28 — nested branch groups hide when THEIR parent collapses
+    // (per-level `columnGroupShow`, same as the leaf-group stamp above).
+    if (hasAncestorBranch) branchGroup.columnGroupShow = 'open';
     // Cycle 18 / Task 8f — app group-def hook.
     processGroupDef?.(branchGroup);
     return branchGroup;

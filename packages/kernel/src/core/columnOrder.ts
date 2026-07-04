@@ -66,6 +66,35 @@ export function resolveLegalDropIndex(
     }
   }
 
+  // AG-Grid parity ("Groups & Column Moving"): a column from OUTSIDE a
+  // marryChildren group cannot land in the MIDDLE of that group — married
+  // children stay contiguous in both directions. Compute each foreign
+  // married group's index span in POST-REMOVAL coordinates (the insertion
+  // index is applied after the moved column is spliced out — see
+  // `applyReorder`) and snap an in-span target to the nearest edge.
+  const checkedGroups = new Set<string>();
+  for (const id of currentOrder) {
+    if (id === req.colId) continue;
+    const foreignGroup = constraints.marryGroupOf(id);
+    if (foreignGroup === null || foreignGroup === groupId || checkedGroups.has(foreignGroup)) continue;
+    checkedGroups.add(foreignGroup);
+    let lo = Number.POSITIVE_INFINITY;
+    let hi = Number.NEGATIVE_INFINITY;
+    for (const leafId of constraints.leafIdsOfGroup(foreignGroup)) {
+      let idx = currentOrder.indexOf(leafId);
+      if (idx < 0) continue;
+      if (idx > fromIndex) idx -= 1; // post-removal coordinates
+      if (idx < lo) lo = idx;
+      if (idx > hi) hi = idx;
+    }
+    if (!Number.isFinite(lo) || !Number.isFinite(hi)) continue;
+    // Inserting at index t places the column between post-removal elements
+    // t-1 and t, so the group splits when lo < t <= hi.
+    if (target > lo && target <= hi) {
+      target = (target - lo <= hi + 1 - target) ? lo : hi + 1;
+    }
+  }
+
   return target;
 }
 

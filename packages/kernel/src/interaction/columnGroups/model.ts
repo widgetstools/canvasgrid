@@ -18,6 +18,12 @@ export interface GroupNode {
   headerName: string;
   openByDefault?: boolean;
   marryChildren?: boolean;
+  /** ag-grid-parity sub-group visibility relative to the immediate parent
+   *  group's open state — same semantics as `ColumnNode.columnGroupShow`
+   *  below, applied to a whole sub-group (a hidden group hides its
+   *  subtree). Carried through flatten/project so authored group tags
+   *  survive an editor Apply. */
+  columnGroupShow?: 'open' | 'closed' | null;
   headerStyle?: ColCellOverrides;
   headerClass?: HeaderClass;
 }
@@ -60,6 +66,7 @@ export function flatten(defs: (CColDef | CColGroupDef)[]): Node[] {
           headerName: d.headerName ?? '',
           openByDefault: d.openByDefault,
           marryChildren: d.marryChildren,
+          columnGroupShow: d.columnGroupShow,
           headerStyle: d.headerStyle as ColCellOverrides | undefined,
           headerClass: d.headerClass,
         });
@@ -88,6 +95,7 @@ export function project(nodes: Node[]): (CColDef | CColGroupDef)[] {
           const g: CColGroupDef = { groupId: n.id, headerName: n.headerName, children: childrenOf(n.id) };
           if (n.openByDefault !== undefined) g.openByDefault = n.openByDefault;
           if (n.marryChildren !== undefined) g.marryChildren = n.marryChildren;
+          if (n.columnGroupShow !== undefined) g.columnGroupShow = n.columnGroupShow;
           if (n.headerStyle !== undefined) g.headerStyle = n.headerStyle;
           if (n.headerClass !== undefined) g.headerClass = n.headerClass;
           return g;

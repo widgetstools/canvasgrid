@@ -68,11 +68,27 @@ describe('groupHasToggleEffect', () => {
     expect(groupHasToggleEffect(tree.groupById.get('g')!)).toBe(true);
   });
 
-  it('is true when a direct child is a sub-group (nested groups)', () => {
+  // Cycle 28 — per-level `columnGroupShow` semantics: an UNTAGGED sub-group
+  // child is unaffected by the parent's toggle, so it grants no caret. Only
+  // a sub-group TAGGED 'open'/'closed' does (AG-Grid parity).
+  it('is false when the only sub-group child is untagged (parent toggle has no effect)', () => {
     const tree = resolveColumnTree([
       {
         groupId: 'outer', headerName: 'Outer',
         children: [{ field: 'a' }, { groupId: 'inner', headerName: 'Inner', children: [{ field: 'b' }] }],
+      },
+    ]);
+    expect(groupHasToggleEffect(tree.groupById.get('outer')!)).toBe(false);
+  });
+
+  it('is true when a direct sub-group child is tagged columnGroupShow "open"', () => {
+    const tree = resolveColumnTree([
+      {
+        groupId: 'outer', headerName: 'Outer',
+        children: [
+          { field: 'a' },
+          { groupId: 'inner', headerName: 'Inner', columnGroupShow: 'open', children: [{ field: 'b' }] },
+        ],
       },
     ]);
     expect(groupHasToggleEffect(tree.groupById.get('outer')!)).toBe(true);
@@ -149,11 +165,28 @@ describe('paintCellsByRows — regular column-group header caret', () => {
     expect(cfg.pivotGroupExpand).toBe('closed');
   });
 
-  it('sets the expand prop for a group with a nested sub-group child', () => {
+  // Cycle 28 — untagged sub-group child: parent toggle has no visible
+  // effect (per-level semantics), so no caret. A TAGGED sub-group child
+  // restores it.
+  it('sets no expand prop for a group whose only sub-group child is untagged', () => {
     const tree = resolveColumnTree([
       {
         groupId: 'outer', headerName: 'Outer',
         children: [{ field: 'a' }, { groupId: 'inner', headerName: 'Inner', children: [{ field: 'b' }] }],
+      },
+    ]);
+    const cfg = paintOneGroupHeader({ tree, leafIds: ['a', 'b'], open: true });
+    expect(cfg.pivotGroupExpand).toBeUndefined();
+  });
+
+  it('sets the expand prop for a group with an "open"-tagged sub-group child', () => {
+    const tree = resolveColumnTree([
+      {
+        groupId: 'outer', headerName: 'Outer',
+        children: [
+          { field: 'a' },
+          { groupId: 'inner', headerName: 'Inner', columnGroupShow: 'open', children: [{ field: 'b' }] },
+        ],
       },
     ]);
     const cfg = paintOneGroupHeader({ tree, leafIds: ['a', 'b'], open: true });

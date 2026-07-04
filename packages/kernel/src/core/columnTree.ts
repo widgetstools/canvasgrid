@@ -17,6 +17,10 @@ export interface ResolvedColGroupDef {
   headerName: string;
   openByDefault: boolean;
   marryChildren: boolean;
+  /** AG-Grid parity — visibility of this sub-group relative to its
+   *  IMMEDIATE parent's open state (`'open'`/`'closed'`), or `null` for
+   *  always visible. See `CColGroupDef.columnGroupShow`. */
+  columnGroupShow: 'open' | 'closed' | null;
   /** Raw HeaderClass value (kept for round-trip / introspection). */
   headerClass?: HeaderClass;
   /**
@@ -132,6 +136,7 @@ export function resolveColumnTree<TRow>(
         headerName: node.headerName ?? '',
         openByDefault: node.openByDefault ?? false,
         marryChildren: node.marryChildren ?? false,
+        columnGroupShow: node.columnGroupShow ?? null,
         headerClass: node.headerClass,
         headerClassStatic,
         headerClassFn,
