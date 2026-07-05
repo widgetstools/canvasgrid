@@ -30,8 +30,12 @@ const EVENT_TO_KEY: Record<string, StateKey> = {
   columnPinned: 'columnState',
   columnVisible: 'columnState',
   columnsReset: 'columnState',
-  columnDefsChanged: 'columnGroupDefs',
-  columnGroupOpened: 'columnGroupOpen',
+  // Cycle 21i Phase 2 / T2 — the column-group overlay + open state live
+  // in the `modules` envelope now, so both source events dirty `modules`;
+  // engine slices signal through the generic `moduleStateChanged`.
+  columnDefsChanged: 'modules',
+  columnGroupOpened: 'modules',
+  moduleStateChanged: 'modules',
   columnRowGroupChanged: 'rowGroupColumns',
   pivotStateChanged: 'pivotCols',
   rowGroupOpened: 'expandedRouteIds',

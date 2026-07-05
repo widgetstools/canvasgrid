@@ -1091,5 +1091,6 @@ export function createPositionsGrid(
   if (opts.groupingDemo) {
     grid.setGroupModel({ rowGroupCols: ['ticker'] });
   }
+
   return grid;
 }

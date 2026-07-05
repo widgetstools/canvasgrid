@@ -733,3 +733,54 @@ describe('wireEditIntoKernel — round D: journal feeds + facades (spec §3.5, �
     expect(after).toBe(colDefs); // same array reference — untouched
   });
 });
+
+describe('wireEditIntoKernel — module-state persistence (Cycle 21i Phase 2 / T6)', () => {
+  function makeStatefulGrid() {
+    const fake = makeGrid();
+    const registered: any[] = [];
+    const notified: string[] = [];
+    (fake.grid as any).registerStateModule = (m: any) => {
+      registered.push(m);
+      return () => { const i = registered.indexOf(m); if (i >= 0) registered.splice(i, 1); };
+    };
+    (fake.grid as any).notifyModuleStateChanged = (id: string) => notified.push(id);
+    return { fake, registered, notified };
+  }
+
+  it('registers an editSettings module; get() omits default settings, carries changes', () => {
+    const { fake, registered } = makeStatefulGrid();
+    const handle = wireEditIntoKernel(fake.grid);
+    const mod = registered.find((m) => m.id === 'editSettings');
+    expect(mod).toBeDefined();
+    expect(mod.version).toBe(1);
+    // Untouched settings → compact snapshot (slice omitted).
+    expect(mod.get()).toBeUndefined();
+    handle.updateSettings({ smartEdit: { incrementStep: 5 } });
+    expect((mod.get() as any).smartEdit.incrementStep).toBe(5);
+  });
+
+  it('updateSettings notifies the kernel so autosave runs; set() restores via defensive merge', () => {
+    const { fake, registered, notified } = makeStatefulGrid();
+    const handle = wireEditIntoKernel(fake.grid);
+    handle.updateSettings({ smartEdit: { enabled: false } });
+    expect(notified).toEqual(['editSettings']);
+    const mod = registered.find((m) => m.id === 'editSettings');
+    mod.set({ smartEdit: { incrementStep: 9, enabledOps: ['add', 'bogus'] } }, 1);
+    const s = handle.getSettings();
+    expect(s.smartEdit.incrementStep).toBe(9);
+    // Defensive merge: unknown op filtered, defaults fill the rest.
+    expect(s.smartEdit.enabledOps).toEqual(['add']);
+    expect(s.smartEdit.enabled).toBe(true);
+  });
+
+  it('destroy unregisters the module; grids without the registry still wire cleanly', () => {
+    const { fake, registered } = makeStatefulGrid();
+    const handle = wireEditIntoKernel(fake.grid);
+    expect(registered.some((m) => m.id === 'editSettings')).toBe(true);
+    handle.destroy();
+    expect(registered.some((m) => m.id === 'editSettings')).toBe(false);
+
+    const bare = makeGrid();
+    expect(() => wireEditIntoKernel(bare.grid)).not.toThrow();
+  });
+});

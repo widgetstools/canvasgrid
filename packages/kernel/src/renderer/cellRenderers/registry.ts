@@ -223,6 +223,13 @@ export class CellRendererRegistry {
     if (!p) throw new Error(`[cgrid] unknown cellRenderer '${name}'`);
     return p;
   }
+  /** Cycle 21i Phase 2 / T3 — instance-truth enumeration (registration
+   *  order): built-ins plus everything `registerCellRenderer` added on
+   *  THIS grid. The static `RENDERER_NAMES` catalog can't know about
+   *  app registrations; renderer pickers read this instead. */
+  list(): string[] {
+    return Array.from(this.map.keys());
+  }
 }
 
 const PADDING = 6;

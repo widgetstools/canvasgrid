@@ -158,4 +158,6 @@ export type {
   Tx,
   TransactionResult,
   CGridApi,
+  // Cycle 21i Phase 2 / T3 — forEachColumnGroup visit-node shape
+  ColumnGroupWalkNode,
 } from './types/api';

@@ -3087,6 +3087,91 @@
   /* placeholder — per-cell override hook lands in a later cycle. */
 }
 
+/* Cycle 21i Phase 2 / T4 — modal primitive.
+ *
+ * Generic backdrop + centered dialog surface (ModalHost). Consumed by
+ * the Column Selector dialog (#18) and Settings Sheet chrome in later
+ * phases; kernel ships the chrome + lifecycle only. Every color routes
+ * through shared tokens so light / dark / high-contrast come free. */
+.cg-modal-backdrop {
+  --cg-modal-backdrop-bg: color-mix(in srgb, var(--cg-bg-color) 55%, transparent);
+  --cg-modal-bg: var(--cg-header-bg);
+  --cg-modal-fg: var(--cg-fg-color);
+  --cg-modal-border: var(--cg-border-color);
+  --cg-modal-radius: 6px;
+  --cg-modal-shadow: 0 12px 32px color-mix(in srgb, #000000 35%, transparent);
+
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--cg-modal-backdrop-bg);
+  /* Above every strip (toolbar / status bar z:2) + side bar. */
+  z-index: 40;
+}
+.cg-modal {
+  display: flex;
+  flex-direction: column;
+  width: 480px;
+  max-width: 90%;
+  max-height: 85%;
+  background: var(--cg-modal-bg);
+  color: var(--cg-modal-fg);
+  border: 1px solid var(--cg-modal-border);
+  border-radius: var(--cg-modal-radius);
+  box-shadow: var(--cg-modal-shadow);
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  outline: none;
+  animation: cg-modal-enter 0.14s ease-out;
+}
+@keyframes cg-modal-enter {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cg-modal { animation: none; }
+}
+.cg-modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--cg-modal-border);
+  flex: none;
+}
+.cg-modal-title {
+  font-weight: 600;
+  user-select: none;
+}
+.cg-modal-close {
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: inherit;
+  font-size: var(--cg-font-size);
+  cursor: pointer;
+}
+.cg-modal-close:hover {
+  background: var(--cg-row-hover-bg);
+}
+.cg-modal-close:focus-visible {
+  outline: 2px solid var(--cg-focus-ring-color);
+  outline-offset: 1px;
+}
+.cg-modal-body {
+  padding: 14px;
+  overflow: auto;
+  min-height: 0;
+}
+
 /* Cycle 15 / Task 6 — row group panel.
  *
  * Mounted by RowGroupPanelHost as a sibling of the canvas, sitting

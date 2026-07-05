@@ -11,6 +11,7 @@
 import { CGrid, formatPrice32, type CColDef, type CColGroupDef } from '@cgrid/kernel';
 import '@cgrid/kernel/style.css';
 import { wireIntoKernel as wireFormat } from '@cgrid/format';
+import { wireEditIntoKernel } from '@cgrid/edit';
 import { connectStomp, STOMP_PUBLISH_RATE_PER_SEC, type Position } from './stomp';
 
 const DESKS = ['RATES', 'CREDIT', 'FX', 'EQD'];
@@ -138,6 +139,12 @@ const grid = new CGrid<Position>(gridHost, {
 // string valueFormatters ('#,##0.00', '[Red]…') compile through the DSL.
 wireFormat(grid);
 grid.updateGridOptions({ columnDefs });
+
+// Cycle 21i Phase 2 — wire the edit engine; its settings persist through
+// the kernel module-state registry (GridState.modules.editSettings). The
+// editing UI returns as SettingsSheet modules in the Phase 3 pivot.
+wireEditIntoKernel(grid);
+
 
 function applyTheme() {
   appEl.dataset.theme = dark ? 'dark' : 'light';

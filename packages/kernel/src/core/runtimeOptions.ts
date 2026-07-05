@@ -79,6 +79,7 @@ export type RuntimeOption =
   | 'suppressAggFuncInHeader'
   | 'rowGroupPanelShow'
   | 'rowGroupPanelSuppressSort'
+  | 'statusBar'
   | 'pivotPanelShow'
   | 'pivotMaxGeneratedColumns'
   | 'enableStrictPivotColumnOrder'
@@ -152,6 +153,10 @@ export interface RuntimeOptionTarget<TRow = any> {
    *  CGrid normalises the value (undefined / `'never'` → unmount;
    *  otherwise mount-or-update). */
   updateRowGroupPanelShow(value: 'always' | 'onlyWhenGrouping' | 'never' | undefined): void;
+  /** Cycle 21i Phase 2 — re-resolve the status bar from the current
+   *  `options.statusBar` (intrinsic default-on; `false` opts out).
+   *  CGrid mounts, unmounts, or swaps the def on the live host. */
+  updateStatusBar(): void;
   /** Cycle 18 / Task 6 — hand the runtime pivot-panel show mode to
    *  CGrid so it can mount / unmount / setShowMode on the host. */
   updatePivotPanelShow(value: 'always' | 'onlyWhenPivoting' | 'never' | undefined): void;
@@ -364,6 +369,12 @@ export function applyRuntimeOption<TRow>(
         value as 'always' | 'onlyWhenGrouping' | 'never' | undefined,
       );
       return;
+    case 'statusBar':
+      // Cycle 21i Phase 2 — runtime mount / unmount / def swap for the
+      // intrinsic status bar. The new value is already stored in
+      // `target.options.statusBar`; updateStatusBar re-normalizes it.
+      target.updateStatusBar();
+      return;
     case 'pivotPanelShow':
       // Cycle 18 / Task 6 — runtime mount / unmount / show-mode swap
       // for the pivot panel (top-of-grid drop strip).
@@ -451,6 +462,7 @@ export const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOpt
   'suppressAggFuncInHeader',
   'rowGroupPanelShow',
   'rowGroupPanelSuppressSort',
+  'statusBar',
   'pivotPanelShow',
   'pivotMaxGeneratedColumns',
   'enableStrictPivotColumnOrder',

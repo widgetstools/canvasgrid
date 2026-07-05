@@ -88,6 +88,9 @@ export class StatusBarHost {
   private readonly ctx: StatusBarGridContext;
 
   private def: StatusBarDef & { position: StatusBarPosition };
+  /** Cycle 21i Phase 2 — top inset (toolbar height) applied while the
+   *  bar is top-positioned; cleared when bottom-positioned. */
+  private topOffset = 0;
   /** Resolved StatusPanelDef entries, keyed by `def.key`. Order is
    *  declaration order — the panel-mount loop iterates this map's
    *  insertion order so per-zone stacking matches `statusPanels`. */
@@ -188,6 +191,26 @@ export class StatusBarHost {
     this.reserveSpace();
   }
 
+  /** Cycle 21i Phase 2 — shift a TOP-positioned bar down by `top` CSS
+   *  px so it clears the intrinsic toolbar strip above it. Host-owned
+   *  (mirrors SideBarHost.setTopOffset) so cgrid never reaches into the
+   *  bar's DOM via string selectors — and, critically, the inline top
+   *  is CLEARED whenever the bar is bottom-positioned: a stale inline
+   *  `top` on an absolutely-positioned fixed-height box would override
+   *  the CSS `bottom: 0` after a top→bottom flip. Re-applied on every
+   *  position change. */
+  setTopOffset(top: number): void {
+    if (this.destroyed) return;
+    this.topOffset = top;
+    this.applyTopOffset();
+  }
+
+  private applyTopOffset(): void {
+    this.bar.style.top = this.def.position === 'top' && this.topOffset > 0
+      ? `${this.topOffset}px`
+      : '';
+  }
+
   /** Switch the status bar to the opposite edge. Re-emits the reservation
    *  on the new edge after releasing the old one in a single
    *  synchronous resize. */
@@ -199,6 +222,7 @@ export class StatusBarHost {
     this.ctx.setReservedSpace(oldSide, 0);
     this.def = { ...this.def, position: pos };
     this.bar.dataset.position = pos;
+    this.applyTopOffset();
     // Reserve on the new edge.
     this.reserveSpace();
   }
@@ -250,6 +274,7 @@ export class StatusBarHost {
     const newPos = def.position ?? this.def.position;
     this.def = { ...def, position: newPos };
     this.bar.dataset.position = newPos;
+    this.applyTopOffset();
     if (oldPos !== newPos) this.ctx.setReservedSpace(oldPos, 0);
     for (const pd of this.def.statusPanels) {
       this.mountPanel(pd);
@@ -366,14 +391,34 @@ export class StatusBarHost {
   }
 }
 
+/** Cycle 21i Phase 2 — the intrinsic default status bar every grid
+ *  shows unless the app opts out (`statusBar: false`) or supplies its
+ *  own def. Canonical financial-blotter reading: row counts on the
+ *  left, selection + range aggregates on the right. Returned fresh per
+ *  call so hosts can't share/mutate one def object. */
+export function defaultStatusBarDef(): StatusBarDef {
+  return {
+    statusPanels: [
+      { key: 'agTotalAndFilteredRowCountComponent', statusPanel: 'agTotalAndFilteredRowCountComponent', align: 'left' },
+      { key: 'agSelectedRowCountComponent', statusPanel: 'agSelectedRowCountComponent', align: 'right' },
+      { key: 'agAggregationComponent', statusPanel: 'agAggregationComponent', align: 'right' },
+    ],
+    position: 'bottom',
+  };
+}
+
 /** Resolve `CGridOptions.statusBar` (which accepts loose shapes —
  *  `boolean | StatusBarDef`) into a canonical `StatusBarDef`, or `null`
  *  when the option is off. Mirrors `normalizeSideBarOption`'s acceptance
- *  shape so apps that flip both surfaces feel consistent. */
+ *  shape so apps that flip both surfaces feel consistent.
+ *
+ *  Cycle 21i Phase 2 — the status bar is intrinsic: `undefined` (and
+ *  the `true` shorthand) resolve to `defaultStatusBarDef()` so every
+ *  grid ships the bar by default; `false` is the explicit opt-out. */
 export function normalizeStatusBarOption(
   opt: boolean | StatusBarDef | undefined,
 ): StatusBarDef | null {
-  if (opt == null || opt === false) return null;
-  if (opt === true) return { statusPanels: [] };
+  if (opt === false) return null;
+  if (opt == null || opt === true) return defaultStatusBarDef();
   return opt;
 }

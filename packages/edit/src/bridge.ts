@@ -115,6 +115,16 @@ interface KernelGridSurface {
   setSelectedRowIds(ids: string[]): void;
   getDistinctValues(colId: string, limit?: number): Promise<string[]>;
   getGridOption?(key: string): unknown;
+  /** Cycle 21i Phase 2 / T6 — kernel module-state registry (present on
+   *  CGrid since Phase 2 T2). Structural + optional so the bridge keeps
+   *  working against older kernels and bare test surfaces. */
+  registerStateModule?(module: {
+    id: string;
+    version: number;
+    get(): unknown;
+    set(data: unknown, version: number): void;
+  }): () => void;
+  notifyModuleStateChanged?(id: string): void;
   __editBridgeWired?: EditBridgeHandle;
 }
 
@@ -598,6 +608,10 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
     getSettings: () => mergeEditSettings(settings),
     updateSettings: (partial) => {
       settings = mergeEditSettings(deepMergeOverCurrent(partial));
+      settingsTouched = true;
+      // Cycle 21i Phase 2 / T6 — mark the persisted slice dirty so the
+      // kernel's stateUpdated -> persistState autosave runs.
+      g.notifyModuleStateChanged?.('editSettings');
     },
     setNudges: (next) => { nudges = next; },
     setShortcuts: (next) => {
@@ -606,6 +620,29 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
     },
     destroy,
   };
+
+  // Cycle 21i Phase 2 / T6 — the edit engine's settings ride the kernel
+  // module-state registry (GridState.modules.editSettings). Engine-owned
+  // per the no-retroactive-layering rule: the settings panel only reads/
+  // writes through the handle; persistence is intrinsic here. `get()`
+  // omits the slice while settings equal the defaults so snapshots stay
+  // compact; `set()` runs the same defensive merge as host-supplied
+  // settings (unknown keys dropped, ops filtered).
+  // Dirty flag maintained at the two mutation sites instead of a
+  // JSON.stringify comparison in get(): snapshots run once per coalesced
+  // stateUpdated rAF flush (column-resize / range-select drags feed the
+  // bus per frame), so get() must be allocation-free.
+  let settingsTouched = JSON.stringify(settings) !== JSON.stringify(mergeEditSettings());
+  const unregisterStateModule = g.registerStateModule?.({
+    id: 'editSettings',
+    version: 1,
+    get: () => (settingsTouched ? settings : undefined),
+    set: (data) => {
+      settings = mergeEditSettings(data as Parameters<typeof mergeEditSettings>[0]);
+      settingsTouched = true;
+    },
+  });
+  unsubscribers.push(() => unregisterStateModule?.());
 
   g.__editBridgeWired = handle;
   return handle;

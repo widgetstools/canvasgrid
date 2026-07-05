@@ -40,6 +40,14 @@ beforeAll(() => {
   }
 });
 
+/** Cycle 21i Phase 2 / T2 — the column-group slice moved behind the
+ *  module-state registry: freshly-built snapshots carry it under
+ *  `modules.columnGroups.data.{defs,open}` (legacy v3 snapshots with
+ *  top-level fields migrate on setState — the v3 fixtures below pin
+ *  that compat path). */
+const groupDefsOf = (s: any) => s.modules?.columnGroups?.data?.defs;
+const groupOpenOf = (s: any) => s.modules?.columnGroups?.data?.open;
+
 function mount(columnDefs: (CColDef | CColGroupDef)[]) {
   const el = document.createElement('div');
   el.style.cssText = 'width:800px; height:600px;';
@@ -63,7 +71,7 @@ describe('column-group structure persists through getState/setState', () => {
       ] },
     ] });
     const snapshot = g1.getState();
-    expect(snapshot.columnGroupDefs?.some((n: any) => n.kind === 'group')).toBe(true);
+    expect(groupDefsOf(snapshot)?.some((n: any) => n.kind === 'group')).toBe(true);
     g1.destroy();
 
     const g2 = mount(base);            // fresh grid, SAME base defs (functions intact)
@@ -125,8 +133,39 @@ describe('column-group structure persists through getState/setState', () => {
   it('does not persist a columnGroupDefs overlay when the grid stays flat (no groups)', () => {
     const g = mount(base);
     const snapshot = g.getState();
-    expect(snapshot.columnGroupDefs).toBeUndefined();
+    expect(groupDefsOf(snapshot)).toBeUndefined();
     g.destroy();
+  });
+
+  it('removing EVERY group from a grid AUTHORED with groups persists the flat overlay — the authored groups do not resurrect on restore (2026-07-04 user report)', () => {
+    const grouped: (CColDef | CColGroupDef)[] = [
+      { groupId: 'G', headerName: 'Grp', children: [
+        { colId: 'b', field: 'b' }, { colId: 'c', field: 'c' },
+      ] },
+      { colId: 'a', field: 'a' },
+    ];
+    const g1 = mount(grouped);
+    const api1 = (g1 as any).makeApi();
+    // User deletes every group (panel Apply projects a flat def list).
+    api1.updateGridOptions({ columnDefs: [
+      { colId: 'b', field: 'b' }, { colId: 'c', field: 'c' }, { colId: 'a', field: 'a' },
+    ] });
+    const snapshot = g1.getState();
+    // The FLAT overlay must persist (constructed-with-groups grid), so
+    // restore can override the authored grouped defs.
+    const defs = groupDefsOf(snapshot);
+    expect(defs).toBeDefined();
+    expect(defs.some((n: any) => n.kind === 'group')).toBe(false);
+    g1.destroy();
+
+    // Fresh grid with the SAME authored grouped defs (a reload).
+    const g2 = mount(grouped);
+    const api2 = (g2 as any).makeApi();
+    expect(api2.getColumnGroupDefs().some((d: any) => d.children)).toBe(true);
+    g2.setState(snapshot);
+    expect(api2.getColumnGroupDefs().some((d: any) => d.children)).toBe(false);
+    expect(api2.getColumnGroupDefs().map((d: any) => d.colId)).toEqual(['b', 'c', 'a']);
+    g2.destroy();
   });
 
   it('drops a group whose leaves are gone from a NEW base and still surfaces new base columns', () => {
@@ -199,7 +238,7 @@ describe('column-group structure persists through getState/setState', () => {
     const snapshot = g.getState();
     expect(() => JSON.stringify(snapshot)).not.toThrow();
 
-    const nodes = snapshot.columnGroupDefs as any[];
+    const nodes = groupDefsOf(snapshot) as any[];
     const fnGroup = nodes.find((n) => n.kind === 'group' && n.headerName === 'FnGroup');
     const plainGroup = nodes.find((n) => n.kind === 'group' && n.headerName === 'PlainGroup');
     expect(fnGroup).toBeDefined();
@@ -228,7 +267,7 @@ describe('column-group RUNTIME open/collapse state persists through getState/set
     const api1 = (g1 as any).makeApi();
     api1.setColumnGroupState([{ groupId: 'G', open: false }]);
     const snapshot = g1.getState();
-    expect(snapshot.columnGroupOpen).toContainEqual({ groupId: 'G', open: false });
+    expect(groupOpenOf(snapshot)).toContainEqual({ groupId: 'G', open: false });
     g1.destroy();
 
     const g2 = mount(withGroup);       // fresh grid, SAME group overlay already present
@@ -242,7 +281,7 @@ describe('column-group RUNTIME open/collapse state persists through getState/set
   it('does not persist columnGroupOpen when the grid has no groups', () => {
     const g = mount(base);
     const snapshot = g.getState();
-    expect(snapshot.columnGroupOpen).toBeUndefined();
+    expect(groupOpenOf(snapshot)).toBeUndefined();
     g.destroy();
   });
 
@@ -280,8 +319,8 @@ describe('column-group RUNTIME open/collapse state persists through getState/set
     ] });
     api1.setColumnGroupState([{ groupId: 'G', open: false }]);
     const snapshot = g1.getState();
-    expect(snapshot.columnGroupDefs?.some((n: any) => n.kind === 'group' && n.headerName === 'Renamed')).toBe(true);
-    expect(snapshot.columnGroupOpen).toContainEqual({ groupId: 'G', open: false });
+    expect(groupDefsOf(snapshot)?.some((n: any) => n.kind === 'group' && n.headerName === 'Renamed')).toBe(true);
+    expect(groupOpenOf(snapshot)).toContainEqual({ groupId: 'G', open: false });
     g1.destroy();
 
     // Fresh grid seeded with the ORIGINAL (non-renamed) overlay + openByDefault true.
@@ -308,10 +347,10 @@ describe('column-group RUNTIME open/collapse state persists through getState/set
     ] });
     api1.setColumnGroupState([{ groupId: 'G', open: false }]);
     const snapshot = g1.getState();
-    expect(snapshot.columnGroupDefs?.some((n: any) =>
+    expect(groupDefsOf(snapshot)?.some((n: any) =>
       n.kind === 'group' && n.id === 'G' && n.openByDefault === true,
     )).toBe(true);
-    expect(snapshot.columnGroupOpen).toContainEqual({ groupId: 'G', open: false });
+    expect(groupOpenOf(snapshot)).toContainEqual({ groupId: 'G', open: false });
     g1.destroy();
 
     // Grid B: mounted with the SAME FLAT base defs — group G does NOT
@@ -340,7 +379,7 @@ describe('column-group RUNTIME open/collapse state persists through getState/set
     ] });
     api1.setColumnGroupState([{ groupId: 'H', open: true }]);
     const snapshot = g1.getState();
-    expect(snapshot.columnGroupOpen).toContainEqual({ groupId: 'H', open: true });
+    expect(groupOpenOf(snapshot)).toContainEqual({ groupId: 'H', open: true });
     g1.destroy();
 
     const g2 = mount(base);

@@ -53,6 +53,12 @@ async function openColumnGroupsTab(page: Page): Promise<void> {
  *  (`DRAG_THRESHOLD_PX` in columnGroupsPanel.ts) — a plain mousedown+mouseup
  *  with no meaningful movement never starts a drag session there. */
 async function dragOnto(page: Page, source: Locator, target: Locator): Promise<void> {
+  // The panel's node list can be taller than its visible scroll area
+  // (chrome above the grid — e.g. the intrinsic toolbar — shrinks it
+  // further). Raw-coordinate mouse events on an off-screen row hit
+  // nothing, so bring both endpoints into view before measuring.
+  await source.scrollIntoViewIfNeeded();
+  await target.scrollIntoViewIfNeeded();
   const sBox = await source.boundingBox();
   const tBox = await target.boundingBox();
   if (!sBox || !tBox) throw new Error('dragOnto: source or target has no bounding box');
@@ -389,8 +395,11 @@ test('collapsing a group at runtime persists its open/collapse state across relo
     (window as unknown as { __cgapi: any }).__cgapi.setColumnGroupState([{ groupId: 'trade', open: false }]),
   );
 
+  // Phase 2 / T2 — open/collapse state persists inside the module-state
+  // envelope (`modules.columnGroups.data.open`), so wait for the
+  // collapsed entry itself rather than the legacy top-level key.
   await page.waitForFunction(
-    (key) => (localStorage.getItem(key) ?? '').includes('"columnGroupOpen"'),
+    (key) => (localStorage.getItem(key) ?? '').includes('"groupId":"trade","open":false'),
     STORAGE_KEY,
     { timeout: 5_000 },
   );

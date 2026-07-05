@@ -456,4 +456,9 @@ export type CGridEvent<TRow = any> =
       type: 'sideBarVisibleChanged';
       visible: boolean;
       source: 'api' | 'sideBarButtonClicked';
-    };
+    }
+  /** Cycle 21i Phase 2 / T2 — fires when a registered state module
+   *  signals a change via `notifyModuleStateChanged(id)`. The
+   *  stateUpdated bus maps this to the `modules` snapshot key so the
+   *  slice rides the persistState autosave. */
+  | { type: 'moduleStateChanged'; moduleId: string };

@@ -17,7 +17,7 @@ import { TypedEventEmitter } from './core/eventEmitter';
 import { DisposableRegistry } from './core/disposable';
 import { ViewportManager } from './core/viewportManager';
 import { type ResolvedColDef, applyCellProps, composeFont } from './core/propertyChain';
-import { resolveColumnTree, isColGroupDef, type ColumnTree } from './core/columnTree';
+import { resolveColumnTree, isColGroupDef, type ColumnTree, type ColumnTreeNode, type ResolvedColGroupDef } from './core/columnTree';
 import { resolveSelection } from './core/selectionConfig';
 import {
   commitPanelMove as commitPanelMoveHelper,
@@ -42,8 +42,10 @@ import {
   flatten as flattenColumnGroups, project as projectColumnGroups,
   rehydrate as rehydrateColumnGroups, toSerializedNodes as toSerializedColumnGroupNodes,
 } from './interaction/columnGroups/model';
+import type { SerializedNode } from './interaction/columnGroups/model';
+import { ModuleStateRegistry, type StateModule } from './core/moduleState';
 import { computeAutoHeaderHeight } from './renderer/cellRenderers/headerWrap';
-import type { CColumnState, CApplyColumnStateParams, ISizeColumnsToFitParams } from './types';
+import type { CColumnState, CApplyColumnStateParams, ISizeColumnsToFitParams, ColumnGroupWalkNode } from './types';
 import type { CColDef, CColGroupDef } from './types';
 import {
   INITIAL_ONLY_OPTIONS, applyRuntimeOption, isRuntimeOption,
@@ -65,6 +67,7 @@ import { FloatingFilterOverlay } from './interaction/floatingFilterOverlay';
 import { PopupHost } from './interaction/editors/popupHost';
 import { FilterPopupHost } from './interaction/filters/filterPopupHost';
 import { ContextMenuHost } from './interaction/contextMenu/host';
+import { ModalHost } from './interaction/modalHost';
 import { ToolPanelRegistry } from './interaction/toolPanels/registry';
 import { ColumnsToolPanel } from './interaction/toolPanels/columnsPanel';
 import { FiltersToolPanel } from './interaction/toolPanels/filtersPanel';
@@ -160,6 +163,7 @@ import { resolveThemeKind } from './theming/themeKind';
 import {
   registerIconSet as regIcons,
   resolveIcon as resIcon,
+  listIcons as listRegisteredIcons,
 } from './icons/registry';
 import {
   registerTooltipProvider as regTip,
@@ -201,6 +205,11 @@ export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/regi
 // Cycle 23 / Tasks 5-6 — state-snapshot public types.
 export type { GridState } from './core/stateSnapshot';
 export { STATE_SCHEMA_VERSION } from './core/stateSnapshot';
+// Cycle 21i Phase 2 / T2 — module-state registry surface. Engines
+// register slices via `grid.registerStateModule(...)`; the types are
+// exported so engine packages can declare modules without reaching
+// into kernel internals.
+export type { StateModule, ModuleStateEnvelope } from './core/moduleState';
 export type { StateStorageAdapter, PersistStateOptions } from './core/statePersistence';
 export { LocalStorageStateAdapter } from './core/statePersistence';
 
@@ -230,6 +239,9 @@ export type {
   SettingsFieldType,
   SettingsSelectOption,
 } from './types/settingsSchema';
+// Cycle 21i Phase 2 / T4 — modal primitive. Instance via grid.getModal().
+export { ModalHost } from './interaction/modalHost';
+export type { ModalOpenOptions, ModalCloseReason } from './interaction/modalHost';
 export type {
   SelectionConfig,
   SingleRowSelectionConfig,
@@ -535,6 +547,16 @@ export function defaultFillExtrapolate(sourceValues: unknown[], targetIndex: num
 
 export class CGrid<TRow = any> {
   private events = new TypedEventEmitter<CGridEvent<TRow>>();
+  /** Cycle 21i Phase 2 / T2 — named, versioned engine-state slices that
+   *  fold into `GridState.modules` (see `core/moduleState.ts`). The
+   *  kernel registers its own `columnGroups` slice at construction;
+   *  engines (rules / calc / format / edit) register theirs via
+   *  `registerStateModule`. `notifyChanged` fans a `moduleStateChanged`
+   *  event into the stateUpdated bus so slices ride the persistState
+   *  autosave with zero extra plumbing. */
+  private moduleStateRegistry = new ModuleStateRegistry((moduleId) =>
+    this.events.emit({ type: 'moduleStateChanged', moduleId }),
+  );
   /** Cycle 23 / Task 7 — coalesced `stateUpdated` emitter. Subscribes
    *  to every state-affecting event on `this.events` and emits one
    *  `stateUpdated` per rAF tick carrying the full snapshot + the
@@ -652,6 +674,10 @@ export class CGrid<TRow = any> {
    *  entries reference via `statusPanel`. The status bar host reads
    *  this registry to instantiate panels on demand. */
   private statusPanelRegistry: StatusPanelRegistry;
+  /** Cycle 21i Phase 2 / T4 — generic modal primitive (backdrop +
+   *  centered dialog on the grid root). Lazily constructed on first
+   *  `getModal()` — grids that never open a dialog pay nothing. */
+  private modalHost: ModalHost | null = null;
   /** Cycle 13 / Task 1 — status-bar host (DOM strip on the bottom or
    *  top edge that houses status panels). `null` when `options.statusBar`
    *  resolves to off. Reserves a top/bottom inset on the canvas region
@@ -1009,6 +1035,61 @@ export class CGrid<TRow = any> {
     this.columnTree = resolveColumnTree(foldCalcColumnDefs<CColDef<TRow> | CColGroupDef<TRow>>(options.columnDefs), options.defaultColDef, options.columnTypes);
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
     this.columnGroupState = new ColumnGroupState(this.columnTree);
+    // Cycle 21i Phase 2 / T2 — the kernel's own column-groups slice rides
+    // the module-state registry (formerly the dedicated columnGroupDefs /
+    // columnGroupOpen GridState fields; the v3→v4 snapshot migrator
+    // relocates legacy snapshots into this envelope). `get()` omits the
+    // slice when the grid has no groups AND never had any (a flat grid
+    // persists nothing, keeping snapshots compact) — but a grid whose
+    // AUTHORED defs carry groups persists even a FLAT overlay, so
+    // "user removed every group" survives a reload instead of the
+    // constructor's grouped defs resurrecting (and re-inflating the
+    // header band; user report 2026-07-04). `set()` reuses the exact
+    // rehydrate → updateGridOptions path the Column Groups panel's
+    // Apply uses, then layers the runtime open/collapse state on top
+    // (open state applies AFTER the tree rebuild so a user's collapse
+    // wins over `openByDefault`).
+    // Sticky: flips true the first time ANY snapshot sees groups —
+    // covers grids whose grouped defs arrive AFTER construction via
+    // updateGridOptions (a pattern the repo's own apps use). Without
+    // it, "user removed every group" wouldn't persist for those grids
+    // and the authored groups would resurrect on reload.
+    let everHadGroups = flattenColumnGroups(options.columnDefs ?? [])
+      .some((n) => n.kind === 'group');
+    // Serialization cache keyed by the columnDefs array REFERENCE:
+    // snapshots run once per coalesced stateUpdated rAF flush (resize /
+    // range-select drags feed the bus per frame), while the defs array
+    // only changes identity through the updateGridOptions swap path —
+    // re-walking the whole column tree per frame is pure GC pressure.
+    let defsCacheKey: unknown = null;
+    let defsCache: SerializedNode[] = [];
+    this.moduleStateRegistry.register({
+      id: 'columnGroups',
+      version: 1,
+      get: () => {
+        const currentDefs = this.options.columnDefs ?? [];
+        if (currentDefs !== defsCacheKey) {
+          defsCacheKey = currentDefs;
+          defsCache = toSerializedColumnGroupNodes(flattenColumnGroups(currentDefs));
+        }
+        const defs = defsCache;
+        const hasGroups = defs.some((n) => n.kind === 'group');
+        everHadGroups ||= hasGroups;
+        if (!hasGroups && !everHadGroups) return undefined;
+        const open = this.columnGroupState.getState();
+        return open.length > 0 ? { defs, open } : { defs };
+      },
+      set: (data) => {
+        const slice = data as { defs?: SerializedNode[]; open?: { groupId: string; open: boolean }[] };
+        if (slice?.defs) {
+          const rehydrated = rehydrateColumnGroups(slice.defs, this.options.columnDefs ?? []);
+          this.updateGridOptions({ columnDefs: projectColumnGroups(rehydrated) });
+        }
+        if (slice?.open) {
+          this.columnGroupState.apply(slice.open);
+        }
+      },
+    });
     // Cycle 19 / Task 5-Grouping — grouping coordinator. Constructed
     // BEFORE `computeVisibleColumnOrder()` at construction because that
     // method reads `this.grouping.getAutoGroupColumns()` synchronously.
@@ -1280,14 +1361,13 @@ export class CGrid<TRow = any> {
     // the canvas + editor overlay so its z-order sits above them
     // naturally without explicit z-index plumbing.
 
+    // Cycle 21i Phase 2 — the status bar is intrinsic: `undefined`
+    // normalizes to the default def (row counts + selection/aggregates),
+    // `statusBar: false` opts out. Runtime flips route through
+    // `updateStatusBar()`.
     const statusBarDef = normalizeStatusBarOption(options.statusBar);
     if (statusBarDef) {
-      const ctx: StatusBarGridContext = {
-        registry: this.statusPanelRegistry,
-        api: this.makeApi(),
-        setReservedSpace: (side, height) => this.reserveStatusBarSpace(side, height),
-      };
-      this.statusBar = new StatusBarHost(this.root, ctx, statusBarDef);
+      this.statusBar = new StatusBarHost(this.root, this.makeStatusBarContext(), statusBarDef);
     }
 
     // Cycle 15 / Task 6 — row group panel (DOM strip ABOVE the
@@ -5032,15 +5112,16 @@ export class CGrid<TRow = any> {
     // current status-bar bottom reservation flows through the same
     // setHostBounds call so a side-bar reflow can't drop the bar inset.
     if (this.cgridCanvas) {
-      // Cycle 15 / Task 6 + Cycle 18 / Task 6 — fold the status-bar
-      // top + pivot-panel top + row-group-panel top contributions
-      // through the same call so a side-bar reflow doesn't drop any
-      // of the three insets.
+      // Cycle 15 / Task 6 + Cycle 18 / Task 6 + Cycle 21i Phase 2 —
+      // the full top-strip stack (status bar + pivot panel + row group
+      // panel, incl. the pivot-mode shared-strip collapse) flows
+      // through the SAME helper `applyVerticalInsets` uses, so a
+      // side-bar reflow can never drop one of the insets and drift the
+      // canvas out from under the DOM overlays (floating filters,
+      // editors).
       this.cgridCanvas.setHostBounds({
         left,
-        top: this.statusBarInsets.top
-          + this.pivotPanelTopInset
-          + this.rowGroupPanelTopInset,
+        top: this.computeTopInset(),
         bottom: this.statusBarInsets.bottom,
       });
     }
@@ -5088,6 +5169,48 @@ export class CGrid<TRow = any> {
     this.applyVerticalInsets();
   }
 
+
+
+  /** Cycle 21i Phase 2 — context handed to StatusBarHost. Shared by the
+   *  constructor mount and the runtime `statusBar` apply path. */
+  private makeStatusBarContext(): StatusBarGridContext {
+    return {
+      registry: this.statusPanelRegistry,
+      api: this.makeApi(),
+      setReservedSpace: (side, height) => this.reserveStatusBarSpace(side, height),
+    };
+  }
+
+  /** Cycle 21i Phase 2 — runtime `statusBar` flips route here from the
+   *  runtime-options apply table. Re-normalizes the option (intrinsic
+   *  default-on; `false` opts out) and mounts, unmounts, or swaps the
+   *  def on the live host; the reservation release/re-emit reflows the
+   *  grid body. */
+  updateStatusBar(): void {
+    const def = normalizeStatusBarOption(this.options.statusBar);
+    if (!def) {
+      this.statusBar?.destroy();
+      this.statusBar = null;
+      return;
+    }
+    if (this.statusBar) {
+      this.statusBar.setStatusBarDef(def);
+      return;
+    }
+    this.statusBar = new StatusBarHost(this.root, this.makeStatusBarContext(), def);
+  }
+
+
+
+  /** Cycle 21i Phase 2 / T4 — the grid's modal primitive. Lazily
+   *  created; one modal at a time. `open(content, { title, onClose,
+   *  ... })` mounts caller-owned DOM in a themed, focus-trapped dialog
+   *  over a backdrop covering the grid. */
+  getModal(): ModalHost {
+    this.modalHost ??= new ModalHost(this.root);
+    return this.modalHost;
+  }
+
   /** Cycle 15 / Task 6 — recompute and apply the combined top +
    *  bottom insets to the scroller, editor overlay, canvas host,
    *  and the row group panel's own top offset. Top inset is the
@@ -5103,10 +5226,7 @@ export class CGrid<TRow = any> {
     // thin hairline). Saves the second 32 px of vertical inset.
     const sharing = this.isSharingTopStrip();
     const stripTop = this.statusBarInsets.top;
-    const panelInset = sharing
-      ? Math.max(this.pivotPanelTopInset, this.rowGroupPanelTopInset)
-      : this.pivotPanelTopInset + this.rowGroupPanelTopInset;
-    const top = stripTop + panelInset;
+    const top = this.computeTopInset();
     const bottom = this.statusBarInsets.bottom;
     this.scroller.style.top = `${top}px`;
     this.scroller.style.bottom = `${bottom}px`;
@@ -5122,6 +5242,9 @@ export class CGrid<TRow = any> {
     // The side bar must start below the panels so the tab strip is not
     // visually occluded. Use the same `top` value as the scroller.
     this.sideBar?.setTopOffset(top);
+    // Cycle 21i Phase 2 — and end above a bottom status bar, so panel
+    // footers (Apply/Reset) stay visible + clickable.
+    this.sideBar?.setBottomOffset(bottom);
     const rgEl = this.root.querySelector('.cg-row-group-panel') as HTMLElement | null;
     const pvEl = this.root.querySelector('.cg-pivot-panel') as HTMLElement | null;
     if (sharing) {
@@ -5141,6 +5264,20 @@ export class CGrid<TRow = any> {
       if (rgEl) rgEl.classList.remove('cg-row-group-panel--split-left');
       if (pvEl) pvEl.classList.remove('cg-pivot-panel--split-right');
     }
+  }
+
+  /** Cycle 21i Phase 2 — the ONE formula for the canvas region's
+   *  total top inset: top status bar + pivot/row-group panel
+   *  strips (collapsed to one 32px strip when pivot mode shares it).
+   *  Used by BOTH `applyVerticalInsets` and `reserveSideBarSpace` so
+   *  the two reflow paths can never disagree — a drift here shows up
+   *  as the canvas sliding out from under the DOM overlays (floating
+   *  filters, editors) the moment a side-bar reflow fires. */
+  private computeTopInset(): number {
+    const panelInset = this.isSharingTopStrip()
+      ? Math.max(this.pivotPanelTopInset, this.rowGroupPanelTopInset)
+      : this.pivotPanelTopInset + this.rowGroupPanelTopInset;
+    return this.statusBarInsets.top + panelInset;
   }
 
   /** AG-Grid parity — true when the row group panel and pivot panel
@@ -5180,6 +5317,38 @@ export class CGrid<TRow = any> {
   registerCellRenderer(name: string, painter: CellPainter): void {
     this.cellRenderers.register(name, painter);
     this.cgridCanvas?.requestRepaint();
+  }
+
+  /** Cycle 21i Phase 2 / T3 — instance-truth renderer enumeration:
+   *  built-ins plus everything registered on THIS grid, in
+   *  registration order. */
+  listCellRenderers(): string[] {
+    return this.cellRenderers.list();
+  }
+
+  /** Cycle 21i Phase 2 / T3 — pre-order depth-first walk over the live
+   *  column-GROUP hierarchy. Each visit hands a snapshot node carrying
+   *  structure (`childGroupIds` / `leafColIds` / `depth`), the authored
+   *  `columnGroupShow`, and the LIVE runtime `open` state — the single
+   *  traversal group editors need without stitching
+   *  `getColumnGroupDefs` + `getColumnGroupState` themselves. */
+  forEachColumnGroup(callback: (node: ColumnGroupWalkNode) => void): void {
+    const visit = (node: ColumnTreeNode): void => {
+      if (node.kind !== 'group') return;
+      callback({
+        groupId: node.groupId,
+        headerName: node.headerName,
+        depth: node.depth,
+        open: this.columnGroupState.isOpen(node.groupId),
+        columnGroupShow: node.columnGroupShow,
+        childGroupIds: node.children
+          .filter((c): c is ResolvedColGroupDef => c.kind === 'group')
+          .map((c) => c.groupId),
+        leafColIds: node.leafColIds.slice(),
+      });
+      for (const child of node.children) visit(child);
+    };
+    for (const root of this.columnTree.roots) visit(root);
   }
 
   /** Cycle 21c / Task 10 — register the @cgrid/format compiler into the
@@ -5252,6 +5421,14 @@ export class CGrid<TRow = any> {
    *  Path2D is unavailable (SSR / Node). */
   resolveIcon(name: string, setHint?: string): Path2D | null {
     return resIcon(name, setHint);
+  }
+
+  /** Cycle 21i Phase 2 / T3 — enumerate registered icon names (icon
+   *  pickers need to know what exists; `resolveIcon` is lookup-only).
+   *  With `setName`, that set's names; without, the deduped union
+   *  across all sets in resolution order. */
+  listIcons(setName?: string): string[] {
+    return listRegisteredIcons(setName);
   }
 
   /** Cycle 21c / Task 14 — register a per-column tooltip provider.
@@ -5450,6 +5627,7 @@ export class CGrid<TRow = any> {
       },
       updateRowGroupPanelShow: (value) => this.updateRowGroupPanelShow(value),
       updatePivotPanelShow: (value) => this.updatePivotPanelShow(value),
+      updateStatusBar: () => this.updateStatusBar(),
       updatePivotMaxGeneratedColumns: (value) => this.pivotEngine.updateMaxGeneratedColumns(value),
       updateStrictPivotColumnOrder: (value) => this.pivotEngine.updateStrictColumnOrder(value),
       updatePivotTotalsOption: () => this.pivotEngine.updateTotalsOption(),
@@ -5864,6 +6042,9 @@ export class CGrid<TRow = any> {
     // reserveStatusBarSpace bails out gracefully if the host's release
     // call lands after cgridCanvas.destroy.
     this.statusBar?.destroy();
+    // Cycle 21i Phase 2 / T4 — close + release any open modal.
+    this.modalHost?.destroy();
+    this.modalHost = null;
     // Cycle 15 / Task 6 — release the row group panel's top inset
     // + remove its DOM. The host's destroy() calls back into
     // reserveRowGroupPanelSpace(0) which is canvas-destroy-safe via
@@ -5997,12 +6178,23 @@ export class CGrid<TRow = any> {
       registerCalcProvider: (provider) => this.registerCalcProvider(provider),
       forEachRow: (fn) => this.forEachRow(fn),
       getThemeKind: () => this.getThemeKind(),
+      // Cycle 21i Phase 2 / T3 — Tier B widening: these existed
+      // class-only; customizer panels code against CGridApi, so the
+      // aggregate reads + state round-trip belong here.
+      getSortModel: () => this.getSortModel(),
+      getFilterModel: () => this.getFilterModel(),
+      getState: () => this.getState(),
+      setState: (snapshot) => this.setState(snapshot),
+      listCellRenderers: () => this.listCellRenderers(),
+      getModal: () => this.getModal(),
+      forEachColumnGroup: (callback) => this.forEachColumnGroup(callback),
       setThemeParams: (patch) => this.setThemeParams(patch),
       getThemeParams: () => this.getThemeParams(),
       getDefaultRowHeight: () => this.theme.rowHeight,
       getDefaultHeaderHeight: () => this.theme.headerHeight,
       registerIconSet: (name, paths) => this.registerIconSet(name, paths),
       resolveIcon: (name, setHint) => this.resolveIcon(name, setHint),
+      listIcons: (setName) => this.listIcons(setName),
       registerTooltipProvider: (colId, fn) => this.registerTooltipProvider(colId, fn),
       unregisterTooltipProvider: (colId) => this.unregisterTooltipProvider(colId),
       registerCellEditor: (n, c) => this.registerCellEditor(n, c),
@@ -7439,6 +7631,25 @@ export class CGrid<TRow = any> {
     return this.colStateManager.getColumnState();
   }
 
+  /** Cycle 21i Phase 2 / T2 — register a named, versioned engine-state
+   *  slice that folds into `GridState.modules` and rides the
+   *  persistState autosave. `get()` returning `undefined` omits the
+   *  slice; `set(data, version)` restores it (throwing skips that
+   *  slice only). Returns an unregister function. After a mutation
+   *  that has no mapped grid event, call
+   *  `notifyModuleStateChanged(id)` so the autosave runs. */
+  registerStateModule(module: StateModule): () => void {
+    return this.moduleStateRegistry.register(module);
+  }
+
+  /** Cycle 21i Phase 2 / T2 — signal that a registered module's state
+   *  changed. Emits the typed `moduleStateChanged` event, which the
+   *  stateUpdated bus maps to the `modules` snapshot key (debounced
+   *  autosave follows when `persistState` is on). */
+  notifyModuleStateChanged(moduleId: string): void {
+    this.moduleStateRegistry.notifyChanged(moduleId);
+  }
+
   /** Cycle 23 / Task 5 — full grid state snapshot. Includes columnState,
    *  filter / sort / group model, pivot mode + cols, expanded routes,
    *  side bar + selection + scroll position. Round-trippable through
@@ -7449,9 +7660,7 @@ export class CGrid<TRow = any> {
   getState(): GridState {
     return buildSnapshot({
       getColumnState: () => this.getColumnState(),
-      getColumnGroupOverlay: () =>
-        toSerializedColumnGroupNodes(flattenColumnGroups(this.options.columnDefs ?? [])),
-      getColumnGroupOpenState: () => this.columnGroupState.getState(),
+      getModuleState: () => this.moduleStateRegistry.snapshot(),
       getFilterModel: () => this.getFilterModel(),
       getSortModel: () => this.getSortModel(),
       getRowGroupColumns: () => this.getRowGroupColumns(),
@@ -7505,34 +7714,22 @@ export class CGrid<TRow = any> {
       this.setThemeParams(migrated.themeParams);
     }
 
-    // 0c. column-GROUP structure overlay (Cycle 21i / Task 6) — BEFORE
-    // columnState so per-leaf width/hide/pinned settle on top of the
-    // restored group hierarchy rather than the other way around.
-    // Rehydrates the persisted flat overlay against the app's CURRENT
-    // base `columnDefs` (by colId) and applies it through the exact same
-    // columnDefs-rebuild path `updateGridOptions({ columnDefs })` uses —
-    // reusing that path also fires `columnDefsChanged`, which re-marks
-    // `columnGroupDefs` dirty; harmless (not a loop — the bus coalesces
-    // per rAF frame and this restore's own emit is tagged with the same
-    // 'api'/'init' source already set above, matching how the sibling
-    // columnState/filterModel/etc. restores below also re-dirty their
-    // own keys as a side effect of reusing their normal apply path).
-    if (migrated.columnGroupDefs) {
-      const rehydrated = rehydrateColumnGroups(migrated.columnGroupDefs, this.options.columnDefs ?? []);
-      this.updateGridOptions({ columnDefs: projectColumnGroups(rehydrated) });
-    }
-
-    // 0d. column-GROUP runtime open/collapse state (Cycle 21i / Task 8) —
-    // AFTER columnGroupDefs so the groups it names already exist (the
-    // `columnGroupDefs` restore's tree rebuild calls `ColumnGroupState
-    // .setTree`, which re-seeds from each group's `openByDefault` for any
-    // id that didn't survive the swap and PRESERVES the live open state for
-    // ids that did). Applying this persisted array last means the user's
-    // runtime collapse/expand always wins over `openByDefault`, matching
-    // how columnState settles on top of the restored group hierarchy below.
-    // `apply()` silently skips groupIds no longer in the tree.
-    if (migrated.columnGroupOpen) {
-      this.columnGroupState.apply(migrated.columnGroupOpen);
+    // 0c. module slices (Cycle 21i Phase 2 / T2) — engine-owned state
+    // envelopes, including the kernel's own `columnGroups` slice (the
+    // Task 6/8 overlay relocated behind the registry; legacy top-level
+    // `columnGroupDefs`/`columnGroupOpen` fields arrive here via the
+    // v3→v4 migrator). Positioned BEFORE columnState so structural
+    // slices (group hierarchy) settle before per-leaf width/hide/pinned
+    // apply on top. The columnGroups slice reuses the exact
+    // `updateGridOptions({ columnDefs })` path the panel's Apply uses —
+    // that path re-fires `columnDefsChanged`, which re-marks the
+    // `modules` key dirty; harmless (the bus coalesces per rAF frame and
+    // this restore's own emit is tagged with the 'api'/'init' source set
+    // above, matching how the sibling restores below re-dirty their own
+    // keys). Restore degrades gracefully per-slice: unknown module ids
+    // and throwing `set()`s warn + skip without dropping the rest.
+    if (migrated.modules) {
+      this.moduleStateRegistry.restore(migrated.modules);
     }
 
     // 1. columnState (defines columns + their geometry).
