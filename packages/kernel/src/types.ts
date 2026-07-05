@@ -161,3 +161,11 @@ export type {
   // Cycle 21i Phase 2 / T3 — forEachColumnGroup visit-node shape
   ColumnGroupWalkNode,
 } from './types/api';
+
+// Grid Layouts — public data model (Phase A / Unit A1).
+export type {
+  LayoutState,
+  GridLayout,
+  GridLayoutsBundle,
+} from './types/layout';
+export { DEFAULT_LAYOUT_ID } from './types/layout';

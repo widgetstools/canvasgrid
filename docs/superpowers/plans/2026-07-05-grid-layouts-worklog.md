@@ -96,9 +96,35 @@ New subsystem: expression → style, targeting rows/columns; layout-tier. Spec �
 
 ## Progress tracker (update every session)
 
-- [ ] A1 · [ ] A2 · [ ] A3 · [ ] A4 · [ ] A5 · [ ] A6 (Phase A merged)
+- [x] A1 · [ ] A2 · [ ] A3 · [ ] A4 · [ ] A5 · [ ] A6 (Phase A merged)
 - [ ] B1 · [ ] B2 · [ ] B3 · [ ] B4 · [ ] B5 (Phase B merged)
 - [ ] C1 · [ ] C2 · [ ] C3 · [ ] C4 (Phase C merged)
 
-**Next unit: A1.** (Spec + worklog committed 2026-07-05; branch `feature/grid-layouts` holds
-the spec — start Phase A on a fresh `feature/grid-layouts-a` off main.)
+**Next unit: A2.** (Phase A branch `feature/grid-layouts-a` is live — continue A2 on it.)
+
+### Ledger
+
+- **2026-07-05 · A1 done** (branch `feature/grid-layouts-a`, off `origin/main` @ `abbb155`).
+  - `packages/kernel/src/types/layout.ts` — `LayoutState` (= layout-tier `GridState`),
+    `GridLayout`, `GridLayoutsBundle`, `DEFAULT_LAYOUT_ID`; reuses `@cgrid/calc`'s
+    `ColumnTemplate` (no parallel type). Re-exported from the `types.ts` barrel.
+  - `packages/kernel/src/core/layoutManager.ts` — pure `LayoutManager` over an injected
+    `LayoutManagerHost` (`captureState`/`applyState`/`newId`/`now`): registry, active id,
+    construction-baseline retention, Default invariants. Full op surface
+    (get/save/update/load/delete/rename/duplicate/reset).
+  - `packages/kernel/tests/layoutManager.test.ts` — 31 mock-accessor unit tests
+    (save/load/delete/rename/duplicate/reset; Default undeletable; active-delete→Default
+    fallback + re-apply; unique-name (trimmed, case-insensitive); value-semantics/defensive
+    clones; construction Default synthesis + activeId fallback).
+  - **Scope boundaries honored:** `overrides` (grid-option/editing deltas) carried but NOT
+    captured (→ A2); no persistence (→ A5); no CGrid wiring / events (→ A3).
+  - **Design calls (flagged for A2/A3 review):** (1) `saveLayout` activates by default
+    (capture == live view, no re-apply); `duplicateLayout` does NOT (copy may differ from
+    screen). (2) Default's DISPLAY NAME is renamable per §9 (only the id is fixed) —
+    reconciling §9 vs §12's "reject renaming id of 'default'". (3) name uniqueness is
+    case-insensitive + trimmed.
+  - **Verify:** kernel typecheck clean; full suite 2814 pass (lone red =
+    `aggIncremental.perf.test.ts`, CPU-flaky, passes standalone). No UI in A1 → no
+    browser-verify (that's A6).
+  - **Note:** ledger committed on the phase branch (main working tree had unrelated
+    uncommitted work); reaches main when Phase A merges at A6.
