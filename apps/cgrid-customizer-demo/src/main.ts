@@ -8,7 +8,7 @@
  * done through the public API, that's a kernel gap to fix in the kernel,
  * never worked around here.
  */
-import { CGrid, formatPrice32, type CColDef, type CColGroupDef } from '@cgrid/kernel';
+import { CGrid, formatPrice32, DEFAULT_LAYOUT_ID, type CColDef, type CColGroupDef, type GridLayoutsBundle } from '@cgrid/kernel';
 import '@cgrid/kernel/style.css';
 import { wireIntoKernel as wireFormat } from '@cgrid/format';
 import { wireEditIntoKernel } from '@cgrid/edit';
@@ -174,6 +174,76 @@ editableSwitch.addEventListener('change', () => {
   grid.setGridOption('defaultColDef', { ...dcd, editable: editableSwitch.checked });
 });
 
+// ─── Layouts control ─────────────────────────────────────────────────────
+// Exercises the Grid Layouts API (Phase A): save the current view as a named
+// layout, switch between layouts, delete, and export/import as JSON. The
+// <select> mirrors the active layout and re-syncs on every `layoutChanged`
+// (including the restore that fires after persisted state loads).
+const layoutSelect = document.getElementById('layout-select') as HTMLSelectElement;
+const layoutSaveBtn = document.getElementById('layout-save') as HTMLButtonElement;
+const layoutDeleteBtn = document.getElementById('layout-delete') as HTMLButtonElement;
+const layoutExportBtn = document.getElementById('layout-export') as HTMLButtonElement;
+const layoutImportBtn = document.getElementById('layout-import') as HTMLButtonElement;
+const layoutFileInput = document.getElementById('layout-file') as HTMLInputElement;
+
+function refreshLayoutControl() {
+  const activeId = grid.getActiveLayoutId();
+  layoutSelect.replaceChildren(
+    ...grid.getLayouts().map((layout) => {
+      const opt = document.createElement('option');
+      opt.value = layout.id;
+      opt.textContent = layout.name;
+      opt.selected = layout.id === activeId;
+      return opt;
+    }),
+  );
+  // The Default layout can't be deleted.
+  layoutDeleteBtn.disabled = activeId === DEFAULT_LAYOUT_ID;
+}
+
+layoutSelect.addEventListener('change', () => { grid.loadLayout(layoutSelect.value); });
+
+layoutSaveBtn.addEventListener('click', () => {
+  const name = prompt('Save the current view as a layout named:');
+  if (!name || !name.trim()) return;
+  try {
+    grid.saveLayout(name.trim());
+  } catch (err) {
+    alert((err as Error).message);
+  }
+});
+
+layoutDeleteBtn.addEventListener('click', () => {
+  const id = layoutSelect.value;
+  if (id !== DEFAULT_LAYOUT_ID) grid.deleteLayout(id);
+});
+
+layoutExportBtn.addEventListener('click', () => {
+  const json = JSON.stringify(grid.exportLayouts(), null, 2);
+  const url = URL.createObjectURL(new Blob([json], { type: 'application/json' }));
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'cgrid-layouts.json';
+  a.click();
+  URL.revokeObjectURL(url);
+});
+
+layoutImportBtn.addEventListener('click', () => layoutFileInput.click());
+layoutFileInput.addEventListener('change', async () => {
+  const file = layoutFileInput.files?.[0];
+  if (!file) return;
+  try {
+    const bundle = JSON.parse(await file.text()) as GridLayoutsBundle;
+    grid.importLayouts(bundle, { mode: 'merge' });
+  } catch (err) {
+    alert(`Couldn't import layouts: ${(err as Error).message}`);
+  } finally {
+    layoutFileInput.value = ''; // let the same file be re-selected
+  }
+});
+
+grid.on('layoutChanged', refreshLayoutControl);
+
 // ─── STOMP feed ──────────────────────────────────────────────────────────
 let updatesThisSecond = 0;
 setInterval(() => {
@@ -204,4 +274,5 @@ connectStomp({
 grid.on('gridReady', (e) => {
   (window as unknown as { __cgapi: unknown }).__cgapi = e.api;
   (window as unknown as { __cgridReady: boolean }).__cgridReady = true;
+  refreshLayoutControl(); // seed the switcher; a persisted-state restore re-syncs it via layoutChanged
 });
