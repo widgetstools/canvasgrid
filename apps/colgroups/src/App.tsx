@@ -13,6 +13,29 @@ export function App() {
     apiRef.current = e.api;
   }, []);
 
+  const sideBar = useMemo(
+    () => ({
+      toolPanels: [
+        {
+          id: 'columns',
+          labelDefault: 'Columns',
+          labelKey: 'columns',
+          iconKey: 'columns',
+          toolPanel: 'agColumnsToolPanel',
+        },
+        {
+          id: 'filters',
+          labelDefault: 'Filters',
+          labelKey: 'filters',
+          iconKey: 'filter',
+          toolPanel: 'agFiltersToolPanel',
+        },
+      ],
+      defaultToolPanel: '',
+    }),
+    [],
+  );
+
   const setAll = useCallback((open: boolean) => {
     const api = apiRef.current;
     if (!api) return;
@@ -59,6 +82,7 @@ export function App() {
           columnDefs={columnDefs}
           defaultColDef={defaultColDef}
           rowData={rowData}
+          sideBar={sideBar}
           onGridReady={onGridReady}
           getRowId={(p) => p.data.positionId}
           suppressDragLeaveHidesColumns
