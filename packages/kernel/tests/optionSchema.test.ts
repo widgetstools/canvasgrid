@@ -134,6 +134,41 @@ describe('buildGridOptionsSchema', () => {
     expect((api.store.defaultColDef as Record<string, unknown>).resizable).toBe(true);
   });
 
+  it('Floating filters switch is intrinsic (on by default; off writes false, on reverts to undefined)', () => {
+    const api = makeAccessor();
+    const field = () => buildGridOptionsSchema(api).bands
+      .flatMap((b) => b.fields)
+      .find((f) => f.key === 'floatingFilter')!;
+    expect(field().get()).toBe(true); // unset → shown by default
+    field().set(false);
+    expect(api.store.floatingFilter).toBe(false); // force-hide
+    expect(field().get()).toBe(false);
+    field().set(true);
+    // On reverts to the default-on rather than pinning an explicit true.
+    expect(api.store.floatingFilter).toBeUndefined();
+  });
+
+  it('Side panel switch appears only when the accessor exposes side-bar visibility, reflecting live state', () => {
+    // No side-bar surface → no field.
+    const plain = buildGridOptionsSchema(makeAccessor());
+    expect(plain.bands.flatMap((b) => b.fields).some((f) => f.key === 'sideBarVisible')).toBe(false);
+
+    // With the surface → a switch in the Appearance band bound to the API.
+    let visible = true;
+    const api: GridOptionsAccessor = {
+      ...makeAccessor(),
+      isSideBarVisible: () => visible,
+      setSideBarVisible: (show) => { visible = show; },
+    };
+    const schema = buildGridOptionsSchema(api);
+    const field = schema.bands.find((b) => b.id === 'appearance')!.fields
+      .find((f) => f.key === 'sideBarVisible')!;
+    expect(field.get()).toBe(true);
+    field.set(false);
+    expect(visible).toBe(false);
+    expect(field.get()).toBe(false);
+  });
+
   it('covers ~60 fields across the bands', () => {
     const schema = buildGridOptionsSchema(makeAccessor());
     const count = schema.bands.reduce((n, b) => n + b.fields.length, 0);

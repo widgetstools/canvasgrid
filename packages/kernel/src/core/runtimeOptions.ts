@@ -80,6 +80,7 @@ export type RuntimeOption =
   | 'rowGroupPanelShow'
   | 'rowGroupPanelSuppressSort'
   | 'statusBar'
+  | 'floatingFilter'
   | 'pivotPanelShow'
   | 'pivotMaxGeneratedColumns'
   | 'enableStrictPivotColumnOrder'
@@ -375,6 +376,14 @@ export function applyRuntimeOption<TRow>(
       // `target.options.statusBar`; updateStatusBar re-normalizes it.
       target.updateStatusBar();
       return;
+    case 'floatingFilter':
+      // Runtime show/hide of the floating-filter row. The value is already
+      // stored in `target.options.floatingFilter`; the FloatingFilterSubgrid
+      // reads `isFloatingFilterEnabled()` live, so re-mounting the subgrid
+      // stack + recomputing the viewport adds/removes the row and its input
+      // overlay (the viewport's `afterRecompute` re-pins the input pool).
+      target.rebuildSubgrids();
+      return;
     case 'pivotPanelShow':
       // Cycle 18 / Task 6 — runtime mount / unmount / show-mode swap
       // for the pivot panel (top-of-grid drop strip).
@@ -463,6 +472,7 @@ export const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOpt
   'rowGroupPanelShow',
   'rowGroupPanelSuppressSort',
   'statusBar',
+  'floatingFilter',
   'pivotPanelShow',
   'pivotMaxGeneratedColumns',
   'enableStrictPivotColumnOrder',

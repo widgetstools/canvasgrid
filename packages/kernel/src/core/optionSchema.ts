@@ -39,6 +39,12 @@ export interface GridOptionsAccessor {
   resolveThemeColor?(token: string): string;
   setThemeColor?(token: string, value: string): void;
   getThemeColorOverride?(token: string): string | undefined;
+  /** Side-bar visibility surface. When both are present, the Appearance
+   *  band gains a "Side panel" switch that reflects + toggles live
+   *  side-bar visibility (not a stored option key — the side bar is UI
+   *  state owned by the host). Omitted when the grid has no side bar. */
+  isSideBarVisible?(): boolean;
+  setSideBarVisible?(show: boolean): void;
 }
 
 interface ColorFieldSpec {
@@ -136,6 +142,10 @@ const OPTION_BANDS: BandSpec[] = [
       // the runtime-touched value wins; acceptable for a visibility
       // toggle).
       { key: 'statusBar', label: 'Status bar', type: 'switch', kernelDefault: true, hint: 'Bottom strip with row counts + aggregates', toControl: (v) => v !== false, fromControl: (v) => (v === true ? undefined : false) },
+      // Floating-filter row under the header. Intrinsic (default ON, like the
+      // status bar): switch-off writes `false` (force-hide); switch-on writes
+      // `undefined` so the option reverts to the default / per-column config.
+      { key: 'floatingFilter', label: 'Floating filters', type: 'switch', kernelDefault: true, hint: 'Filter input row under the header', toControl: (v) => v !== false, fromControl: (v) => (v === true ? undefined : false) },
       {
         key: 'domLayout', label: 'Layout', type: 'select', kernelDefault: 'normal',
         options: opts(['normal', 'Normal'], ['print', 'Print']),
@@ -383,6 +393,26 @@ export function buildGridOptionsSchema(api: GridOptionsAccessor): SettingsSectio
       };
     }),
   }));
+
+  // Side-panel visibility — appended to the Appearance band (NOT part of
+  // OPTION_BANDS, so it stays out of GRID_OPTIONS_SCHEMA_KEYS / the drift
+  // guard: it's live host UI state, not a stored grid-option key). The
+  // switch reflects + toggles the whole side bar via the host API. Only
+  // added when the grid actually has a side bar.
+  if (api.isSideBarVisible && api.setSideBarVisible) {
+    const isVisible = api.isSideBarVisible.bind(api);
+    const setVisible = api.setSideBarVisible.bind(api);
+    const appearance = bands.find((b) => b.id === 'appearance');
+    appearance?.fields.push({
+      key: 'sideBarVisible',
+      label: 'Side panel',
+      type: 'switch',
+      hint: 'Show the side bar (Columns / Filters / Options tabs)',
+      defaultValue: isVisible(),
+      get: () => isVisible(),
+      set: (value) => setVisible(value === true),
+    });
+  }
 
   const dcd = () => (api.getGridOption('defaultColDef') ?? {}) as Record<string, unknown>;
   bands.push({
