@@ -243,3 +243,29 @@ PR + squash-merge.)
   - **Verify:** typecheck + `npm run build` clean; full suite **2851 pass (224 files)**;
     layout tests: A1(31)+A2(14)+A4-unit(14)+integration(11) green. Phase-A engine (A1–A5) COMPLETE
     — A6 is the demo + browser-verify + closeout review + merge.
+
+- **2026-07-05 · A6 (demo + browser-verify + E2E) done; review+merge in progress** (branch
+  `feature/grid-layouts-a`).
+  - **Public API surface:** `cgrid.ts` now re-exports the layout types (`LayoutState`,
+    `GridLayout`, `GridLayoutsBundle`, `GridBaselineConfig`, `LayoutChangeSource`) + value consts
+    (`DEFAULT_LAYOUT_ID`, `DEFAULT_GRID_LEVEL_MODULES`, `LAYOUTS_BUNDLE_VERSION`) from the public
+    entry — they were only on the `types` barrel before, so `@cgrid/kernel` consumers (the demo)
+    couldn't import them. Kernel `dist` rebuilt.
+  - **Restore event:** `restorePersistedBlob` now emits `layoutChanged` (new source `'restore'`)
+    after a persisted bundle reseeds the manager, so app switchers re-sync on reload. (Fills a real
+    gap — the demo needs it; per no-retroactive-layering it's a kernel-level fix, not app glue.)
+  - **Demo control** (`apps/cgrid-customizer-demo`): a "Layouts" cluster in the header — a `<select>`
+    mirroring the active layout (re-synced on every `layoutChanged`, incl. `'restore'`) + Save
+    (prompt→saveLayout), Delete (disabled on Default), Export (download bundle JSON), Import (file→
+    importLayouts merge). Matches the demo's slate chrome; `.actions` now wraps. Zero feature code in
+    the app — pure `@cgrid/kernel` API.
+  - **Browser-verified** (customizer-demo :5188, live STOMP 5k rows, state reset first, light+dark,
+    browser + dev server killed after): save→switch round-trips the view (Default clears sort,
+    Blotter restores it); reload persists Blotter (active + view) via the restore event; export
+    yields a valid v1 bundle; delete-active falls back to Default; NO console errors.
+  - **E2E** `e2e/layouts.spec.ts` — 2 journeys (save+switch round-trip; persistence across reload),
+    both green. `playwright.config.ts` port made env-overridable (`CGRID_DEMO_PORT`, default 5187)
+    so the suite can target a running server when 5187 is taken by another worktree.
+  - **Verify:** kernel typecheck + full suite **2851 pass (224 files)**; demo typecheck clean; E2E
+    2/2. **Remaining:** SINGLE Phase-A closeout review (fable) + fix wave, then PR + squash-merge +
+    ff-only sync → then check A6.

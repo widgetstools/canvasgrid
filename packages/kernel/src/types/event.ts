@@ -93,7 +93,7 @@ export interface AggregationChangedEvent {
  *  `layoutChanged` event. */
 export type LayoutChangeSource =
   | 'save' | 'update' | 'load' | 'delete' | 'rename' | 'duplicate' | 'reset'
-  | 'import' | 'setGridConfig';
+  | 'import' | 'setGridConfig' | 'restore';
 
 export type CGridEvent<TRow = any> =
   | { type: 'gridReady'; api: CGridApi<TRow> }

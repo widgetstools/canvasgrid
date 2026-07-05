@@ -203,7 +203,12 @@ export type {
   IAggFunc, IAggFuncParams,
   // Cycle 14 / Task 6 — `aggregationChanged` event polish.
   AggregationChangedSource, AggregationChangedEvent,
+  // Grid Layouts (Phase A) — public data model + event source.
+  LayoutState, GridLayout, GridLayoutsBundle, GridBaselineConfig, LayoutChangeSource,
 } from './types';
+// Grid Layouts (Phase A) — public value exports (reserved id, tier default,
+// bundle version).
+export { DEFAULT_LAYOUT_ID, DEFAULT_GRID_LEVEL_MODULES, LAYOUTS_BUNDLE_VERSION } from './types';
 export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/registry';
 // Cycle 23 / Tasks 5-6 — state-snapshot public types.
 export type { GridState } from './core/stateSnapshot';
@@ -8043,11 +8048,15 @@ export class CGrid<TRow = any> {
     this.stateUpdatedBus?.setNextSource('init');
     const { layouts, ...viewState } = blob as GridState & { layouts?: GridLayoutsBundle };
     if (layouts) {
-      // Pure reseed (no event / no view apply — the view is restored below).
+      // Pure reseed (no view apply — the view is restored below).
       this.getLayoutManager().importLayouts(layouts, { mode: 'replace' });
       this.applyGridConfigLive(this.getLayoutManager().getGridConfig());
     }
     this.setState(viewState as GridState);
+    // Let app UI (layout switchers) re-sync to the restored set. Fired after
+    // the view settles; listeners attached before construction's async
+    // restore (the common case) receive it.
+    if (layouts) this.emitLayoutChanged('restore');
   }
 
   /** Cycle 23 / Task 6 — restore the construction-time defaults.
