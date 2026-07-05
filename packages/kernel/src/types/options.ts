@@ -168,6 +168,24 @@ export interface CGridOptions<TRow = any> {
    */
   persistState?: boolean | import('../core/statePersistence').PersistStateOptions;
   /**
+   * Grid Layouts (Phase A) — seed the layout registry with named layouts.
+   * A reserved `'default'` layout is synthesized from the construction
+   * baseline when the list omits one. (Persistence of layouts lands in a
+   * later unit; these are the app-provided seeds.)
+   */
+  layouts?: import('./layout').GridLayout[];
+  /**
+   * Grid Layouts — id of the initially-active layout. Falls back to
+   * `'default'` when it does not name a supplied layout.
+   */
+  activeLayoutId?: string;
+  /**
+   * Grid Layouts — module ids treated as GRID-tier (shared across every
+   * layout rather than captured per-layout). Defaults to
+   * `['editSettings', 'templates']` (see `DEFAULT_GRID_LEVEL_MODULES`).
+   */
+  layoutGridLevelModules?: string[];
+  /**
    * Cycle 24 / Task 3 — `aria-label` applied to the grid's
    * role="grid" element in the a11y overlay. Screen readers read this
    * as the grid's name. Defaults to no label (the overlay has no

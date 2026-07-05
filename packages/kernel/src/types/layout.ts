@@ -88,12 +88,21 @@ export interface GridLayoutsBundle {
   /** All layouts; always includes `{ id: 'default', name: 'Default' }`. */
   layouts: GridLayout[];
   /** Grid-level (shared across all layouts) baseline configuration. */
-  grid: {
-    /** The shared template library (grid tier). */
-    templates?: ColumnTemplate[];
-    /** Baseline grid options. */
-    gridOptions?: Record<string, unknown>;
-    /** Baseline editing rules. */
-    editing?: ModuleStateEnvelope;
-  };
+  grid: GridBaselineConfig;
+}
+
+/**
+ * The grid-level (shared) baseline configuration — the tier `getGridConfig`
+ * returns and `setGridConfig` sets (spec §8). Distinct from a layout's
+ * per-view state: these apply to every layout unless a layout overrides
+ * them. `templates` is the shared library (Phase B); `editing` is the
+ * `editSettings` module envelope; `gridOptions` is the option baseline (§7).
+ */
+export interface GridBaselineConfig {
+  /** The shared template library (grid tier). */
+  templates?: ColumnTemplate[];
+  /** Baseline grid options. */
+  gridOptions?: Record<string, unknown>;
+  /** Baseline editing rules (`editSettings` module envelope). */
+  editing?: ModuleStateEnvelope;
 }

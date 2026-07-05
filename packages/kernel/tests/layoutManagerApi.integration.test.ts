@@ -1,0 +1,178 @@
+/**
+ * Grid Layouts — Phase A / Unit A3: CGrid API wiring, integration.
+ *
+ * Mounts a real CGrid (fake worker + canvas, per the repo integration
+ * harness) and drives the layout API end-to-end: save → mutate view →
+ * load → view restored; grid-tier module slices left untouched while
+ * layout-tier ones restore; grid-option override round-trips across
+ * switches; the `layoutChanged` event fires; construction seeds + Default
+ * invariants; getGridConfig/setGridConfig baseline.
+ *
+ * Reference: worklog A3; spec §§7–10.
+ */
+import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { CGrid } from '../src/cgrid';
+import { DEFAULT_LAYOUT_ID, type GridLayout } from '../src/types/layout';
+import type { StateModule } from '../src/core/moduleState';
+
+beforeAll(() => {
+  (globalThis as any).Worker = class {
+    listeners: Array<(e: { data: any }) => void> = [];
+    constructor(public url: URL) {}
+    postMessage = vi.fn();
+    addEventListener = (_: string, cb: (e: { data: any }) => void) => this.listeners.push(cb);
+    terminate = vi.fn();
+  };
+  HTMLCanvasElement.prototype.getContext = (() => {
+    const fakeCtx: any = {
+      fillRect: vi.fn(), strokeRect: vi.fn(), fillText: vi.fn(),
+      save: vi.fn(), restore: vi.fn(), rect: vi.fn(), clip: vi.fn(),
+      beginPath: vi.fn(), stroke: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(),
+      setTransform: vi.fn(), clearRect: vi.fn(), translate: vi.fn(), scale: vi.fn(),
+      measureText: () => ({ width: 50 }),
+      fillStyle: '', strokeStyle: '', font: '', textBaseline: '',
+      textAlign: '', lineWidth: 1, globalAlpha: 1,
+      lineCap: 'butt', lineJoin: 'miter', miterLimit: 10, lineDashOffset: 0,
+      shadowOffsetX: 0, shadowOffsetY: 0, shadowBlur: 0, shadowColor: '',
+      globalCompositeOperation: 'source-over', imageSmoothingEnabled: true,
+      direction: 'inherit', filter: 'none',
+    };
+    return () => fakeCtx as any;
+  })() as any;
+});
+
+type Row = { id: string; name: string; qty: number };
+
+async function mountGrid(extra: Record<string, unknown> = {}) {
+  const container = document.createElement('div');
+  container.style.cssText = 'width:800px; height:600px;';
+  container.className = 'cg-theme-quartz';
+  document.body.appendChild(container);
+  const grid = new CGrid<Row>(container, {
+    columnDefs: [{ field: 'id' }, { field: 'name' }, { field: 'qty' }],
+    getRowId: (r) => r.id,
+    theme: 'cg-theme-quartz',
+    ...extra,
+  });
+  // Drive the fake worker 'ready' handshake so async construction completes.
+  const w = (grid as any).workerClient.worker;
+  w.listeners.forEach((cb: any) => cb({ data: { id: 1, type: 'ready' } }));
+  await new Promise((r) => setTimeout(r, 0));
+  return { grid, container };
+}
+
+/** A mutable-backed state module for asserting tier restore behavior. */
+function makeCell(id: string, initial: string): StateModule & { value: string } {
+  const cell = {
+    id,
+    version: 1,
+    value: initial,
+    get() { return this.value; },
+    set(data: unknown) { this.value = data as string; },
+  };
+  return cell;
+}
+
+describe('A3 — layout API on a live grid', () => {
+  it('exposes a Default layout and saves a new one, firing layoutChanged', async () => {
+    const { grid } = await mountGrid();
+    const events: any[] = [];
+    grid.on('layoutChanged', (e) => events.push(e));
+
+    expect(grid.getLayouts().map((l) => l.id)).toEqual([DEFAULT_LAYOUT_ID]);
+    expect(grid.getActiveLayoutId()).toBe(DEFAULT_LAYOUT_ID);
+
+    const saved = grid.saveLayout('Blotter');
+    expect(saved.name).toBe('Blotter');
+    expect(grid.getActiveLayoutId()).toBe(saved.id);
+    expect(grid.getLayouts()).toHaveLength(2);
+    expect(events).toEqual([{ type: 'layoutChanged', activeLayoutId: saved.id, source: 'save' }]);
+
+    grid.destroy();
+  });
+
+  it('round-trips view state (sort model) and leaves grid-tier modules untouched', async () => {
+    const { grid } = await mountGrid();
+    const registry = (grid as any).moduleStateRegistry;
+    const editing = makeCell('editSettings', 'E1'); // grid-tier (default)
+    const notes = makeCell('notes', 'N1');           // layout-tier
+    registry.register(editing);
+    registry.register(notes);
+
+    // Mutate the view + both modules, then snapshot into layout 'A'.
+    grid.setSortModel([{ colId: 'name', sort: 'asc' }]);
+    editing.value = 'E-A'; notes.value = 'N-A';
+    const a = grid.saveLayout('A');
+
+    // Move the live view away from 'A'.
+    grid.setSortModel([]);
+    editing.value = 'E-LATER'; notes.value = 'N-LATER';
+
+    grid.loadLayout(a.id);
+    // Layout-tier: restored to what 'A' captured.
+    expect(grid.getState().sortModel).toEqual([{ colId: 'name', sort: 'asc' }]);
+    expect(notes.value).toBe('N-A');
+    // Grid-tier: NOT in the layout snapshot → left exactly as it was.
+    expect(editing.value).toBe('E-LATER');
+
+    grid.destroy();
+  });
+
+  it('round-trips a grid-option override across Default <-> layout switches', async () => {
+    const { grid } = await mountGrid();
+    const baseRowHeight = grid.getGridOption('rowHeight'); // undefined at construction
+
+    grid.setGridOption('rowHeight', 40);
+    const tall = grid.saveLayout('Tall'); // active; overrides.gridOptions = { rowHeight: 40 }
+    expect(tall.overrides).toEqual({ gridOptions: { rowHeight: 40 } });
+
+    // Switch to Default → option resets to the construction baseline.
+    grid.loadLayout(DEFAULT_LAYOUT_ID);
+    expect(grid.getGridOption('rowHeight')).toBe(baseRowHeight);
+    expect(grid.getState().gridOptions).toBeUndefined();
+
+    // Switch back to Tall → override re-applied.
+    grid.loadLayout(tall.id);
+    expect(grid.getGridOption('rowHeight')).toBe(40);
+    expect(grid.getState().gridOptions).toEqual({ rowHeight: 40 });
+
+    grid.destroy();
+  });
+
+  it('honors construction seeds (layouts + activeLayoutId)', async () => {
+    const seed: GridLayout = { id: 'seed1', name: 'Seeded', state: { version: 4 } };
+    const { grid } = await mountGrid({ layouts: [seed], activeLayoutId: 'seed1' });
+    const ids = grid.getLayouts().map((l) => l.id);
+    expect(ids).toContain(DEFAULT_LAYOUT_ID);
+    expect(ids).toContain('seed1');
+    expect(grid.getActiveLayoutId()).toBe('seed1');
+    grid.destroy();
+  });
+
+  it('deletes the active layout with a fallback to Default, and refuses to delete Default', async () => {
+    const { grid } = await mountGrid();
+    const events: any[] = [];
+    grid.on('layoutChanged', (e) => events.push(e));
+    const a = grid.saveLayout('A'); // active
+    grid.deleteLayout(a.id);
+    expect(grid.getActiveLayoutId()).toBe(DEFAULT_LAYOUT_ID);
+    expect(events.at(-1)).toEqual({ type: 'layoutChanged', activeLayoutId: DEFAULT_LAYOUT_ID, source: 'delete' });
+    expect(() => grid.deleteLayout(DEFAULT_LAYOUT_ID)).toThrow();
+    grid.destroy();
+  });
+
+  it('setGridConfig sets the option baseline that layout resets return to', async () => {
+    const { grid } = await mountGrid();
+    grid.setGridConfig({ gridOptions: { rowHeight: 30 } });
+    expect(grid.getGridOption('rowHeight')).toBe(30);
+    expect(grid.getGridConfig().gridOptions).toEqual({ rowHeight: 30 });
+
+    // A layout override on top, then reset → returns to the NEW baseline (30).
+    grid.setGridOption('rowHeight', 48);
+    grid.updateLayout(); // Default captures the override
+    grid.resetLayout();  // active reset → baseline
+    expect(grid.getGridOption('rowHeight')).toBe(30);
+
+    grid.destroy();
+  });
+});

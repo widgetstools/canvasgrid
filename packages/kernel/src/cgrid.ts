@@ -37,6 +37,9 @@ import {
 import {
   buildSnapshot, migrateSnapshot, STATE_SCHEMA_VERSION, type GridState,
 } from './core/stateSnapshot';
+import { LayoutManager, type LayoutManagerHost, type SaveLayoutOptions } from './core/layoutManager';
+import type { GridLayout, GridBaselineConfig } from './types/layout';
+import type { LayoutChangeSource } from './types/event';
 import { StateUpdatedBus } from './core/stateUpdatedBus';
 import {
   flatten as flattenColumnGroups, project as projectColumnGroups,
@@ -232,6 +235,17 @@ const NON_PERSISTABLE_RUNTIME_OPTIONS: ReadonlySet<string> = new Set([
   'processCellFromClipboard',
   'theme',
 ]);
+
+/** Grid Layouts (Phase A / A3) — mint a stable, unique id for a new
+ *  layout. Uses `crypto.randomUUID` where available (browser + modern
+ *  Node), with a monotonic-counter fallback so tests / older runtimes
+ *  still get collision-free ids. */
+let layoutIdCounter = 0;
+function generateLayoutId(): string {
+  const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
+  if (c?.randomUUID) return `layout-${c.randomUUID()}`;
+  return `layout-${++layoutIdCounter}-${Date.now().toString(36)}`;
+}
 export type {
   SettingsSection,
   SettingsBand,
@@ -570,6 +584,27 @@ export class CGrid<TRow = any> {
    *  updateGridOptions (persistable keys only). Feeds the `gridOptions`
    *  slice of the GridState snapshot. */
   private runtimeTouchedOptions = new Map<string, unknown>();
+  /** Grid Layouts (Phase A / A3) — construction-baseline value of each
+   *  runtime option, captured lazily the first time the option is touched
+   *  (before the mutation). Lets `applyLayoutSnapshot` reset options a
+   *  target layout does not override back to baseline (spec §7), since
+   *  kernel `setState` layers option keys additively rather than resetting. */
+  private optionBaselines = new Map<string, unknown>();
+  /** Grid Layouts (Phase A / A3) — the grid-level baseline config set via
+   *  `setGridConfig` (option baseline delta + editing/templates seeds). */
+  private gridBaseline: GridBaselineConfig = {};
+  /** Grid Layouts (Phase A / A3) — the layouts registry + active id.
+   *  Lazily built (see `getLayoutManager`) so the baseline captures the
+   *  fully-constructed view (columns + `initialState`). */
+  private layoutManager?: LayoutManager;
+  /** Grid Layouts (Phase A / A3) — the injected host the LayoutManager
+   *  drives: full-snapshot capture, reset-then-restore apply, id + clock. */
+  private readonly layoutHost: LayoutManagerHost = {
+    captureState: () => this.getState(),
+    applyState: (snapshot) => this.applyLayoutSnapshot(snapshot),
+    newId: () => generateLayoutId(),
+    now: () => Date.now(),
+  };
   /** Cycle 21i / Phase 1 — data-row index currently under the pointer
    *  (null when off any data row). Drives the row-hover highlight;
    *  forced null when `suppressRowHoverHighlight`. */
@@ -2008,6 +2043,11 @@ export class CGrid<TRow = any> {
         this.stateUpdatedBus?.setNextSource('init');
         this.setState(options.initialState);
       }
+      // Grid Layouts (Phase A / A3) — seed the layout registry now that the
+      // construction view (columns + initialState) is live, so a synthesized
+      // Default captures the as-built baseline. Idempotent: the lazy getter
+      // no-ops if a layout API call already created it.
+      this.getLayoutManager();
       // Cycle 21i / Phase 1 — persistState: restore the saved snapshot
       // (AFTER initialState so the user's last session wins over the
       // app default), then arm the debounced autosave. Autosave only
@@ -5514,6 +5554,12 @@ export class CGrid<TRow = any> {
     if (!isRuntimeOption(key as string)) {
       throw new Error(`[cgrid] '${String(key)}' is not a recognised runtime option`);
     }
+    // Grid Layouts (A3) — remember the pre-change value as this option's
+    // baseline the first time it's touched, so a layout switch can reset
+    // it (spec §7). Only persistable keys participate in layout overrides.
+    if (!NON_PERSISTABLE_RUNTIME_OPTIONS.has(key as string) && !this.optionBaselines.has(key as string)) {
+      this.optionBaselines.set(key as string, this.options[key]);
+    }
     this.options[key] = value;
     applyRuntimeOption(this.runtimeTarget(), key as any, value);
     // Cycle 21i / Phase 1 — record the touch for the GridState
@@ -6179,6 +6225,19 @@ export class CGrid<TRow = any> {
       getFilterModel: () => this.getFilterModel(),
       getState: () => this.getState(),
       setState: (snapshot) => this.setState(snapshot),
+      // Grid Layouts (Phase A / A3).
+      getLayouts: () => this.getLayouts(),
+      getActiveLayoutId: () => this.getActiveLayoutId(),
+      getActiveLayout: () => this.getActiveLayout(),
+      saveLayout: (name, opts) => this.saveLayout(name, opts),
+      updateLayout: (id) => this.updateLayout(id),
+      loadLayout: (id) => this.loadLayout(id),
+      deleteLayout: (id) => this.deleteLayout(id),
+      renameLayout: (id, name) => this.renameLayout(id, name),
+      duplicateLayout: (id, name, opts) => this.duplicateLayout(id, name, opts),
+      resetLayout: (id) => this.resetLayout(id),
+      getGridConfig: () => this.getGridConfig(),
+      setGridConfig: (config) => this.setGridConfig(config),
       listCellRenderers: () => this.listCellRenderers(),
       getModal: () => this.getModal(),
       forEachColumnGroup: (callback) => this.forEachColumnGroup(callback),
@@ -7786,6 +7845,150 @@ export class CGrid<TRow = any> {
     if (migrated.scroll) {
       this.scroller.scrollTo({ top: migrated.scroll.top, left: migrated.scroll.left });
     }
+  }
+
+  // ── Grid Layouts (Phase A / A3) ─────────────────────────────────────
+  //
+  // Thin delegation to the LayoutManager (core/layoutManager.ts), which
+  // owns the registry / active id / Default invariants / tier filtering.
+  // CGrid supplies the live-grid seam (capture = getState, apply =
+  // reset-options-then-setState) and fans a `layoutChanged` event.
+
+  /** Build the LayoutManager on first use, capturing the as-constructed
+   *  view as the baseline. Called eagerly at the end of construction so the
+   *  baseline is the post-`initialState` view, and lazily as a guard for a
+   *  layout API call that races construction. */
+  private getLayoutManager(): LayoutManager {
+    if (!this.layoutManager) {
+      this.layoutManager = new LayoutManager(this.layoutHost, {
+        baseline: this.getState(),
+        layouts: this.options.layouts,
+        activeLayoutId: this.options.activeLayoutId,
+        layoutGridLevelModules: this.options.layoutGridLevelModules,
+      });
+    }
+    return this.layoutManager;
+  }
+
+  /** Restore a layout snapshot: first reset every runtime option the target
+   *  does NOT override back to its baseline (kernel `setState` layers
+   *  options additively — spec §7), then `setState` the snapshot (which
+   *  layers the target's option overrides + restores layout-tier modules;
+   *  grid-tier module slices, absent from the snapshot, are left as-is). */
+  private applyLayoutSnapshot(snapshot: GridState): void {
+    const targetOptions = snapshot.gridOptions ?? {};
+    for (const key of [...this.runtimeTouchedOptions.keys()]) {
+      if (key in targetOptions) continue;
+      try {
+        this.setGridOption(key as keyof CGridOptions<TRow>, this.optionBaselines.get(key) as never);
+      } catch (err) {
+        console.warn(`[cgrid] layout apply: could not reset gridOptions['${key}']`, err);
+      }
+      // `setGridOption` re-records the touch; un-record so a value equal to
+      // baseline is no longer treated as an override on the next capture.
+      this.runtimeTouchedOptions.delete(key);
+    }
+    this.setState(snapshot);
+  }
+
+  private emitLayoutChanged(source: LayoutChangeSource): void {
+    this.events.emit({
+      type: 'layoutChanged',
+      activeLayoutId: this.getLayoutManager().getActiveLayoutId(),
+      source,
+    });
+  }
+
+  /** All layouts (Default always present). */
+  getLayouts(): GridLayout[] {
+    return this.getLayoutManager().getLayouts();
+  }
+  getActiveLayoutId(): string {
+    return this.getLayoutManager().getActiveLayoutId();
+  }
+  getActiveLayout(): GridLayout {
+    return this.getLayoutManager().getActiveLayout();
+  }
+  /** Capture the current view as a new named layout (activates by default). */
+  saveLayout(name: string, opts?: SaveLayoutOptions): GridLayout {
+    const layout = this.getLayoutManager().saveLayout(name, opts);
+    this.emitLayoutChanged('save');
+    return layout;
+  }
+  /** Recapture the current view into an existing layout (default: active). */
+  updateLayout(id?: string): GridLayout {
+    const layout = this.getLayoutManager().updateLayout(id);
+    this.emitLayoutChanged('update');
+    return layout;
+  }
+  /** Activate a layout and restore its view. */
+  loadLayout(id: string): GridLayout {
+    const layout = this.getLayoutManager().loadLayout(id);
+    this.emitLayoutChanged('load');
+    return layout;
+  }
+  /** Delete a layout (Default undeletable; active-delete → Default). */
+  deleteLayout(id: string): void {
+    this.getLayoutManager().deleteLayout(id);
+    this.emitLayoutChanged('delete');
+  }
+  /** Rename a layout's display name (unique). */
+  renameLayout(id: string, name: string): GridLayout {
+    const layout = this.getLayoutManager().renameLayout(id, name);
+    this.emitLayoutChanged('rename');
+    return layout;
+  }
+  /** Clone a layout under a new unique name (no activation by default). */
+  duplicateLayout(id: string, name: string, opts?: SaveLayoutOptions): GridLayout {
+    const layout = this.getLayoutManager().duplicateLayout(id, name, opts);
+    this.emitLayoutChanged('duplicate');
+    return layout;
+  }
+  /** Reset a layout (default: active) to the construction baseline. */
+  resetLayout(id?: string): GridLayout {
+    const layout = this.getLayoutManager().resetLayout(id);
+    this.emitLayoutChanged('reset');
+    return layout;
+  }
+
+  /** The grid-level baseline config (spec §8): the option baseline set via
+   *  `setGridConfig`, plus the live `editSettings` / `templates` module
+   *  slices (the latter lights up in Phase B). */
+  getGridConfig(): GridBaselineConfig {
+    const out: GridBaselineConfig = {};
+    if (this.gridBaseline.gridOptions && Object.keys(this.gridBaseline.gridOptions).length > 0) {
+      out.gridOptions = { ...this.gridBaseline.gridOptions };
+    }
+    const modules = this.moduleStateRegistry.snapshot();
+    if (modules?.editSettings) out.editing = modules.editSettings;
+    if (modules?.templates) out.templates = modules.templates.data as GridBaselineConfig['templates'];
+    return out;
+  }
+
+  /** Set the grid-level baseline (spec §7/§8). `gridOptions` become the new
+   *  option baseline (applied live + recorded so layout resets return to
+   *  them, not treated as an override); `editing` / `templates` restore
+   *  their module slices (templates is a Phase-B no-op until registered). */
+  setGridConfig(config: GridBaselineConfig): void {
+    if (config.gridOptions) {
+      for (const [key, value] of Object.entries(config.gridOptions)) {
+        try {
+          this.setGridOption(key as keyof CGridOptions<TRow>, value as never);
+          this.optionBaselines.set(key, value);       // new baseline
+          this.runtimeTouchedOptions.delete(key);      // baseline ≠ override
+        } catch (err) {
+          console.warn(`[cgrid] setGridConfig: skipped gridOptions['${key}']`, err);
+        }
+      }
+      this.gridBaseline.gridOptions = { ...this.gridBaseline.gridOptions, ...config.gridOptions };
+    }
+    if (config.editing) {
+      this.moduleStateRegistry.restore({ editSettings: config.editing });
+    }
+    if (config.templates) {
+      this.moduleStateRegistry.restore({ templates: { version: 1, data: config.templates } });
+    }
+    this.emitLayoutChanged('setGridConfig');
   }
 
   /** Cycle 23 / Task 6 — restore the construction-time defaults.

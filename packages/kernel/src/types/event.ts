@@ -89,6 +89,12 @@ export interface AggregationChangedEvent {
   source: AggregationChangedSource;
 }
 
+/** Grid Layouts (Phase A) — the operation that triggered a
+ *  `layoutChanged` event. */
+export type LayoutChangeSource =
+  | 'save' | 'update' | 'load' | 'delete' | 'rename' | 'duplicate' | 'reset'
+  | 'import' | 'setGridConfig';
+
 export type CGridEvent<TRow = any> =
   | { type: 'gridReady'; api: CGridApi<TRow> }
   | { type: 'cellClicked'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
@@ -461,4 +467,9 @@ export type CGridEvent<TRow = any> =
    *  signals a change via `notifyModuleStateChanged(id)`. The
    *  stateUpdated bus maps this to the `modules` snapshot key so the
    *  slice rides the persistState autosave. */
-  | { type: 'moduleStateChanged'; moduleId: string };
+  | { type: 'moduleStateChanged'; moduleId: string }
+  /** Grid Layouts (Phase A) — fires when the active layout changes or the
+   *  layout set is mutated (save / update / load / delete / rename /
+   *  duplicate / reset / import) or the grid baseline is set. `source`
+   *  names the operation; `activeLayoutId` is the id active afterward. */
+  | { type: 'layoutChanged'; activeLayoutId: string; source: LayoutChangeSource };

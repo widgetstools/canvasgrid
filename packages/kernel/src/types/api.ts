@@ -821,4 +821,34 @@ export interface CGridApi<TRow = any> {
    * pixels. Cycle 6 / Task 7.
    */
   getCellPaintedBg(rowIndex: number, colId: string): string | null;
+
+  // ── Grid Layouts (Phase A) ──────────────────────────────────────────
+  /** All layouts (Default always present), as defensive clones. */
+  getLayouts(): import('./layout').GridLayout[];
+  /** Id of the active layout. */
+  getActiveLayoutId(): string;
+  /** The active layout, as a defensive clone. */
+  getActiveLayout(): import('./layout').GridLayout;
+  /** Capture the current view as a NEW named layout (unique name).
+   *  Activates it by default. */
+  saveLayout(name: string, opts?: { activate?: boolean }): import('./layout').GridLayout;
+  /** Recapture the current view into an existing layout (default: active). */
+  updateLayout(id?: string): import('./layout').GridLayout;
+  /** Activate a layout and restore its view (resets grid options to the
+   *  baseline, then layers the layout's overrides). */
+  loadLayout(id: string): import('./layout').GridLayout;
+  /** Delete a layout. Rejects `'default'`; deleting the active layout
+   *  falls back to Default. */
+  deleteLayout(id: string): void;
+  /** Rename a layout's display name (unique; Default's name is editable). */
+  renameLayout(id: string, name: string): import('./layout').GridLayout;
+  /** Clone a layout under a new unique name (does not activate by default). */
+  duplicateLayout(id: string, name: string, opts?: { activate?: boolean }): import('./layout').GridLayout;
+  /** Reset a layout (default: active) to the construction baseline. */
+  resetLayout(id?: string): import('./layout').GridLayout;
+  /** The grid-level baseline config (templates / gridOptions / editing). */
+  getGridConfig(): import('./layout').GridBaselineConfig;
+  /** Set the grid-level baseline config (applies option baseline; restores
+   *  editing / templates module slices). */
+  setGridConfig(config: import('./layout').GridBaselineConfig): void;
 }

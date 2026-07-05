@@ -96,11 +96,11 @@ New subsystem: expression → style, targeting rows/columns; layout-tier. Spec �
 
 ## Progress tracker (update every session)
 
-- [x] A1 · [x] A2 · [ ] A3 · [ ] A4 · [ ] A5 · [ ] A6 (Phase A merged)
+- [x] A1 · [x] A2 · [x] A3 · [ ] A4 · [ ] A5 · [ ] A6 (Phase A merged)
 - [ ] B1 · [ ] B2 · [ ] B3 · [ ] B4 · [ ] B5 (Phase B merged)
 - [ ] C1 · [ ] C2 · [ ] C3 · [ ] C4 (Phase C merged)
 
-**Next unit: A3.** (Phase A branch `feature/grid-layouts-a` is live — continue A3 on it.)
+**Next unit: A4.** (Phase A branch `feature/grid-layouts-a` is live — continue A4 on it.)
 
 ### Ledger
 
@@ -156,3 +156,30 @@ New subsystem: expression → style, targeting rows/columns; layout-tier. Spec �
     baseline; the editing-override refinement rides with Phase B). No CGrid wiring (→ A3), no
     persistence (→ A5).
   - **Verify:** typecheck clean; full suite 2826 pass (222 files). Unit-only (no UI in A2).
+
+- **2026-07-05 · A3 done** (branch `feature/grid-layouts-a`).
+  - **Types:** `types/event.ts` — `layoutChanged` event + `LayoutChangeSource`. `types/layout.ts`
+    — `GridBaselineConfig` (reused by `GridLayoutsBundle.grid`). `types/options.ts` — construction
+    opts `layouts?` / `activeLayoutId?` / `layoutGridLevelModules?`. `types/api.ts` — 12 methods on
+    `CGridApi`. Barrel exports `GridBaselineConfig`, `DEFAULT_GRID_LEVEL_MODULES`, `LayoutChangeSource`.
+  - **cgrid.ts wiring:** `LayoutManager` built lazily (`getLayoutManager`, eager call after
+    `initialState` so baseline = as-built view) over a real host —
+    `captureState = getState`, `applyState = applyLayoutSnapshot`, `newId = generateLayoutId`
+    (crypto.randomUUID + counter fallback), `now = Date.now`. **`applyLayoutSnapshot` implements the
+    §7 reset-to-baseline** the A2 host contract requires: reverts every runtime option the target
+    doesn't override to its baseline (via new `optionBaselines`, captured lazily in `setGridOption`),
+    un-records the touch, then `setState` layers the override. 12 delegating methods emit
+    `layoutChanged` with a per-op `source`. `getGridConfig`/`setGridConfig` = grid-level baseline
+    (option baseline apply + `editSettings`/`templates` module passthrough — templates a Phase-B
+    no-op). 12 `makeApi` entries.
+  - `packages/kernel/tests/layoutManagerApi.integration.test.ts` — 6 live-grid tests (fake
+    worker+canvas harness): Default present + save + `layoutChanged`; **view-state (sortModel)
+    round-trip with grid-tier module untouched + layout-tier restored**; **grid-option override
+    round-trip across Default↔layout**; construction seeds; active-delete→Default fallback +
+    Default-undeletable; `setGridConfig` baseline that `resetLayout` returns to.
+  - **Design calls:** `layoutChanged` fires on ALL mutations (save/update/load/delete/rename/
+    duplicate/reset/setGridConfig), always carrying the current `activeLayoutId`. Layout mutations
+    do NOT yet mark the persist bus dirty (→ A5); layouts are NOT yet folded into the persisted blob
+    (→ A5). `overrides.editing` still not captured (Phase B).
+  - **Verify:** typecheck clean; `npm run build` clean; full suite **2832 pass (223 files)**;
+    A1(31)+A2(14)+A3(6) green. Integration-tested on a real grid; browser-verify + demo is A6.

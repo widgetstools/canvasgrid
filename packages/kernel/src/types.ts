@@ -162,10 +162,12 @@ export type {
   ColumnGroupWalkNode,
 } from './types/api';
 
-// Grid Layouts — public data model (Phase A / Unit A1).
+// Grid Layouts — public data model (Phase A).
 export type {
   LayoutState,
   GridLayout,
   GridLayoutsBundle,
+  GridBaselineConfig,
 } from './types/layout';
-export { DEFAULT_LAYOUT_ID } from './types/layout';
+export { DEFAULT_LAYOUT_ID, DEFAULT_GRID_LEVEL_MODULES } from './types/layout';
+export type { LayoutChangeSource } from './types/event';
