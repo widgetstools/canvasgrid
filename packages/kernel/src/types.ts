@@ -169,5 +169,9 @@ export type {
   GridLayoutsBundle,
   GridBaselineConfig,
 } from './types/layout';
-export { DEFAULT_LAYOUT_ID, DEFAULT_GRID_LEVEL_MODULES } from './types/layout';
+export {
+  DEFAULT_LAYOUT_ID,
+  DEFAULT_GRID_LEVEL_MODULES,
+  LAYOUTS_BUNDLE_VERSION,
+} from './types/layout';
 export type { LayoutChangeSource } from './types/event';

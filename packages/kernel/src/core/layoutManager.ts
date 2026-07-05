@@ -34,9 +34,9 @@
  * Reference: docs/superpowers/specs/2026-07-05-grid-layouts-design.md §§4, 6–9, 12.
  */
 
-import type { GridLayout, LayoutState } from '../types/layout';
-import { DEFAULT_LAYOUT_ID, DEFAULT_GRID_LEVEL_MODULES } from '../types/layout';
-import type { GridState } from './stateSnapshot';
+import type { GridLayout, LayoutState, GridLayoutsBundle, GridBaselineConfig } from '../types/layout';
+import { DEFAULT_LAYOUT_ID, DEFAULT_GRID_LEVEL_MODULES, LAYOUTS_BUNDLE_VERSION } from '../types/layout';
+import { migrateSnapshot, type GridState } from './stateSnapshot';
 import type { ModuleStateEnvelope } from './moduleState';
 
 /** The grid coupling the manager needs, injected so the engine stays
@@ -79,6 +79,55 @@ export interface LayoutManagerInit {
    *  layout). Defaults to {@link DEFAULT_GRID_LEVEL_MODULES}. Mirrors the
    *  `layoutGridLevelModules` construction option (spec §10). */
   layoutGridLevelModules?: string[];
+  /** The grid-level baseline config (templates / gridOptions / editing).
+   *  Rides in the exported bundle's `grid` field. */
+  gridConfig?: GridBaselineConfig;
+}
+
+/** Options for `importLayout`. */
+export interface ImportLayoutOptions {
+  /** When the incoming id already exists, replace it in place instead of
+   *  minting a new id (the default). */
+  overwrite?: boolean;
+}
+
+/** Options for `importLayouts`. */
+export interface ImportLayoutsOptions {
+  /** `'merge'` (default) folds the bundle's layouts into the current set
+   *  (per-layout collision handling); `'replace'` swaps the whole set +
+   *  active id + grid config for the bundle's. */
+  mode?: 'replace' | 'merge';
+  /** On `'merge'`, colliding ids replace in place instead of minting new
+   *  ids. Ignored for `'replace'`. */
+  overwrite?: boolean;
+}
+
+/**
+ * Forward-migrate an exported bundle to {@link LAYOUTS_BUNDLE_VERSION}.
+ * Mirrors `migrateSnapshot`: older bundles run through the migration chain;
+ * a bundle newer than this build throws a clear error rather than restoring
+ * a shape it doesn't understand. Per-layout `state` migration is separate
+ * (each layout's `GridState` migrates on import — see `LayoutManager`).
+ */
+export const LAYOUTS_BUNDLE_MIGRATIONS: Record<number, (b: GridLayoutsBundle) => GridLayoutsBundle> = {
+  // 1 -> 2: add the migrator here when the bundle shape next changes.
+};
+
+export function migrateLayoutsBundle(bundle: GridLayoutsBundle): GridLayoutsBundle {
+  let v = bundle.version ?? 1;
+  if (v > LAYOUTS_BUNDLE_VERSION) {
+    throw new Error(
+      `[cgrid] cannot import layouts: bundle version ${v} is newer than this build (${LAYOUTS_BUNDLE_VERSION})`,
+    );
+  }
+  let current = bundle;
+  while (v < LAYOUTS_BUNDLE_VERSION) {
+    const step = LAYOUTS_BUNDLE_MIGRATIONS[v];
+    if (!step) throw new Error(`[cgrid] missing layouts-bundle migration from version ${v} → ${v + 1}`);
+    current = step(current);
+    v++;
+  }
+  return { ...current, version: LAYOUTS_BUNDLE_VERSION };
 }
 
 /** Options common to the layout-creating operations. */
@@ -145,6 +194,8 @@ export class LayoutManager {
   private readonly baseline: GridState;
   /** Module ids treated as grid-tier (excluded from layout snapshots). */
   private readonly gridLevelModuleIds: ReadonlySet<string>;
+  /** Grid-level baseline config carried in the exported bundle's `grid`. */
+  private gridConfig: GridBaselineConfig;
   /** Ordered registry. Default is guaranteed present; order otherwise
    *  follows insertion / the supplied order. */
   private layouts: GridLayout[];
@@ -156,6 +207,7 @@ export class LayoutManager {
     this.gridLevelModuleIds = new Set(
       init.layoutGridLevelModules ?? DEFAULT_GRID_LEVEL_MODULES,
     );
+    this.gridConfig = clone(init.gridConfig ?? {});
 
     // Adopt supplied layouts (deep-cloned so external mutation can't leak
     // into the registry), then guarantee a Default exists — seeded from
@@ -291,6 +343,101 @@ export class LayoutManager {
     return clone(layout);
   }
 
+  // ── grid-level baseline config ─────────────────────────────────────────
+
+  /** The grid-level baseline config (templates / gridOptions / editing). */
+  getGridConfig(): GridBaselineConfig {
+    return clone(this.gridConfig);
+  }
+
+  /** Merge a partial grid-level config into the baseline. `gridOptions`
+   *  accumulate per-key; `editing` / `templates` replace when provided.
+   *  Applying it to the live grid is the host's concern (CGrid). */
+  setGridConfig(config: GridBaselineConfig): void {
+    const next: GridBaselineConfig = { ...this.gridConfig };
+    if (config.gridOptions) {
+      next.gridOptions = { ...next.gridOptions, ...config.gridOptions };
+    }
+    if (config.editing) next.editing = clone(config.editing);
+    if (config.templates) next.templates = clone(config.templates);
+    this.gridConfig = next;
+  }
+
+  // ── import / export (A4) ───────────────────────────────────────────────
+
+  /** Export a single layout as a portable object. Unknown id throws (§12).
+   *  `templates` is populated with the referenced defs in Phase B (B4);
+   *  A4 stubs it empty — the layout still round-trips its state + overrides. */
+  exportLayout(id: string): GridLayout {
+    const layout = clone(this.require(id));
+    layout.templates = [];
+    return layout;
+  }
+
+  /** Export the full bundle: version + active id + all layouts + the
+   *  grid-level baseline config. JSON-serializable. */
+  exportLayouts(): GridLayoutsBundle {
+    return {
+      version: LAYOUTS_BUNDLE_VERSION,
+      activeLayoutId: this.activeId,
+      layouts: this.layouts.map((l) => clone(l)),
+      grid: clone(this.gridConfig),
+    };
+  }
+
+  /** Import one layout (pure registry mutation — activation/apply is the
+   *  caller's concern). Its `state` is forward-migrated (tolerant). A
+   *  colliding id mints a new id unless `overwrite`; the display name is
+   *  uniquified to preserve the grid-wide unique-name invariant. */
+  importLayout(layout: GridLayout, opts?: ImportLayoutOptions): GridLayout {
+    const incoming = clone(layout);
+    incoming.state = this.migrateState(incoming.state);
+    const existingIdx = this.layouts.findIndex((l) => l.id === incoming.id);
+    if (existingIdx >= 0 && opts?.overwrite) {
+      incoming.name = this.uniquify(incoming.name, incoming.id);
+      incoming.updatedAt = this.host.now();
+      this.layouts[existingIdx] = incoming;
+    } else {
+      if (existingIdx >= 0) incoming.id = this.host.newId(); // collision → new id
+      incoming.name = this.uniquify(incoming.name, incoming.id);
+      incoming.updatedAt = this.host.now();
+      this.layouts.push(incoming);
+    }
+    return clone(incoming);
+  }
+
+  /** Import a bundle (pure registry mutation). `'replace'` swaps the whole
+   *  set + active id + grid config (a Default is synthesized if the bundle
+   *  omits one); `'merge'` (default) folds each layout in via
+   *  {@link importLayout} and merges the grid config. Older bundles migrate
+   *  forward; a newer bundle throws (`migrateLayoutsBundle`). */
+  importLayouts(bundle: GridLayoutsBundle, opts?: ImportLayoutsOptions): void {
+    const migrated = migrateLayoutsBundle(clone(bundle));
+    const mode = opts?.mode ?? 'merge';
+    if (mode === 'replace') {
+      this.gridConfig = clone(migrated.grid ?? {});
+      this.layouts = migrated.layouts.map((l) => {
+        const copy = clone(l);
+        copy.state = this.migrateState(copy.state);
+        return copy;
+      });
+      if (!this.layouts.some((l) => l.id === DEFAULT_LAYOUT_ID)) {
+        this.layouts.unshift({
+          id: DEFAULT_LAYOUT_ID,
+          name: 'Default',
+          state: toLayoutTierState(this.baseline, this.gridLevelModuleIds),
+        });
+      }
+      this.dedupeNames();
+      this.activeId = this.has(migrated.activeLayoutId) ? migrated.activeLayoutId : DEFAULT_LAYOUT_ID;
+    } else {
+      this.setGridConfig(migrated.grid ?? {});
+      for (const l of migrated.layouts) {
+        this.importLayout(l, { overwrite: opts?.overwrite });
+      }
+    }
+  }
+
   // ── internals ────────────────────────────────────────────────────────
 
   /** Restore a layout to the grid: re-inject its grid-option override into
@@ -345,5 +492,45 @@ export class LayoutManager {
       throw new Error(`[cgrid] a layout named '${clean}' already exists`);
     }
     return clean;
+  }
+
+  /** Forward-migrate a layout's `GridState`, tolerantly: an un-migratable
+   *  snapshot (e.g. one newer than this build) is kept as-is rather than
+   *  aborting the whole import — `setState` warns/degrades on load (§12). */
+  private migrateState(state: LayoutState): LayoutState {
+    try {
+      return migrateSnapshot(state);
+    } catch {
+      return state;
+    }
+  }
+
+  /** Return a grid-wide unique display name (case-insensitive), suffixing
+   *  ` (2)`, ` (3)`, … on collision. Import can't reject on a name clash
+   *  (it must not lose the layout), so it disambiguates instead. */
+  private uniquify(name: string, exceptId?: string): string {
+    const base = normName(name) || 'Layout';
+    const taken = (candidate: string) =>
+      this.layouts.some((l) => l.id !== exceptId && nameKey(l.name) === nameKey(candidate));
+    if (!taken(base)) return base;
+    let n = 2;
+    let candidate = `${base} (${n})`;
+    while (taken(candidate)) candidate = `${base} (${++n})`;
+    return candidate;
+  }
+
+  /** Enforce the unique-name invariant across the whole registry (used
+   *  after a `'replace'` import, where the incoming set is trusted but
+   *  might still carry a clash once a synthesized Default is added). */
+  private dedupeNames(): void {
+    const seen = new Set<string>();
+    for (const layout of this.layouts) {
+      const base = normName(layout.name) || 'Layout';
+      let candidate = base;
+      let n = 2;
+      while (seen.has(nameKey(candidate))) candidate = `${base} (${n++})`;
+      layout.name = candidate;
+      seen.add(nameKey(candidate));
+    }
   }
 }

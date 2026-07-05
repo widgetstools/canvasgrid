@@ -39,6 +39,15 @@ export const DEFAULT_LAYOUT_ID = 'default';
 export const DEFAULT_GRID_LEVEL_MODULES: readonly string[] = ['editSettings', 'templates'];
 
 /**
+ * Schema version of an exported {@link GridLayoutsBundle} envelope. Bumped
+ * when the bundle SHAPE changes (independent of each layout's own
+ * `state.version`, which the `GridState` migrator handles). Import forward-
+ * migrates older bundles; a newer bundle throws a clear error (mirrors
+ * `migrateSnapshot`). See `migrateLayoutsBundle`.
+ */
+export const LAYOUTS_BUNDLE_VERSION = 1;
+
+/**
  * A layout's persisted view state.
  *
  * Structurally a `GridState` — column geometry, filter/sort/group/pivot,

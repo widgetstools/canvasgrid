@@ -176,3 +176,42 @@ describe('A3 — layout API on a live grid', () => {
     grid.destroy();
   });
 });
+
+describe('A4 — import / export on a live grid', () => {
+  it('exports a bundle and re-imports it into a fresh grid (view + option override restored)', async () => {
+    // Grid 1: build a layout with a sort model + a grid-option override.
+    const { grid: g1 } = await mountGrid();
+    g1.setSortModel([{ colId: 'name', sort: 'asc' }]);
+    g1.setGridOption('rowHeight', 40);
+    const saved = g1.saveLayout('Blotter'); // active, overrides rowHeight
+    const bundle = JSON.parse(JSON.stringify(g1.exportLayouts()));
+    expect(bundle.activeLayoutId).toBe(saved.id);
+    g1.destroy();
+
+    // Grid 2: fresh, import the bundle (replace) → state re-materializes live.
+    const { grid: g2 } = await mountGrid();
+    const events: any[] = [];
+    g2.on('layoutChanged', (e) => events.push(e));
+    g2.importLayouts(bundle, { mode: 'replace' });
+
+    expect(g2.getLayouts().map((l) => l.name)).toContain('Blotter');
+    expect(g2.getActiveLayoutId()).toBe(saved.id);
+    expect(g2.getState().sortModel).toEqual([{ colId: 'name', sort: 'asc' }]);
+    expect(g2.getGridOption('rowHeight')).toBe(40); // override applied live
+    expect(events.at(-1)).toEqual({ type: 'layoutChanged', activeLayoutId: saved.id, source: 'import' });
+    g2.destroy();
+  });
+
+  it('importLayout with { activate } applies the layout view to the live grid', async () => {
+    const { grid } = await mountGrid();
+    const layout: GridLayout = {
+      id: 'ext',
+      name: 'Sorted',
+      state: { version: 4, sortModel: [{ colId: 'qty', sort: 'desc' }] } as any,
+    };
+    grid.importLayout(layout, { activate: true });
+    expect(grid.getActiveLayoutId()).toBe('ext');
+    expect(grid.getState().sortModel).toEqual([{ colId: 'qty', sort: 'desc' }]);
+    grid.destroy();
+  });
+});

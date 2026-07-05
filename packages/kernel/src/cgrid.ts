@@ -38,7 +38,7 @@ import {
   buildSnapshot, migrateSnapshot, STATE_SCHEMA_VERSION, type GridState,
 } from './core/stateSnapshot';
 import { LayoutManager, type LayoutManagerHost, type SaveLayoutOptions } from './core/layoutManager';
-import type { GridLayout, GridBaselineConfig } from './types/layout';
+import type { GridLayout, GridBaselineConfig, GridLayoutsBundle } from './types/layout';
 import type { LayoutChangeSource } from './types/event';
 import { StateUpdatedBus } from './core/stateUpdatedBus';
 import {
@@ -590,9 +590,6 @@ export class CGrid<TRow = any> {
    *  target layout does not override back to baseline (spec §7), since
    *  kernel `setState` layers option keys additively rather than resetting. */
   private optionBaselines = new Map<string, unknown>();
-  /** Grid Layouts (Phase A / A3) — the grid-level baseline config set via
-   *  `setGridConfig` (option baseline delta + editing/templates seeds). */
-  private gridBaseline: GridBaselineConfig = {};
   /** Grid Layouts (Phase A / A3) — the layouts registry + active id.
    *  Lazily built (see `getLayoutManager`) so the baseline captures the
    *  fully-constructed view (columns + `initialState`). */
@@ -6238,6 +6235,10 @@ export class CGrid<TRow = any> {
       resetLayout: (id) => this.resetLayout(id),
       getGridConfig: () => this.getGridConfig(),
       setGridConfig: (config) => this.setGridConfig(config),
+      exportLayout: (id) => this.exportLayout(id),
+      exportLayouts: () => this.exportLayouts(),
+      importLayout: (layout, opts) => this.importLayout(layout, opts),
+      importLayouts: (bundle, opts) => this.importLayouts(bundle, opts),
       listCellRenderers: () => this.listCellRenderers(),
       getModal: () => this.getModal(),
       forEachColumnGroup: (callback) => this.forEachColumnGroup(callback),
@@ -7951,25 +7952,33 @@ export class CGrid<TRow = any> {
     return layout;
   }
 
-  /** The grid-level baseline config (spec §8): the option baseline set via
-   *  `setGridConfig`, plus the live `editSettings` / `templates` module
-   *  slices (the latter lights up in Phase B). */
+  /** The grid-level baseline config (spec §8): the stored baseline
+   *  (`gridOptions` + whatever was last set) overlaid with the LIVE
+   *  `editSettings` / `templates` module slices (templates lights up in
+   *  Phase B). */
   getGridConfig(): GridBaselineConfig {
-    const out: GridBaselineConfig = {};
-    if (this.gridBaseline.gridOptions && Object.keys(this.gridBaseline.gridOptions).length > 0) {
-      out.gridOptions = { ...this.gridBaseline.gridOptions };
-    }
+    const out = this.getLayoutManager().getGridConfig();
+    if (out.gridOptions && Object.keys(out.gridOptions).length === 0) delete out.gridOptions;
     const modules = this.moduleStateRegistry.snapshot();
     if (modules?.editSettings) out.editing = modules.editSettings;
     if (modules?.templates) out.templates = modules.templates.data as GridBaselineConfig['templates'];
     return out;
   }
 
-  /** Set the grid-level baseline (spec §7/§8). `gridOptions` become the new
-   *  option baseline (applied live + recorded so layout resets return to
-   *  them, not treated as an override); `editing` / `templates` restore
-   *  their module slices (templates is a Phase-B no-op until registered). */
+  /** Set the grid-level baseline (spec §7/§8): apply it to the live grid
+   *  and store it in the LayoutManager so it rides the exported bundle. */
   setGridConfig(config: GridBaselineConfig): void {
+    this.applyGridConfigLive(config);
+    this.getLayoutManager().setGridConfig(config);
+    this.emitLayoutChanged('setGridConfig');
+  }
+
+  /** Apply a grid-level config to the LIVE grid (no manager write / event):
+   *  `gridOptions` become the new option baseline (applied + recorded so
+   *  layout resets return to them, not treated as an override); `editing` /
+   *  `templates` restore their module slices. Shared by `setGridConfig` and
+   *  the import path. */
+  private applyGridConfigLive(config: GridBaselineConfig): void {
     if (config.gridOptions) {
       for (const [key, value] of Object.entries(config.gridOptions)) {
         try {
@@ -7980,7 +7989,6 @@ export class CGrid<TRow = any> {
           console.warn(`[cgrid] setGridConfig: skipped gridOptions['${key}']`, err);
         }
       }
-      this.gridBaseline.gridOptions = { ...this.gridBaseline.gridOptions, ...config.gridOptions };
     }
     if (config.editing) {
       this.moduleStateRegistry.restore({ editSettings: config.editing });
@@ -7988,7 +7996,39 @@ export class CGrid<TRow = any> {
     if (config.templates) {
       this.moduleStateRegistry.restore({ templates: { version: 1, data: config.templates } });
     }
-    this.emitLayoutChanged('setGridConfig');
+  }
+
+  // ── Import / export (A4) ────────────────────────────────────────────
+
+  /** Export a single layout (bundles referenced template defs in Phase B). */
+  exportLayout(id: string): GridLayout {
+    return this.getLayoutManager().exportLayout(id);
+  }
+  /** Export the full bundle: layouts + active id + the live grid config. */
+  exportLayouts(): GridLayoutsBundle {
+    const bundle = this.getLayoutManager().exportLayouts();
+    bundle.grid = this.getGridConfig(); // overlay live editing/templates modules
+    return bundle;
+  }
+  /** Import a single layout (collision → new id unless `overwrite`),
+   *  optionally activating (and applying) it. */
+  importLayout(layout: GridLayout, opts?: { overwrite?: boolean; activate?: boolean }): GridLayout {
+    const mgr = this.getLayoutManager();
+    const imported = mgr.importLayout(layout, opts);
+    if (opts?.activate) mgr.loadLayout(imported.id); // apply to the live grid
+    this.emitLayoutChanged('import');
+    return imported;
+  }
+  /** Import a bundle (`'merge'` default / `'replace'`), then resync the live
+   *  grid to the (possibly new) grid config + active layout view. */
+  importLayouts(bundle: GridLayoutsBundle, opts?: { mode?: 'replace' | 'merge'; overwrite?: boolean }): void {
+    const mgr = this.getLayoutManager();
+    mgr.importLayouts(bundle, opts);
+    // Grid config first (sets the option baseline) so the active view's
+    // reset-to-baseline in loadLayout lands on the imported baseline.
+    this.applyGridConfigLive(mgr.getGridConfig());
+    mgr.loadLayout(mgr.getActiveLayoutId());
+    this.emitLayoutChanged('import');
   }
 
   /** Cycle 23 / Task 6 — restore the construction-time defaults.

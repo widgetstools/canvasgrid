@@ -96,11 +96,11 @@ New subsystem: expression → style, targeting rows/columns; layout-tier. Spec �
 
 ## Progress tracker (update every session)
 
-- [x] A1 · [x] A2 · [x] A3 · [ ] A4 · [ ] A5 · [ ] A6 (Phase A merged)
+- [x] A1 · [x] A2 · [x] A3 · [x] A4 · [ ] A5 · [ ] A6 (Phase A merged)
 - [ ] B1 · [ ] B2 · [ ] B3 · [ ] B4 · [ ] B5 (Phase B merged)
 - [ ] C1 · [ ] C2 · [ ] C3 · [ ] C4 (Phase C merged)
 
-**Next unit: A4.** (Phase A branch `feature/grid-layouts-a` is live — continue A4 on it.)
+**Next unit: A5.** (Phase A branch `feature/grid-layouts-a` is live — continue A5 on it.)
 
 ### Ledger
 
@@ -183,3 +183,35 @@ New subsystem: expression → style, targeting rows/columns; layout-tier. Spec �
     (→ A5). `overrides.editing` still not captured (Phase B).
   - **Verify:** typecheck clean; `npm run build` clean; full suite **2832 pass (223 files)**;
     A1(31)+A2(14)+A3(6) green. Integration-tested on a real grid; browser-verify + demo is A6.
+
+- **2026-07-05 · A4 done** (branch `feature/grid-layouts-a`).
+  - `types/layout.ts` — `LAYOUTS_BUNDLE_VERSION` (=1). Barrel re-exports it.
+  - `core/layoutManager.ts` — **grid baseline config moved into the manager** (owns
+    `gridConfig`; `getGridConfig`/`setGridConfig` — merge gridOptions, replace editing/templates)
+    so the exported bundle is self-contained + unit-testable. `migrateLayoutsBundle` +
+    `LAYOUTS_BUNDLE_MIGRATIONS` (mirror `migrateSnapshot`: older migrates forward, newer throws).
+    `exportLayout(id)` (templates stub `[]` until B4; unknown id throws), `exportLayouts()` (full
+    bundle), `importLayout(layout, {overwrite})` (collision→new id unless overwrite; name
+    uniquified to keep the invariant; per-layout `state` forward-migrated tolerantly),
+    `importLayouts(bundle, {mode:'replace'|'merge', overwrite})` (replace swaps set+active+config,
+    synthesizes Default if absent, dedupes names; merge folds in + merges config). Import methods
+    are PURE (no host apply) — the live grid resync is CGrid's job.
+  - `cgrid.ts` — dropped the local `gridBaseline`; `getGridConfig`/`setGridConfig` delegate to the
+    manager (with a live editSettings/templates module overlay). `applyGridConfigLive` extracted +
+    reused by import. 4 methods: `exportLayout`/`exportLayouts` (overlays live grid config),
+    `importLayout` (activate→loadLayout applies), `importLayouts` (import → applyGridConfigLive →
+    loadLayout(active) so the option baseline lands before the active view resets to it). 4 `makeApi`
+    + `CGridApi` entries.
+  - `tests/layoutManagerImportExport.test.ts` — 14 pure tests: export shape + defensive copy;
+    exportLayout stub + unknown-throw; importLayout collision→new-id / overwrite-in-place /
+    name-uniquify / state-migration; merge (keep existing, merge config, no active switch); replace
+    (swap set+active+config, synth Default, keep bundle Default, unknown-active fallback); bundle
+    newer→throw; **full JSON round-trip**. +2 live-grid integration tests (export→import into a
+    fresh grid restores view + option override; importLayout{activate} applies).
+  - **Design calls:** `importLayout(s)` PURE in the manager (activation/live-apply orchestrated by
+    CGrid). Import names are uniquified (never rejected — import must not drop a layout). CGrid
+    import emits a single `layoutChanged` source `'import'`.
+  - **Scope held:** layouts still NOT folded into the persisted blob / no autosave-dirty (→ A5);
+    `exportLayout` templates stub (→ B4); `overrides.editing` not captured (Phase B).
+  - **Verify:** typecheck + `npm run build` clean; full suite **2848 pass (224 files)**;
+    A1(31)+A2(14)+A4-unit(14)+integration(8) green.
