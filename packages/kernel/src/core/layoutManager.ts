@@ -277,11 +277,14 @@ export class LayoutManager {
     return clone(layout);
   }
 
-  /** Make `id` active and apply its stored view to the grid. */
+  /** Make `id` active and apply its stored view to the grid. Applies BEFORE
+   *  committing the active id, so a failed apply (e.g. a layout whose `state`
+   *  is newer than this build) leaves the active layout — and the live view —
+   *  unchanged rather than half-switched. */
   loadLayout(id: string): GridLayout {
     const layout = this.require(id);
-    this.activeId = layout.id;
     this.applyLayout(layout);
+    this.activeId = layout.id;
     return clone(layout);
   }
 
@@ -356,7 +359,9 @@ export class LayoutManager {
   setGridConfig(config: GridBaselineConfig): void {
     const next: GridBaselineConfig = { ...this.gridConfig };
     if (config.gridOptions) {
-      next.gridOptions = { ...next.gridOptions, ...config.gridOptions };
+      // Clone so a later mutation of a caller's object-valued option can't
+      // corrupt the stored baseline (matches every other entry point here).
+      next.gridOptions = clone({ ...next.gridOptions, ...config.gridOptions });
     }
     if (config.editing) next.editing = clone(config.editing);
     if (config.templates) next.templates = clone(config.templates);
@@ -496,7 +501,10 @@ export class LayoutManager {
 
   /** Forward-migrate a layout's `GridState`, tolerantly: an un-migratable
    *  snapshot (e.g. one newer than this build) is kept as-is rather than
-   *  aborting the whole import — `setState` warns/degrades on load (§12). */
+   *  aborting the whole import (§12). It stays loadable-by-name; only an
+   *  attempt to APPLY it throws — cleanly, before any side effect (see
+   *  CGrid.applyLayoutSnapshot's up-front migrate + loadLayout's apply-then-
+   *  commit ordering) — so the grid is never left half-switched. */
   private migrateState(state: LayoutState): LayoutState {
     try {
       return migrateSnapshot(state);

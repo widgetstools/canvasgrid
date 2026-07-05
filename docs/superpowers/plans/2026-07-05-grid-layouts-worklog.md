@@ -269,3 +269,36 @@ PR + squash-merge.)
   - **Verify:** kernel typecheck + full suite **2851 pass (224 files)**; demo typecheck clean; E2E
     2/2. **Remaining:** SINGLE Phase-A closeout review (fable) + fix wave, then PR + squash-merge +
     ff-only sync → then check A6.
+
+- **2026-07-05 · A6 closeout review (fable) + fix wave done** (branch `feature/grid-layouts-a`).
+  One batch review over the whole A1–A6 diff (per the batch-review directive). It found 4 real
+  bugs + 2 hardening items; all fixed and regression-tested:
+  1. **[CRITICAL] View-state leak on switch.** `applyLayoutSnapshot` handed a sparse snapshot to
+     the partial `setState`, so switching to a layout that OMITS a field left the outgoing layout's
+     filter / pivot / side-bar / expanded / selection / scroll / themeParams in place (masked
+     because every test used SORT, which rides `columnState` and coincidentally converges). Fix:
+     `setState(snapshot, { exhaustive: true })` — a layout switch now CLEARS every view field the
+     target omits (filter→{}, sort→[], rowGroups→[], pivot→off, expanded→collapse, selection→clear,
+     side-bar→closed, scroll→0, themeParams→cleared). Public/partial `setState` unchanged. (Module
+     slices still not cleared — grid-tier must survive + generic layout-tier module reset needs the
+     registry; noted for Phase B, `columnGroups` is the only layout-tier module today.)
+  2. **[HIGH] initialState option baseline lost.** Options set via `initialState` recorded a
+     baseline of `undefined` (lazy pre-change capture ran before any layout existed), so switching
+     to Default reset them to the KERNEL default. Fix: `getLayoutManager` seeds `optionBaselines`
+     from the construction-time `runtimeTouchedOptions` (the app baseline).
+  3. **[MEDIUM] merge import clobbered the live view.** `importLayouts` re-applied the active
+     layout even in `'merge'` mode, discarding unsaved on-screen changes. Fix: only `'replace'`
+     resyncs the live grid; `'merge'` folds layouts in without touching the view.
+  4. **[MEDIUM-LOW] newer-version layout half-applied on load.** A tolerated newer `state` threw
+     mid-`setState`, leaving activeId advanced + options reset. Fix: `applyLayoutSnapshot` migrates
+     UP FRONT (throws before side effects) and `LayoutManager.loadLayout` commits `activeId` only
+     AFTER a successful apply.
+  5/6. **[hardening] Clone at boundaries** — `setGridConfig` / `applyGridConfigLive` now clone
+     option-baseline values, and `getGridConfig` clones the live `editSettings`/`templates` module
+     envelopes, so a consumer can't corrupt stored baselines or reach into live module state.
+  - **Regression tests:** +4 kernel integration tests (filter round-trip on switch — the field that
+    exposed #1; initialState baseline; merge preserves view; newer-state throws cleanly) and +1 E2E
+    (filter round-trip). All green.
+  - **Verify:** kernel typecheck + full suite **2855 pass (224 files)**; `npm run build` clean; demo
+    E2E **3/3** (incl. the new filter round-trip). Review verdict was needs-work → after this fix
+    wave: ship. **Remaining: PR + squash-merge + ff-only sync → then check A6.**

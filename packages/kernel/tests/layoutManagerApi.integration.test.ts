@@ -289,3 +289,62 @@ describe('A5 — persistence round-trip', () => {
     grid.destroy();
   });
 });
+
+// Regressions for the Phase-A closeout review's fix wave. These exercise view
+// fields that do NOT ride `columnState` (filter), where a partial restore
+// would leak the outgoing layout's state, plus the option-baseline / merge /
+// version-guard fixes.
+describe('A6 fix wave — regressions', () => {
+  const FILTER = { name: { filterType: 'text', type: 'contains', filter: 'AAA' } };
+
+  it('clears view state the target layout omits when switching (filter round-trip)', async () => {
+    const { grid } = await mountGrid();
+    grid.setFilterModel(FILTER as any);
+    const filtered = grid.saveLayout('Filtered'); // active
+    expect(grid.getState().filterModel).toBeDefined();
+
+    // Switch to Default (no filter) → the filter is CLEARED, not left behind.
+    grid.loadLayout(DEFAULT_LAYOUT_ID);
+    expect(grid.getState().filterModel).toBeUndefined();
+
+    // Switch back → the filter is restored.
+    grid.loadLayout(filtered.id);
+    expect((grid.getState().filterModel as any).name.filter).toBe('AAA');
+    grid.destroy();
+  });
+
+  it('resets a runtime option to the initialState baseline, not the kernel default', async () => {
+    const { grid } = await mountGrid({ initialState: { version: 4, gridOptions: { rowHeight: 60 } } });
+    expect(grid.getGridOption('rowHeight')).toBe(60);
+    grid.setGridOption('rowHeight', 40);
+    grid.saveLayout('Tall'); // active; overrides rowHeight
+    grid.loadLayout(DEFAULT_LAYOUT_ID);
+    // Back to the app baseline (60), NOT the kernel default (undefined).
+    expect(grid.getGridOption('rowHeight')).toBe(60);
+    grid.destroy();
+  });
+
+  it('merge-importing does not disturb the current on-screen view', async () => {
+    const { grid } = await mountGrid();
+    grid.setSortModel([{ colId: 'name', sort: 'asc' }]); // unsaved current view
+    const bundle: any = {
+      version: 1,
+      activeLayoutId: 'default',
+      layouts: [{ id: 'x', name: 'X', state: { version: 4, sortModel: [{ colId: 'qty', sort: 'desc' }] } }],
+      grid: {},
+    };
+    grid.importLayouts(bundle, { mode: 'merge' });
+    expect(grid.getLayouts().map((l) => l.name)).toContain('X');
+    // The current unsaved view survives a merge.
+    expect(grid.getState().sortModel).toEqual([{ colId: 'name', sort: 'asc' }]);
+    grid.destroy();
+  });
+
+  it('refuses to load a layout whose state is newer than the build, leaving the active layout unchanged', async () => {
+    const { grid } = await mountGrid();
+    const imported = grid.importLayout({ id: 'future', name: 'Future', state: { version: 999 } as any });
+    expect(() => grid.loadLayout(imported.id)).toThrow();
+    expect(grid.getActiveLayoutId()).toBe(DEFAULT_LAYOUT_ID); // no half-switch
+    grid.destroy();
+  });
+});

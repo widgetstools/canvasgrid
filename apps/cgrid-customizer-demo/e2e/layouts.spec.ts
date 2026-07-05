@@ -71,6 +71,24 @@ test('saves a layout and round-trips its view when switching', async ({ page }) 
   expect(await cg.getSortModel()).toEqual([{ colId: 'ticker', sort: 'asc' }]);
 });
 
+test('clears view state a layout omits when switching (filter round-trip)', async ({ page }) => {
+  const select = page.getByTestId('layout-select');
+
+  // Filter the grid, then save it as a layout.
+  await page.evaluate(() =>
+    (window as any).__cgapi.setFilterModel({ ticker: { filterType: 'text', type: 'contains', filter: 'TICK54' } }));
+  await saveLayout(page, 'Filtered');
+  expect(await page.evaluate(() => (window as any).__cgapi.getState().filterModel)).toBeTruthy();
+
+  // Switch to Default → the filter is CLEARED (not a sort, which rides columnState).
+  await select.selectOption({ label: 'Default' });
+  expect(await page.evaluate(() => (window as any).__cgapi.getState().filterModel)).toBeFalsy();
+
+  // Switch back → the filter is restored.
+  await select.selectOption({ label: 'Filtered' });
+  expect(await page.evaluate(() => (window as any).__cgapi.getState().filterModel?.ticker?.filter)).toBe('TICK54');
+});
+
 test('persists layouts across a reload', async ({ page }) => {
   const cg = api(page);
   await cg.setSortModel([{ colId: 'ticker', sort: 'asc' }]);
