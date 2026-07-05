@@ -202,6 +202,15 @@ export class WorkerCoordinator {
     return this.client.setEmitGroupDescendants(enabled);
   }
 
+  /** Cycle 25 / MarketsCgrid M3 — displayed-row-id mirror controls. */
+  setEmitVisibleRowIds(enabled: boolean): Promise<string[]> {
+    return this.client.setEmitVisibleRowIds(enabled);
+  }
+
+  getDisplayedRowIds(): readonly string[] {
+    return this.client.getDisplayedRowIds();
+  }
+
   setExternalFilterPresent(present: boolean): Promise<{ visibleCount: number }> {
     return this.client.setExternalFilterPresent(present);
   }

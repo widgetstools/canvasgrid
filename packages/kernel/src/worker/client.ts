@@ -70,6 +70,11 @@ export class WorkerClient {
   // synchronous reply on their callId/batchId.
   private flushScheduled = false;
   private pendingModelUpdated: { visibleCount: number; groupKeys?: string[] } | null = null;
+  /** Cycle 25 / MarketsCgrid M3 — synchronous mirror of the worker's
+   *  post-filter/post-sort visible-row-id order. Empty until
+   *  `setEmitVisibleRowIds(true)` primes it. Updated directly on push
+   *  (no rAF batching — readers want the freshest order). */
+  private displayedRowIds: string[] = [];
   private pendingHeights: Array<{ rowStart: number; heights: Float32Array }> = [];
   private pendingTxnResults: TransactionResult[] = [];
   private destroyed = false;
@@ -120,7 +125,9 @@ export class WorkerClient {
       else                       pending.resolve(msg);
       return;
     }
-    if (msg.type === 'modelUpdated') {
+    if (msg.type === 'visibleRowIdsChanged') {
+      this.displayedRowIds = msg.ids;
+    } else if (msg.type === 'modelUpdated') {
       this.pendingModelUpdated = { visibleCount: msg.visibleCount, groupKeys: msg.groupKeys };
       this.scheduleFlush();
     } else if (msg.type === 'asyncTransactionsFlushed') {
@@ -297,6 +304,26 @@ export class WorkerClient {
       groupKeys: r.groupKeys ?? [],
       groupDescendants: r.groupDescendants ?? [],
     }));
+  }
+
+  /** Cycle 25 / MarketsCgrid M3 — toggle the displayed-row-id mirror.
+   *  The reply primes the mirror so callers can read
+   *  `getDisplayedRowIds()` as soon as the promise resolves; every
+   *  subsequent model change keeps it fresh via the
+   *  `visibleRowIdsChanged` push. */
+  setEmitVisibleRowIds(enabled: boolean): Promise<string[]> {
+    return this.send<{ ids: string[] }>({
+      type: 'setEmitVisibleRowIds', payload: { enabled },
+    }).then((r) => {
+      this.displayedRowIds = enabled ? r.ids : [];
+      return this.displayedRowIds;
+    });
+  }
+
+  /** Current mirror of the worker's visible-row-id order. Empty until
+   *  `setEmitVisibleRowIds(true)` resolves. */
+  getDisplayedRowIds(): readonly string[] {
+    return this.displayedRowIds;
   }
 
   /** Cycle 7 / Task 8 — toggle the external-filter round-trip. When

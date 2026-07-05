@@ -255,6 +255,14 @@ export interface CGridApi<TRow = any> {
    *  into the grid instance. Equal to the `visibleRowCount` last
    *  shipped via `modelUpdated`. */
   getDisplayedRowCount(): number;
+  /** Cycle 25 / MarketsCgrid M3 — synchronous row lookup by rowId off
+   *  the main-thread mirror. No worker round-trip. `undefined` when the
+   *  id is unknown. */
+  getRowById(rowId: string): TRow | undefined;
+  /** Cycle 25 / MarketsCgrid M3 — the post-filter/post-sort visible
+   *  row-id order, mirrored synchronously on main. Empty unless the grid
+   *  was constructed with `mirrorDisplayedRowIds: true`. */
+  getDisplayedRowIds(): readonly string[];
   /** Cycle 13 / Task 2 — total pre-filter row count (the size of the
    *  data the grid was last seeded with, plus any add / minus any
    *  remove from `applyTransaction`). Powers

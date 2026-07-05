@@ -1927,6 +1927,12 @@ export class CGrid<TRow = any> {
       if (initialPresent) {
         await this.workerCoord.setExternalFilterPresent(true).catch(() => {});
       }
+      // Cycle 25 / MarketsCgrid M3 — opt-in displayed-row-id mirror.
+      // Toggled before the first setRowData so the mirror is primed by
+      // the same pipeline pass that produces the first paint.
+      if (this.options.mirrorDisplayedRowIds === true) {
+        await this.workerCoord.setEmitVisibleRowIds(true).catch(() => {});
+      }
       // Cycle 8 / Task 2 — push the construction-time sort model to the
       // worker BEFORE the first setRowData so the very first paint is
       // already sorted. When the model is empty (no `initialSort` on any
@@ -3297,6 +3303,24 @@ export class CGrid<TRow = any> {
    *  the floating-filter E2E that asserts typing reduces the visible
    *  rows. Identical to the value last shipped via `modelUpdated`. */
   getDisplayedRowCount(): number { return this.rowCount; }
+
+  /** Cycle 25 / MarketsCgrid M3 — synchronous row lookup by rowId off
+   *  the main-thread `rowDataById` mirror (populated by `setRowData`,
+   *  maintained by every transaction). No worker round-trip. */
+  getRowById(rowId: string): TRow | undefined {
+    return this.rowDataById.get(rowId);
+  }
+
+  /** Cycle 25 / MarketsCgrid M3 — the worker's post-filter/post-sort
+   *  visible-row-id order, mirrored synchronously on main. Empty unless
+   *  the grid was constructed with `mirrorDisplayedRowIds: true` (the
+   *  mirror costs one id-array clone per model change, so it is strictly
+   *  opt-in). Ungrouped grids: exactly the displayed order. Grouped
+   *  grids: the post-filter data-row set (group-internal display order
+   *  lives in the group tree). */
+  getDisplayedRowIds(): readonly string[] {
+    return this.workerCoord.getDisplayedRowIds();
+  }
 
   /** Cycle 13 / Task 2 — total pre-filter row count. Reads off the
    *  main-thread `rowDataById` cache (populated by `setRowData` +

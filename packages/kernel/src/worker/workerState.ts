@@ -49,6 +49,12 @@ export interface State {
   /** Cycle 15 / Task 8 — when true every `groupKeysSnapshot` reply
    *  carries the parallel `groupDescendants: string[][]` array. */
   emitGroupDescendants: boolean;
+  /** Cycle 25 / MarketsCgrid M3 — when true, every `visibleCache`
+   *  rebuild pushes a `visibleRowIdsChanged` message so main can keep
+   *  a synchronous displayed-row-id mirror (AG-parity `forEachNodeAfterFilter`
+   *  / `getDisplayedRowAtIndex` consumers). Off by default — ticking
+   *  grids don't pay the per-flush id-array clone unless asked. */
+  emitVisibleRowIds: boolean;
   /** Cycle 15 / Task 7 — persistent expanded-key set. `null` is the
    *  "default = every group expanded" sentinel. */
   expandedKeys: Set<string> | null;

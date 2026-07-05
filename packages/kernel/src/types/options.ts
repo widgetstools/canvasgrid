@@ -66,6 +66,16 @@ export interface CGridOptions<TRow = any> {
    * contracts (e.g. AG-Grid's `({data}) => id`) set this. Initial-only.
    */
   rowIdField?: string;
+  /**
+   * Cycle 25 / MarketsCgrid M3 — maintain a synchronous main-thread
+   * mirror of the worker's post-filter/post-sort visible-row-id order,
+   * readable via `getDisplayedRowIds()`. Costs one id-array clone per
+   * model change (sort / filter / transaction flush), so it is strictly
+   * opt-in — adapters that need AG-parity synchronous displayed-row
+   * access (forEachNodeAfterFilter, getDisplayedRowAtIndex) set this.
+   * Initial-only.
+   */
+  mirrorDisplayedRowIds?: boolean;
   rowHeight?: number;
   headerHeight?: number;
   rowSelection?: 'none' | 'single' | 'multiple';

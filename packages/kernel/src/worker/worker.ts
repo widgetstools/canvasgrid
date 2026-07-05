@@ -382,6 +382,13 @@ export function createWorkerHost(post: PostFn): WorkerHost {
   async function invalidateAndCount(): Promise<number> {
     if (!state) return 0;
     state.visibleCache = await buildVisibleAsync();
+    // Cycle 25 / MarketsCgrid M3 — displayed-row-id mirror push. This is
+    // the single choke-point every model change funnels through (sort /
+    // filter / setRowData / transaction flush), so pushing here keeps
+    // main's mirror in lockstep without touching each reply site.
+    if (state.emitVisibleRowIds) {
+      post({ type: 'visibleRowIdsChanged', ids: state.visibleCache.slice() });
+    }
     if (isGroupingActive()) {
       return computeGroupVisibleRowCount(
         state.groupOutput!.flatOrder, effectiveExpandedKeys(),
@@ -526,6 +533,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       pivotOut:    null,
       groupInputIds: null,
       emitGroupDescendants: false,
+      emitVisibleRowIds: false,
       expandedKeys: null,
       comparators,
       aggFuncs,

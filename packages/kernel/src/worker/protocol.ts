@@ -425,6 +425,11 @@ export type WorkerRequest =
    *  per-click round-trip. Resolves with a fresh `groupKeysSnapshot`
    *  so the toggle-on call also primes the descendant cache. */
   | { id: ReqId; type: 'setEmitGroupDescendants'; payload: { enabled: boolean } }
+  /** Cycle 25 / MarketsCgrid M3 — toggle the displayed-row-id mirror.
+   *  Replies with a `visibleRowIdsSnapshot` so the toggle-on call
+   *  itself primes main's mirror without waiting for the next model
+   *  change. */
+  | { id: ReqId; type: 'setEmitVisibleRowIds'; payload: { enabled: boolean } }
   | { id: ReqId; type: 'getViewport';      payload: ViewportRequest }
   | { id: ReqId; type: 'updateColumns';    payload: { columns: WorkerColumn[] } }
   | { id: ReqId; type: 'getRowIndexForId';    payload: { rowId: string } }
@@ -694,9 +699,18 @@ export type WorkerResponse =
    *  already unwrapped). The main thread anchors the grid at the focused
    *  cell + builds `applyTransaction({ update })` from this. */
   | { id: ReqId; type: 'clipboardDeserializeResult'; rows: string[][] }
+  /** Cycle 25 / MarketsCgrid M3 — reply to `setEmitVisibleRowIds`:
+   *  the current post-filter/post-sort visible-row-id order. */
+  | { id: ReqId; type: 'visibleRowIdsSnapshot'; ids: string[] }
   | { id: ReqId; type: 'error';               error: string };
 
 export type WorkerPush =
+  /** Cycle 25 / MarketsCgrid M3 — the post-filter/post-sort row-id order
+   *  after a `visibleCache` rebuild. Only sent while the
+   *  `setEmitVisibleRowIds(true)` flag is on. Ungrouped grids: exactly
+   *  the displayed order. Grouped grids: the post-filter data-row set
+   *  (group-internal display order lives in the group tree). */
+  | { type: 'visibleRowIdsChanged'; ids: string[] }
   | {
       type: 'modelUpdated';
       visibleCount: number;

@@ -25,6 +25,7 @@ export type DataPipelineRequest = Extract<WorkerRequest, {
     | 'applyTransaction'
     | 'updateColumns'
     | 'setEnableCellChangeFlash'
+    | 'setEmitVisibleRowIds'
     | 'flashCells'
     | 'setAggFuncs'
     | 'setCalcProgram'
@@ -147,6 +148,15 @@ export async function handleDataPipeline(
         resolver(reordered);
       }
       post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: state.visibleCache?.length ?? 0 });
+      return;
+    }
+
+    case 'setEmitVisibleRowIds': {
+      // Cycle 25 / MarketsCgrid M3 — toggle the displayed-row-id mirror.
+      // Reply with the current order so toggle-on primes main's mirror.
+      state.emitVisibleRowIds = req.payload.enabled === true;
+      if (state.visibleCache === null) await helpers.invalidateAndCount();
+      post({ id: req.id, type: 'visibleRowIdsSnapshot', ids: (state.visibleCache ?? []).slice() });
       return;
     }
 
