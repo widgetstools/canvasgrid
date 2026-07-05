@@ -24,6 +24,8 @@ export class GridOptionsToolPanel implements ToolPanel {
     const rawApi = params.api as GridOptionsAccessor & {
       setThemeParams?(patch: Record<string, string>): void;
       getThemeParams?(): Record<string, string>;
+      isSideBarVisible?(): boolean;
+      setSideBarVisible?(show: boolean): void;
     };
     this.root = document.createElement('div');
     this.root.className = 'cg-settings-panel';
@@ -43,6 +45,14 @@ export class GridOptionsToolPanel implements ToolPanel {
       };
       api.setThemeColor = (token, value) => setThemeParams({ [token]: value });
       api.getThemeColorOverride = (token) => getThemeParams()[token];
+    }
+
+    // Side-panel visibility surface — enables the Appearance band's
+    // "Side panel" switch. Present on the CGrid api whenever a side bar
+    // is configured.
+    if (typeof rawApi.isSideBarVisible === 'function' && typeof rawApi.setSideBarVisible === 'function') {
+      api.isSideBarVisible = rawApi.isSideBarVisible.bind(rawApi);
+      api.setSideBarVisible = rawApi.setSideBarVisible.bind(rawApi);
     }
 
     // After any commit, refresh the WHOLE form (not just the changed row):

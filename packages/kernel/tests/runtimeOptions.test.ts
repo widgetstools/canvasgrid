@@ -210,6 +210,20 @@ describe('CGrid.setGridOption — runtime options apply', () => {
   });
 
 
+  it('floatingFilter grid option shows/hides the floating-filter row at runtime', () => {
+    const { grid, host } = mountGrid();
+    const vp = () => (grid as any).viewport;
+    // Intrinsic: floating-filter row is shown by default (isFloatingFilterEnabled
+    // defaults to true), so the subgrid contributes a positioned row.
+    expect(vp().floatingFilterRowTop).not.toBeUndefined();
+    grid.setGridOption('floatingFilter', false);
+    expect(vp().floatingFilterRowTop).toBeUndefined();
+    // Back on (undefined reverts to the default-on) → row returns.
+    grid.setGridOption('floatingFilter', undefined as never);
+    expect(vp().floatingFilterRowTop).not.toBeUndefined();
+    teardown(grid, host);
+  });
+
   it('suppressColumnVirtualisation / suppressRowVirtualisation persist as flags', () => {
     const { grid, host } = mountGrid();
     const api = (grid as any).makeApi();
