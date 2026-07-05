@@ -301,4 +301,9 @@ PR + squash-merge.)
     (filter round-trip). All green.
   - **Verify:** kernel typecheck + full suite **2855 pass (224 files)**; `npm run build` clean; demo
     E2E **3/3** (incl. the new filter round-trip). Review verdict was needs-work → after this fix
-    wave: ship. **Remaining: PR + squash-merge + ff-only sync → then check A6.**
+    wave: ship.
+  - **Integration:** local squash-merge was NOT possible — the `main` checkout had uncommitted
+    changes to `cgrid.ts` + `api.ts` (the files Phase A rewrote), which blocks a clean merge. So
+    Phase A was pushed and opened as **PR #103** (https://github.com/widgetstools/canvasgrid/pull/103)
+    for squash-merge on GitHub. Branch `feature/grid-layouts-a` (7 commits) + worktree preserved.
+    Once #103 squash-merges, tick A6 and sync main ff-only.
