@@ -83,6 +83,46 @@ describe('Tier B widening — class-only methods now on CGridApi', () => {
     expect(api.getFilterModel()).toEqual({ b: { filterType: 'text', type: 'contains', filter: 'x' } });
     grid.destroy();
   });
+
+  it('getConfig returns full options + embedded state; setConfig applies it live', () => {
+    const { grid, api } = mount([
+      { colId: 'a', field: 'a' }, { colId: 'b', field: 'b' },
+    ]);
+    // Mutate a runtime option + view state so the config carries both.
+    api.setGridOption('animateRows', true);
+    api.setSortModel([{ colId: 'a', sort: 'desc' }]);
+
+    const config = api.getConfig();
+    // Full options are present (columnDefs from construction, runtime edit).
+    expect(config.columnDefs).toHaveLength(2);
+    expect(config.animateRows).toBe(true);
+    // Current view state rides along under `initialState`.
+    expect(config.initialState?.sortModel).toEqual([{ colId: 'a', sort: 'desc' }]);
+
+    // Reset the live grid, then re-apply the captured config in place.
+    api.setGridOption('animateRows', false);
+    api.setSortModel([]);
+    expect(api.getSortModel()).toEqual([]);
+
+    api.setConfig(config);
+    expect(api.getGridOption('animateRows')).toBe(true);
+    expect(api.getSortModel()).toEqual([{ colId: 'a', sort: 'desc' }]);
+    grid.destroy();
+  });
+
+  it('setConfig skips initial-only keys without throwing', () => {
+    const { grid, api } = mount([{ colId: 'a', field: 'a' }]);
+    // A config carrying initial-only keys (gridId/getRowId) must not throw —
+    // they can't change on a live grid, so they're silently skipped.
+    expect(() => api.setConfig({
+      columnDefs: [{ colId: 'a', field: 'a' }],
+      getRowId: (r: any) => r.id,
+      gridId: 'other',
+      animateRows: true,
+    } as any)).not.toThrow();
+    expect(api.getGridOption('animateRows')).toBe(true);
+    grid.destroy();
+  });
 });
 
 describe('listCellRenderers — instance-truth enumeration', () => {

@@ -464,6 +464,20 @@ export interface CGridApi<TRow = any> {
    *  migrated). */
   setState(snapshot: import('../core/stateSnapshot').GridState): void;
 
+  /** The grid's COMPLETE configuration in one object: the full live options
+   *  (columnDefs, defaultColDef, callbacks, every runtime-updated option)
+   *  with the current runtime + view state embedded as `initialState`. Pass
+   *  it to `new CGrid(host, grid.getConfig())` to reconstruct the grid, or to
+   *  `setConfig` to apply it live. Shallow copy — not pure-JSON (use
+   *  `getState()` for the serialisable view-state slice). */
+  getConfig(): CGridOptions<TRow>;
+
+  /** Apply a config object (from `getConfig`) to this live grid: the embedded
+   *  `initialState` restores via `setState`, the rest via `updateGridOptions`.
+   *  Initial-only / non-runtime keys can't change mid-session and are
+   *  skipped. */
+  setConfig(config: CGridOptions<TRow>): void;
+
   /** Cycle 21i Phase 2 / T4 — the grid's modal primitive (lazily
    *  created, one modal at a time): themed backdrop + centered dialog
    *  with focus trap, ESC/backdrop dismiss, and focus restore. Panels

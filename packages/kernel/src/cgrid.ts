@@ -6179,6 +6179,8 @@ export class CGrid<TRow = any> {
       getFilterModel: () => this.getFilterModel(),
       getState: () => this.getState(),
       setState: (snapshot) => this.setState(snapshot),
+      getConfig: () => this.getConfig(),
+      setConfig: (config) => this.setConfig(config),
       listCellRenderers: () => this.listCellRenderers(),
       getModal: () => this.getModal(),
       forEachColumnGroup: (callback) => this.forEachColumnGroup(callback),
@@ -7786,6 +7788,44 @@ export class CGrid<TRow = any> {
     if (migrated.scroll) {
       this.scroller.scrollTo({ top: migrated.scroll.top, left: migrated.scroll.left });
     }
+  }
+
+  /** The grid's complete configuration in one object: the full live options
+   *  (columnDefs, defaultColDef, callbacks, and every runtime-updated option)
+   *  with the current runtime + view state embedded as `initialState`. Pass
+   *  it straight to `new CGrid(host, grid.getConfig())` to reconstruct the
+   *  grid exactly, or to `setConfig` to apply it to a live grid.
+   *
+   *  This is a SHALLOW copy — `columnDefs` / `defaultColDef` and any function
+   *  options are shared by reference (so the result is not pure-JSON; use
+   *  `getState()` for the serialisable view-state slice). Treat it as
+   *  read-only or clone before mutating. */
+  getConfig(): CGridOptions<TRow> {
+    return { ...this.options, initialState: this.getState() };
+  }
+
+  /** Apply a config object (as produced by `getConfig`) to this live grid.
+   *  The embedded `initialState` restores via `setState`; the remaining
+   *  options are applied via `updateGridOptions`. Initial-only keys
+   *  (`gridId`, `getRowId`, `worker`, …) and any non-runtime keys can't
+   *  change on a live grid, so they're skipped — construct a new grid from
+   *  `getConfig()` when you need those to differ. */
+  setConfig(config: CGridOptions<TRow>): void {
+    const initialState = config.initialState;
+    const src = config as unknown as Record<string, unknown>;
+    const applicable: Record<string, unknown> = {};
+    for (const k of Object.keys(src)) {
+      if (k === 'initialState') continue;
+      if (INITIAL_ONLY_OPTIONS.has(k as keyof CGridOptions<any>)) continue;
+      // Only columnDefs (handled specially by updateGridOptions) and known
+      // runtime options can apply mid-session; everything else (callbacks,
+      // construction-time flags) would be rejected by setGridOption.
+      if (k === 'columnDefs' || isRuntimeOption(k)) {
+        applicable[k] = src[k];
+      }
+    }
+    this.updateGridOptions(applicable as Partial<CGridOptions<TRow>>);
+    if (initialState) this.setState(initialState);
   }
 
   /** Cycle 23 / Task 6 — restore the construction-time defaults.
