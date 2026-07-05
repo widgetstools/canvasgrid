@@ -19,9 +19,12 @@ import type { TypedEventEmitter } from './eventEmitter';
 import type { CGridEvent } from '../types';
 import type { GridState } from './stateSnapshot';
 
-type StateKey = keyof GridState;
+/** Persist keys the bus can mark dirty: every `GridState` field, plus the
+ *  virtual `'layouts'` slot (Grid Layouts / A5) the layouts bundle folds
+ *  into the persisted blob. */
+type StateKey = keyof GridState | 'layouts';
 
-/** Map of source-event type → the GridState key it dirties. */
+/** Map of source-event type → the persist key it dirties. */
 const EVENT_TO_KEY: Record<string, StateKey> = {
   filterChanged: 'filterModel',
   sortChanged: 'sortModel',
@@ -46,6 +49,10 @@ const EVENT_TO_KEY: Record<string, StateKey> = {
   sideBarVisibleChanged: 'sideBar',
   toolPanelVisibleChanged: 'sideBar',
   bodyScrollEnd: 'scroll',
+  // Grid Layouts (A5) — any layout mutation dirties the virtual `layouts`
+  // slot so the debounced autosave re-folds the bundle into the blob, even
+  // when the mutation didn't change the live view (save/rename/delete-other).
+  layoutChanged: 'layouts',
 };
 
 export class StateUpdatedBus {
