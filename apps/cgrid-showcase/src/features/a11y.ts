@@ -62,7 +62,16 @@ export const a11y: Feature = {
     'screen reader would read.',
 
   mount(gridHost, controls, theme) {
-    let activeTheme: ThemeChoice = (theme as ThemeChoice) ?? 'cg-theme-quartz';
+    // This demo compares Quartz against the WCAG high-contrast themes, so it
+    // keeps its own Quartz baseline rather than inheriting the showcase's
+    // global StarUI default (which has no pill in this picker).
+    const A11Y_THEMES: ThemeChoice[] = [
+      'cg-theme-quartz', 'cg-theme-quartz-dark',
+      'cg-theme-high-contrast', 'cg-theme-high-contrast-dark',
+    ];
+    let activeTheme: ThemeChoice = A11Y_THEMES.includes(theme as ThemeChoice)
+      ? (theme as ThemeChoice)
+      : 'cg-theme-quartz';
     let tabExits = false;
     let checkboxOnly = false;
 

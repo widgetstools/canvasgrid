@@ -18,7 +18,12 @@ import { makeRows } from '../seedData';
  * class flip / inline-style write / `cssReader.read()` + repaint.
  */
 type Density = 'compact' | 'normal' | 'comfortable';
-type ThemeChoice = 'cg-theme-quartz' | 'cg-theme-quartz-dark' | 'cg-theme-auto';
+type ThemeChoice =
+  | 'cg-theme-starui'
+  | 'cg-theme-starui-dark'
+  | 'cg-theme-quartz'
+  | 'cg-theme-quartz-dark'
+  | 'cg-theme-auto';
 
 const COLUMNS: CColDef<ShowcaseRow>[] = [
   { colId: 'ticker', field: 'ticker', headerName: 'Ticker', cellDataType: 'text', width: 120 },
@@ -139,8 +144,10 @@ export const theming: Feature = {
 
     const themeButtons: Record<ThemeChoice, HTMLButtonElement> = {} as any;
     const themeLabels: Record<ThemeChoice, string> = {
-      'cg-theme-quartz': 'Light',
-      'cg-theme-quartz-dark': 'Dark',
+      'cg-theme-starui': 'StarUI Light',
+      'cg-theme-starui-dark': 'StarUI Dark',
+      'cg-theme-quartz': 'Quartz Light',
+      'cg-theme-quartz-dark': 'Quartz Dark',
       'cg-theme-auto': 'Auto',
     };
     const refreshTheme = () => {
