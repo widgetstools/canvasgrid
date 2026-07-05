@@ -2057,13 +2057,15 @@ export class CGrid<TRow = any> {
           const { StatePersistenceController } = await import('./core/statePersistence');
           const persistOpts = options.persistState === true ? {} : options.persistState;
           this.statePersistence = new StatePersistenceController(options.gridId, persistOpts, {
-            applyState: (state) => {
-              this.stateUpdatedBus?.setNextSource('init');
-              this.setState(state);
-            },
+            applyState: (state) => this.restorePersistedBlob(state),
+            // Grid Layouts (A5) — fold the layouts bundle into the saved blob
+            // under the reserved `layouts` field (spec §11). The adapter is
+            // unchanged; normal view-restore ignores the extra field.
             onStateUpdated: (fn) =>
-              this.events.on('stateUpdated', (ev) =>
-                fn((ev as unknown as { state: GridState }).state)),
+              this.events.on('stateUpdated', (ev) => {
+                const state = (ev as unknown as { state: GridState }).state;
+                fn({ ...state, layouts: this.exportLayouts() } as GridState);
+              }),
           });
           await this.statePersistence.restore();
         }
@@ -8029,6 +8031,23 @@ export class CGrid<TRow = any> {
     this.applyGridConfigLive(mgr.getGridConfig());
     mgr.loadLayout(mgr.getActiveLayoutId());
     this.emitLayoutChanged('import');
+  }
+
+  /** Grid Layouts (A5) — restore a persisted blob (`{ ...viewState, layouts?
+   *  }`). The reserved `layouts` bundle (when present) reseeds the manager
+   *  — taking PRECEDENCE over `options.layouts` (spec §11) — and its grid
+   *  config baseline is applied to the live grid; then the top-level view
+   *  state restores the last-seen view on top. No `layouts` field → a plain
+   *  view-state restore (older blobs, or grids that never used layouts). */
+  private restorePersistedBlob(blob: GridState): void {
+    this.stateUpdatedBus?.setNextSource('init');
+    const { layouts, ...viewState } = blob as GridState & { layouts?: GridLayoutsBundle };
+    if (layouts) {
+      // Pure reseed (no event / no view apply — the view is restored below).
+      this.getLayoutManager().importLayouts(layouts, { mode: 'replace' });
+      this.applyGridConfigLive(this.getLayoutManager().getGridConfig());
+    }
+    this.setState(viewState as GridState);
   }
 
   /** Cycle 23 / Task 6 — restore the construction-time defaults.

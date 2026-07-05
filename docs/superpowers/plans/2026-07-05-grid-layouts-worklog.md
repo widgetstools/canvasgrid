@@ -96,11 +96,13 @@ New subsystem: expression → style, targeting rows/columns; layout-tier. Spec �
 
 ## Progress tracker (update every session)
 
-- [x] A1 · [x] A2 · [x] A3 · [x] A4 · [ ] A5 · [ ] A6 (Phase A merged)
+- [x] A1 · [x] A2 · [x] A3 · [x] A4 · [x] A5 · [ ] A6 (Phase A merged)
 - [ ] B1 · [ ] B2 · [ ] B3 · [ ] B4 · [ ] B5 (Phase B merged)
 - [ ] C1 · [ ] C2 · [ ] C3 · [ ] C4 (Phase C merged)
 
-**Next unit: A5.** (Phase A branch `feature/grid-layouts-a` is live — continue A5 on it.)
+**Next unit: A6.** (Phase A branch `feature/grid-layouts-a` — the CLOSEOUT: demo control in
+`cgrid-customizer-demo` + browser-verify + 1–2 E2E, SINGLE Phase-A review (fable) + fix wave,
+PR + squash-merge.)
 
 ### Ledger
 
@@ -215,3 +217,29 @@ New subsystem: expression → style, targeting rows/columns; layout-tier. Spec �
     `exportLayout` templates stub (→ B4); `overrides.editing` not captured (Phase B).
   - **Verify:** typecheck + `npm run build` clean; full suite **2848 pass (224 files)**;
     A1(31)+A2(14)+A4-unit(14)+integration(8) green.
+
+- **2026-07-05 · A5 done** (branch `feature/grid-layouts-a`).
+  - **Save fold (spec §11):** CGrid's persistence `onStateUpdated` hook folds the bundle into the
+    saved blob under the reserved `layouts` field — `{ ...getState(), layouts: exportLayouts() }`.
+    `StateStorageAdapter.save` unchanged.
+  - **Autosave-dirty:** `stateUpdatedBus` `EVENT_TO_KEY` now maps `layoutChanged → 'layouts'` (a
+    virtual persist key added to the bus `StateKey` + the public `stateUpdated.changedKeys` union),
+    so EVERY layout mutation (which already emits `layoutChanged`) dirties the bus → debounced
+    autosave — even mutations that don't touch the live view (save/rename/delete-other/update).
+  - **Restore + precedence:** new `restorePersistedBlob` (the persistence `applyState` hook) splits
+    `{ layouts, ...viewState }`; when `layouts` is present it reseeds the manager via a PURE
+    `importLayouts(replace)` (no event/apply) + `applyGridConfigLive`, then `setState(viewState)`
+    restores the last-seen view on top. Persisted bundle thus wins over `options.layouts` (which
+    only seeded the manager at construction) > synthesized Default. A blob with no `layouts` field
+    (pre-A5 / never-used-layouts grids) restores as a plain view-state setState. Manager `baseline`
+    stays the construction view, so `resetLayout` still targets the app default (not the persisted
+    state).
+  - **Tests:** +3 live-grid integration tests (fold+reload restores layouts + active + option
+    override into a fresh grid; persisted > options.layouts; legacy no-`layouts` blob still
+    restores). `statePersistence.test.ts` (controller unit) unaffected — the fold is at the CGrid
+    seam, not in the controller/adapter.
+  - **Scope held:** template-library persistence rides the same `layouts` bundle once Phase B
+    registers the `templates` module; `overrides.editing` still Phase B.
+  - **Verify:** typecheck + `npm run build` clean; full suite **2851 pass (224 files)**;
+    layout tests: A1(31)+A2(14)+A4-unit(14)+integration(11) green. Phase-A engine (A1–A5) COMPLETE
+    — A6 is the demo + browser-verify + closeout review + merge.

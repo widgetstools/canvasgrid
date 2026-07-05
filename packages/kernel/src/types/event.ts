@@ -191,7 +191,10 @@ export type CGridEvent<TRow = any> =
   | {
       type: 'stateUpdated';
       state: import('../core/stateSnapshot').GridState;
-      changedKeys: (keyof import('../core/stateSnapshot').GridState)[];
+      /** `'layouts'` (Grid Layouts / A5) is a virtual persist key: it isn't
+       *  a `GridState` field but the reserved slot the layouts bundle folds
+       *  into the persisted blob, so a layout mutation reports it here. */
+      changedKeys: (keyof import('../core/stateSnapshot').GridState | 'layouts')[];
       source: 'api' | 'ui' | 'init';
     }
   | { type: 'modelUpdated'; visibleRowCount: number }

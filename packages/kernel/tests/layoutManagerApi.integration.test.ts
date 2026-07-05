@@ -215,3 +215,77 @@ describe('A4 — import / export on a live grid', () => {
     grid.destroy();
   });
 });
+
+/** Shared in-memory persistence adapter for round-trip tests. */
+function memAdapter() {
+  let store: any = null;
+  return {
+    load: () => store,
+    save(_id: string, state: any) { store = JSON.parse(JSON.stringify(state)); },
+    clear() { store = null; },
+    raw: () => store,
+  };
+}
+
+/** Force the rAF-debounced stateUpdated + the controller's debounced write. */
+function forcePersist(grid: any) {
+  grid.stateUpdatedBus.flush();
+  grid.statePersistence.flush();
+}
+
+describe('A5 — persistence round-trip', () => {
+  it('folds the layouts bundle into the saved blob and restores it into a fresh grid', async () => {
+    const adapter = memAdapter();
+    const { grid: g1 } = await mountGrid({ gridId: 'p1', persistState: { adapter, debounceMs: 0 } });
+    await new Promise((r) => setTimeout(r, 25)); // let restore() (dynamic import) arm autosave
+
+    g1.setGridOption('rowHeight', 40);
+    const saved = g1.saveLayout('Blotter'); // active; overrides rowHeight
+    forcePersist(g1);
+    expect(adapter.raw().layouts).toBeTruthy();          // bundle folded in
+    expect(adapter.raw().layouts.layouts.map((l: any) => l.name)).toContain('Blotter');
+    g1.destroy();
+
+    // Fresh grid, same gridId + adapter → layouts survive the reload.
+    const { grid: g2 } = await mountGrid({ gridId: 'p1', persistState: { adapter, debounceMs: 0 } });
+    await new Promise((r) => setTimeout(r, 25));
+    expect(g2.getLayouts().map((l) => l.name)).toContain('Blotter');
+    expect(g2.getActiveLayoutId()).toBe(saved.id);
+    expect(g2.getGridOption('rowHeight')).toBe(40);      // active override re-applied
+    g2.destroy();
+  });
+
+  it('persisted layouts take precedence over options.layouts', async () => {
+    const adapter = memAdapter();
+    const { grid: g1 } = await mountGrid({ gridId: 'p2', persistState: { adapter, debounceMs: 0 } });
+    await new Promise((r) => setTimeout(r, 25));
+    const saved = g1.saveLayout('Persisted');
+    forcePersist(g1);
+    g1.destroy();
+
+    const optionSeed: GridLayout = { id: 'opt1', name: 'FromOptions', state: { version: 4 } };
+    const { grid: g2 } = await mountGrid({
+      gridId: 'p2',
+      persistState: { adapter, debounceMs: 0 },
+      layouts: [optionSeed],
+      activeLayoutId: 'opt1',
+    });
+    await new Promise((r) => setTimeout(r, 25));
+    const names = g2.getLayouts().map((l) => l.name);
+    expect(names).toContain('Persisted');     // persisted bundle wins
+    expect(names).not.toContain('FromOptions'); // options discarded
+    expect(g2.getActiveLayoutId()).toBe(saved.id);
+    g2.destroy();
+  });
+
+  it('a plain view-state blob without a layouts field still restores (older/no-layout grids)', async () => {
+    const adapter = memAdapter();
+    // Simulate a pre-A5 blob: view state only, no `layouts` field.
+    adapter.save('p3', { version: 4, sortModel: [{ colId: 'name', sort: 'asc' }] });
+    const { grid } = await mountGrid({ gridId: 'p3', persistState: { adapter, debounceMs: 0 } });
+    await new Promise((r) => setTimeout(r, 25));
+    expect(grid.getState().sortModel).toEqual([{ colId: 'name', sort: 'asc' }]);
+    expect(grid.getLayouts().map((l) => l.id)).toEqual([DEFAULT_LAYOUT_ID]); // synth Default
+    grid.destroy();
+  });
+});
