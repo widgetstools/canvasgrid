@@ -1878,7 +1878,7 @@ export class CGrid<TRow = any> {
     );
 
     this.workerCoord.init({
-      rowIdField: inferRowIdField(options.getRowId),
+      rowIdField: options.rowIdField ?? inferRowIdField(options.getRowId),
       columns: this.workerColumns(),
       rowHeight: this.options.rowHeight ?? this.theme.rowHeight,
       // Cycle 4 / Task 11 — forward the cell-flash flag at init time so

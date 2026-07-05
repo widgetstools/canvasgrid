@@ -57,6 +57,15 @@ export interface CGridOptions<TRow = any> {
   columnTypes?: Record<string, Partial<CColDef<TRow>>>;
   rowData?: TRow[];
   getRowId: (row: TRow) => string;
+  /**
+   * Explicit row-ID field name for the worker-side RowStore. When set,
+   * the kernel skips `inferRowIdField(getRowId)` source inference — so
+   * `getRowId` may be ANY function (wrappers, composed accessors,
+   * adapter closures), as long as it returns `String(row[rowIdField])`
+   * for every row. Adapters embedding cgrid behind foreign getRowId
+   * contracts (e.g. AG-Grid's `({data}) => id`) set this. Initial-only.
+   */
+  rowIdField?: string;
   rowHeight?: number;
   headerHeight?: number;
   rowSelection?: 'none' | 'single' | 'multiple';
