@@ -370,9 +370,9 @@ let darkTheme = true;
 const appShell = document.querySelector<HTMLElement>('.app');
 document.getElementById('theme')?.addEventListener('click', () => {
   darkTheme = !darkTheme;
-  grid.setTheme(darkTheme ? 'cg-theme-quartz-dark' : 'cg-theme-quartz');
-  host.classList.toggle('cg-theme-quartz', !darkTheme);
-  host.classList.toggle('cg-theme-quartz-dark', darkTheme);
+  grid.setTheme(darkTheme ? 'cg-theme-starui-dark' : 'cg-theme-starui');
+  host.classList.toggle('cg-theme-starui', !darkTheme);
+  host.classList.toggle('cg-theme-starui-dark', darkTheme);
   // Flip the page-chrome theme alongside the grid so the wordmark,
   // toolbar, and inputs read the matching token set.
   if (appShell) appShell.dataset.theme = darkTheme ? 'dark' : 'light';
