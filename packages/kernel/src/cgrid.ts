@@ -1401,15 +1401,11 @@ export class CGrid<TRow = any> {
     // dimension). Constructed AFTER the row group panel so visibility
     // reservations land in the right order: row group panel reserves
     // first, pivot panel reserves on top of that.
-    // Cycle 21i / Phase 1 — when the app shows the row-group panel but
-    // does NOT set `pivotPanelShow`, auto-provide the column-labels strip
-    // as the split-right half that appears on pivot mode. The tool panel
-    // no longer carries a Column Labels zone, so this top strip is the
-    // single column-labels surface. Explicit `pivotPanelShow` keeps the
-    // AG contract (visible only when actually pivoting).
-    const ppExplicit = options.pivotPanelShow !== undefined;
-    const ppShow = normalizePivotPanelShow(options.pivotPanelShow)
-      ?? (!ppExplicit && rgShow !== null ? 'onlyWhenPivoting' : null);
+    // The strip is STRICTLY opt-in via `pivotPanelShow` (AG contract) —
+    // the Cycle 21i auto-provision alongside the row-group panel was
+    // dropped; the columns tool panel's Column Labels zone is the
+    // default column-labels surface.
+    const ppShow = normalizePivotPanelShow(options.pivotPanelShow);
     if (ppShow !== null) {
       const ctx: PivotPanelGridContext = this.makePivotPanelContext();
       this.pivotPanel = new PivotPanelHost(
@@ -1417,7 +1413,6 @@ export class CGrid<TRow = any> {
         ctx,
         ppShow,
         this.pivotEngine.getPivotColumns(),
-        { showOnPivotMode: !ppExplicit },
       );
       this.setPivotPanelTop(this.statusBarInsets.top);
     }
@@ -4065,7 +4060,6 @@ export class CGrid<TRow = any> {
       // that the `onlyWhenPivoting` E2E test caught intermittently.
       // Restored to the state-based check via `isPivotStateActive()`.
       isPivotActive: () => this.pivotEngine.isPivotStateActive(),
-      isPivotMode: () => this.pivotEngine.isPivotMode(),
       tryCrossPanelMove: (colId, x, y) => this.tryCrossPanelMoveFrom('pivot', colId, x, y),
     };
   }

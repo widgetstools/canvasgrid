@@ -85,13 +85,6 @@ function makeContext(): RecordingContext {
     isPivotActive() {
       return ctx.pivotActive;
     },
-    isPivotMode() {
-      // The pivot-panel test fixture exercises panel rendering under
-      // the assumption that pivot mode is on; the existing tests
-      // toggle `pivotActive` to model `isPivotActive` transitions
-      // (pivot mode on, has/lacks pivot+value cols).
-      return true;
-    },
   };
   return ctx;
 }
