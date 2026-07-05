@@ -15,11 +15,12 @@ Two related capabilities:
    uses. There is always a **'Default'** layout. Layouts persist with the grid and can be
    imported/exported as JSON.
 
-2. **Styling templates** — static per-column styling/attributes are normalized into named,
-   reusable **templates**. A column def stores only the **template IDs** it applies (plus
-   truly column-unique attributes like caption). Editing any editable column attribute
-   writes into that column's own auto-created template. This replaces loose inline per-column
-   style overrides.
+2. **Styling templates** — the goal is to **keep column defs light**: instead of every
+   column carrying its full settings, common attributes are factored into named, reusable
+   **templates**, and a column def stores only the **template IDs** applied to it (plus
+   truly column-unique attributes like caption). A template made for one column can be
+   applied to others. Editing any editable column attribute writes into that column's own
+   auto-created template. This replaces loose inline per-column style overrides.
 
 Non-goal this cycle: built-in switcher/template-manager UI. Deliverable is the API + data
 model + persistence; the app builds its own UI. Verified end-to-end in
@@ -105,6 +106,25 @@ interface ConditionalRule {
 
 `type-default template → applied templates (templateIds L→R) → column's own template →
 conditional rules (by priority)`. Column-unique attrs (caption) always come from the column.
+
+### 3.4 Calculated columns are first-class columns
+
+Once created, a calculated column **behaves exactly like a normal column** — it appears in
+column state, is shown/hidden/ordered/sized/pinned, can have **templates applied**, can be a
+**conditional-rule target**, can be sorted/filtered/grouped/aggregated, and participates in
+layouts like any other column. The **only** difference: it is intrinsically **not editable**
+(`editable: false` is forced; user edits to its cells are rejected, though its
+presentation attributes — width, templates, hide, style — are still editable like any
+column).
+
+Its two halves live in different slices:
+- **Definition** (the expression + `colId` + non-editable flag) → the layout-tier `calc`
+  module (so a layout can define its own calculated columns).
+- **Presentation** (`templateIds`, width, hide, pinned, order, style) → column state, exactly
+  like a normal column.
+
+So a layout fully round-trips its calculated columns: the `calc` module restores their
+definitions, then column state restores their placement + applied templates on top.
 
 ## 4. Relationship to existing state APIs
 
@@ -265,6 +285,9 @@ Unit:
   apply-to-other-column reuse; cascade order (type-default → templates → own → conditional).
 - Conditional rule: expression truthy → style applied to row/target columns; priority
   resolution; enable/disable.
+- Calculated column: a layout round-trips its definition (via `calc`) + presentation
+  (templates/width/hide via column state); it is non-editable but its width/templates/hide
+  are still adjustable; a template + a conditional rule apply to it like a normal column.
 - Import/export round-trip (single layout carries its referenced templates; bundle).
 - Persistence: mutate layouts/templates → reload same `gridId` → restored.
 - Default reset → construction baseline.
