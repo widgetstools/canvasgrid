@@ -11,8 +11,7 @@
 import { CGrid, formatPrice32, type CColDef, type CColGroupDef } from '@cgrid/kernel';
 import '@cgrid/kernel/style.css';
 import { wireIntoKernel as wireFormat } from '@cgrid/format';
-import { wireEditIntoKernel, type EditBridgeHandle } from '@cgrid/edit';
-import { smartEditToolPanel, bulkUpdateToolPanel } from '@cgrid/customizer';
+import { wireEditIntoKernel } from '@cgrid/edit';
 import { connectStomp, STOMP_PUBLISH_RATE_PER_SEC, type Position } from './stomp';
 
 const DESKS = ['RATES', 'CREDIT', 'FX', 'EQD'];
@@ -120,11 +119,6 @@ const statusUps = document.querySelector<HTMLElement>('[data-testid="status-ups"
 const savedTheme = localStorage.getItem('custdemo:theme');
 let dark = savedTheme !== 'light';
 
-// Cycle 21i Phase 2 / T6 — the Smart Edit panel factory takes a GETTER
-// because tool-panel components go into the constructor while
-// wireEditIntoKernel(grid) can only run after construction.
-let editHandle: EditBridgeHandle | undefined;
-
 const grid = new CGrid<Position>(gridHost, {
   gridId: 'customizer-demo',
   persistState: true,
@@ -136,15 +130,7 @@ const grid = new CGrid<Position>(gridHost, {
   // read-only via the editable predicate.
   defaultColDef: { resizable: true, sortable: true, editable: true, flex: 1, minWidth: 80 },
   rowGroupPanelShow: 'always',
-  components: {
-    smartEdit: smartEditToolPanel(() => editHandle),
-    bulkUpdate: bulkUpdateToolPanel(() => editHandle),
-  },
-  sideBar: { toolPanels: [
-    'columns', 'filters', 'gridOptions', 'columnGroups',
-    { id: 'smartEdit', labelDefault: 'Smart Edit', toolPanel: 'smartEdit' },
-    { id: 'bulkUpdate', labelDefault: 'Bulk Update', toolPanel: 'bulkUpdate' },
-  ] },
+  sideBar: { toolPanels: ['columns', 'filters', 'gridOptions', 'columnGroups'] },
   enableCellChangeFlash: true,
   cellSelection: {},
 });
@@ -154,25 +140,11 @@ const grid = new CGrid<Position>(gridHost, {
 wireFormat(grid);
 grid.updateGridOptions({ columnDefs });
 
-// Cycle 21i Phase 2 / T6 — wire the edit engine; its settings persist
-// through the kernel module-state registry (GridState.modules.editSettings)
-// with zero code here, and the Smart Edit side-bar tab edits them live.
-editHandle = wireEditIntoKernel(grid);
+// Cycle 21i Phase 2 — wire the edit engine; its settings persist through
+// the kernel module-state registry (GridState.modules.editSettings). The
+// editing UI returns as SettingsSheet modules in the Phase 3 pivot.
+wireEditIntoKernel(grid);
 
-// Cycle 21i Phase 2 / T4 — modal-primitive smoke: a toolbar start-zone
-// button opens a themed dialog through grid.getModal(). Exercises the
-// intrinsic toolbar's app API + the modal chrome (focus trap, ESC /
-// backdrop / ✕ dismissal) on live data. Consumer API only.
-grid.getToolbar()?.addIconButton('badge-info', () => {
-  const content = document.createElement('div');
-  content.innerHTML = `
-    <p style="margin:0 0 10px">Zero-feature-code consumer testbed for the cgrid customizer
-    (Cycle 21i). Live STOMP positions, persisted state under
-    <code>cgrid:state:customizer-demo</code>.</p>
-    <p style="margin:0">Intrinsic chrome on display: toolbar (save + business date),
-    status bar (counts + aggregates), Grid Options / Column Groups editors.</p>`;
-  grid.getModal().open(content, { title: 'About this demo', width: 460 });
-}, { title: 'About this demo', className: 'demo-about' });
 
 function applyTheme() {
   appEl.dataset.theme = dark ? 'dark' : 'light';

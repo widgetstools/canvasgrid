@@ -129,10 +129,6 @@ const OPTION_BANDS: BandSpec[] = [
       { key: 'headerHeight', label: 'Header height', type: 'number', min: 20, max: 80, step: 1, hint: 'px · follows density until changed' },
       { key: 'animateRows', label: 'Animate rows', type: 'switch', kernelDefault: false },
       { key: 'suppressRowHoverHighlight', label: 'Row hover highlight', type: 'switch', kernelDefault: false, hint: 'On = highlight the row under the pointer', toControl: (v) => v !== true, fromControl: (v) => v !== true },
-      // Cycle 21i Phase 2 / T1 — the intrinsic toolbar strip. Default is
-      // ON (opt-out), so the switch reads `!== false`.
-      { key: 'toolbar', label: 'Toolbar', type: 'switch', kernelDefault: true, hint: 'Top strip with save + business date', toControl: (v) => v !== false, fromControl: (v) => (v === true ? undefined : false) },
-      { key: 'toolbarHeight', label: 'Toolbar height', type: 'number', min: 28, max: 80, step: 1, hint: 'px · theme default 40 until changed' },
       // Cycle 21i Phase 2 — the status bar is intrinsic (default ON).
       // Switch-off writes `false`; switch-on writes `undefined` so the
       // option reverts to the default def (an app-authored custom def is

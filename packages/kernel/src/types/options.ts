@@ -547,24 +547,6 @@ export interface CGridOptions<TRow = any> {
    *  `setGridOption('statusBar', …)`. */
   statusBar?: StatusBarDef | boolean;
 
-  /** Cycle 21i Phase 2 / T1 — the intrinsic toolbar strip at the VERY
-   *  top of the grid (above any top status bar, pivot panel, row group
-   *  panel, and the column headers). The toolbar is part of every
-   *  cgrid instance: it mounts by DEFAULT and ships two intrinsic
-   *  controls pinned to its right edge — a business-date picker and a
-   *  save icon button. Apps subscribe via `getToolbar().onSave` /
-   *  `.onDateChange` (or the typed `toolbarSave` / `toolbarDateChanged`
-   *  events) and add their own controls to the start zone via
-   *  `addButton` / `addIconButton` / `addDivider` / `addSpacer` /
-   *  `addContent`. Set `false` to opt OUT (no DOM mount, no canvas
-   *  inset). Runtime-settable via `setGridOption('toolbar', …)`. */
-  toolbar?: boolean;
-
-  /** Cycle 21i Phase 2 / T1 — toolbar strip height in CSS px. Omitted
-   *  = the theme's `--cg-toolbar-height` token (40px). Runtime-settable
-   *  via `setGridOption('toolbarHeight', …)`; `undefined` reverts to
-   *  the token. */
-  toolbarHeight?: number;
 
   /** Cycle 20 / Task 4 — named callback registry for export transforms.
    *  Functions can't cross the worker postMessage boundary, so apps

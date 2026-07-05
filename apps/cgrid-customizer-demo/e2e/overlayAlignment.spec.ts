@@ -1,17 +1,17 @@
 import { test, expect, type Page } from '@playwright/test';
 
 /**
- * Cycle 21i Phase 2 / T1 regression — canvas ↔ DOM-overlay alignment
- * must survive a side-bar reflow.
+ * Cycle 21i Phase 2 regression — canvas ↔ DOM-overlay alignment must
+ * survive a side-bar reflow.
  *
- * The grid's top-strip stack (intrinsic toolbar + status bar + pivot +
- * row-group panels) is applied to the canvas through TWO paths:
- * `applyVerticalInsets` (strip mounts) and `reserveSideBarSpace`
- * (side-bar open/close/resize). When the two formulas disagree, the
- * canvas slides out from under the DOM overlays the moment a tool
- * panel opens — floating filter inputs land on top of data rows and
- * header captions drift (user-reported 2026-07-04). Both paths now
- * share `computeTopInset()`; this spec pins the symptom.
+ * The grid's top-strip stack (status bar + pivot + row-group panels)
+ * is applied to the canvas through TWO paths: `applyVerticalInsets`
+ * (strip mounts) and `reserveSideBarSpace` (side-bar open/close/
+ * resize). When the two formulas disagree, the canvas slides out from
+ * under the DOM overlays the moment a tool panel opens — floating
+ * filter inputs land on top of data rows and header captions drift
+ * (user-reported 2026-07-04). Both paths share `computeTopInset()`;
+ * this spec pins the symptom.
  */
 
 const STORAGE_KEY = 'cgrid:state:customizer-demo';
@@ -59,21 +59,14 @@ test('floating filters + canvas stay put when a side-bar panel opens and closes'
   expect(closed).toEqual(before);
 });
 
-test('alignment also holds with a second panel (Options) and after toolbar height change', async ({ page }) => {
+test('alignment also holds with a second panel (Options) open and closed', async ({ page }) => {
   const before = await measure(page);
 
   await page.getByRole('button', { name: 'Options' }).click();
   const open = await measure(page);
   expect(open).toEqual(before);
 
-  // Runtime toolbarHeight change while the panel is open: overlays and
-  // canvas must shift together (same delta), never apart.
-  await page.evaluate(() => (window as unknown as { __cgapi: any }).__cgapi.setGridOption('toolbarHeight', 56));
-  const grown = await measure(page);
-  expect(grown.canvasTop - open.canvasTop).toBe(16);
-  expect(grown.filterTop - open.filterTop).toBe(16);
-
-  await page.evaluate(() => (window as unknown as { __cgapi: any }).__cgapi.setGridOption('toolbarHeight', undefined));
-  const reverted = await measure(page);
-  expect(reverted).toEqual(open);
+  await page.getByRole('button', { name: 'Options' }).click();
+  const closed = await measure(page);
+  expect(closed).toEqual(before);
 });

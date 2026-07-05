@@ -209,15 +209,6 @@ describe('CGrid.setGridOption — runtime options apply', () => {
     teardown(grid, host);
   });
 
-  it('toolbar is intrinsic (mounted by default) and runtime-toggleable (Cycle 21i Phase 2 / T1)', () => {
-    const { grid, host } = mountGrid();
-    expect(host.querySelector('.cg-toolbar')).not.toBeNull();
-    grid.setGridOption('toolbar', false);
-    expect(host.querySelector('.cg-toolbar')).toBeNull();
-    grid.setGridOption('toolbar', true);
-    expect(host.querySelector('.cg-toolbar')).not.toBeNull();
-    teardown(grid, host);
-  });
 
   it('suppressColumnVirtualisation / suppressRowVirtualisation persist as flags', () => {
     const { grid, host } = mountGrid();

@@ -461,13 +461,4 @@ export type CGridEvent<TRow = any> =
    *  signals a change via `notifyModuleStateChanged(id)`. The
    *  stateUpdated bus maps this to the `modules` snapshot key so the
    *  slice rides the persistState autosave. */
-  | { type: 'moduleStateChanged'; moduleId: string }
-  /** Cycle 21i Phase 2 / T1 — fires when the intrinsic toolbar save
-   *  button is clicked. `date` is the current value of the intrinsic
-   *  business-date picker (`YYYY-MM-DD`). Fires alongside any handlers
-   *  registered via `getToolbar().onSave(...)`. */
-  | { type: 'toolbarSave'; date: string }
-  /** Cycle 21i Phase 2 / T1 — fires when the user changes the intrinsic
-   *  toolbar date picker (`YYYY-MM-DD`). Programmatic
-   *  `getToolbar().setDate(...)` writes do NOT emit. */
-  | { type: 'toolbarDateChanged'; date: string };
+  | { type: 'moduleStateChanged'; moduleId: string };
