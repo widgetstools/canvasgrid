@@ -97,14 +97,16 @@ New subsystem: expression → style, targeting rows/columns; layout-tier. Spec �
 ## Progress tracker (update every session)
 
 - [x] A1 · [x] A2 · [x] A3 · [x] A4 · [x] A5 · [x] A6 — **PHASE A MERGED** (squash `3da8e48` on main)
-- [x] B1 · [x] B2 · [x] B3 · [x] B4 · [x] B5 — Phase B COMPLETE on branch (demo + E2E + closeout review + fix wave all done); MERGE pending user decision
+- [x] B1 · [x] B2 · [x] B3 · [x] B4 · [x] B5 — **PHASE B MERGED** (squash `b73ec62` on `origin/main`)
 - [ ] C1 · [ ] C2 · [ ] C3 · [ ] C4 (Phase C merged)
 
-**Next: MERGE Phase B** (B1–B5 all done on `feature/grid-layouts-b`). Awaiting the user's
-integration decision (local squash-merge vs PR — mirrors the A6/Phase-A choice; a dirty main
-working tree blocks a clean local squash, as it did for #103). After merge: ff-only sync main,
-tick this, then Phase C (conditional styling rules). Two Phase-B deferrals carry forward (see the
-B5 ledger entry): H2 multi-grid calc-provider singleton, M5 save-time template-name uniqueness.
+**Next: PHASE C** (conditional styling rules — branch `feature/grid-layouts-c`, off merged B).
+Phase B squash-merged locally into `main` and pushed (`3da8e48..b73ec62`, ff); tree was clean so
+no PR needed. Two Phase-B deferrals carry into Phase C / tracking (see the B5 ledger entry): H2
+the calc provider slot is a module-global singleton (multi-grid concern), M5 save-time
+template-name uniqueness (spec §12 reconciliation). Also still open from Phase A: `overrides.editing`
+capture; B2's StarUI-07 type-default-vs-spec-§3.3 reconcile. Phase C starts at C1 (see the Phase C
+table): `ConditionalRule` model + `rules` layout-tier state module, expression via the calc AST.
 
 <!-- Historical A6 note (Phase A now merged):
 Phase A branch `feature/grid-layouts-a` — the CLOSEOUT: demo control in
