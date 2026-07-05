@@ -26,6 +26,19 @@ import type { ModuleStateEnvelope } from '../core/moduleState';
 export const DEFAULT_LAYOUT_ID = 'default';
 
 /**
+ * The default set of state-module ids that live at the GRID tier — shared
+ * across all layouts rather than captured per-layout. A layout's snapshot
+ * excludes these; on load they stay on the grid baseline (spec §6/§10).
+ *
+ * `templates` is included even though its module only registers in Phase B
+ * — filtering an id no snapshot carries yet is a harmless no-op, and this
+ * keeps the documented default (the `layoutGridLevelModules` construction
+ * option, §10) stable as templates lights up. Everything NOT in this set
+ * (`columnGroups`, `calc`, `rules`, …) is layout-tier.
+ */
+export const DEFAULT_GRID_LEVEL_MODULES: readonly string[] = ['editSettings', 'templates'];
+
+/**
  * A layout's persisted view state.
  *
  * Structurally a `GridState` — column geometry, filter/sort/group/pivot,

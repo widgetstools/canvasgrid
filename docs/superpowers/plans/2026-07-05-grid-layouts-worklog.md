@@ -96,11 +96,11 @@ New subsystem: expression → style, targeting rows/columns; layout-tier. Spec �
 
 ## Progress tracker (update every session)
 
-- [x] A1 · [ ] A2 · [ ] A3 · [ ] A4 · [ ] A5 · [ ] A6 (Phase A merged)
+- [x] A1 · [x] A2 · [ ] A3 · [ ] A4 · [ ] A5 · [ ] A6 (Phase A merged)
 - [ ] B1 · [ ] B2 · [ ] B3 · [ ] B4 · [ ] B5 (Phase B merged)
 - [ ] C1 · [ ] C2 · [ ] C3 · [ ] C4 (Phase C merged)
 
-**Next unit: A2.** (Phase A branch `feature/grid-layouts-a` is live — continue A2 on it.)
+**Next unit: A3.** (Phase A branch `feature/grid-layouts-a` is live — continue A3 on it.)
 
 ### Ledger
 
@@ -128,3 +128,31 @@ New subsystem: expression → style, targeting rows/columns; layout-tier. Spec �
     browser-verify (that's A6).
   - **Note:** ledger committed on the phase branch (main working tree had unrelated
     uncommitted work); reaches main when Phase A merges at A6.
+
+- **2026-07-05 · A2 done** (branch `feature/grid-layouts-a`).
+  - `packages/kernel/src/types/layout.ts` — added `DEFAULT_GRID_LEVEL_MODULES`
+    (`['editSettings','templates']`, the §10 `layoutGridLevelModules` default; `templates`
+    filtered pre-emptively — no-op until Phase B registers it).
+  - `packages/kernel/src/core/layoutManager.ts` — module-tier filtering + grid-option
+    override capture/apply:
+    - Pure exports `toLayoutTierState(full, gridLevelIds)` (drops grid-tier module slices +
+      `gridOptions`; keeps view state / layout-tier modules / `themeParams` / `columnState`)
+      and `extractGridOptionOverride(full)`.
+    - `captureState()` now returns the FULL snapshot; capture (save/update) tier-filters it
+      into `state` and lifts option deltas into `overrides.gridOptions` (recapture clears a
+      stale delta). Synthesized Default seeded from the baseline's layout tier.
+    - Apply (load/fallback/reset) re-injects `overrides.gridOptions` into the applied
+      snapshot; **host `applyState` owns the reset-to-baseline half of §7** (kernel `setState`
+      layers options additively — verified cgrid.ts:7698 — so the host must clear runtime
+      options to baseline first; wired in A3). New `layoutGridLevelModules` init option.
+  - `packages/kernel/tests/layoutManagerTier.test.ts` — 14 tests: pure tier-filter + option
+    extraction; tier-aware capture (grid-tier excluded, options lifted, custom grid-level
+    set, Default seeding); apply + **grid-option override round-trip across Default↔layout
+    switches**; grid-tier slices never leak into an applied snapshot; reset clears overrides.
+  - **Host contract change:** `captureState(): GridState` (full snapshot); `applyState` must
+    reset runtime options to baseline before restoring. A1's mock host already returned a
+    full state → all 31 A1 tests unchanged & green.
+  - **Scope held:** `overrides.editing` still NOT captured (grid-tier `editSettings` stays on
+    baseline; the editing-override refinement rides with Phase B). No CGrid wiring (→ A3), no
+    persistence (→ A5).
+  - **Verify:** typecheck clean; full suite 2826 pass (222 files). Unit-only (no UI in A2).
