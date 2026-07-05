@@ -1,4 +1,4 @@
-# Grid Layouts — design spec
+# Grid Layouts + Styling Templates — design spec
 
 **Date:** 2026-07-05
 **Status:** Approved design; ready for implementation planning
@@ -6,270 +6,288 @@
 
 ## 1. Summary
 
-Let a single grid (identified by `gridId`) hold **multiple named layouts** — saved,
-switchable configurations — on top of a thin **grid-level baseline**. A layout is a
-self-contained view of the grid: which columns are shown/ordered/sized/pinned, its
-filters, sort, grouping, pivot, side-bar state, conditional-styling rules, column
-groups, calculated columns, and data-colour styling. Grid options and editing rules
-have a grid-level default that any layout may override. There is always a **'Default'**
-layout. Layouts persist with the grid (localStorage keyed by `gridId`) and can be
-imported/exported as JSON.
+Two related capabilities:
 
-Non-goal for this cycle: built-in layout-switcher UI. The deliverable is the API + data
-model + persistence; the app builds its own switcher. We will exercise it end-to-end in
-`apps/cgrid-customizer-demo` with a small demo control (not shipped as grid chrome).
+1. **Layouts** — a single grid (`gridId`) holds **multiple named, switchable layouts** on
+   top of a thin **grid-level baseline**. A layout is a self-contained view: columns
+   shown/ordered/sized/pinned, filters, sort, grouping, pivot, side-bar state, conditional
+   styling rules, column groups, calculated columns, and which style templates each column
+   uses. There is always a **'Default'** layout. Layouts persist with the grid and can be
+   imported/exported as JSON.
+
+2. **Styling templates** — static per-column styling/attributes are normalized into named,
+   reusable **templates**. A column def stores only the **template IDs** it applies (plus
+   truly column-unique attributes like caption). Editing any editable column attribute
+   writes into that column's own auto-created template. This replaces loose inline per-column
+   style overrides.
+
+Non-goal this cycle: built-in switcher/template-manager UI. Deliverable is the API + data
+model + persistence; the app builds its own UI. Verified end-to-end in
+`apps/cgrid-customizer-demo` with a minimal demo control.
 
 ## 2. Concepts
 
-Two tiers, both keyed by `gridId`:
+**Grid-level (shared across all layouts):**
+- **Template library** — the named `{ id, name, overrides }` style/attribute templates.
+- **Editing rules** and **grid options** — baseline defaults. A layout may override either.
 
-- **Grid-level baseline (shared defaults):** editing rules and grid options. These are
-  the grid's defaults. A layout MAY override either; when it doesn't, the baseline applies.
-- **Layout (per named layout — self-contained):** everything else —
-  - **View state:** column visibility / order / width / pinning, filters, sort, row
-    grouping + expansion, pivot mode + columns, side-bar (opened panel + visible), scroll,
-    cell/row selection.
-  - **Layout-owned engine modules:** conditional-styling rules, column groups, calculated
-    columns (see §5 for the module-tier mechanism).
-  - **Styling:** data-colour token overrides (`themeParams`).
-  - **Overrides:** grid options and editing rules that override the grid-level baseline.
+**Layout (per named layout — self-contained):**
+- **View state** — column visibility/order/width/pinning, filters, sort, row grouping +
+  expansion, pivot mode + columns, side-bar (opened panel + visible), scroll, selection.
+- **Template assignments** — per column, the ordered `templateIds` it applies (part of
+  column state).
+- **Conditional styling rules** — expression → style, applied to a row or column set.
+- **Column groups** and **calculated columns**.
+- **Overrides** — grid options / editing rules that override the grid-level baseline.
+
+**Column-unique (always on the column, never templated):** `colId`, `field`, caption
+(`headerName`), and any identity-level attribute. These live in the column def / column
+state, not in templates.
 
 **Effective config while layout `L` is active:**
-1. Start from the grid-level baseline (editing rules + grid options).
-2. Layer `L.overrides` (grid options + editing) on top.
-3. Apply `L.state` (view state + layout-owned modules + `themeParams`).
+1. Grid-level baseline (editing + grid options).
+2. Layer `L`'s overrides.
+3. Apply `L`'s view state + template assignments + conditional rules + column groups + calc.
 
-## 3. Relationship to existing state APIs
+## 3. Styling model (templates + conditional rules)
 
-This feature is built on the existing `getState()` / `setState()` / `GridState` and the
-`registerStateModule` registry — it does not invent a parallel snapshot system.
+### 3.1 Templates (static styling/attributes) — already ~80% in `@cgrid/calc`
 
-- A layout's `state` is a `GridState` **restricted to the layout tier**: all view-state
-  fields plus the layout-tier module slices (§5). It excludes grid-level module slices and
-  carries grid-option/editing overrides separately.
-- `loadLayout` = apply the grid-level baseline for the grid-tier slices, then
-  `setState(...)` the layout's view + layout-tier modules, with the layout's overrides layered
-  onto grid options / editing.
-- `getConfig()` / `getState()` are unchanged. Layouts get their own API surface; the full
-  bundle is `exportLayouts()`.
+`@cgrid/calc` already implements this and is the basis:
+- `ColumnTemplate = { id, name, overrides }`, `overrides` ⊆
+  `{ format, cellRenderer, editable, hide, width, cellStyle }` — **`headerName` is excluded**
+  (caption is column-unique, per §2).
+- `ColumnOverride = { colId, templateIds, … }` — the per-column assignment references
+  `templateIds`.
+- `foldTemplateChain()` defines the cascade: **type-default template → `templateIds`
+  left-to-right → the column's own template (highest among templates)**; `cellStyle` merges
+  per-key, scalars last-writer-wins.
 
-## 4. Data model
+**Auto-template-on-edit (new rule):** whenever a user edits an editable column attribute,
+the change is written into that column's **own template**, auto-created on first edit with
+name `"<columnName>_template"`. The column's `templateIds` includes its own template as the
+highest-priority template layer. Consequences:
+- The name is user-editable and **must be unique** grid-wide. The template **id** is a
+  separate stable key; renaming changes only the display name.
+- **Editing a column mutates only its own template.** Applying another column's/shared
+  template to a column is read-only reuse; the instant that column is edited, the edit lands
+  in the column's own template (created if absent), layered on top — so shared templates are
+  never mutated as a side effect of editing a consumer column.
+- A template (including an auto-created one) can be applied to other columns → reuse.
+
+**Templatable attribute set:** `{ format, cellRenderer, editable, hide, width, cellStyle }`
+(calc's set minus `headerName`). Extensible as more attributes become templatable.
+
+### 3.2 Conditional styling rules (new subsystem)
+
+A conditional rule = **expression over one or more columns' cell values → a resolved style**,
+with a **target**: the whole row, or a specific set of columns.
 
 ```ts
-/** One saved layout. `id: 'default'` is reserved for the always-present Default. */
-interface GridLayout {
+interface ConditionalRule {
   id: string;
   name: string;
-  /** View state + layout-tier module slices + themeParams. A GridState subset. */
-  state: LayoutState;
-  /** Overrides of the grid-level baseline. Absent/empty → inherit the baseline. */
-  overrides?: {
-    /** Grid-option deltas from the baseline (reuses runtimeTouchedOptions semantics). */
-    gridOptions?: Record<string, unknown>;
-    /** Editing-rules override (the `editSettings` module envelope). */
-    editing?: ModuleStateEnvelope;
-  };
-  updatedAt?: number; // epoch ms, set by the API on save/update (main-thread Date.now)
+  expression: string;          // over cell values; compiled via the calc expression engine
+  target: { kind: 'row' } | { kind: 'columns'; colIds: string[] };
+  style: CellStyle;            // resolved style when the expression is truthy
+  enabled?: boolean;
+  priority?: number;           // higher wins when multiple rules hit the same cell
+}
+```
+
+- **Reuses the calc expression engine** (AST, watched-colId tracking) for the expression —
+  no second parser.
+- Applied at **render time**, layered ABOVE static template styles (templates set the base
+  look; conditional rules override on match). Multiple hits resolve by `priority`.
+- Rules are a **layout-tier module** — each layout has its own rule set.
+
+### 3.3 Render/precedence pipeline (per cell)
+
+`type-default template → applied templates (templateIds L→R) → column's own template →
+conditional rules (by priority)`. Column-unique attrs (caption) always come from the column.
+
+## 4. Relationship to existing state APIs
+
+Built on `getState()` / `setState()` / `GridState` and the `registerStateModule` registry —
+not a parallel snapshot system.
+
+- A layout's `state` is a `GridState` restricted to the **layout tier** (view state + layout-
+  tier module slices + template assignments in column state), with grid-option/editing
+  overrides carried separately.
+- `loadLayout` = apply the grid baseline for grid-tier slices, then `setState(...)` the
+  layout's view + layout-tier modules, layering the layout's overrides.
+- `getConfig()` / `getState()` unchanged. Full bundle = `exportLayouts()`.
+
+## 5. Data model
+
+```ts
+interface ColumnTemplate { id: string; name: string; overrides: TemplateOverrides; updatedAt?: number; }
+// TemplateOverrides = { format?, cellRenderer?, editable?, hide?, width?, cellStyle? }
+
+interface ConditionalRule { /* §3.2 */ }
+
+interface GridLayout {
+  id: string;                  // 'default' reserved
+  name: string;
+  state: LayoutState;          // view state (incl. per-column templateIds) + layout-tier modules + themeParams
+  overrides?: { gridOptions?: Record<string, unknown>; editing?: ModuleStateEnvelope };
+  /** Template defs referenced by this layout — populated on export for portability;
+   *  empty at runtime (defs live in the grid-level library). */
+  templates?: ColumnTemplate[];
+  updatedAt?: number;
 }
 
-/** LayoutState = GridState minus grid-tier slices, minus the fields folded into
- *  `overrides`. Concretely: columnState, filterModel, sortModel, rowGroupColumns,
- *  expandedRouteIds, pivotMode, pivotCols, sideBar, cellSelection, rowSelection,
- *  scroll, themeParams, version, and `modules` restricted to layout-tier ids. */
-type LayoutState = Omit<GridState, 'gridOptions'> & { modules?: Record<string, ModuleStateEnvelope> };
-
-/** The full persisted / exportable bundle for a grid. */
 interface GridLayoutsBundle {
-  version: number;             // bundle schema version (starts at 1)
-  activeLayoutId: string;      // id of the active layout; always present in `layouts`
+  version: number;
+  activeLayoutId: string;
   layouts: GridLayout[];       // always includes { id:'default', name:'Default' }
-  grid: {                      // grid-level baseline (shared defaults)
-    gridOptions?: Record<string, unknown>;
-    editing?: ModuleStateEnvelope;
+  grid: {
+    templates?: ColumnTemplate[];              // the shared template library
+    gridOptions?: Record<string, unknown>;     // baseline
+    editing?: ModuleStateEnvelope;             // baseline editing rules
   };
 }
 ```
 
-Notes:
-- `LayoutState.modules` holds only **layout-tier** module envelopes; grid-tier module
-  envelopes (editing) live under `grid.editing` / `overrides.editing`, never in
-  `LayoutState.modules`.
-- Timestamps are optional and main-thread only (`Date.now()` in the API layer). Tests
-  assert presence/monotonicity, not exact values.
+- Column state carries each column's `templateIds` (assignments) — layout tier.
+- Conditional rules ride in `LayoutState.modules['rules']` — layout tier.
+- Column groups (`columnGroups`) and calculated columns (`calc`) ride in
+  `LayoutState.modules` — layout tier.
+- The **template library** (`grid.templates`) is grid tier / shared.
 
-## 5. Module tiers
+## 6. Module tiers
 
-State modules (registered via `registerStateModule`) are split into tiers by **id**:
+Modules split by id:
+- **Grid-tier ids (default):** `{ 'editSettings', 'templates' }`.
+- **Layout-tier:** everything else — `columnGroups`, `calc`, `rules`, … (default + future).
 
-- **Grid-tier module ids** — a configurable set. **Default: `{ 'editSettings' }`.**
-- **Layout-tier** — every other registered module id (default includes `columnGroups`,
-  and future `calc` / conditional-format rule modules automatically).
+Configurable via `layoutGridLevelModules?: string[]`. `loadLayout` restores layout-tier
+modules from the layout and leaves grid-tier modules on the baseline unless the layout
+overrides them.
 
-Rationale: the tier is data, not code — as calc and conditional-formatting become
-registered state modules, they are layout-tier by default with no change to the layout
-engine. The grid-tier set is overridable via a construction option (`layoutGridLevelModules?: string[]`)
-so an app can, e.g., move editing to the layout tier.
+### Dependencies (net-new module wiring)
 
-`snapshot()` / `restore()` on `ModuleStateRegistry` gain tier-aware variants (or the
-LayoutManager filters the existing snapshot by id), so:
-- Saving a layout captures only layout-tier module envelopes.
-- Saving the grid baseline captures only grid-tier module envelopes.
-- `loadLayout` restores layout-tier modules from the layout and leaves grid-tier modules
-  on the baseline unless the layout's `overrides.editing` is present.
+Today only `columnGroups` (layout) and `editSettings` (grid) are registered state modules.
+This feature additionally requires registering, as state modules:
+- **`templates`** (grid-tier) — the calc column-template library (`@cgrid/calc` already holds
+  the defs + `foldTemplateChain`; wrap its templates/overrides as a snapshot/restore module).
+- **`calc`** (layout-tier) — calculated-column definitions from `CalcEngine` (not currently
+  in `GridState`).
+- **`rules`** (layout-tier) — the new conditional-styling rule store (§3.2).
 
-### Known dependency — calc + conditional-format modules
+The template-assignment normalization (columns store `templateIds`; editing writes to the
+column's own template) also lands in `@cgrid/calc`, extending its existing override model so
+the inline per-column override layer becomes the column's own auto-template.
 
-Today only `columnGroups` (layout-tier) and `editSettings` (grid-tier) are registered
-state modules. **Conditional-styling rules** (currently colDef `cellClassRules` /
-`cellStyle`, i.e. part of `columnDefs`) and **calculated columns** (seeded from
-`opts.calculatedColumns`, held in `CalcEngine`, not currently in `GridState`) do NOT yet
-round-trip through `getState()`.
+If any of these grow beyond a thin wrapper, they are sequenced as their own plan tasks; the
+layout engine ships first (it already captures view state, column groups, `themeParams`,
+and option/editing overrides), and the styling slices light up as their modules register.
 
-For a layout to actually capture conditional styling and calculated columns, those must be
-expressed as **layout-tier registered state modules**. This spec includes, as in-scope
-work, registering:
-- a **`calc`** state module (from `@cgrid/calc`) whose `get`/`set` snapshot & restore the
-  CalcEngine's calculated-column definitions, and
-- a **conditional-format / `rules`** state module for runtime conditional-styling rules.
+## 7. Grid-option override model
 
-If either proves larger than a thin snapshot/restore wrapper, it is sequenced as its own
-task in the plan and the layout engine ships first (it already captures `columnGroups` +
-view state + `themeParams` + editing/grid-option overrides). The layout engine is designed
-so these slices light up automatically once their modules register.
+- **Baseline** = construction options (+ any set via `setGridConfig`).
+- **Layout override** = `runtimeTouchedOptions` while that layout is active (deltas from
+  baseline — same semantics `getState().gridOptions` already produces).
+- `loadLayout(id)`: reset runtime-touched options to baseline, then apply
+  `layout.overrides.gridOptions`.
+- `saveLayout` / `updateLayout` capture `overrides.gridOptions` from `runtimeTouchedOptions`.
+- Only runtime-mutable keys participate (enforced by `setGridOption`).
 
-## 6. Grid-option override model
+## 8. API surface (on `CGridApi`)
 
-Grid options have a grid-level baseline and per-layout overrides:
+Layout management:
+- `getLayouts()`, `getActiveLayoutId()`, `getActiveLayout()`
+- `saveLayout(name, opts?: { activate? })`, `updateLayout(id?)`, `loadLayout(id)`
+- `deleteLayout(id)` (rejects `'default'`; active→Default fallback), `renameLayout(id, name)`,
+  `duplicateLayout(id, name, opts?)`, `resetLayout(id?)`
 
-- **Baseline** = the options the grid was constructed with (plus any explicitly set as the
-  grid-level default via `setGridConfig`).
-- **Layout override** = `runtimeTouchedOptions` while that layout is active — i.e. options
-  changed from the baseline. This reuses the exact semantics that `getState().gridOptions`
-  already produces ("changed from what the app configured").
+Templates:
+- `getTemplates()`, `saveTemplate(t)`, `renameTemplate(id, name)` (unique-name enforced),
+  `deleteTemplate(id)`, `applyTemplate(colId, templateId)`, `removeTemplate(colId, templateId)`
+  — (thin surface over the calc template engine; final shape confirmed in the plan against
+  the existing calc bridge API).
 
-`loadLayout(id)`:
-1. Reset runtime-touched options back to the baseline (re-apply baseline values for any
-   currently-overridden keys).
-2. Apply `layout.overrides.gridOptions` on top.
+Grid baseline:
+- `getGridConfig(): { templates?; gridOptions?; editing? }`, `setGridConfig(config)`
 
-`saveLayout` / `updateLayout` capture `overrides.gridOptions` = the current
-`runtimeTouchedOptions` snapshot.
-
-Only runtime-mutable option keys participate (initial-only keys can't differ per layout on a
-live grid). This is enforced by routing through `setGridOption`, which already rejects
-initial-only keys.
-
-## 7. API surface (on `CGridApi`)
-
-Management:
-- `getLayouts(): GridLayout[]` — all layouts (incl. Default), in order.
-- `getActiveLayoutId(): string`
-- `getActiveLayout(): GridLayout`
-- `saveLayout(name: string, opts?: { activate?: boolean }): GridLayout` — snapshot the
-  current view + layout-tier modules + `themeParams` + grid-option overrides as a NEW layout
-  (generated id). `activate` defaults to `true`.
-- `updateLayout(id?: string): GridLayout` — overwrite an existing layout (default: active)
-  with the current view state.
-- `loadLayout(id: string): void` — make `id` active and apply it (§6 steps + `setState`).
-- `deleteLayout(id: string): void` — remove; throws/no-ops on `'default'`; if the active
-  layout is deleted, falls back to Default.
-- `renameLayout(id: string, name: string): void`
-- `duplicateLayout(id: string, name: string, opts?: { activate?: boolean }): GridLayout`
-- `resetLayout(id?: string): void` — reset a layout (default: active) to the grid's
-  construction baseline view state. For `'default'`, resets to baseline.
-
-Grid-level baseline:
-- `getGridConfig(): { gridOptions?; editing? }`
-- `setGridConfig(config): void` — set the shared baseline (editing rules + grid options).
-
-Import / export (JSON round-trippable):
-- `exportLayout(id: string): GridLayout`
-- `exportLayouts(): GridLayoutsBundle` — full bundle (all layouts + active + grid baseline).
-- `importLayout(layout: GridLayout, opts?: { activate?: boolean; overwrite?: boolean }): GridLayout`
-  — add one; new id on collision unless `overwrite`.
-- `importLayouts(bundle: GridLayoutsBundle, opts?: { replace?: boolean }): void` — merge
-  (default) or replace all. `replace` keeps a Default if the bundle omits one.
+Import / export (JSON):
+- `exportLayout(id)` — includes referenced template defs (portability), `exportLayouts()`
+  (full bundle), `importLayout(layout, opts?)`, `importLayouts(bundle, opts?)`
 
 Events:
-- `layoutChanged` — fired on active-layout switch, save, update, delete, rename, import.
-  Payload: `{ activeLayoutId, source }`. Lets an app's switcher UI stay in sync.
+- `layoutChanged` `{ activeLayoutId, source }` on switch/save/update/delete/rename/import.
+- `templatesChanged` on template create/rename/delete/apply.
 
-## 8. Default layout semantics
+## 9. Default layout semantics
 
-- Always present: `{ id: 'default', name: 'Default' }`.
-- Seeded from the **construction baseline** (the initial view state / `initialState`) at
-  first run.
-- Can be updated (`updateLayout('default')`) and reset (`resetLayout('default')` → back to
-  the construction baseline, which the manager retains internally).
-- Cannot be deleted or renamed away from id `'default'` (display name is editable).
-- A fresh grid with no persisted layouts starts as `layouts: [Default]`, `active: 'default'`.
+- Always present `{ id:'default', name:'Default' }`; seeded from the construction baseline.
+- Updatable (`updateLayout('default')`) and resettable (`resetLayout('default')` → baseline).
+- Cannot be deleted; id `'default'` fixed (display name editable, must stay unique).
+- Fresh grid with no persisted layouts → `layouts: [Default]`, active `'default'`.
 
-## 9. Construction options
+## 10. Construction options (`CGridOptions`)
 
-Added to `CGridOptions`:
-- `layouts?: GridLayout[]` — seed layouts. If none includes `id:'default'`, a Default is
-  synthesized from the construction baseline and prepended.
-- `activeLayoutId?: string` — which layout is active at mount (default `'default'`).
-- `layoutGridLevelModules?: string[]` — module ids that are grid-tier (default
-  `['editSettings']`).
+- `layouts?: GridLayout[]`, `activeLayoutId?: string`
+- `templates?: ColumnTemplate[]` (seed the library; calc already accepts `templates`)
+- `layoutGridLevelModules?: string[]` (default `['editSettings', 'templates']`)
 
-## 10. Persistence
+## 11. Persistence
 
-Layouts persist through the existing `persistState` mechanism (localStorage keyed by
-`gridId`), so they survive reload automatically.
+- Layouts + templates persist via `persistState` (localStorage keyed by `gridId`). The
+  saved blob folds the bundle under a reserved `layouts` field
+  (`{ ...activeGridState, layouts: GridLayoutsBundle }`) so `StateStorageAdapter.save(gridId,
+  state)` is unchanged; the manager consumes `state.layouts` on load, normal view-restore
+  ignores it.
+- Layout/template mutations mark the state bus dirty → debounced autosave.
+- Construction restore precedence: persisted bundle > `options.layouts`/`templates` >
+  synthesized Default.
 
-- The persisted blob is extended to carry the layouts bundle alongside the active state.
-  Approach: fold the bundle under a reserved `layouts` field on the saved object
-  (`{ ...activeGridState, layouts: GridLayoutsBundle }`) so the existing
-  `StateStorageAdapter.save(gridId, state)` signature is unchanged; the LayoutManager
-  consumes `state.layouts` on load and normal view-restore ignores it.
-- Autosave: layout mutations (save/update/delete/rename/import/switch) mark the state bus
-  dirty, so the debounced autosave persists the bundle. The active layout's live view also
-  autosaves as today.
-- On construction with `persistState`, restore precedence: persisted bundle (if present) >
-  `options.layouts` > synthesized Default.
+## 12. Error handling / edge cases
 
-## 11. Error handling / edge cases
+- Unknown id (load/delete/rename/duplicate/export) → throw a clear error.
+- Delete active layout → fall back to Default + `layoutChanged`.
+- Reject deleting/renaming id of `'default'`.
+- Duplicate template/layout name → reject (uniqueness enforced) with a clear error.
+- Import colliding ids → new id unless `overwrite`; forward-version bundle → migrate
+  (mirror `migrateSnapshot`), never crash; per-slice tolerant restore.
+- Deleting a template still referenced by a column → drop the reference (calc already drops
+  missing template ids in `foldTemplateChain`).
 
-- Unknown `id` in load/delete/rename/duplicate/export → throw a clear error (or documented
-  no-op for load — decide in plan; lean throw for programmer errors).
-- Deleting the active layout → fall back to Default and fire `layoutChanged`.
-- Deleting/renaming-id of `'default'` → rejected.
-- Import with colliding ids → new id unless `overwrite`.
-- Import of a forward-version bundle → migrate (mirror `migrateSnapshot`); unknown fields
-  preserved-or-dropped per slice, never crash.
-- Layout `state` restore degrades gracefully per-slice (reuses `setState`'s per-field
-  tolerance).
-
-## 12. Testing
+## 13. Testing
 
 Unit:
-- Save → new layout appears; load applies its view state; Default always present + undeletable.
-- `loadLayout` restores layout-tier modules (columnGroups) but leaves grid-tier (editSettings)
-  on the baseline unless overridden.
-- Grid-option override: change an option under layout A, save; switch to Default (baseline
-  restored); switch back to A (override re-applied).
-- Import/export round-trip (single + bundle); collision handling; replace vs merge.
-- Persistence: mutate layouts → reload a grid with the same `gridId` → layouts + active restored.
-- Default reset returns to construction baseline.
+- Layout save/load/delete/rename/duplicate; Default always present + undeletable.
+- `loadLayout` restores layout-tier modules (columnGroups/rules/calc) but leaves grid-tier
+  (editSettings/templates) on baseline unless overridden.
+- Grid-option override round-trip across layout switches.
+- Template model: editing a column auto-creates `<col>_template`; editing a column with a
+  shared template applied does NOT mutate the shared template; unique-name enforcement;
+  apply-to-other-column reuse; cascade order (type-default → templates → own → conditional).
+- Conditional rule: expression truthy → style applied to row/target columns; priority
+  resolution; enable/disable.
+- Import/export round-trip (single layout carries its referenced templates; bundle).
+- Persistence: mutate layouts/templates → reload same `gridId` → restored.
+- Default reset → construction baseline.
 
 Integration (customizer-demo, browser-verified):
-- Save a layout with hidden columns + a filter + a sort + a data-colour tweak; switch to
-  Default; switch back; export to JSON, re-import into a fresh grid.
+- Save a layout with hidden columns + filter + sort + a template-styled column + a
+  conditional rule; switch to Default; switch back; export a layout to JSON and re-import
+  into a fresh grid (templates carried).
 
-## 13. Out of scope (this cycle)
+## 14. Out of scope (this cycle)
 
-- Built-in layout-switcher grid chrome / options-editor UI (app builds its own; demo gets a
+- Built-in layout-switcher / template-manager grid chrome (app builds it; demo gets a
   minimal control).
-- Server-side / cross-device sync (import/export JSON is the interchange).
+- Server/cross-device sync (import/export JSON is the interchange).
 
-## 14. Open implementation notes
+## 15. Open implementation notes
 
-- Extract a `LayoutManager` (new `core/layoutManager.ts`) that owns the layouts registry,
-  active id, baseline retention, tier filtering, and persistence-bundle assembly. CGrid
-  delegates the API methods to it, passing thin accessors (getState/setState,
-  runtimeTouchedOptions, module registry snapshot/restore, baseline options). Keeps CGrid
-  thin and the manager unit-testable in isolation.
-- Reuse `migrateSnapshot` / the version-migration pattern for the bundle.
-- `themeParams` are per-layout (agreed): a layout can restyle data colours; conditional-format
-  rules remain layout-tier modules.
+- New `core/layoutManager.ts` owns the layouts registry, active id, baseline retention, tier
+  filtering, and persistence-bundle assembly; CGrid delegates API methods to it via thin
+  accessors (getState/setState, runtimeTouchedOptions, module snapshot/restore, baseline).
+- Templates + assignments extend the existing `@cgrid/calc` engine (`ColumnTemplate`,
+  `ColumnOverride.templateIds`, `foldTemplateChain`); the plan reconciles the exact bridge
+  API rather than inventing a parallel one.
+- Conditional-rules render application layers over the template-resolved base in the painter
+  pipeline; expression eval reuses the calc AST/watched-colId engine.
+- Reuse `migrateSnapshot` for bundle versioning. `themeParams` per-layout (agreed).
