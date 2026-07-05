@@ -33,8 +33,8 @@
 // caller, including a host calling `calc.applyOverrides(...)` directly
 // after wiring (not just opts-seeding), reaches the kernel callback.
 
-import type { TypeDefaults, WireCalcOptions } from './types';
-import { CalcEngine } from './calcEngine';
+import type { TypeDefaults, WireCalcOptions, ColumnTemplate, CalculatedColumnDef, ColumnOverride } from './types';
+import { CalcEngine, type ColumnEditPatch } from './calcEngine';
 import { buildWorkerCalcProgram } from './workerProgram';
 import { serializeAggregates } from './aggregates/registry';
 
@@ -57,13 +57,39 @@ interface CalcProviderShape {
   resolvedPatchFor(colId: string, cellDataType: 'text' | 'number'): Record<string, unknown> | null;
   workerProgram(): unknown | null;
   onColumnsChanged(fn: () => void): () => void;
+  // Grid Layouts / Phase B (B3) — template library CRUD the kernel's
+  // CGridApi template methods delegate to. The kernel stamps `now` (engine
+  // is Date-free).
+  getTemplates(): ColumnTemplate[];
+  saveTemplate(spec: {
+    id: string; name: string; description?: string;
+    overrides: ColumnTemplate['overrides']; now: number;
+  }): void;
+  renameTemplate(templateId: string, name: string, now: number): void;
+  deleteTemplate(templateId: string): void;
+  applyTemplate(colId: string, templateId: string): void;
+  removeTemplate(colId: string, templateId: string): void;
+  editColumn(colId: string, patch: Record<string, unknown>, now: number): void;
+}
+
+/** Structural mirror of kernel's `StateModule` (core/moduleState.ts) — a
+ *  named, versioned, JSON-serializable slice folded into `GridState.modules`
+ *  and ridden by getState/setState + persistState + layouts. */
+interface StateModuleShape {
+  id: string;
+  version: number;
+  get(): unknown;
+  set(data: unknown, version: number): void;
 }
 
 /** Structural surface of the CGrid instance (or CGridApi) the bridge
- *  registers against. Type-only — no runtime kernel import; the ONLY
- *  member calc needs is the provider registration (core/calcSlot.ts). */
+ *  registers against. Type-only — no runtime kernel import. `registerCalcProvider`
+ *  is required; `registerStateModule` is optional so a minimal grid surface
+ *  (e.g. a pre-Phase-B kernel or a bare test double) still wires — it just
+ *  won't persist templates / calc defs. */
 interface KernelGridSurface {
   registerCalcProvider(provider: CalcProviderShape): void;
+  registerStateModule?(module: StateModuleShape): () => void;
   __calcBridgeWired?: { calc: CalcEngine };
 }
 
@@ -71,6 +97,16 @@ interface KernelGridSurface {
  *  self-notify via CalcEngine.onColumnsChanged (see module doc). */
 const SILENT_MUTATORS = [
   'applyOverrides', 'saveTemplate', 'applyTemplate', 'setTypeDefaults', 'deleteTemplate',
+  // Auto-template-on-edit (Phase B / B2) — changes resolvedPatchFor output.
+  'editColumn',
+  // Template API (Phase B / B3) — `removeTemplate` drops a template from a
+  // column's chain (changes resolvedPatchFor output → kernel rebuild).
+  // `renameTemplate` is intentionally NOT here: it touches only metadata
+  // (the display name), so no colDef rebuild is warranted.
+  'removeTemplate',
+  // Export portability (Phase B / B4) — `clearOverrides` drops the whole
+  // override layer (columnOverrides module restore) → kernel rebuild.
+  'clearOverrides',
 ] as const;
 
 /**
@@ -197,6 +233,100 @@ export function wireIntoKernel(
     onColumnsChanged: (fn: () => void) => {
       bridgeListeners.add(fn);
       return () => { bridgeListeners.delete(fn); };
+    },
+    // Grid Layouts / Phase B (B3) — template library CRUD. These delegate to
+    // the (possibly SILENT_MUTATOR-wrapped) instance methods, so save /
+    // apply / remove notify the kernel colDef rebuild; getTemplates uses the
+    // shadowed listTemplates (synthetic typeDefaults filtered); rename touches
+    // only metadata (not wrapped). The engine stamps nothing — `now` flows in
+    // from the kernel.
+    getTemplates: () => calc.listTemplates(),
+    saveTemplate: (spec) => calc.saveTemplate(spec),
+    renameTemplate: (templateId, name, now) => calc.renameTemplate(templateId, name, { now }),
+    deleteTemplate: (templateId) => calc.deleteTemplate(templateId),
+    applyTemplate: (colId, templateId) => calc.applyTemplate(templateId, [colId]),
+    removeTemplate: (colId, templateId) => calc.removeTemplate(colId, templateId),
+    editColumn: (colId, patch, now) => calc.editColumn(colId, patch as ColumnEditPatch, { now }).ok,
+  });
+
+  // 4. Grid Layouts / Phase B (B1) — persist the template LIBRARY (grid tier)
+  //    and CALC-column definitions (layout tier) through the kernel module
+  //    registry, so they ride getState/setState + persistState + layouts. The
+  //    tier split keys off the module id (`templates` is in the kernel's
+  //    DEFAULT_GRID_LEVEL_MODULES → shared; `calc` is not → per-layout). Both
+  //    restore with REPLACE semantics (the snapshot fully defines the slice).
+  //    Guarded so a grid surface without the registry simply doesn't persist.
+  g.registerStateModule?.({
+    id: 'templates',
+    version: 1,
+    // `listTemplates` is the bridge-shadowed version (2a) — synthetic
+    // typeDefaults are already filtered out. Undefined → omitted from the
+    // snapshot (compact), matching the kernel's own empty-field convention.
+    get: () => {
+      const templates = calc.listTemplates();
+      return templates.length > 0 ? templates : undefined;
+    },
+    set: (data) => {
+      const next = Array.isArray(data) ? (data as ColumnTemplate[]) : [];
+      for (const t of calc.listTemplates()) calc.deleteTemplate(t.id);
+      for (const t of next) {
+        // `saveTemplate` THROWS on a bad def (empty id / non-compiling format).
+        // Per-item try/catch so one bad template in a foreign / hand-edited
+        // bundle can't wipe the whole library mid-restore (M3).
+        try {
+          calc.saveTemplate({
+            id: t.id, name: t.name, description: t.description,
+            overrides: t.overrides, now: t.updatedAt,
+          });
+        } catch (err) {
+          console.warn(`[cgrid/calc] restore skipped template '${t.id}': ${(err as Error).message}`);
+        }
+      }
+    },
+  });
+  g.registerStateModule?.({
+    id: 'calc',
+    version: 1,
+    get: () => {
+      const cols = calc.listCalculatedColumns();
+      return cols.length > 0 ? cols : undefined;
+    },
+    set: (data) => {
+      const next = Array.isArray(data) ? (data as CalculatedColumnDef[]) : [];
+      for (const c of calc.listCalculatedColumns()) calc.removeCalculatedColumn(c.colId);
+      for (const def of next) {
+        for (const err of calc.registerCalculatedColumn(def).errors) {
+          console.warn(
+            `[cgrid/calc] restore skipped calculated column '${err.colId ?? def.colId}': ${err.message}`,
+          );
+        }
+      }
+    },
+  });
+  // 4b. Grid Layouts / Phase B (B4) — persist the per-column OVERRIDE layer
+  //     (layout tier — not in DEFAULT_GRID_LEVEL_MODULES). This is where a
+  //     column's `templateIds` (template ASSIGNMENTS) + any direct per-column
+  //     styling live, so a layout round-trips its template assignments (and
+  //     exportLayout can bundle the defs those assignments reference — B4).
+  //     REPLACE semantics: clear the whole layer, then re-apply, so switching
+  //     to a layout without an override for a column drops the stale one.
+  g.registerStateModule?.({
+    id: 'columnOverrides',
+    version: 1,
+    get: () => {
+      const overrides = calc.getOverrides();
+      return overrides.length > 0 ? overrides : undefined;
+    },
+    set: (data) => {
+      const next = Array.isArray(data) ? (data as ColumnOverride[]) : [];
+      calc.clearOverrides();
+      if (next.length > 0) {
+        for (const err of calc.applyOverrides(next).errors) {
+          console.warn(
+            `[cgrid/calc] restore skipped override '${err.colId ?? '?'}': ${err.message}`,
+          );
+        }
+      }
     },
   });
 

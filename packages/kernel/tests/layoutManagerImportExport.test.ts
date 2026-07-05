@@ -75,14 +75,33 @@ describe('LayoutManager — export', () => {
     expect(mgr.getLayouts()[0].name).toBe('Default');
   });
 
-  it('exportLayout returns one layout with a (stubbed) templates array; unknown id throws', () => {
+  it('exportLayout returns one layout; no template refs → empty templates; unknown id throws', () => {
     const h = makeHost();
     const mgr = mgrWith(h.host);
     const saved = mgr.saveLayout('X', { activate: false });
     const out = mgr.exportLayout(saved.id);
     expect(out.id).toBe(saved.id);
-    expect(out.templates).toEqual([]);
+    expect(out.templates).toEqual([]); // no columnOverrides module → no refs
     expect(() => mgr.exportLayout('ghost')).toThrow(/unknown layout/);
+  });
+
+  it('exportLayout bundles ONLY the referenced template defs from the library (B4)', () => {
+    const h = makeHost();
+    const mgr = mgrWith(h.host);
+    const money = { id: 'money', name: 'Money', overrides: { format: '#,##0' }, createdAt: 1, updatedAt: 1 };
+    const compact = { id: 'compact', name: 'Compact', overrides: { width: 90 }, createdAt: 1, updatedAt: 1 };
+    mgr.setGridConfig({ templates: [money, compact] });
+    // a layout whose columnOverrides reference only `money`
+    h.setCurrent(fullState({
+      modules: { columnOverrides: { version: 1, data: [
+        { colId: 'px', templateIds: ['money'] },
+        { colId: 'qty', templateIds: ['money', 'ghost'] }, // dangling ref skipped
+      ] } },
+    }));
+    const saved = mgr.saveLayout('Blotter', { activate: false });
+    const out = mgr.exportLayout(saved.id);
+    expect(out.templates!.map((t) => t.id)).toEqual(['money']); // compact NOT referenced; ghost skipped
+    expect(out.templates![0].overrides).toEqual({ format: '#,##0' });
   });
 });
 
@@ -95,6 +114,25 @@ describe('LayoutManager — importLayout', () => {
     const imported = mgr.importLayout({ id: 'ext1', name: 'External', state: fullState() });
     expect(imported.id).toBe('ext1');
     expect(mgr.getLayouts().map((l) => l.id)).toContain('ext1');
+  });
+
+  it('re-materializes bundled template defs into the library (add-if-absent) and strips them (B4)', () => {
+    const mgr = mgrWith(h.host);
+    const localMoney = { id: 'money', name: 'LOCAL Money', overrides: { format: 'local' }, createdAt: 1, updatedAt: 1 };
+    mgr.setGridConfig({ templates: [localMoney] });
+
+    const imported = mgr.importLayout({
+      id: 'ext1', name: 'External', state: fullState(),
+      templates: [
+        { id: 'money', name: 'IMPORTED Money', overrides: { format: 'imported' }, createdAt: 9, updatedAt: 9 }, // collides → NOT clobbered
+        { id: 'compact', name: 'Compact', overrides: { width: 90 }, createdAt: 9, updatedAt: 9 },               // new → added
+      ],
+    });
+    const lib = mgr.getGridConfig().templates!;
+    expect(lib.map((t) => t.id).sort()).toEqual(['compact', 'money']);
+    expect(lib.find((t) => t.id === 'money')!.name).toBe('LOCAL Money'); // local def authoritative
+    expect(imported.templates).toBeUndefined(); // stripped — runtime layout carries no defs
+    expect(mgr.getLayouts().find((l) => l.id === 'ext1')!.templates).toBeUndefined();
   });
 
   it('mints a new id on collision, but replaces in place with { overwrite }', () => {

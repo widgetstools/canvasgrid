@@ -882,4 +882,37 @@ export interface CGridApi<TRow = any> {
     bundle: import('./layout').GridLayoutsBundle,
     opts?: { mode?: 'replace' | 'merge'; overwrite?: boolean },
   ): void;
+
+  // ── Styling templates (Phase B / B3) ────────────────────────────────
+  // The shared styling-template library, routed to `@cgrid/calc`. When no
+  // calc engine is wired, `getTemplates` returns `[]` and the mutators are
+  // no-ops (no `templatesChanged` event). Every mutation fires
+  // `templatesChanged` so switchers / editors re-sync.
+  /** The host-authored template library (synthetic type-defaults excluded),
+   *  as defensive clones. `[]` when no calc engine is wired. */
+  getTemplates(): import('@cgrid/calc').ColumnTemplate[];
+  /** Create-or-replace a template by id (re-save preserves `createdAt`; the
+   *  kernel stamps timestamps). Throws on an empty id / non-compiling format. */
+  saveTemplate(spec: import('./layout').TemplateSaveInput): void;
+  /** Rename a template's display name — GRID-WIDE unique (trimmed,
+   *  case-insensitive). Throws on unknown id, empty name, or a name already
+   *  in use by another template. */
+  renameTemplate(templateId: string, name: string): void;
+  /** Delete a template from the library. Existing column assignments become
+   *  dangling refs (skipped by the fold; revived by re-saving the id). */
+  deleteTemplate(templateId: string): void;
+  /** Assign a template to a single column (appends to its chain). */
+  applyTemplate(colId: string, templateId: string): void;
+  /** Unassign a template from a single column (the library entry is kept;
+   *  removing the last leaves the column explicitly opted out of the type
+   *  default). */
+  removeTemplate(colId: string, templateId: string): void;
+  /** Auto-template-on-edit (spec §3.1): apply an editable-attribute patch
+   *  (`format` / `cellRenderer` / `editable` / `hide` / `width` / `cellStyle`)
+   *  to a column. The change is captured in the column's OWN template
+   *  (created on first edit) and assigned — so it survives in layouts and can
+   *  be reused, and a consumer edit of a column that has a SHARED template
+   *  forks to its own rather than mutating the shared one. `headerName` is not
+   *  templatable (caption is column-unique). No-op without a calc engine. */
+  editColumn(colId: string, patch: import('@cgrid/calc').ColumnEditPatch): void;
 }

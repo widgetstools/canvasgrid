@@ -180,3 +180,51 @@ describe('v3 → v4 snapshot migration (pre-Phase-2 compat)', () => {
     });
   });
 });
+
+// Grid Layouts — Phase B / B5: `clearAbsent` — an exhaustive (layout-switch)
+// restore must CLEAR layout-tier module slices the incoming layout omits, so
+// switching to a layout without calc columns / template assignments doesn't
+// leak the outgoing layout's slices. Grid-tier ids (shared) are preserved.
+describe('ModuleStateRegistry.clearAbsent', () => {
+  it('clears registered modules absent from `present`, preserving `preserve` (grid-tier) ids', () => {
+    const registry = new ModuleStateRegistry();
+    const calc = makeModule('calc');
+    const overrides = makeModule('columnOverrides');
+    const templates = makeModule('templates'); // grid-tier — must survive
+    registry.register(calc);
+    registry.register(overrides);
+    registry.register(templates);
+
+    // incoming layout carries only `calc`; templates is grid-tier
+    registry.clearAbsent(new Set(['calc']), new Set(['templates', 'editSettings']));
+
+    // `columnOverrides` cleared via set(undefined); calc + templates untouched
+    expect(overrides.received).toEqual([{ data: undefined, version: 1 }]);
+    expect(calc.received).toEqual([]);       // present → not cleared
+    expect(templates.received).toEqual([]);  // grid-tier → preserved
+  });
+
+  it('clears ALL layout-tier modules when the incoming layout carries none', () => {
+    const registry = new ModuleStateRegistry();
+    const calc = makeModule('calc');
+    const overrides = makeModule('columnOverrides');
+    registry.register(calc);
+    registry.register(overrides);
+
+    registry.clearAbsent(new Set(), new Set(['templates']));
+    expect(calc.received).toEqual([{ data: undefined, version: 1 }]);
+    expect(overrides.received).toEqual([{ data: undefined, version: 1 }]);
+  });
+
+  it('a throwing module clear is isolated (warns, others still clear)', () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const registry = new ModuleStateRegistry();
+    const bad = makeModule('bad', { set: () => { throw new Error('boom'); } });
+    const good = makeModule('good');
+    registry.register(bad);
+    registry.register(good);
+
+    expect(() => registry.clearAbsent(new Set(), new Set())).not.toThrow();
+    expect(good.received).toEqual([{ data: undefined, version: 1 }]);
+  });
+});

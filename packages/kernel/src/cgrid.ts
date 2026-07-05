@@ -38,8 +38,10 @@ import {
   buildSnapshot, migrateSnapshot, STATE_SCHEMA_VERSION, type GridState,
 } from './core/stateSnapshot';
 import { LayoutManager, type LayoutManagerHost, type SaveLayoutOptions } from './core/layoutManager';
-import type { GridLayout, GridBaselineConfig, GridLayoutsBundle } from './types/layout';
-import type { LayoutChangeSource } from './types/event';
+import type { GridLayout, GridBaselineConfig, GridLayoutsBundle, TemplateSaveInput } from './types/layout';
+import { DEFAULT_GRID_LEVEL_MODULES } from './types/layout';
+import type { LayoutChangeSource, TemplateChangeSource } from './types/event';
+import type { ColumnTemplate } from '@cgrid/calc';
 import { StateUpdatedBus } from './core/stateUpdatedBus';
 import {
   flatten as flattenColumnGroups, project as projectColumnGroups,
@@ -205,6 +207,8 @@ export type {
   AggregationChangedSource, AggregationChangedEvent,
   // Grid Layouts (Phase A) — public data model + event source.
   LayoutState, GridLayout, GridLayoutsBundle, GridBaselineConfig, LayoutChangeSource,
+  // Grid Layouts (Phase B / B3) — template-save input + event source.
+  TemplateSaveInput, TemplateChangeSource,
 } from './types';
 // Grid Layouts (Phase A) — public value exports (reserved id, tier default,
 // bundle version).
@@ -5426,6 +5430,13 @@ export class CGrid<TRow = any> {
    *  already sees the installed program. */
   private onCalcColumnsChanged(): void {
     this.rebuildColumns({ defaultColDef: this.options.defaultColDef });
+    // Grid Layouts (Phase B / B5 fix) — a calc-engine mutation (register/remove
+    // calc column, applyOverrides, applyTemplate, …) changed the `calc` /
+    // `columnOverrides` module slices; dirty the persist bus so autosave picks
+    // them up. Suppressed during an 'init'/'api'-sourced restore by the bus.
+    // (Template-API mutations ALSO emit `templatesChanged` → 'modules'; the bus
+    // coalesces the double-dirty per frame.)
+    this.notifyModuleStateChanged('calc');
     const provider = getCalcProvider();
     this.workerCoord.setCalcProgram((provider?.workerProgram() ?? null) as WorkerCalcProgram | null)
       .catch((err) => { if (!this.destroyed) console.error('[cgrid] setCalcProgram:', err); });
@@ -6248,6 +6259,14 @@ export class CGrid<TRow = any> {
       exportLayouts: () => this.exportLayouts(),
       importLayout: (layout, opts) => this.importLayout(layout, opts),
       importLayouts: (bundle, opts) => this.importLayouts(bundle, opts),
+      // Styling templates (Phase B / B3).
+      getTemplates: () => this.getTemplates(),
+      saveTemplate: (spec) => this.saveTemplate(spec),
+      renameTemplate: (templateId, name) => this.renameTemplate(templateId, name),
+      deleteTemplate: (templateId) => this.deleteTemplate(templateId),
+      applyTemplate: (colId, templateId) => this.applyTemplate(colId, templateId),
+      removeTemplate: (colId, templateId) => this.removeTemplate(colId, templateId),
+      editColumn: (colId, patch) => this.editColumn(colId, patch),
       listCellRenderers: () => this.listCellRenderers(),
       getModal: () => this.getModal(),
       forEachColumnGroup: (callback) => this.forEachColumnGroup(callback),
@@ -7805,11 +7824,18 @@ export class CGrid<TRow = any> {
     // above, matching how the sibling restores below re-dirty their own
     // keys). Restore degrades gracefully per-slice: unknown module ids
     // and throwing `set()`s warn + skip without dropping the rest.
-    // NOTE (exhaustive): module slices are NOT cleared here. Grid-tier
-    // modules (editSettings, templates) are shared and MUST survive a layout
-    // switch, and a generic per-module reset for absent layout-tier slices
-    // needs the registry's cooperation — deferred to the Phase-B module work
-    // (columnGroups is the only layout-tier module today).
+    // Exhaustive (layout switch / persisted restore): CLEAR the layout-tier
+    // module slices the incoming snapshot omits, so a layout without calc
+    // columns / template assignments doesn't leak the outgoing layout's
+    // slices (Grid Layouts / Phase B / B5). Grid-tier ids (editSettings,
+    // templates — shared) are preserved. Modules that can't clear from
+    // `undefined` (columnGroups) no-op, unchanged. Cleared BEFORE the restore
+    // so present slices below re-apply on a clean base.
+    if (exhaustive) {
+      const present = new Set(Object.keys(migrated.modules ?? {}));
+      const preserve = new Set(this.options.layoutGridLevelModules ?? DEFAULT_GRID_LEVEL_MODULES);
+      this.moduleStateRegistry.clearAbsent(present, preserve);
+    }
     if (migrated.modules) {
       this.moduleStateRegistry.restore(migrated.modules);
     }
@@ -8071,7 +8097,13 @@ export class CGrid<TRow = any> {
     // config / exported bundle can't reach into engine-owned module state.
     const modules = this.moduleStateRegistry.snapshot();
     if (modules?.editSettings) out.editing = structuredClone(modules.editSettings);
-    if (modules?.templates) out.templates = structuredClone(modules.templates.data) as GridBaselineConfig['templates'];
+    // Templates: when calc is wired the LIVE library is authoritative — an
+    // EMPTY library must override any stale `LayoutManager.gridConfig.templates`
+    // (which materializeTemplates populates but delete/rename never prune), so a
+    // deleted template can't resurrect in an export/reload (M2). `getTemplates`
+    // is defensively cloned and returns `[]` when empty. Only when calc is NOT
+    // wired do we fall through to the manager's stored library.
+    if (getCalcProvider()?.getTemplates) out.templates = this.getTemplates();
     return out;
   }
 
@@ -8110,23 +8142,29 @@ export class CGrid<TRow = any> {
     }
   }
 
-  // ── Import / export (A4) ────────────────────────────────────────────
+  // ── Import / export (A4 + B4) ───────────────────────────────────────
 
-  /** Export a single layout (bundles referenced template defs in Phase B). */
+  /** Export a single layout, bundling the template defs its columns
+   *  reference (Phase B / B4) — resolved against the LIVE grid-level library
+   *  so the export is self-contained across grids. */
   exportLayout(id: string): GridLayout {
-    return this.getLayoutManager().exportLayout(id);
+    return this.getLayoutManager().exportLayout(id, this.getGridConfig().templates ?? []);
   }
-  /** Export the full bundle: layouts + active id + the live grid config. */
+  /** Export the full bundle: layouts + active id + the live grid config
+   *  (whose `templates` carries the whole shared library). */
   exportLayouts(): GridLayoutsBundle {
     const bundle = this.getLayoutManager().exportLayouts();
     bundle.grid = this.getGridConfig(); // overlay live editing/templates modules
     return bundle;
   }
   /** Import a single layout (collision → new id unless `overwrite`),
-   *  optionally activating (and applying) it. */
+   *  optionally activating (and applying) it. Bundled template defs are
+   *  re-materialized into the LIVE library (add-if-absent) so an activated
+   *  layout's template assignments resolve (Phase B / B4). */
   importLayout(layout: GridLayout, opts?: { overwrite?: boolean; activate?: boolean }): GridLayout {
     const mgr = this.getLayoutManager();
-    const imported = mgr.importLayout(layout, opts);
+    const imported = mgr.importLayout(layout, opts); // folds defs into the bundle library
+    this.materializeTemplatesLive(layout.templates); // …and into the live engine
     if (opts?.activate) mgr.loadLayout(imported.id); // apply to the live grid
     this.emitLayoutChanged('import');
     return imported;
@@ -8141,11 +8179,102 @@ export class CGrid<TRow = any> {
     // unsaved) on-screen view; the merged config is stored for later resets.
     if ((opts?.mode ?? 'merge') === 'replace') {
       // Grid config first (sets the option baseline) so the active view's
-      // reset-to-baseline in loadLayout lands on the imported baseline.
+      // reset-to-baseline in loadLayout lands on the imported baseline. The
+      // replaced config's `templates` restores the whole library to the engine.
       this.applyGridConfigLive(mgr.getGridConfig());
       mgr.loadLayout(mgr.getActiveLayoutId());
+    } else {
+      // Merge: fold the bundle library into the LIVE engine (add-if-absent) so
+      // a later loadLayout of a merged layout resolves its assignments —
+      // without a full library replace that would disturb live own-templates.
+      // Covers BOTH the bundle-level library AND per-layout bundled defs (a
+      // bundle assembled from `exportLayout()` objects carries defs on each
+      // layout, not in `grid.templates`) — M4.
+      this.materializeTemplatesLive(bundle.grid?.templates);
+      for (const l of bundle.layouts ?? []) this.materializeTemplatesLive(l.templates);
     }
     this.emitLayoutChanged('import');
+  }
+
+  /** Fold template defs into the LIVE engine library (add-if-absent) — the
+   *  runtime half of the manager's `materializeTemplates`. Skips ids already
+   *  present (never clobbers a live/customized def); no-op without calc. */
+  private materializeTemplatesLive(templates: ColumnTemplate[] | undefined): void {
+    if (!templates || templates.length === 0) return;
+    const have = new Set(this.getTemplates().map((t) => t.id));
+    for (const t of templates) {
+      if (!have.has(t.id)) this.saveTemplate(t);
+    }
+  }
+
+  // ── Styling templates (Phase B / B3) ────────────────────────────────
+  // The shared styling-template library, routed to the calc provider
+  // (registered by @cgrid/calc's wireIntoKernel). No provider (calc not
+  // wired) → `getTemplates` returns `[]` and the mutators no-op without an
+  // event. The engine is Date-free, so save/rename stamp `Date.now()` here.
+  // Mutations that change a column's resolved def (save/apply/remove) trigger
+  // the kernel colDef rebuild via the provider's onColumnsChanged wiring;
+  // every op fires `templatesChanged` for switchers/editors to re-sync.
+
+  private emitTemplatesChanged(source: TemplateChangeSource, templateId?: string): void {
+    this.events.emit({ type: 'templatesChanged', source, templateId });
+  }
+
+  /** The shared styling-template library (defensive clones; `[]` when no
+   *  calc engine is wired). */
+  getTemplates(): ColumnTemplate[] {
+    return (getCalcProvider()?.getTemplates?.() ?? []) as unknown as ColumnTemplate[];
+  }
+  /** Create-or-replace a template by id (kernel stamps timestamps). */
+  saveTemplate(spec: TemplateSaveInput): void {
+    const provider = getCalcProvider();
+    if (!provider?.saveTemplate) return;
+    provider.saveTemplate({
+      id: spec.id, name: spec.name, description: spec.description,
+      overrides: spec.overrides as Record<string, unknown>, now: Date.now(),
+    });
+    this.emitTemplatesChanged('save', spec.id);
+  }
+  /** Rename a template's display name (grid-wide unique; throws on collision). */
+  renameTemplate(templateId: string, name: string): void {
+    const provider = getCalcProvider();
+    if (!provider?.renameTemplate) return;
+    provider.renameTemplate(templateId, name, Date.now()); // throws propagate (no event)
+    this.emitTemplatesChanged('rename', templateId);
+  }
+  /** Delete a template from the library (assignments become dangling refs). */
+  deleteTemplate(templateId: string): void {
+    const provider = getCalcProvider();
+    if (!provider?.deleteTemplate) return;
+    provider.deleteTemplate(templateId);
+    this.emitTemplatesChanged('delete', templateId);
+  }
+  /** Assign a template to a single column (appends to its chain). */
+  applyTemplate(colId: string, templateId: string): void {
+    const provider = getCalcProvider();
+    if (!provider?.applyTemplate) return;
+    provider.applyTemplate(colId, templateId);
+    this.emitTemplatesChanged('apply', templateId);
+  }
+  /** Unassign a template from a single column (library entry kept). */
+  removeTemplate(colId: string, templateId: string): void {
+    const provider = getCalcProvider();
+    if (!provider?.removeTemplate) return;
+    provider.removeTemplate(colId, templateId);
+    this.emitTemplatesChanged('remove', templateId);
+  }
+  /** Auto-template-on-edit (spec §3.1): patch a column's editable attributes
+   *  into its OWN template (forking from any shared template). Fires
+   *  `templatesChanged` (source `'save'` — it writes the column's own
+   *  template). No-op without a calc engine. */
+  editColumn(colId: string, patch: import('@cgrid/calc').ColumnEditPatch): void {
+    const provider = getCalcProvider();
+    if (!provider?.editColumn) return;
+    // Gate the event on the engine's result — a rejected edit (e.g. a
+    // non-compiling format) changes nothing, so it must not fire
+    // `templatesChanged` (M1).
+    const ok = provider.editColumn(colId, patch as Record<string, unknown>, Date.now());
+    if (ok) this.emitTemplatesChanged('save');
   }
 
   /** Grid Layouts (A5) — restore a persisted blob (`{ ...viewState, layouts?

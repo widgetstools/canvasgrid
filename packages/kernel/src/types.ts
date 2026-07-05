@@ -168,10 +168,12 @@ export type {
   GridLayout,
   GridLayoutsBundle,
   GridBaselineConfig,
+  // Grid Layouts (Phase B / B3) — template-save input shape.
+  TemplateSaveInput,
 } from './types/layout';
 export {
   DEFAULT_LAYOUT_ID,
   DEFAULT_GRID_LEVEL_MODULES,
   LAYOUTS_BUNDLE_VERSION,
 } from './types/layout';
-export type { LayoutChangeSource } from './types/event';
+export type { LayoutChangeSource, TemplateChangeSource } from './types/event';

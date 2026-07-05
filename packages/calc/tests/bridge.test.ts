@@ -60,13 +60,33 @@ interface ProviderShape {
     aggregateSources: Array<{ name: string; source: string }>;
   } | null;
   onColumnsChanged(cb: () => void): () => void;
+  // Grid Layouts / Phase B (B3) — template library CRUD.
+  getTemplates(): ColumnTemplate[];
+  saveTemplate(spec: {
+    id: string; name: string; description?: string;
+    overrides: ColumnTemplate['overrides']; now: number;
+  }): void;
+  renameTemplate(templateId: string, name: string, now: number): void;
+  deleteTemplate(templateId: string): void;
+  applyTemplate(colId: string, templateId: string): void;
+  removeTemplate(colId: string, templateId: string): void;
+}
+
+interface StateModuleShape {
+  id: string;
+  version: number;
+  get(): unknown;
+  set(data: unknown, version: number): void;
 }
 
 function makeFakeGrid() {
   const providers: ProviderShape[] = [];
+  const modules: StateModuleShape[] = [];
   return {
     registerCalcProvider(p: unknown) { providers.push(p as ProviderShape); },
+    registerStateModule(m: unknown) { modules.push(m as StateModuleShape); return () => {}; },
     _providers: providers,
+    _modules: modules,
   };
 }
 
@@ -197,6 +217,49 @@ describe('wireIntoKernel', () => {
     expect(fired.length).toBe(4);
   });
 
+  it('exposes template-library CRUD on the provider, delegating to the engine (Phase B / B3)', () => {
+    const grid = makeFakeGrid();
+    const { calc } = wireIntoKernel(grid, { typeDefaults: { numeric: '#,##0' } });
+    const provider = grid._providers[0]!;
+    const fired: number[] = [];
+    provider.onColumnsChanged(() => fired.push(1));
+
+    // save → appears in getTemplates (synthetic typeDefaults filtered) + notifies
+    provider.saveTemplate({ id: 'money', name: 'Money', overrides: { format: '#,##0.00' }, now: 1 });
+    expect(provider.getTemplates().map((t) => t.id)).toEqual(['money']); // no __cgridTypeDefault:*
+    expect(fired.length).toBe(1);
+
+    // rename → name changes, NO rebuild notification (metadata only)
+    provider.renameTemplate('money', 'Currency', 2);
+    expect(provider.getTemplates()[0]!.name).toBe('Currency');
+    expect(fired.length).toBe(1); // unchanged
+
+    // apply(colId, tid) → engine.applyTemplate(tid, [colId]) + notifies
+    provider.applyTemplate('px', 'money');
+    expect(calc.getOverrides().find((o) => o.colId === 'px')!.templateIds).toEqual(['money']);
+    expect(fired.length).toBe(2);
+
+    // remove(colId, tid) → drops from chain (kept in library) + notifies
+    provider.removeTemplate('px', 'money');
+    expect(calc.getOverrides().find((o) => o.colId === 'px')!.templateIds).toEqual([]);
+    expect(provider.getTemplates().map((t) => t.id)).toEqual(['money']); // still in library
+    expect(fired.length).toBe(3);
+
+    // delete → gone from library + notifies
+    provider.deleteTemplate('money');
+    expect(provider.getTemplates()).toEqual([]);
+    expect(fired.length).toBe(4);
+  });
+
+  it('renameTemplate through the provider rejects a duplicate name', () => {
+    const grid = makeFakeGrid();
+    wireIntoKernel(grid);
+    const provider = grid._providers[0]!;
+    provider.saveTemplate({ id: 'a', name: 'Alpha', overrides: {}, now: 1 });
+    provider.saveTemplate({ id: 'b', name: 'Beta', overrides: {}, now: 1 });
+    expect(() => provider.renameTemplate('b', 'alpha', 2)).toThrow(/in use/);
+  });
+
   it('is idempotent — re-calling returns the SAME { calc } object', () => {
     const grid = makeFakeGrid();
     const first = wireIntoKernel(grid, { calculatedColumns: [NOTIONAL] });
@@ -204,5 +267,90 @@ describe('wireIntoKernel', () => {
     expect(again).toBe(first);
     expect(again.calc).toBe(first.calc);
     expect(grid._providers).toHaveLength(1);
+  });
+});
+
+// Grid Layouts — Phase B / B1: the calc bridge registers two kernel state
+// modules so the template library + calc-column defs ride getState/setState +
+// persistState + layouts. Tier is keyed off the module id in the kernel
+// (`templates` is grid-tier, `calc` is layout-tier — see the kernel's
+// DEFAULT_GRID_LEVEL_MODULES); here we prove the serialize/restore logic.
+describe('wireIntoKernel — Grid Layouts state modules (Phase B / B1)', () => {
+  function modulesOf(grid: ReturnType<typeof makeFakeGrid>): Map<string, StateModuleShape> {
+    return new Map(grid._modules.map((m) => [m.id, m]));
+  }
+
+  it('registers `templates` (grid-tier) + `calc` + `columnOverrides` (layout-tier) modules that serialize the engine', () => {
+    const grid = makeFakeGrid();
+    wireIntoKernel(grid, { templates: [TEMPLATE], calculatedColumns: [NOTIONAL] });
+    const mods = modulesOf(grid);
+    expect([...mods.keys()].sort()).toEqual(['calc', 'columnOverrides', 'templates']);
+    expect(mods.get('templates')!.get()).toEqual([expect.objectContaining({ id: 'compact', name: 'Compact', overrides: { width: 90 } })]);
+    expect(mods.get('calc')!.get()).toEqual([expect.objectContaining({ colId: 'notional', expression: '[qty] * [price]' })]);
+  });
+
+  it('columnOverrides (layout-tier) round-trips template ASSIGNMENTS with REPLACE semantics (B4)', () => {
+    const src = makeFakeGrid();
+    const { calc } = wireIntoKernel(src, { templates: [TEMPLATE] });
+    calc.applyTemplate('compact', ['px', 'qty']); // assign a data-col template
+    const overridesData = modulesOf(src).get('columnOverrides')!.get();
+    expect(overridesData).toEqual([
+      expect.objectContaining({ colId: 'px', templateIds: ['compact'] }),
+      expect.objectContaining({ colId: 'qty', templateIds: ['compact'] }),
+    ]);
+
+    // restore into a fresh engine that already has a STALE override → REPLACE
+    const dest = makeFakeGrid();
+    const { calc: calc2 } = wireIntoKernel(dest, {});
+    calc2.applyOverrides([{ colId: 'stale', width: 10 }]);
+    modulesOf(dest).get('columnOverrides')!.set(overridesData, 1);
+    expect(calc2.getOverrides().map((o) => o.colId)).toEqual(['px', 'qty']); // 'stale' gone
+  });
+
+  it('columnOverrides get() is undefined when there are no overrides', () => {
+    const grid = makeFakeGrid();
+    wireIntoKernel(grid, {});
+    expect(modulesOf(grid).get('columnOverrides')!.get()).toBeUndefined();
+  });
+
+  it('omits an empty module from the snapshot (get returns undefined)', () => {
+    const grid = makeFakeGrid();
+    wireIntoKernel(grid, {}); // nothing seeded
+    const mods = modulesOf(grid);
+    expect(mods.get('templates')!.get()).toBeUndefined();
+    expect(mods.get('calc')!.get()).toBeUndefined();
+  });
+
+  it('does not surface the synthetic typeDefaults templates in the `templates` module', () => {
+    const grid = makeFakeGrid();
+    wireIntoKernel(grid, { typeDefaults: { numeric: '#,##0' }, templates: [TEMPLATE] });
+    const templates = modulesOf(grid).get('templates')!.get() as ColumnTemplate[];
+    expect(templates.map((t) => t.id)).toEqual(['compact']); // no __cgridTypeDefault:*
+  });
+
+  it('round-trips the library + calc defs into a fresh engine via set()', () => {
+    const src = makeFakeGrid();
+    wireIntoKernel(src, { templates: [TEMPLATE], calculatedColumns: [NOTIONAL] });
+    const srcMods = modulesOf(src);
+    const templatesData = srcMods.get('templates')!.get();
+    const calcData = srcMods.get('calc')!.get();
+
+    const dest = makeFakeGrid();
+    const { calc: calc2 } = wireIntoKernel(dest, {});
+    const destMods = modulesOf(dest);
+    destMods.get('templates')!.set(templatesData, 1);
+    destMods.get('calc')!.set(calcData, 1);
+    expect(calc2.listTemplates().map((t) => t.id)).toEqual(['compact']);
+    expect(calc2.listCalculatedColumns().map((c) => c.colId)).toEqual(['notional']);
+  });
+
+  it('set() REPLACES the current library / calc defs (not a merge)', () => {
+    const grid = makeFakeGrid();
+    const { calc } = wireIntoKernel(grid, { templates: [TEMPLATE], calculatedColumns: [NOTIONAL] });
+    const mods = modulesOf(grid);
+    mods.get('templates')!.set([{ id: 'other', name: 'Other', overrides: {}, createdAt: 5, updatedAt: 5 }], 1);
+    mods.get('calc')!.set([], 1);
+    expect(calc.listTemplates().map((t) => t.id)).toEqual(['other']); // 'compact' dropped
+    expect(calc.listCalculatedColumns()).toEqual([]); // 'notional' dropped
   });
 });

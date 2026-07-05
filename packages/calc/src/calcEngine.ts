@@ -59,6 +59,28 @@ function kernelCellDataTypeOf(cellDataType: CellDataType | undefined): 'text' | 
   return (cellDataType ?? 'number') === 'number' ? 'number' : 'text';
 }
 
+/** The stable id of a column's OWN auto-template (auto-template-on-edit,
+ *  Phase B / B2). Namespaced so it can never collide with a host-authored
+ *  template id — same collision-proofing as the typeDefaults synthetics. */
+export function ownTemplateId(colId: string): string {
+  return `__cgridOwn:${colId}`;
+}
+
+/** True for an own-template id minted by {@link ownTemplateId}. */
+export function isOwnTemplateId(templateId: string): boolean {
+  return templateId.startsWith('__cgridOwn:');
+}
+
+/** Editable scalar attributes an edit may write into a column's own template
+ *  (spec §3.1 templatable set). `headerName` is EXCLUDED — caption is
+ *  column-unique and never templated; `cellStyle` merges per-key separately. */
+const EDITABLE_SCALAR_KEYS = ['format', 'cellRenderer', 'editable', 'hide', 'width'] as const;
+
+/** The editable-attribute patch accepted by {@link CalcEngine.editColumn}. */
+export type ColumnEditPatch = Partial<
+  Pick<ColumnOverride, 'format' | 'cellRenderer' | 'editable' | 'hide' | 'width' | 'cellStyle'>
+>;
+
 export class CalcEngine {
   #schema: Schema | null;
   /** Insertion-ordered — registration order IS the accessor order. */
@@ -286,6 +308,80 @@ export class CalcEngine {
     return [...this.#overrides.values()].map((override) => structuredClone(override));
   }
 
+  /** Drop the entire per-column override layer (Grid Layouts / Phase B, B4).
+   *  The bridge's layout-tier `columnOverrides` state module calls this before
+   *  re-applying a layout's overrides, giving REPLACE (not merge) restore
+   *  semantics — switching layouts must not leak the outgoing layout's
+   *  assignments. Like `applyOverrides`, does NOT self-notify (the bridge
+   *  wraps it to trigger the kernel colDef rebuild). */
+  clearOverrides(): void {
+    this.#overrides.clear();
+  }
+
+  /**
+   * Auto-template-on-edit (spec §3.1). Merge an editable-attribute patch into
+   * the column's OWN template ({@link ownTemplateId}, name `<colId>_template`,
+   * created on first edit) and ensure the column references it from
+   * `templateIds`. The own template folds HIGHEST (see `resolvedPatchFor`), so
+   * the edit wins over any applied shared template WITHOUT mutating that
+   * shared template — a consumer edit forks to the column's own.
+   *
+   * `headerName` is intentionally not accepted (caption is column-unique).
+   * Atomic: a non-compiling `format` leaves the own template untouched. Like
+   * `applyOverrides`, this does NOT self-notify — the Task 14 bridge wraps it
+   * to trigger the kernel colDef rebuild.
+   */
+  editColumn(
+    colId: string,
+    patch: ColumnEditPatch,
+    opts: { now: number },
+  ): { ok: boolean; errors: CalcValidationError[] } {
+    if (typeof colId !== 'string' || colId.length === 0) {
+      return { ok: false, errors: [{ colId: null, code: 'bad-shape', message: 'editColumn colId must be a non-empty string', loc: null }] };
+    }
+    if (patch.format !== undefined) {
+      const fmt = compileFormat(patch.format);
+      if (!fmt.ok) {
+        return { ok: false, errors: [{ colId, code: 'format-compile', message: `edit format failed to compile: ${fmt.error.message}`, loc: null }] };
+      }
+    }
+
+    // Merge the patch into the column's own template (create-if-absent).
+    const ownId = ownTemplateId(colId);
+    const existing = this.#templates.get(ownId);
+    const overrides: ColumnTemplate['overrides'] = { ...(existing?.overrides ?? {}) };
+    const target = overrides as Record<string, unknown>;
+    for (const key of EDITABLE_SCALAR_KEYS) {
+      const value = patch[key];
+      // `!== undefined`, not truthiness — a DEFINED falsy (editable:false,
+      // hide:false, width:0) must land.
+      if (value !== undefined) target[key] = value;
+    }
+    if (patch.cellStyle !== undefined) {
+      // Clone so a caller mutating a shared cellStyle object (or its nested
+      // values) after the edit can't corrupt the stored own template (L3).
+      overrides.cellStyle = structuredClone({ ...(overrides.cellStyle ?? {}), ...patch.cellStyle });
+    }
+    this.#templates.set(ownId, {
+      id: ownId,
+      name: existing?.name ?? `${colId}_template`,
+      overrides,
+      createdAt: existing?.createdAt ?? opts.now,
+      updatedAt: opts.now,
+    });
+
+    // Ensure the column references its own template (position is irrelevant —
+    // `resolvedPatchFor` folds it highest regardless).
+    const override = this.#overrides.get(colId);
+    if (override === undefined) {
+      this.#overrides.set(colId, { colId, templateIds: [ownId] });
+    } else {
+      const chain = override.templateIds ?? [];
+      if (!chain.includes(ownId)) override.templateIds = [...chain, ownId];
+    }
+    return { ok: true, errors: [] };
+  }
+
   /** Date-free: the CALLER stamps `now`. Re-save of an existing id preserves
    *  createdAt and bumps updatedAt. Throws on host-authoring errors (empty id,
    *  non-compiling format) — void return per the locked spec §3 signature. */
@@ -301,8 +397,13 @@ export class CalcEngine {
       }
     }
     const existing = this.#templates.get(template.id);
+    // Caption (`headerName`) is column-unique and NEVER templated (spec §3.1) —
+    // strip it here so it can't ride a shared template onto multiple columns,
+    // regardless of the entry path (API, bridge seed, module restore, import).
+    const { headerName: _dropped, ...overrides } = template.overrides;
     this.#templates.set(template.id, structuredClone({
       ...template,
+      overrides,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
     }));
@@ -328,6 +429,57 @@ export class CalcEngine {
    *  the fold skips dangling ids; re-saving the template revives them. */
   deleteTemplate(templateId: string): void {
     this.#templates.delete(templateId);
+  }
+
+  /**
+   * Rename a template's display name (Grid Layouts / Phase B, spec §8).
+   * Enforces GRID-WIDE unique names (trimmed, case-insensitive) — `saveTemplate`
+   * only guards unique ids, so this is the sole name-uniqueness gate. Preserves
+   * `createdAt`, bumps `updatedAt` (caller stamps `now` — engine stays
+   * Date-free). Renaming a template to its own current name is allowed.
+   * Throws on: unknown id, empty/whitespace name, a name already used by
+   * ANOTHER template. Does NOT self-notify — a rename changes no colDef output
+   * (only metadata); the bridge wires the `templatesChanged` event.
+   */
+  renameTemplate(templateId: string, name: string, opts: { now: number }): void {
+    const existing = this.#templates.get(templateId);
+    if (existing === undefined) {
+      throw new Error(`template '${templateId}' not found`);
+    }
+    const trimmed = name.trim();
+    if (trimmed.length === 0) {
+      throw new Error('template name must be a non-empty string');
+    }
+    const key = trimmed.toLowerCase();
+    for (const [id, t] of this.#templates) {
+      if (id !== templateId && t.name.trim().toLowerCase() === key) {
+        throw new Error(`template name '${trimmed}' already in use`);
+      }
+    }
+    this.#templates.set(templateId, {
+      ...existing,
+      name: trimmed,
+      updatedAt: opts.now,
+    });
+  }
+
+  /**
+   * Unassign a template from a single column (Grid Layouts / Phase B, spec §8)
+   * — the inverse of `applyTemplate(templateId, [colId])`. Drops `templateId`
+   * from that column's `templateIds` chain; the removed template stays in the
+   * library (this is not `deleteTemplate`). Removing the last template leaves
+   * an EXPLICIT empty chain (`templateIds: []`), which opts the column OUT of
+   * the typeDefault (per the `ColumnOverride.templateIds` contract) rather than
+   * silently resurrecting it. No-op when the column has no override or the id
+   * isn't in its chain. Like `applyTemplate`, does NOT self-notify — the bridge
+   * triggers the kernel colDef rebuild.
+   */
+  removeTemplate(colId: string, templateId: string): void {
+    const override = this.#overrides.get(colId);
+    if (override === undefined) return;
+    const chain = override.templateIds;
+    if (chain === undefined || !chain.includes(templateId)) return;
+    override.templateIds = chain.filter((id) => id !== templateId);
   }
 
   listTemplates(): ColumnTemplate[] {
@@ -362,6 +514,14 @@ export class CalcEngine {
       chain = templateIds
         .map((id) => this.#templates.get(id))
         .filter((template): template is ColumnTemplate => template !== undefined); // dangling ids skipped silently
+      // Auto-template-on-edit (B2): the column's OWN template always folds
+      // HIGHEST, whatever its position in templateIds (e.g. a shared template
+      // applied AFTER the edit must not override the edit).
+      const ownIdx = chain.findIndex((t) => t.id === ownTemplateId(colId));
+      if (ownIdx >= 0 && ownIdx !== chain.length - 1) {
+        const [own] = chain.splice(ownIdx, 1);
+        chain.push(own!);
+      }
     }
     if (assignment === null && typeDefaultTemplate === null) return null;
     const merged = foldTemplateChain(typeDefaultTemplate, chain, assignment ?? { colId });

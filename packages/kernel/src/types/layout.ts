@@ -115,3 +115,12 @@ export interface GridBaselineConfig {
   /** Baseline editing rules (`editSettings` module envelope). */
   editing?: ModuleStateEnvelope;
 }
+
+/**
+ * Host-facing input to `CGridApi.saveTemplate` (Grid Layouts / Phase B, §8) —
+ * a {@link ColumnTemplate} without the engine-managed timestamps (the kernel
+ * stamps `createdAt`/`updatedAt` on the caller's behalf, since the calc engine
+ * is Date-free). Re-saving an existing `id` replaces it (preserving its
+ * original `createdAt`).
+ */
+export type TemplateSaveInput = Omit<ColumnTemplate, 'createdAt' | 'updatedAt'>;

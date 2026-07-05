@@ -23,6 +23,36 @@ export interface CalcProviderShape {
   workerProgram(): unknown | null;
   /** Subscribe to calc-column / override mutations; returns unsubscribe. */
   onColumnsChanged(fn: () => void): () => void;
+
+  // ── Grid Layouts / Phase B (B3) — the shared styling-template library ──
+  // CRUD, routed from the kernel's CGridApi template methods to the calc
+  // engine. Optional so a minimal / pre-B3 provider (or a bare test double)
+  // still registers — the kernel guards each call and degrades to a no-op /
+  // empty list. The engine is Date-free, so name/save mutations take an
+  // explicit `now` the kernel stamps.
+  /** The host-authored template library (synthetic typeDefaults filtered).
+   *  Records keyed as `ColumnTemplate` — the kernel treats them opaquely. */
+  getTemplates?(): Array<Record<string, unknown>>;
+  /** Create-or-replace a template by id (re-save preserves `createdAt`). */
+  saveTemplate?(spec: {
+    id: string; name: string; description?: string;
+    overrides: Record<string, unknown>; now: number;
+  }): void;
+  /** Rename a template (grid-wide unique name enforced; throws on collision). */
+  renameTemplate?(templateId: string, name: string, now: number): void;
+  /** Delete a template from the library (assignments become dangling refs). */
+  deleteTemplate?(templateId: string): void;
+  /** Assign a template to a single column (appends to its chain). */
+  applyTemplate?(colId: string, templateId: string): void;
+  /** Unassign a template from a single column (library entry kept). */
+  removeTemplate?(colId: string, templateId: string): void;
+  /** Auto-template-on-edit (spec §3.1): merge an editable-attribute patch
+   *  into the column's OWN template (create-if-absent) and assign it — a
+   *  consumer edit forks to the column's own template, never mutating a
+   *  shared one. `now` stamps the own template's timestamps. Returns `true`
+   *  when the edit applied, `false` when it was rejected (e.g. a
+   *  non-compiling format) — the caller gates its `templatesChanged` on it. */
+  editColumn?(colId: string, patch: Record<string, unknown>, now: number): boolean;
 }
 
 let injectedProvider: CalcProviderShape | null = null;

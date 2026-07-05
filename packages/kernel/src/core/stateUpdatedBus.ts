@@ -53,6 +53,12 @@ const EVENT_TO_KEY: Record<string, StateKey> = {
   // slot so the debounced autosave re-folds the bundle into the blob, even
   // when the mutation didn't change the live view (save/rename/delete-other).
   layoutChanged: 'layouts',
+  // Grid Layouts (Phase B / B5 fix) — template-library mutations (save /
+  // rename / delete / apply / remove / editColumn) ride in the `templates` /
+  // `columnOverrides` state modules; dirty `modules` so the debounced autosave
+  // persists them. `renameTemplate` triggers NO colDef rebuild, so without
+  // this a rename alone would never persist (spec §11).
+  templatesChanged: 'modules',
 };
 
 export class StateUpdatedBus {

@@ -1,7 +1,7 @@
 // @cgrid/calc — public re-exports.
 // See docs/superpowers/specs/2026-07-02-cycle-21d-calc-design.md §3.
 
-export { CalcEngine } from './calcEngine';
+export { CalcEngine, ownTemplateId, isOwnTemplateId, type ColumnEditPatch } from './calcEngine';
 export { compileCalc } from './compile';
 export { registerAggregate, getAggregate, listAggregates } from './aggregates/registry';
 export { wireIntoKernel } from './bridge';

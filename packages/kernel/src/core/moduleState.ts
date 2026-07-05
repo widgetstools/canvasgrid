@@ -131,6 +131,34 @@ export class ModuleStateRegistry {
     return out;
   }
 
+  /** Clear registered modules whose id is NOT in `present` and NOT in
+   *  `preserve` (Grid Layouts / Phase B). An exhaustive (layout-switch)
+   *  restore calls this so a layout that OMITS a layout-tier slice clears
+   *  the outgoing one — `present` = the ids the incoming snapshot carries,
+   *  `preserve` = grid-tier ids (shared across layouts, must survive).
+   *  "Clear" = `set(undefined)`, the documented empty-restore convention
+   *  (modules treat a non-array / undefined payload as empty); a module that
+   *  can't clear from `undefined` (e.g. `columnGroups`, which needs the flat
+   *  defs) simply no-ops — unchanged from prior behavior. Graceful per-slice:
+   *  a throwing clear warns and skips, others still clear. */
+  clearAbsent(present: Set<string>, preserve: Set<string>): void {
+    for (const [id, module] of this.modules) {
+      if (present.has(id) || preserve.has(id)) continue;
+      try {
+        module.set(undefined, module.version);
+      } catch (err) {
+        console.warn(`[cgrid] exhaustive restore: clearing module '${id}' failed — slice left as-is`, err);
+      }
+    }
+    // Drop buffered orphan slices too (a slice restored before its module
+    // registered): otherwise a layout switch leaves the outgoing layout's
+    // orphaned slice in the buffer, resurrecting it when the module finally
+    // registers (L5).
+    for (const id of [...this.orphans.keys()]) {
+      if (!present.has(id) && !preserve.has(id)) this.orphans.delete(id);
+    }
+  }
+
   /** Restore persisted slices. Graceful per-slice: unknown ids and
    *  throwing `set()`s warn and skip; everything else applies. */
   restore(modules: Record<string, ModuleStateEnvelope>): void {

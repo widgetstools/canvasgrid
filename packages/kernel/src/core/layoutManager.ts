@@ -38,6 +38,7 @@ import type { GridLayout, LayoutState, GridLayoutsBundle, GridBaselineConfig } f
 import { DEFAULT_LAYOUT_ID, DEFAULT_GRID_LEVEL_MODULES, LAYOUTS_BUNDLE_VERSION } from '../types/layout';
 import { migrateSnapshot, type GridState } from './stateSnapshot';
 import type { ModuleStateEnvelope } from './moduleState';
+import type { ColumnTemplate } from '@cgrid/calc';
 
 /** The grid coupling the manager needs, injected so the engine stays
  *  pure and testable. A3 supplies the real implementations; A1 tests
@@ -185,6 +186,29 @@ export function extractGridOptionOverride(full: GridState): Record<string, unkno
   const options = full.gridOptions;
   if (options && Object.keys(options).length > 0) return clone(options);
   return undefined;
+}
+
+/**
+ * The distinct template ids a layout references (Grid Layouts / Phase B, B4).
+ * Template ASSIGNMENTS ride in the layout-tier `columnOverrides` module (each
+ * override's `templateIds`); this walks those, deduped + order-preserving, so
+ * `exportLayout` can bundle the referenced defs for portability. Reads the
+ * module data structurally (no `@cgrid/calc` coupling) — an unregistered /
+ * empty module yields no ids. */
+export function collectReferencedTemplateIds(state: LayoutState): string[] {
+  const ids: string[] = [];
+  const seen = new Set<string>();
+  const overrides = state.modules?.columnOverrides?.data;
+  if (Array.isArray(overrides)) {
+    for (const entry of overrides) {
+      const templateIds = (entry as { templateIds?: unknown }).templateIds;
+      if (!Array.isArray(templateIds)) continue;
+      for (const id of templateIds) {
+        if (typeof id === 'string' && !seen.has(id)) { seen.add(id); ids.push(id); }
+      }
+    }
+  }
+  return ids;
 }
 
 export class LayoutManager {
@@ -370,12 +394,18 @@ export class LayoutManager {
 
   // ── import / export (A4) ───────────────────────────────────────────────
 
-  /** Export a single layout as a portable object. Unknown id throws (§12).
-   *  `templates` is populated with the referenced defs in Phase B (B4);
-   *  A4 stubs it empty — the layout still round-trips its state + overrides. */
-  exportLayout(id: string): GridLayout {
+  /** Export a single layout as a portable object (Phase B / B4). Unknown id
+   *  throws (§12). `templates` is populated with the defs the layout's columns
+   *  reference (from `library`, default the grid-level library) so the export
+   *  is self-contained across grids; `importLayout` re-materializes them. A
+   *  reference with no matching def in the library is skipped (dangling). */
+  exportLayout(id: string, library: ColumnTemplate[] = this.gridConfig.templates ?? []): GridLayout {
     const layout = clone(this.require(id));
-    layout.templates = [];
+    const byId = new Map(library.map((t) => [t.id, t]));
+    layout.templates = collectReferencedTemplateIds(layout.state)
+      .map((tid) => byId.get(tid))
+      .filter((t): t is ColumnTemplate => t !== undefined)
+      .map((t) => clone(t));
     return layout;
   }
 
@@ -396,6 +426,12 @@ export class LayoutManager {
    *  uniquified to preserve the grid-wide unique-name invariant. */
   importLayout(layout: GridLayout, opts?: ImportLayoutOptions): GridLayout {
     const incoming = clone(layout);
+    // Re-materialize the layout's bundled template defs into the shared
+    // grid-level library (Phase B / B4) — add-if-absent, so a local def of
+    // the same id (the authoritative shared template) is never clobbered.
+    // Then strip: a registered/runtime layout carries no bundled defs.
+    this.materializeTemplates(incoming.templates);
+    incoming.templates = undefined;
     incoming.state = this.migrateState(incoming.state);
     const existingIdx = this.layouts.findIndex((l) => l.id === incoming.id);
     if (existingIdx >= 0 && opts?.overwrite) {
@@ -423,6 +459,10 @@ export class LayoutManager {
       this.gridConfig = clone(migrated.grid ?? {});
       this.layouts = migrated.layouts.map((l) => {
         const copy = clone(l);
+        // Fold any per-layout bundled defs into the (replaced) library, then
+        // strip — the bundle's `grid.templates` is the authoritative library.
+        this.materializeTemplates(copy.templates);
+        copy.templates = undefined;
         copy.state = this.migrateState(copy.state);
         return copy;
       });
@@ -441,6 +481,19 @@ export class LayoutManager {
         this.importLayout(l, { overwrite: opts?.overwrite });
       }
     }
+  }
+
+  /** Fold a layout's bundled template defs into the grid-level library
+   *  (Phase B / B4) — add-if-absent (a local def of the same id wins, so
+   *  importing never clobbers a customized shared template). No-op on empty. */
+  private materializeTemplates(templates: ColumnTemplate[] | undefined): void {
+    if (!templates || templates.length === 0) return;
+    const lib = this.gridConfig.templates ? [...this.gridConfig.templates] : [];
+    const have = new Set(lib.map((t) => t.id));
+    for (const t of templates) {
+      if (!have.has(t.id)) { lib.push(clone(t)); have.add(t.id); }
+    }
+    this.gridConfig = { ...this.gridConfig, templates: lib };
   }
 
   // ── internals ────────────────────────────────────────────────────────

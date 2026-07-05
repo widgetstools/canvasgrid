@@ -20,6 +20,13 @@
             <button id="layout-import" data-testid="layout-import" title="Import layouts from a JSON file">Import</button>
             <input type="file" id="layout-file" data-testid="layout-file" accept="application/json,.json" hidden />
           </div>
+          <div class="layouts-control templates-control" role="group" aria-label="Styling templates">
+            <span class="cluster-label">Templates</span>
+            <button id="tpl-apply" data-testid="tpl-apply" title="Save a currency template and apply it to Notional + Mkt Value — one template, reused across columns">Apply $</button>
+            <button id="tpl-edit" data-testid="tpl-edit" title="Edit the Yield column's format — auto-creates the column's own template">Edit Yield</button>
+            <button id="tpl-calc" data-testid="tpl-calc" title="Add a calculated column styled by the $ template — calc columns stay non-editable">Calc col</button>
+            <span class="cluster-readout" data-testid="tpl-count">0 templates</span>
+          </div>
           <button id="theme" data-testid="btn-theme">Light theme</button>
           <button id="reset-state" data-testid="btn-reset-state">Reset saved state</button>
           <label class="demo-switch"><input type="checkbox" id="live-updates" data-testid="sw-live" checked /> Live updates</label>

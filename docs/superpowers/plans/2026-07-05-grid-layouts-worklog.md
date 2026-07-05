@@ -96,15 +96,200 @@ New subsystem: expression → style, targeting rows/columns; layout-tier. Spec �
 
 ## Progress tracker (update every session)
 
-- [x] A1 · [x] A2 · [x] A3 · [x] A4 · [x] A5 · [ ] A6 (Phase A merged)
-- [ ] B1 · [ ] B2 · [ ] B3 · [ ] B4 · [ ] B5 (Phase B merged)
+- [x] A1 · [x] A2 · [x] A3 · [x] A4 · [x] A5 · [x] A6 — **PHASE A MERGED** (squash `3da8e48` on main)
+- [x] B1 · [x] B2 · [x] B3 · [x] B4 · [x] B5 — Phase B COMPLETE on branch (demo + E2E + closeout review + fix wave all done); MERGE pending user decision
 - [ ] C1 · [ ] C2 · [ ] C3 · [ ] C4 (Phase C merged)
 
-**Next unit: A6.** (Phase A branch `feature/grid-layouts-a` — the CLOSEOUT: demo control in
+**Next: MERGE Phase B** (B1–B5 all done on `feature/grid-layouts-b`). Awaiting the user's
+integration decision (local squash-merge vs PR — mirrors the A6/Phase-A choice; a dirty main
+working tree blocks a clean local squash, as it did for #103). After merge: ff-only sync main,
+tick this, then Phase C (conditional styling rules). Two Phase-B deferrals carry forward (see the
+B5 ledger entry): H2 multi-grid calc-provider singleton, M5 save-time template-name uniqueness.
+
+<!-- Historical A6 note (Phase A now merged):
+Phase A branch `feature/grid-layouts-a` — the CLOSEOUT: demo control in
 `cgrid-customizer-demo` + browser-verify + 1–2 E2E, SINGLE Phase-A review (fable) + fix wave,
-PR + squash-merge.)
+PR + squash-merge. -->
 
 ### Ledger
+
+- **2026-07-05 · B5 done — Phase B COMPLETE on branch** (branch `feature/grid-layouts-b`;
+  commits `bb25c29` switch-fix, `a377f38` editColumn+demo+E2E, `05b5eb7` review fix-wave).
+  - **Carry-in RESOLVED (`bb25c29`):** exhaustive (layout-switch / persisted-restore) `setState`
+    now CLEARS the layout-tier module slices the target omits — `ModuleStateRegistry.clearAbsent(present,
+    preserve)` via `set(undefined)` (modules treat non-array as empty; `columnGroups` no-ops,
+    unchanged), preserve = `layoutGridLevelModules ?? DEFAULT_GRID_LEVEL_MODULES`. So switching a
+    styled layout → Default clears its calc cols + template assignments; grid-tier `templates` library
+    survives. +3 registry unit +2 integration tests.
+  - **`CGridApi.editColumn` (`a377f38`):** auto-template-on-edit (spec §3.1) promoted to the public API
+    (was engine-only since B2) so the demo is a pure `@cgrid/kernel` consumer — routes through the calc
+    provider (new optional `editColumn` on `CalcProviderShape` + bridge surface) → `CalcEngine.editColumn`;
+    fires `templatesChanged`; no-op without calc.
+  - **Demo (`a377f38`):** a "Templates" chrome cluster in `cgrid-customizer-demo` (matches the Layout
+    cluster) — Apply $ (one template reused across 2 columns), Edit Yield (→ own auto-template), Calc col
+    (a calculated column styled by the $ template, stays non-editable). Wires `@cgrid/calc`; library-size
+    readout syncs on `templatesChanged` + `layoutChanged`; `__cgcalc` test hook. Browser-verified
+    light+dark (chrome consistent; STOMP feed unavailable in this env → 0 rows, so cell styling wasn't
+    visually exercised — behavior covered by E2E; dev server + automation browser killed after).
+  - **E2E (`a377f38`):** `e2e/templates.spec.ts` +4 (apply/reuse; auto-template-on-edit; calc column
+    non-editable; layout switch clears + restores the assignment). Full demo E2E **20/20**.
+  - **SINGLE Phase-B closeout review (fable, batch over B1–B5) + fix wave (`05b5eb7`).** Verdict
+    NEEDS-WORK → after the wave: ship. Fixed:
+    - **[H1] Template/calc mutations never autosaved (spec §11 silent data loss).** `templatesChanged`
+      wasn't in the bus `EVENT_TO_KEY` and the calc path emitted no mapped event, so save/rename/apply/
+      editColumn/registerCalculatedColumn were lost on reload (bare `renameTemplate` the purest repro —
+      no rebuild to piggyback on). Fix: map `templatesChanged → 'modules'` + `notifyModuleStateChanged('calc')`
+      from `onCalcColumnsChanged`. Autosave arms only post-restore (statePersistence.ts:123), so no
+      construction-time clobber. +2 persist round-trip tests.
+    - **[M1]** `editColumn` returns `ok` through the provider; kernel gates the event → a rejected
+      (non-compiling) edit fires no `templatesChanged`.
+    - **[M2]** `getGridConfig` reads the LIVE library (`getTemplates`) when calc is wired, so an emptied
+      library overrides stale `LayoutManager.gridConfig.templates` — a deleted template no longer
+      resurrects in an export/reload.
+    - **[M3]** `templates` module restore wraps each `saveTemplate` in try/catch (one bad def in a
+      foreign bundle can't wipe the library mid-restore).
+    - **[M4]** `importLayouts` merge materializes per-layout bundled defs into the live engine (a bundle
+      of `exportLayout()` objects now resolves its assignments).
+    - **[M6]** `CalcEngine.saveTemplate` strips `headerName` (caption never templated, spec §3.1) on
+      every entry path. **[L3]** `editColumn` clones `cellStyle`. **[L5]** `clearAbsent` drops absent
+      orphan slices. **[L2]** demo readout re-syncs on `layoutChanged`.
+    - **DEFERRED (not merge-blocking, tracked here):** **[H2]** the calc provider slot
+      (`core/calcSlot.ts`) is a MODULE-GLOBAL singleton — with multiple grids the template API routes to
+      whichever wired calc last, and worse, writes+autosaves under the wrong `gridId`. Pre-existing (all
+      of calc's fold path is global-slot); B3 turned it into a public API. Needs a per-instance slot
+      before any multi-grid consumer. **[M5]** grid-wide unique template *names* are enforced only by
+      `renameTemplate`, not `saveTemplate` (contradicts spec §12) — a design call: enforce in save (risks
+      the idempotent re-save + own/synthetic-name cases) or amend the spec. Left for the user.
+  - **Verify:** calc typecheck + suite **246** (14 files); kernel typecheck + `npm run build` clean;
+    kernel full suite **2878 pass (229 files)**; demo typecheck clean; demo **E2E 20/20**.
+
+- **2026-07-05 · B4 done** (branch `feature/grid-layouts-b`).
+  - **Portable layout export w/ templates (spec §5/§8).** `exportLayout` now bundles the template
+    defs the layout's columns reference (replacing A4's `[]` stub); importing into a fresh grid
+    re-materializes them + restores the assignments.
+  - **KEY GAP CLOSED — template assignments now round-trip.** Assignments (`ColumnOverride.templateIds`)
+    live in the calc engine's override store, which B1 did NOT persist — so data-column template
+    assignments didn't round-trip at ALL. B4 registers a new **layout-tier `columnOverrides` state
+    module** in the calc bridge (`get` = `calc.getOverrides()`|undefined; `set` = REPLACE:
+    `clearOverrides()` + `applyOverrides(next)`), mirroring B1's `calc` module. New engine method
+    `CalcEngine.clearOverrides()` (added to bridge `SILENT_MUTATORS` → colDef rebuild on restore).
+  - **DESIGN CALL (flag for B5 review):** the spec §5 says template assignments "ride in
+    columnState"; this codebase keeps them in the calc override layer, so B4 persists them via the
+    `columnOverrides` module rather than threading `templateIds` through the kernel column pipeline —
+    the lower-risk choice, consistent with B1 (calc engine state → module). Reconcile in review
+    (keep the module, or migrate `templateIds` into `CColumnState`).
+  - **exportLayout collection (`layoutManager.ts`):** pure `collectReferencedTemplateIds(state)` walks
+    the layout's `columnOverrides` module `templateIds` (deduped, dangling refs skipped); `exportLayout(id,
+    library = gridConfig.templates)` resolves referenced defs from the library. `importLayout`
+    re-materializes bundled defs into `gridConfig.templates` via `materializeTemplates` (**add-if-absent
+    — a local same-id def is authoritative, never clobbered**) then strips `layout.templates` (runtime
+    layouts carry no defs); `importLayouts` replace-path folds + strips per-layout too.
+  - **cgrid wiring:** `exportLayout` passes the LIVE library (`getGridConfig().templates`);
+    `importLayout` + `importLayouts` re-materialize defs into the LIVE engine via
+    `materializeTemplatesLive` (add-if-absent `saveTemplate`) so an activated/merged layout's
+    assignments resolve — replace uses the existing full `applyGridConfigLive`; merge folds
+    `bundle.grid.templates` add-if-absent without disturbing the live view/library.
+  - **Tests:** +3 calc engine (`clearOverrides`), +2 calc bridge (`columnOverrides` module round-trip +
+    REPLACE + empty→undefined), +2 kernel pure (`exportLayout` bundles only referenced defs / skips
+    dangling; `importLayout` add-if-absent + strip), +3 kernel integration
+    (`templatePortability.integration.test.ts`: export→import into a fresh grid re-materializes def +
+    restores assignment; same-id not clobbered; full-bundle replace round-trip). Updated the A4 stub
+    assertion.
+  - **Verify:** calc typecheck + suite **245** (14 files); kernel typecheck + `npm run build` clean;
+    kernel full suite **2868 pass (227 files)** — no regressions.
+
+- **2026-07-05 · B3 done** (branch `feature/grid-layouts-b`, commit `9a2870a`).
+  - **Template API on `CGridApi` (spec §8)** — `getTemplates` / `saveTemplate` /
+    `renameTemplate` / `deleteTemplate` / `applyTemplate(colId, templateId)` /
+    `removeTemplate(colId, templateId)` + a `templatesChanged` event
+    (`TemplateChangeSource` = save|rename|delete|apply|remove, carries `templateId`).
+    Mirrors the Phase-A layout API shape (thin CGrid delegators + `makeApi` entries +
+    a public re-export of `TemplateSaveInput` / `TemplateChangeSource`).
+  - **Routing (no parallel path):** reuses the EXISTING calc DI slot. `CalcProviderShape`
+    (`core/calcSlot.ts`) gains OPTIONAL template ops; the calc bridge's registered provider
+    implements them (delegating to the engine); `CGrid.*` template methods call
+    `getCalcProvider()?.<op>?.(...)`. Kernel stamps `Date.now()` (engine stays Date-free);
+    no calc wired → `getTemplates()` returns `[]` and mutators no-op (no event). A failed
+    `renameTemplate` (duplicate name) THROWS before the event fires.
+  - **Engine additions (`packages/calc/src/calcEngine.ts`):** `renameTemplate(id, name,
+    {now})` — the sole grid-wide unique-name gate (trimmed, case-insensitive; `saveTemplate`
+    still guards ids only, as B2 left it); preserves `createdAt`, bumps `updatedAt`; throws on
+    unknown id / empty name / name-in-use; rename-to-own-name allowed. `removeTemplate(colId,
+    tid)` — inverse of `applyTemplate`; drops `tid` from the column's `templateIds`; last-removed
+    leaves an EXPLICIT `[]` (opt out of typeDefault per the `ColumnOverride.templateIds`
+    contract), library entry kept; no-op when no override / id absent.
+  - **Bridge:** `removeTemplate` added to `SILENT_MUTATORS` (drops a template from a column's
+    chain → changes `resolvedPatchFor` → kernel colDef rebuild); `renameTemplate` deliberately
+    NOT (metadata-only, no colDef change → no rebuild). `getTemplates` uses the bridge-shadowed
+    `listTemplates` (synthetic typeDefaults filtered; own `__cgridOwn:*` templates DO surface —
+    they're reusable per B2).
+  - **Known limitation (pre-existing calc architecture, flagged for review):** the calc provider
+    slot is a MODULE-GLOBAL singleton (`core/calcSlot.ts`), so with multiple grids on a page the
+    template API routes to whichever grid wired calc last. Not introduced by B3 (all of calc's
+    fold path is global-slot); the B3 no-calc-degradation test resets the slot via
+    `_resetCalcProvider_forTests()` for isolation. Leave as-is unless a multi-grid scenario bites.
+  - **Tests:** `packages/calc/tests/templateApi.test.ts` +10 (rename: preserve/bump, unknown-id,
+    empty-name, duplicate-reject, own-name-ok; remove: drop-from-chain, last→[], no-override no-op,
+    id-absent no-op, siblings-unaffected); `bridge.test.ts` +2 (provider surface delegates +
+    notifies with rename-not-notifying; duplicate-name reject); `packages/kernel/tests/
+    templateApiKernel.integration.test.ts` +4 (save/rename/delete round-trip + events; duplicate
+    rename throws + no event; apply/remove on a real column; no-calc degradation → `[]` + no-ops).
+  - **Verify:** calc typecheck + suite **240** (14 files); kernel typecheck + `npm run build` clean;
+    kernel full suite **2863 pass (226 files)** — no regressions, no perf-flaky red this run.
+
+- **2026-07-05 · B2 done** (branch `feature/grid-layouts-b`).
+  - **`CalcEngine.editColumn(colId, patch, { now })`** (`packages/calc/src/calcEngine.ts`) —
+    auto-template-on-edit (spec §3.1). Merges an editable-attribute patch (`format`, `cellRenderer`,
+    `editable`, `hide`, `width`, `cellStyle`; **`headerName` excluded** — caption is column-unique)
+    into the column's OWN template `ownTemplateId(colId)` = `__cgridOwn:<colId>` (name
+    `<colId>_template`, create-if-absent; `cellStyle` per-key merge, scalars last-wins; createdAt
+    preserved, updatedAt bumped), and ensures the column's `templateIds` references it. Atomic:
+    a non-compiling `format` returns `{ok:false, errors:[format-compile]}` and touches nothing.
+    Returns `{ok, errors}` like `applyOverrides`.
+  - **`resolvedPatchFor` reorders** the folded chain so the own template folds HIGHEST regardless of
+    its position in `templateIds` (a shared template applied AFTER an edit still can't override it).
+    New exports `ownTemplateId` / `isOwnTemplateId` / `ColumnEditPatch` from the calc index; `editColumn`
+    added to the bridge's `SILENT_MUTATORS` so an edit triggers the kernel colDef rebuild.
+  - **Key guarantee proven:** editing a column that has a SHARED template applied never mutates the
+    shared template — it forks to the column's own (other consumers of the shared template are
+    unaffected); the own template is itself reusable via `applyTemplate(ownId, [otherCol])`.
+  - **Tests:** `packages/calc/tests/autoTemplateOnEdit.test.ts` +8 (own-template create + templateIds
+    ref; successive-edit merge; cascade shared→own; shared-not-mutated + sibling-unaffected;
+    own-highest-when-shared-applied-after; own-template reuse; bad-format atomic reject; headerName
+    dropped).
+  - **Design note (flag for Phase-B review):** the calc engine keeps its StarUI-07 type-default
+    semantics — the type-default template applies ONLY when `templateIds === undefined`, so a column
+    drops the type-default once it has any template (incl. its own on first edit). The grid-layouts
+    spec §3.3 cascade lists type-default as an always-on base UNDER the templates; reconcile in review
+    (kept existing behavior in B2 to avoid churning StarUI-07 tests — it's arguably correct that an
+    explicitly-customized column no longer inherits the type fallback).
+  - **Verify:** calc typecheck + suite **228** (13 files); kernel typecheck + suite **2859** (225) —
+    no regressions.
+
+- **2026-07-05 · B1 done** (branch `feature/grid-layouts-b`, off main `3da8e48` = merged Phase A).
+  - **The calc bridge (`packages/calc/src/bridge.ts`) now registers two kernel state modules** so
+    the template library + calc-column defs ride getState/setState + persistState + layouts:
+    - `templates` (v1, **grid-tier** — its id is already in the kernel's `DEFAULT_GRID_LEVEL_MODULES`
+      from A2): `get` = the bridge-shadowed `calc.listTemplates()` (synthetic typeDefaults filtered),
+      undefined when empty; `set` = REPLACE (drop current library, re-`saveTemplate` each).
+    - `calc` (v1, **layout-tier** — not in the grid-level set): `get` = `calc.listCalculatedColumns()`;
+      `set` = REPLACE (remove current calc cols, `registerCalculatedColumn` each; invalid defs
+      skipped + warned). **Tiering is automatic** — it keys off the module id; no extra wiring.
+    - `KernelGridSurface` gains an OPTIONAL `registerStateModule?` (guarded call) so a minimal grid
+      surface / pre-Phase-B kernel still wires (just doesn't persist these slices).
+  - **Tests:** `packages/calc/tests/bridge.test.ts` +5 (register both ids; empty→undefined; synthetic
+    typeDefaults excluded; set() round-trip into a fresh engine; set() REPLACE not merge).
+    `packages/kernel/tests/layoutStateModulesCalc.test.ts` +2 (real CGrid + `wireIntoKernel`:
+    getState→modules.templates+modules.calc, setState restores into a fresh wired grid; a saved
+    layout carries layout-tier `calc` but NOT grid-tier `templates`).
+  - **Known quirk (pre-existing calc):** `saveTemplate(now)` collapses `createdAt` onto `updatedAt`,
+    so a template's original `createdAt` isn't preserved across restore (tests assert id/name/overrides).
+  - **Carry-in still open (from A6):** generic layout-tier MODULE-slice clearing on layout switch —
+    now that `calc` is a layout-tier module, switching to a layout without calc cols won't yet clear
+    the outgoing layout's calc cols (setState exhaustive mode clears standard view fields, not
+    modules). Address before B5 / when it bites (a switch integration test will expose it).
+  - **Verify:** calc typecheck + suite (220) green; kernel typecheck + full suite **2859 pass (225
+    files)**.
 
 - **2026-07-05 · A1 done** (branch `feature/grid-layouts-a`, off `origin/main` @ `abbb155`).
   - `packages/kernel/src/types/layout.ts` — `LayoutState` (= layout-tier `GridState`),

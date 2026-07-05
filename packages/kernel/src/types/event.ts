@@ -95,6 +95,11 @@ export type LayoutChangeSource =
   | 'save' | 'update' | 'load' | 'delete' | 'rename' | 'duplicate' | 'reset'
   | 'import' | 'setGridConfig' | 'restore';
 
+/** Grid Layouts (Phase B / B3) — the operation that triggered a
+ *  `templatesChanged` event (the shared styling-template library mutated). */
+export type TemplateChangeSource =
+  | 'save' | 'rename' | 'delete' | 'apply' | 'remove';
+
 export type CGridEvent<TRow = any> =
   | { type: 'gridReady'; api: CGridApi<TRow> }
   | { type: 'cellClicked'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
@@ -475,4 +480,8 @@ export type CGridEvent<TRow = any> =
    *  layout set is mutated (save / update / load / delete / rename /
    *  duplicate / reset / import) or the grid baseline is set. `source`
    *  names the operation; `activeLayoutId` is the id active afterward. */
-  | { type: 'layoutChanged'; activeLayoutId: string; source: LayoutChangeSource };
+  | { type: 'layoutChanged'; activeLayoutId: string; source: LayoutChangeSource }
+  /** Grid Layouts (Phase B / B3) — the shared styling-template library
+   *  changed. `templateId` is the affected template (omitted when the op
+   *  targets no single template). */
+  | { type: 'templatesChanged'; source: TemplateChangeSource; templateId?: string };
