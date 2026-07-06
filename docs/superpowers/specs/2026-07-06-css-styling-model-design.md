@@ -1,35 +1,48 @@
-# CSS-driven styling model (Direction A) — design spec
+# CSS-driven styling model — design spec
 
 **Date:** 2026-07-06
-**Status:** Design in review (direction chosen: A — full CSS-selector model)
+**Status:** Design approved-in-principle (decisions settled); vocabulary audited; ready for implementation plan
 **Branch:** `feature/css-styling-model` (fresh off `main` @ `82b92ec`)
 
 ## 1. The problem
 
-Today the grid has **two** styling systems (see `styling-architecture-map.md`):
+The grid has **two** styling systems today (see `styling-architecture-map.md`):
 
-- **Theme-level appearance is CSS-driven** — `tokens.css` `--cg-*` → `getComputedStyle`
-  (one probe per theme swap) → `ResolvedTheme` → the base layer of every cell's
-  paint config. This is exactly the intended model.
-- **Everything cell-specific is CODE** — `colDef.cellStyle` (JS objects),
-  `@cgrid/rules` conditional styles (`StyleSlice` objects), `@cgrid/calc`
-  templates (object bags), and the `@cgrid/renderers` data-viz catalog
-  (`palette.ts`, 46 hardcoded hex). CSS classes are only opaque keys into a
-  kernel `Map` with a fixed 4-slot vocabulary (`--cg-cell-class-<name>-(bg|fg|font|halign)`),
-  resolved by a hand-rolled regex — not real CSS.
+- **Theme-level appearance is CSS-driven** — `tokens.css` `--cg-*` →
+  `getComputedStyle` (one probe per theme swap) → `ResolvedTheme` → the base
+  layer of every cell's paint config. This is the intended model.
+- **Per-column / per-cell appearance is CODE** — `colDef.cellStyle` (JS style
+  objects), `@cgrid/calc` styling templates (object bags), and the
+  `@cgrid/renderers` data-viz catalog (`palette.ts`, 46 hardcoded hex). The one
+  CSS-class mechanism is a narrow 4-slot custom-property regex, not real CSS.
 
-**Goal:** make cell/column/conditional appearance authored in **real CSS**, and
-have the canvas painted **generically** from it. Code's only styling jobs become:
-(1) decide *which class* a cell carries, and (2) draw data-viz *geometry*
-(reading its palette from CSS). This is a from-scratch rework on a fresh branch,
-not an incremental layer.
+**Goal:** all **theming** — grid-wide and per-column/per-cell appearance — is
+authored in **CSS only** and **mapped to the canvas paint artifacts**. We are
+not styling DOM elements; we map CSS attributes onto the paint vocabulary the
+canvas already draws. Code's only styling jobs become: draw data-viz *geometry*
+(reading its palette from CSS), and evaluate *conditional* predicates (via the
+existing rules engine).
 
-## 2. Core principle
+## 2. Core principle (settled)
 
-> A cell's appearance is the computed style of the CSS class(es) it carries,
-> resolved through the browser's real cascade and painted generically on the
-> canvas. Styling is authored in CSS. Code decides class membership and draws
-> geometry.
+> Theming is authored in CSS and mapped to the canvas paint artifacts. The
+> canvas is painted generically from that mapping. No code-authored theme or
+> column styling.
+
+**Settled decisions:**
+
+- **D1 — Theming is CSS-only.** The JS `cellStyle` / `headerStyle` **object**
+  authoring path is removed. Column/cell appearance is authored as CSS resolved
+  onto the paint artifacts (§3–§4). (No JS style-object escape hatch for
+  theming.)
+- **D2 — Conditional styling keeps the existing `@cgrid/rules` engine.** It is
+  dynamic and UI-authored; it already targets the same paint artifacts. It is
+  NOT rebuilt into CSS generation. Two authoring surfaces (CSS for theming, the
+  rule-builder UI for conditional), **one** paint vocabulary.
+- **D3 — Unsupported CSS is approximated** where feasible (§4), else ignored +
+  documented.
+- **D4 — Data-viz renderer config is scoped into this design** (§7): opt-in
+  renderers configured via code **or** column UI tooling; palette from CSS.
 
 ## 3. The resolution engine (heart of the model)
 
@@ -38,134 +51,168 @@ Replace the narrow `scanVariantVariables()` regex path with a **style probe**:
 - A hidden probe element lives inside the grid's themed root, so it inherits the
   theme cascade **and** any consumer CSS scoped to the grid.
 - To resolve a class string, set `probe.className = 'cg-cell ' + classes`, call
-  `getComputedStyle(probe)`, read the supported properties (§4), map them to the
-  paint vocabulary, and **cache** the result keyed by the exact class string.
+  `getComputedStyle(probe)` (and `getComputedStyle(probe, '::before')` for
+  content/icon conventions if used), read the supported properties (§4), map them
+  to the paint artifacts, and **cache** the result keyed by the exact class
+  string.
 - Cost is O(distinct class-combinations), not O(cells) — one probe read per novel
-  class string, then cache hits. The probe element is reused.
-- **Invalidation:** theme swap (already a signal today), and stylesheet changes
-  (a `refreshCellStyles()` API call and/or a `MutationObserver` on the grid's
+  class string, then cache hits. Probe element reused.
+- **Invalidation:** theme swap (existing signal) and stylesheet changes (a
+  `refreshCellStyles()` API and/or a `MutationObserver` on the grid's
   `<style>`/`<link>` set). On invalidation: clear cache, repaint.
 
-This is real "supply CSS → computed style → paint," at cell granularity.
+This is real "supply CSS → computed style → paint artifacts," at cell
+granularity, resolving the full browser cascade (specificity, `var()`,
+`color-mix()`, media/theme variants) for free.
 
-## 4. Supported CSS → paint vocabulary
+## 4. CSS → paint-artifact mapping (vocabulary AUDITED — complete)
 
-The canvas honors the subset that maps to the existing `ColCellOverrides` fields
-(`types/cell.ts`):
+The paint vocabulary (`ColCellOverrides`, `types/cell.ts`) already covers every
+required artifact for **cells and headers**. Mapping:
 
-| CSS property | Paint field |
+### 4.1 Direct CSS-property mappings
+
+| CSS property | Paint artifact |
 |---|---|
 | `color` | `fg` |
-| `background-color` | `bg` |
-| `font-family` / `font-size` / `font-weight` / `font-style` | `font` |
+| `background-color` / `background` | `bg` |
+| `border-<side>-width` / `-style` / `-color` (per side) | `BorderSpec.<side>.{width,style,color}`; `width:0` or `border-<side>-style:none` → invisible |
+| `border-width/style/color` (shorthand, all sides) | `BorderSpec.all` |
+| `font-family` | `fontFamily` |
+| `font-size` | `fontSize` |
+| `font-weight` | `fontWeight` |
+| `font-style` | `fontStyle` |
 | `text-align` | `halign` |
-| `padding-top/right/bottom/left` | `padding` |
-| `border` / `border-*-width/-style/-color` | `border` |
 | `text-transform` | `textTransform` |
+| `text-decoration-line` | `textDecoration` (`underline`/`line-through`) |
 | `letter-spacing` | `letterSpacing` |
 | `line-height` | `lineHeight` |
-| `text-decoration` | `textDecoration` |
-| `--cg-cell-valign` (custom prop; no canvas CSS equivalent) | `valign` |
+| `padding-<side>` | `padding.{top,right,bottom,left}` |
 
-Properties a 2D canvas cannot reproduce (`box-shadow`, gradients, `transform`,
-`filter`, pseudo-elements) are **documented as not honored**. This "supported
-subset" is a normative section of the final spec.
+### 4.2 Custom-property mappings (canvas artifacts with no native CSS property)
+
+The canvas-specific artifacts (icons, decorators, vertical alignment,
+content-slot override) use a small `--cg-cell-*` convention resolved off the
+same probe — identical in spirit to the existing theme tokens:
+
+| Custom property | Paint artifact |
+|---|---|
+| `--cg-cell-valign: top\|middle\|bottom` | `valign` |
+| `--cg-cell-content: "text"` / `--cg-cell-icon: <name>` / `--cg-cell-emoji: "🚀"` (+ `-color`, `-size`, `-position`) | `content` (`CellContent` text/icon/emoji/icon-text) |
+| `--cg-cell-decorator-<pos>: <icon\|emoji\|text\|dot spec>` (`pos` ∈ tl,tr,bl,br,ml,mr; + `-color`/`-size`/`-inset`/`-bg`) | `decorators[]` (`CellDecorator`) |
+
+(Exact custom-property grammar for the composite artifacts — icon+text, decorator
+specs — is fixed in the plan; the shapes already exist in `CellContent` /
+`CellDecorator`.)
+
+### 4.3 Approximation of unsupported CSS (D3)
+
+A 2D canvas cannot reproduce some CSS. Best-effort approximations, else ignore +
+document:
+- `box-shadow` → approximate as a 1px `BorderSpec.all` in the shadow color (or
+  ignore if `inset`/blur make it meaningless).
+- simple single-stop-direction `linear-gradient` background → midpoint solid
+  `bg`; multi-stop / `radial-gradient` → ignore.
+- `transform`, `filter`, pseudo-element decoration beyond the content convention,
+  `outline` → ignored + documented.
+
+The supported set + approximations become a normative reference doc.
 
 ## 5. Authoring API (how consumers style)
 
-- `colDef.cellClass: string | string[] | (params) => string | string[]` — the
-  class(es) a cell carries.
-- `colDef.cellClassRules: { [className]: (params) => boolean }` — predicate map;
-  the predicate (code/config) decides membership, the *style* is the class's CSS.
-  (Both fields already exist and stay.)
+- `colDef.cellClass: string | string[] | (params) => string|string[]` — the
+  class(es) a cell carries (exists; stays).
+- `colDef.cellClassRules: { [className]: (params) => boolean }` — predicate
+  decides class membership; the *style* is the class's CSS (exists; stays).
 - `colDef.headerClass` / `headerClassRules` — same, for headers.
-- Consumers author ordinary CSS (their own classes, or grid-shipped defaults like
-  `.cg-num-negative`). The class rules can live anywhere in the cascade scoped to
-  the grid root.
-- **Removed:** `colDef.cellStyle` / `headerStyle` **object** authoring (the JS
-  style-object path). See Decision D1 for the escape-hatch question.
+- Consumers author ordinary CSS scoped to the grid root (their own classes, or
+  grid-shipped defaults). Full cascade applies.
+- **Removed:** `colDef.cellStyle` / `headerStyle` **object / function** authoring
+  (the code path). Any appearance it expressed is now a CSS class (§4 covers the
+  full vocabulary).
 
-## 6. Rules & calc become CSS generators
+## 6. Conditional styling & calc templates
 
-To keep a **single styling substrate**, the two engines stop emitting style
-*objects* applied at paint and instead **generate CSS + assign class names**:
+- **`@cgrid/rules` (conditional) — KEPT as-is (D2).** A rule stays a predicate +
+  a style targeting the paint artifacts, authored via the rule-builder UI. It is
+  dynamic (per row value) — the one thing static CSS can't express — so it
+  remains the code/UI path, layered over the CSS theming in the precedence chain
+  (§8). No rebuild.
+- **`@cgrid/calc` styling templates — migrate to CSS classes.** A calc styling
+  *template* is reusable **static** column appearance (e.g. a "currency"
+  template) — that is theming, so under D1 a template becomes a CSS class the
+  column references, not an object patch. Calc's *calculated-column* feature
+  (values/formulas) is unaffected. (Scoped as its own migration phase; if the
+  template↔class mapping proves to need a bridge, that's a plan-level detail.)
 
-- **`@cgrid/rules`** (conditional styling, authored via the rule-builder UI):
-  each rule compiles to a managed CSS class rule (`.cg-rule-<id> { … }`) injected
-  into a grid-owned `<style>`; the rule's predicate assigns `cg-rule-<id>` to
-  matching cells. The UI edits CSS-property values that serialize to that
-  stylesheet. Theme-aware rules use the cascade (a `.cg-theme-x .cg-rule-<id>`
-  selector or a `--cg-*` var) instead of the current `base/light/dark` object
-  triple.
-- **`@cgrid/calc`** styling templates: each template compiles to a class
-  (`.cg-tpl-<id> { … }`) assigned to the columns that use it; template CRUD edits
-  the generated CSS.
+## 7. Data-viz renderers (scoped — D4)
 
-Net: the paint path only ever resolves classes → computed style. Rules/calc
-become **class generators + assigners**, not object-patchers. (See Decision D2.)
+Data-viz stays an **opt-in** layer; geometry is drawn in code, **all appearance
+comes from CSS**.
 
-## 7. Data-viz (opt-in code renderers)
+- **Config via code:** `colDef.cellRenderer: 'bar' | 'heat' | 'gauge' | …` +
+  `cellRendererParams` for non-appearance config (domains, fields, thresholds).
+- **Config via UI tooling:** the column customizer lets a user pick a renderer
+  and its params for a column (persisted in column state / layouts). This reuses
+  the existing tool-panel/customizer surface; the exact panel UX is a plan task.
+- **Appearance from CSS:** every color/dimension a renderer draws resolves from
+  CSS — theme tokens (`--cg-pos-color`, a new `--cg-bar-height`, `--cg-heat-*`,
+  etc.) or the column's resolved class via the same probe. `palette.ts`'s 46
+  literals move into CSS tokens/defaults; `SEMANTIC_COLORS`/`STATUS_PILL_MAP`/
+  `RATING_SCALE_BANDS`/`DEFAULT_VENUE_PALETTE` become token-backed.
+- **Non-appearance params stay code** (a bar's data domain, a gauge's min/max) —
+  those are data config, not styling.
 
-Data-viz stays an **opt-in** layer: a column asks for a `bar`/`heat`/`gauge`/…
-renderer via code **or UI tooling** (the column customizer). Geometry is drawn in
-code; **all palette/dimension values come from CSS** — theme tokens
-(`--cg-pos-color`) or the column's resolved class (the renderer reads the same
-probe). `palette.ts`'s 46 hardcoded literals move into CSS tokens/defaults.
+## 8. Precedence (all theming CSS-resolved)
 
-The exact renderer-config surface (code API + UI tooling) is **TBD** and scoped
-in its own follow-on design — this spec fixes only that data-viz *appearance*
-comes from CSS, never hardcoded swatches.
+`applyCellProps`, lowest → highest:
 
-## 8. Precedence (shape unchanged, all CSS-resolved)
+1. **Theme base** — grid-wide CSS tokens → `ResolvedTheme` (unchanged).
+2. **Column/cell CSS class(es)** — resolved via the probe (§3) into full
+   `ColCellOverrides`; replaces the old 4-slot `cellClassVariants` path.
+   Multiple classes resolve through the real cascade in one probe read.
+3. **Conditional rules** — `@cgrid/rules` engine (kept), dynamic per-cell,
+   layered over the CSS class styling.
+4. (Cosmetic, last) `textTransform` applied to the formatted string.
 
-`applyCellProps` precedence, lowest → highest:
+No JS `cellStyle`-object fold remains.
 
-1. Theme base (CSS tokens → `ResolvedTheme`) — unchanged.
-2. Cell class(es) resolved via the probe (§3) — includes rule- and
-   calc-generated classes. Multiple classes resolve through the real cascade in
-   one probe read (specificity/order handled by the browser, not by us).
-3. (If Decision D1 keeps it) a dynamic escape hook — highest.
+## 9. Vocabulary audit result (complete — no gaps)
 
-Steps that exist today for object `cellStyle` / `StyleSlice` folds are removed;
-their behavior is expressed as generated classes in step 2.
+`ColCellOverrides` (`types/cell.ts:111-173`) already carries: `fg`, `bg`,
+`halign`, `valign`, `font`/`fontFamily`/`fontSize`/`fontWeight`/`fontStyle`,
+`textTransform`, `textDecoration`, `letterSpacing`, `lineHeight`, `padding`
+(uniform or per-side), `border` (`BorderSpec` per-side + `all`, each
+width/style/color; width 0 = invisible), `content` (`CellContent`:
+text/icon/emoji/icon-text), `decorators` (`CellDecorator[]`, 6 positions,
+icon/emoji/text/dot, optional badge). Header cells consume the same vocabulary
+via `headerStyle`/`headerClass` (`applyCellProps` header branch). **Every
+artifact you listed — header+cell bg/fg, per-side borders (width/style/color/
+visibility), icons/emojis, font family/size/style, content alignment — is
+already a paint artifact.** The work is the CSS→artifact mapping (§4), not new
+paint capability.
 
-## 9. Migration (phased, fresh branch)
+## 10. Migration (phased, fresh branch)
 
-1. **Probe resolver** — new `getComputedStyle`-per-class resolver + cache +
-   invalidation in `cssReader`/theming; unit-tested against a jsdom/happy-dom
-   stylesheet.
+1. **Probe resolver** — `getComputedStyle`-per-class resolver + full-vocabulary
+   mapping (§4) + cache + invalidation; unit-tested against a
+   happy-dom/jsdom stylesheet. Replaces `scanVariantVariables`.
 2. **Paint path** — `applyCellProps` step 2 consumes the resolver's full
-   `ColCellOverrides`; remove `scanVariantVariables` 4-slot path.
-3. **Rules → CSS** — refactor `@cgrid/rules` to compile rules to a managed
-   stylesheet + class assignment; update the rule-builder UI serialization.
-4. **Calc → CSS** — refactor `@cgrid/calc` styling templates to compiled classes.
-5. **Data-viz palette → CSS** — move `palette.ts` literals to tokens; renderers
-   read CSS.
-6. **Remove object `cellStyle`** authoring (or reduce to the D1 escape).
-7. **Docs** — the supported-CSS-subset reference; migration guide.
+   `ColCellOverrides`; remove the 4-slot path; keep the rules fold (step 3).
+3. **Remove object `cellStyle`/`headerStyle`** authoring; migrate internal
+   callers/tests to classes.
+4. **Calc templates → CSS classes** (styling templates only; calculated columns
+   untouched).
+5. **Data-viz palette → CSS** — `palette.ts` literals → tokens; renderers read
+   CSS; add `--cg-bar-*`/`--cg-heat-*`/status/rating tokens.
+6. **Data-viz config UI** — column customizer picks renderer + params.
+7. **Docs** — supported-CSS-subset + custom-property reference; migration guide.
 
-Each phase ends with a working, tested grid.
-
-## 10. Open decisions (need your call before the plan)
-
-- **D1 — Escape hatch.** Pure A removes the `cellStyle` object entirely; every
-  style is a class. Genuinely *dynamic* per-value styling (rare, non-continuous)
-  would then need a predicate assigning a class. Options: (a) pure — classes
-  only; (b) keep a thin, documented `cellStyleFn` escape for dynamic cases.
-- **D2 — Rules/calc substrate.** (a) Generate real CSS + assign classes (purest
-  A; the engines own a managed stylesheet); (b) keep their internal object model
-  but resolve it through the probe via a generated-CSS bridge (less engine
-  churn, same paint path). §6 assumes (a).
-- **D3 — Supported CSS subset.** Confirm the §4 table; decide whether any
-  unsupported property should be *approximated* (e.g. a single-layer box-shadow
-  → nothing, or a faux 1px border) or strictly ignored.
-- **D4 — Data-viz config surface.** Scope the code + UI tooling for opt-in
-  renderers now, or defer to a follow-on design (this spec only fixes that their
-  appearance is CSS-sourced).
+Each phase ends with a working, tested grid. Rules engine untouched throughout.
 
 ## 11. Out of scope
 
-- The look-and-feel Perspective refresh (its own branch; orthogonal — it's
-  already CSS-token-driven and can rebase onto this model later).
+- The look-and-feel Perspective refresh (own branch; already CSS-token-driven;
+  rebases onto this model later).
 - Data-viz *geometry* (inherently code on a canvas).
-- The full data-viz renderer-config surface (D4 — follow-on).
+- The `@cgrid/rules` conditional engine internals (kept as-is).
