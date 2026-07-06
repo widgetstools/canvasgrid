@@ -123,6 +123,15 @@ function iconGear(): SVGSVGElement {
   );
 }
 function iconPlus(): SVGSVGElement { return icon(svgEl('path', { d: 'M12 5v14M5 12h14', ...strokeAttrs })); }
+/** "Pop out" — an arrow escaping a box, reading as "undock this panel
+ *  into a floating window". Shares the panel's icon house style. */
+function iconPopOut(): SVGSVGElement {
+  return icon(
+    svgEl('path', { d: 'M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6', ...strokeAttrs }),
+    svgEl('path', { d: 'M15 3h6v6', ...strokeAttrs }),
+    svgEl('path', { d: 'M10 14 21 3', ...strokeAttrs }),
+  );
+}
 function iconClose(): SVGSVGElement { return icon(svgEl('path', { d: 'M18 6 6 18M6 6l12 12', ...strokeAttrs })); }
 function iconGrip(): SVGSVGElement {
   const dots = [[9, 6], [15, 6], [9, 12], [15, 12], [9, 18], [15, 18]]
@@ -165,7 +174,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   private selectedEdge: BorderEdge = 'all';
   private applyBtn!: HTMLButtonElement;
   private resetBtn!: HTMLButtonElement;
-  private api!: Pick<CGridApi, 'getColumnGroupDefs' | 'updateGridOptions'>;
+  private api!: Pick<CGridApi, 'getColumnGroupDefs' | 'updateGridOptions' | 'popOutToolPanel'>;
   private nodes: Node[] = [];
   /** Canonical JSON of the last-applied projected tree — comparing against
    *  `project(nodes)` (also projected) makes seed→dirty reliably false even
@@ -326,6 +335,18 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     add.setAttribute('data-cg-add-group', '');
     add.onclick = () => this.mutate((ns) => createGroup(ns, null, 'New Group'));
     bar.appendChild(add);
+
+    // Pop out to a floating panel — right-aligned (CSS pushes it there
+    // via margin-left: auto). No-op when the host api predates
+    // `popOutToolPanel` (older api surface).
+    const popout = el('button', 'cg-colgroups-action cg-colgroups-popout') as HTMLButtonElement;
+    popout.type = 'button';
+    popout.setAttribute('aria-label', 'Pop out');
+    popout.title = 'Pop out';
+    popout.appendChild(iconPopOut());
+    popout.onclick = () => this.api.popOutToolPanel?.('columnGroups');
+    bar.appendChild(popout);
+
     return bar;
   }
 

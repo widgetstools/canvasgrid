@@ -74,6 +74,7 @@ import { PopupHost } from './interaction/editors/popupHost';
 import { FilterPopupHost } from './interaction/filters/filterPopupHost';
 import { ContextMenuHost } from './interaction/contextMenu/host';
 import { ModalHost } from './interaction/modalHost';
+import { FloatingPanelHost, type FloatingRect } from './interaction/floatingPanel/host';
 import { ToolPanelRegistry } from './interaction/toolPanels/registry';
 import { ColumnsToolPanel } from './interaction/toolPanels/columnsPanel';
 import { FiltersToolPanel } from './interaction/toolPanels/filtersPanel';
@@ -302,6 +303,10 @@ export type {
 // Cycle 21i Phase 2 / T4 — modal primitive. Instance via grid.getModal().
 export { ModalHost } from './interaction/modalHost';
 export type { ModalOpenOptions, ModalCloseReason } from './interaction/modalHost';
+// Column Groups pop-out — the floating panel primitive a tool panel
+// undocks into. Instantiated internally as `this.floatingPanelHost`.
+export { FloatingPanelHost } from './interaction/floatingPanel/host';
+export type { FloatingRect } from './interaction/floatingPanel/host';
 export type {
   SelectionConfig,
   SingleRowSelectionConfig,
@@ -831,6 +836,16 @@ export class CGrid<TRow = any> {
    *  centered dialog on the grid root). Lazily constructed on first
    *  `getModal()` — grids that never open a dialog pay nothing. */
   private modalHost: ModalHost | null = null;
+  /** Column Groups pop-out — the floating (draggable/resizable,
+   *  non-modal) panel a tool panel undocks into via
+   *  `popOutToolPanel(id)`. Lazily constructed on first pop-out; grids
+   *  that never pop out a panel pay nothing. */
+  private floatingPanelHost: FloatingPanelHost | null = null;
+  /** Column Groups pop-out — last known position/size of the floating
+   *  panel, so a later pop-out reopens where the user left it. NOT
+   *  auto-restored to an open float on load (v1) — only the rect is
+   *  remembered; the float itself never auto-reopens. */
+  private popoutRect: FloatingRect | undefined = undefined;
   /** Cycle 13 / Task 1 — status-bar host (DOM strip on the bottom or
    *  top edge that houses status panels). `null` when `options.statusBar`
    *  resolves to off. Reserves a top/bottom inset on the canvas region
@@ -1516,6 +1531,9 @@ export class CGrid<TRow = any> {
         // same as the CGridEvent union members for `toolPanelVisibleChanged`
         // and `sideBarVisibleChanged`, so this is a straight pass-through.
         emit: (event) => this.events.emit(event),
+        // Column Groups pop-out — clicking a detached tab re-docks the
+        // floating panel instead of the normal open/close toggle.
+        onReattachRequest: (id) => this.dockToolPanel(id),
       };
       this.sideBar = new SideBarHost(this.root, ctx, sideBarDef);
     }
@@ -5252,6 +5270,70 @@ export class CGrid<TRow = any> {
     return this.sideBar?.getOpenedToolPanelId() ?? null;
   }
 
+  /** Column Groups pop-out — undock the tool panel `id` from the side
+   *  bar into a floating, draggable/resizable, non-modal panel. Opens
+   *  `id` first if it isn't already the open panel. The SAME live
+   *  `ToolPanel` instance is reparented (never destroyed) so its state
+   *  and listeners survive the move; docking or closing the float later
+   *  reuses that instance. Silent no-op when no side bar is configured,
+   *  `id` is unknown, or the panel can't be opened. */
+  popOutToolPanel(id: string): void {
+    if (!this.sideBar) return;
+    if (this.sideBar.getOpenedToolPanelId() !== id) {
+      this.sideBar.openPanel(id);
+    }
+    const detached = this.sideBar.detachActivePanel();
+    if (!detached) return;
+    const title = this.resolveToolPanelTitle(id);
+    const host = this.getFloatingPanelHost();
+    const body = host.open({
+      title,
+      rect: this.popoutRect,
+      onDock: () => this.dockToolPanel(id),
+      onClose: () => this.closePoppedOutToolPanel(id),
+      onRectChange: (r) => {
+        this.popoutRect = r;
+        this.stateUpdatedBus?.markChanged('toolPanelPopoutRect');
+      },
+    });
+    body.appendChild(detached.gui);
+  }
+
+  /** Column Groups pop-out — re-dock a popped-out tool panel: move its
+   *  GUI back into the side bar (restoring the tab's pressed state) and
+   *  close the floating frame. The live instance is preserved — this is
+   *  the inverse of `popOutToolPanel`. Silent no-op when no side bar is
+   *  configured or nothing is currently detached. */
+  dockToolPanel(id: string): void {
+    if (!this.sideBar) return;
+    this.sideBar.reattachPanel();
+    this.floatingPanelHost?.close();
+  }
+
+  /** Column Groups pop-out — dismiss a popped-out tool panel: destroys
+   *  the live instance whose GUI was hosted in the floating panel's
+   *  body (so it doesn't leak), then tears down the floating frame.
+   *  Unlike `dockToolPanel`, the panel does NOT return to the side bar —
+   *  reopening it later (tab click or `openToolPanel`) instantiates a
+   *  fresh instance. */
+  closePoppedOutToolPanel(id: string): void {
+    this.sideBar?.destroyDetached();
+    this.floatingPanelHost?.close();
+  }
+
+  /** Column Groups pop-out — resolve the display title for a tool
+   *  panel's floating-panel titlebar: the panel's `labelDefault` from
+   *  the resolved `SideBarDef.toolPanels`, falling back to the raw id
+   *  when the panel isn't found (defensive — shouldn't happen since
+   *  `popOutToolPanel` only reaches here after a successful detach). */
+  private resolveToolPanelTitle(id: string): string {
+    const toolPanels = this.sideBar?.getSideBarDef().toolPanels ?? [];
+    for (const entry of toolPanels) {
+      if (typeof entry !== 'string' && entry.id === id) return entry.labelDefault;
+    }
+    return id;
+  }
+
   /** Cycle 11 / Task 6 — the resolved `SideBarDef` (string shortcuts
    *  expanded, `position` defaulted) currently driving the side bar,
    *  or `undefined` when no side bar was configured. The returned
@@ -5397,6 +5479,13 @@ export class CGrid<TRow = any> {
   getModal(): ModalHost {
     this.modalHost ??= new ModalHost(this.root);
     return this.modalHost;
+  }
+
+  /** Column Groups pop-out — the grid's floating-panel primitive.
+   *  Lazily created; used by `popOutToolPanel`. */
+  private getFloatingPanelHost(): FloatingPanelHost {
+    this.floatingPanelHost ??= new FloatingPanelHost(this.root);
+    return this.floatingPanelHost;
   }
 
   /** Cycle 15 / Task 6 — recompute and apply the combined top +
@@ -6389,6 +6478,13 @@ export class CGrid<TRow = any> {
     // Cycle 21i Phase 2 / T4 — close + release any open modal.
     this.modalHost?.destroy();
     this.modalHost = null;
+    // Column Groups pop-out — close + release any open floating panel.
+    // Note: this does NOT destroy the detached ToolPanel instance (if
+    // any) — that instance still lives in `sideBar`'s slot map and is
+    // torn down by `sideBar.destroy()` below via its own
+    // `destroyDetached()` cleanup.
+    this.floatingPanelHost?.destroy();
+    this.floatingPanelHost = null;
     // Cycle 15 / Task 6 — release the row group panel's top inset
     // + remove its DOM. The host's destroy() calls back into
     // reserveRowGroupPanelSpace(0) which is canvas-destroy-safe via
@@ -6511,6 +6607,7 @@ export class CGrid<TRow = any> {
       openToolPanel: (id) => this.openToolPanel(id),
       closeToolPanel: () => this.closeToolPanel(),
       getOpenedToolPanel: () => this.getOpenedToolPanel(),
+      popOutToolPanel: (id) => this.popOutToolPanel(id),
       getSideBar: () => this.getSideBar(),
       getStatusPanel: <T extends IStatusPanelComp = IStatusPanelComp>(key: string) =>
         this.getStatusPanel<T>(key),
@@ -8075,6 +8172,7 @@ export class CGrid<TRow = any> {
       getScrollPosition: () => this.viewportManager.getScrollPosition(),
       getRuntimeOptions: () => Object.fromEntries(this.runtimeTouchedOptions),
       getThemeParams: () => this.getThemeParams(),
+      getToolPanelPopoutRect: () => this.popoutRect,
     });
   }
 
@@ -8126,6 +8224,17 @@ export class CGrid<TRow = any> {
       this.recomputeViewport();
       this.cgridCanvas.requestRepaint();
       this.stateUpdatedBus?.markChanged('themeParams');
+    }
+
+    // 0d. Column Groups pop-out rect (non-persist-of-open, v1) — only the
+    // last floating-panel position/size is restored; the float itself is
+    // NEVER auto-reopened on `setState`/load.
+    if (migrated.toolPanelPopoutRect) {
+      this.popoutRect = migrated.toolPanelPopoutRect;
+      this.stateUpdatedBus?.markChanged('toolPanelPopoutRect');
+    } else if (exhaustive && this.popoutRect !== undefined) {
+      this.popoutRect = undefined;
+      this.stateUpdatedBus?.markChanged('toolPanelPopoutRect');
     }
 
     // 0c. module slices (Cycle 21i Phase 2 / T2) — engine-owned state

@@ -404,6 +404,17 @@ export interface CGridApi<TRow = any> {
   /** Cycle 11 / Task 6 — the id of the currently open panel, or
    *  `null` when no panel is open / no side bar is configured. */
   getOpenedToolPanel(): string | null;
+  /** Column Groups pop-out — undock the tool panel `id` from the side
+   *  bar into a floating, draggable/resizable, non-modal panel (the
+   *  sidebar TAB stays; only the panel body moves). Opens `id` first if
+   *  it isn't already the open panel. The same live `ToolPanel`
+   *  instance is reparented — never destroyed — so its state and
+   *  listeners survive the move. The float's "Dock" button (or clicking
+   *  the now-`data-cg-detached` tab again) re-docks it; its "×" button
+   *  destroys the instance and returns the tab to its normal closed
+   *  state. Silent no-op when no side bar is configured or `id` is
+   *  unknown. */
+  popOutToolPanel(id: string): void;
   /** Cycle 11 / Task 6 — the resolved `SideBarDef` (string shortcuts
    *  expanded into full `ToolPanelDef` objects, `position` defaulted
    *  to `'right'` when not specified), or `undefined` when no side

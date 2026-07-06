@@ -19,6 +19,7 @@ import type {
 } from '../types';
 import type { SerializedNode } from '../interaction/columnGroups/model';
 import type { ModuleStateEnvelope } from './moduleState';
+import type { FloatingRect } from '../interaction/floatingPanel/geometry';
 
 /** Bump this whenever any GridState field's shape changes
  *  (renamed key, value-type change, mandatory new field). Keep
@@ -108,6 +109,12 @@ export interface GridState {
   // Scroll position (Cycle 4). Last so the viewport math runs after
   // every model that affects layout has settled.
   scroll?: { top: number; left: number };
+
+  // Column Groups pop-out — last known position/size of the floating
+  // panel a tool panel was popped out to. NOT restored to an open float
+  // on load (v1) — only the rect is remembered so a later pop-out
+  // reopens where the user left it.
+  toolPanelPopoutRect?: FloatingRect;
 }
 
 /** Helpers the grid uses to build / consume a snapshot. The minimal
@@ -138,6 +145,8 @@ export interface StateSnapshotSources {
   getRuntimeOptions?(): Record<string, unknown>;
   /** Cycle 21i / Phase 1 — theme token overrides set via setThemeParams. */
   getThemeParams?(): Record<string, string>;
+  /** Column Groups pop-out — last known floating-panel rect, if any. */
+  getToolPanelPopoutRect?(): FloatingRect | undefined;
 }
 
 /** Schema migrations. Each entry runs over a snapshot whose
@@ -265,6 +274,9 @@ export function buildSnapshot(sources: StateSnapshotSources): GridState {
 
   const scroll = sources.getScrollPosition();
   if (scroll.top !== 0 || scroll.left !== 0) snapshot.scroll = scroll;
+
+  const toolPanelPopoutRect = sources.getToolPanelPopoutRect?.();
+  if (toolPanelPopoutRect) snapshot.toolPanelPopoutRect = toolPanelPopoutRect;
 
   return snapshot;
 }

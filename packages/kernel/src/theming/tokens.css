@@ -1399,6 +1399,27 @@
   width: auto;
   flex-shrink: 0;
 }
+/* Column Groups pop-out — a panel popped out to a floating window keeps
+ * its sidebar tab (clicking it re-docks), so it reads as "floating" via
+ * a subtle dot on the icon rather than the normal pressed/active state.
+ * Kept deliberately quiet — this is a hint, not a second active state. */
+.cg-side-bar-tab[data-cg-detached] {
+  color: color-mix(in srgb, var(--cg-fg-color) 75%, transparent);
+  font-style: italic;
+}
+.cg-side-bar-tab[data-cg-detached] .cg-side-bar-tab-icon {
+  position: relative;
+}
+.cg-side-bar-tab[data-cg-detached] .cg-side-bar-tab-icon::after {
+  content: '';
+  position: absolute;
+  top: -1px;
+  right: -3px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--cg-focus-ring-color);
+}
 .cg-side-bar-panel {
   flex: 1 1 auto;
   min-width: var(--cg-side-bar-min-width, 200px);
@@ -2967,6 +2988,34 @@
   background: color-mix(in srgb, var(--cg-fg-color) 10%, transparent);
 }
 .cg-colgroups-action:focus-visible {
+  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
+  outline-offset: -1px;
+}
+
+/* Pop-out-to-floating-panel button — lives in `.cg-colgroups-toolbar`
+ * alongside "New group"; `margin-left: auto` pushes it to the toolbar's
+ * right edge without needing a dedicated spacer element. Same icon-
+ * button sizing as `.cg-colgroups-action` (24px hit target / ~15px
+ * glyph) so it reads as part of the same control family. */
+.cg-colgroups-popout {
+  width: 24px;
+  height: 24px;
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  color: color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
+  background: transparent;
+  border: none;
+  border-radius: var(--cg-radius, 5px);
+  cursor: pointer;
+}
+.cg-colgroups-popout:hover {
+  color: var(--cg-fg-color);
+  background: color-mix(in srgb, var(--cg-fg-color) 10%, transparent);
+}
+.cg-colgroups-popout:focus-visible {
   outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
   outline-offset: -1px;
 }

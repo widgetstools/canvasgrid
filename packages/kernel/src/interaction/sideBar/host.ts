@@ -135,6 +135,12 @@ export interface SideBarGridContext {
    *  assert payloads in isolation. Absent → the host runs without
    *  emitting (e.g. for unit-test setups that don't care about events). */
   emit?(event: SideBarHostEmittedEvent): void;
+  /** Pop-out-to-floating-panel — called when the user clicks a tab
+   *  whose panel is currently DETACHED (see `detachActivePanel`)
+   *  instead of the normal open/close toggle. CGrid wires this to
+   *  `dockToolPanel(id)` so clicking the tab re-docks the floating
+   *  panel. Absent → clicking a detached tab is a no-op. */
+  onReattachRequest?(id: string): void;
 }
 
 export class SideBarHost {
@@ -152,6 +158,11 @@ export class SideBarHost {
    *  `'filters'` shortcuts). Indexed by `id`. */
   private slots: Map<string, PanelSlot> = new Map();
   private openedId: string | null = null;
+  /** Id of the panel currently popped out to a floating panel (its GUI
+   *  was handed off via `detachActivePanel`, its live instance still
+   *  lives in `slots.get(id).instance`). `null` when nothing is
+   *  detached. Mutually exclusive with `openedId`. */
+  private detachedId: string | null = null;
   /** Current panel content width (excludes tab strip). Set per-open
    *  from the panel's `ToolPanelDef.width`; mutated by the resize
    *  handle. */
@@ -291,6 +302,13 @@ export class SideBarHost {
     if (this.destroyed) return;
     const slot = this.slots.get(id);
     if (!slot) return;
+    // The panel is currently popped out to a floating panel — an
+    // open request (API or tab click) re-docks it instead of
+    // instantiating a second live instance over the detached one.
+    if (this.detachedId === id) {
+      this.ctx.onReattachRequest?.(id);
+      return;
+    }
     if (this.openedId === id) return;
     // When switching from one panel to another, the close fires under
     // the SAME source as the open — a tab click that switches panels
@@ -348,6 +366,95 @@ export class SideBarHost {
       visible: false,
       source,
     });
+  }
+
+  /** Pop-out support — detach the currently OPEN panel's GUI out of the
+   *  sidebar WITHOUT destroying its live instance. Collapses the panel
+   *  area exactly like `closePanel` (hides `panelEl` + `handleEl`, clears
+   *  `panelEl`'s children, un-presses the tab) but the instance stays
+   *  alive in `slots.get(id).instance` so its state/listeners survive —
+   *  the caller (CGrid) reparents the returned `gui` into a floating
+   *  frame. No-op (`null`) when no panel is currently open. */
+  detachActivePanel(): { id: string; gui: HTMLElement } | null {
+    if (this.destroyed) return null;
+    if (this.openedId === null) return null;
+    const id = this.openedId;
+    const slot = this.slots.get(id);
+    if (!slot || !slot.instance) return null;
+    const gui = slot.instance.getGui();
+    this.panelEl.replaceChildren();
+    this.panelEl.style.display = 'none';
+    this.handleEl.style.display = 'none';
+    slot.tab.setAttribute('aria-pressed', 'false');
+    slot.tab.dataset.cgDetached = 'true';
+    this.openedId = null;
+    this.detachedId = id;
+    this.reserveSpace();
+    this.ctx.emit?.({
+      type: 'toolPanelVisibleChanged',
+      key: id,
+      visible: false,
+      source: 'api',
+    });
+    return { id, gui };
+  }
+
+  /** Pop-out support — re-mount the detached panel's GUI back into the
+   *  sidebar panel area and restore the open visuals (mirrors
+   *  `openPanel`'s DOM effects, but reuses the SAME live instance rather
+   *  than instantiating a new one). No-op (`false`) when nothing is
+   *  currently detached. */
+  reattachPanel(): boolean {
+    if (this.destroyed) return false;
+    if (this.detachedId === null) return false;
+    const id = this.detachedId;
+    const slot = this.slots.get(id);
+    if (!slot || !slot.instance) {
+      this.detachedId = null;
+      return false;
+    }
+    this.panelEl.appendChild(slot.instance.getGui());
+    this.panelWidth = slot.def.width ?? DEFAULT_PANEL_WIDTH;
+    this.panelEl.style.width = `${this.panelWidth}px`;
+    this.panelEl.style.display = '';
+    this.handleEl.style.display = '';
+    slot.tab.setAttribute('aria-pressed', 'true');
+    delete slot.tab.dataset.cgDetached;
+    this.openedId = id;
+    this.detachedId = null;
+    this.reserveSpace();
+    this.ctx.emit?.({
+      type: 'toolPanelVisibleChanged',
+      key: id,
+      visible: true,
+      source: 'api',
+    });
+    return true;
+  }
+
+  /** Pop-out support — destroy the DETACHED panel's live instance (the
+   *  one whose `gui` was handed off via `detachActivePanel` and is
+   *  hosted in a floating panel elsewhere). Used when the floating
+   *  panel is CLOSED (dismissed, not docked) so the instance doesn't
+   *  leak. No-op when nothing is currently detached. */
+  destroyDetached(): void {
+    if (this.detachedId === null) return;
+    const id = this.detachedId;
+    const slot = this.slots.get(id);
+    if (slot) {
+      if (slot.instance) {
+        try { slot.instance.destroy(); } catch (e) { console.error(e); }
+        slot.instance = null;
+      }
+      delete slot.tab.dataset.cgDetached;
+    }
+    this.detachedId = null;
+  }
+
+  /** The id of the panel currently popped out to a floating panel, or
+   *  `null` when nothing is detached. */
+  getDetachedId(): string | null {
+    return this.detachedId;
   }
 
   /** Toggle whole-side-bar visibility (`display: none` when hidden). The
@@ -409,6 +516,9 @@ export class SideBarHost {
     // Tear down any mounted panel BEFORE flipping the `destroyed` flag,
     // since `closePanel` short-circuits when destroyed.
     if (this.openedId !== null) this.closePanel();
+    // Same for a DETACHED panel's instance (popped out to a floating
+    // panel elsewhere) — don't leak it.
+    if (this.detachedId !== null) this.destroyDetached();
     this.destroyed = true;
     window.removeEventListener('mousemove', this.onWindowMouseMove);
     window.removeEventListener('mouseup', this.onWindowMouseUp);
@@ -438,6 +548,13 @@ export class SideBarHost {
     btn.appendChild(label);
 
     btn.addEventListener('click', () => {
+      // Pop-out support — clicking the tab of a DETACHED panel (popped
+      // out to a floating panel) asks the grid to re-dock it instead of
+      // the normal open/close toggle below.
+      if (this.detachedId === def.id) {
+        this.ctx.onReattachRequest?.(def.id);
+        return;
+      }
       // Cycle 11 / Task 7 — tab clicks emit toolPanelVisibleChanged
       // with source='sideBarButtonClicked'. Switching tabs produces a
       // close + open pair, both tagged with the same source.
