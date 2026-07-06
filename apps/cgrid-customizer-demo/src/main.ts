@@ -86,7 +86,18 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
         ],
       },
       num('P&L', 'pnl', { aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)' }),
-      num('Daily P&L', 'dailyPnl', { aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)' }),
+      // CSS-driven styling demo (WS-B) — the *appearance* of these classes
+      // lives entirely in CSS custom properties in style.css
+      // (`--cg-cell-class-{loss,gain}-*`): left border, corner decorator glyph,
+      // fg colour, font-weight — all mapped onto the canvas paint artifacts.
+      // Only the predicate (which class a cell gets) is code.
+      num('Daily P&L', 'dailyPnl', {
+        aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)',
+        cellClassRules: {
+          loss: (p: { value: unknown }) => Number(p.value) < 0,
+          gain: (p: { value: unknown }) => Number(p.value) > 0,
+        },
+      }),
     ],
   },
   // Price uses the reference 32nds bond editor: displayed as `101-16`, edited
@@ -105,7 +116,10 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
       num('DV01', 'dv01', { aggFunc: 'sum' }),
       num('PV01', 'pv01', { aggFunc: 'sum' }),
       num('Yield', 'yield', { valueFormatter: '0.000' }),
-      num('Spread', 'spread'),
+      // Token-referenceable cellStyle demo (WS-C) — the fg colour is authored
+      // as a theme-token reference, resolved through the active theme's CSS
+      // (starui/quartz both declare --cg-info-color) instead of a hardcoded hex.
+      num('Spread', 'spread', { cellStyle: { fg: 'var(--cg-info-color)' } }),
     ],
   },
 ];
