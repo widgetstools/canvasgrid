@@ -13,6 +13,7 @@ import '@cgrid/kernel/style.css';
 import { wireIntoKernel as wireFormat } from '@cgrid/format';
 import { wireEditIntoKernel } from '@cgrid/edit';
 import { wireIntoKernel as wireCalc } from '@cgrid/calc';
+import { wireIntoKernel as wireRules, type ConditionalStyleRule } from '@cgrid/rules';
 import { connectStomp, STOMP_PUBLISH_RATE_PER_SEC, type Position } from './stomp';
 
 const DESKS = ['RATES', 'CREDIT', 'FX', 'EQD'];
@@ -153,6 +154,12 @@ wireEditIntoKernel(grid);
 // CGridApi template methods (getTemplates / saveTemplate / applyTemplate /
 // editColumn).
 const { calc } = wireCalc(grid);
+
+// Grid Layouts / Phase C — wire the conditional-rules engine. Rules ride the
+// layout-tier `rules` module (so they save/switch/import/export with layouts)
+// and paint through the kernel's render-time rule fold. Everything below goes
+// through the PUBLIC CGridApi rule methods (addRule / deleteRule / getRules).
+const { rules } = wireRules(grid);
 
 
 function applyTheme() {
@@ -314,6 +321,50 @@ grid.on('templatesChanged', refreshTemplateCount);
 // too so it never goes stale after an import or a persisted-state restore.
 grid.on('layoutChanged', refreshTemplateCount);
 
+// ─── Conditional rules control ───────────────────────────────────────────
+// Exercises the Grid Layouts Phase-C rules API through the PUBLIC CGridApi.
+// Two rules demonstrate BOTH targets (spec §3.2): a CELL rule flags negative
+// P&L red, a ROW rule tints large positions. Because rules ride the layout-tier
+// `rules` module, saving a layout captures them and switching layouts swaps the
+// set — the Layout cluster above drives that. The readout mirrors the rule
+// count on `rulesChanged` + `layoutChanged` (restores/imports re-sync there).
+const ruleLossBtn = document.getElementById('rule-loss') as HTMLButtonElement;
+const ruleRowBtn = document.getElementById('rule-row') as HTMLButtonElement;
+const ruleClearBtn = document.getElementById('rule-clear') as HTMLButtonElement;
+const ruleCount = document.querySelector<HTMLElement>('[data-testid="rule-count"]')!;
+
+function refreshRuleCount() {
+  const n = grid.getRules().length;
+  ruleCount.textContent = `${n} rule${n === 1 ? '' : 's'}`;
+}
+
+// Cell-target rule: negative P&L cells get a red background tint + bold weight.
+// (The P&L column already reds negative TEXT via its `[Red]` formatter, so the
+// rule uses a background so its effect is unmistakably distinct — this layers
+// OVER the formatter at paint time.) Theme-aware: a darker tint in dark mode.
+const LOSS_RULE: ConditionalStyleRule = {
+  kind: 'style', id: 'loss', name: 'Losses', enabled: true, priority: 10,
+  condition: '[pnl] < 0', scope: { kind: 'cell', columnIds: ['pnl'] },
+  style: { base: { backgroundColor: '#fee2e2', fontWeight: 'bold' }, dark: { backgroundColor: '#4a1d1d' } },
+};
+
+// Row-target rule: large positions tint the whole row.
+const BIG_ROW_RULE: ConditionalStyleRule = {
+  kind: 'style', id: 'big-row', name: 'Big positions', enabled: true, priority: 5,
+  condition: '[notionalAmount] > 5000000', scope: { kind: 'row' },
+  style: { base: { backgroundColor: '#fef3c7' }, dark: { backgroundColor: '#3a3520' } },
+};
+
+// addRule is idempotent by id (no-op on a duplicate), so re-clicking is safe.
+ruleLossBtn.addEventListener('click', () => grid.addRule(LOSS_RULE));
+ruleRowBtn.addEventListener('click', () => grid.addRule(BIG_ROW_RULE));
+ruleClearBtn.addEventListener('click', () => {
+  for (const r of grid.getRules()) grid.deleteRule(r.id);
+});
+
+grid.on('rulesChanged', refreshRuleCount);
+grid.on('layoutChanged', refreshRuleCount);
+
 // ─── STOMP feed ──────────────────────────────────────────────────────────
 let updatesThisSecond = 0;
 setInterval(() => {
@@ -345,9 +396,13 @@ connectStomp({
 // E2E assert override assignments + calc-column non-editability through the
 // engine's read accessors.
 (window as unknown as { __cgcalc: unknown }).__cgcalc = calc;
+// Rules engine test hook — lets the rules E2E assert eval + watched-column
+// behaviour through the engine's read accessors (evaluateCell / getRules).
+(window as unknown as { __cgrules: unknown }).__cgrules = rules;
 grid.on('gridReady', (e) => {
   (window as unknown as { __cgapi: unknown }).__cgapi = e.api;
   (window as unknown as { __cgridReady: boolean }).__cgridReady = true;
   refreshLayoutControl(); // seed the switcher; a persisted-state restore re-syncs it via layoutChanged
   refreshTemplateCount(); // seed the template readout; templatesChanged re-syncs it
+  refreshRuleCount(); // seed the rule readout; rulesChanged re-syncs it
 });

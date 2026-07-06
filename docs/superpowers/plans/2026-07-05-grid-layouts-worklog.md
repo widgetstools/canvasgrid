@@ -98,15 +98,27 @@ New subsystem: expression → style, targeting rows/columns; layout-tier. Spec �
 
 - [x] A1 · [x] A2 · [x] A3 · [x] A4 · [x] A5 · [x] A6 — **PHASE A MERGED** (squash `3da8e48` on main)
 - [x] B1 · [x] B2 · [x] B3 · [x] B4 · [x] B5 — **PHASE B MERGED** (squash `b73ec62` on `origin/main`)
-- [ ] C1 · [ ] C2 · [ ] C3 · [ ] C4 (Phase C merged)
+- [x] C1 · [x] C2 · [x] C3 · [x] C4 — **PHASE C COMPLETE on branch** (ready to merge)
 
-**Next: PHASE C** (conditional styling rules — branch `feature/grid-layouts-c`, off merged B).
-Phase B squash-merged locally into `main` and pushed (`3da8e48..b73ec62`, ff); tree was clean so
-no PR needed. Two Phase-B deferrals carry into Phase C / tracking (see the B5 ledger entry): H2
-the calc provider slot is a module-global singleton (multi-grid concern), M5 save-time
-template-name uniqueness (spec §12 reconciliation). Also still open from Phase A: `overrides.editing`
-capture; B2's StarUI-07 type-default-vs-spec-§3.3 reconcile. Phase C starts at C1 (see the Phase C
-table): `ConditionalRule` model + `rules` layout-tier state module, expression via the calc AST.
+**Next: MERGE Phase C** — branch `feature/grid-layouts-c` (off merged B `b73ec62`), 9 commits
+(`267b61c` C1 · `5cb42a2` · `bc89160` C2 · `7755375` · `e2d856c` C3 · `393b0b9` · `fbdfcae` C4 ·
+`6c8bbee` review-fix-wave · this worklog). All gates green: kernel typecheck+build clean, full suite
+**2896 (231 files)**; rules **153**; demo typecheck clean; demo **E2E 25/25**; browser-verified
+light+dark (live STOMP 5k rows; both rule targets paint over the format/template base + compose;
+browser+server killed after). SINGLE Phase-C batch review (fable) done + fix wave landed. **Phase C =
+Grid Layouts feature COMPLETE** (no Phase D). Sync main ff-only, `git switch`-based merge like Phase B
+(local squash if the tree is clean, else PR like Phase A's #103), then tick + ledger.
+**Deferrals carried forward (NOT merge-blocking — triaged at this review):** (1) **[NEW C4 review]**
+a CRUD op clears 21e's flash/activation `#lastMatch` (reseedCounts rebuilds counts, not activations)
+→ flash-enabled rules can re-flash-storm on the next tick after any rule mutation during live ticking;
+pre-existing 21e REPLACE behavior amplified by the API; fix = seed `#lastMatch` in `recount`, a
+RuleEngine change out of thin-API scope. (2) the C2 calc-template `cellStyle` CSS-key vs painter
+`fg`/`bg` mismatch (Phase-B footgun; fix = alias color→fg/backgroundColor→bg in `applyOverridePatch`).
+(3) **H2 broadened** — the rule-engine slot is ALSO a module-global singleton; Phase C's write/persist
+path now mis-routes under multi-grid (addRule mutates last-registered engine while rulesChanged/autosave
+fire on the calling grid) → per-instance slot needed before any multi-grid work. (4) C1 shape
+reconciliation (StyleRule vs spec §3.2 — acceptable, versioned envelope; spec §3.2 now documents it).
+(5) M5 template-name uniqueness. (6) Phase-A `overrides.editing`. (7) B2 StarUI-07-vs-§3.3.
 
 <!-- Historical A6 note (Phase A now merged):
 Phase A branch `feature/grid-layouts-a` — the CLOSEOUT: demo control in
@@ -114,6 +126,178 @@ Phase A branch `feature/grid-layouts-a` — the CLOSEOUT: demo control in
 PR + squash-merge. -->
 
 ### Ledger
+
+- **2026-07-05 · C4 done — PHASE C COMPLETE on branch** (branch `feature/grid-layouts-c`; commits
+  `fbdfcae` demo+E2E, `6c8bbee` review fix-wave, + this worklog).
+  - **Demo (`apps/cgrid-customizer-demo`):** a "Rules" cluster matching the Layout/Templates chrome
+    (reused `.layouts-control`/`.cluster-label`/`.cluster-readout` classes — NO new CSS; frontend-design
+    calibration confirmed the right move is consistency, not a distinctive cluster). Wires `@cgrid/rules`
+    (new demo dep); drives the PUBLIC CGridApi rules API. Two rules demonstrate BOTH targets (spec §3.2):
+    "Flag losses" (CELL rule — red bg + bold on negative P&L, distinct from the column's `[Red]` TEXT
+    formatter, layered over it) + "Big rows" (ROW rule — amber tint on notional > 5M); "Clear" removes
+    all. Count readout re-syncs on `rulesChanged` + `layoutChanged`. `__cgrules` test hook.
+  - **Browser-verified light + dark** (customizer-demo :5187, LIVE STOMP 5k rows this run — unlike B5's
+    0-row env, so cell styling WAS visually exercised): both targets paint over the format/template base
+    and COMPOSE (amber row + red P&L cell on a large losing position); theme-aware slices adapt
+    (dark-red/pale-red bg, amber tint). Cluster chrome matches siblings in both themes. Dev server +
+    automation browser killed after.
+  - **E2E (`e2e/rules.spec.ts`, +5):** cell-target matches negative P&L (not positive, not a sibling
+    column) + idempotent re-add; row-target matches ANY column of a large position (not a small one);
+    Clear; **rules ride a saved layout + clear-on-switch-to-Default + restore-on-switch-back (per-layout
+    rule sets)**; **persist across reload (autosave via `rulesChanged`)**. Full demo **E2E 25/25**.
+  - **DX fix (in `fbdfcae`):** `ConditionalRuleShape` dropped its index signature — a nominal
+    `@cgrid/rules` rule (no index sig) wasn't assignable to an index-sig target, so consumers couldn't
+    pass their typed rules to `addRule`. Minimal control shape is all the kernel reads; runtime spreads
+    carry the full payload.
+  - **SINGLE Phase-C closeout review (fable, batch over C1–C4) + fix wave (`6c8bbee`).** Verdict
+    NEEDS-WORK → after the wave: SHIP. Fixed:
+    - **[MEDIUM — the one blocker] `addRule` had no duplicate-id guard.** The engine keys match-state +
+      counts by ruleId, so a duplicate id corrupted update/delete/enable (patched/removed BOTH copies;
+      matchCount/evaluateCell double-counted). `addRule` now no-ops (no event) on an existing id; removed
+      the demo's manual `some()` workaround (the API owns it — the idempotent-add E2E now exercises the
+      guard). +1 kernel test.
+    - **[LOW] same-value no-ops** now skip the recompile + autosave + repaint: `setRuleEnabled(id,
+      currentValue)` and `reorderRules(currentOrder / all-unknown ids)` return without firing. +2 tests
+      (and updated the "every mutation fires" test to use a real 2-rule reorder).
+    - **[LOW/DX] `updateRule` patch** widened `Partial<CRS> & Record<string,unknown>` →
+      `Partial<CRS> | Record<string,unknown>` so a fully-typed rule object (an interface, not assignable
+      to an index-sig type) passes without a cast, while arbitrary-field literals still type.
+    - **[spec] §3.2 reconciliation recorded** in the design spec (this `ConditionalRule` is realized by
+      21e's `StyleRule`; versioned module envelope leaves a lean-shape migration hook) so it no longer
+      reads as unbuilt.
+    - **DEFERRED (tracked, not merge-blocking):** **[MEDIUM]** a CRUD op clears 21e's flash/activation
+      `#lastMatch` (reseedCounts rebuilds counts, not activations) → flash-enabled rules can
+      re-flash-storm on the next tick after any rule mutation during live ticking; pre-existing 21e
+      REPLACE behavior amplified by the API; fix = seed `#lastMatch` in `recount` (a RuleEngine change,
+      out of thin-API scope). **[known]** the C2 calc-template `cellStyle` CSS-key-vs-`fg`/`bg` painter
+      mismatch (Phase-B footgun; ~2-line `applyOverridePatch` alias). **[H2 broadened]** the rule-engine
+      slot is also a module-global singleton — Phase C's write/persist path now mis-routes under
+      multi-grid; per-instance slot needed first.
+  - **Verify:** kernel typecheck + `npm run build` clean; full suite **2896 pass (231 files)**; rules
+    **153**; demo typecheck clean; demo **E2E 25/25**. Phase C is feature-complete on the branch —
+    remaining is the merge (sync main ff-only + squash/PR, then tick + ledger). **No Phase D — Grid
+    Layouts is feature-complete.**
+
+- **2026-07-05 · C3 done** (branch `feature/grid-layouts-c`; commit `e2d856c`).
+  - **Gate "Rules API live + round-trip."** Added the conditional-rules API to `CGridApi`:
+    `getRules` / `addRule` / `updateRule` / `deleteRule` / `setRuleEnabled` / `reorderRules` + a
+    `rulesChanged` event (`RuleChangeSource` = add|update|delete|enable|reorder, carries `ruleId?`).
+    Mirrors B3's template-API-over-provider pattern — NO parallel store.
+  - **`@cgrid/rules` bridge (`packages/rules/src/bridge.ts`):** the rule-engine adapter (registered
+    via `grid.registerRuleEngine`) gains `getRules()` / `setRules(next)` delegating to the
+    `RuleEngine`; `setRules` re-seeds match counts (setRules zeroes them) — extracted the shared
+    `reseedCounts()` ABOVE the adapter (wire-time seed + C1 module restore + C3 all reuse it). Invalid
+    rules skipped + `console.warn`'d (like the opts seed / C1 module). +2 bridge tests.
+  - **Kernel slot (`core/ruleEngineSlot.ts`):** `RuleEngineShape` gains OPTIONAL `getRules?` /
+    `setRules?` + a structural `ConditionalRuleShape` (`{ id; enabled?; priority?; [k]: unknown }`) —
+    the kernel touches only `id`/`enabled`/`priority` for its transforms; the rest is the 21e
+    `StyleRule` payload carried verbatim (engine stays the shape/validation owner).
+  - **Kernel owns the CRUD as PURE array transforms** over `getRules()`/`setRules()` (like
+    `LayoutManager` owns layout CRUD — semantics in the kernel, not pushed into `@cgrid/rules`):
+    addRule = append; updateRule = shallow-merge by id (id preserved); deleteRule = filter;
+    setRuleEnabled = toggle; reorderRules = by id order (unlisted keep relative order, unknown
+    ignored). **Unknown-id mutations no-op with NO event.** No engine wired → `getRules()` = `[]`,
+    mutators no-op. Each mutation `refresh()`es (rule style is evaluated LIVE in the paint fold, so a
+    change needs a fresh frame — templates rebuild colDefs, rules don't).
+  - **Persistence (`core/stateUpdatedBus.ts`):** `rulesChanged → 'modules'` in `EVENT_TO_KEY` so
+    every rule mutation dirties the bus → debounced autosave (rules don't rebuild colDefs, so nothing
+    else would mark it dirty — same reasoning as `templatesChanged`). Round-trip + import/export come
+    free from C1's `rules` module.
+  - **Wiring:** `CGridApi` signatures + `makeApi` entries; `rulesChanged` added to the `CGridEvent`
+    union; public exports of `RuleChangeSource` + `ConditionalRuleShape` from the kernel entry.
+  - **Tests:** +9 kernel integration (`packages/kernel/tests/rulesApiKernel.integration.test.ts`,
+    real CGrid wired to `@cgrid/rules`): add→getRules+event; update merge; delete; enable-toggle +
+    disabled-stops-matching (via `evaluateCell`); reorder; every-source ordering; **round-trip through
+    `getState().modules.rules.data`** (rides the layout); unknown-id no-op no-event; no-engine
+    degradation. +2 rules bridge (adapter getRules/setRules delegate + re-seed counts).
+  - **Verify:** kernel typecheck + `npm run build` clean; full suite **2893 pass (231 files)** (+9 /
+    +1 file over C2's 2884). Rules typecheck clean; suite **153** (+2 over C2's 151). No regressions.
+    NO per-task review — Phase C is feature-complete; the SINGLE batch review is C4.
+
+- **2026-07-05 · C2 done** (branch `feature/grid-layouts-c`; commit `bc89160`).
+  - **Gate "a rule paints the right cells" — proven END TO END, zero painter code.** C1's
+    reconciliation onto `@cgrid/rules` means the render-time overlay ALREADY EXISTS: `applyCellProps`
+    step 3.5 (`packages/kernel/src/core/propertyChain.ts`, Cycle 21e / Task 11) folds the rule style
+    over the resolved colDef `cellStyle` base — AFTER cellClass variants, BEFORE function-form
+    cellStyle (spec §3.3) — by priority (`RuleEngine.evaluateCell` folds candidates priority-asc,
+    higher wins per-property). The kernel consults the engine via `core/ruleEngineSlot.ts`
+    (`getRuleEngine`), which the `@cgrid/rules` bridge populates through `grid.registerRuleEngine`.
+    So C2 delivered the INTEGRATION PROOF the worklog scopes, not new code.
+  - **Why new tests were still needed:** 21e's own fold test (`core/propertyChain-ruleFold.test.ts`)
+    only uses a STUB engine over a `cellClass`/`cellStyleFn` base — never the real `RuleEngine`,
+    never a template base, never priority across rules, never row-vs-columns, never the C1 module.
+    C2 covers exactly that Grid-Layouts angle.
+  - **New: `packages/kernel/tests/conditionalRuleRender.integration.test.ts` (+6).** REAL `RuleEngine`
+    (via the `@cgrid/rules` bridge) + REAL painter (`applyCellProps`): (1) rule overlays a
+    TEMPLATE-RESOLVED base (`colDef.cellStyle` object — the slot `foldCalcColumnDefs` populates) on
+    match, base preserved on no-match + per-property; (2) PRIORITY per-property (higher wins the
+    conflict, lower's non-conflicting field survives); (3) TARGET row (paints any column's cell) vs
+    columns (scoped to its colIds; sibling column untouched); (4) theme-aware slice resolves
+    light/dark through the painter; (5) disabled rule doesn't paint; (6) **C1→C2 seam** — rules are
+    installed via the layout-tier `rules` module's `set()` (NOT opts), reaching the SAME engine the
+    painter consults; PLUS a REAL-CGrid test proving `setState({ modules: { rules: { version, data } } })`
+    (the layout-restore path) feeds that engine. The fake host forwards `registerRuleEngine` into the
+    real kernel slot so the real painter path is exercised.
+  - **DISCOVERED (flag for C4 review; pre-existing B-phase/calc, NOT C-scope):** a calc template's
+    static `cellStyle` uses CSS keys (`color`/`backgroundColor`), but the painter's step-2
+    static-cellStyle applier (`applyOverridePatch`) reads kernel `fg`/`bg` and does NOT translate —
+    only the step-3.5 RULE path maps CSS→fg/bg (propertyChain.ts:799-800). So a template authored
+    with CSS color keys may not paint its colors. Either templates must be authored in `fg`/`bg`
+    (likely what the B5 demo did) or the calc fold should translate. Left as an observation — fixing
+    it is outside conditional-rule rendering.
+  - **Design note:** C2's precedence test represents the template base as the resolved
+    `colDef.cellStyle` OBJECT in the painter's `fg`/`bg` vocabulary (what step-2 consumes) — the
+    correct altitude for the §3.3 painter claim. A raw `calc.resolvedPatchFor` patch was deliberately
+    NOT used (its CSS-key cellStyle wouldn't map through step-2 — see the discovery above), which
+    would have made the test misleading. Full calc+rules visual combination is C4's demo.
+  - **Verify:** kernel typecheck + `npm run build` clean; full suite **2884 pass (230 files)** (+6 /
+    +1 file over C1's 2878) — no regressions. NO per-task review (single batch review at C4).
+
+- **2026-07-05 · C1 done** (branch `feature/grid-layouts-c`, off merged B `b73ec62`; commit
+  `267b61c`).
+  - **RECONCILIATION DECISION (the crux of C1 — "reconcile against packages/rules, don't fork
+    blindly").** There are two conditional-rule worlds: (a) `@cgrid/rules` (Cycle 21e) — a full,
+    ALREADY-SHIPPED, ALREADY-WIRED conditional-styling + alerts subsystem: kernel has
+    `registerRuleEngine` + `core/ruleEngineSlot.ts`, the painter consults `RuleEngine.evaluateCell`
+    at render time, `apps/cgrid-showcase` uses it; its `RuleEngine` already provides the C1 contract
+    (`compileCondition`/`evaluateCell` truthiness + `watchedColIds`) built on `@cgrid/expression` (the
+    shared AST `@cgrid/calc` also wraps — NOT a second parser). (b) The Grid Layouts spec §3.2's NEW
+    `ConditionalRule`. The ONLY thing 21e lacked vs spec §3.2/§6: its bridge registered NO state
+    module → rules didn't persist / weren't layout-tier. **So C1 = wire that one gap, not build a
+    parallel store.** Building a new `ConditionalRule` store + a second painter path would violate
+    "no retroactive layering" and duplicate the shared expression AST. Extending `@cgrid/calc` was
+    also rejected: calc's `resolvedPatchFor` is a STATIC per-column fold with no per-row-value eval —
+    conditional rules are RENDER-TIME, which is exactly the `ruleEngineSlot` overlay 21e owns. Spec
+    §3.3's cascade (templates base → conditional rules overlay) is already how the kernel is
+    structured (calcSlot static base + ruleEngineSlot dynamic overlay). **Net: spec §3.2's
+    `ConditionalRule` is realized by 21e's existing `StyleRule`; flag this shape reconciliation at the
+    C4 batch review (the persisted `modules.rules` slice is `StyleRule[]`, incl. flash/indicator/
+    valueFormatter/activeDurationMs, not the leaner spec `{expression,target,style,priority}`).**
+  - **Net-new code (`packages/rules/src/bridge.ts`):** a LAYOUT-TIER `rules` state module registered
+    through the kernel module registry, mirroring the calc bridge's `calc` module (B1). `KernelGridSurface`
+    gains an OPTIONAL `registerStateModule?` + `StateModuleShape` (guarded — a minimal grid surface still
+    wires, just doesn't persist rules). Module: `get` = `rules.getRules()` (the full serializable set incl.
+    invalid + disabled; `undefined` when empty → compact snapshot); `set` = REPLACE via `rules.setRules(next)`
+    (non-array → `[]`; invalid rules skipped + `console.warn`'d exactly like the opts seed) then re-seed match
+    counts over the dataset (extracted the wire-time seed into a shared `reseedCounts()` — `setRules` zeroes
+    the counters and expects the caller to recount). **Tiering is automatic** — `rules` is not in the
+    kernel's `DEFAULT_GRID_LEVEL_MODULES` → per-layout; **B5's `clearAbsent` already covers it** (verified:
+    layout switch → `set(undefined)` → `setRules([])` clears the outgoing layout's rules; no extra wiring).
+  - **Scope line — alerts stay grid-global.** The `rules` module persists STYLE rules only
+    (`RuleEngine.getRules`/`setRules`); alert rules (`AlertsEngine`) are opts-seeded real-time
+    notifications, not part of the layout model (spec §3.2/§5 name only conditional styling rules).
+  - **Reuse confirmed, not re-tested.** Eval truthiness + `watchedColIds` are already exhaustively
+    covered by `ruleEngine.test.ts` (28) + `conditionCompiler.test.ts` (24) — C1 does NOT duplicate them;
+    the new tests tie those through a RESTORED rule to prove the C1 contract end-to-end.
+  - **Tests (`packages/rules/tests/bridge.test.ts`, +7):** register + version=1; `get()` undefined when
+    empty; snapshots the full set incl. disabled; `set()` REPLACE into a fresh engine + the restored rule
+    evaluates truthy on a matching cell + reports its watched colId (eval + watched contract); `set(undefined)`
+    clears (clearAbsent path); invalid-rule restore skip + `console.warn`; `set()` re-seeds match counts over
+    the dataset. Extended the shared fake grid to capture `registerStateModule`.
+  - **Verify:** rules typecheck clean; rules full suite **151 pass (9 files)**. Kernel typecheck +
+    `npm run build` clean; kernel full suite **2878 pass (229 files)** — no regressions, no perf-flaky red.
+    `@cgrid/rules` has no dist build (scaffold — consumed from src). Unit-only per the C1 scope
+    (render-time painting = C2, API = C3, demo + E2E = C4). NO per-task review (single batch review at C4).
 
 - **2026-07-05 · B5 done — Phase B COMPLETE on branch** (branch `feature/grid-layouts-b`;
   commits `bb25c29` switch-fix, `a377f38` editColumn+demo+E2E, `05b5eb7` review fix-wave).

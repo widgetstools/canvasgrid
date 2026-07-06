@@ -27,6 +27,13 @@
             <button id="tpl-calc" data-testid="tpl-calc" title="Add a calculated column styled by the $ template — calc columns stay non-editable">Calc col</button>
             <span class="cluster-readout" data-testid="tpl-count">0 templates</span>
           </div>
+          <div class="layouts-control rules-control" role="group" aria-label="Conditional rules">
+            <span class="cluster-label">Rules</span>
+            <button id="rule-loss" data-testid="rule-loss" title="Flag negative P&amp;L cells red — a cell-target conditional rule">Flag losses</button>
+            <button id="rule-row" data-testid="rule-row" title="Tint the whole row for large positions — a row-target conditional rule">Big rows</button>
+            <button id="rule-clear" data-testid="rule-clear" title="Remove all conditional rules from the active layout">Clear</button>
+            <span class="cluster-readout" data-testid="rule-count">0 rules</span>
+          </div>
           <button id="theme" data-testid="btn-theme">Light theme</button>
           <button id="reset-state" data-testid="btn-reset-state">Reset saved state</button>
           <label class="demo-switch"><input type="checkbox" id="live-updates" data-testid="sw-live" checked /> Live updates</label>

@@ -59,6 +59,11 @@ const EVENT_TO_KEY: Record<string, StateKey> = {
   // persists them. `renameTemplate` triggers NO colDef rebuild, so without
   // this a rename alone would never persist (spec §11).
   templatesChanged: 'modules',
+  // Grid Layouts (Phase C / C3) — conditional-rule mutations ride in the
+  // layout-tier `rules` state module; dirty `modules` so the debounced
+  // autosave persists them (rules don't rebuild colDefs, so nothing else
+  // would mark the bus dirty — same reasoning as `templatesChanged`).
+  rulesChanged: 'modules',
 };
 
 export class StateUpdatedBus {

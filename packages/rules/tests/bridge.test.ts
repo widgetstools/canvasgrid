@@ -45,15 +45,27 @@ const ROW_ALERT: AlertRule = {
 
 // ─── Fake grid + manual scheduler ──────────────────────────────────────
 
+/** Structural mirror of kernel's `StateModule` (core/moduleState.ts) — the
+ *  same shape the calc bridge (Phase B) registers. Tier is keyed off the id
+ *  in the kernel (`rules` is not in DEFAULT_GRID_LEVEL_MODULES → layout-tier). */
+interface StateModuleShape {
+  id: string;
+  version: number;
+  get(): unknown;
+  set(data: unknown, version: number): void;
+}
+
 function makeFakeGrid(rows: Array<{ rowId: string; row: Record<string, unknown> }> = []) {
   const handlers = new Map<string, Array<(e: unknown) => void>>();
   const calls = {
     engines: [] as unknown[],
     flashCells: [] as Array<Record<string, unknown>>,
     refresh: 0,
+    modules: [] as StateModuleShape[],
   };
   return {
     registerRuleEngine(engine: unknown) { calls.engines.push(engine); },
+    registerStateModule(m: unknown) { calls.modules.push(m as StateModuleShape); return () => {}; },
     on(type: string, fn: (e: unknown) => void) {
       handlers.set(type, [...(handlers.get(type) ?? []), fn]);
       return () => {};
@@ -295,5 +307,135 @@ describe('watchedColIdUnion', () => {
         trigger: { kind: 'relativeChange', colId: 'hidden', mode: 'ANY_CHANGE', threshold: 0, direction: 'both' } },
     ]);
     expect([...union].sort()).toEqual(['fee', 'pnl', 'price']);
+  });
+});
+
+// ─── Grid Layouts — Phase C / C1 ─────────────────────────────────────────
+// The rules bridge registers a layout-tier `rules` state module so the
+// conditional-styling rule set rides getState/setState + persistState +
+// layouts, exactly as the calc bridge (Phase B / B1) does for `calc` /
+// `templates`. RECONCILIATION: Grid Layouts spec §3.2's `ConditionalRule`
+// is realized by 21e's existing `StyleRule` — no second store, no second
+// parser (conditions still compile via `compileCondition` on the shared
+// @cgrid/expression AST). Tier is keyed off the module id in the kernel:
+// `rules` is NOT in DEFAULT_GRID_LEVEL_MODULES → per-layout.
+describe('wireIntoKernel — Grid Layouts `rules` state module (Phase C / C1)', () => {
+  function moduleOf(grid: ReturnType<typeof makeFakeGrid>, id: string): StateModuleShape {
+    const mod = grid._calls.modules.find((m) => m.id === id);
+    if (!mod) throw new Error(`module '${id}' not registered`);
+    return mod;
+  }
+
+  it('registers a layout-tier `rules` module that snapshots getRules()', () => {
+    const grid = makeFakeGrid();
+    wireIntoKernel(grid, { rules: [NEG_RULE], now: () => 0 });
+    const mod = moduleOf(grid, 'rules');
+    expect(mod.version).toBe(1);
+    expect(mod.get()).toEqual([expect.objectContaining({ id: 'neg-pnl', condition: '[pnl] < 0' })]);
+  });
+
+  it('get() is undefined when no rules are set (compact snapshot)', () => {
+    const grid = makeFakeGrid();
+    wireIntoKernel(grid, { rules: [], now: () => 0 });
+    expect(moduleOf(grid, 'rules').get()).toBeUndefined();
+  });
+
+  it('snapshots the FULL supplied set incl. disabled rules (serializable)', () => {
+    const grid = makeFakeGrid();
+    const disabled: ConditionalStyleRule = { ...NEG_RULE, id: 'off', enabled: false };
+    wireIntoKernel(grid, { rules: [NEG_RULE, disabled], now: () => 0 });
+    const snap = moduleOf(grid, 'rules').get() as StyleRule[];
+    expect(snap.map((r) => r.id)).toEqual(['neg-pnl', 'off']);
+  });
+
+  it('set() REPLACES the rule set into a fresh engine; the restored rule evaluates truthy + reports its watched colId', () => {
+    const src = makeFakeGrid();
+    wireIntoKernel(src, { rules: [NEG_RULE], now: () => 0 });
+    const snapshot = moduleOf(src, 'rules').get();
+
+    const dest = makeFakeGrid();
+    const { rules } = wireIntoKernel(dest, {
+      rules: [{ ...NEG_RULE, id: 'stale', condition: '[qty] > 0', scope: { kind: 'cell', columnIds: ['qty'] } }],
+      now: () => 0,
+    });
+    moduleOf(dest, 'rules').set(snapshot, 1);
+
+    // REPLACE — the stale rule is gone, only the restored one remains.
+    expect(rules.getRules().map((r) => r.id)).toEqual(['neg-pnl']);
+    // eval truthiness (C1 contract): condition matches a negative pnl cell.
+    expect(rules.evaluateCell({ row: { pnl: -5 }, rowId: 'r1', colId: 'pnl', theme: 'dark' }).matched)
+      .toEqual(['neg-pnl']);
+    expect(rules.evaluateCell({ row: { pnl: 5 }, rowId: 'r2', colId: 'pnl', theme: 'dark' }).matched)
+      .toEqual([]);
+    // watched-column tracking (C1 contract): the restored condition reads pnl.
+    expect([...rules.watchedColIds()]).toEqual(['pnl']);
+  });
+
+  it('set(undefined) clears the rule set (layout-switch clearAbsent path)', () => {
+    const grid = makeFakeGrid();
+    const { rules } = wireIntoKernel(grid, { rules: [NEG_RULE], now: () => 0 });
+    moduleOf(grid, 'rules').set(undefined, 1);
+    expect(rules.getRules()).toEqual([]);
+    expect([...rules.watchedColIds()]).toEqual([]);
+  });
+
+  it('restore skips an invalid rule with a console.warn, keeps valid ones', () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    const grid = makeFakeGrid();
+    const { rules } = wireIntoKernel(grid, { rules: [], now: () => 0 });
+    const bad: unknown = { ...NEG_RULE, id: 'bad', condition: '[pnl] <' }; // parse error
+    moduleOf(grid, 'rules').set([bad, NEG_RULE], 1);
+    // valid rule still applies; bad one skipped + reported
+    expect(rules.getRules().map((r) => r.id)).toEqual(['bad', 'neg-pnl']); // full set snapshotted…
+    expect(rules.evaluateCell({ row: { pnl: -1 }, rowId: 'r', colId: 'pnl', theme: 'dark' }).matched)
+      .toEqual(['neg-pnl']); // …but only the valid one is indexed/evaluated
+    expect(warn).toHaveBeenCalledWith(expect.stringContaining("[cgrid/rules] restore skipped rule 'bad'"));
+  });
+
+  it('set() re-seeds match counts over the current dataset (mirrors the wire-time seed)', () => {
+    const rows = [
+      { rowId: 'a', row: { pnl: -3 } },
+      { rowId: 'b', row: { pnl: 4 } },
+      { rowId: 'c', row: { pnl: -1 } },
+    ];
+    const grid = makeFakeGrid(rows);
+    const { rules } = wireIntoKernel(grid, { rules: [], now: () => 0 });
+    moduleOf(grid, 'rules').set([NEG_RULE], 1);
+    // two rows have pnl < 0 → matchCount reflects the restored rule over the dataset
+    expect(rules.matchCount('neg-pnl')).toBe(2);
+  });
+});
+
+// ─── Grid Layouts — Phase C / C3 ─────────────────────────────────────────
+// The rule-engine adapter (registered via grid.registerRuleEngine) also
+// exposes getRules/setRules so the kernel's CGridApi rule methods can drive
+// the engine's rule set imperatively (mirrors the calc provider's template
+// ops in B3). setRules re-seeds match counts (setRules zeroes them).
+describe('wireIntoKernel — rule-engine adapter CRUD surface (Phase C / C3)', () => {
+  function adapterOf(grid: ReturnType<typeof makeFakeGrid>) {
+    return grid._calls.engines[0] as {
+      getRules?(): StyleRule[];
+      setRules?(rules: StyleRule[]): void;
+    };
+  }
+
+  it('adapter.getRules() reflects the engine rule set', () => {
+    const grid = makeFakeGrid();
+    wireIntoKernel(grid, { rules: [NEG_RULE], now: () => 0 });
+    expect(adapterOf(grid).getRules!().map((r) => r.id)).toEqual(['neg-pnl']);
+  });
+
+  it('adapter.setRules() REPLACES the engine rule set and re-seeds match counts', () => {
+    const rows = [
+      { rowId: 'a', row: { pnl: -3 } },
+      { rowId: 'b', row: { pnl: 4 } },
+      { rowId: 'c', row: { pnl: -1 } },
+    ];
+    const grid = makeFakeGrid(rows);
+    const { rules } = wireIntoKernel(grid, { rules: [], now: () => 0 });
+    adapterOf(grid).setRules!([NEG_RULE]);
+    expect(rules.getRules().map((r) => r.id)).toEqual(['neg-pnl']);
+    // two pnl<0 rows → counts re-seeded over the dataset (not left at 0)
+    expect(rules.matchCount('neg-pnl')).toBe(2);
   });
 });

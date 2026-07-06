@@ -915,4 +915,38 @@ export interface CGridApi<TRow = any> {
    *  forks to its own rather than mutating the shared one. `headerName` is not
    *  templatable (caption is column-unique). No-op without a calc engine. */
   editColumn(colId: string, patch: import('@cgrid/calc').ColumnEditPatch): void;
+
+  // ── Conditional styling rules (Phase C / C3) ────────────────────────────
+  // The active layout's conditional-rule set, routed to `@cgrid/rules`. When
+  // no rules engine is wired, `getRules` returns `[]` and the mutators no-op
+  // (no `rulesChanged` event). Rules ride the layout-tier `rules` state
+  // module, so they round-trip through getState / persistState / layouts +
+  // import/export. Every mutation fires `rulesChanged` and repaints.
+  /** The active layout's conditional-rule set (application order). `[]` when
+   *  no rules engine is wired. */
+  getRules(): import('../core/ruleEngineSlot').ConditionalRuleShape[];
+  /** Append a conditional rule. No-op when a rule with the same `id` already
+   *  exists (ids must be unique — use `updateRule` to change one). Invalid
+   *  rules are skipped by the engine (still snapshotted) — a rejected rule
+   *  simply never paints. */
+  addRule(rule: import('../core/ruleEngineSlot').ConditionalRuleShape): void;
+  /** Shallow-merge a patch into the rule with `id` (its `id` is preserved).
+   *  The patch may carry any rule field — `enabled` / `priority` / `condition`
+   *  / `style` / … (the engine re-validates). The union accepts both a partial
+   *  rule literal and a fully-typed rule object. No-op (no event) when the id
+   *  is unknown. */
+  updateRule(
+    id: string,
+    patch:
+      | Partial<import('../core/ruleEngineSlot').ConditionalRuleShape>
+      | Record<string, unknown>,
+  ): void;
+  /** Remove the rule with `id`. No-op (no event) when the id is unknown. */
+  deleteRule(id: string): void;
+  /** Toggle a rule's `enabled` flag. No-op (no event) when the id is unknown. */
+  setRuleEnabled(id: string, enabled: boolean): void;
+  /** Reorder the rule set to match `orderedIds` (application order — the
+   *  stable tiebreak for equal priority). Unlisted ids keep their relative
+   *  order after the listed ones; unknown ids are ignored. */
+  reorderRules(orderedIds: string[]): void;
 }

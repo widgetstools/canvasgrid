@@ -102,6 +102,18 @@ interface ConditionalRule {
   look; conditional rules override on match). Multiple hits resolve by `priority`.
 - Rules are a **layout-tier module** — each layout has its own rule set.
 
+> **Implementation reconciliation (Phase C, 2026-07-05):** this `ConditionalRule` was NOT built
+> as a new subsystem. The already-shipped `@cgrid/rules` package (Cycle 21e) already provides the
+> expression→style engine (`compileCondition`/`watchedColIds` on the shared `@cgrid/expression`
+> AST; `evaluateCell` truthiness) AND the kernel render fold (`registerRuleEngine` →
+> `ruleEngineSlot` → `applyCellProps` step 3.5, exactly the precedence above). Phase C RECONCILED
+> onto it (worklog "reconcile, don't fork"): this `ConditionalRule` is realized by 21e's
+> `StyleRule` (`condition`/`scope:{cell|row}`/theme-aware `style`, a functional superset that adds
+> flash/indicator/valueFormatter/activeDurationMs). The net-new work was persistence + the API: a
+> layout-tier `rules` state module (C1) + the `CGridApi` rules methods + `rulesChanged` (C3). The
+> module envelope is versioned (`version: 1`), so migrating the persisted shape toward this leaner
+> `{expression,target,style,priority}` later has a hook.
+
 ### 3.3 Render/precedence pipeline (per cell)
 
 `type-default template → applied templates (templateIds L→R) → column's own template →

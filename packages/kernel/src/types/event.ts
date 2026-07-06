@@ -100,6 +100,11 @@ export type LayoutChangeSource =
 export type TemplateChangeSource =
   | 'save' | 'rename' | 'delete' | 'apply' | 'remove';
 
+/** Grid Layouts (Phase C / C3) — the operation that triggered a
+ *  `rulesChanged` event (the active layout's conditional-rule set mutated). */
+export type RuleChangeSource =
+  | 'add' | 'update' | 'delete' | 'enable' | 'reorder';
+
 export type CGridEvent<TRow = any> =
   | { type: 'gridReady'; api: CGridApi<TRow> }
   | { type: 'cellClicked'; rowId: string; colId: string; value: unknown; mouse: MouseEvent }
@@ -484,4 +489,5 @@ export type CGridEvent<TRow = any> =
   /** Grid Layouts (Phase B / B3) — the shared styling-template library
    *  changed. `templateId` is the affected template (omitted when the op
    *  targets no single template). */
-  | { type: 'templatesChanged'; source: TemplateChangeSource; templateId?: string };
+  | { type: 'templatesChanged'; source: TemplateChangeSource; templateId?: string }
+  | { type: 'rulesChanged'; source: RuleChangeSource; ruleId?: string };

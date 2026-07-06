@@ -176,4 +176,4 @@ export {
   DEFAULT_GRID_LEVEL_MODULES,
   LAYOUTS_BUNDLE_VERSION,
 } from './types/layout';
-export type { LayoutChangeSource, TemplateChangeSource } from './types/event';
+export type { LayoutChangeSource, TemplateChangeSource, RuleChangeSource } from './types/event';

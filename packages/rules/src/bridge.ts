@@ -22,7 +22,7 @@
 // engines object.
 
 import type {
-  AlertRule, ChangeRecord, RowChangeSet, WireRulesOptions,
+  AlertRule, ChangeRecord, RowChangeSet, StyleRule, WireRulesOptions,
 } from './types';
 import { RuleEngine } from './ruleEngine';
 import { AlertsEngine } from './alerts/alertsEngine';
@@ -66,7 +66,21 @@ interface KernelGridSurface {
   refresh(): void;
   forEachRow(fn: (rowId: string, row: Record<string, unknown>) => void): void;
   getThemeKind(): 'light' | 'dark';
+  // Grid Layouts / Phase C (C1) — optional so a minimal grid surface (or a
+  // pre-Grid-Layouts kernel) still wires; it just won't persist the rule set.
+  registerStateModule?(module: StateModuleShape): () => void;
   __rulesBridgeWired?: { rules: RuleEngine; alerts: AlertsEngine };
+}
+
+/** Structural mirror of kernel's `StateModule` (core/moduleState.ts) — a
+ *  named, versioned, JSON-serializable slice folded into `GridState.modules`
+ *  and ridden by getState/setState + persistState + layouts. Mirrors the
+ *  calc bridge's StateModuleShape (packages/calc/src/bridge.ts). */
+interface StateModuleShape {
+  id: string;
+  version: number;
+  get(): unknown;
+  set(data: unknown, version: number): void;
 }
 
 // ─── Exported helpers (unit-tested; also used by kernel test fixtures) ─
@@ -165,17 +179,36 @@ export function wireIntoKernel(
     }
   }
 
+  // setRules resets match counts and expects the caller to re-seed over the
+  // current dataset — shared by the wire-time seed (step 4), the `rules`
+  // state-module restore (step 6, C1), and the CGridApi setRules op (C3).
+  const reseedCounts = (): void => {
+    const seed: Array<{ rowId: string; row: Record<string, unknown> }> = [];
+    g.forEachRow((rowId, row) => seed.push({ rowId, row }));
+    rules.recount(seed);
+  };
+
   // 2. Rule-engine adapter. Kernel's paint path supplies row/rowId/
   //    colId AND the per-frame theme kind (final-review fix: consume
   //    ctx.theme instead of calling grid.getThemeKind() per cell —
   //    classList allocation per visible cell at 60Hz). The grid call
   //    remains only as a fallback for callers that omit theme. Shape
   //    mirrors kernel's structural RuleEngineShape (core/ruleEngineSlot.ts).
+  //    Grid Layouts / Phase C (C3) — getRules/setRules let the kernel's
+  //    CGridApi rule methods drive the engine's rule set imperatively
+  //    (mirrors the calc provider's template ops); setRules re-seeds counts.
   g.registerRuleEngine({
     evaluateCell: (ctx: { row: Record<string, unknown>; rowId: string; colId: string | null; theme?: 'light' | 'dark' }) =>
       rules.evaluateCell({ row: ctx.row, rowId: ctx.rowId, colId: ctx.colId, theme: ctx.theme ?? g.getThemeKind() }),
     resolveRuleRef: (ruleId: string, ctx: { row: Record<string, unknown>; rowId: string; colId: string | null; theme?: 'light' | 'dark' }) =>
       rules.resolveRuleRef(ruleId, { row: ctx.row, rowId: ctx.rowId, colId: ctx.colId, theme: ctx.theme ?? g.getThemeKind() }),
+    getRules: () => rules.getRules(),
+    setRules: (next: StyleRule[]) => {
+      for (const err of rules.setRules(Array.isArray(next) ? next : []).errors) {
+        console.warn(`[cgrid/rules] skipped rule '${err.ruleId}': ${err.message}`);
+      }
+      reseedCounts();
+    },
   });
 
   // 3. Change feed. endTick is coalesced: one post-repaint callback
@@ -251,15 +284,46 @@ export function wireIntoKernel(
     });
   }) as never);
 
-  // 4. Seed match counts from the current dataset.
-  const seed: Array<{ rowId: string; row: Record<string, unknown> }> = [];
-  g.forEachRow((rowId, row) => seed.push({ rowId, row }));
-  rules.recount(seed);
+  // 4. Seed match counts from the current dataset (reseedCounts defined above).
+  reseedCounts();
 
   // 5. activeDurationMs expiry → repaint so expired matches drop
   //    their styles. refresh() is rAF-coalesced in the kernel, so a
   //    batch of simultaneous expiries costs one repaint.
   rules.onExpire(() => g.refresh());
+
+  // 6. Grid Layouts / Phase C (C1) — persist the conditional-styling rule
+  //    set through the kernel module registry, so it rides getState/setState
+  //    + persistState + layouts. LAYOUT-TIER: the id `rules` is NOT in the
+  //    kernel's DEFAULT_GRID_LEVEL_MODULES → each layout owns its own rule
+  //    set (spec §3.2/§6). REPLACE semantics — the snapshot fully defines the
+  //    slice; on layout switch the kernel's clearAbsent path calls set(undefined)
+  //    to drop the outgoing layout's rules. Mirrors the calc bridge's `calc`
+  //    layout-tier module (Phase B / B1). Guarded so a grid surface without
+  //    the registry simply doesn't persist rules. Alert rules stay grid-global
+  //    (real-time notifications, opts-seeded) — not part of the layout model.
+  g.registerStateModule?.({
+    id: 'rules',
+    version: 1,
+    // getRules() is the full serializable set (incl. invalid + disabled).
+    // Undefined → omitted from the snapshot (compact), matching the kernel's
+    // empty-field convention and the calc bridge's modules.
+    get: () => {
+      const set = rules.getRules();
+      return set.length > 0 ? set : undefined;
+    },
+    set: (data) => {
+      const next = Array.isArray(data) ? (data as StyleRule[]) : [];
+      // setRules never throws — invalid rules are skipped + reported; valid
+      // ones apply (same surfacing as the opts seed above).
+      for (const err of rules.setRules(next).errors) {
+        console.warn(`[cgrid/rules] restore skipped rule '${err.ruleId}': ${err.message}`);
+      }
+      // setRules zeroed the counters — re-seed over the current dataset so the
+      // live match counts reflect the restored rule set.
+      reseedCounts();
+    },
+  });
 
   const wired = { rules, alerts };
   g.__rulesBridgeWired = wired;

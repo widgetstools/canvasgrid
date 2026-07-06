@@ -40,7 +40,7 @@ import {
 import { LayoutManager, type LayoutManagerHost, type SaveLayoutOptions } from './core/layoutManager';
 import type { GridLayout, GridBaselineConfig, GridLayoutsBundle, TemplateSaveInput } from './types/layout';
 import { DEFAULT_GRID_LEVEL_MODULES } from './types/layout';
-import type { LayoutChangeSource, TemplateChangeSource } from './types/event';
+import type { LayoutChangeSource, TemplateChangeSource, RuleChangeSource } from './types/event';
 import type { ColumnTemplate } from '@cgrid/calc';
 import { StateUpdatedBus } from './core/stateUpdatedBus';
 import {
@@ -156,7 +156,7 @@ import {
   registerFormatCompiler as slotRegisterFormatCompiler,
   type FormatCompiler,
 } from './core/formatCompilerSlot';
-import { registerRuleEngine as slotRegisterRuleEngine, type RuleEngineShape } from './core/ruleEngineSlot';
+import { registerRuleEngine as slotRegisterRuleEngine, getRuleEngine, type RuleEngineShape, type ConditionalRuleShape } from './core/ruleEngineSlot';
 import {
   registerCalcProvider as slotRegisterCalcProvider,
   getCalcProvider,
@@ -209,7 +209,12 @@ export type {
   LayoutState, GridLayout, GridLayoutsBundle, GridBaselineConfig, LayoutChangeSource,
   // Grid Layouts (Phase B / B3) — template-save input + event source.
   TemplateSaveInput, TemplateChangeSource,
+  // Grid Layouts (Phase C / C3) — conditional-rule event source.
+  RuleChangeSource,
 } from './types';
+// Grid Layouts (Phase C / C3) — the opaque conditional-rule shape the
+// CGridApi rule methods accept/return.
+export type { ConditionalRuleShape } from './core/ruleEngineSlot';
 // Grid Layouts (Phase A) — public value exports (reserved id, tier default,
 // bundle version).
 export { DEFAULT_LAYOUT_ID, DEFAULT_GRID_LEVEL_MODULES, LAYOUTS_BUNDLE_VERSION } from './types';
@@ -6266,6 +6271,12 @@ export class CGrid<TRow = any> {
       deleteTemplate: (templateId) => this.deleteTemplate(templateId),
       applyTemplate: (colId, templateId) => this.applyTemplate(colId, templateId),
       removeTemplate: (colId, templateId) => this.removeTemplate(colId, templateId),
+      getRules: () => this.getRules(),
+      addRule: (rule) => this.addRule(rule),
+      updateRule: (id, patch) => this.updateRule(id, patch),
+      deleteRule: (id) => this.deleteRule(id),
+      setRuleEnabled: (id, enabled) => this.setRuleEnabled(id, enabled),
+      reorderRules: (orderedIds) => this.reorderRules(orderedIds),
       editColumn: (colId, patch) => this.editColumn(colId, patch),
       listCellRenderers: () => this.listCellRenderers(),
       getModal: () => this.getModal(),
@@ -8275,6 +8286,95 @@ export class CGrid<TRow = any> {
     // `templatesChanged` (M1).
     const ok = provider.editColumn(colId, patch as Record<string, unknown>, Date.now());
     if (ok) this.emitTemplatesChanged('save');
+  }
+
+  // ── Conditional styling rules (Phase C / C3) ────────────────────────────
+  // The active layout's conditional-rule set, routed to the @cgrid/rules
+  // RuleEngine via the rule-engine provider (registered by @cgrid/rules'
+  // wireIntoKernel). No engine wired → `getRules` returns `[]` and the
+  // mutators no-op without an event. The kernel owns the CRUD semantics as
+  // pure array transforms over getRules()/setRules() (like LayoutManager owns
+  // layout CRUD) — the engine stays the paint + validation owner. Every
+  // mutation fires `rulesChanged` (→ persist bus `'modules'` → autosave, since
+  // rules ride the layout-tier `rules` module) and repaints (rule style is
+  // evaluated live in the paint fold, so a rule change needs a fresh frame).
+
+  private emitRulesChanged(source: RuleChangeSource, ruleId?: string): void {
+    this.events.emit({ type: 'rulesChanged', source, ruleId });
+    this.refresh();
+  }
+
+  /** The active layout's conditional-rule set (`[]` when no rules engine is
+   *  wired). Order is the application order (stable tiebreak for equal
+   *  priority; `reorderRules` rewrites it). */
+  getRules(): ConditionalRuleShape[] {
+    return getRuleEngine()?.getRules?.() ?? [];
+  }
+  /** Append a rule to the set. No-op (no event) when a rule with the same `id`
+   *  already exists — ids must be unique (the engine keys match state + counts
+   *  by id, so a duplicate would corrupt update/delete/enable); use
+   *  `updateRule` to change an existing rule. */
+  addRule(rule: ConditionalRuleShape): void {
+    const engine = getRuleEngine();
+    if (!engine?.setRules) return;
+    const current = this.getRules();
+    if (current.some((r) => r.id === rule.id)) return;
+    engine.setRules([...current, rule]);
+    this.emitRulesChanged('add', rule.id);
+  }
+  /** Shallow-merge a patch into the rule with `id` (its `id` is preserved). The
+   *  patch may carry any rule field — `enabled` / `priority` / `condition` /
+   *  `style` / … (the engine re-validates). No-op (no event) when the id is
+   *  unknown. */
+  updateRule(id: string, patch: Partial<ConditionalRuleShape> | Record<string, unknown>): void {
+    const engine = getRuleEngine();
+    if (!engine?.setRules) return;
+    const current = this.getRules();
+    if (!current.some((r) => r.id === id)) return;
+    engine.setRules(current.map((r) => (r.id === id ? { ...r, ...patch, id } : r)));
+    this.emitRulesChanged('update', id);
+  }
+  /** Remove the rule with `id`. No-op (no event) when the id is unknown. */
+  deleteRule(id: string): void {
+    const engine = getRuleEngine();
+    if (!engine?.setRules) return;
+    const current = this.getRules();
+    const next = current.filter((r) => r.id !== id);
+    if (next.length === current.length) return;
+    engine.setRules(next);
+    this.emitRulesChanged('delete', id);
+  }
+  /** Toggle a rule's `enabled` flag. No-op (no event) when the id is unknown or
+   *  the rule is already in that state (avoids a needless recompile + autosave). */
+  setRuleEnabled(id: string, enabled: boolean): void {
+    const engine = getRuleEngine();
+    if (!engine?.setRules) return;
+    const current = this.getRules();
+    const target = current.find((r) => r.id === id);
+    if (!target || target.enabled === enabled) return;
+    engine.setRules(current.map((r) => (r.id === id ? { ...r, enabled } : r)));
+    this.emitRulesChanged('enable', id);
+  }
+  /** Reorder the rule set to match `orderedIds` (application order — the
+   *  stable tiebreak for equal priority). Ids not present in `orderedIds`
+   *  keep their relative order after the listed ones; unknown ids are
+   *  ignored. No-op (no event) without a rules engine. */
+  reorderRules(orderedIds: string[]): void {
+    const engine = getRuleEngine();
+    if (!engine?.setRules) return;
+    const current = this.getRules();
+    const byId = new Map(current.map((r) => [r.id, r]));
+    const seen = new Set<string>();
+    const next: ConditionalRuleShape[] = [];
+    for (const id of orderedIds) {
+      const r = byId.get(id);
+      if (r && !seen.has(id)) { next.push(r); seen.add(id); }
+    }
+    for (const r of current) if (!seen.has(r.id)) next.push(r);
+    // No-op if the order is unchanged (avoids a needless recompile + autosave).
+    if (next.every((r, i) => r.id === current[i]?.id)) return;
+    engine.setRules(next);
+    this.emitRulesChanged('reorder');
   }
 
   /** Grid Layouts (A5) — restore a persisted blob (`{ ...viewState, layouts?
