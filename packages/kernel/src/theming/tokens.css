@@ -354,6 +354,27 @@
   /* Reserved for surface #3 (sign-driven numbers / data bars / heatmap). */
   --cg-pos-color: #6aa9e0;
   --cg-neg-color: #e0876a;
+  /* "look-and-feel" Part A (surface #4 — chrome) — config pill family
+   * (`--cg-row-group-chip-*`). Set at the theme root so ANY consumer that
+   * inherits (the sidebar Columns-panel Row Groups / Values / Column Labels
+   * pills via `.cg-columns-panel-pill`, the drag-ghost, etc.) picks up the
+   * flatter hairline pill. `.cg-row-group-panel` / `.cg-pivot-panel`
+   * additionally redeclare these same vars locally (their own color-mix
+   * formula, quartz-style) — the `.cg-theme-perspective[-dark] .cg-row-
+   * group-panel/.cg-pivot-panel` override further below re-wins for those
+   * two live in-panel chip surfaces specifically. */
+  --cg-row-group-chip-radius: 4px;
+  --cg-row-group-chip-border: var(--cg-border-color);
+  --cg-row-group-chip-fg: var(--cg-header-fg);
+  --cg-row-group-chip-hover-bg: var(--cg-row-hover-bg);
+  --cg-row-group-chip-bg: #1c2028;
+  /* "look-and-feel" Part A — Columns tool-panel checkbox: hairline box +
+   * BLUE check (not the quartz solid-grey-fill box). Consumed by
+   * `.cg-columns-panel-row-checkbox` / `.cg-columns-panel-select-all`. */
+  --cg-checkbox-panel-border: var(--cg-border-color);
+  --cg-checkbox-panel-checked-bg: transparent;
+  --cg-checkbox-panel-checked-border: var(--cg-border-color);
+  --cg-checkbox-panel-check-color: var(--cg-pos-color);
 }
 
 .cg-theme-perspective {
@@ -430,6 +451,19 @@
   --cg-cell-padding-x: 8px;
   --cg-pos-color: #2f7bc4;
   --cg-neg-color: #c96a4a;
+  /* "look-and-feel" Part A (surface #4 — chrome) — config pill family; see
+   * the dark block above for the full rationale. */
+  --cg-row-group-chip-radius: 4px;
+  --cg-row-group-chip-border: var(--cg-border-color);
+  --cg-row-group-chip-fg: var(--cg-header-fg);
+  --cg-row-group-chip-hover-bg: var(--cg-row-hover-bg);
+  --cg-row-group-chip-bg: #f6f8fa;
+  /* "look-and-feel" Part A — Columns tool-panel checkbox hairline + blue
+   * check; see the dark block above for the full rationale. */
+  --cg-checkbox-panel-border: var(--cg-border-color);
+  --cg-checkbox-panel-checked-bg: transparent;
+  --cg-checkbox-panel-checked-border: var(--cg-border-color);
+  --cg-checkbox-panel-check-color: var(--cg-pos-color);
 }
 
 /* ==========================================================================
@@ -1608,7 +1642,11 @@
   background: var(--cg-bg-color);
   color: var(--cg-fg-color);
   border: 1px solid var(--cg-border-color);
-  border-radius: 2px;
+  /* "look-and-feel" Part A — was a bare literal; tokenized onto the shared
+   * radius var (same fallback value, so quartz/starui/perspective all
+   * render identically to before — perspective doesn't set `--cg-radius`
+   * so it stays flat at 2px via the fallback). */
+  border-radius: var(--cg-radius, 2px);
   font-family: inherit;
   font-size: var(--cg-font-size);
   box-sizing: border-box;
@@ -1761,7 +1799,10 @@
   width: 16px;
   height: 16px;
   margin: 0;
-  border: 1.5px solid color-mix(in srgb, var(--cg-fg-color) 40%, transparent);
+  /* "look-and-feel" Part A — hook (fallback preserves the quartz/starui
+   * fg-mix hairline exactly) so Perspective can point the unchecked box at
+   * `--cg-border-color` instead. */
+  border: 1.5px solid var(--cg-checkbox-panel-border, color-mix(in srgb, var(--cg-fg-color) 40%, transparent));
   border-radius: 2px;
   background: transparent;
   cursor: pointer;
@@ -1774,11 +1815,16 @@
 }
 /* Monochrome checked state — filled with the neutral grey chrome accent
  * (fg fallback for a11y themes that keep a solid highlight), check drawn in
- * the panel background, so the list stays grey with no pure-black/white box. */
+ * the panel background, so the list stays grey with no pure-black/white box.
+ * Perspective overrides `--cg-checkbox-panel-checked-bg/-border` to a
+ * transparent hairline box (same box as unchecked) and
+ * `--cg-checkbox-panel-check-color` to the theme blue, so the accent lives
+ * ONLY on the tick, not a filled box — see the perspective theme blocks
+ * above. Fallbacks below reproduce the prior quartz/starui look exactly. */
 .cg-columns-panel-row-checkbox:checked,
 .cg-columns-panel-select-all:checked {
-  background: var(--cg-chrome-accent, var(--cg-fg-color));
-  border-color: var(--cg-chrome-accent, var(--cg-fg-color));
+  background: var(--cg-checkbox-panel-checked-bg, var(--cg-chrome-accent, var(--cg-fg-color)));
+  border-color: var(--cg-checkbox-panel-checked-border, var(--cg-chrome-accent, var(--cg-fg-color)));
 }
 .cg-columns-panel-row-checkbox:checked::after,
 .cg-columns-panel-select-all:checked::after {
@@ -1788,7 +1834,7 @@
   top: 1px;
   width: 5px;
   height: 9px;
-  border: solid var(--cg-bg-color);
+  border: solid var(--cg-checkbox-panel-check-color, var(--cg-bg-color));
   border-width: 0 2px 2px 0;
   transform: rotate(45deg);
 }
@@ -1801,11 +1847,12 @@
  * hidden) — a centered dash. Shared by the "Select all" checkbox AND every
  * group row's checkbox (`.cg-columns-panel-row-checkbox` on a group row is
  * the same element, just driven by `computeGroupChecked` instead of the
- * global select-all count). */
+ * global select-all count). Same token hooks as the checked state above so
+ * the tri-state box/dash follow the same hairline+blue treatment. */
 .cg-columns-panel-select-all:indeterminate,
 .cg-columns-panel-row-checkbox:indeterminate {
-  background: var(--cg-chrome-accent, var(--cg-fg-color));
-  border-color: var(--cg-chrome-accent, var(--cg-fg-color));
+  background: var(--cg-checkbox-panel-checked-bg, var(--cg-chrome-accent, var(--cg-fg-color)));
+  border-color: var(--cg-checkbox-panel-checked-border, var(--cg-chrome-accent, var(--cg-fg-color)));
 }
 .cg-columns-panel-select-all:indeterminate::after,
 .cg-columns-panel-row-checkbox:indeterminate::after {
@@ -1818,7 +1865,7 @@
   top: 50%;
   width: 8px;
   height: 2px;
-  background: var(--cg-bg-color);
+  background: var(--cg-checkbox-panel-check-color, var(--cg-bg-color));
   border: none;
   transform: translate(-50%, -50%);
 }
@@ -2125,10 +2172,15 @@
   height: 28px;
   padding: 0 8px 0 4px;
   gap: 6px;
-  border: 1px solid color-mix(in srgb, var(--cg-border-color) 55%, transparent);
-  border-radius: var(--cg-radius, 4px);
-  background: color-mix(in srgb, var(--cg-header-bg) 70%, var(--cg-bg-color) 30%);
-  color: var(--cg-fg-color);
+  /* "look-and-feel" Part A — token hooks (with quartz-preserving fallbacks)
+   * for the same `--cg-row-group-chip-*` family the top-of-grid row-group
+   * / pivot panel chips consume, so a Row-Groups / Values / Column-Labels
+   * pill in the Columns tool panel shares one pill vocabulary with the
+   * chips above the grid. Unset (quartz/starui) → identical to before. */
+  border: 1px solid var(--cg-row-group-chip-border, color-mix(in srgb, var(--cg-border-color) 55%, transparent));
+  border-radius: var(--cg-row-group-chip-radius, var(--cg-radius, 4px));
+  background: var(--cg-row-group-chip-bg, color-mix(in srgb, var(--cg-header-bg) 70%, var(--cg-bg-color) 30%));
+  color: var(--cg-row-group-chip-fg, var(--cg-fg-color));
   font-size: var(--cg-font-size);
   line-height: 1;
   cursor: grab;
@@ -2136,7 +2188,7 @@
   white-space: nowrap;
 }
 .cg-columns-panel-pill:hover {
-  background: var(--cg-row-hover-bg);
+  background: var(--cg-row-group-chip-hover-bg, var(--cg-row-hover-bg));
   border-color: color-mix(in srgb, var(--cg-border-color) 80%, transparent);
 }
 /* handle styles unified at the top of the columns-panel block */
@@ -4020,6 +4072,38 @@
   opacity: 0.92;
   cursor: grabbing;
   margin: 0;
+}
+
+/* "look-and-feel" Part A (surface #4 — chrome) / config pills.
+ *
+ * `.cg-row-group-panel` and `.cg-pivot-panel` each redeclare the full
+ * `--cg-row-group-chip-*` family LOCALLY on themselves (a quartz-style
+ * color-mix formula off `--cg-header-bg` / `--cg-fg-color`) so the theme
+ * root's tokens (declared in the `.cg-theme-perspective[-dark]` blocks
+ * above) get shadowed rather than inherited for the two live in-panel chip
+ * strips. Overriding the root class alone is therefore not enough — these
+ * higher-specificity selectors (ancestor + own class, (0,2,0)) are needed
+ * to win over the panels' own (0,1,0) declarations. Every other chip
+ * consumer (the sidebar `.cg-columns-panel-pill`, `.cg-col-drag-ghost`,
+ * the floating chip ghosts) is NOT nested inside `.cg-row-group-panel` /
+ * `.cg-pivot-panel`, so it already picks up the root-level values above
+ * with no extra rule needed. Perspective-only: quartz/starui never set
+ * these vars at their theme root, so this selector never matches there. */
+.cg-theme-perspective .cg-row-group-panel,
+.cg-theme-perspective .cg-pivot-panel {
+  --cg-row-group-chip-radius: 4px;
+  --cg-row-group-chip-border: var(--cg-border-color);
+  --cg-row-group-chip-fg: var(--cg-header-fg);
+  --cg-row-group-chip-hover-bg: var(--cg-row-hover-bg);
+  --cg-row-group-chip-bg: #f6f8fa;
+}
+.cg-theme-perspective-dark .cg-row-group-panel,
+.cg-theme-perspective-dark .cg-pivot-panel {
+  --cg-row-group-chip-radius: 4px;
+  --cg-row-group-chip-border: var(--cg-border-color);
+  --cg-row-group-chip-fg: var(--cg-header-fg);
+  --cg-row-group-chip-hover-bg: var(--cg-row-hover-bg);
+  --cg-row-group-chip-bg: #1c2028;
 }
 
 /* ─── Cycle 20 / Task 7 — `cg-theme-print` print-friendly theme ──────────── */

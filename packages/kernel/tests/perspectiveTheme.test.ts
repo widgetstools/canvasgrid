@@ -56,3 +56,89 @@ describe('cg-theme-perspective foundation', () => {
     expect(resolveThemeKind(['cg-theme-perspective'], '#ffffff')).toBe('light');
   });
 });
+
+// "look-and-feel" Part A (surface #4 — chrome). These tokens are pure CSS
+// custom properties consumed directly by DOM chrome rules via `var()` (config
+// pills, tool-panel checkboxes) — NOT read by `CssReader` (which only
+// resolves tokens the canvas painters need), so — unlike `--cg-empty-fg` in
+// `cssReaderEmptyFg.test.ts` — there is no CssReader-based test to extend.
+// This file's raw-CSS-text pattern is the correct precedent for chrome-only
+// tokens: it pins (a) each new token's declared value per perspective block
+// and (b) the fallback literal on the consuming rule, so quartz/starui (which
+// never set these vars) provably keep rendering the pre-existing fallback.
+describe('cg-theme-perspective chrome (surface #4 / Part A)', () => {
+  it('config pills — root-level --cg-row-group-chip-* tokens (dark)', () => {
+    const dark = themeBlock('.cg-theme-perspective-dark');
+    expect(dark).toMatch(/--cg-row-group-chip-radius:\s*4px/);
+    expect(dark).toMatch(/--cg-row-group-chip-border:\s*var\(--cg-border-color\)/);
+    expect(dark).toMatch(/--cg-row-group-chip-fg:\s*var\(--cg-header-fg\)/);
+    expect(dark).toMatch(/--cg-row-group-chip-hover-bg:\s*var\(--cg-row-hover-bg\)/);
+    expect(dark).toMatch(/--cg-row-group-chip-bg:\s*#1c2028/i);
+  });
+
+  it('config pills — root-level --cg-row-group-chip-* tokens (light)', () => {
+    const light = themeBlock('.cg-theme-perspective');
+    expect(light).toMatch(/--cg-row-group-chip-radius:\s*4px/);
+    expect(light).toMatch(/--cg-row-group-chip-border:\s*var\(--cg-border-color\)/);
+    expect(light).toMatch(/--cg-row-group-chip-fg:\s*var\(--cg-header-fg\)/);
+    expect(light).toMatch(/--cg-row-group-chip-hover-bg:\s*var\(--cg-row-hover-bg\)/);
+    expect(light).toMatch(/--cg-row-group-chip-bg:\s*#f6f8fa/i);
+  });
+
+  it('config pills — scoped override wins over .cg-row-group-panel / .cg-pivot-panel\'s own local redeclaration', () => {
+    // .cg-row-group-panel / .cg-pivot-panel each redeclare the chip family
+    // locally (quartz-style color-mix formula), shadowing the inherited
+    // root value — so a HIGHER-specificity ancestor+own-class selector is
+    // required to re-win for perspective. Assert both selector pairs exist.
+    expect(css).toMatch(
+      /\.cg-theme-perspective \.cg-row-group-panel,\s*\n\.cg-theme-perspective \.cg-pivot-panel\s*\{[^}]*--cg-row-group-chip-bg:\s*#f6f8fa/
+    );
+    expect(css).toMatch(
+      /\.cg-theme-perspective-dark \.cg-row-group-panel,\s*\n\.cg-theme-perspective-dark \.cg-pivot-panel\s*\{[^}]*--cg-row-group-chip-bg:\s*#1c2028/
+    );
+  });
+
+  it('config pills — sidebar .cg-columns-panel-pill reads the chip family with a quartz-preserving fallback', () => {
+    const pillRule = css.slice(css.indexOf('.cg-columns-panel-pill {'), css.indexOf('.cg-columns-panel-pill:hover'));
+    expect(pillRule).toContain(
+      'border: 1px solid var(--cg-row-group-chip-border, color-mix(in srgb, var(--cg-border-color) 55%, transparent));'
+    );
+    expect(pillRule).toContain('border-radius: var(--cg-row-group-chip-radius, var(--cg-radius, 4px));');
+    expect(pillRule).toContain(
+      'background: var(--cg-row-group-chip-bg, color-mix(in srgb, var(--cg-header-bg) 70%, var(--cg-bg-color) 30%));'
+    );
+    expect(pillRule).toContain('color: var(--cg-row-group-chip-fg, var(--cg-fg-color));');
+  });
+
+  it('checkboxes — root-level --cg-checkbox-panel-* tokens set the hairline-box + blue-check treatment (dark + light)', () => {
+    const dark = themeBlock('.cg-theme-perspective-dark');
+    const light = themeBlock('.cg-theme-perspective');
+    for (const block of [dark, light]) {
+      expect(block).toMatch(/--cg-checkbox-panel-border:\s*var\(--cg-border-color\)/);
+      expect(block).toMatch(/--cg-checkbox-panel-checked-bg:\s*transparent/);
+      expect(block).toMatch(/--cg-checkbox-panel-checked-border:\s*var\(--cg-border-color\)/);
+      expect(block).toMatch(/--cg-checkbox-panel-check-color:\s*var\(--cg-pos-color\)/);
+    }
+  });
+
+  it('checkboxes — .cg-columns-panel-row-checkbox reads the panel-checkbox tokens with quartz-preserving fallbacks', () => {
+    const checkboxSection = css.slice(
+      css.indexOf('.cg-columns-panel-row-checkbox,\n.cg-columns-panel-select-all {'),
+      css.indexOf('.cg-col-drag-ghost {')
+    );
+    expect(checkboxSection).toContain(
+      'border: 1.5px solid var(--cg-checkbox-panel-border, color-mix(in srgb, var(--cg-fg-color) 40%, transparent));'
+    );
+    expect(checkboxSection).toContain(
+      'background: var(--cg-checkbox-panel-checked-bg, var(--cg-chrome-accent, var(--cg-fg-color)));'
+    );
+    expect(checkboxSection).toContain(
+      'border-color: var(--cg-checkbox-panel-checked-border, var(--cg-chrome-accent, var(--cg-fg-color)));'
+    );
+    expect(checkboxSection).toContain('border: solid var(--cg-checkbox-panel-check-color, var(--cg-bg-color));');
+  });
+
+  it('search input — .cg-columns-panel-search-wrap input radius is tokenized with the same 2px fallback', () => {
+    expect(css).toContain('border-radius: var(--cg-radius, 2px);');
+  });
+});

@@ -2,20 +2,23 @@
 html, body { margin: 0; height: 100%; font-family: Inter, system-ui, sans-serif; }
 
 /* Theme-aware chrome — the demo chrome follows the same light/dark toggle
- * as the grid so panel theming can be judged in context. */
-.app {
-  --demo-bg: #0b1220;
-  --demo-panel: #1e293b;
-  --demo-border: #334155;
-  --demo-fg: #e2e8f0;
-  --demo-faint: #64748b;
+ * as the grid so panel theming can be judged in context. Perspective
+ * refresh (surface #4): near-black / paper neutrals matching the grid's
+ * `cg-theme-perspective[-dark]` palette so the toolbar reads as one piece
+ * with the data surface instead of a disconnected slate header. */
+.app[data-theme='dark'] {
+  --demo-bg: #16181d;
+  --demo-panel: #191c22;
+  --demo-border: #2a2f37;
+  --demo-fg: #c3c9d1;
+  --demo-faint: #7a828e;
 }
 .app[data-theme='light'] {
-  --demo-bg: #f1f5f9;
-  --demo-panel: #ffffff;
-  --demo-border: #cbd5e1;
-  --demo-fg: #0f172a;
-  --demo-faint: #94a3b8;
+  --demo-bg: #ffffff;
+  --demo-panel: #f6f8fa;
+  --demo-border: #dfe3e8;
+  --demo-fg: #1a1f28;
+  --demo-faint: #6b7683;
 }
 
 .app {
@@ -23,7 +26,12 @@ html, body { margin: 0; height: 100%; font-family: Inter, system-ui, sans-serif;
   padding: 12px; gap: 8px;
   background: var(--demo-bg); color: var(--demo-fg);
 }
-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+/* All-mono toolbar — matches the Perspective grid's mono chrome (headers,
+ * pills, inputs) so the header reads as one piece with the grid below it. */
+header {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
+}
 header h1 { margin: 0; font-size: 18px; font-weight: 600; white-space: nowrap; }
 .actions { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; }
 
@@ -37,7 +45,7 @@ header h1 { margin: 0; font-size: 18px; font-weight: 600; white-space: nowrap; }
   gap: 6px;
   padding: 4px 8px 4px 10px;
   border: 1px solid var(--demo-border);
-  border-radius: 7px;
+  border-radius: 4px;
   background: color-mix(in srgb, var(--demo-panel) 60%, transparent);
 }
 .layouts-control .cluster-label {
@@ -80,7 +88,7 @@ header h1 { margin: 0; font-size: 18px; font-weight: 600; white-space: nowrap; }
   flex: 1;
   min-height: 0;
   border: 1px solid var(--demo-border);
-  border-radius: 6px;
+  border-radius: 4px;
 }
 
 button {
@@ -97,10 +105,12 @@ button:hover { filter: brightness(1.1); }
   display: inline-flex; align-items: center; gap: 8px;
   padding: 4px 10px;
   border: 1px solid var(--demo-border);
+  /* Fully-round pill kept as-is — the one deliberately soft shape amid the
+   * otherwise flat Perspective toolbar. */
   border-radius: 999px;
   background: var(--demo-panel);
   color: var(--demo-fg);
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
   font-size: 12px; line-height: 1.4;
 }
 .status-pill .status-sep { color: var(--demo-faint); }
@@ -114,4 +124,8 @@ button:hover { filter: brightness(1.1); }
   cursor: pointer;
   user-select: none;
 }
-.demo-switch input { margin: 0; cursor: pointer; accent-color: #64748b; }
+.demo-switch input { margin: 0; cursor: pointer; }
+/* Theme blue accent — matches `--cg-pos-color` on the Perspective grid so
+ * the live/editable switches read as the same accent family as the grid. */
+.app[data-theme='dark'] .demo-switch input { accent-color: #6aa9e0; }
+.app[data-theme='light'] .demo-switch input { accent-color: #2f7bc4; }
