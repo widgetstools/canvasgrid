@@ -552,6 +552,11 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   // so painters don't hard-code it. Read once per cell (constant per
   // theme); no perf hit.
   target.flashFromColor = theme.flashFromColor;
+  // "look-and-feel" / Task 1 — theme-token sign palette. '' → undefined
+  // so sign-aware renderers' `?? SEMANTIC_COLORS` fallback fires when the
+  // active theme doesn't declare `--cg-pos-color` / `--cg-neg-color`.
+  target.posColor = theme.posColor || undefined;
+  target.negColor = theme.negColor || undefined;
   // Cycle 15 / Task 4 — auto-group column tokens, threaded onto every
   // cell config so the `'group'` cell renderer can read chevron color
   // + count suffix color + indent unit without reaching into the

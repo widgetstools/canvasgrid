@@ -119,6 +119,15 @@ export interface CellPaintConfig {
   // their declared color instead of a hard-coded swatch).
   flashAlpha?: number;
   flashFromColor?: string;
+  /** "look-and-feel" / Task 1 — theme's positive/negative sign accent,
+   *  resolved from `--cg-pos-color` / `--cg-neg-color`. `undefined` when
+   *  the active theme doesn't declare the token (empty string is mapped
+   *  to `undefined` upstream in `propertyChain.ts`) — sign-aware
+   *  renderers (`@cgrid/renderers` numeric/bars/heat painters) fall back
+   *  to their own `SEMANTIC_COLORS` in that case. Explicit per-column
+   *  color overrides still win over both. */
+  posColor?: string;
+  negColor?: string;
   /**
    * Cycle 14 / Task 5 — muted foreground used by the polished `'totals'`
    * renderer when the cell value is empty / null / undefined. Populated by

@@ -23,6 +23,13 @@ export interface ResolvedTheme {
   focusRingWidth: number;
   flashFromColor: string;
   flashToColor: string;
+  /** "look-and-feel" / Task 1 — theme's positive/negative sign accent.
+   *  Resolved from `--cg-pos-color` / `--cg-neg-color`. Empty string
+   *  when the theme doesn't declare them (NOT a hard-coded fallback) —
+   *  `propertyChain.ts` maps `'' → undefined` so sign-aware renderers'
+   *  own `?? SEMANTIC_COLORS` fallback fires for un-themed grids. */
+  posColor: string;
+  negColor: string;
   /** Cycle 7 / Task 7 — background fill applied behind any cell whose
    *  value contains an active quick-filter term. Resolved from
    *  `--cg-quick-filter-match-bg`. */
@@ -302,6 +309,10 @@ export class CssReader {
       focusRingWidth: px('--cg-focus-ring-width', 2),
       flashFromColor: get('--cg-flash-from-color') || '#fef3c7',
       flashToColor: get('--cg-flash-to-color') || 'rgba(254,243,199,0)',
+      // "look-and-feel" / Task 1 — no hard-coded fallback: '' when absent
+      // so downstream consumers can distinguish "un-themed" from "themed".
+      posColor: get('--cg-pos-color') || '',
+      negColor: get('--cg-neg-color') || '',
       quickFilterMatchBg: get('--cg-quick-filter-match-bg') || '#fff3b8',
       unsortIconColor: get('--cg-unsort-icon-color') || 'rgba(0, 0, 0, 0.4)',
       rangeFillColor: get('--cg-range-fill-color') || 'rgba(59, 130, 246, 0.22)',

@@ -69,9 +69,21 @@ function rowNumber(row: Record<string, unknown> | undefined, field?: string): nu
   return toNumber(row[field]);
 }
 
-function colorsFromParams(overrides?: SemanticColorMap): Required<SemanticColorMap> {
-  colorScratch.positive = overrides?.positive ?? SEMANTIC_COLORS.positive;
-  colorScratch.negative = overrides?.negative ?? SEMANTIC_COLORS.negative;
+/**
+ * "look-and-feel" / Task 1 — resolution order: an explicit per-column
+ * `overrides` color always wins; failing that, the active theme's
+ * `--cg-pos-color`/`--cg-neg-color` (threaded onto `p.posColor`/
+ * `.negColor` by kernel `propertyChain.ts`); failing that (un-themed
+ * grid), the hard-coded `SEMANTIC_COLORS` swatch. Shared by
+ * `bidirectionalBarCell` and `heatCell` (heat's cool/warm endpoints ARE
+ * the negative/positive sign colors).
+ */
+function colorsFromParams(
+  overrides: SemanticColorMap | undefined,
+  p?: Pick<CellPaintConfig, 'posColor' | 'negColor'>,
+): Required<SemanticColorMap> {
+  colorScratch.positive = overrides?.positive ?? p?.posColor ?? SEMANTIC_COLORS.positive;
+  colorScratch.negative = overrides?.negative ?? p?.negColor ?? SEMANTIC_COLORS.negative;
   colorScratch.warning = overrides?.warning ?? SEMANTIC_COLORS.warning;
   colorScratch.info = overrides?.info ?? SEMANTIC_COLORS.info;
   colorScratch.muted = overrides?.muted ?? SEMANTIC_COLORS.muted;
@@ -155,7 +167,7 @@ export const rangeBarCell: CellPainter = {
 export const bidirectionalBarCell: CellPainter = {
   paint(gc, p) {
     const params = (p.params ?? {}) as BidirectionalBarCellParams;
-    const colors = colorsFromParams(params.colors);
+    const colors = colorsFromParams(params.colors, p);
     const row = p.rowData as Record<string, unknown> | undefined;
     const value = rowNumber(row, params.valueField) ?? toNumber(p.value);
     if (value === null) return;
@@ -188,7 +200,7 @@ export const bidirectionalBarCell: CellPainter = {
 export const heatCell: CellPainter = {
   paint(gc, p) {
     const params = (p.params ?? {}) as HeatCellParams;
-    const colors = colorsFromParams(params.colors);
+    const colors = colorsFromParams(params.colors, p);
     const value = toNumber(p.value);
     const stats = params.stats;
     let t = 0.5;

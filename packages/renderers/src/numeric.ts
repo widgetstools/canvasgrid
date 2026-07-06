@@ -108,9 +108,19 @@ function tickDirection(
   return 'flat';
 }
 
-function colorsFromParams(overrides?: SemanticColorMap): Required<SemanticColorMap> {
-  colorScratch.positive = overrides?.positive ?? SEMANTIC_COLORS.positive;
-  colorScratch.negative = overrides?.negative ?? SEMANTIC_COLORS.negative;
+/**
+ * "look-and-feel" / Task 1 — resolution order: an explicit per-column
+ * `overrides` color always wins; failing that, the active theme's
+ * `--cg-pos-color`/`--cg-neg-color` (threaded onto `p.posColor`/
+ * `.negColor` by kernel `propertyChain.ts`); failing that (un-themed
+ * grid), the hard-coded `SEMANTIC_COLORS` swatch.
+ */
+function colorsFromParams(
+  overrides: SemanticColorMap | undefined,
+  p?: Pick<CellPaintConfig, 'posColor' | 'negColor'>,
+): Required<SemanticColorMap> {
+  colorScratch.positive = overrides?.positive ?? p?.posColor ?? SEMANTIC_COLORS.positive;
+  colorScratch.negative = overrides?.negative ?? p?.negColor ?? SEMANTIC_COLORS.negative;
   colorScratch.warning = overrides?.warning ?? SEMANTIC_COLORS.warning;
   colorScratch.info = overrides?.info ?? SEMANTIC_COLORS.info;
   colorScratch.muted = overrides?.muted ?? SEMANTIC_COLORS.muted;
@@ -250,7 +260,7 @@ export const priceCell: CellPainter = {
   paint(gc, p) {
     const params = (p.params ?? {}) as PriceCellParams;
     const dir = tickDirection(p, params.prevField);
-    const colors = colorsFromParams(params.colors);
+    const colors = colorsFromParams(params.colors, p);
     const flashColor = dir === 'up' ? withAlpha(colors.positive, 0.25)
       : dir === 'down' ? withAlpha(colors.negative, 0.25)
       : undefined;
@@ -263,7 +273,7 @@ export const priceCell: CellPainter = {
 export const priceDirectionCell: CellPainter = {
   paint(gc, p) {
     const params = (p.params ?? {}) as PriceDirectionCellParams;
-    const colors = colorsFromParams(params.colors);
+    const colors = colorsFromParams(params.colors, p);
     const dir = tickDirection(p, params.prevField) ?? 'flat';
     const fg = dir === 'up' ? colors.positive : dir === 'down' ? colors.negative : colors.muted;
     const iconX = p.bounds.x + padLeft(p) + 4;
@@ -280,7 +290,7 @@ export const priceDirectionCell: CellPainter = {
 export const pnlCell: CellPainter = {
   paint(gc, p) {
     const params = (p.params ?? {}) as PnlCellParams;
-    const colors = colorsFromParams(params.colors);
+    const colors = colorsFromParams(params.colors, p);
     const n = toNumber(p.value);
     if (n === null) {
       paintRightText(gc, p, p.valueFormatted || '', p.fg);
@@ -305,7 +315,7 @@ export const pnlCell: CellPainter = {
 export const deltaCell: CellPainter = {
   paint(gc, p) {
     const params = (p.params ?? {}) as DeltaCellParams;
-    const colors = colorsFromParams(params.colors);
+    const colors = colorsFromParams(params.colors, p);
     const row = p.rowData as Record<string, unknown> | undefined;
     const abs = toNumber(row?.[params.absoluteField]);
     const pct = toNumber(row?.[params.percentField]);
@@ -335,7 +345,7 @@ export const deltaCell: CellPainter = {
 export const bpsCell: CellPainter = {
   paint(gc, p) {
     const params = (p.params ?? {}) as BpsCellParams;
-    const colors = colorsFromParams(params.colors);
+    const colors = colorsFromParams(params.colors, p);
     const n = toNumber(p.value);
     if (n === null) {
       paintRightText(gc, p, '', p.fg);
@@ -363,7 +373,7 @@ export const bpsCell: CellPainter = {
 export const pctChangeCell: CellPainter = {
   paint(gc, p) {
     const params = (p.params ?? {}) as PctChangeCellParams;
-    const colors = colorsFromParams(params.colors);
+    const colors = colorsFromParams(params.colors, p);
     const n = toNumber(p.value);
     if (n === null) {
       paintRightText(gc, p, p.valueFormatted || '', p.fg);
