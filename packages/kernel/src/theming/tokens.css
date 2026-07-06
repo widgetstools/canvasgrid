@@ -2997,23 +2997,29 @@
  * right edge without needing a dedicated spacer element. Same icon-
  * button sizing as `.cg-colgroups-action` (24px hit target / ~15px
  * glyph) so it reads as part of the same control family. */
+/* Labeled "Pop out" button — a discoverable affordance (icon + text) rather
+ * than a bare corner glyph, pushed to the toolbar's right edge. */
 .cg-colgroups-popout {
-  width: 24px;
   height: 24px;
   margin-left: auto;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  padding: 0;
-  color: color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
+  gap: 5px;
+  padding: 0 8px;
+  color: color-mix(in srgb, var(--cg-fg-color) 72%, transparent);
   background: transparent;
-  border: none;
+  border: 1px solid var(--cg-border-color);
   border-radius: var(--cg-radius, 5px);
+  font: inherit;
+  font-size: var(--cg-font-size-sm);
+  line-height: 1;
   cursor: pointer;
 }
+.cg-colgroups-popout-label { line-height: 1; }
 .cg-colgroups-popout:hover {
   color: var(--cg-fg-color);
-  background: color-mix(in srgb, var(--cg-fg-color) 10%, transparent);
+  background: color-mix(in srgb, var(--cg-fg-color) 8%, transparent);
+  border-color: color-mix(in srgb, var(--cg-fg-color) 42%, transparent);
 }
 .cg-colgroups-popout:focus-visible {
   outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);

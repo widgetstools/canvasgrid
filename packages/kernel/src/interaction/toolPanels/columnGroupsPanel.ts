@@ -339,11 +339,14 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     // Pop out to a floating panel — right-aligned (CSS pushes it there
     // via margin-left: auto). No-op when the host api predates
     // `popOutToolPanel` (older api surface).
-    const popout = el('button', 'cg-colgroups-action cg-colgroups-popout') as HTMLButtonElement;
+    const popout = el('button', 'cg-colgroups-popout') as HTMLButtonElement;
     popout.type = 'button';
-    popout.setAttribute('aria-label', 'Pop out');
-    popout.title = 'Pop out';
+    popout.setAttribute('aria-label', 'Pop out into a floating window');
+    popout.title = 'Pop out into a floating window';
     popout.appendChild(iconPopOut());
+    const popoutLabel = el('span', 'cg-colgroups-popout-label');
+    popoutLabel.textContent = 'Pop out';
+    popout.appendChild(popoutLabel);
     popout.onclick = () => this.api.popOutToolPanel?.('columnGroups');
     bar.appendChild(popout);
 
