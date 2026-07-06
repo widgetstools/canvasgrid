@@ -14,6 +14,7 @@ import { wireIntoKernel as wireFormat } from '@cgrid/format';
 import { wireEditIntoKernel } from '@cgrid/edit';
 import { wireIntoKernel as wireCalc } from '@cgrid/calc';
 import { wireIntoKernel as wireRules, type ConditionalStyleRule } from '@cgrid/rules';
+import { wireRenderersIntoKernel } from '@cgrid/renderers';
 import { connectStomp, STOMP_PUBLISH_RATE_PER_SEC, type Position } from './stomp';
 
 const DESKS = ['RATES', 'CREDIT', 'FX', 'EQD'];
@@ -78,15 +79,27 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
         // default; the caret's collapse affordance is what hides it.
         openByDefault: true,
         children: [
-          num('Notional', 'notionalAmount', { valueFormatter: '#,##0', aggFunc: 'sum' }),
+          num('Notional', 'notionalAmount', {
+            valueFormatter: '#,##0', aggFunc: 'sum',
+            // Heatmap fill scaled across the notional domain (theme drives the
+            // cool→warm endpoints via --cg-neg/--cg-pos).
+            cellRenderer: 'heat',
+            cellRendererParams: { stats: { min: 0, max: 50_000_000, count: 1 } },
+          }),
           // Task 10 — `columnGroupShow: 'open'` so collapsing "Valuation"
           // has a visible effect (this column drops out of the viewport)
           // and the group header caret has something real to demonstrate.
           num('Mkt Value', 'marketValue', { valueFormatter: '#,##0', aggFunc: 'sum', columnGroupShow: 'open' }),
         ],
       },
-      num('P&L', 'pnl', { aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)' }),
-      num('Daily P&L', 'dailyPnl', { aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)' }),
+      // Sign-colored number (blue positive / salmon negative from the theme).
+      num('P&L', 'pnl', { aggFunc: 'sum', valueFormatter: '#,##0;(#,##0)', cellRenderer: 'pnl' }),
+      // Centered bidirectional data bar (blue right / salmon left).
+      num('Daily P&L', 'dailyPnl', {
+        aggFunc: 'sum', valueFormatter: '#,##0;(#,##0)',
+        cellRenderer: 'bidirectional-bar',
+        cellRendererParams: { stats: { maxAbs: 60_000 } },
+      }),
     ],
   },
   // Price uses the reference 32nds bond editor: displayed as `101-16`, edited
@@ -97,7 +110,7 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
     cellEditor: 'price32',
     valueFormatter: (p: { value: unknown }) => formatPrice32(p.value as number),
   }),
-  num('Unrealized', 'unrealizedPnl', { aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)' }),
+  num('Unrealized', 'unrealizedPnl', { aggFunc: 'sum', valueFormatter: '#,##0;(#,##0)', cellRenderer: 'pnl' }),
   {
     groupId: 'risk',
     headerName: 'Risk',
@@ -160,6 +173,13 @@ const { calc } = wireCalc(grid);
 // and paint through the kernel's render-time rule fold. Everything below goes
 // through the PUBLIC CGridApi rule methods (addRule / deleteRule / getRules).
 const { rules } = wireRules(grid);
+
+// Perspective look & feel / surface #3 — wire @cgrid/renderers so the curated
+// numeric columns paint inline data-viz. Sign colors come from the theme's
+// --cg-pos-color/--cg-neg-color (blue/salmon under cg-theme-perspective); the
+// P&L family renders sign-colored numbers, Daily P&L a centered data bar, and
+// Notional a heatmap fill.
+wireRenderersIntoKernel(grid);
 
 
 function applyTheme() {

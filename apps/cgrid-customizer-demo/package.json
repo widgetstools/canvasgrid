@@ -17,6 +17,7 @@
     "@cgrid/edit": "*",
     "@cgrid/calc": "*",
     "@cgrid/rules": "*",
+    "@cgrid/renderers": "*",
     "@cgrid/customizer": "*"
   },
   "devDependencies": {
