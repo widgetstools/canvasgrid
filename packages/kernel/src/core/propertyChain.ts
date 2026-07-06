@@ -657,6 +657,14 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
     target.font = withFontWeight(theme.cellFont ?? theme.font, theme.groupFooterFontWeight);
     target.emptyFg = theme.totalsFgMuted;
   }
+  // "look-and-feel" Part A — muted fg for ordinary DATA (and header) cells
+  // too, so `numberCell` / `textCell` can paint the opt-in `emptyCellText`
+  // glyph in a muted tone without reaching into the theme directly. Mirrors
+  // the totals/group-footer branches above; `theme.emptyFg` already falls
+  // back to `theme.totalsFgMuted` in `cssReader.ts` for un-migrated themes.
+  else {
+    target.emptyFg = theme.emptyFg;
+  }
 
   // ── 2. Static cellStyle object ─────────────────────────────────────────
   const staticCellStyle = colDef.cellStyle;

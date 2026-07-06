@@ -147,6 +147,10 @@ const grid = new CGrid<Position>(gridHost, {
   rowGroupPanelShow: 'always',
   sideBar: { toolPanels: ['columns', 'filters', 'gridOptions', 'columnGroups'] },
   enableCellChangeFlash: true,
+  // "look-and-feel" Part A — muted en-dash for null/empty data cells,
+  // like the Perspective datagrid. Opt-in; kernel default is undefined
+  // (blank), unchanged for every other consumer.
+  emptyCellText: '–',
   cellSelection: {},
 });
 

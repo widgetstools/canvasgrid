@@ -1255,6 +1255,10 @@ export class CGrid<TRow = any> {
       // `ResolvedColDef` and win when set — `byRows.ts` resolves the pair
       // at the header-text path.
       getSuppressAggFuncInHeader: () => this.options.suppressAggFuncInHeader === true,
+      // "look-and-feel" Part A — opt-in em-dash null display. Read per
+      // paint so a runtime `setGridOption('emptyCellText', …)` flip
+      // lights up on the next frame with no worker round-trip.
+      getEmptyCellText: () => this.options.emptyCellText,
       getVisibleCellBounds: (rowIndex, colId) => this.getVisibleCellBounds(rowIndex, colId),
       // Cycle 15 / Task 5 — full-row group-strip lookup for `groupRows` /
       // `custom` display types. Returns `null` for singleColumn /

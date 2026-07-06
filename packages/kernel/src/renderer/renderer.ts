@@ -77,6 +77,14 @@ export interface RendererOpts {
    */
   getSuppressAggFuncInHeader: () => boolean;
   /**
+   * "look-and-feel" Part A — opt-in placeholder glyph for null/empty DATA
+   * cells (`CGridOptions.emptyCellText`). Read per paint so a runtime
+   * `setGridOption('emptyCellText', …)` flip lights up on the next rAF.
+   * `undefined` when the app hasn't opted in — the existing blank
+   * behavior is unchanged.
+   */
+  getEmptyCellText?: () => string | undefined;
+  /**
    * Cycle 12 / Task 2 — band-aware cell bounds resolver shared by every
    * overlay painter. Returns `null` whenever the cell straddles or has
    * scrolled outside its column's band, so painters never need to
@@ -168,6 +176,7 @@ export class Renderer {
       quickFilterLowerTerms: this.opts.getQuickFilterLowerTerms(),
       showFillHandle: this.opts.getShowFillHandle(),
       suppressAggFuncInHeader: this.opts.getSuppressAggFuncInHeader(),
+      emptyCellText: this.opts.getEmptyCellText?.(),
       getVisibleCellBounds: this.opts.getVisibleCellBounds,
       groupRowStrip: this.opts.getGroupRowStrip(),
       rowKindAt: this.opts.getRowKindAt,

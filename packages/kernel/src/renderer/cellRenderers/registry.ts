@@ -138,6 +138,15 @@ export interface CellPaintConfig {
    */
   emptyFg?: string;
   /**
+   * "look-and-feel" Part A — opt-in placeholder glyph for null/empty DATA
+   * cells (default en-dash `–`, like Perspective). Resolved from the grid
+   * option `emptyCellText` (`CGridOptions.emptyCellText`); `undefined`
+   * (the default) keeps the existing blank behavior. Read by `numberCell`
+   * / `textCell` only — a non-empty value is always painted regardless of
+   * this field.
+   */
+  emptyCellText?: string;
+  /**
    * Cycle 15 / Task 4 — auto-group column theme tokens, threaded straight
    * onto every cell config so the `'group'` cell renderer reads chevron
    * color, count suffix color, and the indent unit without reaching into
@@ -295,10 +304,28 @@ export function paintBackground(gc: CachedContext2D, p: CellPaintConfig): void {
   }
 }
 
+/** "look-and-feel" Part A — treats null / undefined / empty-string values
+ *  OR an empty/undefined formatted string as "nothing to display". Mirrors
+ *  the `'totals'` renderer's `isEmpty` predicate (`totals.ts`) so the
+ *  em-dash null-display reads consistently across the totals row and
+ *  ordinary data cells. */
+function isEmptyCellValue(value: unknown, formatted: string | undefined): boolean {
+  if (formatted === undefined || formatted === '') return true;
+  if (value === null || value === undefined || value === '') return true;
+  return false;
+}
+
 export const textCell: CellPainter = {
   paint(gc, p) {
     paintBackground(gc, p);
-    gc.cache.fillStyle = p.fg;
+    // "look-and-feel" Part A — opt-in em-dash placeholder. Only engages
+    // when the cell is empty AND the grid configured a non-empty
+    // `emptyCellText`; otherwise the pre-existing blank behavior is
+    // unchanged (text stays `p.valueFormatted`, fill stays `p.fg`).
+    const showEmptyGlyph = !!p.emptyCellText && isEmptyCellValue(p.value, p.valueFormatted);
+    const text = showEmptyGlyph ? p.emptyCellText! : p.valueFormatted;
+    const fill = showEmptyGlyph ? (p.emptyFg ?? p.fg) : p.fg;
+    gc.cache.fillStyle = fill;
     gc.cache.font = p.font;
     applyLetterSpacing(gc, p);
     const cy = resolveTextY(gc, p);
@@ -312,15 +339,15 @@ export const textCell: CellPainter = {
       renderContentSlot(gc, p, p.content, cy, padLeft, padRight);
     } else if (p.halign === 'right') {
       gc.cache.textAlign = 'right';
-      gc.fillText(p.valueFormatted, p.bounds.x + p.bounds.w - padRight, cy);
+      gc.fillText(text, p.bounds.x + p.bounds.w - padRight, cy);
       paintTextDecoration(gc, p, p.bounds.x + p.bounds.w - padRight, cy);
     } else if (p.halign === 'center') {
       gc.cache.textAlign = 'center';
-      gc.fillText(p.valueFormatted, p.bounds.x + p.bounds.w / 2, cy);
+      gc.fillText(text, p.bounds.x + p.bounds.w / 2, cy);
       paintTextDecoration(gc, p, p.bounds.x + p.bounds.w / 2, cy);
     } else {
       gc.cache.textAlign = 'left';
-      gc.fillText(p.valueFormatted, p.bounds.x + padLeft, cy);
+      gc.fillText(text, p.bounds.x + padLeft, cy);
       paintTextDecoration(gc, p, p.bounds.x + padLeft, cy);
     }
     // Cycle 27 / Task 2 — per-cell border overlay (after content so it
@@ -468,7 +495,12 @@ function resolveTextY(gc: CachedContext2D, p: CellPaintConfig): number {
 export const numberCell: CellPainter = {
   paint(gc, p) {
     paintBackground(gc, p);
-    gc.cache.fillStyle = p.fg;
+    // "look-and-feel" Part A — opt-in em-dash placeholder (see
+    // `isEmptyCellValue` / `textCell` above for the shared semantics).
+    const showEmptyGlyph = !!p.emptyCellText && isEmptyCellValue(p.value, p.valueFormatted);
+    const text = showEmptyGlyph ? p.emptyCellText! : p.valueFormatted;
+    const fill = showEmptyGlyph ? (p.emptyFg ?? p.fg) : p.fg;
+    gc.cache.fillStyle = fill;
     gc.cache.font = p.font;
     applyLetterSpacing(gc, p);
     const align: CanvasTextAlign = p.halign === 'left' || p.halign === 'center'
@@ -484,7 +516,7 @@ export const numberCell: CellPainter = {
     if (p.content) {
       renderContentSlot(gc, p, p.content, cy, padLeft, padRight);
     } else {
-      gc.fillText(p.valueFormatted, x, cy);
+      gc.fillText(text, x, cy);
       paintTextDecoration(gc, p, x, cy);
     }
     // Cycle 27 / Task 2 — per-cell border overlay.

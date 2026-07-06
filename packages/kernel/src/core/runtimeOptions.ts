@@ -77,6 +77,7 @@ export type RuntimeOption =
   | 'pinnedBottomRowData'
   | 'aggFuncs'
   | 'suppressAggFuncInHeader'
+  | 'emptyCellText'
   | 'rowGroupPanelShow'
   | 'rowGroupPanelSuppressSort'
   | 'statusBar'
@@ -338,6 +339,13 @@ export function applyRuntimeOption<TRow>(
       // label changes).
       target.refreshLayout();
       return;
+    case 'emptyCellText':
+      // "look-and-feel" Part A — the Renderer reads
+      // `options.emptyCellText` per paint via `getEmptyCellText`, so a
+      // single repaint is enough to flip every data cell's null-display
+      // glyph. No worker round-trip (purely a paint-time placeholder).
+      target.refreshLayout();
+      return;
     case 'singleClickEdit':
     case 'suppressClickEdit':
     case 'enableExcelEditing':
@@ -469,6 +477,7 @@ export const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOpt
   'pinnedBottomRowData',
   'aggFuncs',
   'suppressAggFuncInHeader',
+  'emptyCellText',
   'rowGroupPanelShow',
   'rowGroupPanelSuppressSort',
   'statusBar',

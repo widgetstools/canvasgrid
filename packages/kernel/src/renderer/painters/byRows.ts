@@ -89,7 +89,7 @@ export function decorateHeader(def: ResolvedColDef, gridSuppress: boolean): stri
 
 
 export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
-  const { viewport: vs, theme, columnDefs, cellRenderers, cellData, selection, sortModel, rowDataSnapshotAt, quickFilterLowerTerms, suppressAggFuncInHeader, groupRowStrip } = p;
+  const { viewport: vs, theme, columnDefs, cellRenderers, cellData, selection, sortModel, rowDataSnapshotAt, quickFilterLowerTerms, suppressAggFuncInHeader, groupRowStrip, emptyCellText } = p;
   const totalRowCount = p.totalRowCount ?? 0;
   const quickFilterActive = quickFilterLowerTerms.length > 0;
 
@@ -287,6 +287,10 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
     font: '', fg: '', bg: '', borderColor: '',
     halign: 'left', prefillColor: '',
     isFocused: false, isSelected: false, isHovered: false, isHeader: false,
+    // "look-and-feel" Part A — constant for the whole paint pass (grid
+    // option, not per-cell state); `applyCellProps` never touches this
+    // field so it survives every per-cell mutation below.
+    emptyCellText,
   };
 
   // Cycle 19 / Task 8b — shared per-paint context threaded through

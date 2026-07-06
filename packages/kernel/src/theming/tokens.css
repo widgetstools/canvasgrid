@@ -317,6 +317,10 @@
   --cg-totals-border-top: #2a2f37;
   --cg-totals-fg-muted: #7a828e;
   --cg-totals-font-weight: 500;
+  /* "look-and-feel" Part A — muted color for the opt-in emptyCellText
+   * null/empty glyph on data cells. Same muted family the floating-filter
+   * placeholder already uses on this theme. */
+  --cg-empty-fg: #565e6a;
   --cg-pinned-row-bg: #191c22;
   --cg-pinned-row-fg: var(--cg-fg-color);
   --cg-pinned-row-border: var(--cg-totals-border-top);
@@ -391,6 +395,9 @@
   --cg-totals-border-top: #dfe3e8;
   --cg-totals-fg-muted: #6b7683;
   --cg-totals-font-weight: 500;
+  /* "look-and-feel" Part A — light-bg muted color for the opt-in
+   * emptyCellText null/empty glyph on data cells. */
+  --cg-empty-fg: #9aa3ae;
   --cg-pinned-row-bg: #f6f8fa;
   --cg-pinned-row-fg: var(--cg-fg-color);
   --cg-pinned-row-border: var(--cg-totals-border-top);

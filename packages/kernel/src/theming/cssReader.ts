@@ -65,6 +65,16 @@ export interface ResolvedTheme {
    *  `'totals'` renderer for the empty-cell em-dash and the label
    *  column (when present). Resolved from `--cg-totals-fg-muted`. */
   totalsFgMuted: string;
+  /** "look-and-feel" Part A — muted foreground for the opt-in
+   *  `emptyCellText` glyph on DATA cells (null/empty cells render a muted
+   *  placeholder like `–` instead of blank). Resolved from
+   *  `--cg-empty-fg`, falling back to `--cg-totals-fg-muted` so themes
+   *  that haven't declared the token yet still get a sensible muted
+   *  color instead of an unstyled default. Set on every data cell by
+   *  `applyCellProps` (not just totals); read by `numberCell` /
+   *  `textCell` only when the column's resolved `emptyCellText` is a
+   *  non-empty string. */
+  emptyFg: string;
   /** Cycle 14 / Task 1 — font-weight for totals cells. Body is `400`;
    *  totals is `500` (+1 stop only — the row's lift comes from the
    *  rule above + tint, NOT from typography inflation). Substituted
@@ -321,6 +331,9 @@ export class CssReader {
       totalsFg: get('--cg-totals-fg') || '#0f172a',
       totalsBorderTop: get('--cg-totals-border-top') || '#cbd5e1',
       totalsFgMuted: get('--cg-totals-fg-muted') || '#475569',
+      // "look-and-feel" Part A — falls back to the SAME chain totalsFgMuted
+      // resolves so an un-migrated theme's em-dash still reads muted.
+      emptyFg: get('--cg-empty-fg') || get('--cg-totals-fg-muted') || '#475569',
       totalsFontWeight: px('--cg-totals-font-weight', 500),
       pinnedRowBg: get('--cg-pinned-row-bg') || '#fbf8f3',
       pinnedRowFg: get('--cg-pinned-row-fg') || get('--cg-fg-color') || '#1a1f24',

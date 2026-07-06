@@ -81,6 +81,16 @@ export interface PainterCtx {
    * lights up on the next rAF.
    */
   suppressAggFuncInHeader: boolean;
+  /**
+   * "look-and-feel" Part A — opt-in placeholder glyph for null/empty DATA
+   * cells (`CGridOptions.emptyCellText`). `undefined` (the default) keeps
+   * the pre-existing blank behavior. Read per paint so a runtime
+   * `setGridOption('emptyCellText', …)` flip lights up on the next rAF.
+   * Set once on `sharedConfig` at the top of `paintCellsByRows` (constant
+   * for the whole frame — `applyCellProps` never touches this field, so
+   * it survives every per-cell mutation across the paint loop).
+   */
+  emptyCellText?: string;
   /** Returns visible (band-clipped) bounds for the cell, or null when
    *  the cell straddles or has scrolled out of its column's band.
    *  Sourced from CGrid.getVisibleCellBounds (Cycle 12 / Task 1). */

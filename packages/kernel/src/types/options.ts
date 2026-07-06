@@ -656,6 +656,23 @@ export interface CGridOptions<TRow = any> {
    *  `docs/superpowers/plans/notes/cycle-14-aggregation-design.md` §
    *  Task 4. */
   suppressAggFuncInHeader?: boolean;
+  /** "look-and-feel" Part A — opt-in placeholder glyph painted (in a muted
+   *  theme color) for null/empty DATA cells instead of leaving them blank,
+   *  like the Perspective datagrid. `undefined` (the default) keeps the
+   *  existing blank behavior for every consumer that doesn't opt in —
+   *  this is NOT a global default, only a demo/app choice. When set to a
+   *  non-empty string (e.g. `'–'`, an en-dash), the kernel's built-in
+   *  `numberCell` / `textCell` renderers paint it in the theme's
+   *  `--cg-empty-fg` color whenever a cell's raw value is nullish/empty
+   *  AND its formatted text is empty. Non-empty cells are always painted
+   *  with their real value regardless of this option. Out of scope: the
+   *  `@cgrid/renderers` custom painters (curated data-viz columns) don't
+   *  read this option.
+   *
+   *  Runtime-mutable via `setGridOption('emptyCellText', …)` — the
+   *  painter reads the option per paint, so a flip lights up on the next
+   *  rAF without re-resolving the column tree. */
+  emptyCellText?: string;
   /** Cycle 15 / Task 4 — partial column-def patch applied to the
    *  synthesized auto-group column. When grouping is active AND
    *  `groupDisplayType` resolves to `'singleColumn'` (the default),

@@ -75,6 +75,72 @@ describe('textCell', () => {
   });
 });
 
+// "look-and-feel" Part A — em-dash nulls. Mirrors the totals renderer's
+// empty-cell handling (`totals.ts`): opt-in via `emptyCellText`, painted in
+// `emptyFg` (fallback `fg`). Default (emptyCellText unset) keeps the
+// pre-existing blank behavior for null/empty values.
+describe('textCell — empty/null glyph (opt-in via emptyCellText)', () => {
+  it('paints emptyCellText in emptyFg when the value is null and emptyCellText is set', () => {
+    const gc = makeGc();
+    textCell.paint(gc, baseParams({
+      value: null, valueFormatted: '',
+      fg: '#000', emptyFg: '#888', emptyCellText: '–',
+    }));
+    const [text] = (gc.fillText as any).mock.calls[0]!;
+    expect(text).toBe('–');
+    expect(gc.cache.fillStyle).toBe('#888');
+  });
+
+  it('paints emptyCellText for undefined and empty-string values too', () => {
+    for (const v of [undefined, ''] as const) {
+      const gc = makeGc();
+      textCell.paint(gc, baseParams({
+        value: v, valueFormatted: '',
+        emptyCellText: '–',
+      }));
+      const [text] = (gc.fillText as any).mock.calls[0]!;
+      expect(text).toBe('–');
+    }
+  });
+
+  it('falls back to fg when emptyFg is unset', () => {
+    const gc = makeGc();
+    textCell.paint(gc, baseParams({
+      value: null, valueFormatted: '',
+      fg: '#123456', emptyFg: undefined, emptyCellText: '–',
+    }));
+    expect(gc.cache.fillStyle).toBe('#123456');
+  });
+
+  it('draws NOTHING (blank) for a null value when emptyCellText is unset (default, unchanged behavior)', () => {
+    const gc = makeGc();
+    textCell.paint(gc, baseParams({ value: null, valueFormatted: '', emptyCellText: undefined }));
+    const [text] = (gc.fillText as any).mock.calls[0]!;
+    expect(text).toBe('');
+  });
+
+  it('paints the real value in normal fg for a non-empty cell, even when emptyCellText is set', () => {
+    const gc = makeGc();
+    textCell.paint(gc, baseParams({
+      value: 'hello', valueFormatted: 'hello',
+      fg: '#111', emptyFg: '#888', emptyCellText: '–',
+    }));
+    const [text] = (gc.fillText as any).mock.calls[0]!;
+    expect(text).toBe('hello');
+    expect(gc.cache.fillStyle).toBe('#111');
+  });
+
+  it('left-aligns the empty glyph like a normal left-aligned text cell', () => {
+    const gc = makeGc();
+    textCell.paint(gc, baseParams({
+      value: null, valueFormatted: '', halign: 'left', emptyCellText: '–',
+    }));
+    expect(gc.cache.textAlign).toBe('left');
+    const [, x] = (gc.fillText as any).mock.calls[0]!;
+    expect(x).toBe(0 + 6); // bounds.x + PADDING
+  });
+});
+
 describe('numberCell', () => {
   it('right-aligns by default', () => {
     const gc = makeGc();
@@ -108,6 +174,60 @@ describe('numberCell', () => {
     numberCell.paint(gc, baseParams({ value: 42, valueFormatted: '42' }));
     expect((gc.stroke as any)).not.toHaveBeenCalled();
     expect((gc.strokeRect as any)).not.toHaveBeenCalled();
+  });
+});
+
+// "look-and-feel" Part A — em-dash nulls (numeric column path).
+describe('numberCell — empty/null glyph (opt-in via emptyCellText)', () => {
+  it('paints emptyCellText in emptyFg when the value is null and emptyCellText is set', () => {
+    const gc = makeGc();
+    numberCell.paint(gc, baseParams({
+      value: null, valueFormatted: '',
+      fg: '#000', emptyFg: '#888', emptyCellText: '–',
+      halign: 'right',
+    }));
+    const [text] = (gc.fillText as any).mock.calls[0]!;
+    expect(text).toBe('–');
+    expect(gc.cache.fillStyle).toBe('#888');
+  });
+
+  it('falls back to fg when emptyFg is unset', () => {
+    const gc = makeGc();
+    numberCell.paint(gc, baseParams({
+      value: undefined, valueFormatted: '',
+      fg: '#123456', emptyFg: undefined, emptyCellText: '–',
+    }));
+    expect(gc.cache.fillStyle).toBe('#123456');
+  });
+
+  it('draws NOTHING (blank) for a null value when emptyCellText is unset (default, unchanged behavior)', () => {
+    const gc = makeGc();
+    numberCell.paint(gc, baseParams({ value: null, valueFormatted: '', emptyCellText: undefined }));
+    const [text] = (gc.fillText as any).mock.calls[0]!;
+    expect(text).toBe('');
+  });
+
+  it('paints the real value in normal fg for a non-empty numeric cell, even when emptyCellText is set', () => {
+    const gc = makeGc();
+    numberCell.paint(gc, baseParams({
+      value: 42, valueFormatted: '42',
+      fg: '#111', emptyFg: '#888', emptyCellText: '–',
+      halign: 'right',
+    }));
+    const [text] = (gc.fillText as any).mock.calls[0]!;
+    expect(text).toBe('42');
+    expect(gc.cache.fillStyle).toBe('#111');
+  });
+
+  it('right-aligns the empty glyph like a normal right-aligned number cell', () => {
+    const gc = makeGc();
+    numberCell.paint(gc, baseParams({
+      value: null, valueFormatted: '', halign: 'right', emptyCellText: '–',
+      bounds: { x: 0, y: 0, w: 100, h: 30 },
+    }));
+    expect(gc.textAlign).toBe('right');
+    const [, x] = (gc.fillText as any).mock.calls[0]!;
+    expect(x).toBe(100 - 6); // bounds.x + bounds.w - PADDING
   });
 });
 
