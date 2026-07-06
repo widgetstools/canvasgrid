@@ -3,6 +3,7 @@ import type {
   CCellRendererSelector, CValueParserParams, CValueSetterParams,
   CellEditorCtor, EditableCallback, SuppressKeyboardEventCallback,
   CellClass, CellClassRules, CellStyleFunc, HeaderClass,
+  BorderSpec, BorderSide,
 } from '../types';
 import type { CellPaintConfig } from '../renderer/cellRenderers/registry';
 import type { ResolvedTheme } from '../theming/cssReader';
@@ -370,6 +371,28 @@ export interface ApplyCellPropsInput {
   themeKind?: 'light' | 'dark';
 }
 
+/** Workstream C (2026-07-06 CSS styling model) — resolve `var(--cg-…)`
+ *  color refs on each declared border side (`all`/`top`/`right`/`bottom`/
+ *  `left`) before the spec lands on the paint config. Only touches
+ *  `.color`; `width`/`style` pass through untouched — this pass is scoped
+ *  to color-bearing fields only. Returns a shallow clone so the caller's
+ *  original `BorderSpec` object (which may be a shared cellStyle literal)
+ *  is never mutated. */
+function resolveBorderSpecColors(
+  spec: BorderSpec,
+  resolveVarRef: (value: string) => string,
+): BorderSpec {
+  const resolveSide = (side: BorderSide): BorderSide =>
+    side.color !== undefined ? { ...side, color: resolveVarRef(side.color) } : side;
+  const out: BorderSpec = {};
+  if (spec.all !== undefined) out.all = resolveSide(spec.all);
+  if (spec.top !== undefined) out.top = resolveSide(spec.top);
+  if (spec.right !== undefined) out.right = resolveSide(spec.right);
+  if (spec.bottom !== undefined) out.bottom = resolveSide(spec.bottom);
+  if (spec.left !== undefined) out.left = resolveSide(spec.left);
+  return out;
+}
+
 /** Apply a `ColCellOverrides` patch onto the mutable slots of `target`.
  *  Only defined fields in `patch` are applied; `undefined` fields are
  *  silently skipped, which is what "later wins" stacking requires.
@@ -379,8 +402,20 @@ export interface ApplyCellPropsInput {
  *  `fontWeight` / `fontStyle`) layer onto whatever was already in
  *  `target.font` (theme default or prior patch). Each layer adds its own
  *  fields, prior layers' fields survive. An explicit `patch.font`
- *  shorthand replaces wholesale. `valign` also passes through here. */
-function applyOverridePatch(target: CellPaintConfig, patch: ColCellOverrides): void {
+ *  shorthand replaces wholesale. `valign` also passes through here.
+ *
+ *  Workstream C (2026-07-06 CSS styling model) — `resolveVarRef`, when
+ *  supplied, resolves `var(--cg-…)` token references on `fg`/`bg`/border
+ *  side colors before they land on `target` (`cellStyle`/`headerStyle`
+ *  callers pass `theme.resolveVarRef`; CSS-class-variant and rule-engine
+ *  callers omit it — those patches are handled by their own mechanisms
+ *  and are out of scope for this pass). Omitted (`undefined`) means a
+ *  literal passthrough, identical to pre-Workstream-C behavior. */
+function applyOverridePatch(
+  target: CellPaintConfig,
+  patch: ColCellOverrides,
+  resolveVarRef?: (value: string) => string,
+): void {
   if (patch.font !== undefined
       || patch.fontFamily !== undefined
       || patch.fontSize !== undefined
@@ -388,8 +423,8 @@ function applyOverridePatch(target: CellPaintConfig, patch: ColCellOverrides): v
       || patch.fontStyle !== undefined) {
     target.font = composeFont(patch, target.font);
   }
-  if (patch.fg !== undefined) target.fg = patch.fg;
-  if (patch.bg !== undefined) target.bg = patch.bg;
+  if (patch.fg !== undefined) target.fg = resolveVarRef ? resolveVarRef(patch.fg) : patch.fg;
+  if (patch.bg !== undefined) target.bg = resolveVarRef ? resolveVarRef(patch.bg) : patch.bg;
   if (patch.halign !== undefined) target.halign = patch.halign;
   if (patch.valign !== undefined) target.valign = patch.valign;
   if (patch.textTransform !== undefined) target.textTransform = patch.textTransform;
@@ -407,7 +442,9 @@ function applyOverridePatch(target: CellPaintConfig, patch: ColCellOverrides): v
   // sides. The shape is small enough that callers can supply the full
   // spec in their `cellStyle` patch; deep-merge would surprise more than
   // help.
-  if (patch.border !== undefined) target.border = patch.border;
+  if (patch.border !== undefined) {
+    target.border = resolveVarRef ? resolveBorderSpecColors(patch.border, resolveVarRef) : patch.border;
+  }
   // Cycle 27 / Task 3 — content + decorators replace wholesale.
   if (patch.content !== undefined) target.content = patch.content;
   if (patch.decorators !== undefined) target.decorators = patch.decorators;
@@ -654,9 +691,11 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   }
 
   // ── 2. Static cellStyle object ─────────────────────────────────────────
+  // Workstream C — token-referenceable values: fg/bg/border colors of the
+  // form `var(--cg-…)` resolve through `theme.resolveVarRef`.
   const staticCellStyle = colDef.cellStyle;
   if (staticCellStyle !== undefined && typeof staticCellStyle === 'object') {
-    applyOverridePatch(target, staticCellStyle as ColCellOverrides);
+    applyOverridePatch(target, staticCellStyle as ColCellOverrides, theme.resolveVarRef);
   }
 
   // ── 3. Class-driven variants ───────────────────────────────────────────
@@ -707,8 +746,9 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
     // Cycle 27 / Task 1 — direct `headerStyle` overrides on the leaf colDef.
     // Static object, then function form. Applied AFTER class variants so
     // an explicit `headerStyle` wins over a class variant of the same field.
+    // Workstream C — token-referenceable values, same as static cellStyle.
     if (colDef.headerStyle) {
-      applyOverridePatch(target, colDef.headerStyle);
+      applyOverridePatch(target, colDef.headerStyle, theme.resolveVarRef);
     }
     if (colDef.headerStyleFn) {
       let patch: ColCellOverrides | null | undefined;
@@ -717,13 +757,13 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
       } catch {
         patch = undefined;
       }
-      if (patch) applyOverridePatch(target, patch);
+      if (patch) applyOverridePatch(target, patch, theme.resolveVarRef);
     }
     // Group-level `headerStyle` (from the column tree) — applies only on
     // group-header rows. Static then function. Highest precedence inside the
     // header branch (group def wins over the leaf colDef when both are set).
     if (ctx.groupHeaderStyle) {
-      applyOverridePatch(target, ctx.groupHeaderStyle);
+      applyOverridePatch(target, ctx.groupHeaderStyle, theme.resolveVarRef);
     }
     if (ctx.groupHeaderStyleFn) {
       let patch: ColCellOverrides | null | undefined;
@@ -732,7 +772,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
       } catch {
         patch = undefined;
       }
-      if (patch) applyOverridePatch(target, patch);
+      if (patch) applyOverridePatch(target, patch, theme.resolveVarRef);
     }
   } else {
     // Data-cell path: resolve cellClass + cellClassRules → cellClassVariants.
@@ -842,6 +882,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   }
 
   // ── 4. Function-form cellStyle (highest precedence) ────────────────────
+  // Workstream C — token-referenceable values, same as static cellStyle.
   if (colDef.cellStyleFn) {
     let patch: ColCellOverrides | null | undefined;
     try {
@@ -849,7 +890,7 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
     } catch {
       patch = undefined;
     }
-    if (patch) applyOverridePatch(target, patch);
+    if (patch) applyOverridePatch(target, patch, theme.resolveVarRef);
   }
 
   // ── 5. Cycle 27 / Task 1 — apply textTransform after all overrides ─────

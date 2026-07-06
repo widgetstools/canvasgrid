@@ -446,6 +446,159 @@ describe('groupHeaderStyle (CColGroupDef)', () => {
   });
 });
 
+// ─── Workstream C — token-referenceable cellStyle/headerStyle values ───────
+// A `cellStyle`/`headerStyle` object value of the form `var(--cg-…)` (or
+// `var(--cg-…, fallback)`) is resolved through `theme.resolveVarRef` at
+// `applyCellProps` time. Literal values (hex/rgb) pass straight through
+// unchanged (regression). Scope: fg/bg + border side colors only.
+
+describe('Workstream C — cellStyle token resolution (var(--cg-…))', () => {
+  function themeWithResolver(tokens: Record<string, string>): ResolvedTheme {
+    const resolveVarRef = (value: string): string => {
+      const m = /^var\(\s*(--cg-[a-zA-Z0-9-]+)\s*(?:,\s*([\s\S]*))?\)$/.exec(value.trim());
+      if (!m) return value;
+      const name = m[1]!;
+      const fallback = m[2]?.trim();
+      const resolved = tokens[name];
+      if (resolved) return resolved;
+      return fallback !== undefined ? fallback : value;
+    };
+    return { ...makeTheme(), resolveVarRef } as ResolvedTheme;
+  }
+
+  it('cellStyle.fg resolves a var(--cg-…) reference to the theme token value', () => {
+    const colDef = resolveColDef({
+      field: 'pnl',
+      cellStyle: { fg: 'var(--cg-pos-color)' } as any,
+    });
+    const config = makeConfig();
+    applyCellProps(config, {
+      theme: themeWithResolver({ '--cg-pos-color': '#16a34a' }),
+      colDef,
+      value: 100, valueFormatted: '100',
+      x: 0, y: 0, w: 100, h: 30,
+      rowBg: '#fff', prefillColor: '#fff',
+      isFocused: false, isSelected: false, isHovered: false, isHeader: false,
+      rowData: {},
+    });
+    expect(config.fg).toBe('#16a34a');
+  });
+
+  it('cellStyle.bg resolves a var(--cg-…, fallback) to the fallback when the token is undeclared', () => {
+    const colDef = resolveColDef({
+      field: 'pnl',
+      cellStyle: { bg: 'var(--cg-missing-bg, #f0fdf4)' } as any,
+    });
+    const config = makeConfig();
+    applyCellProps(config, {
+      theme: themeWithResolver({}),
+      colDef,
+      value: 100, valueFormatted: '100',
+      x: 0, y: 0, w: 100, h: 30,
+      rowBg: '#fff', prefillColor: '#fff',
+      isFocused: false, isSelected: false, isHovered: false, isHeader: false,
+      rowData: {},
+    });
+    expect(config.bg).toBe('#f0fdf4');
+  });
+
+  it('cellStyle.border side colors resolve var(--cg-…) refs; width/style pass through untouched', () => {
+    const colDef = resolveColDef({
+      field: 'pnl',
+      cellStyle: {
+        border: { left: { width: 2, style: 'solid', color: 'var(--cg-neg-color)' } },
+      } as any,
+    });
+    const config = makeConfig();
+    applyCellProps(config, {
+      theme: themeWithResolver({ '--cg-neg-color': '#dc2626' }),
+      colDef,
+      value: -50, valueFormatted: '-50',
+      x: 0, y: 0, w: 100, h: 30,
+      rowBg: '#fff', prefillColor: '#fff',
+      isFocused: false, isSelected: false, isHovered: false, isHeader: false,
+      rowData: {},
+    });
+    expect(config.border).toEqual({ left: { width: 2, style: 'solid', color: '#dc2626' } });
+  });
+
+  it('a literal cellStyle color (#hex) is left unchanged (regression — no var() resolution attempted)', () => {
+    const colDef = resolveColDef({
+      field: 'pnl',
+      cellStyle: { fg: '#e63946', bg: 'rgba(230,57,70,.08)' } as any,
+    });
+    const config = makeConfig();
+    applyCellProps(config, {
+      theme: themeWithResolver({ '--cg-pos-color': '#16a34a' }),
+      colDef,
+      value: -50, valueFormatted: '-50',
+      x: 0, y: 0, w: 100, h: 30,
+      rowBg: '#fff', prefillColor: '#fff',
+      isFocused: false, isSelected: false, isHovered: false, isHeader: false,
+      rowData: {},
+    });
+    expect(config.fg).toBe('#e63946');
+    expect(config.bg).toBe('rgba(230,57,70,.08)');
+  });
+
+  it('headerStyle.fg also resolves a var(--cg-…) reference', () => {
+    const colDef = resolveColDef({
+      field: 'price',
+      headerStyle: { fg: 'var(--cg-header-accent)' } as any,
+    });
+    const config = makeConfig();
+    applyCellProps(config, {
+      theme: themeWithResolver({ '--cg-header-accent': '#0d9488' }),
+      colDef,
+      value: 'Price', valueFormatted: 'Price',
+      x: 0, y: 0, w: 100, h: 32,
+      rowBg: '#eee', prefillColor: '#eee',
+      isFocused: false, isSelected: false, isHovered: false,
+      isHeader: true,
+      rowData: {},
+    });
+    expect(config.fg).toBe('#0d9488');
+  });
+
+  it('function-form cellStyle return value also resolves var(--cg-…) refs', () => {
+    const colDef = resolveColDef({
+      field: 'pnl',
+      cellStyle: (() => ({ fg: 'var(--cg-pos-color)' })) as any,
+    });
+    const config = makeConfig();
+    applyCellProps(config, {
+      theme: themeWithResolver({ '--cg-pos-color': '#16a34a' }),
+      colDef,
+      value: 100, valueFormatted: '100',
+      x: 0, y: 0, w: 100, h: 30,
+      rowBg: '#fff', prefillColor: '#fff',
+      isFocused: false, isSelected: false, isHovered: false, isHeader: false,
+      rowData: {},
+    });
+    expect(config.fg).toBe('#16a34a');
+  });
+
+  it('works with a ResolvedTheme that has no resolveVarRef (hand-built fixture) — no-op passthrough, no throw', () => {
+    const colDef = resolveColDef({
+      field: 'pnl',
+      cellStyle: { fg: 'var(--cg-pos-color)' } as any,
+    });
+    const config = makeConfig();
+    expect(() => applyCellProps(config, {
+      theme: makeTheme(), // no resolveVarRef field at all
+      colDef,
+      value: 100, valueFormatted: '100',
+      x: 0, y: 0, w: 100, h: 30,
+      rowBg: '#fff', prefillColor: '#fff',
+      isFocused: false, isSelected: false, isHovered: false, isHeader: false,
+      rowData: {},
+    })).not.toThrow();
+    // No resolver available — the raw var() text lands unresolved (documents
+    // the fallback behavior for legacy hand-built theme fixtures).
+    expect(config.fg).toBe('var(--cg-pos-color)');
+  });
+});
+
 // ─── valign ────────────────────────────────────────────────────────────────
 
 describe('valign', () => {

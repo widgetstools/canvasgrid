@@ -202,6 +202,56 @@ export interface ResolvedTheme {
    * Cycle 6 / Task 7.
    */
   headerClassVariants: Map<string, ColCellOverrides>;
+  /**
+   * Workstream C (2026-07-06 CSS styling model) — resolves a `var(--cg-…)`
+   * / `var(--cg-…, fallback)` / bare `--cg-…` reference embedded in a typed
+   * `cellStyle` / `headerStyle` object VALUE through this theme's resolved
+   * custom properties, so a consumer can write
+   * `cellStyle: { fg: 'var(--cg-pos-color)' }` and get the theme's token
+   * value. Any string that doesn't match the token-reference shape
+   * (literal colors, plain keywords) is returned unchanged.
+   *
+   * Memoized per unique custom-property NAME for the lifetime of this
+   * `ResolvedTheme` — `getComputedStyle` is already read once per
+   * `CssReader.read()` call (the single-scan mechanism this type
+   * documents throughout); the memo just avoids repeat
+   * `getPropertyValue` lookups for the same token across many
+   * `cellStyle` patches in one paint pass. A new `read()` (theme swap)
+   * produces a fresh `ResolvedTheme` with its own resolver closing over
+   * a fresh memo, so token changes are picked up on the next swap —
+   * never retroactively on an already-produced `ResolvedTheme`.
+   *
+   * Optional so hand-built `ResolvedTheme` test fixtures that predate
+   * Workstream C (object literals that don't populate this field)
+   * keep compiling and running unchanged; callers (`applyCellProps`)
+   * treat a missing resolver as a no-op passthrough.
+   */
+  resolveVarRef?: (value: string) => string;
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// Workstream C (2026-07-06 CSS styling model) — token-referenceable
+// cellStyle/headerStyle values.
+// ─────────────────────────────────────────────────────────────────────────
+
+const CG_VAR_REF_RE = /^var\(\s*(--cg-[a-zA-Z0-9-]+)\s*(?:,\s*([\s\S]*))?\)$/;
+const CG_BARE_TOKEN_RE = /^--cg-[a-zA-Z0-9-]+$/;
+
+/** Parse a `var(--cg-x)` / `var(--cg-x, fallback)` / bare `--cg-x` token
+ *  reference out of a `cellStyle`/`headerStyle` string value. Returns
+ *  `null` for anything else (literal colors, plain keywords) — the
+ *  resolver then passes the value through unchanged. Pure + exported for
+ *  direct unit testing independent of any DOM access. */
+export function parseCgVarRef(value: string): { name: string; fallback?: string } | null {
+  const t = value.trim();
+  const m = CG_VAR_REF_RE.exec(t);
+  if (m) {
+    const name = m[1]!;
+    const rawFallback = m[2];
+    return rawFallback !== undefined ? { name, fallback: rawFallback.trim() } : { name };
+  }
+  if (CG_BARE_TOKEN_RE.test(t)) return { name: t };
+  return null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────
@@ -656,6 +706,25 @@ export class CssReader {
 
     const { cellClassVariants, headerClassVariants } = scanVariantVariables();
 
+    // Workstream C — token resolver for typed cellStyle/headerStyle object
+    // values. `varMemo` is local to this `read()` call, so every theme
+    // swap (new `read()`) starts with a fresh, empty memo — no explicit
+    // "clear" step needed. Within one theme's lifetime, `getPropertyValue`
+    // is called at most once per unique `--cg-*` token name, regardless of
+    // how many cellStyle patches reference it across the paint pass.
+    const varMemo = new Map<string, string>();
+    const resolveVarRef = (value: string): string => {
+      const ref = parseCgVarRef(value);
+      if (!ref) return value;
+      let resolved = varMemo.get(ref.name);
+      if (resolved === undefined) {
+        resolved = cs.getPropertyValue(ref.name).trim();
+        varMemo.set(ref.name, resolved);
+      }
+      if (resolved) return resolved;
+      return ref.fallback !== undefined ? ref.fallback : value;
+    };
+
     return {
       font: `${fontSize} ${fontFamily}`,
       cellFont: `${fontSize} ${cellFontFamily}`,
@@ -729,6 +798,7 @@ export class CssReader {
       menuHoverBg: get('--cg-menu-hover-bg') || get('--cg-row-hover-bg') || '#eef1f3',
       cellClassVariants,
       headerClassVariants,
+      resolveVarRef,
     };
   }
 }

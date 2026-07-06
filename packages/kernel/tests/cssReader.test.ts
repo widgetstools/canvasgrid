@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, afterEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { CssReader } from '../src/theming/cssReader';
 
 describe('CssReader', () => {
@@ -305,5 +305,86 @@ describe('CssReader — cellClass / headerClass variant parsing', () => {
     `);
     const { cellClassVariants } = new CssReader(container).read();
     expect(cellClassVariants.get('mystery')).toEqual({ fg: '#123456' });
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────
+// Workstream C (2026-07-06 CSS styling model) — token-referenceable
+// cellStyle/headerStyle values. `resolveVarRef` resolves `var(--cg-x)` /
+// `var(--cg-x, fallback)` / bare `--cg-x` refs through this theme's
+// resolved custom properties, memoized per token for the theme's
+// lifetime (never a per-cell getComputedStyle cost).
+// ───────────────────────────────────────────────────────────────────────
+describe('CssReader — resolveVarRef (Workstream C token-referenceable cellStyle)', () => {
+  let container: HTMLElement;
+
+  beforeEach(() => {
+    container = document.createElement('div');
+    container.style.cssText = `--cg-pos-color: #16a34a;`;
+    document.body.appendChild(container);
+  });
+
+  afterEach(() => {
+    container.remove();
+  });
+
+  it('resolves var(--cg-x) to the declared token value', () => {
+    const theme = new CssReader(container).read();
+    expect(theme.resolveVarRef!('var(--cg-pos-color)')).toBe('#16a34a');
+  });
+
+  it('resolves a bare --cg-x token reference (no var() wrapper)', () => {
+    const theme = new CssReader(container).read();
+    expect(theme.resolveVarRef!('--cg-pos-color')).toBe('#16a34a');
+  });
+
+  it('falls back to the var() fallback when the token is undeclared', () => {
+    const theme = new CssReader(container).read();
+    expect(theme.resolveVarRef!('var(--cg-missing, #fff)')).toBe('#fff');
+  });
+
+  it('returns the original var() text when undeclared and no fallback given', () => {
+    const theme = new CssReader(container).read();
+    expect(theme.resolveVarRef!('var(--cg-missing)')).toBe('var(--cg-missing)');
+  });
+
+  it('leaves a literal hex color unchanged', () => {
+    const theme = new CssReader(container).read();
+    expect(theme.resolveVarRef!('#e63946')).toBe('#e63946');
+  });
+
+  it('leaves a literal rgb() color unchanged', () => {
+    const theme = new CssReader(container).read();
+    expect(theme.resolveVarRef!('rgb(230, 57, 70)')).toBe('rgb(230, 57, 70)');
+  });
+
+  it('leaves a bare non-var string unchanged', () => {
+    const theme = new CssReader(container).read();
+    expect(theme.resolveVarRef!('bold')).toBe('bold');
+  });
+
+  it('memoizes per-token lookups — repeated resolves do not re-call getPropertyValue', () => {
+    const theme = new CssReader(container).read();
+    const spy = vi.spyOn(CSSStyleDeclaration.prototype, 'getPropertyValue');
+    spy.mockClear();
+    expect(theme.resolveVarRef!('var(--cg-pos-color)')).toBe('#16a34a');
+    expect(theme.resolveVarRef!('var(--cg-pos-color)')).toBe('#16a34a');
+    expect(theme.resolveVarRef!('var(--cg-pos-color, #000)')).toBe('#16a34a');
+    expect(spy).toHaveBeenCalledTimes(1);
+    spy.mockRestore();
+  });
+
+  it('theme swap (read() called again) clears the memo — re-resolve reflects the new token value', () => {
+    const reader = new CssReader(container);
+    const themeA = reader.read();
+    expect(themeA.resolveVarRef!('var(--cg-pos-color)')).toBe('#16a34a');
+
+    container.style.cssText = `--cg-pos-color: #22c55e;`;
+    const themeB = reader.read();
+    expect(themeB.resolveVarRef!('var(--cg-pos-color)')).toBe('#22c55e');
+    // The old ResolvedTheme's own resolver closed over its own (pre-swap)
+    // memo/computed-style snapshot — it keeps reading the value valid at
+    // the time it was produced, it doesn't retroactively pick up the swap.
+    expect(themeA.resolveVarRef!('var(--cg-pos-color)')).toBe('#16a34a');
   });
 });
