@@ -33,8 +33,8 @@ describe('compileParams — foundational', () => {
   });
 });
 
-describe('compileParams — auto-derivation', () => {
-  it('emits the border-color color-mix default when borderColor is unset', () => {
+describe('compileParams — auto-derivation (dependency-gated)', () => {
+  it('emits the border-color color-mix default when borderColor is unset AND a dependency (bg/fg) is present', () => {
     const out = compileParams({ backgroundColor: '#111', foregroundColor: '#eee' });
     expect(out['--cg-border-color']).toBe(
       'color-mix(in srgb, var(--cg-fg-color) 15%, var(--cg-bg-color))'
@@ -46,27 +46,32 @@ describe('compileParams — auto-derivation', () => {
     expect(out['--cg-border-color']).toBe('#333');
   });
 
-  it('emits all seven auto-derived tokens when nothing overrides them', () => {
-    const out = compileParams({});
-    expect(out['--cg-border-color']).toBe(
-      'color-mix(in srgb, var(--cg-fg-color) 15%, var(--cg-bg-color))'
-    );
-    expect(out['--cg-grid-line-color']).toBe(
-      'color-mix(in srgb, var(--cg-fg-color) 9%, var(--cg-bg-color))'
-    );
+  it('compiles to {} for an empty params object — no derivations without a dependency present', () => {
+    expect(compileParams({})).toEqual({});
+  });
+
+  it('emits only the accent-dependent derivations when accentColor is set, not the bg/fg-only ones', () => {
+    const out = compileParams({ accentColor: '#f00' });
+
     expect(out['--cg-row-hover-bg']).toBe(
       'color-mix(in srgb, var(--cg-chrome-accent) 7%, var(--cg-bg-color))'
     );
     expect(out['--cg-row-selected-bg']).toBe(
       'color-mix(in srgb, var(--cg-chrome-accent) 12%, var(--cg-bg-color))'
     );
-    expect(out['--cg-header-bg']).toBe(
-      'color-mix(in srgb, var(--cg-fg-color) 4%, var(--cg-bg-color))'
-    );
     expect(out['--cg-range-border-color']).toBe('var(--cg-chrome-accent)');
     expect(out['--cg-range-fill-color']).toBe(
       'color-mix(in srgb, var(--cg-range-border-color) 22%, transparent)'
     );
+
+    expect(out['--cg-border-color']).toBeUndefined();
+    expect(out['--cg-grid-line-color']).toBeUndefined();
+    expect(out['--cg-header-bg']).toBeUndefined();
+  });
+
+  it('emits only the explicit token for a non-color param with no color dependencies present', () => {
+    const out = compileParams({ rowHeight: 24 });
+    expect(out).toEqual({ '--cg-row-height': '24px' });
   });
 });
 

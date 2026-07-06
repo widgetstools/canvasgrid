@@ -370,6 +370,10 @@ interface AutoDerivation {
   paramName: keyof CgThemeParams;
   token: string;
   css: string;
+  /** At least one of these params must be explicitly present in the input
+   *  `CgThemeParams` for this derivation to be emitted — otherwise the base
+   *  CSS class's own default governs (see Task 5 report / params-task5). */
+  deps: readonly (keyof CgThemeParams)[];
 }
 
 const AUTO_DERIVE: readonly AutoDerivation[] = [
@@ -377,36 +381,43 @@ const AUTO_DERIVE: readonly AutoDerivation[] = [
     paramName: 'borderColor',
     token: '--cg-border-color',
     css: 'color-mix(in srgb, var(--cg-fg-color) 15%, var(--cg-bg-color))',
+    deps: ['backgroundColor', 'foregroundColor'],
   },
   {
     paramName: 'gridLineColor',
     token: '--cg-grid-line-color',
     css: 'color-mix(in srgb, var(--cg-fg-color) 9%, var(--cg-bg-color))',
+    deps: ['backgroundColor', 'foregroundColor'],
   },
   {
     paramName: 'rowHoverColor',
     token: '--cg-row-hover-bg',
     css: 'color-mix(in srgb, var(--cg-chrome-accent) 7%, var(--cg-bg-color))',
+    deps: ['accentColor', 'backgroundColor'],
   },
   {
     paramName: 'selectedRowBackgroundColor',
     token: '--cg-row-selected-bg',
     css: 'color-mix(in srgb, var(--cg-chrome-accent) 12%, var(--cg-bg-color))',
+    deps: ['accentColor', 'backgroundColor'],
   },
   {
     paramName: 'headerBackgroundColor',
     token: '--cg-header-bg',
     css: 'color-mix(in srgb, var(--cg-fg-color) 4%, var(--cg-bg-color))',
+    deps: ['backgroundColor', 'foregroundColor'],
   },
   {
     paramName: 'rangeBorderColor',
     token: '--cg-range-border-color',
     css: 'var(--cg-chrome-accent)',
+    deps: ['accentColor'],
   },
   {
     paramName: 'rangeFillColor',
     token: '--cg-range-fill-color',
     css: 'color-mix(in srgb, var(--cg-range-border-color) 22%, transparent)',
+    deps: ['accentColor'],
   },
 ];
 
@@ -458,7 +469,15 @@ function compileRecords(params: CgThemeParams, out: Record<string, string>): voi
  *
  * Order (later overrides earlier):
  *   1. Auto-derivations for the fixed 7-token set, each emitted only when
- *      its own param is absent from `params`.
+ *      BOTH (a) its own param is absent from `params`, AND (b) at least one
+ *      of its `deps` (the foundational params its `color-mix()` formula
+ *      references) is explicitly present in `params`. Without a dependency
+ *      present there is nothing to re-derive from, so the token is omitted
+ *      entirely and the base CSS class's own default governs — this is what
+ *      makes `compileParams({})` compile to `{}` (byte-identical to a plain
+ *      class theme) while `compileParams({ accentColor: '#f00' })` still
+ *      re-tints hover/selection/range without the caller repeating those
+ *      tokens by hand.
  *   2. Explicit scalar params, in `SCALAR_PARAMS` canonical order (not
  *      object-literal key order) — this is what makes a specific override
  *      (`chipRadius`) reliably beat a general fan-out (`borderRadius`).
@@ -469,9 +488,9 @@ export function compileParams(params: CgThemeParams): Record<string, string> {
   const out: Record<string, string> = {};
 
   for (const derivation of AUTO_DERIVE) {
-    if (params[derivation.paramName] === undefined) {
-      out[derivation.token] = derivation.css;
-    }
+    if (params[derivation.paramName] !== undefined) continue;
+    const hasDep = derivation.deps.some((dep) => params[dep] !== undefined);
+    if (hasDep) out[derivation.token] = derivation.css;
   }
 
   for (const spec of SCALAR_PARAMS) {
