@@ -392,6 +392,26 @@ test('the column-group visibility control is hidden at rest and revealed on row 
   await expect(picker).toBeVisible();
 });
 
+// Column Groups can pop out of the sidebar into a floating non-modal palette
+// (the panel's live DOM is reparented into the FloatingPanelHost) and dock back.
+test('the Column Groups panel pops out into a floating palette and docks back', async ({ page }) => {
+  await openColumnGroupsTab(page);
+
+  // Pop out — the panel's DOM moves into the floating frame.
+  await page.locator('.cg-colgroups-popout').click();
+  const float = page.locator('.cg-floating-panel');
+  await expect(float).toBeVisible();
+  await expect(float.locator('.cg-colgroups-panel')).toBeVisible();
+  await expect(page.locator('.cg-floating-panel-title')).toHaveText('Column Groups');
+  // The in-panel pop-out button is redundant while floating → hidden.
+  await expect(float.locator('.cg-colgroups-popout')).toBeHidden();
+
+  // Dock — the panel returns to the sidebar and the float is gone.
+  await float.locator('.cg-floating-panel-dock').click();
+  await expect(page.locator('.cg-floating-panel')).toHaveCount(0);
+  await expect(page.locator('.cg-colgroups-panel')).toBeVisible();
+});
+
 // Cycle 21i / Task 8 — the RUNTIME open/collapse state of a column group
 // (as opposed to its authored `openByDefault`, covered by Task 6/7 above)
 // now persists too: `columnGroupOpened` (fired by `ColumnGroupState`'s

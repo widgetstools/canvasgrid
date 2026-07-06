@@ -3019,6 +3019,11 @@
   outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
   outline-offset: -1px;
 }
+/* Already floating — the pop-out button is redundant (the title bar carries
+ * Dock / Close), so hide it while the panel lives in a FloatingPanelHost. */
+.cg-floating-panel .cg-colgroups-popout {
+  display: none;
+}
 
 .cg-colgroups-empty {
   display: flex;

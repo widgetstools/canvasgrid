@@ -5284,7 +5284,9 @@ export class CGrid<TRow = any> {
     }
     const detached = this.sideBar.detachActivePanel();
     if (!detached) return;
-    const title = this.resolveToolPanelTitle(id);
+    // Title from the ACTUAL detached slot id (e.g. 'agColumnGroupsToolPanel'),
+    // not the caller's shortcut ('columnGroups') which may not key a slot.
+    const title = this.resolveToolPanelTitle(detached.id);
     const host = this.getFloatingPanelHost();
     const body = host.open({
       title,
@@ -5327,11 +5329,7 @@ export class CGrid<TRow = any> {
    *  when the panel isn't found (defensive — shouldn't happen since
    *  `popOutToolPanel` only reaches here after a successful detach). */
   private resolveToolPanelTitle(id: string): string {
-    const toolPanels = this.sideBar?.getSideBarDef().toolPanels ?? [];
-    for (const entry of toolPanels) {
-      if (typeof entry !== 'string' && entry.id === id) return entry.labelDefault;
-    }
-    return id;
+    return this.sideBar?.getPanelLabel(id) ?? id;
   }
 
   /** Cycle 11 / Task 6 — the resolved `SideBarDef` (string shortcuts
