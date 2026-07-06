@@ -126,7 +126,7 @@ const grid = new CGrid<Position>(gridHost, {
   persistState: true,
   getRowId: (r) => r.positionId,
   columnDefs,
-  theme: dark ? 'cg-theme-starui-dark' : 'cg-theme-starui',
+  theme: dark ? 'cg-theme-perspective-dark' : 'cg-theme-perspective',
   // editable: true so the testbed can exercise the edit trigger (single /
   // double click) out of the box; group / totals / pivot cells stay
   // read-only via the editable predicate.
@@ -165,7 +165,7 @@ const { rules } = wireRules(grid);
 function applyTheme() {
   appEl.dataset.theme = dark ? 'dark' : 'light';
   themeBtn.textContent = dark ? 'Light theme' : 'Dark theme';
-  grid.setGridOption('theme', dark ? 'cg-theme-starui-dark' : 'cg-theme-starui');
+  grid.setGridOption('theme', dark ? 'cg-theme-perspective-dark' : 'cg-theme-perspective');
   localStorage.setItem('custdemo:theme', dark ? 'dark' : 'light');
 }
 applyTheme();

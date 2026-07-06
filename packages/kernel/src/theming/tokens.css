@@ -5,13 +5,17 @@
 .cg-theme-quartz,
 .cg-theme-quartz-dark,
 .cg-theme-starui,
-.cg-theme-starui-dark {
+.cg-theme-starui-dark,
+.cg-theme-perspective,
+.cg-theme-perspective-dark {
   background-color: var(--cg-bg-color);
 }
 .cg-theme-quartz .cg-canvas,
 .cg-theme-quartz-dark .cg-canvas,
 .cg-theme-starui .cg-canvas,
-.cg-theme-starui-dark .cg-canvas {
+.cg-theme-starui-dark .cg-canvas,
+.cg-theme-perspective .cg-canvas,
+.cg-theme-perspective-dark .cg-canvas {
   background-color: var(--cg-bg-color);
 }
 
@@ -264,6 +268,161 @@
   --cg-menu-hover-bg: var(--cg-row-hover-bg);
   /* Cycle 22 / Task 2 — density baseline. Overridden per density class. */
   --cg-cell-padding-x: 8px;
+}
+
+/* ==========================================================================
+ * Perspective theme — a Perspective-inspired (FINOS) look & feel: near-black
+ * high-contrast canvas, ALL-monospace technical typography, dense rows,
+ * hairline separators, muted header labels, cool-blue selection + blue tick
+ * flash. `--cg-pos-color` / `--cg-neg-color` (blue / salmon) are reserved for a
+ * later surface (sign-driven numbers / data bars / heatmap) — declared here so
+ * the palette is one system. Additive: quartz + starui are untouched.
+ * ========================================================================== */
+.cg-theme-perspective-dark {
+  color-scheme: dark;
+  /* All-mono: headers/chrome share the data mono stack (Perspective is fully
+   * monospace, unlike quartz/starui which use Inter for chrome). */
+  --cg-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
+  --cg-cell-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
+  --cg-font-size: 12px;
+  --cg-font-size-sm: 11px;
+  --cg-row-height: 24px;
+  --cg-header-height: 40px;
+  --cg-fg-color: #c3c9d1;
+  --cg-bg-color: #16181d;
+  --cg-row-alt-bg: #16181d;
+  --cg-header-bg: #16181d;
+  --cg-header-fg: #8a93a0;
+  --cg-border-color: #2a2f37;
+  --cg-grid-line-color: #24272e;
+  --cg-row-hover-bg: rgba(255, 255, 255, 0.03);
+  --cg-row-selected-bg: rgb(96 150 220 / 16%);
+  --cg-chrome-accent: #6f7c8c;
+  --cg-focus-ring-color: var(--cg-chrome-accent);
+  --cg-focus-ring-width: 2px;
+  --cg-editor-invalid-color: #e0876a;
+  --cg-flash-from-color: rgba(96, 150, 220, 0.30);
+  --cg-flash-to-color: rgba(96, 150, 220, 0);
+  --cg-resizer-hot-zone: 4px;
+  --cg-scrollbar-thickness: 8px;
+  --cg-floating-filter-bg: color-mix(in srgb, var(--cg-header-bg) 60%, transparent);
+  --cg-floating-filter-border: var(--cg-border-color);
+  --cg-floating-filter-placeholder: #565e6a;
+  --cg-quick-filter-match-bg: #2a3550;
+  --cg-unsort-icon-color: rgba(195, 201, 209, 0.35);
+  --cg-range-fill-color: rgb(96 150 220 / 18%);
+  --cg-range-border-color: #6aa9e0;
+  --cg-totals-bg: #191c22;
+  --cg-totals-fg: #c3c9d1;
+  --cg-totals-border-top: #2a2f37;
+  --cg-totals-fg-muted: #7a828e;
+  --cg-totals-font-weight: 500;
+  --cg-pinned-row-bg: #191c22;
+  --cg-pinned-row-fg: var(--cg-fg-color);
+  --cg-pinned-row-border: var(--cg-totals-border-top);
+  --cg-group-chevron-color: var(--cg-totals-fg-muted);
+  --cg-group-count-color: var(--cg-totals-fg-muted);
+  --cg-group-indent: 14px;
+  --cg-group-row-bg: #191c22;
+  --cg-group-checkbox-border-color: var(--cg-fg-color);
+  --cg-group-checkbox-check-color: var(--cg-fg-color);
+  --cg-group-checkbox-indeterminate-color: var(--cg-fg-color);
+  --cg-group-checkbox-fill: transparent;
+  --cg-group-footer-bg: var(--cg-totals-bg);
+  --cg-group-footer-fg: var(--cg-totals-fg);
+  --cg-group-footer-border-top: var(--cg-totals-border-top);
+  --cg-group-footer-font-weight: var(--cg-totals-font-weight);
+  --cg-input-bg: #1c2028;
+  --cg-input-fg: var(--cg-fg-color);
+  --cg-input-border: var(--cg-border-color);
+  --cg-input-focus-border: var(--cg-focus-ring-color);
+  --cg-input-disabled-bg: #16181d;
+  --cg-tooltip-bg: rgba(25, 28, 34, 0.97);
+  --cg-tooltip-fg: #e6e9ee;
+  --cg-tooltip-border: rgba(255, 255, 255, 0.08);
+  --cg-checkbox-checked-bg: transparent;
+  --cg-checkbox-checked-fg: var(--cg-fg-color);
+  --cg-cell-horizontal-border-color: transparent;
+  --cg-popup-bg: #191c22;
+  --cg-popup-border: var(--cg-border-color);
+  --cg-menu-hover-bg: var(--cg-row-hover-bg);
+  --cg-cell-padding-x: 8px;
+  /* Reserved for surface #3 (sign-driven numbers / data bars / heatmap). */
+  --cg-pos-color: #6aa9e0;
+  --cg-neg-color: #e0876a;
+}
+
+.cg-theme-perspective {
+  /* Light inversion — paper canvas, ink text; same mono type + density +
+   * blue/salmon accents (deepened for light-bg contrast). */
+  color-scheme: light;
+  --cg-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
+  --cg-cell-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
+  --cg-font-size: 12px;
+  --cg-font-size-sm: 11px;
+  --cg-row-height: 24px;
+  --cg-header-height: 40px;
+  --cg-fg-color: #1a1f28;
+  --cg-bg-color: #ffffff;
+  --cg-row-alt-bg: #ffffff;
+  --cg-header-bg: #ffffff;
+  --cg-header-fg: #5b6672;
+  --cg-border-color: #dfe3e8;
+  --cg-grid-line-color: #eceef1;
+  --cg-row-hover-bg: rgba(0, 0, 0, 0.03);
+  --cg-row-selected-bg: rgb(56 132 195 / 14%);
+  --cg-chrome-accent: #6b7683;
+  --cg-focus-ring-color: var(--cg-chrome-accent);
+  --cg-focus-ring-width: 2px;
+  --cg-editor-invalid-color: #c96a4a;
+  --cg-flash-from-color: rgba(56, 132, 195, 0.22);
+  --cg-flash-to-color: rgba(56, 132, 195, 0);
+  --cg-resizer-hot-zone: 4px;
+  --cg-scrollbar-thickness: 8px;
+  --cg-floating-filter-bg: #ffffff;
+  --cg-floating-filter-border: var(--cg-border-color);
+  --cg-floating-filter-placeholder: #9aa3ae;
+  --cg-quick-filter-match-bg: #d7e6f5;
+  --cg-unsort-icon-color: rgba(26, 31, 40, 0.35);
+  --cg-range-fill-color: rgb(56 132 195 / 16%);
+  --cg-range-border-color: #2f7bc4;
+  --cg-totals-bg: #f6f8fa;
+  --cg-totals-fg: #1a1f28;
+  --cg-totals-border-top: #dfe3e8;
+  --cg-totals-fg-muted: #6b7683;
+  --cg-totals-font-weight: 500;
+  --cg-pinned-row-bg: #f6f8fa;
+  --cg-pinned-row-fg: var(--cg-fg-color);
+  --cg-pinned-row-border: var(--cg-totals-border-top);
+  --cg-group-chevron-color: var(--cg-totals-fg-muted);
+  --cg-group-count-color: var(--cg-totals-fg-muted);
+  --cg-group-indent: 14px;
+  --cg-group-row-bg: #f6f8fa;
+  --cg-group-checkbox-border-color: var(--cg-fg-color);
+  --cg-group-checkbox-check-color: var(--cg-fg-color);
+  --cg-group-checkbox-indeterminate-color: var(--cg-fg-color);
+  --cg-group-checkbox-fill: transparent;
+  --cg-group-footer-bg: var(--cg-totals-bg);
+  --cg-group-footer-fg: var(--cg-totals-fg);
+  --cg-group-footer-border-top: var(--cg-totals-border-top);
+  --cg-group-footer-font-weight: var(--cg-totals-font-weight);
+  --cg-input-bg: #ffffff;
+  --cg-input-fg: var(--cg-fg-color);
+  --cg-input-border: var(--cg-border-color);
+  --cg-input-focus-border: var(--cg-focus-ring-color);
+  --cg-input-disabled-bg: #f6f8fa;
+  --cg-tooltip-bg: rgba(26, 31, 40, 0.96);
+  --cg-tooltip-fg: #f8fafc;
+  --cg-tooltip-border: rgba(255, 255, 255, 0.10);
+  --cg-checkbox-checked-bg: transparent;
+  --cg-checkbox-checked-fg: var(--cg-fg-color);
+  --cg-cell-horizontal-border-color: transparent;
+  --cg-popup-bg: #ffffff;
+  --cg-popup-border: var(--cg-border-color);
+  --cg-menu-hover-bg: var(--cg-row-hover-bg);
+  --cg-cell-padding-x: 8px;
+  --cg-pos-color: #2f7bc4;
+  --cg-neg-color: #c96a4a;
 }
 
 /* ==========================================================================
