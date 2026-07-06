@@ -120,6 +120,14 @@ import {
   getThemeParams as themeParamsGet,
   clearThemeParams as themeParamsClear,
 } from './theming/themeParams';
+// Theming Task 6/7 — programmatic `CgTheme` object DOM integration.
+// `CgTheme` is imported as a VALUE (not just a type) for the
+// `theme instanceof CgTheme` branch in `applyThemeOption`/`setTheme`. The
+// rest of the module's public surface (`createTheme`, `themeQuartz`,
+// `themeStarui`, `baseTheme`, and the param/value types) is re-exported
+// below directly from `./theming/theme` — no local binding needed since
+// this file never constructs/inspects them itself.
+import { CgTheme, type ThemeMode } from './theming/theme';
 import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell, type CellPainter } from './renderer/cellRenderers/registry';
 import { wrapTextCell } from './renderer/cellRenderers/wrapText';
 import { totalsCell } from './renderer/cellRenderers/totals';
@@ -165,7 +173,7 @@ import {
   type CalcProviderShape,
 } from './core/calcSlot';
 import { buildFormatEvalCtx } from './core/formatEvalMemo';
-import { resolveThemeKind } from './theming/themeKind';
+import { resolveThemeKind, isDarkColor } from './theming/themeKind';
 import {
   registerIconSet as regIcons,
   resolveIcon as resIcon,
@@ -224,6 +232,25 @@ export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/regi
 // type, so @cgrid/renderers (and follow-on structured-map work) can name
 // the shape of `CellPaintConfig.palette` directly.
 export type { RendererPalette } from './theming/cssReader';
+// Theming Task 6/7 — programmatic `CgTheme` object public surface. `CgTheme`
+// + `createTheme` are re-exported as VALUES (a consumer builds themes with
+// `themeQuartz.withParams(...)`, or starts from `createTheme()`); the rest
+// are types describing the param vocabulary + compiled shape. See
+// `theming/theme/index.ts` for the full internal barrel.
+export { CgTheme, createTheme, themeQuartz, themeStarui, baseTheme } from './theming/theme';
+export type {
+  ThemeMode,
+  BaseClassPair,
+  CompiledTheme,
+  Part,
+  CgThemeParams,
+  StatusColorEntry,
+  ColorValue,
+  LengthValue,
+  BorderValue,
+  FontFamilyValue,
+  FontWeightValue,
+} from './theming/theme';
 // Cycle 23 / Tasks 5-6 — state-snapshot public types.
 export type { GridState } from './core/stateSnapshot';
 export { STATE_SCHEMA_VERSION } from './core/stateSnapshot';
@@ -578,6 +605,45 @@ export function defaultFillExtrapolate(sourceValues: unknown[], targetIndex: num
   return sourceValues[targetIndex % sourceValues.length];
 }
 
+/**
+ * Theming Task 6/7 — resolve which mode (`'light'|'dark'`) a `CgTheme`
+ * should compile against when it's applied (construction, `setTheme`
+ * swap, or the `prefers-color-scheme` listener re-evaluating). Priority:
+ *
+ *  1. An explicit `data-cg-theme-mode="light"|"dark"` attribute on
+ *     `probeHost` or any of its ancestors (`probeHost.closest(...)`) — an
+ *     app-level override always wins over everything below.
+ *  2. The theme's OWN declared background: `theme.compile('light')` is
+ *     used purely as a probe (a `base`-layer `backgroundColor` applies to
+ *     both modes identically, so probing with `'light'` is harmless) — if
+ *     it declares `--cg-bg-color`, `isDarkColor` on that value decides.
+ *     This lets a theme built with e.g. `themeQuartz.withParams({
+ *     backgroundColor: '#111827' })` self-select dark without the app
+ *     needing to say so explicitly.
+ *  3. The OS `prefers-color-scheme` media query.
+ *  4. Default `'light'`.
+ *
+ * `probeHost` is intentionally a parameter rather than always `this.root`:
+ * at construction time `this.root` hasn't been appended into the app's
+ * container yet, so an ancestor lookup from `this.root` would miss a
+ * `data-cg-theme-mode` attribute the app set on (or above) that container.
+ * Callers pass `container` at construction and `this.root` (already
+ * attached by then) for every later swap.
+ */
+function pickThemeMode(probeHost: Element, theme: CgTheme): ThemeMode {
+  const withAttr = probeHost.closest('[data-cg-theme-mode]');
+  const attr = withAttr?.getAttribute('data-cg-theme-mode');
+  if (attr === 'light' || attr === 'dark') return attr;
+
+  const probeBg = theme.compile('light').vars['--cg-bg-color'];
+  if (probeBg) return isDarkColor(probeBg) ? 'dark' : 'light';
+
+  if (typeof window !== 'undefined' && typeof window.matchMedia === 'function') {
+    return window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  return 'light';
+}
+
 export class CGrid<TRow = any> {
   private events = new TypedEventEmitter<CGridEvent<TRow>>();
   /** Cycle 21i Phase 2 / T2 — named, versioned engine-state slices that
@@ -641,6 +707,32 @@ export class CGrid<TRow = any> {
   private columnOrder: ResolvedColDef<TRow>[] = [];
   private columnLayout: ColumnLayout[] = [];
   private theme: ResolvedTheme;
+  /** Theming Task 6/7 — the active programmatic `CgTheme`, when
+   *  `options.theme` (or a `setTheme`/`setGridOption('theme', …)` swap) was
+   *  given an object rather than a plain CSS class string. `undefined` for
+   *  the (still 100%-backward-compatible) string/`undefined` theme path. */
+  private themeObject: CgTheme | undefined;
+  /** Theming Task 6/7 — the `--cg-*` KEYS the active `themeObject` injected
+   *  onto `this.root` (via the low-level `themeParamsSet`, NOT
+   *  `this.setThemeParams`). Tracked separately from user-set overrides
+   *  (which share the same underlying inline-style/WeakMap state via
+   *  `theming/themeParams.ts`) so `getThemeParams()` can report ONLY user
+   *  edits, and a swap/mode-change can blank exactly the object's own vars
+   *  without touching anything the app set through the public API. */
+  private themeObjectVars: Set<string> = new Set();
+  /** Theming Task 6/7 — the `<style>` element holding the active
+   *  `themeObject`'s compiled `Part` CSS (`compile(mode).css`), when any is
+   *  present. `null` when no active part contributes CSS. */
+  private themeObjectStyleEl: HTMLStyleElement | null = null;
+  /** Theming Task 6/7 — the live `prefers-color-scheme` query + its
+   *  handler, installed only while an object theme is active AND no
+   *  `data-cg-theme-mode` attribute overrides the mode. Not routed through
+   *  `DisposableRegistry` (which has no per-item removal) because it must
+   *  be torn down and reinstalled independently on every theme swap /
+   *  `setThemeMode` call — a single `disposables.add` in the constructor
+   *  covers final teardown at `destroy()`. */
+  private themeModeQuery: MediaQueryList | null = null;
+  private themeModeQueryHandler: ((e: MediaQueryListEvent) => void) | null = null;
   /** Cycle 19 / Task 2 — viewport subsystem: scroll state, the native
    *  scroll listener, `recompute` / `request` entry points, prefetch-range
    *  expansion, and the `setScroll` / `ensure*Visible` helpers. CGrid keeps
@@ -933,7 +1025,20 @@ export class CGrid<TRow = any> {
     // chrome layer their own class alongside it; the theme class then
     // contributes the token bundle.
     this.root.classList.add('cg-grid');
-    this.root.classList.add(options.theme ?? 'cg-theme-quartz');
+    // Theming Task 6/7 — `applyThemeOption` MUST run before the first
+    // `CssReader.read()` below (step 2) so the initial `ResolvedTheme`
+    // picks up any object-theme's injected `--cg-*` vars. `container` (not
+    // `this.root`) is the probe host for `data-cg-theme-mode` lookup: at
+    // this point `this.root` hasn't been appended into `container` yet
+    // (that happens further down), so `this.root.closest(...)` couldn't see
+    // an ancestor attribute — `container` is already wherever the app put
+    // it, so it can.
+    this.applyThemeOption(options.theme, container);
+    // Theming Task 6/7 — final teardown of the OS `prefers-color-scheme`
+    // listener (if any is ever installed) at grid destroy. Registered once
+    // here; `refreshThemeModeListener` swaps the listener in place on every
+    // theme change without touching this registration.
+    this.disposables.add(() => this.teardownThemeModeListener());
     // Cycle 22 / Task 2 — density class on the root. Applied here so
     // `--cg-row-height` / `--cg-header-height` / `--cg-cell-padding-x`
     // resolve to the density-bundle's overrides before the first
@@ -5545,17 +5650,159 @@ export class CGrid<TRow = any> {
 
   /** Cycle 22 / Task 3 — read the currently-set inline overrides. Returns
    *  ONLY the values set through `setThemeParams` — NOT the resolved
-   *  tokens (call `getComputedStyle(grid.host)` for those). */
+   *  tokens (call `getComputedStyle(grid.host)` for those). Theming Task
+   *  6/7 — also excludes any `--cg-*` keys the active `themeObject`
+   *  injected (`this.themeObjectVars`), even though both share the same
+   *  underlying inline-style state, so an object theme's own derived vars
+   *  never masquerade as user overrides. */
   getThemeParams(): Record<string, string> {
-    return themeParamsGet(this.root);
+    const raw = themeParamsGet(this.root);
+    if (this.themeObjectVars.size === 0) return raw;
+    const out: Record<string, string> = {};
+    for (const [key, value] of Object.entries(raw)) {
+      if (!this.themeObjectVars.has(key)) out[key] = value;
+    }
+    return out;
   }
 
-  setTheme(themeClass: string): void {
+  /** Theming Task 6/7 — inject a `CgTheme`'s compiled `mode` output onto
+   *  `this.root`: the structural base class (`theme.baseClass[mode]`), its
+   *  `--cg-*` vars (via the LOW-LEVEL `themeParamsSet` — NOT
+   *  `this.setThemeParams`, which also dirties the user `themeParams`
+   *  GridState slice; object-derived vars must never persist as a user
+   *  override), and any part-contributed CSS as a scoped `<style>`. Records
+   *  `this.themeObject` + `this.themeObjectVars` for later blanking. Callers
+   *  are responsible for having already removed any PRIOR theme's class +
+   *  vars (`clearThemeObjectInjection` + the `cg-theme-*` strip in
+   *  `setTheme`). */
+  private injectThemeObject(theme: CgTheme, mode: ThemeMode): void {
+    this.root.classList.add(theme.baseClass[mode]);
+    const compiled = theme.compile(mode);
+    themeParamsSet(this.root, compiled.vars);
+    this.themeObjectVars = new Set(Object.keys(compiled.vars));
+    if (compiled.css) {
+      const styleEl = document.createElement('style');
+      styleEl.className = 'cg-theme-object-css';
+      styleEl.textContent = compiled.css;
+      this.root.appendChild(styleEl);
+      this.themeObjectStyleEl = styleEl;
+    }
+    this.themeObject = theme;
+  }
+
+  /** Theming Task 6/7 — blank every `--cg-*` var the active `themeObject`
+   *  injected (pass `''` through the low-level `setThemeParams`, which
+   *  REMOVES the inline override — see `theming/themeParams.ts`) and
+   *  remove its part-CSS `<style>` element, if any. Does NOT touch
+   *  `this.themeObject` itself or the base class — callers do that
+   *  separately (a swap replaces both; `setThemeMode` re-adds a different
+   *  base class right after calling this). */
+  private clearThemeObjectInjection(): void {
+    if (this.themeObjectVars.size > 0) {
+      const blank: Record<string, string> = {};
+      for (const key of this.themeObjectVars) blank[key] = '';
+      themeParamsSet(this.root, blank);
+    }
+    this.themeObjectVars = new Set();
+    if (this.themeObjectStyleEl) {
+      this.themeObjectStyleEl.remove();
+      this.themeObjectStyleEl = null;
+    }
+  }
+
+  /** Theming Task 6/7 — apply `theme` (construction or after `setTheme` has
+   *  already stripped any prior `cg-theme-*` class) to `this.root`:
+   *  `string | undefined` adds the class verbatim (100% backward-compatible
+   *  legacy path, unchanged since before this feature); a `CgTheme` picks
+   *  its mode (`pickThemeMode`), injects it (`injectThemeObject`), and
+   *  (re)installs the `prefers-color-scheme` listener as appropriate. */
+  private applyThemeOption(theme: string | CgTheme | undefined, probeHost: Element): void {
+    if (theme instanceof CgTheme) {
+      const mode = pickThemeMode(probeHost, theme);
+      this.injectThemeObject(theme, mode);
+    } else {
+      this.root.classList.add(theme ?? 'cg-theme-quartz');
+      this.themeObject = undefined;
+    }
+    this.refreshThemeModeListener(probeHost);
+  }
+
+  /** Theming Task 6/7 — remove the live `prefers-color-scheme` listener
+   *  (if one is installed). Safe to call unconditionally / repeatedly. */
+  private teardownThemeModeListener(): void {
+    if (this.themeModeQuery && this.themeModeQueryHandler) {
+      this.themeModeQuery.removeEventListener('change', this.themeModeQueryHandler);
+    }
+    this.themeModeQuery = null;
+    this.themeModeQueryHandler = null;
+  }
+
+  /** Theming Task 6/7 — (re)install the OS `prefers-color-scheme` listener
+   *  for the CURRENTLY active `themeObject`, or ensure none is installed
+   *  (string theme, or an explicit `data-cg-theme-mode` override present —
+   *  an app-level override should not be fought by OS changes). Always
+   *  tears down any previous listener first so repeated calls (every theme
+   *  swap) never leak a stale registration. */
+  private refreshThemeModeListener(probeHost: Element): void {
+    this.teardownThemeModeListener();
+    if (!this.themeObject) return;
+    const withAttr = probeHost.closest('[data-cg-theme-mode]');
+    const attr = withAttr?.getAttribute('data-cg-theme-mode');
+    if (attr === 'light' || attr === 'dark') return;
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return;
+    const mql = window.matchMedia('(prefers-color-scheme: dark)');
+    const handler = (e: MediaQueryListEvent): void => {
+      if (!this.themeObject) return;
+      this.applyThemeModeSwap(e.matches ? 'dark' : 'light');
+    };
+    mql.addEventListener('change', handler);
+    this.themeModeQuery = mql;
+    this.themeModeQueryHandler = handler;
+  }
+
+  /** Theming Task 6/7 — shared re-apply used by both the imperative
+   *  `setThemeMode` and the OS listener installed by
+   *  `refreshThemeModeListener`: swap the active `themeObject`'s base class
+   *  + injected vars/css to `mode`, re-read the theme, and repaint. No-op
+   *  (the caller guards) when no `themeObject` is active. */
+  private applyThemeModeSwap(mode: ThemeMode): void {
+    const theme = this.themeObject;
+    if (!theme) return;
+    this.root.classList.remove(theme.baseClass.light, theme.baseClass.dark);
+    this.clearThemeObjectInjection();
+    this.injectThemeObject(theme, mode);
+    this.theme = this.cssReader.read();
+    this.recomputeViewport();
+    this.cgridCanvas.requestRepaint();
+  }
+
+  /** Theming Task 6/7 — imperatively force the active `themeObject` to
+   *  `mode` (bypassing `pickThemeMode`'s attribute/OS inference — this IS
+   *  the explicit override). No-op for the string/`undefined` theme path
+   *  (there is no mode to pick for a plain CSS class). Does not touch the
+   *  `prefers-color-scheme` listener: without a `data-cg-theme-mode`
+   *  attribute, a later OS change still takes over, matching
+   *  `pickThemeMode`'s own precedence. */
+  setThemeMode(mode: ThemeMode): void {
+    if (!this.themeObject) return;
+    this.applyThemeModeSwap(mode);
+  }
+
+  /** `theme` overload: a plain CSS class name (unchanged legacy path) or a
+   *  programmatic `CgTheme`. For a `CgTheme`, blanks the PRIOR object's
+   *  vars/css (if any — swapping object→object or object→string) before
+   *  stripping the existing `cg-theme-*` class(es) and applying the new
+   *  theme via the same `applyThemeOption` construction uses. */
+  setTheme(theme: string | CgTheme): void {
+    if (this.themeObject) {
+      this.clearThemeObjectInjection();
+      this.themeObject = undefined;
+    }
     const current = Array.from(this.root.classList).filter((c) => c.startsWith('cg-theme-'));
     current.forEach((c) => this.root.classList.remove(c));
-    this.root.classList.add(themeClass);
+    this.applyThemeOption(theme, this.root);
     this.theme = this.cssReader.read();
-    this.options.theme = themeClass;
+    this.options.theme = theme;
     this.recomputeViewport();
     this.cgridCanvas.requestRepaint();
   }
@@ -6239,6 +6486,7 @@ export class CGrid<TRow = any> {
       setFocusedCell: (r, c) => this.setFocusedCell(r, c),
       refresh: () => this.refresh(),
       setTheme: (t) => this.setTheme(t),
+      setThemeMode: (m) => this.setThemeMode(m),
       destroy: () => this.destroy(),
       getColumnGroupState: () => this.columnGroupState.getState(),
       setColumnGroupState: (s) => { this.columnGroupState.apply(s); },
