@@ -1341,6 +1341,11 @@
   font-family: var(--cg-font-family);
   font-size: var(--cg-font-size);
   overflow: hidden;
+  /* T3 — group-aware row drag: accept/reject accents, same vocabulary
+   * (accent + amber) as `.cg-pivot-panel-drop-border[-reject]` /
+   * `.cg-row-group-panel-drop-border[-reject]`. */
+  --cg-columns-panel-drop-border: var(--cg-focus-ring-color);
+  --cg-columns-panel-drop-border-reject: #f59e0b;
 }
 .cg-columns-panel-pivot-mode {
   display: flex;
@@ -1464,7 +1469,14 @@
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 10px;
+  /* Cycle: columns-panel hierarchy (T2) — `--cg-indent` is set per-row
+   * (group depth, 0 = top level) so nested group children step in by one
+   * caret-width (16px) per level. Unset (flat / top-level rows) falls
+   * back to 0 — identical to the pre-hierarchy 8px inset either side of
+   * the removed `10px` shorthand's difference is intentional: it leaves
+   * room for the caret glyph at depth 0 without a layout jump when a
+   * group is introduced. */
+  padding: 7px 10px 7px calc(8px + var(--cg-indent, 0) * 16px);
   margin: 1px 6px;
   border-radius: var(--cg-radius, 6px);
   cursor: pointer;
@@ -1477,6 +1489,64 @@
   /* Row is "in the air" — keep its DOM slot so layout doesn't shift, but
    * hide the row itself so there's no double-render with the ghost. */
   visibility: hidden;
+}
+/* T3 — group-aware drag: highlight on the GROUP row a leaf/group is
+ * about to land in. Reject-tinted when the dry-run predicts the move
+ * will be rejected (e.g. a `marryChildren` guard). Same accept/reject
+ * vocabulary as `.cg-colgroups-row[data-drop]`. */
+.cg-columns-panel-row--drop-target {
+  box-shadow: inset 0 0 0 2px var(--cg-columns-panel-drop-border);
+}
+.cg-columns-panel-row--drop-reject {
+  box-shadow: inset 0 0 0 2px var(--cg-columns-panel-drop-border-reject);
+}
+/* T3 — insertion line: a 2px horizontal bar showing exactly where the
+ * dragged row/group will land, fixed-positioned (appended to the theme
+ * host, same as `.cg-col-drag-ghost`) so it tracks the pointer's target
+ * row regardless of the list's own scroll position. */
+.cg-columns-panel-drop-line {
+  position: fixed;
+  height: 2px;
+  background: var(--cg-columns-panel-drop-border);
+  pointer-events: none;
+  border-radius: 1px;
+  z-index: 2147483600;
+}
+/* Group row — bold label reads as a section heading among its (lighter)
+ * leaf children. */
+.cg-columns-panel-row--group .cg-columns-panel-row-label {
+  font-weight: 600;
+}
+/* Expand/collapse caret — triangle glyph, identical construction to
+ * `.cg-colgroups-chevron` (one visual family for "group disclosure"
+ * across the columns panel + the column-groups authoring panel). Sits
+ * before the checkbox per the columns-panel row order (caret → label →
+ * checkbox). */
+.cg-columns-panel-row-caret {
+  flex: 0 0 auto;
+  width: 0;
+  height: 0;
+  padding: 0;
+  margin: 0;
+  border: none;
+  border-left: 5px solid transparent;
+  border-right: 5px solid transparent;
+  border-top: 6px solid currentColor;
+  background: transparent;
+  opacity: 0.7;
+  cursor: pointer;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cg-columns-panel-row-caret {
+    transition: transform 120ms ease;
+  }
+}
+.cg-columns-panel-row-caret[aria-expanded="false"] {
+  transform: rotate(-90deg);
+}
+.cg-columns-panel-row-caret:focus-visible {
+  outline: var(--cg-focus-ring-width, 2px) solid var(--cg-focus-ring-color);
+  outline-offset: 2px;
 }
 /* Unified drag-grip — one glyph shared by the column-list rows, all zone
  * pills (row groups / values / column labels), and the top row-group +
@@ -1561,12 +1631,18 @@
   outline: 2px solid var(--cg-focus-ring-color);
   outline-offset: 1px;
 }
-/* Indeterminate select-all (some columns hidden) — a centered dash. */
-.cg-columns-panel-select-all:indeterminate {
+/* Indeterminate select-all / group tri-state (some — not all — descendants
+ * hidden) — a centered dash. Shared by the "Select all" checkbox AND every
+ * group row's checkbox (`.cg-columns-panel-row-checkbox` on a group row is
+ * the same element, just driven by `computeGroupChecked` instead of the
+ * global select-all count). */
+.cg-columns-panel-select-all:indeterminate,
+.cg-columns-panel-row-checkbox:indeterminate {
   background: var(--cg-chrome-accent, var(--cg-fg-color));
   border-color: var(--cg-chrome-accent, var(--cg-fg-color));
 }
-.cg-columns-panel-select-all:indeterminate::after {
+.cg-columns-panel-select-all:indeterminate::after,
+.cg-columns-panel-row-checkbox:indeterminate::after {
   content: '';
   position: absolute;
   /* Center on the box regardless of box-sizing / border width — the box is

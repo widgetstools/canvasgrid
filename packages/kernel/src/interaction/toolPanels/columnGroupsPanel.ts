@@ -24,6 +24,7 @@ import {
 import type { CGridApi } from '../../types';
 import { ColorPickerControl } from '../settingsForm/colorPicker';
 import type { BorderSpec, BorderStyle } from '../../types/cell';
+import { cloneDefsTree } from '../../core/columnTree';
 
 type NodeKind = Node['kind'];
 
@@ -1067,27 +1068,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     if (!resolved || !canDrop(this.nodes, drag.id, resolved.parentId)) return;
     this.mutate((ns) => moveNode(ns, drag.id, resolved.parentId, resolved.order));
   }
-}
-
-/**
- * `structuredClone` throws on function-valued fields — and `CColDef`
- * legitimately carries them (`valueFormatter`, `cellRenderer`,
- * `valueGetter`, `comparator`, …; see `getColumnGroupDefs()`, which just
- * returns the live `columnDefs`). This clones plain objects/arrays deeply
- * (so the panel's working model never shares a mutable array/object with
- * the live grid state) while passing functions and other non-plain-object
- * values through by reference — safe because every mutation path in
- * `columnGroups/model.ts` replaces objects wholesale (spread/patch) rather
- * than mutating `n.def` in place (see `project()`'s `{ ...n.def }`).
- */
-function cloneDefsTree<T>(value: T): T {
-  if (Array.isArray(value)) return value.map((v) => cloneDefsTree(v)) as unknown as T;
-  if (value !== null && typeof value === 'object' && value.constructor === Object) {
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = cloneDefsTree(v);
-    return out as T;
-  }
-  return value; // functions, class instances, primitives — pass through unchanged
 }
 
 function el(tag: string, cls: string): HTMLElement { const e = document.createElement(tag); e.className = cls; return e; }

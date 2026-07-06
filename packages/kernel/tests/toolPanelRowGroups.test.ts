@@ -24,8 +24,11 @@ import type { ToolPanelParams } from '../src/interaction/toolPanels/types';
 
 interface MockApi {
   getColumnState: () => CColumnState[];
+  getColumnGroupDefs: () => { colId: string }[];
   setColumnsVisible: ReturnType<typeof vi.fn>;
   moveColumns: ReturnType<typeof vi.fn>;
+  moveColumnToGroup: ReturnType<typeof vi.fn>;
+  moveColumnGroup: ReturnType<typeof vi.fn>;
   getColumnHeaderName: (colId: string) => string | undefined;
   isColumnRowGroupEnabled: (colId: string) => boolean;
   getRowGroupColumns: () => string[];
@@ -70,6 +73,10 @@ function makeApi(initial?: Partial<{
 
   const api: MockApi = {
     getColumnState: () => state.map((s) => ({ ...s })),
+    // T2 — flat leaf defs (no groups) matching current colIds; the
+    // panel reads this once at construction, so it doesn't need to
+    // track later visibility/order mutations.
+    getColumnGroupDefs: () => state.map((s) => ({ colId: s.colId })),
     setColumnsVisible: vi.fn((keys: string[], visible: boolean) => {
       state = state.map((s) => (keys.includes(s.colId) ? { ...s, hide: !visible } : s));
     }),
@@ -79,6 +86,12 @@ function makeApi(initial?: Partial<{
       rest.splice(toIndex, 0, ...moving);
       state = rest;
     }),
+    // T3 — group-aware columns-panel drag routes the in-panel
+    // reorder/re-parent fallback through these instead of `moveColumns`.
+    // This mock's `getColumnGroupDefs` is flat (no groups), so every
+    // resolved drop in this file targets the top level (`null`).
+    moveColumnToGroup: vi.fn(),
+    moveColumnGroup: vi.fn(),
     getColumnHeaderName: (colId: string) => headers[colId],
     isColumnRowGroupEnabled: (colId: string) => groupable.has(colId),
     getRowGroupColumns: () => [...rowGroupColumns],
@@ -331,7 +344,7 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     expect(api.removeRowGroupColumn).not.toHaveBeenCalled();
   });
 
-  it('allowDragFromColumnsToolPanel: false suppresses the drag-into-zone path (drag commits as a reorder instead)', () => {
+  it('allowDragFromColumnsToolPanel: false suppresses the drag-into-zone path (drag commits via moveColumnToGroup instead)', () => {
     const api = makeApi({ allowDragFromColumnsToolPanel: false });
     const { panel, root } = mountPanel(api);
     hosts.push(panel);
@@ -345,7 +358,10 @@ describe('ColumnsToolPanel Row Groups drop zone (Cycle 15.5 / Task 2)', () => {
     expect(zone.dataset.drop).toBeUndefined();
     window.dispatchEvent(new MouseEvent('mouseup', { clientX: 100, clientY: 250 }));
     expect(api.addRowGroupColumn).not.toHaveBeenCalled();
-    expect(api.moveColumns).toHaveBeenCalled();
+    // T3 — the in-panel fallback is group-aware now; this mock's column
+    // tree is flat (no groups), so the resolved drop always targets the
+    // top level.
+    expect(api.moveColumnToGroup).toHaveBeenCalledWith('country', null, undefined);
   });
 
   it('suppressRowGroups: true omits the entire zone (no section header, no drop zone, no subscription)', () => {

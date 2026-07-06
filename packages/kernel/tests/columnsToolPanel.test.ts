@@ -17,13 +17,18 @@
  */
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ColumnsToolPanel } from '../src/interaction/toolPanels/columnsPanel';
-import type { CColumnState } from '../src/types';
+import type { CColDef, CColumnState } from '../src/types';
 import type { ToolPanelParams } from '../src/interaction/toolPanels/types';
 
 interface MockApi {
   getColumnState: () => CColumnState[];
+  getColumnGroupDefs: () => CColDef[];
   setColumnsVisible: ReturnType<typeof vi.fn>;
   moveColumns: ReturnType<typeof vi.fn>;
+  // T3 — group-aware columns-panel drag routes the in-panel fallback
+  // through these instead of `moveColumns`.
+  moveColumnToGroup: ReturnType<typeof vi.fn>;
+  moveColumnGroup: ReturnType<typeof vi.fn>;
   getColumnHeaderName: (colId: string) => string | undefined;
   addEventListener: ReturnType<typeof vi.fn>;
   removeEventListener: ReturnType<typeof vi.fn>;
@@ -46,6 +51,12 @@ function makeApi(initial?: Partial<{ state: CColumnState[]; headers: Record<stri
   };
   return {
     getColumnState: () => state.map((s) => ({ ...s })),
+    // T2 — the visibility panel now walks the columnDefs TREE
+    // (`getColumnGroupDefs`), not the flat `getColumnState()` list. This
+    // mock has no groups, so it's a flat leaf list built straight off
+    // `state`'s colIds — order matches, keeping every pre-hierarchy
+    // assertion in this file valid.
+    getColumnGroupDefs: () => state.map((s) => ({ colId: s.colId })),
     setColumnsVisible: vi.fn((keys: string[], visible: boolean) => {
       state = state.map((s) => (keys.includes(s.colId) ? { ...s, hide: !visible } : s));
     }),
@@ -55,6 +66,8 @@ function makeApi(initial?: Partial<{ state: CColumnState[]; headers: Record<stri
       rest.splice(toIndex, 0, ...moving);
       state = rest;
     }),
+    moveColumnToGroup: vi.fn(),
+    moveColumnGroup: vi.fn(),
     getColumnHeaderName: (colId: string) => headers[colId],
     addEventListener: vi.fn(() => () => {}),
     removeEventListener: vi.fn(),
@@ -213,6 +226,11 @@ describe('ColumnsToolPanel', () => {
     let state = [...initial];
     const api: MockApi = {
       getColumnState: () => state.map((s) => ({ ...s })),
+      // Flat, matching the INITIAL colIds — the panel only reads this
+      // once at construction (a `columnDefsChanged` rebuild is what
+      // would re-read it; this mock never fires that event), so it
+      // doesn't need to track the later state mutation below.
+      getColumnGroupDefs: () => initial.map((s) => ({ colId: s.colId })),
       setColumnsVisible: vi.fn(),
       moveColumns: vi.fn(),
       getColumnHeaderName: (colId) => ({ a: 'A', b: 'B', c: 'C' })[colId],

@@ -664,6 +664,28 @@ export interface CGridApi<TRow = any> {
    *  Task 5. */
   moveColumns(keys: string[], toIndex: number): void;
 
+  /** Columns tool panel hierarchy — re-parent (or reorder) a single leaf
+   *  column within the `columnDefs` group tree. Pass `targetGroupId: null`
+   *  to move the column to the top level. `beforeColId` positions it
+   *  before that sibling within the target scope (leaf or group id);
+   *  omitted/unmatched appends at the end. Rejects (no-op, fires nothing)
+   *  a re-parent into or out of a `marryChildren` group, an unknown
+   *  `colId` / `targetGroupId`, or a move that doesn't actually change
+   *  anything. Runtime column state (width / hide / pinned / sort / flex)
+   *  survives the underlying `columnDefs` rebuild. */
+  moveColumnToGroup(colId: string, targetGroupId: string | null, beforeColId?: string): void;
+
+  /** Columns tool panel hierarchy — re-parent (or reorder) a whole column
+   *  group within the `columnDefs` tree. Pass `targetParentGroupId: null`
+   *  to move the group to the top level. `beforeId` positions it before
+   *  that sibling (leaf or group id) within the target scope;
+   *  omitted/unmatched appends at the end. Rejects (no-op) moving a group
+   *  into itself or one of its own descendants, a re-parent into/out of a
+   *  `marryChildren` group, an unknown `groupId` / `targetParentGroupId`,
+   *  or a move that doesn't actually change anything. Runtime column
+   *  state survives the underlying `columnDefs` rebuild. */
+  moveColumnGroup(groupId: string, targetParentGroupId: string | null, beforeId?: string): void;
+
   /** Serialisable snapshot of every leaf's mutable state (width, hide,
    *  pinned, sort, sortIndex, flex, plus reserved rowGroup / pivot /
    *  aggFunc slots) in the current flat-leaf order — hidden leaves

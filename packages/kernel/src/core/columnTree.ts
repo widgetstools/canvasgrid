@@ -81,6 +81,63 @@ export function isColGroupDef<TRow>(
 }
 
 /**
+ * `structuredClone` throws on function-valued fields — and `CColDef`
+ * legitimately carries them (`valueFormatter`, `cellRenderer`,
+ * `valueGetter`, `comparator`, …; see `getColumnGroupDefs()`, which just
+ * returns the live `columnDefs`). This clones plain objects/arrays deeply
+ * (so callers never share a mutable array/object with the live grid state)
+ * while passing functions and other non-plain-object values through by
+ * reference — safe because every mutation path that uses it replaces
+ * objects wholesale (spread/patch) rather than mutating a def's fields in
+ * place.
+ */
+export function cloneDefsTree<T>(value: T): T {
+  if (Array.isArray(value)) return value.map((v) => cloneDefsTree(v)) as unknown as T;
+  if (value !== null && typeof value === 'object' && value.constructor === Object) {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) out[k] = cloneDefsTree(v);
+    return out as T;
+  }
+  return value; // functions, class instances, primitives — pass through unchanged
+}
+
+/**
+ * Assign a stable, explicit `groupId` to every group in `defs` that was
+ * authored without one — a legal ag-grid pattern (`{ headerName, children }`
+ * with no `groupId`). Returns a clone (`cloneDefsTree`); the input is never
+ * mutated. IDs are synthesized `cg-grp-${n}` in the SAME pre-order DFS
+ * (roots → children, incrementing only for groups lacking a `groupId`) that
+ * `resolveColumnTree` uses internally, so a caller that also runs the defs
+ * through `resolveColumnTree` sees IDENTICAL synthesized ids — the two
+ * numbering passes must never drift apart.
+ *
+ * Exists so BOTH sides of a group drag/mutation agree on an anonymous
+ * group's id: `columnGroupMutation.ts` normalizes the tree it searches, and
+ * `visibilityPanel.ts` normalizes the tree it renders `data-group-id` from.
+ * Leaves are untouched.
+ */
+export function ensureGroupIds<TRow>(
+  defs: (CColDef<TRow> | CColGroupDef<TRow>)[],
+): (CColDef<TRow> | CColGroupDef<TRow>)[] {
+  const cloned = cloneDefsTree(defs);
+  let autoGroupSeq = 0;
+
+  function walk(nodes: (CColDef<TRow> | CColGroupDef<TRow>)[]): void {
+    for (const node of nodes) {
+      if (isColGroupDef(node)) {
+        if (node.groupId == null) {
+          node.groupId = `cg-grp-${++autoGroupSeq}`;
+        }
+        walk(node.children);
+      }
+    }
+  }
+
+  walk(cloned);
+  return cloned;
+}
+
+/**
  * Resolve a heterogeneous columnDefs array into a tree + flat leaf list.
  * Leaves run through `resolveColDef` (so defaultColDef inheritance works
  * exactly as it did pre-grouping). Groups gain auto-generated IDs when the

@@ -32,8 +32,15 @@ import type { ToolPanelParams } from '../src/interaction/toolPanels/types';
 interface PivotMockApi {
   // ── column model ───────────────────────────────────────────────
   getColumnState: () => CColumnState[];
+  getColumnGroupDefs: () => { colId: string }[];
   setColumnsVisible: ReturnType<typeof vi.fn>;
   moveColumns: ReturnType<typeof vi.fn>;
+  // T3 — group-aware columns-panel drag routes the in-panel fallback
+  // through these instead of `moveColumns`. This mock's column tree is
+  // flat, so nothing in this file's drag tests reaches them (they all
+  // land in a drop zone), but they must exist to satisfy the call shape.
+  moveColumnToGroup: ReturnType<typeof vi.fn>;
+  moveColumnGroup: ReturnType<typeof vi.fn>;
   getColumnHeaderName: (colId: string) => string | undefined;
   // ── row group enable + state ──────────────────────────────────
   isColumnRowGroupEnabled: (colId: string) => boolean;
@@ -116,6 +123,10 @@ function makeApi(initial?: PivotMockInit): PivotMockApi {
 
   const api: PivotMockApi = {
     getColumnState: () => state.map((s) => ({ ...s })),
+    // T2 — flat leaf defs (no groups) matching current colIds; the
+    // panel reads this once at construction, so it doesn't need to
+    // track later visibility/order mutations.
+    getColumnGroupDefs: () => state.map((s) => ({ colId: s.colId })),
     setColumnsVisible: vi.fn((keys: string[], visible: boolean) => {
       state = state.map((s) => (keys.includes(s.colId) ? { ...s, hide: !visible } : s));
     }),
@@ -125,6 +136,8 @@ function makeApi(initial?: PivotMockInit): PivotMockApi {
       rest.splice(toIndex, 0, ...moving);
       state = rest;
     }),
+    moveColumnToGroup: vi.fn(),
+    moveColumnGroup: vi.fn(),
     getColumnHeaderName: (colId) => headers[colId],
     isColumnRowGroupEnabled: (colId) => groupable.has(colId),
     getRowGroupColumns: () => [...rowGroupColumns],

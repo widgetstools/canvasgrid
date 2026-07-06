@@ -18,6 +18,7 @@ import { DisposableRegistry } from './core/disposable';
 import { ViewportManager } from './core/viewportManager';
 import { type ResolvedColDef, applyCellProps, composeFont } from './core/propertyChain';
 import { resolveColumnTree, isColGroupDef, type ColumnTree, type ColumnTreeNode, type ResolvedColGroupDef } from './core/columnTree';
+import { moveColumnToGroup as moveColumnToGroupPure, moveColumnGroup as moveColumnGroupPure } from './core/columnGroupMutation';
 import { resolveSelection } from './core/selectionConfig';
 import {
   commitPanelMove as commitPanelMoveHelper,
@@ -6217,7 +6218,7 @@ export class CGrid<TRow = any> {
       getColumnGroupState: () => this.columnGroupState.getState(),
       setColumnGroupState: (s) => { this.columnGroupState.apply(s); },
       resetColumnGroupState: () => this.columnGroupState.reset(),
-      getColumnGroupDefs: () => this.options.columnDefs ?? [],
+      getColumnGroupDefs: () => this.getColumnGroupDefs(),
       refreshToolPanel: (id) => this.refreshToolPanel(id),
       getToolPanelInstance: (id) => this.getToolPanelInstance(id),
       isSideBarVisible: () => this.isSideBarVisible(),
@@ -6318,6 +6319,10 @@ export class CGrid<TRow = any> {
       setColumnsPinned: (keys, pinned) => this.setColumnsPinned(keys, pinned),
       setColumnWidths: (widths, finished) => this.setColumnWidths(widths, finished),
       moveColumns: (keys, toIndex) => this.moveColumns(keys, toIndex),
+      moveColumnToGroup: (colId, targetGroupId, beforeColId) =>
+        this.moveColumnToGroup(colId, targetGroupId, beforeColId),
+      moveColumnGroup: (groupId, targetParentGroupId, beforeId) =>
+        this.moveColumnGroup(groupId, targetParentGroupId, beforeId),
       getCellBoundsAt: (r, c) => this.getCellBoundsAt(r, c),
       getHeaderBoundsAt: (c) => this.getHeaderBoundsAt(c),
       getRowBoundsAt: (r) => this.getRowBoundsAt(r),
@@ -8883,6 +8888,66 @@ export class CGrid<TRow = any> {
         type: 'columnMoved', toIndex: newIdx, colIds: [colId], source: 'api',
       });
     }
+  }
+
+  /** The raw, authored `columnDefs` tree (groups + leaves), unresolved.
+   *  Backs the `CGridApi.getColumnGroupDefs` closure and the Task 1
+   *  hierarchy mutators below — kept as a real class method (rather than
+   *  an inline `makeApi` closure) so both call sites share one
+   *  definition. */
+  getColumnGroupDefs(): (CColDef<TRow> | CColGroupDef<TRow>)[] {
+    return this.options.columnDefs ?? [];
+  }
+
+  /** Columns tool panel hierarchy (Task 1) — apply a re-parented/reordered
+   *  `columnDefs` tree via `updateGridOptions` (the only entry point that
+   *  rebuilds the column tree), then re-apply the runtime column state
+   *  (width / hide / pinned / sort / flex) that predates the swap.
+   *  `rebuildColumns` re-resolves every leaf from its AUTHORED colDef, so
+   *  any state set through the runtime mutators (`setColumnWidths`,
+   *  `setColumnsVisible`, `setColumnsPinned`, ...) — which mutate the
+   *  RESOLVED copy in `columnDefsMap`, never the raw authored def — would
+   *  otherwise be silently dropped by the rebuild. `leafOrder` is not
+   *  re-applied via `applyOrder` — the pure mutation core already encodes
+   *  the desired order structurally in `defs`. */
+  private applyColumnDefsPreservingState(
+    defs: (CColDef<TRow> | CColGroupDef<TRow>)[],
+    _leafOrder: string[],
+  ): void {
+    const prevState = this.getColumnState();
+    this.updateGridOptions({ columnDefs: defs });
+    this.applyColumnState({ state: prevState });
+  }
+
+  /** Columns tool panel hierarchy (Task 1) — re-parent (or reorder) a
+   *  single leaf column via the pure `columnGroupMutation` core. Pass
+   *  `targetGroupId: null` to move `colId` to the top level. No-op
+   *  (including a rejected `marryChildren` guard, unknown ids, or a move
+   *  that doesn't actually change anything) fires nothing. On success,
+   *  `updateGridOptions({ columnDefs })` fires `columnDefsChanged` +
+   *  `displayedColumnsChanged` as usual. */
+  moveColumnToGroup(colId: string, targetGroupId: string | null, beforeColId?: string): void {
+    const res = moveColumnToGroupPure(this.getColumnGroupDefs(), colId, targetGroupId, beforeColId);
+    if (!res) return;
+    this.applyColumnDefsPreservingState(
+      res.defs as (CColDef<TRow> | CColGroupDef<TRow>)[],
+      res.leafOrder,
+    );
+  }
+
+  /** Columns tool panel hierarchy (Task 1) — re-parent (or reorder) a
+   *  whole column group via the pure `columnGroupMutation` core. Pass
+   *  `targetParentGroupId: null` to move `groupId` to the top level.
+   *  Rejects moving a group into itself or one of its own descendants.
+   *  No-op fires nothing; a successful move fires `columnDefsChanged` +
+   *  `displayedColumnsChanged` via `updateGridOptions`. */
+  moveColumnGroup(groupId: string, targetParentGroupId: string | null, beforeId?: string): void {
+    const res = moveColumnGroupPure(this.getColumnGroupDefs(), groupId, targetParentGroupId, beforeId);
+    if (!res) return;
+    this.applyColumnDefsPreservingState(
+      res.defs as (CColDef<TRow> | CColGroupDef<TRow>)[],
+      res.leafOrder,
+    );
   }
 
   /** Shared single-re-layout helper for the Task 5 batch mutations that

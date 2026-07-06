@@ -2,15 +2,17 @@
 //
 // Owns the top of the columns tool panel: Search input + Select All
 // checkbox + the scrollable Column Rows list. Each row is one column
-// with a checkbox (visibility OFF pivot mode, role membership under
-// pivot mode) + drag handle. The row-drag orchestrator routes into:
+// OR group (T2 — hierarchical rendering), each with a drag handle. The
+// row-drag orchestrator routes into (LEAF drags only for steps 1-4):
 //   1. The row group panel top strip (external router).
 //   2. The pivot panel top strip (external router).
 //   3. The column-header band (external router).
 //   4. The three in-panel drop zones (pivot → values → row groups).
-//   5. Fallback → in-list reorder via `api.moveColumns`.
+//   5. Fallback (leaf OR group drags) → group-aware reorder/re-parent
+//      via `resolveDrop()` + `commitDrop()` (T3), calling
+//      `api.moveColumnToGroup` / `api.moveColumnGroup`.
 
-import type { CGridApi, CColumnState } from '../../../types';
+import type { CColDef, CColGroupDef, CGridApi, CColumnState } from '../../../types';
 import type {
   IToolPanelColumnCompParams,
 } from '../types';
@@ -29,12 +31,45 @@ import {
   type DropZoneSpec,
 } from './shared';
 import { resolveDefaultAggFunc } from './valuesZonePanel';
+import { ensureGroupIds, isColGroupDef } from '../../../core/columnTree';
+import {
+  moveColumnToGroup as moveColumnToGroupPure,
+  moveColumnGroup as moveColumnGroupPure,
+} from '../../../core/columnGroupMutation';
 
-/** Per-row DOM handles cached for in-place refresh. */
-interface PanelRow {
+/** Per-row DOM handles cached for in-place refresh. Leaves are keyed by
+ *  `colId` in `this.rows`; groups are namespaced `grp:${groupId}` so a
+ *  group id can never collide with a leaf colId. */
+interface LeafPanelRow {
+  kind: 'leaf';
   el: HTMLElement;
+  colId: string;
   checkbox: HTMLInputElement;
   label: HTMLElement;
+}
+interface GroupPanelRow {
+  kind: 'group';
+  el: HTMLElement;
+  groupId: string;
+  caret: HTMLElement;
+  checkbox: HTMLInputElement;
+  label: HTMLElement;
+  /** Every leaf colId nested under this group, direct + transitive. */
+  descendantLeafIds: string[];
+}
+type PanelRow = LeafPanelRow | GroupPanelRow;
+
+/** T3 — the result of hit-testing a drag's pointer position against the
+ *  rendered row list. `kind` is what's being DRAGGED (a leaf column or a
+ *  whole group); `targetGroupId` is the destination group (`null` = top
+ *  level); `beforeId` (a colId or groupId) is the sibling `movingId`
+ *  should land before within the target's children — `undefined` means
+ *  append at the end. */
+export interface ColumnsPanelResolvedDrop {
+  kind: 'col' | 'group';
+  movingId: string;
+  targetGroupId: string | null;
+  beforeId?: string;
 }
 
 /** Deps threaded into `ColumnVisibilityPanel`. The zone-spec provider
@@ -62,6 +97,18 @@ export class ColumnVisibilityPanel {
   private readonly listEl: HTMLElement;
   private readonly rows = new Map<string, PanelRow>();
   private readonly unsubs: Array<() => void> = [];
+  /** Panel-local expand state (T2 ambiguity ruling: this does NOT call
+   *  `setColumnGroupState` — that's the grid header's separate
+   *  open/closed concept). Empty set = every group expanded. Keyed by
+   *  the SAME `groupId` used for `data-group-id` (not the `grp:`-prefixed
+   *  `this.rows` key). */
+  private readonly collapsed = new Set<string>();
+  /** Ancestor group-id chain (root→parent, EXCLUDING the row's own id)
+   *  for every row key in `this.rows` — lets `applyCollapseVisibility`
+   *  recompute display for the whole tree in one pass without a DOM
+   *  rebuild whenever a caret toggles. Rebuilt alongside `this.rows` on
+   *  every `buildRows()` pass. */
+  private readonly ancestorGroupIds = new Map<string, string[]>();
 
   constructor(deps: ColumnVisibilityPanelDeps) {
     this.deps = deps;
@@ -77,6 +124,17 @@ export class ColumnVisibilityPanel {
     this.listEl.className = 'cg-columns-panel-list cg-scrollbar';
     this.buildRows();
     this.syncSelectAll();
+
+    // Structural changes to the columnDefs tree — a column reparented
+    // into/out of a group, a group created/renamed/deleted — invalidate
+    // the whole rendered tree (row identities, indent depths,
+    // descendantLeafIds). Unconditional (not gated by
+    // `suppressSyncLayoutWithGrid`, which is about column LAYOUT sync,
+    // not tree STRUCTURE) and IN ADDITION to the existing subscriptions
+    // below.
+    this.unsubs.push(
+      deps.api.addEventListener('columnDefsChanged', () => this.rebuildRows()),
+    );
 
     if (!deps.params.suppressSyncLayoutWithGrid) {
       this.unsubs.push(
@@ -124,7 +182,7 @@ export class ColumnVisibilityPanel {
   refresh(): void {
     const state = this.deps.api.getColumnState();
     this.syncRows(state);
-    this.applySearchFilter(this.searchInput?.value ?? '');
+    this.applyVisibility();
     this.syncSelectAll();
     this.refreshRowChecks();
   }
@@ -135,6 +193,7 @@ export class ColumnVisibilityPanel {
     }
     this.unsubs.length = 0;
     this.rows.clear();
+    this.ancestorGroupIds.clear();
   }
 
   // ── Search + Select-All ────────────────────────────────────────────
@@ -176,11 +235,13 @@ export class ColumnVisibilityPanel {
 
   /** Update the "Select All" checkbox to reflect current column
    *  visibility. Reads directly from the row checkbox DOM so it's
-   *  always consistent with what the list rows show. */
+   *  always consistent with what the list rows show. LEAF rows only —
+   *  group rows are tri-state summaries of their own descendants, not
+   *  independent columns, so they must never count toward the total. */
   private syncSelectAll(): void {
     const cb = this.selectAllCb;
     if (!cb) return;
-    const rows = Array.from(this.rows.values());
+    const rows = Array.from(this.rows.values()).filter((r): r is LeafPanelRow => r.kind === 'leaf');
     const total = rows.length;
     if (total === 0) {
       cb.checked = false;
@@ -200,21 +261,91 @@ export class ColumnVisibilityPanel {
     }
   }
 
-  // ── Column rows ────────────────────────────────────────────────────
+  // ── Column rows ──────────────────────────────────────────────────────
+  // T2 — hierarchical rendering. `buildRows()` walks the AUTHORED
+  // columnDefs tree (`api.getColumnGroupDefs()`, groups + leaves,
+  // depth-first) rather than the flat `getColumnState()` list, appending
+  // ONE row per node — group or leaf — directly to `this.listEl` in
+  // visitation order. There is no nested DOM container per group; every
+  // row is a flat sibling and indentation is purely a `--cg-indent` CSS
+  // custom property, exactly like the pre-existing colgroups authoring
+  // panel's row family.
 
   private buildRows(): void {
     const state = this.deps.api.getColumnState();
-    for (const entry of state) {
-      const row = this.buildRow(entry);
-      this.rows.set(entry.colId, row);
-      this.listEl.appendChild(row.el);
+    const stateById = new Map(state.map((s) => [s.colId, s]));
+    // Normalize BEFORE rendering — `ensureGroupIds` synthesizes the SAME
+    // `cg-grp-N` ids the mutation core (`columnGroupMutation.ts`)
+    // synthesizes internally, so a `data-group-id` rendered here is always
+    // a valid `moveColumnToGroup`/`moveColumnGroup` target, even for a
+    // group authored without an explicit `groupId`.
+    const defs = ensureGroupIds(this.deps.api.getColumnGroupDefs());
+    this.walkDefs(defs, 0, [], stateById);
+  }
+
+  private walkDefs(
+    nodes: (CColDef | CColGroupDef)[],
+    depth: number,
+    ancestors: string[],
+    stateById: Map<string, CColumnState>,
+  ): void {
+    for (const node of nodes) {
+      if (isColGroupDef(node)) {
+        // `node.groupId` is always defined post-`ensureGroupIds`.
+        const groupId = node.groupId!;
+        const descendantLeafIds = this.collectLeafIds(node.children);
+        const row = this.buildGroupRow(node, groupId, depth, descendantLeafIds, stateById);
+        const key = `grp:${groupId}`;
+        this.rows.set(key, row);
+        this.ancestorGroupIds.set(key, ancestors);
+        this.listEl.appendChild(row.el);
+        this.walkDefs(node.children, depth + 1, [...ancestors, groupId], stateById);
+      } else {
+        const colId = node.colId ?? node.field;
+        if (!colId) continue; // malformed leaf (neither colId nor field) — nothing to render.
+        const entry = stateById.get(colId) ?? { colId, hide: false };
+        const row = this.buildRow(entry, depth);
+        this.rows.set(colId, row);
+        this.ancestorGroupIds.set(colId, ancestors);
+        this.listEl.appendChild(row.el);
+      }
     }
   }
 
-  private buildRow(entry: CColumnState): PanelRow {
+  /** Every leaf colId nested under `nodes`, direct + transitive,
+   *  depth-first in declaration order. */
+  private collectLeafIds(nodes: (CColDef | CColGroupDef)[]): string[] {
+    const out: string[] = [];
+    for (const node of nodes) {
+      if (isColGroupDef(node)) {
+        out.push(...this.collectLeafIds(node.children));
+      } else {
+        const colId = node.colId ?? node.field;
+        if (colId) out.push(colId);
+      }
+    }
+    return out;
+  }
+
+  /** Full rebuild — structural columnDefs changes (a leaf re-parented, a
+   *  group created/deleted/renamed) invalidate every cached row + the
+   *  ancestor-chain map, so there's no safe incremental diff. Panel-local
+   *  `collapsed` state survives (a rebuild after a sibling edit
+   *  shouldn't silently re-expand every other group). */
+  private rebuildRows(): void {
+    this.listEl.replaceChildren();
+    this.rows.clear();
+    this.ancestorGroupIds.clear();
+    this.buildRows();
+    this.applyVisibility();
+    this.syncSelectAll();
+  }
+
+  private buildRow(entry: CColumnState, depth: number): LeafPanelRow {
     const el = document.createElement('div');
     el.className = 'cg-columns-panel-row';
     el.dataset.colId = entry.colId;
+    el.style.setProperty('--cg-indent', String(depth));
 
     // Cycle 21i / Phase 1 — row layout is grip → label → checkbox (right),
     // moving away from the AG-style checkbox-left row. The checkbox stays a
@@ -224,7 +355,7 @@ export class ColumnVisibilityPanel {
       const handle = document.createElement('span');
       handle.className = 'cg-columns-panel-row-handle';
       handle.setAttribute('aria-hidden', 'true');
-      handle.addEventListener('mousedown', (e) => this.beginRowDrag(e, entry.colId));
+      handle.addEventListener('mousedown', (e) => this.beginRowDrag(e, entry.colId, 'col'));
       el.appendChild(handle);
     }
 
@@ -254,7 +385,110 @@ export class ColumnVisibilityPanel {
       this.handleRowCheckboxClick(entry.colId, checkbox);
     });
 
-    return { el, checkbox, label };
+    return { kind: 'leaf', el, colId: entry.colId, checkbox, label };
+  }
+
+  /** Build one group row: drag handle (T3) → caret (expand/collapse,
+   *  panel-local) → label → tri-state checkbox (checks/unchecks every
+   *  descendant leaf). The handle starts a GROUP drag (`kind: 'group'`)
+   *  that moves the whole group via `api.moveColumnGroup`. */
+  private buildGroupRow(
+    node: CColGroupDef,
+    groupId: string,
+    depth: number,
+    descendantLeafIds: string[],
+    stateById: Map<string, CColumnState>,
+  ): GroupPanelRow {
+    const el = document.createElement('div');
+    el.className = 'cg-columns-panel-row cg-columns-panel-row--group';
+    el.dataset.groupId = groupId;
+    el.style.setProperty('--cg-indent', String(depth));
+
+    if (!this.deps.params.suppressColumnMove) {
+      const handle = document.createElement('span');
+      handle.className = 'cg-columns-panel-row-handle';
+      handle.setAttribute('aria-hidden', 'true');
+      handle.addEventListener('mousedown', (e) => this.beginRowDrag(e, groupId, 'group'));
+      el.appendChild(handle);
+    }
+
+    const caret = document.createElement('button');
+    caret.type = 'button';
+    caret.className = 'cg-columns-panel-row-caret';
+    caret.setAttribute('aria-label', 'Toggle group');
+    caret.setAttribute('aria-expanded', String(!this.collapsed.has(groupId)));
+    caret.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.collapsed.has(groupId)) this.collapsed.delete(groupId);
+      else this.collapsed.add(groupId);
+      caret.setAttribute('aria-expanded', String(!this.collapsed.has(groupId)));
+      this.applyVisibility();
+    });
+    el.appendChild(caret);
+
+    const label = document.createElement('span');
+    label.className = 'cg-columns-panel-row-label';
+    label.textContent = node.headerName && node.headerName.length > 0 ? node.headerName : groupId;
+    el.appendChild(label);
+
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'cg-columns-panel-row-checkbox';
+    checkbox.setAttribute('aria-label', `Toggle all columns in ${label.textContent}`);
+    checkbox.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.deps.api.setColumnsVisible(descendantLeafIds, checkbox.checked);
+    });
+    el.appendChild(checkbox);
+
+    el.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target === checkbox || target === caret) return;
+      checkbox.checked = !checkbox.checked;
+      this.deps.api.setColumnsVisible(descendantLeafIds, checkbox.checked);
+    });
+
+    const row: GroupPanelRow = { kind: 'group', el, groupId, caret, checkbox, label, descendantLeafIds };
+    this.applyGroupTriState(row, stateById);
+    return row;
+  }
+
+  /** Tri-state: 'all' when every descendant leaf is checked (visible, or
+   *  role-holding under pivot mode — see `computeRowChecked`), 'none'
+   *  when every descendant is unchecked, 'mixed' otherwise. An empty
+   *  `descendantLeafIds` (shouldn't happen — `resolveColumnTree` rejects
+   *  empty `children`) degrades to 'none'. */
+  private computeGroupChecked(
+    descendantLeafIds: string[],
+    stateById: Map<string, CColumnState>,
+  ): 'all' | 'none' | 'mixed' {
+    if (descendantLeafIds.length === 0) return 'none';
+    let checkedCount = 0;
+    for (const colId of descendantLeafIds) {
+      const entry = stateById.get(colId) ?? { colId, hide: false };
+      if (this.computeRowChecked(entry)) checkedCount++;
+    }
+    if (checkedCount === 0) return 'none';
+    if (checkedCount === descendantLeafIds.length) return 'all';
+    return 'mixed';
+  }
+
+  private applyGroupTriState(row: GroupPanelRow, stateById: Map<string, CColumnState>): void {
+    const state = this.computeGroupChecked(row.descendantLeafIds, stateById);
+    if (state === 'all') {
+      row.checkbox.checked = true;
+      row.checkbox.indeterminate = false;
+    } else if (state === 'none') {
+      row.checkbox.checked = false;
+      row.checkbox.indeterminate = false;
+    } else {
+      // Mirrors the "Select all" mixed convention (`syncSelectAll`):
+      // `checked = false` + `indeterminate = true`. A native click from
+      // this state flips `checked` to `true`, so clicking a mixed group
+      // checkbox always resolves to "show everything" first.
+      row.checkbox.checked = false;
+      row.checkbox.indeterminate = true;
+    }
   }
 
   /** Checked state: a row is checked when the column is VISIBLE OR (in
@@ -303,31 +537,62 @@ export class ColumnVisibilityPanel {
   }
 
   /** Reflect the current grouping / value state in EVERY row's
-   *  checkbox. Called when pivotMode flips or any role assignment
-   *  changes. */
+   *  checkbox — leaves via `computeRowChecked`, groups via their
+   *  descendants' tri-state. Called when pivotMode flips or any role
+   *  assignment changes. */
   private refreshRowChecks(): void {
     const state = this.deps.api.getColumnState();
     const byId = new Map(state.map((s) => [s.colId, s]));
-    for (const [colId, row] of this.rows) {
-      const entry = byId.get(colId);
-      if (!entry) continue;
-      const next = this.computeRowChecked(entry);
-      if (row.checkbox.checked !== next) row.checkbox.checked = next;
+    for (const row of this.rows.values()) {
+      if (row.kind === 'leaf') {
+        const entry = byId.get(row.colId);
+        if (!entry) continue;
+        const next = this.computeRowChecked(entry);
+        if (row.checkbox.checked !== next) row.checkbox.checked = next;
+      } else {
+        this.applyGroupTriState(row, byId);
+      }
     }
     this.syncSelectAll();
   }
 
-  /** Diff `state` against the current `rows` map: update existing rows
-   *  in place, append new rows for unseen colIds, drop rows whose colId
-   *  no longer appears, and reorder DOM children to match `state`. */
+  /** Sync existing rows against a fresh `getColumnState()` snapshot.
+   *
+   *  Flat trees (no groups) keep the EXACT pre-hierarchy behaviour: add
+   *  rows for newly-seen colIds, drop rows for vanished ones, and
+   *  reorder the DOM to match `state`'s order — this is what
+   *  `columnsToolPanel.test.ts`'s "refresh() ... row order update"
+   *  case exercises.
+   *
+   *  Hierarchical trees (≥1 group) only refresh existing LEAF rows'
+   *  checked/label state in place. `columnVisible`/`columnMoved` never
+   *  add, remove, or re-parent a column — those are `columnDefsChanged`
+   *  events routed to `rebuildRows()` — so there is nothing to add/
+   *  remove/reorder here, and reordering by flat `state` order would
+   *  scatter leaves out of their group's contiguous DOM block. */
   private syncRows(state: CColumnState[]): void {
+    const hasGroups = Array.from(this.rows.values()).some((r) => r.kind === 'group');
+    if (hasGroups) {
+      const byId = new Map(state.map((s) => [s.colId, s]));
+      for (const row of this.rows.values()) {
+        if (row.kind !== 'leaf') continue;
+        const entry = byId.get(row.colId);
+        if (!entry) continue;
+        row.checkbox.checked = this.computeRowChecked(entry);
+        const next = this.deps.resolveLabel(row.colId);
+        if (row.label.textContent !== next) row.label.textContent = next;
+      }
+      return;
+    }
+
     const seen = new Set<string>();
     for (const entry of state) {
       seen.add(entry.colId);
       let row = this.rows.get(entry.colId);
       if (!row) {
-        row = this.buildRow(entry);
+        row = this.buildRow(entry, 0);
         this.rows.set(entry.colId, row);
+        this.ancestorGroupIds.set(entry.colId, []);
       } else {
         row.checkbox.checked = this.computeRowChecked(entry);
         const next = this.deps.resolveLabel(entry.colId);
@@ -338,6 +603,7 @@ export class ColumnVisibilityPanel {
       if (!seen.has(colId)) {
         row.el.remove();
         this.rows.delete(colId);
+        this.ancestorGroupIds.delete(colId);
       }
     }
     // Reorder: appendChild moves existing nodes without destroying them,
@@ -348,61 +614,108 @@ export class ColumnVisibilityPanel {
     }
   }
 
-  // ── Search filter ──────────────────────────────────────────────────
+  // ── Row visibility: search filter ∪ panel-local collapse state ─────
+
+  /** Recompute every row's `display` from whichever visibility mode is
+   *  live right now: a non-empty search term force-expands (matches
+   *  show regardless of collapse); an empty term falls back to the
+   *  collapse-based display. Called after every collapse toggle AND
+   *  every `refresh()`/rebuild so the two visibility sources never
+   *  fight each other. */
+  private applyVisibility(): void {
+    this.applySearchFilter(this.searchInput?.value ?? '');
+  }
+
+  /** Show every row whose ancestor chain (`this.ancestorGroupIds`) has
+   *  no collapsed group; hide the rest. A pure "recompute from current
+   *  state" pass — safe to call after any collapse toggle without a DOM
+   *  rebuild, since row identities + the ancestor map are untouched. */
+  private applyCollapseVisibility(): void {
+    for (const [key, row] of this.rows) {
+      const ancestors = this.ancestorGroupIds.get(key) ?? [];
+      const hidden = ancestors.some((id) => this.collapsed.has(id));
+      row.el.style.display = hidden ? 'none' : '';
+    }
+  }
 
   private applySearchFilter(raw: string): void {
     const term = raw.trim().toLowerCase();
-    for (const [colId, row] of this.rows) {
-      if (term.length === 0) {
-        row.el.style.display = '';
-        continue;
-      }
+    if (term.length === 0) {
+      this.applyCollapseVisibility();
+      return;
+    }
+    // Force-expand while searching: `this.collapsed` itself is left
+    // untouched (clearing the search restores the prior expand state) —
+    // only the DISPLAY ignores it for the duration of the search.
+    const matchedLeafIds = new Set<string>();
+    for (const row of this.rows.values()) {
+      if (row.kind !== 'leaf') continue;
       const label = (row.label.textContent ?? '').toLowerCase();
-      const match = label.includes(term) || colId.toLowerCase().includes(term);
-      row.el.style.display = match ? '' : 'none';
+      if (label.includes(term) || row.colId.toLowerCase().includes(term)) matchedLeafIds.add(row.colId);
+    }
+    for (const row of this.rows.values()) {
+      if (row.kind === 'leaf') {
+        row.el.style.display = matchedLeafIds.has(row.colId) ? '' : 'none';
+      } else {
+        const selfMatch = (row.label.textContent ?? '').toLowerCase().includes(term);
+        const descendantMatch = row.descendantLeafIds.some((id) => matchedLeafIds.has(id));
+        row.el.style.display = (selfMatch || descendantMatch) ? '' : 'none';
+      }
     }
   }
 
   // ── Row drag orchestrator ──────────────────────────────────────────
 
-  /** Drag-within-the-panel reorder with ag-grid–style drag UX, AND
-   *  drag-INTO any of the three drop zones (Column Labels / Values /
-   *  Row Groups). Cycle 18 / Task 5 generalises the routing across all
-   *  three; the row group panel + pivot panel top strips are also
-   *  valid drop targets when the app carries the router methods. */
-  private beginRowDrag(e: MouseEvent, colId: string): void {
+  /** Drag-within-the-panel reorder/re-parent with ag-grid–style drag UX,
+   *  AND drag-INTO any of the three drop zones (Column Labels / Values /
+   *  Row Groups) OR the external header strips/band — LEAF drags only
+   *  (`kind === 'col'`). A GROUP drag (`kind === 'group'`) never routes
+   *  to those role-based surfaces (a group id can't be a pivot/row-group/
+   *  value role member); it only ever reorders/re-parents within the
+   *  panel via `resolveDrop` + `commitDrop` (T3). */
+  private beginRowDrag(e: MouseEvent, id: string, kind: 'col' | 'group'): void {
     e.preventDefault();
-    const row = this.rows.get(colId);
+    const key = kind === 'group' ? `grp:${id}` : id;
+    const row = this.rows.get(key);
     if (!row) return;
 
-    const label = this.deps.resolveLabel(colId);
+    const label = kind === 'group' && row.kind === 'group'
+      ? `${row.label.textContent ?? id} (${row.descendantLeafIds.length})`
+      : this.deps.resolveLabel(id);
     const startX = e.clientX;
     const startY = e.clientY;
     const api = this.deps.api;
     const listEl = this.listEl;
 
     const allowDragOut = api.getGridOption?.('allowDragFromColumnsToolPanel') !== false;
-    // Header-strip routing only makes sense for role-eligible columns.
-    const isGroupable = api.isColumnRowGroupEnabled?.(colId) ?? false;
-    const alreadyGrouped = (api.getRowGroupColumns?.() ?? []).includes(colId);
-    const isPivotable = api.isColumnPivotEnabled?.(colId) ?? false;
-    const alreadyPivoted = (api.getPivotColumns?.() ?? []).includes(colId);
+    // Header-strip / band / zone routing only makes sense for a single
+    // LEAF column drag — never a whole group.
+    const isGroupable = kind === 'col' && (api.isColumnRowGroupEnabled?.(id) ?? false);
+    const alreadyGrouped = kind === 'col' && (api.getRowGroupColumns?.() ?? []).includes(id);
+    const isPivotable = kind === 'col' && (api.isColumnPivotEnabled?.(id) ?? false);
+    const alreadyPivoted = kind === 'col' && (api.getPivotColumns?.() ?? []).includes(id);
 
-    const orderedColIds = (): string[] => Array.from(listEl.children)
-      .map((c) => (c as HTMLElement).dataset.colId)
-      .filter((id): id is string => typeof id === 'string');
-
-    const zoneSpecs = allowDragOut ? this.deps.getDropZoneSpecs() : [];
+    const zoneSpecs = (kind === 'col' && allowDragOut) ? this.deps.getDropZoneSpecs() : [];
 
     let dragStarted = false;
     let overZoneIdx = -1;
     let overHeaderStrip = false;
     let overPivotStrip = false;
+    // FIX 2 (review) — `isRejectedDrop` re-clones + re-resolves the whole
+    // tree (`cloneDefsTree` + `resolveColumnTree`); `renderDropIndicators`
+    // called it on every branch-4 `onMove` even when the resolved drop
+    // hadn't changed since the last mousemove. Memoize on a cheap string
+    // key of the resolved drop and skip the re-run + re-render when it's
+    // unchanged. Reset to `null` at every OTHER indicator-clearing site so
+    // a later return to the same key still re-renders (the DOM indicator
+    // was actually removed in between).
+    let lastDropKey: string | null = null;
     let overColumnHeaderBand = false;
+    let lastResolved: ColumnsPanelResolvedDrop | null = null;
 
     // Column-header drop router — parallel to the row-group-panel router.
-    const hasColHeaderDropRouter =
-      typeof (api as any).isPointInColumnHeaderBand === 'function'
+    const hasColHeaderDropRouter = kind === 'col'
+      && typeof (api as any).isPointInColumnHeaderBand === 'function'
       && typeof (api as any).setColumnHeaderDragHover === 'function'
       && typeof (api as any).commitColumnHeaderDrop === 'function';
 
@@ -410,21 +723,76 @@ export class ColumnVisibilityPanel {
 
     // ---- Shared row-group-panel router ----
     const router = api as unknown as import('../../features/columnDrag').RowGroupPanelDragRouter;
-    const hasRouter =
-      typeof (api as any).isPointInRowGroupPanel === 'function'
+    const hasRouter = kind === 'col'
+      && typeof (api as any).isPointInRowGroupPanel === 'function'
       && typeof (api as any).setRowGroupPanelDragHover === 'function'
       && typeof (api as any).commitRowGroupPanelDrop === 'function';
 
     // ---- Shared pivot-panel router (Column Labels top strip) ----
     const pivotRouter = api as unknown as import('../../features/columnDrag').PivotPanelDragRouter;
-    const hasPivotRouter =
-      typeof (api as any).isPointInPivotPanel === 'function'
+    const hasPivotRouter = kind === 'col'
+      && typeof (api as any).isPointInPivotPanel === 'function'
       && typeof (api as any).setPivotPanelDragHover === 'function'
       && typeof (api as any).commitPivotPanelDrop === 'function';
 
     const clearAllZoneOutlines = (): void => {
       for (let i = 0; i < zoneSpecs.length; i++) {
         setZoneDropState(zoneSpecs[i]!.dropZone, null);
+      }
+    };
+
+    // T3 — in-panel drop indicators: an insertion line + a highlight on
+    // the target group row (reject-tinted when the dry-run predicts the
+    // move will be rejected, e.g. a `marryChildren` guard).
+    let dropLine: HTMLDivElement | null = null;
+    let dropTargetEl: HTMLElement | null = null;
+    const clearDropIndicators = (): void => {
+      dropLine?.remove();
+      dropLine = null;
+      if (dropTargetEl) {
+        dropTargetEl.classList.remove(
+          'cg-columns-panel-row--drop-target',
+          'cg-columns-panel-row--drop-reject',
+        );
+        dropTargetEl = null;
+      }
+    };
+    const renderDropIndicators = (resolved: ColumnsPanelResolvedDrop): void => {
+      clearDropIndicators();
+      const listRect = listEl.getBoundingClientRect();
+      const beforeRow = resolved.beforeId !== undefined
+        ? (this.rows.get(resolved.beforeId) ?? this.rows.get(`grp:${resolved.beforeId}`))
+        : undefined;
+      let lineTop: number;
+      if (beforeRow) {
+        lineTop = beforeRow.el.getBoundingClientRect().top;
+      } else if (resolved.targetGroupId !== null) {
+        const groupRow = this.rows.get(`grp:${resolved.targetGroupId}`);
+        lineTop = groupRow ? groupRow.el.getBoundingClientRect().bottom : listRect.bottom;
+      } else {
+        const visible = Array.from(listEl.children)
+          .filter((c) => (c as HTMLElement).style.display !== 'none') as HTMLElement[];
+        const last = visible[visible.length - 1];
+        lineTop = last ? last.getBoundingClientRect().bottom : listRect.top;
+      }
+      const line = document.createElement('div');
+      line.className = 'cg-columns-panel-drop-line';
+      line.style.left = `${listRect.left}px`;
+      line.style.width = `${listRect.width}px`;
+      line.style.top = `${Math.round(lineTop)}px`;
+      const themeHost = this.deps.rootHost.closest<HTMLElement>('[class*="cg-theme"]') ?? document.body;
+      themeHost.appendChild(line);
+      dropLine = line;
+
+      if (resolved.targetGroupId !== null) {
+        const groupRow = this.rows.get(`grp:${resolved.targetGroupId}`);
+        if (groupRow) {
+          const rejected = this.isRejectedDrop(resolved);
+          groupRow.el.classList.add(
+            rejected ? 'cg-columns-panel-row--drop-reject' : 'cg-columns-panel-row--drop-target',
+          );
+          dropTargetEl = groupRow.el;
+        }
       }
     };
 
@@ -442,12 +810,14 @@ export class ColumnVisibilityPanel {
 
       // 1. Row group HEADER STRIP — outside the sidebar.
       if (hasRouter && allowDragOut && isGroupable && !alreadyGrouped) {
-        const inStrip = routeExternalDragHover(router, colId, ev.clientX, ev.clientY);
+        const inStrip = routeExternalDragHover(router, id, ev.clientX, ev.clientY);
         if (inStrip !== overHeaderStrip) {
           overHeaderStrip = inStrip;
           if (inStrip) {
             clearAllZoneOutlines();
             overZoneIdx = -1;
+            clearDropIndicators();
+            lastDropKey = null;
             if (overColumnHeaderBand) {
               (api as any).setColumnHeaderDragHover(null, ev.clientX, ev.clientY);
               overColumnHeaderBand = false;
@@ -463,12 +833,14 @@ export class ColumnVisibilityPanel {
 
       // 1b. Pivot HEADER STRIP (Column Labels) — outside the sidebar.
       if (hasPivotRouter && allowDragOut && isPivotable && !alreadyPivoted) {
-        const inStrip = routePivotPanelDragHover(pivotRouter, colId, ev.clientX, ev.clientY);
+        const inStrip = routePivotPanelDragHover(pivotRouter, id, ev.clientX, ev.clientY);
         if (inStrip !== overPivotStrip) {
           overPivotStrip = inStrip;
           if (inStrip) {
             clearAllZoneOutlines();
             overZoneIdx = -1;
+            clearDropIndicators();
+            lastDropKey = null;
             if (overColumnHeaderBand) {
               (api as any).setColumnHeaderDragHover(null, ev.clientX, ev.clientY);
               overColumnHeaderBand = false;
@@ -488,10 +860,12 @@ export class ColumnVisibilityPanel {
           } else {
             clearAllZoneOutlines();
             overZoneIdx = -1;
+            clearDropIndicators();
+            lastDropKey = null;
           }
         }
         if (inHeaderBand) {
-          (api as any).setColumnHeaderDragHover(colId, ev.clientX, ev.clientY);
+          (api as any).setColumnHeaderDragHover(id, ev.clientX, ev.clientY);
           return;
         }
       }
@@ -513,32 +887,33 @@ export class ColumnVisibilityPanel {
           overZoneIdx = nextZoneIdx;
           if (overZoneIdx >= 0) {
             const spec = zoneSpecs[overZoneIdx]!;
-            setZoneDropState(spec.dropZone, spec.accepts(colId) ? 'accept' : 'reject');
+            setZoneDropState(spec.dropZone, spec.accepts(id) ? 'accept' : 'reject');
+            clearDropIndicators();
+            lastDropKey = null;
           }
         }
       }
 
       if (overZoneIdx >= 0) return;
 
-      // 4. Otherwise — optimistic list reorder.
-      const rect = listEl.getBoundingClientRect();
-      const y = ev.clientY - rect.top;
-      const children = Array.from(listEl.children) as HTMLElement[];
-      if (children.length === 0) return;
-      const list = orderedColIds();
-      const fromIdx = list.indexOf(colId);
-      let toIdx = children.length - 1;
-      for (let i = 0; i < children.length; i++) {
-        const child = children[i]!;
-        const r = child.getBoundingClientRect();
-        if (y < r.top + r.height / 2 - rect.top) { toIdx = i; break; }
+      // 4. Otherwise — group-aware reorder/re-parent (T3): resolve the
+      // pointer to a target group + insertion point and render the
+      // insertion-line/highlight indicators. The actual mutation only
+      // happens on mouseup (`commitDrop`) — this panel never splices
+      // DOM rows live during the drag; the T2 `columnDefsChanged`
+      // subscription rebuilds the whole list after a successful commit.
+      const resolved = this.resolveDrop(ev.clientY, id, kind);
+      lastResolved = resolved;
+      // Memoize on the resolved drop's identity — skip the dry-run
+      // (`isRejectedDrop`, inside `renderDropIndicators`) and the DOM
+      // re-render entirely when the pointer moved but resolved to the
+      // SAME target/position as last frame (the common case while
+      // hovering steadily over one row).
+      const dropKey = `${resolved.kind}:${resolved.movingId}->${resolved.targetGroupId}:${resolved.beforeId}`;
+      if (dropKey !== lastDropKey) {
+        lastDropKey = dropKey;
+        renderDropIndicators(resolved);
       }
-      if (toIdx === fromIdx) return;
-      const ref = children[toIdx]!;
-      ref.parentElement?.insertBefore(
-        row.el,
-        toIdx > fromIdx ? ref.nextSibling : ref,
-      );
     };
 
     const onUp = (ev: MouseEvent) => {
@@ -546,6 +921,7 @@ export class ColumnVisibilityPanel {
       window.removeEventListener('mousemove', onMove);
       window.removeEventListener('mouseup', onUp);
       ghost.remove();
+      clearDropIndicators();
       if (hasRouter) clearExternalDragHover(router);
       if (hasPivotRouter) clearPivotPanelDragHover(pivotRouter);
       if (hasColHeaderDropRouter) {
@@ -554,17 +930,17 @@ export class ColumnVisibilityPanel {
       if (!dragStarted) return;
 
       if (overHeaderStrip) {
-        (api as any).commitRowGroupPanelDrop?.(colId);
+        (api as any).commitRowGroupPanelDrop?.(id);
         clearAllZoneOutlines();
         return;
       }
       if (overPivotStrip) {
-        (api as any).commitPivotPanelDrop?.(colId);
+        (api as any).commitPivotPanelDrop?.(id);
         clearAllZoneOutlines();
         return;
       }
       if (overColumnHeaderBand) {
-        (api as any).commitColumnHeaderDrop(colId, ev.clientX);
+        (api as any).commitColumnHeaderDrop(id, ev.clientX);
         clearAllZoneOutlines();
         return;
       }
@@ -574,24 +950,135 @@ export class ColumnVisibilityPanel {
       if (allowDragOut && zoneSpecs.length > 0) {
         for (const spec of zoneSpecs) {
           if (isPointInRect(getZoneRect(spec.dropZone), ev.clientX, ev.clientY)) {
-            if (spec.accepts(colId)) spec.commit(colId);
+            if (spec.accepts(id)) spec.commit(id);
             return;
           }
         }
       }
 
-      // Otherwise it's a list reorder.
-      const finalIdx = orderedColIds().indexOf(colId);
-      if (finalIdx >= 0) {
-        try {
-          api.moveColumns([colId], finalIdx);
-        } catch (err) {
-          console.error('[cg-columns-panel] moveColumns failed', err);
-        }
+      // Otherwise — group-aware reorder/re-parent.
+      const resolved = lastResolved ?? this.resolveDrop(ev.clientY, id, kind);
+      try {
+        this.commitDrop(resolved);
+      } catch (err) {
+        console.error('[cg-columns-panel] group-aware drop commit failed', err);
       }
     };
 
     window.addEventListener('mousemove', onMove);
     window.addEventListener('mouseup', onUp);
+  }
+
+  /** T3 — hit-test `clientY` against the rendered row list to resolve a
+   *  target group + insertion point for the item currently being
+   *  dragged (`movingId`/`kind`, closed over by `beginRowDrag`).
+   *
+   *  Every row (leaf + group) is a flat sibling in `listEl` (T2), so
+   *  "insert before row X" always resolves cleanly to X's own immediate
+   *  parent (from `ancestorGroupIds`) — nesting falls out of the walk
+   *  order, no recursive tree-splicing needed:
+   *   - hovering a GROUP row (either half — its children are the very
+   *     next rows in the flat list, so "at start" and "before the next
+   *     child" are the same position) → drop INTO that group, before
+   *     its first immediate child (or appended, if empty/all filtered).
+   *   - hovering a LEAF row's upper half → insert before it, within its
+   *     current parent (or top level).
+   *   - hovering a LEAF row's lower half, or past every row → insert
+   *     after it (before its next same-parent sibling, or append when
+   *     it's the last one / nothing is hovered at all). */
+  private resolveDrop(clientY: number, movingId: string, kind: 'col' | 'group'): ColumnsPanelResolvedDrop {
+    const movingKey = kind === 'group' ? `grp:${movingId}` : movingId;
+    const isExcluded = (key: string): boolean => {
+      if (key === movingKey) return true;
+      // A group drag also excludes every descendant row — you can't
+      // drop a group into (or before/after a member of) its own subtree.
+      if (kind !== 'group') return false;
+      return (this.ancestorGroupIds.get(key) ?? []).includes(movingId);
+    };
+
+    const candidates: Array<{ key: string; row: PanelRow }> = [];
+    for (const [key, row] of this.rows) {
+      if (isExcluded(key)) continue;
+      if (row.el.style.display === 'none') continue;
+      candidates.push({ key, row });
+    }
+    if (candidates.length === 0) {
+      return { kind, movingId, targetGroupId: null, beforeId: undefined };
+    }
+
+    let hoveredIdx = -1;
+    for (let i = 0; i < candidates.length; i++) {
+      const rect = candidates[i]!.row.el.getBoundingClientRect();
+      if (clientY < rect.bottom) { hoveredIdx = i; break; }
+    }
+    if (hoveredIdx === -1) {
+      // Below every row — top-level append (the "gap at the bottom").
+      return { kind, movingId, targetGroupId: null, beforeId: undefined };
+    }
+
+    const idOf = (row: PanelRow): string => (row.kind === 'leaf' ? row.colId : row.groupId);
+    const parentOf = (key: string): string | null => {
+      const ancestors = this.ancestorGroupIds.get(key) ?? [];
+      return ancestors.length > 0 ? ancestors[ancestors.length - 1]! : null;
+    };
+    const findNextWithParent = (fromIdx: number, parentId: string | null): string | undefined => {
+      for (let i = fromIdx; i < candidates.length; i++) {
+        const cand = candidates[i]!;
+        if (parentOf(cand.key) === parentId) return idOf(cand.row);
+      }
+      return undefined;
+    };
+
+    const hovered = candidates[hoveredIdx]!;
+    if (hovered.row.kind === 'group') {
+      const targetGroupId = hovered.row.groupId;
+      const beforeId = findNextWithParent(hoveredIdx + 1, targetGroupId);
+      return { kind, movingId, targetGroupId, beforeId };
+    }
+
+    // Leaf row hovered — reorder within (or re-parent into) ITS parent.
+    const targetGroupId = parentOf(hovered.key);
+    const rect = hovered.row.el.getBoundingClientRect();
+    const upperHalf = clientY < rect.top + rect.height / 2;
+    if (upperHalf) {
+      return { kind, movingId, targetGroupId, beforeId: hovered.row.colId };
+    }
+    const beforeId = findNextWithParent(hoveredIdx + 1, targetGroupId);
+    return { kind, movingId, targetGroupId, beforeId };
+  }
+
+  /** T3 — dry-run `resolved` through the SAME pure mutation core the
+   *  commit uses (never mutates anything) to predict whether the move
+   *  will be rejected (unknown ids, a `marryChildren` guard, or a
+   *  would-be no-op). Drives the reject-tinted drop-target highlight. */
+  private isRejectedDrop(resolved: ColumnsPanelResolvedDrop): boolean {
+    const defs = this.deps.api.getColumnGroupDefs();
+    const result = resolved.kind === 'group'
+      ? moveColumnGroupPure(defs, resolved.movingId, resolved.targetGroupId, resolved.beforeId)
+      : moveColumnToGroupPure(defs, resolved.movingId, resolved.targetGroupId, resolved.beforeId);
+    return result === null;
+  }
+
+  /** T3 — commit a resolved drop via the T1 group-membership mutation
+   *  API. Public (not just test-only) so `beginRowDrag`'s `onUp` and
+   *  direct callers (tests) share one commit path. A no-op resolution
+   *  (unknown ids / `marryChildren` guard / already-there) is silently
+   *  absorbed by the underlying API (see `CGridApi.moveColumnToGroup` /
+   *  `moveColumnGroup`) — nothing to catch here. */
+  commitDrop(resolved: ColumnsPanelResolvedDrop): void {
+    if (resolved.kind === 'group') {
+      this.deps.api.moveColumnGroup(resolved.movingId, resolved.targetGroupId, resolved.beforeId);
+    } else {
+      this.deps.api.moveColumnToGroup(resolved.movingId, resolved.targetGroupId, resolved.beforeId);
+    }
+  }
+
+  /** Test-only escape hatch (T3) — exposes the drag-internal geometry
+   *  resolver so `columnsPanelDrag.integration.test.ts` can exercise
+   *  `resolveDrop` directly against real DOM geometry (via stubbed
+   *  `getBoundingClientRect`) without simulating a full mouse gesture.
+   *  Never called by production code. */
+  __forTests(): { resolveDrop: (clientY: number, movingId: string, kind: 'col' | 'group') => ColumnsPanelResolvedDrop } {
+    return { resolveDrop: (clientY, movingId, kind) => this.resolveDrop(clientY, movingId, kind) };
   }
 }
