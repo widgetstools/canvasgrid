@@ -122,19 +122,24 @@ button:hover { filter: brightness(1.1); }
  * kernel — per-side border, corner decorator glyph, fg colour, font-weight.
  * main.ts only decides which cells carry which class (the predicate). */
 .grid-host {
-  --cg-cell-class-loss-fg: #e63946;
-  --cg-cell-class-loss-bg: rgba(230, 57, 70, 0.10);
+  --cg-cell-class-loss-fg: #f05071;
+  --cg-cell-class-loss-bg: rgba(240, 80, 113, 0.10);
   --cg-cell-class-loss-border-left-width: 3px;
   --cg-cell-class-loss-border-left-style: solid;
-  --cg-cell-class-loss-border-left-color: #e63946;
+  --cg-cell-class-loss-border-left-color: #f05071;
   --cg-cell-class-loss-font-weight: 700;
   --cg-cell-class-loss-decorator-tr: "▼";
-  --cg-cell-class-loss-decorator-tr-color: #e63946;
+  --cg-cell-class-loss-decorator-tr-color: #f05071;
   --cg-cell-class-loss-decorator-tr-size: 9;
 
-  --cg-cell-class-gain-fg: #0aa063;
+  --cg-cell-class-gain-fg: #3de0a0;
   --cg-cell-class-gain-font-weight: 700;
   --cg-cell-class-gain-decorator-tr: "▲";
-  --cg-cell-class-gain-decorator-tr-color: #0aa063;
+  --cg-cell-class-gain-decorator-tr-color: #3de0a0;
   --cg-cell-class-gain-decorator-tr-size: 9;
+
+  /* Plain sign colouring (text only) for the P&L / Unrealized columns —
+   * the same mint-green / coral-red semantic palette, no border/decorator. */
+  --cg-cell-class-pnlpos-fg: #3de0a0;
+  --cg-cell-class-pnlneg-fg: #f05071;
 }

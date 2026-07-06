@@ -85,7 +85,13 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
           num('Mkt Value', 'marketValue', { valueFormatter: '#,##0', aggFunc: 'sum', columnGroupShow: 'open' }),
         ],
       },
-      num('P&L', 'pnl', { aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)' }),
+      num('P&L', 'pnl', {
+        aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)',
+        cellClassRules: {
+          pnlpos: (p: { value: unknown }) => Number(p.value) > 0,
+          pnlneg: (p: { value: unknown }) => Number(p.value) < 0,
+        },
+      }),
       // CSS-driven styling demo (WS-B) — the *appearance* of these classes
       // lives entirely in CSS custom properties in style.css
       // (`--cg-cell-class-{loss,gain}-*`): left border, corner decorator glyph,
@@ -108,7 +114,13 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
     cellEditor: 'price32',
     valueFormatter: (p: { value: unknown }) => formatPrice32(p.value as number),
   }),
-  num('Unrealized', 'unrealizedPnl', { aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)' }),
+  num('Unrealized', 'unrealizedPnl', {
+    aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)',
+    cellClassRules: {
+      pnlpos: (p: { value: unknown }) => Number(p.value) > 0,
+      pnlneg: (p: { value: unknown }) => Number(p.value) < 0,
+    },
+  }),
   {
     groupId: 'risk',
     headerName: 'Risk',

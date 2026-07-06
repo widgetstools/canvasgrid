@@ -153,7 +153,7 @@ describe('ageCell', () => {
       rowData: { t0: 0 },
       params: { nowMs: 400_000, sinceField: 't0' },
     }));
-    expect(gc.calls.some((c) => c.op === 'set:fillStyle' && c.args[0] === '#e63946')).toBe(true);
+    expect(gc.calls.some((c) => c.op === 'set:fillStyle' && c.args[0] === '#f05071')).toBe(true);
   });
 });
 

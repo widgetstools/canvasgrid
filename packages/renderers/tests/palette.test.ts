@@ -15,8 +15,8 @@ import {
 describe('resolveSemanticColors', () => {
   it('returns the 4 catalog hexes exactly (§1 aesthetic bar)', () => {
     const colors = resolveSemanticColors();
-    expect(colors.positive).toBe('#0aa063');
-    expect(colors.negative).toBe('#e63946');
+    expect(colors.positive).toBe('#3de0a0');
+    expect(colors.negative).toBe('#f05071');
     expect(colors.warning).toBe('#f0b429');
     expect(colors.info).toBe('#3b82f6');
   });

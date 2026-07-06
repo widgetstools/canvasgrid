@@ -124,8 +124,8 @@ describe('RENDERER_NAMES — canonical name table', () => {
 describe('palette data — structuredClone-safety', () => {
   it('SEMANTIC_COLORS round-trips and carries the four locked hexes', () => {
     expect(structuredClone(SEMANTIC_COLORS)).toEqual(SEMANTIC_COLORS);
-    expect(SEMANTIC_COLORS.positive).toBe('#0aa063');
-    expect(SEMANTIC_COLORS.negative).toBe('#e63946');
+    expect(SEMANTIC_COLORS.positive).toBe('#3de0a0');
+    expect(SEMANTIC_COLORS.negative).toBe('#f05071');
     expect(SEMANTIC_COLORS.warning).toBe('#f0b429');
     expect(SEMANTIC_COLORS.info).toBe('#3b82f6');
   });
