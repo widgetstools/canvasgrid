@@ -62,7 +62,7 @@ function toNumber(value: unknown): number | null {
   return null;
 }
 
-function paintFlashOverlay(gc: Gc, p: CellPaintConfig, fallbackColor?: string): void {
+export function paintFlashOverlay(gc: Gc, p: CellPaintConfig, fallbackColor?: string): void {
   if (!p.flashAlpha || p.flashAlpha <= 0) return;
   gc.cache.save();
   gc.cache.globalAlpha = p.flashAlpha;
@@ -291,6 +291,10 @@ export const pnlCell: CellPainter = {
   paint(gc, p) {
     const params = (p.params ?? {}) as PnlCellParams;
     const colors = colorsFromParams(params.colors, p);
+    // Cell-change flash overlay (theme --cg-flash-from-color) — painted behind
+    // the value so a custom-rendered P&L cell still flashes on live updates,
+    // like the default number cell + priceCell.
+    paintFlashOverlay(gc, p);
     const n = toNumber(p.value);
     if (n === null) {
       paintRightText(gc, p, p.valueFormatted || '', p.fg);

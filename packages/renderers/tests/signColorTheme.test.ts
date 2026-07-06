@@ -126,3 +126,31 @@ describe('heatCell — theme sign colors', () => {
     expect(fillStyles(gc.calls)).toContain(expectedTop);
   });
 });
+
+// Regression (look-and-feel surface #3): a custom cellRenderer fully replaces
+// the kernel's default paint (which draws the cell-change flash), so each
+// renderer must paint the flash overlay itself — else columns using pnl /
+// bidirectional-bar / heat silently lose their live-update flash.
+describe('cell-change flash overlay — custom renderers must flash', () => {
+  let gc: FakeGc;
+  beforeEach(() => { gc = makeFakeGc(); });
+  const flash = (extra: Partial<CellPaintConfig>) =>
+    baseConfig({ flashAlpha: 0.5, flashFromColor: '#3b82f6', ...extra });
+
+  it('pnlCell paints the flash fill when flashAlpha > 0', () => {
+    pnlCell.paint(gc, flash({ value: 10 }));
+    expect(fillStyles(gc.calls)).toContain('#3b82f6');
+  });
+  it('bidirectionalBarCell paints the flash fill', () => {
+    bidirectionalBarCell.paint(gc, flash({ value: 10 }));
+    expect(fillStyles(gc.calls)).toContain('#3b82f6');
+  });
+  it('heatCell paints the flash fill', () => {
+    heatCell.paint(gc, flash({ value: 10 }));
+    expect(fillStyles(gc.calls)).toContain('#3b82f6');
+  });
+  it('no flash fill when flashAlpha is absent', () => {
+    pnlCell.paint(gc, baseConfig({ value: 10, flashFromColor: '#3b82f6' }));
+    expect(fillStyles(gc.calls)).not.toContain('#3b82f6');
+  });
+});

@@ -2,6 +2,7 @@
 
 import type { CellPaintConfig, CellPainter } from '@cgrid/kernel';
 import { dot, fragText, labInterpolate, miniBar, withAlpha } from './paintUtils';
+import { paintFlashOverlay } from './numeric';
 import { SEMANTIC_COLORS, STATUS_PILL_MAP } from './palette';
 import type {
   BidirectionalBarCellParams,
@@ -167,6 +168,7 @@ export const rangeBarCell: CellPainter = {
 export const bidirectionalBarCell: CellPainter = {
   paint(gc, p) {
     const params = (p.params ?? {}) as BidirectionalBarCellParams;
+    paintFlashOverlay(gc, p); // cell-change flash behind the bar (live updates)
     const colors = colorsFromParams(params.colors, p);
     const row = p.rowData as Record<string, unknown> | undefined;
     const value = rowNumber(row, params.valueField) ?? toNumber(p.value);
@@ -217,6 +219,7 @@ export const heatCell: CellPainter = {
     const bg = labInterpolate(colors.negative, colors.positive, t, curve);
     gc.cache.fillStyle = withAlpha(bg, 0.22);
     gc.fillRect(p.bounds.x, p.bounds.y, p.bounds.w, p.bounds.h);
+    paintFlashOverlay(gc, p); // flash overlays the heat fill so it stays visible on live updates
     const text = p.valueFormatted || (value === null ? '' : String(value));
     if (text) {
       fragText(gc, text, p.bounds.x + p.bounds.w - padRight(p), textY(gc, p), {
