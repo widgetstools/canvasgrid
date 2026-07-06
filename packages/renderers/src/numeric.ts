@@ -48,9 +48,16 @@ function textY(gc: Gc, p: CellPaintConfig): number {
   return p.bounds.y + p.bounds.h / 2 + (m.actualBoundingBoxAscent - m.actualBoundingBoxDescent) / 2;
 }
 
+// Canvas 2D `ctx.font` follows the CSS `font` shorthand, which has NO slot for
+// font-feature-settings. Appending a feature tag (e.g. ` "tnum"`) produces an
+// INVALID shorthand — a space-separated trailing family — which the canvas
+// silently ignores, retaining the previously-set font and giving numeric cells
+// an inconsistent size versus text/bar/kernel-default cells. There is no
+// reliable way to request tabular figures through `ctx.font`; the grid's
+// monospace theme fonts already render fixed-width figures, so use the base
+// font unchanged. Kept as a named seam for the numeric painters' call sites.
 function tabularFont(baseFont: string): string {
-  if (baseFont.includes('tnum')) return baseFont;
-  return `${baseFont} "tnum"`;
+  return baseFont;
 }
 
 function toNumber(value: unknown): number | null {

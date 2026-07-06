@@ -32,6 +32,37 @@ function fillTexts(calls: FakeGc['calls']): string[] {
   return calls.filter((c) => c.op === 'fillText').map((c) => String(c.args[0]));
 }
 
+function fontsSet(calls: FakeGc['calls']): string[] {
+  return calls.filter((c) => c.op === 'set:font').map((c) => String(c.args[0]));
+}
+
+// Regression: every numeric renderer must set a VALID canvas font that keeps
+// the base font size. `ctx.font` follows the CSS `font` shorthand (no slot for
+// font-feature-settings) — an invalid string is silently ignored by the canvas,
+// which retains the previously-set font and gives cells an INCONSISTENT size.
+describe('numeric font consistency', () => {
+  let gc: FakeGc;
+  beforeEach(() => { gc = makeFakeGc(); });
+
+  const base = '13px Inter, sans-serif';
+  const cases: Array<[string, (cfg: CellPaintConfig) => void]> = [
+    ['numberCell', (c) => numberCell.paint(gc, c)],
+    ['pnlCell', (c) => pnlCell.paint(gc, c)],
+  ];
+
+  for (const [name, paint] of cases) {
+    it(`${name} sets the base font size on every font it applies (no size-resetting suffix)`, () => {
+      paint(baseConfig({ value: 1234.56, valueFormatted: '1,234.56', font: base }));
+      const fonts = fontsSet(gc.calls);
+      expect(fonts.length).toBeGreaterThan(0);
+      for (const f of fonts) {
+        expect(f).not.toMatch(/"tnum"/);   // the invalid, canvas-ignored suffix
+        expect(f).toMatch(/^13px /);       // base size preserved on a valid string
+      }
+    });
+  }
+});
+
 describe('numberCell', () => {
   let gc: FakeGc;
   beforeEach(() => { gc = makeFakeGc(); });
