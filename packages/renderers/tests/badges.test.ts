@@ -143,6 +143,41 @@ describe('tagCell', () => {
   });
 });
 
+// ───────────────────────────────────────────────────────────────────────
+// Workstream A (2026-07-06 CSS styling model) — chip geometry-as-style.
+// `--cg-chip-height` / `--cg-chip-radius` → `RendererPalette.chipHeight` /
+// `.chipRadius`, read by `paintCapsPill()`. bounds.h is 24 in `baseConfig`,
+// so the default chip (16px) centers at y = (24-16)/2 = 4.
+// ───────────────────────────────────────────────────────────────────────
+describe('tagCell — Workstream A chip geometry', () => {
+  let gc: FakeGc;
+  beforeEach(() => { gc = makeFakeGc(); });
+
+  it('reads chip height/radius from p.palette when present', () => {
+    tagCell.paint(gc, baseConfig({
+      params: { text: 'NEW' },
+      palette: {
+        positive: SEMANTIC_COLORS.positive, negative: SEMANTIC_COLORS.negative,
+        warning: SEMANTIC_COLORS.warning, info: SEMANTIC_COLORS.info, muted: SEMANTIC_COLORS.muted,
+        barHeight: 8, chipHeight: 24, chipRadius: 7,
+      },
+    }));
+    const arcTo = gc.calls.find((c) => c.op === 'arcTo');
+    expect(arcTo?.args[4]).toBe(7);
+    const moveTo = gc.calls.find((c) => c.op === 'moveTo');
+    // y = (24 bounds.h - 24 chipHeight) / 2 = 0
+    expect(moveTo?.args[1]).toBe(0);
+  });
+
+  it('falls back to height 16 / radius 3 when p.palette is absent (byte-identical)', () => {
+    tagCell.paint(gc, baseConfig({ params: { text: 'NEW' } }));
+    const arcTo = gc.calls.find((c) => c.op === 'arcTo');
+    expect(arcTo?.args[4]).toBe(3);
+    const moveTo = gc.calls.find((c) => c.op === 'moveTo');
+    expect(moveTo?.args[1]).toBe((24 - 16) / 2);
+  });
+});
+
 describe('venueChip', () => {
   let gc: FakeGc;
   beforeEach(() => { gc = makeFakeGc(); });

@@ -245,6 +245,55 @@ describe('volumeBar', () => {
   });
 });
 
+// ───────────────────────────────────────────────────────────────────────
+// Workstream A (2026-07-06 CSS styling model) — renderer-palette threading.
+// Geometry-as-style: `--cg-bar-height` → `RendererPalette.barHeight`,
+// read by `innerBarRect()`. Colors: direct single-field SEMANTIC_COLORS
+// reads (outside `colorsFromParams`) now resolve `p.palette?.<x>` first.
+// ───────────────────────────────────────────────────────────────────────
+describe('bars — Workstream A renderer palette', () => {
+  let gc: FakeGc;
+  beforeEach(() => { gc = makeFakeGc(); });
+
+  it('progressBarCell track height reads p.palette.barHeight when present', () => {
+    progressBarCell.paint(gc, baseConfig({
+      params: { fraction: 0.5, showLabel: false },
+      palette: {
+        positive: SEMANTIC_COLORS.positive, negative: SEMANTIC_COLORS.negative,
+        warning: SEMANTIC_COLORS.warning, info: SEMANTIC_COLORS.info, muted: SEMANTIC_COLORS.muted,
+        barHeight: 20, chipHeight: 16, chipRadius: 3,
+      },
+    }));
+    const track = gc.calls.find((c) => c.op === 'fillRect');
+    expect(track?.args[3]).toBe(20);
+  });
+
+  it('progressBarCell track height falls back to 8 when p.palette is absent (byte-identical)', () => {
+    progressBarCell.paint(gc, baseConfig({ params: { fraction: 0.5, showLabel: false } }));
+    const track = gc.calls.find((c) => c.op === 'fillRect');
+    expect(track?.args[3]).toBe(8);
+  });
+
+  it('volumeBar reads info color from p.palette when present', () => {
+    volumeBar.paint(gc, baseConfig({
+      value: 100,
+      valueFormatted: '100',
+      params: {},
+      palette: {
+        positive: '#111111', negative: '#222222', warning: '#333333',
+        info: '#010203', muted: '#444444', barHeight: 8, chipHeight: 16, chipRadius: 3,
+      },
+    }));
+    expect(gc.calls.some((c) => c.op === 'set:fillStyle' && c.args[0] === 'rgba(1,2,3,0.45)')).toBe(true);
+  });
+
+  it('volumeBar falls back to SEMANTIC_COLORS.info when p.palette is absent (byte-identical)', () => {
+    volumeBar.paint(gc, baseConfig({ value: 100, valueFormatted: '100', params: {} }));
+    const expected = `rgba(${parseInt(SEMANTIC_COLORS.info.slice(1, 3), 16)},${parseInt(SEMANTIC_COLORS.info.slice(3, 5), 16)},${parseInt(SEMANTIC_COLORS.info.slice(5, 7), 16)},0.45)`;
+    expect(gc.calls.some((c) => c.op === 'set:fillStyle' && c.args[0] === expected)).toBe(true);
+  });
+});
+
 describe('maturityLadderBar', () => {
   let gc: FakeGc;
   beforeEach(() => { gc = makeFakeGc(); });

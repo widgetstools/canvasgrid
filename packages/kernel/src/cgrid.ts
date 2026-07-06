@@ -220,6 +220,10 @@ export type { ConditionalRuleShape } from './core/ruleEngineSlot';
 // bundle version).
 export { DEFAULT_LAYOUT_ID, DEFAULT_GRID_LEVEL_MODULES, LAYOUTS_BUNDLE_VERSION } from './types';
 export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/registry';
+// Workstream A (2026-07-06 CSS styling model) — renderer-palette bundle
+// type, so @cgrid/renderers (and follow-on structured-map work) can name
+// the shape of `CellPaintConfig.palette` directly.
+export type { RendererPalette } from './theming/cssReader';
 // Cycle 23 / Tasks 5-6 — state-snapshot public types.
 export type { GridState } from './core/stateSnapshot';
 export { STATE_SCHEMA_VERSION } from './core/stateSnapshot';

@@ -76,17 +76,22 @@ function paintCapsPill(
   const textW = gc.measureText(label).width;
   const padX = 6;
   const w = textW + padX * 2;
-  const y = p.bounds.y + (p.bounds.h - CHIP_H) / 2;
-  const radius = 3;
-  pill(gc, x, y, w, CHIP_H, radius, bg, dashed ? undefined : border);
+  // Workstream A (2026-07-06 CSS styling model) — geometry-as-style:
+  // `--cg-chip-height` / `--cg-chip-radius` resolve into
+  // `RendererPalette.chipHeight` / `.chipRadius`; CHIP_H + the literal `3`
+  // (below) are now only the byte-identical fallbacks.
+  const chipH = p.palette?.chipHeight ?? CHIP_H;
+  const radius = p.palette?.chipRadius ?? 3;
+  const y = p.bounds.y + (p.bounds.h - chipH) / 2;
+  pill(gc, x, y, w, chipH, radius, bg, dashed ? undefined : border);
   if (dashed && border) {
     gc.cache.strokeStyle = border;
     gc.setLineDash([3, 2]);
     gc.beginPath();
     gc.moveTo(x + radius, y);
-    gc.arcTo(x + w, y, x + w, y + CHIP_H, radius);
-    gc.arcTo(x + w, y + CHIP_H, x, y + CHIP_H, radius);
-    gc.arcTo(x, y + CHIP_H, x, y, radius);
+    gc.arcTo(x + w, y, x + w, y + chipH, radius);
+    gc.arcTo(x + w, y + chipH, x, y + chipH, radius);
+    gc.arcTo(x, y + chipH, x, y, radius);
     gc.arcTo(x, y, x + w, y, radius);
     gc.closePath();
     gc.stroke();
@@ -207,8 +212,13 @@ export const venueChip: CellPainter = {
     const textW = gc.measureText(mic).width;
     const w = textW + 12;
     const x = p.bounds.x + (p.bounds.w - w) / 2;
-    const y = p.bounds.y + (p.bounds.h - CHIP_H) / 2;
-    pill(gc, x, y, w, CHIP_H, 3, withAlpha(color, 0.18));
+    // Workstream A (2026-07-06 CSS styling model) — same geometry tokens
+    // as paintCapsPill (chip height/radius); this painter builds its pill
+    // inline rather than through that helper.
+    const chipH = p.palette?.chipHeight ?? CHIP_H;
+    const chipRadius = p.palette?.chipRadius ?? 3;
+    const y = p.bounds.y + (p.bounds.h - chipH) / 2;
+    pill(gc, x, y, w, chipH, chipRadius, withAlpha(color, 0.18));
     fragText(gc, mic, x + w / 2, textY(gc, p), { font, color, align: 'center' });
   },
 };

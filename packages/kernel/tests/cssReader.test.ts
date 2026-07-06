@@ -43,6 +43,65 @@ describe('CssReader', () => {
 });
 
 // ───────────────────────────────────────────────────────────────────────
+// Workstream A (2026-07-06 CSS styling model) — renderer-palette tokens.
+// Semantic colors (join pos/neg) + geometry-as-style (bar height, chip
+// height/radius), resolved into `ResolvedTheme.rendererPalette` and
+// threaded onto every `CellPaintConfig` by `applyCellProps`. Mirrors the
+// existing single-scan token-resolution pattern above.
+// ───────────────────────────────────────────────────────────────────────
+describe('CssReader — rendererPalette (Workstream A)', () => {
+  let container: HTMLElement;
+
+  afterEach(() => {
+    container.remove();
+  });
+
+  it('resolves --cg-pos-color/--cg-neg-color/--cg-warning-color/--cg-info-color/--cg-muted-color and --cg-bar-height/--cg-chip-height/--cg-chip-radius', () => {
+    container = document.createElement('div');
+    container.style.cssText = `
+      --cg-pos-color: #00ff00;
+      --cg-neg-color: #ff0000;
+      --cg-warning-color: #ffaa00;
+      --cg-info-color: #0000ff;
+      --cg-muted-color: #999999;
+      --cg-bar-height: 12px;
+      --cg-chip-height: 20px;
+      --cg-chip-radius: 6px;
+    `;
+    document.body.appendChild(container);
+
+    const r = new CssReader(container).read();
+    expect(r.rendererPalette).toEqual({
+      positive: '#00ff00',
+      negative: '#ff0000',
+      warning: '#ffaa00',
+      info: '#0000ff',
+      muted: '#999999',
+      barHeight: 12,
+      chipHeight: 20,
+      chipRadius: 6,
+    });
+  });
+
+  it('falls back to the exact SEMANTIC_COLORS / geometry literals when the tokens are absent (defensive, byte-identical)', () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+
+    const r = new CssReader(container).read();
+    expect(r.rendererPalette).toEqual({
+      positive: '#0aa063',
+      negative: '#e63946',
+      warning: '#f0b429',
+      info: '#3b82f6',
+      muted: '#8a8f98',
+      barHeight: 8,
+      chipHeight: 16,
+      chipRadius: 3,
+    });
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────
 // Workstream B (2026-07-06 CSS styling model) — full-vocabulary variant
 // parsing. `scanVariantVariables` walks `document.styleSheets`, so these
 // tests insert real <style> elements (happy-dom populates `.cssRules`

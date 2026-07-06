@@ -69,21 +69,43 @@ function rowNumber(row: Record<string, unknown> | undefined, field?: string): nu
   return toNumber(row[field]);
 }
 
-function colorsFromParams(overrides?: SemanticColorMap): Required<SemanticColorMap> {
-  colorScratch.positive = overrides?.positive ?? SEMANTIC_COLORS.positive;
-  colorScratch.negative = overrides?.negative ?? SEMANTIC_COLORS.negative;
-  colorScratch.warning = overrides?.warning ?? SEMANTIC_COLORS.warning;
-  colorScratch.info = overrides?.info ?? SEMANTIC_COLORS.info;
-  colorScratch.muted = overrides?.muted ?? SEMANTIC_COLORS.muted;
+/**
+ * Workstream A (2026-07-06 CSS styling model) — resolves each semantic
+ * color as `overrides ?? p.palette?.<x> ?? SEMANTIC_COLORS.<x>`. See the
+ * matching function in `numeric.ts` for the full precedence writeup.
+ */
+function colorsFromParams(overrides: SemanticColorMap | undefined, p: CellPaintConfig): Required<SemanticColorMap> {
+  const palette = p.palette;
+  colorScratch.positive = overrides?.positive ?? palette?.positive ?? SEMANTIC_COLORS.positive;
+  colorScratch.negative = overrides?.negative ?? palette?.negative ?? SEMANTIC_COLORS.negative;
+  colorScratch.warning = overrides?.warning ?? palette?.warning ?? SEMANTIC_COLORS.warning;
+  colorScratch.info = overrides?.info ?? palette?.info ?? SEMANTIC_COLORS.info;
+  colorScratch.muted = overrides?.muted ?? palette?.muted ?? SEMANTIC_COLORS.muted;
   return colorScratch;
 }
 
+/**
+ * Workstream A (2026-07-06 CSS styling model) — resolves a single semantic
+ * color key through `p.palette` (threaded from the resolved theme), falling
+ * back to the `SEMANTIC_COLORS` literal when the theme hasn't declared the
+ * token. Used by painters that reference one semantic hue directly, outside
+ * the `colorsFromParams` aggregate (no per-column `overrides` object to
+ * consult for these call sites).
+ */
+function paletteColor(p: CellPaintConfig, key: keyof SemanticColorMap): string {
+  return p.palette?.[key] ?? SEMANTIC_COLORS[key];
+}
+
 function innerBarRect(p: CellPaintConfig): { x: number; y: number; w: number; h: number } {
+  // Workstream A (2026-07-06 CSS styling model) — geometry-as-style:
+  // `--cg-bar-height` resolves into `RendererPalette.barHeight`; BAR_H
+  // (the pre-existing literal) is now only the byte-identical fallback.
+  const barH = p.palette?.barHeight ?? BAR_H;
   return {
     x: p.bounds.x + padLeft(p),
-    y: p.bounds.y + (p.bounds.h - BAR_H) / 2,
+    y: p.bounds.y + (p.bounds.h - barH) / 2,
     w: p.bounds.w - padLeft(p) - padRight(p),
-    h: BAR_H,
+    h: barH,
   };
 }
 
@@ -113,7 +135,7 @@ export const progressBarCell: CellPainter = {
     const fracRaw = params.fraction ?? rowNumber(row, params.fractionField) ?? toNumber(p.value);
     const frac = fracRaw === null ? 0 : Math.max(0, Math.min(1, fracRaw));
     const rect = innerBarRect(p);
-    const fill = frac >= 1 ? SEMANTIC_COLORS.positive : SEMANTIC_COLORS.info;
+    const fill = frac >= 1 ? paletteColor(p, 'positive') : paletteColor(p, 'info');
     miniBar(gc, rect.x, rect.y, rect.w, rect.h, frac, fill, TRACK_COLOR);
     if (params.showLabel !== false) {
       // B6 — render as a percent (never the raw `0.72` fraction), drawn
@@ -144,7 +166,7 @@ export const rangeBarCell: CellPainter = {
     if (min !== null && max !== null && val !== null && max > min) {
       const t = Math.max(0, Math.min(1, (val - min) / (max - min)));
       const cx = rect.x + t * rect.w;
-      dot(gc, cx, rect.y + rect.h / 2, 3, SEMANTIC_COLORS.info);
+      dot(gc, cx, rect.y + rect.h / 2, 3, paletteColor(p, 'info'));
       fragText(gc, String(min), rect.x, textY(gc, p), { font: p.font, color: withAlpha(p.fg, 0.7), align: 'left' });
       fragText(gc, String(max), rect.x + rect.w, textY(gc, p), { font: p.font, color: withAlpha(p.fg, 0.7), align: 'right' });
     }
@@ -155,7 +177,7 @@ export const rangeBarCell: CellPainter = {
 export const bidirectionalBarCell: CellPainter = {
   paint(gc, p) {
     const params = (p.params ?? {}) as BidirectionalBarCellParams;
-    const colors = colorsFromParams(params.colors);
+    const colors = colorsFromParams(params.colors, p);
     const row = p.rowData as Record<string, unknown> | undefined;
     const value = rowNumber(row, params.valueField) ?? toNumber(p.value);
     if (value === null) return;
@@ -188,7 +210,7 @@ export const bidirectionalBarCell: CellPainter = {
 export const heatCell: CellPainter = {
   paint(gc, p) {
     const params = (p.params ?? {}) as HeatCellParams;
-    const colors = colorsFromParams(params.colors);
+    const colors = colorsFromParams(params.colors, p);
     const value = toNumber(p.value);
     const stats = params.stats;
     let t = 0.5;
@@ -230,9 +252,9 @@ export const gaugeCell: CellPainter = {
       const z1 = zones[i + 1]!;
       const x0 = rect.x + ((z0 - params.min) / span) * rect.w;
       const x1 = rect.x + ((z1 - params.min) / span) * rect.w;
-      const zoneColor = z1 <= 0 ? SEMANTIC_COLORS.negative
-        : z0 >= 0 ? SEMANTIC_COLORS.positive
-        : withAlpha(SEMANTIC_COLORS.muted, 0.25);
+      const zoneColor = z1 <= 0 ? paletteColor(p, 'negative')
+        : z0 >= 0 ? paletteColor(p, 'positive')
+        : withAlpha(paletteColor(p, 'muted'), 0.25);
       gc.cache.fillStyle = zoneColor;
       gc.fillRect(x0, rect.y, Math.max(0, x1 - x0), rect.h);
     }
@@ -261,9 +283,9 @@ export const spreadBarCell: CellPainter = {
     const history = params.history?.values ?? [];
     const { mean, std } = rollingMeanStd(history.length > 0 ? history : [spread]);
     const z = (spread - mean) / std;
-    let barColor = withAlpha(SEMANTIC_COLORS.muted, 0.35);
-    if (Math.abs(z) >= 2) barColor = withAlpha(SEMANTIC_COLORS.negative, 0.45);
-    else if (Math.abs(z) >= 1) barColor = withAlpha(SEMANTIC_COLORS.warning, 0.45);
+    let barColor = withAlpha(paletteColor(p, 'muted'), 0.35);
+    if (Math.abs(z) >= 2) barColor = withAlpha(paletteColor(p, 'negative'), 0.45);
+    else if (Math.abs(z) >= 1) barColor = withAlpha(paletteColor(p, 'warning'), 0.45);
     const rect = innerBarRect(p);
     const frac = Math.max(0, Math.min(1, spread / (mean + std * 2 || spread || 1)));
     miniBar(gc, rect.x, rect.y, rect.w, rect.h, frac, barColor, TRACK_COLOR);
@@ -291,7 +313,7 @@ export const volumeBar: CellPainter = {
     const max = statsMax !== null && statsMax !== undefined && statsMax > 0 ? statsMax : value;
     const frac = Math.max(0, Math.min(1, value / max));
     const rect = innerBarRect(p);
-    miniBar(gc, rect.x, rect.y, rect.w, rect.h, frac, withAlpha(SEMANTIC_COLORS.info, 0.45), TRACK_COLOR);
+    miniBar(gc, rect.x, rect.y, rect.w, rect.h, frac, withAlpha(paletteColor(p, 'info'), 0.45), TRACK_COLOR);
     const text = p.valueFormatted || String(value);
     // B6 — the label never straddles the fill boundary by default (not
     // opt-in): once the bar crosses ~80%, the right-aligned label sits ON

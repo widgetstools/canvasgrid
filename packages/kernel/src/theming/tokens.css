@@ -581,6 +581,38 @@
 .cg-theme-high-contrast-dark { background-color: var(--cg-bg-color); }
 .cg-theme-high-contrast-dark .cg-canvas { background-color: var(--cg-bg-color); }
 
+/* Workstream A (2026-07-06 CSS styling model) — renderer-palette tokens.
+ * @cgrid/renderers data-viz painters (bars/badges/numeric categories)
+ * resolve their semantic colors + geometry from these tokens via
+ * `cssReader` → `ResolvedTheme.rendererPalette` → `CellPaintConfig.palette`,
+ * falling back to the identical literal when a token isn't declared. The
+ * five colors are a deliberate invariant across light/dark (see
+ * `@cgrid/renderers/palette.ts`'s `SEMANTIC_COLORS` doc comment) — same
+ * hex regardless of theme — so they're declared ONCE here, shared by every
+ * theme class, instead of repeating the same 8 declarations in each theme
+ * block above. Apps that want per-theme data-viz colors override these
+ * tokens on their own theme class after this rule (CSS cascade — later
+ * same-specificity rule wins) or via an app-level stylesheet loaded after
+ * cgrid's. Placed after every individual theme block (not interleaved)
+ * so text-scanning tests that grab "the first `.cg-theme-<x> { ... }`
+ * block" in this file still find each theme's own dedicated block. */
+.cg-theme-quartz,
+.cg-theme-quartz-dark,
+.cg-theme-starui,
+.cg-theme-starui-dark,
+.cg-theme-high-contrast,
+.cg-theme-high-contrast-dark,
+.cg-theme-auto {
+  --cg-pos-color: #0aa063;
+  --cg-neg-color: #e63946;
+  --cg-warning-color: #f0b429;
+  --cg-info-color: #3b82f6;
+  --cg-muted-color: #8a8f98;
+  --cg-bar-height: 8px;
+  --cg-chip-height: 16px;
+  --cg-chip-radius: 3px;
+}
+
 /* Cycle 24 / Task 7 — `prefers-reduced-motion` overrides. CSS-only:
  * the same tokens that drive animation surfaces resolve to no-op
  * values when the user's OS reports reduced-motion. The flash painter

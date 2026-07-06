@@ -610,6 +610,11 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   target.checkboxCheckedBg = theme.checkboxCheckedBg;
   target.checkboxCheckedFg = theme.checkboxCheckedFg;
   target.params = ctx.params;
+  // Workstream A (2026-07-06 CSS styling model) — thread the resolved
+  // renderer-palette bundle onto every cell so @cgrid/renderers painters
+  // can resolve data-viz colors/geometry from theme tokens instead of
+  // hardcoded constants. Constant per theme (not per-cell computed).
+  target.palette = theme.rendererPalette;
   // Cycle 21c / Task 13 — composite program threading. Populated only
   // for columns carrying a compiled composite program; explicitly reset
   // to undefined otherwise (the config object is reused across cells).

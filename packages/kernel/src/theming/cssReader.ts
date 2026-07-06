@@ -3,6 +3,45 @@ import type {
   CellContent, CellDecorator, DecoratorPosition, FontWeight, TextTransform,
 } from '../types';
 
+/**
+ * Workstream A (2026-07-06 CSS styling model) — compact renderer-palette
+ * bundle resolved once per theme swap and threaded onto every
+ * `CellPaintConfig` (`applyCellProps` sets `target.palette =
+ * theme.rendererPalette`). `@cgrid/renderers` painters resolve colors as
+ * `overrides ?? p.palette?.<field> ?? SEMANTIC_COLORS.<field>` — the same
+ * shape as the pre-existing per-column `overrides` pattern, just with a
+ * theme-driven middle tier — and geometry as `p.palette?.<field> ?? <literal>`.
+ *
+ * Every field's literal fallback below (used when a theme declares none of
+ * the backing tokens) matches `@cgrid/renderers/palette.ts`'s
+ * `SEMANTIC_COLORS` map and the bars/badges painter constants (`BAR_H`,
+ * `CHIP_H`, chip corner radius) exactly, so a theme that doesn't opt into
+ * any of these tokens renders byte-identical to before this bundle existed.
+ *
+ * Deliberately a SMALL, generic bundle for THIS pass — the specialized maps
+ * (status-pill bg/fg/border per state, rating-scale per grade, venue per
+ * MIC) are a separate follow-on task that reuses this same threading
+ * channel (widens this interface) rather than being built here.
+ */
+export interface RendererPalette {
+  /** `--cg-pos-color`. */
+  positive: string;
+  /** `--cg-neg-color`. */
+  negative: string;
+  /** `--cg-warning-color`. */
+  warning: string;
+  /** `--cg-info-color`. */
+  info: string;
+  /** `--cg-muted-color`. */
+  muted: string;
+  /** `--cg-bar-height` (px). Bars category painters' fixed bar thickness. */
+  barHeight: number;
+  /** `--cg-chip-height` (px). Badges category painters' pill/chip height. */
+  chipHeight: number;
+  /** `--cg-chip-radius` (px). Badges category painters' pill/chip corner radius. */
+  chipRadius: number;
+}
+
 export interface ResolvedTheme {
   /** Chrome font (canvas-painted headers, group cells, totals labels,
    *  side panel / strip / menu chrome via CSS). Resolved from
@@ -191,6 +230,13 @@ export interface ResolvedTheme {
   popupBg: string;
   popupBorder: string;
   menuHoverBg: string;
+  /**
+   * Workstream A (2026-07-06 CSS styling model) — the resolved
+   * renderer-palette bundle (semantic colors + bar/chip geometry). See
+   * `RendererPalette` above. `applyCellProps` threads this straight onto
+   * every `CellPaintConfig.palette`.
+   */
+  rendererPalette: RendererPalette;
   /**
    * Map of class-name → ColCellOverrides patch. Populated from CSS custom
    * properties matching `--cg-cell-class-<name>-(bg|fg|font|halign)`.
@@ -796,6 +842,21 @@ export class CssReader {
       popupBg: get('--cg-popup-bg') || get('--cg-bg-color') || '#ffffff',
       popupBorder: get('--cg-popup-border') || get('--cg-border-color') || '#d5dbe0',
       menuHoverBg: get('--cg-menu-hover-bg') || get('--cg-row-hover-bg') || '#eef1f3',
+      // Workstream A (2026-07-06 CSS styling model) — renderer-palette
+      // bundle. Literal fallbacks mirror @cgrid/renderers/palette.ts's
+      // SEMANTIC_COLORS + the bars/badges painter geometry constants
+      // exactly (defensive `get(...) || <literal>` / `px(...)` pattern,
+      // same as every other token above).
+      rendererPalette: {
+        positive: get('--cg-pos-color') || '#0aa063',
+        negative: get('--cg-neg-color') || '#e63946',
+        warning: get('--cg-warning-color') || '#f0b429',
+        info: get('--cg-info-color') || '#3b82f6',
+        muted: get('--cg-muted-color') || '#8a8f98',
+        barHeight: px('--cg-bar-height', 8),
+        chipHeight: px('--cg-chip-height', 16),
+        chipRadius: px('--cg-chip-radius', 3),
+      },
       cellClassVariants,
       headerClassVariants,
       resolveVarRef,
