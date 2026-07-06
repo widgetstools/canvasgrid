@@ -96,16 +96,26 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
             : {};
         },
       }),
-      // CSS-driven styling demo (WS-B) — the *appearance* of these classes
-      // lives entirely in CSS custom properties in style.css
-      // (`--cg-cell-class-{loss,gain}-*`): left border, corner decorator glyph,
-      // fg colour, font-weight — all mapped onto the canvas paint artifacts.
-      // Only the predicate (which class a cell gets) is code.
+      // Rich, MODE-ADAPTIVE sign styling — fg + left border + corner decorator,
+      // every colour a var(--cg-pos/neg-color) reference resolved per active
+      // theme (light vs dark) by the kernel's cellStyle var resolver. Gains get
+      // a teal ▲; losses a rose ▼ + rose left border.
       num('Daily P&L', 'dailyPnl', {
         aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)',
-        cellClassRules: {
-          loss: (p: { value: unknown }) => Number(p.value) < 0,
-          gain: (p: { value: unknown }) => Number(p.value) > 0,
+        cellStyle: (p: { value: unknown }) => {
+          const n = Number(p.value);
+          if (!Number.isFinite(n) || n === 0) return {};
+          if (n > 0) {
+            return {
+              fg: 'var(--cg-pos-color)', fontWeight: 700,
+              decorators: [{ position: 'tr', kind: 'emoji', value: '▲', color: 'var(--cg-pos-color)', size: 9 }],
+            };
+          }
+          return {
+            fg: 'var(--cg-neg-color)', fontWeight: 700,
+            border: { left: { width: 3, style: 'solid', color: 'var(--cg-neg-color)' } },
+            decorators: [{ position: 'tr', kind: 'emoji', value: '▼', color: 'var(--cg-neg-color)', size: 9 }],
+          };
         },
       }),
     ],

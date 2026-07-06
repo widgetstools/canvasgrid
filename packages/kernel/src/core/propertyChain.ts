@@ -3,7 +3,7 @@ import type {
   CCellRendererSelector, CValueParserParams, CValueSetterParams,
   CellEditorCtor, EditableCallback, SuppressKeyboardEventCallback,
   CellClass, CellClassRules, CellStyleFunc, HeaderClass,
-  BorderSpec, BorderSide,
+  BorderSpec, BorderSide, CellContent, CellDecorator,
 } from '../types';
 import type { CellPaintConfig } from '../renderer/cellRenderers/registry';
 import type { ResolvedTheme } from '../theming/cssReader';
@@ -393,6 +393,37 @@ function resolveBorderSpecColors(
   return out;
 }
 
+/** Workstream C (completion) — resolve `var(--cg-…)` refs in a cell-content
+ *  slot's color fields (`icon.color`, `icon-text.iconColor`). Returns a shallow
+ *  clone; other kinds (text/emoji) pass through untouched. */
+function resolveContentColors(
+  content: CellContent,
+  resolveVarRef: (value: string) => string,
+): CellContent {
+  if (content.kind === 'icon' && content.color !== undefined) {
+    return { ...content, color: resolveVarRef(content.color) };
+  }
+  if (content.kind === 'icon-text' && content.iconColor !== undefined) {
+    return { ...content, iconColor: resolveVarRef(content.iconColor) };
+  }
+  return content;
+}
+
+/** Workstream C (completion) — resolve `var(--cg-…)` refs in each decorator's
+ *  `color` / `bg` fields so token-referenced decorator colors track the theme
+ *  (mode-aware). Returns a new array of shallow clones. */
+function resolveDecoratorColors(
+  decorators: readonly CellDecorator[],
+  resolveVarRef: (value: string) => string,
+): CellDecorator[] {
+  return decorators.map((d) => {
+    let out = d;
+    if (d.color !== undefined) out = { ...out, color: resolveVarRef(d.color) };
+    if (d.bg !== undefined) out = { ...out, bg: resolveVarRef(d.bg) };
+    return out;
+  });
+}
+
 /** Apply a `ColCellOverrides` patch onto the mutable slots of `target`.
  *  Only defined fields in `patch` are applied; `undefined` fields are
  *  silently skipped, which is what "later wins" stacking requires.
@@ -445,9 +476,16 @@ function applyOverridePatch(
   if (patch.border !== undefined) {
     target.border = resolveVarRef ? resolveBorderSpecColors(patch.border, resolveVarRef) : patch.border;
   }
-  // Cycle 27 / Task 3 — content + decorators replace wholesale.
-  if (patch.content !== undefined) target.content = patch.content;
-  if (patch.decorators !== undefined) target.decorators = patch.decorators;
+  // Cycle 27 / Task 3 — content + decorators replace wholesale. Workstream C
+  // (completion) — their color fields resolve var(--cg-…) refs when a resolver
+  // is supplied (cellStyle/headerStyle callers), so token-referenced icon /
+  // decorator colors are mode-aware like fg/bg/border.
+  if (patch.content !== undefined) {
+    target.content = resolveVarRef ? resolveContentColors(patch.content, resolveVarRef) : patch.content;
+  }
+  if (patch.decorators !== undefined) {
+    target.decorators = resolveVarRef ? resolveDecoratorColors(patch.decorators, resolveVarRef) : patch.decorators;
+  }
 }
 
 /** Cycle 27 / Task 1 — apply `textTransform` to a string. Cheap one-shot

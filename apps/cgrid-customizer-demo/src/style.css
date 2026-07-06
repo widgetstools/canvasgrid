@@ -115,26 +115,3 @@ button:hover { filter: brightness(1.1); }
   user-select: none;
 }
 .demo-switch input { margin: 0; cursor: pointer; accent-color: #64748b; }
-
-/* ── CSS-driven cell styling (WS-B) ──────────────────────────────────────────
- * The full appearance of the `loss` / `gain` cell classes is authored HERE in
- * CSS custom properties and mapped onto the canvas paint artifacts by the
- * kernel — per-side border, corner decorator glyph, fg colour, font-weight.
- * main.ts only decides which cells carry which class (the predicate). */
-.grid-host {
-  --cg-cell-class-loss-fg: #fb7185;
-  --cg-cell-class-loss-bg: rgba(251, 113, 133, 0.10);
-  --cg-cell-class-loss-border-left-width: 3px;
-  --cg-cell-class-loss-border-left-style: solid;
-  --cg-cell-class-loss-border-left-color: #fb7185;
-  --cg-cell-class-loss-font-weight: 700;
-  --cg-cell-class-loss-decorator-tr: "▼";
-  --cg-cell-class-loss-decorator-tr-color: #fb7185;
-  --cg-cell-class-loss-decorator-tr-size: 9;
-
-  --cg-cell-class-gain-fg: #2dd4bf;
-  --cg-cell-class-gain-font-weight: 700;
-  --cg-cell-class-gain-decorator-tr: "▲";
-  --cg-cell-class-gain-decorator-tr-color: #2dd4bf;
-  --cg-cell-class-gain-decorator-tr-size: 9;
-}

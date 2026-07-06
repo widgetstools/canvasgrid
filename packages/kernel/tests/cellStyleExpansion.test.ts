@@ -522,6 +522,31 @@ describe('Workstream C — cellStyle token resolution (var(--cg-…))', () => {
     expect(config.border).toEqual({ left: { width: 2, style: 'solid', color: '#dc2626' } });
   });
 
+  it('cellStyle content + decorator colors resolve var(--cg-…) refs', () => {
+    const colDef = resolveColDef({
+      field: 'pnl',
+      cellStyle: {
+        content: { kind: 'icon', icon: 'triangle-down', color: 'var(--cg-neg-color)' },
+        decorators: [
+          { position: 'tr', kind: 'emoji', value: '▼', color: 'var(--cg-neg-color)', bg: 'var(--cg-neg-color)' },
+        ],
+      } as any,
+    });
+    const config = makeConfig();
+    applyCellProps(config, {
+      theme: themeWithResolver({ '--cg-neg-color': '#dc2626' }),
+      colDef,
+      value: -50, valueFormatted: '-50',
+      x: 0, y: 0, w: 100, h: 30,
+      rowBg: '#fff', prefillColor: '#fff',
+      isFocused: false, isSelected: false, isHovered: false, isHeader: false,
+      rowData: {},
+    });
+    expect((config.content as { color?: string }).color).toBe('#dc2626');
+    expect((config.decorators as Array<{ color?: string; bg?: string }>)[0]!.color).toBe('#dc2626');
+    expect((config.decorators as Array<{ color?: string; bg?: string }>)[0]!.bg).toBe('#dc2626');
+  });
+
   it('a literal cellStyle color (#hex) is left unchanged (regression — no var() resolution attempted)', () => {
     const colDef = resolveColDef({
       field: 'pnl',
