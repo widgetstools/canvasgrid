@@ -94,14 +94,24 @@ function icon(...children: SVGElement[]): SVGSVGElement {
   return svg;
 }
 const strokeAttrs = { fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' } as const;
-/** columnGroupShow state icons — identical circle (r=8), differing only by
- *  fill so all three read at exactly the same size. */
+/** columnGroupShow state icons. Eye = always visible; the two conditional
+ *  states echo the group's own disclosure caret — a DOWN chevron for
+ *  "visible only when the group is OPEN (expanded)" and a RIGHT chevron for
+ *  "visible only when the group is CLOSED (collapsed)". */
 function iconGroupShow(kind: 'always' | 'open' | 'closed'): SVGSVGElement {
-  if (kind === 'always') return icon(svgEl('circle', { cx: '12', cy: '12', r: '8', fill: 'currentColor' }));
-  const ring = svgEl('circle', { cx: '12', cy: '12', r: '8', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' });
-  if (kind === 'closed') return icon(ring);
-  // 'open' — ring + filled left half (top→bottom arc sweeping left, closed).
-  return icon(ring, svgEl('path', { d: 'M12 4 A8 8 0 0 0 12 20 Z', fill: 'currentColor' }));
+  if (kind === 'always') {
+    // Eye — always visible.
+    return icon(
+      svgEl('path', { d: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z', ...strokeAttrs }),
+      svgEl('circle', { cx: '12', cy: '12', r: '3', ...strokeAttrs }),
+    );
+  }
+  if (kind === 'open') {
+    // Chevron-down — mirrors an OPEN group's caret (shown only when expanded).
+    return icon(svgEl('path', { d: 'M6 9l6 6 6-6', ...strokeAttrs }));
+  }
+  // Chevron-right — mirrors a CLOSED group's caret (shown only when collapsed).
+  return icon(svgEl('path', { d: 'M9 6l6 6-6 6', ...strokeAttrs }));
 }
 function iconGear(): SVGSVGElement {
   return icon(
@@ -912,10 +922,38 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     // column that lives INSIDE a group — an ungrouped (top-level) column has
     // no group to open/close relative to, so no control is rendered for it.
     if (n.parentId !== null) {
-      wrap.appendChild(this.buildGroupShowControl(n.colId, n.columnGroupShow, 'inline'));
+      wrap.appendChild(this.buildVisibilityControl(n.colId, n.columnGroupShow));
     }
 
     return wrap;
+  }
+
+  /** Inline column-group visibility affordance (row-level). Reveals the full
+   *  3-state picker only on row hover (see `.cg-colgroups-visibility` CSS); when
+   *  the row is at rest a single muted caret marks a CONDITIONAL column (open /
+   *  closed) so it reads at a glance, while an always-visible column shows
+   *  nothing — keeping the common case clutter-free. */
+  private buildVisibilityControl(
+    colId: string,
+    value: 'open' | 'closed' | null | undefined,
+  ): HTMLElement {
+    const vis = el('div', 'cg-colgroups-visibility');
+    const state = value ?? '';
+    // Rest-state marker — only for conditional columns.
+    if (state === 'open' || state === 'closed') {
+      const marker = el('span', 'cg-colgroups-vis-current');
+      marker.setAttribute('aria-hidden', 'true');
+      marker.appendChild(iconGroupShow(state));
+      marker.title = state === 'open'
+        ? 'Visible only when the group is expanded'
+        : 'Visible only when the group is collapsed';
+      vis.appendChild(marker);
+    }
+    // Hover-revealed picker.
+    const picker = this.buildGroupShowControl(colId, value, 'inline');
+    picker.classList.add('cg-colgroups-vis-picker');
+    vis.appendChild(picker);
+    return vis;
   }
 
   /** Shared control builder for BOTH `columnGroupShow` UI surfaces — the

@@ -2851,12 +2851,36 @@
   display: inline-flex;
   align-items: center;
 }
+/* Calm hairline checkbox — unchecked = hairline box, checked = accent tick
+ * (replaces the heavy native accent-color fill). */
 .cg-colgroups-checkbox {
+  appearance: none;
+  -webkit-appearance: none;
+  position: relative;
   width: 15px;
   height: 15px;
   margin: 0;
-  accent-color: var(--cg-settings-accent);
+  border: 1px solid var(--cg-border-color);
+  border-radius: var(--cg-radius, 3px);
+  background: transparent;
   cursor: pointer;
+}
+.cg-colgroups-checkbox:hover {
+  border-color: color-mix(in srgb, var(--cg-fg-color) 45%, transparent);
+}
+.cg-colgroups-checkbox:checked {
+  border-color: color-mix(in srgb, var(--cg-settings-accent) 55%, var(--cg-border-color));
+}
+.cg-colgroups-checkbox:checked::after {
+  content: '';
+  position: absolute;
+  left: 4px;
+  top: 1px;
+  width: 4px;
+  height: 8px;
+  border: solid var(--cg-settings-accent);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
 }
 .cg-colgroups-checkbox:focus-visible {
   outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
@@ -3085,6 +3109,33 @@
   outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
   outline-offset: -2px;
   z-index: 1;
+}
+
+/* Inline column-group visibility — the 3-state picker is revealed only on row
+ * hover/focus; at rest a single muted caret marks a CONDITIONAL column
+ * (expand-only / collapse-only). An always-visible column shows nothing at
+ * rest, keeping idle rows uncluttered. */
+.cg-colgroups-visibility {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  margin-inline-start: auto;
+  padding-inline-start: 6px;
+}
+.cg-colgroups-vis-current {
+  display: inline-flex;
+  align-items: center;
+  color: color-mix(in srgb, var(--cg-fg-color) 42%, transparent);
+}
+.cg-colgroups-vis-picker { display: none; }
+.cg-colgroups-row:hover .cg-colgroups-vis-current,
+.cg-colgroups-row:focus-within .cg-colgroups-vis-current {
+  display: none;
+}
+.cg-colgroups-row:hover .cg-colgroups-vis-picker,
+.cg-colgroups-row:focus-within .cg-colgroups-vis-picker {
+  display: inline-flex;
 }
 @media (prefers-reduced-motion: no-preference) {
   .cg-colgroups-seg-btn {

@@ -341,8 +341,11 @@ test('group header styling: a per-side (top) border applies to headerStyle.borde
 test('setting a grouped column\'s columnGroupShow to "When collapsed" persists across reload', async ({ page }) => {
   await openColumnGroupsTab(page);
 
-  // `columnGroupShow` is now a 3-state segment (● Always · ◐ Open · ○ Closed).
-  const groupShow = page.locator('[data-cg-node="pnl"] [data-cg-groupshow]');
+  // `columnGroupShow` is a 3-state segment (eye = always · ⌄ = when expanded ·
+  // › = when collapsed), revealed on ROW HOVER — so hover the row first.
+  const row = page.locator('[data-cg-node="pnl"]');
+  await row.hover();
+  const groupShow = row.locator('[data-cg-groupshow]');
   await expect(groupShow).toBeVisible();
   await groupShow.locator('[data-value="closed"]').click();
 
@@ -373,6 +376,20 @@ test('setting a grouped column\'s columnGroupShow to "When collapsed" persists a
       return pnlAfterReload?.columnGroupShow ?? null;
     }, { timeout: 10_000 })
     .toBe('closed');
+});
+
+// Column-group UI refactor — the inline visibility control (eye / ⌄ / ›) is
+// hidden at rest and revealed only on row hover, so idle rows stay uncluttered.
+test('the column-group visibility control is hidden at rest and revealed on row hover', async ({ page }) => {
+  await openColumnGroupsTab(page);
+  const row = page.locator('[data-cg-node="pnl"]');
+  const picker = row.locator('.cg-colgroups-vis-picker');
+  // pnl is a grouped column → it has the control, but it is hidden at rest.
+  await expect(picker).toHaveCount(1);
+  await expect(picker).toBeHidden();
+  // Hovering the row reveals the 3-state picker.
+  await row.hover();
+  await expect(picker).toBeVisible();
 });
 
 // Cycle 21i / Task 8 — the RUNTIME open/collapse state of a column group
