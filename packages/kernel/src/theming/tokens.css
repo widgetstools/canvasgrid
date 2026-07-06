@@ -596,6 +596,24 @@
  * cgrid's. Placed after every individual theme block (not interleaved)
  * so text-scanning tests that grab "the first `.cg-theme-<x> { ... }`
  * block" in this file still find each theme's own dedicated block. */
+/* Semantic pos/neg (teal / rose) tuned per mode — brighter/lighter on dark,
+ * deeper/more saturated on light for contrast. Split out of the shared block
+ * so light and dark themes get mode-appropriate shades; cg-theme-auto's dark
+ * override lives in its prefers-color-scheme media block below. */
+.cg-theme-quartz,
+.cg-theme-starui,
+.cg-theme-high-contrast,
+.cg-theme-auto {
+  --cg-pos-color: #0d9488;
+  --cg-neg-color: #e11d48;
+}
+.cg-theme-quartz-dark,
+.cg-theme-starui-dark,
+.cg-theme-high-contrast-dark {
+  --cg-pos-color: #2dd4bf;
+  --cg-neg-color: #fb7185;
+}
+
 .cg-theme-quartz,
 .cg-theme-quartz-dark,
 .cg-theme-starui,
@@ -603,8 +621,6 @@
 .cg-theme-high-contrast,
 .cg-theme-high-contrast-dark,
 .cg-theme-auto {
-  --cg-pos-color: #3de0a0;
-  --cg-neg-color: #f05071;
   --cg-warning-color: #f0b429;
   --cg-info-color: #3b82f6;
   --cg-muted-color: #8a8f98;
@@ -766,6 +782,9 @@
 
 @media (prefers-color-scheme: dark) {
   .cg-theme-auto {
+    /* Dark-mode teal/rose (brighter) — overrides the light values set above. */
+    --cg-pos-color: #2dd4bf;
+    --cg-neg-color: #fb7185;
     --cg-fg-color: #d4d4d4;
     --cg-bg-color: #1e1e1e;
     --cg-row-alt-bg: #1e1e1e;

@@ -87,9 +87,13 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
       },
       num('P&L', 'pnl', {
         aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)',
-        cellClassRules: {
-          pnlpos: (p: { value: unknown }) => Number(p.value) > 0,
-          pnlneg: (p: { value: unknown }) => Number(p.value) < 0,
+        // Mode-aware sign colouring: reads the teal/rose semantic tokens via
+        // var(), resolved per active theme (light vs dark) by resolveVarRef.
+        cellStyle: (p: { value: unknown }) => {
+          const n = Number(p.value);
+          return Number.isFinite(n) && n !== 0
+            ? { fg: n > 0 ? 'var(--cg-pos-color)' : 'var(--cg-neg-color)' }
+            : {};
         },
       }),
       // CSS-driven styling demo (WS-B) — the *appearance* of these classes
@@ -116,9 +120,11 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
   }),
   num('Unrealized', 'unrealizedPnl', {
     aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)',
-    cellClassRules: {
-      pnlpos: (p: { value: unknown }) => Number(p.value) > 0,
-      pnlneg: (p: { value: unknown }) => Number(p.value) < 0,
+    cellStyle: (p: { value: unknown }) => {
+      const n = Number(p.value);
+      return Number.isFinite(n) && n !== 0
+        ? { fg: n > 0 ? 'var(--cg-pos-color)' : 'var(--cg-neg-color)' }
+        : {};
     },
   }),
   {

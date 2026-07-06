@@ -116,8 +116,8 @@ describe('CssReader — rendererPalette (Workstream A)', () => {
 
     const r = new CssReader(container).read();
     expect(r.rendererPalette).toEqual({
-      positive: '#3de0a0',
-      negative: '#f05071',
+      positive: '#2dd4bf',
+      negative: '#fb7185',
       warning: '#f0b429',
       info: '#3b82f6',
       muted: '#8a8f98',
