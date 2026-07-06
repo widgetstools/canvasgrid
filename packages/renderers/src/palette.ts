@@ -21,8 +21,8 @@ import { withAlpha } from './paintUtils';
  * (80% of a professional blotter stays muted gray; these are the 20%).
  */
 export const SEMANTIC_COLORS: Readonly<Required<SemanticColorMap>> = {
-  positive: '#0aa063',
-  negative: '#e63946',
+  positive: '#2dd4bf',
+  negative: '#fb7185',
   warning: '#f0b429',
   info: '#3b82f6',
   muted: '#8a8f98',
@@ -148,16 +148,20 @@ export function withThemeAlpha(alpha: number, themeKind: 'light' | 'dark'): numb
 /**
  * Resolves a status key to visual `{ bg, fg, border? }` for the given theme.
  *
- * Built from the catalog-fixed `STATUS_PILL_MAP` const. For status keys whose
- * `bg` encodes alpha in an 8-digit hex (`#rrggbbaa`), applies `withThemeAlpha`
- * to the embedded alpha so dark-theme pills read at higher contrast.
- * The `fg` hue is never modified across themes.
+ * Built from `statusMap` (Workstream A, part 2 — defaults to the
+ * catalog-fixed `STATUS_PILL_MAP` const, but callers thread
+ * `p.palette.status` here first so the base colors come from CSS tokens
+ * when a theme declares them). For status keys whose `bg` encodes alpha in
+ * an 8-digit hex (`#rrggbbaa`), applies `withThemeAlpha` to the embedded
+ * alpha so dark-theme pills read at higher contrast. The `fg` hue is never
+ * modified across themes.
  */
 export function resolvePillColors(
   status: string,
   themeKind: 'light' | 'dark',
+  statusMap: Readonly<Record<string, StatusPillStyle>> = STATUS_PILL_MAP,
 ): { bg: string; fg: string; border?: string } {
-  const style = STATUS_PILL_MAP[status];
+  const style = statusMap[status];
   if (style === undefined) {
     return { bg: 'transparent', fg: SEMANTIC_COLORS.muted };
   }

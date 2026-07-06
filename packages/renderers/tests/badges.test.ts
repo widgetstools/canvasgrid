@@ -7,6 +7,7 @@ import type { FakeGc } from './helpers/fakeGc';
 import {
   DEFAULT_VENUE_PALETTE, RATING_SCALE_BANDS, SEMANTIC_COLORS, STATUS_PILL_MAP,
 } from '../src/palette';
+import { withAlpha } from '../src/paintUtils';
 import {
   statusPill, ratingBadge, ratingClusterCell, tagCell, venueChip, sideChip, tifPill,
 } from '../src/badges';
@@ -143,6 +144,42 @@ describe('tagCell', () => {
   });
 });
 
+// ───────────────────────────────────────────────────────────────────────
+// Workstream A (2026-07-06 CSS styling model) — chip geometry-as-style.
+// `--cg-chip-height` / `--cg-chip-radius` → `RendererPalette.chipHeight` /
+// `.chipRadius`, read by `paintCapsPill()`. bounds.h is 24 in `baseConfig`,
+// so the default chip (16px) centers at y = (24-16)/2 = 4.
+// ───────────────────────────────────────────────────────────────────────
+describe('tagCell — Workstream A chip geometry', () => {
+  let gc: FakeGc;
+  beforeEach(() => { gc = makeFakeGc(); });
+
+  it('reads chip height/radius from p.palette when present', () => {
+    tagCell.paint(gc, baseConfig({
+      params: { text: 'NEW' },
+      palette: {
+        positive: SEMANTIC_COLORS.positive, negative: SEMANTIC_COLORS.negative,
+        warning: SEMANTIC_COLORS.warning, info: SEMANTIC_COLORS.info, muted: SEMANTIC_COLORS.muted,
+        barHeight: 8, chipHeight: 24, chipRadius: 7,
+        status: {} as never, rating: {} as never, venue: {},
+      },
+    }));
+    const arcTo = gc.calls.find((c) => c.op === 'arcTo');
+    expect(arcTo?.args[4]).toBe(7);
+    const moveTo = gc.calls.find((c) => c.op === 'moveTo');
+    // y = (24 bounds.h - 24 chipHeight) / 2 = 0
+    expect(moveTo?.args[1]).toBe(0);
+  });
+
+  it('falls back to height 16 / radius 3 when p.palette is absent (byte-identical)', () => {
+    tagCell.paint(gc, baseConfig({ params: { text: 'NEW' } }));
+    const arcTo = gc.calls.find((c) => c.op === 'arcTo');
+    expect(arcTo?.args[4]).toBe(3);
+    const moveTo = gc.calls.find((c) => c.op === 'moveTo');
+    expect(moveTo?.args[1]).toBe((24 - 16) / 2);
+  });
+});
+
 describe('venueChip', () => {
   let gc: FakeGc;
   beforeEach(() => { gc = makeFakeGc(); });
@@ -191,6 +228,118 @@ describe('sideChip', () => {
       params: { sideField: 'side' },
     }));
     expect(gc.calls.some((c) => c.op === 'fillText' && c.args[0] === 'L')).toBe(true);
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────
+// Workstream A, part 2 (2026-07-06 CSS styling model) — status-pill /
+// rating-scale / venue structured maps, threaded via `p.palette.status` /
+// `.rating` / `.venue` (same channel WS-A1's `chipHeight`/`chipRadius`
+// used). `fullPalette()` builds a complete, valid `RendererPalette`-shaped
+// object from the palette.ts literals (the byte-identical defaults) so
+// each test only needs to override the one map/entry under test.
+// ───────────────────────────────────────────────────────────────────────
+function fullPalette(overrides: Record<string, unknown> = {}): NonNullable<CellPaintConfig['palette']> {
+  const status = Object.fromEntries(
+    Object.entries(STATUS_PILL_MAP).map(([k, v]) => [k, { ...v }]),
+  );
+  const rating = Object.fromEntries(RATING_SCALE_BANDS.map((b) => [b.grade, b.color]));
+  const venue = { ...DEFAULT_VENUE_PALETTE };
+  return {
+    positive: SEMANTIC_COLORS.positive,
+    negative: SEMANTIC_COLORS.negative,
+    warning: SEMANTIC_COLORS.warning,
+    info: SEMANTIC_COLORS.info,
+    muted: SEMANTIC_COLORS.muted,
+    barHeight: 8,
+    chipHeight: 16,
+    chipRadius: 3,
+    status,
+    rating,
+    venue,
+    ...overrides,
+  } as NonNullable<CellPaintConfig['palette']>;
+}
+
+describe('statusPill — Workstream A part 2 (status palette via CSS tokens)', () => {
+  let gc: FakeGc;
+  beforeEach(() => { gc = makeFakeGc(); });
+
+  it('reads p.palette.status[state] when present', () => {
+    const palette = fullPalette({
+      status: {
+        ...(fullPalette().status as Record<string, unknown>),
+        WORKING: { bg: '#111111', fg: '#222222' },
+      },
+    });
+    statusPill.paint(gc, baseConfig({ params: { status: 'WORKING' }, palette }));
+    expect(pillFills(gc.calls)).toContain('#111111');
+  });
+
+  it('falls back to STATUS_PILL_MAP when p.palette is absent (byte-identical)', () => {
+    statusPill.paint(gc, baseConfig({ params: { status: 'WORKING' } }));
+    expect(pillFills(gc.calls).some((c) => c.includes('3b82f6') || c.startsWith('rgba(59, 130, 246'))).toBe(true);
+  });
+
+  it('an explicit params.statusColors override still wins over p.palette.status', () => {
+    const palette = fullPalette({
+      status: {
+        ...(fullPalette().status as Record<string, unknown>),
+        WORKING: { bg: '#111111', fg: '#222222' },
+      },
+    });
+    statusPill.paint(gc, baseConfig({
+      params: { status: 'WORKING', statusColors: { WORKING: { bg: '#ff00ff', fg: '#00ffff' } } },
+      palette,
+    }));
+    expect(pillFills(gc.calls)).toContain('#ff00ff');
+  });
+});
+
+describe('ratingBadge — Workstream A part 2 (rating palette via CSS tokens)', () => {
+  let gc: FakeGc;
+  beforeEach(() => { gc = makeFakeGc(); });
+
+  it('reads p.palette.rating[grade] when present', () => {
+    const palette = fullPalette({
+      rating: { ...(fullPalette().rating as Record<string, string>), AAA: '#123123' },
+    });
+    ratingBadge.paint(gc, baseConfig({ params: { rating: 'AAA' }, palette }));
+    expect(pillFills(gc.calls)).toContain(withAlpha('#123123', 0.18));
+  });
+
+  it('falls back to RATING_SCALE_BANDS when p.palette is absent (byte-identical)', () => {
+    ratingBadge.paint(gc, baseConfig({ params: { rating: 'AAA' } }));
+    expect(pillFills(gc.calls).some((c) => c.includes('0aa063') || c.startsWith('rgba(10, 160, 99'))).toBe(true);
+  });
+});
+
+describe('venueChip — Workstream A part 2 (venue palette via CSS tokens)', () => {
+  let gc: FakeGc;
+  beforeEach(() => { gc = makeFakeGc(); });
+
+  it('reads p.palette.venue[mic] when present', () => {
+    const palette = fullPalette({
+      venue: { ...(fullPalette().venue as Record<string, string>), XNAS: '#abcdef' },
+    });
+    venueChip.paint(gc, baseConfig({ params: { mic: 'XNAS' }, palette }));
+    expect(pillFills(gc.calls)).toContain(withAlpha('#abcdef', 0.18));
+  });
+
+  it('falls back to DEFAULT_VENUE_PALETTE when p.palette is absent (byte-identical)', () => {
+    venueChip.paint(gc, baseConfig({ params: { mic: 'XNAS' } }));
+    expect(pillFills(gc.calls).some((c) => c.includes('3b82f6') || c.startsWith('rgba(59, 130, 246'))).toBe(true);
+  });
+
+  it('an explicit params.venueColors override still wins over p.palette.venue', () => {
+    const palette = fullPalette({
+      venue: { ...(fullPalette().venue as Record<string, string>), XNAS: '#abcdef' },
+    });
+    venueChip.paint(gc, baseConfig({
+      params: { mic: 'XNAS', venueColors: { XNAS: '#000011' } },
+      palette,
+    }));
+    expect(pillFills(gc.calls)).toContain(withAlpha('#000011', 0.18));
   });
 });
 

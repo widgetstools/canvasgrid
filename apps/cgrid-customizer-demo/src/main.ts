@@ -8,7 +8,7 @@
  * done through the public API, that's a kernel gap to fix in the kernel,
  * never worked around here.
  */
-import { CGrid, formatPrice32, DEFAULT_LAYOUT_ID, type CColDef, type CColGroupDef, type GridLayoutsBundle } from '@cgrid/kernel';
+import { CGrid, formatPrice32, DEFAULT_LAYOUT_ID, themeStarui, type CColDef, type CColGroupDef, type GridLayoutsBundle, type CgThemeParams } from '@cgrid/kernel';
 import '@cgrid/kernel/style.css';
 import { wireIntoKernel as wireFormat } from '@cgrid/format';
 import { wireEditIntoKernel } from '@cgrid/edit';
@@ -85,8 +85,39 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
           num('Mkt Value', 'marketValue', { valueFormatter: '#,##0', aggFunc: 'sum', columnGroupShow: 'open' }),
         ],
       },
-      num('P&L', 'pnl', { aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)' }),
-      num('Daily P&L', 'dailyPnl', { aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)' }),
+      num('P&L', 'pnl', {
+        aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)',
+        // Mode-aware sign colouring: reads the teal/rose semantic tokens via
+        // var(), resolved per active theme (light vs dark) by resolveVarRef.
+        cellStyle: (p: { value: unknown }) => {
+          const n = Number(p.value);
+          return Number.isFinite(n) && n !== 0
+            ? { fg: n > 0 ? 'var(--cg-pos-color)' : 'var(--cg-neg-color)' }
+            : {};
+        },
+      }),
+      // Rich, MODE-ADAPTIVE sign styling — fg + left border + corner decorator,
+      // every colour a var(--cg-pos/neg-color) reference resolved per active
+      // theme (light vs dark) by the kernel's cellStyle var resolver. Gains get
+      // a teal ▲; losses a rose ▼ + rose left border.
+      num('Daily P&L', 'dailyPnl', {
+        aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)',
+        cellStyle: (p: { value: unknown }) => {
+          const n = Number(p.value);
+          if (!Number.isFinite(n) || n === 0) return {};
+          if (n > 0) {
+            return {
+              fg: 'var(--cg-pos-color)', fontWeight: 700,
+              decorators: [{ position: 'tr', kind: 'emoji', value: '▲', color: 'var(--cg-pos-color)', size: 9 }],
+            };
+          }
+          return {
+            fg: 'var(--cg-neg-color)', fontWeight: 700,
+            border: { left: { width: 3, style: 'solid', color: 'var(--cg-neg-color)' } },
+            decorators: [{ position: 'tr', kind: 'emoji', value: '▼', color: 'var(--cg-neg-color)', size: 9 }],
+          };
+        },
+      }),
     ],
   },
   // Price uses the reference 32nds bond editor: displayed as `101-16`, edited
@@ -97,7 +128,15 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
     cellEditor: 'price32',
     valueFormatter: (p: { value: unknown }) => formatPrice32(p.value as number),
   }),
-  num('Unrealized', 'unrealizedPnl', { aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)' }),
+  num('Unrealized', 'unrealizedPnl', {
+    aggFunc: 'sum', valueFormatter: '#,##0;[Red](#,##0)',
+    cellStyle: (p: { value: unknown }) => {
+      const n = Number(p.value);
+      return Number.isFinite(n) && n !== 0
+        ? { fg: n > 0 ? 'var(--cg-pos-color)' : 'var(--cg-neg-color)' }
+        : {};
+    },
+  }),
   {
     groupId: 'risk',
     headerName: 'Risk',
@@ -105,7 +144,10 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
       num('DV01', 'dv01', { aggFunc: 'sum' }),
       num('PV01', 'pv01', { aggFunc: 'sum' }),
       num('Yield', 'yield', { valueFormatter: '0.000' }),
-      num('Spread', 'spread'),
+      // Token-referenceable cellStyle demo (WS-C) — the fg colour is authored
+      // as a theme-token reference, resolved through the active theme's CSS
+      // (starui/quartz both declare --cg-info-color) instead of a hardcoded hex.
+      num('Spread', 'spread', { cellStyle: { fg: 'var(--cg-info-color)' } }),
     ],
   },
 ];
@@ -141,6 +183,17 @@ const grid = new CGrid<Position>(gridHost, {
 // string valueFormatters ('#,##0.00', '[Red]…') compile through the DSL.
 wireFormat(grid);
 grid.updateGridOptions({ columnDefs });
+
+// Programmatic CgTheme demo hook — build a theme object from the starui
+// built-in and apply it, so live re-tinting (accent → focus/hover/selection
+// derived via color-mix) can be exercised from the console:
+//   __cgTheme.apply({ accentColor: '#e0873a' })  // orange accent, everything re-tints
+//   __cgTheme.apply({})                            // back to plain starui
+//   __cgTheme.mode('dark' | 'light')
+(window as unknown as { __cgTheme: unknown }).__cgTheme = {
+  apply: (params: CgThemeParams = {}) => grid.setTheme(themeStarui.withParams(params)),
+  mode: (m: 'light' | 'dark') => grid.setThemeMode(m),
+};
 
 // Cycle 21i Phase 2 — wire the edit engine; its settings persist through
 // the kernel module-state registry (GridState.modules.editSettings). The

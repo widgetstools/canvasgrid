@@ -4,6 +4,7 @@ import { wrapHeaderLines, fontPxSize, HEADER_LINE_HEIGHT_FACTOR } from './header
 import { paintCellBorders } from '../painters/cellBordersPainter';
 import { paintCellDecorators } from '../painters/cellDecoratorsPainter';
 import type { CellContent } from '../../types';
+import type { RendererPalette } from '../../theming/cssReader';
 
 export interface CellPaintConfig {
   // Cell content
@@ -207,6 +208,17 @@ export interface CellPaintConfig {
    */
   rowId?: string;
   themeKind?: 'light' | 'dark';
+  /**
+   * Workstream A (2026-07-06 CSS styling model) — compact renderer-palette
+   * bundle (semantic colors + bar/chip geometry), threaded straight from
+   * `ResolvedTheme.rendererPalette` by `applyCellProps`. `@cgrid/renderers`
+   * painters resolve `overrides ?? p.palette?.<field> ?? <literal>` so
+   * data-viz appearance comes from theme tokens instead of hardcoded
+   * constants. `undefined` on hand-built `CellPaintConfig` test fixtures
+   * that predate this field — painters must tolerate that (fall back to
+   * the literal).
+   */
+  palette?: RendererPalette;
 }
 
 export interface CellPainter {

@@ -15,6 +15,7 @@ import type {
   GetRowHeightParams,
 } from './column';
 import type { IAggFunc } from './group';
+import type { CgTheme } from '../theming/theme/themeObject';
 import type {
   ExportCallback,
   ProcessCellForClipboardCallback,
@@ -94,7 +95,16 @@ export interface CGridOptions<TRow = any> {
   cellFlashDuration?: number;
   cellFadeDuration?: number;
   asyncTransactionWaitMillis?: number;
-  theme?: string;
+  /**
+   * A CSS class name (`'cg-theme-quartz'`, the default) OR a programmatic
+   * `CgTheme` object (`themeQuartz.withParams({ accentColor: '#2f7bc4' })`).
+   * The object form compiles to an inline `--cg-*` var patch on the grid
+   * root PLUS its structural base class, resolved light/dark per
+   * `pickMode()`; the string form is unchanged (adds the class verbatim).
+   * Always in `NON_PERSISTABLE_RUNTIME_OPTIONS` — object themes aren't
+   * serializable and app chrome owns the toggle either way.
+   */
+  theme?: string | CgTheme;
   /**
    * Cycle 22 / Task 2 — density-mode preset. Toggling the value swaps
    * one CSS class on the grid root (`.cg-density-compact` /

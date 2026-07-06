@@ -5,6 +5,7 @@
 // SideBarDef, ToolPanel, CellEditorCtor.
 
 import type { CellEditorCtor } from '../interaction/editors/iCellEditor';
+import type { CgTheme, ThemeMode } from '../theming/theme/themeObject';
 import type { ToolPanel, SideBarDef } from '../interaction/toolPanels/types';
 import type { IStatusPanelComp } from '../interaction/statusBar/types';
 import type {
@@ -328,7 +329,14 @@ export interface CGridApi<TRow = any> {
   setFocusedCell(rowId: string, colId: string): void;
 
   refresh(): void;
-  setTheme(themeClass: string): void;
+  /** A plain CSS class name (unchanged legacy path) or a programmatic
+   *  `CgTheme` object — see `theming/theme/`. */
+  setTheme(theme: string | CgTheme): void;
+  /** Theming Task 6/7 — force the active `CgTheme`'s mode (bypasses the
+   *  `data-cg-theme-mode` attribute / OS `prefers-color-scheme` inference
+   *  `setTheme`/construction uses). No-op when the active theme is a plain
+   *  CSS class string (there is no mode to pick). */
+  setThemeMode(mode: ThemeMode): void;
   destroy(): void;
 
   /** Cycle 21i — the current authored column-def tree (leaves and

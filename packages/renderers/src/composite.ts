@@ -190,13 +190,18 @@ export const nbboCell: CellPainter = {
     let x = p.bounds.x + padLeft(p);
     const bidPart = bid !== null ? `${bid.toFixed(2)} x ${bidSize}` : '';
     const askPart = ask !== null ? `${ask.toFixed(2)} x ${askSize}` : '';
+    // Workstream A, part 2 (2026-07-06 CSS styling model) — `--cg-venue-
+    // <mic>-color` resolves into `p.palette.venue`; falls back to the
+    // module-level `DEFAULT_VENUE_PALETTE` when no theme palette is
+    // threaded (byte-identical).
+    const venuePalette = p.palette?.venue ?? DEFAULT_VENUE_PALETTE;
     if (bidPart) {
       gc.cache.textAlign = 'left';
       gc.cache.fillStyle = p.fg;
       gc.fillText(bidPart, x, y);
       x += gc.measureText(bidPart).width + 4;
       if (bidVenue) {
-        gc.cache.fillStyle = DEFAULT_VENUE_PALETTE[bidVenue] ?? SEMANTIC_COLORS.info;
+        gc.cache.fillStyle = venuePalette[bidVenue] ?? SEMANTIC_COLORS.info;
         gc.fillText(`@${bidVenue}`, x, y);
         x += gc.measureText(`@${bidVenue}`).width + 8;
       }
@@ -209,7 +214,7 @@ export const nbboCell: CellPainter = {
       gc.fillText(askPart, x, y);
       x += gc.measureText(askPart).width + 4;
       if (askVenue) {
-        gc.cache.fillStyle = DEFAULT_VENUE_PALETTE[askVenue] ?? SEMANTIC_COLORS.info;
+        gc.cache.fillStyle = venuePalette[askVenue] ?? SEMANTIC_COLORS.info;
         gc.fillText(`@${askVenue}`, x, y);
       }
     }

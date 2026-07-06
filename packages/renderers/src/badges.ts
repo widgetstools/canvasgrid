@@ -9,6 +9,7 @@ import {
   STATUS_PILL_MAP,
   resolvePillColors,
 } from './palette';
+import type { StatusPillStyle } from './palette';
 import type {
   RatingBadgeParams,
   RatingClusterCellParams,
@@ -53,7 +54,19 @@ function rowString(row: Record<string, unknown> | undefined, field?: string): st
   return v == null ? undefined : String(v);
 }
 
-function ratingColor(grade: string): string {
+/**
+ * Workstream A, part 2 (2026-07-06 CSS styling model) — `--cg-rating-
+ * <grade>-color` resolves into `p.palette.rating`; `RATING_SCALE_BANDS`
+ * stays the byte-identical fallback for a grade the theme-resolved map
+ * doesn't (or a caller with no `p.palette` at all) cover.
+ */
+function ratingColor(grade: string, p: CellPaintConfig): string {
+  const ratingPalette = p.palette?.rating as Readonly<Record<string, string>> | undefined;
+  const fromPalette = ratingPalette?.[grade];
+  if (fromPalette !== undefined) {
+    ratingColorScratch.color = fromPalette;
+    return ratingColorScratch.color;
+  }
   const band = RATING_SCALE_BANDS.find((b) => b.grade === grade);
   ratingColorScratch.color = band?.color ?? SEMANTIC_COLORS.muted;
   return ratingColorScratch.color;
@@ -76,17 +89,22 @@ function paintCapsPill(
   const textW = gc.measureText(label).width;
   const padX = 6;
   const w = textW + padX * 2;
-  const y = p.bounds.y + (p.bounds.h - CHIP_H) / 2;
-  const radius = 3;
-  pill(gc, x, y, w, CHIP_H, radius, bg, dashed ? undefined : border);
+  // Workstream A (2026-07-06 CSS styling model) — geometry-as-style:
+  // `--cg-chip-height` / `--cg-chip-radius` resolve into
+  // `RendererPalette.chipHeight` / `.chipRadius`; CHIP_H + the literal `3`
+  // (below) are now only the byte-identical fallbacks.
+  const chipH = p.palette?.chipHeight ?? CHIP_H;
+  const radius = p.palette?.chipRadius ?? 3;
+  const y = p.bounds.y + (p.bounds.h - chipH) / 2;
+  pill(gc, x, y, w, chipH, radius, bg, dashed ? undefined : border);
   if (dashed && border) {
     gc.cache.strokeStyle = border;
     gc.setLineDash([3, 2]);
     gc.beginPath();
     gc.moveTo(x + radius, y);
-    gc.arcTo(x + w, y, x + w, y + CHIP_H, radius);
-    gc.arcTo(x + w, y + CHIP_H, x, y + CHIP_H, radius);
-    gc.arcTo(x, y + CHIP_H, x, y, radius);
+    gc.arcTo(x + w, y, x + w, y + chipH, radius);
+    gc.arcTo(x + w, y + chipH, x, y + chipH, radius);
+    gc.arcTo(x, y + chipH, x, y, radius);
     gc.arcTo(x, y, x + w, y, radius);
     gc.closePath();
     gc.stroke();
@@ -102,7 +120,7 @@ function paintRatingBadge(
   grade: string,
   x: number,
 ): number {
-  const color = ratingColor(grade);
+  const color = ratingColor(grade, p);
   const bg = withAlpha(color, 0.18);
   return paintCapsPill(gc, p, grade, bg, color, x, undefined, undefined, false);
 }
@@ -115,9 +133,15 @@ export const statusPill: CellPainter = {
     const status = (params.status ?? rowString(row, params.statusField) ?? '').toUpperCase();
     if (!status) return;
     const themeKind = p.themeKind ?? 'light';
+    // Workstream A, part 2 (2026-07-06 CSS styling model) — `--cg-status-
+    // <state>-*` tokens resolve into `p.palette.status`; falls back to the
+    // module-level `STATUS_PILL_MAP` when no theme palette is threaded
+    // (byte-identical).
+    const statusMap = (p.palette?.status as Readonly<Record<string, StatusPillStyle>> | undefined)
+      ?? STATUS_PILL_MAP;
     const custom = params.statusColors?.[status];
-    const resolved = custom ?? resolvePillColors(status, themeKind);
-    const style = STATUS_PILL_MAP[status];
+    const resolved = custom ?? resolvePillColors(status, themeKind, statusMap);
+    const style = statusMap[status];
     paintCapsPill(
       gc,
       p,
@@ -200,15 +224,25 @@ export const venueChip: CellPainter = {
     const row = p.rowData as Record<string, unknown> | undefined;
     const mic = (params.mic ?? rowString(row, params.micField) ?? p.valueFormatted ?? '').toUpperCase();
     if (!mic) return;
-    const palette = params.venueColors ?? DEFAULT_VENUE_PALETTE;
-    const color = palette[mic] ?? SEMANTIC_COLORS.info;
+    // Workstream A, part 2 (2026-07-06 CSS styling model) — `--cg-venue-
+    // <mic>-color` resolves into `p.palette.venue`; falls back to the
+    // module-level `DEFAULT_VENUE_PALETTE` when no theme palette is
+    // threaded (byte-identical). A column's own `venueColors` still wins
+    // over both tiers.
+    const venuePalette = params.venueColors ?? p.palette?.venue ?? DEFAULT_VENUE_PALETTE;
+    const color = venuePalette[mic] ?? SEMANTIC_COLORS.info;
     const font = `600 10px ${fontFamily(p.font)}`;
     gc.cache.font = font;
     const textW = gc.measureText(mic).width;
     const w = textW + 12;
     const x = p.bounds.x + (p.bounds.w - w) / 2;
-    const y = p.bounds.y + (p.bounds.h - CHIP_H) / 2;
-    pill(gc, x, y, w, CHIP_H, 3, withAlpha(color, 0.18));
+    // Workstream A (2026-07-06 CSS styling model) — same geometry tokens
+    // as paintCapsPill (chip height/radius); this painter builds its pill
+    // inline rather than through that helper.
+    const chipH = p.palette?.chipHeight ?? CHIP_H;
+    const chipRadius = p.palette?.chipRadius ?? 3;
+    const y = p.bounds.y + (p.bounds.h - chipH) / 2;
+    pill(gc, x, y, w, chipH, chipRadius, withAlpha(color, 0.18));
     fragText(gc, mic, x + w / 2, textY(gc, p), { font, color, align: 'center' });
   },
 };

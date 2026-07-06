@@ -9,6 +9,7 @@
 // options" for the source of truth on which keys belong in which bucket.
 
 import type { CGridOptions } from '../types';
+import { CgTheme } from '../theming/theme/themeObject';
 
 /**
  * Keys that the grid reads exactly once at construction. Attempts to mutate
@@ -99,7 +100,7 @@ export type RuntimeOption =
  *  import on `CGrid` (cgrid.ts imports this module). */
 export interface RuntimeOptionTarget<TRow = any> {
   options: CGridOptions<TRow>;
-  setTheme(themeClass: string): void;
+  setTheme(theme: string | CgTheme): void;
   /** Cycle 22 / Task 2 — swap the density-mode CSS class on the grid
    *  root (or remove it entirely when `density` is `null` /
    *  `undefined`). The grid re-reads its theme + recomputes the
@@ -200,7 +201,7 @@ export function applyRuntimeOption<TRow>(
 ): void {
   switch (key) {
     case 'theme':
-      if (typeof value === 'string') target.setTheme(value);
+      if (typeof value === 'string' || value instanceof CgTheme) target.setTheme(value);
       return;
     case 'density':
       // Cycle 22 / Task 2 — accept `'compact' | 'normal' | 'comfortable'`

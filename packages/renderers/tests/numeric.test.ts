@@ -4,6 +4,7 @@ import { describe, it, expect, beforeEach } from 'vitest';
 import type { CellPaintConfig } from '@cgrid/kernel';
 import { makeFakeGc } from './helpers/fakeGc';
 import type { FakeGc } from './helpers/fakeGc';
+import { SEMANTIC_COLORS } from '../src/palette';
 import {
   numberCell, priceCell, priceDirectionCell, pnlCell, deltaCell,
   bpsCell, pctChangeCell, fractionalPriceCell, abbreviatedNumberCell,
@@ -245,6 +246,48 @@ describe('pctChangeCell', () => {
       params: { precision: 3 },
     }));
     expect(fillTexts(gc.calls)[0]).toBe('+1.234%');
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────
+// Workstream A (2026-07-06 CSS styling model) — renderer-palette threading.
+// `colorsFromParams()` resolves `overrides ?? p.palette?.<x> ?? SEMANTIC_
+// COLORS.<x>`; sign === 0 routes through `colors.muted`, so pctChangeCell
+// at value 0 is a clean vehicle for exercising the muted slot (extends the
+// existing per-column `overrides` pattern with a theme-driven middle tier).
+// ───────────────────────────────────────────────────────────────────────
+describe('pctChangeCell — Workstream A renderer palette', () => {
+  let gc: FakeGc;
+  beforeEach(() => { gc = makeFakeGc(); });
+
+  it('reads muted color from p.palette when present (sign === 0)', () => {
+    pctChangeCell.paint(gc, baseConfig({
+      value: 0,
+      palette: {
+        positive: '#111111', negative: '#222222', warning: '#333333',
+        info: '#444444', muted: '#0a0b0c', barHeight: 8, chipHeight: 16, chipRadius: 3,
+        status: {} as never, rating: {} as never, venue: {},
+      },
+    }));
+    expect(gc.calls.some((c) => c.op === 'set:fillStyle' && c.args[0] === '#0a0b0c')).toBe(true);
+  });
+
+  it('falls back to SEMANTIC_COLORS.muted when p.palette is absent (byte-identical)', () => {
+    pctChangeCell.paint(gc, baseConfig({ value: 0 }));
+    expect(gc.calls.some((c) => c.op === 'set:fillStyle' && c.args[0] === SEMANTIC_COLORS.muted)).toBe(true);
+  });
+
+  it('an explicit params.colors override still wins over p.palette', () => {
+    pctChangeCell.paint(gc, baseConfig({
+      value: 0,
+      params: { colors: { muted: '#abcabc' } },
+      palette: {
+        positive: '#111111', negative: '#222222', warning: '#333333',
+        info: '#444444', muted: '#0a0b0c', barHeight: 8, chipHeight: 16, chipRadius: 3,
+        status: {} as never, rating: {} as never, venue: {},
+      },
+    }));
+    expect(gc.calls.some((c) => c.op === 'set:fillStyle' && c.args[0] === '#abcabc')).toBe(true);
   });
 });
 
