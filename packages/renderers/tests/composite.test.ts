@@ -156,6 +156,35 @@ describe('nbboCell', () => {
       rowData: undefined,
     }))).not.toThrow();
   });
+
+  // Workstream A, part 2 (2026-07-06 CSS styling model) — venue palette
+  // via CSS tokens, threaded through `p.palette.venue` (same open
+  // `Record<string, string>` shape as `DEFAULT_VENUE_PALETTE`).
+  it('reads p.palette.venue[mic] when present (Workstream A part 2)', () => {
+    nbboCell.paint(gc, baseConfig({
+      rowData: { bid: 100.1, bidSz: 500, bidVenue: 'XNAS' },
+      params: {
+        bidField: 'bid', bidSizeField: 'bidSz', bidVenueField: 'bidVenue',
+      },
+      palette: {
+        positive: '#000', negative: '#000', warning: '#000', info: '#000', muted: '#000',
+        barHeight: 8, chipHeight: 16, chipRadius: 3,
+        status: {} as never, rating: {} as never,
+        venue: { XNAS: '#abcdef' },
+      },
+    }));
+    expect(gc.calls.some((c) => c.op === 'set:fillStyle' && c.args[0] === '#abcdef')).toBe(true);
+  });
+
+  it('falls back to DEFAULT_VENUE_PALETTE when p.palette is absent (byte-identical)', () => {
+    nbboCell.paint(gc, baseConfig({
+      rowData: { bid: 100.1, bidSz: 500, bidVenue: 'XNAS' },
+      params: {
+        bidField: 'bid', bidSizeField: 'bidSz', bidVenueField: 'bidVenue',
+      },
+    }));
+    expect(gc.calls.some((c) => c.op === 'set:fillStyle' && c.args[0] === '#3b82f6')).toBe(true);
+  });
 });
 
 describe('benchmarkSpreadCell', () => {

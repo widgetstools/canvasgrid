@@ -148,16 +148,20 @@ export function withThemeAlpha(alpha: number, themeKind: 'light' | 'dark'): numb
 /**
  * Resolves a status key to visual `{ bg, fg, border? }` for the given theme.
  *
- * Built from the catalog-fixed `STATUS_PILL_MAP` const. For status keys whose
- * `bg` encodes alpha in an 8-digit hex (`#rrggbbaa`), applies `withThemeAlpha`
- * to the embedded alpha so dark-theme pills read at higher contrast.
- * The `fg` hue is never modified across themes.
+ * Built from `statusMap` (Workstream A, part 2 — defaults to the
+ * catalog-fixed `STATUS_PILL_MAP` const, but callers thread
+ * `p.palette.status` here first so the base colors come from CSS tokens
+ * when a theme declares them). For status keys whose `bg` encodes alpha in
+ * an 8-digit hex (`#rrggbbaa`), applies `withThemeAlpha` to the embedded
+ * alpha so dark-theme pills read at higher contrast. The `fg` hue is never
+ * modified across themes.
  */
 export function resolvePillColors(
   status: string,
   themeKind: 'light' | 'dark',
+  statusMap: Readonly<Record<string, StatusPillStyle>> = STATUS_PILL_MAP,
 ): { bg: string; fg: string; border?: string } {
-  const style = STATUS_PILL_MAP[status];
+  const style = statusMap[status];
   if (style === undefined) {
     return { bg: 'transparent', fg: SEMANTIC_COLORS.muted };
   }

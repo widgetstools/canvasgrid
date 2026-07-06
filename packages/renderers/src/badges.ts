@@ -9,6 +9,7 @@ import {
   STATUS_PILL_MAP,
   resolvePillColors,
 } from './palette';
+import type { StatusPillStyle } from './palette';
 import type {
   RatingBadgeParams,
   RatingClusterCellParams,
@@ -53,7 +54,19 @@ function rowString(row: Record<string, unknown> | undefined, field?: string): st
   return v == null ? undefined : String(v);
 }
 
-function ratingColor(grade: string): string {
+/**
+ * Workstream A, part 2 (2026-07-06 CSS styling model) — `--cg-rating-
+ * <grade>-color` resolves into `p.palette.rating`; `RATING_SCALE_BANDS`
+ * stays the byte-identical fallback for a grade the theme-resolved map
+ * doesn't (or a caller with no `p.palette` at all) cover.
+ */
+function ratingColor(grade: string, p: CellPaintConfig): string {
+  const ratingPalette = p.palette?.rating as Readonly<Record<string, string>> | undefined;
+  const fromPalette = ratingPalette?.[grade];
+  if (fromPalette !== undefined) {
+    ratingColorScratch.color = fromPalette;
+    return ratingColorScratch.color;
+  }
   const band = RATING_SCALE_BANDS.find((b) => b.grade === grade);
   ratingColorScratch.color = band?.color ?? SEMANTIC_COLORS.muted;
   return ratingColorScratch.color;
@@ -107,7 +120,7 @@ function paintRatingBadge(
   grade: string,
   x: number,
 ): number {
-  const color = ratingColor(grade);
+  const color = ratingColor(grade, p);
   const bg = withAlpha(color, 0.18);
   return paintCapsPill(gc, p, grade, bg, color, x, undefined, undefined, false);
 }
@@ -120,9 +133,15 @@ export const statusPill: CellPainter = {
     const status = (params.status ?? rowString(row, params.statusField) ?? '').toUpperCase();
     if (!status) return;
     const themeKind = p.themeKind ?? 'light';
+    // Workstream A, part 2 (2026-07-06 CSS styling model) — `--cg-status-
+    // <state>-*` tokens resolve into `p.palette.status`; falls back to the
+    // module-level `STATUS_PILL_MAP` when no theme palette is threaded
+    // (byte-identical).
+    const statusMap = (p.palette?.status as Readonly<Record<string, StatusPillStyle>> | undefined)
+      ?? STATUS_PILL_MAP;
     const custom = params.statusColors?.[status];
-    const resolved = custom ?? resolvePillColors(status, themeKind);
-    const style = STATUS_PILL_MAP[status];
+    const resolved = custom ?? resolvePillColors(status, themeKind, statusMap);
+    const style = statusMap[status];
     paintCapsPill(
       gc,
       p,
@@ -205,8 +224,13 @@ export const venueChip: CellPainter = {
     const row = p.rowData as Record<string, unknown> | undefined;
     const mic = (params.mic ?? rowString(row, params.micField) ?? p.valueFormatted ?? '').toUpperCase();
     if (!mic) return;
-    const palette = params.venueColors ?? DEFAULT_VENUE_PALETTE;
-    const color = palette[mic] ?? SEMANTIC_COLORS.info;
+    // Workstream A, part 2 (2026-07-06 CSS styling model) — `--cg-venue-
+    // <mic>-color` resolves into `p.palette.venue`; falls back to the
+    // module-level `DEFAULT_VENUE_PALETTE` when no theme palette is
+    // threaded (byte-identical). A column's own `venueColors` still wins
+    // over both tiers.
+    const venuePalette = params.venueColors ?? p.palette?.venue ?? DEFAULT_VENUE_PALETTE;
+    const color = venuePalette[mic] ?? SEMANTIC_COLORS.info;
     const font = `600 10px ${fontFamily(p.font)}`;
     gc.cache.font = font;
     const textW = gc.measureText(mic).width;

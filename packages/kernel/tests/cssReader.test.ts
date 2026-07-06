@@ -49,6 +49,30 @@ describe('CssReader', () => {
 // threaded onto every `CellPaintConfig` by `applyCellProps`. Mirrors the
 // existing single-scan token-resolution pattern above.
 // ───────────────────────────────────────────────────────────────────────
+const DEFAULT_STATUS_MAP = {
+  WORKING: { bg: '#3b82f61f', fg: '#3b82f6' },
+  PART_FILL: { bg: '#f0b4291f', fg: '#f0b429' },
+  FILLED: { bg: '#0aa0631f', fg: '#0aa063' },
+  CANCELLED: { bg: '#8a8f981f', fg: '#8a8f98' },
+  REJECTED: { bg: '#ffffff', fg: '#e63946', border: '#e63946' },
+  PENDING: { bg: 'transparent', fg: '#8a8f98', border: '#8a8f98', dashed: true },
+};
+
+const DEFAULT_RATING_MAP = {
+  AAA: '#0aa063', 'AA+': '#22a866', AA: '#3aae65', 'AA-': '#52b563',
+  'A+': '#6bbb60', A: '#83c25d', 'A-': '#9bc859',
+  'BBB+': '#b3cf54', BBB: '#c8d24a', 'BBB-': '#dcd53e',
+  'BB+': '#f0b429', BB: '#ef9f2a', 'BB-': '#ee8a2c',
+  'B+': '#ec762d', B: '#ea612f', 'B-': '#e94d31',
+  'CCC+': '#e2434f', CCC: '#dc3b47', 'CCC-': '#d6353f',
+  CC: '#c62f38', C: '#b62931', D: '#a6222a',
+  NR: '#8a8f98', WD: '#8a8f98',
+};
+
+const DEFAULT_VENUE_MAP = {
+  XNAS: '#3b82f6', ARCX: '#8b5cf6', BATS: '#14b8a6', EDGX: '#f0b429',
+};
+
 describe('CssReader — rendererPalette (Workstream A)', () => {
   let container: HTMLElement;
 
@@ -80,6 +104,9 @@ describe('CssReader — rendererPalette (Workstream A)', () => {
       barHeight: 12,
       chipHeight: 20,
       chipRadius: 6,
+      status: DEFAULT_STATUS_MAP,
+      rating: DEFAULT_RATING_MAP,
+      venue: DEFAULT_VENUE_MAP,
     });
   });
 
@@ -97,7 +124,63 @@ describe('CssReader — rendererPalette (Workstream A)', () => {
       barHeight: 8,
       chipHeight: 16,
       chipRadius: 3,
+      status: DEFAULT_STATUS_MAP,
+      rating: DEFAULT_RATING_MAP,
+      venue: DEFAULT_VENUE_MAP,
     });
+  });
+});
+
+// ───────────────────────────────────────────────────────────────────────
+// Workstream A, part 2 (2026-07-06 CSS styling model) — status-pill /
+// rating-scale / venue structured maps, widening the same rendererPalette
+// channel WS-A1 built. `--cg-status-<state>-bg/-fg/-border`,
+// `--cg-rating-<grade>-color`, `--cg-venue-<mic>-color`. `dashed` stays a
+// code-level structural flag (never sourced from a token).
+// ───────────────────────────────────────────────────────────────────────
+describe('CssReader — rendererPalette status/rating/venue maps (Workstream A part 2)', () => {
+  let container: HTMLElement;
+
+  afterEach(() => {
+    container.remove();
+  });
+
+  it('resolves representative status/rating/venue tokens (custom overrides)', () => {
+    container = document.createElement('div');
+    container.style.cssText = `
+      --cg-status-working-bg: #123456;
+      --cg-status-working-fg: #654321;
+      --cg-status-part-fill-bg: #111111;
+      --cg-status-rejected-border: #ff00ff;
+      --cg-rating-aaa-color: #00ff00;
+      --cg-rating-bb-plus-color: #ff9900;
+      --cg-rating-nr-color: #101010;
+      --cg-venue-xnas-color: #abcdef;
+    `;
+    document.body.appendChild(container);
+
+    const r = new CssReader(container).read();
+    expect(r.rendererPalette.status.WORKING).toEqual({ bg: '#123456', fg: '#654321' });
+    expect(r.rendererPalette.status.PART_FILL.bg).toBe('#111111');
+    expect(r.rendererPalette.status.REJECTED.border).toBe('#ff00ff');
+    // dashed is structural (code), never a token — stays true for PENDING
+    // regardless of any color token being declared.
+    expect(r.rendererPalette.status.PENDING.dashed).toBe(true);
+    expect(r.rendererPalette.rating.AAA).toBe('#00ff00');
+    expect(r.rendererPalette.rating['BB+']).toBe('#ff9900');
+    expect(r.rendererPalette.rating.NR).toBe('#101010');
+    expect(r.rendererPalette.venue.XNAS).toBe('#abcdef');
+  });
+
+  it('falls back to the exact STATUS_PILL_MAP / RATING_SCALE_BANDS / DEFAULT_VENUE_PALETTE literals when the tokens are absent (byte-identical)', () => {
+    container = document.createElement('div');
+    document.body.appendChild(container);
+
+    const r = new CssReader(container).read();
+    expect(r.rendererPalette.status).toEqual(DEFAULT_STATUS_MAP);
+    expect(r.rendererPalette.rating).toEqual(DEFAULT_RATING_MAP);
+    expect(Object.keys(r.rendererPalette.rating)).toHaveLength(24);
+    expect(r.rendererPalette.venue).toEqual(DEFAULT_VENUE_MAP);
   });
 });
 

@@ -611,6 +611,55 @@
   --cg-bar-height: 8px;
   --cg-chip-height: 16px;
   --cg-chip-radius: 3px;
+  /* Workstream A, part 2 — StatusPill's 6 order/fill states. `dashed` is
+   * NOT a token (structural, code-only — see cssReader.ts); only bg/fg/
+   * border color values live here. */
+  --cg-status-working-bg: #3b82f61f;
+  --cg-status-working-fg: #3b82f6;
+  --cg-status-part-fill-bg: #f0b4291f;
+  --cg-status-part-fill-fg: #f0b429;
+  --cg-status-filled-bg: #0aa0631f;
+  --cg-status-filled-fg: #0aa063;
+  --cg-status-cancelled-bg: #8a8f981f;
+  --cg-status-cancelled-fg: #8a8f98;
+  --cg-status-rejected-bg: #ffffff;
+  --cg-status-rejected-fg: #e63946;
+  --cg-status-rejected-border: #e63946;
+  --cg-status-pending-bg: transparent;
+  --cg-status-pending-fg: #8a8f98;
+  --cg-status-pending-border: #8a8f98;
+  /* Workstream A, part 2 — RatingBadge's 24-grade S&P-style ladder,
+   * AAA green → D red, NR/WD muted. `+`/`-` suffixes transliterate to
+   * `-plus`/`-minus` in the token name (see cssReader.ts `ratingSlug`). */
+  --cg-rating-aaa-color: #0aa063;
+  --cg-rating-aa-plus-color: #22a866;
+  --cg-rating-aa-color: #3aae65;
+  --cg-rating-aa-minus-color: #52b563;
+  --cg-rating-a-plus-color: #6bbb60;
+  --cg-rating-a-color: #83c25d;
+  --cg-rating-a-minus-color: #9bc859;
+  --cg-rating-bbb-plus-color: #b3cf54;
+  --cg-rating-bbb-color: #c8d24a;
+  --cg-rating-bbb-minus-color: #dcd53e;
+  --cg-rating-bb-plus-color: #f0b429;
+  --cg-rating-bb-color: #ef9f2a;
+  --cg-rating-bb-minus-color: #ee8a2c;
+  --cg-rating-b-plus-color: #ec762d;
+  --cg-rating-b-color: #ea612f;
+  --cg-rating-b-minus-color: #e94d31;
+  --cg-rating-ccc-plus-color: #e2434f;
+  --cg-rating-ccc-color: #dc3b47;
+  --cg-rating-ccc-minus-color: #d6353f;
+  --cg-rating-cc-color: #c62f38;
+  --cg-rating-c-color: #b62931;
+  --cg-rating-d-color: #a6222a;
+  --cg-rating-nr-color: #8a8f98;
+  --cg-rating-wd-color: #8a8f98;
+  /* Workstream A, part 2 — VenueChip/NBBOCell default MIC palette. */
+  --cg-venue-xnas-color: #3b82f6;
+  --cg-venue-arcx-color: #8b5cf6;
+  --cg-venue-bats-color: #14b8a6;
+  --cg-venue-edgx-color: #f0b429;
 }
 
 /* Cycle 24 / Task 7 — `prefers-reduced-motion` overrides. CSS-only:

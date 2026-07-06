@@ -262,6 +262,7 @@ describe('bars — Workstream A renderer palette', () => {
         positive: SEMANTIC_COLORS.positive, negative: SEMANTIC_COLORS.negative,
         warning: SEMANTIC_COLORS.warning, info: SEMANTIC_COLORS.info, muted: SEMANTIC_COLORS.muted,
         barHeight: 20, chipHeight: 16, chipRadius: 3,
+        status: {} as never, rating: {} as never, venue: {},
       },
     }));
     const track = gc.calls.find((c) => c.op === 'fillRect');
@@ -282,6 +283,7 @@ describe('bars — Workstream A renderer palette', () => {
       palette: {
         positive: '#111111', negative: '#222222', warning: '#333333',
         info: '#010203', muted: '#444444', barHeight: 8, chipHeight: 16, chipRadius: 3,
+        status: {} as never, rating: {} as never, venue: {},
       },
     }));
     expect(gc.calls.some((c) => c.op === 'set:fillStyle' && c.args[0] === 'rgba(1,2,3,0.45)')).toBe(true);

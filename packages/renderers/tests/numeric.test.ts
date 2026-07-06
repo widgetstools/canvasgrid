@@ -266,6 +266,7 @@ describe('pctChangeCell — Workstream A renderer palette', () => {
       palette: {
         positive: '#111111', negative: '#222222', warning: '#333333',
         info: '#444444', muted: '#0a0b0c', barHeight: 8, chipHeight: 16, chipRadius: 3,
+        status: {} as never, rating: {} as never, venue: {},
       },
     }));
     expect(gc.calls.some((c) => c.op === 'set:fillStyle' && c.args[0] === '#0a0b0c')).toBe(true);
@@ -283,6 +284,7 @@ describe('pctChangeCell — Workstream A renderer palette', () => {
       palette: {
         positive: '#111111', negative: '#222222', warning: '#333333',
         info: '#444444', muted: '#0a0b0c', barHeight: 8, chipHeight: 16, chipRadius: 3,
+        status: {} as never, rating: {} as never, venue: {},
       },
     }));
     expect(gc.calls.some((c) => c.op === 'set:fillStyle' && c.args[0] === '#abcabc')).toBe(true);

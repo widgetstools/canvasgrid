@@ -18,10 +18,14 @@ import type {
  * `CHIP_H`, chip corner radius) exactly, so a theme that doesn't opt into
  * any of these tokens renders byte-identical to before this bundle existed.
  *
- * Deliberately a SMALL, generic bundle for THIS pass — the specialized maps
- * (status-pill bg/fg/border per state, rating-scale per grade, venue per
- * MIC) are a separate follow-on task that reuses this same threading
- * channel (widens this interface) rather than being built here.
+ * Workstream A, part 2 widens this interface with the three specialized
+ * maps foreshadowed above: `status` (StatusPill bg/fg/border per order
+ * state), `rating` (RatingBadge/RatingClusterCell color per credit-rating
+ * grade), and `venue` (VenueChip/NBBOCell color per execution-venue MIC).
+ * Same resolve-once-per-theme-swap, byte-identical-fallback pattern as
+ * every other field on this interface — see the token-name docs on each
+ * field and the `STATUS_STATES`/`RATING_GRADES`/`VENUE_MICS` resolution
+ * tables below `read()`.
  */
 export interface RendererPalette {
   /** `--cg-pos-color`. */
@@ -40,7 +44,55 @@ export interface RendererPalette {
   chipHeight: number;
   /** `--cg-chip-radius` (px). Badges category painters' pill/chip corner radius. */
   chipRadius: number;
+  /**
+   * Workstream A, part 2 — StatusPill's 6 order/fill states. Colors resolve
+   * from `--cg-status-<state>-bg` / `-fg` / `-border` (state kebab-cased:
+   * `PART_FILL` → `part-fill`). `dashed` is a structural style flag (only
+   * `PENDING` is dashed) — it is never sourced from a token, always the
+   * exact `@cgrid/renderers/palette.ts` `STATUS_PILL_MAP` literal.
+   */
+  status: Record<StatusPillState, StatusPillPaletteEntry>;
+  /**
+   * Workstream A, part 2 — RatingBadge's 24-grade S&P-style ladder
+   * (AAA green → D red, NR/WD muted). Resolves from
+   * `--cg-rating-<grade>-color` (grade lowercased; `+`/`-` suffixes
+   * transliterate to `-plus`/`-minus` so every name is a valid CSS custom
+   * property, e.g. `AA+` → `aa-plus`, `BBB-` → `bbb-minus`, `AAA` → `aaa`).
+   */
+  rating: Record<RatingGrade, string>;
+  /**
+   * Workstream A, part 2 — VenueChip/NBBOCell's default MIC → color map.
+   * Resolves from `--cg-venue-<mic>-color` (mic lowercased, e.g. `XNAS` →
+   * `xnas`). Open-ended key set (unlike `status`/`rating`) — mirrors
+   * `@cgrid/renderers/palette.ts`'s `DEFAULT_VENUE_PALETTE`'s
+   * `Record<string, string>` shape; only the 4 shipped MICs are resolved
+   * here (apps that want more venues declare their own `venueColors`
+   * param override, which still wins over this palette tier).
+   */
+  venue: Record<string, string>;
 }
+
+/** StatusPill's 6 canonical order/fill states — mirrors
+ *  `@cgrid/renderers/palette.ts`'s `STATUS_PILL_MAP` key set exactly. */
+export type StatusPillState = 'WORKING' | 'PART_FILL' | 'FILLED' | 'CANCELLED' | 'REJECTED' | 'PENDING';
+
+/** A single resolved StatusPill visual. Structurally identical to
+ *  `@cgrid/renderers/palette.ts`'s `StatusPillStyle` (duplicated here, not
+ *  imported, so `@cgrid/kernel` never depends on `@cgrid/renderers`). */
+export interface StatusPillPaletteEntry {
+  bg: string;
+  fg: string;
+  border?: string;
+  dashed?: boolean;
+}
+
+/** RatingBadge's 24-grade S&P-style ladder — mirrors
+ *  `@cgrid/renderers/palette.ts`'s `RATING_SCALE_BANDS` key set exactly. */
+export type RatingGrade =
+  | 'AAA' | 'AA+' | 'AA' | 'AA-' | 'A+' | 'A' | 'A-'
+  | 'BBB+' | 'BBB' | 'BBB-' | 'BB+' | 'BB' | 'BB-'
+  | 'B+' | 'B' | 'B-' | 'CCC+' | 'CCC' | 'CCC-'
+  | 'CC' | 'C' | 'D' | 'NR' | 'WD';
 
 export interface ResolvedTheme {
   /** Chrome font (canvas-painted headers, group cells, totals labels,
@@ -732,6 +784,107 @@ function scanVariantVariables(): {
   return { cellClassVariants: cellMap, headerClassVariants: headerMap };
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Workstream A, part 2 (2026-07-06 CSS styling model) — status-pill /
+// rating-scale / venue resolution tables. Each literal fallback below is
+// byte-identical to its `@cgrid/renderers/palette.ts` counterpart
+// (`STATUS_PILL_MAP`, `RATING_SCALE_BANDS`, `DEFAULT_VENUE_PALETTE`), kept
+// as a local duplicate (not imported) so `@cgrid/kernel` never depends on
+// `@cgrid/renderers`.
+// ─────────────────────────────────────────────────────────────────────────
+
+const STATUS_STATES: readonly StatusPillState[] = [
+  'WORKING', 'PART_FILL', 'FILLED', 'CANCELLED', 'REJECTED', 'PENDING',
+];
+
+/** `<state>` → CSS-token slug: underscores become hyphens, lowercased
+ *  (`PART_FILL` → `part-fill`), per `--cg-status-<state>-bg/-fg/-border`. */
+function statusSlug(state: StatusPillState): string {
+  return state.toLowerCase().replace(/_/g, '-');
+}
+
+const STATUS_DEFAULTS: Readonly<Record<StatusPillState, StatusPillPaletteEntry>> = {
+  WORKING: { bg: '#3b82f61f', fg: '#3b82f6' },
+  PART_FILL: { bg: '#f0b4291f', fg: '#f0b429' },
+  FILLED: { bg: '#0aa0631f', fg: '#0aa063' },
+  CANCELLED: { bg: '#8a8f981f', fg: '#8a8f98' },
+  REJECTED: { bg: '#ffffff', fg: '#e63946', border: '#e63946' },
+  PENDING: { bg: 'transparent', fg: '#8a8f98', border: '#8a8f98', dashed: true },
+};
+
+const RATING_GRADES: readonly RatingGrade[] = [
+  'AAA', 'AA+', 'AA', 'AA-', 'A+', 'A', 'A-',
+  'BBB+', 'BBB', 'BBB-', 'BB+', 'BB', 'BB-',
+  'B+', 'B', 'B-', 'CCC+', 'CCC', 'CCC-',
+  'CC', 'C', 'D', 'NR', 'WD',
+];
+
+/** `<grade>` → CSS-token slug: lowercased, trailing `+`/`-` transliterated
+ *  to `-plus`/`-minus` (a bare `+` isn't a valid CSS ident code point;
+ *  `-minus` keeps the naming symmetric even though a trailing `-` is
+ *  itself already ident-valid), per `--cg-rating-<grade>-color`. */
+function ratingSlug(grade: RatingGrade): string {
+  return grade.toLowerCase().replace(/\+$/, '-plus').replace(/-$/, '-minus');
+}
+
+const RATING_DEFAULTS: Readonly<Record<RatingGrade, string>> = {
+  AAA: '#0aa063', 'AA+': '#22a866', AA: '#3aae65', 'AA-': '#52b563',
+  'A+': '#6bbb60', A: '#83c25d', 'A-': '#9bc859',
+  'BBB+': '#b3cf54', BBB: '#c8d24a', 'BBB-': '#dcd53e',
+  'BB+': '#f0b429', BB: '#ef9f2a', 'BB-': '#ee8a2c',
+  'B+': '#ec762d', B: '#ea612f', 'B-': '#e94d31',
+  'CCC+': '#e2434f', CCC: '#dc3b47', 'CCC-': '#d6353f',
+  CC: '#c62f38', C: '#b62931', D: '#a6222a',
+  NR: '#8a8f98', WD: '#8a8f98',
+};
+
+const VENUE_MICS: readonly string[] = ['XNAS', 'ARCX', 'BATS', 'EDGX'];
+
+const VENUE_DEFAULTS: Readonly<Record<string, string>> = {
+  XNAS: '#3b82f6', ARCX: '#8b5cf6', BATS: '#14b8a6', EDGX: '#f0b429',
+};
+
+/** Resolve the 6-state StatusPill map from `--cg-status-<state>-bg/-fg/
+ *  -border`, falling back per-field to the byte-identical literal. `get`
+ *  is the same `getComputedStyle`-backed reader `read()` builds per call —
+ *  passed in so this stays a pure, directly testable helper. */
+function resolveStatusPalette(get: (name: string) => string): Record<StatusPillState, StatusPillPaletteEntry> {
+  const result = {} as Record<StatusPillState, StatusPillPaletteEntry>;
+  for (const state of STATUS_STATES) {
+    const slug = statusSlug(state);
+    const def = STATUS_DEFAULTS[state];
+    const entry: StatusPillPaletteEntry = {
+      bg: get(`--cg-status-${slug}-bg`) || def.bg,
+      fg: get(`--cg-status-${slug}-fg`) || def.fg,
+    };
+    const border = get(`--cg-status-${slug}-border`) || def.border;
+    if (border !== undefined) entry.border = border;
+    // Structural, never token-sourced — see the `RendererPalette.status` doc.
+    if (def.dashed !== undefined) entry.dashed = def.dashed;
+    result[state] = entry;
+  }
+  return result;
+}
+
+/** Resolve the 24-grade RatingBadge ladder from `--cg-rating-<grade>-color`. */
+function resolveRatingPalette(get: (name: string) => string): Record<RatingGrade, string> {
+  const result = {} as Record<RatingGrade, string>;
+  for (const grade of RATING_GRADES) {
+    result[grade] = get(`--cg-rating-${ratingSlug(grade)}-color`) || RATING_DEFAULTS[grade];
+  }
+  return result;
+}
+
+/** Resolve the default VenueChip/NBBOCell MIC palette from
+ *  `--cg-venue-<mic>-color` (mic lowercased). */
+function resolveVenuePalette(get: (name: string) => string): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const mic of VENUE_MICS) {
+    result[mic] = get(`--cg-venue-${mic.toLowerCase()}-color`) || VENUE_DEFAULTS[mic]!;
+  }
+  return result;
+}
+
 export class CssReader {
   constructor(private container: HTMLElement) {}
 
@@ -856,6 +1009,11 @@ export class CssReader {
         barHeight: px('--cg-bar-height', 8),
         chipHeight: px('--cg-chip-height', 16),
         chipRadius: px('--cg-chip-radius', 3),
+        // Workstream A, part 2 — status-pill / rating-scale / venue
+        // structured maps, same defensive `get(...) || <literal>` pattern.
+        status: resolveStatusPalette(get),
+        rating: resolveRatingPalette(get),
+        venue: resolveVenuePalette(get),
       },
       cellClassVariants,
       headerClassVariants,
