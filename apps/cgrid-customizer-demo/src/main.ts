@@ -8,7 +8,7 @@
  * done through the public API, that's a kernel gap to fix in the kernel,
  * never worked around here.
  */
-import { CGrid, formatPrice32, DEFAULT_LAYOUT_ID, type CColDef, type CColGroupDef, type GridLayoutsBundle } from '@cgrid/kernel';
+import { CGrid, formatPrice32, DEFAULT_LAYOUT_ID, themeStarui, type CColDef, type CColGroupDef, type GridLayoutsBundle, type CgThemeParams } from '@cgrid/kernel';
 import '@cgrid/kernel/style.css';
 import { wireIntoKernel as wireFormat } from '@cgrid/format';
 import { wireEditIntoKernel } from '@cgrid/edit';
@@ -167,6 +167,17 @@ const grid = new CGrid<Position>(gridHost, {
 // string valueFormatters ('#,##0.00', '[Red]…') compile through the DSL.
 wireFormat(grid);
 grid.updateGridOptions({ columnDefs });
+
+// Programmatic CgTheme demo hook — build a theme object from the starui
+// built-in and apply it, so live re-tinting (accent → focus/hover/selection
+// derived via color-mix) can be exercised from the console:
+//   __cgTheme.apply({ accentColor: '#e0873a' })  // orange accent, everything re-tints
+//   __cgTheme.apply({})                            // back to plain starui
+//   __cgTheme.mode('dark' | 'light')
+(window as unknown as { __cgTheme: unknown }).__cgTheme = {
+  apply: (params: CgThemeParams = {}) => grid.setTheme(themeStarui.withParams(params)),
+  mode: (m: 'light' | 'dark') => grid.setThemeMode(m),
+};
 
 // Cycle 21i Phase 2 — wire the edit engine; its settings persist through
 // the kernel module-state registry (GridState.modules.editSettings). The
