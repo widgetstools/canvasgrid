@@ -2276,8 +2276,19 @@ export class CGrid<TRow = any> {
       const focusChanged =
         state.focusedRowIndex !== lastFocusRow || state.focusedColId !== lastFocusCol;
       if (focusChanged) {
-        if (state.focusedRowIndex !== null) this.ensureRowIndexVisible(state.focusedRowIndex);
-        if (state.focusedColId !== null) this.ensureColIdVisible(state.focusedColId);
+        // A focus-INDEX shift caused by a MODEL REORDER (sort / filter /
+        // real-time transaction re-resolving the focused rowId to a new
+        // visible index) must NOT auto-scroll: the user's logical focus
+        // (same rowId + colId) hasn't moved, so scrolling the focused
+        // column/row back into view would fight the user's own scroll —
+        // e.g. horizontal scroll snapping back on every live tick while a
+        // column is sorted. `suppressFocusEnsure` is set ONLY around the
+        // `rebuildIndices` reorder in `rebuildSelectionFromPersistentIds`;
+        // genuine user navigation still scrolls the new focus into view.
+        if (!this.suppressFocusEnsure) {
+          if (state.focusedRowIndex !== null) this.ensureRowIndexVisible(state.focusedRowIndex);
+          if (state.focusedColId !== null) this.ensureColIdVisible(state.focusedColId);
+        }
         lastFocusRow = state.focusedRowIndex;
         lastFocusCol = state.focusedColId;
       }
@@ -7285,6 +7296,24 @@ export class CGrid<TRow = any> {
     this.viewportManager.ensureColIdVisible(colId, position);
   }
 
+  /** Set only while a model-reorder `rebuildIndices` is running (see
+   *  `rebuildIndicesWithoutAutoScroll`), so the selection `onChange` handler
+   *  skips its `ensureRowIndexVisible` / `ensureColIdVisible` auto-scroll for
+   *  a focus-index shift the user didn't cause. */
+  private suppressFocusEnsure = false;
+
+  /** Apply `rebuildIndices` without letting the resulting focus-index change
+   *  auto-scroll the viewport. `SelectionModel.emit()` runs listeners
+   *  synchronously, so the flag reliably brackets the `onChange` emit. */
+  private rebuildIndicesWithoutAutoScroll(rowIdToIndex: ReadonlyMap<string, number>): void {
+    this.suppressFocusEnsure = true;
+    try {
+      this.selection.rebuildIndices(rowIdToIndex);
+    } finally {
+      this.suppressFocusEnsure = false;
+    }
+  }
+
   /** After the worker model changes (sort / filter / transaction / column
    *  swap), re-resolve every persistent selection rowId to its new visible
    *  index and apply it to the paint set. No worker round-trip when no
@@ -7297,14 +7326,14 @@ export class CGrid<TRow = any> {
     if (allIds.length === 0) {
       // Nothing selected or focused — clear any stale paint indices immediately,
       // no worker round-trip needed.
-      this.selection.rebuildIndices(new Map());
+      this.rebuildIndicesWithoutAutoScroll(new Map());
       return;
     }
     this.workerCoord.getRowIndicesForIds(allIds).then((indices) => {
       if (this.destroyed) return;
       const map = new Map<string, number>();
       for (let i = 0; i < allIds.length; i++) map.set(allIds[i]!, indices[i]!);
-      this.selection.rebuildIndices(map);
+      this.rebuildIndicesWithoutAutoScroll(map);
     }).catch((err) => { if (!this.destroyed) console.error('[cgrid] rebuildSelectionFromPersistentIds:', err); });
   }
 
