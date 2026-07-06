@@ -1,6 +1,7 @@
 // @cgrid/renderers — category 3: Indicators (semantic glyphs). Catalog §3.3.
 
 import type { CellPaintConfig, CellPainter } from '@cgrid/kernel';
+import { paintFlashOverlay } from './numeric';
 import { dot, fragText } from './paintUtils';
 import { SEMANTIC_COLORS } from './palette';
 import type {
@@ -205,6 +206,7 @@ function paintStructureSlot(
 /** Catalog §3.3 StatusDot — 8px filled circle in semantic colour; optional label after dot. */
 export const statusDot: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as StatusDotParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const color = params.color
@@ -233,6 +235,7 @@ export const statusDot: CellPainter = {
 /** Catalog §3.3 QuoteQualityDot — green fresh+tight+deep / amber thin+wide / red stale+one-sided. */
 export const quoteQualityDot: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as QuoteQualityDotParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const color = quoteQualityColor(row, params);
@@ -245,6 +248,7 @@ export const quoteQualityDot: CellPainter = {
 /** Catalog §3.3 StaleFlag — cell drops to 60% opacity + inline icon when aged. */
 export const staleFlag: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as StaleFlagParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const nowMs = params.nowMs ?? 0;
@@ -281,6 +285,7 @@ export const staleFlag: CellPainter = {
 /** Catalog §3.3 DirectionArrow — standalone ▲/▼/▬, coloured per direction. */
 export const directionArrow: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as DirectionArrowParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const colors = colorsFromParams(params.colors);
@@ -298,6 +303,7 @@ export const directionArrow: CellPainter = {
 /** Catalog §3.3 StructureIconStrip — fixed-income feature icons in a row. */
 export const structureIconStrip: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as StructureIconStripParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const flags = params.flags
@@ -317,6 +323,7 @@ export const structureIconStrip: CellPainter = {
 /** Catalog §3.3 TrafficLightCell — three-state RAG dot. */
 export const trafficLightCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as TrafficLightCellParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     let state = params.state;

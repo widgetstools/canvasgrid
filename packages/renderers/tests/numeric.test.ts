@@ -197,6 +197,26 @@ describe('pnlCell', () => {
     pnlCell.paint(gc, baseConfig({ value: null, valueFormatted: '' }));
     expect(fillTexts(gc.calls)).toHaveLength(0);
   });
+
+  it('groups thousands with commas and keeps the currency symbol (nominal)', () => {
+    pnlCell.paint(gc, baseConfig({
+      value: 881349,
+      valueFormatted: '',
+      params: { currencySymbol: '$' },
+    }));
+    const texts = fillTexts(gc.calls);
+    expect(texts).toContain('+881,349.00');
+    expect(texts).toContain('$');
+  });
+
+  it('groups thousands on a negative value (edge)', () => {
+    pnlCell.paint(gc, baseConfig({
+      value: -881349,
+      valueFormatted: '',
+      params: { currencySymbol: '$' },
+    }));
+    expect(fillTexts(gc.calls)).toContain('-881,349.00');
+  });
 });
 
 describe('deltaCell', () => {

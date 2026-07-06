@@ -9,6 +9,7 @@ import { paintAreaSparkline } from '../../kernel/src/renderer/cellRenderers/spar
 import { paintBarSparkline } from '../../kernel/src/renderer/cellRenderers/sparkline/barSparkline';
 import { paintPieSparkline } from '../../kernel/src/renderer/cellRenderers/sparkline/pieSparkline';
 import type { SparklineType } from '../../kernel/src/renderer/cellRenderers/sparkline/types';
+import { paintFlashOverlay } from './numeric';
 import { dot, fragText, withAlpha } from './paintUtils';
 import { SEMANTIC_COLORS } from './palette';
 import type {
@@ -33,12 +34,18 @@ const sparklineAdapterParams = {
   sparkline: { type: 'line' as SparklineType, options: undefined as unknown },
 };
 
+// DRY (follow-up 1) — all five kernel-sparkline adapters (line/column/area/
+// bar/pie) funnel through this one factory, so the cell-change flash is
+// painted ONCE here rather than duplicated per adapter. Safe to paint before
+// the `p.value`/`p.params` swap below — `paintFlashOverlay` only reads
+// `p.bounds`/`p.flashAlpha`/`p.flashFromColor`, none of which the swap touches.
 function makeSparklineAdapter(
   type: SparklineType,
   paint: (gc: Gc, p: CellPaintConfig) => void,
 ): CellPainter {
   return {
     paint(gc, p) {
+      paintFlashOverlay(gc, p);
       const data = coerceToNumberArray(p.value);
       if (!data) return;
       const originalValue = p.value;
@@ -98,6 +105,7 @@ const WIN_LOSS_GAP = 1;
  */
 export const winLossSparkline: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as WinLossSparklineParams;
     const colors = colorsFromParams(params.colors);
     const row = p.rowData as Record<string, unknown> | undefined;
@@ -128,6 +136,7 @@ export const winLossSparkline: CellPainter = {
 /** Catalog §3.6 YieldCurveSparkline — multi-tenor line with labels and marker. */
 export const yieldCurveSparkline: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as YieldCurveSparklineParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const data = rowArray(row, params.valuesField);
@@ -175,6 +184,7 @@ export const yieldCurveSparkline: CellPainter = {
 /** Catalog §3.6 KRDBarChart — micro histogram per tenor bucket. */
 export const krdBarChart: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as KRDBarChartParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const data = rowArray(row, params.valuesField);
@@ -205,6 +215,7 @@ export const krdBarChart: CellPainter = {
 /** Catalog §3.6 DepthLadderCell — mini order book ladder. */
 export const depthLadderCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as DepthLadderCellParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     if (!row) return;

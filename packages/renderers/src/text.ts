@@ -1,6 +1,7 @@
 // @cgrid/renderers — category 2: Text / identity. Catalog §3.2.
 
 import type { CellPaintConfig, CellPainter } from '@cgrid/kernel';
+import { paintFlashOverlay } from './numeric';
 import { withAlpha } from './paintUtils';
 import { SEMANTIC_COLORS } from './palette';
 import type {
@@ -81,6 +82,7 @@ function formatRelative(elapsedMs: number): string {
 /** Catalog §3.2 TickerCell */
 export const tickerCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as TickerCellParams;
     const primary = p.valueFormatted || String(p.value ?? '');
     const secondary = params.secondaryField && p.rowData
@@ -102,6 +104,7 @@ export const tickerCell: CellPainter = {
 /** Catalog §3.2 CurrencyPairCell */
 export const currencyPairCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as CurrencyPairCellParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const pair = row ? String(row[params.pairField] ?? '') : '';
@@ -120,6 +123,7 @@ export const currencyPairCell: CellPainter = {
 /** Catalog §3.2 TimestampCell */
 export const timestampCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as TimestampCellParams;
     const nowMs = params.nowMs ?? 0;
     const ms = typeof p.value === 'number' ? p.value : Number(p.value);
@@ -154,6 +158,7 @@ export const timestampCell: CellPainter = {
 /** Catalog §3.2 AgeCell */
 export const ageCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as AgeCellParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const since = row ? Number(row[params.sinceField]) : NaN;
@@ -177,6 +182,7 @@ export const ageCell: CellPainter = {
 /** Catalog §3.2 RelativeTimeCell */
 export const relativeTimeCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as RelativeTimeCellParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const since = row ? Number(row[params.sinceField]) : NaN;

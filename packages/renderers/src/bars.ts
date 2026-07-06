@@ -121,6 +121,7 @@ const LABEL_ON_FILL_THRESHOLD = 0.8;
 /** Catalog §3.5 ProgressBarCell — horizontal fill bar, text overlaid. */
 export const progressBarCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as ProgressBarCellParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const fracRaw = params.fraction ?? rowNumber(row, params.fractionField) ?? toNumber(p.value);
@@ -147,6 +148,7 @@ export const progressBarCell: CellPainter = {
 /** Catalog §3.5 RangeBarCell — range bar with endpoint labels and marker dot. */
 export const rangeBarCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as RangeBarCellParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const min = rowNumber(row, params.minField);
@@ -234,6 +236,7 @@ export const heatCell: CellPainter = {
 /** Catalog §3.5 GaugeCell — segmented horizontal gauge with tick marker. */
 export const gaugeCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as GaugeCellParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const value = params.value ?? rowNumber(row, params.valueField) ?? toNumber(p.value);
@@ -266,6 +269,7 @@ export const gaugeCell: CellPainter = {
 /** Catalog §3.5 SpreadBarCell — spread-width bar; amber 1σ / red 2σ vs rolling average. */
 export const spreadBarCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as SpreadBarCellParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const bid = rowNumber(row, params.bidField);
@@ -297,6 +301,7 @@ export const spreadBarCell: CellPainter = {
 /** Catalog §3.5 VolumeBar — bar sized to scope max volume, text overlay. */
 export const volumeBar: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as VolumeBarParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const value = rowNumber(row, params.valueField) ?? toNumber(p.value);
@@ -328,6 +333,7 @@ function reverseOutFg(p: CellPaintConfig): string {
 /** Catalog §3.5 MaturityLadderBar — segmented bar by tenor bucket. */
 export const maturityLadderBar: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as MaturityLadderBarParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const fields = params.bucketFields ?? {};

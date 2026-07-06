@@ -1,6 +1,7 @@
 // @cgrid/renderers — category 4: Badges / pills. Catalog §3.4.
 
 import type { CellPaintConfig, CellPainter } from '@cgrid/kernel';
+import { paintFlashOverlay } from './numeric';
 import { fragText, pill, withAlpha } from './paintUtils';
 import {
   DEFAULT_VENUE_PALETTE,
@@ -110,6 +111,7 @@ function paintRatingBadge(
 /** Catalog §3.4 StatusPill — order/state label with semantic colour. */
 export const statusPill: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as StatusPillParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const status = (params.status ?? rowString(row, params.statusField) ?? '').toUpperCase();
@@ -134,6 +136,7 @@ export const statusPill: CellPainter = {
 /** Catalog §3.4 RatingBadge — single agency rating, AAA green → D red. */
 export const ratingBadge: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as RatingBadgeParams;
     const grade = params.rating || p.valueFormatted || String(p.value ?? '');
     if (!grade) return;
@@ -151,6 +154,7 @@ export const ratingBadge: CellPainter = {
 /** Catalog §3.4 RatingClusterCell — three RatingBadges side-by-side. */
 export const ratingClusterCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as RatingClusterCellParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const entries: Array<{ label: string; grade: string }> = [
@@ -178,6 +182,7 @@ export const ratingClusterCell: CellPainter = {
 /** Catalog §3.4 TagCell — generic muted-grey tag. */
 export const tagCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as TagCellParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const text = params.text ?? rowString(row, params.textField) ?? p.valueFormatted ?? String(p.value ?? '');
@@ -196,6 +201,7 @@ export const tagCell: CellPainter = {
 /** Catalog §3.4 VenueChip — execution venue MIC with venue-specific palette. */
 export const venueChip: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as VenueChipParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const mic = (params.mic ?? rowString(row, params.micField) ?? p.valueFormatted ?? '').toUpperCase();
@@ -216,6 +222,7 @@ export const venueChip: CellPainter = {
 /** Catalog §3.4 SideChip — long/short single-char square chip. */
 export const sideChip: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as SideChipParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     let side = params.side;
@@ -241,6 +248,7 @@ export const sideChip: CellPainter = {
 /** Catalog §3.4 TimeInForcePill — DAY/GTC/IOC/FOK colour-coded pill. */
 export const tifPill: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as TimeInForcePillParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const tif = (params.tif ?? rowString(row, params.tifField) ?? p.valueFormatted ?? '').toUpperCase();

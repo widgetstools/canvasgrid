@@ -189,6 +189,13 @@ function primaryNumericText(p: CellPaintConfig): string {
   return n === null ? '' : String(n);
 }
 
+function groupedAbs(n: number, decimals = 2): string {
+  return Math.abs(n).toLocaleString('en-US', {
+    minimumFractionDigits: decimals,
+    maximumFractionDigits: decimals,
+  });
+}
+
 function paintNumberCellCore(gc: Gc, p: CellPaintConfig, params: NumberCellParams): void {
   let text = primaryNumericText(p);
   const n = toNumber(p.value);
@@ -251,7 +258,20 @@ function pEmpty(value: unknown): string {
   return value == null ? '' : String(value);
 }
 
-function paintNumberLike(gc: Gc, p: CellPaintConfig, params: NumberCellParams): void {
+// DRY (follow-up 1) — `numberCell` and `priceCell` both funnel through this
+// helper, so the cell-change flash is painted ONCE here (over the pre-painted
+// row-band bg, under the number text) instead of duplicated per caller.
+// `flashFallbackColor` lets priceCell supply its tick-direction-derived tint
+// as the fallback `paintFlashOverlay` uses when the host hasn't wired
+// `p.flashFromColor` (e.g. no rule-engine flash channel); numberCell has no
+// such derived color and omits it, falling through to the default warning tint.
+function paintNumberLike(
+  gc: Gc,
+  p: CellPaintConfig,
+  params: NumberCellParams,
+  flashFallbackColor?: string,
+): void {
+  paintFlashOverlay(gc, p, flashFallbackColor);
   paintNumberCellCore(gc, p, params);
 }
 
@@ -271,14 +291,16 @@ export const priceCell: CellPainter = {
     const flashColor = dir === 'up' ? withAlpha(colors.positive, 0.25)
       : dir === 'down' ? withAlpha(colors.negative, 0.25)
       : undefined;
-    paintFlashOverlay(gc, p, flashColor);
-    paintNumberLike(gc, p, params);
+    // Flash painted by `paintNumberLike` (shared helper) — NOT called
+    // directly here, to avoid double-painting the overlay.
+    paintNumberLike(gc, p, params, flashColor);
   },
 };
 
 /** Catalog §3.1 PriceDirectionCell */
 export const priceDirectionCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as PriceDirectionCellParams;
     const colors = colorsFromParams(params.colors, p);
     const dir = tickDirection(p, params.prevField) ?? 'flat';
@@ -308,7 +330,7 @@ export const pnlCell: CellPainter = {
       return;
     }
     const symbol = params.currencySymbol ?? '$';
-    const body = Math.abs(n).toFixed(2);
+    const body = groupedAbs(n, 2);
     const signed = n > 0 ? `+${body}` : n < 0 ? `-${body}` : body;
     const fg = semanticFg(n, colors);
     const right = p.bounds.x + p.bounds.w - padRight(p);
@@ -325,6 +347,7 @@ export const pnlCell: CellPainter = {
 /** Catalog §3.1 DeltaCell */
 export const deltaCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as DeltaCellParams;
     const colors = colorsFromParams(params.colors, p);
     const row = p.rowData as Record<string, unknown> | undefined;
@@ -355,6 +378,7 @@ export const deltaCell: CellPainter = {
 /** Catalog §3.1 BpsCell */
 export const bpsCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as BpsCellParams;
     const colors = colorsFromParams(params.colors, p);
     const n = toNumber(p.value);
@@ -383,6 +407,7 @@ export const bpsCell: CellPainter = {
 /** Catalog §3.1 PctChangeCell */
 export const pctChangeCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as PctChangeCellParams;
     const colors = colorsFromParams(params.colors, p);
     const n = toNumber(p.value);
@@ -399,6 +424,7 @@ export const pctChangeCell: CellPainter = {
 /** Catalog §3.1 FractionalPriceCell */
 export const fractionalPriceCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as FractionalPriceCellParams;
     const text = p.valueFormatted || formatFractionalPrice(p.value, params);
     paintRightText(gc, p, text, p.fg);
@@ -408,6 +434,7 @@ export const fractionalPriceCell: CellPainter = {
 /** Catalog §3.1 AbbreviatedNumberCell */
 export const abbreviatedNumberCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as AbbreviatedNumberCellParams;
     const n = toNumber(p.value);
     if (n === null) {

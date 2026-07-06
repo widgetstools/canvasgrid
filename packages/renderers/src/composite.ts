@@ -1,6 +1,7 @@
 // @cgrid/renderers — category 7: Composite (multi-value). Catalog §3.7.
 
 import type { CellPaintConfig, CellPainter } from '@cgrid/kernel';
+import { paintFlashOverlay } from './numeric';
 import { fragText, miniBar, withAlpha } from './paintUtils';
 import { DEFAULT_VENUE_PALETTE, SEMANTIC_COLORS } from './palette';
 import type {
@@ -96,6 +97,7 @@ function paintDirectionGlyph(gc: Gc, p: CellPaintConfig, dir: 'up' | 'down' | 'f
 /** Catalog §3.7 StackedValueCell — primary right-aligned, muted secondary below. */
 export const stackedValueCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as StackedValueCellParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const primary = params.primaryField
@@ -118,6 +120,7 @@ export const stackedValueCell: CellPainter = {
 /** Catalog §3.7 PriceQuoteCell — bid left / ask right / mid centred; spread bar behind mid. */
 export const priceQuoteCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as PriceQuoteCellParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const bid = rowNumber(row, params.bidField);
@@ -174,6 +177,7 @@ export const priceQuoteCell: CellPainter = {
 /** Catalog §3.7 NBBOCell — consolidated top-of-book quote with inline venue chips. */
 export const nbboCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as NBBOCellParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     if (!row) return;
@@ -219,6 +223,7 @@ export const nbboCell: CellPainter = {
 /** Catalog §3.7 BenchmarkSpreadCell — signed bps + muted benchmark label. */
 export const benchmarkSpreadCell: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as BenchmarkSpreadCellParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const bps = rowNumber(row, params.bpsField);
@@ -254,6 +259,7 @@ export const benchmarkSpreadCell: CellPainter = {
 /** Catalog §3.7 PriceChangeComposite — price + arrow + abs delta + pct delta. */
 export const priceChangeComposite: CellPainter = {
   paint(gc, p) {
+    paintFlashOverlay(gc, p);
     const params = (p.params ?? {}) as PriceChangeCompositeParams;
     const row = p.rowData as Record<string, unknown> | undefined;
     const priceFromValue = typeof p.value === 'number' && Number.isFinite(p.value)
