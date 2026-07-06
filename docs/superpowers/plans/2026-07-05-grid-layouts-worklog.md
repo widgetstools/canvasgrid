@@ -98,7 +98,7 @@ New subsystem: expression → style, targeting rows/columns; layout-tier. Spec �
 
 - [x] A1 · [x] A2 · [x] A3 · [x] A4 · [x] A5 · [x] A6 — **PHASE A MERGED** (squash `3da8e48` on main)
 - [x] B1 · [x] B2 · [x] B3 · [x] B4 · [x] B5 — **PHASE B MERGED** (squash `b73ec62` on `origin/main`)
-- [x] C1 · [x] C2 · [x] C3 · [x] C4 — **PHASE C COMPLETE on branch** (ready to merge)
+- [x] C1 · [x] C2 · [x] C3 · [x] C4 — **PHASE C MERGED** (squash `ff4f9ae` on `origin/main`) — **GRID LAYOUTS FEATURE COMPLETE (no Phase D)**
 
 **Next: MERGE Phase C** — branch `feature/grid-layouts-c` (off merged B `b73ec62`), 9 commits
 (`267b61c` C1 · `5cb42a2` · `bc89160` C2 · `7755375` · `e2d856c` C3 · `393b0b9` · `fbdfcae` C4 ·
