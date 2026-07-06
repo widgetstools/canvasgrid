@@ -29,21 +29,43 @@ export interface BaseClassPair {
  *
  * `mode: 'base'` means the layer's params apply regardless of which mode is
  * being compiled; `mode: 'light' | 'dark'` scopes the layer to that mode
- * only. `feature` is unused by `withParams` (always `undefined`) and is
- * reserved for Task 4's `withPart`, which will tag a layer with the part's
- * feature name so `withoutPart(feature)` can filter it back out.
+ * only. `feature` is set by `withPart` (always `undefined` for plain
+ * `withParams` layers) so `withoutPart(feature)` can filter it back out, and
+ * `css` carries a part's optional raw CSS string through the same layer so
+ * `compile()` can collect it alongside the param fold.
  */
 interface ThemeLayer {
   readonly mode: 'base' | ThemeMode;
   readonly params: CgThemeParams;
   readonly feature?: string;
+  readonly css?: string;
+}
+
+/**
+ * A labelled, pluggable bundle of theme customization: optional params (fold
+ * into the compiled `--cg-*` vars like any other layer), an optional `mode`
+ * restricting when those params apply (omitted = applies in every mode), and
+ * optional raw `css` for customization beyond what tokens can express (e.g.
+ * an icon set) — surfaced on `CompiledTheme.css` for the DOM layer to inject,
+ * scoped to the grid root.
+ *
+ * Exactly one part is active per `feature` at a time: `withPart` replaces
+ * any existing part with the same `feature` rather than stacking both.
+ */
+export interface Part {
+  readonly feature: string;
+  readonly params?: CgThemeParams;
+  readonly mode?: ThemeMode;
+  readonly css?: string;
 }
 
 /** The result of `CgTheme.compile(mode)`: a flat `--cg-*` map plus the
- *  structural base class pair to apply alongside it. */
+ *  structural base class pair to apply alongside it, and any raw CSS
+ *  contributed by active parts (`undefined` when no active part has css). */
 export interface CompiledTheme {
   readonly vars: Record<string, string>;
   readonly baseClass: BaseClassPair;
+  readonly css?: string;
 }
 
 const DEFAULT_BASE_CLASS: BaseClassPair = {
@@ -108,18 +130,57 @@ export class CgTheme {
   }
 
   /**
+   * Returns a NEW `CgTheme` with `part` appended as a `feature`-tagged
+   * layer. Exactly one part is active per `feature`: any existing layer
+   * whose `feature` matches `part.feature` is removed first, so a second
+   * `withPart` call for the same feature replaces the first rather than
+   * stacking both. Never mutates `this`.
+   */
+  withPart(part: Part): CgTheme {
+    const withoutSameFeature = this.layers.filter((l) => l.feature !== part.feature);
+    const layer: ThemeLayer = {
+      mode: part.mode ?? 'base',
+      params: part.params ?? {},
+      feature: part.feature,
+      css: part.css,
+    };
+    return new CgTheme(this.baseClass, [...withoutSameFeature, layer]);
+  }
+
+  /**
+   * Returns a NEW `CgTheme` with all layers belonging to `feature` removed
+   * (a no-op, returning an equivalent new instance, if that feature was
+   * never added). Never mutates `this`.
+   */
+  withoutPart(feature: string): CgTheme {
+    return new CgTheme(
+      this.baseClass,
+      this.layers.filter((l) => l.feature !== feature),
+    );
+  }
+
+  /**
    * Folds all layers applicable to `mode` (i.e. `mode === 'base'` or
    * `mode === layer.mode`) left-to-right into one merged `CgThemeParams`,
-   * then compiles that into a flat `--cg-*` map via `compileParams`.
+   * then compiles that into a flat `--cg-*` map via `compileParams`. Also
+   * collects `css` from every active part-layer (in insertion order) into
+   * a single string, surfaced as `css` — `undefined` when no active layer
+   * contributes any.
    */
   compile(mode: ThemeMode): CompiledTheme {
     let merged: CgThemeParams = {};
+    let css = '';
     for (const layer of this.layers) {
       if (layer.mode === 'base' || layer.mode === mode) {
         merged = mergeParams(merged, layer.params);
+        if (layer.css) css += layer.css;
       }
     }
-    return { vars: compileParams(merged), baseClass: this.baseClass };
+    return {
+      vars: compileParams(merged),
+      baseClass: this.baseClass,
+      css: css.length > 0 ? css : undefined,
+    };
   }
 }
 
