@@ -427,6 +427,40 @@ export interface CGridLike {
    *  treat null as "hide". The grid owns this resolution because column
    *  defs + chunk-side row data both live there. */
   getSparklineData(rowIndex: number, colId: string): readonly number[] | null;
+
+  // --- Column-GROUP header drag (Grid Layouts feature, Task 1) ---
+  /** Every leaf colId under `groupId` (its own children flattened,
+   *  recursively), in render order. Empty array for an unknown groupId.
+   *  `ColumnDrag`'s group-drag branch uses this to compute the group's
+   *  aggregate ghost width and to build the `movedGroupIds` set. */
+  getGroupLeafColIds(groupId: string): string[];
+  /** Resolved `headerName` of `groupId`, or `undefined` for an unknown
+   *  groupId. Shown on the group-drag ghost label. */
+  getGroupHeaderName(groupId: string): string | undefined;
+  /** Ancestor group ids of `colId`, root→parent (mirrors
+   *  `ResolvedColLeaf.groupPath`). Empty for an unknown or ungrouped
+   *  colId. Feeds `HeaderLeafSlot.groupPath` in `buildHeaderSlots`, the
+   *  input `computeGroupDropTarget` resolves gaps against. */
+  getColGroupPath(colId: string): string[];
+  /** `groupId` plus every descendant group's id (depth-first). A dragged
+   *  group can never land inside itself or one of its own sub-groups;
+   *  `computeGroupDropTarget` uses this set to reject/skip those targets. */
+  getGroupDescendantIds(groupId: string): string[];
+  /** Re-parent (or reorder) a whole column group. `targetParentGroupId:
+   *  null` moves it to the top level. No-op (unknown ids, `marryChildren`
+   *  guard, moving a group into itself/a descendant, or a move that
+   *  changes nothing) fires nothing. The `ColumnDrag` feature's group-drag
+   *  mouseup is the ONLY commit path into this — same primitive the
+   *  Columns tool panel's hierarchy drag already uses. */
+  moveColumnGroup(groupId: string, targetParentGroupId: string | null, beforeId?: string): void;
+  /** Grid Layouts / column-group-drag feature (Task 2) — true when
+   *  `groupId` has `marryChildren: true` (its children's membership/order
+   *  is locked). `ColumnDrag`'s group-drag branch uses this to predict a
+   *  `moveColumnGroup` rejection for the resolved drop target BEFORE the
+   *  user releases — mirroring the Columns tool panel's dry-run reject
+   *  affordance (`isRejectedDrop`) — so the insertion line can hide and
+   *  the cursor flip to `no-drop`. `false` for an unknown groupId. */
+  isColumnGroupMarried(groupId: string): boolean;
 }
 
 export interface CGridEventCtx {

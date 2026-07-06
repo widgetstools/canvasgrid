@@ -26,6 +26,17 @@ interface MockGrid {
   isPointInPivotPanel: (x: number, y: number) => boolean;
   setPivotPanelDragHover: ReturnType<typeof vi.fn>;
   commitPivotPanelDrop: ReturnType<typeof vi.fn>;
+  // Grid Layouts / column-group-drag feature (Task 1 accessors, Task 2
+  // reject-affordance consumer).
+  getGroupLeafColIds: (groupId: string) => string[];
+  getGroupHeaderName: (groupId: string) => string | undefined;
+  getColGroupPath: (colId: string) => string[];
+  getGroupDescendantIds: (groupId: string) => string[];
+  moveColumnGroup: ReturnType<typeof vi.fn>;
+  /** Task 2 — true when `groupId` has `marryChildren: true`. Drives the
+   *  group-drag reject affordance (no-drop cursor + hidden insertion
+   *  line) when the resolved drop target is a married group. */
+  isColumnGroupMarried: (groupId: string) => boolean;
 }
 
 function ctx(hit: Hit, point: { x: number; y: number }, grid: MockGrid): CGridEventCtx {
@@ -58,8 +69,35 @@ function makeGrid(overrides: Partial<MockGrid> = {}): MockGrid {
     isPointInPivotPanel: () => false,
     setPivotPanelDragHover: vi.fn(),
     commitPivotPanelDrop: vi.fn(),
+    getGroupLeafColIds: () => [],
+    getGroupHeaderName: (id) => id,
+    getColGroupPath: () => [],
+    getGroupDescendantIds: (id) => [id],
+    moveColumnGroup: vi.fn(),
+    isColumnGroupMarried: () => false,
     ...overrides,
   };
+}
+
+/** Cycle: Grid Layouts / column-group-drag (Task 2) — a 5-leaf layout with
+ *  two groups (`G` = a0/a1, `M` = b0/b1, `marryChildren`) and a top-level
+ *  leaf `c`, for the reject-affordance tests. Mirrors the shape of the
+ *  real-DOM `columnGroupHeaderDrag.integration.test.ts` fixture but as a
+ *  lightweight mock so the reject/no-drop behaviour can be unit-tested
+ *  without mounting a full `CGrid`. */
+function makeGroupGrid(overrides: Partial<MockGrid> = {}): MockGrid {
+  const lefts: Record<string, number> = { a0: 0, a1: 100, b0: 200, b1: 300, c: 400 };
+  return makeGrid({
+    allColIds: () => ['a0', 'a1', 'b0', 'b1', 'c'],
+    columnLeftOf: (id) => lefts[id] ?? null,
+    columnWidthOf: (id) => (lefts[id] !== undefined ? 100 : null),
+    getGroupLeafColIds: (groupId) => (groupId === 'G' ? ['a0', 'a1'] : groupId === 'M' ? ['b0', 'b1'] : []),
+    getGroupHeaderName: (groupId) => groupId,
+    getColGroupPath: (colId) => (colId === 'a0' || colId === 'a1' ? ['G'] : colId === 'b0' || colId === 'b1' ? ['M'] : []),
+    getGroupDescendantIds: (groupId) => [groupId],
+    isColumnGroupMarried: (groupId) => groupId === 'M',
+    ...overrides,
+  });
 }
 
 describe('ColumnDrag', () => {
@@ -259,5 +297,96 @@ describe('ColumnDrag', () => {
     f.handleMouseUp(ctx(hit, { x: 250, y: 8 }, grid));
     expect(grid.commitRowGroupPanelDrop).not.toHaveBeenCalled();
     expect(grid.reorderColumn).toHaveBeenCalled();
+  });
+
+  // Grid Layouts / column-group-drag feature, Task 2 — drop affordance
+  // during a group drag: the insertion line at a LEGAL gap, and the
+  // no-drop cursor + hidden line at an ILLEGAL/rejected gap.
+  describe('group-drag drop affordance (Task 2)', () => {
+    it('a legal gap shows the grabbing cursor and a visible insertion line', () => {
+      const f = new ColumnDrag();
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      const grid = makeGroupGrid({ getOverlayHost: () => host });
+      const hit: Hit = { kind: 'headerGroup', groupId: 'G', colId: 'a0' };
+      f.handleMouseDown(ctx(hit, { x: 50, y: 8 }, grid));
+      // Drag toward the top-level gap after 'c' — a legal re-nest-out target.
+      f.handleMouseDrag(ctx(hit, { x: 480, y: 8 }, grid));
+      expect(f.cursor).toBe('grabbing');
+      const line = host.querySelector<HTMLElement>('.cg-column-drag-insertion-line');
+      expect(line).not.toBeNull();
+      expect(line!.style.display).not.toBe('none');
+    });
+
+    it('a married-group target shows the no-drop cursor and hides the insertion line', () => {
+      const f = new ColumnDrag();
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      const grid = makeGroupGrid({ getOverlayHost: () => host });
+      const hit: Hit = { kind: 'headerGroup', groupId: 'G', colId: 'a0' };
+      f.handleMouseDown(ctx(hit, { x: 50, y: 8 }, grid));
+      // Land inside M's own span (between b0 and b1, left=200..400) — the
+      // resolved target's parent is the married group 'M'.
+      f.handleMouseDrag(ctx(hit, { x: 300, y: 8 }, grid));
+      expect(f.cursor).toBe('no-drop');
+      const line = host.querySelector<HTMLElement>('.cg-column-drag-insertion-line');
+      expect(line).not.toBeNull();
+      expect(line!.style.display).toBe('none');
+    });
+
+    it('an illegal gap (inside the moving group itself) shows the no-drop cursor and hides the line', () => {
+      const f = new ColumnDrag();
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      const grid = makeGroupGrid({ getOverlayHost: () => host });
+      const hit: Hit = { kind: 'headerGroup', groupId: 'G', colId: 'a0' };
+      f.handleMouseDown(ctx(hit, { x: 50, y: 8 }, grid));
+      // Land between a0 and a1 (left=0..200) — strictly inside G's own
+      // span, with nothing shallower to fall back to (top-level group).
+      f.handleMouseDrag(ctx(hit, { x: 100, y: 8 }, grid));
+      expect(f.cursor).toBe('no-drop');
+      const line = host.querySelector<HTMLElement>('.cg-column-drag-insertion-line');
+      expect(line).not.toBeNull();
+      expect(line!.style.display).toBe('none');
+    });
+
+    // Regression: FIX 3 (review) — `moveColumnGroupPure` rejects a reparent
+    // when EITHER the target OR the SOURCE parent is married. The dry-run
+    // used to check only the target's marriage, so re-nesting a group OUT
+    // of a married parent (to an unmarried/top-level target) showed a
+    // legal (grabbing) affordance that the commit would then silently
+    // reject. Fixture: married group `M` contains sub-group `N` (leaf
+    // `n0`); dragging `N` to the top-level gap past `c` is a reparent out
+    // of the married `M` and must now be rejected too.
+    it('rejects re-nesting a group OUT of a married source parent, even when the target is unmarried', () => {
+      const f = new ColumnDrag();
+      const host = document.createElement('div');
+      document.body.appendChild(host);
+      const lefts: Record<string, number> = { a0: 0, a1: 100, n0: 200, b1: 300, c: 400 };
+      const grid = makeGrid({
+        getOverlayHost: () => host,
+        allColIds: () => ['a0', 'a1', 'n0', 'b1', 'c'],
+        columnLeftOf: (id) => lefts[id] ?? null,
+        columnWidthOf: (id) => (lefts[id] !== undefined ? 100 : null),
+        getGroupLeafColIds: (groupId) =>
+          groupId === 'G' ? ['a0', 'a1'] : groupId === 'M' ? ['n0', 'b1'] : groupId === 'N' ? ['n0'] : [],
+        getGroupHeaderName: (groupId) => groupId,
+        getColGroupPath: (colId) =>
+          colId === 'a0' || colId === 'a1' ? ['G'] : colId === 'n0' ? ['M', 'N'] : colId === 'b1' ? ['M'] : [],
+        getGroupDescendantIds: (groupId) => [groupId],
+        isColumnGroupMarried: (groupId) => groupId === 'M',
+      });
+      const hit: Hit = { kind: 'headerGroup', groupId: 'N', colId: 'n0' };
+      f.handleMouseDown(ctx(hit, { x: 250, y: 8 }, grid));
+      // Drag past the last leaf (c) — a legal-looking top-level append; the
+      // resolved target's parent is `null` (unmarried), but the moving
+      // group's CURRENT parent `M` is married, so the reparent-out must
+      // still be rejected.
+      f.handleMouseDrag(ctx(hit, { x: 480, y: 8 }, grid));
+      expect(f.cursor).toBe('no-drop');
+      const line = host.querySelector<HTMLElement>('.cg-column-drag-insertion-line');
+      expect(line).not.toBeNull();
+      expect(line!.style.display).toBe('none');
+    });
   });
 });

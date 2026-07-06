@@ -26,6 +26,7 @@
 // the header band.
 
 import { Feature, type CGridEventCtx } from '../feature';
+import { computeGroupDropTarget, type GroupDropTarget, type HeaderLeafSlot } from './groupDropTarget';
 
 const DRAG_THRESHOLD_PX = 4;
 
@@ -109,8 +110,9 @@ export function clearPivotPanelDragHover(ctx: PivotPanelDragRouter): void {
 const INSERTION_LINE_CLASS = 'cg-column-drag-insertion-line';
 const GHOST_HEADER_CLASS = 'cg-column-drag-ghost';
 
-interface PressedState {
+interface LeafPressedState {
   kind: 'pressed';
+  dragKind: 'leaf';
   colId: string;
   startX: number;
   startY: number;
@@ -120,8 +122,27 @@ interface PressedState {
   grabOffsetX: number;
 }
 
-interface DraggingState {
+/** Grid Layouts / column-group-drag feature (Task 1) — a press on a
+ *  `headerGroup` hit. `leafColIds` is snapshotted at press time (every
+ *  leaf under the group, render order); `colId` mirrors the group's
+ *  first leaf so shared helpers that key off `state.colId` (the ghost /
+ *  insertion-line position updaters) keep working unchanged. */
+interface GroupPressedState {
+  kind: 'pressed';
+  dragKind: 'group';
+  groupId: string;
+  leafColIds: string[];
+  colId: string;
+  startX: number;
+  startY: number;
+  grabOffsetX: number;
+}
+
+type PressedState = LeafPressedState | GroupPressedState;
+
+interface LeafDraggingState {
   kind: 'dragging';
+  dragKind: 'leaf';
   colId: string;
   startX: number;
   startY: number;
@@ -141,6 +162,27 @@ interface DraggingState {
   overPivotPanel: boolean;
 }
 
+/** Grid Layouts / column-group-drag feature (Task 1) — the dragging
+ *  state for a group drag. No `pillGhost` / panel-hover tracking: group
+ *  drags never route into the row group panel or pivot panel (those
+ *  panels accept single leaf columns, not whole groups), so the
+ *  mouseup handler skips those branches entirely for `dragKind:'group'`. */
+interface GroupDraggingState {
+  kind: 'dragging';
+  dragKind: 'group';
+  groupId: string;
+  leafColIds: string[];
+  colId: string;
+  startX: number;
+  startY: number;
+  currentX: number;
+  grabOffsetX: number;
+  ghost: HTMLDivElement | null;
+  insertionLine: HTMLDivElement | null;
+}
+
+type DraggingState = LeafDraggingState | GroupDraggingState;
+
 type State = PressedState | DraggingState | null;
 
 export class ColumnDrag extends Feature {
@@ -157,6 +199,32 @@ export class ColumnDrag extends Feature {
     // flag from a previous drag whose click event never fired (rare,
     // but possible if the cursor left the canvas between up and click).
     this.suppressNextClick = false;
+    // Grid Layouts / column-group-drag feature (Task 1) — a press on a
+    // group header starts a GROUP drag instead of the leaf-reorder path
+    // below. Movable unless any leaf under the group has `lockPosition`
+    // set (mirrors the leaf-drag `suppressMovable` guard's intent: don't
+    // let a locked column silently get dragged along as part of a group).
+    if (ctx.hit.kind === 'headerGroup') {
+      const leafColIds = ctx.grid.getGroupLeafColIds(ctx.hit.groupId);
+      const movable = leafColIds.length > 0
+        && leafColIds.every((id) => (ctx.grid.getColDef(id)?.lockPosition ?? null) === null);
+      if (!movable) {
+        super.handleMouseDown(ctx);
+        return;
+      }
+      const groupLeft = ctx.grid.columnLeftOf(leafColIds[0]!);
+      this.state = {
+        kind: 'pressed',
+        dragKind: 'group',
+        groupId: ctx.hit.groupId,
+        leafColIds,
+        colId: leafColIds[0]!,
+        startX: ctx.point.x,
+        startY: ctx.point.y,
+        grabOffsetX: groupLeft === null ? 0 : ctx.point.x - groupLeft,
+      };
+      return; // consume
+    }
     if (ctx.hit.kind !== 'header') {
       super.handleMouseDown(ctx);
       return;
@@ -171,6 +239,7 @@ export class ColumnDrag extends Feature {
     const colLeft = ctx.grid.columnLeftOf(ctx.hit.colId);
     this.state = {
       kind: 'pressed',
+      dragKind: 'leaf',
       colId: ctx.hit.colId,
       startX: ctx.point.x,
       startY: ctx.point.y,
@@ -192,8 +261,29 @@ export class ColumnDrag extends Feature {
       if (Math.abs(dx) < DRAG_THRESHOLD_PX && Math.abs(dy) < DRAG_THRESHOLD_PX) {
         return; // still under threshold; wait
       }
+      if (this.state.dragKind === 'group') {
+        const pressed = this.state;
+        this.state = {
+          kind: 'dragging',
+          dragKind: 'group',
+          groupId: pressed.groupId,
+          leafColIds: pressed.leafColIds,
+          colId: pressed.colId,
+          startX: pressed.startX,
+          startY: pressed.startY,
+          currentX: ctx.point.x,
+          grabOffsetX: pressed.grabOffsetX,
+          ghost: createGroupGhostHeader(ctx, pressed.groupId, pressed.leafColIds),
+          insertionLine: createInsertionLine(ctx),
+        };
+        updateHeaderGhostPosition(this.state, ctx);
+        const rejected = updateGroupInsertionLinePosition(this.state, ctx);
+        this.cursor = rejected ? 'no-drop' : 'grabbing';
+        return;
+      }
       this.state = {
         kind: 'dragging',
+        dragKind: 'leaf',
         colId: this.state.colId,
         startX: this.state.startX,
         startY: this.state.startY,
@@ -213,6 +303,13 @@ export class ColumnDrag extends Feature {
       return;
     }
     // dragging — track pointer X for the drop-target computation
+    if (this.state.dragKind === 'group') {
+      this.state.currentX = ctx.point.x;
+      updateHeaderGhostPosition(this.state, ctx);
+      const rejected = updateGroupInsertionLinePosition(this.state, ctx);
+      this.cursor = rejected ? 'no-drop' : 'grabbing';
+      return;
+    }
     this.state.currentX = ctx.point.x;
     updateHeaderGhostPosition(this.state, ctx);
     updatePillGhostPosition(this.state, ctx);
@@ -232,6 +329,19 @@ export class ColumnDrag extends Feature {
     }
     state.ghost?.remove();
     state.insertionLine?.remove();
+    // Grid Layouts / column-group-drag feature (Task 1) — group drags
+    // skip the pivot-panel / row-group-panel hover + commit branches
+    // entirely (those panels accept single leaf columns, not whole
+    // groups) and commit straight through `moveColumnGroup` — the SAME
+    // primitive the Columns tool panel's hierarchy drag already uses.
+    if (state.dragKind === 'group') {
+      const slots = buildHeaderSlots(ctx);
+      const descendants = new Set(ctx.grid.getGroupDescendantIds(state.groupId));
+      const t = computeGroupDropTarget(slots, state.groupId, descendants, ctx.point.x);
+      if (t) ctx.grid.moveColumnGroup(state.groupId, t.targetParentGroupId, t.beforeId);
+      this.suppressNextClick = true;
+      return;
+    }
     state.pillGhost?.remove();
     // Cycle 15 / Task 6 + Cycle 18 / Task 6 — if the drop landed
     // inside the pivot panel OR the row group panel, commit the drop
@@ -280,10 +390,14 @@ export class ColumnDrag extends Feature {
    *      hidden and the pill ghost is shown to signal "I'm dropping
    *      a chip here". Pivot panel is checked first so its hover
    *      paint wins when both panels would accept the cursor (pivot
-   *      sits ABOVE row group panel in the stacking order). */
+   *      sits ABOVE row group panel in the stacking order).
+   *
+   *  Leaf drags only — group drags never call this (Grid Layouts /
+   *  column-group-drag feature, Task 1): those panels accept single
+   *  leaf columns, not whole groups. */
   private dispatchPanelHover(ctx: CGridEventCtx): void {
     const state = this.state;
-    if (state === null || state.kind !== 'dragging') return;
+    if (state === null || state.kind !== 'dragging' || state.dragKind !== 'leaf') return;
     const raw = ctx.raw;
     if (!(raw instanceof MouseEvent)) return;
     const inPivot = routePivotPanelDragHover(ctx.grid, state.colId, raw.clientX, raw.clientY);
@@ -318,10 +432,19 @@ export class ColumnDrag extends Feature {
 
   override handleMouseMove(ctx: CGridEventCtx): void {
     if (this.state === null) {
-      this.cursor = ctx.hit.kind === 'header'
-        && ctx.grid.getColDef(ctx.hit.colId)?.suppressMovable === false
-        ? 'grab'
-        : null;
+      if (ctx.hit.kind === 'header') {
+        this.cursor = ctx.grid.getColDef(ctx.hit.colId)?.suppressMovable === false ? 'grab' : null;
+      } else if (ctx.hit.kind === 'headerGroup') {
+        // Grid Layouts / column-group-drag feature (Task 1) — same
+        // movable check `handleMouseDown` uses, so the hover affordance
+        // never promises a drag that would be refused on press.
+        const leafColIds = ctx.grid.getGroupLeafColIds(ctx.hit.groupId);
+        const movable = leafColIds.length > 0
+          && leafColIds.every((id) => (ctx.grid.getColDef(id)?.lockPosition ?? null) === null);
+        this.cursor = movable ? 'grab' : null;
+      } else {
+        this.cursor = null;
+      }
     }
     super.handleMouseMove(ctx);
   }
@@ -412,8 +535,9 @@ function updateHeaderGhostPosition(state: DraggingState, ctx: CGridEventCtx): vo
 
 /** Translate the pill chip to follow the cursor (sits just above the
  *  pointer tip). Only made visible while the cursor is over the row group
- *  panel — see `dispatchRowGroupPanelHover`. */
-function updatePillGhostPosition(state: DraggingState, ctx: CGridEventCtx): void {
+ *  panel — see `dispatchRowGroupPanelHover`. Leaf drags only — group
+ *  drags never mount a pill ghost (Grid Layouts / Task 1). */
+function updatePillGhostPosition(state: LeafDraggingState, ctx: CGridEventCtx): void {
   if (!state.pillGhost) return;
   const raw = ctx.raw;
   if (!(raw instanceof MouseEvent)) return;
@@ -438,6 +562,134 @@ function updateInsertionLinePosition(state: DraggingState, ctx: CGridEventCtx): 
   const center = left + width / 2;
   const x = ctx.point.x >= center ? left + width - 1 : left;
   state.insertionLine.style.transform = `translate3d(${Math.round(x)}px, 0px, 0)`;
+}
+
+// ---- Group drag (Grid Layouts / column-group-drag feature, Task 1) ----
+
+/** Build the `HeaderLeafSlot[]` `computeGroupDropTarget` resolves gaps
+ *  against: every visible leaf in render order, with its horizontal slot
+ *  + ancestor group path. Off-viewport columns (no resolved left/width)
+ *  are skipped, mirroring `computeDropTargetIndex`'s own viewport guard. */
+function buildHeaderSlots(ctx: CGridEventCtx): HeaderLeafSlot[] {
+  const slots: HeaderLeafSlot[] = [];
+  for (const colId of ctx.grid.allColIds()) {
+    const left = ctx.grid.columnLeftOf(colId);
+    const width = ctx.grid.columnWidthOf(colId);
+    if (left === null || width === null) continue;
+    slots.push({ colId, left, width, groupPath: ctx.grid.getColGroupPath(colId) });
+  }
+  return slots;
+}
+
+/** Left edge of `id` (a leaf colId OR an ancestor groupId) among `slots`.
+ *  A leaf resolves directly; a group resolves to the leftmost slot whose
+ *  `groupPath` includes it (a group's visual left edge is its first
+ *  descendant leaf's left edge). `null` when `id` matches nothing. */
+function leftEdgeOfId(slots: HeaderLeafSlot[], id: string): number | null {
+  const direct = slots.find((s) => s.colId === id);
+  if (direct) return direct.left;
+  let min: number | null = null;
+  for (const s of slots) {
+    if (s.groupPath.includes(id) && (min === null || s.left < min)) min = s.left;
+  }
+  return min;
+}
+
+/** Build the group-drag ghost (`.cg-column-drag-ghost`) — a floating card
+ *  spanning the group's full aggregate width (sum of its leaves' widths),
+ *  labelled with the group's `headerName`. Mirrors `createGhostHeader`'s
+ *  leaf-drag counterpart. Returns `null` in headless environments. */
+function createGroupGhostHeader(
+  ctx: CGridEventCtx,
+  groupId: string,
+  leafColIds: string[],
+): HTMLDivElement | null {
+  const host = ctx.grid.getOverlayHost?.();
+  if (!host || typeof document === 'undefined') return null;
+  const label = ctx.grid.getGroupHeaderName(groupId) ?? groupId;
+  let width = 0;
+  for (const id of leafColIds) {
+    const w = ctx.grid.columnWidthOf?.(id);
+    if (w !== null && w !== undefined) width += w;
+  }
+  const height = ctx.grid.getLeafHeaderHeight?.();
+  const el = document.createElement('div');
+  el.className = GHOST_HEADER_CLASS;
+  el.textContent = label;
+  el.style.width = `${Math.round(width || 120)}px`;
+  el.style.height = `${Math.round(height ?? 28)}px`;
+  host.appendChild(el);
+  return el;
+}
+
+/** Grid Layouts / column-group-drag feature (Task 2, corrected in review) —
+ *  true when the resolved `target` would be a no-op/rejected
+ *  `moveColumnGroup` call. Mirrors `moveColumnGroupPure`'s own guard —
+ *  `isReparent && (isMarried(sourceParent) || isMarried(target))` — so the
+ *  dry-run reject affordance (hidden insertion line + `no-drop` cursor)
+ *  matches the commit exactly:
+ *  - no target at all (`computeGroupDropTarget` returned `null` — the gap
+ *    sits inside the moving group's own span);
+ *  - the target's parent group has `marryChildren: true`;
+ *  - this is a REPARENT (the target parent differs from the moving group's
+ *    CURRENT parent) and the moving group's current (source) parent has
+ *    `marryChildren: true` — a married group's children can't be
+ *    re-parented OUT either, only reordered in place among its siblings.
+ *  The source parent is derived from the moving group's first leaf's
+ *  `getColGroupPath`: that path is `[...ancestors, movingGroupId]`, so the
+ *  second-to-last entry (or `null` if the moving group is top-level) is its
+ *  current parent. */
+function isGroupDropRejected(ctx: CGridEventCtx, movingGroupId: string, target: GroupDropTarget | null): boolean {
+  if (!target) return true;
+  if (target.targetParentGroupId !== null && ctx.grid.isColumnGroupMarried(target.targetParentGroupId)) return true;
+  const firstLeaf = ctx.grid.getGroupLeafColIds(movingGroupId)[0];
+  if (!firstLeaf) return false;
+  const path = ctx.grid.getColGroupPath(firstLeaf);
+  const sourceParentGroupId = path.length >= 2 ? path[path.length - 2]! : null;
+  const isReparent = sourceParentGroupId !== target.targetParentGroupId;
+  return isReparent && sourceParentGroupId !== null && ctx.grid.isColumnGroupMarried(sourceParentGroupId);
+}
+
+/** Position the insertion line at the resolved GAP boundary for a group
+ *  drag: `computeGroupDropTarget` resolves the landing `{targetParentGroupId,
+ *  beforeId}`, then the line sits at `beforeId`'s left edge — or the right
+ *  edge of the last slot when `beforeId` is `undefined` (append at the
+ *  very end). Task 2 — reject affordance: the line is HIDDEN (rather than
+ *  left at its last position) when the drop is illegal
+ *  (`computeGroupDropTarget` returns `null`) or would be rejected by
+ *  `moveColumnGroup` (a married target — `isGroupDropRejected`). Returns
+ *  whether the drop is currently rejected so the caller can flip the
+ *  cursor to `no-drop` in lockstep. */
+function updateGroupInsertionLinePosition(state: GroupDraggingState, ctx: CGridEventCtx): boolean {
+  if (!state.insertionLine) return false;
+  const slots = buildHeaderSlots(ctx);
+  const descendants = new Set(ctx.grid.getGroupDescendantIds(state.groupId));
+  const target = computeGroupDropTarget(slots, state.groupId, descendants, ctx.point.x);
+  if (isGroupDropRejected(ctx, state.groupId, target)) {
+    state.insertionLine.style.display = 'none';
+    return true;
+  }
+  // `isGroupDropRejected` returning false means `target` is non-null.
+  const resolved = target as GroupDropTarget;
+  let x: number;
+  if (resolved.beforeId !== undefined) {
+    const left = leftEdgeOfId(slots, resolved.beforeId);
+    if (left === null) {
+      state.insertionLine.style.display = 'none';
+      return true;
+    }
+    x = left;
+  } else {
+    const last = slots[slots.length - 1];
+    if (!last) {
+      state.insertionLine.style.display = 'none';
+      return true;
+    }
+    x = last.left + last.width;
+  }
+  state.insertionLine.style.display = '';
+  state.insertionLine.style.transform = `translate3d(${Math.round(x)}px, 0px, 0)`;
+  return false;
 }
 
 /** Build a pill ghost (`.cg-col-drag-ghost`) on `document.body` to show

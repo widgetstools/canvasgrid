@@ -622,6 +622,16 @@ export class CGrid<TRow = any> {
    *  forced null when `suppressRowHoverHighlight`. */
   private hoveredRowIndex: number | null = null;
   private columnTree!: ColumnTree;
+  /** Grid Layouts / column-group-drag feature (Task 1) — lazily-built
+   *  leaf colId → ancestor groupId path (root→parent) map, derived by
+   *  walking `columnTree.roots` once. `ResolvedColLeaf.groupPath` only
+   *  lives on the heterogeneous `roots` tree, not on `leafById`
+   *  (`Map<string, ResolvedColDef>`), so `getColGroupPath` needs this
+   *  side map rather than a direct lookup. Invalidated (`null`) whenever
+   *  `columnTree` is reassigned — the constructor, `rebuildColumns`, and
+   *  the pivot engine's `setColumnTree` callback (all three
+   *  `this.columnTree = …` sites). */
+  private colGroupPathCache: Map<string, string[]> | null = null;
   private columnGroupState!: ColumnGroupState;
   private columnDefsMap: Map<string, ResolvedColDef<TRow>> = new Map();
   private columnOrder: ResolvedColDef<TRow>[] = [];
@@ -1081,6 +1091,7 @@ export class CGrid<TRow = any> {
     // tree resolution. No provider → same-reference pass-through.
     this.columnTree = resolveColumnTree(foldCalcColumnDefs<CColDef<TRow> | CColGroupDef<TRow>>(options.columnDefs), options.defaultColDef, options.columnTypes);
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
+    this.colGroupPathCache = null;
     this.columnGroupState = new ColumnGroupState(this.columnTree);
     // Cycle 21i Phase 2 / T2 — the kernel's own column-groups slice rides
     // the module-state registry (formerly the dedicated columnGroupDefs /
@@ -1505,6 +1516,15 @@ export class CGrid<TRow = any> {
         );
         return leaf ? leaf.top : 0;
       },
+      // Grid Layouts / column-group-drag feature (Task 1).
+      getGroupLeafColIds: (groupId) => this.columnTree.groupById.get(groupId)?.leafColIds.slice() ?? [],
+      getGroupHeaderName: (groupId) => this.columnTree.groupById.get(groupId)?.headerName,
+      getColGroupPath: (colId) => this.getColGroupPath(colId),
+      getGroupDescendantIds: (groupId) => this.getGroupDescendantIds(groupId),
+      moveColumnGroup: (groupId, targetParentGroupId, beforeId) =>
+        this.moveColumnGroup(groupId, targetParentGroupId, beforeId),
+      // Grid Layouts / column-group-drag feature (Task 2).
+      isColumnGroupMarried: (groupId) => this.columnTree.groupById.get(groupId)?.marryChildren === true,
       cycleSort: (colId, opts) => this.cycleSort(colId, opts),
       selectColumn: (colId, opts) => this.selectColumn(colId, opts),
       // Cycle 9 / Task 6 — read at event time so runtime
@@ -3473,7 +3493,7 @@ export class CGrid<TRow = any> {
       requestViewport: () => this.requestViewport(),
       getPivotPanel: () => this.pivotPanel,
       getColumnTree: () => this.columnTree,
-      setColumnTree: (tree) => { this.columnTree = tree; },
+      setColumnTree: (tree) => { this.columnTree = tree; this.colGroupPathCache = null; },
       getColumnGroupState: () => this.columnGroupState,
       setColumnGroupState: (state) => { this.columnGroupState = state; },
       getColumnDefsMap: () => this.columnDefsMap,
@@ -5761,6 +5781,7 @@ export class CGrid<TRow = any> {
     // Cycle 21d / Task 9 — same calc-provider fold as the constructor path.
     this.columnTree = resolveColumnTree(foldCalcColumnDefs<CColDef<TRow> | CColGroupDef<TRow>>(this.options.columnDefs), defaultColDef ?? this.options.defaultColDef, this.options.columnTypes);
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
+    this.colGroupPathCache = null;
     // columnTree.leafById is a fresh Map that only holds user-supplied columns.
     // Re-register the synthesized auto-group columns so painter lookups
     // by colId keep working after any rebuildColumns() call (e.g. reorderColumn).
@@ -8948,6 +8969,50 @@ export class CGrid<TRow = any> {
       res.defs as (CColDef<TRow> | CColGroupDef<TRow>)[],
       res.leafOrder,
     );
+  }
+
+  /** Grid Layouts / column-group-drag feature (Task 1) — lazily build +
+   *  cache the leaf colId → ancestor groupId path map by walking
+   *  `columnTree.roots` once (`ResolvedColLeaf.groupPath` only lives on
+   *  the heterogeneous tree, not on `leafById`). Cache is invalidated
+   *  (`null`) on every `columnTree` reassignment. */
+  private buildColGroupPathCache(): Map<string, string[]> {
+    const cache = new Map<string, string[]>();
+    const visit = (node: ColumnTreeNode): void => {
+      if (node.kind === 'leaf') {
+        cache.set(node.colDef.colId, node.groupPath);
+      } else {
+        for (const child of node.children) visit(child);
+      }
+    };
+    for (const root of this.columnTree.roots) visit(root);
+    return cache;
+  }
+
+  /** Grid Layouts / column-group-drag feature (Task 1) — `CGridLike`
+   *  accessor: ancestor group ids of `colId`, root→parent. `[]` for an
+   *  unknown or ungrouped colId. */
+  private getColGroupPath(colId: string): string[] {
+    if (!this.colGroupPathCache) this.colGroupPathCache = this.buildColGroupPathCache();
+    return this.colGroupPathCache.get(colId) ?? [];
+  }
+
+  /** Grid Layouts / column-group-drag feature (Task 1) — `CGridLike`
+   *  accessor: `groupId` plus every descendant group's id (depth-first).
+   *  `[groupId]` alone when `groupId` has no sub-groups; `[]` when
+   *  `groupId` is unknown. */
+  private getGroupDescendantIds(groupId: string): string[] {
+    const group = this.columnTree.groupById.get(groupId);
+    if (!group) return [];
+    const out: string[] = [];
+    const visit = (node: ResolvedColGroupDef): void => {
+      out.push(node.groupId);
+      for (const child of node.children) {
+        if (child.kind === 'group') visit(child);
+      }
+    };
+    visit(group);
+    return out;
   }
 
   /** Shared single-re-layout helper for the Task 5 batch mutations that
