@@ -1,4 +1,7 @@
-import type { ColCellOverrides } from '../types';
+import type {
+  ColCellOverrides, Padding, BorderSpec, BorderSide, BorderStyle,
+  CellContent, CellDecorator, DecoratorPosition, FontWeight, TextTransform,
+} from '../types';
 
 export interface ResolvedTheme {
   /** Chrome font (canvas-painted headers, group cells, totals labels,
@@ -201,10 +204,388 @@ export interface ResolvedTheme {
   headerClassVariants: Map<string, ColCellOverrides>;
 }
 
+// ─────────────────────────────────────────────────────────────────────────
+// Workstream B (2026-07-06 CSS styling model) — full-vocabulary parser.
+//
+// `--cg-cell-class-<name>-<suffix>` / `--cg-header-class-<name>-<suffix>`
+// variables are collected into a raw `name -> { suffix: rawValue }` slot
+// table during the single stylesheet walk (below), then each name's slots
+// are assembled into a full `ColCellOverrides` object by
+// `buildOverridesFromSlots`. This keeps the DOM walk itself unchanged
+// (still one pass, still per-theme-swap, never per-cell) while the
+// vocabulary grows from 4 fields to the whole type.
+//
+// Suffixes are matched by longest-suffix-first `endsWith` (not a single
+// regex alternation) so that compound tokens like `border-top-width`
+// aren't mis-split against a shorter sibling like `border-width` — see
+// the design note in the Workstream B report for why this is safer than
+// growing the old regex alternation.
+// ─────────────────────────────────────────────────────────────────────────
+
+type RawSlots = Record<string, string>;
+
+const DECORATOR_POSITIONS: readonly DecoratorPosition[] = ['tl', 'tr', 'bl', 'br', 'ml', 'mr'];
+
+/** Suffixes with a direct 1:1 field mapping (no cross-slot assembly). */
+const SIMPLE_SUFFIXES: readonly string[] = [
+  'bg', 'fg', 'font', 'halign', 'valign',
+  'font-family', 'font-size', 'font-weight', 'font-style',
+  'text-transform', 'text-decoration', 'letter-spacing', 'line-height',
+];
+
+/** Suffixes consumed by `applyPadding` — uniform + per-side, merged. */
+const PADDING_SUFFIXES: readonly string[] = [
+  'padding', 'padding-top', 'padding-right', 'padding-bottom', 'padding-left',
+];
+
+/** Suffixes consumed by `applyBorder` — shorthand + discrete per side, plus `all`. */
+const BORDER_SUFFIXES: readonly string[] = [
+  'border', 'border-width', 'border-style', 'border-color',
+  'border-top', 'border-right', 'border-bottom', 'border-left',
+  'border-top-width', 'border-top-style', 'border-top-color',
+  'border-right-width', 'border-right-style', 'border-right-color',
+  'border-bottom-width', 'border-bottom-style', 'border-bottom-color',
+  'border-left-width', 'border-left-style', 'border-left-color',
+];
+
+/** Suffixes consumed by `applyContent` — icon / emoji / plain text slot. */
+const CONTENT_SUFFIXES: readonly string[] = [
+  'icon', 'icon-color', 'icon-size', 'emoji', 'emoji-size', 'content',
+];
+
+/** Suffixes consumed by `applyDecorators` — one bundle of 6 per position. */
+const DECORATOR_SUFFIXES: readonly string[] = DECORATOR_POSITIONS.flatMap(pos => [
+  `decorator-${pos}`, `decorator-${pos}-color`, `decorator-${pos}-size`,
+  `decorator-${pos}-inset`, `decorator-${pos}-bg`, `decorator-${pos}-dot`,
+]);
+
+/** Every known suffix, longest-first so `endsWith` matching never picks a
+ *  shorter sibling (e.g. `border-color`) over the correct longer one
+ *  (e.g. `border-top-color`) for the same declaration. */
+const KNOWN_SUFFIXES: readonly string[] = [
+  ...SIMPLE_SUFFIXES, ...PADDING_SUFFIXES, ...BORDER_SUFFIXES,
+  ...CONTENT_SUFFIXES, ...DECORATOR_SUFFIXES,
+].sort((a, b) => b.length - a.length);
+
+const CELL_PREFIX = '--cg-cell-class-';
+const HEADER_PREFIX = '--cg-header-class-';
+
+/** Split a `--cg-{cell,header}-class-<name>-<suffix>` property name into its
+ *  variant kind, class name, and matched suffix. Returns `null` for
+ *  properties outside the two prefixes, or whose tail doesn't end in any
+ *  known suffix (forward-compatible: unknown suffixes are ignored). */
+function matchVariantProp(
+  prop: string,
+): { kind: 'cell' | 'header'; name: string; suffix: string } | null {
+  let rest: string;
+  let kind: 'cell' | 'header';
+  if (prop.startsWith(CELL_PREFIX)) {
+    rest = prop.slice(CELL_PREFIX.length);
+    kind = 'cell';
+  } else if (prop.startsWith(HEADER_PREFIX)) {
+    rest = prop.slice(HEADER_PREFIX.length);
+    kind = 'header';
+  } else {
+    return null;
+  }
+  for (const suffix of KNOWN_SUFFIXES) {
+    const marker = `-${suffix}`;
+    if (rest.length > marker.length && rest.endsWith(marker)) {
+      return { kind, name: rest.slice(0, rest.length - marker.length), suffix };
+    }
+  }
+  return null;
+}
+
+function parsePx(raw: string): number | undefined {
+  const n = Number(raw.replace(/px\s*$/i, '').trim());
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function parseUnitless(raw: string): number | undefined {
+  const n = Number(raw.trim());
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function parseFontWeight(raw: string): FontWeight | undefined {
+  const t = raw.trim();
+  if (t === 'normal' || t === 'bold' || t === 'lighter' || t === 'bolder') return t;
+  const n = Number(t);
+  if (Number.isFinite(n) && n >= 100 && n <= 900) return n as FontWeight;
+  return undefined;
+}
+
+function stripQuotes(raw: string): string {
+  const t = raw.trim();
+  if (t.length >= 2) {
+    const first = t[0];
+    const last = t[t.length - 1];
+    if ((first === '"' && last === '"') || (first === "'" && last === "'")) {
+      return t.slice(1, -1);
+    }
+  }
+  return t;
+}
+
+function isQuoted(raw: string): boolean {
+  const t = raw.trim();
+  return t.length >= 2 && ((t[0] === '"' && t[t.length - 1] === '"') || (t[0] === "'" && t[t.length - 1] === "'"));
+}
+
+/** Any codepoint outside the ASCII range is treated as an emoji/glyph
+ *  rather than plain text — good enough to route `-decorator-<pos>: "▼"` /
+ *  `"🔥"` to `kind: 'emoji'` while `-decorator-<pos>: "NEW"` stays `'text'`. */
+function looksLikeEmoji(value: string): boolean {
+  return /[^\x00-\x7F]/.test(value);
+}
+
+/** Whitespace tokenizer that keeps `rgba(230, 57, 70, 1)` as one token
+ *  (doesn't split inside parens) — needed for order-independent border
+ *  shorthand parsing (`<width> <style> <color>` in any order). */
+function splitRespectingParens(value: string): string[] {
+  const tokens: string[] = [];
+  let depth = 0;
+  let cur = '';
+  for (const ch of value) {
+    if (ch === '(') depth++;
+    if (ch === ')') depth = Math.max(0, depth - 1);
+    if (/\s/.test(ch) && depth === 0) {
+      if (cur) { tokens.push(cur); cur = ''; }
+    } else {
+      cur += ch;
+    }
+  }
+  if (cur) tokens.push(cur);
+  return tokens;
+}
+
+const BORDER_STYLE_KEYWORDS = new Set<BorderStyle>(['solid', 'dashed', 'dotted', 'double']);
+
+/** Parse a border shorthand value (`"2px solid #e63946"`, any token order)
+ *  into a `BorderSide`. Unrecognized tokens (width/style already matched)
+ *  are treated as the color — handles `red`, `#hex`, `rgb(...)`, `var(...)`. */
+function parseBorderShorthand(value: string): BorderSide {
+  const side: BorderSide = {};
+  for (const t of splitRespectingParens(value)) {
+    if (BORDER_STYLE_KEYWORDS.has(t as BorderStyle)) {
+      side.style = t as BorderStyle;
+      continue;
+    }
+    const n = parsePx(t);
+    if (n !== undefined) {
+      side.width = n;
+      continue;
+    }
+    if (side.color === undefined) side.color = t;
+  }
+  return side;
+}
+
+/** Assemble one `BorderSide` (or `undefined` if nothing was declared) from
+ *  the shorthand + discrete width/style/color slots for a given bucket.
+ *  `bucket === ''` reads the `border` / `border-width` / … slots (the
+ *  `all` fallback); `bucket === 'top'` reads `border-top` / `border-top-
+ *  width` / …. Discrete slots win over the shorthand field-by-field. */
+function buildBorderSide(bucket: string, slots: RawSlots): BorderSide | undefined {
+  const prefix = bucket ? `border-${bucket}` : 'border';
+  const shorthand = slots[prefix];
+  const width = slots[`${prefix}-width`];
+  const style = slots[`${prefix}-style`];
+  const color = slots[`${prefix}-color`];
+  if (shorthand === undefined && width === undefined && style === undefined && color === undefined) {
+    return undefined;
+  }
+  let side: BorderSide = shorthand !== undefined ? parseBorderShorthand(shorthand) : {};
+  if (width !== undefined) {
+    const n = parsePx(width);
+    if (n !== undefined) side = { ...side, width: n };
+  }
+  if (style !== undefined && BORDER_STYLE_KEYWORDS.has(style as BorderStyle)) {
+    side = { ...side, style: style as BorderStyle };
+  }
+  if (color !== undefined) side = { ...side, color };
+  return side;
+}
+
+function applyPadding(o: ColCellOverrides, slots: RawSlots): void {
+  const uniformRaw = slots['padding'];
+  const uniform = uniformRaw !== undefined ? parsePx(uniformRaw) : undefined;
+  const sides: Record<'top' | 'right' | 'bottom' | 'left', number | undefined> = {
+    top: slots['padding-top'] !== undefined ? parsePx(slots['padding-top']!) : undefined,
+    right: slots['padding-right'] !== undefined ? parsePx(slots['padding-right']!) : undefined,
+    bottom: slots['padding-bottom'] !== undefined ? parsePx(slots['padding-bottom']!) : undefined,
+    left: slots['padding-left'] !== undefined ? parsePx(slots['padding-left']!) : undefined,
+  };
+  const hasPerSide = sides.top !== undefined || sides.right !== undefined
+    || sides.bottom !== undefined || sides.left !== undefined;
+
+  if (!hasPerSide) {
+    if (uniform !== undefined) o.padding = uniform;
+    return;
+  }
+  const pad: Padding = {};
+  if (sides.top !== undefined || uniform !== undefined) pad.top = sides.top ?? uniform;
+  if (sides.right !== undefined || uniform !== undefined) pad.right = sides.right ?? uniform;
+  if (sides.bottom !== undefined || uniform !== undefined) pad.bottom = sides.bottom ?? uniform;
+  if (sides.left !== undefined || uniform !== undefined) pad.left = sides.left ?? uniform;
+  o.padding = pad;
+}
+
+function applyBorder(o: ColCellOverrides, slots: RawSlots): void {
+  const all = buildBorderSide('', slots);
+  const top = buildBorderSide('top', slots);
+  const right = buildBorderSide('right', slots);
+  const bottom = buildBorderSide('bottom', slots);
+  const left = buildBorderSide('left', slots);
+  if (!all && !top && !right && !bottom && !left) return;
+  const spec: BorderSpec = {};
+  if (all !== undefined) spec.all = all;
+  if (top !== undefined) spec.top = top;
+  if (right !== undefined) spec.right = right;
+  if (bottom !== undefined) spec.bottom = bottom;
+  if (left !== undefined) spec.left = left;
+  o.border = spec;
+}
+
+function applyContent(o: ColCellOverrides, slots: RawSlots): void {
+  const icon = slots['icon'];
+  if (icon !== undefined) {
+    const color = slots['icon-color'];
+    const sizeRaw = slots['icon-size'];
+    const size = sizeRaw !== undefined ? parsePx(sizeRaw) : undefined;
+    const content: CellContent = { kind: 'icon', icon: stripQuotes(icon) };
+    if (color !== undefined) content.color = color;
+    if (size !== undefined) content.size = size;
+    o.content = content;
+    return;
+  }
+  const emoji = slots['emoji'];
+  if (emoji !== undefined) {
+    const sizeRaw = slots['emoji-size'] ?? slots['icon-size'];
+    const size = sizeRaw !== undefined ? parsePx(sizeRaw) : undefined;
+    const content: CellContent = { kind: 'emoji', value: stripQuotes(emoji) };
+    if (size !== undefined) content.size = size;
+    o.content = content;
+    return;
+  }
+  const text = slots['content'];
+  if (text !== undefined) {
+    o.content = { kind: 'text', value: stripQuotes(text) };
+  }
+}
+
+function applyDecorators(o: ColCellOverrides, slots: RawSlots): void {
+  const decorators: CellDecorator[] = [];
+  for (const pos of DECORATOR_POSITIONS) {
+    const mainKey = `decorator-${pos}`;
+    const dotRaw = slots[`${mainKey}-dot`];
+    const colorRaw = slots[`${mainKey}-color`];
+    const sizeRaw = slots[`${mainKey}-size`];
+    const insetRaw = slots[`${mainKey}-inset`];
+    const bgRaw = slots[`${mainKey}-bg`];
+    const size = sizeRaw !== undefined ? parsePx(sizeRaw) : undefined;
+    const inset = insetRaw !== undefined ? parsePx(insetRaw) : undefined;
+
+    if (dotRaw !== undefined) {
+      const dot: CellDecorator = { position: pos, kind: 'dot', color: dotRaw };
+      if (size !== undefined) dot.size = size;
+      if (insetRaw !== undefined && inset !== undefined) dot.inset = inset;
+      if (bgRaw !== undefined) dot.bg = bgRaw;
+      decorators.push(dot);
+      continue;
+    }
+
+    const mainRaw = slots[mainKey];
+    if (mainRaw === undefined) continue;
+
+    if (isQuoted(mainRaw)) {
+      const value = stripQuotes(mainRaw);
+      const dec: CellDecorator = {
+        position: pos, kind: looksLikeEmoji(value) ? 'emoji' : 'text', value,
+      };
+      if (colorRaw !== undefined) dec.color = colorRaw;
+      if (size !== undefined) dec.size = size;
+      if (inset !== undefined) dec.inset = inset;
+      if (bgRaw !== undefined) dec.bg = bgRaw;
+      decorators.push(dec);
+    } else {
+      const dec: CellDecorator = { position: pos, kind: 'icon', icon: mainRaw.trim() };
+      if (colorRaw !== undefined) dec.color = colorRaw;
+      if (size !== undefined) dec.size = size;
+      if (inset !== undefined) dec.inset = inset;
+      if (bgRaw !== undefined) dec.bg = bgRaw;
+      decorators.push(dec);
+    }
+  }
+  if (decorators.length > 0) o.decorators = decorators;
+}
+
+/** Assemble a name's raw slot table into the full `ColCellOverrides`
+ *  vocabulary. Pure function — no DOM access — so it's trivially unit
+ *  testable independent of the stylesheet walk. */
+function buildOverridesFromSlots(slots: RawSlots): ColCellOverrides {
+  const o: ColCellOverrides = {};
+  for (const [suffix, raw] of Object.entries(slots)) {
+    switch (suffix) {
+      case 'bg': o.bg = raw; break;
+      case 'fg': o.fg = raw; break;
+      case 'font': o.font = raw; break;
+      case 'halign':
+        if (raw === 'left' || raw === 'right' || raw === 'center') o.halign = raw;
+        break;
+      case 'valign':
+        if (raw === 'top' || raw === 'middle' || raw === 'bottom') o.valign = raw;
+        break;
+      case 'font-family': o.fontFamily = raw; break;
+      case 'font-size': {
+        const n = parsePx(raw);
+        if (n !== undefined) o.fontSize = n;
+        break;
+      }
+      case 'font-weight': {
+        const w = parseFontWeight(raw);
+        if (w !== undefined) o.fontWeight = w;
+        break;
+      }
+      case 'font-style':
+        if (raw === 'normal' || raw === 'italic') o.fontStyle = raw;
+        break;
+      case 'text-transform':
+        if (raw === 'none' || raw === 'uppercase' || raw === 'lowercase' || raw === 'capitalize') {
+          o.textTransform = raw as TextTransform;
+        }
+        break;
+      case 'text-decoration':
+        if (raw === 'none' || raw === 'underline' || raw === 'line-through') o.textDecoration = raw;
+        break;
+      case 'letter-spacing': {
+        const n = parsePx(raw);
+        if (n !== undefined) o.letterSpacing = n;
+        break;
+      }
+      case 'line-height': {
+        const n = parseUnitless(raw);
+        if (n !== undefined) o.lineHeight = n;
+        break;
+      }
+      default:
+        // Padding / border / content / decorator slots are assembled below
+        // (cross-slot), not here.
+        break;
+    }
+  }
+  applyPadding(o, slots);
+  applyBorder(o, slots);
+  applyContent(o, slots);
+  applyDecorators(o, slots);
+  return o;
+}
+
 /**
  * Scan `document.styleSheets` for CSS custom properties matching
- * `--cg-cell-class-<name>-(bg|fg|font|halign)` and
- * `--cg-header-class-<name>-(bg|fg|font|halign)`.
+ * `--cg-cell-class-<name>-<suffix>` and `--cg-header-class-<name>-<suffix>`
+ * across the full `ColCellOverrides` vocabulary (colors, alignment, font
+ * breakouts, text-*, padding, borders, content, decorators).
  *
  * Returns two Maps: one for cell variants, one for header variants.
  * Cross-origin stylesheets that throw on `.cssRules` are silently skipped.
@@ -213,11 +594,8 @@ function scanVariantVariables(): {
   cellClassVariants: Map<string, ColCellOverrides>;
   headerClassVariants: Map<string, ColCellOverrides>;
 } {
-  const cellMap = new Map<string, ColCellOverrides>();
-  const headerMap = new Map<string, ColCellOverrides>();
-
-  const CELL_RE = /^--cg-cell-class-([a-zA-Z0-9_-]+)-(bg|fg|font|halign)$/;
-  const HEADER_RE = /^--cg-header-class-([a-zA-Z0-9_-]+)-(bg|fg|font|halign)$/;
+  const cellSlots = new Map<string, RawSlots>();
+  const headerSlots = new Map<string, RawSlots>();
 
   // Walk every stylesheet in the document.
   const sheets = Array.from(document.styleSheets);
@@ -238,30 +616,22 @@ function scanVariantVariables(): {
       const style = rule.style;
       for (let j = 0; j < style.length; j++) {
         const prop = style[j]!;
-        const cellMatch = CELL_RE.exec(prop);
-        if (cellMatch) {
-          const name = cellMatch[1]!;
-          const slot = cellMatch[2]!;
-          const value = style.getPropertyValue(prop).trim();
-          if (!value) continue;
-          const overrides = cellMap.get(name) ?? {};
-          (overrides as Record<string, string>)[slot] = value;
-          cellMap.set(name, overrides);
-          continue;
-        }
-        const headerMatch = HEADER_RE.exec(prop);
-        if (headerMatch) {
-          const name = headerMatch[1]!;
-          const slot = headerMatch[2]!;
-          const value = style.getPropertyValue(prop).trim();
-          if (!value) continue;
-          const overrides = headerMap.get(name) ?? {};
-          (overrides as Record<string, string>)[slot] = value;
-          headerMap.set(name, overrides);
-        }
+        const match = matchVariantProp(prop);
+        if (!match) continue;
+        const value = style.getPropertyValue(prop).trim();
+        if (!value) continue;
+        const target = match.kind === 'cell' ? cellSlots : headerSlots;
+        const slots = target.get(match.name) ?? {};
+        slots[match.suffix] = value;
+        target.set(match.name, slots);
       }
     }
   }
+
+  const cellMap = new Map<string, ColCellOverrides>();
+  for (const [name, slots] of cellSlots) cellMap.set(name, buildOverridesFromSlots(slots));
+  const headerMap = new Map<string, ColCellOverrides>();
+  for (const [name, slots] of headerSlots) headerMap.set(name, buildOverridesFromSlots(slots));
 
   return { cellClassVariants: cellMap, headerClassVariants: headerMap };
 }
