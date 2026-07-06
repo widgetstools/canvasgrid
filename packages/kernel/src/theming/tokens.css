@@ -3620,6 +3620,131 @@
   min-height: 0;
 }
 
+/* FloatingPanelHost — draggable/resizable NON-MODAL panel frame that
+ * overlays the grid root (see `interaction/floatingPanel/host.ts`). Unlike
+ * `.cg-modal*` above, there is no backdrop and the grid stays interactive
+ * underneath — this is a small floating "undocked panel" window, not a
+ * dialog. Surface tokens mirror the modal (`--cg-popup-bg`/
+ * `--cg-popup-border`) rather than `--cg-modal-bg` since it's a chrome-less
+ * overlay, not a dialog card.
+ *
+ * z-index 30: above every strip/side-bar (z:2) and the row-group panel
+ * drop indicator (z:2), but below `.cg-modal-backdrop` (z:40, so an
+ * app-level dialog always wins) and WAY below the drag-ghost tier
+ * (2147483600, so a column/pill drag ghost is never occluded by a
+ * floating panel it happens to be dragging over). */
+.cg-floating-panel {
+  --cg-floating-panel-bg: var(--cg-popup-bg);
+  --cg-floating-panel-border: var(--cg-popup-border);
+  --cg-floating-panel-titlebar-bg: var(--cg-header-bg);
+  --cg-floating-panel-radius: var(--cg-radius, 6px);
+  --cg-floating-panel-shadow: 0 8px 28px color-mix(in srgb, #000000 30%, transparent);
+
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  background: var(--cg-floating-panel-bg);
+  color: var(--cg-fg-color);
+  border: 1px solid var(--cg-floating-panel-border);
+  border-radius: var(--cg-floating-panel-radius);
+  box-shadow: var(--cg-floating-panel-shadow);
+  font-family: var(--cg-font-family);
+  font-size: var(--cg-font-size);
+  z-index: 30;
+  overflow: hidden;
+  animation: cg-floating-panel-enter 0.14s ease-out;
+}
+@keyframes cg-floating-panel-enter {
+  from { opacity: 0; transform: translateY(4px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cg-floating-panel { animation: none; }
+}
+.cg-floating-panel-titlebar {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 8px 8px 12px;
+  background: var(--cg-floating-panel-titlebar-bg);
+  border-bottom: 1px solid var(--cg-floating-panel-border);
+  cursor: move;
+  user-select: none;
+  touch-action: none;
+}
+.cg-floating-panel-title {
+  flex: none;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cg-floating-panel-spacer {
+  flex: 1 1 auto;
+}
+.cg-floating-panel-actions {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.cg-floating-panel-dock,
+.cg-floating-panel-close {
+  flex: none;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: var(--cg-radius, 3px);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.cg-floating-panel-dock:hover,
+.cg-floating-panel-close:hover {
+  background: var(--cg-row-hover-bg);
+}
+.cg-floating-panel-dock:focus-visible,
+.cg-floating-panel-close:focus-visible {
+  outline: 2px solid var(--cg-focus-ring-color);
+  outline-offset: 1px;
+}
+.cg-floating-panel-ic {
+  width: 14px;
+  height: 14px;
+  display: block;
+  flex: 0 0 auto;
+}
+.cg-floating-panel-body {
+  flex: 1 1 auto;
+  overflow: auto;
+  min-height: 0;
+}
+.cg-floating-panel-resize {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  width: 14px;
+  height: 14px;
+  cursor: nwse-resize;
+  touch-action: none;
+}
+.cg-floating-panel-resize::after {
+  content: '';
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 7px;
+  height: 7px;
+  border-right: 2px solid var(--cg-floating-panel-border);
+  border-bottom: 2px solid var(--cg-floating-panel-border);
+  opacity: 0.7;
+}
+
 /* Cycle 15 / Task 6 — row group panel.
  *
  * Mounted by RowGroupPanelHost as a sibling of the canvas, sitting
