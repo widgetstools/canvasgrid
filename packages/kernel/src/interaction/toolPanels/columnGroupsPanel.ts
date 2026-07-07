@@ -179,7 +179,12 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   private resetBtn!: HTMLButtonElement;
   private api!: Pick<
     CGridApi,
-    'getColumnGroupDefs' | 'updateGridOptions' | 'openFloatingPanel' | 'closeFloatingPanel' | 'isFloatingPanelOpen'
+    | 'getColumnGroupDefs'
+    | 'updateGridOptions'
+    | 'openFloatingPanel'
+    | 'closeFloatingPanel'
+    | 'isFloatingPanelOpen'
+    | 'setFloatingPanelTitle'
   >;
   private nodes: Node[] = [];
   /** Canonical JSON of the last-applied projected tree — comparing against
@@ -417,6 +422,10 @@ export class ColumnGroupsToolPanel implements ToolPanel {
       });
       this.floatGroupId = g.id;
     }
+    // Keep the titlebar authoritative on every render (not just on reopen):
+    // an in-place rename of the currently-floated group updates its caption
+    // here, so the frame's position/focus survive while the title stays fresh.
+    this.api.setFloatingPanelTitle(`Style — ${g.headerName}`);
     const body = this.floatBody;
     body.replaceChildren();
 
@@ -424,10 +433,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     section.setAttribute('data-cg-style', '');
     section.setAttribute('data-for', g.id);
     body.appendChild(section);
-
-    const title = el('div', 'cg-colgroups-style-title');
-    title.textContent = `Style — ${g.headerName}`;
-    section.appendChild(title);
 
     const patch = (
       p: Partial<Pick<GroupNode, 'headerStyle' | 'headerClass' | 'openByDefault' | 'marryChildren'>>,

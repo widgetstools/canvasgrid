@@ -425,6 +425,10 @@ export interface CGridApi<TRow = any> {
   /** Whether the floating panel opened via `openFloatingPanel` is
    *  currently open. */
   isFloatingPanelOpen(): boolean;
+  /** Update the open floating panel's titlebar text in place (no reopen),
+   *  preserving its position/focus while the subject is renamed. No-op
+   *  when no float is open. */
+  setFloatingPanelTitle(title: string): void;
   /** Cycle 11 / Task 6 — the resolved `SideBarDef` (string shortcuts
    *  expanded into full `ToolPanelDef` objects, `position` defaulted
    *  to `'right'` when not specified), or `undefined` when no side

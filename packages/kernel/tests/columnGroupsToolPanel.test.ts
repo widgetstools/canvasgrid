@@ -28,6 +28,11 @@ function makeFloatStub() {
       body = null;
     }),
     isFloatingPanelOpen: () => open,
+    /** In-place titlebar update (mirrors the real host's `setTitle`): a no-op
+     *  when closed, otherwise overwrites the current title without reopening. */
+    setFloatingPanelTitle: vi.fn((t: string) => {
+      if (open) title = t;
+    }),
     /** The current float body, or `null` when closed. */
     body: () => body,
     /** The float's current title, or `''` when never opened. */
@@ -56,6 +61,7 @@ function makeParams(onApply: ReturnType<typeof vi.fn>, float: FloatStub = makeFl
       openFloatingPanel: float.openFloatingPanel,
       closeFloatingPanel: float.closeFloatingPanel,
       isFloatingPanelOpen: float.isFloatingPanelOpen,
+      setFloatingPanelTitle: float.setFloatingPanelTitle,
     },
   } as unknown as ToolPanelParams;
 }
@@ -75,6 +81,7 @@ function makeInterleavedParams(onApply: ReturnType<typeof vi.fn>, float: FloatSt
       openFloatingPanel: float.openFloatingPanel,
       closeFloatingPanel: float.closeFloatingPanel,
       isFloatingPanelOpen: float.isFloatingPanelOpen,
+      setFloatingPanelTitle: float.setFloatingPanelTitle,
     },
   } as unknown as ToolPanelParams;
 }
@@ -690,6 +697,26 @@ describe('ColumnGroupsToolPanel', () => {
       expect(float.body()).not.toBe(firstBody);
       expect(float.body()!.querySelector('[data-cg-style]')!.getAttribute('data-for')).toBe(secondId);
       expect((gui.querySelector(`[data-cg-node="${firstId}"]`) as HTMLElement).hasAttribute('data-selected')).toBe(false);
+    });
+
+    it('renaming the currently-floated group refreshes the titlebar in place (no reopen)', () => {
+      const float = makeFloatStub();
+      const panel = new ColumnGroupsToolPanel();
+      panel.init(makeParams(vi.fn(), float));
+      const gui = panel.getGui();
+
+      (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
+      expect(float.title()).toBe('Style — Trade');
+      expect(float.openFloatingPanel).toHaveBeenCalledTimes(1);
+
+      const name = gui.querySelector('[data-cg-node="trade"] .cg-colgroups-name-group') as HTMLInputElement;
+      name.value = 'Execution';
+      name.dispatchEvent(new Event('change'));
+
+      // Same group id, so NO reopen — the titlebar is updated in place.
+      expect(float.openFloatingPanel).toHaveBeenCalledTimes(1);
+      expect(float.setFloatingPanelTitle).toHaveBeenCalledWith('Style — Execution');
+      expect(float.title()).toBe('Style — Execution');
     });
   });
 });

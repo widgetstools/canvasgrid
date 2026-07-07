@@ -5311,6 +5311,13 @@ export class CGrid<TRow = any> {
     return this.floatingPanelHost?.isOpen() ?? false;
   }
 
+  /** Update the floating panel's titlebar text in place (no reopen), so a
+   *  caller can keep the frame's position/focus while its subject is
+   *  renamed. No-op when no float is open. */
+  setFloatingPanelTitle(title: string): void {
+    this.floatingPanelHost?.setTitle(title);
+  }
+
   /** Cycle 11 / Task 6 — the resolved `SideBarDef` (string shortcuts
    *  expanded, `position` defaulted) currently driving the side bar,
    *  or `undefined` when no side bar was configured. The returned
@@ -6585,6 +6592,7 @@ export class CGrid<TRow = any> {
       openFloatingPanel: (opts) => this.openFloatingPanel(opts),
       closeFloatingPanel: () => this.closeFloatingPanel(),
       isFloatingPanelOpen: () => this.isFloatingPanelOpen(),
+      setFloatingPanelTitle: (title) => this.setFloatingPanelTitle(title),
       getSideBar: () => this.getSideBar(),
       getStatusPanel: <T extends IStatusPanelComp = IStatusPanelComp>(key: string) =>
         this.getStatusPanel<T>(key),

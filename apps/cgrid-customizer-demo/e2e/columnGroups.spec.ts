@@ -405,7 +405,6 @@ test('clicking a group\'s gear opens a floating Style editor (Close-only, no doc
   const float = page.locator('.cg-floating-panel');
   await expect(float).toBeVisible();
   await expect(page.locator('.cg-floating-panel-title')).toHaveText('Style — Trade');
-  await expect(float.locator('.cg-colgroups-style-title')).toHaveText('Style — Trade');
   // Style controls are present (fill/text swatches).
   await expect(float.locator('[data-cg-field="bg"]')).toBeVisible();
   await expect(float.locator('[data-cg-field="fg"]')).toBeVisible();

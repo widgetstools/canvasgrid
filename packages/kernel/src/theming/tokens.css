@@ -2995,15 +2995,6 @@
   padding: 8px 10px 10px;
   --cg-settings-accent: var(--cg-focus-ring-color);
 }
-.cg-colgroups-style-title {
-  font-size: var(--cg-font-size-sm);
-  font-weight: 600;
-  color: var(--cg-fg-color);
-  margin: 0 0 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
 /* Group-select affordance (the keyboard-reachable "edit style" button) —
  * lit in the accent color while its group is selected, mirroring the
  * row's own tick-rail state. */
