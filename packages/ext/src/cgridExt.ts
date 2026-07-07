@@ -29,6 +29,14 @@ export class CGridExt<TRow = any> {
   constructor(container: HTMLElement, options: CGridExtOptions<TRow> = {} as any) {
     const { ext, ...gridOptions } = options;
     this.shell = new ShellLayout(container);
+    // Mirror a string theme class onto the shell root so the kernel's
+    // `--cg-*` theme tokens (defined on the grid's own `.cg-theme-*` element)
+    // cascade to CGridExt's chrome (title bar, settings drawer) — otherwise
+    // the chrome, a sibling of the grid, would fall back to its neutral dark
+    // defaults instead of matching the active theme.
+    if (typeof gridOptions.theme === 'string') {
+      container.classList.add(gridOptions.theme);
+    }
     this._grid = new CGrid<TRow>(this.shell.gridMount, gridOptions as CGridOptions<TRow>);
 
     const store = ext?.profiles?.store ?? new LocalStorageProfileStore();
