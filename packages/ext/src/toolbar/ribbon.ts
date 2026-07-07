@@ -66,7 +66,22 @@ const I = {
 };
 
 function svg(path: string, size = 14): string {
-  return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>`;
+  return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>`;
+}
+
+/** Icon button carrying a live colour swatch bar under the glyph (Excel-
+ *  style): the bar mirrors the paired `<input type="color">` so the button
+ *  itself shows what colour a click will apply. */
+function swatchBtn(icon: string, title: string, input: HTMLInputElement): HTMLButtonElement {
+  const b = iconBtn(icon, title);
+  b.classList.add('cgext-rb-swatch');
+  const bar = document.createElement('span');
+  bar.className = 'cgext-rb-swatchbar';
+  bar.style.background = input.value;
+  b.append(bar);
+  input.addEventListener('input', () => { bar.style.background = input.value; });
+  input.addEventListener('change', () => { bar.style.background = input.value; });
+  return b;
 }
 
 /** Build the ribbon extension (one item at `ribbon.main`). Compose into
@@ -167,13 +182,14 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       const sizeStack = h('cgext-rb-step-stack'); sizeStack.append(sizeUp, sizeDn);
       sizeWrap.append(sizeVal, sizeStack);
 
-      // Paint — fg/bg colour pickers (share Formatting row A with Type/Icons)
-      const textColorBtn = iconBtn(I.paintText, 'Text color');
-      const fillColorBtn = iconBtn(I.fill, 'Fill color');
+      // Paint — fg/bg colour pickers (share Formatting row A with Type/Icons).
+      // Buttons carry a live swatch bar mirroring their hidden colour input.
       const textColorInput = document.createElement('input');
       textColorInput.type = 'color'; textColorInput.className = 'cgext-rb-colorinput'; textColorInput.value = '#4fd1c5';
       const fillColorInput = document.createElement('input');
       fillColorInput.type = 'color'; fillColorInput.className = 'cgext-rb-colorinput'; fillColorInput.value = '#12333a';
+      const textColorBtn = swatchBtn(I.paintText, 'Text color', textColorInput);
+      const fillColorBtn = swatchBtn(I.fill, 'Fill color', fillColorInput);
       // Icons — tile picker · colour · placement slot selector · clear. Icons
       // are column styling, so they share the Paint row. Placement is a SLOT
       // SELECTOR (see `wireFormattingToolbar`): the picker/colour/clear always
@@ -181,10 +197,10 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       // switch which slot is shown, never move an icon between slots.
       let iconApply: (sel: IconSelection) => void = () => {};
       const picker = createIconPicker({ onSelect: (sel) => iconApply(sel) });
-      const iconColorBtn = iconBtn(I.paintText, 'Icon color');
-      iconColorBtn.dataset.ip = 'color';
       const iconColorInput = document.createElement('input');
       iconColorInput.type = 'color'; iconColorInput.className = 'cgext-rb-colorinput'; iconColorInput.value = '#4f9cf9';
+      const iconColorBtn = swatchBtn(I.paintText, 'Icon color', iconColorInput);
+      iconColorBtn.dataset.ip = 'color';
       const iconPlacePill = pill('Prefix'); iconPlacePill.dataset.ip = 'place';
       const iconClear = iconBtn(I.eraser, 'Clear icon at this placement'); iconClear.dataset.ip = 'clear';
       document.body.append(picker.panel);
@@ -726,13 +742,13 @@ const RIBBON_CSS = `
 .cgext-ribbon-strip[hidden] { display: none; }
 .cgext-rb-row {
   display: flex; align-items: center; gap: 8px;
-  box-sizing: border-box; padding: 3px 10px; min-height: 32px;
+  box-sizing: border-box; padding: 3px 10px; min-height: 34px;
   border-bottom: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 55%, transparent);
 }
 .cgext-rb-row:last-child { border-bottom: none; }
 .cgext-rb-section { display: flex; align-items: center; gap: 6px; }
 .cgext-rb-label {
-  font-size: 9px; font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase;
+  font-size: 10px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase;
   color: var(--cg-muted-fg-color, #7f8ba0);
 }
 .cgext-rb-group { display: inline-flex; align-items: center; gap: 1px; padding: 1px; border-radius: 7px; background: var(--cg-control-bg, rgba(255,255,255,0.035)); }
@@ -743,38 +759,48 @@ const RIBBON_CSS = `
   appearance: none; width: 24px; height: 24px;
   display: inline-flex; align-items: center; justify-content: center;
   border: none; border-radius: 5px; background: transparent;
-  color: var(--cg-muted-fg-color, #9aa4b6); cursor: pointer;
+  color: var(--cg-fg-color, #d3dbe7); cursor: pointer;
   transition: background 110ms ease, color 110ms ease;
 }
-.cgext-rb-btn:hover, .cgext-rb-toggle:hover { background: var(--cg-row-alt-bg, rgba(255,255,255,0.07)); color: var(--cg-fg-color, #e5e9f0); }
+.cgext-rb-btn:hover, .cgext-rb-toggle:hover { background: var(--cg-row-alt-bg, rgba(255,255,255,0.07)); color: var(--cg-accent-color, #4f9cf9); }
+.cgext-rb-btn:disabled, .cgext-rb-toggle:disabled { color: var(--cg-muted-fg-color, #9aa4b6); opacity: 0.45; cursor: default; }
+.cgext-rb-btn:disabled:hover, .cgext-rb-toggle:disabled:hover { background: transparent; }
+
+.cgext-rb-swatch { position: relative; }
+.cgext-rb-swatch svg { transform: translateY(-1.5px); }
+.cgext-rb-swatchbar {
+  position: absolute; left: 5px; right: 5px; bottom: 3px; height: 3px;
+  border-radius: 1.5px; pointer-events: none;
+  box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.18);
+}
 .cgext-rb-btn:focus-visible, .cgext-rb-toggle:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: 1px; }
 .cgext-rb-toggle.is-on { background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 22%, transparent); color: var(--cg-accent-color, #4f9cf9); }
 
 .cgext-rb-pill {
   display: inline-flex; align-items: center; gap: 4px;
-  height: 22px; padding: 0 7px;
+  height: 24px; padding: 0 8px;
   border: 1px solid var(--cg-border-color, #2a3140); border-radius: 6px;
   background: var(--cg-control-bg, rgba(255,255,255,0.04));
-  color: var(--cg-fg-color, #d6dce8); font: inherit; font-size: 11.5px; cursor: pointer; white-space: nowrap;
+  color: var(--cg-fg-color, #d6dce8); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
 }
 .cgext-rb-pill:hover { border-color: var(--cg-accent-color, #4f9cf9); }
 .cgext-rb-pill svg { color: var(--cg-muted-fg-color, #9aa4b6); }
 .cgext-rb-pill.cgext-rb-danger { color: var(--cg-neg-color, #e5646e); border-color: color-mix(in srgb, var(--cg-neg-color, #e5646e) 45%, var(--cg-border-color, #2a3140)); }
 
 .cgext-rb-input {
-  height: 22px; padding: 0 7px; box-sizing: border-box;
+  height: 24px; padding: 0 8px; box-sizing: border-box;
   border: 1px solid var(--cg-border-color, #2a3140); border-radius: 6px;
-  background: var(--cg-control-bg, rgba(0,0,0,0.25)); color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 11.5px;
+  background: var(--cg-control-bg, rgba(0,0,0,0.25)); color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
 }
 .cgext-rb-input:focus { outline: none; border-color: var(--cg-accent-color, #4f9cf9); }
 
-.cgext-rb-stat { font-size: 10.5px; color: var(--cg-muted-fg-color, #7f8ba0); font-variant-numeric: tabular-nums; }
+.cgext-rb-stat { font-size: 11.5px; color: var(--cg-muted-fg-color, #7f8ba0); font-variant-numeric: tabular-nums; }
 
 .cgext-rb-stepper {
   display: inline-flex; align-items: center; gap: 5px;
-  height: 22px; padding: 0 3px 0 8px;
+  height: 24px; padding: 0 4px 0 8px;
   border: 1px solid var(--cg-border-color, #2a3140); border-radius: 6px;
-  background: var(--cg-control-bg, rgba(255,255,255,0.04)); font-size: 11.5px; color: var(--cg-fg-color, #d6dce8);
+  background: var(--cg-control-bg, rgba(255,255,255,0.04)); font-size: 12px; color: var(--cg-fg-color, #d6dce8);
 }
 .cgext-rb-step-stack { display: flex; flex-direction: column; }
 .cgext-rb-step { appearance: none; border: none; background: transparent; color: var(--cg-muted-fg-color, #9aa4b6); cursor: pointer; height: 10px; display: flex; align-items: center; padding: 0; }
