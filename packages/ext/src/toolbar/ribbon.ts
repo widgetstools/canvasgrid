@@ -188,29 +188,24 @@ function ribbonItem(): ToolbarItem {
         ),
       );
 
-      // Two independently-toggleable sub-toolbars: the Editing toolbar
-      // (History undo/redo + Smart + Bulk) on top, the Formatting toolbar
-      // (Scope/type/paint/format/group/templates) below. Each is shown/hidden
-      // from the title-bar overflow menu, which emits `toggle-ribbon` with the
-      // matching section.
+      // Three strips: an always-visible primary strip (History/Smart/Bulk),
+      // then two independently-toggleable sub-toolbars — the Editing toolbar
+      // (Scope/type/B I U/align) and the Formatting toolbar (Paint, Format/
+      // Edit/Group, Templates). Each toggle is driven from the title-bar
+      // overflow menu, which emits `toggle-ribbon` with the matching section.
+      const primary = h('cgext-ribbon-strip'); primary.dataset.toolbar = 'primary';
+      primary.append(row1);
       const editing = h('cgext-ribbon-strip'); editing.dataset.toolbar = 'editing';
-      editing.append(row1);
+      editing.append(row2);
       const formatting = h('cgext-ribbon-strip'); formatting.dataset.toolbar = 'formatting';
-      formatting.append(row2, row3, row4, row5);
-      root.append(editing, formatting);
+      formatting.append(row3, row4, row5);
+      root.append(primary, editing, formatting);
       host.appendChild(root);
 
-      // Collapse the whole ribbon host when both sub-toolbars are hidden, so
-      // no empty strip lingers.
-      const syncHost = () => {
-        const ribbonHost = host.closest<HTMLElement>('.cgext-ribbon');
-        if (ribbonHost) ribbonHost.hidden = editing.hidden && formatting.hidden;
-      };
       const off = ctx.events.on('toggle-ribbon', (e) => {
         const section = (e as { section?: string }).section;
         if (section === 'edit') editing.hidden = !editing.hidden;
         else if (section === 'format') formatting.hidden = !formatting.hidden;
-        syncHost();
       });
 
       return { destroy() { off(); host.replaceChildren(); } };
@@ -244,6 +239,7 @@ export function injectRibbonStyles(): void {
 const RIBBON_CSS = `
 .cgext-ribbon { flex: 0 0 auto; background: var(--cg-header-bg, var(--cg-popup-bg, #141922)); border-bottom: 1px solid var(--cg-border-color, #2a3140); }
 .cgext-ribbon-strip { display: flex; flex-direction: column; }
+.cgext-ribbon-strip[hidden] { display: none; }
 .cgext-rb-row {
   display: flex; align-items: center; gap: 10px;
   padding: 5px 12px; min-height: 38px;
