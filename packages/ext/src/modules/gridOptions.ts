@@ -1,14 +1,19 @@
 import { defineChromeComponents } from '@cgrid/customizer';
 import type { SettingsModule, CgExtContext, ModuleInstance } from '../extension/types';
 
-/** Grid Options module — the spine's proof module. Reads/writes kernel
- *  options through the public `setGridOption`, marks the profile dirty on
- *  edit, and owns a `grid-options` state slice so its values persist with
- *  profiles. Built from @cgrid/customizer chrome (cgc-* controls). */
-export function gridOptionsModule(): SettingsModule {
-  // Touched values, mirrored into the state slice.
-  const touched: Record<string, unknown> = {};
+/** Option keys this module owns end-to-end: seeded into the controls on
+ *  mount, read/written through the public `setGridOption`, and persisted in
+ *  the `grid-options` state slice. The kernel is the single source of
+ *  truth for every one of these — the module keeps no shadow copy that
+ *  could diverge from it. */
+const OWNED = ['rowHeight', 'suppressRowHoverHighlight'] as const;
 
+/** Grid Options module — the spine's proof module. Reads/writes kernel
+ *  options through the public `setGridOption`/`getGridOption`, marks the
+ *  profile dirty on edit, and owns a `grid-options` state slice so its
+ *  values persist with profiles. Built from @cgrid/customizer chrome
+ *  (cgc-* controls). */
+export function gridOptionsModule(): SettingsModule {
   return {
     id: 'grid-options',
     kind: 'settings-module',
@@ -21,11 +26,21 @@ export function gridOptionsModule(): SettingsModule {
       ctx.registerStateModule({
         id: 'grid-options',
         version: 1,
-        get: () => (Object.keys(touched).length ? { ...touched } : undefined),
-        set: (data) => {
+        // Reads LIVE values straight off the kernel for each owned key —
+        // never a cached mirror, so the slice can never drift from what
+        // the grid actually holds.
+        get: () => {
+          const out: Record<string, unknown> = {};
+          for (const key of OWNED) {
+            const v = ctx.grid.getGridOption(key as any);
+            if (v !== undefined) out[key] = v;
+          }
+          return Object.keys(out).length ? out : undefined;
+        },
+        set: (data, version) => {
+          // v1: no migration
           if (data && typeof data === 'object') {
             for (const [k, v] of Object.entries(data as Record<string, unknown>)) {
-              touched[k] = v;
               ctx.grid.setGridOption(k as any, v as any);
             }
           }
@@ -50,6 +65,13 @@ export function gridOptionsModule(): SettingsModule {
       rowHeight.setAttribute('data-opt', 'rowHeight');
       rowHeight.setAttribute('aria-label', 'Row height');
       rowHeight.setAttribute('min', '16');
+      // Seed from the live kernel value so the control never opens out of
+      // sync with what the grid is actually rendering.
+      const rowHeightValue = ctx.grid.getGridOption('rowHeight' as any);
+      if (rowHeightValue !== undefined) {
+        (rowHeight as unknown as { value: number }).value = rowHeightValue as number;
+        rowHeight.setAttribute('value', String(rowHeightValue));
+      }
       rowHeightField.appendChild(rowHeight);
 
       const hoverField = document.createElement('cgc-field');
@@ -57,6 +79,11 @@ export function gridOptionsModule(): SettingsModule {
       const hover = document.createElement('cgc-switch');
       hover.setAttribute('data-opt', 'suppressRowHoverHighlight');
       hover.setAttribute('aria-label', 'Row hover highlight');
+      // Switch reads as "highlight enabled" (inverted vs the raw option):
+      // ON means suppressRowHoverHighlight === false. Undefined defaults to
+      // highlight enabled, matching the kernel's own default.
+      const suppress = ctx.grid.getGridOption('suppressRowHoverHighlight' as any);
+      (hover as unknown as { checked: boolean }).checked = suppress !== true;
       hoverField.appendChild(hover);
 
       band.append(rowHeightField, hoverField);
@@ -69,7 +96,6 @@ export function gridOptionsModule(): SettingsModule {
         const value = (ev as CustomEvent).detail?.value;
         // suppressRowHoverHighlight switch is inverted vs the label meaning.
         const applied = opt === 'suppressRowHoverHighlight' ? !value : value;
-        touched[opt] = applied;
         ctx.grid.setGridOption(opt as any, applied as any);
         ctx.profiles.markDirty();
       };

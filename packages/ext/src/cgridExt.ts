@@ -77,9 +77,18 @@ export class CGridExt<TRow = any> {
   openSettings(id?: string): void { this.shell.openSettings(id); }
   closeSettings(): void { this.shell.closeSettings(); }
 
+  /** Registry → shell → grid, in that order — but the kernel Worker MUST be
+   *  released even if registry or shell teardown throws, so grid.destroy()
+   *  runs in an outer `finally` (and shell.destroy() in an inner one). */
   destroy(): void {
-    this.registry.disposeAll();
-    this.shell.destroy();
-    this._grid.destroy();
+    try {
+      this.registry.disposeAll();
+    } finally {
+      try {
+        this.shell.destroy();
+      } finally {
+        this._grid.destroy();
+      }
+    }
   }
 }

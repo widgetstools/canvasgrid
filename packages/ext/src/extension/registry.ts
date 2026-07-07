@@ -37,8 +37,18 @@ export class ExtensionRegistry {
   }
 
   initAll(ctx: CgExtContext): void { for (const e of this.all()) e.init(ctx); }
+  /** Tears down every registered extension. Each `dispose()` is isolated in
+   *  its own try/catch — a throwing extension is logged and skipped so it
+   *  can never abort teardown for the rest of the registry (and, upstream,
+   *  can never prevent the kernel Worker from being released). */
   disposeAll(): void {
-    for (const e of this.all()) e.dispose?.();
+    for (const e of this.all()) {
+      try {
+        e.dispose?.();
+      } catch (err) {
+        console.warn(`[cgrid-ext] extension "${e.id}" threw during dispose()`, err);
+      }
+    }
     this.map.clear();
     this.order = [];
   }

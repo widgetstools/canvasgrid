@@ -38,4 +38,23 @@ describe('ExtensionRegistry', () => {
     r.disposeAll();
     expect(disposed).toHaveBeenCalledOnce();
   });
+
+  it('disposeAll isolates a throwing dispose() — logs, continues, and still clears the registry', () => {
+    const r = new ExtensionRegistry();
+    const throwing = mod('throws');
+    (throwing as any).dispose = vi.fn(() => { throw new Error('boom'); });
+    const other = mod('other');
+    const otherDisposed = vi.fn();
+    (other as any).dispose = otherDisposed;
+
+    r.register(throwing);
+    r.register(other);
+
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    expect(() => r.disposeAll()).not.toThrow();
+    warn.mockRestore();
+
+    expect(otherDisposed).toHaveBeenCalledOnce();
+    expect(r.all()).toEqual([]);
+  });
 });

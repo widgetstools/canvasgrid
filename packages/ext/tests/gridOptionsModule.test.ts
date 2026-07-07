@@ -59,4 +59,28 @@ describe('gridOptionsModule', () => {
     inst.destroy();
     grid.destroy();
   });
+
+  it('seeds the rowHeight control from live kernel state on mount, and the slice reads live values', () => {
+    const { grid, ctx } = makeCtx();
+    // Set the option directly on the kernel before the module ever mounts —
+    // there is no other path (no shadow copy) that could put this value in.
+    grid.setGridOption('rowHeight' as any, 40 as any);
+
+    const mod = gridOptionsModule();
+    mod.init(ctx);
+    const panel = document.createElement('div');
+    const inst = mod.mount(panel, ctx);
+
+    const rowHeight = panel.querySelector<HTMLElement>('[data-opt="rowHeight"]')!;
+    expect((rowHeight as unknown as { value: number }).value).toBe(40);
+
+    // The slice's `get()` must read the same live value straight off the
+    // kernel — not a mount-time snapshot — proving there's no shadow copy.
+    grid.setGridOption('rowHeight' as any, 55 as any);
+    const state = grid.getState();
+    expect((state.modules?.['grid-options'] as any)?.data?.rowHeight).toBe(55);
+
+    inst.destroy();
+    grid.destroy();
+  });
 });

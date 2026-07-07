@@ -75,6 +75,7 @@ export class ShellLayout {
     this.live = null;
     for (const inst of this.toolbarInstances) inst?.destroy();
     this.toolbarInstances = [];
+    this.modules.clear();
     this.root.replaceChildren();
     this.root.classList.remove('cgext-root');
   }
