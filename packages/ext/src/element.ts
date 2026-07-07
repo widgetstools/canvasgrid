@@ -6,17 +6,12 @@ import { CGridExt, type CGridExtOptions } from './cgridExt';
 export class CgridExtElement extends HTMLElement {
   options: CGridExtOptions = {} as CGridExtOptions;
   private _instance: CGridExt | null = null;
-  private _wrapper: HTMLElement | null = null;
 
   get instance(): CGridExt | null { return this._instance; }
 
   connectedCallback(): void {
     if (this._instance) return;
-    if (!this._wrapper) {
-      this._wrapper = document.createElement('div');
-      this.appendChild(this._wrapper);
-    }
-    this._instance = new CGridExt(this._wrapper, this.options);
+    this._instance = new CGridExt(this, this.options);
   }
   disconnectedCallback(): void {
     this._instance?.destroy();

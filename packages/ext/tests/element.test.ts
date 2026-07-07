@@ -10,7 +10,7 @@ describe('<cgrid-ext>', () => {
     const el = document.createElement('cgrid-ext') as any;
     el.options = { columnDefs: [{ colId: 'a', field: 'a' }], rowData: [], getRowId: (r: any) => r.a };
     document.body.appendChild(el);
-    expect(el.querySelector('.cgext-root')).toBeTruthy();
+    expect(el.classList.contains('cgext-root')).toBe(true);
     expect(el.instance).toBeTruthy();
     el.remove();
   });
