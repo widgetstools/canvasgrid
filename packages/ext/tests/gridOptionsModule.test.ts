@@ -32,6 +32,10 @@ describe('gridOptionsModule', () => {
 
     const rowHeight = panel.querySelector<HTMLElement>('[data-opt="rowHeight"]')!;
     expect(rowHeight).toBeTruthy();
+    // Each control is wrapped in a cgc-field carrying the visible label, and
+    // the control itself carries a matching aria-label for a11y.
+    expect(panel.querySelector('cgc-field[label="Row height"]')).toBeTruthy();
+    expect(rowHeight.getAttribute('aria-label')).toBe('Row height');
     // Simulate the chrome control emitting a change to 40.
     rowHeight.dispatchEvent(new CustomEvent('cgc-change', { detail: { value: 40 }, bubbles: true }));
     expect(setOpt).toHaveBeenCalledWith('rowHeight', 40);

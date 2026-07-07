@@ -37,16 +37,29 @@ export function gridOptionsModule(): SettingsModule {
       const band = document.createElement('cgc-band');
       band.setAttribute('band-title', 'Display');
 
+      // Each control is wrapped in a `cgc-field`, which renders the visible
+      // label (`.label-text`) and slots the control. The cgc-* controls have
+      // no `label` property of their own — only `aria-label` — so the field
+      // wrapper is how a human-readable label reaches the panel. `data-opt`
+      // stays on the CONTROL (never the field) so the delegated `cgc-change`
+      // handler resolves the option via `ev.target.closest('[data-opt]')`;
+      // the event bubbles up through cgc-field to `host`.
+      const rowHeightField = document.createElement('cgc-field');
+      rowHeightField.setAttribute('label', 'Row height');
       const rowHeight = document.createElement('cgc-number');
       rowHeight.setAttribute('data-opt', 'rowHeight');
-      rowHeight.setAttribute('label', 'Row height');
+      rowHeight.setAttribute('aria-label', 'Row height');
       rowHeight.setAttribute('min', '16');
+      rowHeightField.appendChild(rowHeight);
 
+      const hoverField = document.createElement('cgc-field');
+      hoverField.setAttribute('label', 'Row hover highlight');
       const hover = document.createElement('cgc-switch');
       hover.setAttribute('data-opt', 'suppressRowHoverHighlight');
-      hover.setAttribute('label', 'Row hover highlight');
+      hover.setAttribute('aria-label', 'Row hover highlight');
+      hoverField.appendChild(hover);
 
-      band.append(rowHeight, hover);
+      band.append(rowHeightField, hoverField);
       host.appendChild(band);
 
       const onChange = (ev: Event) => {
