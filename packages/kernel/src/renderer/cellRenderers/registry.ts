@@ -670,7 +670,14 @@ export const headerCell: CellPainter = {
     // Cycle 21i / Phase 1 — wrapped multi-line header. Lines share the
     // exact wrap algorithm the auto-header-height computation uses
     // (headerWrap.ts) so painted lines always fit the measured height.
-    if (p.wrapHeader) {
+    if (p.content) {
+      // Cycle 28 — header content slot. Replaces the caption exactly as a
+      // cell content slot replaces valueFormatted. Sort chevrons / group
+      // caret / borders below still paint.
+      const padLeft = p.padding?.left ?? HEADER_PADDING;
+      const padRight = p.padding?.right ?? HEADER_PADDING;
+      renderContentSlot(gc, p, p.content, cy, padLeft, padRight);
+    } else if (p.wrapHeader) {
       const trailingReserve = p.pivotGroupExpand !== undefined
         ? PIVOT_CHEVRON_SIZE + PIVOT_CHEVRON_GAP
         : SORT_ICON_PAD + SORT_ICON_SIZE;
@@ -786,6 +793,11 @@ export const headerCell: CellPainter = {
     // Cycle 27 / Task 2 — per-header border overlay (from
     // headerStyle.border or groupHeaderStyle.border).
     if (p.border) paintCellBorders(gc, p.bounds, p.border);
+    // Cycle 28 — decorator overlay, same painter as data cells. Painted
+    // LAST (over chevrons if the author puts one at tr/mr — their call).
+    if (p.decorators && p.decorators.length > 0) {
+      paintCellDecorators(gc, p.bounds, p.decorators);
+    }
   },
 };
 
