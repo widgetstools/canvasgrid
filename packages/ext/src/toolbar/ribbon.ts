@@ -41,6 +41,7 @@ const I = {
   bold: 'M6 4h8a4 4 0 0 1 0 8H6zM6 12h9a4 4 0 0 1 0 8H6z',
   italic: 'M19 4h-9M14 20H5M15 4L9 20',
   underline: 'M6 4v6a6 6 0 0 0 12 0V4M4 21h16',
+  strikethrough: 'M16 4H9a3 3 0 0 0-2.83 4M14 12a4 4 0 0 1 0 8H6M4 12h16',
   alignLeft: 'M17 10H3M21 6H3M21 14H3M17 18H3',
   alignCenter: 'M18 10H6M21 6H3M21 14H3M18 18H6',
   alignRight: 'M21 10H7M21 6H3M21 14H3M21 18H7',
@@ -154,6 +155,7 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       const bold = toggleBtn(I.bold, 'Bold');
       const italic = toggleBtn(I.italic, 'Italic');
       const underline = toggleBtn(I.underline, 'Underline');
+      const strike = toggleBtn(I.strikethrough, 'Strikethrough');
       const alignL = toggleBtn(I.alignLeft, 'Align left');
       const alignC = toggleBtn(I.alignCenter, 'Align center');
       const alignR = toggleBtn(I.alignRight, 'Align right');
@@ -169,7 +171,7 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
         sep(),
         group(selPill),
         sep(),
-        section('Type', group(bold, italic, underline)),
+        section('Type', group(bold, italic, underline, strike)),
         group(alignL, alignC, alignR),
         sizeWrap,
       );
@@ -253,7 +255,7 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
 
       const disposeFormatting = wireFormattingToolbar(ctx, {
         targetCell, targetHeader, selPill,
-        bold, italic, underline, alignL, alignC, alignR,
+        bold, italic, underline, strike, alignL, alignC, alignR,
         sizeVal, sizeUp, sizeDn,
         textColorBtn, textColorInput, fillColorBtn, fillColorInput,
         fmtDollar, fmtPercent, fmtThousands, decDown, decUp, fmtCode,
@@ -358,7 +360,7 @@ function wireEditingToolbar(ctx: CgExtContext, getEdit: EditHandleGetter, r: Edi
 // ── Formatting-toolbar wiring (column styling via @cgrid/calc editColumn) ──
 interface FormattingRefs {
   targetCell: HTMLButtonElement; targetHeader: HTMLButtonElement; selPill: HTMLButtonElement;
-  bold: HTMLButtonElement; italic: HTMLButtonElement; underline: HTMLButtonElement;
+  bold: HTMLButtonElement; italic: HTMLButtonElement; underline: HTMLButtonElement; strike: HTMLButtonElement;
   alignL: HTMLButtonElement; alignC: HTMLButtonElement; alignR: HTMLButtonElement;
   sizeVal: HTMLElement; sizeUp: HTMLButtonElement; sizeDn: HTMLButtonElement;
   textColorBtn: HTMLButtonElement; textColorInput: HTMLInputElement;
@@ -449,7 +451,7 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
       : cols.length === 1
         ? (grid.getColumnHeaderName?.(cols[0]!) ?? cols[0]!)
         : `${cols.length} columns`;
-    for (const b of [r.bold, r.italic, r.underline, r.alignL, r.alignC, r.alignR,
+    for (const b of [r.bold, r.italic, r.underline, r.strike, r.alignL, r.alignC, r.alignR,
       r.textColorBtn, r.fillColorBtn, r.fmtDollar, r.fmtPercent, r.fmtThousands,
       r.decDown, r.decUp, r.fmtCode, r.clear, r.eraser, r.sizeUp, r.sizeDn]) {
       (b as HTMLButtonElement).disabled = none;
@@ -458,6 +460,7 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     r.bold.classList.toggle('is-on', s.fontWeight === 'bold');
     r.italic.classList.toggle('is-on', s.fontStyle === 'italic');
     r.underline.classList.toggle('is-on', s.textDecoration === 'underline');
+    r.strike.classList.toggle('is-on', s.textDecoration === 'line-through');
     r.alignL.classList.toggle('is-on', s.halign === 'left');
     r.alignC.classList.toggle('is-on', s.halign === 'center');
     r.alignR.classList.toggle('is-on', s.halign === 'right');
@@ -479,8 +482,12 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     applyStyle({ fontWeight: currentStyle().fontWeight === 'bold' ? 'normal' : 'bold' }));
   r.italic.addEventListener('click', () =>
     applyStyle({ fontStyle: currentStyle().fontStyle === 'italic' ? 'normal' : 'italic' }));
+  // Underline / strikethrough share the kernel's single `textDecoration`
+  // slot ('none'|'underline'|'line-through') — enabling one replaces the other.
   r.underline.addEventListener('click', () =>
     applyStyle({ textDecoration: currentStyle().textDecoration === 'underline' ? 'none' : 'underline' }));
+  r.strike.addEventListener('click', () =>
+    applyStyle({ textDecoration: currentStyle().textDecoration === 'line-through' ? 'none' : 'line-through' }));
   r.alignL.addEventListener('click', () => applyStyle({ halign: 'left' }));
   r.alignC.addEventListener('click', () => applyStyle({ halign: 'center' }));
   r.alignR.addEventListener('click', () => applyStyle({ halign: 'right' }));
