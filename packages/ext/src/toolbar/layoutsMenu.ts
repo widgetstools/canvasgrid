@@ -79,6 +79,34 @@ function downloadJson(filename: string, data: unknown): void {
 /** Indirection so unit tests can intercept file downloads. */
 export const fileIO = { download: downloadJson };
 
+/** Shape-sniff parsed import JSON: a GridLayoutsBundle has a `layouts`
+ *  array; a single GridLayout has string `id` + object `state`. */
+export function sniffImport(json: unknown): 'bundle' | 'layout' | null {
+  if (!json || typeof json !== 'object') return null;
+  const o = json as Record<string, unknown>;
+  if (Array.isArray(o.layouts)) return 'bundle';
+  if (typeof o.id === 'string' && !!o.state && typeof o.state === 'object') return 'layout';
+  return null;
+}
+
+/** Parse + route an imported file's text. Separated from the file-input
+ *  handler so unit tests can drive it without DataTransfer support. */
+export function handleImportText(
+  grid: LayoutGridSurface,
+  text: string,
+  showError: (message: string) => void,
+): void {
+  let parsed: unknown;
+  try { parsed = JSON.parse(text); }
+  catch { showError('Import failed: the file is not valid JSON.'); return; }
+  try {
+    const kind = sniffImport(parsed);
+    if (kind === 'bundle') grid.importLayouts(parsed, { mode: 'merge' });
+    else if (kind === 'layout') grid.importLayout(parsed);
+    else showError('Import failed: not a cgrid layout or layouts bundle.');
+  } catch (err) { showError(`Import failed: ${errText(err)}`); }
+}
+
 // ── trigger + panel ────────────────────────────────────────────────────────
 
 export function layoutsItem(): ToolbarItem {
@@ -142,7 +170,16 @@ function buildPanel(ctx: CgExtContext): { el: HTMLElement; refresh: () => void }
   el.innerHTML =
     `<div class="cgext-layouts-head"><span>LAYOUTS</span><span class="cgext-layouts-count"></span></div>` +
     `<div class="cgext-layouts-list" role="menu"></div>` +
-    `<div class="cgext-layouts-error" hidden></div>`;
+    `<div class="cgext-layouts-error" hidden></div>` +
+    `<div class="cgext-layouts-new">` +
+      `<input type="text" placeholder="New layout name" aria-label="New layout name" />` +
+      `<button type="button" class="cgext-layouts-savenew" disabled>+ Save</button>` +
+    `</div>` +
+    `<div class="cgext-layouts-foot">` +
+      `<button type="button" class="cgext-layouts-export">${svg(I.download, 14)}<span>Export</span></button>` +
+      `<button type="button" class="cgext-layouts-import">${svg(I.upload, 14)}<span>Import</span></button>` +
+      `<input type="file" accept="application/json,.json" hidden />` +
+    `</div>`;
   const listEl = el.querySelector<HTMLElement>('.cgext-layouts-list')!;
   const countEl = el.querySelector<HTMLElement>('.cgext-layouts-count')!;
   const errorEl = el.querySelector<HTMLElement>('.cgext-layouts-error')!;
@@ -156,6 +193,48 @@ function buildPanel(ctx: CgExtContext): { el: HTMLElement; refresh: () => void }
     listEl.replaceChildren(...layouts.map((l) => layoutRow(grid, l, l.id === activeId, layouts, showError)));
   };
   refresh();
+
+  const newInput = el.querySelector<HTMLInputElement>('.cgext-layouts-new input')!;
+  const saveNewBtn = el.querySelector<HTMLButtonElement>('.cgext-layouts-savenew')!;
+  newInput.addEventListener('input', () => {
+    newInput.classList.remove('is-error');
+    newInput.title = '';
+    saveNewBtn.disabled = !newInput.value.trim();
+  });
+  const commitNew = () => {
+    const name = newInput.value.trim();
+    if (!name) return;
+    try {
+      grid.saveLayout(name);            // activates by default; layoutChanged refreshes
+      newInput.value = '';
+      saveNewBtn.disabled = true;
+    } catch (err) {
+      newInput.classList.add('is-error');
+      newInput.title = errText(err);
+    }
+  };
+  saveNewBtn.addEventListener('click', commitNew);
+  newInput.addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Enter') commitNew(); });
+
+  el.querySelector<HTMLButtonElement>('.cgext-layouts-export')!.addEventListener('click', () => {
+    try {
+      let gid = 'grid';
+      try { gid = String(grid.getGridOption('gridId') || 'grid'); } catch { /* keep fallback */ }
+      fileIO.download(`${slug(gid)}-layouts.json`, grid.exportLayouts());
+    } catch (err) { showError(errText(err)); }
+  });
+  const fileInput = el.querySelector<HTMLInputElement>('.cgext-layouts-foot input[type=file]')!;
+  el.querySelector<HTMLButtonElement>('.cgext-layouts-import')!.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    const file = fileInput.files?.[0];
+    fileInput.value = '';
+    if (!file) return;
+    void file.text().then(
+      (text) => handleImportText(grid, text, showError),
+      () => showError('Import failed: the file could not be read.'),
+    );
+  });
+
   return { el, refresh };
 }
 

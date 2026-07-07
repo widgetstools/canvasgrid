@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { layoutsItem, uniqueCopyName, fileIO } from '../src/toolbar/layoutsMenu';
+import { layoutsItem, uniqueCopyName, fileIO, sniffImport, handleImportText } from '../src/toolbar/layoutsMenu';
 import { FakeGrid, mountItem } from './layoutsMenuHarness';
 
 afterEach(() => { document.body.replaceChildren(); });
@@ -149,5 +149,83 @@ describe('layout list', () => {
     expect(grid.deleteLayout).toHaveBeenCalledWith('l1');
     expect(panel.querySelectorAll('.cgext-layouts-row')).toHaveLength(1);
     expect(host.querySelector('.cgext-profile-name')!.textContent).toBe('Default');
+  });
+});
+
+describe('save-new + import/export', () => {
+  const newInput = (panel: HTMLElement) => panel.querySelector<HTMLInputElement>('.cgext-layouts-new input')!;
+  const saveBtn = (panel: HTMLElement) => panel.querySelector<HTMLButtonElement>('.cgext-layouts-savenew')!;
+
+  it('save-new: disabled while blank, Enter commits, clears on success, error inline on duplicate', () => {
+    const grid = new FakeGrid();
+    const { host } = mountItem(layoutsItem(), grid);
+    const panel = openPanel(host);
+    expect(saveBtn(panel).disabled).toBe(true);
+    newInput(panel).value = 'Layout 1';
+    newInput(panel).dispatchEvent(new Event('input', { bubbles: true }));
+    expect(saveBtn(panel).disabled).toBe(false);
+    newInput(panel).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(grid.saveLayout).toHaveBeenCalledWith('Layout 1');
+    expect(newInput(panel).value).toBe('');
+    expect(host.querySelector('.cgext-profile-name')!.textContent).toBe('Layout 1'); // kernel activates
+
+    newInput(panel).value = 'layout 1'; // duplicate, case-insensitive
+    newInput(panel).dispatchEvent(new Event('input', { bubbles: true }));
+    saveBtn(panel).click();
+    expect(newInput(panel).classList.contains('is-error')).toBe(true);
+    expect(newInput(panel).value).toBe('layout 1'); // kept for correction
+  });
+
+  it('footer export downloads the full bundle named after the gridId', () => {
+    const dl = vi.spyOn(fileIO, 'download').mockImplementation(() => {});
+    const grid = new FakeGrid();
+    const { host } = mountItem(layoutsItem(), grid);
+    const panel = openPanel(host);
+    panel.querySelector<HTMLButtonElement>('.cgext-layouts-export')!.click();
+    expect(grid.exportLayouts).toHaveBeenCalled();
+    expect(dl).toHaveBeenCalledWith('fake-grid-layouts.json', expect.objectContaining({ version: 1 }));
+    dl.mockRestore();
+  });
+
+  it('sniffImport classifies bundle / single layout / garbage', () => {
+    expect(sniffImport({ version: 1, layouts: [], activeLayoutId: 'default', grid: {} })).toBe('bundle');
+    expect(sniffImport({ id: 'x', name: 'X', state: {} })).toBe('layout');
+    expect(sniffImport({ hello: 'world' })).toBeNull();
+    expect(sniffImport('nope')).toBeNull();
+    expect(sniffImport(null)).toBeNull();
+  });
+
+  it('handleImportText routes bundle→importLayouts(merge), layout→importLayout, and reports errors inline', () => {
+    const grid = new FakeGrid();
+    const errors: string[] = [];
+    const showError = (m: string) => errors.push(m);
+
+    handleImportText(grid as never, JSON.stringify({ version: 1, activeLayoutId: 'default', layouts: [{ id: 'b1', name: 'B1', state: {} }], grid: {} }), showError);
+    expect(grid.importLayouts).toHaveBeenCalledWith(expect.objectContaining({ version: 1 }), { mode: 'merge' });
+
+    handleImportText(grid as never, JSON.stringify({ id: 's1', name: 'S1', state: {} }), showError);
+    expect(grid.importLayout).toHaveBeenCalledWith(expect.objectContaining({ id: 's1' }));
+    expect(errors).toHaveLength(0);
+
+    handleImportText(grid as never, 'not json {', showError);
+    handleImportText(grid as never, JSON.stringify({ nothing: true }), showError);
+    grid.importLayouts.mockImplementationOnce(() => { throw new Error('bundle version 99 is newer'); });
+    handleImportText(grid as never, JSON.stringify({ version: 99, activeLayoutId: 'default', layouts: [], grid: {} }), showError);
+    expect(errors).toHaveLength(3);
+    expect(errors[2]).toContain('newer');
+  });
+
+  it('a failed action shows the error strip; the next layout change clears it', () => {
+    const grid = new FakeGrid();
+    grid.layouts.push({ id: 'l1', name: 'Layout 1', state: {} });
+    grid.loadLayout.mockImplementationOnce(() => { throw new Error('boom'); });
+    const { host } = mountItem(layoutsItem(), grid);
+    const panel = openPanel(host);
+    panel.querySelector<HTMLElement>('.cgext-layouts-row[data-layout-id="l1"]')!.click();
+    const strip = panel.querySelector<HTMLElement>('.cgext-layouts-error')!;
+    expect(strip.hidden).toBe(false);
+    expect(strip.textContent).toContain('boom');
+    grid.saveLayout('Fresh');
+    expect(strip.hidden).toBe(true);
   });
 });
