@@ -648,7 +648,7 @@ export const headerCell: CellPainter = {
       }
       return;
     }
-    const textX = p.bounds.x + HEADER_PADDING;
+    const textX = p.bounds.x + (p.padding?.left ?? HEADER_PADDING);
     // The column-group expand/collapse caret is painted AFTER the caption
     // (further below, once the caption width is measured) so it sits
     // immediately to the right of the group name — ag-grid style.
@@ -681,7 +681,7 @@ export const headerCell: CellPainter = {
       const trailingReserve = p.pivotGroupExpand !== undefined
         ? PIVOT_CHEVRON_SIZE + PIVOT_CHEVRON_GAP
         : SORT_ICON_PAD + SORT_ICON_SIZE;
-      const maxW = Math.max(8, p.bounds.x + p.bounds.w - trailingReserve - textX);
+      const maxW = Math.max(8, p.bounds.x + p.bounds.w - Math.max(trailingReserve, p.padding?.right ?? 0) - textX);
       const lines = wrapHeaderLines((t) => gc.measureText(t).width, p.valueFormatted, maxW);
       if (lines.length > 1) {
         const lineH = Math.round(fontPxSize(p.font) * HEADER_LINE_HEIGHT_FACTOR);
@@ -705,9 +705,10 @@ export const headerCell: CellPainter = {
       // here. Right-aligned captions reserve the sort-icon slot so the
       // caption never draws under the chevron. Group-caret headers
       // (pivotGroupExpand set) keep their left-anchored caret geometry.
-      const reserve = (p.sortDirection || p.unSortIcon)
-        ? SORT_ICON_PAD + SORT_ICON_SIZE + 2
-        : HEADER_PADDING;
+      const reserve = Math.max(
+        (p.sortDirection || p.unSortIcon) ? SORT_ICON_PAD + SORT_ICON_SIZE + 2 : HEADER_PADDING,
+        p.padding?.right ?? 0,
+      );
       const x = p.bounds.x + p.bounds.w - reserve;
       gc.cache.textAlign = 'right';
       gc.fillText(caption, x, cy);

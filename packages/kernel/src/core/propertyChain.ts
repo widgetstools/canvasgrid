@@ -42,6 +42,9 @@ export interface ResolvedColDef<TRow = any> {
   valueFormatter?: (params: CValueFormatterParams<TRow, unknown>) => string;
   /** Icon resolver derived from the format string by compileFormatSlots. */
   cellIcon?: (params: CValueFormatterParams<TRow, unknown>) => import('@cgrid/format').IconRef | null;
+  /** Cycle 28 — leaf-header prefix/suffix icon. Always a fn after resolve —
+   *  static IconRef forms are wrapped by `normalizeHeaderIcon`. */
+  headerIcon?: (params: { colId: string }) => import('@cgrid/format').IconRef | null;
   /** @internal — populated by compileFormatSlots for composite ColDefs. */
   _compositeProgram?: import('../types/formatProgramShape').FormatProgramShape;
   /** Composite fragment-run alignment (`CColDef.align`). Only meaningful
@@ -1115,8 +1118,14 @@ function compileFormatSlots<TRow>(
           return styleObjToRecord(s);
         },
       ),
-      cellIcon: (p: CValueFormatterParams<TRow, unknown>) =>
-        evalFormatProgram(program, p).icon as import('@cgrid/format').IconRef | null,
+      cellIcon: (() => {
+        const staticRef: import('@cgrid/format').IconRef | null =
+          typeof merged.cellIcon === 'string' ? { name: merged.cellIcon }
+          : (merged.cellIcon !== undefined && typeof merged.cellIcon === 'object') ? merged.cellIcon
+          : null;
+        return (p: CValueFormatterParams<TRow, unknown>) =>
+          (evalFormatProgram(program, p).icon as import('@cgrid/format').IconRef | null) ?? staticRef;
+      })(),
     } as CColDef<TRow>;
   }
 
@@ -1208,8 +1217,11 @@ export function resolveColDef<TRow>(
     valueGetter: merged.valueGetter as ResolvedColDef<TRow>['valueGetter'],
     // Use compiledMerged.valueFormatter — may have been compiled from a DSL string.
     valueFormatter: compiledMerged.valueFormatter as ResolvedColDef<TRow>['valueFormatter'],
-    // Icon slot — derived by compileFormatSlots when format string has {icon:...}.
-    cellIcon: compiledMerged.cellIcon as ResolvedColDef<TRow>['cellIcon'],
+    // Icon slot — derived by compileFormatSlots when format string has {icon:...},
+    // else the static string/IconRef form normalized to a constant fn.
+    cellIcon: normalizeCellIcon<TRow>(compiledMerged.cellIcon),
+    // Cycle 28 — leaf-header prefix/suffix icon, normalized to a fn.
+    headerIcon: normalizeHeaderIcon(merged.headerIcon),
     // @internal composite program — populated by compileFormatSlots.
     _compositeProgram: (compiledMerged as unknown as { _compositeProgram?: ResolvedColDef<TRow>['_compositeProgram'] })._compositeProgram,
     // Composite alignment + overflow (Cycle 21c / Task 13) — carried
@@ -1312,4 +1324,23 @@ export function resolveColDef<TRow>(
     initialSort: merged.initialSort,
     initialSortIndex: merged.initialSortIndex,
   };
+}
+
+/** Cycle 28 — static string/IconRef cellIcon forms wrap to constant fns so
+ *  byRows keeps a single call shape. */
+function normalizeCellIcon<TRow>(
+  v: CColDef<TRow>['cellIcon'],
+): ResolvedColDef<TRow>['cellIcon'] {
+  if (v === undefined) return undefined;
+  if (typeof v === 'function') return v as ResolvedColDef<TRow>['cellIcon'];
+  const ref = typeof v === 'string' ? { name: v } : v;
+  return () => ref;
+}
+
+function normalizeHeaderIcon(
+  v: import('@cgrid/format').IconRef | ((params: { colId: string }) => import('@cgrid/format').IconRef | null) | undefined,
+): ((params: { colId: string }) => import('@cgrid/format').IconRef | null) | undefined {
+  if (v === undefined) return undefined;
+  if (typeof v === 'function') return v;
+  return () => v;
 }

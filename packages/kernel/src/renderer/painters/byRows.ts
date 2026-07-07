@@ -877,6 +877,49 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
         }
       }
 
+      // Cycle 28 — leaf-header prefix/suffix icon (headerIcon). Same slot
+      // mechanics as the data-cell block above: icon claims an edge slot,
+      // caption shifts via config.padding (headerCell reads padding.left/
+      // right with HEADER_PADDING defaults). Skips checkbox headers (no
+      // caption to decorate). Trailing icons don't move the sort chevron.
+      if (
+        row.subgrid.isHeader
+        && def.headerIcon !== undefined
+        && config.headerCheckboxState === undefined
+      ) {
+        let iconRef: import('@cgrid/format').IconRef | null = null;
+        try {
+          iconRef = def.headerIcon({ colId: col.colId });
+        } catch {
+          iconRef = null;
+        }
+        if (iconRef && (iconRef.name || iconRef.emoji) && !(iconRef.name && iconRef.emoji)) {
+          const path = iconRef.name ? resolveIconPath(iconRef.name) : null;
+          if (path || iconRef.emoji) {
+            const boundsH = row.bottom - cellTop;
+            const iconSize = Math.floor(Math.min(row.height, boundsH) * 0.55);
+            const position = iconRef.position ?? 'leading';
+            pendingIcon = {
+              path,
+              emoji: iconRef.emoji,
+              x: position === 'leading'
+                ? col.left + CELL_ICON_EDGE_PAD
+                : col.left + col.width - CELL_ICON_EDGE_PAD - iconSize,
+              y: cellTop + (boundsH - iconSize) / 2,
+              size: iconSize,
+              tint: iconRef.color ?? config.fg,
+            };
+            const pad = { ...(config.padding ?? {}) };
+            if (position === 'leading') {
+              pad.left = (pad.left ?? CELL_ICON_EDGE_PAD) + iconSize + CELL_ICON_GUTTER;
+            } else {
+              pad.right = (pad.right ?? CELL_ICON_EDGE_PAD) + iconSize + CELL_ICON_GUTTER;
+            }
+            config.padding = pad;
+          }
+        }
+      }
+
       // Per-cell clip — adjacent columns share the same band clip, so a value
       // wider than its column (long Position ID, fat number) would otherwise
       // bleed into the next cell. Intersection with the band clip means the

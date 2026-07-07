@@ -127,9 +127,16 @@ export interface CColDef<TRow = any, TValue = any> {
    *  at ColDef-resolve time. */
   valueFormatter?: string | ((params: CValueFormatterParams<TRow, TValue>) => string);
 
-  /** Icon slot; populated by format at ColDef-resolve when {icon:name}
-   *  is present in the format string. */
-  cellIcon?: string | ((params: CValueFormatterParams<TRow, TValue>) => IconRef | null);
+  /** Icon slot; a static name/IconRef, or a fn (populated by format at
+   *  ColDef-resolve when {icon:name} is present in the format string).
+   *  Static forms render unconditionally on every data cell. */
+  cellIcon?: string | IconRef | ((params: CValueFormatterParams<TRow, TValue>) => IconRef | null);
+
+  /** Cycle 28 — leaf-header prefix/suffix icon. Claims a leading/trailing
+   *  slot in the header cell; the caption shifts away. Trailing icons do
+   *  NOT move the sort chevron (collisions are the author's concern).
+   *  Static IconRef or per-column fn. Leaf headers only. */
+  headerIcon?: IconRef | ((params: { colId: string }) => IconRef | null);
 
   /** Composite discriminant — presence of `type: 'composite'` switches
    *  the ColDef into composite mode. See also `type?: string | string[]`
