@@ -98,8 +98,18 @@ function h(cls: string, html?: string): HTMLDivElement {
   if (html) d.innerHTML = html;
   return d;
 }
-function label(text: string): HTMLDivElement { return h('cgext-rb-label', text); }
-function sep(): HTMLDivElement { return h('cgext-rb-sep'); }
+/** One horizontal run of small controls inside a group's deck. */
+function mini(...children: HTMLElement[]): HTMLDivElement {
+  const r = h('cgext-rb-mini'); r.append(...children); return r;
+}
+/** Excel-ribbon group: stacked mini-rows with the group name centered
+ *  underneath, hairline-separated from its neighbours. */
+function grp(name: string, ...rows: HTMLElement[]): HTMLDivElement {
+  const g = h('cgext-rb-grp');
+  const deck = h('cgext-rb-deck'); deck.append(...rows);
+  g.append(deck, h('cgext-rb-grp-name', name));
+  return g;
+}
 function iconBtn(icon: string, title: string): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button'; b.className = 'cgext-rb-btn'; b.title = title;
@@ -108,12 +118,6 @@ function iconBtn(icon: string, title: string): HTMLButtonElement {
 }
 function toggleBtn(icon: string, title: string): HTMLButtonElement {
   const b = iconBtn(icon, title); b.classList.add('cgext-rb-toggle'); return b;
-}
-function group(...children: HTMLElement[]): HTMLDivElement {
-  const g = h('cgext-rb-group'); g.append(...children); return g;
-}
-function section(name: string, ...children: HTMLElement[]): HTMLDivElement {
-  const s = h('cgext-rb-section'); s.append(label(name), ...children); return s;
 }
 function pill(text: string, caret = true): HTMLButtonElement {
   const b = document.createElement('button');
@@ -135,11 +139,13 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
   return {
     id: 'ribbon', kind: 'toolbar-item', slot: 'ribbon.main', init() {},
     render(host: HTMLElement, ctx: CgExtContext): ToolbarItemInstance {
-      const root = h('cgext-ribbon-strip');
+      // Excel-ribbon band: ONE horizontal strip of hairline-separated groups,
+      // each a stacked deck of mini-rows with the group's name centered
+      // underneath. Controls are captured by reference so the wire fns can
+      // bind them to their engines (edit journal, calc editColumn).
+      const root = h('cgext-ribbon-band');
 
-      // Row 1 — HISTORY · SMART · BULK (the Editing toolbar). Controls are
-      // captured by reference so `wireEditingToolbar` can bind them to the
-      // `@cgrid/edit` bridge (undo/redo journal, smart-edit ops, bulk update).
+      // Editing cluster — HISTORY · SMART · BULK.
       const undo = iconBtn(I.undo, 'Undo');
       const redo = iconBtn(I.redo, 'Redo');
       const histCount = stat('0 entries');
@@ -154,16 +160,8 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       const bulkApply = iconBtn('M20 6L9 17l-5-5', 'Apply');
       const bulkCount = stat('0 selected');
 
-      const row1 = h('cgext-rb-row');
-      row1.append(
-        section('History', group(undo, redo), histCount),
-        sep(),
-        section('Smart', group(operand, opMul, opDiv, opAdd, opSub, setBtn), smartCount),
-        sep(),
-        section('Bulk', group(bulkValue, bulkApply), bulkCount),
-      );
-
-      // Row 2 — TARGET (cell/header) · selection readout · type B I U · align · size
+      // Formatting cluster controls — target, type, paint, icons, number,
+      // edit/group pickers, templates.
       const targetCell = toggleBtn(I.grid, 'Style cells');
       const targetHeader = toggleBtn(I.rows, 'Style headers');
       targetCell.classList.add('is-on');
@@ -205,33 +203,6 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       const iconClear = iconBtn(I.eraser, 'Clear icon at this placement'); iconClear.dataset.ip = 'clear';
       document.body.append(picker.panel);
 
-      const paint = section('Paint', group(textColorBtn, textColorInput, fillColorBtn, fillColorInput));
-      const icons = section('Icons', group(picker.button, iconColorBtn, iconColorInput, iconPlacePill, iconClear));
-      const spacer = h('cgext-rb-spacer');
-      const pop = iconBtn(I.popout, 'Pop out');
-      pop.addEventListener('click', () => ctx.events.emit({ type: 'popout' }));
-
-      // Formatting row A — everything that styles the SELECTION, one dense
-      // strip reading left-to-right: TARGET · readout · TYPE · align · size ·
-      // PAINT · ICONS, popout pinned right.
-      const rowA = h('cgext-rb-row');
-      rowA.append(
-        section('Target', group(targetCell, targetHeader)),
-        sep(),
-        group(selPill),
-        sep(),
-        section('Type', group(bold, italic, underline, strike)),
-        group(alignL, alignC, alignR),
-        sizeWrap,
-        sep(),
-        paint,
-        sep(),
-        icons,
-        spacer,
-        pop,
-      );
-
-      // Formatting row B — COLUMN semantics: FORMAT · EDIT · GROUP · TEMPLATES.
       const fmtDollar = iconBtn(I.dollar, 'Currency format');
       const fmtPercent = iconBtn(I.percent, 'Percent format');
       const fmtThousands = iconBtn(I.hash, 'Thousands format');
@@ -241,39 +212,33 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       const clear = pill('Clear', false); clear.classList.add('cgext-rb-danger');
       clear.title = 'Clear styling + format on the selected columns';
       const eraser = iconBtn(I.eraser, 'Clear formatting');
-      const rowB = h('cgext-rb-row');
-      rowB.append(
-        section('Format',
-          group(fmtDollar, fmtPercent, fmtThousands),
-          sep(),
-          group(decDown, decUp),
-          sep(),
-          fmtCode,
-        ),
-        sep(),
-        section('Edit', group(iconBtn(I.edit, 'Editor'), pill('None')), group(iconBtn(I.filter, 'Filter'), pill('None')), iconBtn(I.filterOff, 'Clear filter')),
-        sep(),
-        section('Group', group(iconBtn(I.agg, 'Aggregation'), pill('None'), iconBtn(I.settings, 'Group settings'))),
-        sep(),
-        section('Templates',
-          group(iconBtn(I.templates, 'Templates'), pill('', true)),
-          clear,
-          eraser,
-          dangerIcon(I.trash, 'Delete template'),
-        ),
+      const pop = iconBtn(I.popout, 'Pop out');
+      pop.addEventListener('click', () => ctx.events.emit({ type: 'popout' }));
+
+      // Two independently-toggleable CLUSTERS inside the one band (the
+      // title-bar overflow menu reads `[data-toolbar]` visibility — the
+      // attribute rides the cluster now, not a whole strip).
+      const editing = h('cgext-rb-cluster'); editing.dataset.toolbar = 'editing';
+      editing.append(
+        grp('History', mini(undo, redo), mini(histCount)),
+        grp('Smart edit', mini(operand, opMul, opDiv, opAdd, opSub), mini(setBtn, smartCount)),
+        grp('Bulk', mini(bulkValue), mini(bulkApply, bulkCount)),
       );
 
-      // Two independently-toggleable sub-toolbars (below the always-present
-      // title bar). The Editing toolbar is the top ribbon row — History
-      // undo/redo + Smart + Bulk. The Formatting toolbar is the two dense
-      // rows below it — selection styling (row A) and column semantics
-      // (row B). Each toggle is driven from the title-bar overflow menu,
-      // which emits `toggle-ribbon` with the matching section.
-      const editing = h('cgext-ribbon-strip'); editing.dataset.toolbar = 'editing';
-      editing.append(row1);
-      const formatting = h('cgext-ribbon-strip'); formatting.dataset.toolbar = 'formatting';
-      formatting.append(rowA, rowB);
-      root.append(editing, formatting);
+      const formatting = h('cgext-rb-cluster'); formatting.dataset.toolbar = 'formatting';
+      formatting.append(
+        grp('Target', mini(selPill), mini(targetCell, targetHeader)),
+        grp('Font', mini(bold, italic, underline, strike, sizeWrap), mini(textColorBtn, textColorInput, fillColorBtn, fillColorInput)),
+        grp('Alignment', mini(alignL, alignC, alignR)),
+        grp('Number', mini(fmtCode), mini(fmtDollar, fmtPercent, fmtThousands, decDown, decUp)),
+        grp('Icons', mini(picker.button, iconPlacePill), mini(iconColorBtn, iconColorInput, iconClear)),
+        grp('Edit', mini(iconBtn(I.edit, 'Editor'), pill('None')), mini(iconBtn(I.filter, 'Filter'), pill('None'), iconBtn(I.filterOff, 'Clear filter'))),
+        grp('Group', mini(iconBtn(I.agg, 'Aggregation'), pill('None')), mini(iconBtn(I.settings, 'Group settings'))),
+        grp('Templates', mini(iconBtn(I.templates, 'Templates'), pill('', true)), mini(clear, eraser, dangerIcon(I.trash, 'Delete template'))),
+      );
+
+      const spacer = h('cgext-rb-spacer');
+      root.append(editing, formatting, spacer, pop);
       host.appendChild(root);
 
       const off = ctx.events.on('toggle-ribbon', (e) => {
@@ -738,22 +703,25 @@ export function injectRibbonStyles(): void {
 
 const RIBBON_CSS = `
 .cgext-ribbon { flex: 0 0 auto; background: var(--cg-header-bg, var(--cg-popup-bg, #141922)); border-bottom: 1px solid var(--cg-border-color, #2a3140); }
-.cgext-ribbon-strip { display: flex; flex-direction: column; }
-.cgext-ribbon-strip[hidden] { display: none; }
-.cgext-rb-row {
-  display: flex; align-items: center; gap: 8px;
-  box-sizing: border-box; padding: 3px 10px; min-height: 34px;
-  border-bottom: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 55%, transparent);
+.cgext-ribbon-band { display: flex; align-items: stretch; padding: 4px 8px 2px; box-sizing: border-box; }
+.cgext-rb-cluster { display: flex; align-items: stretch; }
+.cgext-rb-cluster[hidden] { display: none; }
+.cgext-rb-grp {
+  display: flex; flex-direction: column; padding: 0 9px;
+  border-right: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 70%, transparent);
 }
-.cgext-rb-row:last-child { border-bottom: none; }
-.cgext-rb-section { display: flex; align-items: center; gap: 6px; }
-.cgext-rb-label {
-  font-size: 10px; font-weight: 650; letter-spacing: 0.08em; text-transform: uppercase;
-  color: var(--cg-muted-fg-color, #7f8ba0);
+.cgext-rb-cluster > .cgext-rb-grp:first-child { padding-left: 3px; }
+.cgext-rb-cluster[data-toolbar="formatting"] > .cgext-rb-grp:last-child { border-right: none; }
+.cgext-rb-deck { display: flex; flex-direction: column; gap: 3px; justify-content: center; flex: 1 1 auto; }
+.cgext-rb-mini { display: flex; align-items: center; gap: 2px; }
+.cgext-rb-mini > .cgext-rb-pill:first-child:last-child { flex: 1 1 auto; }
+.cgext-rb-grp-name {
+  padding: 3px 0 1px; text-align: center;
+  font-size: 9.5px; color: var(--cg-muted-fg-color, #7f8ba0);
+  white-space: nowrap;
 }
-.cgext-rb-group { display: inline-flex; align-items: center; gap: 1px; padding: 1px; border-radius: 7px; background: var(--cg-control-bg, rgba(255,255,255,0.035)); }
-.cgext-rb-sep { width: 1px; align-self: stretch; margin: 3px 2px; background: color-mix(in srgb, var(--cg-border-color, #2a3140) 80%, transparent); }
 .cgext-rb-spacer { flex: 1 1 auto; }
+.cgext-ribbon-band > .cgext-rb-btn { align-self: flex-start; margin-top: 2px; }
 
 .cgext-rb-btn, .cgext-rb-toggle {
   appearance: none; width: 24px; height: 24px;
