@@ -6,6 +6,7 @@ import { createExtContext } from './extension/context';
 import { ProfilesController } from './profiles/controller';
 import { LocalStorageProfileStore } from './profiles/localStorageStore';
 import { isSettingsModule, isToolbarItem, type CgExtContext, type ProfileStore } from './extension/types';
+import { buildDefaultBundle } from './defaultBundle';
 
 export interface CGridExtOptions<TRow = any> extends CGridOptions<TRow> {
   ext?: {
@@ -48,8 +49,15 @@ export class CGridExt<TRow = any> {
     }
   }
 
-  /** Overridden/populated in Task 9 to register the built-in bundle. */
-  protected registerDefaults(): void { /* bundle wired in Task 9 */ }
+  /** Registers the built-in bundle (settings launcher, save, grid options)
+   *  before consumer specs layer on top. Runs after `this.ctx`/`this.shell`
+   *  are assigned in the constructor, so both are safe to reference here. */
+  protected registerDefaults(): void {
+    for (const e of buildDefaultBundle()) this.registry.register(e);
+    // Wire the settings launcher's event to the shell.
+    this.ctx.events.on('open-settings', (e) =>
+      this.shell.openSettings((e as { id?: string }).id));
+  }
 
   get grid(): CGrid<TRow> { return this._grid; }
 
