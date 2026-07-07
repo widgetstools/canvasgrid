@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
-import { layoutsItem, uniqueCopyName, fileIO, sniffImport, handleImportText } from '../src/toolbar/layoutsMenu';
+import { layoutsItem, uniqueCopyName, fileIO, sniffImport, handleImportText, layoutSaveItem } from '../src/toolbar/layoutsMenu';
 import { FakeGrid, mountItem } from './layoutsMenuHarness';
 
 afterEach(() => { document.body.replaceChildren(); });
@@ -227,5 +227,56 @@ describe('save-new + import/export', () => {
     expect(strip.textContent).toContain('boom');
     grid.saveLayout('Fresh');
     expect(strip.hidden).toBe(true);
+  });
+});
+
+describe('layout-save disk', () => {
+  const stateUpdated = (source: string, changedKeys: string[]) =>
+    ({ type: 'stateUpdated', state: {}, changedKeys, source });
+
+  it('starts clean/disabled; a ui state change dirties it; click updates the active layout and cleans', () => {
+    const grid = new FakeGrid();
+    const { host } = mountItem(layoutSaveItem(), grid);
+    const btn = host.querySelector<HTMLButtonElement>('button.cgext-save')!;
+    expect(btn.disabled).toBe(true);
+    expect(btn.classList.contains('is-dirty')).toBe(false);
+
+    grid.emit(stateUpdated('ui', ['columnState']));
+    expect(btn.disabled).toBe(false);
+    expect(btn.classList.contains('is-dirty')).toBe(true);
+    expect(btn.title).toContain('Default');
+
+    btn.click();
+    expect(grid.updateLayout).toHaveBeenCalled();
+    expect(btn.disabled).toBe(true); // updateLayout emitted layoutChanged → clean
+  });
+
+  it("ignores non-'ui' sources and layouts-only echoes; loading a layout never re-dirties", () => {
+    const grid = new FakeGrid();
+    grid.layouts.push({ id: 'l1', name: 'Layout 1', state: {} });
+    const { host } = mountItem(layoutSaveItem(), grid);
+    const btn = host.querySelector<HTMLButtonElement>('button.cgext-save')!;
+
+    grid.emit(stateUpdated('init', ['columnState']));       // constructor initialState
+    grid.emit(stateUpdated('api', ['columnState', 'sort'])); // setState (restore / loadLayout apply)
+    grid.emit(stateUpdated('ui', ['layouts']));              // layout-mutation echo
+    expect(btn.disabled).toBe(true);
+
+    grid.emit(stateUpdated('ui', ['columnState']));
+    expect(btn.disabled).toBe(false);
+
+    // realistic loadLayout order: layoutChanged first, then the applied state's stateUpdated('api')
+    grid.loadLayout('l1');
+    grid.emit(stateUpdated('api', ['columnState', 'filter']));
+    expect(btn.disabled).toBe(true); // clean after a load, despite the state echo
+  });
+
+  it('destroy unsubscribes both listeners', () => {
+    const grid = new FakeGrid();
+    const { host, inst } = mountItem(layoutSaveItem(), grid);
+    inst.destroy();
+    expect(host.childElementCount).toBe(0);
+    grid.emit(stateUpdated('ui', ['columnState'])); // must not throw
+    grid.emit({ type: 'layoutChanged', activeLayoutId: 'default', source: 'update' });
   });
 });

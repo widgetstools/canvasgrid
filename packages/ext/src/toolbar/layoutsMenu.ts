@@ -61,6 +61,47 @@ export function uniqueCopyName(base: string, existing: string[]): string {
   return candidate;
 }
 
+/** Dirty-aware "fold my current view into the active layout" disk. Dirty is
+ *  a UI-local flag: the kernel has no per-layout dirty signal, but its
+ *  `stateUpdated.source` discriminator separates user-driven view changes
+ *  ('ui') from programmatic applies ('api'/'init' — loadLayout, persistence
+ *  restore), and layout-mutation echoes report `changedKeys: ['layouts']`.
+ *  Any `layoutChanged` (save/update/load/restore/…) means view === layout
+ *  again, so it clears. Note kernel `persistState` autosaves continuously
+ *  regardless — this button is about the layout, not storage. */
+export function layoutSaveItem(): ToolbarItem {
+  return {
+    id: 'layout-save', kind: 'toolbar-item', slot: 'primary-right',
+    init() {},
+    render(host, ctx) {
+      const grid = surface(ctx);
+      const btn = iconButton(I.save, 'Layout up to date');
+      btn.classList.add('cgext-save');
+      let dirty = false;
+      const sync = () => {
+        btn.classList.toggle('is-dirty', dirty);
+        btn.disabled = !dirty;
+        let name = 'Default';
+        try { name = grid.getActiveLayout().name; } catch { /* pre-init grid */ }
+        btn.title = dirty ? `Update layout '${name}' (unsaved view changes)` : 'Layout up to date';
+      };
+      sync();
+      const offState = grid.addEventListener('stateUpdated', (e: never) => {
+        const ev = e as { source: string; changedKeys: string[] };
+        if (ev.source !== 'ui') return;
+        if (ev.changedKeys.length > 0 && ev.changedKeys.every((k) => k === 'layouts')) return;
+        if (!dirty) { dirty = true; sync(); }
+      });
+      const offLayout = grid.addEventListener('layoutChanged', () => { dirty = false; sync(); });
+      btn.addEventListener('click', () => {
+        try { grid.updateLayout(); } catch { /* nothing user-fixable; stays dirty */ }
+      });
+      host.appendChild(btn);
+      return { destroy() { offState(); offLayout(); host.replaceChildren(); } };
+    },
+  };
+}
+
 function slug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '') || 'layout';
 }

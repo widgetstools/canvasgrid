@@ -142,13 +142,13 @@ reused from the current save button.
 Dirty lifecycle (UI-local flag; the kernel has no per-layout dirty signal):
 
 - `stateUpdated` (kernel event) → dirty = true …
-- … **except** state echoes of a layout operation: every `layoutChanged` clears
-  dirty **and** suppresses `stateUpdated` handling until the end of the current
-  macrotask + one animation frame (loading a layout applies state async-ish in
-  the same flow; the echo must not immediately re-dirty). This suppression
-  window is the one known-tricky implementation detail — it gets a dedicated
-  unit test with a stub grid that emits `layoutChanged` → `stateUpdated` in
-  realistic order.
+- … **except** programmatic applies and layout-op echoes, distinguished by the
+  event payload itself (no timing window needed): `stateUpdated` is ignored
+  when `source` is `'api'`/`'init'` (a `setState` — `loadLayout`'s apply, the
+  persistence restore, construction) or when `changedKeys` is non-empty and
+  contains only the virtual `'layouts'` key (the echo of a layout mutation).
+  Only `source: 'ui'` view changes dirty the disk. Every `layoutChanged`
+  clears dirty.
 - Click → `updateLayout()` → kernel emits `layoutChanged {source:'update'}` →
   dirty clears via the normal path.
 
