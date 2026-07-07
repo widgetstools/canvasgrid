@@ -12,7 +12,7 @@
  * doable through the public @cgrid/ext / @cgrid/kernel API is a gap to fix
  * upstream, never worked around here.
  */
-import { CGridExt } from '@cgrid/ext';
+import { CGridExt, titleBarExtensions } from '@cgrid/ext';
 import { formatPrice32, type CColDef, type CColGroupDef } from '@cgrid/kernel';
 import '@cgrid/kernel/style.css';
 import { wireIntoKernel as wireFormat } from '@cgrid/format';
@@ -141,6 +141,16 @@ const ext = new CGridExt<Position>(app, {
   sideBar: { toolPanels: ['columns', 'filters', 'gridOptions', 'columnGroups'] },
   enableCellChangeFlash: true,
   cellSelection: {},
+  ext: {
+    // Replace the spine's bare Settings/Save with the full MarketsGrid-style
+    // title bar (brand, search, notifications, profiles, save, date, settings,
+    // overflow). The Grid Options module still opens from the settings icon.
+    extensions: [
+      { remove: 'settings-launcher' },
+      { remove: 'save' },
+      ...titleBarExtensions({ name: 'MarketsGrid', date: new Date().toISOString().slice(0, 10) }),
+    ],
+  },
 });
 
 // Wire cgrid's engines onto the owned grid: format (compiles the string

@@ -9,3 +9,4 @@ export { CGridExt, type CGridExtOptions } from './cgridExt';
 export { CgridExtElement, defineCgridExt } from './element';
 export { gridOptionsModule } from './modules/gridOptions';
 export { buildDefaultBundle } from './defaultBundle';
+export { titleBarExtensions, injectTitleBarStyles, type TitleBarOptions } from './toolbar/titleBar';
