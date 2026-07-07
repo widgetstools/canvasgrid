@@ -36,3 +36,34 @@ test('spine: shell renders, settings sheet opens, row height applies', async ({ 
   // Save button becomes enabled (profile marked dirty by the change).
   await expect(page.locator('[data-item-id="save"] button')).toBeEnabled();
 });
+
+// Overflow-menu theme toggle: flips the `-dark` suffix of the active theme
+// family on BOTH the kernel's themed element and the shell root (which
+// mirrors the class so the chrome's `--cg-*` tokens track the grid). The
+// menu stays open across the toggle and the checkmark repaints.
+test('overflow menu: dark-theme toggle flips theme on shell and kernel', async ({ page }) => {
+  await page.goto('/');
+
+  const themes = () =>
+    page.evaluate(() => ({
+      root: Array.from(document.querySelector('.cgext-root')!.classList).filter((c) => c.startsWith('cg-theme-')),
+      grid: Array.from(document.querySelector('.cgext-grid [class*="cg-theme-"]')!.classList).filter((c) => c.startsWith('cg-theme-')),
+    }));
+
+  expect(await themes()).toEqual({ root: ['cg-theme-starui-dark'], grid: ['cg-theme-starui-dark'] });
+
+  await page.locator('[data-item-id="overflow"] button').click();
+  const item = page.locator('.cgext-menu-item', { hasText: 'Dark theme' });
+  await expect(item).toHaveClass(/is-active/);
+
+  // Dark → light. Same theme family, `-dark` suffix dropped everywhere.
+  await item.click();
+  expect(await themes()).toEqual({ root: ['cg-theme-starui'], grid: ['cg-theme-starui'] });
+  await expect(item).not.toHaveClass(/is-active/);
+  await expect(page.locator('.cgext-menu')).toBeVisible();
+
+  // Light → dark. Round-trips back to the original classes.
+  await item.click();
+  expect(await themes()).toEqual({ root: ['cg-theme-starui-dark'], grid: ['cg-theme-starui-dark'] });
+  await expect(item).toHaveClass(/is-active/);
+});

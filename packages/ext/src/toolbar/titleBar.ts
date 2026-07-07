@@ -52,6 +52,7 @@ const ICON = {
   wand: 'M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8L19 13M15 9h0M17.8 6.2L19 5M3 21l9-9M12.2 6.2L11 5',
   brush: 'M9.06 11.9l8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z',
   pencil: 'M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z',
+  moon: 'M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z',
 };
 
 function svg(path: string, size = 16): string {
@@ -257,11 +258,40 @@ function overflowItem(): ToolbarItem {
         it.addEventListener('click', () => { ctx.events.emit({ type: 'toggle-ribbon', section }); paint(); });
         list.appendChild(it);
       };
+      // Dark-theme toggle. Every built-in theme ships as a light/dark pair
+      // sharing a class stem (`cg-theme-starui[-dark]`, `cg-theme-quartz[-dark]`,
+      // …), so flipping the `-dark` suffix swaps mode while preserving the
+      // family. The new class goes to BOTH the kernel (setTheme repaints the
+      // canvas) and the shell root, which mirrors the theme class so the
+      // chrome's `--cg-*` tokens track the grid (see CGridExt constructor).
+      const themeEntry = () => {
+        const root = host.closest<HTMLElement>('.cgext-root');
+        const current = () =>
+          (root && Array.from(root.classList).find((c) => c.startsWith('cg-theme-'))) || 'cg-theme-quartz';
+        const it = document.createElement('button');
+        it.type = 'button';
+        const paint = () => {
+          const dark = current().endsWith('-dark');
+          it.className = 'cgext-menu-item cgext-menu-toggle' + (dark ? ' is-active' : '');
+          it.innerHTML = `${svg(ICON.moon, 15)}<span>Dark theme</span><span class="cgext-menu-check">${dark ? svg('M20 6L9 17l-5-5', 13) : ''}</span>`;
+        };
+        paint();
+        it.addEventListener('click', () => {
+          const cur = current();
+          const next = cur.endsWith('-dark') ? cur.slice(0, -'-dark'.length) : `${cur}-dark`;
+          try { ctx.grid.setTheme(next); } catch { /* ignore */ }
+          if (root) { root.classList.remove(cur); root.classList.add(next); }
+          paint();
+        });
+        list.appendChild(it);
+      };
       entry(ICON.columns, 'Columns…', () => { try { ctx.grid.openToolPanel?.('columns'); } catch { /* ignore */ } });
       entry(ICON.wand, 'Auto format', () => ctx.events.emit({ type: 'auto-format' }));
       const sep = document.createElement('div'); sep.className = 'cgext-menu-sep'; list.appendChild(sep);
       toggleEntry(ICON.brush, 'Formatting toolbar', 'format', 'formatting');
       toggleEntry(ICON.pencil, 'Editing toolbar', 'edit', 'editing');
+      const sep2 = document.createElement('div'); sep2.className = 'cgext-menu-sep'; list.appendChild(sep2);
+      themeEntry();
       return list;
     });
     btn.addEventListener('click', () => m.toggle());
