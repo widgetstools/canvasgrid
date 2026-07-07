@@ -46,9 +46,11 @@ export interface FloatingPanelOptions {
   onRectChange?: (rect: FloatingRect) => void;
 }
 
-/** Default panel size when `opts.rect` doesn't specify one. */
+/** Default panel size when `opts.rect` doesn't specify one — sized to hug the
+ *  Style editor's content (its only consumer) so the panel opens compact rather
+ *  than with an empty lower band; the body scrolls if content ever overflows. */
 const DEFAULT_WIDTH = 300;
-const DEFAULT_HEIGHT = 420;
+const DEFAULT_HEIGHT = 378;
 /** Inset from the root's top/right edge for the default placement. */
 const DEFAULT_INSET = 16;
 /** Floor on both dimensions — small enough to still show the titlebar +

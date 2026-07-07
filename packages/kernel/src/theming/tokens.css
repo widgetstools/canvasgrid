@@ -2992,7 +2992,7 @@
  * content no longer lives in once it's reparented into the float) so those
  * rules keep resolving identically. */
 .cg-colgroups-style {
-  padding: 8px 10px 10px;
+  padding: 8px 10px 8px;
   --cg-settings-accent: var(--cg-focus-ring-color);
 }
 /* Group-select affordance (the keyboard-reachable "edit style" button) —
@@ -3007,7 +3007,7 @@
  * Behavior / Children visibility). Each opens with a muted eyebrow in the
  * same tracked-uppercase idiom as the tree eyebrows + settings bands. */
 .cg-colgroups-cluster {
-  padding: 8px 0;
+  padding: 6px 0;
   border-top: 1px solid color-mix(in srgb, var(--cg-border-color) 55%, transparent);
 }
 .cg-colgroups-cluster:first-of-type {
@@ -3020,14 +3020,14 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--cg-fg-color) 55%, transparent);
-  margin: 0 0 8px;
+  margin: 0 0 6px;
   user-select: none;
 }
 .cg-colgroups-field-row {
   display: flex;
   align-items: flex-end;
   gap: 14px;
-  margin-bottom: 8px;
+  margin-bottom: 6px;
 }
 .cg-colgroups-field-row:last-child {
   margin-bottom: 0;
@@ -3187,7 +3187,7 @@
 .cg-colgroups-border {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 .cg-colgroups-border-head {
   display: flex;
@@ -3196,11 +3196,11 @@
 }
 .cg-colgroups-border-preview {
   flex: 0 0 auto;
-  width: 84px;
-  height: 58px;
+  width: 56px;
+  height: 40px;
   border-radius: var(--cg-radius, 6px);
   background: var(--cg-header-bg);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cg-border-color) 55%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cg-border-color) 82%, transparent);
 }
 .cg-colgroups-border-side {
   flex: 1 1 auto;
@@ -3228,7 +3228,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  padding: 4px 0;
+  padding: 2px 0;
 }
 .cg-colgroups-switch-label {
   font-size: var(--cg-font-size-sm);
