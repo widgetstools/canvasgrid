@@ -52,6 +52,15 @@ export interface Aggregate<S = unknown> {
   finalize(state: S): number | null;
 }
 
+/** Static icon reference for cellIcon/headerIcon overrides — structural
+ *  twin of @cgrid/format's IconRef (calc holds data, never draws). */
+export interface IconOverride {
+  name?: string;
+  emoji?: string;
+  color?: string;
+  position?: 'leading' | 'trailing';
+}
+
 export interface ColumnOverride {
   colId: string;
   headerName?: string;
@@ -62,6 +71,8 @@ export interface ColumnOverride {
   editable?: boolean;
   hide?: boolean;
   width?: number;
+  cellIcon?: IconOverride;          // static prefix/suffix icon on data cells
+  headerIcon?: IconOverride;        // static prefix/suffix icon on the leaf header
   templateIds?: string[];           // template chain refs; undefined → typeDefault; [] → opt out
 }
 

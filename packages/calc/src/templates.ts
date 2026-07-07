@@ -28,6 +28,10 @@ function mergeLayer(into: ColumnOverride, layer: TemplateOverrides): void {
   if (layer.headerStyle !== undefined) {
     into.headerStyle = { ...(into.headerStyle ?? {}), ...layer.headerStyle };
   }
+  // cellIcon/headerIcon: last-writer-wins WHOLESALE (an icon is one value,
+  // not a style bag — later layers replace, never merge per-key).
+  if (layer.cellIcon !== undefined) into.cellIcon = { ...layer.cellIcon };
+  if (layer.headerIcon !== undefined) into.headerIcon = { ...layer.headerIcon };
 }
 
 export function foldTemplateChain(

@@ -35,6 +35,7 @@ import type {
   ColumnOverride,
   ColumnTemplate,
   CompiledCalc,
+  IconOverride,
   TypeDefaults,
   Unsubscribe,
 } from './types';
@@ -79,7 +80,12 @@ const EDITABLE_SCALAR_KEYS = ['format', 'cellRenderer', 'editable', 'hide', 'wid
 /** The editable-attribute patch accepted by {@link CalcEngine.editColumn}. */
 export type ColumnEditPatch = Partial<
   Pick<ColumnOverride, 'format' | 'cellRenderer' | 'editable' | 'hide' | 'width' | 'cellStyle' | 'headerStyle'>
->;
+> & {
+  /** Static icon refs. `null` REMOVES the stored icon (a slot-clear from
+   *  the toolbar); undefined leaves it untouched. */
+  cellIcon?: IconOverride | null;
+  headerIcon?: IconOverride | null;
+};
 
 export class CalcEngine {
   #schema: Schema | null;
@@ -365,6 +371,15 @@ export class CalcEngine {
     if (patch.headerStyle !== undefined) {
       // Same per-key merge + clone semantics as cellStyle.
       overrides.headerStyle = structuredClone({ ...(overrides.headerStyle ?? {}), ...patch.headerStyle });
+    }
+    // cellIcon / headerIcon — wholesale set, or `null` → remove (slot clear).
+    if (patch.cellIcon !== undefined) {
+      if (patch.cellIcon === null) delete overrides.cellIcon;
+      else overrides.cellIcon = structuredClone(patch.cellIcon);
+    }
+    if (patch.headerIcon !== undefined) {
+      if (patch.headerIcon === null) delete overrides.headerIcon;
+      else overrides.headerIcon = structuredClone(patch.headerIcon);
     }
     this.#templates.set(ownId, {
       id: ownId,

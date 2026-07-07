@@ -20,6 +20,8 @@ export function overrideToKernelPatch(
   if (merged.format !== undefined) patch.valueFormatter = merged.format;
   if (merged.cellStyle !== undefined) patch.cellStyle = { ...merged.cellStyle };
   if (merged.headerStyle !== undefined) patch.headerStyle = { ...merged.headerStyle };
+  if (merged.cellIcon !== undefined) patch.cellIcon = { ...merged.cellIcon };
+  if (merged.headerIcon !== undefined) patch.headerIcon = { ...merged.headerIcon };
   if (merged.cellRenderer !== undefined) patch.cellRenderer = merged.cellRenderer;
   // Calc columns are pinned non-editable (spec §6.5) — an override's
   // `editable` is honored for DATA columns only; for calc columns the

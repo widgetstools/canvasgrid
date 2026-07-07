@@ -129,3 +129,43 @@ describe('CalcEngine.editColumn — headerStyle', () => {
     });
   });
 });
+
+// ─── cellIcon / headerIcon (CGridExt formatting toolbar: icon slots) ───────
+// cellIcon/headerIcon ride the same own-template plumbing as headerStyle, but
+// fold LAST-WRITER-WINS WHOLESALE (an icon is one value, not a style bag) and
+// support `null` as an explicit "remove the stored icon" signal.
+describe('CalcEngine.editColumn — cellIcon/headerIcon', () => {
+  it('editColumn cellIcon/headerIcon land in the own template and the kernel patch', () => {
+    const calc = new CalcEngine();
+    const res = calc.editColumn('price', {
+      cellIcon: { name: 'flame', color: '#f60', position: 'leading' },
+      headerIcon: { emoji: '🔥', position: 'trailing' },
+    }, { now: 1000 });
+    expect(res.ok).toBe(true);
+    const own = calc.listTemplates().find((t) => t.id === OWN('price'))!;
+    expect(own.overrides.cellIcon).toEqual({ name: 'flame', color: '#f60', position: 'leading' });
+    expect(own.overrides.headerIcon).toEqual({ emoji: '🔥', position: 'trailing' });
+    const patch = calc.resolvedPatchFor('price', 'number')!;
+    expect(patch.cellIcon).toEqual({ name: 'flame', color: '#f60', position: 'leading' });
+    expect(patch.headerIcon).toEqual({ emoji: '🔥', position: 'trailing' });
+  });
+
+  it('editColumn cellIcon: null removes the stored icon', () => {
+    const calc = new CalcEngine();
+    calc.editColumn('price', { cellIcon: { name: 'flame' } }, { now: 1000 });
+    calc.editColumn('price', { cellIcon: null }, { now: 1001 });
+    const own = calc.listTemplates().find((t) => t.id === OWN('price'))!;
+    expect(own.overrides.cellIcon).toBeUndefined();
+    const patch = calc.resolvedPatchFor('price', 'number');
+    expect(patch?.cellIcon).toBeUndefined();
+  });
+
+  it('a later template layer with cellIcon wins wholesale (no per-key merge)', () => {
+    const calc = new CalcEngine();
+    calc.saveTemplate({ id: 'shared', name: 'shared', overrides: { cellIcon: { name: 'star', color: '#00f' } }, now: 1 });
+    calc.applyTemplate('shared', ['price']);
+    calc.editColumn('price', { cellIcon: { name: 'flame' } }, { now: 2 });
+    // own template folds highest → flame, and NOT { name:'flame', color:'#00f' }
+    expect(calc.resolvedPatchFor('price', 'number')!.cellIcon).toEqual({ name: 'flame' });
+  });
+});

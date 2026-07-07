@@ -10,6 +10,6 @@ export { evaluateCalcAst, INTERPRETER_SOURCE, buildWorkerCalcProgram } from './w
 
 export type {
   CellDataType, CalculatedColumnDef, AggScope, AggSpec, CompiledCalc, CalcValidationError,
-  Aggregate, ColumnOverride, ColumnTemplate, TypeDefaults, WireCalcOptions, Unsubscribe,
+  Aggregate, ColumnOverride, ColumnTemplate, IconOverride, TypeDefaults, WireCalcOptions, Unsubscribe,
 } from './types';
 export type { CompiledCalcColumn, WorkerCalcProgramPayload } from './workerProgram';
