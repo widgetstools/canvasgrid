@@ -12,7 +12,7 @@
  * doable through the public @cgrid/ext / @cgrid/kernel API is a gap to fix
  * upstream, never worked around here.
  */
-import { CGridExt, titleBarExtensions } from '@cgrid/ext';
+import { CGridExt, titleBarExtensions, ribbonExtensions } from '@cgrid/ext';
 import { formatPrice32, type CColDef, type CColGroupDef } from '@cgrid/kernel';
 import '@cgrid/kernel/style.css';
 import { wireIntoKernel as wireFormat } from '@cgrid/format';
@@ -149,6 +149,7 @@ const ext = new CGridExt<Position>(app, {
       { remove: 'settings-launcher' },
       { remove: 'save' },
       ...titleBarExtensions({ name: 'MarketsGrid', date: new Date().toISOString().slice(0, 10) }),
+      ...ribbonExtensions(),
     ],
   },
 });
