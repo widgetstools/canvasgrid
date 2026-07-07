@@ -6581,6 +6581,7 @@ export class CGrid<TRow = any> {
       cutSelectedRanges: () => this.cutSelectedRanges(),
       getFocusedCell: () => this.getFocusedCell(),
       setFocusedCell: (r, c) => this.setFocusedCell(r, c),
+      isCellEditable: (rowIndex, colId) => this.isCellEditable(rowIndex, colId),
       refresh: () => this.refresh(),
       setTheme: (t) => this.setTheme(t),
       setThemeMode: (m) => this.setThemeMode(m),
@@ -9490,8 +9491,12 @@ export class CGrid<TRow = any> {
   }
 
   /** Cycle 19 / Task 4 — delegating wrapper. Predicate resolution +
-   *  static-bool/function dispatch lives in `EditController.isCellEditable`. */
-  private isCellEditable(rowIndex: number, colId: string): boolean {
+   *  static-bool/function dispatch lives in `EditController.isCellEditable`.
+   *  PUBLIC (CGridExt toolbars): resolves against the RESOLVED colDef
+   *  (defaultColDef/columnTypes folded) and carries the pivot-mode read-only
+   *  gate — engine bridges (`@cgrid/edit`) delegate here instead of
+   *  replicating the predicate against authored defs. */
+  isCellEditable(rowIndex: number, colId: string): boolean {
     return this.editController.isCellEditable(rowIndex, colId);
   }
 

@@ -111,6 +111,10 @@ export interface FakeKernelGridOptions {
   ranges?: FakeKernelRange[];
   focusedCell?: FakeKernelFocusedCell | null;
   selectedRowIds?: string[];
+  /** Served via `getGridOption('defaultColDef')` — lets tests exercise the
+   *  kernel-parity fold where `editable` lives ONLY on defaultColDef and the
+   *  leaves are bare (the common real-grid authoring shape). */
+  defaultColDef?: Partial<FakeColDef>;
 }
 
 export interface FakeKernelGrid {
@@ -223,6 +227,7 @@ export function createFakeKernelGrid(options: FakeKernelGridOptions): FakeKernel
     getRowsByIndex: getRowsByIndexSpy,
     getGridOption(key: string) {
       if (key === 'columnDefs') return colDefs;
+      if (key === 'defaultColDef') return options.defaultColDef;
       return undefined;
     },
     getCellRanges: () => ranges,

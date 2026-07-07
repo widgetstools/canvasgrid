@@ -784,3 +784,63 @@ describe('wireEditIntoKernel — module-state persistence (Cycle 21i Phase 2 / T
     expect(() => wireEditIntoKernel(bare.grid)).not.toThrow();
   });
 });
+
+// ─── Editability resolution parity (CGridExt toolbar regression) ──────────
+// The kernel resolves `editable` against the RESOLVED colDef (defaultColDef
+// folded at construction); the bridge reads AUTHORED defs, so it must fold
+// defaultColDef itself — and prefer the kernel's own `isCellEditable` when
+// the surface exposes it. Regression for the "Smart/Bulk report 0 cells on
+// a grid authored with defaultColDef:{editable:true}" toolbar bug.
+describe('wireEditIntoKernel — editability resolution parity', () => {
+  const bareLeaves: FakeColDef[] = [
+    { colId: 'qty', field: 'qty', cellDataType: 'number' },
+    { colId: 'trader', field: 'trader', cellDataType: 'text' },
+  ];
+
+  it('folds defaultColDef.editable over bare leaves (smart-edit targets found)', async () => {
+    const fake = createFakeKernelGrid({
+      rows: rows.map((r) => ({ ...r })),
+      colDefs: bareLeaves.map((d) => ({ ...d })),
+      defaultColDef: { editable: true },
+    });
+    const handle = wireEditIntoKernel(fake.grid);
+    fake.setRanges([{ rowStart: 0, rowEnd: 2, colIds: ['qty'] }]);
+    const targets = await handle.smartEdit.collectTargets();
+    expect(targets.map((t) => t.rowId)).toEqual(['r0', 'r1', 'r2']); // [] before the fold
+  });
+
+  it('leaf editable:false beats defaultColDef.editable:true (kernel precedence)', async () => {
+    const fake = createFakeKernelGrid({
+      rows: rows.map((r) => ({ ...r })),
+      colDefs: [{ colId: 'qty', field: 'qty', cellDataType: 'number', editable: false }],
+      defaultColDef: { editable: true },
+    });
+    const handle = wireEditIntoKernel(fake.grid);
+    fake.setRanges([{ rowStart: 0, rowEnd: 2, colIds: ['qty'] }]);
+    expect(await handle.smartEdit.collectTargets()).toEqual([]);
+  });
+
+  it('unset everywhere still resolves to NOT editable (no silent opt-in)', async () => {
+    const fake = createFakeKernelGrid({
+      rows: rows.map((r) => ({ ...r })),
+      colDefs: bareLeaves.map((d) => ({ ...d })),
+    });
+    const handle = wireEditIntoKernel(fake.grid);
+    fake.setRanges([{ rowStart: 0, rowEnd: 2, colIds: ['qty'] }]);
+    expect(await handle.smartEdit.collectTargets()).toEqual([]);
+  });
+
+  it('prefers the surface-native isCellEditable when exposed (kernel delegation)', async () => {
+    const fake = createFakeKernelGrid({
+      rows: rows.map((r) => ({ ...r })),
+      colDefs: bareLeaves.map((d) => ({ ...d })), // bare: replication alone would say false
+    });
+    const native = vi.fn((_rowIndex: number, colId: string) => colId === 'qty');
+    (fake.grid as Record<string, unknown>).isCellEditable = native;
+    const handle = wireEditIntoKernel(fake.grid);
+    fake.setRanges([{ rowStart: 0, rowEnd: 1, colIds: ['qty'] }]);
+    const targets = await handle.smartEdit.collectTargets();
+    expect(targets.map((t) => t.rowId)).toEqual(['r0', 'r1']); // native won over replication
+    expect(native).toHaveBeenCalled();
+  });
+});

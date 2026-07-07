@@ -115,6 +115,11 @@ interface KernelGridSurface {
   setSelectedRowIds(ids: string[]): void;
   getDistinctValues(colId: string, limit?: number): Promise<string[]>;
   getGridOption?(key: string): unknown;
+  /** Kernel-native editability resolution (public on CGrid). Preferred over
+   *  the bridge's own replication when present: it reads the RESOLVED colDef
+   *  (defaultColDef/columnTypes already folded) and carries the pivot-mode
+   *  read-only gate. Optional so bare test surfaces keep working. */
+  isCellEditable?(rowIndex: number, colId: string): boolean;
   /** Cycle 21i Phase 2 / T6 — kernel module-state registry (present on
    *  CGrid since Phase 2 T2). Structural + optional so the bridge keeps
    *  working against older kernels and bare test surfaces. */
@@ -256,7 +261,17 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
 
   /** Addon-side `isCellEditable` replication (`EditController.isCellEditable`,
    *  `core/editController.ts:407-428`): static bool passes through; callback
-   *  gets `{data, colId, rowIndex, value}`; throw / unknown column → false. */
+   *  gets `{data, colId, rowIndex, value}`; throw / unknown column → false.
+   *
+   *  The kernel resolves editability against the RESOLVED colDef —
+   *  `defaultColDef` (and columnTypes) are folded into every leaf at
+   *  construction (`propertyChain.resolveColDef`). The bridge reads the
+   *  AUTHORED defs via `getGridOption('columnDefs')`, so it must fold
+   *  `defaultColDef.editable` itself: a grid authored with
+   *  `defaultColDef: { editable: true }` and bare leaves is editable
+   *  kernel-side, and smart-edit/bulk-update targets must agree (this was
+   *  the toolbar's "0 cells on an editable grid" bug). Leaf wins over
+   *  defaultColDef, matching kernel precedence. */
   function resolveEditable(
     colId: string,
     rowIndex: number,
@@ -265,7 +280,8 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
   ): boolean {
     const def = findLeafColDef(colDefs(), colId);
     if (!def) return false;
-    const e = def.editable;
+    const defaultDef = g.getGridOption?.('defaultColDef') as KernelColDefLike | undefined;
+    const e = def.editable ?? defaultDef?.editable;
     if (typeof e === 'boolean') return e;
     if (typeof e === 'function') {
       try {
@@ -307,6 +323,17 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
       return result;
     },
     isCellEditable: (rowIndex, colId) => {
+      // Prefer the kernel's own resolution when the surface exposes it —
+      // resolved defs (defaultColDef/columnTypes folded) + pivot gate, with
+      // zero replication drift. Bare test surfaces fall back to the local
+      // replication above.
+      if (typeof g.isCellEditable === 'function') {
+        try {
+          return g.isCellEditable(rowIndex, colId);
+        } catch {
+          return false;
+        }
+      }
       const cached = lastFetchByIndex.get(rowIndex);
       const meta = colMeta(colId);
       const value = cached && meta ? cached.data[meta.field] : undefined;

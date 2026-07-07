@@ -328,6 +328,14 @@ export interface CGridApi<TRow = any> {
 
   getFocusedCell(): { rowId: string; colId: string } | null;
   setFocusedCell(rowId: string, colId: string): void;
+  /** Resolve the `editable` predicate for the cell at `(rowIndex, colId)`
+   *  against the RESOLVED colDef (defaultColDef/columnTypes folded), with
+   *  the pivot-mode read-only gate. Static booleans pass through; callback
+   *  forms receive `{data, colId, rowIndex, value}`; unknown column →
+   *  `false`. Engine bridges (`@cgrid/edit` smart-edit / bulk-update
+   *  target collection) delegate here instead of replicating the
+   *  predicate against authored defs. */
+  isCellEditable(rowIndex: number, colId: string): boolean;
 
   refresh(): void;
   /** A plain CSS class name (unchanged legacy path) or a programmatic
