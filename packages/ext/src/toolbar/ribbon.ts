@@ -65,7 +65,7 @@ const I = {
   trash: 'M3 6h18M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6',
 };
 
-function svg(path: string, size = 15): string {
+function svg(path: string, size = 14): string {
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>`;
 }
 
@@ -166,18 +166,8 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       const sizeWrap = h('cgext-rb-stepper');
       const sizeStack = h('cgext-rb-step-stack'); sizeStack.append(sizeUp, sizeDn);
       sizeWrap.append(sizeVal, sizeStack);
-      const row2 = h('cgext-rb-row');
-      row2.append(
-        section('Target', group(targetCell, targetHeader)),
-        sep(),
-        group(selPill),
-        sep(),
-        section('Type', group(bold, italic, underline, strike)),
-        group(alignL, alignC, alignR),
-        sizeWrap,
-      );
 
-      // Row 3 — PAINT + popout (right)
+      // Paint — fg/bg colour pickers (share Formatting row A with Type/Icons)
       const textColorBtn = iconBtn(I.paintText, 'Text color');
       const fillColorBtn = iconBtn(I.fill, 'Fill color');
       const textColorInput = document.createElement('input');
@@ -199,23 +189,44 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       const iconClear = iconBtn(I.eraser, 'Clear icon at this placement'); iconClear.dataset.ip = 'clear';
       document.body.append(picker.panel);
 
-      const row3 = h('cgext-rb-row');
       const paint = section('Paint', group(textColorBtn, textColorInput, fillColorBtn, fillColorInput));
       const icons = section('Icons', group(picker.button, iconColorBtn, iconColorInput, iconPlacePill, iconClear));
       const spacer = h('cgext-rb-spacer');
       const pop = iconBtn(I.popout, 'Pop out');
       pop.addEventListener('click', () => ctx.events.emit({ type: 'popout' }));
-      row3.append(paint, sep(), icons, spacer, pop);
 
-      // Row 4 — FORMAT · EDIT · GROUP
+      // Formatting row A — everything that styles the SELECTION, one dense
+      // strip reading left-to-right: TARGET · readout · TYPE · align · size ·
+      // PAINT · ICONS, popout pinned right.
+      const rowA = h('cgext-rb-row');
+      rowA.append(
+        section('Target', group(targetCell, targetHeader)),
+        sep(),
+        group(selPill),
+        sep(),
+        section('Type', group(bold, italic, underline, strike)),
+        group(alignL, alignC, alignR),
+        sizeWrap,
+        sep(),
+        paint,
+        sep(),
+        icons,
+        spacer,
+        pop,
+      );
+
+      // Formatting row B — COLUMN semantics: FORMAT · EDIT · GROUP · TEMPLATES.
       const fmtDollar = iconBtn(I.dollar, 'Currency format');
       const fmtPercent = iconBtn(I.percent, 'Percent format');
       const fmtThousands = iconBtn(I.hash, 'Thousands format');
       const decDown = iconBtn(I.decDown, 'Fewer decimals');
       const decUp = iconBtn(I.decUp, 'More decimals');
       const fmtCode = pill('# Format');
-      const row4 = h('cgext-rb-row');
-      row4.append(
+      const clear = pill('Clear', false); clear.classList.add('cgext-rb-danger');
+      clear.title = 'Clear styling + format on the selected columns';
+      const eraser = iconBtn(I.eraser, 'Clear formatting');
+      const rowB = h('cgext-rb-row');
+      rowB.append(
         section('Format',
           group(fmtDollar, fmtPercent, fmtThousands),
           sep(),
@@ -227,14 +238,7 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
         section('Edit', group(iconBtn(I.edit, 'Editor'), pill('None')), group(iconBtn(I.filter, 'Filter'), pill('None')), iconBtn(I.filterOff, 'Clear filter')),
         sep(),
         section('Group', group(iconBtn(I.agg, 'Aggregation'), pill('None'), iconBtn(I.settings, 'Group settings'))),
-      );
-
-      // Row 5 — TEMPLATES
-      const row5 = h('cgext-rb-row');
-      const clear = pill('Clear', false); clear.classList.add('cgext-rb-danger');
-      clear.title = 'Clear styling + format on the selected columns';
-      const eraser = iconBtn(I.eraser, 'Clear formatting');
-      row5.append(
+        sep(),
         section('Templates',
           group(iconBtn(I.templates, 'Templates'), pill('', true)),
           clear,
@@ -245,14 +249,14 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
 
       // Two independently-toggleable sub-toolbars (below the always-present
       // title bar). The Editing toolbar is the top ribbon row — History
-      // undo/redo + Smart + Bulk. The Formatting toolbar is every row below
-      // it — Scope/type/B I U/align, Paint, Format/Edit/Group, Templates. Each
-      // toggle is driven from the title-bar overflow menu, which emits
-      // `toggle-ribbon` with the matching section.
+      // undo/redo + Smart + Bulk. The Formatting toolbar is the two dense
+      // rows below it — selection styling (row A) and column semantics
+      // (row B). Each toggle is driven from the title-bar overflow menu,
+      // which emits `toggle-ribbon` with the matching section.
       const editing = h('cgext-ribbon-strip'); editing.dataset.toolbar = 'editing';
       editing.append(row1);
       const formatting = h('cgext-ribbon-strip'); formatting.dataset.toolbar = 'formatting';
-      formatting.append(row2, row3, row4, row5);
+      formatting.append(rowA, rowB);
       root.append(editing, formatting);
       host.appendChild(root);
 
@@ -721,24 +725,24 @@ const RIBBON_CSS = `
 .cgext-ribbon-strip { display: flex; flex-direction: column; }
 .cgext-ribbon-strip[hidden] { display: none; }
 .cgext-rb-row {
-  display: flex; align-items: center; gap: 10px;
-  padding: 5px 12px; min-height: 38px;
+  display: flex; align-items: center; gap: 8px;
+  box-sizing: border-box; padding: 3px 10px; min-height: 32px;
   border-bottom: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 55%, transparent);
 }
 .cgext-rb-row:last-child { border-bottom: none; }
-.cgext-rb-section { display: flex; align-items: center; gap: 8px; }
+.cgext-rb-section { display: flex; align-items: center; gap: 6px; }
 .cgext-rb-label {
-  font-size: 10.5px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase;
+  font-size: 9px; font-weight: 650; letter-spacing: 0.1em; text-transform: uppercase;
   color: var(--cg-muted-fg-color, #7f8ba0);
 }
-.cgext-rb-group { display: inline-flex; align-items: center; gap: 2px; padding: 2px; border-radius: 8px; background: var(--cg-control-bg, rgba(255,255,255,0.035)); }
-.cgext-rb-sep { width: 1px; align-self: stretch; margin: 4px 2px; background: var(--cg-border-color, #2a3140); }
+.cgext-rb-group { display: inline-flex; align-items: center; gap: 1px; padding: 1px; border-radius: 7px; background: var(--cg-control-bg, rgba(255,255,255,0.035)); }
+.cgext-rb-sep { width: 1px; align-self: stretch; margin: 3px 2px; background: color-mix(in srgb, var(--cg-border-color, #2a3140) 80%, transparent); }
 .cgext-rb-spacer { flex: 1 1 auto; }
 
 .cgext-rb-btn, .cgext-rb-toggle {
-  appearance: none; width: 28px; height: 28px;
+  appearance: none; width: 24px; height: 24px;
   display: inline-flex; align-items: center; justify-content: center;
-  border: none; border-radius: 6px; background: transparent;
+  border: none; border-radius: 5px; background: transparent;
   color: var(--cg-muted-fg-color, #9aa4b6); cursor: pointer;
   transition: background 110ms ease, color 110ms ease;
 }
@@ -748,32 +752,32 @@ const RIBBON_CSS = `
 
 .cgext-rb-pill {
   display: inline-flex; align-items: center; gap: 4px;
-  height: 26px; padding: 0 8px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 7px;
+  height: 22px; padding: 0 7px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 6px;
   background: var(--cg-control-bg, rgba(255,255,255,0.04));
-  color: var(--cg-fg-color, #d6dce8); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
+  color: var(--cg-fg-color, #d6dce8); font: inherit; font-size: 11.5px; cursor: pointer; white-space: nowrap;
 }
 .cgext-rb-pill:hover { border-color: var(--cg-accent-color, #4f9cf9); }
 .cgext-rb-pill svg { color: var(--cg-muted-fg-color, #9aa4b6); }
 .cgext-rb-pill.cgext-rb-danger { color: var(--cg-neg-color, #e5646e); border-color: color-mix(in srgb, var(--cg-neg-color, #e5646e) 45%, var(--cg-border-color, #2a3140)); }
 
 .cgext-rb-input {
-  height: 26px; padding: 0 8px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 7px;
-  background: var(--cg-control-bg, rgba(0,0,0,0.25)); color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
+  height: 22px; padding: 0 7px; box-sizing: border-box;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 6px;
+  background: var(--cg-control-bg, rgba(0,0,0,0.25)); color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 11.5px;
 }
 .cgext-rb-input:focus { outline: none; border-color: var(--cg-accent-color, #4f9cf9); }
 
-.cgext-rb-stat { font-size: 11.5px; color: var(--cg-muted-fg-color, #7f8ba0); font-variant-numeric: tabular-nums; }
+.cgext-rb-stat { font-size: 10.5px; color: var(--cg-muted-fg-color, #7f8ba0); font-variant-numeric: tabular-nums; }
 
 .cgext-rb-stepper {
-  display: inline-flex; align-items: center; gap: 6px;
-  height: 26px; padding: 0 4px 0 9px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 7px;
-  background: var(--cg-control-bg, rgba(255,255,255,0.04)); font-size: 12px; color: var(--cg-fg-color, #d6dce8);
+  display: inline-flex; align-items: center; gap: 5px;
+  height: 22px; padding: 0 3px 0 8px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 6px;
+  background: var(--cg-control-bg, rgba(255,255,255,0.04)); font-size: 11.5px; color: var(--cg-fg-color, #d6dce8);
 }
 .cgext-rb-step-stack { display: flex; flex-direction: column; }
-.cgext-rb-step { appearance: none; border: none; background: transparent; color: var(--cg-muted-fg-color, #9aa4b6); cursor: pointer; height: 12px; display: flex; align-items: center; padding: 0; }
+.cgext-rb-step { appearance: none; border: none; background: transparent; color: var(--cg-muted-fg-color, #9aa4b6); cursor: pointer; height: 10px; display: flex; align-items: center; padding: 0; }
 .cgext-rb-step:hover { color: var(--cg-fg-color, #e5e9f0); }
 
 .cgext-rb-colorinput { width: 0; height: 0; padding: 0; border: none; opacity: 0; position: absolute; pointer-events: none; }
