@@ -85,9 +85,12 @@ export function createIconPicker(opts: { onSelect: (sel: IconSelection) => void 
     interface Section { root: HTMLElement; grid: HTMLElement; tiles: Array<{ el: HTMLButtonElement; key: string }> }
     const sections: Section[] = [];
 
+    // `key` is the searchable text (lowercased): a Lucide name, or an emoji's
+    // English name. `label` is the tooltip/aria; `glyph` (emoji only) stays on
+    // `data-emoji` so E2E can target the tile by its literal character.
     const addSection = (
       title: string,
-      entries: ReadonlyArray<{ key: string; sel: IconSelection; html?: string; text?: string }>,
+      entries: ReadonlyArray<{ key: string; label: string; sel: IconSelection; html?: string; text?: string; glyph?: string }>,
     ): void => {
       const root = document.createElement('div');
       root.className = 'cgext-ip-section';
@@ -101,10 +104,10 @@ export function createIconPicker(opts: { onSelect: (sel: IconSelection) => void 
         const t = document.createElement('button');
         t.type = 'button';
         t.className = 'cgext-ip-tile';
-        t.title = e.key;
-        t.setAttribute('aria-label', e.key);
+        t.title = e.label;
+        t.setAttribute('aria-label', e.label);
         if (e.sel.name) t.dataset.icon = e.sel.name;
-        if (e.sel.emoji) t.dataset.emoji = e.sel.emoji;
+        if (e.glyph) t.dataset.emoji = e.glyph;
         if (e.html) t.innerHTML = e.html; else t.textContent = e.text!;
         t.addEventListener('click', () => { opts.onSelect(e.sel); close(); });
         grid.append(t);
@@ -117,12 +120,12 @@ export function createIconPicker(opts: { onSelect: (sel: IconSelection) => void 
 
     for (const cat of lucideCategories) {
       addSection(cat.category, cat.icons.map((name) => ({
-        key: name, sel: { name }, html: tileSvg(lucideBundle[name]!),
+        key: name, label: name, sel: { name }, html: tileSvg(lucideBundle[name]!),
       })));
     }
     for (const cat of emojiCategories) {
-      addSection(`Emoji · ${cat.category}`, cat.emojis.map((emoji) => ({
-        key: emoji, sel: { emoji }, text: emoji,
+      addSection(`Emoji · ${cat.category}`, cat.emojis.map(({ emoji, name }) => ({
+        key: name, label: name, sel: { emoji }, text: emoji, glyph: emoji,
       })));
     }
 

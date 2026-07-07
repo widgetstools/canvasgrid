@@ -194,3 +194,34 @@ describe('compileFormatSlots — static cellStyle survives format compile', () =
     expect(style).toEqual({ bg: '#222222' });
   });
 });
+
+// ─── Static cellIcon preservation through the format-compile pass ─────────
+// Regression (CGridExt formatting toolbar): the pre-branch compileFormatSlots
+// derived cellIcon purely from the format program, wiping any STATIC cellIcon
+// the moment a string valueFormatter compiled. So the toolbar sequence "set an
+// icon, then apply a currency format" silently dropped the icon. The fix keeps
+// `evalFormatProgram(...).icon ?? staticRef` — the static ref is the fallback
+// when the format string carries no {icon:} of its own.
+describe('compileFormatSlots — static cellIcon survives format compile', () => {
+  beforeEach(() => _resetFormatCompiler_forTests());
+
+  it('static cellIcon object + compiling string formatter (no format icon) → resolved fn returns the static ref', () => {
+    registerFormatCompiler(fakeCompiler); // resolveIcon → null for '$#,##0.00'
+    const resolved = resolveColDefs([{
+      colId: 'x', valueFormatter: '$#,##0.00',
+      cellIcon: { name: 'flame' },
+    }] as any);
+    const icon = (resolved[0].cellIcon as any)({ value: 5, data: {}, colId: 'x', rowIndex: 0 });
+    expect(icon).toEqual({ name: 'flame' }); // was null before the fallback fix
+  });
+
+  it('string cellIcon is normalized to { name } and survives too', () => {
+    registerFormatCompiler(fakeCompiler);
+    const resolved = resolveColDefs([{
+      colId: 'x', valueFormatter: '$#,##0.00',
+      cellIcon: 'star',
+    }] as any);
+    const icon = (resolved[0].cellIcon as any)({ value: 5, data: {}, colId: 'x', rowIndex: 0 });
+    expect(icon).toEqual({ name: 'star' });
+  });
+});

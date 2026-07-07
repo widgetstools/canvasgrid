@@ -28,7 +28,19 @@ describe('emoji catalog', () => {
     expect(emojiCategories.length).toBe(8);
     const all = emojiCategories.flatMap((c) => [...c.emojis]);
     expect(all.length).toBeGreaterThanOrEqual(150);
-    expect(new Set(all).size).toBe(all.length);
-    for (const e of all) expect(e.length).toBeGreaterThan(0);
+    expect(new Set(all.map((e) => e.emoji)).size).toBe(all.length);
+    for (const e of all) expect(e.emoji.length).toBeGreaterThan(0);
+  });
+  it('every emoji carries a searchable English name', () => {
+    const all = emojiCategories.flatMap((c) => [...c.emojis]);
+    for (const e of all) {
+      expect(e.name).toBeTypeOf('string');
+      expect(e.name.trim().length).toBeGreaterThan(0);
+      expect(e.name).toMatch(/[a-z]/); // real word text, not just the glyph
+    }
+    // Spot-check a couple of common lookups the picker search relies on.
+    const byGlyph = new Map(all.map((e) => [e.emoji, e.name]));
+    expect(byGlyph.get('🔥')).toContain('fire');
+    expect(byGlyph.get('✅')).toContain('check');
   });
 });

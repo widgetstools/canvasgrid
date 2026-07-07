@@ -621,7 +621,7 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     placeMenu.style.left = `${rect.left}px`; placeMenu.style.top = `${rect.bottom + 6}px`;
     placeMenu.hidden = false;
     const away = (e: MouseEvent): void => {
-      if (!placeMenu.contains(e.target as Node) && e.target !== r.iconPlacePill) {
+      if (!placeMenu.contains(e.target as Node) && !r.iconPlacePill.contains(e.target as Node)) {
         placeMenu.hidden = true;
         document.removeEventListener('mousedown', away);
       }
