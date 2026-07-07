@@ -22,6 +22,7 @@
  */
 import type { CgExtension, CgExtContext, ToolbarItem, ToolbarItemInstance, Unsub } from '../extension/types';
 import type { EditBridgeHandle, SmartEditOp } from '@cgrid/edit';
+import { createIconPicker, type IconPickerHandle, type IconSelection } from './iconPicker';
 
 /** Lazily supplies the `@cgrid/edit` handle — the demo/consumer wires the
  *  edit engine after the grid is constructed, so the ribbon reads it on
@@ -183,12 +184,28 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       textColorInput.type = 'color'; textColorInput.className = 'cgext-rb-colorinput'; textColorInput.value = '#4fd1c5';
       const fillColorInput = document.createElement('input');
       fillColorInput.type = 'color'; fillColorInput.className = 'cgext-rb-colorinput'; fillColorInput.value = '#12333a';
+      // Icons — tile picker · colour · placement slot selector · clear. Icons
+      // are column styling, so they share the Paint row. Placement is a SLOT
+      // SELECTOR (see `wireFormattingToolbar`): the picker/colour/clear always
+      // edit "the icon at the selected placement for the current target" — they
+      // switch which slot is shown, never move an icon between slots.
+      let iconApply: (sel: IconSelection) => void = () => {};
+      const picker = createIconPicker({ onSelect: (sel) => iconApply(sel) });
+      const iconColorBtn = iconBtn(I.paintText, 'Icon color');
+      iconColorBtn.dataset.ip = 'color';
+      const iconColorInput = document.createElement('input');
+      iconColorInput.type = 'color'; iconColorInput.className = 'cgext-rb-colorinput'; iconColorInput.value = '#4f9cf9';
+      const iconPlacePill = pill('Prefix'); iconPlacePill.dataset.ip = 'place';
+      const iconClear = iconBtn(I.eraser, 'Clear icon at this placement'); iconClear.dataset.ip = 'clear';
+      document.body.append(picker.panel);
+
       const row3 = h('cgext-rb-row');
       const paint = section('Paint', group(textColorBtn, textColorInput, fillColorBtn, fillColorInput));
+      const icons = section('Icons', group(picker.button, iconColorBtn, iconColorInput, iconPlacePill, iconClear));
       const spacer = h('cgext-rb-spacer');
       const pop = iconBtn(I.popout, 'Pop out');
       pop.addEventListener('click', () => ctx.events.emit({ type: 'popout' }));
-      row3.append(paint, spacer, pop);
+      row3.append(paint, sep(), icons, spacer, pop);
 
       // Row 4 — FORMAT · EDIT · GROUP
       const fmtDollar = iconBtn(I.dollar, 'Currency format');
@@ -260,9 +277,12 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
         textColorBtn, textColorInput, fillColorBtn, fillColorInput,
         fmtDollar, fmtPercent, fmtThousands, decDown, decUp, fmtCode,
         clear, eraser,
+        iconPicker: picker,
+        setIconApply: (fn) => { iconApply = fn; },
+        iconColorBtn, iconColorInput, iconPlacePill, iconClear,
       });
 
-      return { destroy() { disposeEditing?.(); disposeFormatting(); off(); host.replaceChildren(); } };
+      return { destroy() { disposeEditing?.(); disposeFormatting(); picker.destroy(); off(); host.replaceChildren(); } };
     },
   };
 }
@@ -368,6 +388,10 @@ interface FormattingRefs {
   fmtDollar: HTMLButtonElement; fmtPercent: HTMLButtonElement; fmtThousands: HTMLButtonElement;
   decDown: HTMLButtonElement; decUp: HTMLButtonElement; fmtCode: HTMLButtonElement;
   clear: HTMLButtonElement; eraser: HTMLButtonElement;
+  iconPicker: IconPickerHandle;
+  setIconApply: (fn: (sel: IconSelection) => void) => void;
+  iconColorBtn: HTMLButtonElement; iconColorInput: HTMLInputElement;
+  iconPlacePill: HTMLButtonElement; iconClear: HTMLButtonElement;
 }
 
 /** Bind the Formatting toolbar to the kernel + calc engine: derive target
@@ -465,6 +489,16 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     r.alignC.classList.toggle('is-on', s.halign === 'center');
     r.alignR.classList.toggle('is-on', s.halign === 'right');
     r.sizeVal.textContent = `${(s.fontSize as number | undefined) ?? 12}px`;
+
+    // Icons — reflect the selected slot into the picker preview + enablement.
+    const slot = none ? null : currentIconSlot();
+    r.iconPicker.setPreview(slot);
+    const emojiSel = slot !== null && slot.emoji !== undefined;
+    r.iconColorBtn.disabled = none || emojiSel; // color is SVG-only
+    r.iconClear.disabled = none || slot === null;
+    r.iconPicker.button.disabled = none;
+    r.iconPlacePill.disabled = none;
+    if (slot?.color) r.iconColorInput.value = slot.color;
   };
 
   // Target toggle (cell vs header styling)
@@ -476,6 +510,131 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   };
   r.targetCell.addEventListener('click', () => setTarget('cell'));
   r.targetHeader.addEventListener('click', () => setTarget('header'));
+
+  // ── Icons section — placement is a SLOT SELECTOR: the picker/color/clear
+  // always edit "the icon at `placement` for `target`". Changing placement
+  // switches which slot is shown; it never moves an icon between slots.
+  type Placement = 'prefix' | 'suffix' | 'tl' | 'tr' | 'bl' | 'br' | 'ml' | 'mr';
+  let placement: Placement = 'prefix';
+
+  type IconOverride = { name?: string; emoji?: string; color?: string; position?: 'leading' | 'trailing' };
+  type Decorator = { position: string; kind: string; icon?: string; value?: string; color?: string };
+
+  const ownOverrides = (colId: string): Record<string, unknown> =>
+    (grid.getTemplates().find((t) => t.id === `__cgridOwn:${colId}`)?.overrides ?? {}) as Record<string, unknown>;
+
+  /** The first target column's icon at the selected slot (for reflection). */
+  const currentIconSlot = (): { name?: string; emoji?: string; color?: string } | null => {
+    const cols = targetCols();
+    if (!cols.length) return null;
+    const own = ownOverrides(cols[0]!);
+    if (placement === 'prefix' || placement === 'suffix') {
+      const ref = own[target === 'header' ? 'headerIcon' : 'cellIcon'] as IconOverride | undefined;
+      if (!ref) return null;
+      const want = placement === 'prefix' ? 'leading' : 'trailing';
+      return (ref.position ?? 'leading') === want ? ref : null;
+    }
+    const style = own[target === 'header' ? 'headerStyle' : 'cellStyle'] as { decorators?: Decorator[] } | undefined;
+    const d = style?.decorators?.find((x) => x.position === placement);
+    if (!d) return null;
+    if (d.kind === 'icon') return { name: d.icon, color: d.color };
+    if (d.kind === 'emoji') return { emoji: d.value };
+    return null;
+  };
+
+  /** Write `sel` (or clear on null) into the selected slot on every target column. */
+  const applyIconSlot = (sel: IconSelection | null): void => {
+    const cols = targetCols();
+    if (!cols.length) return;
+    const color = sel?.name ? r.iconColorInput.value : undefined; // color is SVG-only
+    for (const colId of cols) {
+      try {
+        if (placement === 'prefix' || placement === 'suffix') {
+          const key = target === 'header' ? 'headerIcon' : 'cellIcon';
+          const value = sel === null
+            ? null
+            : { ...sel, ...(color ? { color } : {}), position: placement === 'prefix' ? 'leading' : 'trailing' };
+          grid.editColumn(colId, { [key]: value });
+        } else {
+          const styleKey = target === 'header' ? 'headerStyle' : 'cellStyle';
+          const existing = ((ownOverrides(colId)[styleKey] as { decorators?: Decorator[] } | undefined)?.decorators ?? []);
+          const kept = existing.filter((d) => d.position !== placement);
+          const next = sel === null ? kept : [...kept,
+            sel.name
+              ? { position: placement, kind: 'icon', icon: sel.name, ...(color ? { color } : {}) }
+              : { position: placement, kind: 'emoji', value: sel.emoji! }];
+          grid.editColumn(colId, { [styleKey]: { decorators: next } });
+        }
+      } catch { /* unknown column */ }
+    }
+    ctx.profiles.markDirty();
+    refresh();
+  };
+  r.setIconApply(applyIconSlot);
+
+  // Placement menu on the pill. Grouped by kind — inline slots that flow with
+  // the label vs. the six positional slots pinned to a cell corner/middle —
+  // because that grouping is real structure, not decoration. The active slot
+  // is marked so the pill's dropdown reads as a selector, not a one-shot menu.
+  const placeMenu = document.createElement('div');
+  placeMenu.className = 'cgext-ip-placemenu'; placeMenu.hidden = true;
+  placeMenu.setAttribute('role', 'menu');
+  const placeItems = new Map<Placement, HTMLButtonElement>();
+  const addPlaceGroup = (heading: string, entries: Array<[Placement, string]>): void => {
+    const head = document.createElement('div');
+    head.className = 'cgext-ip-placehead'; head.textContent = heading;
+    placeMenu.append(head);
+    for (const [value, itemLabel] of entries) {
+      const item = document.createElement('button');
+      item.type = 'button'; item.className = 'cgext-ip-placeitem';
+      item.dataset.place = value; item.textContent = itemLabel;
+      item.setAttribute('role', 'menuitemradio');
+      item.addEventListener('click', () => {
+        placement = value;
+        r.iconPlacePill.querySelector('span')!.textContent = itemLabel;
+        placeMenu.hidden = true;
+        syncPlaceActive();
+        refresh();
+      });
+      placeMenu.append(item);
+      placeItems.set(value, item);
+    }
+  };
+  addPlaceGroup('Inline', [['prefix', 'Prefix'], ['suffix', 'Suffix']]);
+  addPlaceGroup('Positional', [
+    ['tl', 'Top-left'], ['tr', 'Top-right'], ['bl', 'Bottom-left'], ['br', 'Bottom-right'],
+    ['ml', 'Middle-left'], ['mr', 'Middle-right'],
+  ]);
+  const syncPlaceActive = (): void => {
+    for (const [value, el] of placeItems) {
+      const on = value === placement;
+      el.classList.toggle('is-active', on);
+      el.setAttribute('aria-checked', String(on));
+    }
+  };
+  syncPlaceActive();
+  document.body.append(placeMenu);
+  disposers.push(() => placeMenu.remove());
+  r.iconPlacePill.addEventListener('click', () => {
+    if (!placeMenu.hidden) { placeMenu.hidden = true; return; }
+    const rect = r.iconPlacePill.getBoundingClientRect();
+    placeMenu.style.left = `${rect.left}px`; placeMenu.style.top = `${rect.bottom + 6}px`;
+    placeMenu.hidden = false;
+    const away = (e: MouseEvent): void => {
+      if (!placeMenu.contains(e.target as Node) && e.target !== r.iconPlacePill) {
+        placeMenu.hidden = true;
+        document.removeEventListener('mousedown', away);
+      }
+    };
+    document.addEventListener('mousedown', away);
+  });
+
+  r.iconColorBtn.addEventListener('click', () => r.iconColorInput.click());
+  r.iconColorInput.addEventListener('change', () => {
+    const cur = currentIconSlot();
+    if (cur?.name) applyIconSlot({ name: cur.name }); // re-apply with new color
+  });
+  r.iconClear.addEventListener('click', () => applyIconSlot(null));
 
   // Type: bold / italic / underline (toggle against current own-template state)
   r.bold.addEventListener('click', () =>
@@ -621,4 +780,87 @@ const RIBBON_CSS = `
 
 .cgext-rb-danger-btn { color: var(--cg-neg-color, #e5646e); }
 .cgext-rb-danger-btn:hover { background: color-mix(in srgb, var(--cg-neg-color, #e5646e) 16%, transparent); color: var(--cg-neg-color, #e5646e); }
+
+/* ── Icons section — tile picker · placement slot menu ─────────────────── */
+.cgext-ip-open { font-size: 14px; }
+.cgext-ip-open.is-open { background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 22%, transparent); color: var(--cg-accent-color, #4f9cf9); }
+.cgext-ip-open:disabled,
+.cgext-rb-pill[data-ip="place"]:disabled,
+.cgext-rb-btn[data-ip="color"]:disabled,
+.cgext-rb-btn[data-ip="clear"]:disabled { opacity: 0.38; cursor: default; }
+.cgext-ip-open:disabled:hover,
+.cgext-rb-btn[data-ip="color"]:disabled:hover,
+.cgext-rb-btn[data-ip="clear"]:disabled:hover { background: transparent; color: var(--cg-muted-fg-color, #9aa4b6); }
+.cgext-rb-pill[data-ip="place"]:disabled:hover { border-color: var(--cg-border-color, #2a3140); }
+
+.cgext-ip-panel {
+  position: fixed; z-index: 1000; width: 340px; max-height: 428px;
+  display: flex; flex-direction: column; overflow: hidden;
+  background: var(--cg-popup-bg, #161b26); border: 1px solid var(--cg-border-color, #2a3140);
+  border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,0.5); padding: 10px;
+}
+.cgext-ip-panel[hidden] { display: none; }
+
+.cgext-ip-searchwrap { position: relative; display: flex; align-items: center; margin-bottom: 8px; color: var(--cg-muted-fg-color, #7f8ba0); }
+.cgext-ip-searchwrap > svg { position: absolute; left: 9px; pointer-events: none; }
+.cgext-ip-search {
+  width: 100%; box-sizing: border-box; height: 30px; padding: 0 10px 0 30px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 8px;
+  background: var(--cg-control-bg, rgba(0,0,0,0.25)); color: var(--cg-fg-color, #e5e9f0);
+  font: inherit; font-size: 12.5px; transition: border-color 120ms ease, box-shadow 120ms ease;
+}
+.cgext-ip-search::placeholder { color: var(--cg-muted-fg-color, #7f8ba0); }
+.cgext-ip-search:focus {
+  outline: none; border-color: var(--cg-accent-color, #4f9cf9);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 20%, transparent);
+}
+.cgext-ip-search::-webkit-search-cancel-button { appearance: none; }
+
+.cgext-ip-scroll { overflow-y: auto; flex: 1 1 auto; scrollbar-width: thin; margin: 0 -4px; padding: 0 4px; }
+.cgext-ip-cat {
+  font-size: 10px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--cg-muted-fg-color, #7f8ba0); margin: 12px 2px 6px;
+  position: sticky; top: 0; z-index: 1;
+  background: linear-gradient(var(--cg-popup-bg, #161b26) 78%, transparent); padding: 3px 0 4px;
+}
+.cgext-ip-section:first-child .cgext-ip-cat { margin-top: 0; }
+
+.cgext-ip-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
+.cgext-ip-tile {
+  appearance: none; border: none; border-radius: 7px; background: transparent;
+  width: 100%; aspect-ratio: 1; display: inline-flex; align-items: center; justify-content: center;
+  color: var(--cg-muted-fg-color, #9aa4b6); font-size: 15px; line-height: 1; cursor: pointer;
+  transition: background 90ms ease, color 90ms ease, transform 90ms ease;
+}
+.cgext-ip-tile:hover { background: var(--cg-row-alt-bg, rgba(255,255,255,0.08)); color: var(--cg-fg-color, #e5e9f0); transform: scale(1.14); }
+.cgext-ip-tile:active { transform: scale(0.96); }
+.cgext-ip-tile:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: -2px; }
+
+.cgext-ip-empty { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 34px 0 30px; color: var(--cg-muted-fg-color, #7f8ba0); }
+.cgext-ip-empty[hidden] { display: none; }
+.cgext-ip-empty > svg { width: 22px; height: 22px; opacity: 0.55; }
+.cgext-ip-empty-msg { font-size: 12px; }
+
+.cgext-ip-placemenu {
+  position: fixed; z-index: 1000; min-width: 158px; padding: 5px;
+  background: var(--cg-popup-bg, #161b26); border: 1px solid var(--cg-border-color, #2a3140);
+  border-radius: 9px; box-shadow: 0 12px 30px rgba(0,0,0,0.45);
+  display: flex; flex-direction: column;
+}
+.cgext-ip-placemenu[hidden] { display: none; }
+.cgext-ip-placehead {
+  font-size: 9.5px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase;
+  color: var(--cg-muted-fg-color, #7f8ba0); padding: 7px 8px 3px;
+}
+.cgext-ip-placehead:first-child { padding-top: 3px; }
+.cgext-ip-placeitem {
+  appearance: none; border: none; background: transparent; border-radius: 6px;
+  padding: 6px 10px; text-align: left; font: inherit; font-size: 12px;
+  color: var(--cg-fg-color, #d6dce8); cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  transition: background 90ms ease, color 90ms ease;
+}
+.cgext-ip-placeitem:hover { background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 18%, transparent); }
+.cgext-ip-placeitem.is-active { color: var(--cg-accent-color, #4f9cf9); background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 12%, transparent); }
+.cgext-ip-placeitem.is-active::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--cg-accent-color, #4f9cf9); flex: 0 0 auto; }
 `;
