@@ -6,13 +6,16 @@
  * Visual/UX contract mirrors `.cg-settings-panel` (see
  * `packages/kernel/src/theming/tokens.css` — `.cg-colgroups-*` rules sit
  * right after the `.cg-settings-*` block). Selecting a group (via the
- * keyboard-reachable `data-cg-select` button on its row) reveals a
- * per-group Style band (`renderStyle`) built on the Phase 1
- * `SettingsForm` engine, editing `headerStyle`/`headerClass`/
+ * keyboard-reachable `data-cg-select` gear button — "Edit group style" —
+ * on its row) opens a per-group Style editor (`renderStyle`) in a
+ * FLOATING panel (`this.api.openFloatingPanel`, Close-only — no dock,
+ * since the Style editor has nowhere to dock back to) built on the
+ * Phase 1 `SettingsForm` engine, editing `headerStyle`/`headerClass`/
  * `openByDefault`/`marryChildren` on the selected `GroupNode`. Every edit
  * routes through `this.mutate(...)` like any other panel change, so it
  * participates in dirty/Apply — this panel never writes to the grid
- * except on Apply.
+ * except on Apply. Deselecting the group (toggling the gear again, or
+ * closing the float) closes it.
  */
 import type { ToolPanel, ToolPanelParams } from './types';
 import {
@@ -22,7 +25,7 @@ import {
   type Node, type GroupNode, type ColumnNode,
 } from '../columnGroups/model';
 import type { CGridApi } from '../../types';
-import { ColorPickerControl } from '../settingsForm/colorPicker';
+import { ColorPickerControl, parseColor } from '../settingsForm/colorPicker';
 import type { BorderSpec, BorderStyle } from '../../types/cell';
 import { cloneDefsTree } from '../../core/columnTree';
 
@@ -94,14 +97,24 @@ function icon(...children: SVGElement[]): SVGSVGElement {
   return svg;
 }
 const strokeAttrs = { fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' } as const;
-/** columnGroupShow state icons — identical circle (r=8), differing only by
- *  fill so all three read at exactly the same size. */
+/** columnGroupShow state icons. Eye = always visible; the two conditional
+ *  states echo the group's own disclosure caret — a DOWN chevron for
+ *  "visible only when the group is OPEN (expanded)" and a RIGHT chevron for
+ *  "visible only when the group is CLOSED (collapsed)". */
 function iconGroupShow(kind: 'always' | 'open' | 'closed'): SVGSVGElement {
-  if (kind === 'always') return icon(svgEl('circle', { cx: '12', cy: '12', r: '8', fill: 'currentColor' }));
-  const ring = svgEl('circle', { cx: '12', cy: '12', r: '8', fill: 'none', stroke: 'currentColor', 'stroke-width': '2' });
-  if (kind === 'closed') return icon(ring);
-  // 'open' — ring + filled left half (top→bottom arc sweeping left, closed).
-  return icon(ring, svgEl('path', { d: 'M12 4 A8 8 0 0 0 12 20 Z', fill: 'currentColor' }));
+  if (kind === 'always') {
+    // Eye — always visible.
+    return icon(
+      svgEl('path', { d: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z', ...strokeAttrs }),
+      svgEl('circle', { cx: '12', cy: '12', r: '3', ...strokeAttrs }),
+    );
+  }
+  if (kind === 'open') {
+    // Chevron-down — mirrors an OPEN group's caret (shown only when expanded).
+    return icon(svgEl('path', { d: 'M6 9l6 6 6-6', ...strokeAttrs }));
+  }
+  // Chevron-right — mirrors a CLOSED group's caret (shown only when collapsed).
+  return icon(svgEl('path', { d: 'M9 6l6 6-6 6', ...strokeAttrs }));
 }
 function iconGear(): SVGSVGElement {
   return icon(
@@ -144,7 +157,16 @@ const DRAG_THRESHOLD_PX = 4;
 export class ColumnGroupsToolPanel implements ToolPanel {
   private root!: HTMLElement;
   private tree!: HTMLElement;
-  private styleSection!: HTMLElement;
+  /** The current Style editor's floating-panel BODY element, or `null`
+   *  when no group is selected / the float isn't open. Cached across
+   *  `renderStyle()` calls so an in-place content refresh (e.g. a field
+   *  edit) doesn't need to reopen the float — only a genuine retarget
+   *  (no float open yet, or switching to a different group) does. */
+  private floatBody: HTMLElement | null = null;
+  /** The group id whose content `floatBody` currently holds. `null` iff
+   *  `floatBody` is `null`. Invariant: kept in lockstep so a stale
+   *  `floatBody` is never mistaken for the wrong group's content. */
+  private floatGroupId: string | null = null;
   /** Live colour-picker controls in the current Style band — destroyed on
    *  panel teardown so no portaled popover outlives the panel. Reset (not
    *  destroyed) on each `renderStyle()` rebuild so an in-flight popover the
@@ -155,7 +177,16 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   private selectedEdge: BorderEdge = 'all';
   private applyBtn!: HTMLButtonElement;
   private resetBtn!: HTMLButtonElement;
-  private api!: Pick<CGridApi, 'getColumnGroupDefs' | 'updateGridOptions'>;
+  private api!: Pick<
+    CGridApi,
+    | 'getColumnGroupDefs'
+    | 'updateGridOptions'
+    | 'openFloatingPanel'
+    | 'closeFloatingPanel'
+    | 'isFloatingPanelOpen'
+    | 'setFloatingPanelTitle'
+    | 'fitFloatingPanelHeight'
+  >;
   private nodes: Node[] = [];
   /** Canonical JSON of the last-applied projected tree — comparing against
    *  `project(nodes)` (also projected) makes seed→dirty reliably false even
@@ -181,8 +212,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     this.root.appendChild(this.buildToolbar());   // "New group"
     this.tree = el('div', 'cg-colgroups-tree cg-scrollbar');
     this.root.appendChild(this.tree);
-    this.styleSection = this.buildStyleSection();  // Task 4 fills this
-    this.root.appendChild(this.styleSection);
     this.root.appendChild(this.buildFooter());     // Apply / Reset
     this.seed();
   }
@@ -199,6 +228,10 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     this.pending = null;
     this.stylePickers.forEach((p) => p.destroy());
     this.stylePickers = [];
+    // Close the Style editor float (if this panel owns it) so it doesn't
+    // outlive the panel — e.g. switching away from the Column Groups
+    // sidebar tab while a group's Style editor is open.
+    this.closeFloatIfOpen();
     this.root.remove();
   }
 
@@ -333,39 +366,74 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     return footer;
   }
 
-  /** Container for the per-group Style band, keyed off
-   *  `this.selectedGroupId`. Always present (stable hook); empty and
-   *  collapsed to nothing (`.cg-colgroups-style:empty`) when no group is
-   *  selected. */
-  private buildStyleSection(): HTMLElement {
-    const section = el('div', 'cg-colgroups-style');
-    section.setAttribute('data-cg-style', '');
-    return section;
+  /** Close the Style editor float IF this panel currently owns it (i.e.
+   *  `floatBody` is set), and clear the cached float references. Safe to
+   *  call unconditionally — a no-op when nothing is cached. Guards
+   *  against ever calling `closeFloatingPanel()` when this panel doesn't
+   *  believe it owns the float (e.g. double-close reentrancy). */
+  private closeFloatIfOpen(): void {
+    if (this.floatBody !== null) this.api.closeFloatingPanel();
+    this.floatBody = null;
+    this.floatGroupId = null;
   }
 
-  /** Rebuilds the Style band for `this.selectedGroupId` from the CURRENT
-   *  `this.nodes` — called at the end of every `render()` so it re-syncs
-   *  after any mutation (including its own field edits, which route
-   *  through `this.mutate(...)` like every other panel edit — Apply-only
-   *  discipline: nothing here writes to the grid). */
+  /** Rebuilds the Style editor for `this.selectedGroupId` from the
+   *  CURRENT `this.nodes` — called at the end of every `render()` so it
+   *  re-syncs after any mutation (including its own field edits, which
+   *  route through `this.mutate(...)` like every other panel edit —
+   *  Apply-only discipline: nothing here writes to the grid).
+   *
+   *  The Style editor lives in a FLOATING panel (`this.api.
+   *  openFloatingPanel`), not inline in this panel's own DOM — it has
+   *  nowhere to dock back to, so it's Close-only. This method only
+   *  RE-OPENS the float (a `close()` + `open()` on the host, changing
+   *  its title) when it isn't already open for the CURRENTLY selected
+   *  group — an ordinary field edit within the same group reuses the
+   *  cached `floatBody` so the frame's position/focus survive the
+   *  rebuild. No selection (or a selection that no longer resolves to a
+   *  group, e.g. it was just deleted) closes the float. */
   private renderStyle(): void {
     // Destroy every live picker before dropping the reference — each one
     // owns a document/window listener set (+ a body-portaled popover), so
     // resetting the array without destroying first would orphan them.
     this.stylePickers.forEach((p) => p.destroy());
     this.stylePickers = [];
-    this.styleSection.replaceChildren();
-    this.styleSection.removeAttribute('data-for');
-    if (!this.selectedGroupId) return;
+
+    if (!this.selectedGroupId) { this.closeFloatIfOpen(); return; }
     const g = this.nodes.find((n) => n.id === this.selectedGroupId && n.kind === 'group') as
       | GroupNode
       | undefined;
-    if (!g) { this.selectedGroupId = null; return; }
-    this.styleSection.setAttribute('data-for', g.id);
+    if (!g) { this.selectedGroupId = null; this.closeFloatIfOpen(); return; }
 
-    const title = el('div', 'cg-colgroups-style-title');
-    title.textContent = `Style — ${g.headerName}`;
-    this.styleSection.appendChild(title);
+    // Retarget (open, or re-open with a new title) only when the float
+    // isn't currently showing THIS group — switching groups, the float
+    // having been closed externally, or the very first open.
+    if (this.floatBody === null || this.floatGroupId !== g.id || !this.api.isFloatingPanelOpen()) {
+      this.floatBody = this.api.openFloatingPanel({
+        title: `Style — ${g.headerName}`,
+        onClose: () => {
+          // The float's own Close (×) button was clicked — deselect and
+          // re-render. `render()` -> `renderStyle()` then sees no
+          // selection and calls `closeFloatIfOpen()`, which is what
+          // actually tears down the frame (idempotent; does not re-fire
+          // this callback).
+          this.selectedGroupId = null;
+          this.render();
+        },
+      });
+      this.floatGroupId = g.id;
+    }
+    // Keep the titlebar authoritative on every render (not just on reopen):
+    // an in-place rename of the currently-floated group updates its caption
+    // here, so the frame's position/focus survive while the title stays fresh.
+    this.api.setFloatingPanelTitle(`Style — ${g.headerName}`);
+    const body = this.floatBody;
+    body.replaceChildren();
+
+    const section = el('div', 'cg-colgroups-style');
+    section.setAttribute('data-cg-style', '');
+    section.setAttribute('data-for', g.id);
+    body.appendChild(section);
 
     const patch = (
       p: Partial<Pick<GroupNode, 'headerStyle' | 'headerClass' | 'openByDefault' | 'marryChildren'>>,
@@ -381,65 +449,45 @@ export class ColumnGroupsToolPanel implements ToolPanel {
         return setGroupStyle(ns, g.id, { headerStyle: { ...cur?.headerStyle, ...facet } });
       });
 
-    this.styleSection.appendChild(this.buildFillTextCluster(g, patchStyle));
-    this.styleSection.appendChild(this.buildBorderCluster(g, patch));
-    this.styleSection.appendChild(this.buildBehaviorCluster(g, patch));
+    section.appendChild(this.buildFillTextCluster(g, patchStyle));
+    section.appendChild(this.buildBorderCluster(g, patch));
+    section.appendChild(this.buildBehaviorCluster(g, patch));
 
-    // "Children visibility" — mirrors the inline `columnGroupShow` control
-    // (see `buildGroupShowControl`) for every column nested (directly or
-    // transitively) under the selected group, so a user styling a group can
-    // also author its columns' expand/collapse visibility from one place.
-    const children = this.descendantColumns(g.id);
-    if (children.length > 0) {
-      const cluster = el('div', 'cg-colgroups-cluster');
-      cluster.appendChild(eyebrow('Children visibility', 'cg-colgroups-cluster-eyebrow'));
-      const list = el('div', 'cg-colgroups-childshow-list');
-      children.forEach((c) => {
-        const row = el('div', 'cg-colgroups-childshow-row');
-        const label = document.createElement('label');
-        label.className = 'cg-colgroups-childshow-label';
-        label.textContent = c.headerName;
-        row.appendChild(label);
-        row.appendChild(this.buildGroupShowControl(c.colId, c.columnGroupShow, 'child'));
-        list.appendChild(row);
-      });
-      cluster.appendChild(list);
-      this.styleSection.appendChild(cluster);
-    }
+    // Hug the content: the Style form is fixed-height, so shrink the float to
+    // fit it (dropping any empty lower band left by a restored/oversized rect).
+    this.api.fitFloatingPanelHeight();
   }
 
   /** Colour-picker commit path (Fix 3) — writes to the model WITHOUT
    *  rebuilding the Style-band DOM. `ColorPickerControl` emits `onChange` on
    *  every `pointermove` while the user drags inside its body-portaled
    *  popover; the ordinary `mutate() -> render() -> renderStyle()` path
-   *  calls `styleSection.replaceChildren()`, which would tear the open
-   *  popover (and its swatch) out from under an in-flight drag. This path
-   *  sets the model, keeps the Apply button's dirty state in sync, and
-   *  refreshes only the cheap border-preview inline styles — nothing else
-   *  in the Style band is touched, so an open popover survives.
-   *  Apply-only discipline still holds: this writes ONLY to `this.nodes`,
-   *  never the grid (see `onApply`). */
+   *  would tear the open popover (and its swatch) out from under an
+   *  in-flight drag. This path sets the model, keeps the Apply button's
+   *  dirty state in sync, and refreshes only the cheap border-preview
+   *  inline styles — nothing else in the Style band is touched, so an
+   *  open popover survives. Apply-only discipline still holds: this
+   *  writes ONLY to `this.nodes`, never the grid (see `onApply`). */
   private commitStyleLive(fn: (n: Node[]) => Node[]): void {
     this.nodes = fn(this.nodes);
     this.applyBtn.disabled = !this.dirty;
     this.refreshBorderPreview();
   }
 
-  /** Repaints the border-preview cell's inline styles (bg/fg/per-side
-   *  border) for the currently selected group from `this.nodes` — the one
-   *  piece of Style-band DOM a live colour commit needs to keep current,
-   *  without rebuilding anything else. No-op if the border cluster isn't
-   *  mounted (e.g. no group selected). */
+  /** Repaints the border-preview cell's per-side border inline styles for the
+   *  currently selected group from `this.nodes` — the one piece of Style-band
+   *  DOM a live border-colour commit needs to keep current, without rebuilding
+   *  anything else. The preview isolates the BORDER (no fill/text), so a live
+   *  Fill/Text commit leaves it untouched. No-op if the border cluster isn't
+   *  mounted (e.g. no group selected, or the float isn't open). */
   private refreshBorderPreview(): void {
-    if (!this.selectedGroupId) return;
+    if (!this.selectedGroupId || !this.floatBody) return;
     const g = this.nodes.find((n) => n.id === this.selectedGroupId && n.kind === 'group') as
       | GroupNode
       | undefined;
     if (!g) return;
-    const preview = this.styleSection.querySelector('.cg-colgroups-border-preview') as HTMLElement | null;
+    const preview = this.floatBody.querySelector('.cg-colgroups-border-preview') as HTMLElement | null;
     if (!preview) return;
-    preview.style.background = g.headerStyle?.bg ?? '';
-    preview.style.color = g.headerStyle?.fg ?? '';
     const border = g.headerStyle?.border;
     preview.style.borderTop = borderSideToCss(effectiveBorderSide(border, 'top'));
     preview.style.borderRight = borderSideToCss(effectiveBorderSide(border, 'right'));
@@ -516,21 +564,33 @@ export class ColumnGroupsToolPanel implements ToolPanel {
       align.appendChild(b);
     });
     styleRow.appendChild(align);
-    cluster.appendChild(styleRow);
 
-    // Row 3 — Font size.
-    cluster.appendChild(this.numberField(
-      'fontSize', 'Size', g.headerStyle?.fontSize, 'Font size', 8, 32, 'auto',
-      (n) => (n && Number.isFinite(n) ? n : undefined),
-      (n) => patchStyle({ fontSize: n }),
-    ));
+    // Font size — inline on the same row as the B/I/U + alignment segments,
+    // shown as a bare `auto`-placeholder field (label-less; its `data-cg-field`
+    // wrapper keeps the E2E/unit `[data-cg-field="fontSize"] input` selector).
+    const sizeWrap = el('div', 'cg-colgroups-field cg-colgroups-size');
+    sizeWrap.setAttribute('data-cg-field', 'fontSize');
+    const sizeInput = document.createElement('input');
+    sizeInput.type = 'number';
+    sizeInput.className = 'cg-settings-input cg-settings-input-number';
+    sizeInput.min = '8'; sizeInput.max = '32';
+    sizeInput.setAttribute('aria-label', 'Font size');
+    sizeInput.placeholder = 'auto';
+    sizeInput.value = typeof g.headerStyle?.fontSize === 'number' ? String(g.headerStyle.fontSize) : '';
+    sizeInput.addEventListener('change', () => {
+      const raw = sizeInput.value === '' ? undefined : Number(sizeInput.value);
+      patchStyle({ fontSize: raw !== undefined && Number.isFinite(raw) ? raw : undefined });
+    });
+    sizeWrap.appendChild(sizeInput);
+    styleRow.appendChild(sizeWrap);
+    cluster.appendChild(styleRow);
 
     return cluster;
   }
 
-  /** BORDER cluster — the signature box-model editor: a live preview cell
-   *  with four clickable edge strips + an `All` toggle, and width/style/
-   *  colour controls that read & write the currently selected edge. */
+  /** BORDER cluster — a live preview of the header cell beside a `Side`
+   *  selector (All / Top / Right / Bottom / Left), over Width / Style / Colour
+   *  controls that read & write whichever side is selected. */
   private buildBorderCluster(
     g: GroupNode,
     patch: (p: Partial<Pick<GroupNode, 'headerStyle'>>) => void,
@@ -542,50 +602,46 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     editor.setAttribute('data-cg-border', '');
     const border = g.headerStyle?.border;
 
-    const stage = el('div', 'cg-colgroups-border-stage');
+    // Head row: live preview box (left) + the Side selector (right).
+    const head = el('div', 'cg-colgroups-border-head');
+
+    // A neutral swatch that previews ONLY the border (not the fill) — the
+    // Fill colour has its own field above; here the border reads clearly.
     const preview = el('div', 'cg-colgroups-border-preview');
-    if (g.headerStyle?.bg) preview.style.background = g.headerStyle.bg;
-    if (g.headerStyle?.fg) preview.style.color = g.headerStyle.fg;
+    preview.setAttribute('aria-hidden', 'true');
     preview.style.borderTop = borderSideToCss(effectiveBorderSide(border, 'top'));
     preview.style.borderRight = borderSideToCss(effectiveBorderSide(border, 'right'));
     preview.style.borderBottom = borderSideToCss(effectiveBorderSide(border, 'bottom'));
     preview.style.borderLeft = borderSideToCss(effectiveBorderSide(border, 'left'));
-    const previewLabel = el('span', 'cg-colgroups-border-preview-label');
-    previewLabel.textContent = g.headerName || 'Header';
-    preview.appendChild(previewLabel);
-    stage.appendChild(preview);
+    head.appendChild(preview);
 
-    (['top', 'right', 'bottom', 'left'] as const).forEach((edge) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = `cg-colgroups-edge cg-colgroups-edge-${edge}`;
-      b.setAttribute('data-cg-border-edge', edge);
-      b.setAttribute('aria-label', `${cap(edge)} border`);
-      b.setAttribute('aria-pressed', String(this.selectedEdge === edge));
-      b.addEventListener('click', () => { this.selectedEdge = edge; this.render(); });
-      stage.appendChild(b);
+    // Side selector — replaces the box-model edge strips: choosing a side
+    // (re-render) scopes the Width / Style / Colour controls to it.
+    const sideWrap = el('div', 'cg-colgroups-field cg-colgroups-border-side');
+    const sideLabel = labelEl('cg-colgroups-field-label');
+    sideLabel.textContent = 'Side';
+    const sideSel = document.createElement('select');
+    sideSel.className = 'cg-settings-input cg-settings-select';
+    sideSel.setAttribute('data-cg-border-side', '');
+    sideSel.setAttribute('aria-label', 'Border side');
+    ([
+      ['all', 'All'], ['top', 'Top'], ['right', 'Right'], ['bottom', 'Bottom'], ['left', 'Left'],
+    ] as const).forEach(([v, t]) => {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = t;
+      sideSel.appendChild(o);
     });
-    editor.appendChild(stage);
+    sideSel.value = this.selectedEdge;
+    sideSel.addEventListener('change', () => {
+      this.selectedEdge = sideSel.value as BorderEdge;
+      this.render();
+    });
+    const sideId = uid(); sideSel.id = sideId; sideLabel.htmlFor = sideId;
+    sideWrap.append(sideLabel, sideSel);
+    head.appendChild(sideWrap);
+    editor.appendChild(head);
 
-    const allBtn = document.createElement('button');
-    allBtn.type = 'button';
-    allBtn.className = 'cg-colgroups-seg-btn cg-colgroups-edge-all';
-    allBtn.setAttribute('data-cg-border-edge', 'all');
-    allBtn.textContent = 'All sides';
-    allBtn.setAttribute('aria-label', 'All borders');
-    allBtn.setAttribute('aria-pressed', String(this.selectedEdge === 'all'));
-    allBtn.addEventListener('click', () => { this.selectedEdge = 'all'; this.render(); });
-    editor.appendChild(allBtn);
-
-    // Caption — makes the box-model editor legible: names the side the
-    // Width / Style / Colour controls below currently write to.
-    const caption = el('div', 'cg-colgroups-border-caption');
-    caption.textContent = this.selectedEdge === 'all'
-      ? 'Editing all sides'
-      : `Editing ${this.selectedEdge} border`;
-    editor.appendChild(caption);
-
-    // Width / style / colour — read & write the SELECTED edge.
+    // Width / style / colour — read & write the SELECTED side.
     const edge = this.selectedEdge;
     const side = border?.[edge];
     // Reads the CURRENT border off `ns` at write-time rather than the
@@ -681,12 +737,33 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     wrap.setAttribute('data-cg-field', key);
     const lbl = el('span', 'cg-colgroups-field-label');
     lbl.textContent = label;
-    const picker = new ColorPickerControl(value ?? '', onChange);
+
+    // A bordered pill holding the swatch trigger + an inline hex label. The
+    // label mirrors the picker's current colour and refreshes on every (live)
+    // commit; an unset field reads a muted "Default" instead of a fake hex.
+    const pill = el('div', 'cg-colgroups-colorfield');
+    const valueEl = el('span', 'cg-colgroups-colorfield-value');
+    const setLabel = (hex: string): void => {
+      if (hex) {
+        valueEl.textContent = hex;
+        valueEl.classList.remove('cg-colgroups-colorfield-empty');
+      } else {
+        valueEl.textContent = 'Default';
+        valueEl.classList.add('cg-colgroups-colorfield-empty');
+      }
+    };
+    setLabel(toHexLabel(value));
+
+    const picker = new ColorPickerControl(value ?? '', (rgba) => {
+      setLabel(toHexLabel(rgba));
+      onChange(rgba);
+    });
     this.stylePickers.push(picker);
     if (swatchAriaLabel) {
       picker.el.querySelector('.cg-colorpicker-swatch')?.setAttribute('aria-label', swatchAriaLabel);
     }
-    wrap.append(lbl, picker.el);
+    pill.append(picker.el, valueEl);
+    wrap.append(lbl, pill);
     return wrap;
   }
 
@@ -778,24 +855,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     const btnId = uid(); btn.id = btnId; lbl.htmlFor = btnId;
     row.append(lbl, btn);
     return row;
-  }
-
-  /** All column (leaf) descendants of group `groupId`, direct + nested,
-   *  depth-first in sibling order — used to populate the Style band's
-   *  "Children visibility" list. */
-  private descendantColumns(groupId: string): ColumnNode[] {
-    const out: ColumnNode[] = [];
-    const walk = (parentId: string) => {
-      this.nodes
-        .filter((n) => n.parentId === parentId)
-        .sort((a, b) => a.order - b.order)
-        .forEach((n) => {
-          if (n.kind === 'column') out.push(n);
-          else walk(n.id);
-        });
-    };
-    walk(groupId);
-    return out;
   }
 
   // ── Row builders ───────────────────────────────────────────────────
@@ -912,28 +971,50 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     // column that lives INSIDE a group — an ungrouped (top-level) column has
     // no group to open/close relative to, so no control is rendered for it.
     if (n.parentId !== null) {
-      wrap.appendChild(this.buildGroupShowControl(n.colId, n.columnGroupShow, 'inline'));
+      wrap.appendChild(this.buildVisibilityControl(n.colId, n.columnGroupShow));
     }
 
     return wrap;
   }
 
-  /** Shared control builder for BOTH `columnGroupShow` UI surfaces — the
-   *  inline per-row control (`variant: 'inline'`, tagged `data-cg-groupshow`)
-   *  and the Style band's "Children visibility" mirror (`variant: 'child'`,
-   *  tagged `data-cg-child-show="<colId>"`). Both funnel through this one
-   *  helper so the two surfaces can never diverge: same options, same
-   *  `setColumnGroupShow` write, and — because every write triggers
-   *  `mutate()` -> `render()` -> `renderStyle()` — each surface always
-   *  reflects the other's latest edit. */
+  /** Inline column-group visibility affordance (row-level). Reveals the full
+   *  3-state picker only on row hover (see `.cg-colgroups-visibility` CSS); when
+   *  the row is at rest a single muted caret marks a CONDITIONAL column (open /
+   *  closed) so it reads at a glance, while an always-visible column shows
+   *  nothing — keeping the common case clutter-free. */
+  private buildVisibilityControl(
+    colId: string,
+    value: 'open' | 'closed' | null | undefined,
+  ): HTMLElement {
+    const vis = el('div', 'cg-colgroups-visibility');
+    const state = value ?? '';
+    // Rest-state marker — only for conditional columns.
+    if (state === 'open' || state === 'closed') {
+      const marker = el('span', 'cg-colgroups-vis-current');
+      marker.setAttribute('aria-hidden', 'true');
+      marker.appendChild(iconGroupShow(state));
+      marker.title = state === 'open'
+        ? 'Visible only when the group is expanded'
+        : 'Visible only when the group is collapsed';
+      vis.appendChild(marker);
+    }
+    // Hover-revealed picker.
+    const picker = this.buildGroupShowControl(colId, value);
+    picker.classList.add('cg-colgroups-vis-picker');
+    vis.appendChild(picker);
+    return vis;
+  }
+
+  /** The inline per-row `columnGroupShow` control (tagged `data-cg-groupshow`):
+   *  a 3-state segment (always / show-when-open / show-when-collapsed) whose
+   *  every write goes through `setColumnGroupShow` and triggers
+   *  `mutate()` -> `render()`, so the row's rest-state marker stays in sync. */
   private buildGroupShowControl(
     colId: string,
     value: 'open' | 'closed' | null | undefined,
-    variant: 'inline' | 'child',
   ): HTMLElement {
     const seg = el('div', 'cg-colgroups-seg cg-colgroups-groupshow');
-    if (variant === 'inline') seg.setAttribute('data-cg-groupshow', '');
-    else seg.setAttribute('data-cg-child-show', colId);
+    seg.setAttribute('data-cg-groupshow', '');
     seg.setAttribute('role', 'group');
     seg.setAttribute('aria-label', 'Column group visibility');
     const cur = value ?? '';
@@ -1085,6 +1166,18 @@ let controlSeq = 0;
 const uid = (): string => `cg-colgroups-ctl-${++controlSeq}`;
 
 const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Format any CSS colour string as an uppercase `#RRGGBB` label for the colour
+ *  fields' inline value text (alpha is dropped — the swatch's checkerboard shows
+ *  transparency). Returns '' for an unset/unparseable value so the field can
+ *  fall back to a muted placeholder. */
+function toHexLabel(value: string | undefined): string {
+  if (!value) return '';
+  const c = parseColor(value);
+  if (!c) return '';
+  const h = (n: number): string => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, '0');
+  return `#${h(c.r)}${h(c.g)}${h(c.b)}`.toUpperCase();
+}
 
 function cssEscape(s: string): string {
   return s.replace(/["\\]/g, '\\$&');

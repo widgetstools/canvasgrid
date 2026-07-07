@@ -22,6 +22,7 @@ import type { CFilterModelEntry, FilterModel } from './filter';
 import type { GroupModel } from './group';
 import type { CGridEvent } from './event';
 import type { CGridOptions } from './options';
+import type { FloatingRect } from '../interaction/floatingPanel/host';
 
 export interface Tx<TRow = any> {
   add?: TRow[];
@@ -404,6 +405,35 @@ export interface CGridApi<TRow = any> {
   /** Cycle 11 / Task 6 — the id of the currently open panel, or
    *  `null` when no panel is open / no side bar is configured. */
   getOpenedToolPanel(): string | null;
+  /** Generic floating-panel primitive (draggable/resizable, non-modal,
+   *  Close-only — no dock) for tool-panel content that has nowhere to
+   *  dock back to, e.g. the Column Groups per-group Style editor
+   *  (invoked from a group row's gear icon). Opens `title` and returns
+   *  the body element for the caller to fill. Calling again while
+   *  already open closes the previous frame first and opens a fresh
+   *  one, so the caller can retarget it (new title/content) without
+   *  calling `closeFloatingPanel()` itself first. `rect` defaults to
+   *  the last-remembered position/size (persisted under
+   *  `GridState.toolPanelPopoutRect`) when omitted, so successive opens
+   *  land where the user last left it. */
+  openFloatingPanel(opts: { title: string; rect?: Partial<FloatingRect>; onClose: () => void }): HTMLElement;
+  /** Close the floating panel opened via `openFloatingPanel`, if any.
+   *  Idempotent — a no-op when already closed. Does NOT itself invoke
+   *  the `onClose` callback (that only fires from the frame's own
+   *  Close button). */
+  closeFloatingPanel(): void;
+  /** Whether the floating panel opened via `openFloatingPanel` is
+   *  currently open. */
+  isFloatingPanelOpen(): boolean;
+  /** Update the open floating panel's titlebar text in place (no reopen),
+   *  preserving its position/focus while the subject is renamed. No-op
+   *  when no float is open. */
+  setFloatingPanelTitle(title: string): void;
+  /** Resize the open floating panel's height to hug its current content
+   *  (width/position untouched). Call after rendering fixed-height content
+   *  so the panel opens snug rather than with an empty lower band. No-op
+   *  when no float is open. */
+  fitFloatingPanelHeight(): void;
   /** Cycle 11 / Task 6 — the resolved `SideBarDef` (string shortcuts
    *  expanded into full `ToolPanelDef` objects, `position` defaulted
    *  to `'right'` when not specified), or `undefined` when no side

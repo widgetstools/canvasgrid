@@ -238,9 +238,9 @@ test('group header styling: italic + dashed border apply to headerStyle and pers
     'true',
   );
 
-  // Border box-model editor — the "All sides" edge is selected by default,
-  // so width/style/colour compose a single border.all object. Width + style
-  // (native number/select controls).
+  // Border editor — the Side selector reads "All" by default, so width/style/
+  // colour compose a single border.all object. Width + style (native number/
+  // select controls).
   await page.locator('[data-cg-field="borderWidth"] input').fill('2');
   await page.locator('[data-cg-field="borderWidth"] input').blur();
   await page.locator('[data-cg-field="borderStyle"] select').selectOption('dashed');
@@ -283,21 +283,19 @@ test('group header styling: italic + dashed border apply to headerStyle and pers
   expect(tradeAfterReload!.headerStyle?.fontStyle).toBe('italic');
 });
 
-// Task 12 — the box-model border editor writes a single selected side.
-// Clicking the "top" edge target scopes width/style to headerStyle.border.top
-// (leaving border.all untouched), which then survives Apply + a reload.
+// Task 12 — the border editor writes a single selected side. Choosing "Top"
+// in the Side selector scopes width/style to headerStyle.border.top (leaving
+// border.all untouched), which then survives Apply + a reload.
 test('group header styling: a per-side (top) border applies to headerStyle.border.top and persists', async ({ page }) => {
   await openColumnGroupsTab(page);
 
   await page.locator('[data-cg-node="trade"] [data-cg-select]').click();
   await expect(page.locator('[data-cg-style][data-for="trade"]')).toBeVisible();
 
-  // Select the top edge of the box-model preview, then set width + style.
-  await page.locator('[data-cg-border] [data-cg-border-edge="top"]').click();
-  await expect(page.locator('[data-cg-border] [data-cg-border-edge="top"]')).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  // Scope the border editor to the top side via the Side selector, then set
+  // width + style.
+  await page.locator('[data-cg-border] [data-cg-border-side]').selectOption('top');
+  await expect(page.locator('[data-cg-border] [data-cg-border-side]')).toHaveValue('top');
   await page.locator('[data-cg-field="borderWidth"] input').fill('3');
   await page.locator('[data-cg-field="borderWidth"] input').blur();
   await page.locator('[data-cg-field="borderStyle"] select').selectOption('dotted');
@@ -341,8 +339,11 @@ test('group header styling: a per-side (top) border applies to headerStyle.borde
 test('setting a grouped column\'s columnGroupShow to "When collapsed" persists across reload', async ({ page }) => {
   await openColumnGroupsTab(page);
 
-  // `columnGroupShow` is now a 3-state segment (● Always · ◐ Open · ○ Closed).
-  const groupShow = page.locator('[data-cg-node="pnl"] [data-cg-groupshow]');
+  // `columnGroupShow` is a 3-state segment (eye = always · ⌄ = when expanded ·
+  // › = when collapsed), revealed on ROW HOVER — so hover the row first.
+  const row = page.locator('[data-cg-node="pnl"]');
+  await row.hover();
+  const groupShow = row.locator('[data-cg-groupshow]');
   await expect(groupShow).toBeVisible();
   await groupShow.locator('[data-value="closed"]').click();
 
@@ -373,6 +374,70 @@ test('setting a grouped column\'s columnGroupShow to "When collapsed" persists a
       return pnlAfterReload?.columnGroupShow ?? null;
     }, { timeout: 10_000 })
     .toBe('closed');
+});
+
+// Column-group UI refactor — the inline visibility control (eye / ⌄ / ›) is
+// hidden at rest and revealed only on row hover, so idle rows stay uncluttered.
+test('the column-group visibility control is hidden at rest and revealed on row hover', async ({ page }) => {
+  await openColumnGroupsTab(page);
+  const row = page.locator('[data-cg-node="pnl"]');
+  const picker = row.locator('.cg-colgroups-vis-picker');
+  // pnl is a grouped column → it has the control, but it is hidden at rest.
+  await expect(picker).toHaveCount(1);
+  await expect(picker).toBeHidden();
+  // Hovering the row reveals the 3-state picker.
+  await row.hover();
+  await expect(picker).toBeVisible();
+});
+
+// The per-GROUP Style editor floats out of the sidebar into a non-modal
+// palette (invoked from the gear ["Edit group style"] icon on a group row's
+// caption) rather than the whole Column Groups panel popping out.
+test('clicking a group\'s gear opens a floating Style editor (Close-only, no dock) and closing it deselects the group', async ({ page }) => {
+  await openColumnGroupsTab(page);
+
+  const groupRow = page.locator('[data-cg-node="trade"][data-kind="group"]');
+  await groupRow.hover();
+  await groupRow.locator('[data-cg-select]').click();
+
+  const float = page.locator('.cg-floating-panel');
+  await expect(float).toBeVisible();
+  await expect(page.locator('.cg-floating-panel-title')).toHaveText('Style — Trade');
+  // Style controls are present (fill/text swatches).
+  await expect(float.locator('[data-cg-field="bg"]')).toBeVisible();
+  await expect(float.locator('[data-cg-field="fg"]')).toBeVisible();
+  // Close-only — nowhere to dock back to.
+  await expect(float.locator('.cg-floating-panel-dock')).toHaveCount(0);
+  await expect(float.locator('.cg-floating-panel-close')).toBeVisible();
+  // The gear reflects the selection.
+  await expect(groupRow.locator('[data-cg-select]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(groupRow).toHaveAttribute('data-selected', '');
+
+  // Close — the float disappears and the group is deselected.
+  await float.locator('.cg-floating-panel-close').click();
+  await expect(page.locator('.cg-floating-panel')).toHaveCount(0);
+  await expect(groupRow).not.toHaveAttribute('data-selected', '');
+  await expect(groupRow.locator('[data-cg-select]')).toHaveAttribute('aria-pressed', 'false');
+});
+
+// Clicking the gear on a DIFFERENT group while one is already floating
+// retargets the SAME float to the new group instead of opening a second one.
+test('selecting a different group\'s gear retargets the Style float to the new group', async ({ page }) => {
+  await openColumnGroupsTab(page);
+
+  const tradeRow = page.locator('[data-cg-node="trade"][data-kind="group"]');
+  const riskRow = page.locator('[data-cg-node="risk"][data-kind="group"]');
+
+  await tradeRow.hover();
+  await tradeRow.locator('[data-cg-select]').click();
+  await expect(page.locator('.cg-floating-panel-title')).toHaveText('Style — Trade');
+
+  await riskRow.hover();
+  await riskRow.locator('[data-cg-select]').click();
+  await expect(page.locator('.cg-floating-panel')).toHaveCount(1);
+  await expect(page.locator('.cg-floating-panel-title')).toHaveText('Style — Risk');
+  await expect(tradeRow).not.toHaveAttribute('data-selected', '');
+  await expect(riskRow).toHaveAttribute('data-selected', '');
 });
 
 // Cycle 21i / Task 8 — the RUNTIME open/collapse state of a column group

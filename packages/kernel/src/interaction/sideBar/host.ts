@@ -233,6 +233,12 @@ export class SideBarHost {
 
   /** The resolved (string-shortcuts-expanded) side bar def. Exposed so
    *  `api.getSideBar()` (Task 6) can return the live shape. */
+  /** The tab label for `id` (e.g. `'Column Groups'`), from the resolved slot
+   *  def; falls back to the id. Used for the floating-panel title. */
+  getPanelLabel(id: string): string {
+    return this.slots.get(id)?.def.labelDefault ?? id;
+  }
+
   getSideBarDef(): SideBarDef {
     return this.def;
   }
