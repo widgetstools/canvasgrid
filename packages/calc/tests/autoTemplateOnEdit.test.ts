@@ -97,3 +97,35 @@ describe('CalcEngine.editColumn — auto-template-on-edit', () => {
     expect(own.overrides).toEqual({ width: 120 }); // headerName dropped
   });
 });
+
+// ─── headerStyle (CGridExt formatting toolbar: Header target) ──────────────
+// headerStyle rides the same own-template plumbing as cellStyle: per-key
+// merge across successive edits, template-chain fold, and pass-through to
+// the kernel patch (kernel CColDef.headerStyle, ColCellOverrides vocabulary).
+describe('CalcEngine.editColumn — headerStyle', () => {
+  it('merges per-key across edits and reaches resolvedPatchFor', () => {
+    const calc = new CalcEngine();
+    calc.editColumn('price', { headerStyle: { bg: '#12333a' } }, { now: 1 });
+    calc.editColumn('price', { headerStyle: { fg: '#4fd1c5' }, cellStyle: { fontWeight: 'bold' } }, { now: 2 });
+
+    const own = calc.listTemplates().find((t) => t.id === OWN('price'))!;
+    expect(own.overrides).toEqual({
+      headerStyle: { bg: '#12333a', fg: '#4fd1c5' },
+      cellStyle: { fontWeight: 'bold' },
+    });
+    expect(calc.resolvedPatchFor('price', 'number')).toEqual({
+      headerStyle: { bg: '#12333a', fg: '#4fd1c5' },
+      cellStyle: { fontWeight: 'bold' },
+    });
+  });
+
+  it('folds through shared templates (own wins per-key)', () => {
+    const calc = new CalcEngine();
+    calc.saveTemplate({ id: 'shared', name: 'Shared', overrides: { headerStyle: { bg: '#000000', fontWeight: 'bold' } }, now: 1 });
+    calc.applyTemplate('shared', ['price']);
+    calc.editColumn('price', { headerStyle: { bg: '#12333a' } }, { now: 2 });
+    expect(calc.resolvedPatchFor('price', 'number')).toEqual({
+      headerStyle: { bg: '#12333a', fontWeight: 'bold' }, // own bg wins, shared weight survives
+    });
+  });
+});

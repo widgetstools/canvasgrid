@@ -146,44 +146,63 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
         section('Bulk', group(bulkValue, bulkApply), bulkCount),
       );
 
-      // Row 2 — SCOPE · type · B I U · align · size
-      const scope = group(
-        toggleBtn(I.grid, 'Grid scope'), toggleBtn(I.rows, 'Row scope'),
-        toggleBtn(I.cursor, 'Cell scope'), toggleBtn(I.range, 'Range scope'),
-      );
-      scope.querySelector('button')?.classList.add('is-on');
+      // Row 2 — TARGET (cell/header) · selection readout · type B I U · align · size
+      const targetCell = toggleBtn(I.grid, 'Style cells');
+      const targetHeader = toggleBtn(I.rows, 'Style headers');
+      targetCell.classList.add('is-on');
+      const selPill = pill('Select a cell', false);
+      const bold = toggleBtn(I.bold, 'Bold');
+      const italic = toggleBtn(I.italic, 'Italic');
+      const underline = toggleBtn(I.underline, 'Underline');
+      const alignL = toggleBtn(I.alignLeft, 'Align left');
+      const alignC = toggleBtn(I.alignCenter, 'Align center');
+      const alignR = toggleBtn(I.alignRight, 'Align right');
+      const sizeVal = document.createElement('span'); sizeVal.textContent = '12px';
+      const sizeUp = document.createElement('button'); sizeUp.type = 'button'; sizeUp.className = 'cgext-rb-step'; sizeUp.title = 'Larger font'; sizeUp.innerHTML = svg('M6 15l6-6 6 6', 11);
+      const sizeDn = document.createElement('button'); sizeDn.type = 'button'; sizeDn.className = 'cgext-rb-step'; sizeDn.title = 'Smaller font'; sizeDn.innerHTML = svg('M6 9l6 6 6-6', 11);
+      const sizeWrap = h('cgext-rb-stepper');
+      const sizeStack = h('cgext-rb-step-stack'); sizeStack.append(sizeUp, sizeDn);
+      sizeWrap.append(sizeVal, sizeStack);
       const row2 = h('cgext-rb-row');
       row2.append(
-        section('Scope', scope),
+        section('Target', group(targetCell, targetHeader)),
         sep(),
-        group(pill('Select a cell', false), iconBtn(I.lock, 'Lock'), iconBtn(I.text, 'Text'), iconBtn(I.comment, 'Note')),
+        group(selPill),
         sep(),
-        group(iconBtn(I.undo, 'Undo format'), iconBtn(I.redo, 'Redo format')),
-        sep(),
-        section('Type', pill('Select a column', false)),
-        group(toggleBtn(I.bold, 'Bold'), toggleBtn(I.italic, 'Italic'), toggleBtn(I.underline, 'Underline')),
-        group(toggleBtn(I.alignLeft, 'Align left'), toggleBtn(I.alignCenter, 'Align center'), toggleBtn(I.alignRight, 'Align right')),
-        stepper('11px'),
+        section('Type', group(bold, italic, underline)),
+        group(alignL, alignC, alignR),
+        sizeWrap,
       );
 
       // Row 3 — PAINT + popout (right)
+      const textColorBtn = iconBtn(I.paintText, 'Text color');
+      const fillColorBtn = iconBtn(I.fill, 'Fill color');
+      const textColorInput = document.createElement('input');
+      textColorInput.type = 'color'; textColorInput.className = 'cgext-rb-colorinput'; textColorInput.value = '#4fd1c5';
+      const fillColorInput = document.createElement('input');
+      fillColorInput.type = 'color'; fillColorInput.className = 'cgext-rb-colorinput'; fillColorInput.value = '#12333a';
       const row3 = h('cgext-rb-row');
-      const paint = section('Paint', group(iconBtn(I.paintText, 'Text color'), iconBtn(I.fill, 'Fill color')), sep(), iconBtn(I.selection, 'Selection'));
+      const paint = section('Paint', group(textColorBtn, textColorInput, fillColorBtn, fillColorInput));
       const spacer = h('cgext-rb-spacer');
       const pop = iconBtn(I.popout, 'Pop out');
       pop.addEventListener('click', () => ctx.events.emit({ type: 'popout' }));
       row3.append(paint, spacer, pop);
 
       // Row 4 — FORMAT · EDIT · GROUP
+      const fmtDollar = iconBtn(I.dollar, 'Currency format');
+      const fmtPercent = iconBtn(I.percent, 'Percent format');
+      const fmtThousands = iconBtn(I.hash, 'Thousands format');
+      const decDown = iconBtn(I.decDown, 'Fewer decimals');
+      const decUp = iconBtn(I.decUp, 'More decimals');
+      const fmtCode = pill('# Format');
       const row4 = h('cgext-rb-row');
       row4.append(
         section('Format',
-          group(iconBtn(I.dollar, 'Currency'), pill('None'), iconBtn(I.percent, 'Percent'), iconBtn(I.hash, 'Number')),
+          group(fmtDollar, fmtPercent, fmtThousands),
           sep(),
-          group(iconBtn(I.decDown, 'Fewer decimals'), iconBtn(I.decUp, 'More decimals')),
+          group(decDown, decUp),
           sep(),
-          pill('1/32 None'),
-          pill('# Format'),
+          fmtCode,
         ),
         sep(),
         section('Edit', group(iconBtn(I.edit, 'Editor'), pill('None')), group(iconBtn(I.filter, 'Filter'), pill('None')), iconBtn(I.filterOff, 'Clear filter')),
@@ -194,11 +213,13 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       // Row 5 — TEMPLATES
       const row5 = h('cgext-rb-row');
       const clear = pill('Clear', false); clear.classList.add('cgext-rb-danger');
+      clear.title = 'Clear styling + format on the selected columns';
+      const eraser = iconBtn(I.eraser, 'Clear formatting');
       row5.append(
         section('Templates',
           group(iconBtn(I.templates, 'Templates'), pill('', true)),
           clear,
-          iconBtn(I.eraser, 'Clear formatting'),
+          eraser,
           dangerIcon(I.trash, 'Delete template'),
         ),
       );
@@ -230,7 +251,16 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
           })
         : undefined;
 
-      return { destroy() { disposeEditing?.(); off(); host.replaceChildren(); } };
+      const disposeFormatting = wireFormattingToolbar(ctx, {
+        targetCell, targetHeader, selPill,
+        bold, italic, underline, alignL, alignC, alignR,
+        sizeVal, sizeUp, sizeDn,
+        textColorBtn, textColorInput, fillColorBtn, fillColorInput,
+        fmtDollar, fmtPercent, fmtThousands, decDown, decUp, fmtCode,
+        clear, eraser,
+      });
+
+      return { destroy() { disposeEditing?.(); disposeFormatting(); off(); host.replaceChildren(); } };
     },
   };
 }
@@ -325,6 +355,191 @@ function wireEditingToolbar(ctx: CgExtContext, getEdit: EditHandleGetter, r: Edi
   return () => { for (const d of disposers) { try { d(); } catch { /* ignore */ } } };
 }
 
+// ── Formatting-toolbar wiring (column styling via @cgrid/calc editColumn) ──
+interface FormattingRefs {
+  targetCell: HTMLButtonElement; targetHeader: HTMLButtonElement; selPill: HTMLButtonElement;
+  bold: HTMLButtonElement; italic: HTMLButtonElement; underline: HTMLButtonElement;
+  alignL: HTMLButtonElement; alignC: HTMLButtonElement; alignR: HTMLButtonElement;
+  sizeVal: HTMLElement; sizeUp: HTMLButtonElement; sizeDn: HTMLButtonElement;
+  textColorBtn: HTMLButtonElement; textColorInput: HTMLInputElement;
+  fillColorBtn: HTMLButtonElement; fillColorInput: HTMLInputElement;
+  fmtDollar: HTMLButtonElement; fmtPercent: HTMLButtonElement; fmtThousands: HTMLButtonElement;
+  decDown: HTMLButtonElement; decUp: HTMLButtonElement; fmtCode: HTMLButtonElement;
+  clear: HTMLButtonElement; eraser: HTMLButtonElement;
+}
+
+/** Bind the Formatting toolbar to the kernel + calc engine: derive target
+ *  COLUMNS from the current cell selection, then write static styling to
+ *  those columns' cells or headers (Target toggle) via the public
+ *  `editColumn(colId, { cellStyle | headerStyle })` — kernel `ColCellOverrides`
+ *  vocabulary (`fg`/`bg`/`halign`/`fontWeight`/`fontStyle`/`textDecoration`/
+ *  `fontSize`) — and number formats via `editColumn(colId, { format })`.
+ *  Toggle states reflect the first target column's own-template overrides
+ *  (`__cgridOwn:<colId>` from `getTemplates()` — the public read surface).
+ *  Returns a disposer. */
+function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void {
+  const disposers: Array<() => void> = [];
+  const grid = ctx.grid as unknown as {
+    getCellRanges(): Array<{ colIds: string[] }>;
+    getFocusedCell(): { rowId: string; colId: string } | null;
+    getColumnHeaderName(colId: string): string | undefined;
+    editColumn(colId: string, patch: Record<string, unknown>): void;
+    getTemplates(): Array<{ id: string; overrides: Record<string, unknown> }>;
+    removeTemplate(colId: string, templateId: string): void;
+    deleteTemplate(templateId: string): void;
+    addEventListener(type: string, fn: () => void): Unsub;
+  };
+  let target: 'cell' | 'header' = 'cell';
+
+  /** Columns identified from the selected cells (ranges first, focus fallback). */
+  const targetCols = (): string[] => {
+    try {
+      const fromRanges = grid.getCellRanges().flatMap((rg) => rg.colIds);
+      if (fromRanges.length) return [...new Set(fromRanges)];
+      const focus = grid.getFocusedCell();
+      return focus ? [focus.colId] : [];
+    } catch { return []; }
+  };
+
+  /** The first target column's own-template style slice for the active target. */
+  const currentStyle = (): Record<string, unknown> => {
+    const cols = targetCols();
+    if (!cols.length) return {};
+    try {
+      const own = grid.getTemplates().find((t) => t.id === `__cgridOwn:${cols[0]}`);
+      const slice = own?.overrides?.[target === 'header' ? 'headerStyle' : 'cellStyle'];
+      return (slice as Record<string, unknown>) ?? {};
+    } catch { return {}; }
+  };
+  const currentFormat = (): string | undefined => {
+    const cols = targetCols();
+    if (!cols.length) return undefined;
+    try {
+      const own = grid.getTemplates().find((t) => t.id === `__cgridOwn:${cols[0]}`);
+      return own?.overrides?.format as string | undefined;
+    } catch { return undefined; }
+  };
+
+  const applyStyle = (patch: Record<string, unknown>): void => {
+    const cols = targetCols();
+    if (!cols.length) return;
+    const key = target === 'header' ? 'headerStyle' : 'cellStyle';
+    for (const colId of cols) {
+      try { grid.editColumn(colId, { [key]: patch }); } catch { /* unknown column */ }
+    }
+    ctx.profiles.markDirty();
+    refresh();
+  };
+  const applyFormat = (format: string): void => {
+    const cols = targetCols();
+    if (!cols.length) return;
+    for (const colId of cols) {
+      try { grid.editColumn(colId, { format }); } catch { /* non-compiling / unknown */ }
+    }
+    ctx.profiles.markDirty();
+    refresh();
+  };
+
+  /** Reflect the first target column's state into the controls. */
+  const refresh = (): void => {
+    const cols = targetCols();
+    const none = cols.length === 0;
+    r.selPill.querySelector('span')!.textContent = none
+      ? 'Select a cell'
+      : cols.length === 1
+        ? (grid.getColumnHeaderName?.(cols[0]!) ?? cols[0]!)
+        : `${cols.length} columns`;
+    for (const b of [r.bold, r.italic, r.underline, r.alignL, r.alignC, r.alignR,
+      r.textColorBtn, r.fillColorBtn, r.fmtDollar, r.fmtPercent, r.fmtThousands,
+      r.decDown, r.decUp, r.fmtCode, r.clear, r.eraser, r.sizeUp, r.sizeDn]) {
+      (b as HTMLButtonElement).disabled = none;
+    }
+    const s = currentStyle();
+    r.bold.classList.toggle('is-on', s.fontWeight === 'bold');
+    r.italic.classList.toggle('is-on', s.fontStyle === 'italic');
+    r.underline.classList.toggle('is-on', s.textDecoration === 'underline');
+    r.alignL.classList.toggle('is-on', s.halign === 'left');
+    r.alignC.classList.toggle('is-on', s.halign === 'center');
+    r.alignR.classList.toggle('is-on', s.halign === 'right');
+    r.sizeVal.textContent = `${(s.fontSize as number | undefined) ?? 12}px`;
+  };
+
+  // Target toggle (cell vs header styling)
+  const setTarget = (t: 'cell' | 'header') => {
+    target = t;
+    r.targetCell.classList.toggle('is-on', t === 'cell');
+    r.targetHeader.classList.toggle('is-on', t === 'header');
+    refresh();
+  };
+  r.targetCell.addEventListener('click', () => setTarget('cell'));
+  r.targetHeader.addEventListener('click', () => setTarget('header'));
+
+  // Type: bold / italic / underline (toggle against current own-template state)
+  r.bold.addEventListener('click', () =>
+    applyStyle({ fontWeight: currentStyle().fontWeight === 'bold' ? 'normal' : 'bold' }));
+  r.italic.addEventListener('click', () =>
+    applyStyle({ fontStyle: currentStyle().fontStyle === 'italic' ? 'normal' : 'italic' }));
+  r.underline.addEventListener('click', () =>
+    applyStyle({ textDecoration: currentStyle().textDecoration === 'underline' ? 'none' : 'underline' }));
+  r.alignL.addEventListener('click', () => applyStyle({ halign: 'left' }));
+  r.alignC.addEventListener('click', () => applyStyle({ halign: 'center' }));
+  r.alignR.addEventListener('click', () => applyStyle({ halign: 'right' }));
+
+  // Font size stepper (8–24px)
+  const bumpSize = (delta: number) => {
+    const cur = (currentStyle().fontSize as number | undefined) ?? 12;
+    applyStyle({ fontSize: Math.min(24, Math.max(8, cur + delta)) });
+  };
+  r.sizeUp.addEventListener('click', () => bumpSize(1));
+  r.sizeDn.addEventListener('click', () => bumpSize(-1));
+
+  // Paint: fg / bg via native color inputs
+  r.textColorBtn.addEventListener('click', () => r.textColorInput.click());
+  r.fillColorBtn.addEventListener('click', () => r.fillColorInput.click());
+  r.textColorInput.addEventListener('change', () => applyStyle({ fg: r.textColorInput.value }));
+  r.fillColorInput.addEventListener('change', () => applyStyle({ bg: r.fillColorInput.value }));
+
+  // Format presets + decimals (cell data only — formats don't apply to headers)
+  const decimalsOf = (fmt: string | undefined): number => {
+    const m = /\.(0+)/.exec(fmt ?? '');
+    return m ? m[1]!.length : 2;
+  };
+  const numberFormat = (decimals: number): string =>
+    decimals <= 0 ? '#,##0' : `#,##0.${'0'.repeat(decimals)}`;
+  r.fmtDollar.addEventListener('click', () => applyFormat(`$${numberFormat(decimalsOf(currentFormat()))}`));
+  r.fmtPercent.addEventListener('click', () => applyFormat('0.00%'));
+  r.fmtThousands.addEventListener('click', () => applyFormat(numberFormat(decimalsOf(currentFormat()))));
+  r.decDown.addEventListener('click', () => applyFormat(numberFormat(decimalsOf(currentFormat()) - 1)));
+  r.decUp.addEventListener('click', () => applyFormat(numberFormat(decimalsOf(currentFormat()) + 1)));
+  r.fmtCode.addEventListener('click', () => {
+    const entered = window.prompt('Format code (format DSL, e.g. $#,##0.00 or 0.00%)', currentFormat() ?? '#,##0.00');
+    if (entered) applyFormat(entered);
+  });
+
+  // Clear: drop the target columns' own templates (styling + format)
+  const clearFormatting = () => {
+    const cols = targetCols();
+    for (const colId of cols) {
+      const ownId = `__cgridOwn:${colId}`;
+      try { grid.removeTemplate(colId, ownId); } catch { /* not assigned */ }
+      try { grid.deleteTemplate(ownId); } catch { /* not present */ }
+    }
+    if (cols.length) { ctx.profiles.markDirty(); refresh(); }
+  };
+  r.clear.addEventListener('click', clearFormatting);
+  r.eraser.addEventListener('click', clearFormatting);
+
+  // Selection-driven readout
+  try {
+    disposers.push(grid.addEventListener('cellSelectionChanged', refresh));
+    disposers.push(grid.addEventListener('cellFocused', refresh));
+    disposers.push(grid.addEventListener('templatesChanged', refresh));
+  } catch { /* bare test surfaces */ }
+  refresh();
+
+  return () => { for (const d of disposers) { try { d(); } catch { /* ignore */ } } };
+}
+
 // ── styles ──────────────────────────────────────────────────────────────
 export function injectRibbonStyles(): void {
   if (typeof document === 'undefined') return;
@@ -394,6 +609,8 @@ const RIBBON_CSS = `
 .cgext-rb-step-stack { display: flex; flex-direction: column; }
 .cgext-rb-step { appearance: none; border: none; background: transparent; color: var(--cg-muted-fg-color, #9aa4b6); cursor: pointer; height: 12px; display: flex; align-items: center; padding: 0; }
 .cgext-rb-step:hover { color: var(--cg-fg-color, #e5e9f0); }
+
+.cgext-rb-colorinput { width: 0; height: 0; padding: 0; border: none; opacity: 0; position: absolute; pointer-events: none; }
 
 .cgext-rb-danger-btn { color: var(--cg-neg-color, #e5646e); }
 .cgext-rb-danger-btn:hover { background: color-mix(in srgb, var(--cg-neg-color, #e5646e) 16%, transparent); color: var(--cg-neg-color, #e5646e); }

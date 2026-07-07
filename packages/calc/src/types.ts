@@ -57,6 +57,7 @@ export interface ColumnOverride {
   headerName?: string;
   format?: string;                  // format-DSL string → kernel compiler
   cellStyle?: Record<string, unknown>;
+  headerStyle?: Record<string, unknown>;  // ColCellOverrides vocabulary, same as cellStyle
   cellRenderer?: string;
   editable?: boolean;
   hide?: boolean;

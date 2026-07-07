@@ -78,7 +78,7 @@ const EDITABLE_SCALAR_KEYS = ['format', 'cellRenderer', 'editable', 'hide', 'wid
 
 /** The editable-attribute patch accepted by {@link CalcEngine.editColumn}. */
 export type ColumnEditPatch = Partial<
-  Pick<ColumnOverride, 'format' | 'cellRenderer' | 'editable' | 'hide' | 'width' | 'cellStyle'>
+  Pick<ColumnOverride, 'format' | 'cellRenderer' | 'editable' | 'hide' | 'width' | 'cellStyle' | 'headerStyle'>
 >;
 
 export class CalcEngine {
@@ -361,6 +361,10 @@ export class CalcEngine {
       // Clone so a caller mutating a shared cellStyle object (or its nested
       // values) after the edit can't corrupt the stored own template (L3).
       overrides.cellStyle = structuredClone({ ...(overrides.cellStyle ?? {}), ...patch.cellStyle });
+    }
+    if (patch.headerStyle !== undefined) {
+      // Same per-key merge + clone semantics as cellStyle.
+      overrides.headerStyle = structuredClone({ ...(overrides.headerStyle ?? {}), ...patch.headerStyle });
     }
     this.#templates.set(ownId, {
       id: ownId,

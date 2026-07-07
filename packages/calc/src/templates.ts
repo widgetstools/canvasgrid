@@ -25,6 +25,9 @@ function mergeLayer(into: ColumnOverride, layer: TemplateOverrides): void {
   if (layer.cellStyle !== undefined) {
     into.cellStyle = { ...(into.cellStyle ?? {}), ...layer.cellStyle };
   }
+  if (layer.headerStyle !== undefined) {
+    into.headerStyle = { ...(into.headerStyle ?? {}), ...layer.headerStyle };
+  }
 }
 
 export function foldTemplateChain(
