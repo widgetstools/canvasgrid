@@ -1,5 +1,5 @@
 import type {
-  CgExtContext, SettingsModule, ToolbarItem, ToolbarSlot, ModuleInstance,
+  CgExtContext, SettingsModule, ToolbarItem, ToolbarItemInstance, ToolbarSlot, ModuleInstance,
 } from '../extension/types';
 
 /** The shell is a vertical stack of DOM strips wrapping the kernel canvas:
@@ -18,7 +18,7 @@ export class ShellLayout {
   private ribbon: HTMLElement;
   private sheet: HTMLElement;
   private modules = new Map<string, { module: SettingsModule; ctx: CgExtContext }>();
-  private openModuleId: string | null = null;
+  private toolbarInstances: ToolbarItemInstance[] = [];
   private live: ModuleInstance | null = null;
 
   constructor(private root: HTMLElement) {
@@ -40,7 +40,7 @@ export class ShellLayout {
     const host = el('cgext-toolbar-item');
     host.dataset.itemId = item.id;
     this.slotHost(item.slot).appendChild(host);
-    item.render(host, ctx);
+    this.toolbarInstances.push(item.render(host, ctx));
   }
 
   mountSettingsModule(module: SettingsModule, ctx: CgExtContext): void {
@@ -52,7 +52,6 @@ export class ShellLayout {
     if (!target || !this.modules.has(target)) return;
     this.renderSheet(target);
     this.sheet.hidden = false;
-    this.openModuleId = target;
   }
 
   private renderSheet(id: string): void {
@@ -67,13 +66,15 @@ export class ShellLayout {
     this.live?.destroy();
     this.live = null;
     this.sheet.hidden = true;
-    this.openModuleId = null;
   }
 
   isSettingsOpen(): boolean { return !this.sheet.hidden; }
 
   destroy(): void {
     this.live?.destroy();
+    this.live = null;
+    for (const inst of this.toolbarInstances) inst?.destroy();
+    this.toolbarInstances = [];
     this.root.replaceChildren();
     this.root.classList.remove('cgext-root');
   }

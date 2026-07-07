@@ -46,4 +46,18 @@ describe('ShellLayout', () => {
     shell.closeSettings();
     expect(shell.isSettingsOpen()).toBe(false);
   });
+
+  it('destroys mounted toolbar-item instances on teardown', () => {
+    const root = document.createElement('div');
+    const shell = new ShellLayout(root);
+    let destroyed = 0;
+    const item: ToolbarItem = {
+      id: 'refresh', kind: 'toolbar-item', slot: 'primary-left', init: vi.fn(),
+      render: (host) => { host.textContent = 'refresh'; return { destroy() { destroyed += 1; } }; },
+    };
+    shell.mountToolbarItem(item, ctx);
+    expect(destroyed).toBe(0);
+    shell.destroy();
+    expect(destroyed).toBe(1);
+  });
 });
