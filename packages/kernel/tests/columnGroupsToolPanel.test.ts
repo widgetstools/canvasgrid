@@ -325,35 +325,22 @@ describe('ColumnGroupsToolPanel', () => {
       expect(trade.headerStyle.fontWeight).toBe('bold');
     });
 
-    it('renders a "Children visibility" list bound to the selected group\'s columns, sharing setColumnGroupShow', () => {
-      const onApply = vi.fn();
+    it('the Style band holds ONLY styling clusters (fill/text, border, behavior) — no children-visibility list', () => {
       const float = makeFloatStub();
       const panel = new ColumnGroupsToolPanel();
-      panel.init(makeParams(onApply, float));
+      panel.init(makeParams(vi.fn(), float));
       const gui = panel.getGui();
       (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
 
       const style = float.body()!.querySelector('[data-cg-style]')!;
-      const bidChild = style.querySelector('[data-cg-child-show="bid"]') as HTMLElement;
-      expect(bidChild).toBeTruthy();
-      // 3-state segment (● Always default · ◐ Open · ○ Closed).
-      expect(bidChild.querySelector('[data-value=""]')!.getAttribute('aria-pressed')).toBe('true');
-
-      (bidChild.querySelector('[data-value="closed"]') as HTMLButtonElement).click();
-
-      const apply = gui.querySelector('[data-cg-apply]') as HTMLButtonElement;
-      expect(apply.disabled).toBe(false);
-
-      // Same helper wrote it — the inline control on the 'bid' row must
-      // now reflect the identical value too (both surfaces never diverge).
-      const inline = gui.querySelector('[data-cg-node="bid"] [data-cg-groupshow]') as HTMLElement;
-      expect(inline.querySelector('[data-value="closed"]')!.getAttribute('aria-pressed')).toBe('true');
-
-      apply.click();
-      const { columnDefs } = onApply.mock.calls[0][0];
-      const trade = columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
-      const bid = trade.children.find((c: { colId?: string }) => c.colId === 'bid');
-      expect(bid.columnGroupShow).toBe('closed');
+      // The per-column columnGroupShow mirror was removed from the popout;
+      // that control lives only on the inline tree rows now.
+      expect(style.querySelector('[data-cg-child-show]')).toBeNull();
+      // The styling clusters are still there.
+      expect(style.querySelector('[data-cg-field="bg"]')).toBeTruthy();
+      expect(style.querySelector('[data-cg-field="borderWidth"]')).toBeTruthy();
+      // The inline per-row control is untouched.
+      expect(gui.querySelector('[data-cg-node="bid"] [data-cg-groupshow]')).toBeTruthy();
     });
 
     // Task 9 — StarUI parity: italic/underline/fontSize/alignment/border.

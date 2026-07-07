@@ -3275,31 +3275,11 @@
   cursor: pointer;
 }
 
-/* Task 7 — `columnGroupShow` (always/open/closed) authoring, now a compact
- * 3-state segment (● Always · ◐ Open · ○ Closed) reused by BOTH the inline
- * tree-row control and the Style band's "Children visibility" mirror. */
+/* Task 7 — `columnGroupShow` (always/open/closed) authoring: a compact
+ * 3-state segment (● Always · ◐ Open · ○ Closed), the inline tree-row control
+ * revealed on row hover. */
 .cg-colgroups-groupshow {
   flex: 0 0 auto;
-}
-.cg-colgroups-childshow-list {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.cg-colgroups-childshow-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  padding: 2px 0;
-}
-.cg-colgroups-childshow-label {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: var(--cg-font-size-sm);
-  color: var(--cg-fg-color);
 }
 
 /* Cycle 13 / Task 1 — status bar shell. Mounts as a sibling of the

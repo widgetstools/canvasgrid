@@ -451,28 +451,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     section.appendChild(this.buildFillTextCluster(g, patchStyle));
     section.appendChild(this.buildBorderCluster(g, patch));
     section.appendChild(this.buildBehaviorCluster(g, patch));
-
-    // "Children visibility" — mirrors the inline `columnGroupShow` control
-    // (see `buildGroupShowControl`) for every column nested (directly or
-    // transitively) under the selected group, so a user styling a group can
-    // also author its columns' expand/collapse visibility from one place.
-    const children = this.descendantColumns(g.id);
-    if (children.length > 0) {
-      const cluster = el('div', 'cg-colgroups-cluster');
-      cluster.appendChild(eyebrow('Children visibility', 'cg-colgroups-cluster-eyebrow'));
-      const list = el('div', 'cg-colgroups-childshow-list');
-      children.forEach((c) => {
-        const row = el('div', 'cg-colgroups-childshow-row');
-        const label = document.createElement('label');
-        label.className = 'cg-colgroups-childshow-label';
-        label.textContent = c.headerName;
-        row.appendChild(label);
-        row.appendChild(this.buildGroupShowControl(c.colId, c.columnGroupShow, 'child'));
-        list.appendChild(row);
-      });
-      cluster.appendChild(list);
-      section.appendChild(cluster);
-    }
   }
 
   /** Colour-picker commit path (Fix 3) — writes to the model WITHOUT
@@ -846,24 +824,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     return row;
   }
 
-  /** All column (leaf) descendants of group `groupId`, direct + nested,
-   *  depth-first in sibling order — used to populate the Style band's
-   *  "Children visibility" list. */
-  private descendantColumns(groupId: string): ColumnNode[] {
-    const out: ColumnNode[] = [];
-    const walk = (parentId: string) => {
-      this.nodes
-        .filter((n) => n.parentId === parentId)
-        .sort((a, b) => a.order - b.order)
-        .forEach((n) => {
-          if (n.kind === 'column') out.push(n);
-          else walk(n.id);
-        });
-    };
-    walk(groupId);
-    return out;
-  }
-
   // ── Row builders ───────────────────────────────────────────────────
 
   private groupControls(n: GroupNode): HTMLElement {
@@ -1006,28 +966,22 @@ export class ColumnGroupsToolPanel implements ToolPanel {
       vis.appendChild(marker);
     }
     // Hover-revealed picker.
-    const picker = this.buildGroupShowControl(colId, value, 'inline');
+    const picker = this.buildGroupShowControl(colId, value);
     picker.classList.add('cg-colgroups-vis-picker');
     vis.appendChild(picker);
     return vis;
   }
 
-  /** Shared control builder for BOTH `columnGroupShow` UI surfaces — the
-   *  inline per-row control (`variant: 'inline'`, tagged `data-cg-groupshow`)
-   *  and the Style band's "Children visibility" mirror (`variant: 'child'`,
-   *  tagged `data-cg-child-show="<colId>"`). Both funnel through this one
-   *  helper so the two surfaces can never diverge: same options, same
-   *  `setColumnGroupShow` write, and — because every write triggers
-   *  `mutate()` -> `render()` -> `renderStyle()` — each surface always
-   *  reflects the other's latest edit. */
+  /** The inline per-row `columnGroupShow` control (tagged `data-cg-groupshow`):
+   *  a 3-state segment (always / show-when-open / show-when-collapsed) whose
+   *  every write goes through `setColumnGroupShow` and triggers
+   *  `mutate()` -> `render()`, so the row's rest-state marker stays in sync. */
   private buildGroupShowControl(
     colId: string,
     value: 'open' | 'closed' | null | undefined,
-    variant: 'inline' | 'child',
   ): HTMLElement {
     const seg = el('div', 'cg-colgroups-seg cg-colgroups-groupshow');
-    if (variant === 'inline') seg.setAttribute('data-cg-groupshow', '');
-    else seg.setAttribute('data-cg-child-show', colId);
+    seg.setAttribute('data-cg-groupshow', '');
     seg.setAttribute('role', 'group');
     seg.setAttribute('aria-label', 'Column group visibility');
     const cur = value ?? '';
