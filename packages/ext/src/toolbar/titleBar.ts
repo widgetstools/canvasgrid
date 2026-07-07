@@ -12,6 +12,7 @@
  * geometry) — no external asset, crisp at any DPI.
  */
 import type { CgExtension, CgExtContext, ToolbarItem, ToolbarItemInstance, Unsub } from '../extension/types';
+import { menu, svg, iconButton } from './ui';
 
 export interface TitleBarOptions {
   /** Brand label shown at the far left (e.g. the grid's name). */
@@ -55,10 +56,6 @@ const ICON = {
   moon: 'M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9z',
 };
 
-function svg(path: string, size = 16): string {
-  return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>`;
-}
-
 // ── item factories ─────────────────────────────────────────────────────────
 
 function item(
@@ -67,16 +64,6 @@ function item(
   render: (host: HTMLElement, ctx: CgExtContext) => ToolbarItemInstance,
 ): ToolbarItem {
   return { id, kind: 'toolbar-item', slot, init() {}, render };
-}
-
-function iconButton(icon: string, label: string): HTMLButtonElement {
-  const b = document.createElement('button');
-  b.type = 'button';
-  b.className = 'cgext-iconbtn';
-  b.title = label;
-  b.setAttribute('aria-label', label);
-  b.innerHTML = svg(icon);
-  return b;
 }
 
 function brandItem(name: string): ToolbarItem {
@@ -128,30 +115,6 @@ function notificationsItem(): ToolbarItem {
     host.appendChild(iconButton(ICON.bell, 'Notifications'));
     return { destroy() { host.replaceChildren(); } };
   });
-}
-
-/** Simple click-away popup menu anchored under `anchor`. */
-function menu(anchor: HTMLElement, build: (close: () => void) => HTMLElement): { toggle: () => void; destroy: () => void } {
-  let panel: HTMLElement | null = null;
-  const close = () => {
-    if (!panel) return;
-    panel.remove(); panel = null;
-    document.removeEventListener('pointerdown', onDoc, true);
-  };
-  const onDoc = (e: PointerEvent) => {
-    if (panel && !panel.contains(e.target as Node) && !anchor.contains(e.target as Node)) close();
-  };
-  const open = () => {
-    panel = build(close);
-    panel.classList.add('cgext-menu');
-    document.body.appendChild(panel);
-    const r = anchor.getBoundingClientRect();
-    panel.style.top = `${Math.round(r.bottom + 4)}px`;
-    // right-align to the anchor
-    panel.style.left = `${Math.round(r.right - panel.offsetWidth)}px`;
-    document.addEventListener('pointerdown', onDoc, true);
-  };
-  return { toggle: () => (panel ? close() : open()), destroy: close };
 }
 
 function profilesItem(): ToolbarItem {
