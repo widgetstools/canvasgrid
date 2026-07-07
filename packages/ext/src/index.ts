@@ -7,3 +7,4 @@ export { createExtContext, createExtEventBus } from './extension/context';
 export { ShellLayout } from './shell/shell';
 export { CGridExt, type CGridExtOptions } from './cgridExt';
 export { CgridExtElement, defineCgridExt } from './element';
+export { gridOptionsModule } from './modules/gridOptions';
