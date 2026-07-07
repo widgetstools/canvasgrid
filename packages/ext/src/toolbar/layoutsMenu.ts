@@ -51,6 +51,34 @@ const I = {
 
 const errText = (e: unknown): string => (e instanceof Error ? e.message : String(e));
 
+/** "<base> copy", "<base> copy 2", … — first name not taken (kernel
+ *  uniqueness is trimmed + case-insensitive; mirror it). */
+export function uniqueCopyName(base: string, existing: string[]): string {
+  const norm = (s: string) => s.trim().toLowerCase();
+  const taken = new Set(existing.map(norm));
+  let candidate = `${base} copy`;
+  for (let i = 2; taken.has(norm(candidate)); i++) candidate = `${base} copy ${i}`;
+  return candidate;
+}
+
+function slug(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '') || 'layout';
+}
+
+function downloadJson(filename: string, data: unknown): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+/** Indirection so unit tests can intercept file downloads. */
+export const fileIO = { download: downloadJson };
+
 // ── trigger + panel ────────────────────────────────────────────────────────
 
 export function layoutsItem(): ToolbarItem {
@@ -122,12 +150,101 @@ function buildPanel(ctx: CgExtContext): { el: HTMLElement; refresh: () => void }
   const showError = (message: string) => { errorEl.textContent = message; errorEl.hidden = false; };
   const refresh = () => {
     errorEl.hidden = true;
-    countEl.textContent = String(grid.getLayouts().length);
-    listEl.replaceChildren(); // rows land in Task 3
-    void showError; // referenced by Task 3/4 row + footer handlers
+    const layouts = grid.getLayouts();
+    const activeId = grid.getActiveLayoutId();
+    countEl.textContent = String(layouts.length);
+    listEl.replaceChildren(...layouts.map((l) => layoutRow(grid, l, l.id === activeId, layouts, showError)));
   };
   refresh();
   return { el, refresh };
+}
+
+function layoutRow(
+  grid: LayoutGridSurface,
+  l: { id: string; name: string },
+  active: boolean,
+  layouts: { id: string; name: string }[],
+  showError: (message: string) => void,
+): HTMLElement {
+  const row = document.createElement('div');
+  row.className = 'cgext-layouts-row' + (active ? ' is-active' : '');
+  row.dataset.layoutId = l.id;
+  row.innerHTML =
+    `<span class="cgext-layouts-mark">${active ? svg(I.check, 13) : '<i class="cgext-layouts-dot"></i>'}</span>` +
+    `<span class="cgext-layouts-name"></span>` +
+    `<span class="cgext-layouts-actions"></span>`;
+  const nameEl = row.querySelector<HTMLElement>('.cgext-layouts-name')!;
+  nameEl.textContent = l.name;                 // textContent + setAttribute — names are user input
+  nameEl.setAttribute('title', l.name);
+
+  row.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('.cgext-layouts-actions, .cgext-layouts-rename')) return;
+    if (l.id === grid.getActiveLayoutId()) return;
+    try { grid.loadLayout(l.id); } catch (err) { showError(errText(err)); }
+  });
+
+  const actions = row.querySelector<HTMLElement>('.cgext-layouts-actions')!;
+  const act = (kind: string, icon: string, label: string, onClick: () => void) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'cgext-layouts-act';
+    b.dataset.act = kind;
+    b.title = label;
+    b.setAttribute('aria-label', `${label} layout '${l.name}'`);
+    b.innerHTML = svg(icon, 13);
+    b.addEventListener('click', (e) => { e.stopPropagation(); onClick(); });
+    actions.appendChild(b);
+  };
+
+  const locked = l.id === DEFAULT_ID;
+  if (!locked) act('rename', I.pencil, 'Rename', () => startRename(grid, row, l));
+  act('duplicate', I.copy, 'Duplicate', () => {
+    try { grid.duplicateLayout(l.id, uniqueCopyName(l.name, layouts.map((x) => x.name))); }
+    catch (err) { showError(errText(err)); }
+  });
+  act('export', I.download, 'Export', () => {
+    try { fileIO.download(`${slug(l.name)}.cgrid-layout.json`, grid.exportLayout(l.id)); }
+    catch (err) { showError(errText(err)); }
+  });
+  if (!locked) act('delete', I.trash, 'Delete', () => {
+    try { grid.deleteLayout(l.id); } catch (err) { showError(errText(err)); }
+  });
+  else {
+    const lock = document.createElement('span');
+    lock.className = 'cgext-layouts-lock';
+    lock.title = 'Built-in layout';
+    lock.innerHTML = svg(I.lock, 13);
+    actions.appendChild(lock);
+  }
+  return row;
+}
+
+/** Swap the name label for an inline rename input. Enter commits (success
+ *  re-renders via layoutChanged; a kernel throw marks the input and keeps it
+ *  open), Escape/blur cancels back to the label. */
+function startRename(grid: LayoutGridSurface, row: HTMLElement, l: { id: string; name: string }): void {
+  const nameEl = row.querySelector<HTMLElement>('.cgext-layouts-name')!;
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'cgext-layouts-rename';
+  input.value = l.name;
+  nameEl.replaceWith(input);
+  input.focus();
+  input.select();
+  let done = false;
+  const cancel = () => { if (!done) { done = true; input.replaceWith(nameEl); } };
+  input.addEventListener('pointerdown', (e) => e.stopPropagation());
+  input.addEventListener('click', (e) => e.stopPropagation());
+  input.addEventListener('blur', cancel);
+  input.addEventListener('input', () => { input.classList.remove('is-error'); input.title = ''; });
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Escape') cancel();
+    if (e.key === 'Enter') {
+      try { grid.renameLayout(l.id, input.value); done = true; } // layoutChanged re-renders the list
+      catch (err) { input.classList.add('is-error'); input.title = errText(err); }
+    }
+  });
 }
 
 // ── styles ─────────────────────────────────────────────────────────────────
