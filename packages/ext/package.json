@@ -13,6 +13,7 @@
   },
   "scripts": {
     "build": "echo '@cgrid/ext is source-direct — no build yet' && exit 0",
+    "prebuild-icon-catalog": "tsx src/toolbar/buildIconCatalog.ts",
     "test": "vitest run --passWithNoTests",
     "typecheck": "tsc --noEmit"
   },
@@ -29,6 +30,7 @@
   },
   "devDependencies": {
     "happy-dom": "^15.0.0",
+    "tsx": "^4.22.4",
     "typescript": "~5.9.3",
     "vitest": "^2.1.0"
   }
