@@ -13,7 +13,11 @@
   "dependencies": {
     "@stomp/stompjs": "^7.1.1",
     "@cgrid/ext": "*",
-    "@cgrid/kernel": "*"
+    "@cgrid/kernel": "*",
+    "@cgrid/format": "*",
+    "@cgrid/edit": "*",
+    "@cgrid/calc": "*",
+    "@cgrid/rules": "*"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",

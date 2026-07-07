@@ -15,6 +15,12 @@ export interface Position {
   spread: number;
   dv01: number;
   pv01: number;
+  // Synthesized client-side (decorateWithCategoricals in main.ts) so the
+  // row-group panel / Columns tool panel have meaningful categorical columns.
+  desk?: string;
+  region?: string;
+  currency?: string;
+  trader?: string;
 }
 
 export interface StompCallbacks {
