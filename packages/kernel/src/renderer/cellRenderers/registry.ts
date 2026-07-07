@@ -679,9 +679,35 @@ export const headerCell: CellPainter = {
         }
       } else {
         gc.fillText(p.valueFormatted, textX, cy);
+        // Wrapped-header path draws left-anchored; the decoration helper
+        // back-computes x0 from p.halign, so only decorate when they agree.
+        if (p.halign !== 'right' && p.halign !== 'center') paintTextDecoration(gc, p, textX, cy);
       }
+    } else if (p.pivotGroupExpand === undefined && p.halign === 'right') {
+      // Leaf headers honor headerStyle.halign — the fold defaults headers to
+      // 'left', so only an explicit headerStyle / headerClass variant lands
+      // here. Right-aligned captions reserve the sort-icon slot so the
+      // caption never draws under the chevron. Group-caret headers
+      // (pivotGroupExpand set) keep their left-anchored caret geometry.
+      const reserve = (p.sortDirection || p.unSortIcon)
+        ? SORT_ICON_PAD + SORT_ICON_SIZE + 2
+        : HEADER_PADDING;
+      const x = p.bounds.x + p.bounds.w - reserve;
+      gc.cache.textAlign = 'right';
+      gc.fillText(caption, x, cy);
+      paintTextDecoration(gc, p, x, cy);
+    } else if (p.pivotGroupExpand === undefined && p.halign === 'center') {
+      const x = p.bounds.x + p.bounds.w / 2;
+      gc.cache.textAlign = 'center';
+      gc.fillText(caption, x, cy);
+      paintTextDecoration(gc, p, x, cy);
     } else {
       gc.fillText(caption, textX, cy);
+      // Underline / strike-through for the plain leaf caption (same helper
+      // as the data text painter). Skipped for group-caret headers, whose
+      // caption may be ellipsized (≠ p.valueFormatted, which the helper
+      // measures).
+      if (p.pivotGroupExpand === undefined) paintTextDecoration(gc, p, textX, cy);
     }
     if (p.pivotGroupExpand !== undefined) {
       // Task 10 — horizontal expand/collapse caret for ALL column-group

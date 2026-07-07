@@ -6121,8 +6121,30 @@ export class CGrid<TRow = any> {
    *  visible column list, refresh layout, and rebuild the subgrid stack so
    *  any change in group depth lands a matching number of header rows. */
   private rebuildColumns({ defaultColDef }: { defaultColDef?: Partial<any> }): void {
+    const prevLeaves = this.columnDefsMap as Map<string, ResolvedColDef<TRow>> | undefined;
     // Cycle 21d / Task 9 — same calc-provider fold as the constructor path.
     this.columnTree = resolveColumnTree(foldCalcColumnDefs<CColDef<TRow> | CColGroupDef<TRow>>(this.options.columnDefs), defaultColDef ?? this.options.defaultColDef, this.options.columnTypes);
+    // Live column widths survive the rebuild. A drag-resize (and
+    // setColumnWidths / applyColumnState) mutates ONLY the resolved def —
+    // re-resolving from `options.columnDefs` would silently discard it, so
+    // any calc-driven rebuild (editColumn styling a header, applying a
+    // template, …) visibly reset the user's column widths. Carry the
+    // previous leaf's width forward UNLESS the calc override explicitly
+    // sets a width for that column (an explicit `editColumn({width})` /
+    // template width must still win).
+    if (prevLeaves !== undefined) {
+      const provider = getCalcProvider();
+      for (const [colId, def] of this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>) {
+        const prev = prevLeaves.get(colId);
+        if (prev?.width === undefined || prev.width === def.width) continue;
+        const patch = provider?.resolvedPatchFor(
+          colId, (def as { cellDataType?: string }).cellDataType === 'number' ? 'number' : 'text',
+        );
+        if (patch === null || patch === undefined || (patch as { width?: number }).width === undefined) {
+          (def as { width?: number }).width = prev.width;
+        }
+      }
+    }
     this.columnDefsMap = this.columnTree.leafById as Map<string, ResolvedColDef<TRow>>;
     this.colGroupPathCache = null;
     // columnTree.leafById is a fresh Map that only holds user-supplied columns.

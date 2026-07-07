@@ -764,6 +764,12 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
     : undefined;
 
   if (ctx.isHeader) {
+    // Headers are LEFT-aligned regardless of the cellDataType-derived data
+    // alignment set above (numbers right-align their CELLS, not their
+    // captions — matching the painter's historical behavior). An explicit
+    // `headerStyle.halign` / headerClass variant below overrides this, which
+    // is what lets the formatting toolbar align header captions.
+    target.halign = 'left';
     // Header path: group-header cells supply groupHeaderClassNames (from the
     // group's pre-resolved headerClass); leaf header cells fall back to the
     // leaf colDef's headerClassStatic / headerClassFn. Group wins; leaf is skipped
