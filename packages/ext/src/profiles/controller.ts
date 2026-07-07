@@ -47,9 +47,15 @@ export class ProfilesController implements ProfileController {
   }
 
   async switchTo(id: string): Promise<void> {
+    // "Switch to a SAVED profile" — a missing id is a no-op. Load FIRST and
+    // only adopt the new id / apply state / clear dirty when the snapshot
+    // actually exists; otherwise the active pointer, dirty flag and grid
+    // state are all left untouched. (Adopting an unknown id and clearing
+    // dirty would silently lose the user's current state pointer.)
     const snap = await this.store.load(id);
+    if (!snap) return;
     this.id = id;
-    if (snap) this.grid.setState(snap.gridState);
+    this.grid.setState(snap.gridState);
     this.setDirty(false);
   }
 
