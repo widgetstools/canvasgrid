@@ -429,6 +429,11 @@ export interface CGridApi<TRow = any> {
    *  preserving its position/focus while the subject is renamed. No-op
    *  when no float is open. */
   setFloatingPanelTitle(title: string): void;
+  /** Resize the open floating panel's height to hug its current content
+   *  (width/position untouched). Call after rendering fixed-height content
+   *  so the panel opens snug rather than with an empty lower band. No-op
+   *  when no float is open. */
+  fitFloatingPanelHeight(): void;
   /** Cycle 11 / Task 6 — the resolved `SideBarDef` (string shortcuts
    *  expanded into full `ToolPanelDef` objects, `position` defaulted
    *  to `'right'` when not specified), or `undefined` when no side

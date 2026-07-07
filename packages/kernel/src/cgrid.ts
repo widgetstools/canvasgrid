@@ -5318,6 +5318,14 @@ export class CGrid<TRow = any> {
     this.floatingPanelHost?.setTitle(title);
   }
 
+  /** Resize the open floating panel's height to hug its current content
+   *  (width/position untouched), removing any empty lower band. Call after
+   *  (re)rendering fixed-height content into the body. No-op when no float
+   *  is open. */
+  fitFloatingPanelHeight(): void {
+    this.floatingPanelHost?.fitContentHeight();
+  }
+
   /** Cycle 11 / Task 6 — the resolved `SideBarDef` (string shortcuts
    *  expanded, `position` defaulted) currently driving the side bar,
    *  or `undefined` when no side bar was configured. The returned
@@ -6593,6 +6601,7 @@ export class CGrid<TRow = any> {
       closeFloatingPanel: () => this.closeFloatingPanel(),
       isFloatingPanelOpen: () => this.isFloatingPanelOpen(),
       setFloatingPanelTitle: (title) => this.setFloatingPanelTitle(title),
+      fitFloatingPanelHeight: () => this.fitFloatingPanelHeight(),
       getSideBar: () => this.getSideBar(),
       getStatusPanel: <T extends IStatusPanelComp = IStatusPanelComp>(key: string) =>
         this.getStatusPanel<T>(key),

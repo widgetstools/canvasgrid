@@ -185,6 +185,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     | 'closeFloatingPanel'
     | 'isFloatingPanelOpen'
     | 'setFloatingPanelTitle'
+    | 'fitFloatingPanelHeight'
   >;
   private nodes: Node[] = [];
   /** Canonical JSON of the last-applied projected tree — comparing against
@@ -451,6 +452,10 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     section.appendChild(this.buildFillTextCluster(g, patchStyle));
     section.appendChild(this.buildBorderCluster(g, patch));
     section.appendChild(this.buildBehaviorCluster(g, patch));
+
+    // Hug the content: the Style form is fixed-height, so shrink the float to
+    // fit it (dropping any empty lower band left by a restored/oversized rect).
+    this.api.fitFloatingPanelHeight();
   }
 
   /** Colour-picker commit path (Fix 3) — writes to the model WITHOUT

@@ -163,6 +163,26 @@ export class FloatingPanelHost {
     if (this.titleEl) this.titleEl.textContent = title;
   }
 
+  /** Resize the panel's HEIGHT to hug its current content, leaving width and
+   *  position untouched. For fixed-height content (e.g. the Style editor) this
+   *  removes any empty lower band left by a restored/oversized rect. Measures
+   *  the natural height of the body's content children — NOT `body.scrollHeight`,
+   *  which equals the (too-tall) client height when the frame already exceeds
+   *  its content. Clamped to bounds/min; does NOT fire `onRectChange` (this is
+   *  content-driven, not a user gesture). No-op while closed or if content
+   *  hasn't laid out yet (measures 0). */
+  fitContentHeight(): void {
+    if (!this.frame || !this.rect || !this.body || !this.titlebar) return;
+    let contentH = 0;
+    for (const child of Array.from(this.body.children)) {
+      contentH += (child as HTMLElement).offsetHeight;
+    }
+    if (contentH <= 0) return;
+    const chrome = this.frame.offsetHeight - this.frame.clientHeight; // top + bottom borders
+    const target = this.titlebar.offsetHeight + contentH + chrome;
+    this.applyRect(clampRect({ ...this.rect, h: target }, this.getBounds(), MIN_SIZE));
+  }
+
   /** Create + show the frame; returns the BODY element for the caller to
    *  append its content into. Caller owns content lifecycle. Reopening
    *  while already open closes the prior frame first. */

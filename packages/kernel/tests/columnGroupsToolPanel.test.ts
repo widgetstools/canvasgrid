@@ -33,6 +33,8 @@ function makeFloatStub() {
     setFloatingPanelTitle: vi.fn((t: string) => {
       if (open) title = t;
     }),
+    /** Content-fit height request (jsdom can't measure, so just a spy). */
+    fitFloatingPanelHeight: vi.fn(),
     /** The current float body, or `null` when closed. */
     body: () => body,
     /** The float's current title, or `''` when never opened. */
@@ -62,6 +64,7 @@ function makeParams(onApply: ReturnType<typeof vi.fn>, float: FloatStub = makeFl
       closeFloatingPanel: float.closeFloatingPanel,
       isFloatingPanelOpen: float.isFloatingPanelOpen,
       setFloatingPanelTitle: float.setFloatingPanelTitle,
+      fitFloatingPanelHeight: float.fitFloatingPanelHeight,
     },
   } as unknown as ToolPanelParams;
 }
@@ -82,6 +85,7 @@ function makeInterleavedParams(onApply: ReturnType<typeof vi.fn>, float: FloatSt
       closeFloatingPanel: float.closeFloatingPanel,
       isFloatingPanelOpen: float.isFloatingPanelOpen,
       setFloatingPanelTitle: float.setFloatingPanelTitle,
+      fitFloatingPanelHeight: float.fitFloatingPanelHeight,
     },
   } as unknown as ToolPanelParams;
 }
@@ -688,6 +692,15 @@ describe('ColumnGroupsToolPanel', () => {
       expect(float.body()).not.toBe(firstBody);
       expect(float.body()!.querySelector('[data-cg-style]')!.getAttribute('data-for')).toBe(secondId);
       expect((gui.querySelector(`[data-cg-node="${firstId}"]`) as HTMLElement).hasAttribute('data-selected')).toBe(false);
+    });
+
+    it('requests a content-fit height on every Style render (so the float hugs its content)', () => {
+      const float = makeFloatStub();
+      const panel = new ColumnGroupsToolPanel();
+      panel.init(makeParams(vi.fn(), float));
+      const gui = panel.getGui();
+      (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
+      expect(float.fitFloatingPanelHeight).toHaveBeenCalled();
     });
 
     it('renaming the currently-floated group refreshes the titlebar in place (no reopen)', () => {
