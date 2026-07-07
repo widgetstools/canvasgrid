@@ -532,9 +532,11 @@ describe('ColumnGroupsToolPanel', () => {
         const gui = panel.getGui();
         (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
         let style = float.body()!.querySelector('[data-cg-style]')!;
-        // Select the "top" edge before writing its colour.
-        (style.querySelector('[data-cg-border-edge="top"]') as HTMLButtonElement).click();
-        style = float.body()!.querySelector('[data-cg-style]')!; // edge-select IS a structural render
+        // Select the "top" side before writing its colour.
+        const sideSel = style.querySelector('[data-cg-border-side]') as HTMLSelectElement;
+        sideSel.value = 'top';
+        sideSel.dispatchEvent(new Event('change'));
+        style = float.body()!.querySelector('[data-cg-style]')!; // side-select IS a structural render
 
         const borderSwatch = style.querySelector('[data-cg-field="borderColor"] .cg-colorpicker-swatch') as HTMLButtonElement;
         borderSwatch.click();
@@ -597,24 +599,26 @@ describe('ColumnGroupsToolPanel', () => {
         s.value = v;
         s.dispatchEvent(new Event('change'));
       };
-      const clickEdge = (float: FloatStub, edge: string) =>
-        (style(float).querySelector(`[data-cg-border-edge="${edge}"]`) as HTMLButtonElement).click();
+      const clickEdge = (float: FloatStub, edge: string) => {
+        const sel = style(float).querySelector('[data-cg-border-side]') as HTMLSelectElement;
+        sel.value = edge;
+        sel.dispatchEvent(new Event('change'));
+      };
       const applied = (onApply: ReturnType<typeof vi.fn>) => {
         const { columnDefs } = onApply.mock.calls[0][0];
         return columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
       };
 
-      it('defaults to the "all" edge (its target is pressed on open)', () => {
+      it('defaults to the "all" side (the Side selector reads All on open)', () => {
         const { float } = selectAndStyleGroup();
         expect(style(float).querySelector('[data-cg-border]')).toBeTruthy();
-        expect(style(float).querySelector('[data-cg-border-edge="all"]')!.getAttribute('aria-pressed')).toBe('true');
-        expect(style(float).querySelector('[data-cg-border-edge="top"]')!.getAttribute('aria-pressed')).toBe('false');
+        expect((style(float).querySelector('[data-cg-border-side]') as HTMLSelectElement).value).toBe('all');
       });
 
-      it('selecting the top edge then setting width/style writes headerStyle.border.top (not .all)', () => {
+      it('selecting the top side then setting width/style writes headerStyle.border.top (not .all)', () => {
         const { gui, onApply, float } = selectAndStyleGroup();
         clickEdge(float, 'top');
-        expect(style(float).querySelector('[data-cg-border-edge="top"]')!.getAttribute('aria-pressed')).toBe('true');
+        expect((style(float).querySelector('[data-cg-border-side]') as HTMLSelectElement).value).toBe('top');
         setWidth(float, '3');
         setStyle(float, 'dotted');
         (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();

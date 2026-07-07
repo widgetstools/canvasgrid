@@ -3041,9 +3041,39 @@
 .cg-colgroups-field-color {
   flex: 1 1 0;
 }
-.cg-colgroups-field-color .cg-colorpicker,
-.cg-colgroups-field-color .cg-colorpicker-swatch {
-  width: 100%;
+/* Colour field = a bordered pill holding a small square swatch trigger + an
+ * inline hex label — reads like a settings input, not a bare colour chip. */
+.cg-colgroups-colorfield {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 3px;
+  padding-inline-end: 10px;
+  border: 1px solid var(--cg-border-color);
+  border-radius: var(--cg-radius, 5px);
+  background: color-mix(in srgb, var(--cg-fg-color) 4%, transparent);
+}
+.cg-colgroups-colorfield .cg-colorpicker {
+  flex: 0 0 auto;
+}
+.cg-colgroups-colorfield .cg-colorpicker-swatch {
+  width: 26px;
+  height: 26px;
+  border-radius: 4px;
+}
+.cg-colgroups-colorfield-value {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--cg-cell-font-family);
+  font-size: var(--cg-font-size-sm);
+  letter-spacing: 0.02em;
+  color: var(--cg-fg-color);
+}
+.cg-colgroups-colorfield-value.cg-colgroups-colorfield-empty {
+  color: color-mix(in srgb, var(--cg-fg-color) 45%, transparent);
 }
 .cg-colgroups-field-label {
   font-size: 11px;
@@ -3141,112 +3171,43 @@
   height: 15px;
   display: block;
 }
+/* Font-size field sits inline with the B/I/U + alignment segments, growing to
+ * fill the row; shows only its `auto` placeholder until a size is set. */
+.cg-colgroups-size {
+  flex: 1 1 auto;
+}
+.cg-colgroups-size .cg-settings-input-number {
+  width: 100%;
+  text-align: start;
+}
 
-/* ── Border box-model editor (the signature control) ──────────────────
- * A live preview of the group header cell, ringed by four clickable edge
- * strips + an All toggle, over width/style/colour controls that read and
- * write whichever edge is selected. */
+/* ── Border editor ────────────────────────────────────────────────────
+ * A live preview of the group header cell beside a `Side` selector, over
+ * width/style/colour controls that read & write whichever side is selected. */
 .cg-colgroups-border {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 12px;
 }
-.cg-colgroups-border-stage {
-  position: relative;
-  align-self: center;
-  width: 148px;
-  height: 60px;
-  padding: 8px;
+.cg-colgroups-border-head {
+  display: flex;
+  align-items: flex-end;
+  gap: 12px;
 }
 .cg-colgroups-border-preview {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: var(--cg-radius, 5px);
+  flex: 0 0 auto;
+  width: 84px;
+  height: 58px;
+  border-radius: var(--cg-radius, 6px);
   background: var(--cg-header-bg);
-  color: var(--cg-fg-color);
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cg-border-color) 60%, transparent);
-  overflow: hidden;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--cg-border-color) 55%, transparent);
 }
-.cg-colgroups-border-preview-label {
-  font-size: var(--cg-font-size-sm);
-  font-weight: 500;
-  padding: 0 6px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+.cg-colgroups-border-side {
+  flex: 1 1 auto;
 }
-/* Edge hit strips — thin transparent buttons hugging each side of the
- * preview; the selected edge lights up in the accent colour. */
-.cg-colgroups-edge {
-  position: absolute;
-  padding: 0;
-  background: transparent;
-  border: none;
-  border-radius: 2px;
-  cursor: pointer;
-}
-.cg-colgroups-edge::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  margin: auto;
-  border-radius: var(--cg-radius, 3px);
-  background: color-mix(in srgb, var(--cg-fg-color) 38%, transparent);
-  transition: background 110ms ease;
-}
-.cg-colgroups-edge:hover::after {
-  background: color-mix(in srgb, var(--cg-fg-color) 62%, transparent);
-}
-.cg-colgroups-edge[aria-pressed="true"]::after {
-  background: var(--cg-settings-accent);
-  box-shadow: 0 0 0 3px color-mix(in srgb, var(--cg-settings-accent) 28%, transparent);
-}
-@media (prefers-reduced-motion: reduce) {
-  .cg-colgroups-edge::after { transition: none; }
-}
-.cg-colgroups-edge:focus-visible {
-  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
-  outline-offset: 1px;
-}
-.cg-colgroups-edge-top,
-.cg-colgroups-edge-bottom {
-  left: 6px;
-  right: 6px;
-  height: 10px;
-}
-.cg-colgroups-edge-top { top: -1px; }
-.cg-colgroups-edge-top::after,
-.cg-colgroups-edge-bottom::after { height: 4px; }
-.cg-colgroups-edge-bottom { bottom: -1px; }
-.cg-colgroups-edge-left,
-.cg-colgroups-edge-right {
-  top: 6px;
-  bottom: 6px;
-  width: 10px;
-}
-.cg-colgroups-edge-left::after,
-.cg-colgroups-edge-right::after { width: 4px; }
-.cg-colgroups-edge-left { left: -1px; }
-.cg-colgroups-edge-right { right: -1px; }
-.cg-colgroups-edge-all {
-  align-self: center;
-  min-width: 0;
-  padding: 3px 14px;
-  border: 1px solid var(--cg-border-color);
-  border-radius: 999px;
-  background: color-mix(in srgb, var(--cg-fg-color) 4%, transparent);
-}
-/* Names which side the width/style/colour controls write to. */
-.cg-colgroups-border-caption {
-  align-self: center;
-  font-size: 10px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: color-mix(in srgb, var(--cg-fg-color) 55%, transparent);
+.cg-colgroups-border-side .cg-settings-select {
+  max-width: none;
+  width: 100%;
 }
 .cg-colgroups-border-fields {
   display: flex;
@@ -3255,6 +3216,10 @@
 }
 .cg-colgroups-border-fields .cg-colgroups-field-color {
   flex: 1 1 0;
+}
+.cg-colgroups-border-fields .cg-settings-select {
+  max-width: none;
+  width: 100%;
 }
 
 /* ── Behavior switches ────────────────────────────────────────────────*/

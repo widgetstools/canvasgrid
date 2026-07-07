@@ -25,7 +25,7 @@ import {
   type Node, type GroupNode, type ColumnNode,
 } from '../columnGroups/model';
 import type { CGridApi } from '../../types';
-import { ColorPickerControl } from '../settingsForm/colorPicker';
+import { ColorPickerControl, parseColor } from '../settingsForm/colorPicker';
 import type { BorderSpec, BorderStyle } from '../../types/cell';
 import { cloneDefsTree } from '../../core/columnTree';
 
@@ -469,10 +469,11 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     this.refreshBorderPreview();
   }
 
-  /** Repaints the border-preview cell's inline styles (bg/fg/per-side
-   *  border) for the currently selected group from `this.nodes` — the one
-   *  piece of Style-band DOM a live colour commit needs to keep current,
-   *  without rebuilding anything else. No-op if the border cluster isn't
+  /** Repaints the border-preview cell's per-side border inline styles for the
+   *  currently selected group from `this.nodes` — the one piece of Style-band
+   *  DOM a live border-colour commit needs to keep current, without rebuilding
+   *  anything else. The preview isolates the BORDER (no fill/text), so a live
+   *  Fill/Text commit leaves it untouched. No-op if the border cluster isn't
    *  mounted (e.g. no group selected, or the float isn't open). */
   private refreshBorderPreview(): void {
     if (!this.selectedGroupId || !this.floatBody) return;
@@ -482,8 +483,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     if (!g) return;
     const preview = this.floatBody.querySelector('.cg-colgroups-border-preview') as HTMLElement | null;
     if (!preview) return;
-    preview.style.background = g.headerStyle?.bg ?? '';
-    preview.style.color = g.headerStyle?.fg ?? '';
     const border = g.headerStyle?.border;
     preview.style.borderTop = borderSideToCss(effectiveBorderSide(border, 'top'));
     preview.style.borderRight = borderSideToCss(effectiveBorderSide(border, 'right'));
@@ -560,21 +559,33 @@ export class ColumnGroupsToolPanel implements ToolPanel {
       align.appendChild(b);
     });
     styleRow.appendChild(align);
-    cluster.appendChild(styleRow);
 
-    // Row 3 — Font size.
-    cluster.appendChild(this.numberField(
-      'fontSize', 'Size', g.headerStyle?.fontSize, 'Font size', 8, 32, 'auto',
-      (n) => (n && Number.isFinite(n) ? n : undefined),
-      (n) => patchStyle({ fontSize: n }),
-    ));
+    // Font size — inline on the same row as the B/I/U + alignment segments,
+    // shown as a bare `auto`-placeholder field (label-less; its `data-cg-field`
+    // wrapper keeps the E2E/unit `[data-cg-field="fontSize"] input` selector).
+    const sizeWrap = el('div', 'cg-colgroups-field cg-colgroups-size');
+    sizeWrap.setAttribute('data-cg-field', 'fontSize');
+    const sizeInput = document.createElement('input');
+    sizeInput.type = 'number';
+    sizeInput.className = 'cg-settings-input cg-settings-input-number';
+    sizeInput.min = '8'; sizeInput.max = '32';
+    sizeInput.setAttribute('aria-label', 'Font size');
+    sizeInput.placeholder = 'auto';
+    sizeInput.value = typeof g.headerStyle?.fontSize === 'number' ? String(g.headerStyle.fontSize) : '';
+    sizeInput.addEventListener('change', () => {
+      const raw = sizeInput.value === '' ? undefined : Number(sizeInput.value);
+      patchStyle({ fontSize: raw !== undefined && Number.isFinite(raw) ? raw : undefined });
+    });
+    sizeWrap.appendChild(sizeInput);
+    styleRow.appendChild(sizeWrap);
+    cluster.appendChild(styleRow);
 
     return cluster;
   }
 
-  /** BORDER cluster — the signature box-model editor: a live preview cell
-   *  with four clickable edge strips + an `All` toggle, and width/style/
-   *  colour controls that read & write the currently selected edge. */
+  /** BORDER cluster — a live preview of the header cell beside a `Side`
+   *  selector (All / Top / Right / Bottom / Left), over Width / Style / Colour
+   *  controls that read & write whichever side is selected. */
   private buildBorderCluster(
     g: GroupNode,
     patch: (p: Partial<Pick<GroupNode, 'headerStyle'>>) => void,
@@ -586,50 +597,46 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     editor.setAttribute('data-cg-border', '');
     const border = g.headerStyle?.border;
 
-    const stage = el('div', 'cg-colgroups-border-stage');
+    // Head row: live preview box (left) + the Side selector (right).
+    const head = el('div', 'cg-colgroups-border-head');
+
+    // A neutral swatch that previews ONLY the border (not the fill) — the
+    // Fill colour has its own field above; here the border reads clearly.
     const preview = el('div', 'cg-colgroups-border-preview');
-    if (g.headerStyle?.bg) preview.style.background = g.headerStyle.bg;
-    if (g.headerStyle?.fg) preview.style.color = g.headerStyle.fg;
+    preview.setAttribute('aria-hidden', 'true');
     preview.style.borderTop = borderSideToCss(effectiveBorderSide(border, 'top'));
     preview.style.borderRight = borderSideToCss(effectiveBorderSide(border, 'right'));
     preview.style.borderBottom = borderSideToCss(effectiveBorderSide(border, 'bottom'));
     preview.style.borderLeft = borderSideToCss(effectiveBorderSide(border, 'left'));
-    const previewLabel = el('span', 'cg-colgroups-border-preview-label');
-    previewLabel.textContent = g.headerName || 'Header';
-    preview.appendChild(previewLabel);
-    stage.appendChild(preview);
+    head.appendChild(preview);
 
-    (['top', 'right', 'bottom', 'left'] as const).forEach((edge) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = `cg-colgroups-edge cg-colgroups-edge-${edge}`;
-      b.setAttribute('data-cg-border-edge', edge);
-      b.setAttribute('aria-label', `${cap(edge)} border`);
-      b.setAttribute('aria-pressed', String(this.selectedEdge === edge));
-      b.addEventListener('click', () => { this.selectedEdge = edge; this.render(); });
-      stage.appendChild(b);
+    // Side selector — replaces the box-model edge strips: choosing a side
+    // (re-render) scopes the Width / Style / Colour controls to it.
+    const sideWrap = el('div', 'cg-colgroups-field cg-colgroups-border-side');
+    const sideLabel = labelEl('cg-colgroups-field-label');
+    sideLabel.textContent = 'Side';
+    const sideSel = document.createElement('select');
+    sideSel.className = 'cg-settings-input cg-settings-select';
+    sideSel.setAttribute('data-cg-border-side', '');
+    sideSel.setAttribute('aria-label', 'Border side');
+    ([
+      ['all', 'All'], ['top', 'Top'], ['right', 'Right'], ['bottom', 'Bottom'], ['left', 'Left'],
+    ] as const).forEach(([v, t]) => {
+      const o = document.createElement('option');
+      o.value = v; o.textContent = t;
+      sideSel.appendChild(o);
     });
-    editor.appendChild(stage);
+    sideSel.value = this.selectedEdge;
+    sideSel.addEventListener('change', () => {
+      this.selectedEdge = sideSel.value as BorderEdge;
+      this.render();
+    });
+    const sideId = uid(); sideSel.id = sideId; sideLabel.htmlFor = sideId;
+    sideWrap.append(sideLabel, sideSel);
+    head.appendChild(sideWrap);
+    editor.appendChild(head);
 
-    const allBtn = document.createElement('button');
-    allBtn.type = 'button';
-    allBtn.className = 'cg-colgroups-seg-btn cg-colgroups-edge-all';
-    allBtn.setAttribute('data-cg-border-edge', 'all');
-    allBtn.textContent = 'All sides';
-    allBtn.setAttribute('aria-label', 'All borders');
-    allBtn.setAttribute('aria-pressed', String(this.selectedEdge === 'all'));
-    allBtn.addEventListener('click', () => { this.selectedEdge = 'all'; this.render(); });
-    editor.appendChild(allBtn);
-
-    // Caption — makes the box-model editor legible: names the side the
-    // Width / Style / Colour controls below currently write to.
-    const caption = el('div', 'cg-colgroups-border-caption');
-    caption.textContent = this.selectedEdge === 'all'
-      ? 'Editing all sides'
-      : `Editing ${this.selectedEdge} border`;
-    editor.appendChild(caption);
-
-    // Width / style / colour — read & write the SELECTED edge.
+    // Width / style / colour — read & write the SELECTED side.
     const edge = this.selectedEdge;
     const side = border?.[edge];
     // Reads the CURRENT border off `ns` at write-time rather than the
@@ -725,12 +732,33 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     wrap.setAttribute('data-cg-field', key);
     const lbl = el('span', 'cg-colgroups-field-label');
     lbl.textContent = label;
-    const picker = new ColorPickerControl(value ?? '', onChange);
+
+    // A bordered pill holding the swatch trigger + an inline hex label. The
+    // label mirrors the picker's current colour and refreshes on every (live)
+    // commit; an unset field reads a muted "Default" instead of a fake hex.
+    const pill = el('div', 'cg-colgroups-colorfield');
+    const valueEl = el('span', 'cg-colgroups-colorfield-value');
+    const setLabel = (hex: string): void => {
+      if (hex) {
+        valueEl.textContent = hex;
+        valueEl.classList.remove('cg-colgroups-colorfield-empty');
+      } else {
+        valueEl.textContent = 'Default';
+        valueEl.classList.add('cg-colgroups-colorfield-empty');
+      }
+    };
+    setLabel(toHexLabel(value));
+
+    const picker = new ColorPickerControl(value ?? '', (rgba) => {
+      setLabel(toHexLabel(rgba));
+      onChange(rgba);
+    });
     this.stylePickers.push(picker);
     if (swatchAriaLabel) {
       picker.el.querySelector('.cg-colorpicker-swatch')?.setAttribute('aria-label', swatchAriaLabel);
     }
-    wrap.append(lbl, picker.el);
+    pill.append(picker.el, valueEl);
+    wrap.append(lbl, pill);
     return wrap;
   }
 
@@ -1133,6 +1161,18 @@ let controlSeq = 0;
 const uid = (): string => `cg-colgroups-ctl-${++controlSeq}`;
 
 const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** Format any CSS colour string as an uppercase `#RRGGBB` label for the colour
+ *  fields' inline value text (alpha is dropped — the swatch's checkerboard shows
+ *  transparency). Returns '' for an unset/unparseable value so the field can
+ *  fall back to a muted placeholder. */
+function toHexLabel(value: string | undefined): string {
+  if (!value) return '';
+  const c = parseColor(value);
+  if (!c) return '';
+  const h = (n: number): string => Math.round(Math.min(255, Math.max(0, n))).toString(16).padStart(2, '0');
+  return `#${h(c.r)}${h(c.g)}${h(c.b)}`.toUpperCase();
+}
 
 function cssEscape(s: string): string {
   return s.replace(/["\\]/g, '\\$&');

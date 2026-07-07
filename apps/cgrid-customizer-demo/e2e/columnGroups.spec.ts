@@ -238,9 +238,9 @@ test('group header styling: italic + dashed border apply to headerStyle and pers
     'true',
   );
 
-  // Border box-model editor — the "All sides" edge is selected by default,
-  // so width/style/colour compose a single border.all object. Width + style
-  // (native number/select controls).
+  // Border editor — the Side selector reads "All" by default, so width/style/
+  // colour compose a single border.all object. Width + style (native number/
+  // select controls).
   await page.locator('[data-cg-field="borderWidth"] input').fill('2');
   await page.locator('[data-cg-field="borderWidth"] input').blur();
   await page.locator('[data-cg-field="borderStyle"] select').selectOption('dashed');
@@ -283,21 +283,19 @@ test('group header styling: italic + dashed border apply to headerStyle and pers
   expect(tradeAfterReload!.headerStyle?.fontStyle).toBe('italic');
 });
 
-// Task 12 — the box-model border editor writes a single selected side.
-// Clicking the "top" edge target scopes width/style to headerStyle.border.top
-// (leaving border.all untouched), which then survives Apply + a reload.
+// Task 12 — the border editor writes a single selected side. Choosing "Top"
+// in the Side selector scopes width/style to headerStyle.border.top (leaving
+// border.all untouched), which then survives Apply + a reload.
 test('group header styling: a per-side (top) border applies to headerStyle.border.top and persists', async ({ page }) => {
   await openColumnGroupsTab(page);
 
   await page.locator('[data-cg-node="trade"] [data-cg-select]').click();
   await expect(page.locator('[data-cg-style][data-for="trade"]')).toBeVisible();
 
-  // Select the top edge of the box-model preview, then set width + style.
-  await page.locator('[data-cg-border] [data-cg-border-edge="top"]').click();
-  await expect(page.locator('[data-cg-border] [data-cg-border-edge="top"]')).toHaveAttribute(
-    'aria-pressed',
-    'true',
-  );
+  // Scope the border editor to the top side via the Side selector, then set
+  // width + style.
+  await page.locator('[data-cg-border] [data-cg-border-side]').selectOption('top');
+  await expect(page.locator('[data-cg-border] [data-cg-border-side]')).toHaveValue('top');
   await page.locator('[data-cg-field="borderWidth"] input').fill('3');
   await page.locator('[data-cg-field="borderWidth"] input').blur();
   await page.locator('[data-cg-field="borderStyle"] select').selectOption('dotted');
