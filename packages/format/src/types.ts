@@ -81,7 +81,11 @@ export interface StyleObj {
 }
 
 export interface IconRef {
-  name: string;
+  /** Registered icon name (icon-set registry / Lucide). Exactly one of name|emoji. */
+  name?: string;
+  /** Unicode emoji glyph, drawn via fillText. Exactly one of name|emoji. */
+  emoji?: string;
+  /** Tint for Path2D icons. Ignored for emoji. */
   color?: string;
   position?: 'leading' | 'trailing';
 }

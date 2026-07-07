@@ -168,4 +168,31 @@ describe('byRows — cellIcon inline rendering', () => {
     } as Partial<ResolvedColDef>));
     expect(strokeStyles).toContain('#0a7');
   });
+
+  it('renders an emoji IconRef via fillText in the leading slot and shifts text', () => {
+    const gc = fakeGc();
+    paint(gc, baseDef({
+      cellIcon: () => ({ emoji: '🔥', position: 'leading' }),
+    } as Partial<ResolvedColDef>));
+    // Emoji drawn: some fillText call received the emoji glyph.
+    const emojiCall = (gc.fillText as any).mock.calls.find((c: unknown[]) => c[0] === '🔥');
+    expect(emojiCall).toBeTruthy();
+    // No Path2D stroke for the icon (emoji path).
+    expect(gc.stroke as any).not.toHaveBeenCalled();
+    // Text shifted: leading pad = 6 + floor(30*0.55)=16 + 4 = 26.
+    const [, textX] = (gc.fillText as any).mock.calls[0]!;
+    expect(textX).toBe(26);
+  });
+
+  it('ignores an IconRef with neither name nor emoji', () => {
+    const gc = fakeGc();
+    expect(() => paint(gc, baseDef({
+      cellIcon: () => ({ position: 'leading' }) as any,
+    } as Partial<ResolvedColDef>))).not.toThrow();
+    expect(gc.stroke as any).not.toHaveBeenCalled();
+    const emojiCall = (gc.fillText as any).mock.calls.find((c: unknown[]) => c[0] === '🔥');
+    expect(emojiCall).toBeFalsy();
+    const [, textX] = (gc.fillText as any).mock.calls[0]!;
+    expect(textX).toBe(6);
+  });
 });

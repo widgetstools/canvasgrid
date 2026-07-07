@@ -36,7 +36,8 @@ export function groupHasToggleEffect(groupDef: Pick<ResolvedColGroupDef, 'childr
  *  icon width via `config.padding`) and drawn after it (so the icon
  *  sits on top of the cell background the painter laid down). */
 interface PendingCellIcon {
-  path: Path2D;
+  path: Path2D | null;   // null → emoji glyph
+  emoji?: string;
   x: number;
   y: number;
   size: number;
@@ -51,6 +52,15 @@ const CELL_ICON_GUTTER = 4;
 
 function drawCellIcon(gc: CachedContext2D, icon: PendingCellIcon): void {
   gc.cache.save();
+  if (icon.path === null) {
+    // Emoji glyph — native text, color/tint not applicable.
+    gc.cache.font = `${icon.size}px sans-serif`;
+    gc.cache.textAlign = 'center';
+    gc.cache.textBaseline = 'middle';
+    gc.fillText(icon.emoji!, icon.x + icon.size / 2, icon.y + icon.size / 2);
+    gc.cache.restore();
+    return;
+  }
   gc.translate(icon.x, icon.y);
   const scale = icon.size / 24; // Lucide viewBox is 24×24
   gc.scale(scale, scale);
@@ -826,7 +836,7 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
           && !isFooterRow[r]
           && typeof def.cellIcon === 'function')
       ) {
-        let iconRef: { name: string; color?: string; position?: 'leading' | 'trailing' } | null = ruleIconRef;
+        let iconRef: { name?: string; emoji?: string; color?: string; position?: 'leading' | 'trailing' } | null = ruleIconRef;
         if (iconRef === null) {
           try {
             iconRef = def.cellIcon!({
@@ -837,13 +847,18 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
             iconRef = null;
           }
         }
-        if (iconRef && iconRef.name) {
-          const path = resolveIconPath(iconRef.name);
-          if (path) {
+        // Exactly one of name|emoji resolves; both or neither paints nothing
+        // (per IconRef's contract — silent, not an error).
+        if (iconRef && (iconRef.name || (iconRef as { emoji?: string }).emoji)
+            && !(iconRef.name && (iconRef as { emoji?: string }).emoji)) {
+          const emoji = (iconRef as { emoji?: string }).emoji;
+          const path = iconRef.name ? resolveIconPath(iconRef.name) : null;
+          if (path || emoji) {
             const iconSize = Math.floor(row.height * 0.55);
             const position = iconRef.position ?? 'leading';
             pendingIcon = {
               path,
+              emoji,
               x: position === 'leading'
                 ? col.left + CELL_ICON_EDGE_PAD
                 : col.left + col.width - CELL_ICON_EDGE_PAD - iconSize,
