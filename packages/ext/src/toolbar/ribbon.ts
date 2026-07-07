@@ -188,18 +188,17 @@ function ribbonItem(): ToolbarItem {
         ),
       );
 
-      // Three strips: an always-visible primary strip (History/Smart/Bulk),
-      // then two independently-toggleable sub-toolbars — the Editing toolbar
-      // (Scope/type/B I U/align) and the Formatting toolbar (Paint, Format/
-      // Edit/Group, Templates). Each toggle is driven from the title-bar
-      // overflow menu, which emits `toggle-ribbon` with the matching section.
-      const primary = h('cgext-ribbon-strip'); primary.dataset.toolbar = 'primary';
-      primary.append(row1);
+      // Two independently-toggleable sub-toolbars (below the always-present
+      // title bar). The Editing toolbar is the top ribbon row — History
+      // undo/redo + Smart + Bulk. The Formatting toolbar is every row below
+      // it — Scope/type/B I U/align, Paint, Format/Edit/Group, Templates. Each
+      // toggle is driven from the title-bar overflow menu, which emits
+      // `toggle-ribbon` with the matching section.
       const editing = h('cgext-ribbon-strip'); editing.dataset.toolbar = 'editing';
-      editing.append(row2);
+      editing.append(row1);
       const formatting = h('cgext-ribbon-strip'); formatting.dataset.toolbar = 'formatting';
-      formatting.append(row3, row4, row5);
-      root.append(primary, editing, formatting);
+      formatting.append(row2, row3, row4, row5);
+      root.append(editing, formatting);
       host.appendChild(root);
 
       const off = ctx.events.on('toggle-ribbon', (e) => {
