@@ -121,4 +121,47 @@ describe('foldCalcColumnDefs', () => {
       ['name', 'text'],
     ]);
   });
+
+  it('recurses into column groups: a patch reaches a nested leaf (grouped-column styling regression)', () => {
+    registerCalcProvider(makeProvider({
+      resolvedPatchFor: (colId) => colId === 'dv01' ? { cellStyle: { bg: '#12333a' }, headerName: 'DV01*' } : null,
+    }));
+    const defs = [
+      { colId: 'px', headerName: 'Price' },
+      {
+        groupId: 'risk',
+        headerName: 'Risk',
+        children: [
+          { colId: 'dv01', headerName: 'DV01', cellDataType: 'number' },
+          {
+            groupId: 'nested',
+            headerName: 'Nested',
+            children: [{ colId: 'pv01', headerName: 'PV01', cellDataType: 'number' }],
+          },
+        ],
+      },
+    ];
+    const folded = foldCalcColumnDefs(defs) as any[];
+    const risk = folded[1];
+    const dv01 = risk.children[0];
+    expect(dv01.headerName).toBe('DV01*');
+    expect(dv01.cellStyle).toEqual({ bg: '#12333a' });
+    // untouched deeply-nested leaf keeps its reference (zero-work path)
+    expect(risk.children[1]).toBe(defs[1].children[1]);
+  });
+
+  it('group nodes with NO patched descendants keep their reference; patched groups are re-created', () => {
+    registerCalcProvider(makeProvider({
+      resolvedPatchFor: (colId) => colId === 'inA' ? { hide: true } : null,
+    }));
+    const defs = [
+      { groupId: 'a', children: [{ colId: 'inA' }] },
+      { groupId: 'b', children: [{ colId: 'inB' }] },
+    ];
+    const folded = foldCalcColumnDefs(defs) as any[];
+    expect(folded[0]).not.toBe(defs[0]);        // descendant patched -> new group object
+    expect(folded[0].children[0].hide).toBe(true);
+    expect(folded[1]).toBe(defs[1]);            // untouched group passes through by reference
+  });
 });
+

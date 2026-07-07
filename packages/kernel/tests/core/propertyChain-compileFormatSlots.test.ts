@@ -149,3 +149,46 @@ describe('compileFormatSlots — composite', () => {
     expect((resolved[0] as any)._compositeProgram).toBeUndefined();
   });
 });
+
+// ─── Static cellStyle preservation through the format-compile pass ────────
+// Regression (CGridExt formatting toolbar): a STATIC cellStyle object —
+// authored, or folded in by @cgrid/calc's editColumn/template overrides —
+// was silently dropped whenever the column also had a string valueFormatter
+// (both mergeCellStyle call sites passed `undefined` for non-function
+// styles), so "style this column" never painted on any formatted column.
+describe('compileFormatSlots — static cellStyle survives format compile', () => {
+  beforeEach(() => _resetFormatCompiler_forTests());
+
+  it('static object + string formatter → merged cellStyleFn carrying the static keys', () => {
+    registerFormatCompiler(fakeCompiler);
+    const resolved = resolveColDefs([{
+      colId: 'x', valueFormatter: '$#,##0.00',
+      cellStyle: { bg: '#12333a', fg: '#4fd1c5' },
+    }] as any);
+    expect(resolved[0].cellStyle).toBeUndefined();          // moved to the merged fn
+    const style = resolved[0].cellStyleFn!({ value: 5, data: {}, colId: 'x', rowIndex: 0 } as any);
+    expect(style).toEqual({ bg: '#12333a', fg: '#4fd1c5' }); // was undefined before the fix
+  });
+
+  it('user static style overlays the format-derived style (mergeCellStyle contract)', () => {
+    registerFormatCompiler(fakeCompiler);
+    const resolved = resolveColDefs([{
+      colId: 'x', valueFormatter: '$#,##0.00',
+      cellStyle: { fg: '#4fd1c5' },
+    }] as any);
+    // negative → program says fg '#e53935'; user's static fg wins, per
+    // mergeCellStyle's documented "user overlays and wins" precedence.
+    const neg = resolved[0].cellStyleFn!({ value: -1, data: {}, colId: 'x', rowIndex: 0 } as any);
+    expect(neg).toEqual({ fg: '#4fd1c5' });
+  });
+
+  it('composite path: static cellStyle survives too', () => {
+    registerFormatCompiler(fakeCompiler);
+    const resolved = resolveColDefs([{
+      colId: 'x', type: 'composite', fragments: [],
+      cellStyle: { bg: '#222222' },
+    }] as any);
+    const style = resolved[0].cellStyleFn!({ value: 1, data: {}, colId: 'x', rowIndex: 0 } as any);
+    expect(style).toEqual({ bg: '#222222' });
+  });
+});

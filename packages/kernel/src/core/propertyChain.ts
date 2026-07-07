@@ -987,6 +987,26 @@ function compileCellClassRules(
   return entries.map(([className, predicate]) => ({ className, predicate: predicate as CompiledClassRule['predicate'] }));
 }
 
+/** Adapt an authored `cellStyle` (function OR static object) into the
+ *  function form `mergeCellStyle` folds. Static objects — including the
+ *  calc engine's folded `editColumn`/template `cellStyle` patches — become
+ *  constant functions so they survive the format-compile pass instead of
+ *  being silently dropped (the "styling never paints on a column with a
+ *  string valueFormatter" bug: both `mergeCellStyle` call sites passed
+ *  `undefined` for anything that wasn't already a function). */
+function userStyleFnFrom<TRow>(
+  cellStyle: unknown,
+): ((params: CValueFormatterParams<TRow, unknown>) => Record<string, string | number> | undefined) | undefined {
+  if (typeof cellStyle === 'function') {
+    return cellStyle as (params: CValueFormatterParams<TRow, unknown>) => Record<string, string | number> | undefined;
+  }
+  if (cellStyle !== null && typeof cellStyle === 'object') {
+    const staticStyle = cellStyle as Record<string, string | number>;
+    return () => staticStyle;
+  }
+  return undefined;
+}
+
 /** Merge kernel's `cellStyle` with format's derived style function.
  *  Format's style is applied first; user's cellStyle overlays and wins
  *  on any explicit non-undefined field. Only wired from compileFormatSlots;
@@ -1055,9 +1075,7 @@ function compileFormatSlots<TRow>(
       valueFormatter: (p: CValueFormatterParams<TRow, unknown>) =>
         evalFormatProgram(program, p).text,
       cellStyle: mergeCellStyle(
-        typeof merged.cellStyle === 'function'
-          ? (merged.cellStyle as (params: CValueFormatterParams<TRow, unknown>) => Record<string, string | number> | undefined)
-          : undefined,
+        userStyleFnFrom<TRow>(merged.cellStyle),
         (p: CValueFormatterParams<TRow, unknown>) => {
           const s = evalFormatProgram(program, p).style;
           if (!s) return undefined;
@@ -1081,9 +1099,7 @@ function compileFormatSlots<TRow>(
       valueFormatter: (p: CValueFormatterParams<TRow, unknown>) =>
         evalFormatProgram(program, p).text,
       cellStyle: mergeCellStyle(
-        typeof merged.cellStyle === 'function'
-          ? (merged.cellStyle as (params: CValueFormatterParams<TRow, unknown>) => Record<string, string | number> | undefined)
-          : undefined,
+        userStyleFnFrom<TRow>(merged.cellStyle),
         (p: CValueFormatterParams<TRow, unknown>) => {
           const s = evalFormatProgram(program, p).style;
           if (!s) return undefined;

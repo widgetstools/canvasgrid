@@ -72,20 +72,36 @@ export function _resetCalcProvider_forTests(): void {
 
 /** Fold the registered provider's synthesized defs + per-column patches
  *  into a column-def array. Pure; returns the input array UNCHANGED
- *  (same reference) when no provider is registered — the zero-diff path. */
+ *  (same reference) when no provider is registered — the zero-diff path.
+ *  Recurses into column-GROUP nodes (`{groupId, children}` — no colId/field
+ *  of their own) so overrides reach nested leaves (a top-level-only walk
+ *  silently skipped every grouped column — the "editColumn styles/formats
+ *  never paint on grouped columns" bug). Unchanged nodes keep their
+ *  reference: a group object is only re-created when a descendant actually
+ *  changed, preserving the rebuild diff's zero-work path. */
 export function foldCalcColumnDefs<T extends object>(
   defs: readonly T[],
 ): T[] {
   const provider = injectedProvider;
   if (provider === null) return defs as T[];
-  const patched = defs.map((def) => {
-    const loose = def as { colId?: string; field?: unknown; cellDataType?: unknown };
+
+  const patchNode = (def: T): T => {
+    const loose = def as {
+      colId?: string; field?: unknown; cellDataType?: unknown; children?: readonly T[];
+    };
+    if (Array.isArray(loose.children)) {
+      const children = loose.children.map(patchNode);
+      const changed = children.some((c, i) => c !== loose.children![i]);
+      return changed ? ({ ...def, children } as T) : def;
+    }
     const colId = (loose.colId ?? loose.field) as string | undefined;
     if (colId === undefined) return def;
     const cellDataType: 'text' | 'number' = loose.cellDataType === 'number' ? 'number' : 'text';
     const patch = provider.resolvedPatchFor(colId, cellDataType);
     return patch === null ? def : { ...def, ...patch };
-  });
+  };
+
+  const patched = defs.map(patchNode);
   const synthesized = [...provider.synthesizedColDefs()]
     .sort((a, b) => ((a.position as number | undefined) ?? Number.POSITIVE_INFINITY)
       - ((b.position as number | undefined) ?? Number.POSITIVE_INFINITY));
