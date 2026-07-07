@@ -81,7 +81,9 @@ describe('headerCell — textDecoration', () => {
     const [x1] = gc.calls.lineTo[0]! as number[];
     expect(x0).toBe(108);        // textX (left-anchored)
     expect(x1).toBe(108 + 40);   // + measured width
-    expect(y).toBe(16 + 2);      // cy + 2 (underline)
+    // Underline sits BELOW the glyphs: fallback = cy + round(fontPx * 0.45)
+    // (the test gc's measureText has no actualBoundingBoxDescent).
+    expect(y).toBe(16 + 6);
   });
 
   it('draws a line-through above the baseline midpoint', () => {

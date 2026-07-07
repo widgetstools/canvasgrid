@@ -356,11 +356,20 @@ function paintTextDecoration(
   cy: number,
 ): void {
   if (!p.textDecoration || p.textDecoration === 'none' || !p.valueFormatted) return;
-  const w = gc.measureText(p.valueFormatted).width;
+  const metrics = gc.measureText(p.valueFormatted);
+  const w = metrics.width;
   const x0 = p.halign === 'right' ? textX - w
     : p.halign === 'center' ? textX - w / 2
     : textX;
-  const y = p.textDecoration === 'underline' ? cy + 2 : cy - 3;
+  // Underline sits BELOW the glyphs: `cy` is the middle baseline, so the
+  // old `cy + 2` landed INSIDE the digits' lower pixels and visibly
+  // truncated them. Use the measured descent below the middle baseline
+  // (actualBoundingBoxDescent) + 1px clearance; fall back to ~45% of the
+  // font px size where the metric is unavailable (test stubs / old
+  // canvas impls) — both land just under the glyph bottoms.
+  const descent = (metrics as { actualBoundingBoxDescent?: number }).actualBoundingBoxDescent;
+  const underlineY = cy + (descent !== undefined ? descent + 1 : Math.round(fontPxSize(p.font) * 0.45));
+  const y = p.textDecoration === 'underline' ? underlineY : cy - 3;
   gc.cache.save();
   gc.cache.strokeStyle = p.fg;
   gc.cache.lineWidth = 1;
