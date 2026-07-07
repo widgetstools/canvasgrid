@@ -2,12 +2,14 @@
  * FloatingPanelHost — draggable/resizable NON-MODAL panel frame.
  *
  * Overlays the grid root with a small floating window (title bar + body +
- * bottom-right resize handle) that hosts a tool panel's DOM. Unlike
+ * bottom-right resize handle) that hosts arbitrary panel DOM. Unlike
  * `ModalHost` (backdrop, focus trap, one-at-a-time) this is a lightweight
- * "undocked panel" chrome: no backdrop, no focus trap, the grid stays
- * fully interactive underneath. A later task wires this into CGrid + the
- * sidebar so a tool panel can be "popped out" of the side bar into a
- * movable window and "docked" back.
+ * "floating panel" chrome: no backdrop, no focus trap, the grid stays
+ * fully interactive underneath. `CGrid.openFloatingPanel` exposes this
+ * generically; content that has somewhere to dock back to (e.g. a
+ * side-bar tool panel) supplies `onDock` and gets a Dock button on the
+ * titlebar, while content with nowhere to dock (e.g. the Column Groups
+ * per-group Style editor) omits it and gets Close only.
  *
  * Content lifecycle is caller-owned: `open()` returns the body element for
  * the caller to fill, and `close()` only tears down the frame chrome — it
@@ -31,8 +33,11 @@ export interface FloatingPanelOptions {
   /** Initial position/size. Any omitted field falls back to the default
    *  placement (top-right inset of `root`, `DEFAULT_WIDTH x DEFAULT_HEIGHT`). */
   rect?: Partial<FloatingRect>;
-  /** "Dock" (re-dock into the sidebar) button clicked. */
-  onDock: () => void;
+  /** "Dock" (re-dock into the sidebar) button clicked. Omit when the
+   *  hosted content has nowhere to dock back to (e.g. a per-item detail
+   *  editor rather than a whole tool panel) — the titlebar then renders
+   *  Close only, no Dock button. */
+  onDock?: () => void;
   /** Close (×) button clicked. */
   onClose: () => void;
   /** Fired (debounced ~120ms) after a drag or resize gesture settles —
@@ -184,15 +189,21 @@ export class FloatingPanelHost {
     const spacer = el('div', 'cg-floating-panel-spacer');
     const actions = el('div', 'cg-floating-panel-actions');
 
-    const dockBtn = document.createElement('button');
-    dockBtn.type = 'button';
-    dockBtn.className = 'cg-floating-panel-dock';
-    dockBtn.setAttribute('aria-label', 'Dock panel');
-    dockBtn.appendChild(iconDock());
-    // Buttons must not start a titlebar drag — stop the pointerdown
-    // before it reaches the titlebar's own listener.
-    dockBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
-    dockBtn.addEventListener('click', () => this.opts?.onDock());
+    // Dock button is optional — only rendered when the caller supplied
+    // `onDock` (content that has somewhere to dock back to). Content with
+    // nowhere to dock (e.g. a per-item detail editor) gets Close only.
+    let dockBtn: HTMLButtonElement | null = null;
+    if (opts.onDock) {
+      dockBtn = document.createElement('button');
+      dockBtn.type = 'button';
+      dockBtn.className = 'cg-floating-panel-dock';
+      dockBtn.setAttribute('aria-label', 'Dock panel');
+      dockBtn.appendChild(iconDock());
+      // Buttons must not start a titlebar drag — stop the pointerdown
+      // before it reaches the titlebar's own listener.
+      dockBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+      dockBtn.addEventListener('click', () => this.opts?.onDock?.());
+    }
 
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
@@ -202,7 +213,7 @@ export class FloatingPanelHost {
     closeBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
     closeBtn.addEventListener('click', () => this.opts?.onClose());
 
-    actions.appendChild(dockBtn);
+    if (dockBtn) actions.appendChild(dockBtn);
     actions.appendChild(closeBtn);
     titlebar.appendChild(titleEl);
     titlebar.appendChild(spacer);

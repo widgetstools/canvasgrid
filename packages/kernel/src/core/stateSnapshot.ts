@@ -110,10 +110,10 @@ export interface GridState {
   // every model that affects layout has settled.
   scroll?: { top: number; left: number };
 
-  // Column Groups pop-out — last known position/size of the floating
-  // panel a tool panel was popped out to. NOT restored to an open float
-  // on load (v1) — only the rect is remembered so a later pop-out
-  // reopens where the user left it.
+  // Last known position/size of the generic floating panel (see
+  // `CGrid.openFloatingPanel`, e.g. the Column Groups per-group Style
+  // editor). NOT restored to an open float on load — only the rect is
+  // remembered so a later open reopens where the user left it.
   toolPanelPopoutRect?: FloatingRect;
 }
 
@@ -145,7 +145,7 @@ export interface StateSnapshotSources {
   getRuntimeOptions?(): Record<string, unknown>;
   /** Cycle 21i / Phase 1 — theme token overrides set via setThemeParams. */
   getThemeParams?(): Record<string, string>;
-  /** Column Groups pop-out — last known floating-panel rect, if any. */
+  /** Last known floating-panel rect, if any (see `toolPanelPopoutRect`). */
   getToolPanelPopoutRect?(): FloatingRect | undefined;
 }
 

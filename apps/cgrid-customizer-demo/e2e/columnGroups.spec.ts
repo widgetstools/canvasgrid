@@ -392,24 +392,55 @@ test('the column-group visibility control is hidden at rest and revealed on row 
   await expect(picker).toBeVisible();
 });
 
-// Column Groups can pop out of the sidebar into a floating non-modal palette
-// (the panel's live DOM is reparented into the FloatingPanelHost) and dock back.
-test('the Column Groups panel pops out into a floating palette and docks back', async ({ page }) => {
+// The per-GROUP Style editor floats out of the sidebar into a non-modal
+// palette (invoked from the gear ["Edit group style"] icon on a group row's
+// caption) rather than the whole Column Groups panel popping out.
+test('clicking a group\'s gear opens a floating Style editor (Close-only, no dock) and closing it deselects the group', async ({ page }) => {
   await openColumnGroupsTab(page);
 
-  // Pop out — the panel's DOM moves into the floating frame.
-  await page.locator('.cg-colgroups-popout').click();
+  const groupRow = page.locator('[data-cg-node="trade"][data-kind="group"]');
+  await groupRow.hover();
+  await groupRow.locator('[data-cg-select]').click();
+
   const float = page.locator('.cg-floating-panel');
   await expect(float).toBeVisible();
-  await expect(float.locator('.cg-colgroups-panel')).toBeVisible();
-  await expect(page.locator('.cg-floating-panel-title')).toHaveText('Column Groups');
-  // The in-panel pop-out button is redundant while floating → hidden.
-  await expect(float.locator('.cg-colgroups-popout')).toBeHidden();
+  await expect(page.locator('.cg-floating-panel-title')).toHaveText('Style — Trade');
+  await expect(float.locator('.cg-colgroups-style-title')).toHaveText('Style — Trade');
+  // Style controls are present (fill/text swatches).
+  await expect(float.locator('[data-cg-field="bg"]')).toBeVisible();
+  await expect(float.locator('[data-cg-field="fg"]')).toBeVisible();
+  // Close-only — nowhere to dock back to.
+  await expect(float.locator('.cg-floating-panel-dock')).toHaveCount(0);
+  await expect(float.locator('.cg-floating-panel-close')).toBeVisible();
+  // The gear reflects the selection.
+  await expect(groupRow.locator('[data-cg-select]')).toHaveAttribute('aria-pressed', 'true');
+  await expect(groupRow).toHaveAttribute('data-selected', '');
 
-  // Dock — the panel returns to the sidebar and the float is gone.
-  await float.locator('.cg-floating-panel-dock').click();
+  // Close — the float disappears and the group is deselected.
+  await float.locator('.cg-floating-panel-close').click();
   await expect(page.locator('.cg-floating-panel')).toHaveCount(0);
-  await expect(page.locator('.cg-colgroups-panel')).toBeVisible();
+  await expect(groupRow).not.toHaveAttribute('data-selected', '');
+  await expect(groupRow.locator('[data-cg-select]')).toHaveAttribute('aria-pressed', 'false');
+});
+
+// Clicking the gear on a DIFFERENT group while one is already floating
+// retargets the SAME float to the new group instead of opening a second one.
+test('selecting a different group\'s gear retargets the Style float to the new group', async ({ page }) => {
+  await openColumnGroupsTab(page);
+
+  const tradeRow = page.locator('[data-cg-node="trade"][data-kind="group"]');
+  const riskRow = page.locator('[data-cg-node="risk"][data-kind="group"]');
+
+  await tradeRow.hover();
+  await tradeRow.locator('[data-cg-select]').click();
+  await expect(page.locator('.cg-floating-panel-title')).toHaveText('Style — Trade');
+
+  await riskRow.hover();
+  await riskRow.locator('[data-cg-select]').click();
+  await expect(page.locator('.cg-floating-panel')).toHaveCount(1);
+  await expect(page.locator('.cg-floating-panel-title')).toHaveText('Style — Risk');
+  await expect(tradeRow).not.toHaveAttribute('data-selected', '');
+  await expect(riskRow).toHaveAttribute('data-selected', '');
 });
 
 // Cycle 21i / Task 8 — the RUNTIME open/collapse state of a column group

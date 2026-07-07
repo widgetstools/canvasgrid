@@ -6,13 +6,16 @@
  * Visual/UX contract mirrors `.cg-settings-panel` (see
  * `packages/kernel/src/theming/tokens.css` — `.cg-colgroups-*` rules sit
  * right after the `.cg-settings-*` block). Selecting a group (via the
- * keyboard-reachable `data-cg-select` button on its row) reveals a
- * per-group Style band (`renderStyle`) built on the Phase 1
- * `SettingsForm` engine, editing `headerStyle`/`headerClass`/
+ * keyboard-reachable `data-cg-select` gear button — "Edit group style" —
+ * on its row) opens a per-group Style editor (`renderStyle`) in a
+ * FLOATING panel (`this.api.openFloatingPanel`, Close-only — no dock,
+ * since the Style editor has nowhere to dock back to) built on the
+ * Phase 1 `SettingsForm` engine, editing `headerStyle`/`headerClass`/
  * `openByDefault`/`marryChildren` on the selected `GroupNode`. Every edit
  * routes through `this.mutate(...)` like any other panel change, so it
  * participates in dirty/Apply — this panel never writes to the grid
- * except on Apply.
+ * except on Apply. Deselecting the group (toggling the gear again, or
+ * closing the float) closes it.
  */
 import type { ToolPanel, ToolPanelParams } from './types';
 import {
@@ -123,15 +126,6 @@ function iconGear(): SVGSVGElement {
   );
 }
 function iconPlus(): SVGSVGElement { return icon(svgEl('path', { d: 'M12 5v14M5 12h14', ...strokeAttrs })); }
-/** "Pop out" — an arrow escaping a box, reading as "undock this panel
- *  into a floating window". Shares the panel's icon house style. */
-function iconPopOut(): SVGSVGElement {
-  return icon(
-    svgEl('path', { d: 'M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6', ...strokeAttrs }),
-    svgEl('path', { d: 'M15 3h6v6', ...strokeAttrs }),
-    svgEl('path', { d: 'M10 14 21 3', ...strokeAttrs }),
-  );
-}
 function iconClose(): SVGSVGElement { return icon(svgEl('path', { d: 'M18 6 6 18M6 6l12 12', ...strokeAttrs })); }
 function iconGrip(): SVGSVGElement {
   const dots = [[9, 6], [15, 6], [9, 12], [15, 12], [9, 18], [15, 18]]
@@ -163,7 +157,16 @@ const DRAG_THRESHOLD_PX = 4;
 export class ColumnGroupsToolPanel implements ToolPanel {
   private root!: HTMLElement;
   private tree!: HTMLElement;
-  private styleSection!: HTMLElement;
+  /** The current Style editor's floating-panel BODY element, or `null`
+   *  when no group is selected / the float isn't open. Cached across
+   *  `renderStyle()` calls so an in-place content refresh (e.g. a field
+   *  edit) doesn't need to reopen the float — only a genuine retarget
+   *  (no float open yet, or switching to a different group) does. */
+  private floatBody: HTMLElement | null = null;
+  /** The group id whose content `floatBody` currently holds. `null` iff
+   *  `floatBody` is `null`. Invariant: kept in lockstep so a stale
+   *  `floatBody` is never mistaken for the wrong group's content. */
+  private floatGroupId: string | null = null;
   /** Live colour-picker controls in the current Style band — destroyed on
    *  panel teardown so no portaled popover outlives the panel. Reset (not
    *  destroyed) on each `renderStyle()` rebuild so an in-flight popover the
@@ -174,7 +177,10 @@ export class ColumnGroupsToolPanel implements ToolPanel {
   private selectedEdge: BorderEdge = 'all';
   private applyBtn!: HTMLButtonElement;
   private resetBtn!: HTMLButtonElement;
-  private api!: Pick<CGridApi, 'getColumnGroupDefs' | 'updateGridOptions' | 'popOutToolPanel'>;
+  private api!: Pick<
+    CGridApi,
+    'getColumnGroupDefs' | 'updateGridOptions' | 'openFloatingPanel' | 'closeFloatingPanel' | 'isFloatingPanelOpen'
+  >;
   private nodes: Node[] = [];
   /** Canonical JSON of the last-applied projected tree — comparing against
    *  `project(nodes)` (also projected) makes seed→dirty reliably false even
@@ -200,8 +206,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     this.root.appendChild(this.buildToolbar());   // "New group"
     this.tree = el('div', 'cg-colgroups-tree cg-scrollbar');
     this.root.appendChild(this.tree);
-    this.styleSection = this.buildStyleSection();  // Task 4 fills this
-    this.root.appendChild(this.styleSection);
     this.root.appendChild(this.buildFooter());     // Apply / Reset
     this.seed();
   }
@@ -218,6 +222,10 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     this.pending = null;
     this.stylePickers.forEach((p) => p.destroy());
     this.stylePickers = [];
+    // Close the Style editor float (if this panel owns it) so it doesn't
+    // outlive the panel — e.g. switching away from the Column Groups
+    // sidebar tab while a group's Style editor is open.
+    this.closeFloatIfOpen();
     this.root.remove();
   }
 
@@ -335,21 +343,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     add.setAttribute('data-cg-add-group', '');
     add.onclick = () => this.mutate((ns) => createGroup(ns, null, 'New Group'));
     bar.appendChild(add);
-
-    // Pop out to a floating panel — right-aligned (CSS pushes it there
-    // via margin-left: auto). No-op when the host api predates
-    // `popOutToolPanel` (older api surface).
-    const popout = el('button', 'cg-colgroups-popout') as HTMLButtonElement;
-    popout.type = 'button';
-    popout.setAttribute('aria-label', 'Pop out into a floating window');
-    popout.title = 'Pop out into a floating window';
-    popout.appendChild(iconPopOut());
-    const popoutLabel = el('span', 'cg-colgroups-popout-label');
-    popoutLabel.textContent = 'Pop out';
-    popout.appendChild(popoutLabel);
-    popout.onclick = () => this.api.popOutToolPanel?.('columnGroups');
-    bar.appendChild(popout);
-
     return bar;
   }
 
@@ -367,39 +360,74 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     return footer;
   }
 
-  /** Container for the per-group Style band, keyed off
-   *  `this.selectedGroupId`. Always present (stable hook); empty and
-   *  collapsed to nothing (`.cg-colgroups-style:empty`) when no group is
-   *  selected. */
-  private buildStyleSection(): HTMLElement {
-    const section = el('div', 'cg-colgroups-style');
-    section.setAttribute('data-cg-style', '');
-    return section;
+  /** Close the Style editor float IF this panel currently owns it (i.e.
+   *  `floatBody` is set), and clear the cached float references. Safe to
+   *  call unconditionally — a no-op when nothing is cached. Guards
+   *  against ever calling `closeFloatingPanel()` when this panel doesn't
+   *  believe it owns the float (e.g. double-close reentrancy). */
+  private closeFloatIfOpen(): void {
+    if (this.floatBody !== null) this.api.closeFloatingPanel();
+    this.floatBody = null;
+    this.floatGroupId = null;
   }
 
-  /** Rebuilds the Style band for `this.selectedGroupId` from the CURRENT
-   *  `this.nodes` — called at the end of every `render()` so it re-syncs
-   *  after any mutation (including its own field edits, which route
-   *  through `this.mutate(...)` like every other panel edit — Apply-only
-   *  discipline: nothing here writes to the grid). */
+  /** Rebuilds the Style editor for `this.selectedGroupId` from the
+   *  CURRENT `this.nodes` — called at the end of every `render()` so it
+   *  re-syncs after any mutation (including its own field edits, which
+   *  route through `this.mutate(...)` like every other panel edit —
+   *  Apply-only discipline: nothing here writes to the grid).
+   *
+   *  The Style editor lives in a FLOATING panel (`this.api.
+   *  openFloatingPanel`), not inline in this panel's own DOM — it has
+   *  nowhere to dock back to, so it's Close-only. This method only
+   *  RE-OPENS the float (a `close()` + `open()` on the host, changing
+   *  its title) when it isn't already open for the CURRENTLY selected
+   *  group — an ordinary field edit within the same group reuses the
+   *  cached `floatBody` so the frame's position/focus survive the
+   *  rebuild. No selection (or a selection that no longer resolves to a
+   *  group, e.g. it was just deleted) closes the float. */
   private renderStyle(): void {
     // Destroy every live picker before dropping the reference — each one
     // owns a document/window listener set (+ a body-portaled popover), so
     // resetting the array without destroying first would orphan them.
     this.stylePickers.forEach((p) => p.destroy());
     this.stylePickers = [];
-    this.styleSection.replaceChildren();
-    this.styleSection.removeAttribute('data-for');
-    if (!this.selectedGroupId) return;
+
+    if (!this.selectedGroupId) { this.closeFloatIfOpen(); return; }
     const g = this.nodes.find((n) => n.id === this.selectedGroupId && n.kind === 'group') as
       | GroupNode
       | undefined;
-    if (!g) { this.selectedGroupId = null; return; }
-    this.styleSection.setAttribute('data-for', g.id);
+    if (!g) { this.selectedGroupId = null; this.closeFloatIfOpen(); return; }
+
+    // Retarget (open, or re-open with a new title) only when the float
+    // isn't currently showing THIS group — switching groups, the float
+    // having been closed externally, or the very first open.
+    if (this.floatBody === null || this.floatGroupId !== g.id || !this.api.isFloatingPanelOpen()) {
+      this.floatBody = this.api.openFloatingPanel({
+        title: `Style — ${g.headerName}`,
+        onClose: () => {
+          // The float's own Close (×) button was clicked — deselect and
+          // re-render. `render()` -> `renderStyle()` then sees no
+          // selection and calls `closeFloatIfOpen()`, which is what
+          // actually tears down the frame (idempotent; does not re-fire
+          // this callback).
+          this.selectedGroupId = null;
+          this.render();
+        },
+      });
+      this.floatGroupId = g.id;
+    }
+    const body = this.floatBody;
+    body.replaceChildren();
+
+    const section = el('div', 'cg-colgroups-style');
+    section.setAttribute('data-cg-style', '');
+    section.setAttribute('data-for', g.id);
+    body.appendChild(section);
 
     const title = el('div', 'cg-colgroups-style-title');
     title.textContent = `Style — ${g.headerName}`;
-    this.styleSection.appendChild(title);
+    section.appendChild(title);
 
     const patch = (
       p: Partial<Pick<GroupNode, 'headerStyle' | 'headerClass' | 'openByDefault' | 'marryChildren'>>,
@@ -415,9 +443,9 @@ export class ColumnGroupsToolPanel implements ToolPanel {
         return setGroupStyle(ns, g.id, { headerStyle: { ...cur?.headerStyle, ...facet } });
       });
 
-    this.styleSection.appendChild(this.buildFillTextCluster(g, patchStyle));
-    this.styleSection.appendChild(this.buildBorderCluster(g, patch));
-    this.styleSection.appendChild(this.buildBehaviorCluster(g, patch));
+    section.appendChild(this.buildFillTextCluster(g, patchStyle));
+    section.appendChild(this.buildBorderCluster(g, patch));
+    section.appendChild(this.buildBehaviorCluster(g, patch));
 
     // "Children visibility" — mirrors the inline `columnGroupShow` control
     // (see `buildGroupShowControl`) for every column nested (directly or
@@ -438,7 +466,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
         list.appendChild(row);
       });
       cluster.appendChild(list);
-      this.styleSection.appendChild(cluster);
+      section.appendChild(cluster);
     }
   }
 
@@ -446,13 +474,12 @@ export class ColumnGroupsToolPanel implements ToolPanel {
    *  rebuilding the Style-band DOM. `ColorPickerControl` emits `onChange` on
    *  every `pointermove` while the user drags inside its body-portaled
    *  popover; the ordinary `mutate() -> render() -> renderStyle()` path
-   *  calls `styleSection.replaceChildren()`, which would tear the open
-   *  popover (and its swatch) out from under an in-flight drag. This path
-   *  sets the model, keeps the Apply button's dirty state in sync, and
-   *  refreshes only the cheap border-preview inline styles — nothing else
-   *  in the Style band is touched, so an open popover survives.
-   *  Apply-only discipline still holds: this writes ONLY to `this.nodes`,
-   *  never the grid (see `onApply`). */
+   *  would tear the open popover (and its swatch) out from under an
+   *  in-flight drag. This path sets the model, keeps the Apply button's
+   *  dirty state in sync, and refreshes only the cheap border-preview
+   *  inline styles — nothing else in the Style band is touched, so an
+   *  open popover survives. Apply-only discipline still holds: this
+   *  writes ONLY to `this.nodes`, never the grid (see `onApply`). */
   private commitStyleLive(fn: (n: Node[]) => Node[]): void {
     this.nodes = fn(this.nodes);
     this.applyBtn.disabled = !this.dirty;
@@ -463,14 +490,14 @@ export class ColumnGroupsToolPanel implements ToolPanel {
    *  border) for the currently selected group from `this.nodes` — the one
    *  piece of Style-band DOM a live colour commit needs to keep current,
    *  without rebuilding anything else. No-op if the border cluster isn't
-   *  mounted (e.g. no group selected). */
+   *  mounted (e.g. no group selected, or the float isn't open). */
   private refreshBorderPreview(): void {
-    if (!this.selectedGroupId) return;
+    if (!this.selectedGroupId || !this.floatBody) return;
     const g = this.nodes.find((n) => n.id === this.selectedGroupId && n.kind === 'group') as
       | GroupNode
       | undefined;
     if (!g) return;
-    const preview = this.styleSection.querySelector('.cg-colgroups-border-preview') as HTMLElement | null;
+    const preview = this.floatBody.querySelector('.cg-colgroups-border-preview') as HTMLElement | null;
     if (!preview) return;
     preview.style.background = g.headerStyle?.bg ?? '';
     preview.style.color = g.headerStyle?.fg ?? '';

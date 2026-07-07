@@ -3,7 +3,46 @@ import { ColumnGroupsToolPanel, pruneBorder } from '../src/interaction/toolPanel
 import type { ToolPanelParams } from '../src/interaction/toolPanels/types';
 import type { CColDef, CColGroupDef } from '../src/types';
 
-function makeParams(onApply: ReturnType<typeof vi.fn>) {
+/** A minimal in-memory stand-in for CGrid's generic floating-panel API
+ *  (`openFloatingPanel`/`closeFloatingPanel`/`isFloatingPanelOpen`). The
+ *  panel's Style editor now renders into a FLOATING panel's body rather
+ *  than inline in the panel's own `getGui()` tree, so tests reach the
+ *  Style band via `float.body()` instead of querying `gui` directly.
+ *  Mirrors the real `FloatingPanelHost`'s "every open() call returns a
+ *  brand-new body element" behaviour (including on a reopen/retarget). */
+function makeFloatStub() {
+  let body: HTMLElement | null = null;
+  let title = '';
+  let open = false;
+  let onClose: (() => void) | null = null;
+  return {
+    openFloatingPanel: vi.fn((opts: { title: string; onClose: () => void }) => {
+      body = document.createElement('div');
+      title = opts.title;
+      onClose = opts.onClose;
+      open = true;
+      return body;
+    }),
+    closeFloatingPanel: vi.fn(() => {
+      open = false;
+      body = null;
+    }),
+    isFloatingPanelOpen: () => open,
+    /** The current float body, or `null` when closed. */
+    body: () => body,
+    /** The float's current title, or `''` when never opened. */
+    title: () => title,
+    isOpen: () => open,
+    /** Simulates the float's own Close (×) button — invokes the cached
+     *  `onClose` callback WITHOUT itself closing (mirrors the real host:
+     *  clicking Close only fires the callback; the caller decides
+     *  whether/when to actually tear the frame down). */
+    triggerClose: () => onClose?.(),
+  };
+}
+type FloatStub = ReturnType<typeof makeFloatStub>;
+
+function makeParams(onApply: ReturnType<typeof vi.fn>, float: FloatStub = makeFloatStub()) {
   const defs: (CColDef | CColGroupDef)[] = [
     { colId: 'sym', field: 'sym', headerName: 'Symbol' },
     { groupId: 'trade', headerName: 'Trade', children: [
@@ -14,13 +53,16 @@ function makeParams(onApply: ReturnType<typeof vi.fn>) {
     api: {
       getColumnGroupDefs: () => defs,
       updateGridOptions: onApply,
+      openFloatingPanel: float.openFloatingPanel,
+      closeFloatingPanel: float.closeFloatingPanel,
+      isFloatingPanelOpen: float.isFloatingPanelOpen,
     },
   } as unknown as ToolPanelParams;
 }
 
 /** Top level interleaves group / column / group — the shape that used to
  *  mislabel the second group under a stale "Ungrouped" eyebrow (Fix 2). */
-function makeInterleavedParams(onApply: ReturnType<typeof vi.fn>) {
+function makeInterleavedParams(onApply: ReturnType<typeof vi.fn>, float: FloatStub = makeFloatStub()) {
   const defs: (CColDef | CColGroupDef)[] = [
     { groupId: 'groupA', headerName: 'Group A', children: [{ colId: 'a1', field: 'a1' }] },
     { colId: 'mid', field: 'mid', headerName: 'Mid' },
@@ -30,6 +72,9 @@ function makeInterleavedParams(onApply: ReturnType<typeof vi.fn>) {
     api: {
       getColumnGroupDefs: () => defs,
       updateGridOptions: onApply,
+      openFloatingPanel: float.openFloatingPanel,
+      closeFloatingPanel: float.closeFloatingPanel,
+      isFloatingPanelOpen: float.isFloatingPanelOpen,
     },
   } as unknown as ToolPanelParams;
 }
@@ -165,11 +210,17 @@ describe('ColumnGroupsToolPanel', () => {
     });
   });
 
-  describe('Style band', () => {
+  describe('Style band (floating panel)', () => {
     // Note: the group-select control is a real <button> (see the
     // keyboard-accessibility test below); the switch fields it exposes are
     // `.cg-settings-toggle` buttons (aria-pressed), not <input> checkboxes
     // — verified against `settingsForm/form.ts` before writing these.
+    //
+    // The Style editor now renders into a FLOATING panel body
+    // (`this.api.openFloatingPanel`), not inline in the panel's own
+    // `getGui()` tree — it has nowhere to dock back to. Tests reach it via
+    // `float.body()` (see `makeFloatStub` above) instead of querying `gui`
+    // for `[data-cg-style]` directly.
 
     it('the group-select affordance is a real, keyboard-reachable <button> (not tabindex=-1)', () => {
       const panel = new ColumnGroupsToolPanel();
@@ -183,13 +234,16 @@ describe('ColumnGroupsToolPanel', () => {
       expect((select as HTMLButtonElement).disabled).toBe(false);
     });
 
-    it('selecting a group reveals a Style section bound to that group, and marks the row [data-selected]', () => {
+    it('selecting a group opens the Style float titled for that group, bound to it, and marks the row [data-selected]', () => {
+      const float = makeFloatStub();
       const panel = new ColumnGroupsToolPanel();
-      panel.init(makeParams(vi.fn()));
+      panel.init(makeParams(vi.fn(), float));
       const gui = panel.getGui();
       (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
 
-      const style = gui.querySelector('[data-cg-style]')!;
+      expect(float.isOpen()).toBe(true);
+      expect(float.title()).toBe('Style — Trade');
+      const style = float.body()!.querySelector('[data-cg-style]')!;
       expect(style.getAttribute('data-for')).toBe('trade');
       expect((gui.querySelector('[data-cg-node="trade"]') as HTMLElement).hasAttribute('data-selected')).toBe(true);
 
@@ -200,36 +254,58 @@ describe('ColumnGroupsToolPanel', () => {
       marry.click();
       const apply = gui.querySelector('[data-cg-apply]') as HTMLButtonElement;
       expect(apply.disabled).toBe(false);
+      // Same group, still open — the float was NOT reopened for this edit.
+      expect(float.openFloatingPanel).toHaveBeenCalledTimes(1);
     });
 
-    it('clicking the select button again deselects and empties the Style band', () => {
+    it('clicking the select button again deselects and closes the Style float', () => {
+      const float = makeFloatStub();
       const panel = new ColumnGroupsToolPanel();
-      panel.init(makeParams(vi.fn()));
+      panel.init(makeParams(vi.fn(), float));
       const gui = panel.getGui();
       const select = () => gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement;
       select().click();
-      expect(gui.querySelector('[data-cg-style]')!.getAttribute('data-for')).toBe('trade');
+      expect(float.isOpen()).toBe(true);
+      expect(float.body()!.querySelector('[data-cg-style]')!.getAttribute('data-for')).toBe('trade');
 
       select().click();
-      const style = gui.querySelector('[data-cg-style]')!;
-      expect(style.getAttribute('data-for')).toBeNull();
-      expect(style.children.length).toBe(0);
+      expect(float.closeFloatingPanel).toHaveBeenCalledTimes(1);
+      expect(float.isOpen()).toBe(false);
       expect((gui.querySelector('[data-cg-node="trade"]') as HTMLElement).hasAttribute('data-selected')).toBe(false);
+    });
+
+    it('the float\'s own Close callback deselects the group and tears down the float (no re-open loop)', () => {
+      const float = makeFloatStub();
+      const panel = new ColumnGroupsToolPanel();
+      panel.init(makeParams(vi.fn(), float));
+      const gui = panel.getGui();
+      (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
+      expect(float.isOpen()).toBe(true);
+
+      // Simulates the user clicking the float's own Close (×) button.
+      float.triggerClose();
+      expect(float.closeFloatingPanel).toHaveBeenCalledTimes(1);
+      expect(float.isOpen()).toBe(false);
+      expect((gui.querySelector('[data-cg-node="trade"]') as HTMLElement).hasAttribute('data-selected')).toBe(false);
+      // No runaway reopen loop.
+      expect(float.openFloatingPanel).toHaveBeenCalledTimes(1);
     });
 
     it('Apply projects the styled group headerStyle/marryChildren/openByDefault into columnDefs', () => {
       const onApply = vi.fn();
+      const float = makeFloatStub();
       const panel = new ColumnGroupsToolPanel();
-      panel.init(makeParams(onApply));
+      panel.init(makeParams(onApply, float));
       const gui = panel.getGui();
       (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
-      let style = gui.querySelector('[data-cg-style]')!;
+      let style = float.body()!.querySelector('[data-cg-style]')!;
 
       (style.querySelector('[data-cg-field="marryChildren"] .cg-settings-toggle') as HTMLButtonElement).click();
-      // The Style band is rebuilt on every mutation — re-query it.
-      style = gui.querySelector('[data-cg-style]')!;
+      // The Style band is rebuilt on every mutation — re-query it (same
+      // float body, since selection didn't change).
+      style = float.body()!.querySelector('[data-cg-style]')!;
       (style.querySelector('[data-cg-field="openByDefault"] .cg-settings-toggle') as HTMLButtonElement).click();
-      style = gui.querySelector('[data-cg-style]')!;
+      style = float.body()!.querySelector('[data-cg-style]')!;
       // Bold is now a segment toggle button carrying data-cg-field directly.
       (style.querySelector('[data-cg-field="fontWeight"]') as HTMLButtonElement).click();
 
@@ -244,12 +320,13 @@ describe('ColumnGroupsToolPanel', () => {
 
     it('renders a "Children visibility" list bound to the selected group\'s columns, sharing setColumnGroupShow', () => {
       const onApply = vi.fn();
+      const float = makeFloatStub();
       const panel = new ColumnGroupsToolPanel();
-      panel.init(makeParams(onApply));
+      panel.init(makeParams(onApply, float));
       const gui = panel.getGui();
       (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
 
-      const style = gui.querySelector('[data-cg-style]')!;
+      const style = float.body()!.querySelector('[data-cg-style]')!;
       const bidChild = style.querySelector('[data-cg-child-show="bid"]') as HTMLElement;
       expect(bidChild).toBeTruthy();
       // 3-state segment (● Always default · ◐ Open · ○ Closed).
@@ -275,11 +352,12 @@ describe('ColumnGroupsToolPanel', () => {
     // Task 9 — StarUI parity: italic/underline/fontSize/alignment/border.
     describe('Task 9 — enriched Style band', () => {
       it('exposes Italic/Underline/FontSize/Alignment/Border fields', () => {
+        const float = makeFloatStub();
         const panel = new ColumnGroupsToolPanel();
-        panel.init(makeParams(vi.fn()));
+        panel.init(makeParams(vi.fn(), float));
         const gui = panel.getGui();
         (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
-        const style = gui.querySelector('[data-cg-style]')!;
+        const style = float.body()!.querySelector('[data-cg-style]')!;
         for (const key of [
           'fontStyle', 'textDecoration', 'fontSize', 'halign',
           'borderWidth', 'borderStyle', 'borderColor',
@@ -290,11 +368,12 @@ describe('ColumnGroupsToolPanel', () => {
 
       it('toggling Italic sets headerStyle.fontStyle without wiping a previously-set Background/Bold (merge correctness)', () => {
         const onApply = vi.fn();
+        const float = makeFloatStub();
         const panel = new ColumnGroupsToolPanel();
-        panel.init(makeParams(onApply));
+        panel.init(makeParams(onApply, float));
         const gui = panel.getGui();
         (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
-        let style = gui.querySelector('[data-cg-style]')!;
+        let style = float.body()!.querySelector('[data-cg-style]')!;
 
         // Set Background first via the colour-picker control: click the
         // swatch to open the portaled popover, type a hex value, commit.
@@ -307,9 +386,9 @@ describe('ColumnGroupsToolPanel', () => {
 
         // Bold next (existing Task 4 field) — then Italic (new). Both are
         // segment toggle buttons carrying data-cg-field directly.
-        style = gui.querySelector('[data-cg-style]')!;
+        style = float.body()!.querySelector('[data-cg-style]')!;
         (style.querySelector('[data-cg-field="fontWeight"]') as HTMLButtonElement).click();
-        style = gui.querySelector('[data-cg-style]')!;
+        style = float.body()!.querySelector('[data-cg-style]')!;
         (style.querySelector('[data-cg-field="fontStyle"]') as HTMLButtonElement).click();
 
         (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
@@ -322,11 +401,12 @@ describe('ColumnGroupsToolPanel', () => {
 
       it('toggling Underline sets headerStyle.textDecoration', () => {
         const onApply = vi.fn();
+        const float = makeFloatStub();
         const panel = new ColumnGroupsToolPanel();
-        panel.init(makeParams(onApply));
+        panel.init(makeParams(onApply, float));
         const gui = panel.getGui();
         (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
-        const style = gui.querySelector('[data-cg-style]')!;
+        const style = float.body()!.querySelector('[data-cg-style]')!;
         (style.querySelector('[data-cg-field="textDecoration"]') as HTMLButtonElement).click();
         (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
         const { columnDefs } = onApply.mock.calls[0][0];
@@ -336,17 +416,18 @@ describe('ColumnGroupsToolPanel', () => {
 
       it('setting Font size and Alignment writes headerStyle.fontSize/halign', () => {
         const onApply = vi.fn();
+        const float = makeFloatStub();
         const panel = new ColumnGroupsToolPanel();
-        panel.init(makeParams(onApply));
+        panel.init(makeParams(onApply, float));
         const gui = panel.getGui();
         (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
-        let style = gui.querySelector('[data-cg-style]')!;
+        let style = float.body()!.querySelector('[data-cg-style]')!;
 
         const sizeInput = style.querySelector('[data-cg-field="fontSize"] input') as HTMLInputElement;
         sizeInput.value = '14';
         sizeInput.dispatchEvent(new Event('change'));
 
-        style = gui.querySelector('[data-cg-style]')!;
+        style = float.body()!.querySelector('[data-cg-style]')!;
         // Alignment is now an icon segmented control (left/center/right).
         (style.querySelector('[data-cg-field="halign"] [data-align="center"]') as HTMLButtonElement).click();
 
@@ -359,22 +440,23 @@ describe('ColumnGroupsToolPanel', () => {
 
       it('setting Border width/style/colour composes a single headerStyle.border.all object', () => {
         const onApply = vi.fn();
+        const float = makeFloatStub();
         const panel = new ColumnGroupsToolPanel();
-        panel.init(makeParams(onApply));
+        panel.init(makeParams(onApply, float));
         const gui = panel.getGui();
         (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
-        let style = gui.querySelector('[data-cg-style]')!;
+        let style = float.body()!.querySelector('[data-cg-style]')!;
 
         const widthInput = style.querySelector('[data-cg-field="borderWidth"] input') as HTMLInputElement;
         widthInput.value = '2';
         widthInput.dispatchEvent(new Event('change'));
 
-        style = gui.querySelector('[data-cg-style]')!;
+        style = float.body()!.querySelector('[data-cg-style]')!;
         const styleSelect = style.querySelector('[data-cg-field="borderStyle"] select') as HTMLSelectElement;
         styleSelect.value = 'dashed';
         styleSelect.dispatchEvent(new Event('change'));
 
-        style = gui.querySelector('[data-cg-style]')!;
+        style = float.body()!.querySelector('[data-cg-style]')!;
         const colorSwatch = style.querySelector('[data-cg-field="borderColor"] .cg-colorpicker-swatch') as HTMLButtonElement;
         colorSwatch.click();
         const colorHex = document.querySelector('.cg-colorpicker-popover .cg-colorpicker-hex') as HTMLInputElement;
@@ -392,11 +474,12 @@ describe('ColumnGroupsToolPanel', () => {
     describe('Fix 3 — colour commits do not tear down the Style band mid-drag', () => {
       it('a Fill colour commit flips dirty and writes headerStyle.bg WITHOUT rebuilding the Style band', () => {
         const onApply = vi.fn();
+        const float = makeFloatStub();
         const panel = new ColumnGroupsToolPanel();
-        panel.init(makeParams(onApply));
+        panel.init(makeParams(onApply, float));
         const gui = panel.getGui();
         (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
-        const style = gui.querySelector('[data-cg-style]')!;
+        const style = float.body()!.querySelector('[data-cg-style]')!;
 
         const bgSwatch = style.querySelector('[data-cg-field="bg"] .cg-colorpicker-swatch') as HTMLButtonElement;
         bgSwatch.click();
@@ -409,9 +492,11 @@ describe('ColumnGroupsToolPanel', () => {
         // fresh from the (unchanged) style-section element is the exact
         // same DOM node as before the commit, and the still-open popover
         // survives (a `renderStyle()` rebuild would have torn both down).
+        // The float itself must not have been reopened either.
         expect(style.querySelector('[data-cg-field="bg"] .cg-colorpicker-swatch')).toBe(bgSwatch);
         expect(document.body.contains(popover)).toBe(true);
         expect(document.querySelector('.cg-colorpicker-popover')).toBe(popover);
+        expect(float.openFloatingPanel).toHaveBeenCalledTimes(1);
 
         const apply = gui.querySelector('[data-cg-apply]') as HTMLButtonElement;
         expect(apply.disabled).toBe(false);
@@ -425,11 +510,12 @@ describe('ColumnGroupsToolPanel', () => {
 
       it('a Text colour commit writes headerStyle.fg without throwing', () => {
         const onApply = vi.fn();
+        const float = makeFloatStub();
         const panel = new ColumnGroupsToolPanel();
-        panel.init(makeParams(onApply));
+        panel.init(makeParams(onApply, float));
         const gui = panel.getGui();
         (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
-        const style = gui.querySelector('[data-cg-style]')!;
+        const style = float.body()!.querySelector('[data-cg-style]')!;
 
         const fgSwatch = style.querySelector('[data-cg-field="fg"] .cg-colorpicker-swatch') as HTMLButtonElement;
         fgSwatch.click();
@@ -446,14 +532,15 @@ describe('ColumnGroupsToolPanel', () => {
 
       it('a Border colour commit writes headerStyle.border.<edge>.color and does not rebuild the Style band', () => {
         const onApply = vi.fn();
+        const float = makeFloatStub();
         const panel = new ColumnGroupsToolPanel();
-        panel.init(makeParams(onApply));
+        panel.init(makeParams(onApply, float));
         const gui = panel.getGui();
         (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
-        let style = gui.querySelector('[data-cg-style]')!;
+        let style = float.body()!.querySelector('[data-cg-style]')!;
         // Select the "top" edge before writing its colour.
         (style.querySelector('[data-cg-border-edge="top"]') as HTMLButtonElement).click();
-        style = gui.querySelector('[data-cg-style]')!; // edge-select IS a structural render
+        style = float.body()!.querySelector('[data-cg-style]')!; // edge-select IS a structural render
 
         const borderSwatch = style.querySelector('[data-cg-field="borderColor"] .cg-colorpicker-swatch') as HTMLButtonElement;
         borderSwatch.click();
@@ -475,11 +562,12 @@ describe('ColumnGroupsToolPanel', () => {
 
     describe('Fix 4 — distinct colour-swatch aria-labels', () => {
       it('gives the Fill/Text/Border swatches distinct aria-labels instead of the generic default', () => {
+        const float = makeFloatStub();
         const panel = new ColumnGroupsToolPanel();
-        panel.init(makeParams(vi.fn()));
+        panel.init(makeParams(vi.fn(), float));
         const gui = panel.getGui();
         (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
-        const style = gui.querySelector('[data-cg-style]')!;
+        const style = float.body()!.querySelector('[data-cg-style]')!;
 
         const bg = style.querySelector('[data-cg-field="bg"] .cg-colorpicker-swatch')!;
         const fg = style.querySelector('[data-cg-field="fg"] .cg-colorpicker-swatch')!;
@@ -497,43 +585,44 @@ describe('ColumnGroupsToolPanel', () => {
     // it; the width/style/colour controls then read & write that one side.
     describe('Task 12 — box-model border editor', () => {
       function selectAndStyleGroup(onApply = vi.fn()) {
+        const float = makeFloatStub();
         const panel = new ColumnGroupsToolPanel();
-        panel.init(makeParams(onApply));
+        panel.init(makeParams(onApply, float));
         const gui = panel.getGui();
         (gui.querySelector('[data-cg-node="trade"] [data-cg-select]') as HTMLElement).click();
-        return { gui, onApply };
+        return { gui, onApply, float };
       }
-      const style = (gui: HTMLElement) => gui.querySelector('[data-cg-style]')!;
-      const setWidth = (gui: HTMLElement, v: string) => {
-        const w = style(gui).querySelector('[data-cg-field="borderWidth"] input') as HTMLInputElement;
+      const style = (float: FloatStub) => float.body()!.querySelector('[data-cg-style]')!;
+      const setWidth = (float: FloatStub, v: string) => {
+        const w = style(float).querySelector('[data-cg-field="borderWidth"] input') as HTMLInputElement;
         w.value = v;
         w.dispatchEvent(new Event('change'));
       };
-      const setStyle = (gui: HTMLElement, v: string) => {
-        const s = style(gui).querySelector('[data-cg-field="borderStyle"] select') as HTMLSelectElement;
+      const setStyle = (float: FloatStub, v: string) => {
+        const s = style(float).querySelector('[data-cg-field="borderStyle"] select') as HTMLSelectElement;
         s.value = v;
         s.dispatchEvent(new Event('change'));
       };
-      const clickEdge = (gui: HTMLElement, edge: string) =>
-        (style(gui).querySelector(`[data-cg-border-edge="${edge}"]`) as HTMLButtonElement).click();
+      const clickEdge = (float: FloatStub, edge: string) =>
+        (style(float).querySelector(`[data-cg-border-edge="${edge}"]`) as HTMLButtonElement).click();
       const applied = (onApply: ReturnType<typeof vi.fn>) => {
         const { columnDefs } = onApply.mock.calls[0][0];
         return columnDefs.find((d: { groupId?: string }) => d.groupId === 'trade');
       };
 
       it('defaults to the "all" edge (its target is pressed on open)', () => {
-        const { gui } = selectAndStyleGroup();
-        expect(style(gui).querySelector('[data-cg-border]')).toBeTruthy();
-        expect(style(gui).querySelector('[data-cg-border-edge="all"]')!.getAttribute('aria-pressed')).toBe('true');
-        expect(style(gui).querySelector('[data-cg-border-edge="top"]')!.getAttribute('aria-pressed')).toBe('false');
+        const { float } = selectAndStyleGroup();
+        expect(style(float).querySelector('[data-cg-border]')).toBeTruthy();
+        expect(style(float).querySelector('[data-cg-border-edge="all"]')!.getAttribute('aria-pressed')).toBe('true');
+        expect(style(float).querySelector('[data-cg-border-edge="top"]')!.getAttribute('aria-pressed')).toBe('false');
       });
 
       it('selecting the top edge then setting width/style writes headerStyle.border.top (not .all)', () => {
-        const { gui, onApply } = selectAndStyleGroup();
-        clickEdge(gui, 'top');
-        expect(style(gui).querySelector('[data-cg-border-edge="top"]')!.getAttribute('aria-pressed')).toBe('true');
-        setWidth(gui, '3');
-        setStyle(gui, 'dotted');
+        const { gui, onApply, float } = selectAndStyleGroup();
+        clickEdge(float, 'top');
+        expect(style(float).querySelector('[data-cg-border-edge="top"]')!.getAttribute('aria-pressed')).toBe('true');
+        setWidth(float, '3');
+        setStyle(float, 'dotted');
         (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
         const trade = applied(onApply);
         expect(trade.headerStyle.border.top).toEqual({ width: 3, style: 'dotted' });
@@ -541,14 +630,14 @@ describe('ColumnGroupsToolPanel', () => {
       });
 
       it('editing two different edges keeps both — no cross-side clobber', () => {
-        const { gui, onApply } = selectAndStyleGroup();
-        clickEdge(gui, 'top');
-        setWidth(gui, '3');
-        clickEdge(gui, 'bottom');
+        const { gui, onApply, float } = selectAndStyleGroup();
+        clickEdge(float, 'top');
+        setWidth(float, '3');
+        clickEdge(float, 'bottom');
         // Selecting a different edge reads THAT edge (empty) — the width
         // input must not still show the top edge's value.
-        expect((style(gui).querySelector('[data-cg-field="borderWidth"] input') as HTMLInputElement).value).toBe('');
-        setWidth(gui, '1');
+        expect((style(float).querySelector('[data-cg-field="borderWidth"] input') as HTMLInputElement).value).toBe('');
+        setWidth(float, '1');
         (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
         const trade = applied(onApply);
         expect(trade.headerStyle.border.top).toEqual({ width: 3 });
@@ -556,10 +645,10 @@ describe('ColumnGroupsToolPanel', () => {
       });
 
       it('setting a side width back to 0 prunes the side away (and empties border)', () => {
-        const { gui, onApply } = selectAndStyleGroup();
-        clickEdge(gui, 'left');
-        setWidth(gui, '4');
-        setWidth(gui, '0');
+        const { gui, onApply, float } = selectAndStyleGroup();
+        clickEdge(float, 'left');
+        setWidth(float, '4');
+        setWidth(float, '0');
         (gui.querySelector('[data-cg-apply]') as HTMLButtonElement).click();
         const trade = applied(onApply);
         expect(trade.headerStyle?.border).toBeUndefined();
@@ -580,9 +669,10 @@ describe('ColumnGroupsToolPanel', () => {
       });
     });
 
-    it('switching selection to a different group rebinds the Style section', () => {
+    it('switching selection to a different group retargets the float (reopens with the new title/content)', () => {
+      const float = makeFloatStub();
       const panel = new ColumnGroupsToolPanel();
-      panel.init(makeParams(vi.fn()));
+      panel.init(makeParams(vi.fn(), float));
       const gui = panel.getGui();
       (gui.querySelector('[data-cg-add-group]') as HTMLButtonElement).click(); // creates a second group
       const groupIds = Array.from(gui.querySelectorAll('[data-kind="group"]')).map((n) => n.getAttribute('data-cg-node'));
@@ -590,10 +680,15 @@ describe('ColumnGroupsToolPanel', () => {
       const [firstId, secondId] = groupIds as [string, string];
 
       (gui.querySelector(`[data-cg-node="${firstId}"] [data-cg-select]`) as HTMLElement).click();
-      expect(gui.querySelector('[data-cg-style]')!.getAttribute('data-for')).toBe(firstId);
+      expect(float.body()!.querySelector('[data-cg-style]')!.getAttribute('data-for')).toBe(firstId);
+      const firstBody = float.body();
 
       (gui.querySelector(`[data-cg-node="${secondId}"] [data-cg-select]`) as HTMLElement).click();
-      expect(gui.querySelector('[data-cg-style]')!.getAttribute('data-for')).toBe(secondId);
+      // Retargeting to a different group reopens the float (new body, per
+      // `FloatingPanelHost.open()` semantics) rather than reusing the old one.
+      expect(float.openFloatingPanel).toHaveBeenCalledTimes(2);
+      expect(float.body()).not.toBe(firstBody);
+      expect(float.body()!.querySelector('[data-cg-style]')!.getAttribute('data-for')).toBe(secondId);
       expect((gui.querySelector(`[data-cg-node="${firstId}"]`) as HTMLElement).hasAttribute('data-selected')).toBe(false);
     });
   });

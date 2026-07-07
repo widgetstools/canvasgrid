@@ -1399,27 +1399,6 @@
   width: auto;
   flex-shrink: 0;
 }
-/* Column Groups pop-out — a panel popped out to a floating window keeps
- * its sidebar tab (clicking it re-docks), so it reads as "floating" via
- * a subtle dot on the icon rather than the normal pressed/active state.
- * Kept deliberately quiet — this is a hint, not a second active state. */
-.cg-side-bar-tab[data-cg-detached] {
-  color: color-mix(in srgb, var(--cg-fg-color) 75%, transparent);
-  font-style: italic;
-}
-.cg-side-bar-tab[data-cg-detached] .cg-side-bar-tab-icon {
-  position: relative;
-}
-.cg-side-bar-tab[data-cg-detached] .cg-side-bar-tab-icon::after {
-  content: '';
-  position: absolute;
-  top: -1px;
-  right: -3px;
-  width: 5px;
-  height: 5px;
-  border-radius: 50%;
-  background: var(--cg-focus-ring-color);
-}
 .cg-side-bar-panel {
   flex: 1 1 auto;
   min-width: var(--cg-side-bar-min-width, 200px);
@@ -2992,45 +2971,6 @@
   outline-offset: -1px;
 }
 
-/* Pop-out-to-floating-panel button — lives in `.cg-colgroups-toolbar`
- * alongside "New group"; `margin-left: auto` pushes it to the toolbar's
- * right edge without needing a dedicated spacer element. Same icon-
- * button sizing as `.cg-colgroups-action` (24px hit target / ~15px
- * glyph) so it reads as part of the same control family. */
-/* Labeled "Pop out" button — a discoverable affordance (icon + text) rather
- * than a bare corner glyph, pushed to the toolbar's right edge. */
-.cg-colgroups-popout {
-  height: 24px;
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 0 8px;
-  color: color-mix(in srgb, var(--cg-fg-color) 72%, transparent);
-  background: transparent;
-  border: 1px solid var(--cg-border-color);
-  border-radius: var(--cg-radius, 5px);
-  font: inherit;
-  font-size: var(--cg-font-size-sm);
-  line-height: 1;
-  cursor: pointer;
-}
-.cg-colgroups-popout-label { line-height: 1; }
-.cg-colgroups-popout:hover {
-  color: var(--cg-fg-color);
-  background: color-mix(in srgb, var(--cg-fg-color) 8%, transparent);
-  border-color: color-mix(in srgb, var(--cg-fg-color) 42%, transparent);
-}
-.cg-colgroups-popout:focus-visible {
-  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
-  outline-offset: -1px;
-}
-/* Already floating — the pop-out button is redundant (the title bar carries
- * Dock / Close), so hide it while the panel lives in a FloatingPanelHost. */
-.cg-floating-panel .cg-colgroups-popout {
-  display: none;
-}
-
 .cg-colgroups-empty {
   display: flex;
   align-items: center;
@@ -3042,21 +2982,18 @@
   font-size: var(--cg-font-size-sm);
 }
 
-/* Style band (Task 4) — per-group header styling, mounted below the tree
- * and above the footer when a group is selected. Empty (no selection)
- * collapses to nothing so it never reserves layout space. Reuses the
- * `.cg-settings-*` classes from the Phase 1 SettingsForm engine verbatim —
- * `--cg-settings-accent` is aliased on `.cg-colgroups-panel` above so those
- * rules resolve identically here. */
-.cg-colgroups-style:empty {
-  display: none;
-}
+/* Style editor — per-group header styling, hosted in a FLOATING panel
+ * (`CGrid.openFloatingPanel`, invoked from the group row's gear icon) since
+ * it has nowhere to dock back to. Sizing/overflow is handled by the float's
+ * own `.cg-floating-panel-body` (flex:1 1 auto; overflow:auto); this just
+ * supplies the content's padding. Reuses the `.cg-settings-*` classes from
+ * the Phase 1 SettingsForm engine verbatim — `--cg-settings-accent` is
+ * re-aliased HERE (not just on `.cg-colgroups-panel`, whose subtree this
+ * content no longer lives in once it's reparented into the float) so those
+ * rules keep resolving identically. */
 .cg-colgroups-style {
-  flex: 0 0 auto;
-  max-height: 45%;
-  overflow-y: auto;
-  border-top: 1px solid var(--cg-border-color);
-  padding: 8px 10px 4px;
+  padding: 8px 10px 10px;
+  --cg-settings-accent: var(--cg-focus-ring-color);
 }
 .cg-colgroups-style-title {
   font-size: var(--cg-font-size-sm);

@@ -22,6 +22,7 @@ import type { CFilterModelEntry, FilterModel } from './filter';
 import type { GroupModel } from './group';
 import type { CGridEvent } from './event';
 import type { CGridOptions } from './options';
+import type { FloatingRect } from '../interaction/floatingPanel/host';
 
 export interface Tx<TRow = any> {
   add?: TRow[];
@@ -404,17 +405,26 @@ export interface CGridApi<TRow = any> {
   /** Cycle 11 / Task 6 — the id of the currently open panel, or
    *  `null` when no panel is open / no side bar is configured. */
   getOpenedToolPanel(): string | null;
-  /** Column Groups pop-out — undock the tool panel `id` from the side
-   *  bar into a floating, draggable/resizable, non-modal panel (the
-   *  sidebar TAB stays; only the panel body moves). Opens `id` first if
-   *  it isn't already the open panel. The same live `ToolPanel`
-   *  instance is reparented — never destroyed — so its state and
-   *  listeners survive the move. The float's "Dock" button (or clicking
-   *  the now-`data-cg-detached` tab again) re-docks it; its "×" button
-   *  destroys the instance and returns the tab to its normal closed
-   *  state. Silent no-op when no side bar is configured or `id` is
-   *  unknown. */
-  popOutToolPanel(id: string): void;
+  /** Generic floating-panel primitive (draggable/resizable, non-modal,
+   *  Close-only — no dock) for tool-panel content that has nowhere to
+   *  dock back to, e.g. the Column Groups per-group Style editor
+   *  (invoked from a group row's gear icon). Opens `title` and returns
+   *  the body element for the caller to fill. Calling again while
+   *  already open closes the previous frame first and opens a fresh
+   *  one, so the caller can retarget it (new title/content) without
+   *  calling `closeFloatingPanel()` itself first. `rect` defaults to
+   *  the last-remembered position/size (persisted under
+   *  `GridState.toolPanelPopoutRect`) when omitted, so successive opens
+   *  land where the user last left it. */
+  openFloatingPanel(opts: { title: string; rect?: Partial<FloatingRect>; onClose: () => void }): HTMLElement;
+  /** Close the floating panel opened via `openFloatingPanel`, if any.
+   *  Idempotent — a no-op when already closed. Does NOT itself invoke
+   *  the `onClose` callback (that only fires from the frame's own
+   *  Close button). */
+  closeFloatingPanel(): void;
+  /** Whether the floating panel opened via `openFloatingPanel` is
+   *  currently open. */
+  isFloatingPanelOpen(): boolean;
   /** Cycle 11 / Task 6 — the resolved `SideBarDef` (string shortcuts
    *  expanded into full `ToolPanelDef` objects, `position` defaulted
    *  to `'right'` when not specified), or `undefined` when no side
