@@ -2,8 +2,8 @@
  * Title-bar chrome for CGridExt — the slim always-on primary toolbar that
  * matches the MarketsGrid reference: brand + collapse on the left, an
  * expandable search in the center, and a right cluster of notifications,
- * profile selector, dirty-aware save, date, settings launcher, and an
- * overflow menu (toolbar toggles + Columns…).
+ * layout switcher, dirty-aware layout-update save, date, settings launcher,
+ * and an overflow menu (toolbar toggles + Columns…).
  *
  * Every item is a `toolbar-item` extension in a `primary-*` slot; all colour
  * comes from the grid's `--cg-*` theme tokens (CGridExt mirrors the theme
@@ -11,8 +11,9 @@
  * as one surface with the grid. Icons are inline single-path SVG (Lucide
  * geometry) — no external asset, crisp at any DPI.
  */
-import type { CgExtension, CgExtContext, ToolbarItem, ToolbarItemInstance, Unsub } from '../extension/types';
+import type { CgExtension, CgExtContext, ToolbarItem, ToolbarItemInstance } from '../extension/types';
 import { menu, svg, iconButton } from './ui';
+import { layoutsItem, layoutSaveItem } from './layoutsMenu';
 
 export interface TitleBarOptions {
   /** Brand label shown at the far left (e.g. the grid's name). */
@@ -30,8 +31,8 @@ export function titleBarExtensions(opts: TitleBarOptions = {}): CgExtension[] {
     brandItem(opts.name ?? 'cgrid'),
     searchItem(),
     notificationsItem(),
-    profilesItem(),
-    saveItem(),
+    layoutsItem(),
+    layoutSaveItem(),
     dateItem(opts.date ?? ''),
     settingsItem(),
     overflowItem(),
@@ -43,9 +44,6 @@ const ICON = {
   chevronsLeft: 'M11 17l-5-5 5-5M18 17l-5-5 5-5',
   search: 'M11 11m-8 0a8 8 0 1 0 16 0a8 8 0 1 0-16 0M21 21l-4.3-4.3',
   bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0',
-  user: 'M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2M12 11m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0',
-  chevronDown: 'M6 9l6 6 6-6',
-  save: 'M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2zM17 21v-8H7v8M7 3v5h8',
   calendar: 'M8 2v4M16 2v4M3 10h18M5 4h14a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2z',
   sliders: 'M4 21v-7M4 10V3M12 21v-9M12 8V3M20 21v-5M20 12V3M1 14h6M9 8h6M17 16h6',
   more: 'M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0-2 0M12 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0-2 0M12 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0-2 0',
@@ -114,61 +112,6 @@ function notificationsItem(): ToolbarItem {
   return item('notifications', 'primary-right', (host) => {
     host.appendChild(iconButton(ICON.bell, 'Notifications'));
     return { destroy() { host.replaceChildren(); } };
-  });
-}
-
-function profilesItem(): ToolbarItem {
-  return item('profiles', 'primary-right', (host, ctx) => {
-    const btn = document.createElement('button');
-    btn.type = 'button';
-    btn.className = 'cgext-profile';
-    const sync = () => {
-      btn.innerHTML =
-        `<span class="cgext-profile-avatar">${svg(ICON.user, 13)}</span>` +
-        `<span class="cgext-profile-name">${ctx.profiles.activeId()}</span>` +
-        `<span class="cgext-profile-caret">${svg(ICON.chevronDown, 13)}</span>`;
-    };
-    sync();
-    const m = menu(btn, (close) => {
-      const list = document.createElement('div');
-      list.className = 'cgext-menu-list';
-      // Active first, then any saved profiles from the store.
-      const active = ctx.profiles.activeId();
-      const seen = new Set<string>([active]);
-      const add = (id: string, current: boolean) => {
-        const it = document.createElement('button');
-        it.type = 'button';
-        it.className = 'cgext-menu-item' + (current ? ' is-active' : '');
-        it.textContent = id;
-        it.addEventListener('click', () => { void ctx.profiles.switchTo(id).then(sync); close(); });
-        list.appendChild(it);
-      };
-      add(active, true);
-      void ctx.profiles.list().then((metas) => {
-        for (const meta of metas) if (!seen.has(meta.id)) { seen.add(meta.id); add(meta.id, false); }
-      });
-      return list;
-    });
-    btn.addEventListener('click', () => m.toggle());
-    host.appendChild(btn);
-    return { destroy() { m.destroy(); host.replaceChildren(); } };
-  });
-}
-
-function saveItem(): ToolbarItem {
-  return item('save', 'primary-right', (host, ctx) => {
-    const btn = iconButton(ICON.save, 'Save all settings');
-    btn.classList.add('cgext-save');
-    const sync = (dirty: boolean) => {
-      btn.classList.toggle('is-dirty', dirty);
-      btn.disabled = !dirty;
-      btn.title = dirty ? 'Save all settings (unsaved changes)' : 'All settings saved';
-    };
-    sync(ctx.profiles.isDirty());
-    const off: Unsub = ctx.profiles.onDirtyChange(sync);
-    btn.addEventListener('click', () => { void ctx.profiles.save(); });
-    host.appendChild(btn);
-    return { destroy() { off(); host.replaceChildren(); } };
   });
 }
 

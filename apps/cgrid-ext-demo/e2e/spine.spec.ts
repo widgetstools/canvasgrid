@@ -33,8 +33,9 @@ test('spine: shell renders, settings sheet opens, row height applies', async ({ 
   const applied = await page.evaluate(() => (window as any).__ext.grid.getGridOption('rowHeight'));
   expect(applied).toBe(40);
 
-  // Save button becomes enabled (profile marked dirty by the change).
-  await expect(page.locator('[data-item-id="save"] button')).toBeEnabled();
+  // The layout-save disk becomes enabled (rowHeight is a 'ui'-source state
+  // change, so the active layout is now dirty).
+  await expect(page.locator('[data-item-id="layout-save"] button')).toBeEnabled();
 });
 
 // Overflow-menu theme toggle: flips the `-dark` suffix of the active theme
