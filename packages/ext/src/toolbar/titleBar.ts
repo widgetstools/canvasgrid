@@ -50,6 +50,8 @@ const ICON = {
   more: 'M12 12m-1 0a1 1 0 1 0 2 0a1 1 0 1 0-2 0M12 5m-1 0a1 1 0 1 0 2 0a1 1 0 1 0-2 0M12 19m-1 0a1 1 0 1 0 2 0a1 1 0 1 0-2 0',
   columns: 'M3 3h18v18H3zM12 3v18',
   wand: 'M15 4V2M15 16v-2M8 9h2M20 9h2M17.8 11.8L19 13M15 9h0M17.8 6.2L19 5M3 21l9-9M12.2 6.2L11 5',
+  brush: 'M9.06 11.9l8.07-8.06a2.85 2.85 0 1 1 4.03 4.03l-8.06 8.08M7.07 14.94c-1.66 0-3 1.35-3 3.02 0 1.33-2.5 1.52-2 2.02 1.08 1.1 2.49 2.02 4 2.02 2.2 0 4-1.8 4-4.04a3.01 3.01 0 0 0-3-3.02z',
+  pencil: 'M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z',
 };
 
 function svg(path: string, size = 16): string {
@@ -240,11 +242,26 @@ function overflowItem(): ToolbarItem {
         it.addEventListener('click', () => { onClick(); close(); });
         list.appendChild(it);
       };
+      // A checkable toggle for a sub-toolbar: reflects the live ribbon DOM
+      // state, stays open, and repaints its checkmark on each toggle.
+      const toggleEntry = (icon: string, text: string, section: string, toolbar: string) => {
+        const strip = () => document.querySelector<HTMLElement>(`.cgext-ribbon [data-toolbar="${toolbar}"]`);
+        const it = document.createElement('button');
+        it.type = 'button';
+        const paint = () => {
+          const on = !!strip() && !strip()!.hidden;
+          it.className = 'cgext-menu-item cgext-menu-toggle' + (on ? ' is-active' : '');
+          it.innerHTML = `${svg(icon, 15)}<span>${text}</span><span class="cgext-menu-check">${on ? svg('M20 6L9 17l-5-5', 13) : ''}</span>`;
+        };
+        paint();
+        it.addEventListener('click', () => { ctx.events.emit({ type: 'toggle-ribbon', section }); paint(); });
+        list.appendChild(it);
+      };
       entry(ICON.columns, 'Columns…', () => { try { ctx.grid.openToolPanel?.('columns'); } catch { /* ignore */ } });
       entry(ICON.wand, 'Auto format', () => ctx.events.emit({ type: 'auto-format' }));
       const sep = document.createElement('div'); sep.className = 'cgext-menu-sep'; list.appendChild(sep);
-      entry(ICON.sliders, 'Formatting toolbar', () => ctx.events.emit({ type: 'toggle-ribbon', section: 'format' }));
-      entry(ICON.wand, 'Editing toolbar', () => ctx.events.emit({ type: 'toggle-ribbon', section: 'edit' }));
+      toggleEntry(ICON.brush, 'Formatting toolbar', 'format', 'formatting');
+      toggleEntry(ICON.pencil, 'Editing toolbar', 'edit', 'editing');
       return list;
     });
     btn.addEventListener('click', () => m.toggle());
@@ -346,5 +363,9 @@ const TITLEBAR_CSS = `
 .cgext-menu-item:hover { background: var(--cg-row-alt-bg, rgba(255,255,255,0.07)); }
 .cgext-menu-item svg { color: var(--cg-muted-fg-color, #9aa4b6); }
 .cgext-menu-item.is-active { color: var(--cg-accent-color, #4f9cf9); }
+.cgext-menu-item.is-active svg { color: var(--cg-accent-color, #4f9cf9); }
+.cgext-menu-toggle { min-width: 200px; }
+.cgext-menu-toggle span:nth-child(2) { flex: 1 1 auto; }
+.cgext-menu-check { display: inline-flex; width: 14px; color: var(--cg-accent-color, #4f9cf9); }
 .cgext-menu-sep { height: 1px; margin: 5px 4px; background: var(--cg-border-color, #2a3140); }
 `;

@@ -168,6 +168,15 @@ ext.grid.updateGridOptions({ columnDefs });
 // Expose for console poking + the hermetic E2E suite.
 (window as unknown as { __ext: unknown }).__ext = ext;
 
+// cgrid's side-panel rail (Columns / Filters / Grid Options / Column Groups)
+// must always be visible on load. persistState can restore it hidden from a
+// prior session, and that restore runs async after construction — so force it
+// visible now and again after the restore settles.
+const showSidebar = () => { try { ext.grid.setSideBarVisible(true); } catch { /* ignore */ } };
+showSidebar();
+requestAnimationFrame(showSidebar);
+setTimeout(showSidebar, 250);
+
 // ─── STOMP feed ──────────────────────────────────────────────────────────
 // The shell + grid are already mounted above and stay visible regardless of
 // feed state; connectStomp's onPhase('error') only affects these logs.

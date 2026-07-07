@@ -188,9 +188,32 @@ function ribbonItem(): ToolbarItem {
         ),
       );
 
-      root.append(row1, row2, row3, row4, row5);
+      // Two independently-toggleable sub-toolbars: the Editing toolbar
+      // (History undo/redo + Smart + Bulk) on top, the Formatting toolbar
+      // (Scope/type/paint/format/group/templates) below. Each is shown/hidden
+      // from the title-bar overflow menu, which emits `toggle-ribbon` with the
+      // matching section.
+      const editing = h('cgext-ribbon-strip'); editing.dataset.toolbar = 'editing';
+      editing.append(row1);
+      const formatting = h('cgext-ribbon-strip'); formatting.dataset.toolbar = 'formatting';
+      formatting.append(row2, row3, row4, row5);
+      root.append(editing, formatting);
       host.appendChild(root);
-      return { destroy() { host.replaceChildren(); } };
+
+      // Collapse the whole ribbon host when both sub-toolbars are hidden, so
+      // no empty strip lingers.
+      const syncHost = () => {
+        const ribbonHost = host.closest<HTMLElement>('.cgext-ribbon');
+        if (ribbonHost) ribbonHost.hidden = editing.hidden && formatting.hidden;
+      };
+      const off = ctx.events.on('toggle-ribbon', (e) => {
+        const section = (e as { section?: string }).section;
+        if (section === 'edit') editing.hidden = !editing.hidden;
+        else if (section === 'format') formatting.hidden = !formatting.hidden;
+        syncHost();
+      });
+
+      return { destroy() { off(); host.replaceChildren(); } };
     },
   };
 }
