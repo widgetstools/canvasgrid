@@ -165,7 +165,9 @@ describe('compileFormatSlots — static cellStyle survives format compile', () =
       colId: 'x', valueFormatter: '$#,##0.00',
       cellStyle: { bg: '#12333a', fg: '#4fd1c5' },
     }] as any);
-    expect(resolved[0].cellStyle).toBeUndefined();          // moved to the merged fn
+    // The static object stays visible on the resolved def (the header fold
+    // reads cellStyle.halign); the merged fn carries the same keys for paint.
+    expect(resolved[0].cellStyle).toEqual({ bg: '#12333a', fg: '#4fd1c5' });
     const style = resolved[0].cellStyleFn!({ value: 5, data: {}, colId: 'x', rowIndex: 0 } as any);
     expect(style).toEqual({ bg: '#12333a', fg: '#4fd1c5' }); // was undefined before the fix
   });

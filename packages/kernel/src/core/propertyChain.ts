@@ -764,12 +764,15 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
     : undefined;
 
   if (ctx.isHeader) {
-    // Headers are LEFT-aligned regardless of the cellDataType-derived data
-    // alignment set above (numbers right-align their CELLS, not their
-    // captions — matching the painter's historical behavior). An explicit
-    // `headerStyle.halign` / headerClass variant below overrides this, which
-    // is what lets the formatting toolbar align header captions.
-    target.halign = 'left';
+    // Header caption alignment: an EXPLICIT cell alignment (static
+    // `cellStyle.halign` — authored or set via the formatting toolbar's Cell
+    // target) carries onto the header, so aligning a column's cells aligns
+    // its caption too. Without one, headers stay LEFT regardless of the
+    // cellDataType-derived data alignment set above (numbers right-align
+    // their CELLS, not their captions — the painter's historical behavior).
+    // An explicit `headerStyle.halign` / headerClass variant below overrides
+    // either, letting the user split header alignment from the cells'.
+    target.halign = (colDef.cellStyle as ColCellOverrides | undefined)?.halign ?? 'left';
     // Header path: group-header cells supply groupHeaderClassNames (from the
     // group's pre-resolved headerClass); leaf header cells fall back to the
     // leaf colDef's headerClassStatic / headerClassFn. Group wins; leaf is skipped
@@ -1263,10 +1266,15 @@ export function resolveColDef<TRow>(
     cellEditorParams: merged.cellEditorParams as ResolvedColDef<TRow>['cellEditorParams'],
     // Split cellStyle into object form vs function form.
     // compiledMerged.cellStyle may be a merged function from compileFormatSlots;
-    // if so it goes into cellStyleFn (function form); if still an object it goes
-    // into cellStyle (object form). Either way the paint path picks it up.
-    cellStyle: typeof compiledMerged.cellStyle === 'object' && compiledMerged.cellStyle !== null
-      ? compiledMerged.cellStyle as ColCellOverrides
+    // it goes into cellStyleFn (function form). The STATIC object slot reads
+    // from the PRE-compile merged def, so an authored/override static
+    // cellStyle stays visible on the resolved def even when a string
+    // valueFormatter wrapped it into the merged fn — the header fold reads
+    // `cellStyle.halign` to let headers follow an explicit cell alignment,
+    // and the merged fn re-applies the same static keys at paint time (user
+    // overlays format), so paint output is unchanged.
+    cellStyle: typeof merged.cellStyle === 'object' && merged.cellStyle !== null
+      ? merged.cellStyle as ColCellOverrides
       : undefined,
     cellStyleFn: typeof compiledMerged.cellStyle === 'function'
       ? compiledMerged.cellStyle as CellStyleFunc

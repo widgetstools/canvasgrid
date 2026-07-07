@@ -162,3 +162,22 @@ describe('applyCellProps — header alignment', () => {
     expect(cfg.textDecoration).toBe('line-through');
   });
 });
+
+describe('applyCellProps — header follows explicit cell alignment', () => {
+  it('an explicit cellStyle.halign carries onto the header caption', () => {
+    const cfg = foldHeader({
+      field: 'dv01', cellDataType: 'number',
+      cellStyle: { halign: 'center' },
+    });
+    expect(cfg.halign).toBe('center');
+  });
+
+  it('headerStyle.halign overrides the cell-derived alignment (split header from cells)', () => {
+    const cfg = foldHeader({
+      field: 'dv01', cellDataType: 'number',
+      cellStyle: { halign: 'center' },
+      headerStyle: { halign: 'right' },
+    });
+    expect(cfg.halign).toBe('right');
+  });
+});
