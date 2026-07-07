@@ -130,6 +130,11 @@ const columnDefs: (CColDef<Position> | CColGroupDef<Position>)[] = [
 
 const app = document.querySelector<HTMLDivElement>('#app')!;
 
+// The edit engine is wired just after construction (below); the ribbon's
+// Editing toolbar reads it lazily so undo/redo + smart/bulk bind to the real
+// handle once it exists.
+let editHandle: ReturnType<typeof wireEditIntoKernel> | undefined;
+
 const ext = new CGridExt<Position>(app, {
   gridId: 'ext-demo',
   persistState: true,
@@ -149,7 +154,7 @@ const ext = new CGridExt<Position>(app, {
       { remove: 'settings-launcher' },
       { remove: 'save' },
       ...titleBarExtensions({ name: 'MarketsGrid', date: new Date().toISOString().slice(0, 10) }),
-      ...ribbonExtensions(),
+      ...ribbonExtensions({ edit: () => editHandle }),
     ],
   },
 });
@@ -158,12 +163,15 @@ const ext = new CGridExt<Position>(app, {
 // valueFormatters / DSL above), edit (editors + Smart Edit / Bulk Update),
 // calc (calculated columns + styling templates), rules (conditional styles).
 wireFormat(ext.grid);
-wireEditIntoKernel(ext.grid);
+// Re-issue defs so the now-registered format compiler picks up the string
+// valueFormatters ('#,##0.00', '[Red]…'). Must run right after wireFormat and
+// BEFORE calc/rules wire — re-issuing after calc resets its override baseline
+// so later editColumn() edits don't repaint.
+ext.grid.updateGridOptions({ columnDefs });
+editHandle = wireEditIntoKernel(ext.grid);
+(window as unknown as { __edit: unknown }).__edit = editHandle;
 wireCalc(ext.grid);
 wireRules(ext.grid);
-// Re-issue defs so the now-registered format compiler picks up the string
-// valueFormatters ('#,##0.00', '[Red]…').
-ext.grid.updateGridOptions({ columnDefs });
 
 // Expose for console poking + the hermetic E2E suite.
 (window as unknown as { __ext: unknown }).__ext = ext;

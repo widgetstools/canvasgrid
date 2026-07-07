@@ -20,7 +20,13 @@
  * rules) as those module waves land — no control is faked to look enabled
  * when it isn't.
  */
-import type { CgExtension, CgExtContext, ToolbarItem, ToolbarItemInstance } from '../extension/types';
+import type { CgExtension, CgExtContext, ToolbarItem, ToolbarItemInstance, Unsub } from '../extension/types';
+import type { EditBridgeHandle, SmartEditOp } from '@cgrid/edit';
+
+/** Lazily supplies the `@cgrid/edit` handle — the demo/consumer wires the
+ *  edit engine after the grid is constructed, so the ribbon reads it on
+ *  demand rather than capturing it at build time. */
+export type EditHandleGetter = () => EditBridgeHandle | undefined;
 
 const I = {
   undo: 'M3 7v6h6M3 13a9 9 0 1 0 3-7.7L3 8',
@@ -63,9 +69,9 @@ function svg(path: string, size = 15): string {
 
 /** Build the ribbon extension (one item at `ribbon.main`). Compose into
  *  `ext.extensions`. Toggle visibility via the `toggle-ribbon` ext event. */
-export function ribbonExtensions(): CgExtension[] {
+export function ribbonExtensions(opts: { edit?: EditHandleGetter } = {}): CgExtension[] {
   injectRibbonStyles();
-  return [ribbonItem()];
+  return [ribbonItem(opts.edit)];
 }
 
 // ── small builders ──────────────────────────────────────────────────────
@@ -108,27 +114,36 @@ function stat(text: string): HTMLSpanElement {
   const s = document.createElement('span'); s.className = 'cgext-rb-stat'; s.textContent = text; return s;
 }
 
-function ribbonItem(): ToolbarItem {
+function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
   return {
     id: 'ribbon', kind: 'toolbar-item', slot: 'ribbon.main', init() {},
     render(host: HTMLElement, ctx: CgExtContext): ToolbarItemInstance {
       const root = h('cgext-ribbon-strip');
 
-      // Row 1 — HISTORY · SMART · BULK
+      // Row 1 — HISTORY · SMART · BULK (the Editing toolbar). Controls are
+      // captured by reference so `wireEditingToolbar` can bind them to the
+      // `@cgrid/edit` bridge (undo/redo journal, smart-edit ops, bulk update).
       const undo = iconBtn(I.undo, 'Undo');
       const redo = iconBtn(I.redo, 'Redo');
-      undo.addEventListener('click', () => { try { (ctx.grid as any).undo?.(); } catch { /* ignore */ } });
-      redo.addEventListener('click', () => { try { (ctx.grid as any).redo?.(); } catch { /* ignore */ } });
+      const histCount = stat('0 entries');
+      const operand = textInput('1', 44); operand.value = '1';
+      const opMul = iconBtn('M6 6l12 12M18 6L6 18', 'Multiply');
+      const opDiv = iconBtn('M5 12h14M12 6h.01M12 18h.01', 'Divide');
+      const opAdd = iconBtn('M12 5v14M5 12h14', 'Add');
+      const opSub = iconBtn('M5 12h14', 'Subtract');
+      const setBtn = pill('Set…', false);
+      const smartCount = stat('0 cells');
+      const bulkValue = textInput('New value', 96);
+      const bulkApply = iconBtn('M20 6L9 17l-5-5', 'Apply');
+      const bulkCount = stat('0 selected');
+
       const row1 = h('cgext-rb-row');
       row1.append(
-        section('History', group(undo, redo), stat('0 entries')),
+        section('History', group(undo, redo), histCount),
         sep(),
-        section('Smart', group(textInput('1', 44),
-          iconBtn(I.hash /* × */, 'Multiply'), iconBtn(I.decUp /* ÷ */, 'Divide'),
-          iconBtn('M12 5v14M5 12h14', 'Add'), iconBtn('M5 12h14', 'Subtract'),
-          pill('Set…', false)), stat('0 cells')),
+        section('Smart', group(operand, opMul, opDiv, opAdd, opSub, setBtn), smartCount),
         sep(),
-        section('Bulk', group(textInput('New value', 96), iconBtn('M20 6L9 17l-5-5', 'Apply')), stat('0 selected')),
+        section('Bulk', group(bulkValue, bulkApply), bulkCount),
       );
 
       // Row 2 — SCOPE · type · B I U · align · size
@@ -207,7 +222,15 @@ function ribbonItem(): ToolbarItem {
         else if (section === 'format') formatting.hidden = !formatting.hidden;
       });
 
-      return { destroy() { off(); host.replaceChildren(); } };
+      const disposeEditing = getEdit
+        ? wireEditingToolbar(ctx, getEdit, {
+            undo, redo, histCount,
+            operand, ops: { multiply: opMul, divide: opDiv, add: opAdd, subtract: opSub, set: setBtn },
+            smartCount, bulkValue, bulkApply, bulkCount,
+          })
+        : undefined;
+
+      return { destroy() { disposeEditing?.(); off(); host.replaceChildren(); } };
     },
   };
 }
@@ -223,6 +246,83 @@ function stepper(value: string): HTMLDivElement {
 }
 function dangerIcon(icon: string, title: string): HTMLButtonElement {
   const b = iconBtn(icon, title); b.classList.add('cgext-rb-danger-btn'); return b;
+}
+
+// ── Editing-toolbar wiring (@cgrid/edit bridge) ──────────────────────────
+interface EditingRefs {
+  undo: HTMLButtonElement; redo: HTMLButtonElement; histCount: HTMLElement;
+  operand: HTMLInputElement; ops: Record<SmartEditOp, HTMLButtonElement>;
+  smartCount: HTMLElement; bulkValue: HTMLInputElement; bulkApply: HTMLButtonElement; bulkCount: HTMLElement;
+}
+
+/** Bind the History / Smart / Bulk controls to the live `@cgrid/edit` handle:
+ *  undo/redo through the journal (with reactive count + enablement), numeric
+ *  ops and set-value across the current cell selection, and bulk set-value.
+ *  Returns a disposer. */
+function wireEditingToolbar(ctx: CgExtContext, getEdit: EditHandleGetter, r: EditingRefs): () => void {
+  const disposers: Array<() => void> = [];
+  const onGrid = (type: string, fn: () => void) =>
+    disposers.push((ctx.grid.addEventListener as any)(type, fn) as Unsub);
+
+  const refreshHistory = () => {
+    const j = getEdit()?.journal;
+    if (!j) return;
+    r.undo.disabled = !j.canUndo();
+    r.redo.disabled = !j.canRedo();
+    const n = j.entries().length;
+    r.histCount.textContent = `${n} ${n === 1 ? 'entry' : 'entries'}`;
+  };
+  r.undo.addEventListener('click', () => { getEdit()?.journal.undo(); refreshHistory(); });
+  r.redo.addEventListener('click', () => { getEdit()?.journal.redo(); refreshHistory(); });
+
+  const runSmart = (op: SmartEditOp) => {
+    const e = getEdit(); if (!e) return;
+    const operand = Number(r.operand.value);
+    if (!Number.isFinite(operand)) return;
+    void e.smartEdit.collectTargets().then((t) => { if (t.length) void e.smartEdit.apply(t, op, operand); });
+  };
+  (Object.keys(r.ops) as SmartEditOp[]).forEach((op) => r.ops[op].addEventListener('click', () => runSmart(op)));
+
+  r.bulkApply.addEventListener('click', () => {
+    const e = getEdit(); if (!e) return;
+    const raw = r.bulkValue.value;
+    if (!raw.trim()) return;
+    void e.bulkUpdate.collectTargets().then((t) => { if (t.length) void e.bulkUpdate.apply(t, raw); });
+  });
+
+  const refreshCounts = () => {
+    const e = getEdit(); if (!e) return;
+    void e.smartEdit.collectTargets().then((t) => {
+      r.smartCount.textContent = `${t.length} ${t.length === 1 ? 'cell' : 'cells'}`;
+      const none = t.length === 0;
+      for (const op of Object.keys(r.ops) as SmartEditOp[]) r.ops[op].disabled = none;
+    });
+    void e.bulkUpdate.collectTargets().then((t) => {
+      r.bulkCount.textContent = `${t.length} selected`;
+      r.bulkApply.disabled = t.length === 0;
+    });
+  };
+
+  // The edit engine is wired just after the grid is constructed — a tick
+  // after the ribbon renders — so subscribe as soon as the handle appears.
+  let subscribed = false;
+  const trySubscribe = () => {
+    const e = getEdit();
+    if (!e || subscribed) return;
+    subscribed = true;
+    disposers.push(e.journal.subscribe(refreshHistory));
+    onGrid('cellSelectionChanged', refreshCounts);
+    onGrid('cellFocused', refreshCounts);
+    refreshHistory();
+    refreshCounts();
+  };
+  trySubscribe();
+  if (!subscribed) {
+    const t = setTimeout(trySubscribe, 0);
+    disposers.push(() => clearTimeout(t));
+  }
+
+  return () => { for (const d of disposers) { try { d(); } catch { /* ignore */ } } };
 }
 
 // ── styles ──────────────────────────────────────────────────────────────
