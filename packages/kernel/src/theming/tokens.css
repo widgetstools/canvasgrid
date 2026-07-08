@@ -302,7 +302,7 @@
   --cg-header-bg: oklch(1 0 0);
   --cg-header-fg: oklch(0.345 0.004 256);
   --cg-border-color: oklch(0.932 0.003 256);
-  --cg-grid-line-color: oklch(0.932 0.003 256 / 0.6);
+  --cg-grid-line-color: oklch(0.932 0.003 256 / 0.7);
   --cg-row-hover-bg: oklch(0.54 0.135 220 / 0.07);
   --cg-row-selected-bg: oklch(0.54 0.135 220 / 0.12);
   /* Accent — the one cyan brand colour drives every chrome highlight. */
@@ -378,7 +378,7 @@
   --cg-header-bg: oklch(0.203 0.0185 258);
   --cg-header-fg: oklch(0.96 0.006 258);
   --cg-border-color: oklch(0.365 0.019 258);
-  --cg-grid-line-color: oklch(0.365 0.019 258 / 0.6);
+  --cg-grid-line-color: oklch(0.365 0.019 258 / 0.7);
   --cg-row-hover-bg: oklch(0.72 0.145 218 / 0.09);
   --cg-row-selected-bg: oklch(0.72 0.145 218 / 0.16);
   --cg-chrome-accent: oklch(0.72 0.145 218);
