@@ -210,6 +210,11 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       const italic = toggleBtn(I.italic, 'Italic');
       const underline = toggleBtn(I.underline, 'Underline');
       const strike = toggleBtn(I.strikethrough, 'Strikethrough');
+      // AB — header-caption case toggle (uppercase ⇄ original), all columns.
+      const headerCase = document.createElement('button');
+      headerCase.type = 'button';
+      headerCase.className = 'cgext-rb-toggle cgext-rb-ab';
+      headerCase.textContent = 'AB';
       const alignL = toggleBtn(I.alignLeft, 'Align left');
       const alignC = toggleBtn(I.alignCenter, 'Align center');
       const alignR = toggleBtn(I.alignRight, 'Align right');
@@ -280,7 +285,7 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       const formatting = h('cgext-rb-cluster'); formatting.dataset.toolbar = 'formatting';
       formatting.append(
         grp('Target', mini(selPill), mini(targetToggle, scopeToggle)),
-        grp('Font', mini(bold, italic, underline, strike, sizeWrap), mini(textColorBtn, textColorInput, fillColorBtn, fillColorInput)),
+        grp('Font', mini(bold, italic, underline, strike, sizeWrap), mini(textColorBtn, textColorInput, fillColorBtn, fillColorInput, headerCase)),
         grp('Alignment', mini(alignL, alignC, alignR)),
         grp('Number', mini(fmtCode), mini(fmtDollar, fmtPercent, fmtThousands, decDown, decUp)),
         grp('Icons', mini(picker.button, iconPlacePill), mini(iconColorBtn, iconColorInput, iconClear)),
@@ -311,7 +316,7 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
         targetToggle, scopeToggle, selPill,
         bold, italic, underline, strike, alignL, alignC, alignR,
         sizeVal, sizeUp, sizeDn,
-        textColorBtn, textColorInput, fillColorBtn, fillColorInput,
+        textColorBtn, textColorInput, fillColorBtn, fillColorInput, headerCase,
         fmtDollar, fmtPercent, fmtThousands, decDown, decUp, fmtCode,
         clear, eraser,
         iconPicker: picker,
@@ -422,6 +427,7 @@ interface FormattingRefs {
   sizeVal: HTMLElement; sizeUp: HTMLButtonElement; sizeDn: HTMLButtonElement;
   textColorBtn: HTMLButtonElement; textColorInput: HTMLInputElement;
   fillColorBtn: HTMLButtonElement; fillColorInput: HTMLInputElement;
+  headerCase: HTMLButtonElement;
   fmtDollar: HTMLButtonElement; fmtPercent: HTMLButtonElement; fmtThousands: HTMLButtonElement;
   decDown: HTMLButtonElement; decUp: HTMLButtonElement; fmtCode: HTMLButtonElement;
   clear: HTMLButtonElement; eraser: HTMLButtonElement;
@@ -559,6 +565,18 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   const fmtPicker = formatPickerMenu(r.fmtCode, pickerHost);
   disposers.push(() => fmtPicker.destroy());
 
+  /** True when the header-caption uppercase toggle is ON (read from the
+   *  first column's own template — the toggle always writes ALL columns,
+   *  so any one of them is representative). */
+  const headerCaseOn = (): boolean => {
+    const first = allCols()[0];
+    if (!first) return false;
+    try {
+      const own = grid.getTemplates().find((t) => t.id === `__cgridOwn:${first}`);
+      return (own?.overrides?.headerStyle as { textTransform?: string } | undefined)?.textTransform === 'uppercase';
+    } catch { return false; }
+  };
+
   /** Reflect the first target column's state into the controls. */
   const refresh = (): void => {
     const cols = targetCols();
@@ -584,6 +602,16 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     r.alignC.classList.toggle('is-on', s.halign === 'center');
     r.alignR.classList.toggle('is-on', s.halign === 'right');
     r.sizeVal.textContent = `${(s.fontSize as number | undefined) ?? 12}px`;
+
+    // AB header-case toggle: header-target only; acts on ALL columns, so it
+    // ignores the selection/scope and never disables for lack of one.
+    r.headerCase.disabled = target !== 'header';
+    r.headerCase.classList.toggle('is-on', headerCaseOn());
+    r.headerCase.title = target !== 'header'
+      ? 'Switch target to Header to toggle header case'
+      : headerCaseOn()
+        ? 'Restore original header caption case'
+        : 'Uppercase all column header captions';
 
     // Colour swatches — read the column's own fg/bg back into the pickers
     // (the swatch bar repaints off the input event). Hex inputs can only
@@ -843,6 +871,18 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   r.clear.addEventListener('click', clearFormatting);
   r.eraser.addEventListener('click', clearFormatting);
 
+  // AB — toggle every column header caption to UPPERCASE and back to the
+  // original case ('none'): headerStyle.textTransform rides the own
+  // templates, so it persists into layouts like any other header styling.
+  r.headerCase.addEventListener('click', () => {
+    const next = headerCaseOn() ? 'none' : 'uppercase';
+    for (const colId of allCols()) {
+      try { grid.editColumn(colId, { headerStyle: { textTransform: next } }); } catch { /* unknown column */ }
+    }
+    ctx.profiles.markDirty();
+    refresh();
+  });
+
   // Selection-driven readout
   try {
     disposers.push(grid.addEventListener('cellSelectionChanged', refresh));
@@ -907,6 +947,13 @@ const RIBBON_CSS = `
   white-space: nowrap;
 }
 .cgext-rb-spacer { flex: 1 1 auto; }
+
+/* AB — header-caption uppercase toggle (text glyph, not an icon path). */
+.cgext-rb-ab {
+  width: auto; padding: 0 6px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+}
+.cgext-rb-ab:disabled { opacity: 0.45; cursor: default; }
 
 /* Cell↔header target toggle — the face shows the ACTIVE target, the
    trailing swap arrows signal "click to switch". */
