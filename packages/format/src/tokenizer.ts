@@ -15,7 +15,8 @@ export type Token =
   | { kind: 'excel-locale-tag'; hex: string; loc: Loc }
   | { kind: 'tier1-bracket'; channel: 'color' | 'bg' | 'weight' | 'style' | 'if'; interior: string; interiorLoc: Loc; loc: Loc }
   | { kind: 'icon-token'; name: string; nameLoc: Loc; dynamicExpr?: string; dynamicExprLoc?: Loc; loc: Loc }
-  | { kind: 'date-token'; token: string; loc: Loc };
+  | { kind: 'date-token'; token: string; loc: Loc }
+  | { kind: 'exponent'; sign: '+' | '-'; digits: number; loc: Loc };
 
 // Date tokens ordered longest-first so greedy matching works correctly.
 const DATE_TOKENS: readonly string[] = [
@@ -246,6 +247,22 @@ export function tokenize(source: string): Token[] {
       appendLiteral(source.slice(i, closeIdx + 1), i);
       i = closeIdx + 1;
       continue;
+    }
+
+    // --- Scientific exponent marker: E+00 / E-0 … (uppercase only — Excel's canonical form)
+    if (c === 'E') {
+      const m = /^E([+-])(0+)/.exec(source.slice(i));
+      if (m) {
+        flushLiteral(i);
+        out.push({
+          kind: 'exponent',
+          sign: m[1] as '+' | '-',
+          digits: m[2]!.length,
+          loc: { start: i, end: i + m[0].length },
+        });
+        i += m[0].length;
+        continue;
+      }
     }
 
     // --- Date tokens (case-insensitive, longest-first)

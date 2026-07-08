@@ -154,7 +154,8 @@ function classifyTokens(tokens: Token[]): SectionKind {
       t.kind === 'digit-placeholder' ||
       t.kind === 'group-separator' ||
       t.kind === 'decimal-point' ||
-      t.kind === 'percent',
+      t.kind === 'percent' ||
+      t.kind === 'exponent',
   );
 
   // Any date-token present?
@@ -296,6 +297,11 @@ function formatNumber(
     return nf.format(n);
   }
 
+  const expTok = tokens.find((t) => t.kind === 'exponent');
+  if (expTok && expTok.kind === 'exponent') {
+    return formatScientific(tokens, expTok, n);
+  }
+
   // Plain number.
   // Split at the first numeric-format token boundary to get literal prefix/suffix.
   // Use Math.abs so the sign is handled by Intl (which prepends '-' for negatives),
@@ -310,6 +316,28 @@ function formatNumber(
   const literalPrefix = extractLiteralPrefix(tokens);
   const literalSuffix = extractLiteralSuffix(tokens);
   return literalPrefix + nf.format(absVal) + literalSuffix;
+}
+
+function formatScientific(
+  tokens: Token[],
+  expTok: { sign: '+' | '-'; digits: number },
+  n: number,
+): string {
+  // Mantissa fraction digits come from the pattern before the exponent.
+  const expIdx = tokens.findIndex((t) => t.kind === 'exponent');
+  const mantissaTokens = tokens.slice(0, expIdx);
+  let frac = 0;
+  let sawDecimal = false;
+  for (const t of mantissaTokens) {
+    if (t.kind === 'decimal-point') sawDecimal = true;
+    else if (sawDecimal && t.kind === 'digit-placeholder') frac++;
+  }
+  const s = n.toExponential(frac); // e.g. "1.23e+3" / "-1.23e-3"
+  const m = /^(-?[0-9.]+)e([+-])(\d+)$/.exec(s);
+  if (!m) return s;
+  const digits = m[3]!.padStart(expTok.digits, '0');
+  const signStr = m[2] === '-' ? '-' : expTok.sign === '+' ? '+' : '';
+  return `${m[1]}E${signStr}${digits}`;
 }
 
 /** Returns true when there's a '-' or '+' literal immediately before the first digit-placeholder. */
