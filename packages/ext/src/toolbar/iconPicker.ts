@@ -37,13 +37,22 @@ function tileSvg(d: string): string {
 }
 
 export function createIconPicker(opts: { onSelect: (sel: IconSelection) => void }): IconPickerHandle {
+  // Prominent labeled trigger (matches the ribbon's target-toggle chrome):
+  // a bordered preview WELL showing the current slot's icon (or a dashed
+  // add-placeholder), a text label, and a caret — the old bare 24px glyph
+  // was easy to miss entirely.
   const button = document.createElement('button');
   button.type = 'button';
-  button.className = 'cgext-rb-btn cgext-ip-open';
+  button.className = 'cgext-ip-open';
   button.title = 'Pick icon or emoji';
   button.setAttribute('aria-label', 'Pick icon or emoji');
   button.dataset.ip = 'open';
-  button.innerHTML = PLACEHOLDER_SVG;
+  button.innerHTML =
+    `<span class="cgext-ip-well">${PLACEHOLDER_SVG}</span>` +
+    `<span class="cgext-ip-openlabel">Add icon</span>` +
+    '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+  const previewWell = button.querySelector<HTMLElement>('.cgext-ip-well')!;
+  const previewLabel = button.querySelector<HTMLElement>('.cgext-ip-openlabel')!;
 
   const panel = document.createElement('div');
   panel.className = 'cgext-ip-panel';
@@ -178,9 +187,21 @@ export function createIconPicker(opts: { onSelect: (sel: IconSelection) => void 
   document.addEventListener('keydown', onKey);
 
   const setPreview = (sel: IconSelection | null): void => {
-    if (sel?.emoji) { button.textContent = sel.emoji; return; }
-    if (sel?.name && lucideBundle[sel.name]) { button.innerHTML = tileSvg(lucideBundle[sel.name]!); return; }
-    button.innerHTML = PLACEHOLDER_SVG;
+    if (sel?.emoji) {
+      previewWell.textContent = sel.emoji;
+      previewWell.classList.add('has-icon');
+      previewLabel.textContent = 'Icon';
+      return;
+    }
+    if (sel?.name && lucideBundle[sel.name]) {
+      previewWell.innerHTML = tileSvg(lucideBundle[sel.name]!);
+      previewWell.classList.add('has-icon');
+      previewLabel.textContent = 'Icon';
+      return;
+    }
+    previewWell.innerHTML = PLACEHOLDER_SVG;
+    previewWell.classList.remove('has-icon');
+    previewLabel.textContent = 'Add icon';
   };
 
   return {

@@ -1225,8 +1225,30 @@ const RIBBON_CSS = `
 .cgext-rb-danger-btn:hover { background: color-mix(in srgb, var(--cg-neg-color, #e5646e) 16%, transparent); color: var(--cg-neg-color, #e5646e); }
 
 /* ── Icons section — tile picker · placement slot menu ─────────────────── */
-.cgext-ip-open { font-size: 14px; }
-.cgext-ip-open.is-open { background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 22%, transparent); color: var(--cg-accent-color, #4f9cf9); }
+/* Labeled trigger (target-toggle chrome): preview well + label + caret —
+   the picker is a first-class control now, not an easy-to-miss glyph. */
+.cgext-ip-open {
+  appearance: none; display: inline-flex; align-items: center; gap: 6px;
+  height: 24px; padding: 0 7px 0 3px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 6px;
+  background: transparent; color: var(--cg-fg-color, #d3dbe7);
+  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: border-color 110ms ease, background 110ms ease;
+}
+.cgext-ip-open:hover:not(:disabled) { border-color: var(--cg-accent-color, #4f9cf9); }
+.cgext-ip-open:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: 1px; }
+.cgext-ip-open > svg:last-child { color: var(--cg-muted-fg-color, #7f8ba0); flex: 0 0 auto; }
+.cgext-ip-well {
+  width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 4px; font-size: 12px; line-height: 1;
+  color: var(--cg-muted-fg-color, #7f8ba0);
+  background: color-mix(in srgb, var(--cg-muted-fg-color, #7f8ba0) 10%, transparent);
+}
+.cgext-ip-well.has-icon {
+  color: var(--cg-accent-color, #4f9cf9);
+  background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 14%, transparent);
+}
+.cgext-ip-open.is-open { border-color: var(--cg-accent-color, #4f9cf9); background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 12%, transparent); }
 .cgext-ip-open:disabled,
 .cgext-rb-pill[data-ip="place"]:disabled,
 .cgext-rb-btn[data-ip="color"]:disabled,
