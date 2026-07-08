@@ -218,6 +218,23 @@ describe('paintCellDecorators', () => {
     expect((gc.fill as any).mock.calls.length).toBeGreaterThan(0);
   });
 
+  it("'icon' kind resolves catalog icons from the Lucide icon-set registry (not just the chrome set)", async () => {
+    const { registerIconSet, _resetIconRegistry_forTests } = await import('../src/icons/registry');
+    registerIconSet('lucide', { flame: 'M8.5 14.5A2.5 2.5 0 0 0 11 12c0-1.38-.5-2-1-3' });
+    try {
+      const gc = makeGc();
+      paintCellDecorators(gc, { x: 0, y: 0, w: 100, h: 30 }, [
+        { position: 'tr', kind: 'icon', icon: 'flame', color: '#f80', size: 10 },
+      ]);
+      // Previously hasIcon('flame') was false (chrome set only) and the
+      // decorator was SILENTLY dropped — the icon vanished at tl/tr/….
+      expect((gc.stroke as any).mock.calls.length).toBeGreaterThan(0);
+      expect((gc.translate as any).mock.calls.length).toBeGreaterThan(0);
+    } finally {
+      _resetIconRegistry_forTests();
+    }
+  });
+
   it("'emoji' kind fillText's the emoji at the position", () => {
     const gc = makeGc();
     paintCellDecorators(gc, { x: 0, y: 0, w: 100, h: 30 }, [

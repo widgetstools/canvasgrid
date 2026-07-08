@@ -13,6 +13,7 @@
 import type { CachedContext2D } from '../gc';
 import type { CellDecorator, DecoratorPosition } from '../../types';
 import { drawIcon, hasIcon } from '../icons';
+import { resolveIcon as resolveLucideIcon } from '../../icons/registry';
 
 const DEFAULT_SIZE = 12;
 const DEFAULT_DOT_SIZE = 6;
@@ -91,6 +92,23 @@ function paintOne(
       break;
     }
     case 'icon': {
+      // Resolve from the Lucide icon-set registry FIRST — the same source
+      // the cellIcon/headerIcon content slots paint from — so any icon a
+      // picker can apply inline also paints as a positional decorator.
+      // (Previously only the small chrome set was consulted, silently
+      // dropping catalog icons like 'flame' at tl/tr/bl/br/ml/mr.)
+      const lucide = d.icon !== undefined ? resolveLucideIcon(d.icon) : null;
+      if (lucide) {
+        gc.translate(pos.x - size / 2, pos.y - size / 2);
+        const scale = size / 24; // Lucide viewBox is 24×24
+        gc.scale(scale, scale);
+        gc.cache.strokeStyle = d.color ?? '#000';
+        gc.cache.lineWidth = 2 / scale;
+        gc.cache.lineCap = 'round';
+        gc.cache.lineJoin = 'round';
+        gc.stroke(lucide);
+        break;
+      }
       if (!hasIcon(d.icon)) break;
       drawIcon(gc as unknown as CanvasRenderingContext2D, d.icon, pos.x, pos.y, size, {
         color: d.color ?? '#000',
