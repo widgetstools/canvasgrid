@@ -155,6 +155,12 @@ function textInput(placeholder: string, width = 70): HTMLInputElement {
   i.style.width = `${width}px`;
   return i;
 }
+// Colour-picker defaults — the swatch a picker shows when the focused
+// column has NO explicit colour of its own (refresh() reverts to these).
+const DEFAULT_TEXT_COLOR = '#4fd1c5';
+const DEFAULT_FILL_COLOR = '#12333a';
+const DEFAULT_ICON_COLOR = '#4f9cf9';
+
 function stat(text: string): HTMLSpanElement {
   const s = document.createElement('span'); s.className = 'cgext-rb-stat'; s.textContent = text; return s;
 }
@@ -217,9 +223,9 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       // Paint — fg/bg colour pickers (share Formatting row A with Type/Icons).
       // Buttons carry a live swatch bar mirroring their hidden colour input.
       const textColorInput = document.createElement('input');
-      textColorInput.type = 'color'; textColorInput.className = 'cgext-rb-colorinput'; textColorInput.value = '#4fd1c5';
+      textColorInput.type = 'color'; textColorInput.className = 'cgext-rb-colorinput'; textColorInput.value = DEFAULT_TEXT_COLOR;
       const fillColorInput = document.createElement('input');
-      fillColorInput.type = 'color'; fillColorInput.className = 'cgext-rb-colorinput'; fillColorInput.value = '#12333a';
+      fillColorInput.type = 'color'; fillColorInput.className = 'cgext-rb-colorinput'; fillColorInput.value = DEFAULT_FILL_COLOR;
       const textColorBtn = swatchBtn(I.paintText, 'Text color', textColorInput);
       const fillColorBtn = swatchBtn(I.fill, 'Fill color', fillColorInput);
       // Icons — tile picker · colour · placement slot selector · clear. Icons
@@ -230,7 +236,7 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       let iconApply: (sel: IconSelection) => void = () => {};
       const picker = createIconPicker({ onSelect: (sel) => iconApply(sel) });
       const iconColorInput = document.createElement('input');
-      iconColorInput.type = 'color'; iconColorInput.className = 'cgext-rb-colorinput'; iconColorInput.value = '#4f9cf9';
+      iconColorInput.type = 'color'; iconColorInput.className = 'cgext-rb-colorinput'; iconColorInput.value = DEFAULT_ICON_COLOR;
       const iconColorBtn = swatchBtn(I.paintText, 'Icon color', iconColorInput);
       iconColorBtn.dataset.ip = 'color';
       const iconPlacePill = pill('Prefix'); iconPlacePill.dataset.ip = 'place';
@@ -581,15 +587,18 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
 
     // Colour swatches — read the column's own fg/bg back into the pickers
     // (the swatch bar repaints off the input event). Hex inputs can only
-    // represent #rrggbb; token/var() values keep the last pick.
-    const syncColor = (input: HTMLInputElement, value: unknown) => {
-      if (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value) && input.value !== value) {
-        input.value = value;
+    // represent #rrggbb; token/var() values read as unset. A column WITHOUT
+    // the setting reverts the picker to its default swatch, so the control
+    // always shows the focused column's state, never the previous pick.
+    const syncColor = (input: HTMLInputElement, value: unknown, fallback: string) => {
+      const next = typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
+      if (input.value !== next) {
+        input.value = next;
         input.dispatchEvent(new Event('input'));
       }
     };
-    syncColor(r.textColorInput, s.fg);
-    syncColor(r.fillColorInput, s.bg);
+    syncColor(r.textColorInput, s.fg, DEFAULT_TEXT_COLOR);
+    syncColor(r.fillColorInput, s.bg, DEFAULT_FILL_COLOR);
 
     // # Format pill caption tracks the target column's current format.
     const fmt = currentFormat();
@@ -608,7 +617,8 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     r.iconClear.disabled = none || slot === null;
     r.iconPicker.button.disabled = none;
     r.iconPlacePill.disabled = none;
-    if (slot?.color) r.iconColorInput.value = slot.color;
+    // Icon colour reverts to its default swatch when the slot has none.
+    syncColor(r.iconColorInput, slot?.color, DEFAULT_ICON_COLOR);
   };
 
   // Target toggle (cell vs header styling) — ONE button whose face shows
