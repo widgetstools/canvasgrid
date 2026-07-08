@@ -92,12 +92,14 @@ test('icons section: prefix icon, corner decorator, header emoji, clear', async 
   // Visual smoke — grid canvas with icons applied.
   await page.screenshot({ path: 'e2e-results/icon-ribbon.png', fullPage: false });
 
-  // 5. Persistence round-trip — save the profile, reload, and confirm the own
-  //    template's cellIcon + decorator survive the localStorage save/restore
-  //    (cellIcon/headerIcon are NEW override keys riding the profile pipe; a
-  //    serialization regression that dropped unknown keys would pass every
-  //    in-session assertion above while losing icons on reload).
-  await page.locator('[data-item-id="save"] button').click();
+  // 5. Persistence round-trip — click the layout-save disk (the icon edits
+  //    above are a 'ui'-source stateUpdated change, so it's enabled), reload,
+  //    and confirm the own template's cellIcon + decorator survive the
+  //    localStorage save/restore (cellIcon/headerIcon are NEW override keys
+  //    riding the profile pipe; a serialization regression that dropped
+  //    unknown keys would pass every in-session assertion above while
+  //    losing icons on reload).
+  await page.locator('[data-item-id="layout-save"] button').click();
   // Let the debounced persistState autosave (500ms) flush before navigating
   // away — the reload's restore reads the persisted `cgrid:state:ext-demo`.
   await page.waitForTimeout(800);
