@@ -39,6 +39,13 @@ export function menu(
   const open = () => {
     panel = build(close);
     panel.classList.add('cgext-menu');
+    // The panel mounts on document.body — OUTSIDE the shell root that
+    // carries the `.cg-theme-*` class — so without mirroring the theme
+    // class here every `--cg-*` token falls back to the neutral-dark
+    // defaults and popups render dark on light themes.
+    const root = anchor.closest<HTMLElement>('.cgext-root');
+    const themeClass = root && Array.from(root.classList).find((c) => c.startsWith('cg-theme-'));
+    if (themeClass) panel.classList.add(themeClass);
     document.body.appendChild(panel);
     const r = anchor.getBoundingClientRect();
     panel.style.top = `${Math.round(r.bottom + 4)}px`;
