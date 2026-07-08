@@ -7,6 +7,7 @@
 // onSelect({emoji}) for an emoji tile, then closes. The caller owns all
 // apply semantics (placement slots, editColumn) — this module is pure UI.
 
+import { mirrorThemeClass } from './ui';
 import { lucideBundle } from '@cgrid/kernel/icons/lucide.generated';
 import { lucideCategories } from './iconCatalog.generated';
 import { emojiCategories } from './emojiCatalog';
@@ -174,15 +175,10 @@ export function createIconPicker(opts: { onSelect: (sel: IconSelection) => void 
 
   const open = (): void => {
     if (!built) build();
-    // The panel mounts on document.body, OUTSIDE the shell's `.cg-theme-*`
-    // scope — mirror the anchor's theme class per open (theme may have been
-    // toggled since) so `--cg-*` tokens (incl. the scrollbar colours below)
-    // resolve for the active light/dark mode instead of the raw browser
-    // defaults. Same pattern as ui.ts `menu()`.
-    const root = button.closest<HTMLElement>('.cgext-root');
-    const themeClass = root && Array.from(root.classList).find((c) => c.startsWith('cg-theme-'));
-    for (const c of Array.from(panel.classList)) if (c.startsWith('cg-theme-')) panel.classList.remove(c);
-    if (themeClass) panel.classList.add(themeClass);
+    // Body-mounted panel: mirror the anchor's theme class per open (theme
+    // may have been toggled since) so `--cg-*` tokens resolve for the
+    // active light/dark mode. Shared helper with ui.ts `menu()`.
+    mirrorThemeClass(button, panel);
     const r = button.getBoundingClientRect();
     panel.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 348))}px`;
     panel.style.top = `${r.bottom + 6}px`;

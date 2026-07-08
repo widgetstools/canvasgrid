@@ -20,11 +20,26 @@ export function iconButton(icon: string, label: string): HTMLButtonElement {
   return b;
 }
 
-/** Simple click-away popup menu anchored under `anchor`. */
+/** Mirror the anchor's active `.cg-theme-*` class onto a body-mounted
+ *  element. Popups mount OUTSIDE the shell root that carries the theme
+ *  class, so without this every `--cg-*` token falls back to the
+ *  neutral-dark defaults and popups render dark on light themes. Clears
+ *  any previously-mirrored theme class first (the theme can be toggled
+ *  between opens). */
+export function mirrorThemeClass(anchor: HTMLElement, el: HTMLElement): void {
+  for (const c of Array.from(el.classList)) if (c.startsWith('cg-theme-')) el.classList.remove(c);
+  const root = anchor.closest<HTMLElement>('.cgext-root');
+  const themeClass = root && Array.from(root.classList).find((c) => c.startsWith('cg-theme-'));
+  if (themeClass) el.classList.add(themeClass);
+}
+
+/** Simple click-away popup menu anchored under `anchor`.
+ *  `opts.align` picks which anchor edge the panel hugs (default right). */
 export function menu(
   anchor: HTMLElement,
   build: (close: () => void) => HTMLElement,
   onOpenChange?: (open: boolean) => void,
+  opts?: { align?: 'left' | 'right' },
 ): { toggle: () => void; destroy: () => void } {
   let panel: HTMLElement | null = null;
   const close = () => {
@@ -39,18 +54,14 @@ export function menu(
   const open = () => {
     panel = build(close);
     panel.classList.add('cgext-menu');
-    // The panel mounts on document.body — OUTSIDE the shell root that
-    // carries the `.cg-theme-*` class — so without mirroring the theme
-    // class here every `--cg-*` token falls back to the neutral-dark
-    // defaults and popups render dark on light themes.
-    const root = anchor.closest<HTMLElement>('.cgext-root');
-    const themeClass = root && Array.from(root.classList).find((c) => c.startsWith('cg-theme-'));
-    if (themeClass) panel.classList.add(themeClass);
+    mirrorThemeClass(anchor, panel);
     document.body.appendChild(panel);
     const r = anchor.getBoundingClientRect();
     panel.style.top = `${Math.round(r.bottom + 4)}px`;
-    // right-align to the anchor, clamped so wide panels can't go off-screen left
-    panel.style.left = `${Math.round(Math.max(8, r.right - panel.offsetWidth))}px`;
+    // Align to the anchor, clamped so wide panels can't go off-screen left.
+    panel.style.left = opts?.align === 'left'
+      ? `${Math.round(Math.max(8, Math.min(r.left, window.innerWidth - panel.offsetWidth - 8)))}px`
+      : `${Math.round(Math.max(8, r.right - panel.offsetWidth))}px`;
     document.addEventListener('pointerdown', onDoc, true);
     onOpenChange?.(true);
   };

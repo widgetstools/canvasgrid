@@ -73,19 +73,54 @@ function svg(path: string, size = 14): string {
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>`;
 }
 
-/** Icon button carrying a live colour swatch bar under the glyph (Excel-
- *  style): the bar mirrors the paired `<input type="color">` so the button
- *  itself shows what colour a click will apply. */
-function swatchBtn(icon: string, title: string, input: HTMLInputElement): HTMLButtonElement {
-  const b = iconBtn(icon, title);
-  b.classList.add('cgext-rb-swatch');
+/** ONE colour-picker control: swatch button (live colour bar under the
+ *  glyph, Excel-style) + its hidden `<input type="color">`, with the
+ *  click-to-open forwarding and bar repaint wired in. Every colour picker
+ *  in the ribbon is built from this — hand-assembling the trio per site
+ *  is how the border picker shipped with a dead swatch (no forwarding). */
+function colorSwatch(icon: string, title: string, defaultColor: string): {
+  button: HTMLButtonElement; input: HTMLInputElement;
+} {
+  const input = document.createElement('input');
+  input.type = 'color';
+  input.className = 'cgext-rb-colorinput';
+  input.value = defaultColor;
+  const button = iconBtn(icon, title);
+  button.classList.add('cgext-rb-swatch');
   const bar = document.createElement('span');
   bar.className = 'cgext-rb-swatchbar';
   bar.style.background = input.value;
-  b.append(bar);
+  button.append(bar);
   input.addEventListener('input', () => { bar.style.background = input.value; });
   input.addEventListener('change', () => { bar.style.background = input.value; });
-  return b;
+  button.addEventListener('click', () => input.click());
+  return { button, input };
+}
+
+/** ONE two-state labeled toggle (target-toggle chrome): the face shows the
+ *  ACTIVE state's icon + label with trailing swap arrows; clicking flips.
+ *  Both Target (Cells↔Header) and Scope (Selected↔All) are built from
+ *  this — their construction + paint logic used to be duplicated inline. */
+function stateToggle(opts: {
+  rb: string;
+  a: { icon: string; label: string };
+  b: { icon: string; label: string };
+  title: (isA: boolean) => string;
+}): { el: HTMLButtonElement; paint: (isA: boolean) => void } {
+  const el = document.createElement('button');
+  el.type = 'button';
+  el.className = 'cgext-rb-targettoggle';
+  el.dataset.rb = opts.rb;
+  const paint = (isA: boolean): void => {
+    const s = isA ? opts.a : opts.b;
+    el.innerHTML = `${svg(s.icon, 14)}<span>${s.label}</span>${svg(I.swap, 11)}`;
+    const title = opts.title(isA);
+    el.title = title;
+    el.setAttribute('aria-label', title);
+    el.setAttribute('aria-pressed', String(!isA));
+    el.classList.toggle('is-header', !isA);
+  };
+  return { el, paint };
 }
 
 /** Build the ribbon extension (one item at `ribbon.main`). Compose into
@@ -221,19 +256,23 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
 
       // Formatting cluster controls — target, type, paint, icons, number,
       // edit/group pickers, templates.
-      // Single cell↔header target toggle: the button's face IS the current
-      // target (icon + label), the trailing swap arrows say "click to
-      // switch". Painted + wired in wireFormattingToolbar.
-      const targetToggle = document.createElement('button');
-      targetToggle.type = 'button';
-      targetToggle.className = 'cgext-rb-targettoggle';
-      targetToggle.dataset.rb = 'target';
-      // Scope toggle (same anatomy): whether ribbon settings apply to the
-      // SELECTED column(s) or to ALL columns.
-      const scopeToggle = document.createElement('button');
-      scopeToggle.type = 'button';
-      scopeToggle.className = 'cgext-rb-targettoggle';
-      scopeToggle.dataset.rb = 'scope';
+      // Cell↔header target + selected↔all scope toggles — both instances of
+      // the shared stateToggle control; painted + wired in
+      // wireFormattingToolbar via the paint fns carried on FormattingRefs.
+      const targetT = stateToggle({
+        rb: 'target',
+        a: { icon: I.grid, label: 'Cells' },
+        b: { icon: I.rows, label: 'Header' },
+        title: (isCell) => `Styling target: ${isCell ? 'Cells' : 'Header'} — click to switch to ${isCell ? 'Header' : 'Cells'}`,
+      });
+      const scopeT = stateToggle({
+        rb: 'scope',
+        a: { icon: I.selection, label: 'Selected' },
+        b: { icon: I.columns, label: 'All' },
+        title: (isSel) => `Scope: ${isSel ? 'selected column(s)' : 'ALL columns'} — click to apply to ${isSel ? 'all columns' : 'the selection'}`,
+      });
+      const targetToggle = targetT.el;
+      const scopeToggle = scopeT.el;
       const selPill = pill('Select a cell', false);
       const bold = toggleBtn(I.bold, 'Bold');
       const italic = toggleBtn(I.italic, 'Italic');
@@ -250,9 +289,8 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       };
       const borderPreview = h('cgext-rb-bpreview');
       borderPreview.title = 'Current borders';
-      const borderColorInput = document.createElement('input');
-      borderColorInput.type = 'color'; borderColorInput.className = 'cgext-rb-colorinput'; borderColorInput.value = DEFAULT_BORDER_COLOR;
-      const borderColorBtn = swatchBtn('M4 4h16v16H4zM12 12h.01', 'Border color', borderColorInput);
+      const { button: borderColorBtn, input: borderColorInput } =
+        colorSwatch('M4 4h16v16H4zM12 12h.01', 'Border color', DEFAULT_BORDER_COLOR);
       const borderStylePill = pill('Solid');
       const borderWidthPill = pill('1 px');
       const borderClear = iconBtn(I.eraser, 'Remove the border at this side');
@@ -274,12 +312,10 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
 
       // Paint — fg/bg colour pickers (share Formatting row A with Type/Icons).
       // Buttons carry a live swatch bar mirroring their hidden colour input.
-      const textColorInput = document.createElement('input');
-      textColorInput.type = 'color'; textColorInput.className = 'cgext-rb-colorinput'; textColorInput.value = DEFAULT_TEXT_COLOR;
-      const fillColorInput = document.createElement('input');
-      fillColorInput.type = 'color'; fillColorInput.className = 'cgext-rb-colorinput'; fillColorInput.value = DEFAULT_FILL_COLOR;
-      const textColorBtn = swatchBtn(I.paintText, 'Text color', textColorInput);
-      const fillColorBtn = swatchBtn(I.fill, 'Fill color', fillColorInput);
+      const { button: textColorBtn, input: textColorInput } =
+        colorSwatch(I.paintText, 'Text color', DEFAULT_TEXT_COLOR);
+      const { button: fillColorBtn, input: fillColorInput } =
+        colorSwatch(I.fill, 'Fill color', DEFAULT_FILL_COLOR);
       // Icons — tile picker · colour · placement slot selector · clear. Icons
       // are column styling, so they share the Paint row. Placement is a SLOT
       // SELECTOR (see `wireFormattingToolbar`): the picker/colour/clear always
@@ -287,9 +323,8 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       // switch which slot is shown, never move an icon between slots.
       let iconApply: (sel: IconSelection) => void = () => {};
       const picker = createIconPicker({ onSelect: (sel) => iconApply(sel) });
-      const iconColorInput = document.createElement('input');
-      iconColorInput.type = 'color'; iconColorInput.className = 'cgext-rb-colorinput'; iconColorInput.value = DEFAULT_ICON_COLOR;
-      const iconColorBtn = swatchBtn(I.paintText, 'Icon color', iconColorInput);
+      const { button: iconColorBtn, input: iconColorInput } =
+        colorSwatch(I.paintText, 'Icon color', DEFAULT_ICON_COLOR);
       iconColorBtn.dataset.ip = 'color';
       const iconPlacePill = pill('Prefix'); iconPlacePill.dataset.ip = 'place';
       const iconClear = iconBtn(I.eraser, 'Clear icon at this placement'); iconClear.dataset.ip = 'clear';
@@ -364,6 +399,7 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
 
       const disposeFormatting = wireFormattingToolbar(ctx, {
         targetToggle, scopeToggle, selPill,
+        paintTargetToggle: targetT.paint, paintScopeToggle: scopeT.paint,
         bold, italic, underline, strike, alignL, alignC, alignR,
         sizeVal, sizeUp, sizeDn,
         textColorBtn, textColorInput, fillColorBtn, fillColorInput, headerCase,
@@ -474,6 +510,7 @@ function wireEditingToolbar(ctx: CgExtContext, getEdit: EditHandleGetter, r: Edi
 // ── Formatting-toolbar wiring (column styling via @cgrid/calc editColumn) ──
 interface FormattingRefs {
   targetToggle: HTMLButtonElement; scopeToggle: HTMLButtonElement; selPill: HTMLButtonElement;
+  paintTargetToggle: (isCell: boolean) => void; paintScopeToggle: (isSelected: boolean) => void;
   bold: HTMLButtonElement; italic: HTMLButtonElement; underline: HTMLButtonElement; strike: HTMLButtonElement;
   alignL: HTMLButtonElement; alignC: HTMLButtonElement; alignR: HTMLButtonElement;
   sizeVal: HTMLElement; sizeUp: HTMLButtonElement; sizeDn: HTMLButtonElement;
@@ -738,19 +775,9 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     syncColor(r.iconColorInput, slot?.color, DEFAULT_ICON_COLOR);
   };
 
-  // Target toggle (cell vs header styling) — ONE button whose face shows
-  // the ACTIVE target; clicking flips it. `aria-pressed` reflects the
-  // non-default (header) state for AT users.
-  const paintTarget = () => {
-    const isCell = target === 'cell';
-    r.targetToggle.innerHTML =
-      `${svg(isCell ? I.grid : I.rows, 14)}<span>${isCell ? 'Cells' : 'Header'}</span>${svg(I.swap, 11)}`;
-    const title = `Styling target: ${isCell ? 'Cells' : 'Header'} — click to switch to ${isCell ? 'Header' : 'Cells'}`;
-    r.targetToggle.title = title;
-    r.targetToggle.setAttribute('aria-label', title);
-    r.targetToggle.setAttribute('aria-pressed', String(!isCell));
-    r.targetToggle.classList.toggle('is-header', !isCell);
-  };
+  // Target toggle (cell vs header styling) — shared stateToggle control;
+  // the factory owns the face/aria painting.
+  const paintTarget = () => r.paintTargetToggle(target === 'cell');
   const setTarget = (t: 'cell' | 'header') => {
     target = t;
     paintTarget();
@@ -759,19 +786,8 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   paintTarget();
   r.targetToggle.addEventListener('click', () => setTarget(target === 'cell' ? 'header' : 'cell'));
 
-  // Scope toggle (selected column(s) vs ALL columns) — same anatomy as the
-  // target toggle: the face is the ACTIVE scope, arrows say "click to
-  // switch". `aria-pressed` reflects the non-default (all) state.
-  const paintScope = () => {
-    const isSel = scope === 'selected';
-    r.scopeToggle.innerHTML =
-      `${svg(isSel ? I.selection : I.columns, 14)}<span>${isSel ? 'Selected' : 'All'}</span>${svg(I.swap, 11)}`;
-    const title = `Scope: ${isSel ? 'selected column(s)' : 'ALL columns'} — click to apply to ${isSel ? 'all columns' : 'the selection'}`;
-    r.scopeToggle.title = title;
-    r.scopeToggle.setAttribute('aria-label', title);
-    r.scopeToggle.setAttribute('aria-pressed', String(!isSel));
-    r.scopeToggle.classList.toggle('is-header', !isSel);
-  };
+  // Scope toggle (selected column(s) vs ALL columns) — shared stateToggle.
+  const paintScope = () => r.paintScopeToggle(scope === 'selected');
   paintScope();
   r.scopeToggle.addEventListener('click', () => {
     scope = scope === 'selected' ? 'all' : 'selected';
@@ -842,86 +858,72 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   };
   r.setIconApply(applyIconSlot);
 
-  // Placement menu on the pill. Grouped by kind — inline slots that flow with
-  // the label vs. the six positional slots pinned to a cell corner/middle —
-  // because that grouping is real structure, not decoration. The active slot
-  // is marked so the pill's dropdown reads as a selector, not a one-shot menu.
-  const placeMenu = document.createElement('div');
-  placeMenu.className = 'cgext-ip-placemenu'; placeMenu.hidden = true;
-  placeMenu.setAttribute('role', 'menu');
-  const placeItems = new Map<Placement, HTMLButtonElement>();
-  const addPlaceGroup = (heading: string, entries: Array<[Placement, string]>): void => {
-    const head = document.createElement('div');
-    head.className = 'cgext-ip-placehead'; head.textContent = heading;
-    placeMenu.append(head);
-    for (const [value, itemLabel] of entries) {
-      const item = document.createElement('button');
-      item.type = 'button'; item.className = 'cgext-ip-placeitem';
-      item.dataset.place = value; item.textContent = itemLabel;
-      item.setAttribute('role', 'menuitemradio');
-      item.title = 'Click: move the current icon here · Alt-click: just switch slots';
-      item.addEventListener('click', (e: MouseEvent) => {
-        const prev = placement;
-        if (value !== prev && !e.altKey) {
-          // MOVE semantics: picking a new placement carries the icon at the
-          // current slot along when the destination is empty — "change the
-          // icon's location" just works. A destination that already holds
-          // an icon is only SELECTED. Alt-click always only selects, which
-          // is how a second icon lands on another slot (multi-slot editing).
-          const moving = currentIconSlot();
-          placement = value;
-          const atDestination = currentIconSlot();
-          if (moving && !atDestination) {
-            if (typeof moving.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(moving.color)) {
-              r.iconColorInput.value = moving.color; // carry the tint along
-            }
-            placement = prev;
-            applyIconSlot(null);                     // clear the old slot…
-            placement = value;
-            applyIconSlot(moving.name ? { name: moving.name } : { emoji: moving.emoji! }); // …rewrite at the new one
-          }
-        } else {
-          placement = value;
+  // Placement menu on the pill — rides the shared `menu()` popup (click-
+  // away, positioning, theme-class mirroring for free; the previous hand-
+  // rolled dropdown re-implemented all three and MISSED the theme mirror).
+  // Grouped by kind — inline slots that flow with the label vs. the six
+  // positional slots pinned to a cell corner/middle. The active slot is
+  // marked so the dropdown reads as a selector, not a one-shot menu.
+  const PLACE_GROUPS: Array<[string, Array<[Placement, string]>]> = [
+    ['Inline', [['prefix', 'Prefix'], ['suffix', 'Suffix']]],
+    ['Positional', [
+      ['tl', 'Top-left'], ['tr', 'Top-right'], ['bl', 'Bottom-left'], ['br', 'Bottom-right'],
+      ['ml', 'Middle-left'], ['mr', 'Middle-right'],
+    ]],
+  ];
+  const pickPlacement = (value: Placement, itemLabel: string, altKey: boolean): void => {
+    const prev = placement;
+    if (value !== prev && !altKey) {
+      // MOVE semantics: picking a new placement carries the icon at the
+      // current slot along when the destination is empty — "change the
+      // icon's location" just works. A destination that already holds
+      // an icon is only SELECTED. Alt-click always only selects, which
+      // is how a second icon lands on another slot (multi-slot editing).
+      const moving = currentIconSlot();
+      placement = value;
+      const atDestination = currentIconSlot();
+      if (moving && !atDestination) {
+        if (typeof moving.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(moving.color)) {
+          r.iconColorInput.value = moving.color; // carry the tint along
         }
-        r.iconPlacePill.querySelector('span')!.textContent = itemLabel;
-        placeMenu.hidden = true;
-        syncPlaceActive();
-        refresh();
-      });
-      placeMenu.append(item);
-      placeItems.set(value, item);
-    }
-  };
-  addPlaceGroup('Inline', [['prefix', 'Prefix'], ['suffix', 'Suffix']]);
-  addPlaceGroup('Positional', [
-    ['tl', 'Top-left'], ['tr', 'Top-right'], ['bl', 'Bottom-left'], ['br', 'Bottom-right'],
-    ['ml', 'Middle-left'], ['mr', 'Middle-right'],
-  ]);
-  const syncPlaceActive = (): void => {
-    for (const [value, el] of placeItems) {
-      const on = value === placement;
-      el.classList.toggle('is-active', on);
-      el.setAttribute('aria-checked', String(on));
-    }
-  };
-  syncPlaceActive();
-  document.body.append(placeMenu);
-  disposers.push(() => placeMenu.remove());
-  r.iconPlacePill.addEventListener('click', () => {
-    if (!placeMenu.hidden) { placeMenu.hidden = true; return; }
-    const rect = r.iconPlacePill.getBoundingClientRect();
-    placeMenu.style.left = `${rect.left}px`; placeMenu.style.top = `${rect.bottom + 6}px`;
-    placeMenu.hidden = false;
-    const away = (e: MouseEvent): void => {
-      if (!placeMenu.contains(e.target as Node) && !r.iconPlacePill.contains(e.target as Node)) {
-        placeMenu.hidden = true;
-        document.removeEventListener('mousedown', away);
+        placement = prev;
+        applyIconSlot(null);                     // clear the old slot…
+        placement = value;
+        applyIconSlot(moving.name ? { name: moving.name } : { emoji: moving.emoji! }); // …rewrite at the new one
       }
-    };
-    document.addEventListener('mousedown', away);
-  });
+    } else {
+      placement = value;
+    }
+    r.iconPlacePill.querySelector('span')!.textContent = itemLabel;
+    refresh();
+  };
+  const placeMenu = menu(r.iconPlacePill, (close) => {
+    const list = document.createElement('div');
+    list.className = 'cgext-ip-placemenu';
+    list.setAttribute('role', 'menu');
+    for (const [heading, entries] of PLACE_GROUPS) {
+      const head = document.createElement('div');
+      head.className = 'cgext-ip-placehead';
+      head.textContent = heading;
+      list.append(head);
+      for (const [value, itemLabel] of entries) {
+        const item = document.createElement('button');
+        item.type = 'button';
+        item.className = 'cgext-ip-placeitem' + (value === placement ? ' is-active' : '');
+        item.dataset.place = value;
+        item.textContent = itemLabel;
+        item.setAttribute('role', 'menuitemradio');
+        item.setAttribute('aria-checked', String(value === placement));
+        item.title = 'Click: move the current icon here · Alt-click: just switch slots';
+        item.addEventListener('click', (e: MouseEvent) => { pickPlacement(value, itemLabel, e.altKey); close(); });
+        list.append(item);
+      }
+    }
+    return list;
+  }, undefined, { align: 'left' });
+  r.iconPlacePill.addEventListener('click', () => placeMenu.toggle());
+  disposers.push(() => placeMenu.destroy());
 
-  r.iconColorBtn.addEventListener('click', () => r.iconColorInput.click());
   r.iconColorInput.addEventListener('change', () => {
     const cur = currentIconSlot();
     if (cur?.name) applyIconSlot({ name: cur.name }); // re-apply with new color
@@ -952,8 +954,6 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   r.sizeDn.addEventListener('click', () => bumpSize(-1));
 
   // Paint: fg / bg via native color inputs
-  r.textColorBtn.addEventListener('click', () => r.textColorInput.click());
-  r.fillColorBtn.addEventListener('click', () => r.fillColorInput.click());
   r.textColorInput.addEventListener('change', () => applyStyle({ fg: r.textColorInput.value }));
   r.fillColorInput.addEventListener('change', () => applyStyle({ bg: r.fillColorInput.value }));
 
@@ -1006,7 +1006,6 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   for (const side of Object.keys(r.borderSideBtns) as BorderSideKey[]) {
     r.borderSideBtns[side].addEventListener('click', () => { borderSide = side; refresh(); });
   }
-  r.borderColorBtn.addEventListener('click', () => r.borderColorInput.click());
   r.borderColorInput.addEventListener('change', applyBorderEdit);
   const lineSampleItem = (label: string, sampleCss: string, onPick: () => void): HTMLButtonElement => {
     const it = document.createElement('button');
@@ -1332,14 +1331,12 @@ const RIBBON_CSS = `
 .cgext-ip-empty > svg { width: 22px; height: 22px; opacity: 0.55; }
 .cgext-ip-empty-msg { font-size: 12px; }
 
+/* Positioning/away/theming come from the shared .cgext-menu popup shell
+   (ui.ts menu()); this class only adds the placemenu's own shape. */
 .cgext-ip-placemenu {
-  font-family: var(--cg-font-family, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif); font-size: 12px;
-  position: fixed; z-index: 1000; min-width: 158px; padding: 5px;
-  background: var(--cg-popup-bg, #161b26); border: 1px solid var(--cg-border-color, #2a3140);
-  border-radius: 9px; box-shadow: 0 12px 30px rgba(0,0,0,0.45);
+  font-size: 12px; min-width: 158px;
   display: flex; flex-direction: column;
 }
-.cgext-ip-placemenu[hidden] { display: none; }
 .cgext-ip-placehead {
   font-size: 9.5px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase;
   color: var(--cg-muted-fg-color, #7f8ba0); padding: 7px 8px 3px;
