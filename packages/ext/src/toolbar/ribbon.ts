@@ -237,14 +237,26 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       const pop = iconBtn(I.popout, 'Pop out');
       pop.addEventListener('click', () => ctx.events.emit({ type: 'popout' }));
 
-      // Two independently-toggleable CLUSTERS inside the one band (the
-      // title-bar overflow menu reads `[data-toolbar]` visibility — the
-      // attribute rides the cluster now, not a whole strip).
-      const editing = h('cgext-rb-cluster'); editing.dataset.toolbar = 'editing';
-      editing.append(
-        grp('History', mini(undo, redo), mini(histCount)),
-        grp('Smart edit', mini(operand, opMul, opDiv, opAdd, opSub), mini(setBtn, smartCount)),
-        grp('Bulk', mini(bulkValue), mini(bulkApply, bulkCount)),
+      // Editing strip — a STANDALONE single-row toolbar rendered ABOVE the
+      // ribbon band, not part of it: flat segments with inline labels
+      // instead of the band's 2-deep group decks. Same control references,
+      // so the edit-engine wiring below is unchanged; the
+      // `[data-toolbar="editing"]` hook stays so the title-bar overflow
+      // toggle keeps addressing it.
+      const editStrip = h('cgext-edit-strip');
+      editStrip.dataset.toolbar = 'editing';
+      const seg = (label: string, ...controls: HTMLElement[]): HTMLElement => {
+        const s = h('cgext-es-seg');
+        const l = document.createElement('span');
+        l.className = 'cgext-es-label';
+        l.textContent = label;
+        s.append(l, ...controls);
+        return s;
+      };
+      editStrip.append(
+        seg('History', undo, redo, histCount),
+        seg('Smart edit', operand, opMul, opDiv, opAdd, opSub, setBtn, smartCount),
+        seg('Bulk', bulkValue, bulkApply, bulkCount),
       );
 
       const formatting = h('cgext-rb-cluster'); formatting.dataset.toolbar = 'formatting';
@@ -260,12 +272,12 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       );
 
       const spacer = h('cgext-rb-spacer');
-      root.append(editing, formatting, spacer, pop);
-      host.appendChild(root);
+      root.append(formatting, spacer, pop);
+      host.append(editStrip, root);
 
       const off = ctx.events.on('toggle-ribbon', (e) => {
         const section = (e as { section?: string }).section;
-        if (section === 'edit') editing.hidden = !editing.hidden;
+        if (section === 'edit') editStrip.hidden = !editStrip.hidden;
         else if (section === 'format') formatting.hidden = !formatting.hidden;
       });
 
@@ -774,6 +786,29 @@ const RIBBON_CSS = `
 .cgext-ribbon-band { display: flex; align-items: stretch; padding: 4px 8px 2px; box-sizing: border-box; }
 .cgext-rb-cluster { display: flex; align-items: stretch; }
 .cgext-rb-cluster[hidden] { display: none; }
+
+/* The ribbon item renders TWO stacked strips (edit strip above the band);
+   the shell's generic toolbar-item host is inline-flex ROW, so re-scope it
+   to a column inside the ribbon slot. */
+.cgext-ribbon .cgext-toolbar-item { display: flex; flex-direction: column; align-items: stretch; }
+
+/* Editing strip — standalone single-row toolbar ABOVE the ribbon band. */
+.cgext-edit-strip {
+  display: flex; align-items: center; gap: 0;
+  padding: 4px 11px;
+  border-bottom: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 70%, transparent);
+}
+.cgext-edit-strip[hidden] { display: none; }
+.cgext-es-seg { display: inline-flex; align-items: center; gap: 3px; }
+.cgext-es-seg + .cgext-es-seg {
+  margin-left: 14px; padding-left: 14px;
+  border-left: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 70%, transparent);
+}
+.cgext-es-label {
+  font-size: 9.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--cg-muted-fg-color, #7f8ba0); margin-right: 6px; white-space: nowrap;
+}
+.cgext-es-seg > .cgext-rb-stat { margin-left: 5px; }
 .cgext-rb-grp {
   display: flex; flex-direction: column; padding: 0 9px;
   border-right: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 70%, transparent);
