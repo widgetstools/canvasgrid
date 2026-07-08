@@ -62,11 +62,13 @@ test('icons section: prefix icon, corner decorator, header emoji, clear', async 
   let ov = await ownTemplate();
   expect(ov.cellIcon).toMatchObject({ name: 'flame', position: 'leading' });
 
-  // 2. Top-right decorator — emoji. (Reset the picker's search first: the
-  // filter DETACHES non-matching tiles and persists across opens, so the
-  // stale 'flame' query would hide every emoji tile.)
+  // 2. Top-right decorator — emoji. Alt-click the placement so the flame
+  // STAYS at prefix (plain click MOVES the current icon to an empty slot;
+  // Alt = just switch slots, the multi-icon flow). Reset the picker's
+  // search first: the filter DETACHES non-matching tiles and persists
+  // across opens, so the stale 'flame' query would hide every emoji tile.
   await page.locator('[data-ip="place"]').click();
-  await page.locator('[data-place="tr"]').click();
+  await page.locator('[data-place="tr"]').click({ modifiers: ['Alt'] });
   await openBtn.click();
   await search.fill('');
   await page.locator('.cgext-ip-tile[data-emoji="⚠️"]').click();
@@ -90,6 +92,26 @@ test('icons section: prefix icon, corner decorator, header emoji, clear', async 
   ov = await ownTemplate();
   expect(ov.headerIcon).toBeUndefined();
   expect(ov.cellIcon).toMatchObject({ name: 'flame' }); // untouched
+
+  // 4b. Plain-click placement MOVES the current icon to an empty slot and
+  // back — "change the icon's location" (cell target again; the tr slot
+  // still holds the ⚠️ decorator, so switching there would only select).
+  await page.locator('.cgext-rb-targettoggle[data-rb="target"]').click(); // header → cells
+  await page.locator('[data-ip="place"]').click();
+  await page.locator('[data-place="prefix"]').click({ modifiers: ['Alt'] }); // navigate to the flame's slot
+  await page.locator('[data-ip="place"]').click();
+  await page.locator('[data-place="ml"]').click(); // plain: MOVE flame prefix → middle-left
+  ov = await ownTemplate();
+  expect(ov.cellIcon).toBeUndefined();
+  expect(ov.cellStyle.decorators).toEqual(expect.arrayContaining([
+    expect.objectContaining({ position: 'ml', kind: 'icon', icon: 'flame' }),
+    expect.objectContaining({ position: 'tr', kind: 'emoji', value: '⚠️' }),
+  ]));
+  await page.locator('[data-ip="place"]').click();
+  await page.locator('[data-place="prefix"]').click(); // plain: MOVE it back
+  ov = await ownTemplate();
+  expect(ov.cellIcon).toMatchObject({ name: 'flame', position: 'leading' });
+  expect(ov.cellStyle.decorators).toEqual([{ position: 'tr', kind: 'emoji', value: '⚠️' }]);
 
   // Visual smoke — grid canvas with icons applied.
   await page.screenshot({ path: 'e2e-results/icon-ribbon.png', fullPage: false });

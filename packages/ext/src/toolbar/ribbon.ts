@@ -779,9 +779,11 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     refresh();
   });
 
-  // ── Icons section — placement is a SLOT SELECTOR: the picker/color/clear
-  // always edit "the icon at `placement` for `target`". Changing placement
-  // switches which slot is shown; it never moves an icon between slots.
+  // ── Icons section — the picker/color/clear always edit "the icon at
+  // `placement` for `target`". Changing placement MOVES the current slot's
+  // icon along when the destination is empty (the intuitive "change its
+  // location"); a destination that already holds an icon is only selected,
+  // so multi-slot editing stays possible.
   type Placement = 'prefix' | 'suffix' | 'tl' | 'tr' | 'bl' | 'br' | 'ml' | 'mr';
   let placement: Placement = 'prefix';
 
@@ -857,8 +859,30 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
       item.type = 'button'; item.className = 'cgext-ip-placeitem';
       item.dataset.place = value; item.textContent = itemLabel;
       item.setAttribute('role', 'menuitemradio');
-      item.addEventListener('click', () => {
-        placement = value;
+      item.title = 'Click: move the current icon here · Alt-click: just switch slots';
+      item.addEventListener('click', (e: MouseEvent) => {
+        const prev = placement;
+        if (value !== prev && !e.altKey) {
+          // MOVE semantics: picking a new placement carries the icon at the
+          // current slot along when the destination is empty — "change the
+          // icon's location" just works. A destination that already holds
+          // an icon is only SELECTED. Alt-click always only selects, which
+          // is how a second icon lands on another slot (multi-slot editing).
+          const moving = currentIconSlot();
+          placement = value;
+          const atDestination = currentIconSlot();
+          if (moving && !atDestination) {
+            if (typeof moving.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(moving.color)) {
+              r.iconColorInput.value = moving.color; // carry the tint along
+            }
+            placement = prev;
+            applyIconSlot(null);                     // clear the old slot…
+            placement = value;
+            applyIconSlot(moving.name ? { name: moving.name } : { emoji: moving.emoji! }); // …rewrite at the new one
+          }
+        } else {
+          placement = value;
+        }
         r.iconPlacePill.querySelector('span')!.textContent = itemLabel;
         placeMenu.hidden = true;
         syncPlaceActive();
