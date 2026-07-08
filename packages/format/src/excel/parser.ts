@@ -82,11 +82,13 @@ export function parseExcel(tokens: Token[]): ExcelParseResult {
 
 // Inline copy of the named-color map to avoid any possible circular dependency
 // should namedColors.ts ever reference parser-layer utilities.
+// Red/Green defer to the theme's semantic neg/pos tokens (teal/rose in the
+// StarUI design language) — keep in sync with namedColors.ts.
 const EXCEL_NAMED_COLORS_INLINE: Readonly<Record<string, string>> = {
   Black: '#000000',
   White: '#FFFFFF',
-  Red: '#E53935',
-  Green: '#43A047',
+  Red: 'var(--cg-neg-color, #E53935)',
+  Green: 'var(--cg-pos-color, #43A047)',
   Blue: '#1E88E5',
   Yellow: '#FDD835',
   Cyan: '#00ACC1',
