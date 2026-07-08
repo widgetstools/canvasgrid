@@ -21,6 +21,8 @@
  * when it isn't.
  */
 import type { CgExtension, CgExtContext, ToolbarItem, ToolbarItemInstance, Unsub } from '../extension/types';
+import { menu } from './ui';
+import { injectTitleBarStyles } from './titleBar';
 import type { EditBridgeHandle, SmartEditOp } from '@cgrid/edit';
 import { createIconPicker, type IconPickerHandle, type IconSelection } from './iconPicker';
 import { formatPickerMenu, type FormatPickerHost } from './formatPicker';
@@ -160,6 +162,30 @@ function textInput(placeholder: string, width = 70): HTMLInputElement {
 const DEFAULT_TEXT_COLOR = '#4fd1c5';
 const DEFAULT_FILL_COLOR = '#12333a';
 const DEFAULT_ICON_COLOR = '#4f9cf9';
+const DEFAULT_BORDER_COLOR = '#2dd4bf';
+
+/** Border-side segment: a faint frame with the chosen edge emphasized —
+ *  reads as "which border am I editing" at a glance. */
+export type BorderSideKey = 'all' | 'top' | 'bottom' | 'left' | 'right';
+const BORDER_EDGE_PATHS: Record<BorderSideKey, string> = {
+  all: 'M5 5h14v14H5z',
+  top: 'M5 5h14',
+  bottom: 'M5 19h14',
+  left: 'M5 5v14',
+  right: 'M19 5v14',
+};
+function borderSideBtn(side: BorderSideKey): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'cgext-rb-toggle cgext-rb-bside';
+  b.dataset.side = side;
+  b.title = side === 'all' ? 'All borders' : `${side.charAt(0).toUpperCase()}${side.slice(1)} border`;
+  b.innerHTML =
+    `<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-linecap="round" aria-hidden="true">` +
+    `<path d="M5 5h14v14H5z" stroke-width="1" opacity="0.35"/>` +
+    `<path d="${BORDER_EDGE_PATHS[side]}" stroke-width="2.6"/></svg>`;
+  return b;
+}
 
 function stat(text: string): HTMLSpanElement {
   const s = document.createElement('span'); s.className = 'cgext-rb-stat'; s.textContent = text; return s;
@@ -173,6 +199,9 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       // each a stacked deck of mini-rows with the group's name centered
       // underneath. Controls are captured by reference so the wire fns can
       // bind them to their engines (edit journal, calc editColumn).
+      // Title-bar styles carry the shared `.cgext-menu*` popup rules the
+      // border style/width dropdowns ride — inject for standalone ribbons.
+      injectTitleBarStyles();
       const root = h('cgext-ribbon-band');
 
       // Editing cluster — HISTORY · SMART · BULK.
@@ -210,6 +239,24 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       const italic = toggleBtn(I.italic, 'Italic');
       const underline = toggleBtn(I.underline, 'Underline');
       const strike = toggleBtn(I.strikethrough, 'Strikethrough');
+      // Borders — per-side border editor: side segments + live preview chip
+      // (row A), colour / line-style / width / clear (row B).
+      const borderSideBtns: Record<BorderSideKey, HTMLButtonElement> = {
+        all: borderSideBtn('all'),
+        top: borderSideBtn('top'),
+        bottom: borderSideBtn('bottom'),
+        left: borderSideBtn('left'),
+        right: borderSideBtn('right'),
+      };
+      const borderPreview = h('cgext-rb-bpreview');
+      borderPreview.title = 'Current borders';
+      const borderColorInput = document.createElement('input');
+      borderColorInput.type = 'color'; borderColorInput.className = 'cgext-rb-colorinput'; borderColorInput.value = DEFAULT_BORDER_COLOR;
+      const borderColorBtn = swatchBtn('M4 4h16v16H4zM12 12h.01', 'Border color', borderColorInput);
+      const borderStylePill = pill('Solid');
+      const borderWidthPill = pill('1 px');
+      const borderClear = iconBtn(I.eraser, 'Remove the border at this side');
+
       // AB — header-caption case toggle (uppercase ⇄ original), all columns.
       const headerCase = document.createElement('button');
       headerCase.type = 'button';
@@ -287,6 +334,9 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
         grp('Target', mini(selPill), mini(targetToggle, scopeToggle)),
         grp('Font', mini(bold, italic, underline, strike, sizeWrap), mini(textColorBtn, textColorInput, fillColorBtn, fillColorInput, headerCase)),
         grp('Alignment', mini(alignL, alignC, alignR)),
+        grp('Borders',
+          mini(borderSideBtns.all, borderSideBtns.top, borderSideBtns.bottom, borderSideBtns.left, borderSideBtns.right, borderPreview),
+          mini(borderColorBtn, borderColorInput, borderStylePill, borderWidthPill, borderClear)),
         grp('Number', mini(fmtCode), mini(fmtDollar, fmtPercent, fmtThousands, decDown, decUp)),
         grp('Icons', mini(picker.button, iconPlacePill), mini(iconColorBtn, iconColorInput, iconClear)),
         grp('Edit', mini(iconBtn(I.edit, 'Editor'), pill('None')), mini(iconBtn(I.filter, 'Filter'), pill('None'), iconBtn(I.filterOff, 'Clear filter'))),
@@ -317,6 +367,8 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
         bold, italic, underline, strike, alignL, alignC, alignR,
         sizeVal, sizeUp, sizeDn,
         textColorBtn, textColorInput, fillColorBtn, fillColorInput, headerCase,
+        borderSideBtns, borderPreview, borderColorBtn, borderColorInput,
+        borderStylePill, borderWidthPill, borderClear,
         fmtDollar, fmtPercent, fmtThousands, decDown, decUp, fmtCode,
         clear, eraser,
         iconPicker: picker,
@@ -428,6 +480,11 @@ interface FormattingRefs {
   textColorBtn: HTMLButtonElement; textColorInput: HTMLInputElement;
   fillColorBtn: HTMLButtonElement; fillColorInput: HTMLInputElement;
   headerCase: HTMLButtonElement;
+  borderSideBtns: Record<BorderSideKey, HTMLButtonElement>;
+  borderPreview: HTMLElement;
+  borderColorBtn: HTMLButtonElement; borderColorInput: HTMLInputElement;
+  borderStylePill: HTMLButtonElement; borderWidthPill: HTMLButtonElement;
+  borderClear: HTMLButtonElement;
   fmtDollar: HTMLButtonElement; fmtPercent: HTMLButtonElement; fmtThousands: HTMLButtonElement;
   decDown: HTMLButtonElement; decUp: HTMLButtonElement; fmtCode: HTMLButtonElement;
   clear: HTMLButtonElement; eraser: HTMLButtonElement;
@@ -627,6 +684,38 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     };
     syncColor(r.textColorInput, s.fg, DEFAULT_TEXT_COLOR);
     syncColor(r.fillColorInput, s.bg, DEFAULT_FILL_COLOR);
+
+    // Borders — segment selection + per-side "has a border" dots, the active
+    // side's stored values in the colour/style/width controls, and a live
+    // preview chip mirroring the whole spec. Sides without a stored border
+    // keep the last-chosen style/width (they're the "next apply" values);
+    // the colour reverts to its default like the other pickers.
+    {
+      const bSpec = (s.border as Partial<Record<BorderSideKey, { width?: number; style?: string; color?: string }>> | undefined) ?? {};
+      for (const side of Object.keys(r.borderSideBtns) as BorderSideKey[]) {
+        const b = r.borderSideBtns[side];
+        b.disabled = none;
+        b.classList.toggle('is-on', borderSide === side);
+        b.classList.toggle('has-border', bSpec[side] !== undefined);
+      }
+      const active = bSpec[borderSide];
+      if (active?.style === 'solid' || active?.style === 'dashed' || active?.style === 'dotted') borderStyleVal = active.style;
+      if (typeof active?.width === 'number') borderWidthVal = active.width;
+      r.borderStylePill.querySelector('span')!.textContent =
+        borderStyleVal.charAt(0).toUpperCase() + borderStyleVal.slice(1);
+      r.borderWidthPill.querySelector('span')!.textContent = `${borderWidthVal} px`;
+      syncColor(r.borderColorInput, active?.color, DEFAULT_BORDER_COLOR);
+      for (const el of [r.borderStylePill, r.borderWidthPill, r.borderClear, r.borderColorBtn]) el.disabled = none;
+      const p = r.borderPreview.style;
+      p.border = ''; p.borderTop = ''; p.borderRight = ''; p.borderBottom = ''; p.borderLeft = '';
+      const css = (sd?: { width?: number; style?: string; color?: string }) =>
+        sd ? `${sd.width ?? 1}px ${sd.style ?? 'solid'} ${sd.color ?? DEFAULT_BORDER_COLOR}` : '';
+      if (bSpec.all) p.border = css(bSpec.all);
+      if (bSpec.top) p.borderTop = css(bSpec.top);
+      if (bSpec.bottom) p.borderBottom = css(bSpec.bottom);
+      if (bSpec.left) p.borderLeft = css(bSpec.left);
+      if (bSpec.right) p.borderRight = css(bSpec.right);
+    }
 
     // # Format pill caption tracks the target column's current format.
     const fmt = currentFormat();
@@ -871,6 +960,68 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   r.clear.addEventListener('click', clearFormatting);
   r.eraser.addEventListener('click', clearFormatting);
 
+  // ── Borders — per-side editor. The side segments are a SLOT SELECTOR
+  // (like icon placement): colour/style/width always edit "the border at
+  // `borderSide` for the current target (cell/header)"; switching sides
+  // re-reads that side's stored values. Writes replace the whole `border`
+  // object on the own template (cellStyle/headerStyle key-level merge).
+  interface BorderSideSpec { width?: number; style?: string; color?: string }
+  let borderSide: BorderSideKey = 'all';
+  let borderStyleVal: 'solid' | 'dashed' | 'dotted' = 'solid';
+  let borderWidthVal = 1;
+
+  const currentBorderSpec = (): Partial<Record<BorderSideKey, BorderSideSpec>> =>
+    ({ ...((currentStyle().border as Partial<Record<BorderSideKey, BorderSideSpec>> | undefined) ?? {}) });
+
+  const applyBorderEdit = (): void => {
+    const spec = currentBorderSpec();
+    spec[borderSide] = { width: borderWidthVal, style: borderStyleVal, color: r.borderColorInput.value };
+    applyStyle({ border: spec });
+  };
+
+  for (const side of Object.keys(r.borderSideBtns) as BorderSideKey[]) {
+    r.borderSideBtns[side].addEventListener('click', () => { borderSide = side; refresh(); });
+  }
+  r.borderColorInput.addEventListener('change', applyBorderEdit);
+  const lineSampleItem = (label: string, sampleCss: string, onPick: () => void): HTMLButtonElement => {
+    const it = document.createElement('button');
+    it.type = 'button';
+    it.className = 'cgext-menu-item';
+    it.innerHTML = `<span class="cgext-rb-linesample" style="${sampleCss}"></span><span></span>`;
+    it.querySelector('span:last-child')!.textContent = label;
+    it.addEventListener('click', onPick);
+    return it;
+  };
+  const borderStyleMenu = menu(r.borderStylePill, (close) => {
+    const list = h('cgext-menu-list');
+    for (const styleOpt of ['solid', 'dashed', 'dotted'] as const) {
+      list.appendChild(lineSampleItem(
+        styleOpt.charAt(0).toUpperCase() + styleOpt.slice(1),
+        `border-top-style:${styleOpt}`,
+        () => { borderStyleVal = styleOpt; applyBorderEdit(); close(); },
+      ));
+    }
+    return list;
+  });
+  r.borderStylePill.addEventListener('click', () => borderStyleMenu.toggle());
+  disposers.push(() => borderStyleMenu.destroy());
+  const borderWidthMenu = menu(r.borderWidthPill, (close) => {
+    const list = h('cgext-menu-list');
+    for (const w of [1, 2, 3, 4]) {
+      list.appendChild(lineSampleItem(`${w} px`, `border-top-width:${w}px`,
+        () => { borderWidthVal = w; applyBorderEdit(); close(); }));
+    }
+    return list;
+  });
+  r.borderWidthPill.addEventListener('click', () => borderWidthMenu.toggle());
+  disposers.push(() => borderWidthMenu.destroy());
+  r.borderClear.addEventListener('click', () => {
+    if (borderSide === 'all') { applyStyle({ border: undefined }); return; }
+    const spec = currentBorderSpec();
+    delete spec[borderSide];
+    applyStyle({ border: Object.keys(spec).length > 0 ? spec : undefined });
+  });
+
   // AB — toggle every column header caption to UPPERCASE and back to the
   // original case ('none'): headerStyle.textTransform rides the own
   // templates, so it persists into layouts like any other header styling.
@@ -947,6 +1098,23 @@ const RIBBON_CSS = `
   white-space: nowrap;
 }
 .cgext-rb-spacer { flex: 1 1 auto; }
+
+/* Borders group — side segments with a "has border" dot, live preview chip,
+   line-sample dropdown rows. */
+.cgext-rb-bside { position: relative; }
+.cgext-rb-bside.has-border::after {
+  content: ''; position: absolute; right: 2px; top: 2px; width: 4px; height: 4px;
+  border-radius: 50%; background: var(--cg-accent-color, #4f9cf9);
+}
+.cgext-rb-bpreview {
+  width: 20px; height: 20px; margin-left: 4px; border-radius: 4px; align-self: center;
+  border: 1px dashed color-mix(in srgb, var(--cg-muted-fg-color, #7f8ba0) 55%, transparent);
+  box-sizing: border-box;
+}
+.cgext-rb-linesample {
+  display: inline-block; width: 26px; height: 0;
+  border-top: 1px solid currentColor; flex: 0 0 auto;
+}
 
 /* AB — header-caption uppercase toggle (text glyph, not an icon path). */
 .cgext-rb-ab {
