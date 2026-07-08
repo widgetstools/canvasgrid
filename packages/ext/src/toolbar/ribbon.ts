@@ -53,8 +53,6 @@ const I = {
   dollar: 'M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6',
   percent: 'M19 5L5 19M6.5 6.5m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0M17.5 17.5m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0',
   hash: 'M4 9h16M4 15h16M10 3L8 21M16 3l-2 18',
-  decDown: 'M3 12h6M20 8l-4 4 4 4',
-  decUp: 'M3 12h6M16 8l4 4-4 4',
   edit: 'M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z',
   filter: 'M22 3H2l8 9.46V19l4 2v-8.54z',
   filterOff: 'M22 3H2l8 9.46V19l4 2v-4M2 2l20 20',
@@ -114,6 +112,25 @@ function iconBtn(icon: string, title: string): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button'; b.className = 'cgext-rb-btn'; b.title = title;
   b.setAttribute('aria-label', title); b.innerHTML = svg(icon);
+  return b;
+}
+/** Excel-style increase/decrease-decimal glyphs — composite two-row icons
+ *  (digits in the icon colour + an accent arrow), not single Lucide paths:
+ *  fewer = "←0 / .00", more = ".00 / →0". Text inherits the ribbon font. */
+function decimalIcon(kind: 'fewer' | 'more'): string {
+  const digit = (x: number, y: number, s: string) =>
+    `<text x="${x}" y="${y}" fill="currentColor" font-size="9.5" font-weight="700">${s}</text>`;
+  const arrow = (d: string) =>
+    `<path d="${d}" fill="none" stroke="var(--cg-accent-color, #4f9cf9)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+  const rows = kind === 'fewer'
+    ? arrow('M11.5 6.5H4.5M7.2 3.8 4.5 6.5l2.7 2.7') + digit(14, 10, '0') + digit(3.5, 21, '.00')
+    : digit(3.5, 10, '.00') + arrow('M4.5 17.5H11M8.8 14.8l2.7 2.7-2.7 2.7') + digit(14.5, 21, '0');
+  return `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">${rows}</svg>`;
+}
+function decimalBtn(kind: 'fewer' | 'more', title: string): HTMLButtonElement {
+  const b = document.createElement('button');
+  b.type = 'button'; b.className = 'cgext-rb-btn'; b.title = title;
+  b.setAttribute('aria-label', title); b.innerHTML = decimalIcon(kind);
   return b;
 }
 function toggleBtn(icon: string, title: string): HTMLButtonElement {
@@ -206,8 +223,8 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       const fmtDollar = iconBtn(I.dollar, 'Currency format');
       const fmtPercent = iconBtn(I.percent, 'Percent format');
       const fmtThousands = iconBtn(I.hash, 'Thousands format');
-      const decDown = iconBtn(I.decDown, 'Fewer decimals');
-      const decUp = iconBtn(I.decUp, 'More decimals');
+      const decDown = decimalBtn('fewer', 'Fewer decimals');
+      const decUp = decimalBtn('more', 'More decimals');
       const fmtCode = pill('# Format');
       const clear = pill('Clear', false); clear.classList.add('cgext-rb-danger');
       clear.title = 'Clear styling + format on the selected columns';
