@@ -79,8 +79,13 @@ const EDITABLE_SCALAR_KEYS = ['format', 'cellRenderer', 'editable', 'hide', 'wid
 
 /** The editable-attribute patch accepted by {@link CalcEngine.editColumn}. */
 export type ColumnEditPatch = Partial<
-  Pick<ColumnOverride, 'format' | 'cellRenderer' | 'editable' | 'hide' | 'width' | 'cellStyle' | 'headerStyle'>
+  Pick<ColumnOverride, 'cellRenderer' | 'editable' | 'hide' | 'width' | 'cellStyle' | 'headerStyle'>
 > & {
+  /** Format-DSL string → kernel compiler. `null` REMOVES the stored format
+   *  from the column's own template (parity with cellIcon/headerIcon
+   *  slot-clear); undefined leaves it untouched. Patch-side only — stored
+   *  templates (`ColumnOverride.format`) never hold `null`. */
+  format?: string | null;
   /** Static icon refs. `null` REMOVES the stored icon (a slot-clear from
    *  the toolbar); undefined leaves it untouched. */
   cellIcon?: IconOverride | null;
@@ -345,7 +350,7 @@ export class CalcEngine {
     if (typeof colId !== 'string' || colId.length === 0) {
       return { ok: false, errors: [{ colId: null, code: 'bad-shape', message: 'editColumn colId must be a non-empty string', loc: null }] };
     }
-    if (patch.format !== undefined) {
+    if (patch.format !== undefined && patch.format !== null) {
       const fmt = compileFormat(patch.format);
       if (!fmt.ok) {
         return { ok: false, errors: [{ colId, code: 'format-compile', message: `edit format failed to compile: ${fmt.error.message}`, loc: null }] };
@@ -363,6 +368,8 @@ export class CalcEngine {
       // hide:false, width:0) must land.
       if (value !== undefined) target[key] = value;
     }
+    // format — `null` → remove from the own template (parity with cellIcon).
+    if (patch.format === null) delete target.format;
     if (patch.cellStyle !== undefined) {
       // Clone so a caller mutating a shared cellStyle object (or its nested
       // values) after the edit can't corrupt the stored own template (L3).

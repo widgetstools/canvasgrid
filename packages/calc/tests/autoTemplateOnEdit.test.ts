@@ -90,6 +90,17 @@ describe('CalcEngine.editColumn — auto-template-on-edit', () => {
     expect(calc.listTemplates().find((t) => t.id === OWN('price'))!.overrides.format).toBe('#,##0');
   });
 
+  it('format: null removes the format from the own template (cellIcon parity)', () => {
+    const calc = new CalcEngine();
+    calc.editColumn('price', { format: '#,##0.00' }, { now: 1 });
+    expect(calc.resolvedPatchFor('price', 'number')?.valueFormatter).toBe('#,##0.00');
+
+    const res = calc.editColumn('price', { format: null }, { now: 2 });
+    expect(res.ok).toBe(true);
+    expect(calc.listTemplates().find((t) => t.id === OWN('price'))!.overrides.format).toBeUndefined();
+    expect(calc.resolvedPatchFor('price', 'number')?.valueFormatter).toBeUndefined();
+  });
+
   it('never templates headerName (caption is column-unique)', () => {
     const calc = new CalcEngine();
     calc.editColumn('price', { headerName: 'PRICE', width: 120 } as any, { now: 1 });
