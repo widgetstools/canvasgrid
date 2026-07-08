@@ -55,6 +55,44 @@ export const BUILTINS: Record<string, BuiltinDef> = {
   LOWER: { arity: 1, impl: (args) => asString(args[0]).toLowerCase() },
   UPPER: { arity: 1, impl: (args) => asString(args[0]).toUpperCase() },
   LEN: { arity: 1, impl: (args) => asString(args[0]).length },
+  TRIM: { arity: 1, impl: (args) => (args[0] == null ? '' : String(args[0]).trim()) },
+  TITLE: {
+    arity: 1,
+    impl: (args) =>
+      args[0] == null
+        ? ''
+        : String(args[0])
+            .toLowerCase()
+            .replace(/(^|[\s\-_])([a-z])/g, (_m, sep: string, ch: string) => sep + ch.toUpperCase()),
+  },
+  CAMEL: {
+    arity: 1,
+    impl: (args) => {
+      if (args[0] == null) return '';
+      const parts = String(args[0]).trim().split(/[\s\-_]+/).filter(Boolean);
+      return parts
+        .map((p, i) => (i === 0 ? p.toLowerCase() : p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()))
+        .join('');
+    },
+  },
+  CAP: {
+    arity: 1,
+    impl: (args) => {
+      if (args[0] == null) return '';
+      const s = String(args[0]);
+      return s === '' ? '' : s.charAt(0).toUpperCase() + s.slice(1);
+    },
+  },
+  FIXED: {
+    arity: 2,
+    impl: (args) => {
+      if (args[0] == null || args[1] == null) return '';
+      const n = typeof args[0] === 'number' ? args[0] : Number(args[0]);
+      const dp = typeof args[1] === 'number' ? args[1] : Number(args[1]);
+      if (!Number.isFinite(n) || !Number.isFinite(dp)) return '';
+      return n.toFixed(Math.max(0, Math.min(20, Math.trunc(dp))));
+    },
+  },
 };
 
 // ─── Coercion helpers (throw plain Error; compile.ts wraps into EvalError) ──
