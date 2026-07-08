@@ -11,11 +11,15 @@
  * caught at this boundary and surfaced inline.
  */
 import type { ToolbarItem, CgExtContext } from '../extension/types';
+import type { CGridEvent as CgExtGridEvent } from '@cgrid/kernel';
 import { menu, svg, iconButton } from './ui';
 
 /** Kernel layout surface this module drives — structural subset of CGridApi
- *  so the module stays testable against a stub. */
-interface LayoutGridSurface {
+ *  so the module stays testable against a stub. Exported (but NOT re-exported
+ *  from the package's public `index.ts`) purely so the unit test file can
+ *  assert `CGridApi` structurally satisfies it — a kernel layout-API rename
+ *  then fails typecheck instead of surfacing only at E2E time. */
+export interface LayoutGridSurface {
   getGridOption(key: string): unknown;
   getLayouts(): { id: string; name: string }[];
   getActiveLayoutId(): string;
@@ -30,7 +34,10 @@ interface LayoutGridSurface {
   exportLayouts(): unknown;
   importLayout(layout: unknown, opts?: { overwrite?: boolean; activate?: boolean }): unknown;
   importLayouts(bundle: unknown, opts?: { mode?: 'replace' | 'merge'; overwrite?: boolean }): void;
-  addEventListener(type: string, fn: (e: never) => void): () => void;
+  addEventListener<K extends CgExtGridEvent['type']>(
+    type: K,
+    fn: (event: Extract<CgExtGridEvent, { type: K }>) => void,
+  ): () => void;
 }
 const surface = (ctx: CgExtContext): LayoutGridSurface => ctx.grid as unknown as LayoutGridSurface;
 
@@ -86,15 +93,24 @@ export function layoutSaveItem(): ToolbarItem {
         btn.title = dirty ? `Update layout '${name}' (unsaved view changes)` : 'Layout up to date';
       };
       sync();
-      const offState = grid.addEventListener('stateUpdated', (e: never) => {
-        const ev = e as { source: string; changedKeys: string[] };
+      const offState = grid.addEventListener('stateUpdated', (e) => {
+        const ev = e as unknown as { source: string; changedKeys: string[] };
         if (ev.source !== 'ui') return;
+        // KNOWN LIMITATION (accepted, cosmetic): rAF frame-coalescing can
+        // bundle 'layouts' with another changedKey landing in the same
+        // frame as a layout op (e.g. importLayouts merge with unknown
+        // templates → saveTemplate → templatesChanged → 'modules' coalesces
+        // with 'layouts'), so this every()-check misses and the disk
+        // re-dirties even though updateLayout already captured the change.
+        // Disk writes are idempotent, so the worst case is one harmless
+        // extra click — not worth the added complexity to fix here.
         if (ev.changedKeys.length > 0 && ev.changedKeys.every((k) => k === 'layouts')) return;
         if (!dirty) { dirty = true; sync(); }
       });
       const offLayout = grid.addEventListener('layoutChanged', () => { dirty = false; sync(); });
       btn.addEventListener('click', () => {
-        try { grid.updateLayout(); } catch { /* nothing user-fixable; stays dirty */ }
+        try { grid.updateLayout(); }
+        catch (err) { console.warn('[cgext] updateLayout failed:', err); /* nothing user-fixable; stays dirty */ }
       });
       host.appendChild(btn);
       return { destroy() { offState(); offLayout(); host.replaceChildren(); } };
@@ -178,8 +194,8 @@ export function layoutsItem(): ToolbarItem {
       let refreshOpenPanel: (() => void) | null = null;
       const m = menu(
         btn,
-        () => {
-          const { el, refresh } = buildPanel(ctx);
+        (close) => {
+          const { el, refresh } = buildPanel(ctx, close);
           refreshOpenPanel = refresh;
           return el;
         },
@@ -203,11 +219,16 @@ export function layoutsItem(): ToolbarItem {
 
 /** The dropdown panel. `refresh` re-renders the list + count and hides the
  *  error strip; the save-new input is left alone so typing survives
- *  unrelated layout events. */
-function buildPanel(ctx: CgExtContext): { el: HTMLElement; refresh: () => void } {
+ *  unrelated layout events. `close` is the `menu()`-supplied click-away
+ *  closer — wired to Escape here so the panel is keyboard-dismissable too;
+ *  the rename/save-new inputs stop keydown propagation for their OWN Escape
+ *  (cancel-rename) / Enter (commit) handling, so this listener only ever
+ *  sees Escape bubbling from the list rows or the panel chrome. */
+function buildPanel(ctx: CgExtContext, close: () => void): { el: HTMLElement; refresh: () => void } {
   const grid = surface(ctx);
   const el = document.createElement('div');
   el.className = 'cgext-layouts';
+  el.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
   el.innerHTML =
     `<div class="cgext-layouts-head"><span>LAYOUTS</span><span class="cgext-layouts-count"></span></div>` +
     `<div class="cgext-layouts-list" role="menu"></div>` +
@@ -289,6 +310,8 @@ function layoutRow(
   const row = document.createElement('div');
   row.className = 'cgext-layouts-row' + (active ? ' is-active' : '');
   row.dataset.layoutId = l.id;
+  row.tabIndex = 0;
+  row.setAttribute('role', 'menuitem');
   row.innerHTML =
     `<span class="cgext-layouts-mark">${active ? svg(I.check, 13) : '<i class="cgext-layouts-dot"></i>'}</span>` +
     `<span class="cgext-layouts-name"></span>` +
@@ -297,10 +320,22 @@ function layoutRow(
   nameEl.textContent = l.name;                 // textContent + setAttribute — names are user input
   nameEl.setAttribute('title', l.name);
 
-  row.addEventListener('click', (e) => {
-    if ((e.target as HTMLElement).closest('.cgext-layouts-actions, .cgext-layouts-rename')) return;
+  const activateRow = () => {
     if (l.id === grid.getActiveLayoutId()) return;
     try { grid.loadLayout(l.id); } catch (err) { showError(errText(err)); }
+  };
+  row.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('.cgext-layouts-actions, .cgext-layouts-rename')) return;
+    activateRow();
+  });
+  // Enter/Space activates the row exactly like a click (keyboard parity —
+  // the action-cluster buttons/rename input handle their own Enter/Space
+  // natively and are excluded the same way the click handler excludes them).
+  row.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter' && e.key !== ' ') return;
+    if ((e.target as HTMLElement).closest('.cgext-layouts-actions, .cgext-layouts-rename')) return;
+    e.preventDefault();
+    activateRow();
   });
 
   const actions = row.querySelector<HTMLElement>('.cgext-layouts-actions')!;
@@ -406,10 +441,17 @@ const LAYOUTS_CSS = `
 .cgext-layouts-mark { width: 16px; display: inline-flex; justify-content: center; color: var(--cg-accent-color, #4f9cf9); }
 .cgext-layouts-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--cg-muted-fg-color, #9aa4b6); opacity: 0.6; }
 .cgext-layouts-name { flex: 1 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 550; }
-.cgext-layouts-actions { display: none; align-items: center; gap: 2px; }
+.cgext-layouts-row:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: -2px; }
+/* visibility+opacity (not display:none) — the buttons must stay in the DOM
+   flow and tabbable-when-visible so Tab can reach them once :focus-within
+   reveals them (a display:none button can never receive focus at all). */
+.cgext-layouts-actions {
+  display: inline-flex; align-items: center; gap: 2px;
+  visibility: hidden; opacity: 0; transition: opacity 120ms ease;
+}
 .cgext-layouts-row:hover .cgext-layouts-actions,
 .cgext-layouts-row.is-active .cgext-layouts-actions,
-.cgext-layouts-row:focus-within .cgext-layouts-actions { display: inline-flex; }
+.cgext-layouts-row:focus-within .cgext-layouts-actions { visibility: visible; opacity: 1; }
 .cgext-layouts-act {
   appearance: none; border: none; background: transparent;
   width: 24px; height: 24px; border-radius: 6px;

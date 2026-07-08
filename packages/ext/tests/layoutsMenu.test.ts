@@ -1,6 +1,19 @@
 import { describe, it, expect, afterEach, vi } from 'vitest';
 import { layoutsItem, uniqueCopyName, fileIO, sniffImport, handleImportText, layoutSaveItem } from '../src/toolbar/layoutsMenu';
+import type { LayoutGridSurface } from '../src/toolbar/layoutsMenu';
+import type { CGridApi } from '@cgrid/kernel';
 import { FakeGrid, mountItem } from './layoutsMenuHarness';
+
+// Type-only compile-time tie to the kernel API (closeout finding #5): if a
+// kernel layout-method rename ever makes CGridApi stop structurally
+// satisfying LayoutGridSurface, THIS fails typecheck (`tsc --noEmit` /
+// `npm run typecheck`) instead of only surfacing much later at E2E.
+type _LayoutSurfaceCheck = CGridApi extends LayoutGridSurface ? true : never;
+// Assigning `true` only typechecks when _LayoutSurfaceCheck is `true` — if
+// the conditional resolved to `never` (surface mismatch) this line itself
+// fails to compile, which is the point. No runtime effect.
+const _layoutSurfaceCheck: _LayoutSurfaceCheck = true;
+void _layoutSurfaceCheck;
 
 afterEach(() => { document.body.replaceChildren(); });
 
@@ -149,6 +162,67 @@ describe('layout list', () => {
     expect(grid.deleteLayout).toHaveBeenCalledWith('l1');
     expect(panel.querySelectorAll('.cgext-layouts-row')).toHaveLength(1);
     expect(host.querySelector('.cgext-profile-name')!.textContent).toBe('Default');
+  });
+});
+
+describe('layout list — keyboard operability', () => {
+  it('rows are focusable menuitems; Enter on a focused inactive row loads it', () => {
+    const grid = twoLayouts();
+    const { host } = mountItem(layoutsItem(), grid);
+    const panel = openPanel(host);
+    const defaultRow = row(panel, 'default');
+    expect(defaultRow.tabIndex).toBe(0);
+    expect(defaultRow.getAttribute('role')).toBe('menuitem');
+
+    defaultRow.focus();
+    defaultRow.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(grid.loadLayout).toHaveBeenCalledWith('default');
+  });
+
+  it('Space on a focused row also activates it', () => {
+    const grid = twoLayouts();
+    const { host } = mountItem(layoutsItem(), grid);
+    const panel = openPanel(host);
+    row(panel, 'default').dispatchEvent(new KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+    expect(grid.loadLayout).toHaveBeenCalledWith('default');
+  });
+
+  it('Enter targeting an action button does not also trigger loadLayout on the row', () => {
+    const grid = twoLayouts();
+    const { host } = mountItem(layoutsItem(), grid);
+    const panel = openPanel(host);
+    const dup = row(panel, 'default').querySelector<HTMLButtonElement>('[data-act="duplicate"]')!;
+    dup.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+    expect(grid.loadLayout).not.toHaveBeenCalled();
+  });
+
+  it('action buttons are reachable via Tab — real <button>s, not display:none, no explicit tabindex removal', () => {
+    const { host } = mountItem(layoutsItem(), twoLayouts());
+    const panel = openPanel(host);
+    const dup = row(panel, 'l1').querySelector<HTMLButtonElement>('[data-act="duplicate"]')!;
+    expect(dup.tagName).toBe('BUTTON'); // natively focusable/tabbable, no display:none ancestor gate
+    expect(dup.hidden).toBe(false);
+    expect(dup.hasAttribute('tabindex')).toBe(false); // never opted OUT of the default tab order
+    dup.focus();
+    expect(document.activeElement).toBe(dup);
+  });
+
+  it('Escape closes the panel', () => {
+    const { host } = mountItem(layoutsItem(), twoLayouts());
+    const panel = openPanel(host);
+    expect(document.querySelector('.cgext-menu.cgext-layouts')).toBeTruthy();
+    panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(document.querySelector('.cgext-menu.cgext-layouts')).toBeNull();
+  });
+
+  it('Escape while renaming cancels the rename instead of closing the panel', () => {
+    const { host } = mountItem(layoutsItem(), twoLayouts());
+    const panel = openPanel(host);
+    row(panel, 'l1').querySelector<HTMLButtonElement>('[data-act="rename"]')!.click();
+    const input = panel.querySelector<HTMLInputElement>('input.cgext-layouts-rename')!;
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(document.querySelector('.cgext-menu.cgext-layouts')).toBeTruthy(); // still open
+    expect(panel.querySelector('input.cgext-layouts-rename')).toBeNull(); // rename cancelled
   });
 });
 
