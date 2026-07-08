@@ -65,9 +65,7 @@ export interface CompileFormatError {
     | 'expression-parse'
     | 'expression-compile'
     | 'unknown-token'
-    | 'not-yet-implemented'
-    | 'expr-parse'
-    | 'expr-compile';
+    | 'not-yet-implemented';
   message: string;
   loc: Loc;
   cause?: { source: 'excel' | 'tier1' | 'expression'; inner: unknown };

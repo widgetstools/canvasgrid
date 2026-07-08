@@ -16,7 +16,8 @@ export type Token =
   | { kind: 'tier1-bracket'; channel: 'color' | 'bg' | 'weight' | 'style' | 'if'; interior: string; interiorLoc: Loc; loc: Loc }
   | { kind: 'icon-token'; name: string; nameLoc: Loc; dynamicExpr?: string; dynamicExprLoc?: Loc; loc: Loc }
   | { kind: 'date-token'; token: string; loc: Loc }
-  | { kind: 'exponent'; sign: '+' | '-'; digits: number; loc: Loc };
+  | { kind: 'exponent'; sign: '+' | '-'; digits: number; loc: Loc }
+  | { kind: 'text-placeholder'; loc: Loc };
 
 // Date tokens ordered longest-first so greedy matching works correctly.
 const DATE_TOKENS: readonly string[] = [
@@ -118,6 +119,14 @@ export function tokenize(source: string): Token[] {
     if (c === ';') {
       flushLiteral(i);
       out.push({ kind: 'section-separator', loc: { start: i, end: i + 1 } });
+      i++;
+      continue;
+    }
+
+    // --- Text placeholder: `@` (Excel text-section value substitution)
+    if (c === '@') {
+      flushLiteral(i);
+      out.push({ kind: 'text-placeholder', loc: { start: i, end: i + 1 } });
       i++;
       continue;
     }

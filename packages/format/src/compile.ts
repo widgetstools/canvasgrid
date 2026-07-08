@@ -50,14 +50,14 @@ export function compileFormat(source: FormatSource, opts?: CompileFormatOptions)
     if (!parsed.ok) {
       return {
         ok: false,
-        error: { kind: 'compile-format', code: 'expr-parse', message: parsed.error.message, loc: parsed.error.loc },
+        error: { kind: 'compile-format', code: 'expression-parse', message: parsed.error.message, loc: parsed.error.loc },
       };
     }
     const compiled = compileExpr(parsed.ast);
     if (!compiled.ok) {
       return {
         ok: false,
-        error: { kind: 'compile-format', code: 'expr-compile', message: compiled.error.message, loc: compiled.error.loc },
+        error: { kind: 'compile-format', code: 'expression-compile', message: compiled.error.message, loc: compiled.error.loc },
       };
     }
     const exprProgram: FormatProgram = {

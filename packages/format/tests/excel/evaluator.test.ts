@@ -110,6 +110,24 @@ describe('Excel evaluator — sectionIndex', () => {
   });
 });
 
+describe('Excel evaluator — @ text-placeholder substitution', () => {
+  it('literal prefix + @ substitutes the value after the prefix', () => {
+    expect(fmt('"PX "@', 'sample').text).toBe('PX sample');
+  });
+  it('@ + literal suffix substitutes the value before the suffix', () => {
+    expect(fmt('@" units"', 'sample').text).toBe('sample units');
+  });
+  it('bare @ is unchanged (identity passthrough)', () => {
+    expect(fmt('@', 'sample').text).toBe('sample');
+  });
+  it('@ in a 4th Excel section still routes strings there', () => {
+    expect(fmt('0.00;-0.00;0.00;"PX "@', 'sample').text).toBe('PX sample');
+  });
+  it('a numeric value through a single text-only section is stringified at the placeholder', () => {
+    expect(fmt('"PX "@', 123).text).toBe('PX 123');
+  });
+});
+
 describe('Excel evaluator — Edge cases', () => {
   it('null value renders as empty string', () => {
     expect(fmt('0.00', null).text).toBe('');

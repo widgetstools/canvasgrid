@@ -102,8 +102,14 @@ function renderSection(section: ExcelSection, ctx: ExcelEvalContext): string {
   const kind = classifyTokens(tokens);
 
   if (kind === 'text') {
-    if (typeof ctx.value === 'string') return ctx.value;
-    return String(ctx.value ?? '');
+    return tokens
+      .map((t) => {
+        if (t.kind === 'text-placeholder') return String(ctx.value ?? '');
+        if (t.kind === 'literal' || t.kind === 'quoted') return t.text;
+        if (t.kind === 'escape') return t.char;
+        return '';
+      })
+      .join('');
   }
 
   if (kind === 'general') {
@@ -133,9 +139,6 @@ function renderSection(section: ExcelSection, ctx: ExcelEvalContext): string {
 type SectionKind = 'number' | 'currency' | 'percent' | 'date' | 'text' | 'general' | 'literal-only';
 
 function classifyTokens(tokens: Token[]): SectionKind {
-  // Single '@' token → text passthrough
-  if (tokens.length === 1 && tokens[0]?.kind === 'literal' && tokens[0].text === '@') return 'text';
-
   // Detect 'General': appears as a mix of literals + a 'n' date-token (from tokenizer).
   // More robustly: reconstruct raw text and check.
   const rawText = tokens
@@ -161,12 +164,20 @@ function classifyTokens(tokens: Token[]): SectionKind {
   // Any date-token present?
   const hasDateToken = tokens.some((t) => t.kind === 'date-token');
 
+  // A text-placeholder (`@`) with no numeric/date tokens is a text section —
+  // even mixed with surrounding literals (e.g. `"PX "@`, `@" units"`).
+  const hasTextPlaceholder = tokens.some((t) => t.kind === 'text-placeholder');
+  if (hasTextPlaceholder && !hasNumericTokens && !hasDateToken) return 'text';
+
   if (!hasNumericTokens && !hasDateToken) {
     // Pure literal / quoted / escape section — render as-is.
     return 'literal-only';
   }
 
   if (hasDateToken && !hasNumericTokens) return 'date';
+  // Exponent tokens win over currency/percent — `$0.00E+00` is scientific
+  // notation with a literal `$` prefix, not a currency format.
+  if (tokens.some((t) => t.kind === 'exponent')) return 'number';
   if (tokens.some((t) => t.kind === 'percent')) return 'percent';
   if (tokens.some((t) => t.kind === 'literal' && /[$€£¥]/.test(t.text))) return 'currency';
   return 'number';
@@ -337,7 +348,9 @@ function formatScientific(
   if (!m) return s;
   const digits = m[3]!.padStart(expTok.digits, '0');
   const signStr = m[2] === '-' ? '-' : expTok.sign === '+' ? '+' : '';
-  return `${m[1]}E${signStr}${digits}`;
+  const literalPrefix = extractLiteralPrefix(tokens);
+  const literalSuffix = extractLiteralSuffix(tokens);
+  return `${literalPrefix}${m[1]}E${signStr}${digits}${literalSuffix}`;
 }
 
 /** Returns true when there's a '-' or '+' literal immediately before the first digit-placeholder. */

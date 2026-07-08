@@ -28,4 +28,10 @@ describe('scientific notation', () => {
   it('negatives keep the mantissa sign', () => {
     expect(run('0.00E+00', -1234.5678)).toBe('-1.23E+03');
   });
+  it('exponent tokens win over currency classification — literal $ prefix survives', () => {
+    expect(run('$0.00E+00', 1234.5678)).toBe('$1.23E+03');
+  });
+  it('a quoted literal prefix survives scientific formatting', () => {
+    expect(run('"≈"0.00E+00', 1234.5678)).toBe('≈1.23E+03');
+  });
 });

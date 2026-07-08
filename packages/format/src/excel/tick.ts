@@ -12,11 +12,14 @@ export function formatTick(
 ): string {
   const n = typeof value === 'number' ? value : value == null ? NaN : Number(value);
   if (!Number.isFinite(n)) return '';
-  const sign = n < 0 ? '-' : '';
+  const neg = n < 0;
   const abs = Math.abs(n);
   // TICK32+ quotes in half-32nds (1/64) even though the base is 32.
   const quant = halves ? 64 : denom;
   const units = Math.round(abs * quant);         // price in 1/quant units
+  // Derive the sign AFTER quantization: a tiny negative that rounds to zero
+  // units (e.g. -0.001 at denom 32) must render as `0-00`, not `-0-00`.
+  const sign = neg && units > 0 ? '-' : '';
   const whole = Math.floor(units / quant);
   const rem = units - whole * quant;             // 0..quant-1 sub-handle units
   const perTick = quant / 32;                    // units per 32nd

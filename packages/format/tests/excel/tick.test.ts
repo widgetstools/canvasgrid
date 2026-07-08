@@ -37,6 +37,9 @@ describe('formatTick', () => {
     expect(formatTick(null, 32, false)).toBe('');
     expect(formatTick('abc', 32, false)).toBe('');
   });
+  it('a tiny negative that quantizes to zero units renders unsigned (no -0)', () => {
+    expect(formatTick(-0.001, 32, false)).toBe('0-00');
+  });
 });
 
 describe('TICK format strings via compileFormat', () => {
