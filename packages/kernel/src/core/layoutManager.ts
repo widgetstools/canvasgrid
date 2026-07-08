@@ -99,7 +99,12 @@ export interface ImportLayoutsOptions {
    *  active id + grid config for the bundle's. */
   mode?: 'replace' | 'merge';
   /** On `'merge'`, colliding ids replace in place instead of minting new
-   *  ids. Ignored for `'replace'`. */
+   *  ids. Ignored for `'replace'`. NOTE — the reserved Default entry is an
+   *  exception: on plain merge (`overwrite` falsy) a bundle's Default is
+   *  always skipped (never forked into a second "Default (n)"), since the
+   *  Default singleton can't collide-and-mint like an ordinary layout. Pass
+   *  `overwrite: true` to instead replace the local Default in place with
+   *  the bundle's. */
   overwrite?: boolean;
 }
 
@@ -478,6 +483,7 @@ export class LayoutManager {
     } else {
       this.setGridConfig(migrated.grid ?? {});
       for (const l of migrated.layouts) {
+        if (l.id === DEFAULT_LAYOUT_ID && !opts?.overwrite) continue; // reserved singleton: never fork a second Default on merge
         this.importLayout(l, { overwrite: opts?.overwrite });
       }
     }

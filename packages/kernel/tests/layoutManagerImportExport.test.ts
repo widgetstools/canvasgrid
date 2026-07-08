@@ -197,6 +197,36 @@ describe('LayoutManager — importLayouts (merge / replace)', () => {
     expect(mgr.getActiveLayoutId()).toBe(DEFAULT_LAYOUT_ID);
   });
 
+  it('merge of a bundle CONTAINING a Default entry skips it — local Default unchanged, no fork', () => {
+    const mgr = mgrWith(h.host);
+    const before = mgr.getLayouts();
+    const beforeDefault = before.find((l) => l.id === DEFAULT_LAYOUT_ID)!;
+    mgr.importLayouts(
+      bundle({ layouts: [{ id: DEFAULT_LAYOUT_ID, name: 'Imported Default', state: fullState({ scroll: { top: 5, left: 0 } }) }] }),
+      { mode: 'merge' },
+    );
+    const after = mgr.getLayouts();
+    expect(after).toHaveLength(before.length); // no extra "Default (2)" minted
+    const afterDefault = after.find((l) => l.id === DEFAULT_LAYOUT_ID)!;
+    expect(afterDefault).toEqual(beforeDefault); // untouched (deep-equal)
+    expect(after.some((l) => l.name.startsWith('Default ('))).toBe(false);
+  });
+
+  it('merge with { overwrite: true } replaces the local Default in place — id unchanged, no extra layout', () => {
+    const mgr = mgrWith(h.host);
+    const before = mgr.getLayouts();
+    mgr.importLayouts(
+      bundle({ layouts: [{ id: DEFAULT_LAYOUT_ID, name: 'Imported Default', state: fullState({ scroll: { top: 5, left: 0 } }) }] }),
+      { mode: 'merge', overwrite: true },
+    );
+    const after = mgr.getLayouts();
+    expect(after).toHaveLength(before.length); // replaced in place, not appended
+    const def = after.find((l) => l.id === DEFAULT_LAYOUT_ID)!;
+    expect(def.id).toBe(DEFAULT_LAYOUT_ID);
+    expect(def.name).toBe('Imported Default');
+    expect(def.state.scroll).toEqual({ top: 5, left: 0 });
+  });
+
   it('replace swaps the whole set + active id + grid config, keeping a Default', () => {
     const mgr = mgrWith(h.host);
     mgr.saveLayout('Local', { activate: false }); // discarded by replace
