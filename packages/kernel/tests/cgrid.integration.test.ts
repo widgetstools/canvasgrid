@@ -204,6 +204,32 @@ describe('CGrid integration', () => {
       restore();
     });
 
+    it('text-column valueFormatter reaches painted cell text (cellAt parity with numbers)', async () => {
+      const { grid, restore } = buildWiredGrid<{ id: string; ticker: string }>(
+        [
+          { id: 'a', ticker: 'TICK1' },
+          { id: 'b', ticker: 'TICK2' },
+        ],
+        [
+          { field: 'id' },
+          {
+            field: 'ticker',
+            cellDataType: 'text',
+            valueFormatter: (p: { value: unknown }) => String(p.value).toLowerCase(),
+          },
+        ],
+      );
+      await new Promise((r) => setTimeout(r, 50));
+      expect((grid as any).rowCount).toBe(2);
+      const cell = (grid as any).cellAt(0, 'ticker');
+      expect(cell.value).toBe('TICK1');           // raw value untouched
+      expect(cell.valueFormatted).toBe('tick1');  // formatter applied to painted text
+      // Column without a formatter stays identity.
+      expect((grid as any).cellAt(0, 'id').valueFormatted).toBe('a');
+      grid.destroy();
+      restore();
+    });
+
     it('emits cellFocused on genuine focus moves, silent on same-cell reorders', async () => {
       const { grid, restore } = buildWiredGrid<{ id: string; pri: number }>(
         [

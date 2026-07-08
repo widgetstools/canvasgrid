@@ -110,10 +110,19 @@ test('custom format via input; search; text column rail', async ({ page }) => {
   expect(await ownFormat(page, 'notionalAmount')).toBe('#,##0.000');
   await expect(pill(page)).toContainText('#,##0.000');
 
-  // Text column shows the text rail with the ƒ(x) presets.
+  // Text column shows the text rail with the ƒ(x) presets. Apply lowercase
+  // and assert the PAINTED cell text actually changed (a template-only
+  // assertion previously masked cellAt's text branch skipping formatters).
   await focusColumn(page, 'ticker');
   await pill(page).click();
   await expect(panel(page).locator('.cgext-fmt-tab[data-cat="text"] .cgext-fmt-count')).toHaveText('9');
-  await panel(page).locator('.cgext-fmt-row[data-preset-id="str-upper"]').click();
-  expect(await ownFormat(page, 'ticker')).toBe('=UPPER([value])');
+  await panel(page).locator('.cgext-fmt-row[data-preset-id="str-lower"]').click();
+  expect(await ownFormat(page, 'ticker')).toBe('=LOWER([value])');
+  await page.waitForFunction(() => {
+    const g = (window as any).__ext.grid;
+    if ((g.getDisplayedRowCount?.() ?? 0) === 0) return false;
+    const cell = g.cellAt?.(0, 'ticker');
+    return !!cell && cell.valueFormatted === String(cell.value).toLowerCase()
+      && cell.valueFormatted !== String(cell.value);
+  }, { timeout: 20000 });
 });

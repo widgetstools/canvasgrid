@@ -7891,7 +7891,12 @@ export class CGrid<TRow = any> {
       let decoded = this.decodedTextCols.get(colId);
       if (!decoded) { decoded = decodeText(text.offsets, text.bytes); this.decodedTextCols.set(colId, decoded); }
       const value = decoded[localIndex] ?? '';
-      return { value, valueFormatted: value, flashAlpha: flash, flashColor };
+      // Symmetric with the numeric branch above: a text column's
+      // valueFormatter (incl. format-DSL strings compiled by
+      // compileFormatSlots) must reach the painted text too — this branch
+      // used to return the raw decoded string verbatim, silently ignoring
+      // any formatter on text columns.
+      return { value, valueFormatted: this.formatText(colId, value), flashAlpha: flash, flashColor };
     }
     return { value: '', valueFormatted: '', flashAlpha: flash, flashColor };
   }
@@ -8015,6 +8020,21 @@ export class CGrid<TRow = any> {
       return def.valueFormatter({ value, colId, data: undefined as unknown as TRow });
     }
     return value.toString();
+  }
+
+  /** Text-column twin of `formatNumber` — runs the column's valueFormatter
+   *  (function-form or compiled-from-DSL-string) over the decoded chunk
+   *  text; identity when the column has none. Same `data: undefined`
+   *  limitation as the numeric path: `[value]`-based programs resolve,
+   *  cross-field references don't. */
+  private formatText(colId: string, value: string): string {
+    const def = this.columnDefsMap.get(colId);
+    if (def?.valueFormatter) {
+      try {
+        return String(def.valueFormatter({ value, colId, data: undefined as unknown as TRow }));
+      } catch { return value; }
+    }
+    return value;
   }
 
   /** Compute flash alpha for a group/footer aggregate cell from
@@ -9150,9 +9170,11 @@ export class CGrid<TRow = any> {
       const isNumber = def.cellDataType === 'number';
       let maxData = 0;
       for (const v of values[def.colId] ?? []) {
+        // cellAt parity: numbers AND text run the column's valueFormatter so
+        // measured width matches the painted (formatted) text.
         const text = isNumber && typeof v === 'number'
           ? this.formatNumber(def.colId, v)
-          : String(v);
+          : this.formatText(def.colId, String(v));
         if (!text) continue;
         let font = baseFont;
         if (def.cellStyleFn) {
