@@ -56,6 +56,7 @@ const I = {
   percent: 'M19 5L5 19M6.5 6.5m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0M17.5 17.5m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0',
   hash: 'M4 9h16M4 15h16M10 3L8 21M16 3l-2 18',
   swap: 'M16 3l4 4-4 4M20 7H4M8 21l-4-4 4-4M4 17h16',
+  columns: 'M3 3h18v18H3zM9 3v18M15 3v18',
   edit: 'M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z',
   filter: 'M22 3H2l8 9.46V19l4 2v-8.54z',
   filterOff: 'M22 3H2l8 9.46V19l4 2v-4M2 2l20 20',
@@ -191,6 +192,13 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       const targetToggle = document.createElement('button');
       targetToggle.type = 'button';
       targetToggle.className = 'cgext-rb-targettoggle';
+      targetToggle.dataset.rb = 'target';
+      // Scope toggle (same anatomy): whether ribbon settings apply to the
+      // SELECTED column(s) or to ALL columns.
+      const scopeToggle = document.createElement('button');
+      scopeToggle.type = 'button';
+      scopeToggle.className = 'cgext-rb-targettoggle';
+      scopeToggle.dataset.rb = 'scope';
       const selPill = pill('Select a cell', false);
       const bold = toggleBtn(I.bold, 'Bold');
       const italic = toggleBtn(I.italic, 'Italic');
@@ -265,7 +273,7 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
 
       const formatting = h('cgext-rb-cluster'); formatting.dataset.toolbar = 'formatting';
       formatting.append(
-        grp('Target', mini(selPill), mini(targetToggle)),
+        grp('Target', mini(selPill), mini(targetToggle, scopeToggle)),
         grp('Font', mini(bold, italic, underline, strike, sizeWrap), mini(textColorBtn, textColorInput, fillColorBtn, fillColorInput)),
         grp('Alignment', mini(alignL, alignC, alignR)),
         grp('Number', mini(fmtCode), mini(fmtDollar, fmtPercent, fmtThousands, decDown, decUp)),
@@ -294,7 +302,7 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
         : undefined;
 
       const disposeFormatting = wireFormattingToolbar(ctx, {
-        targetToggle, selPill,
+        targetToggle, scopeToggle, selPill,
         bold, italic, underline, strike, alignL, alignC, alignR,
         sizeVal, sizeUp, sizeDn,
         textColorBtn, textColorInput, fillColorBtn, fillColorInput,
@@ -402,7 +410,7 @@ function wireEditingToolbar(ctx: CgExtContext, getEdit: EditHandleGetter, r: Edi
 
 // ── Formatting-toolbar wiring (column styling via @cgrid/calc editColumn) ──
 interface FormattingRefs {
-  targetToggle: HTMLButtonElement; selPill: HTMLButtonElement;
+  targetToggle: HTMLButtonElement; scopeToggle: HTMLButtonElement; selPill: HTMLButtonElement;
   bold: HTMLButtonElement; italic: HTMLButtonElement; underline: HTMLButtonElement; strike: HTMLButtonElement;
   alignL: HTMLButtonElement; alignC: HTMLButtonElement; alignR: HTMLButtonElement;
   sizeVal: HTMLElement; sizeUp: HTMLButtonElement; sizeDn: HTMLButtonElement;
@@ -440,9 +448,10 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     getGridOption(key: string): unknown;
   };
   let target: 'cell' | 'header' = 'cell';
+  let scope: 'selected' | 'all' = 'selected';
 
   /** Columns identified from the selected cells (ranges first, focus fallback). */
-  const targetCols = (): string[] => {
+  const selectedCols = (): string[] => {
     try {
       const fromRanges = grid.getCellRanges().flatMap((rg) => rg.colIds);
       if (fromRanges.length) return [...new Set(fromRanges)];
@@ -450,6 +459,21 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
       return focus ? [focus.colId] : [];
     } catch { return []; }
   };
+  /** Every leaf column id from the live columnDefs tree. */
+  const allCols = (): string[] => {
+    const out: string[] = [];
+    const walk = (defs: readonly unknown[]): void => {
+      for (const d of defs) {
+        const def = d as { colId?: string; children?: unknown[] };
+        if (def.children) walk(def.children);
+        else if (def.colId) out.push(def.colId);
+      }
+    };
+    try { walk((grid.getGridOption('columnDefs') as unknown[]) ?? []); } catch { /* pre-init */ }
+    return out;
+  };
+  /** The columns ribbon settings apply to, per the scope toggle. */
+  const targetCols = (): string[] => (scope === 'all' ? allCols() : selectedCols());
 
   /** The first target column's own-template style slice for the active target. */
   const currentStyle = (): Record<string, unknown> => {
@@ -535,9 +559,11 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     const none = cols.length === 0;
     r.selPill.querySelector('span')!.textContent = none
       ? 'Select a cell'
-      : cols.length === 1
-        ? (grid.getColumnHeaderName?.(cols[0]!) ?? cols[0]!)
-        : `${cols.length} columns`;
+      : scope === 'all'
+        ? `All columns (${cols.length})`
+        : cols.length === 1
+          ? (grid.getColumnHeaderName?.(cols[0]!) ?? cols[0]!)
+          : `${cols.length} columns`;
     for (const b of [r.bold, r.italic, r.underline, r.strike, r.alignL, r.alignC, r.alignR,
       r.textColorBtn, r.fillColorBtn, r.fmtDollar, r.fmtPercent, r.fmtThousands,
       r.decDown, r.decUp, r.fmtCode, r.clear, r.eraser, r.sizeUp, r.sizeDn]) {
@@ -593,6 +619,26 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   };
   paintTarget();
   r.targetToggle.addEventListener('click', () => setTarget(target === 'cell' ? 'header' : 'cell'));
+
+  // Scope toggle (selected column(s) vs ALL columns) — same anatomy as the
+  // target toggle: the face is the ACTIVE scope, arrows say "click to
+  // switch". `aria-pressed` reflects the non-default (all) state.
+  const paintScope = () => {
+    const isSel = scope === 'selected';
+    r.scopeToggle.innerHTML =
+      `${svg(isSel ? I.selection : I.columns, 14)}<span>${isSel ? 'Selected' : 'All'}</span>${svg(I.swap, 11)}`;
+    const title = `Scope: ${isSel ? 'selected column(s)' : 'ALL columns'} — click to apply to ${isSel ? 'all columns' : 'the selection'}`;
+    r.scopeToggle.title = title;
+    r.scopeToggle.setAttribute('aria-label', title);
+    r.scopeToggle.setAttribute('aria-pressed', String(!isSel));
+    r.scopeToggle.classList.toggle('is-header', !isSel);
+  };
+  paintScope();
+  r.scopeToggle.addEventListener('click', () => {
+    scope = scope === 'selected' ? 'all' : 'selected';
+    paintScope();
+    refresh();
+  });
 
   // ── Icons section — placement is a SLOT SELECTOR: the picker/color/clear
   // always edit "the icon at `placement` for `target`". Changing placement

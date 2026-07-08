@@ -75,8 +75,8 @@ test('icons section: prefix icon, corner decorator, header emoji, clear', async 
 
   // 3. Header target + suffix emoji → headerIcon. The single cell↔header
   // target toggle flips Cells → Header on one click.
-  await page.locator('.cgext-rb-targettoggle').click();
-  await expect(page.locator('.cgext-rb-targettoggle')).toContainText('Header');
+  await page.locator('.cgext-rb-targettoggle[data-rb="target"]').click();
+  await expect(page.locator('.cgext-rb-targettoggle[data-rb="target"]')).toContainText('Header');
   await page.locator('[data-ip="place"]').click();
   await page.locator('[data-place="suffix"]').click();
   await openBtn.click();
