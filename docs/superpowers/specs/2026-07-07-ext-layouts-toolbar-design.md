@@ -84,8 +84,12 @@ Scrollable (`max-height: ~320px; overflow-y: auto`). One row per
 - **Active row** (id === `getActiveLayoutId()`): 2px accent left bar, accent
   check icon, `--cg-row-alt-bg`-tinted background, name in `--cg-fg-color`.
 - **Inactive row:** small muted dot where the check sits; hover tints the row.
-- **Row body click** → `loadLayout(id)`; panel stays open (the user may switch
-  several times); trigger name + row marking re-sync via `layoutChanged`.
+- **Row body click** → `loadLayout(id)`, then the panel **closes** (selection
+  is a dismissal gesture, like a native select; clicking the already-active
+  row also just closes). A failed load keeps the panel open so the error
+  strip stays readable. Trigger name re-syncs via `layoutChanged`. Non-select
+  actions (rename / duplicate / delete / save-new / import / export) keep the
+  panel open.
 - **Hover action cluster** (right-aligned, hidden until row hover or focus-within;
   always visible on the active row, matching the wireframe):
   - **Rename** (pencil): swaps the name label for an inline text input pre-filled

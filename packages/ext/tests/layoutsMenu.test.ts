@@ -95,14 +95,30 @@ describe('layout list', () => {
     expect(row(panel, 'l1').querySelector('.cgext-layouts-lock')).toBeNull();
   });
 
-  it('row click loads the layout; active marking and trigger follow', () => {
+  it('row click loads the layout, re-labels the trigger, and closes the panel', () => {
     const grid = twoLayouts();
     const { host } = mountItem(layoutsItem(), grid);
     const panel = openPanel(host);
     row(panel, 'default').click();
     expect(grid.loadLayout).toHaveBeenCalledWith('default');
-    expect(row(panel, 'default').classList.contains('is-active')).toBe(true);
     expect(host.querySelector('.cgext-profile-name')!.textContent).toBe('Default');
+    expect(document.querySelector('.cgext-menu.cgext-layouts')).toBeNull(); // selection dismisses
+    expect(host.querySelector('button.cgext-profile')!.getAttribute('aria-expanded')).toBe('false');
+  });
+
+  it('clicking the already-active row closes without loading; a failed load keeps the panel open', () => {
+    const grid = twoLayouts();
+    const { host } = mountItem(layoutsItem(), grid);
+    let panel = openPanel(host);
+    row(panel, 'l1').click(); // l1 is active
+    expect(grid.loadLayout).not.toHaveBeenCalled();
+    expect(document.querySelector('.cgext-menu.cgext-layouts')).toBeNull();
+
+    grid.loadLayout.mockImplementationOnce(() => { throw new Error('boom'); });
+    panel = openPanel(host);
+    row(panel, 'default').click();
+    expect(document.querySelector('.cgext-menu.cgext-layouts')).not.toBeNull(); // error → stays open
+    expect(panel.querySelector<HTMLElement>('.cgext-layouts-error')!.hidden).toBe(false);
   });
 
   it('rename: Enter commits, Escape cancels, kernel throw shows inline error', () => {

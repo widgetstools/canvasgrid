@@ -252,7 +252,7 @@ function buildPanel(ctx: CgExtContext, close: () => void): { el: HTMLElement; re
     const layouts = grid.getLayouts();
     const activeId = grid.getActiveLayoutId();
     countEl.textContent = String(layouts.length);
-    listEl.replaceChildren(...layouts.map((l) => layoutRow(grid, l, l.id === activeId, layouts, showError)));
+    listEl.replaceChildren(...layouts.map((l) => layoutRow(grid, l, l.id === activeId, layouts, showError, close)));
   };
   refresh();
 
@@ -306,6 +306,7 @@ function layoutRow(
   active: boolean,
   layouts: { id: string; name: string }[],
   showError: (message: string) => void,
+  close: () => void,
 ): HTMLElement {
   const row = document.createElement('div');
   row.className = 'cgext-layouts-row' + (active ? ' is-active' : '');
@@ -320,9 +321,14 @@ function layoutRow(
   nameEl.textContent = l.name;                 // textContent + setAttribute — names are user input
   nameEl.setAttribute('title', l.name);
 
+  // Selecting a layout is a dismissal gesture (like a native select): load
+  // it and close the panel. Clicking the already-active row just closes; a
+  // failed load keeps the panel open so the error strip stays readable.
   const activateRow = () => {
-    if (l.id === grid.getActiveLayoutId()) return;
-    try { grid.loadLayout(l.id); } catch (err) { showError(errText(err)); }
+    if (l.id !== grid.getActiveLayoutId()) {
+      try { grid.loadLayout(l.id); } catch (err) { showError(errText(err)); return; }
+    }
+    close();
   };
   row.addEventListener('click', (e) => {
     if ((e.target as HTMLElement).closest('.cgext-layouts-actions, .cgext-layouts-rename')) return;

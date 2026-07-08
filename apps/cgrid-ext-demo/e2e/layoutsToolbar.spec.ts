@@ -46,11 +46,15 @@ test('save new layout; ui change dirties the disk; update + switch round-trips t
   await expect(disk(page)).toBeDisabled();
 
   // Switch to Default → baseline height; back → the layout's 44 returns.
+  // Selecting a row closes the panel, so each switch reopens the dropdown.
   await trigger(page).click();
   await row(page, 'default').click();
+  await expect(panel(page)).not.toBeVisible(); // selection dismisses the dropdown
   expect(await page.evaluate(() => (window as any).__ext.grid.getGridOption('rowHeight'))).toBe(baseRowHeight);
   await expect(disk(page)).toBeDisabled(); // loadLayout's state apply must not re-dirty
+  await trigger(page).click();
   await row(page, l1).click();
+  await expect(panel(page)).not.toBeVisible();
   expect(await page.evaluate(() => (window as any).__ext.grid.getGridOption('rowHeight'))).toBe(44);
   await expect(trigger(page)).toContainText('Layout 1');
 });
