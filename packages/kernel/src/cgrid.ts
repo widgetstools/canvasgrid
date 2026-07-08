@@ -2290,6 +2290,7 @@ export class CGrid<TRow = any> {
     // ensure still fires for those paths.
     let lastFocusRow: number | null = null;
     let lastFocusCol: string | null = null;
+    let lastFocusEmitKey: string | null = null;
     this.selectionUnsubscribe = this.selection.onChange((state) => {
       const focusChanged =
         state.focusedRowIndex !== lastFocusRow || state.focusedColId !== lastFocusCol;
@@ -2309,6 +2310,16 @@ export class CGrid<TRow = any> {
         }
         lastFocusRow = state.focusedRowIndex;
         lastFocusCol = state.focusedColId;
+        // `cellFocused` — declared in the event map since Cycle 21 but never
+        // emitted anywhere (toolbars subscribed to a dead event). Fire it on
+        // genuine focus moves, keyed on the RESOLVED (rowId, colId) pair so
+        // model reorders that re-index the same logical cell stay silent.
+        const fc = this.getFocusedCell();
+        const key = fc ? `${fc.rowId} ${fc.colId}` : null;
+        if (key !== lastFocusEmitKey) {
+          lastFocusEmitKey = key;
+          if (fc) this.events.emit({ type: 'cellFocused', rowId: fc.rowId, colId: fc.colId });
+        }
       }
       this.cgridCanvas.requestRepaint();
       this.events.emit({ type: 'selectionChanged', selectedRowIds: this.getSelectedRowIds() });

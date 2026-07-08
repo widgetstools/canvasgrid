@@ -204,6 +204,40 @@ describe('CGrid integration', () => {
       restore();
     });
 
+    it('emits cellFocused on genuine focus moves, silent on same-cell reorders', async () => {
+      const { grid, restore } = buildWiredGrid<{ id: string; pri: number }>(
+        [
+          { id: 'a', pri: 30 },
+          { id: 'b', pri: 10 },
+          { id: 'c', pri: 20 },
+        ],
+        [{ field: 'id' }, { field: 'pri', type: 'number' }],
+      );
+      await new Promise((r) => setTimeout(r, 50));
+      const events: Array<{ rowId: string; colId: string }> = [];
+      grid.addEventListener('cellFocused', (e: any) => events.push({ rowId: e.rowId, colId: e.colId }));
+
+      grid.setFocusedCell('c', 'pri');
+      await new Promise((r) => setTimeout(r, 50));
+      expect(events).toEqual([{ rowId: 'c', colId: 'pri' }]);
+
+      // Same logical cell re-indexed by a sort — no second emission.
+      grid.setSortModel([{ colId: 'pri', direction: 'asc' }]);
+      await new Promise((r) => setTimeout(r, 50));
+      expect(events).toHaveLength(1);
+
+      // Moving focus to another cell emits again.
+      grid.setFocusedCell('a', 'id');
+      await new Promise((r) => setTimeout(r, 50));
+      expect(events).toEqual([
+        { rowId: 'c', colId: 'pri' },
+        { rowId: 'a', colId: 'id' },
+      ]);
+
+      grid.destroy();
+      restore();
+    });
+
     it('focused cell ID survives applyTransaction({ update: [...] })', async () => {
       const { grid, restore } = buildWiredGrid<{ id: string; v: number }>(
         [{ id: 'a', v: 1 }, { id: 'b', v: 2 }, { id: 'c', v: 3 }],

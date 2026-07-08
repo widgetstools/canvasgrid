@@ -579,6 +579,18 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     r.alignR.classList.toggle('is-on', s.halign === 'right');
     r.sizeVal.textContent = `${(s.fontSize as number | undefined) ?? 12}px`;
 
+    // Colour swatches — read the column's own fg/bg back into the pickers
+    // (the swatch bar repaints off the input event). Hex inputs can only
+    // represent #rrggbb; token/var() values keep the last pick.
+    const syncColor = (input: HTMLInputElement, value: unknown) => {
+      if (typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value) && input.value !== value) {
+        input.value = value;
+        input.dispatchEvent(new Event('input'));
+      }
+    };
+    syncColor(r.textColorInput, s.fg);
+    syncColor(r.fillColorInput, s.bg);
+
     // # Format pill caption tracks the target column's current format.
     const fmt = currentFormat();
     const label = fmt === undefined
