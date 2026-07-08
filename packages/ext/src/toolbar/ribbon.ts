@@ -1281,7 +1281,27 @@ const RIBBON_CSS = `
 }
 .cgext-ip-search::-webkit-search-cancel-button { appearance: none; }
 
-.cgext-ip-scroll { overflow-y: auto; flex: 1 1 auto; scrollbar-width: thin; margin: 0 -4px; padding: 0 4px; }
+.cgext-ip-scroll { overflow-y: auto; flex: 1 1 auto; margin: 0 -4px; padding: 0 4px;
+  /* Theme-aware scrollbar (Firefox) — muted thumb over a transparent track
+     in both modes; the raw browser default painted a glaring white rail on
+     dark themes. */
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--cg-muted-fg-color, #7f8ba0) 55%, transparent) transparent;
+}
+/* Theme-aware scrollbar (WebKit/Chromium). */
+.cgext-ip-scroll::-webkit-scrollbar { width: 10px; }
+.cgext-ip-scroll::-webkit-scrollbar-track { background: transparent; }
+.cgext-ip-scroll::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--cg-muted-fg-color, #7f8ba0) 45%, transparent);
+  border-radius: 5px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
+.cgext-ip-scroll::-webkit-scrollbar-thumb:hover {
+  background: color-mix(in srgb, var(--cg-muted-fg-color, #7f8ba0) 70%, transparent);
+  border: 2px solid transparent;
+  background-clip: padding-box;
+}
 .cgext-ip-cat {
   font-size: 10px; font-weight: 650; letter-spacing: 0.09em; text-transform: uppercase;
   color: var(--cg-muted-fg-color, #7f8ba0); margin: 12px 2px 6px;
