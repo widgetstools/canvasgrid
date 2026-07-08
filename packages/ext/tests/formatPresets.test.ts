@@ -8,7 +8,7 @@ import {
 
 describe('categories', () => {
   it('maps data types to ordered category rails', () => {
-    expect(categoriesForDataType('number')).toEqual(['number', 'negatives', 'conditional', 'tick', 'percent']);
+    expect(categoriesForDataType('number')).toEqual(['number', 'currency', 'negatives', 'conditional', 'tick', 'percent']);
     expect(categoriesForDataType('date')).toEqual(['date']);
     expect(categoriesForDataType('text')).toEqual(['text']);
     expect(categoriesForDataType('boolean')).toEqual(['boolean', 'text']);
@@ -71,7 +71,9 @@ describe('lookup + search + codeText', () => {
   it('filterPresets: empty query → [], substring across label/hint/format', () => {
     const presets = presetsForDataType('number');
     expect(filterPresets(presets, '  ')).toEqual([]);
-    expect(filterPresets(presets, 'parens').every((p) => p.category === 'negatives')).toBe(true);
+    // 'parens' now matches both the negatives rail and the currency rail's
+    // parens-negative variants (currency joined the number data type's rail).
+    expect(filterPresets(presets, 'parens').every((p) => p.category === 'negatives' || p.category === 'currency')).toBe(true);
     expect(filterPresets(presets, 'TICK64')).toHaveLength(1);
   });
   it('codeText marks ƒ(x) and tick forms', () => {

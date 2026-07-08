@@ -17,7 +17,7 @@ describe('panel anatomy', () => {
   it('renders sidebar tabs with counts for the data type + the custom tab', () => {
     const { panel } = mountPicker();
     const cats = Array.from(panel.querySelectorAll<HTMLElement>('.cgext-fmt-tab')).map((t) => t.dataset.cat);
-    expect(cats).toEqual(['number', 'negatives', 'conditional', 'tick', 'percent', '__custom__']);
+    expect(cats).toEqual(['number', 'currency', 'negatives', 'conditional', 'tick', 'percent', '__custom__']);
     expect(panel.querySelector('.cgext-fmt-tab[data-cat="number"] .cgext-fmt-count')!.textContent).toBe('6');
     expect(panel.querySelector('.cgext-fmt-tab[data-cat="__custom__"] .cgext-fmt-count')).toBeNull();
   });
@@ -105,6 +105,13 @@ describe('lifecycle', () => {
     expect(document.querySelector('.cgext-menu.cgext-fmt')).toBeNull();
     m.destroy(); // second destroy must not throw
   });
+  it('Escape closes even while focus is in the search input (not swallowed by stopPropagation)', () => {
+    const { panel } = mountPicker();
+    const input = panel.querySelector<HTMLInputElement>('.cgext-fmt-search input')!;
+    input.focus();
+    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    expect(document.querySelector('.cgext-menu.cgext-fmt')).toBeNull();
+  });
 });
 
 describe('custom tab', () => {
@@ -181,5 +188,16 @@ describe('custom tab', () => {
     host.format = '#,##0.000000';       // matches no preset
     const { panel } = mountPicker(host); // no explicit tab click
     expect(draftInput(panel).value).toBe('#,##0.000000');
+  });
+  it('CURRENT clear while on the Custom tab preserves the in-progress draft text', () => {
+    const host = new FakeFormatHost();
+    host.format = '#,##0.000000';       // matches no preset → opens on the Custom tab
+    const { panel } = mountPicker(host);
+    const input = draftInput(panel);
+    input.value = '#,##0.00';           // edit the draft further, don't apply it
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    panel.querySelector<HTMLButtonElement>('.cgext-fmt-clear')!.click(); // top CURRENT clear
+    expect(host.clearFormat).toHaveBeenCalled();
+    expect(draftInput(panel).value).toBe('#,##0.00'); // draft survives the clear
   });
 });

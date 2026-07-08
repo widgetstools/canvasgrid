@@ -111,7 +111,7 @@ Pure data + logic, ported from starui and recast to DSL strings.
   tick→Tick, text→Text, boolean→Boolean. `custom` is NOT a category — the UI
   appends the always-on `Custom #` tab.
 - **`categoriesForDataType(dt)`** (first entry = default tab):
-  number→`[number, negatives, conditional, tick, percent]`;
+  number→`[number, currency, negatives, conditional, tick, percent]`;
   date→`[date]`; text→`[text]`; boolean→`[boolean, text]`; unknown→`[number]`.
   (cgrid `cellDataType` is `'number' | 'text' | 'date' | 'boolean'` — the
   currency/percent-typed rails from starui collapse into the number rail,
@@ -175,9 +175,10 @@ layouts panel).
 - **Custom tab:** `CUSTOM EXCEL FORMAT` heading; `SYMBOL` row of quick-insert
   buttons ($ € £ ¥ ₹ CHF) that transform the draft via `applyCurrencySymbol`
   and apply immediately (panel stays open); mono `#`-icon input live-validated
-  by `compileFormat` (invalid → red border + title = compile error; valid
-  non-empty → applied live); ✓ apply button (applies + closes, disabled while
-  empty/invalid) and ✕ clear button (clears the draft + removes the format,
+  by `compileFormat` on every keystroke (invalid → red border + title = compile
+  error, ✓ disabled; valid → ✓ enabled) — validation is live, but applying is
+  an explicit gesture: Enter or the ✓ button applies + closes (disabled while
+  empty/invalid); ✕ clear button (clears the draft + removes the format,
   stays open); below a hairline, the scrollable Excel reference — each row
   `label | mono code | sample + copy glyph`; clicking a copyable row copies
   the code to the clipboard AND applies it, then closes; tick sentinel rows

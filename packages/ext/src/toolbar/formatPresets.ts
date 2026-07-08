@@ -27,7 +27,7 @@ export const CATEGORY_LABELS: Record<FormatCategory, string> = {
 
 export function categoriesForDataType(dt: FormatDataType): FormatCategory[] {
   switch (dt) {
-    case 'number': return ['number', 'negatives', 'conditional', 'tick', 'percent'];
+    case 'number': return ['number', 'currency', 'negatives', 'conditional', 'tick', 'percent'];
     case 'date': return ['date'];
     case 'text': return ['text'];
     case 'boolean': return ['boolean', 'text'];
@@ -94,8 +94,8 @@ const PRESETS: FormatPreset[] = [
   { id: 'str-camel', category: 'text', label: 'camelCase', format: '=CAMEL([value])' },
   { id: 'str-cap', category: 'text', label: 'Capitalize first', format: '=CAP([value])' },
   { id: 'str-trim', category: 'text', label: 'Trim whitespace', format: '=TRIM([value])', sample: '  sample  ' },
-  { id: 'str-prefix-px', category: 'text', label: 'Prefix: PX', format: '="PX " + [value]' },
-  { id: 'str-suffix-units', category: 'text', label: 'Suffix: units', format: '=[value] + " units"' },
+  { id: 'str-prefix-px', category: 'text', label: 'Prefix: PX', format: '"PX "@' },
+  { id: 'str-suffix-units', category: 'text', label: 'Suffix: units', format: '@" units"' },
   // ── Boolean (3)
   { id: 'bool-yn', category: 'boolean', label: 'Y / N', format: '=[value] ? "Y" : "N"', sample: true },
   { id: 'bool-truefalse', category: 'boolean', label: 'True / False', format: '=[value] ? "True" : "False"', sample: true },

@@ -152,9 +152,18 @@ function buildPanel(host: FormatPickerHost, close: () => void): HTMLElement {
     mainEl.append(tabs, body);
   };
 
-  clearBtn.addEventListener('click', () => { host.clearFormat(); renderCurrent(); renderMain(); });
+  clearBtn.addEventListener('click', () => {
+    host.clearFormat();
+    renderCurrent();
+    // Clearing the applied format doesn't change the Custom tab's in-progress
+    // draft text — skip the renderMain() rebuild so it isn't discarded.
+    if (tab !== CUSTOM_TAB) renderMain();
+  });
   searchInput.addEventListener('input', () => { query = searchInput.value; renderMain(); });
-  searchInput.addEventListener('keydown', (e) => e.stopPropagation());
+  searchInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape') { close(); return; }
+    e.stopPropagation();
+  });
 
   renderCurrent();
   renderMain();

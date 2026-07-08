@@ -42,8 +42,8 @@ export function menu(
     document.body.appendChild(panel);
     const r = anchor.getBoundingClientRect();
     panel.style.top = `${Math.round(r.bottom + 4)}px`;
-    // right-align to the anchor
-    panel.style.left = `${Math.round(r.right - panel.offsetWidth)}px`;
+    // right-align to the anchor, clamped so wide panels can't go off-screen left
+    panel.style.left = `${Math.round(Math.max(8, r.right - panel.offsetWidth))}px`;
     document.addEventListener('pointerdown', onDoc, true);
     onOpenChange?.(true);
   };
