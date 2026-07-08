@@ -15,6 +15,7 @@ import { evaluateExcel } from './excel/evaluator';
 import { parseTier1Brackets, type Tier1Node } from './tier1/parser';
 import { resolveStyle, resolveIcon, evaluateIfSelector } from './tier1/resolver';
 import { compileFragments, resolveFragments, resolveCellBackground, type CompiledFragmentPlan } from './tier2/fragmentResolver';
+import { formatTick, parseTickFormat } from './excel/tick';
 
 export function compileFormat(source: FormatSource, opts?: CompileFormatOptions): CompileFormatResult {
   const locale = opts?.locale ?? 'en-US';
@@ -22,6 +23,21 @@ export function compileFormat(source: FormatSource, opts?: CompileFormatOptions)
 
   if (typeof source !== 'string') {
     return compileCompositeColDef(source, opts);
+  }
+
+  // Fixed-income tick tokens — whole-string sections (spec §3.1). Handled
+  // before tokenization: `TICK32` would otherwise lex as literals.
+  const tick = parseTickFormat(source);
+  if (tick) {
+    const program: FormatProgram = {
+      source,
+      tiers: { tier0: true, tier1: false, tier2: false },
+      formatText: (ctx: FormatEvalContext): string => formatTick(ctx.value, tick.denom, tick.halves),
+      resolveStyle: (): StyleObj | null => null,
+      resolveIcon: (): IconRef | null => null,
+      resolveFragments: (): ResolvedFragment[] | null => null,
+    };
+    return { ok: true, program };
   }
 
   const tokens = tokenize(source);
