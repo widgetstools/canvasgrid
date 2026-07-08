@@ -1,6 +1,7 @@
 import { describe, it, expect, afterEach } from 'vitest';
 import { previewFormat } from '../src/toolbar/formatPicker';
 import { FakeFormatHost, mountPicker } from './formatPickerHarness';
+import { EXCEL_EXAMPLES } from '../src/toolbar/formatPresets';
 
 afterEach(() => { document.body.replaceChildren(); });
 
@@ -103,5 +104,82 @@ describe('lifecycle', () => {
     panel.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
     expect(document.querySelector('.cgext-menu.cgext-fmt')).toBeNull();
     m.destroy(); // second destroy must not throw
+  });
+});
+
+describe('custom tab', () => {
+  const openCustom = (host?: FakeFormatHost) => {
+    const r = mountPicker(host);
+    r.panel.querySelector<HTMLElement>('.cgext-fmt-tab[data-cat="__custom__"]')!.click();
+    return r;
+  };
+  const draftInput = (panel: HTMLElement) =>
+    panel.querySelector<HTMLInputElement>('.cgext-fmt-custom-input input')!;
+
+  it('symbol quick-insert seeds/replaces the draft and applies immediately, staying open', () => {
+    const { panel, host } = openCustom();
+    // happy-dom's selector parser mishandles quote-containing attribute
+    // values (e.g. `[data-symbol='"£"']`), so look the button up in JS
+    // instead of via a nested-quote CSS attribute selector.
+    Array.from(panel.querySelectorAll<HTMLButtonElement>('.cgext-fmt-symbols button'))
+      .find((b) => b.dataset.symbol === '"£"')!.click();
+    expect(host.applyFormat).toHaveBeenCalledWith('"£"#,##0.00');
+    expect(document.querySelector('.cgext-menu.cgext-fmt')).not.toBeNull();
+    expect(draftInput(panel).value).toBe('"£"#,##0.00');
+  });
+  it('valid input + ✓ applies and closes; invalid input shows error state and disables ✓', () => {
+    const { panel, host } = openCustom();
+    const input = draftInput(panel);
+    input.value = '0.00%';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(input.classList.contains('is-error')).toBe(false);
+    const apply = panel.querySelector<HTMLButtonElement>('.cgext-fmt-custom-apply')!;
+    expect(apply.disabled).toBe(false);
+    apply.click();
+    expect(host.applyFormat).toHaveBeenCalledWith('0.00%');
+    expect(document.querySelector('.cgext-menu.cgext-fmt')).toBeNull();
+  });
+  it('invalid draft: error class + disabled apply', () => {
+    const { panel } = openCustom();
+    const input = draftInput(panel);
+    input.value = '=UPPER(';
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+    expect(input.classList.contains('is-error')).toBe(true);
+    expect(panel.querySelector<HTMLButtonElement>('.cgext-fmt-custom-apply')!.disabled).toBe(true);
+  });
+  it('✕ clears the draft and the applied format, staying open', () => {
+    const host = new FakeFormatHost();
+    host.format = '#,##0';
+    const { panel } = openCustom(host);
+    panel.querySelector<HTMLElement>('.cgext-fmt-custom-clear')!.click();
+    expect(host.clearFormat).toHaveBeenCalled();
+    expect(draftInput(panel).value).toBe('');
+    expect(document.querySelector('.cgext-menu.cgext-fmt')).not.toBeNull();
+  });
+  it('reference rows copy + apply + close; tick sentinels are disabled', () => {
+    const writes: string[] = [];
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText: (t: string) => { writes.push(t); return Promise.resolve(); } },
+      configurable: true,
+    });
+    const { panel, host } = openCustom();
+    const titles = Array.from(panel.querySelectorAll('.cgext-fmt-ref-title')).map((t) => t.textContent);
+    expect(titles).toEqual(EXCEL_EXAMPLES.map((s) => s.title));
+    panel.querySelector<HTMLElement>('.cgext-fmt-ref-row[data-format="0.00E+00"]')!.click();
+    expect(host.applyFormat).toHaveBeenCalledWith('0.00E+00');
+    expect(writes).toEqual(['0.00E+00']);
+    expect(document.querySelector('.cgext-menu.cgext-fmt')).toBeNull();
+  });
+  it('tick sentinel rows are disabled buttons', () => {
+    const { panel } = openCustom();
+    const sentinel = Array.from(panel.querySelectorAll<HTMLButtonElement>('.cgext-fmt-ref-row'))
+      .find((r) => r.dataset.format!.startsWith('—'))!;
+    expect(sentinel.disabled).toBe(true);
+  });
+  it('a custom current format opens on the Custom tab with the draft prefilled', () => {
+    const host = new FakeFormatHost();
+    host.format = '#,##0.000000';       // matches no preset
+    const { panel } = mountPicker(host); // no explicit tab click
+    expect(draftInput(panel).value).toBe('#,##0.000000');
   });
 });

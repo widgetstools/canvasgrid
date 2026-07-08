@@ -161,15 +161,104 @@ function buildPanel(host: FormatPickerHost, close: () => void): HTMLElement {
   return el;
 }
 
-// Task 8 replaces this stub with the full Custom tab (symbol quick-insert,
-// validated input, excel reference). Kept minimal so Task 7 ships runnable.
 function buildCustomTab(
-  _host: FormatPickerHost,
-  _dataType: FormatDataType,
-  _ctx: { current(): string | undefined; renderCurrent(): void; renderMain(): void; close(): void },
+  host: FormatPickerHost,
+  dataType: FormatDataType,
+  ctx: { current(): string | undefined; renderCurrent(): void; renderMain(): void; close(): void },
 ): HTMLElement {
   const wrap = document.createElement('div');
   wrap.className = 'cgext-fmt-custom';
+  wrap.innerHTML =
+    `<div class="cgext-fmt-caps">CUSTOM EXCEL FORMAT</div>` +
+    `<div class="cgext-fmt-symbols"><span class="cgext-fmt-caps">SYMBOL</span></div>` +
+    `<div class="cgext-fmt-custom-input">` +
+      `${svg(I.hash, 14)}<input type="text" spellcheck="false" aria-label="Custom format" />` +
+      `<button type="button" class="cgext-fmt-custom-apply" title="Apply format">${svg(I.check, 14)}</button>` +
+      `<button type="button" class="cgext-fmt-custom-clear" title="Clear format">${svg(I.x, 14)}</button>` +
+    `</div>` +
+    `<div class="cgext-fmt-ref"></div>`;
+
+  const input = wrap.querySelector<HTMLInputElement>('.cgext-fmt-custom-input input')!;
+  const applyBtn = wrap.querySelector<HTMLButtonElement>('.cgext-fmt-custom-apply')!;
+  const clearBtn = wrap.querySelector<HTMLButtonElement>('.cgext-fmt-custom-clear')!;
+  input.placeholder = dataType === 'date' ? 'yyyy-mm-dd' : '#,##0.00';
+  // Prefill with a current format that matches no preset (custom source of truth).
+  const cur = ctx.current();
+  if (cur !== undefined && !findPresetByFormat(cur)) input.value = cur;
+
+  const validate = (): boolean => {
+    const draft = input.value.trim();
+    if (!draft) { input.classList.remove('is-error'); input.title = ''; applyBtn.disabled = true; return false; }
+    const r = compileFormat(draft);
+    input.classList.toggle('is-error', !r.ok);
+    input.title = r.ok ? '' : r.error.message;
+    applyBtn.disabled = !r.ok;
+    return r.ok;
+  };
+  validate();
+  input.addEventListener('input', validate);
+  input.addEventListener('keydown', (e) => {
+    e.stopPropagation();
+    if (e.key === 'Enter' && validate()) { host.applyFormat(input.value.trim()); ctx.close(); }
+    if (e.key === 'Escape') ctx.close();
+  });
+  applyBtn.addEventListener('click', () => {
+    if (validate()) { host.applyFormat(input.value.trim()); ctx.close(); }
+  });
+  clearBtn.addEventListener('click', () => {
+    input.value = '';
+    validate();
+    host.clearFormat();
+    ctx.renderCurrent();
+  });
+
+  const symbols = wrap.querySelector<HTMLElement>('.cgext-fmt-symbols')!;
+  for (const c of CURRENCY_QUICK_INSERT) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'cgext-fmt-symbol';
+    b.dataset.symbol = c.symbol;
+    b.textContent = c.label;
+    b.setAttribute('aria-label', `Insert ${c.label} currency symbol`);
+    b.addEventListener('click', () => {
+      const next = applyCurrencySymbol(input.value, c.symbol);
+      input.value = next;
+      if (validate()) { host.applyFormat(next); ctx.renderCurrent(); } // applies, stays open
+    });
+    symbols.appendChild(b);
+  }
+
+  const ref = wrap.querySelector<HTMLElement>('.cgext-fmt-ref')!;
+  for (const section of EXCEL_EXAMPLES) {
+    const title = document.createElement('div');
+    title.className = 'cgext-fmt-ref-title cgext-fmt-caps';
+    title.textContent = section.title;
+    ref.appendChild(title);
+    for (const row of section.rows) {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'cgext-fmt-ref-row';
+      b.dataset.format = row.format;
+      const sentinel = row.format.startsWith('—');
+      b.disabled = sentinel;
+      b.innerHTML =
+        `<span class="cgext-fmt-ref-label"></span>` +
+        `<span class="cgext-fmt-ref-code"></span>` +
+        `<span class="cgext-fmt-ref-sample"></span>` +
+        (sentinel ? '' : `<span class="cgext-fmt-ref-copy">${svg(I.copy, 12)}</span>`);
+      b.querySelector('.cgext-fmt-ref-label')!.textContent = row.label;
+      b.querySelector('.cgext-fmt-ref-code')!.textContent = row.format;
+      b.querySelector('.cgext-fmt-ref-sample')!.textContent = row.sample;
+      if (!sentinel) {
+        b.addEventListener('click', () => {
+          try { void navigator.clipboard?.writeText(row.format); } catch { /* copy is best-effort */ }
+          host.applyFormat(row.format);
+          ctx.close();
+        });
+      }
+      ref.appendChild(b);
+    }
+  }
   return wrap;
 }
 
@@ -249,4 +338,43 @@ const FMT_CSS = `
 }
 .cgext-fmt-empty { padding: 18px 10px; font-size: 12.5px; color: var(--cg-muted-fg-color, #9aa4b6); }
 .cgext-fmt-custom { display: flex; flex-direction: column; gap: 10px; }
+.cgext-fmt-symbols { display: flex; align-items: center; gap: 6px; }
+.cgext-fmt-symbol {
+  appearance: none; min-width: 34px; height: 30px; padding: 0 8px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 6px; background: transparent;
+  color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 13px; cursor: pointer;
+}
+.cgext-fmt-symbol:hover { border-color: var(--cg-accent-color, #4f9cf9); }
+.cgext-fmt-custom-input {
+  display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 7px;
+  color: var(--cg-muted-fg-color, #9aa4b6);
+}
+.cgext-fmt-custom-input input {
+  flex: 1 1 auto; min-width: 0; border: none; background: transparent; outline: none;
+  color: var(--cg-fg-color, #e5e9f0);
+  font-family: 'JetBrains Mono', Menlo, Consolas, monospace; font-size: 12.5px;
+}
+.cgext-fmt-custom-input input.is-error { color: var(--cg-neg-color, #e2606c); }
+.cgext-fmt-custom-apply, .cgext-fmt-custom-clear {
+  appearance: none; width: 28px; height: 28px; border: 1px solid var(--cg-border-color, #2a3140);
+  border-radius: 6px; background: transparent; display: inline-flex; align-items: center;
+  justify-content: center; cursor: pointer;
+}
+.cgext-fmt-custom-apply { color: var(--cg-accent-color, #4f9cf9); }
+.cgext-fmt-custom-apply:disabled { opacity: 0.4; cursor: default; }
+.cgext-fmt-custom-clear { color: var(--cg-neg-color, #e2606c); }
+.cgext-fmt-ref { display: flex; flex-direction: column; gap: 2px; border-top: 1px solid var(--cg-border-color, #2a3140); padding-top: 8px; }
+.cgext-fmt-ref-title { padding: 8px 2px 4px; }
+.cgext-fmt-ref-row {
+  appearance: none; display: grid; grid-template-columns: 130px 1fr auto auto; gap: 8px; align-items: center;
+  padding: 5px 6px; border: 1px solid transparent; border-radius: 6px; background: transparent;
+  color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12.5px; text-align: left; cursor: pointer;
+}
+.cgext-fmt-ref-row:hover:not(:disabled) { background: var(--cg-row-alt-bg, rgba(255,255,255,0.06)); }
+.cgext-fmt-ref-row:disabled { opacity: 0.55; cursor: default; }
+.cgext-fmt-ref-code, .cgext-fmt-ref-sample { font-family: 'JetBrains Mono', Menlo, Consolas, monospace; font-size: 11.5px; }
+.cgext-fmt-ref-code { color: var(--cg-accent-color, #4f9cf9); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cgext-fmt-ref-sample { color: var(--cg-muted-fg-color, #9aa4b6); white-space: nowrap; }
+.cgext-fmt-ref-copy { display: inline-flex; color: var(--cg-muted-fg-color, #9aa4b6); }
 `;
