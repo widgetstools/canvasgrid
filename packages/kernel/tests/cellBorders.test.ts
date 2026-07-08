@@ -133,16 +133,30 @@ describe('cellStyle.border integration', () => {
 // ─── 2. paintCellBorders pure painter ──────────────────────────────────────
 
 describe('paintCellBorders — sides + colors', () => {
-  it('draws top side only when only top is set', () => {
+  it('draws top side only when only top is set, inset half a width inside the cell', () => {
     const gc = makeGc();
     const bounds = { x: 10, y: 20, w: 100, h: 30 };
     paintCellBorders(gc, bounds, { top: { width: 1, color: 'red' } });
-    // Single line: moveTo + lineTo + stroke
-    expect((gc.moveTo as any).mock.calls).toEqual([[10, 20]]);
-    expect((gc.lineTo as any).mock.calls).toEqual([[110, 20]]);
+    // Single line: moveTo + lineTo + stroke. Strokes are centered on the
+    // path, so the y is inset by width/2 — the full 1px lands INSIDE the
+    // cell instead of spilling half onto the neighbour.
+    expect((gc.moveTo as any).mock.calls).toEqual([[10, 20.5]]);
+    expect((gc.lineTo as any).mock.calls).toEqual([[110, 20.5]]);
     expect((gc.stroke as any).mock.calls.length).toBe(1);
     expect((gc as any).strokeStyle).toBe('red');
     expect((gc as any).lineWidth).toBe(1);
+  });
+
+  it('thick bottom borders paint fully inside the cell (no neighbour overpaint)', () => {
+    const gc = makeGc();
+    const bounds = { x: 10, y: 20, w: 100, h: 30 };
+    paintCellBorders(gc, bounds, { bottom: { width: 4, color: 'teal' } });
+    // Bottom edge is y=50; a 4px stroke centered at 48 spans 46..50 — all
+    // inside. The old on-boundary stroke (centered at 50) lost its outer
+    // 2px to the next row's paint.
+    expect((gc.moveTo as any).mock.calls).toEqual([[10, 48]]);
+    expect((gc.lineTo as any).mock.calls).toEqual([[110, 48]]);
+    expect((gc as any).lineWidth).toBe(4);
   });
 
   it('draws all four sides when fully specified', () => {

@@ -48,13 +48,21 @@ function paintSide(
   gc.cache.lineWidth = width;
   setDashPattern(gc, style, width);
 
+  // Canvas strokes are CENTERED on the path: a stroke laid exactly on the
+  // cell boundary paints width/2 OUTSIDE the cell, where the neighbouring
+  // cell / next band paints over it — a 4px bottom border kept only ~2px
+  // and a 1px one all but vanished, while the top edge looked fatter
+  // (its spill lands on the already-painted row above and survives).
+  // Inset every stroke by half its width so the FULL thickness lands
+  // inside the bounds, uniformly on all four sides.
+  const halfIn = width / 2;
   if (style === 'double') {
     // Two parallel strokes separated by `width`. Each stroke is `width`
     // wide. Outer first, then inner.
-    strokeSide(gc, bounds, side, 0);
-    strokeSide(gc, bounds, side, width * 2);
+    strokeSide(gc, bounds, side, halfIn);
+    strokeSide(gc, bounds, side, halfIn + width * 2);
   } else {
-    strokeSide(gc, bounds, side, 0);
+    strokeSide(gc, bounds, side, halfIn);
   }
   gc.cache.restore();
 }
