@@ -739,8 +739,12 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   // ── 2. Static cellStyle object ─────────────────────────────────────────
   // Workstream C — token-referenceable values: fg/bg/border colors of the
   // form `var(--cg-…)` resolve through `theme.resolveVarRef`.
+  // DATA CELLS ONLY: a column's cell styling never restyles its header —
+  // the header branch below picks up JUST the alignment from cellStyle
+  // (the one attribute that carries onto the caption); everything else on
+  // the header comes from headerClass variants / headerStyle.
   const staticCellStyle = colDef.cellStyle;
-  if (staticCellStyle !== undefined && typeof staticCellStyle === 'object') {
+  if (!ctx.isHeader && staticCellStyle !== undefined && typeof staticCellStyle === 'object') {
     applyOverridePatch(target, staticCellStyle as ColCellOverrides, theme.resolveVarRef);
   }
 
@@ -751,8 +755,9 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
   // don't need it either. Skipping the literal when no resolver consumes
   // it removes a per-cell allocation in the paint hot loop.
   const needsCallbackParams =
-    (!ctx.isHeader && (colDef.cellClassFn !== undefined || colDef.cellClassRules !== undefined))
-    || colDef.cellStyleFn !== undefined;
+    !ctx.isHeader
+    && (colDef.cellClassFn !== undefined || colDef.cellClassRules !== undefined
+      || colDef.cellStyleFn !== undefined);
   const callbackParams = needsCallbackParams
     ? {
         data: (ctx.rowData ?? {}) as Record<string, unknown>,
@@ -768,14 +773,18 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
 
   if (ctx.isHeader) {
     // Header caption alignment: an EXPLICIT cell alignment (static
-    // `cellStyle.halign` — authored or set via the formatting toolbar's Cell
-    // target) carries onto the header, so aligning a column's cells aligns
-    // its caption too. Without one, headers stay LEFT regardless of the
-    // cellDataType-derived data alignment set above (numbers right-align
-    // their CELLS, not their captions — the painter's historical behavior).
-    // An explicit `headerStyle.halign` / headerClass variant below overrides
-    // either, letting the user split header alignment from the cells'.
-    target.halign = (colDef.cellStyle as ColCellOverrides | undefined)?.halign ?? 'left';
+    // `cellStyle.halign`/`valign` — authored or set via the formatting
+    // toolbar's Cell target) carries onto the header, so aligning a column's
+    // cells aligns its caption too. Alignment is the ONLY cellStyle
+    // attribute that reaches the header (step 2 above is data-cell-gated).
+    // Without one, headers stay LEFT regardless of the cellDataType-derived
+    // data alignment set above (numbers right-align their CELLS, not their
+    // captions — the painter's historical behavior). An explicit
+    // `headerStyle.halign` / headerClass variant below overrides either,
+    // letting the user split header alignment from the cells'.
+    const cellOverrides = colDef.cellStyle as ColCellOverrides | undefined;
+    target.halign = cellOverrides?.halign ?? 'left';
+    if (cellOverrides?.valign !== undefined) target.valign = cellOverrides.valign;
     // Header path: group-header cells supply groupHeaderClassNames (from the
     // group's pre-resolved headerClass); leaf header cells fall back to the
     // leaf colDef's headerClassStatic / headerClassFn. Group wins; leaf is skipped
@@ -938,7 +947,10 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
 
   // ── 4. Function-form cellStyle (highest precedence) ────────────────────
   // Workstream C — token-referenceable values, same as static cellStyle.
-  if (colDef.cellStyleFn) {
+  // Data cells only — it runs AFTER the header branch, so an ungated call
+  // would restyle headers over their headerStyle (function-form patches are
+  // per-row and have no meaning on a caption).
+  if (colDef.cellStyleFn && !ctx.isHeader) {
     let patch: ColCellOverrides | null | undefined;
     try {
       patch = colDef.cellStyleFn(callbackParams!);
