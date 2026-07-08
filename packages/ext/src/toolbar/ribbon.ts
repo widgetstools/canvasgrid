@@ -1082,6 +1082,9 @@ export function injectRibbonStyles(): void {
 
 const RIBBON_CSS = `
 .cgext-ribbon { flex: 0 0 auto; background: var(--cg-header-bg, var(--cg-popup-bg, #141922)); border-bottom: 1px solid var(--cg-border-color, #2a3140); }
+/* ONE font size for every element in the bar (user request): controls,
+   labels, stats, and captions all read at 12px. */
+.cgext-ribbon-band, .cgext-edit-strip { font-size: 12px; }
 .cgext-ribbon-band { display: flex; align-items: stretch; padding: 4px 8px 2px; box-sizing: border-box; }
 .cgext-rb-cluster { display: flex; align-items: stretch; }
 .cgext-rb-cluster[hidden] { display: none; }
@@ -1104,7 +1107,7 @@ const RIBBON_CSS = `
   border-left: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 70%, transparent);
 }
 .cgext-es-label {
-  font-size: 9.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
+  font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
   color: var(--cg-muted-fg-color, #7f8ba0); margin-right: 6px; white-space: nowrap;
 }
 .cgext-es-seg > .cgext-rb-stat { margin-left: 5px; }
@@ -1119,7 +1122,7 @@ const RIBBON_CSS = `
 .cgext-rb-mini > .cgext-rb-pill:first-child:last-child { flex: 1 1 auto; }
 .cgext-rb-grp-name {
   padding: 3px 0 1px; text-align: center;
-  font-size: 9.5px; color: var(--cg-muted-fg-color, #7f8ba0);
+  font-size: 12px; color: var(--cg-muted-fg-color, #7f8ba0);
   white-space: nowrap;
 }
 .cgext-rb-spacer { flex: 1 1 auto; }
@@ -1144,7 +1147,7 @@ const RIBBON_CSS = `
 /* AB — header-caption uppercase toggle (text glyph, not an icon path). */
 .cgext-rb-ab {
   width: auto; padding: 0 6px;
-  font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+  font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
 }
 .cgext-rb-ab:disabled { opacity: 0.45; cursor: default; }
 
@@ -1207,7 +1210,7 @@ const RIBBON_CSS = `
 }
 .cgext-rb-input:focus { outline: none; border-color: var(--cg-accent-color, #4f9cf9); }
 
-.cgext-rb-stat { font-size: 11.5px; color: var(--cg-muted-fg-color, #7f8ba0); font-variant-numeric: tabular-nums; }
+.cgext-rb-stat { font-size: 12px; color: var(--cg-muted-fg-color, #7f8ba0); font-variant-numeric: tabular-nums; }
 
 .cgext-rb-stepper {
   display: inline-flex; align-items: center; gap: 5px;
