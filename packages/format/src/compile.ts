@@ -9,6 +9,7 @@ import type {
   IconRef,
   ResolvedFragment,
 } from './types';
+import { parse as parseExpr, compile as compileExpr, evaluate as evaluateExpr } from '@cgrid/expression';
 import { tokenize, type Token } from './tokenizer';
 import { parseExcel, type ExcelFormatTree } from './excel/parser';
 import { evaluateExcel } from './excel/evaluator';
@@ -38,6 +39,43 @@ export function compileFormat(source: FormatSource, opts?: CompileFormatOptions)
       resolveFragments: (): ResolvedFragment[] | null => null,
     };
     return { ok: true, program };
+  }
+
+  // `=expr` value-formatter form (spec §3.3): the expression's stringified
+  // result IS the formatted output. `value` is bound over the row so it
+  // wins field collisions; eval NEVER throws out of formatText.
+  const trimmed = source.trimStart();
+  if (trimmed.startsWith('=')) {
+    const parsed = parseExpr(trimmed.slice(1));
+    if (!parsed.ok) {
+      return {
+        ok: false,
+        error: { kind: 'compile-format', code: 'expr-parse', message: parsed.error.message, loc: parsed.error.loc },
+      };
+    }
+    const compiled = compileExpr(parsed.ast);
+    if (!compiled.ok) {
+      return {
+        ok: false,
+        error: { kind: 'compile-format', code: 'expr-compile', message: compiled.error.message, loc: compiled.error.loc },
+      };
+    }
+    const exprProgram: FormatProgram = {
+      source,
+      tiers: { tier0: true, tier1: false, tier2: false },
+      formatText: (ctx: FormatEvalContext): string => {
+        try {
+          const out = evaluateExpr(compiled.compiled, { row: { ...ctx.row, value: ctx.value } });
+          return out === null || out === undefined ? '' : String(out);
+        } catch {
+          return '';
+        }
+      },
+      resolveStyle: (): StyleObj | null => null,
+      resolveIcon: (): IconRef | null => null,
+      resolveFragments: (): ResolvedFragment[] | null => null,
+    };
+    return { ok: true, program: exprProgram };
   }
 
   const tokens = tokenize(source);
