@@ -287,7 +287,7 @@ const TITLEBAR_CSS = `
   border: 1px solid var(--cg-border-color, #2a3140); border-radius: 10px;
   box-shadow: 0 12px 32px rgba(0,0,0,0.4);
   color: var(--cg-fg-color, #e5e9f0);
-  font: 13px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  font: 13px/1.4 var(--cg-font-family, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif);
 }
 .cgext-menu-list { display: flex; flex-direction: column; }
 .cgext-menu-item {

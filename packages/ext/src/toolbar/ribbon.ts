@@ -1262,6 +1262,9 @@ const RIBBON_CSS = `
 .cgext-rb-pill[data-ip="place"]:disabled:hover { border-color: var(--cg-border-color, #2a3140); }
 
 .cgext-ip-panel {
+  /* Body-mounted popup — declare the Inter stack explicitly (no inherited
+     shell font out here; the browser default serif leaked through). */
+  font-family: var(--cg-font-family, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif);
   position: fixed; z-index: 1000; width: 340px; max-height: 428px;
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--cg-popup-bg, #161b26); border: 1px solid var(--cg-border-color, #2a3140);
@@ -1330,6 +1333,7 @@ const RIBBON_CSS = `
 .cgext-ip-empty-msg { font-size: 12px; }
 
 .cgext-ip-placemenu {
+  font-family: var(--cg-font-family, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif); font-size: 12px;
   position: fixed; z-index: 1000; min-width: 158px; padding: 5px;
   background: var(--cg-popup-bg, #161b26); border: 1px solid var(--cg-border-color, #2a3140);
   border-radius: 9px; box-shadow: 0 12px 30px rgba(0,0,0,0.45);

@@ -138,7 +138,9 @@ const SHELL_CSS = `
   height: 100%;
   min-height: 0;
   color: var(--cg-fg-color, #e5e9f0);
-  font: 13px/1.4 -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+  /* Inter everywhere — ride the theme's font token (kernel themes set
+     --cg-font-family to the Inter stack); graceful system fallback. */
+  font: 13px/1.4 var(--cg-font-family, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif);
 }
 .cgext-titlebar {
   flex: 0 0 auto;
