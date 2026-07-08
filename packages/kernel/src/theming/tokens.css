@@ -375,7 +375,9 @@
   --cg-fg-color: oklch(0.96 0.006 258);
   --cg-bg-color: oklch(0.203 0.0185 258);
   --cg-row-alt-bg: oklch(0.72 0.145 218 / 0.03);
-  --cg-header-bg: oklch(0.203 0.0185 258);
+  /* Header + chrome sit one step (L +10%) above the data surface so the
+   * column headers, side bar, and title-bar chrome separate from cells. */
+  --cg-header-bg: oklch(0.223 0.0185 258);
   --cg-header-fg: oklch(0.96 0.006 258);
   --cg-border-color: oklch(0.365 0.019 258);
   --cg-grid-line-color: oklch(0.365 0.019 258 / 0.7);
