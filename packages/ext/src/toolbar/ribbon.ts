@@ -118,14 +118,17 @@ function iconBtn(icon: string, title: string): HTMLButtonElement {
  *  (digits in the icon colour + an accent arrow), not single Lucide paths:
  *  fewer = "←0 / .00", more = ".00 / →0". Text inherits the ribbon font. */
 function decimalIcon(kind: 'fewer' | 'more'): string {
+  // 18-unit grid: the ribbon lays every icon into a 12px content box scaled
+  // by 12/viewBox, so the tighter box (vs the stock 24) is what makes these
+  // two-row glyphs read at the same optical size as their siblings.
   const digit = (x: number, y: number, s: string) =>
-    `<text x="${x}" y="${y}" fill="currentColor" font-size="9.5" font-weight="700">${s}</text>`;
+    `<text x="${x}" y="${y}" fill="currentColor" font-size="10" font-weight="700">${s}</text>`;
   const arrow = (d: string) =>
-    `<path d="${d}" fill="none" stroke="var(--cg-accent-color, #4f9cf9)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>`;
+    `<path d="${d}" fill="none" stroke="var(--cg-accent-color, #4f9cf9)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>`;
   const rows = kind === 'fewer'
-    ? arrow('M11.5 6.5H4.5M7.2 3.8 4.5 6.5l2.7 2.7') + digit(14, 10, '0') + digit(3.5, 21, '.00')
-    : digit(3.5, 10, '.00') + arrow('M4.5 17.5H11M8.8 14.8l2.7 2.7-2.7 2.7') + digit(14.5, 21, '0');
-  return `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">${rows}</svg>`;
+    ? arrow('M9.5 4H1.5M4.5 1l-3 3 3 3') + digit(11.5, 7.5, '0') + digit(0.5, 17.5, '.00')
+    : digit(0.5, 7.5, '.00') + arrow('M1.5 14h8M6.5 11l3 3-3 3') + digit(11.5, 17.5, '0');
+  return `<svg viewBox="0 0 18 18" width="18" height="18" aria-hidden="true">${rows}</svg>`;
 }
 function decimalBtn(kind: 'fewer' | 'more', title: string): HTMLButtonElement {
   const b = document.createElement('button');
