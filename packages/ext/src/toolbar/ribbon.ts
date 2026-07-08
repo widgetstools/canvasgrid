@@ -982,6 +982,7 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   for (const side of Object.keys(r.borderSideBtns) as BorderSideKey[]) {
     r.borderSideBtns[side].addEventListener('click', () => { borderSide = side; refresh(); });
   }
+  r.borderColorBtn.addEventListener('click', () => r.borderColorInput.click());
   r.borderColorInput.addEventListener('change', applyBorderEdit);
   const lineSampleItem = (label: string, sampleCss: string, onPick: () => void): HTMLButtonElement => {
     const it = document.createElement('button');
