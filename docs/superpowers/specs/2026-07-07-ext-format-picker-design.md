@@ -82,15 +82,15 @@ never throw at paint time).
 
 | Preset | cgrid format string |
 |---|---|
-| Basis points | `=(value >= 0 ? "+" : "") + FIXED(value * 10000, 1) + " bp"` |
-| UPPERCASE | `=UPPER(value)` |
-| lowercase | `=LOWER(value)` |
-| Title Case | `=TITLE(value)` |
-| camelCase | `=CAMEL(value)` |
-| Capitalize first | `=CAP(value)` |
-| Trim whitespace | `=TRIM(value)` |
-| Y / N (boolean) | `=value ? "Y" : "N"` |
-| Check / — (boolean) | `=value ? "✓" : "—"` |
+| Basis points | `=([value] >= 0 ? "+" : "") + FIXED([value] * 10000, 1) + " bp"` |
+| UPPERCASE | `=UPPER([value])` |
+| lowercase | `=LOWER([value])` |
+| Title Case | `=TITLE([value])` |
+| camelCase | `=CAMEL([value])` |
+| Capitalize first | `=CAP([value])` |
+| Trim whitespace | `=TRIM([value])` |
+| Y / N (boolean) | `=[value] ? "Y" : "N"` |
+| Check / — (boolean) | `=[value] ? "✓" : "—"` |
 
 ### 3.4 Verified-existing (test coverage only, no code expected)
 

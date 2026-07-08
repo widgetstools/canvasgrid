@@ -477,18 +477,18 @@ const run = (fmt: string, value: unknown, row: Record<string, unknown> = {}): st
 
 describe('=expr value-formatter form', () => {
   it('formats via expression with value bound', () => {
-    expect(run('=UPPER(value)', 'sample')).toBe('SAMPLE');
-    expect(run('=value ? "Y" : "N"', true)).toBe('Y');
-    expect(run('=(value >= 0 ? "+" : "") + FIXED(value * 10000, 1) + " bp"', 0.001234)).toBe('+12.3 bp');
+    expect(run('=UPPER([value])', 'sample')).toBe('SAMPLE');
+    expect(run('=[value] ? "Y" : "N"', true)).toBe('Y');
+    expect(run('=([value] >= 0 ? "+" : "") + FIXED([value] * 10000, 1) + " bp"', 0.001234)).toBe('+12.3 bp');
   });
   it('value wins a row-field collision; other identifiers hit the row', () => {
-    expect(run('=UPPER(value)', 'cell', { value: 'row' })).toBe('CELL');
-    expect(run('=UPPER(ticker)', 'ignored', { ticker: 'ibm' })).toBe('IBM');
+    expect(run('=UPPER([value])', 'cell', { value: 'row' })).toBe('CELL');
+    expect(run('=UPPER([ticker])', 'ignored', { ticker: 'ibm' })).toBe('IBM');
   });
   it('never throws at eval time', () => {
     expect(run('=FIXED(value, 1)', 'junk')).toBe('');       // builtin total-function path
-    expect(run('=value / other', 5, { other: 0 })).toBe(''); // div-by-zero EvalError → ''
-    expect(run('=UPPER(value)', null)).toBe('');
+    expect(run('=[value] / [other]', 5, { other: 0 })).toBe(''); // div-by-zero EvalError → ''
+    expect(run('=UPPER([value])', null)).toBe('');
   });
   it('rejects a bad expression at compile time', () => {
     const r = compileFormat('=UPPER(');
@@ -496,7 +496,7 @@ describe('=expr value-formatter form', () => {
     if (!r.ok) expect(r.error.kind).toBe('compile-format');
   });
   it('tier flags: tier0 only; style/icon null', () => {
-    const p = program('=UPPER(value)');
+    const p = program('=UPPER([value])');
     expect(p.tiers).toEqual({ tier0: true, tier1: false, tier2: false });
     expect(p.resolveStyle({ value: 'x', row: {}, colId: 'c' })).toBeNull();
   });
@@ -506,7 +506,7 @@ describe('=expr value-formatter form', () => {
 - [ ] **Step 2: Run to verify failure**
 
 Run: `cd packages/format && npx vitest run tests/exprFormat.test.ts`
-Expected: FAIL — `=UPPER(value)` currently tokenizes as literals and renders literal text, not `SAMPLE`.
+Expected: FAIL — `=UPPER([value])` currently tokenizes as literals and renders literal text, not `SAMPLE`.
 
 - [ ] **Step 3: Implement the branch in `compile.ts`**
 
@@ -742,7 +742,7 @@ describe('lookup + search + codeText', () => {
     expect(filterPresets(presets, 'TICK64')).toHaveLength(1);
   });
   it('codeText marks ƒ(x) and tick forms', () => {
-    expect(codeText('=UPPER(value)')).toBe('ƒ(x)');
+    expect(codeText('=UPPER([value])')).toBe('ƒ(x)');
     expect(codeText('TICK32+')).toBe('denom 32+');
     expect(codeText('TICK128')).toBe('denom 128');
     expect(codeText('#,##0')).toBe('#,##0');
@@ -833,7 +833,7 @@ const PRESETS: FormatPreset[] = [
   { id: 'num-plain', category: 'number', label: 'No thousands', format: '0.00' },
   { id: 'num-sci', category: 'number', label: 'Scientific', format: '0.00E+00' },
   { id: 'num-bps', category: 'number', label: 'Basis points', hint: '+12.3 bp',
-    format: '=(value >= 0 ? "+" : "") + FIXED(value * 10000, 1) + " bp"', sample: 0.001234 },
+    format: '=([value] >= 0 ? "+" : "") + FIXED([value] * 10000, 1) + " bp"', sample: 0.001234 },
   // ── Negatives & P&L (5)
   { id: 'neg-parens', category: 'negatives', label: 'Parens negative', format: '#,##0.00;(#,##0.00)' },
   { id: 'neg-red-parens', category: 'negatives', label: 'Red parens neg', format: '#,##0.00;[Red](#,##0.00)' },
@@ -855,7 +855,7 @@ const PRESETS: FormatPreset[] = [
   { id: 'pct-0', category: 'percent', label: 'Percent (0dp)', format: '0%', sample: 0.12 },
   { id: 'pct-2', category: 'percent', label: 'Percent (2dp)', format: '0.00%', sample: 0.1234 },
   { id: 'pct-bps', category: 'percent', label: 'Basis points', hint: '+12.3 bp',
-    format: '=(value >= 0 ? "+" : "") + FIXED(value * 10000, 1) + " bp"', sample: 0.001234 },
+    format: '=([value] >= 0 ? "+" : "") + FIXED([value] * 10000, 1) + " bp"', sample: 0.001234 },
   // ── Currency (12)
   { id: 'cur-usd', category: 'currency', label: 'USD', format: '$#,##0.00' },
   { id: 'cur-usd-parens', category: 'currency', label: 'USD parens neg', format: '$#,##0.00;($#,##0.00)' },
@@ -878,18 +878,18 @@ const PRESETS: FormatPreset[] = [
   { id: 'date-us-short', category: 'date', label: 'US short', format: 'mm/dd/yy h:nn AM/PM' },
   // ── Text (9)
   { id: 'str-default', category: 'text', label: 'Default (pass-through)', format: '@' },
-  { id: 'str-upper', category: 'text', label: 'UPPERCASE', format: '=UPPER(value)' },
-  { id: 'str-lower', category: 'text', label: 'lowercase', format: '=LOWER(value)' },
-  { id: 'str-title', category: 'text', label: 'Title Case', format: '=TITLE(value)' },
-  { id: 'str-camel', category: 'text', label: 'camelCase', format: '=CAMEL(value)' },
-  { id: 'str-cap', category: 'text', label: 'Capitalize first', format: '=CAP(value)' },
-  { id: 'str-trim', category: 'text', label: 'Trim whitespace', format: '=TRIM(value)', sample: '  sample  ' },
+  { id: 'str-upper', category: 'text', label: 'UPPERCASE', format: '=UPPER([value])' },
+  { id: 'str-lower', category: 'text', label: 'lowercase', format: '=LOWER([value])' },
+  { id: 'str-title', category: 'text', label: 'Title Case', format: '=TITLE([value])' },
+  { id: 'str-camel', category: 'text', label: 'camelCase', format: '=CAMEL([value])' },
+  { id: 'str-cap', category: 'text', label: 'Capitalize first', format: '=CAP([value])' },
+  { id: 'str-trim', category: 'text', label: 'Trim whitespace', format: '=TRIM([value])', sample: '  sample  ' },
   { id: 'str-prefix-px', category: 'text', label: 'Prefix: PX', format: '"PX "@' },
   { id: 'str-suffix-units', category: 'text', label: 'Suffix: units', format: '@" units"' },
   // ── Boolean (3)
-  { id: 'bool-yn', category: 'boolean', label: 'Y / N', format: '=value ? "Y" : "N"', sample: true },
-  { id: 'bool-truefalse', category: 'boolean', label: 'True / False', format: '=value ? "True" : "False"', sample: true },
-  { id: 'bool-check', category: 'boolean', label: 'Check / —', format: '=value ? "✓" : "—"', sample: true },
+  { id: 'bool-yn', category: 'boolean', label: 'Y / N', format: '=[value] ? "Y" : "N"', sample: true },
+  { id: 'bool-truefalse', category: 'boolean', label: 'True / False', format: '=[value] ? "True" : "False"', sample: true },
+  { id: 'bool-check', category: 'boolean', label: 'Check / —', format: '=[value] ? "✓" : "—"', sample: true },
 ];
 
 export function presetsForCategory(cat: FormatCategory): FormatPreset[] {
@@ -1957,7 +1957,7 @@ test('custom format via input; search; text column rail', async ({ page }) => {
   await pill(page).click();
   await expect(panel(page).locator('.cgext-fmt-tab[data-cat="text"] .cgext-fmt-count')).toHaveText('9');
   await panel(page).locator('.cgext-fmt-row[data-preset-id="str-upper"]').click();
-  expect(await ownFormat(page, 'ticker')).toBe('=UPPER(value)');
+  expect(await ownFormat(page, 'ticker')).toBe('=UPPER([value])');
 });
 ```
 
