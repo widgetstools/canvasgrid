@@ -23,6 +23,8 @@
 import type { CgExtension, CgExtContext, ToolbarItem, ToolbarItemInstance, Unsub } from '../extension/types';
 import type { EditBridgeHandle, SmartEditOp } from '@cgrid/edit';
 import { createIconPicker, type IconPickerHandle, type IconSelection } from './iconPicker';
+import { formatPickerMenu, type FormatPickerHost } from './formatPicker';
+import { findPresetByFormat, type FormatDataType } from './formatPresets';
 
 /** Lazily supplies the `@cgrid/edit` handle — the demo/consumer wires the
  *  edit engine after the grid is constructed, so the ribbon reads it on
@@ -419,6 +421,7 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     removeTemplate(colId: string, templateId: string): void;
     deleteTemplate(templateId: string): void;
     addEventListener(type: string, fn: () => void): Unsub;
+    getGridOption(key: string): unknown;
   };
   let target: 'cell' | 'header' = 'cell';
 
@@ -471,6 +474,45 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     refresh();
   };
 
+  /** Data type of the first target column, from the live columnDefs tree. */
+  const targetDataType = (): FormatDataType => {
+    const colId = targetCols()[0];
+    if (!colId) return 'number';
+    const walk = (defs: readonly unknown[]): string | undefined => {
+      for (const d of defs) {
+        const def = d as { colId?: string; cellDataType?: string; children?: unknown[] };
+        if (def.colId === colId) return def.cellDataType;
+        if (def.children) {
+          const hit = walk(def.children);
+          if (hit !== undefined) return hit;
+        }
+      }
+      return undefined;
+    };
+    try {
+      const t = walk((grid.getGridOption('columnDefs') as unknown[]) ?? []);
+      return t === 'text' || t === 'date' || t === 'boolean' ? t : 'number';
+    } catch { return 'number'; }
+  };
+
+  const clearFormat = (): void => {
+    for (const colId of targetCols()) {
+      try { grid.editColumn(colId, { format: null }); } catch { /* calc not wired */ }
+    }
+    ctx.profiles.markDirty();
+    refresh();
+  };
+
+  const pickerHost: FormatPickerHost = {
+    targetCols,
+    currentFormat,
+    applyFormat: (f) => { applyFormat(f); },
+    clearFormat,
+    dataType: targetDataType,
+  };
+  const fmtPicker = formatPickerMenu(r.fmtCode, pickerHost);
+  disposers.push(() => fmtPicker.destroy());
+
   /** Reflect the first target column's state into the controls. */
   const refresh = (): void => {
     const cols = targetCols();
@@ -494,6 +536,15 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     r.alignC.classList.toggle('is-on', s.halign === 'center');
     r.alignR.classList.toggle('is-on', s.halign === 'right');
     r.sizeVal.textContent = `${(s.fontSize as number | undefined) ?? 12}px`;
+
+    // # Format pill caption tracks the target column's current format.
+    const fmt = currentFormat();
+    const label = fmt === undefined
+      ? 'Format'
+      : findPresetByFormat(fmt)?.label ?? (fmt.length > 18 ? `${fmt.slice(0, 17)}…` : fmt);
+    const captionEl = r.fmtCode.querySelector('span');
+    if (captionEl) captionEl.textContent = `# ${label}`;
+    r.fmtCode.classList.toggle('is-set', fmt !== undefined);
 
     // Icons — reflect the selected slot into the picker preview + enablement.
     const slot = none ? null : currentIconSlot();
@@ -682,10 +733,7 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   r.fmtThousands.addEventListener('click', () => applyFormat(numberFormat(decimalsOf(currentFormat()))));
   r.decDown.addEventListener('click', () => applyFormat(numberFormat(decimalsOf(currentFormat()) - 1)));
   r.decUp.addEventListener('click', () => applyFormat(numberFormat(decimalsOf(currentFormat()) + 1)));
-  r.fmtCode.addEventListener('click', () => {
-    const entered = window.prompt('Format code (format DSL, e.g. $#,##0.00 or 0.00%)', currentFormat() ?? '#,##0.00');
-    if (entered) applyFormat(entered);
-  });
+  r.fmtCode.addEventListener('click', () => fmtPicker.toggle());
 
   // Clear: drop the target columns' own templates (styling + format)
   const clearFormatting = () => {
@@ -774,6 +822,7 @@ const RIBBON_CSS = `
 .cgext-rb-pill:hover { border-color: var(--cg-accent-color, #4f9cf9); }
 .cgext-rb-pill svg { color: var(--cg-muted-fg-color, #9aa4b6); }
 .cgext-rb-pill.cgext-rb-danger { color: var(--cg-neg-color, #e5646e); border-color: color-mix(in srgb, var(--cg-neg-color, #e5646e) 45%, var(--cg-border-color, #2a3140)); }
+.cgext-rb-pill.is-set { color: var(--cg-accent-color, #4f9cf9); }
 
 .cgext-rb-input {
   height: 24px; padding: 0 8px; box-sizing: border-box;
