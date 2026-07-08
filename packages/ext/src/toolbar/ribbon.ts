@@ -55,6 +55,7 @@ const I = {
   dollar: 'M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6',
   percent: 'M19 5L5 19M6.5 6.5m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0M17.5 17.5m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0',
   hash: 'M4 9h16M4 15h16M10 3L8 21M16 3l-2 18',
+  swap: 'M16 3l4 4-4 4M20 7H4M8 21l-4-4 4-4M4 17h16',
   edit: 'M12 20h9M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z',
   filter: 'M22 3H2l8 9.46V19l4 2v-8.54z',
   filterOff: 'M22 3H2l8 9.46V19l4 2v-4M2 2l20 20',
@@ -184,9 +185,12 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
 
       // Formatting cluster controls — target, type, paint, icons, number,
       // edit/group pickers, templates.
-      const targetCell = toggleBtn(I.grid, 'Style cells');
-      const targetHeader = toggleBtn(I.rows, 'Style headers');
-      targetCell.classList.add('is-on');
+      // Single cell↔header target toggle: the button's face IS the current
+      // target (icon + label), the trailing swap arrows say "click to
+      // switch". Painted + wired in wireFormattingToolbar.
+      const targetToggle = document.createElement('button');
+      targetToggle.type = 'button';
+      targetToggle.className = 'cgext-rb-targettoggle';
       const selPill = pill('Select a cell', false);
       const bold = toggleBtn(I.bold, 'Bold');
       const italic = toggleBtn(I.italic, 'Italic');
@@ -261,7 +265,7 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
 
       const formatting = h('cgext-rb-cluster'); formatting.dataset.toolbar = 'formatting';
       formatting.append(
-        grp('Target', mini(selPill), mini(targetCell, targetHeader)),
+        grp('Target', mini(selPill), mini(targetToggle)),
         grp('Font', mini(bold, italic, underline, strike, sizeWrap), mini(textColorBtn, textColorInput, fillColorBtn, fillColorInput)),
         grp('Alignment', mini(alignL, alignC, alignR)),
         grp('Number', mini(fmtCode), mini(fmtDollar, fmtPercent, fmtThousands, decDown, decUp)),
@@ -290,7 +294,7 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
         : undefined;
 
       const disposeFormatting = wireFormattingToolbar(ctx, {
-        targetCell, targetHeader, selPill,
+        targetToggle, selPill,
         bold, italic, underline, strike, alignL, alignC, alignR,
         sizeVal, sizeUp, sizeDn,
         textColorBtn, textColorInput, fillColorBtn, fillColorInput,
@@ -398,7 +402,7 @@ function wireEditingToolbar(ctx: CgExtContext, getEdit: EditHandleGetter, r: Edi
 
 // ── Formatting-toolbar wiring (column styling via @cgrid/calc editColumn) ──
 interface FormattingRefs {
-  targetCell: HTMLButtonElement; targetHeader: HTMLButtonElement; selPill: HTMLButtonElement;
+  targetToggle: HTMLButtonElement; selPill: HTMLButtonElement;
   bold: HTMLButtonElement; italic: HTMLButtonElement; underline: HTMLButtonElement; strike: HTMLButtonElement;
   alignL: HTMLButtonElement; alignC: HTMLButtonElement; alignR: HTMLButtonElement;
   sizeVal: HTMLElement; sizeUp: HTMLButtonElement; sizeDn: HTMLButtonElement;
@@ -569,15 +573,26 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     if (slot?.color) r.iconColorInput.value = slot.color;
   };
 
-  // Target toggle (cell vs header styling)
+  // Target toggle (cell vs header styling) — ONE button whose face shows
+  // the ACTIVE target; clicking flips it. `aria-pressed` reflects the
+  // non-default (header) state for AT users.
+  const paintTarget = () => {
+    const isCell = target === 'cell';
+    r.targetToggle.innerHTML =
+      `${svg(isCell ? I.grid : I.rows, 14)}<span>${isCell ? 'Cells' : 'Header'}</span>${svg(I.swap, 11)}`;
+    const title = `Styling target: ${isCell ? 'Cells' : 'Header'} — click to switch to ${isCell ? 'Header' : 'Cells'}`;
+    r.targetToggle.title = title;
+    r.targetToggle.setAttribute('aria-label', title);
+    r.targetToggle.setAttribute('aria-pressed', String(!isCell));
+    r.targetToggle.classList.toggle('is-header', !isCell);
+  };
   const setTarget = (t: 'cell' | 'header') => {
     target = t;
-    r.targetCell.classList.toggle('is-on', t === 'cell');
-    r.targetHeader.classList.toggle('is-on', t === 'header');
+    paintTarget();
     refresh();
   };
-  r.targetCell.addEventListener('click', () => setTarget('cell'));
-  r.targetHeader.addEventListener('click', () => setTarget('header'));
+  paintTarget();
+  r.targetToggle.addEventListener('click', () => setTarget(target === 'cell' ? 'header' : 'cell'));
 
   // ── Icons section — placement is a SLOT SELECTOR: the picker/color/clear
   // always edit "the icon at `placement` for `target`". Changing placement
@@ -824,6 +839,24 @@ const RIBBON_CSS = `
   white-space: nowrap;
 }
 .cgext-rb-spacer { flex: 1 1 auto; }
+
+/* Cell↔header target toggle — the face shows the ACTIVE target, the
+   trailing swap arrows signal "click to switch". */
+.cgext-rb-targettoggle {
+  appearance: none; display: inline-flex; align-items: center; gap: 6px;
+  height: 24px; padding: 0 8px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 6px;
+  background: transparent; color: var(--cg-fg-color, #d3dbe7);
+  font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
+  transition: border-color 110ms ease, background 110ms ease;
+}
+.cgext-rb-targettoggle:hover { border-color: var(--cg-accent-color, #4f9cf9); }
+.cgext-rb-targettoggle:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: 1px; }
+.cgext-rb-targettoggle > svg:first-child { color: var(--cg-accent-color, #4f9cf9); }
+.cgext-rb-targettoggle > svg:last-child { color: var(--cg-muted-fg-color, #7f8ba0); }
+.cgext-rb-targettoggle.is-header {
+  background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 10%, transparent);
+}
 .cgext-ribbon-band > .cgext-rb-btn { align-self: flex-start; margin-top: 2px; }
 
 .cgext-rb-btn, .cgext-rb-toggle {

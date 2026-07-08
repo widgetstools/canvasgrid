@@ -73,8 +73,10 @@ test('icons section: prefix icon, corner decorator, header emoji, clear', async 
   ov = await ownTemplate();
   expect(ov.cellStyle.decorators).toEqual([{ position: 'tr', kind: 'emoji', value: '⚠️' }]);
 
-  // 3. Header target + suffix emoji → headerIcon.
-  await page.locator('button[title="Style headers"]').click();
+  // 3. Header target + suffix emoji → headerIcon. The single cell↔header
+  // target toggle flips Cells → Header on one click.
+  await page.locator('.cgext-rb-targettoggle').click();
+  await expect(page.locator('.cgext-rb-targettoggle')).toContainText('Header');
   await page.locator('[data-ip="place"]').click();
   await page.locator('[data-place="suffix"]').click();
   await openBtn.click();
