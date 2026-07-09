@@ -29,5 +29,16 @@ export function overrideToKernelPatch(
   if (merged.editable !== undefined && !opts.isCalcColumn) patch.editable = merged.editable;
   if (merged.hide !== undefined) patch.hide = merged.hide;
   if (merged.width !== undefined) patch.width = merged.width;
+  // Column-config def flags — forwarded verbatim; the kernel colDef carries
+  // each under the same name (types/column.ts: floatingFilter :198,
+  // filter :186, enablePivot :509, enableValue-adjacent flags, sortable/
+  // resizable resolveColDef defaults, suppressAggFuncInHeader :231).
+  if (merged.floatingFilter !== undefined) patch.floatingFilter = merged.floatingFilter;
+  if (merged.filter !== undefined) patch.filter = merged.filter;
+  if (merged.enableRowGroup !== undefined) patch.enableRowGroup = merged.enableRowGroup;
+  if (merged.enablePivot !== undefined) patch.enablePivot = merged.enablePivot;
+  if (merged.sortable !== undefined) patch.sortable = merged.sortable;
+  if (merged.resizable !== undefined) patch.resizable = merged.resizable;
+  if (merged.suppressAggFuncInHeader !== undefined) patch.suppressAggFuncInHeader = merged.suppressAggFuncInHeader;
   return patch;
 }

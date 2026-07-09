@@ -12,6 +12,8 @@ type TemplateOverrides = Omit<ColumnOverride, 'colId' | 'templateIds'>;
 
 const SCALAR_KEYS = [
   'headerName', 'format', 'cellRenderer', 'editable', 'hide', 'width',
+  'floatingFilter', 'filter', 'enableRowGroup', 'enablePivot',
+  'sortable', 'resizable', 'suppressAggFuncInHeader',
 ] as const satisfies ReadonlyArray<keyof TemplateOverrides>;
 
 function mergeLayer(into: ColumnOverride, layer: TemplateOverrides): void {

@@ -75,11 +75,20 @@ export function isOwnTemplateId(templateId: string): boolean {
 /** Editable scalar attributes an edit may write into a column's own template
  *  (spec §3.1 templatable set). `headerName` is EXCLUDED — caption is
  *  column-unique and never templated; `cellStyle` merges per-key separately. */
-const EDITABLE_SCALAR_KEYS = ['format', 'cellRenderer', 'editable', 'hide', 'width'] as const;
+const EDITABLE_SCALAR_KEYS = [
+  'format', 'cellRenderer', 'editable', 'hide', 'width',
+  'floatingFilter', 'filter', 'enableRowGroup', 'enablePivot',
+  'sortable', 'resizable', 'suppressAggFuncInHeader',
+] as const;
 
 /** The editable-attribute patch accepted by {@link CalcEngine.editColumn}. */
 export type ColumnEditPatch = Partial<
-  Pick<ColumnOverride, 'cellRenderer' | 'editable' | 'hide' | 'width' | 'cellStyle' | 'headerStyle'>
+  Pick<
+    ColumnOverride,
+    | 'cellRenderer' | 'editable' | 'hide' | 'width' | 'cellStyle' | 'headerStyle'
+    | 'floatingFilter' | 'enableRowGroup' | 'enablePivot' | 'sortable' | 'resizable'
+    | 'suppressAggFuncInHeader'
+  >
 > & {
   /** Format-DSL string → kernel compiler. `null` REMOVES the stored format
    *  from the column's own template (parity with cellIcon/headerIcon
@@ -90,6 +99,9 @@ export type ColumnEditPatch = Partial<
    *  the toolbar); undefined leaves it untouched. */
   cellIcon?: IconOverride | null;
   headerIcon?: IconOverride | null;
+  /** Filter type. `null` REMOVES the stored key (revert to the
+   *  cellDataType default); undefined leaves it untouched. */
+  filter?: 'text' | 'number' | 'date' | 'set' | null;
 };
 
 export class CalcEngine {
@@ -370,6 +382,8 @@ export class CalcEngine {
     }
     // format — `null` → remove from the own template (parity with cellIcon).
     if (patch.format === null) delete target.format;
+    // filter — `null` → remove from the own template (format parity).
+    if (patch.filter === null) delete target.filter;
     if (patch.cellStyle !== undefined) {
       // Clone so a caller mutating a shared cellStyle object (or its nested
       // values) after the edit can't corrupt the stored own template (L3).

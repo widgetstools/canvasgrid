@@ -74,6 +74,15 @@ export interface ColumnOverride {
   cellIcon?: IconOverride;          // static prefix/suffix icon on data cells
   headerIcon?: IconOverride;        // static prefix/suffix icon on the leaf header
   templateIds?: string[];           // template chain refs; undefined → typeDefault; [] → opt out
+  /** Column-config def flags (ribbon quick column configuration). Stored
+   *  values only — `filter` never holds null in a template. */
+  floatingFilter?: boolean;
+  filter?: 'text' | 'number' | 'date' | 'set';
+  enableRowGroup?: boolean;
+  enablePivot?: boolean;
+  sortable?: boolean;
+  resizable?: boolean;
+  suppressAggFuncInHeader?: boolean;
 }
 
 export interface ColumnTemplate {
