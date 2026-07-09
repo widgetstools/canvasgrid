@@ -14,7 +14,7 @@
  * wired end to end; Task 4 fills in the remaining FILTER/AGGREGATION/BEHAVIOR
  * rows (filter type, set-filter picker, agg-func picker, pin/hide, etc).
  */
-import { menu, svg } from './ui';
+import { menu } from './ui';
 
 export type AggFunc = 'sum' | 'avg' | 'min' | 'max' | 'count' | 'first' | 'last';
 export const AGG_FUNCS: readonly AggFunc[] = ['sum', 'avg', 'min', 'max', 'count', 'first', 'last'];
@@ -155,30 +155,131 @@ export function sectionCaps(text: string): HTMLElement {
   return h;
 }
 
-// Task 4 fills in the remaining FILTER/AGGREGATION/BEHAVIOR rows; the
-// GROUPING row-group toggle below demonstrates the factories wired to
-// effectiveFlag/mixedValue and the calc own-template apply path.
 function renderSections(el: HTMLElement, host: ColumnPanelHost): void {
+  const { grid } = host;
   const cols = host.targetCols();
-
-  el.append(sectionCaps('FILTER'));
-  // Task 4: floating-filter switch, filter-type segmented control, set-filter picker.
-
-  el.append(sectionCaps('GROUPING'));
-  const rowGroupState = mixedValue(host.grid, cols, 'enableRowGroup');
-  el.append(switchRow('enableRowGroup', 'Row Group', rowGroupState, (next) => {
-    for (const c of cols) host.grid.editColumn(c, { enableRowGroup: next });
+  const rerender = () => {
+    el.querySelectorAll('.cgext-col-caps, .cgext-col-row').forEach((n) => n.remove());
+    renderSections(el, host);
+  };
+  /** Fan an apply over every target; error-tints the row on throw. */
+  const applyAll = (row: HTMLElement, fn: (colId: string) => void): void => {
+    row.classList.remove('is-error');
+    row.removeAttribute('title');
+    let errored = false;
+    for (const colId of cols) {
+      try { fn(colId); } catch (err) {
+        errored = true;
+        row.classList.add('is-error');
+        row.title = err instanceof Error ? err.message : String(err);
+      }
+    }
     host.onApplied();
-  }));
-  // Task 4: enablePivot toggle.
+    // Re-read live state so every row reflects the new truth — but only on
+    // success; on error, skip the rerender so the tinted row stays visible.
+    if (!errored) rerender();
+  };
+  const flagSwitch = (key: FlagKey, label: string, patchKey?: string): HTMLElement => {
+    const state = mixedValue(grid, cols, key);
+    const row = switchRow(key, label, state, (next) => {
+      applyAll(row, (colId) => grid.editColumn(colId, { [patchKey ?? key]: next }));
+    });
+    return row;
+  };
 
+  // ── FILTER ──
+  el.append(sectionCaps('FILTER'));
+  el.append(flagSwitch('floatingFilter', 'Floating filter'));
+  {
+    const state = mixedValue(grid, cols, 'filter');
+    const active = state.mixed ? undefined : ((state.value as string | undefined) ?? 'auto');
+    const row = segRow('filter', 'Filter type', [
+      { v: 'auto', text: 'Auto' }, { v: 'text', text: 'Text' }, { v: 'number', text: 'Num' },
+      { v: 'date', text: 'Date' }, { v: 'set', text: 'Set' },
+    ], active, (v) => {
+      applyAll(row, (colId) => grid.editColumn(colId, { filter: v === 'auto' ? null : v }));
+    });
+    el.append(row);
+  }
+
+  // ── GROUPING ──
+  el.append(sectionCaps('GROUPING'));
+  el.append(flagSwitch('enableRowGroup', 'Groupable'));
+  el.append(flagSwitch('enablePivot', 'Pivotable'));
+
+  // ── AGGREGATION ──
   el.append(sectionCaps('AGGREGATION'));
-  // Task 4: agg-func picker + suppressAggFuncInHeader toggle.
+  {
+    const valueCols = grid.getValueColumns();
+    const aggOf = (colId: string) => valueCols.find((v) => v.colId === colId)?.aggFunc;
+    const aggs = cols.map(aggOf);
+    const mixed = !aggs.every((a) => a === aggs[0]);
+    const current = mixed ? '' : (aggs[0] ?? 'none');
+    const row = document.createElement('div');
+    row.className = 'cgext-col-row';
+    row.dataset.k = 'aggFunc';
+    const lab = document.createElement('span');
+    lab.className = 'cgext-col-label';
+    lab.textContent = 'Function';
+    const sel = document.createElement('select');
+    sel.className = 'cgext-col-select';
+    for (const v of ['none', ...AGG_FUNCS]) {
+      const o = document.createElement('option');
+      o.value = v;
+      o.textContent = v === 'none' ? 'None' : v;
+      sel.append(o);
+    }
+    if (mixed) {
+      const o = document.createElement('option');
+      o.value = ''; o.textContent = '(mixed)'; o.disabled = true;
+      sel.prepend(o);
+    }
+    sel.value = current;
+    sel.addEventListener('change', () => {
+      const v = sel.value;
+      applyAll(row, (colId) => {
+        const has = grid.getValueColumns().some((x) => x.colId === colId);
+        if (v === 'none') { if (has) grid.removeValueColumn(colId); }
+        else if (has) grid.setValueColumnAggFunc(colId, v);
+        else grid.addValueColumn(colId, v);
+      });
+    });
+    row.append(lab, sel);
+    el.append(row);
 
+    // Show-in-header — inverse of suppressAggFuncInHeader; needs an agg.
+    const anyAgg = cols.some((c) => aggOf(c) !== undefined);
+    const supState = mixedValue(grid, cols, 'suppressAggFuncInHeader');
+    const shown = { value: supState.mixed ? undefined : !(supState.value as boolean), mixed: supState.mixed };
+    const hdrRow = switchRow('aggHeader', 'Show in header', shown, (next) => {
+      applyAll(hdrRow, (colId) => grid.editColumn(colId, { suppressAggFuncInHeader: !next }));
+    });
+    const hdrSwitch = hdrRow.querySelector<HTMLButtonElement>('.cgext-col-switch')!;
+    hdrSwitch.disabled = !anyAgg;
+    el.append(hdrRow);
+  }
+
+  // ── BEHAVIOR ──
   el.append(sectionCaps('BEHAVIOR'));
-  // Task 4: sortable/resizable/editable/hide toggles + pinned segmented control.
-
-  void svg;
+  el.append(flagSwitch('sortable', 'Sortable'));
+  el.append(flagSwitch('resizable', 'Resizable'));
+  el.append(flagSwitch('editable', 'Editable'));
+  {
+    const states = cols.map((c) => grid.getColumnState().find((s) => s.colId === c)?.pinned ?? null);
+    const mixed = !states.every((s) => s === states[0]);
+    const active = mixed ? undefined : (states[0] ?? 'none') || 'none';
+    const row = segRow('pinned', 'Pinned', [
+      { v: 'left', text: 'Left' }, { v: 'none', text: '–' }, { v: 'right', text: 'Right' },
+    ], active === null ? 'none' : (active as string), (v) => {
+      row.classList.remove('is-error');
+      try { grid.setColumnsPinned(cols, v === 'none' ? null : (v as 'left' | 'right')); }
+      catch (err) { row.classList.add('is-error'); row.title = String(err); }
+      host.onApplied();
+      rerender();
+    });
+    el.append(row);
+  }
+  el.append(flagSwitch('hide', 'Hidden'));
 }
 
 export function injectColumnPanelStyles(): void {
