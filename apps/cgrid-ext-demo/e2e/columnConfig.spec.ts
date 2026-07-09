@@ -114,3 +114,114 @@ test('quick toggles + pinned + hidden behave and reflect state', async ({ page }
   expect(await ownFlag(page, 'spread', 'hide')).toBe(true);
   await row(page, 'hide').locator('.cgext-col-switch').click(); // restore
 });
+
+// I4 — spec §6 behavioral proofs (beyond the template-flag checks above):
+// the kernel surfaces these three settings actually gate/decorate, not just
+// that the own-template write lands. `dailyPnl` / `pnl` / `currentPrice` are
+// used here (instead of `notionalAmount` / `yield` / `spread` above) because
+// they're unconditionally-visible leaves at the default viewport/scroll
+// position — no column-group-open or horizontal-scroll choreography needed
+// to reach their header/floating-filter DOM.
+
+test('filter type Set opens the real set-filter popup from the header', async ({ page }) => {
+  await selectCol(page, 'dailyPnl');
+  await openPanel(page);
+  await row(page, 'filter').locator('button[data-v="set"]').click();
+  expect(await ownFlag(page, 'dailyPnl', 'filter')).toBe('set');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.cgext-menu.cgext-col')).toHaveCount(0);
+
+  // Same expand-button entry point cycle7-setFilter.spec.ts drives — proves
+  // the popover's `filter:'set'` write actually changes what the kernel's
+  // floating-filter overlay renders, not just the stored template value.
+  await page.locator('button[data-cg-floating-filter-expand][data-cg-col-id="dailyPnl"]').click();
+  await expect(page.locator('.cg-filter-popup-set')).toBeVisible();
+});
+
+test('groupable off rejects the column at the row-group panel; groupable on accepts it', async ({ page }) => {
+  await selectCol(page, 'pnl');
+  await openPanel(page);
+  await row(page, 'enableRowGroup').locator('.cgext-col-switch').click(); // default false -> true
+  expect(await ownFlag(page, 'pnl', 'enableRowGroup')).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.cgext-menu.cgext-col')).toHaveCount(0);
+
+  // `commitRowGroupPanelDrop` is the exact verb the row-group panel's own
+  // drag-drop feature calls on a real drop (columnDrag.ts) — a real
+  // behavioral proof, not a proxy for the template flag.
+  const accepted = await page.evaluate(() => (window as any).__ext.grid.commitRowGroupPanelDrop('pnl'));
+  expect(accepted).toBe(true);
+  expect(await page.evaluate(() => (window as any).__ext.grid.getRowGroupColumns())).toContain('pnl');
+  await page.evaluate(() => (window as any).__ext.grid.removeRowGroupColumn('pnl')); // undo the group before flipping the flag
+
+  await openPanel(page);
+  await row(page, 'enableRowGroup').locator('.cgext-col-switch').click(); // true -> false
+  expect(await ownFlag(page, 'pnl', 'enableRowGroup')).toBe(false);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.cgext-menu.cgext-col')).toHaveCount(0);
+
+  const rejected = await page.evaluate(() => (window as any).__ext.grid.commitRowGroupPanelDrop('pnl'));
+  expect(rejected).toBe(false);
+  expect(await page.evaluate(() => (window as any).__ext.grid.getRowGroupColumns())).not.toContain('pnl');
+});
+
+// `pnl` carries a STATIC `aggFunc: 'sum'` in its colDef (apps/cgrid-ext-demo/
+// src/main.ts), so its header decorates with `sum(P&L)` from first paint —
+// unlike columns whose aggFunc is added purely at runtime via the ribbon's
+// Σ pill (`addValueColumn`/`setValueColumnAggFunc`, routed through
+// `pivotEngine`/`PivotState`'s `valueColumns` list). That runtime list never
+// feeds back into `ResolvedColDef.aggFunc` (no call site in cgrid.ts patches
+// columnDefsMap from a `valueColumns` change), and `decorateHeader`
+// (kernel/src/renderer/painters/byRows.ts) reads `def.aggFunc` off the
+// resolved colDef — so toggling the pill on a column with no static
+// `aggFunc` (e.g. `currentPrice`) never changes its painted header at all
+// (confirmed empirically: a before/after screenshot around such a toggle is
+// pixel-identical). That's a pre-existing kernel-level gap between the
+// Cycle 14 header-decoration feature and the Cycle 18/19 pivot value-column
+// APIs, orthogonal to this ribbon feature — this test instead proves the
+// part that IS wired: `suppressAggFuncInHeader` toggling the painted
+// decoration for a column whose `aggFunc` already reaches the resolved def.
+test('Show-in-header off hides the sum(...) header caption; back on restores it', async ({ page }) => {
+  await selectCol(page, 'pnl');
+  // The popover's "Show in header" switch is disabled unless the column is
+  // registered in `getValueColumns()` (the runtime value-columns list) —
+  // `pnl` has a static `aggFunc` but was never explicitly added via the
+  // pill/API, so register it (its already-decorated header is unaffected:
+  // `setValueColumnAggFunc` doesn't touch the resolved colDef either).
+  await page.locator('[data-col="agg"]').click();
+  await page.locator('.cgext-menu-item', { hasText: /^sum$/ }).click();
+  await page.waitForTimeout(200);
+
+  const clip = await page.evaluate(() => {
+    const g = (window as any).__ext.grid;
+    const b = g.getHeaderBoundsAt('pnl');
+    const canvas = document.querySelector('canvas') as HTMLElement;
+    const r = canvas.getBoundingClientRect();
+    return { x: r.left + b.x, y: r.top + b.y, width: b.w, height: b.h };
+  });
+
+  // No canvas-text accessor exists (headers paint straight to canvas, no
+  // DOM/aria mirror) — a bounded screenshot diff of the header cell is the
+  // available behavioral proof that the decoration actually painted/
+  // unpainted, since decorateHeader (byRows.ts) only runs at paint time.
+  const shown = await page.screenshot({ clip }); // "sum(P&L)" from first paint
+
+  await openPanel(page);
+  await row(page, 'aggHeader').locator('.cgext-col-switch').click(); // Show-in-header off
+  expect(await ownFlag(page, 'pnl', 'suppressAggFuncInHeader')).toBe(true);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.cgext-menu.cgext-col')).toHaveCount(0);
+  await page.waitForTimeout(200);
+  const suppressed = await page.screenshot({ clip });
+  expect(suppressed.equals(shown)).toBe(false); // caption disappears -> plain "P&L"
+
+  await openPanel(page);
+  await row(page, 'aggHeader').locator('.cgext-col-switch').click(); // Show-in-header back on
+  expect(await ownFlag(page, 'pnl', 'suppressAggFuncInHeader')).toBe(false);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.cgext-menu.cgext-col')).toHaveCount(0);
+  await page.waitForTimeout(200);
+  const restored = await page.screenshot({ clip });
+  expect(restored.equals(shown)).toBe(true); // caption reappears identically
+  expect(restored.equals(suppressed)).toBe(false);
+});
