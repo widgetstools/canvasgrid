@@ -388,9 +388,9 @@ export class ColumnVisibilityPanel {
     return { kind: 'leaf', el, colId: entry.colId, checkbox, label };
   }
 
-  /** Build one group row: drag handle (T3) → caret (expand/collapse,
-   *  panel-local) → label → tri-state checkbox (checks/unchecks every
-   *  descendant leaf). The handle starts a GROUP drag (`kind: 'group'`)
+  /** Build one group row: drag handle (T3) → label → caret (expand/collapse,
+   *  panel-local, trailing the caption) → tri-state checkbox (checks/unchecks
+   *  every descendant leaf). The handle starts a GROUP drag (`kind: 'group'`)
    *  that moves the whole group via `api.moveColumnGroup`. */
   private buildGroupRow(
     node: CColGroupDef,
@@ -415,6 +415,11 @@ export class ColumnVisibilityPanel {
     const caret = document.createElement('button');
     caret.type = 'button';
     caret.className = 'cg-columns-panel-row-caret';
+    // Horizontal disclosure caret, one vocabulary with the grid's
+    // column-group header band: chevron-left when open (click collapses);
+    // the stylesheet rotates it 180° into chevron-right when collapsed.
+    caret.innerHTML =
+      '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18l-6-6 6-6"/></svg>';
     caret.setAttribute('aria-label', 'Toggle group');
     caret.setAttribute('aria-expanded', String(!this.collapsed.has(groupId)));
     caret.addEventListener('click', (e) => {
@@ -424,12 +429,13 @@ export class ColumnVisibilityPanel {
       caret.setAttribute('aria-expanded', String(!this.collapsed.has(groupId)));
       this.applyVisibility();
     });
-    el.appendChild(caret);
 
     const label = document.createElement('span');
     label.className = 'cg-columns-panel-row-label';
     label.textContent = node.headerName && node.headerName.length > 0 ? node.headerName : groupId;
+    // Caption first, caret trailing it (grid header-band order).
     el.appendChild(label);
+    el.appendChild(caret);
 
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';

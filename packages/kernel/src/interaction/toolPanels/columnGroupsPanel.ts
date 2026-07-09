@@ -110,11 +110,18 @@ function iconGroupShow(kind: 'always' | 'open' | 'closed'): SVGSVGElement {
     );
   }
   if (kind === 'open') {
-    // Chevron-down — mirrors an OPEN group's caret (shown only when expanded).
-    return icon(svgEl('path', { d: 'M6 9l6 6 6-6', ...strokeAttrs }));
+    // Chevron-left — mirrors an OPEN group's caret (shown only when expanded).
+    return icon(svgEl('path', { d: 'M15 18l-6-6 6-6', ...strokeAttrs }));
   }
   // Chevron-right — mirrors a CLOSED group's caret (shown only when collapsed).
   return icon(svgEl('path', { d: 'M9 6l6 6-6 6', ...strokeAttrs }));
+}
+/** Group disclosure caret — HORIZONTAL, one vocabulary with the grid's
+ *  column-group header band (chevron-left when open = click collapses;
+ *  the stylesheet rotates it 180° into chevron-right under
+ *  `[aria-expanded="false"]`). Trails the group caption, never leads it. */
+function iconDisclosure(): SVGSVGElement {
+  return icon(svgEl('path', { d: 'M15 18l-6-6 6-6', ...strokeAttrs }));
 }
 function iconGear(): SVGSVGElement {
   return icon(
@@ -865,6 +872,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     const chevron = document.createElement('button');
     chevron.type = 'button';
     chevron.className = 'cg-colgroups-chevron';
+    chevron.appendChild(iconDisclosure());
     chevron.setAttribute('aria-expanded', String(!this.collapsed.has(n.id)));
     chevron.setAttribute('aria-label', 'Toggle group');
     chevron.addEventListener('click', (e) => {
@@ -875,7 +883,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
       else this.collapsed.add(n.id);
       this.render();
     });
-    wrap.appendChild(chevron);
 
     const name = document.createElement('input');
     name.type = 'text';
@@ -883,7 +890,17 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     name.value = n.headerName;
     name.setAttribute('aria-label', 'Group name');
     name.addEventListener('change', () => this.mutate((ns) => renameGroup(ns, n.id, name.value)));
+    // Caption first, disclosure caret trailing it — same order as the
+    // grid's column-group header band (caption, then horizontal caret).
+    // The name input is sized to its content (ch-based, tracked while
+    // typing) so the caret hugs the caption's end instead of stranding
+    // at the row's far edge; `.cg-colgroups-row-actions` stays
+    // right-anchored via its own margin-inline-start:auto.
+    const fitName = () => { name.style.width = `${Math.max(3, name.value.length) + 1}ch`; };
+    fitName();
+    name.addEventListener('input', fitName);
     wrap.appendChild(name);
+    wrap.appendChild(chevron);
 
     const errorEl = el('span', 'cg-colgroups-error');
     errorEl.setAttribute('data-cg-error', n.id);

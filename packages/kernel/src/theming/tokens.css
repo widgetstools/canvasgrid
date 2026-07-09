@@ -1618,25 +1618,37 @@
  * leaf children. */
 .cg-columns-panel-row--group .cg-columns-panel-row-label {
   font-weight: 600;
+  /* Group captions shrink to their text so the trailing caret hugs the
+   * caption's end; the checkbox re-anchors right via margin-left below. */
+  flex: 0 1 auto;
 }
-/* Expand/collapse caret — triangle glyph, identical construction to
- * `.cg-colgroups-chevron` (one visual family for "group disclosure"
- * across the columns panel + the column-groups authoring panel). Sits
- * before the checkbox per the columns-panel row order (caret → label →
- * checkbox). */
+.cg-columns-panel-row--group .cg-columns-panel-row-checkbox {
+  margin-left: auto;
+}
+/* Expand/collapse caret — HORIZONTAL stroke chevron trailing the caption,
+ * identical construction to `.cg-colgroups-chevron` (one visual family
+ * for "group disclosure" across the columns panel + the column-groups
+ * authoring panel), and one vocabulary with the grid's column-group
+ * header band: chevron-left when open (click collapses), rotated 180°
+ * into chevron-right when collapsed. Row order: label → caret →
+ * checkbox. */
 .cg-columns-panel-row-caret {
   flex: 0 0 auto;
-  width: 0;
-  height: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
   margin: 0;
   border: none;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-top: 6px solid currentColor;
   background: transparent;
+  color: currentColor;
   opacity: 0.7;
   cursor: pointer;
+}
+.cg-columns-panel-row-caret svg {
+  width: 12px;
+  height: 12px;
+  display: block;
 }
 @media (prefers-reduced-motion: no-preference) {
   .cg-columns-panel-row-caret {
@@ -1644,7 +1656,7 @@
   }
 }
 .cg-columns-panel-row-caret[aria-expanded="false"] {
-  transform: rotate(-90deg);
+  transform: rotate(180deg);
 }
 .cg-columns-panel-row-caret:focus-visible {
   outline: var(--cg-focus-ring-width, 2px) solid var(--cg-focus-ring-color);
@@ -2798,16 +2810,20 @@
   gap: 6px;
 }
 
+/* Group disclosure caret — horizontal stroke chevron TRAILING the group
+ * name (grid header-band vocabulary: chevron-left open, rotated 180° to
+ * chevron-right when collapsed). The `.cg-colgroups-ic` child carries
+ * the shared 14px icon sizing. */
 .cg-colgroups-chevron {
   flex: 0 0 auto;
-  width: 0;
-  height: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0;
-  border-left: 5px solid transparent;
-  border-right: 5px solid transparent;
-  border-top: 6px solid currentColor;
-  border-bottom: none;
+  border: none;
   background: transparent;
+  color: currentColor;
+  opacity: 0.75;
   cursor: pointer;
 }
 @media (prefers-reduced-motion: no-preference) {
@@ -2816,7 +2832,7 @@
   }
 }
 .cg-colgroups-chevron[aria-expanded="false"] {
-  transform: rotate(-90deg);
+  transform: rotate(180deg);
 }
 .cg-colgroups-chevron:focus-visible {
   outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
@@ -2905,6 +2921,9 @@
 }
 .cg-colgroups-name-group {
   font-weight: 500;
+  /* Content-sized (JS sets a ch width) so the trailing disclosure caret
+   * hugs the caption; still shrinkable when the row runs out of room. */
+  flex: 0 1 auto;
 }
 .cg-colgroups-name:hover {
   border-color: color-mix(in srgb, var(--cg-border-color) 80%, transparent);
