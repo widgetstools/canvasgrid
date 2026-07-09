@@ -66,7 +66,13 @@ export function effectiveFlag(grid: ColumnConfigGrid, colId: string, key: FlagKe
   } catch { /* engine absent */ }
   const base = baseDefOf(grid, colId)?.[key];
   if (base !== undefined) return base;
-  if (key === 'floatingFilter') { try { return !!grid.getGridOption('floatingFilter'); } catch { return false; } }
+  // Mirrors the kernel's own `isFloatingFilterEnabled()` default: the row
+  // renders unless the grid EXPLICITLY sets `floatingFilter: false`. Most
+  // hosts never set the option (relying on the kernel's default-on
+  // behavior), so `getGridOption('floatingFilter')` reads back `undefined`
+  // — coercing that with `!!` collapsed to `false` and made the popover
+  // show "off" for a column whose floating filter was actually rendering.
+  if (key === 'floatingFilter') { try { return grid.getGridOption('floatingFilter') !== false; } catch { return true; } }
   if (key === 'editable') {
     try { return !!(grid.getGridOption('defaultColDef') as { editable?: boolean } | undefined)?.editable; }
     catch { return false; }
