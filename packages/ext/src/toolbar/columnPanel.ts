@@ -7,17 +7,26 @@
  * and pinning use the kernel's runtime state APIs. Every edit applies to
  * ALL target columns immediately; the popover stays open for more edits.
  *
- * This module is the Task 3 skeleton: state resolution (`effectiveFlag`/
- * `mixedValue`), row factories (`switchRow`/`segRow`/`sectionCaps`), and the
- * panel shell. `renderSections` renders the four section headings plus a
- * single working GROUPING row (row-group toggle) to prove the factories are
- * wired end to end; Task 4 fills in the remaining FILTER/AGGREGATION/BEHAVIOR
- * rows (filter type, set-filter picker, agg-func picker, pin/hide, etc).
+ * State resolution (`effectiveFlag`/`mixedValue`), row factories
+ * (`switchRow`/`segRow`/`sectionCaps`), and the panel shell. `renderSections`
+ * renders the four sections in full: FILTER (floating filter, filter type
+ * incl. set), GROUPING (row group, pivot), AGGREGATION (function picker,
+ * show-in-header), BEHAVIOR (sortable, resizable, editable, pinned, hidden).
  */
 import { menu } from './ui';
 
 export type AggFunc = 'sum' | 'avg' | 'min' | 'max' | 'count' | 'first' | 'last';
 export const AGG_FUNCS: readonly AggFunc[] = ['sum', 'avg', 'min', 'max', 'count', 'first', 'last'];
+
+/** Builtins + any host-registered `aggFuncs` (`setGridOption('aggFuncs', …)`)
+ *  — the pill dropdown and Function select both list "the agg registry", not
+ *  just the seven built-ins. */
+export function aggFuncChoices(grid: ColumnConfigGrid): readonly string[] {
+  let custom: Record<string, unknown> = {};
+  try { custom = (grid.getGridOption('aggFuncs') as Record<string, unknown>) ?? {}; } catch { /* engine absent */ }
+  const extra = Object.keys(custom).filter((name) => !(AGG_FUNCS as readonly string[]).includes(name));
+  return extra.length === 0 ? AGG_FUNCS : [...AGG_FUNCS, ...extra];
+}
 
 export interface ColumnConfigGrid {
   editColumn(colId: string, patch: Record<string, unknown>): unknown;
@@ -42,14 +51,14 @@ export type FlagKey =
 
 const FLAG_DEFAULTS: Partial<Record<FlagKey, unknown>> = {
   sortable: true, resizable: true,
-  enableRowGroup: false, enablePivot: false, hide: false, suppressAggFuncInHeader: false,
+  enableRowGroup: false, enablePivot: false, hide: false, editable: false,
 };
 
 function baseDefOf(grid: ColumnConfigGrid, colId: string): Record<string, unknown> | undefined {
   const walk = (defs: readonly unknown[]): Record<string, unknown> | undefined => {
     for (const d of defs) {
-      const def = d as { colId?: string; children?: unknown[] };
-      if (def.colId === colId) return def as Record<string, unknown>;
+      const def = d as { colId?: string; field?: string; children?: unknown[] };
+      if (def.colId === colId || (def.colId === undefined && def.field === colId)) return def as Record<string, unknown>;
       if (def.children) { const hit = walk(def.children); if (hit) return hit; }
     }
     return undefined;
@@ -57,15 +66,54 @@ function baseDefOf(grid: ColumnConfigGrid, colId: string): Record<string, unknow
   try { return walk((grid.getGridOption('columnDefs') as unknown[]) ?? []); } catch { return undefined; }
 }
 
-/** Own template → base colDef → per-key default. */
+/**
+ * `defaultColDef`/`columnTypes` fallback for the def-level flags, mirroring
+ * the kernel's own merge order in `resolveColDef`
+ * (`{ ...typeBundle, ...defaultColDef, ...colDef }` — colDef itself is
+ * already checked by `baseDefOf` before this runs, so here we only need
+ * defaultColDef beating the column's `type` bundle(s), last-named-type-wins
+ * for a given key, same as the kernel's left-to-right spread).
+ */
+function defaultChainValue(grid: ColumnConfigGrid, colId: string, key: FlagKey): unknown {
+  let defaultColDef: Record<string, unknown> = {};
+  try { defaultColDef = (grid.getGridOption('defaultColDef') as Record<string, unknown>) ?? {}; } catch { /* engine absent */ }
+  if (defaultColDef[key] !== undefined) return defaultColDef[key];
+
+  const def = baseDefOf(grid, colId);
+  const rawType = def?.type;
+  const typeNames: string[] = Array.isArray(rawType) ? (rawType as string[])
+    : typeof rawType === 'string' ? [rawType] : [];
+  if (typeNames.length === 0) return undefined;
+  let columnTypes: Record<string, Record<string, unknown>> = {};
+  try { columnTypes = (grid.getGridOption('columnTypes') as Record<string, Record<string, unknown>>) ?? {}; } catch { /* engine absent */ }
+  let result: unknown;
+  for (const name of typeNames) {
+    const bundle = columnTypes[name];
+    if (bundle && bundle[key] !== undefined) result = bundle[key];
+  }
+  return result;
+}
+
+/** Own template → base colDef → `defaultColDef`/`columnTypes` → per-key default. */
 export function effectiveFlag(grid: ColumnConfigGrid, colId: string, key: FlagKey): unknown {
   try {
+    // Known limitation (matches the ribbon's existing formatting-toggle
+    // readout convention): only the column's OWN template
+    // (`__cgridOwn:<colId>`) is consulted here. A flag applied via a SHARED
+    // template resolves at the kernel/calc fold layer (and IS live on the
+    // column) but is invisible to this read — the popover/quick-toggle can
+    // show "off" for a value that's actually on, and the first toggle from
+    // that state writes what the user thinks is already active. Same family:
+    // `hide` reads template/def only, so a column hidden via the kernel
+    // columns panel (columnState) reads "Hidden: off" here too.
     const own = grid.getTemplates().find((t) => t.id === `__cgridOwn:${colId}`);
     const v = own?.overrides?.[key];
     if (v !== undefined) return v;
   } catch { /* engine absent */ }
   const base = baseDefOf(grid, colId)?.[key];
   if (base !== undefined) return base;
+  const chained = defaultChainValue(grid, colId, key);
+  if (chained !== undefined) return chained;
   // Mirrors the kernel's own `isFloatingFilterEnabled()` default: the row
   // renders unless the grid EXPLICITLY sets `floatingFilter: false`. Most
   // hosts never set the option (relying on the kernel's default-on
@@ -73,9 +121,11 @@ export function effectiveFlag(grid: ColumnConfigGrid, colId: string, key: FlagKe
   // — coercing that with `!!` collapsed to `false` and made the popover
   // show "off" for a column whose floating filter was actually rendering.
   if (key === 'floatingFilter') { try { return grid.getGridOption('floatingFilter') !== false; } catch { return true; } }
-  if (key === 'editable') {
-    try { return !!(grid.getGridOption('defaultColDef') as { editable?: boolean } | undefined)?.editable; }
-    catch { return false; }
+  // Same `!!undefined` collapse, on the other grid-option-inheriting key
+  // (`byRows.ts` `decorateHeader`: an unset per-column flag defers to the
+  // grid-level `CGridOptions.suppressAggFuncInHeader`, default off).
+  if (key === 'suppressAggFuncInHeader') {
+    try { return grid.getGridOption('suppressAggFuncInHeader') === true; } catch { return false; }
   }
   return FLAG_DEFAULTS[key]; // filter → undefined = Auto
 }
@@ -89,7 +139,28 @@ export function mixedValue(grid: ColumnConfigGrid, cols: string[], key: FlagKey)
 
 export function columnPanelMenu(anchor: HTMLElement, host: ColumnPanelHost): { toggle(): void; destroy(): void } {
   injectColumnPanelStyles();
-  return menu(anchor, (close) => buildPanel(host, close), undefined, { align: 'left' });
+  // Every row apply calls `rerender()` (renderSections rebuilds the rows
+  // from scratch), which removes the just-clicked control from the DOM and
+  // drops focus back to <body>. `buildPanel`'s own keydown listener lives on
+  // the panel root, so once focus is no longer inside it Escape stops
+  // reaching that listener. Mirror it with a document-level Escape listener
+  // scoped to THIS popover's own open/close lifecycle (added on open,
+  // removed on close/destroy) — narrower than patching the shared `menu()`
+  // factory, which other popovers (formatPicker, layoutsMenu's nested
+  // rename/cancel inputs) rely on with their own, different Escape/
+  // stopPropagation semantics.
+  let onKeyDoc: ((e: KeyboardEvent) => void) | null = null;
+  const detachKey = (): void => {
+    if (onKeyDoc) { document.removeEventListener('keydown', onKeyDoc); onKeyDoc = null; }
+  };
+  const m = menu(anchor, (close) => {
+    const wrappedClose = (): void => { detachKey(); close(); };
+    const panel = buildPanel(host, wrappedClose);
+    onKeyDoc = (e) => { if (e.key === 'Escape') wrappedClose(); };
+    document.addEventListener('keydown', onKeyDoc);
+    return panel;
+  }, undefined, { align: 'left' });
+  return { toggle: m.toggle, destroy: () => { detachKey(); m.destroy(); } };
 }
 
 function buildPanel(host: ColumnPanelHost, close: () => void): HTMLElement {
@@ -229,7 +300,7 @@ function renderSections(el: HTMLElement, host: ColumnPanelHost): void {
     lab.textContent = 'Function';
     const sel = document.createElement('select');
     sel.className = 'cgext-col-select';
-    for (const v of ['none', ...AGG_FUNCS]) {
+    for (const v of ['none', ...aggFuncChoices(grid)]) {
       const o = document.createElement('option');
       o.value = v;
       o.textContent = v === 'none' ? 'None' : v;
@@ -278,10 +349,13 @@ function renderSections(el: HTMLElement, host: ColumnPanelHost): void {
       { v: 'left', text: 'Left' }, { v: 'none', text: '–' }, { v: 'right', text: 'Right' },
     ], active === null ? 'none' : (active as string), (v) => {
       row.classList.remove('is-error');
+      row.removeAttribute('title');
+      let errored = false;
       try { grid.setColumnsPinned(cols, v === 'none' ? null : (v as 'left' | 'right')); }
-      catch (err) { row.classList.add('is-error'); row.title = String(err); }
+      catch (err) { errored = true; row.classList.add('is-error'); row.title = err instanceof Error ? err.message : String(err); }
       host.onApplied();
-      rerender();
+      // Mirror applyAll: skip the rerender on error so the tinted row stays visible.
+      if (!errored) rerender();
     });
     el.append(row);
   }

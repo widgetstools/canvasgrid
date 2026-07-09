@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from 'vitest';
-import { effectiveFlag, mixedValue } from '../src/toolbar/columnPanel';
+import { effectiveFlag, mixedValue, aggFuncChoices, AGG_FUNCS } from '../src/toolbar/columnPanel';
 import { FakeColumnGrid, mountColumnPanel } from './columnPanelHarness';
 
 afterEach(() => { document.body.replaceChildren(); });
@@ -19,6 +19,70 @@ describe('effectiveFlag resolution', () => {
     g.editColumn('px', { sortable: false });
     expect(mixedValue(g, ['px', 'qty'], 'sortable')).toEqual({ value: undefined, mixed: true });
     expect(mixedValue(g, ['qty'], 'sortable')).toEqual({ value: true, mixed: false });
+  });
+
+  // I1 — suppressAggFuncInHeader must inherit the grid-level option, not
+  // hard-default to false (same bug class as the floatingFilter fix).
+  it('suppressAggFuncInHeader inherits the grid-level option when unset on the column', () => {
+    const g = new FakeColumnGrid();
+    expect(effectiveFlag(g, 'px', 'suppressAggFuncInHeader')).toBe(false); // grid option unset → default off
+    g.options.suppressAggFuncInHeader = true;
+    expect(effectiveFlag(g, 'px', 'suppressAggFuncInHeader')).toBe(true);  // grid option ON → inherited
+    // An explicit per-column value still wins over the grid-level option.
+    g.editColumn('px', { suppressAggFuncInHeader: false });
+    expect(effectiveFlag(g, 'px', 'suppressAggFuncInHeader')).toBe(false);
+  });
+
+  // I2 — defaultColDef/columnTypes must be consulted for ALL def flags (the
+  // kernel merges `{ ...typeBundle, ...defaultColDef, ...colDef }`), not
+  // just `editable`.
+  it('reads defaultColDef for a flag with no per-column or type-bundle value', () => {
+    const g = new FakeColumnGrid();
+    g.options.defaultColDef = { sortable: false };
+    expect(effectiveFlag(g, 'px', 'sortable')).toBe(false); // defaultColDef-sourced, not the true default
+  });
+
+  it('a raw colDef value still beats defaultColDef', () => {
+    const g = new FakeColumnGrid();
+    g.options.defaultColDef = { enableRowGroup: false };
+    expect(effectiveFlag(g, 'qty', 'enableRowGroup')).toBe(true); // qty's own raw def wins
+  });
+
+  it('reads a columnTypes bundle when the column carries a matching `type`', () => {
+    const g = new FakeColumnGrid();
+    g.defs.push({ colId: 'notional', cellDataType: 'number', type: 'money' });
+    g.options.columnTypes = { money: { enableRowGroup: true, resizable: false } };
+    expect(effectiveFlag(g, 'notional', 'enableRowGroup')).toBe(true);
+    expect(effectiveFlag(g, 'notional', 'resizable')).toBe(false);
+  });
+
+  it('defaultColDef beats a columnTypes bundle for the same key', () => {
+    const g = new FakeColumnGrid();
+    g.defs.push({ colId: 'notional', cellDataType: 'number', type: 'money' });
+    g.options.columnTypes = { money: { sortable: false } };
+    g.options.defaultColDef = { sortable: true };
+    expect(effectiveFlag(g, 'notional', 'sortable')).toBe(true); // defaultColDef wins
+  });
+
+  // M6 — a field-only colDef (no explicit colId) still matches by field.
+  it('baseDefOf matches a field-only colDef by field when colId is absent', () => {
+    const g = new FakeColumnGrid();
+    g.defs.push({ field: 'notes', cellDataType: 'text', sortable: false });
+    expect(effectiveFlag(g, 'notes', 'sortable')).toBe(false);
+  });
+});
+
+// M7 — host-registered aggFuncs (setGridOption('aggFuncs', …)) must appear
+// in the picker choices, not just the seven built-ins.
+describe('aggFuncChoices', () => {
+  it('returns just the built-ins when no custom aggFuncs are registered', () => {
+    const g = new FakeColumnGrid();
+    expect(aggFuncChoices(g)).toEqual(AGG_FUNCS);
+  });
+  it('unions in host-registered aggFuncs, de-duplicating built-in names', () => {
+    const g = new FakeColumnGrid();
+    g.options.aggFuncs = { median: () => 0, sum: () => 0 };
+    expect(aggFuncChoices(g)).toEqual([...AGG_FUNCS, 'median']);
   });
 });
 
