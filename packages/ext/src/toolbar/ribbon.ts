@@ -27,6 +27,7 @@ import type { EditBridgeHandle, SmartEditOp } from '@cgrid/edit';
 import { createIconPicker, type IconPickerHandle, type IconSelection } from './iconPicker';
 import { formatPickerMenu, type FormatPickerHost } from './formatPicker';
 import { findPresetByFormat, type FormatDataType } from './formatPresets';
+import { columnPanelMenu, effectiveFlag, AGG_FUNCS, type ColumnConfigGrid, type ColumnPanelHost } from './columnPanel';
 
 /** Lazily supplies the `@cgrid/edit` handle — the demo/consumer wires the
  *  edit engine after the grid is constructed, so the ribbon reads it on
@@ -342,6 +343,23 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       const pop = iconBtn(I.popout, 'Pop out');
       pop.addEventListener('click', () => ctx.events.emit({ type: 'popout' }));
 
+      // Column group — quick per-column configuration (spec 2026-07-08).
+      const colOpen = document.createElement('button');
+      colOpen.type = 'button';
+      colOpen.className = 'cgext-ip-open'; // labeled-control chrome (well-less variant)
+      colOpen.dataset.col = 'open';
+      colOpen.innerHTML =
+        `${svg(I.settings, 14)}<span>Column</span>` +
+        '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg>';
+      const aggPill = pill('Σ None');
+      aggPill.dataset.col = 'agg';
+      const colFF = toggleBtn(I.filter, 'Floating filter');
+      colFF.dataset.col = 'ff';
+      const colGrp = toggleBtn(I.agg, 'Groupable');
+      colGrp.dataset.col = 'grp';
+      const colAggH = toggleBtn(I.rows, 'Show aggregation in header');
+      colAggH.dataset.col = 'aggh';
+
       // Editing strip — a STANDALONE single-row toolbar rendered ABOVE the
       // ribbon band, not part of it: flat segments with inline labels
       // instead of the band's 2-deep group decks. Same control references,
@@ -374,8 +392,7 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
           mini(borderColorBtn, borderColorInput, borderStylePill, borderWidthPill, borderClear)),
         grp('Number', mini(fmtCode), mini(fmtDollar, fmtPercent, fmtThousands, decDown, decUp)),
         grp('Icons', mini(picker.button, iconPlacePill), mini(iconColorBtn, iconColorInput, iconClear)),
-        grp('Edit', mini(iconBtn(I.edit, 'Editor'), pill('None')), mini(iconBtn(I.filter, 'Filter'), pill('None'), iconBtn(I.filterOff, 'Clear filter'))),
-        grp('Group', mini(iconBtn(I.agg, 'Aggregation'), pill('None')), mini(iconBtn(I.settings, 'Group settings'))),
+        grp('Column', mini(colOpen, aggPill), mini(colFF, colGrp, colAggH)),
         grp('Templates', mini(iconBtn(I.templates, 'Templates'), pill('', true)), mini(clear, eraser, dangerIcon(I.trash, 'Delete template'))),
       );
 
@@ -410,6 +427,7 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
         iconPicker: picker,
         setIconApply: (fn) => { iconApply = fn; },
         iconColorBtn, iconColorInput, iconPlacePill, iconClear,
+        colOpen, aggPill, colFF, colGrp, colAggH,
       });
 
       return { destroy() { disposeEditing?.(); disposeFormatting(); picker.destroy(); off(); host.replaceChildren(); } };
@@ -529,6 +547,8 @@ interface FormattingRefs {
   setIconApply: (fn: (sel: IconSelection) => void) => void;
   iconColorBtn: HTMLButtonElement; iconColorInput: HTMLInputElement;
   iconPlacePill: HTMLButtonElement; iconClear: HTMLButtonElement;
+  colOpen: HTMLButtonElement; aggPill: HTMLButtonElement;
+  colFF: HTMLButtonElement; colGrp: HTMLButtonElement; colAggH: HTMLButtonElement;
 }
 
 /** Bind the Formatting toolbar to the kernel + calc engine: derive target
@@ -552,6 +572,12 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     deleteTemplate(templateId: string): void;
     addEventListener(type: string, fn: () => void): Unsub;
     getGridOption(key: string): unknown;
+    getValueColumns(): Array<{ colId: string; aggFunc: string }>;
+    addValueColumn(colId: string, aggFunc: string): void;
+    setValueColumnAggFunc(colId: string, aggFunc: string): void;
+    removeValueColumn(colId: string): void;
+    setColumnsPinned(keys: string[], pinned: 'left' | 'right' | null): void;
+    getColumnState(): Array<{ colId: string; pinned?: 'left' | 'right' | null }>;
   };
   let target: 'cell' | 'header' = 'cell';
   let scope: 'selected' | 'all' = 'selected';
@@ -752,6 +778,24 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
       if (bSpec.bottom) p.borderBottom = css(bSpec.bottom);
       if (bSpec.left) p.borderLeft = css(bSpec.left);
       if (bSpec.right) p.borderRight = css(bSpec.right);
+    }
+
+    // Column group — quick toggles + agg pill mirror the focused column.
+    const colFirst = cols[0];
+    r.colOpen.disabled = none;
+    r.aggPill.disabled = none;
+    for (const b of [r.colFF, r.colGrp, r.colAggH]) b.disabled = none;
+    if (!none && colFirst) {
+      const cg = grid as unknown as ColumnConfigGrid;
+      r.colFF.classList.toggle('is-on', !!effectiveFlag(cg, colFirst, 'floatingFilter'));
+      r.colGrp.classList.toggle('is-on', !!effectiveFlag(cg, colFirst, 'enableRowGroup'));
+      r.colAggH.classList.toggle('is-on', !effectiveFlag(cg, colFirst, 'suppressAggFuncInHeader'));
+      let agg: string | undefined;
+      try { agg = cg.getValueColumns().find((v) => v.colId === colFirst)?.aggFunc; } catch { /* absent */ }
+      r.aggPill.querySelector('span')!.textContent = `Σ ${agg ?? 'None'}`;
+      r.aggPill.classList.toggle('is-set', agg !== undefined);
+    } else {
+      r.aggPill.querySelector('span')!.textContent = 'Σ None';
     }
 
     // # Format pill caption tracks the target column's current format.
@@ -1053,6 +1097,69 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     const next = headerCaseOn() ? 'none' : 'uppercase';
     for (const colId of allCols()) {
       try { grid.editColumn(colId, { headerStyle: { textTransform: next } }); } catch { /* unknown column */ }
+    }
+    ctx.profiles.markDirty();
+    refresh();
+  });
+
+  // ── Column group — popover + agg pill + quick toggles ────────────────────
+  const colGrid = grid as unknown as ColumnConfigGrid;
+  const colHost: ColumnPanelHost = { targetCols, grid: colGrid, onApplied: () => refresh() };
+  const colPanel = columnPanelMenu(r.colOpen, colHost);
+  r.colOpen.addEventListener('click', () => colPanel.toggle());
+  disposers.push(() => colPanel.destroy());
+
+  const aggOfFirst = (): string | undefined => {
+    const c = targetCols()[0];
+    if (!c) return undefined;
+    try { return colGrid.getValueColumns().find((v) => v.colId === c)?.aggFunc; } catch { return undefined; }
+  };
+  const aggMenu = menu(r.aggPill, (close) => {
+    const list = h('cgext-menu-list');
+    for (const v of ['none', ...AGG_FUNCS]) {
+      const it = document.createElement('button');
+      it.type = 'button';
+      it.className = 'cgext-menu-item' + ((aggOfFirst() ?? 'none') === v ? ' is-active' : '');
+      it.textContent = v === 'none' ? 'None' : v;
+      it.addEventListener('click', () => {
+        for (const colId of targetCols()) {
+          try {
+            const has = colGrid.getValueColumns().some((x) => x.colId === colId);
+            if (v === 'none') { if (has) colGrid.removeValueColumn(colId); }
+            else if (has) colGrid.setValueColumnAggFunc(colId, v);
+            else colGrid.addValueColumn(colId, v);
+          } catch { /* non-aggregable */ }
+        }
+        refresh();
+        close();
+      });
+      list.appendChild(it);
+    }
+    return list;
+  });
+  r.aggPill.addEventListener('click', () => aggMenu.toggle());
+  disposers.push(() => aggMenu.destroy());
+
+  const quickFlag = (btn: HTMLButtonElement, key: 'floatingFilter' | 'enableRowGroup', patch: (next: boolean) => Record<string, unknown>): void => {
+    btn.addEventListener('click', () => {
+      const first = targetCols()[0];
+      if (!first) return;
+      const next = !effectiveFlag(colGrid, first, key);
+      for (const colId of targetCols()) {
+        try { grid.editColumn(colId, patch(next)); } catch { /* unknown column */ }
+      }
+      ctx.profiles.markDirty();
+      refresh();
+    });
+  };
+  quickFlag(r.colFF, 'floatingFilter', (next) => ({ floatingFilter: next }));
+  quickFlag(r.colGrp, 'enableRowGroup', (next) => ({ enableRowGroup: next }));
+  r.colAggH.addEventListener('click', () => {
+    const first = targetCols()[0];
+    if (!first) return;
+    const next = !effectiveFlag(colGrid, first, 'suppressAggFuncInHeader'); // toggle suppress
+    for (const colId of targetCols()) {
+      try { grid.editColumn(colId, { suppressAggFuncInHeader: next }); } catch { /* unknown column */ }
     }
     ctx.profiles.markDirty();
     refresh();
