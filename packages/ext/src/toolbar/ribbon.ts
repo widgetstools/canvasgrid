@@ -27,7 +27,7 @@ import type { EditBridgeHandle, SmartEditOp } from '@cgrid/edit';
 import { createIconPicker, type IconPickerHandle, type IconSelection } from './iconPicker';
 import { formatPickerMenu, type FormatPickerHost } from './formatPicker';
 import { findPresetByFormat, type FormatDataType } from './formatPresets';
-import { columnPanelMenu, effectiveFlag, AGG_FUNCS, type ColumnConfigGrid, type ColumnPanelHost } from './columnPanel';
+import { columnPanelMenu, effectiveFlag, aggFuncChoices, type ColumnConfigGrid, type ColumnPanelHost } from './columnPanel';
 
 /** Lazily supplies the `@cgrid/edit` handle — the demo/consumer wires the
  *  edit engine after the grid is constructed, so the ribbon reads it on
@@ -781,8 +781,10 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     }
 
     // Column group — quick toggles + agg pill mirror the focused column.
+    // `colOpen` stays enabled even with no target: the popover's own
+    // "Select a cell or column first" hint explains the empty state instead
+    // of a disabled trigger silently doing nothing.
     const colFirst = cols[0];
-    r.colOpen.disabled = none;
     r.aggPill.disabled = none;
     for (const b of [r.colFF, r.colGrp, r.colAggH]) b.disabled = none;
     if (!none && colFirst) {
@@ -796,6 +798,8 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
       r.aggPill.classList.toggle('is-set', agg !== undefined);
     } else {
       r.aggPill.querySelector('span')!.textContent = 'Σ None';
+      r.aggPill.classList.remove('is-set');
+      for (const b of [r.colFF, r.colGrp, r.colAggH]) b.classList.remove('is-on');
     }
 
     // # Format pill caption tracks the target column's current format.
@@ -1104,7 +1108,7 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
 
   // ── Column group — popover + agg pill + quick toggles ────────────────────
   const colGrid = grid as unknown as ColumnConfigGrid;
-  const colHost: ColumnPanelHost = { targetCols, grid: colGrid, onApplied: () => refresh() };
+  const colHost: ColumnPanelHost = { targetCols, grid: colGrid, onApplied: () => { ctx.profiles.markDirty(); refresh(); } };
   const colPanel = columnPanelMenu(r.colOpen, colHost);
   r.colOpen.addEventListener('click', () => colPanel.toggle());
   disposers.push(() => colPanel.destroy());
@@ -1116,7 +1120,7 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   };
   const aggMenu = menu(r.aggPill, (close) => {
     const list = h('cgext-menu-list');
-    for (const v of ['none', ...AGG_FUNCS]) {
+    for (const v of ['none', ...aggFuncChoices(colGrid)]) {
       const it = document.createElement('button');
       it.type = 'button';
       it.className = 'cgext-menu-item' + ((aggOfFirst() ?? 'none') === v ? ' is-active' : '');
@@ -1130,6 +1134,7 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
             else colGrid.addValueColumn(colId, v);
           } catch { /* non-aggregable */ }
         }
+        ctx.profiles.markDirty();
         refresh();
         close();
       });
