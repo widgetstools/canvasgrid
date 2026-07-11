@@ -381,6 +381,35 @@ if (PAINT_HARNESS) {
       for (let i = 0; i < d.length; i += 16) { h ^= d[i]!; h = Math.imul(h, 16777619); }
       return (h >>> 0).toString(16);
     },
+    /** Closeout M-6 — the companion to `snapshotSansEdgeRow`: samples ONLY
+     *  the bottom `marginRows` band `snapshotSansEdgeRow` excludes (same
+     *  every-16th-byte stride as both hash methods), so the paint-cache
+     *  on-vs-off E2E arms are no longer completely BLIND there — exactly
+     *  where a real stale/shifted-row bug (as opposed to the adjudication-A
+     *  AA trait) would live. Returns the raw sampled byte array (not a
+     *  hash) so the caller can bound the actual divergence — a genuine AA
+     *  difference is a handful of low-magnitude per-channel deltas; a
+     *  stale/shifted row is a wholesale content difference across most of
+     *  the band. */
+    edgeRowSample(marginRows = 1): number[] {
+      const c = document.querySelector('.cg-canvas') as HTMLCanvasElement;
+      const ctx = c.getContext('2d')!;
+      const g = ext.grid;
+      let rowH = 32;
+      for (let ri = 0; ri < 50; ri++) {
+        const b = g.getRowBoundsAt(ri);
+        if (b) { rowH = b.h; break; }
+      }
+      const dpr = window.devicePixelRatio || 1;
+      const marginDevicePx = Math.ceil(rowH * marginRows * dpr);
+      const sampleTop = Math.max(0, c.height - marginDevicePx);
+      const sampleHeight = c.height - sampleTop;
+      if (sampleHeight <= 0) return [];
+      const d = ctx.getImageData(0, sampleTop, c.width, sampleHeight).data;
+      const out: number[] = [];
+      for (let i = 0; i < d.length; i += 16) out.push(d[i]!);
+      return out;
+    },
     /** Resolves once `getPaintStats().paints` is unchanged for at least two
      *  consecutive animation frames AND a short quiet window — the "fully
      *  settled" signal the invariance spec waits on before hashing. A pure
