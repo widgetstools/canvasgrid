@@ -137,3 +137,17 @@ synthetic stress pace (which the guard's own cap philosophy correctly
 declines to trust). Scroll worst-frame (<50ms) bar NOT met at either
 pace — this is OpenFin's underlying canvas cost per paint, a separate,
 already-documented, out-of-scope issue.
+
+## With paint-cache layer (2026-07-11, runtime 41.134.102.3)
+
+Steady ticking: **60fps, zero >50ms frames** (probe), 293/293 partial paints
+all presents, 0 shifts/resets, avg 2.9ms, worst 42ms — steady-state bar MET.
+
+Sustained scroll: presents work (190/190 frames present, resets 0) but the
+layer SHIFT path rasters a ~half-viewport band synchronously — 46 shifts in
+6s of continuous wheel, worst paint 146ms, probe runs vary 1–7 long tasks.
+Under fast continuous scroll the layer currently converts the damage
+system's smooth per-frame sliver raster into periodic half-viewport lumps.
+Fix direction for the closeout wave: amortize shift-band raster across
+frames (the band is overscan — invisible — so it can fill lazily with a
+synchronous fallback only if scrolling outruns it).
