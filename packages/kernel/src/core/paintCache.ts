@@ -32,6 +32,12 @@ export type LayerPlan =
   | { kind: 'shift'; dy: number; newTop: number; rasterBands: Array<{ top: number; bottom: number }> }
   | { kind: 'reset'; newTop: number };
 
+/** Closeout directive B — a CONTENT-px (scroll-space) span of the layer
+ *  that has been self-blit-shifted (or freshly reset) into place but not
+ *  yet actually RASTERED with correct pixels. See `PaintCacheLayer`'s
+ *  pending-band methods below for the full design rationale. */
+export interface PendingBand { top: number; bottom: number }
+
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
@@ -159,6 +165,12 @@ export class PaintCacheLayer {
   private dpr = 1;
   private _layerTop = 0;
   private _layerHeight = 0;
+  /** Closeout directive B — amortized shift-band raster. Sorted by `top`,
+   *  merged on insert so overlapping/touching bands never fragment
+   *  needlessly. CONTENT px (anchor-independent — survives `shift()`
+   *  unmodified; `reset()` clears it, since a reset wipes every pixel the
+   *  bands would have described). */
+  private _pending: PendingBand[] = [];
 
   constructor(canvasFactory: PaintCacheCanvasFactory = defaultCanvasFactory) {
     let canvas: PaintCacheCanvasLike | null = null;
@@ -274,15 +286,159 @@ export class PaintCacheLayer {
   }
 
   /** Re-anchor to `newTop` (CONTENT px) and drop every cached pixel — the
-   *  caller must re-raster the full visible layer content afterward. */
+   *  caller must re-raster the full visible layer content afterward.
+   *  Closeout directive B — also drops every pending band: a reset wipes
+   *  every pixel the old bands described, so tracking them forward across
+   *  the wipe would be meaningless (and the caller re-derives whichever
+   *  bands still need deferred rastering — the new overscan extents —
+   *  against the FRESH anchor via `addPending` immediately after). */
   reset(newTop: number): void {
     this._layerTop = newTop;
+    this._pending = [];
     if (!this.available || !this.canvas || !this.ctx) return;
     const ctx = this.ctx;
     ctx.save();
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
     ctx.restore();
+  }
+
+  // ─── Pending-band ledger (closeout directive B) ──────────────────────
+  //
+  // The shift-lump problem: a single `shift()` self-blit exposes a band up
+  // to ~0.375·bodyHeight tall (the re-centering math in `planLayer`), and
+  // rastering it fully synchronously on the SAME frame as the shift (the
+  // pre-fix-wave behavior) measured a 146ms worst paint under sustained
+  // wheel-scroll (PERF-NOTES) — a per-scroll-tick lump the present-only
+  // design exists specifically to avoid. The fix: `shift()`'s newly-exposed
+  // band (and a full-damage frame's un-rastered overscan margins) become
+  // PENDING instead of being rastered inline; a hard present-time
+  // sync-fill (`takePendingIntersecting`, called by the CGrid paint
+  // closure immediately before `presentLayer`) guarantees unrastered
+  // content is architecturally impossible to present, while a small
+  // per-frame time budget (`takePendingNearest`, called after present +
+  // chrome) drains the rest opportunistically. See the paint-cache
+  // closeout review (`.superpowers/sdd/closeout-review-paint-cache.md`,
+  // adjudication B) for the full directive this implements.
+
+  /** Merge `[top, bottom)` into the pending-band ledger (CONTENT px).
+   *  No-op for a non-positive-height span. Kept sorted + merged
+   *  (overlapping/touching bands coalesce) so the ledger never
+   *  fragments into more entries than genuinely-disjoint gaps. */
+  addPending(top: number, bottom: number): void {
+    if (bottom <= top) return;
+    const next: PendingBand[] = [];
+    let inserted = { top, bottom };
+    for (const b of this._pending) {
+      if (b.bottom < inserted.top || b.top > inserted.bottom) {
+        next.push(b);
+      } else {
+        inserted = { top: Math.min(inserted.top, b.top), bottom: Math.max(inserted.bottom, b.bottom) };
+      }
+    }
+    next.push(inserted);
+    next.sort((a, b) => a.top - b.top);
+    this._pending = next;
+  }
+
+  /** Read-only snapshot of the pending-band ledger (a copy — callers
+   *  never mutate the live list through this). */
+  pendingBands(): PendingBand[] {
+    return this._pending.map((b) => ({ ...b }));
+  }
+
+  hasPendingBands(): boolean {
+    return this._pending.length > 0;
+  }
+
+  /** Sum of pending-band heights (CONTENT px) — the `layerBacklogPx`
+   *  gauge stat. */
+  pendingBacklogPx(): number {
+    let total = 0;
+    for (const b of this._pending) total += b.bottom - b.top;
+    return total;
+  }
+
+  /** Present-safety sync-fill (directive B.2) — removes and returns the
+   *  portion(s) of the pending ledger intersecting `[queryTop, queryBottom)`,
+   *  splitting a band that only PARTIALLY intersects so the
+   *  non-intersecting remainder stays pending (drained later by
+   *  `takePendingNearest`). Returns `[]` when nothing pending overlaps the
+   *  query range — the common case once the budgeted drain has caught up. */
+  takePendingIntersecting(queryTop: number, queryBottom: number): PendingBand[] {
+    if (queryBottom <= queryTop || this._pending.length === 0) return [];
+    const taken: PendingBand[] = [];
+    const remaining: PendingBand[] = [];
+    for (const b of this._pending) {
+      if (b.bottom <= queryTop || b.top >= queryBottom) {
+        remaining.push(b);
+        continue;
+      }
+      const iTop = Math.max(b.top, queryTop);
+      const iBottom = Math.min(b.bottom, queryBottom);
+      taken.push({ top: iTop, bottom: iBottom });
+      if (b.top < iTop) remaining.push({ top: b.top, bottom: iTop });
+      if (b.bottom > iBottom) remaining.push({ top: iBottom, bottom: b.bottom });
+    }
+    this._pending = remaining;
+    return taken;
+  }
+
+  /** Conservative fallback (directive B.2) — removes and returns EVERY
+   *  pending band, unconditionally. */
+  takeAllPending(): PendingBand[] {
+    const all = this._pending;
+    this._pending = [];
+    return all;
+  }
+
+  /** Budgeted-drain step (directive B.3) — pops ONE chunk of pending work,
+   *  capped at `maxPx` tall, from whichever pending band sits CLOSEST to
+   *  `anchor` (typically the viewport center; distance 0 when `anchor`
+   *  falls inside the band). When the closest band is taller than
+   *  `maxPx`, carves the `maxPx`-tall sub-chunk nearest `anchor` off it
+   *  (leaving the remainder pending, still ordered so the NEXT call keeps
+   *  working outward from the viewport) rather than taking the whole
+   *  band at once — this is what keeps each drain step's raster small and
+   *  bounded regardless of how large the backlog is. Returns `null` when
+   *  nothing is pending. */
+  takePendingNearest(anchor: number, maxPx: number): PendingBand | null {
+    if (this._pending.length === 0) return null;
+    let bestIdx = 0;
+    let bestDist = Infinity;
+    for (let i = 0; i < this._pending.length; i++) {
+      const b = this._pending[i]!;
+      const dist = anchor < b.top ? b.top - anchor : anchor > b.bottom ? anchor - b.bottom : 0;
+      if (dist < bestDist) { bestDist = dist; bestIdx = i; }
+    }
+    const band = this._pending[bestIdx]!;
+    const h = band.bottom - band.top;
+    if (h <= maxPx) {
+      this._pending.splice(bestIdx, 1);
+      return band;
+    }
+    if (anchor <= band.top) {
+      const chunk = { top: band.top, bottom: band.top + maxPx };
+      this._pending[bestIdx] = { top: chunk.bottom, bottom: band.bottom };
+      return chunk;
+    }
+    if (anchor >= band.bottom) {
+      const chunk = { top: band.bottom - maxPx, bottom: band.bottom };
+      this._pending[bestIdx] = { top: band.top, bottom: chunk.top };
+      return chunk;
+    }
+    // `anchor` sits INSIDE the band — carve the maxPx-tall slice straddling
+    // it (clamped to the band's own bounds) so the two leftover remainders
+    // (above/below the carved slice) stay pending independently.
+    let chunkTop = Math.max(band.top, anchor - maxPx / 2);
+    let chunkBottom = Math.min(band.bottom, chunkTop + maxPx);
+    chunkTop = Math.max(band.top, chunkBottom - maxPx);
+    const chunk = { top: chunkTop, bottom: chunkBottom };
+    const remainders: PendingBand[] = [];
+    if (band.top < chunkTop) remainders.push({ top: band.top, bottom: chunkTop });
+    if (band.bottom > chunkBottom) remainders.push({ top: chunkBottom, bottom: band.bottom });
+    this._pending.splice(bestIdx, 1, ...remainders);
+    return chunk;
   }
 
   /** Maps a CONTENT-space y (scroll space) to the layer-local y a painter
@@ -316,5 +472,6 @@ export class PaintCacheLayer {
     }
     this.canvas = null;
     this.ctx = null;
+    this._pending = [];
   }
 }

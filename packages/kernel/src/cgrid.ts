@@ -147,10 +147,12 @@ import {
   resolveGroupDisplayType,
 } from './core/autoGroupColumn';
 import { Renderer } from './renderer/renderer';
+import type { CachedContext2D } from './renderer/gc';
 import {
   DamageLedger,
   decideScrollDamage,
   dataRectToScreen,
+  screenYToContentY,
   STICKY_SHADOW_BLEED_PX,
   type DamageResolveCtx,
   type Rect,
@@ -849,6 +851,7 @@ export class CGrid<TRow = any> {
     paints: 0, fullPaints: 0, partialPaints: 0, blits: 0,
     presents: 0, layerShifts: 0, layerResets: 0, layerRasterMs: 0,
     lastRects: 0, lastAreaPct: 100, avgPaintMs: 0, worstPaintMs: 0,
+    layerSyncFills: 0, layerBacklogPx: 0,
   };
   private columnTree!: ColumnTree;
   /** Grid Layouts / column-group-drag feature (Task 1) — lazily-built
@@ -1694,7 +1697,21 @@ export class CGrid<TRow = any> {
         // whose offscreen-canvas construction failed) short-circuits to
         // the EXISTING shipped pipeline below, byte-for-byte unchanged —
         // it is the field escape hatch alongside `suppressPartialRepaint`.
-        const cacheOn = this.paintCacheActive();
+        // Closeout M-4 fix — `suppressPartialRepaint` is documented as
+        // "reproduce the full-surface path"; before this fix a
+        // `paintCache:true` + `suppressPartialRepaint:true` grid instead
+        // re-rastered the layer's FULL extent AND presented every single
+        // frame — strictly more work than legacy for zero benefit, since
+        // the layer's whole present-by-blit value proposition is moot
+        // once every frame is already forced full. Folding the suppress
+        // flag into `cacheOn` routes a suppressed frame through the
+        // legacy `Renderer.paint()` branch below instead — genuinely
+        // "cache-off for the frame" (the layer's own geometry/pending
+        // state simply doesn't advance while suppressed; the next
+        // non-suppressed frame re-anchors normally, safely, since nothing
+        // was ever presented FROM the layer during the suppressed
+        // window).
+        const cacheOn = this.paintCacheActive() && !this.options.suppressPartialRepaint;
         // Task 4 — maintain the layer's geometry (spec §3 step 1) BEFORE
         // resolving damage: `buildDamageResolveCtx()` reads
         // `this.paintCacheLayer.geometry()` for the data-domain area cap,
@@ -1718,6 +1735,19 @@ export class CGrid<TRow = any> {
           const overscanPx = overscanRatio * vsNow.bodyHeight;
           const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
           layerDpr = dpr;
+          // Closeout I-4 fix — capture the geometry `planLayer` should
+          // compare against BEFORE calling `ensureSize`, not after.
+          // `ensureSize` assigns `_layerHeight` UNCONDITIONALLY, first
+          // thing (paintCache.ts doc) — by the time `planLayer` used to
+          // read `layer.geometry()` below, it had already been overwritten
+          // with THIS frame's target, so `planLayer`'s own `current.
+          // layerHeight !== layerHeight` mismatch guard could never fire
+          // in the integrated path (it always compared a value against
+          // itself). Reading it NOW, while `this.paintCacheLayerAnchored`
+          // still reflects the PREVIOUS frame's anchor validity, preserves
+          // the last-committed geometry for the comparison below.
+          const wasAnchored = this.paintCacheLayerAnchored;
+          const geomBefore = wasAnchored ? layer.geometry() : null;
           // A REAL backing-store reallocation (dpr change, or a bodyHeight/
           // overscan change that alone might not trip `planLayer`'s own
           // `layerHeight` mismatch check below — it does here too, but a
@@ -1728,17 +1758,39 @@ export class CGrid<TRow = any> {
             this.paintCacheLayerAnchored = false;
           }
           layerPlan = planLayer({
-            current: this.paintCacheLayerAnchored ? layer.geometry() : null,
+            current: this.paintCacheLayerAnchored ? geomBefore : null,
             scrollTop: vsNow.scrollTop,
             bodyHeight: vsNow.bodyHeight,
             overscanPx,
             contentHeight: vsNow.contentHeight,
           });
           if (layerPlan.kind === 'reset') {
-            layer.reset(layerPlan.newTop);
+            // Closeout I-1 fix — quantize the reset anchor to the DEVICE
+            // pixel grid before committing it. `visibleSrcRect`'s present
+            // blit always rounds `(scrollTop - layerTop) * dpr` to an
+            // integer device px; if `layerTop` itself isn't already
+            // device-aligned, every subsequent `shift()` (which advances
+            // `layerTop` by an EXACT, unquantized `dy`) drifts the anchor
+            // away from the pixel grid by up to 0.5 device px per shift,
+            // accumulating across shifts (the C1-class bug this mirrors —
+            // damageLedger.ts:181-183 — but for the layer's own self-blit
+            // instead of the legacy scroll blit).
+            const qTop = Math.round(layerPlan.newTop * dpr) / dpr;
+            layer.reset(qTop);
             this.paintCacheLayerAnchored = true;
           } else if (layerPlan.kind === 'shift') {
-            layer.shift(layerPlan.dy);
+            // Closeout I-1 fix — quantize `dy` to the device grid so the
+            // anchor (`layer.shift`'s `_layerTop += dy`) advances by
+            // EXACTLY what the self-blit moved the pixels by (`devDy =
+            // round(dy * dpr)`), not the raw fractional CSS delta
+            // `planLayer` computed. Without this, `dy * dpr` being
+            // non-integer (fractional scrollTop from momentum scrolling,
+            // fractional dpr, or an odd `bodyHeight` making `overscanPx`/
+            // `idealTop` fractional) lets the anchor and the pixels
+            // diverge — and because each shift rounds independently, the
+            // error is a random walk that accumulates across shifts.
+            const qdy = Math.round(layerPlan.dy * dpr) / dpr;
+            layer.shift(qdy);
           }
           layerVs = this.buildLayerViewport(layer.geometry());
         }
@@ -1788,40 +1840,72 @@ export class CGrid<TRow = any> {
           // just needs its FULL extent re-rastered this frame).
           const layerRasterFull = damage.full || plan.kind === 'reset';
 
-          // 2. Raster into the layer.
+          // 2. Raster into the layer. Closeout directive B — a
+          // `layerRasterFull` frame no longer rasters the layer's ENTIRE
+          // ~2x-viewport extent synchronously (I-3's finding: that cost
+          // 2-3x a legacy full paint on every full-damage frame —
+          // horizontal scroll drags, theme swaps, cap trips, resizes).
+          // Instead it rasters ONLY the currently-visible slice
+          // synchronously (matching legacy's own per-frame cost) and
+          // defers the layer's overscan margins (above/below the visible
+          // slice) to the pending-band ledger — drained opportunistically
+          // by the sync-fill (below, before every present) and the
+          // budgeted drain (after present + chrome). A `plan.kind==='shift'`
+          // frame's newly-exposed edge band gets the SAME deferred
+          // treatment (the shift-lump problem directive B exists to
+          // fix) — only `damage.dataRects` (real chunk-arrival/tick/
+          // selection/etc. damage) still rasters inline, same as always
+          // (point 4: idempotent against a later pending raster of the
+          // same region, so no subtraction needed).
           const layerCtx = layer.context();
           if (layerCtx) {
-            if (!layerRasterFull) {
+            if (layerRasterFull) {
+              const geom = layer.geometry();
+              const visTop = vsNow.scrollTop;
+              const visBottom = vsNow.scrollTop + vsNow.bodyHeight;
+              const topOverscanBottom = Math.min(visTop, geom.layerTop + geom.layerHeight);
+              if (topOverscanBottom > geom.layerTop) layer.addPending(geom.layerTop, topOverscanBottom);
+              const bottomOverscanTop = Math.max(visBottom, geom.layerTop);
+              if (geom.layerTop + geom.layerHeight > bottomOverscanTop) {
+                layer.addPending(bottomOverscanTop, geom.layerTop + geom.layerHeight);
+              }
+              const h = Math.max(0, visBottom - visTop);
+              if (h > 0) rasterAreaRects.push({ x: 0, y: visTop, w: this.canvasBounds.width, h });
+            } else {
               if (plan.kind === 'shift') {
                 for (const b of plan.rasterBands) {
-                  rasterAreaRects.push({ x: 0, y: b.top, w: this.canvasBounds.width, h: b.bottom - b.top });
+                  const snapped = this.snapContentBandToRows(b.top, b.bottom);
+                  if (snapped.bottom > snapped.top) layer.addPending(snapped.top, snapped.bottom);
                 }
               }
               for (const r of damage.dataRects) rasterAreaRects.push(r);
             }
             // `paintLayer`'s `!full` branch clips/fills/paints under the
             // SAME ambient `ctx.translate(0, -vsNow.bodyTop)` the caller
-            // applies below as its `full` branch's `layerVs.bodyTop`-
-            // relative `fillRect` already assumes — so these rects must be
-            // in that SAME vs2/bodyTop-relative space, NOT the raw
-            // layer-local (`contentToLayerY`) space (which is only valid
-            // for the untransformed raw-canvas ops in
-            // `PaintCacheLayer.shift`/`reset`/`visibleSrcRect`, none of
-            // which run under this translate). Reusing `dataRectToScreen`
-            // with `scrollTop: layerTop` computes exactly that: `y: r.y +
-            // bodyTop - layerTop`, which the ambient translate then
-            // correctly reduces to `r.y - layerTop` (`contentToLayerY`) at
-            // the physical canvas level — matching where `paintCellsByRows`
+            // applies below — so these rects must be in that SAME
+            // vs2/bodyTop-relative space, NOT the raw layer-local
+            // (`contentToLayerY`) space (which is only valid for the
+            // untransformed raw-canvas ops in `PaintCacheLayer.shift`/
+            // `reset`/`visibleSrcRect`, none of which run under this
+            // translate). Reusing `dataRectToScreen` with `scrollTop:
+            // layerTop` computes exactly that: `y: r.y + bodyTop -
+            // layerTop`, which the ambient translate then correctly
+            // reduces to `r.y - layerTop` (`contentToLayerY`) at the
+            // physical canvas level — matching where `paintCellsByRows`
             // actually draws each row via `layerVs`. Passing raw
             // `contentToLayerY` rects here double-subtracted `bodyTop`,
             // clipping the fill/clip region `bodyTop` px away from where
             // cell content actually painted: content painted correctly but
             // landed OUTSIDE the clip, leaving damaged cells blank (caught
-            // by the paint-cache invariance harness, Task 5).
+            // by the paint-cache invariance harness, Task 5). Closeout
+            // directive B — `full` is now ALWAYS `false` here (never the
+            // whole-layer-extent fill): the `layerRasterFull` branch above
+            // already narrowed `rasterAreaRects` to just the visible
+            // slice, so this always goes through the clip/rect path.
             const layerLocalRects = rasterAreaRects.map((r) =>
               dataRectToScreen(r, { scrollTop: layer.geometry().layerTop, bodyTop: vsNow.bodyTop }),
             );
-            if (layerRasterFull || layerLocalRects.length > 0) {
+            if (layerLocalRects.length > 0) {
               const rt0 = performance.now();
               // `.cache.save()`/`.cache.restore()` (NOT raw `save`/
               // `restore`) — the layer's `gc` has no per-tick outer cache
@@ -1837,11 +1921,18 @@ export class CGrid<TRow = any> {
               // is still live).
               layerCtx.cache.save();
               layerCtx.translate(0, -vsNow.bodyTop);
-              this.renderer.paintLayer(layerCtx, vs2, layerRasterFull, layerLocalRects);
+              this.renderer.paintLayer(layerCtx, vs2, false, layerLocalRects);
               layerCtx.cache.restore();
               const rasterMs = performance.now() - rt0;
               s.layerRasterMs = s.layerRasterMs === 0 ? rasterMs : s.layerRasterMs * 0.9 + rasterMs * 0.1;
             }
+            // Directive B.2 — present-safety sync-fill invariant. MUST run
+            // before `presentLayer` below, on EVERY cache-on frame
+            // (regardless of what just happened above): unrastered
+            // content is thus never presentable BY CONSTRUCTION, since
+            // the check lives at the consumer (present) site, not any
+            // producer site above.
+            this.syncFillLayerPending(layer, layerCtx, vsNow, vs2);
           }
 
           // 3. Present — one `drawImage` of the layer's visible slice.
@@ -1880,6 +1971,18 @@ export class CGrid<TRow = any> {
 
           if (plan.kind === 'reset') s.layerResets++;
           else if (plan.kind === 'shift') s.layerShifts++;
+
+          // Directive B.3 — budgeted drain. Spends a small time budget
+          // (after present + chrome, so it never delays what's actually
+          // on-screen this frame) rastering pending bands nearest-
+          // viewport-first, and keeps requesting another frame while any
+          // backlog remains so the grid converges to fully-rastered at
+          // idle (`waitSettled`/pixel-invariance need a "settled" grid to
+          // mean zero pending, not just "no NEW damage").
+          if (layerCtx && layer.hasPendingBands()) {
+            this.drainLayerPendingBands(layer, layerCtx, vsNow, vs2);
+          }
+          s.layerBacklogPx = layer.pendingBacklogPx();
         }
         // Task 5 — snapshot the position/DPR/bounds THIS paint actually
         // painted at, so the next `afterScrollTick`'s delta (and its
@@ -7215,6 +7318,15 @@ export class CGrid<TRow = any> {
     this.selectionUnsubscribe();
     this.calcProviderUnsub?.();
     if (this.chunkLRU) this.chunkLRU.clear();
+    // Closeout I-2 fix — the retained paint-cache layer's backing store
+    // (`canvasWidth × (bodyHeight + 2*overscanPx)` device px — tens of MB at
+    // HiDPI) is otherwise never freed for a destroyed-but-still-referenced
+    // grid (app-side caches, event closures, devtools). `dispose()` zeroes
+    // the backing store (`PaintCacheLayer.dispose`'s doc) and is safe to
+    // call even on an inert/never-constructed layer.
+    this.paintCacheLayer?.dispose();
+    this.paintCacheLayer = null;
+    this.layerViewportCache = null;
     this.cgridCanvas.destroy();
     this.workerCoord.destroy();
     this.featureChain.destroy();
@@ -8362,6 +8474,121 @@ export class CGrid<TRow = any> {
     return result;
   }
 
+  /** Closeout directive B / M-2 — row-align a CONTENT-space band (a
+   *  shift's newly-exposed edge, or a chunk carved off during the
+   *  budgeted drain) to the FULL bounds of whichever row(s) its edges
+   *  land inside, using the same widened live-viewport row list
+   *  `rowBand`/`rowBoundsAtY` already resolve against
+   *  (`this.viewport.visibleRows` — Task 3's overscan-widened set, which
+   *  by the fetch-window-coupling design already spans the retained
+   *  layer's own coverage). Snapping OUTWARD only (never inward) keeps
+   *  every layer raster row-atomic, avoiding the T6 mid-glyph clip-AA
+   *  class this same widening already fixed for the damage ledger's own
+   *  bleed expansion (`DamageLedger.expand`'s row-atomic-bleed comment).
+   *  A boundary that resolves to no row (an edge case right at the very
+   *  top/bottom of data, or outside the widened viewport's own range) is
+   *  left unsnapped — fails open, the same conservatism `rowBoundsAtY`
+   *  itself already uses. */
+  private snapContentBandToRows(top: number, bottom: number): { top: number; bottom: number } {
+    if (bottom <= top) return { top, bottom };
+    const vs = this.viewport;
+    const t = { scrollTop: vs.scrollTop, bodyTop: vs.bodyTop };
+    const topScreen = dataRectToScreen({ x: 0, y: top, w: 0, h: 0 }, t).y;
+    const bottomScreen = dataRectToScreen({ x: 0, y: bottom, w: 0, h: 0 }, t).y;
+    const topRow = vs.visibleRows.find((r) => topScreen >= r.top && topScreen < r.bottom);
+    // `bottom` is an EXCLUSIVE band edge — look up the row containing the
+    // last INCLUDED px (a hair below `bottomScreen`) so an edge already
+    // exactly on a row seam doesn't spuriously pull in the row below.
+    const lastIncludedScreen = bottomScreen - 0.01;
+    const bottomRow = vs.visibleRows.find((r) => lastIncludedScreen >= r.top && lastIncludedScreen < r.bottom);
+    const snappedTopScreen = topRow ? Math.min(topScreen, topRow.top) : topScreen;
+    const snappedBottomScreen = bottomRow ? Math.max(bottomScreen, bottomRow.bottom) : bottomScreen;
+    return {
+      top: screenYToContentY(snappedTopScreen, t),
+      bottom: screenYToContentY(snappedBottomScreen, t),
+    };
+  }
+
+  /** Closeout directive B.2 — the present-safety sync-fill invariant.
+   *  Runs unconditionally right before `presentLayer`, on every cache-on
+   *  frame: intersects the about-to-be-presented range
+   *  (`[scrollTop, scrollTop+bodyHeight]`, widened by one row-height
+   *  margin each side per the directive) against the layer's pending-band
+   *  ledger, and rasters SYNCHRONOUSLY whatever overlaps THIS frame,
+   *  before the present blit runs. This is the hard guarantee ("unrastered
+   *  content is thus never presentable BY CONSTRUCTION") — it does not
+   *  depend on the budgeted drain (`drainLayerPendingBands`) having caught
+   *  up; a scroll that outruns the drain's own budget just pays for a
+   *  bigger synchronous fill here instead of ever presenting stale/blank
+   *  pixels. Counted via `PaintStats.layerSyncFills` — the "scroll outran
+   *  the budget" signal. */
+  private syncFillLayerPending(
+    layer: PaintCacheLayer, layerCtx: CachedContext2D, vsNow: ViewportState, layerVs: ViewportState,
+  ): void {
+    if (!layer.hasPendingBands()) return;
+    const rowFallback = this.options.rowHeight ?? this.theme.rowHeight;
+    const queryTop = vsNow.scrollTop - rowFallback;
+    const queryBottom = vsNow.scrollTop + vsNow.bodyHeight + rowFallback;
+    let pieces: Array<{ top: number; bottom: number }>;
+    try {
+      pieces = layer.takePendingIntersecting(queryTop, queryBottom);
+    } catch {
+      // Conservative fallback (directive B.2) — any ambiguity drains the
+      // FULL pending set rather than risk presenting unrastered content.
+      pieces = layer.takeAllPending();
+    }
+    if (pieces.length === 0) return;
+    this.paintStats.layerSyncFills++;
+    const geom = layer.geometry();
+    const rects = pieces
+      .map((p) => this.snapContentBandToRows(p.top, p.bottom))
+      .filter((p) => p.bottom > p.top)
+      .map((p) => ({ x: 0, y: p.top, w: this.canvasBounds.width, h: p.bottom - p.top }));
+    if (rects.length === 0) return;
+    const localRects = rects.map((r) => dataRectToScreen(r, { scrollTop: geom.layerTop, bodyTop: vsNow.bodyTop }));
+    layerCtx.cache.save();
+    layerCtx.translate(0, -vsNow.bodyTop);
+    this.renderer.paintLayer(layerCtx, layerVs, false, localRects);
+    layerCtx.cache.restore();
+  }
+
+  /** Closeout directive B.3 — the budgeted drain. Runs AFTER present +
+   *  chrome (so it never delays what's actually on-screen this frame),
+   *  spending a small (~3ms) time budget rastering pending bands
+   *  nearest-viewport-first, in row-aligned chunks of at least 4 rows
+   *  (`PaintCacheLayer.takePendingNearest`). Requests another frame
+   *  (`cgridCanvas.requestRepaint()`) while any backlog remains so the
+   *  grid keeps draining at idle — REQUIRED so `waitSettled`/pixel-
+   *  invariance still observe a fully-converged grid (a "settled" grid
+   *  must have zero pending; see the paint-cache closeout review,
+   *  adjudication B, point 3). */
+  private drainLayerPendingBands(
+    layer: PaintCacheLayer, layerCtx: CachedContext2D, vsNow: ViewportState, layerVs: ViewportState,
+  ): void {
+    const BUDGET_MS = 3;
+    const rowFallback = this.options.rowHeight ?? this.theme.rowHeight;
+    const minChunkPx = Math.max(4 * rowFallback, 1);
+    const anchor = vsNow.scrollTop + vsNow.bodyHeight / 2;
+    const geom = layer.geometry();
+    const t0 = performance.now();
+    while (layer.hasPendingBands() && (performance.now() - t0) < BUDGET_MS) {
+      const chunk = layer.takePendingNearest(anchor, minChunkPx);
+      if (!chunk) break;
+      const snapped = this.snapContentBandToRows(chunk.top, chunk.bottom);
+      const h = snapped.bottom - snapped.top;
+      if (h <= 0) continue;
+      const rect = { x: 0, y: snapped.top, w: this.canvasBounds.width, h };
+      const localRect = dataRectToScreen(rect, { scrollTop: geom.layerTop, bodyTop: vsNow.bodyTop });
+      layerCtx.cache.save();
+      layerCtx.translate(0, -vsNow.bodyTop);
+      this.renderer.paintLayer(layerCtx, layerVs, false, [localRect]);
+      layerCtx.cache.restore();
+    }
+    if (layer.hasPendingBands()) {
+      this.cgridCanvas.requestRepaint();
+    }
+  }
+
   /** Cycle 19 / Task 4 — delegating wrapper. The viewport-tick anchor +
    *  band-clip close lives in `EditController.syncOpenEditorPosition`. */
   private syncOpenEditorPosition(): void {
@@ -8838,6 +9065,7 @@ export class CGrid<TRow = any> {
       paints: 0, fullPaints: 0, partialPaints: 0, blits: 0,
       presents: 0, layerShifts: 0, layerResets: 0, layerRasterMs: 0,
       lastRects: 0, lastAreaPct: 100, avgPaintMs: 0, worstPaintMs: 0,
+      layerSyncFills: 0, layerBacklogPx: 0,
     };
   }
 

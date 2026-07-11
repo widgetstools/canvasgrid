@@ -432,6 +432,15 @@ export class Renderer {
    * returns device px), but the DESTINATION rect goes through `gc`'s
    * persistent `setTransform(dpr,0,0,dpr,0,0)` CTM, so it MUST be passed
    * in CSS px — or a dpr≠1 backing store double-scales the paste.
+   *
+   * Closeout M-1 fix — `imageSmoothingEnabled = false` is scoped to this
+   * call via `gc.cache.save()`/`.restore()` (the cache-aware pair, so both
+   * the real ctx state AND the JS `values` cache roll back together —
+   * same discipline `cgrid.ts`'s layer raster pass already uses). Before
+   * this fix the flag was set and never restored, leaking `false` to
+   * every subsequent painter on the MAIN context for the rest of the
+   * grid's life — latent (no painter currently draws a scaled bitmap on
+   * the main canvas) but a trap for the next one that does.
    */
   presentLayer(
     gc: CachedContext2D,
@@ -442,8 +451,10 @@ export class Renderer {
   ): void {
     const hCss = dest.bodyBottom - dest.bodyTop;
     if (hCss <= 0 || src.sh <= 0 || srcWidthDevicePx <= 0) return;
+    gc.cache.save();
     gc.cache.imageSmoothingEnabled = false;
     gc.drawImage(layerCanvas, 0, src.sy, srcWidthDevicePx, src.sh, 0, dest.bodyTop, dest.width, hCss);
+    gc.cache.restore();
   }
 
   /**

@@ -309,9 +309,14 @@ export class DamageLedger {
 
     // Bleed + sticky extension + clamp + snap — same `expand()` for both
     // buckets (still entirely screen-space geometry; the domain split
-    // happens AFTER, once every rect's final bounds are settled).
-    const dataSnapped = dataRaw.map((r) => this.expand(r, ctx)).filter((r) => r.w > 0 && r.h > 0);
-    const splitSnapped = splitRaw.map((r) => this.expand(r, ctx)).filter((r) => r.w > 0 && r.h > 0);
+    // happens AFTER, once every rect's final bounds are settled). Closeout
+    // C-1 fix — `expand()`'s final clamp is now DOMAIN-aware: `dataRaw`
+    // rects pass `'data'` so a widened (Task 3) `rowBand` result whose
+    // screen-space top/bottom sits entirely off-canvas (an off-screen row
+    // still inside the retained layer's coverage) clamps to the LAYER's
+    // own screen extent instead of the canvas's — see `expand()`'s doc.
+    const dataSnapped = dataRaw.map((r) => this.expand(r, ctx, 'data')).filter((r) => r.w > 0 && r.h > 0);
+    const splitSnapped = splitRaw.map((r) => this.expand(r, ctx, 'split')).filter((r) => r.w > 0 && r.h > 0);
     // I6 fix — pre-merge cap: bail to FULL before paying for `mergeRects`'
     // O(n²) (restart-after-every-merge, so worst-case O(n³)) scan. A batch
     // this wide is heading toward one of the area-fraction caps below
@@ -366,7 +371,36 @@ export class DamageLedger {
     return { full: false, chromeRects, dataRects, blit };
   }
 
-  private expand(r: Rect, ctx: DamageResolveCtx): Rect {
+  /**
+   * Closeout C-1 fix — `domain` distinguishes the two buckets `takeResolved`
+   * feeds through this method: `'data'` (row/cell damage, always resolves
+   * through `rowBand`/`rowIndexForRowId`) vs `'split'` (geometry-ambiguous
+   * `band`/`rect`/sticky/pinned damage, resolved against the body region
+   * AFTER this returns). Only the FINAL clamp step below differs by domain
+   * — every bleed/sticky/pinned/row-atomic step above it stays identical.
+   *
+   * Why: Task 3's widened live viewport lets `rowBand` return bands for
+   * rows that are off-screen but still inside the retained paint-cache
+   * layer's coverage — their SCREEN-space top/bottom can sit entirely
+   * above/below the canvas (e.g. `top: -160` on a 600px canvas). The OLD
+   * unconditional `[0, canvasHeight]` clamp collapsed those to zero/negative
+   * height, and the `.filter((r) => r.h > 0)` upstream silently dropped the
+   * damage — a live tick to an off-screen in-layer row never reached the
+   * layer, so scrolling that row into view later presented stale pixels
+   * (spec §2, closeout Critical C-1). The layer is a canvas PHYSICALLY
+   * taller than the viewport (`bodyHeight + 2*overscanPx`), so a data-domain
+   * rect legitimately covers that whole extent — clamp to the layer's own
+   * screen-space span (`layerTopScreen`/`layerBottomScreen`, derived from
+   * `ctx.layerTop`/`ctx.layerHeight` via the same screen↔content pivot as
+   * `screenYToContentY`) instead of the canvas's. Gated strictly on
+   * `ctx.paintCacheLayerActive` — when the layer is inactive, `ctx.layerTop`
+   * is a placeholder (`scrollTop`) and `ctx.layerHeight` degrades to the
+   * body height (see `DamageResolveCtx` doc), so keeping the OLD canvas
+   * clamp for cache-off (and for the `'split'`/chrome bucket, which is
+   * screen-anchored and genuinely bounded by the canvas either way) is what
+   * keeps cache-off resolution byte-identical to pre-fix behavior.
+   */
+  private expand(r: Rect, ctx: DamageResolveCtx, domain: 'data' | 'split'): Rect {
     let x0 = r.x - DAMAGE_BLEED_PX, y0 = r.y - DAMAGE_BLEED_PX;
     let x1 = r.x + r.w + DAMAGE_BLEED_PX, y1 = r.y + r.h + DAMAGE_BLEED_PX;
     // Sticky band: anything touching it repaints the whole band + shadow.
@@ -412,9 +446,21 @@ export class DamageLedger {
       const rightCol = ctx.colBoundsAtX(x1);
       if (rightCol && rightCol.right > x1) x1 = rightCol.right;
     }
-    // Clamp to canvas.
-    x0 = Math.max(0, x0); y0 = Math.max(0, y0);
-    x1 = Math.min(ctx.canvasWidth, x1); y1 = Math.min(ctx.canvasHeight, y1);
+    // Clamp — x always to the canvas (no domain ever extends horizontally
+    // past it). y is domain-aware (C-1 fix, see this method's doc): the
+    // DATA bucket, while the layer is active, clamps to the layer's own
+    // screen-space extent instead of the canvas's; every other case keeps
+    // the original canvas clamp.
+    x0 = Math.max(0, x0); x1 = Math.min(ctx.canvasWidth, x1);
+    if (domain === 'data' && ctx.paintCacheLayerActive) {
+      const layerTopScreen = ctx.bodyTop + (ctx.layerTop - ctx.scrollTop);
+      const layerBottomScreen = layerTopScreen + ctx.layerHeight;
+      y0 = Math.max(layerTopScreen, y0);
+      y1 = Math.min(layerBottomScreen, y1);
+    } else {
+      y0 = Math.max(0, y0);
+      y1 = Math.min(ctx.canvasHeight, y1);
+    }
     // Snap OUT to device pixels.
     const d = ctx.dpr || 1;
     x0 = Math.floor(x0 * d) / d; y0 = Math.floor(y0 * d) / d;

@@ -91,6 +91,21 @@ export interface PaintStats {
   layerRasterMs: number;
   /** Worst single paint duration observed, in ms. */
   worstPaintMs: number;
+  /** Closeout directive B (shift-lump fix) — count of PRESENT-SITE
+   *  synchronous fallback rasters (`syncFillLayerPending`): a pending
+   *  (self-blit-shifted-but-not-yet-rastered) band that the budgeted
+   *  drain hadn't caught up with before it became presentable. Should
+   *  stay small relative to `layerShifts` under normal scroll — a high
+   *  rate signals the scroll is consistently outrunning the drain's
+   *  per-frame time budget (the sync-fill still guarantees correctness
+   *  either way; this is a PERFORMANCE signal, not a correctness one). */
+  layerSyncFills: number;
+  /** Closeout directive B — current outstanding pending-band backlog, in
+   *  CONTENT px (a gauge, not a running total — reflects what's left
+   *  after each paint's budgeted drain). `0` once the layer has fully
+   *  caught up; nonzero only transiently after a shift/reset/full-damage
+   *  frame until subsequent frames' drain (or a sync-fill) empties it. */
+  layerBacklogPx: number;
 }
 
 /** Cycle 21i Phase 2 / T3 — one live column-GROUP node handed to the
