@@ -7,6 +7,7 @@ import type { CellDataLookup } from './painters/types';
 import type { SortModel, SelectionRange } from '../types';
 import type { StickyAncestor } from '../worker/protocol';
 import type { CachedContext2D } from './gc';
+import type { ResolvedDamage, Rect } from '../core/damageLedger';
 import { paintCellsByRows } from './painters/byRows';
 import { paintGridLines } from './painters/gridLinesPainter';
 import { paintOverlay } from './painters/overlayPainter';
@@ -147,10 +148,37 @@ export interface RendererOpts {
   getColumnGroupOpen?: (groupId: string) => boolean;
 }
 
+/** Damage-region rendering — bounding box of a set of already-merged damage
+ *  rects, in the same coordinate space as `PainterCtx.damageBounds`. Used by
+ *  `byRows.ts` to cull whole rows/columns whose bounds fall entirely outside
+ *  the damaged area under partial repaint. */
+function boundsOf(rects: Rect[]): { minX: number; minY: number; maxX: number; maxY: number } {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const r of rects) {
+    if (r.x < minX) minX = r.x;
+    if (r.y < minY) minY = r.y;
+    if (r.x + r.w > maxX) maxX = r.x + r.w;
+    if (r.y + r.h > maxY) maxY = r.y + r.h;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
 export class Renderer {
   constructor(private opts: RendererOpts) {}
 
-  paint(gc: CachedContext2D): void {
+  /**
+   * `damage` is `undefined` or `{ full: true, ... }` for the legacy
+   * full-surface paint (byte-identical to pre-damage-region behavior).
+   * `{ full: false, rects, blit }` clips the canvas to the union of `rects`
+   * and background-fills only those rects instead of the whole surface —
+   * `byRows.ts` additionally culls rows/columns outside `pctx.damageBounds`.
+   * An empty `rects` array under partial damage means nothing visible
+   * changed, so `paint` returns immediately without touching the canvas.
+   */
+  paint(gc: CachedContext2D, damage?: ResolvedDamage): void {
+    const partial = damage !== undefined && !damage.full;
+    if (partial && damage.rects.length === 0 && !damage.blit) return; // nothing visible changed
+
     const pctx = {
       viewport: this.opts.getViewport(),
       theme: this.opts.getTheme(),
@@ -177,15 +205,34 @@ export class Renderer {
       groupKeyAt: this.opts.getGroupKeyAt,
       getStickyGroupTotals: this.opts.getStickyGroupTotals,
       getColumnGroupOpen: this.opts.getColumnGroupOpen,
+      // Damage-region rendering — null under full paint (no culling).
+      damageBounds: partial ? boundsOf(damage.rects) : null,
     };
-    // Fill the entire drawable area with theme bg as the FIRST instruction so
-    // there's no transparent moment between the prior frame's pixels (or a
-    // freshly-cleared backing store after a canvas.width assignment) and the
-    // grid content. CGridCanvas sized the canvas to CSS px so we draw in CSS px.
     const w = this.opts.getCanvasWidth();
     const h = this.opts.getCanvasHeight();
-    gc.cache.fillStyle = pctx.theme.bg;
-    gc.fillRect(0, 0, w, h);
+
+    if (partial) {
+      // Clip to the union of damage rects so every painter below — cell
+      // bundles, gridlines, sticky band, overlays — naturally stays inside
+      // the damaged area even though byRows' culling is a perf optimization,
+      // not a correctness requirement (the clip is the correctness backstop).
+      gc.save();
+      gc.beginPath();
+      for (const r of damage.rects) gc.rect(r.x, r.y, r.w, r.h);
+      gc.clip();
+      // Background-fill only the damaged rects, not the whole surface.
+      gc.cache.fillStyle = pctx.theme.bg;
+      for (const r of damage.rects) gc.fillRect(r.x, r.y, r.w, r.h);
+    } else {
+      // Fill the entire drawable area with theme bg as the FIRST instruction
+      // so there's no transparent moment between the prior frame's pixels (or
+      // a freshly-cleared backing store after a canvas.width assignment) and
+      // the grid content. CGridCanvas sized the canvas to CSS px so we draw
+      // in CSS px.
+      gc.cache.fillStyle = pctx.theme.bg;
+      gc.fillRect(0, 0, w, h);
+    }
+
     paintCellsByRows(gc, pctx);
     // Gridlines run after all cell paints so they sit on top with no double-stroked
     // seams. Sticky group band paints over the body rows (below the header).
@@ -199,5 +246,7 @@ export class Renderer {
     // border per active range. Runs after the focus-ring overlay so the
     // range border doesn't cut into the focus ring of an interior cell.
     paintRangeOverlay(gc, pctx);
+
+    if (partial) gc.restore();
   }
 }

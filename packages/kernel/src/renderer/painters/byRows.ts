@@ -101,6 +101,11 @@ export function decorateHeader(def: ResolvedColDef, gridSuppress: boolean): stri
 export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
   const { viewport: vs, theme, columnDefs, cellRenderers, cellData, selection, sortModel, rowDataSnapshotAt, quickFilterLowerTerms, suppressAggFuncInHeader, groupRowStrip } = p;
   const totalRowCount = p.totalRowCount ?? 0;
+  // Damage-region rendering — bounding box of the current paint's damage
+  // rects (perf-only cull; the renderer's clip is the correctness
+  // backstop). `null`/absent under a full-surface paint — every row/column
+  // guard below is a no-op in that case.
+  const db = p.damageBounds ?? null;
   const quickFilterActive = quickFilterLowerTerms.length > 0;
 
   // 1. Compute the right edge of the painted area (mirrors gridLinesPainter).
@@ -230,6 +235,7 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
     const top = b.isData ? Math.max(b.top, vs.bodyTop) : b.top;
     const bottom = b.isData ? Math.min(b.bottom, vs.bodyBottom) : b.bottom;
     if (bottom <= top) continue;
+    if (db && (bottom < db.minY || top > db.maxY)) continue;
     gc.cache.fillStyle = b.bg;
     gc.fillRect(0, top, rightEdge, bottom - top);
   }
@@ -326,6 +332,7 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
     firstVisibleColId,
     lastVisibleColId,
     groupHeaderRows,
+    damageBounds: db,
   };
 
   for (const sb of subgridBands) {
@@ -373,6 +380,7 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
       const topClip = Math.max(row.top, vs.bodyTop);
       const bottomClip = Math.min(row.bottom, vs.bodyBottom);
       if (bottomClip <= topClip) continue;
+      if (db && (bottomClip < db.minY || topClip > db.maxY)) continue;
       gc.cache.save();
       gc.beginPath();
       gc.rect(0, topClip, rightEdge, bottomClip - topClip);
@@ -460,6 +468,9 @@ interface PaintBandCtx {
    *  bands, for row-start / row-end rule indicator targeting. */
   firstVisibleColId?: string;
   lastVisibleColId?: string;
+  /** Damage-region rendering — perf-only row/column cull bounds; `null`
+   *  under a full-surface paint. See `PainterCtx.damageBounds`. */
+  damageBounds: { minX: number; minY: number; maxX: number; maxY: number } | null;
 }
 
 function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void {
@@ -478,8 +489,15 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
     gc.clip();
   }
 
+  const db = ctx.damageBounds;
   for (let ri = 0; ri < rows.length; ri++) {
     const row = rows[ri]!;
+    // Damage-region rendering — skip rows entirely outside the damaged Y
+    // range. Perf-only: the renderer's clip (Renderer.paint) already
+    // prevents any pixel outside the damage rects from landing on the
+    // canvas, so an imprecise cull here can only cost cycles, never
+    // under-paint.
+    if (db && (row.bottom < db.minY || row.top > db.maxY)) continue;
     const r = row.rowIndex;
     const rowBg = rowBgs[r]!;
     // Cycle 15 / Task 5 — strip-mode group rows skip per-cell painting
@@ -607,6 +625,9 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
       : undefined;
 
     for (const col of cols) {
+      // Damage-region rendering — skip columns entirely outside the
+      // damaged X range (same perf-only rationale as the row cull above).
+      if (db && (col.right < db.minX || col.left > db.maxX)) continue;
       const def = columnDefs.get(col.colId);
       if (!def) continue;
 

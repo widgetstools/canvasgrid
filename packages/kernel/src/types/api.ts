@@ -35,6 +35,36 @@ export interface TransactionResult {
   remove: { rowId: string }[];
 }
 
+/**
+ * Damage-region rendering — cumulative + last-paint telemetry surfaced via
+ * `CGridApi.getPaintStats()`. `paints`/`fullPaints`/`partialPaints`/`blits`
+ * are running totals since construction (or the last `resetPaintStats()`);
+ * `lastRects`/`lastAreaPct` describe only the MOST RECENT paint.
+ */
+export interface PaintStats {
+  /** Total `Renderer.paint` invocations. */
+  paints: number;
+  /** Paints that resolved to a full-surface repaint (includes every paint
+   *  before any `repaint*` call site is migrated to record damage, and any
+   *  paint whose damage degraded to full — too many/large rects, or an
+   *  empty ledger). */
+  fullPaints: number;
+  /** Paints that resolved to a clipped, partial repaint. */
+  partialPaints: number;
+  /** Partial paints that additionally carried a scroll blit. */
+  blits: number;
+  /** Merged damage rect count on the most recent partial paint; `0` on a
+   *  full paint. */
+  lastRects: number;
+  /** Damaged area as a percentage of the canvas area on the most recent
+   *  paint; `100` on a full paint. */
+  lastAreaPct: number;
+  /** Exponential moving average (α=0.1) of paint duration in ms. */
+  avgPaintMs: number;
+  /** Worst single paint duration observed, in ms. */
+  worstPaintMs: number;
+}
+
 /** Cycle 21i Phase 2 / T3 — one live column-GROUP node handed to the
  *  `forEachColumnGroup` walk. Snapshot semantics: mutating a node does
  *  not write back to the grid (use `updateGridOptions({ columnDefs })`
@@ -201,6 +231,16 @@ export interface CGridApi<TRow = any> {
    *  the next viewport reply (one frame of latency for the worker
    *  round-trip). */
   flashCells(params: FlashCellsParams): void;
+
+  /** Damage-region rendering — cumulative paint telemetry since the last
+   *  `resetPaintStats()` (or grid construction). `lastRects`/`lastAreaPct`
+   *  describe the MOST RECENT paint only; the rest are running totals.
+   *  Useful for perf dashboards / regression gates verifying partial
+   *  repaints are actually happening and staying small. */
+  getPaintStats(): PaintStats;
+  /** Zero out the running `PaintStats` counters. `lastRects`/`lastAreaPct`
+   *  reset to the "full paint" defaults (0 / 100). */
+  resetPaintStats(): void;
 
   /** Open the filter popup for `colId`. No-op when the column has no
    *  resolved filter, the column isn't currently in the viewport, or

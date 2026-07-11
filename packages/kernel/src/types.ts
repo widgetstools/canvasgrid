@@ -160,6 +160,8 @@ export type {
   CGridApi,
   // Cycle 21i Phase 2 / T3 — forEachColumnGroup visit-node shape
   ColumnGroupWalkNode,
+  // Damage-region rendering — paint telemetry shape for getPaintStats()
+  PaintStats,
 } from './types/api';
 
 // Grid Layouts — public data model (Phase A).

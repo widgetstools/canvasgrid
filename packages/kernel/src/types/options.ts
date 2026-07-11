@@ -225,6 +225,17 @@ export interface CGridOptions<TRow = any> {
    * AG-Grid parity name.
    */
   suppressRowHoverHighlight?: boolean;
+  /**
+   * Damage-region rendering — when `true`, forces every paint through the
+   * full-surface path regardless of what's queued on the internal damage
+   * ledger; the `repaintFull`/`repaintRows`/`repaintCells` helpers also
+   * degrade to a full repaint. Escape hatch for apps that hit a damage-
+   * resolution bug, or for screenshot/print paths that always want the
+   * whole canvas repainted. Default `false` (partial repaints enabled once
+   * a source records damage — no source does yet in this task).
+   * Runtime-mutable.
+   */
+  suppressPartialRepaint?: boolean;
   /** Render every center column regardless of horizontal scroll position.
    *  Useful for screenshot tests and CSV-style exports where the painter
    *  needs every column visible at once. Pinned columns are unaffected. */

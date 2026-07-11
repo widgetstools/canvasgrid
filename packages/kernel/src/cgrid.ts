@@ -10,7 +10,7 @@ import tokensCssInline from './theming/tokens.css?inline';
 import type {
   CGridOptions, CGridEvent, CGridApi, Tx, TransactionResult, SortModel, FilterModel,
   CFilterModelEntry, GroupModel, FlashCellsParams, SelectionRange,
-  AggregationChangedSource,
+  AggregationChangedSource, PaintStats,
 } from './types';
 import type { ToolPanel, SideBarDef } from './interaction/toolPanels/types';
 import { TypedEventEmitter } from './core/eventEmitter';
@@ -145,6 +145,7 @@ import {
   resolveGroupDisplayType,
 } from './core/autoGroupColumn';
 import { Renderer } from './renderer/renderer';
+import { DamageLedger, type DamageResolveCtx } from './core/damageLedger';
 import { HitTester } from './interaction/hitTester';
 import { SelectionModel } from './interaction/selectionModel';
 import { FeatureChain } from './interaction/featureChain';
@@ -697,6 +698,18 @@ export class CGrid<TRow = any> {
    *  (null when off any data row). Drives the row-hover highlight;
    *  forced null when `suppressRowHoverHighlight`. */
   private hoveredRowIndex: number | null = null;
+  /** Damage-region rendering — accumulates semantic damage between paints.
+   *  No `requestRepaint()` call site records damage yet (this task's
+   *  invariant): the ledger stays empty and every paint resolves to full,
+   *  so behavior is byte-identical to pre-damage-region rendering until a
+   *  later task migrates a source to `repaintRows`/`repaintCells`. */
+  private readonly damageLedger = new DamageLedger();
+  /** Damage-region rendering — cumulative paint telemetry surfaced via
+   *  `getPaintStats()`. Reset via `resetPaintStats()`. */
+  private paintStats: PaintStats = {
+    paints: 0, fullPaints: 0, partialPaints: 0, blits: 0,
+    lastRects: 0, lastAreaPct: 100, avgPaintMs: 0, worstPaintMs: 0,
+  };
   private columnTree!: ColumnTree;
   /** Grid Layouts / column-group-drag feature (Task 1) — lazily-built
    *  leaf colId → ancestor groupId path (root→parent) map, derived by
@@ -1447,7 +1460,40 @@ export class CGrid<TRow = any> {
           this.events.emit({ type: 'gridSizeChanged', width: b.width, height: b.height });
         }
       },
-      paint: (gc) => this.renderer.paint(gc),
+      paint: (gc) => {
+        const t0 = performance.now();
+        // Damage-region rendering — `suppressPartialRepaint` forces every
+        // paint through the full-surface path regardless of what's on the
+        // ledger (an escape hatch for apps that hit a damage-resolution
+        // bug; also handy for screenshot/print paths that always want the
+        // whole canvas). Otherwise resolve the ledger against the LIVE
+        // viewport at paint time — semantic damage (row indices, rowId+colId
+        // cells) survives scroll because geometry is computed here, not at
+        // enqueue. An empty ledger (no `repaint*` call site has recorded
+        // anything yet) resolves to full, so this is a byte-identical no-op
+        // until a later task migrates a `requestRepaint()` source.
+        const damage = this.options.suppressPartialRepaint
+          ? { full: true as const, rects: [], blit: null }
+          : this.damageLedger.takeResolved(this.buildDamageResolveCtx());
+        this.renderer.paint(gc, damage);
+        const ms = performance.now() - t0;
+        const s = this.paintStats;
+        s.paints++;
+        if (damage.full) {
+          s.fullPaints++;
+          s.lastRects = 0;
+          s.lastAreaPct = 100;
+        } else {
+          s.partialPaints++;
+          if (damage.blit) s.blits++;
+          s.lastRects = damage.rects.length;
+          const area = damage.rects.reduce((a, r) => a + r.w * r.h, 0);
+          const ca = this.canvasBounds.width * this.canvasBounds.height;
+          s.lastAreaPct = ca > 0 ? Math.round((area / ca) * 1000) / 10 : 0;
+        }
+        s.avgPaintMs = s.avgPaintMs === 0 ? ms : s.avgPaintMs * 0.9 + ms * 0.1;
+        if (ms > s.worstPaintMs) s.worstPaintMs = ms;
+      },
     }, {
       // Drawable size = scroller's inner area MINUS the scrollbar thickness.
       // macOS overlay scrollbars don't reserve a gutter (clientWidth ===
@@ -5216,6 +5262,89 @@ export class CGrid<TRow = any> {
 
   refresh(): void { this.cgridCanvas.requestRepaint(); }
 
+  /**
+   * Damage-region rendering — record a full-surface repaint on the ledger
+   * and request the next frame. Equivalent to today's `refresh()`/
+   * `requestRepaint()` but goes through the ledger so a `suppressPartialRepaint`
+   * flip mid-frame-batch can't leave stale partial damage queued underneath
+   * a full one (`DamageLedger.add({kind:'full'})` clears any pending entries).
+   */
+  private repaintFull(): void {
+    this.damageLedger.add({ kind: 'full' });
+    this.cgridCanvas.requestRepaint();
+  }
+
+  /**
+   * Damage-region rendering — record damage for a set of DATA-row indices
+   * (same index space as `cellAt`'s `rowIndex` / the chunk's `rowStart`-
+   * relative local index) and request the next frame. `suppressPartialRepaint`
+   * degrades this to a full repaint. No call site migrates to this helper
+   * in this task — it's plumbed for later tasks (hover/selection/scroll).
+   */
+  private repaintRows(rowIndices: number[]): void {
+    if (this.options.suppressPartialRepaint) { this.repaintFull(); return; }
+    this.damageLedger.add({ kind: 'rows', rowIndices });
+    this.cgridCanvas.requestRepaint();
+  }
+
+  /**
+   * Damage-region rendering — record damage for a set of (rowId, colId)
+   * cells and request the next frame. `suppressPartialRepaint` degrades
+   * this to a full repaint. No call site migrates to this helper in this
+   * task — it's plumbed for later tasks (flash, cell edits, formula recalc).
+   */
+  private repaintCells(cells: Array<{ rowId: number; colId: string }>): void {
+    if (this.options.suppressPartialRepaint) { this.repaintFull(); return; }
+    this.damageLedger.add({ kind: 'cells', cells });
+    this.cgridCanvas.requestRepaint();
+  }
+
+  /**
+   * Damage-region rendering — builds the live-viewport resolution context
+   * the ledger needs to turn semantic damage (row indices / rowId+colId
+   * cells) into merged clip rects at paint time. Reading `this.viewport` /
+   * `this.chunk` / `this.canvasBounds` fresh on every paint (rather than
+   * caching) means damage recorded before a scroll or column resize still
+   * resolves against CURRENT geometry.
+   */
+  private buildDamageResolveCtx(): DamageResolveCtx {
+    const vs = this.viewport;
+    const stickyBandBottom = this.stickyAncestors.length > 0
+      ? vs.bodyTop + this.stickyAncestors.length * this.theme.rowHeight
+      : null;
+    return {
+      canvasWidth: this.canvasBounds.width,
+      canvasHeight: this.canvasBounds.height,
+      dpr: (typeof window !== 'undefined' && window.devicePixelRatio) || 1,
+      bodyTop: vs.bodyTop,
+      bodyBottom: vs.bodyBottom,
+      bodyLeft: vs.bodyLeft,
+      bodyRight: vs.bodyRight,
+      stickyBandBottom,
+      // Task 1 note: later tasks populate pinned/totals band rects; empty
+      // here means the ledger's band-atomic-extend logic (§4.4) is a no-op.
+      pinnedBandRects: [],
+      rowBand: (localRowIndex) => {
+        const row = vs.visibleRows.find(
+          (r) => r.subgrid.isData && r.localRowIndex === localRowIndex,
+        );
+        return row ? { top: row.top, bottom: row.bottom } : null;
+      },
+      rowIndexForRowId: (rowId) => {
+        const chunk = this.chunk;
+        if (!chunk) return null;
+        for (let i = 0; i < chunk.rowIds.length; i++) {
+          if (chunk.rowIds[i] === rowId) return chunk.rowStart + i;
+        }
+        return null;
+      },
+      colBounds: (colId) => {
+        const col = vs.visibleColumns.find((c) => c.colId === colId);
+        return col ? { x: col.left, w: col.width } : null;
+      },
+    };
+  }
+
   /** Cycle 11 / Task 5 — re-render a mounted tool panel. Forwards to
    *  the live instance's `refresh()`; silent no-op when no side bar
    *  is configured, `id` is unknown, or the panel has never been
@@ -6598,6 +6727,8 @@ export class CGrid<TRow = any> {
       isColumnFilterPresent: () => this.isColumnFilterPresent(),
       destroyFilter: (c) => this.destroyFilter(c),
       flashCells: (p) => this.flashCells(p),
+      getPaintStats: () => this.getPaintStats(),
+      resetPaintStats: () => this.resetPaintStats(),
       ensureRowVisible: (id, pos) => this.ensureRowVisible(id, pos),
       ensureColumnVisible: (id, pos) => this.ensureColumnVisible(id, pos),
       ensureColumnGroupVisible: (id, pos) => this.ensureColumnGroupVisible(id, pos),
@@ -7784,6 +7915,21 @@ export class CGrid<TRow = any> {
         this.requestViewport();
       })
       .catch((err) => { if (!this.destroyed) console.error('[cgrid] flashCells:', err); });
+  }
+
+  /** Damage-region rendering — snapshot of cumulative paint telemetry. See
+   *  `PaintStats` for field semantics. Returns a shallow copy so callers
+   *  can't mutate the live counters. */
+  getPaintStats(): PaintStats {
+    return { ...this.paintStats };
+  }
+
+  /** Damage-region rendering — zero the running `PaintStats` counters. */
+  resetPaintStats(): void {
+    this.paintStats = {
+      paints: 0, fullPaints: 0, partialPaints: 0, blits: 0,
+      lastRects: 0, lastAreaPct: 100, avgPaintMs: 0, worstPaintMs: 0,
+    };
   }
 
   private cellAt(rowIndex: number, colId: string): { value: unknown; valueFormatted: string; flashAlpha?: number; flashColor?: string } | null {

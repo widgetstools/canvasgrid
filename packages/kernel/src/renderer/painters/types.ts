@@ -167,4 +167,14 @@ export interface PainterCtx {
    * an accidental chevron.
    */
   getColumnGroupOpen?: (groupId: string) => boolean;
+  /**
+   * Damage-region rendering — the bounding box (canvas px) of the current
+   * paint's damage rects, or `null` under a full-surface paint. When set,
+   * `byRows.ts` culls rows/columns entirely outside these bounds as a perf
+   * optimization; the renderer's clip (set up in `Renderer.paint`) is the
+   * correctness backstop so an imprecise cull can never under-paint.
+   * Optional so pre-existing test harnesses building a partial `PainterCtx`
+   * don't need to thread a stub through — absence means "no culling".
+   */
+  damageBounds?: { minX: number; minY: number; maxX: number; maxY: number } | null;
 }
