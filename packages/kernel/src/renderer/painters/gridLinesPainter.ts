@@ -17,10 +17,23 @@ import type { CachedContext2D } from '../gc';
  *
  * No `strokeRect`, no `stroke()` — every line is a `fillRect` aligned to integer
  * pixels so adjacent lines never re-draw the same pixel.
+ *
+ * Task 4 (paint-cache layer) — `mode` splits this single pass into its
+ * DATA-region half (drawn into the retained layer, against `layerVs`) and
+ * its CHROME half (drawn on-screen, against the real `vs`) per spec §3.
+ * `undefined` (the default) is the unmodified legacy behavior — one
+ * continuous pass, used by `Renderer.paint()` (`paintCache:false` / layer
+ * unavailable). Every line this painter draws is a `fillRect` (never a
+ * stroked/anti-aliased path), so splitting a continuous line into a
+ * chrome-side segment + a data-side segment that share an exact boundary
+ * produces bit-identical pixels to the single-pass line — the split is a
+ * bookkeeping device, not a visual difference.
  */
-export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
+export function paintGridLines(gc: CachedContext2D, p: PainterCtx, mode?: 'layer' | 'chrome'): void {
   const { viewport: vs, theme } = p;
   if (vs.visibleColumns.length === 0 && vs.visibleRows.length === 0) return;
+  const dataOnly = mode === 'layer';
+  const chromeOnly = mode === 'chrome';
 
   // Full right edge of the painted area: rightmost visible column or the body
   // right (whichever is larger; rightPinned columns extend past bodyRight).
@@ -77,6 +90,11 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
   // reads as a single deliberate hairline.
   gc.cache.fillStyle = theme.gridLineColor;
   for (const row of vs.visibleRows) {
+    // Task 4 — region filter: the layer pass draws data-row gridlines
+    // only; the chrome pass draws header/pinned (+totals, skipped below)
+    // gridlines only.
+    if (dataOnly && !row.subgrid.isData) continue;
+    if (chromeOnly && row.subgrid.isData) continue;
     if (row.subgrid.isData) {
       if (row.bottom <= vs.bodyTop || row.bottom > vs.bodyBottom) continue;
     } else if (!row.subgrid.isHeader && !row.subgrid.isPinned) {
@@ -102,10 +120,14 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
   // top border (a multi-row pinned totals subgrid is rare; if a future
   // task ships one, this loop already handles it because every row's
   // own top gets its rule).
-  for (const row of vs.visibleRows) {
-    if (!row.subgrid.isTotals) continue;
-    gc.cache.fillStyle = theme.totalsBorderTop;
-    gc.fillRect(0, Math.round(row.top) - 1, rightEdge, 1);
+  // Task 4 — totals rows are chrome (never data-subgrid); the layer pass
+  // skips this border entirely.
+  if (!dataOnly) {
+    for (const row of vs.visibleRows) {
+      if (!row.subgrid.isTotals) continue;
+      gc.cache.fillStyle = theme.totalsBorderTop;
+      gc.fillRect(0, Math.round(row.top) - 1, rightEdge, 1);
+    }
   }
 
   // Cycle 15 / Task 12 — per-group footer row top border. Same hairline
@@ -116,8 +138,10 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
   // gridline above (drawn at `row.top - 1` so it overpaints the gridline
   // at the row immediately above the footer). Guarded for partial
   // PainterCtx instances built by older tests (the probe is optional).
+  // Task 4 — per-group footer rows live inside the DataSubgrid; the
+  // chrome pass skips this border entirely.
   const rowKindAt = p.rowKindAt;
-  if (rowKindAt) {
+  if (rowKindAt && !chromeOnly) {
     for (const row of vs.visibleRows) {
       if (!row.subgrid.isData) continue;
       if (rowKindAt(row.localRowIndex) !== 3) continue;
@@ -140,33 +164,57 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
 
   // Compute the bottom of the last visible non-header row; if there are no
   // data/totals rows yet, fall back to bodyTop (verticals span header only).
+  // Task 4 — under `dataOnly`, the layer pass only ever wants DATA rows'
+  // bottoms (totals/pinned bands laid out against `layerVs` land at
+  // BOGUS y-positions — `buildLayerViewport`'s synthetic `scrollTop:
+  // layerTop` only keeps header/floating-filter placement correct;
+  // post-data subgrids' position depends on where the real scroll
+  // window's data ends, which `layerVs` does NOT reproduce). Under
+  // `chromeOnly`, verticals/pinned-edges stop exactly at `vs.bodyTop`
+  // (computed via the ternaries below) so this scan is skipped entirely.
   let lastRowBottom = vs.bodyTop;
-  for (const row of vs.visibleRows) {
-    if (row.subgrid.isHeader) continue;
-    const b = Math.min(row.bottom, vs.bodyBottom);
-    if (b > lastRowBottom) lastRowBottom = b;
+  if (!chromeOnly) {
+    for (const row of vs.visibleRows) {
+      if (row.subgrid.isHeader) continue;
+      if (dataOnly && !row.subgrid.isData) continue;
+      const b = Math.min(row.bottom, vs.bodyBottom);
+      if (b > lastRowBottom) lastRowBottom = b;
+    }
   }
 
-  paintVerticalsInBand(gc, leftPinned, 0, vs.bodyLeft, leafHeaderTop, lastRowBottom, theme.gridLineColor, groupHeaderRows);
-  paintVerticalsInBand(gc, center, vs.bodyLeft, vs.bodyRight, leafHeaderTop, lastRowBottom, theme.gridLineColor, groupHeaderRows);
-  paintVerticalsInBand(gc, rightPinned, vs.bodyRight, rightEdge, leafHeaderTop, lastRowBottom, theme.gridLineColor, groupHeaderRows);
+  // Task 4 — chrome draws the header-region segment only (stops at
+  // `vs.bodyTop`, using the real ancestry-divergence tops); the layer
+  // draws the data-region segment only (starts at `vs.bodyTop`, straight
+  // down — no group-header divergence applies to data rows, so an empty
+  // `groupHeaderRows` list makes `verticalTopForPair` fall through to its
+  // `leafHeaderTop` fallback, which is `vs.bodyTop` in this branch).
+  const vertTop = dataOnly ? vs.bodyTop : leafHeaderTop;
+  const vertGroupHeaderRows = dataOnly ? [] : groupHeaderRows;
+  const vertBottom = chromeOnly ? vs.bodyTop : lastRowBottom;
 
-  // Pinned-band edges — heavier line via theme.borderColor. Stop at
-  // lastRowBottom (same as verticals) so the divider doesn't extend into
-  // empty canvas below the data area.
+  paintVerticalsInBand(gc, leftPinned, 0, vs.bodyLeft, vertTop, vertBottom, theme.gridLineColor, vertGroupHeaderRows);
+  paintVerticalsInBand(gc, center, vs.bodyLeft, vs.bodyRight, vertTop, vertBottom, theme.gridLineColor, vertGroupHeaderRows);
+  paintVerticalsInBand(gc, rightPinned, vs.bodyRight, rightEdge, vertTop, vertBottom, theme.gridLineColor, vertGroupHeaderRows);
+
+  // Pinned-band edges — heavier line via theme.borderColor. Same chrome/
+  // layer split as verticals above, but the edge always starts at
+  // absolute 0 on the chrome side (not `leafHeaderTop` — this line has no
+  // per-pair divergence math, it always ran from the canvas top).
+  const edgeTop = dataOnly ? vs.bodyTop : 0;
   if (leftPinned.length > 0) {
     gc.cache.fillStyle = theme.borderColor;
-    gc.fillRect(Math.round(vs.bodyLeft) - 1, 0, 1, lastRowBottom);
+    gc.fillRect(Math.round(vs.bodyLeft) - 1, edgeTop, 1, vertBottom - edgeTop);
   }
   if (rightPinned.length > 0) {
     gc.cache.fillStyle = theme.borderColor;
-    gc.fillRect(Math.round(vs.bodyRight), 0, 1, lastRowBottom);
+    gc.fillRect(Math.round(vs.bodyRight), edgeTop, 1, vertBottom - edgeTop);
   }
 
   // Subgrid separator — header→body. The leaf-header bottom already paints a
   // gridLineColor horizontal above; this overlays a slightly heavier borderColor
   // line at exactly bodyTop - 1 so the transition reads clearly.
-  if (vs.bodyTop > 0) {
+  // Task 4 — chrome-only (sits entirely above bodyTop, the header/body seam).
+  if (!dataOnly && vs.bodyTop > 0) {
     gc.cache.fillStyle = theme.borderColor;
     gc.fillRect(0, Math.round(vs.bodyTop) - 1, rightEdge, 1);
   }
@@ -174,8 +222,8 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
   // Header→floating-filter separator. The header row's horizontal gridline
   // already lands at floatingFilterRowTop - 1 (gridLineColor); overpaint with
   // borderColor so the transition reads as a deliberate divider, mirroring
-  // the header→body separator at bodyTop above.
-  if (vs.floatingFilterRowTop !== undefined && vs.floatingFilterRowTop > 0) {
+  // the header→body separator at bodyTop above. Task 4 — chrome-only.
+  if (!dataOnly && vs.floatingFilterRowTop !== undefined && vs.floatingFilterRowTop > 0) {
     gc.cache.fillStyle = theme.borderColor;
     gc.fillRect(0, Math.round(vs.floatingFilterRowTop) - 1, rightEdge, 1);
   }
@@ -190,16 +238,21 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx): void {
   // The pinned↔totals transition is intentionally NOT drawn here: the
   // totals row paints its own top border above, which is the body-edge
   // boundary for that pair.
-  for (let r = 0; r < vs.visibleRows.length; r++) {
-    const a = vs.visibleRows[r]!;
-    const b = vs.visibleRows[r + 1];
-    if (!b) continue;
-    const aPinned = a.subgrid.isPinned === true;
-    const bPinned = b.subgrid.isPinned === true;
-    if (aPinned === bPinned) continue;
-    if (!(a.subgrid.isData || b.subgrid.isData)) continue;
-    gc.cache.fillStyle = theme.pinnedRowBorder;
-    gc.fillRect(0, Math.round(a.bottom) - 1, rightEdge, 1);
+  // Task 4 — chrome-only: this is a pinned/data SEAM, always resolved
+  // against the REAL `vs` (pinned rows are screen-anchored chrome); the
+  // layer pass never draws it.
+  if (!dataOnly) {
+    for (let r = 0; r < vs.visibleRows.length; r++) {
+      const a = vs.visibleRows[r]!;
+      const b = vs.visibleRows[r + 1];
+      if (!b) continue;
+      const aPinned = a.subgrid.isPinned === true;
+      const bPinned = b.subgrid.isPinned === true;
+      if (aPinned === bPinned) continue;
+      if (!(a.subgrid.isData || b.subgrid.isData)) continue;
+      gc.cache.fillStyle = theme.pinnedRowBorder;
+      gc.fillRect(0, Math.round(a.bottom) - 1, rightEdge, 1);
+    }
   }
 }
 

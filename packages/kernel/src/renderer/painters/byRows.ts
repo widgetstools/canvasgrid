@@ -98,7 +98,20 @@ export function decorateHeader(def: ResolvedColDef, gridSuppress: boolean): stri
 }
 
 
-export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
+/**
+ * Task 4 (paint-cache layer) — region filter for the split raster/present/
+ * chrome frame algorithm (spec §3). `undefined` (the default) is the
+ * LEGACY full-surface behavior — every subgrid band paints, byte-identical
+ * to pre-Task-4 — used by `Renderer.paint()` (the `paintCache:false` /
+ * layer-unavailable escape hatch). `'layer'` restricts painting to
+ * DATA-subgrid bands only (header/floatingFilter/totals/pinned bands are
+ * screen-anchored chrome, never baked into the retained layer — including
+ * the group-row full-width strip content, which only ever targets data
+ * rows). `'chrome'` is the inverse — only non-data bands, no strip content.
+ */
+export type ByRowsMode = 'layer' | 'chrome' | undefined;
+
+export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx, mode?: ByRowsMode): void {
   const { viewport: vs, theme, columnDefs, cellRenderers, cellData, selection, sortModel, rowDataSnapshotAt, quickFilterLowerTerms, suppressAggFuncInHeader, groupRowStrip } = p;
   const totalRowCount = p.totalRowCount ?? 0;
   // Damage-region rendering — bounding box of the current paint's damage
@@ -232,6 +245,11 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
   // correctly over the underlying theme bg. Data bundles are clamped to the body
   // region so scrolled-overscan rows (top < bodyTop) can't paint over the header.
   for (const b of bundles) {
+    // Task 4 — region filter: the layer pass paints data bundles only; the
+    // chrome pass paints everything else (header/floatingFilter/totals/
+    // pinned). `mode === undefined` (legacy full-surface path) paints both.
+    if (mode === 'layer' && !b.isData) continue;
+    if (mode === 'chrome' && b.isData) continue;
     const top = b.isData ? Math.max(b.top, vs.bodyTop) : b.top;
     const bottom = b.isData ? Math.min(b.bottom, vs.bodyBottom) : b.bottom;
     if (bottom <= top) continue;
@@ -337,6 +355,9 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
 
   for (const sb of subgridBands) {
     const isDataBand = sb.rows[0]!.subgrid.isData;
+    // Task 4 — region filter (see `ByRowsMode` doc above).
+    if (mode === 'layer' && !isDataBand) continue;
+    if (mode === 'chrome' && isDataBand) continue;
     // Data subgrid bands always clip to the body region (vs.bodyTop..bodyBottom)
     // in every column band — left + center + right pinned. Without this, overscan
     // data rows whose top is < bodyTop paint cell text over the header band, and
@@ -368,7 +389,9 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx): void {
   // Per-cell painting on strip rows was already skipped inside `paintBand`
   // so there's nothing to over-paint. The strip's bg was painted via the
   // row-bg bundle (`theme.groupRowBg` selected in step 2).
-  if (groupRowStrip) {
+  // Task 4 — the strip is data content (full-row group labels live inside
+  // the DataSubgrid); the chrome pass never paints it.
+  if (groupRowStrip && mode !== 'chrome') {
     const stripPainter = cellRenderers.get(groupRowStrip.renderer);
     for (let r = 0; r < vs.visibleRows.length; r++) {
       const ctx = groupStripRows[r];

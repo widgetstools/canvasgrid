@@ -227,4 +227,62 @@ describe('DamageLedger', () => {
     const r = l.takeResolved(ctx());
     expect(r.full).toBe(true);
   });
+
+  // ─── Task 4 — paintCacheLayerActive gates the scroll-exposed-band push ───
+
+  describe('paintCacheLayerActive', () => {
+    it('defaults to today\'s behavior (falsy): a pure scroll still pushes an exposed data band', () => {
+      const l = new DamageLedger();
+      l.add({ kind: 'scroll', dy: 48 });
+      const r = l.takeResolved(ctx());
+      expect(r.full).toBe(false);
+      expect(r.blit).toEqual({ dy: 48 });
+      expect(r.dataRects.length).toBeGreaterThanOrEqual(1);
+    });
+
+    it('when active, a pure scroll resolves to EMPTY dataRects/chromeRects (present-only) — the layer\'s own planLayer supersedes the exposed-band push', () => {
+      const l = new DamageLedger();
+      l.add({ kind: 'scroll', dy: 48 });
+      const r = l.takeResolved(ctx({ paintCacheLayerActive: true }));
+      expect(r.full).toBe(false);
+      // `blit` stays populated (informational/back-compat) — only the
+      // exposed-band PUSH into `dataRects` is suppressed.
+      expect(r.blit).toEqual({ dy: 48 });
+      expect(r.dataRects).toHaveLength(0);
+      expect(r.chromeRects).toHaveLength(0);
+    });
+
+    it('when active, sticky-band + pinned/totals chrome redamage on scroll is UNCHANGED — those bands are screen-anchored chrome the layer never covers', () => {
+      const l1 = new DamageLedger();
+      l1.add({ kind: 'scroll', dy: 48 });
+      const withSticky = ctx({ stickyBandBottom: 100 });
+      const inactive = l1.takeResolved(withSticky);
+
+      const l2 = new DamageLedger();
+      l2.add({ kind: 'scroll', dy: 48 });
+      const active = l2.takeResolved({ ...withSticky, paintCacheLayerActive: true });
+
+      // Both resolve the sticky band into SOME rect (chrome or data,
+      // depending on where the band geometrically falls) — the point is
+      // this contribution is NOT gated by `paintCacheLayerActive`, unlike
+      // the exposed-band push above.
+      const totalRects = (r: ReturnType<DamageLedger['takeResolved']>) => r.chromeRects.length + r.dataRects.length;
+      expect(totalRects(active)).toBeGreaterThan(0);
+      // Inactive keeps the exposed band ON TOP of the sticky contribution,
+      // so it can only have as many or more rects than the active case.
+      expect(totalRects(inactive)).toBeGreaterThanOrEqual(totalRects(active));
+    });
+
+    it('a non-scroll partial (rows/cells) is completely unaffected by the flag', () => {
+      const l1 = new DamageLedger();
+      l1.add({ kind: 'rows', rowIndices: [2] });
+      const inactive = l1.takeResolved(ctx());
+
+      const l2 = new DamageLedger();
+      l2.add({ kind: 'rows', rowIndices: [2] });
+      const active = l2.takeResolved(ctx({ paintCacheLayerActive: true }));
+
+      expect(active).toEqual(inactive);
+    });
+  });
 });

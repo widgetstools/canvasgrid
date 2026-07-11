@@ -68,7 +68,7 @@ import {
   type ViewportState,
 } from './core/viewport';
 import { RowHeightIndex } from './core/rowHeightIndex';
-import type { LayerGeometry } from './core/paintCache';
+import { PaintCacheLayer, planLayer, type LayerGeometry, type LayerPlan } from './core/paintCache';
 import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, TotalsSubgrid, PinnedRowsSubgrid, type Subgrid, type SubgridCell } from './core/subgrid';
 import { FloatingFilterSubgrid } from './core/floatingFilterSubgrid';
 import { FloatingFilterOverlay } from './interaction/floatingFilterOverlay';
@@ -150,6 +150,7 @@ import { Renderer } from './renderer/renderer';
 import {
   DamageLedger,
   decideScrollDamage,
+  dataRectToScreen,
   STICKY_SHADOW_BLEED_PX,
   type DamageResolveCtx,
   type Rect,
@@ -846,6 +847,7 @@ export class CGrid<TRow = any> {
    *  `getPaintStats()`. Reset via `resetPaintStats()`. */
   private paintStats: PaintStats = {
     paints: 0, fullPaints: 0, partialPaints: 0, blits: 0,
+    presents: 0, layerShifts: 0, layerResets: 0, layerRasterMs: 0,
     lastRects: 0, lastAreaPct: 100, avgPaintMs: 0, worstPaintMs: 0,
   };
   private columnTree!: ColumnTree;
@@ -954,6 +956,24 @@ export class CGrid<TRow = any> {
     layerHeight: number;
     result: ViewportState;
   } | null = null;
+  /** Task 4 (paint-cache layer) — the retained offscreen layer. `null`
+   *  when `paintCache: false` at construction; (re)created by
+   *  `resetPaintCacheLayer` on a runtime `paintCache` flip. Always check
+   *  `paintCacheActive()` (which additionally gates on `options.paintCache`
+   *  AND `.available`) rather than a bare non-null check — a layer whose
+   *  offscreen-canvas construction failed (headless/unsupported
+   *  environment) still gets an instance here, just an inert one. */
+  private paintCacheLayer: PaintCacheLayer | null = null;
+  /** Task 4 — `true` once the layer holds a geometry `planLayer` can
+   *  legitimately `'keep'`/`'shift'` against. `false` forces `planLayer`'s
+   *  `current: null` branch (an unconditional `'reset'`) on the NEXT
+   *  paint — set on every reset trigger this task is responsible for
+   *  (`resetPaintCacheLayer`'s option flip, and implicitly whenever this
+   *  paint's resolved damage is `full` — see the paint closure) so a
+   *  theme/resize/dpr/horizontal-scroll change (all of which already force
+   *  `damage.full` via the pre-existing damage system) never lets a stale
+   *  layer `'keep'`/`'shift'` through. */
+  private paintCacheLayerAnchored = false;
   private selection: SelectionModel;
   private hitTester: HitTester;
   private featureChain: FeatureChain;
@@ -1579,7 +1599,13 @@ export class CGrid<TRow = any> {
       // `ResolvedColDef` and win when set — `byRows.ts` resolves the pair
       // at the header-text path.
       getSuppressAggFuncInHeader: () => this.options.suppressAggFuncInHeader === true,
-      getVisibleCellBounds: (rowIndex, colId) => this.getVisibleCellBounds(rowIndex, colId),
+      // Task 4 (paint-cache layer) — the optional 3rd `vs` arg lets the
+      // renderer's LAYER pass resolve focus-ring / range-overlay bounds
+      // against `layerVs` (the layer's own, possibly off-screen coverage)
+      // instead of the real viewport; `vs ?? this.viewport` preserves the
+      // exact pre-Task-4 behavior when omitted (chrome pass, legacy
+      // `paint()`, and the public `getVisibleCellBounds()` API below).
+      getVisibleCellBounds: (rowIndex, colId, vs) => this.cellBoundsAgainst(vs ?? this.viewport, rowIndex, colId),
       // Cycle 15 / Task 5 — full-row group-strip lookup for `groupRows` /
       // `custom` display types. Returns `null` for singleColumn /
       // multipleColumns / no-grouping so the byRows painter skips the
@@ -1622,6 +1648,16 @@ export class CGrid<TRow = any> {
       getDevicePixelRatio: () => this.cgridCanvas.devicePixelRatio,
     });
 
+    // Task 4 (paint-cache layer) — construct the retained offscreen layer
+    // up front unless the app opted all the way out at construction time.
+    // `PaintCacheLayer`'s constructor never throws (a failed/unsupported
+    // canvas just sets `.available = false`), so this is safe even in a
+    // headless/unsupported environment — `paintCacheActive()` gates every
+    // actual use on both the option AND `.available`.
+    if (this.options.paintCache !== false) {
+      this.paintCacheLayer = new PaintCacheLayer();
+    }
+
     // 7. Canvas wrapper — owns the <canvas>, gc cache, RAF + resize polling.
     // The setBounds callback fires synchronously inside the constructor's first
     // resize() — BEFORE this.cgridCanvas is assigned — so the renderer must
@@ -1654,6 +1690,58 @@ export class CGrid<TRow = any> {
       },
       paint: (gc) => {
         const t0 = performance.now();
+        // Task 4 (paint-cache layer) — `paintCache: false` (or a layer
+        // whose offscreen-canvas construction failed) short-circuits to
+        // the EXISTING shipped pipeline below, byte-for-byte unchanged —
+        // it is the field escape hatch alongside `suppressPartialRepaint`.
+        const cacheOn = this.paintCacheActive();
+        // Task 4 — maintain the layer's geometry (spec §3 step 1) BEFORE
+        // resolving damage: `buildDamageResolveCtx()` reads
+        // `this.paintCacheLayer.geometry()` for the data-domain area cap,
+        // so it must already reflect whatever THIS frame's `planLayer`
+        // decision does to the anchor.
+        let layerPlan: LayerPlan | null = null;
+        let layerVs: ViewportState | null = null;
+        // Task 4 — the dpr the layer's backing store was JUST sized at
+        // (below), reused by the present step further down. Read fresh
+        // here (not via `this.cgridCanvas.devicePixelRatio`) because this
+        // whole `paint` closure can run SYNCHRONOUSLY from inside
+        // `CGridCanvas`'s own constructor (its first `resize()` call) —
+        // `this.cgridCanvas` isn't assigned yet at that point (same
+        // gotcha `getDevicePixelRatio`'s doc above already calls out for
+        // the legacy scroll-blit wiring).
+        let layerDpr = 1;
+        if (cacheOn) {
+          const layer = this.paintCacheLayer!;
+          const vsNow = this.viewport;
+          const overscanRatio = Math.max(0, Math.min(2, this.options.paintCacheOverscan ?? 0.5));
+          const overscanPx = overscanRatio * vsNow.bodyHeight;
+          const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+          layerDpr = dpr;
+          // A REAL backing-store reallocation (dpr change, or a bodyHeight/
+          // overscan change that alone might not trip `planLayer`'s own
+          // `layerHeight` mismatch check below — it does here too, but a
+          // dpr-only change wouldn't) silently wipes every pixel; force
+          // the anchor invalid so `planLayer` can never `'keep'`/`'shift'`
+          // against a just-blanked canvas.
+          if (layer.ensureSize(this.canvasBounds.width, vsNow.bodyHeight + 2 * overscanPx, dpr)) {
+            this.paintCacheLayerAnchored = false;
+          }
+          layerPlan = planLayer({
+            current: this.paintCacheLayerAnchored ? layer.geometry() : null,
+            scrollTop: vsNow.scrollTop,
+            bodyHeight: vsNow.bodyHeight,
+            overscanPx,
+            contentHeight: vsNow.contentHeight,
+          });
+          if (layerPlan.kind === 'reset') {
+            layer.reset(layerPlan.newTop);
+            this.paintCacheLayerAnchored = true;
+          } else if (layerPlan.kind === 'shift') {
+            layer.shift(layerPlan.dy);
+          }
+          layerVs = this.buildLayerViewport(layer.geometry());
+        }
         // Damage-region rendering — `suppressPartialRepaint` forces every
         // paint through the full-surface path regardless of what's on the
         // ledger (an escape hatch for apps that hit a damage-resolution
@@ -1676,7 +1764,97 @@ export class CGrid<TRow = any> {
         const damage = this.options.suppressPartialRepaint
           ? { full: true as const, chromeRects: [], dataRects: [], blit: null }
           : resolved;
-        this.renderer.paint(gc, damage);
+
+        const s = this.paintStats;
+        let rasterAreaRects: Rect[] = [];
+        let chromeAreaRects: Rect[] = [];
+
+        if (!cacheOn) {
+          this.renderer.paint(gc, damage);
+        } else {
+          // Task 4 — spec §3 frame algorithm, steps 2-5. Step 1 (maintain)
+          // already ran above.
+          const layer = this.paintCacheLayer!;
+          const vsNow = this.viewport;
+          const plan = layerPlan!;
+          const vs2 = layerVs!;
+          // A reset forces a full layer re-raster regardless of why —
+          // `planLayer`'s own reset OR an unrelated base-system `full`
+          // (e.g. `suppressPartialRepaint`, a ledger cap trip) both mean
+          // "raster the layer's entire current coverage", though only
+          // `plan.kind === 'reset'` re-anchors the geometry itself (an
+          // unrelated `damage.full` leaves a legitimately `'keep'`/
+          // `'shift'`-decided anchor untouched — it's still correct,
+          // just needs its FULL extent re-rastered this frame).
+          const layerRasterFull = damage.full || plan.kind === 'reset';
+
+          // 2. Raster into the layer.
+          const layerCtx = layer.context();
+          if (layerCtx) {
+            if (!layerRasterFull) {
+              if (plan.kind === 'shift') {
+                for (const b of plan.rasterBands) {
+                  rasterAreaRects.push({ x: 0, y: b.top, w: this.canvasBounds.width, h: b.bottom - b.top });
+                }
+              }
+              for (const r of damage.dataRects) rasterAreaRects.push(r);
+            }
+            const layerLocalRects = rasterAreaRects.map((r) => ({
+              x: r.x, y: layer.contentToLayerY(r.y), w: r.w, h: r.h,
+            }));
+            if (layerRasterFull || layerLocalRects.length > 0) {
+              const rt0 = performance.now();
+              // `.cache.save()`/`.cache.restore()` (NOT raw `save`/
+              // `restore`) — the layer's `gc` has no per-tick outer cache
+              // frame the way the main canvas's `paintNow()` provides
+              // (`gc.cache.save()`/`.restore()` around the ENTIRE paint
+              // call); using the cache-aware pair here is what makes THIS
+              // invocation's fillStyle/etc writes correctly roll back
+              // (both the real ctx state AND the JS `values` cache) once
+              // it returns, so the layer's cache never drifts out of
+              // sync with the real backing store across retained-layer
+              // paints (a raw `save`/`restore` pair would revert the
+              // REAL ctx but leave the JS cache believing a stale value
+              // is still live).
+              layerCtx.cache.save();
+              layerCtx.translate(0, -vsNow.bodyTop);
+              this.renderer.paintLayer(layerCtx, vs2, layerRasterFull, layerLocalRects);
+              layerCtx.cache.restore();
+              const rasterMs = performance.now() - rt0;
+              s.layerRasterMs = s.layerRasterMs === 0 ? rasterMs : s.layerRasterMs * 0.9 + rasterMs * 0.1;
+            }
+          }
+
+          // 3. Present — one `drawImage` of the layer's visible slice.
+          const layerCanvasEl = layer.canvasElement();
+          if (layerCanvasEl) {
+            const src = layer.visibleSrcRect(vsNow.scrollTop, vsNow.bodyHeight, layerDpr);
+            this.renderer.presentLayer(
+              gc,
+              layerCanvasEl as unknown as CanvasImageSource,
+              layerCanvasEl.width,
+              src,
+              { bodyTop: vsNow.bodyTop, bodyBottom: vsNow.bodyBottom, width: this.canvasBounds.width },
+            );
+          }
+          s.presents++;
+
+          // 4/5. Chrome + sticky, on-screen — the Task-2 bridge formula
+          // (chromeRects already screen-space, dataRects content-space
+          // mapped back) gives the chrome pass the SAME clip union the
+          // legacy pipeline would have used, so pinned/totals/sticky
+          // redamage-on-scroll semantics stay pixel-identical.
+          const chromeFull = damage.full;
+          chromeAreaRects = chromeFull
+            ? []
+            : damage.chromeRects.concat(
+                damage.dataRects.map((r) => dataRectToScreen(r, { scrollTop: vsNow.scrollTop, bodyTop: vsNow.bodyTop })),
+              );
+          this.renderer.paintChrome(gc, chromeFull, chromeAreaRects);
+
+          if (plan.kind === 'reset') s.layerResets++;
+          else if (plan.kind === 'shift') s.layerShifts++;
+        }
         // Task 5 — snapshot the position/DPR/bounds THIS paint actually
         // painted at, so the next `afterScrollTick`'s delta (and its
         // dprChanged/boundsChanged bail checks) are always relative to
@@ -1692,7 +1870,6 @@ export class CGrid<TRow = any> {
         // the per-tick baseline resets alongside the per-paint one.
         this.lastTickScrollTop = this.lastPaintedScrollTop;
         const ms = performance.now() - t0;
-        const s = this.paintStats;
         s.paints++;
         if (damage.full) {
           s.fullPaints++;
@@ -1700,14 +1877,19 @@ export class CGrid<TRow = any> {
           s.lastAreaPct = 100;
         } else {
           s.partialPaints++;
-          if (damage.blit) s.blits++;
+          if (!cacheOn && damage.blit) s.blits++;
           // Two-domain damage (Task 2) — `chromeRects` (screen space) and
           // `dataRects` (content space) never overlap in the region they
           // cover, and area (w×h) is translation-invariant, so summing raw
-          // w×h from both arrays without transforming is exact.
-          s.lastRects = damage.chromeRects.length + damage.dataRects.length;
-          const area = damage.chromeRects.reduce((a, r) => a + r.w * r.h, 0)
-            + damage.dataRects.reduce((a, r) => a + r.w * r.h, 0);
+          // w×h from both arrays without transforming is exact. Task 4 —
+          // for a cache-on frame this sums the SAME rect sets the layer/
+          // chrome passes actually rastered from (`rasterAreaRects`/
+          // `chromeAreaRects`), which are empty on a present-only frame —
+          // giving `lastAreaPct: 0` exactly as the present-only contract
+          // requires, with no special-casing needed.
+          const rects = cacheOn ? rasterAreaRects.concat(chromeAreaRects) : damage.chromeRects.concat(damage.dataRects);
+          s.lastRects = rects.length;
+          const area = rects.reduce((a, r) => a + r.w * r.h, 0);
           const ca = this.canvasBounds.width * this.canvasBounds.height;
           s.lastAreaPct = ca > 0 ? Math.round((area / ca) * 1000) / 10 : 0;
         }
@@ -5643,17 +5825,27 @@ export class CGrid<TRow = any> {
       bodyBottom: vs.bodyBottom,
       bodyLeft: vs.bodyLeft,
       bodyRight: vs.bodyRight,
-      // Two-domain damage (Task 2) — `scrollTop` pivots the screen↔content
-      // transform (`screenYToContentY`/`dataRectToScreen`). No retained
-      // layer exists yet (Task 4 wires the real geometry), so `layerTop`
-      // mirrors the live scroll position (no extra layer-anchor
-      // indirection) and `layerHeight` mirrors today's body height — the
-      // data-domain area cap below degrades to today's body-height bound,
-      // and the content transform is a lossless round-trip the temporary
-      // renderer bridge inverts, so behavior is unchanged.
+      // Two-domain damage (Task 2/4) — `scrollTop` pivots the screen↔
+      // content transform (`screenYToContentY`/`dataRectToScreen`).
+      // `layerTop`/`layerHeight` feed the data-domain area cap
+      // (`DamageLedger.takeResolved`) against the LAYER's real extent —
+      // when the retained layer is active this frame, the paint closure
+      // has already applied this paint's `planLayer` decision (reset/
+      // shift geometry mutation) BEFORE calling this method, so
+      // `this.paintCacheLayer.geometry()` reflects the anchor THIS
+      // frame's raster/present will actually use. When the layer isn't
+      // active (option off, unavailable, or construction-time default),
+      // this degrades to the Task-2 placeholder — `layerTop` mirrors the
+      // live scroll position and `layerHeight` mirrors today's body
+      // height, exactly reproducing pre-Task-4 behavior.
       scrollTop: vs.scrollTop,
-      layerTop: vs.scrollTop,
-      layerHeight: vs.bodyBottom - vs.bodyTop,
+      layerTop: this.paintCacheActive() ? this.paintCacheLayer!.geometry().layerTop : vs.scrollTop,
+      layerHeight: this.paintCacheActive()
+        ? this.paintCacheLayer!.geometry().layerHeight
+        : vs.bodyBottom - vs.bodyTop,
+      // Task 4 — gates the ledger's scroll-exposed-band push (see
+      // `DamageResolveCtx.paintCacheLayerActive`'s doc).
+      paintCacheLayerActive: this.paintCacheActive(),
       stickyBandBottom,
       // Task 5 — totals-row / static-pinned-row bands (top or bottom
       // position), derived from the live viewport's non-data subgrid rows.
@@ -6385,7 +6577,14 @@ export class CGrid<TRow = any> {
     this.injectThemeObject(theme, mode);
     this.theme = this.cssReader.read();
     this.recomputeViewport();
-    this.cgridCanvas.requestRepaint();
+    // Task 4 (paint-cache layer) — a theme swap is one of the layer's
+    // required reset triggers; `repaintFull()` (not a bare
+    // `requestRepaint()`) guarantees this paint's resolved damage is
+    // `full` regardless of whatever else might be queued on the ledger,
+    // so the paint closure's `damage.full`-driven layer reset actually
+    // fires. Also closes a latent gap in the base damage system itself —
+    // previously a theme swap relied on the ledger happening to be empty.
+    this.repaintFull();
   }
 
   /** Theming Task 6/7 — imperatively force the active `themeObject` to
@@ -6416,7 +6615,9 @@ export class CGrid<TRow = any> {
     this.theme = this.cssReader.read();
     this.options.theme = theme;
     this.recomputeViewport();
-    this.cgridCanvas.requestRepaint();
+    // Task 4 — see `applyThemeModeSwap`'s doc: a theme change is a
+    // required paint-cache-layer reset trigger.
+    this.repaintFull();
   }
 
   /** Cycle 22 / Task 2 — swap the density-mode class on the root.
@@ -6435,7 +6636,11 @@ export class CGrid<TRow = any> {
     this.options.density = density ?? undefined;
     this.theme = this.cssReader.read();
     this.recomputeViewport();
-    this.cgridCanvas.requestRepaint();
+    // Task 4 — density changes row/header height, which is functionally
+    // a resize for the paint-cache layer (its own reset condition already
+    // fires on a `layerHeight` mismatch, but forcing full here keeps the
+    // BASE damage system honest too — see `applyThemeModeSwap`'s doc).
+    this.repaintFull();
   }
 
   /** Read any grid option (runtime or initial). Mirrors ag-grid's
@@ -6578,6 +6783,7 @@ export class CGrid<TRow = any> {
       updateRowGroupPanelSuppressSort: (suppress) =>
         this.rowGroupPanel?.setRenderOptions({ suppressSort: suppress }),
       updateGroupSelectsChildren: (enabled) => this.applyGroupSelectsChildren(enabled),
+      resetPaintCacheLayer: () => this.resetPaintCacheLayer(),
     };
   }
 
@@ -8049,6 +8255,35 @@ export class CGrid<TRow = any> {
     this.viewport = this.viewportManager.recompute(afterScroll);
   }
 
+  /** Task 4 (paint-cache layer) — `true` when the retained layer is
+   *  actually usable THIS paint: the option isn't explicitly `false` AND
+   *  the layer's own offscreen-canvas construction succeeded. Every call
+   *  site that decides between the retained-layer frame algorithm and the
+   *  legacy `Renderer.paint()` escape hatch gates on this, never on a bare
+   *  `this.paintCacheLayer !== null` (which stays non-null even for an
+   *  inert, construction-failed instance). */
+  private paintCacheActive(): boolean {
+    return this.options.paintCache !== false && (this.paintCacheLayer?.available ?? false);
+  }
+
+  /** Task 4 (paint-cache layer) — runtime `paintCache` / `paintCacheOverscan`
+   *  flip handler (wired via `RuntimeOptionTarget.resetPaintCacheLayer`).
+   *  Disposes any existing layer instance and, when the option is now
+   *  active, constructs a fresh one — a flip is treated as a full
+   *  teardown/rebuild per the spec (`paintCacheOverscan` changing the
+   *  layer's target height is ALSO a `planLayer` reset condition on its
+   *  own, but disposing here is simpler than trying to reuse a
+   *  differently-sized backing store across an option change apps make
+   *  rarely, if ever, at runtime). `paintCacheLayerAnchored = false` +
+   *  `repaintFull()` force the next paint through a full layer reset +
+   *  full chrome raster, so the flip is never a stale-present frame. */
+  private resetPaintCacheLayer(): void {
+    this.paintCacheLayer?.dispose();
+    this.paintCacheLayer = this.options.paintCache !== false ? new PaintCacheLayer() : null;
+    this.paintCacheLayerAnchored = false;
+    this.repaintFull();
+  }
+
   /** Task 3 (paint-cache layer, spec §1 "Layer layout") — the synthetic
    *  second `computeViewport` call that lays out rows for the retained
    *  offscreen layer, independent of the on-screen viewport. Mirrors the
@@ -8575,6 +8810,7 @@ export class CGrid<TRow = any> {
   resetPaintStats(): void {
     this.paintStats = {
       paints: 0, fullPaints: 0, partialPaints: 0, blits: 0,
+      presents: 0, layerShifts: 0, layerResets: 0, layerRasterMs: 0,
       lastRects: 0, lastAreaPct: 100, avgPaintMs: 0, worstPaintMs: 0,
     };
   }
@@ -10449,8 +10685,18 @@ export class CGrid<TRow = any> {
    *  coordinate space. Returns `null` when not in the current viewport
    *  (off-screen rows / columns + pinned-but-clipped layouts). */
   getCellBoundsAt(rowIndex: number, colId: string): { x: number; y: number; w: number; h: number } | null {
-    const col = this.viewport.visibleColumns.find((c) => c.colId === colId);
-    const row = this.viewport.visibleRows.find(
+    return this.cellBoundsAgainstFor(this.viewport, rowIndex, colId);
+  }
+
+  /** Task 4 (paint-cache layer) — `getCellBoundsAt`'s logic, parameterized
+   *  by an explicit `ViewportState` so the renderer's LAYER pass can
+   *  resolve bounds against `layerVs` instead of the real viewport. The
+   *  public `getCellBoundsAt` above always passes `this.viewport`
+   *  (unchanged behavior). */
+  private cellBoundsAgainstFor(vs: ViewportState, rowIndex: number, colId: string):
+    { x: number; y: number; w: number; h: number } | null {
+    const col = vs.visibleColumns.find((c) => c.colId === colId);
+    const row = vs.visibleRows.find(
       (r) => r.subgrid.isData && r.localRowIndex === rowIndex,
     );
     if (!col || !row) return null;
@@ -10473,9 +10719,21 @@ export class CGrid<TRow = any> {
    */
   getVisibleCellBounds(rowIndex: number, colId: string):
     { x: number; y: number; w: number; h: number } | null {
-    const bounds = this.getCellBoundsAt(rowIndex, colId);
+    return this.cellBoundsAgainst(this.viewport, rowIndex, colId);
+  }
+
+  /** Task 4 (paint-cache layer) — `getVisibleCellBounds`'s band-clip logic,
+   *  parameterized by an explicit `ViewportState`. The public
+   *  `getVisibleCellBounds` above always passes `this.viewport` (unchanged
+   *  behavior); the renderer's `getVisibleCellBounds` wiring (constructor,
+   *  ~line 1600) passes `layerVs` during the retained layer's raster pass
+   *  so the focus-ring / range overlay resolve against the LAYER's own
+   *  (possibly off-screen) coverage instead of the narrower on-screen
+   *  body. */
+  private cellBoundsAgainst(vs: ViewportState, rowIndex: number, colId: string):
+    { x: number; y: number; w: number; h: number } | null {
+    const bounds = this.cellBoundsAgainstFor(vs, rowIndex, colId);
     if (!bounds) return null;
-    const vs = this.viewport;
     if (bounds.y < vs.bodyTop || bounds.y + bounds.h > vs.bodyBottom) return null;
     const col = vs.visibleColumns.find((c) => c.colId === colId);
     const xL = col?.pinned === 'left' ? 0

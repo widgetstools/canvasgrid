@@ -94,7 +94,9 @@ export type RuntimeOption =
   | 'suppressCount'
   | 'singleClickEdit'
   | 'suppressClickEdit'
-  | 'enableExcelEditing';
+  | 'enableExcelEditing'
+  | 'paintCache'
+  | 'paintCacheOverscan';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
  *  import on `CGrid` (cgrid.ts imports this module). */
@@ -186,6 +188,12 @@ export interface RuntimeOptionTarget<TRow = any> {
    *  emission, and triggers a paint refresh so the auto-group cells
    *  re-render with / without checkboxes. */
   updateGroupSelectsChildren(enabled: boolean): void;
+  /** Task 4 (paint-cache layer) — runtime `paintCache` / `paintCacheOverscan`
+   *  flip. CGrid's implementation disposes any existing retained layer and
+   *  (when the option is now active) constructs a fresh one, then forces a
+   *  full repaint — a flip is a teardown/rebuild, never a stale-present
+   *  frame. */
+  resetPaintCacheLayer(): void;
 }
 
 /**
@@ -440,6 +448,12 @@ export function applyRuntimeOption<TRow>(
       // them (false) on the next frame.
       target.updateGroupSelectsChildren(value === true);
       return;
+    case 'paintCache':
+    case 'paintCacheOverscan':
+      // Task 4 — a flip tears down / rebuilds the retained layer and
+      // forces a full repaint (see `resetPaintCacheLayer`'s doc).
+      target.resetPaintCacheLayer();
+      return;
   }
 }
 
@@ -484,4 +498,5 @@ export const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOpt
   'domLayout',
   'groupSelectsChildren',
   'suppressCount', 'singleClickEdit', 'suppressClickEdit', 'enableExcelEditing',
+  'paintCache', 'paintCacheOverscan',
 ]);

@@ -103,6 +103,17 @@ function buildWiredGrid<T extends { id: string }>(
     columnDefs: cols,
     getRowId: (r) => r.id,
     rowData: rows,
+    // Task 4 (paint-cache layer) — this suite exercises the BASE damage-
+    // region system's own mechanics (blit counting, row-index-space
+    // resolution, area percentages against the single screen-space rect
+    // union) — the retained paint-cache layer (default-on since Task 4)
+    // repartitions that same damage into a layer raster + a separate
+    // chrome raster, which shifts these exact numbers without changing
+    // anything about the base system under test. `paintCache: false`
+    // pins this suite to the unchanged legacy/escape-hatch pipeline the
+    // assertions below were written against; the layer's own behavior
+    // has dedicated coverage in `tests/rendererPaintCache.test.ts`.
+    paintCache: false,
     ...options,
   });
   // happy-dom reports 0 for clientWidth/clientHeight without a real layout

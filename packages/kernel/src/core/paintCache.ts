@@ -19,7 +19,7 @@
  * `available = false` and every other method becomes a safe no-op.
  */
 
-import { attachGcCache, type CachedContext2D } from '../renderer/gc';
+import { attachGcCache, type CachedContext2D, type GcCanvasLike } from '../renderer/gc';
 import { isOffscreenCanvasSupported } from '../renderer/offscreenSupport';
 
 /** Layer coverage in CONTENT px (scroll space) — `layerTop` is the content
@@ -120,10 +120,9 @@ export function planLayer(args: {
 /** Minimal surface `PaintCacheLayer` needs from a canvas — satisfied by
  *  both `OffscreenCanvas` and `HTMLCanvasElement` (real or detached), and
  *  trivially fake-able in tests. */
-export interface PaintCacheCanvasLike {
+export interface PaintCacheCanvasLike extends GcCanvasLike {
   width: number;
   height: number;
-  getContext(type: '2d', attrs?: CanvasRenderingContext2DSettings): CanvasRenderingContext2D | null;
 }
 
 export type PaintCacheCanvasFactory = () => PaintCacheCanvasLike | null;
@@ -171,11 +170,7 @@ export class PaintCacheLayer {
     let ctx: CachedContext2D | null = null;
     if (canvas) {
       try {
-        // Cast: `attachGcCache` is typed against `HTMLCanvasElement`, but it
-        // only ever calls `.getContext('2d', attrs)` — `OffscreenCanvas`
-        // (and our fakes) satisfy that. Widening here rather than editing
-        // `gc.ts` per the task brief.
-        ctx = attachGcCache(canvas as unknown as HTMLCanvasElement, { alpha: false });
+        ctx = attachGcCache(canvas, { alpha: false });
       } catch {
         ctx = null;
       }
@@ -208,10 +203,19 @@ export class PaintCacheLayer {
    *  `canvas.width`/`height` clears the backing store even when the value
    *  is unchanged, which would itself blank the layer on a no-op call.
    *  `layerHeightCss` doubles as the CONTENT-space `layerHeight` (1:1 with
-   *  CSS px — only the backing store scales by `dpr`). */
-  ensureSize(widthCss: number, layerHeightCss: number, dpr: number): void {
+   *  CSS px — only the backing store scales by `dpr`).
+   *
+   *  Returns `true` when this call performed a REAL reallocation (backing
+   *  store dims changed) — the caller (Task 4's paint closure) uses this
+   *  to force a `planLayer` reset even when the CSS-px `layerHeight` (the
+   *  only dimension `planLayer` itself compares) happened to stay the
+   *  same but `dpr` alone changed: a dpr-only reallocation silently wipes
+   *  every pixel the same way a dimension change does, so a `'keep'` or
+   *  `'shift'` decision computed as if nothing happened would `shift()`
+   *  (self-blit) from — or `present` — a blank canvas. */
+  ensureSize(widthCss: number, layerHeightCss: number, dpr: number): boolean {
     this._layerHeight = layerHeightCss;
-    if (!this.available || !this.canvas || !this.ctx) return;
+    if (!this.available || !this.canvas || !this.ctx) return false;
     this.dpr = dpr;
     const newW = Math.round(widthCss * dpr);
     const newH = Math.round(layerHeightCss * dpr);
@@ -221,6 +225,7 @@ export class PaintCacheLayer {
       this.canvas.height = newH;
       this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
     }
+    return !sameBacking;
   }
 
   /** Self-blit the layer's own backing store by `dy` (CONTENT/CSS px, same

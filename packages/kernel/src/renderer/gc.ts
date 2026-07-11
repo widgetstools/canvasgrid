@@ -64,8 +64,18 @@ function alpha(cssColorSpec: string): number {
   return Number(m[4]);
 }
 
+/** Task 4 (paint-cache layer) — minimal canvas surface `attachGcCache`
+ *  actually needs. `HTMLCanvasElement` satisfies this structurally, and so
+ *  does `OffscreenCanvas` / any test fake — widened from the original
+ *  `HTMLCanvasElement`-only signature so `PaintCacheLayer` (which backs its
+ *  retained layer with an `OffscreenCanvas` when available) can call this
+ *  directly instead of casting through `as unknown as HTMLCanvasElement`. */
+export interface GcCanvasLike {
+  getContext(type: '2d', attrs?: CanvasRenderingContext2DSettings): CanvasRenderingContext2D | null;
+}
+
 export function attachGcCache(
-  canvas: HTMLCanvasElement,
+  canvas: GcCanvasLike,
   attrs: CanvasRenderingContext2DSettings = { alpha: false },
 ): CachedContext2D {
   const raw = canvas.getContext('2d', attrs);

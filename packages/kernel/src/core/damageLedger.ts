@@ -63,6 +63,23 @@ export interface DamageResolveCtx {
   layerHeight: number;
   stickyBandBottom: number | null;
   pinnedBandRects: Rect[];
+  /** Task 4 (paint-cache layer) — `true` when the retained layer is
+   *  actively serving this frame (paintCache enabled AND the layer's
+   *  `available`). The scroll-exposed "assume a screen self-blit"
+   *  band (below) exists ONLY for the pre-layer renderer's own scroll
+   *  self-blit (`Renderer.paint`'s `damage.blit` branch) — under the
+   *  retained layer, `PaintCacheLayer`'s own `planLayer` decision
+   *  (shift/reset) independently determines exactly which band needs a
+   *  fresh raster, so re-pushing the SAME band into `dataRects` here
+   *  would force a redundant per-scroll-tick raster and defeat the
+   *  layer's entire purpose (scroll frames should cost one `drawImage`,
+   *  not a raster). Sticky-band + pinned/totals chrome redamage stays
+   *  unconditional either way (see below) — those are genuinely
+   *  screen-anchored chrome the layer never covers, and the shipped
+   *  cache-off pipeline already redamages them every scroll tick.
+   *  Defaults to falsy so every existing/cache-off resolution is
+   *  byte-identical to pre-Task-4 behavior. */
+  paintCacheLayerActive?: boolean;
   rowBand(localRowIndex: number): { top: number; bottom: number } | null;
   rowIndexForRowId(rowId: number): number | null;
   colBounds(colId: string): { x: number; w: number } | null;
@@ -262,9 +279,16 @@ export class DamageLedger {
     let blit: { dy: number } | null = null;
     if (dy !== 0) {
       blit = { dy };
-      const exposed = Math.min(Math.abs(dy), ctx.bodyBottom - ctx.bodyTop);
-      if (dy > 0) pushData(ctx.bodyBottom - exposed, ctx.bodyBottom);
-      else pushData(ctx.bodyTop, ctx.bodyTop + exposed);
+      // Task 4 — the retained paint-cache layer supersedes this exposed-
+      // band push with its OWN shift/reset raster-band decision (see the
+      // `paintCacheLayerActive` doc above); skip it so a plain in-layer
+      // scroll tick resolves to an EMPTY `dataRects` (present-only frame),
+      // not a redundant per-tick raster.
+      if (!ctx.paintCacheLayerActive) {
+        const exposed = Math.min(Math.abs(dy), ctx.bodyBottom - ctx.bodyTop);
+        if (dy > 0) pushData(ctx.bodyBottom - exposed, ctx.bodyBottom);
+        else pushData(ctx.bodyTop, ctx.bodyTop + exposed);
+      }
       // Sticky band + shadow never scrolls with content — always redamage
       // it. Geometry-ambiguous (screen-anchored chrome that happens to sit
       // inside the body's y-range) — resolved by the body-intersection

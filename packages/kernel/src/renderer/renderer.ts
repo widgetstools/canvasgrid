@@ -83,8 +83,16 @@ export interface RendererOpts {
    * scrolled outside its column's band, so painters never need to
    * reimplement the band-clip math. Backed by
    * `CGrid.getVisibleCellBounds`.
+   *
+   * Task 4 (paint-cache layer) — optional 3rd `vs` argument: when supplied,
+   * bounds resolve against THAT `ViewportState` instead of the live real
+   * viewport. `paintLayer` wires this to `layerVs` so `paintOverlay` /
+   * `paintRangeOverlay` (baked into the retained layer) resolve focus-ring
+   * bounds against the layer's own (possibly off-screen) coverage, not the
+   * narrower on-screen body — the public `CGrid.getVisibleCellBounds()` API
+   * is unaffected (always resolves against the real viewport).
    */
-  getVisibleCellBounds: (rowIndex: number, colId: string) =>
+  getVisibleCellBounds: (rowIndex: number, colId: string, vs?: ViewportState) =>
     { x: number; y: number; w: number; h: number } | null;
   /**
    * Cycle 15 / Task 5 — group-row strip mode lookup. Returns the per-row
@@ -318,5 +326,162 @@ export class Renderer {
     paintRangeOverlay(gc, pctx);
 
     if (partial) gc.restore();
+  }
+
+  /**
+   * Task 4 (paint-cache layer) — shared `PainterCtx` builder for the split
+   * layer/chrome frame algorithm (spec §3). Deliberately NOT reused by the
+   * legacy `paint()` method above (the `paintCache:false` / layer-
+   * unavailable escape hatch) — that method's pctx construction stays
+   * untouched so the shipped pipeline can never regress from a shared-
+   * helper edit. `boundsVs`, when supplied, threads through as
+   * `getVisibleCellBounds`'s 3rd arg (see its doc) — `paintLayer` passes
+   * `layerVs` so the focus-ring / range overlay resolve against the
+   * layer's own (possibly off-screen) coverage; `paintChrome` omits it
+   * (defaults to the real viewport).
+   */
+  private buildPctx(
+    viewport: ViewportState,
+    damageBounds: { minX: number; minY: number; maxX: number; maxY: number } | null,
+    boundsVs?: ViewportState,
+  ) {
+    return {
+      viewport,
+      theme: this.opts.getTheme(),
+      columnDefs: this.opts.getColumnDefs(),
+      cellRenderers: this.opts.cellRenderers,
+      cellData: this.opts.cellData,
+      selection: this.opts.getSelection(),
+      hoveredRowIndex: this.opts.getHoveredRowIndex?.() ?? null,
+      sortModel: this.opts.getSortModel(),
+      totalRowCount: this.opts.getTotalRowCount?.() ?? 0,
+      rowDataSnapshotAt: this.opts.rowDataSnapshotAt,
+      stringRowIdAt: this.opts.stringRowIdAt,
+      getRowDataById: this.opts.getRowDataById,
+      themeKind: this.opts.getThemeKind?.(),
+      quickFilterLowerTerms: this.opts.getQuickFilterLowerTerms(),
+      showFillHandle: this.opts.getShowFillHandle(),
+      suppressAggFuncInHeader: this.opts.getSuppressAggFuncInHeader(),
+      getVisibleCellBounds: (rowIndex: number, colId: string) =>
+        this.opts.getVisibleCellBounds(rowIndex, colId, boundsVs),
+      groupRowStrip: this.opts.getGroupRowStrip(),
+      rowKindAt: this.opts.getRowKindAt,
+      groupHideOpenParents: this.opts.getGroupHideOpenParents(),
+      stickyAncestors: this.opts.getStickyAncestors(),
+      groupDepthAt: this.opts.getGroupDepthAt,
+      groupKeyAt: this.opts.getGroupKeyAt,
+      getStickyGroupTotals: this.opts.getStickyGroupTotals,
+      getColumnGroupOpen: this.opts.getColumnGroupOpen,
+      damageBounds,
+    };
+  }
+
+  /**
+   * Task 4 — layer raster pass (spec §3 step 2). Paints DATA-subgrid
+   * content ONLY — header/floatingFilter/totals/pinned bands are chrome,
+   * painted by `paintChrome` instead — into the retained layer's OWN `gc`,
+   * against `layerVs` (`CGrid.buildLayerViewport`'s synthetic widened
+   * viewport). Overlays/focus-ring/range-selection BAKE in here (spec §1)
+   * because they run against the SAME `layerVs`/translated `gc` as the
+   * cell paints.
+   *
+   * The caller (CGrid's paint closure) is responsible for the
+   * `ctx.translate(0, -bodyTop)` that lands `layerVs`'s row/column
+   * coordinates at the correct LAYER-local y (`contentY - layerTop`, per
+   * `PaintCacheLayer.contentToLayerY`) BEFORE calling this method — kept
+   * outside so a test can drive this method against a bare recording `gc`
+   * (no real dpr/translate CTM) and assert on the raw paint calls.
+   *
+   * `full`: fills the layer's entire extent (`layerVs`'s own body span)
+   * then rasters every data row, no clip. `!full`: clips to the union of
+   * `contentRects` (already in the SAME translated coordinate space) and
+   * rasters only inside it — an empty `contentRects` is the present-only
+   * fast path; the CALLER should skip invoking this method entirely in
+   * that case (checked by the caller so a "zero calls" assertion is
+   * meaningful independent of this method's own no-op guard).
+   */
+  paintLayer(gc: CachedContext2D, layerVs: ViewportState, full: boolean, contentRects: Rect[]): void {
+    if (!full && contentRects.length === 0) return;
+    const pctx = this.buildPctx(layerVs, full ? null : boundsOf(contentRects), layerVs);
+    const w = this.opts.getCanvasWidth();
+    if (full) {
+      gc.cache.fillStyle = pctx.theme.bg;
+      gc.fillRect(0, layerVs.bodyTop, w, Math.max(0, layerVs.bodyBottom - layerVs.bodyTop));
+    } else {
+      gc.save();
+      gc.beginPath();
+      for (const r of contentRects) gc.rect(r.x, r.y, r.w, r.h);
+      gc.clip();
+      gc.cache.fillStyle = pctx.theme.bg;
+      for (const r of contentRects) gc.fillRect(r.x, r.y, r.w, r.h);
+    }
+    paintCellsByRows(gc, pctx, 'layer');
+    paintGridLines(gc, pctx, 'layer');
+    paintOverlay(gc, pctx);
+    paintRangeOverlay(gc, pctx);
+    if (!full) gc.restore();
+  }
+
+  /**
+   * Task 4 — present pass (spec §3 step 3): ONE `drawImage` of the
+   * retained layer's currently-visible slice onto the on-screen data-body
+   * region. The C1 lesson (same class of bug as the legacy scroll self-
+   * blit above, and `PaintCacheLayer.shift`'s own doc) applies identically
+   * here: the SOURCE rect addresses the layer's backing store directly
+   * (DEVICE px, CTM-independent — `PaintCacheLayer.visibleSrcRect` already
+   * returns device px), but the DESTINATION rect goes through `gc`'s
+   * persistent `setTransform(dpr,0,0,dpr,0,0)` CTM, so it MUST be passed
+   * in CSS px — or a dpr≠1 backing store double-scales the paste.
+   */
+  presentLayer(
+    gc: CachedContext2D,
+    layerCanvas: CanvasImageSource,
+    srcWidthDevicePx: number,
+    src: { sy: number; sh: number },
+    dest: { bodyTop: number; bodyBottom: number; width: number },
+  ): void {
+    const hCss = dest.bodyBottom - dest.bodyTop;
+    if (hCss <= 0 || src.sh <= 0 || srcWidthDevicePx <= 0) return;
+    gc.drawImage(layerCanvas, 0, src.sy, srcWidthDevicePx, src.sh, 0, dest.bodyTop, dest.width, hCss);
+  }
+
+  /**
+   * Task 4 — chrome raster pass (spec §3 step 4) + the sticky-band pass
+   * (step 5). Paints non-data-subgrid content (header/floatingFilter/
+   * totals/pinned bands, chrome-side gridlines) ON-SCREEN against the REAL
+   * viewport. `full`: background-fills the canvas's non-data-body regions
+   * (the present pass already covers `[bodyTop, bodyBottom]` with the
+   * layer's content) then rasters every chrome row/gridline, no clip.
+   * `!full`: clips to `screenRects` and rasters only inside it; an empty
+   * `screenRects` skips the raster entirely (present-only fast path) —
+   * but the sticky-group band ALWAYS repaints afterward, unconditionally,
+   * whenever the grid currently has sticky ancestors, regardless of
+   * `full`/`screenRects` (it paints OVER the just-presented data blit and
+   * manages its own save/clip/restore internally).
+   */
+  paintChrome(gc: CachedContext2D, full: boolean, screenRects: Rect[]): void {
+    const viewport = this.opts.getViewport();
+    const w = this.opts.getCanvasWidth();
+    const h = this.opts.getCanvasHeight();
+    const pctx = this.buildPctx(viewport, full ? null : boundsOf(screenRects));
+    if (full) {
+      gc.cache.fillStyle = pctx.theme.bg;
+      if (viewport.bodyTop > 0) gc.fillRect(0, 0, w, viewport.bodyTop);
+      if (h > viewport.bodyBottom) gc.fillRect(0, viewport.bodyBottom, w, h - viewport.bodyBottom);
+      paintCellsByRows(gc, pctx, 'chrome');
+      paintGridLines(gc, pctx, 'chrome');
+    } else if (screenRects.length > 0) {
+      gc.save();
+      gc.beginPath();
+      for (const r of screenRects) gc.rect(r.x, r.y, r.w, r.h);
+      gc.clip();
+      gc.cache.fillStyle = pctx.theme.bg;
+      for (const r of screenRects) gc.fillRect(r.x, r.y, r.w, r.h);
+      paintCellsByRows(gc, pctx, 'chrome');
+      paintGridLines(gc, pctx, 'chrome');
+      gc.restore();
+    }
+    // Sticky band — always, over the present blit, whenever ancestors exist.
+    paintStickyGroups(gc, pctx);
   }
 }

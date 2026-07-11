@@ -84,6 +84,8 @@ export const GRID_OPTIONS_SCHEMA_EXCLUDED: ReadonlyMap<RuntimeOption, string> = 
   ['cellSelection', 'object option; revisit when a dedicated control exists'],
   ['defaultColDef', 'covered — fanned out into the Default column band'],
   ['enableExcelEditing', 'covered — surfaced as the Excel-style option of the Edit trigger select'],
+  ['paintCache', 'perf-tuning escape hatch (mirrors suppressPartialRepaint\'s framing), not a customizer-facing display setting'],
+  ['paintCacheOverscan', 'perf-tuning knob paired with paintCache, same rationale'],
 ] as Array<[RuntimeOption, string]>);
 
 const opts = (...pairs: Array<[string, string]>): SettingsSelectOption[] =>

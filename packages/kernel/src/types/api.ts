@@ -61,6 +61,34 @@ export interface PaintStats {
   lastAreaPct: number;
   /** Exponential moving average (α=0.1) of paint duration in ms. */
   avgPaintMs: number;
+  /** Task 4 (paint-cache layer) — total `presentLayer` (single `drawImage`
+   *  of the retained layer onto the on-screen data body) invocations.
+   *  Only incremented while the paint-cache layer is active
+   *  (`paintCache !== false` AND the layer's offscreen canvas construction
+   *  succeeded); stays `0` for the legacy/`paintCache:false` pipeline. */
+  presents: number;
+  /** Task 4 — total `planLayer` `'shift'` decisions (the layer re-centers
+   *  via a self-blit + a small edge-band raster, cheaper than a reset). */
+  layerShifts: number;
+  /** Task 4 — total `planLayer` `'reset'` decisions specifically (a scroll
+   *  jump beyond the layer's own coverage, the very first paint, or a
+   *  `layerHeight` mismatch from a resize/`paintCacheOverscan` change).
+   *  The OTHER reset triggers (horizontal scroll, dpr change, theme swap,
+   *  a `paintCache`/`paintCacheOverscan` runtime flip) achieve their
+   *  "never stale-present" guarantee via the base system's own
+   *  `damage.full` (tracked by `fullPaints`, not this counter) rather
+   *  than a `planLayer` decision — `planLayer` only ever reasons about
+   *  VERTICAL scroll position, so those stay orthogonal. Should stay ≈0
+   *  during steady vertical scroll — a nonzero rate there signals scroll
+   *  jumps exceeding `paintCacheOverscan`'s coverage. */
+  layerResets: number;
+  /** Task 4 — exponential moving average (α=0.1) of the layer raster
+   *  pass's OWN duration in ms (the `paintLayer` call only — excludes
+   *  present + chrome). Updated only on paints that actually rastered
+   *  something into the layer; a present-only frame (pure scroll within
+   *  the layer's coverage, nothing else damaged) doesn't touch this
+   *  average. `0` until the first such raster. */
+  layerRasterMs: number;
   /** Worst single paint duration observed, in ms. */
   worstPaintMs: number;
 }
