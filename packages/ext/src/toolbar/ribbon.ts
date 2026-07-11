@@ -1246,7 +1246,7 @@ const RIBBON_CSS = `
   border-radius: 50%; background: var(--cg-accent-color, #4f9cf9);
 }
 .cgext-rb-bpreview {
-  width: 20px; height: 20px; margin-left: 4px; border-radius: 4px; align-self: center;
+  width: 20px; height: 20px; margin-left: 4px; border-radius: var(--cg-radius, 4px); align-self: center;
   border: 1px dashed color-mix(in srgb, var(--cg-muted-fg-color, #7f8ba0) 55%, transparent);
   box-sizing: border-box;
 }
@@ -1267,7 +1267,7 @@ const RIBBON_CSS = `
 .cgext-rb-targettoggle {
   appearance: none; display: inline-flex; align-items: center; gap: 6px;
   height: 24px; padding: 0 8px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 6px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 6px);
   background: transparent; color: var(--cg-fg-color, #d3dbe7);
   font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
   transition: border-color 110ms ease, background 110ms ease;
@@ -1284,7 +1284,7 @@ const RIBBON_CSS = `
 .cgext-rb-btn, .cgext-rb-toggle {
   appearance: none; width: 24px; height: 24px;
   display: inline-flex; align-items: center; justify-content: center;
-  border: none; border-radius: 5px; background: transparent;
+  border: none; border-radius: var(--cg-radius, 5px); background: transparent;
   color: var(--cg-fg-color, #d3dbe7); cursor: pointer;
   transition: background 110ms ease, color 110ms ease;
 }
@@ -1296,7 +1296,7 @@ const RIBBON_CSS = `
 .cgext-rb-swatch svg { transform: translateY(-1.5px); }
 .cgext-rb-swatchbar {
   position: absolute; left: 5px; right: 5px; bottom: 3px; height: 3px;
-  border-radius: 1.5px; pointer-events: none;
+  border-radius: var(--cg-radius, 1.5px); pointer-events: none;
   box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.18);
 }
 .cgext-rb-btn:focus-visible, .cgext-rb-toggle:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: 1px; }
@@ -1305,7 +1305,7 @@ const RIBBON_CSS = `
 .cgext-rb-pill {
   display: inline-flex; align-items: center; gap: 4px;
   height: 24px; padding: 0 8px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 6px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 6px);
   background: var(--cg-control-bg, rgba(255,255,255,0.04));
   color: var(--cg-fg-color, #d6dce8); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
 }
@@ -1316,7 +1316,7 @@ const RIBBON_CSS = `
 
 .cgext-rb-input {
   height: 24px; padding: 0 8px; box-sizing: border-box;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 6px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 6px);
   background: var(--cg-control-bg, rgba(0,0,0,0.25)); color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
 }
 .cgext-rb-input:focus { outline: none; border-color: var(--cg-accent-color, #4f9cf9); }
@@ -1326,7 +1326,7 @@ const RIBBON_CSS = `
 .cgext-rb-stepper {
   display: inline-flex; align-items: center; gap: 5px;
   height: 24px; padding: 0 4px 0 8px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 6px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 6px);
   background: var(--cg-control-bg, rgba(255,255,255,0.04)); font-size: 12px; color: var(--cg-fg-color, #d6dce8);
 }
 .cgext-rb-step-stack { display: flex; flex-direction: column; }
@@ -1344,7 +1344,7 @@ const RIBBON_CSS = `
 .cgext-ip-open {
   appearance: none; display: inline-flex; align-items: center; gap: 6px;
   height: 24px; padding: 0 7px 0 3px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 6px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 6px);
   background: transparent; color: var(--cg-fg-color, #d3dbe7);
   font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
   transition: border-color 110ms ease, background 110ms ease;
@@ -1354,7 +1354,7 @@ const RIBBON_CSS = `
 .cgext-ip-open > svg:last-child { color: var(--cg-muted-fg-color, #7f8ba0); flex: 0 0 auto; }
 .cgext-ip-well {
   width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center;
-  border-radius: 4px; font-size: 12px; line-height: 1;
+  border-radius: var(--cg-radius, 4px); font-size: 12px; line-height: 1;
   color: var(--cg-muted-fg-color, #7f8ba0);
   background: color-mix(in srgb, var(--cg-muted-fg-color, #7f8ba0) 10%, transparent);
 }
@@ -1379,7 +1379,7 @@ const RIBBON_CSS = `
   position: fixed; z-index: 1000; width: 340px; max-height: 428px;
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--cg-popup-bg, #161b26); border: 1px solid var(--cg-border-color, #2a3140);
-  border-radius: 12px; box-shadow: 0 16px 40px rgba(0,0,0,0.5); padding: 10px;
+  border-radius: var(--cg-radius, 12px); box-shadow: 0 16px 40px rgba(0,0,0,0.5); padding: 10px;
 }
 .cgext-ip-panel[hidden] { display: none; }
 
@@ -1387,7 +1387,7 @@ const RIBBON_CSS = `
 .cgext-ip-searchwrap > svg { position: absolute; left: 9px; pointer-events: none; }
 .cgext-ip-search {
   width: 100%; box-sizing: border-box; height: 30px; padding: 0 10px 0 30px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 8px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 8px);
   background: var(--cg-control-bg, rgba(0,0,0,0.25)); color: var(--cg-fg-color, #e5e9f0);
   font: inherit; font-size: 12.5px; transition: border-color 120ms ease, box-shadow 120ms ease;
 }
@@ -1410,7 +1410,7 @@ const RIBBON_CSS = `
 .cgext-ip-scroll::-webkit-scrollbar-track { background: transparent; }
 .cgext-ip-scroll::-webkit-scrollbar-thumb {
   background: color-mix(in srgb, var(--cg-muted-fg-color, #7f8ba0) 45%, transparent);
-  border-radius: 5px;
+  border-radius: var(--cg-radius, 5px);
   border: 2px solid transparent;
   background-clip: padding-box;
 }
@@ -1429,7 +1429,7 @@ const RIBBON_CSS = `
 
 .cgext-ip-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
 .cgext-ip-tile {
-  appearance: none; border: none; border-radius: 7px; background: transparent;
+  appearance: none; border: none; border-radius: var(--cg-radius, 7px); background: transparent;
   width: 100%; aspect-ratio: 1; display: inline-flex; align-items: center; justify-content: center;
   color: var(--cg-muted-fg-color, #9aa4b6); font-size: 15px; line-height: 1; cursor: pointer;
   transition: background 90ms ease, color 90ms ease, transform 90ms ease;
@@ -1455,7 +1455,7 @@ const RIBBON_CSS = `
 }
 .cgext-ip-placehead:first-child { padding-top: 3px; }
 .cgext-ip-placeitem {
-  appearance: none; border: none; background: transparent; border-radius: 6px;
+  appearance: none; border: none; background: transparent; border-radius: var(--cg-radius, 6px);
   padding: 6px 10px; text-align: left; font: inherit; font-size: 12px;
   color: var(--cg-fg-color, #d6dce8); cursor: pointer;
   display: flex; align-items: center; justify-content: space-between; gap: 8px;

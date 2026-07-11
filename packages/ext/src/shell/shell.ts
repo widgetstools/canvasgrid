@@ -167,7 +167,7 @@ const SHELL_CSS = `
   height: 30px;
   padding: 0 12px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: var(--cg-radius, 7px);
   background: transparent;
   color: var(--cg-fg-color, #e5e9f0);
   font: inherit;
@@ -225,7 +225,7 @@ const SHELL_CSS = `
   align-items: center;
   justify-content: center;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--cg-radius, 6px);
   background: transparent;
   color: var(--cg-muted-fg-color, #8a93a6);
   font-size: 13px;

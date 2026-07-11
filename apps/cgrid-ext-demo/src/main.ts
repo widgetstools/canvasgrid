@@ -140,7 +140,7 @@ const ext = new CGridExt<Position>(app, {
   persistState: true,
   getRowId: (r) => r.positionId,
   columnDefs,
-  theme: 'cg-theme-starui-dark',
+  theme: 'cg-theme-cursor-dark',
   defaultColDef: { resizable: true, sortable: true, editable: true, flex: 1, minWidth: 80 },
   rowGroupPanelShow: 'always',
   sideBar: { toolPanels: ['columns', 'filters', 'gridOptions', 'columnGroups'] },

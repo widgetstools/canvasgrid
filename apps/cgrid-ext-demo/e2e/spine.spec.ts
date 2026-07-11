@@ -51,7 +51,7 @@ test('overflow menu: dark-theme toggle flips theme on shell and kernel', async (
       grid: Array.from(document.querySelector('.cgext-grid [class*="cg-theme-"]')!.classList).filter((c) => c.startsWith('cg-theme-')),
     }));
 
-  expect(await themes()).toEqual({ root: ['cg-theme-starui-dark'], grid: ['cg-theme-starui-dark'] });
+  expect(await themes()).toEqual({ root: ['cg-theme-cursor-dark'], grid: ['cg-theme-cursor-dark'] });
 
   await page.locator('[data-item-id="overflow"] button').click();
   const item = page.locator('.cgext-menu-item', { hasText: 'Dark theme' });
@@ -59,12 +59,12 @@ test('overflow menu: dark-theme toggle flips theme on shell and kernel', async (
 
   // Dark → light. Same theme family, `-dark` suffix dropped everywhere.
   await item.click();
-  expect(await themes()).toEqual({ root: ['cg-theme-starui'], grid: ['cg-theme-starui'] });
+  expect(await themes()).toEqual({ root: ['cg-theme-cursor'], grid: ['cg-theme-cursor'] });
   await expect(item).not.toHaveClass(/is-active/);
   await expect(page.locator('.cgext-menu')).toBeVisible();
 
   // Light → dark. Round-trips back to the original classes.
   await item.click();
-  expect(await themes()).toEqual({ root: ['cg-theme-starui-dark'], grid: ['cg-theme-starui-dark'] });
+  expect(await themes()).toEqual({ root: ['cg-theme-cursor-dark'], grid: ['cg-theme-cursor-dark'] });
   await expect(item).toHaveClass(/is-active/);
 });

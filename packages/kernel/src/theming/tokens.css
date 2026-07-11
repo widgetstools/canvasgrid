@@ -5,13 +5,17 @@
 .cg-theme-quartz,
 .cg-theme-quartz-dark,
 .cg-theme-starui,
-.cg-theme-starui-dark {
+.cg-theme-starui-dark,
+.cg-theme-cursor,
+.cg-theme-cursor-dark {
   background-color: var(--cg-bg-color);
 }
 .cg-theme-quartz .cg-canvas,
 .cg-theme-quartz-dark .cg-canvas,
 .cg-theme-starui .cg-canvas,
-.cg-theme-starui-dark .cg-canvas {
+.cg-theme-starui-dark .cg-canvas,
+.cg-theme-cursor .cg-canvas,
+.cg-theme-cursor-dark .cg-canvas {
   background-color: var(--cg-bg-color);
 }
 
@@ -435,6 +439,175 @@
   --cg-cell-padding-x: 8px;
 }
 
+/* ==========================================================================
+ * Cursor theme — palette extracted verbatim from Cursor IDE's bundled
+ * "Cursor Dark Anysphere" / "Cursor Light" theme JSONs (theme-cursor
+ * extension). The defining move is Cursor's surface hierarchy: the DATA
+ * plane (editor.background) is the brightest surface in dark mode and every
+ * piece of chrome — header band, tool panels, popups, status bar — recedes
+ * one step below it (sideBar/titleBar background). Hairlines are the
+ * foreground at 7.5% alpha (#F0F0F013 / #14141413), never a solid grey, so
+ * they read at the same optical weight on every surface. Hover/selection
+ * washes are NEUTRAL foreground-alpha (Cursor's list tokens), not accent
+ * tints; the nordic blue (#81A1C1 dark / #3C7CAB light) is reserved for
+ * focus, primary actions, and links. Radius is a flat 2px everywhere.
+ * ========================================================================== */
+.cg-theme-cursor {
+  color-scheme: light;
+  --cg-font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --cg-cell-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
+  --cg-font-size: 13px;
+  --cg-font-size-sm: 12px;
+  --cg-row-height: 32px;
+  --cg-header-height: 40px;
+  --cg-radius: 2px;
+  /* Surfaces — editor.background / sideBar.background / foreground. */
+  --cg-fg-color: #141414;
+  --cg-bg-color: #FCFCFC;
+  --cg-row-alt-bg: rgb(20 20 20 / 1.5%);
+  --cg-header-bg: #F3F3F3;
+  --cg-header-fg: rgb(20 20 20 / 74%);
+  --cg-border-color: rgb(20 20 20 / 12%);
+  --cg-grid-line-color: rgb(20 20 20 / 6%);
+  /* Neutral fg-alpha washes — Cursor's list.hover / editor.selection. */
+  --cg-row-hover-bg: rgb(20 20 20 / 6.7%);
+  --cg-row-selected-bg: rgb(20 20 20 / 11.8%);
+  /* Accent — textLink / button.background. */
+  --cg-chrome-accent: #3C7CAB;
+  --cg-focus-ring-color: #3C7CAB;
+  --cg-focus-ring-width: 2px;
+  --cg-editor-invalid-color: var(--cg-neg-color);
+  --cg-flash-from-color: rgb(192 133 50 / 30%);
+  --cg-flash-to-color: rgb(192 133 50 / 0%);
+  --cg-resizer-hot-zone: 4px;
+  --cg-scrollbar-thickness: 10px;
+  --cg-floating-filter-bg: #FCFCFC;
+  --cg-floating-filter-border: rgb(20 20 20 / 12%);
+  --cg-floating-filter-placeholder: rgb(20 20 20 / 36%);
+  --cg-quick-filter-match-bg: rgb(192 133 50 / 20%);
+  --cg-unsort-icon-color: rgb(20 20 20 / 36%);
+  --cg-range-fill-color: rgb(60 124 171 / 12%);
+  --cg-range-border-color: rgb(60 124 171 / 55%);
+  /* Totals / pinned — editor.lineHighlightBackground step. */
+  --cg-totals-bg: #EDEDED;
+  --cg-totals-fg: #141414;
+  --cg-totals-border-top: rgb(20 20 20 / 18%);
+  --cg-totals-fg-muted: rgb(20 20 20 / 55%);
+  --cg-totals-font-weight: 500;
+  --cg-pinned-row-bg: #F1F1F1;
+  --cg-pinned-row-fg: var(--cg-fg-color);
+  --cg-pinned-row-border: var(--cg-totals-border-top);
+  --cg-group-chevron-color: var(--cg-totals-fg-muted);
+  --cg-group-count-color: var(--cg-totals-fg-muted);
+  --cg-group-indent: 14px;
+  --cg-group-row-bg: #F6F6F6;
+  --cg-group-checkbox-border-color: rgb(20 20 20 / 40%);
+  --cg-group-checkbox-check-color: var(--cg-fg-color);
+  --cg-group-checkbox-indeterminate-color: var(--cg-fg-color);
+  --cg-group-checkbox-fill: transparent;
+  --cg-group-footer-bg: var(--cg-totals-bg);
+  --cg-group-footer-fg: var(--cg-totals-fg);
+  --cg-group-footer-border-top: var(--cg-totals-border-top);
+  --cg-group-footer-font-weight: var(--cg-totals-font-weight);
+  /* Inputs — input.background / input.border (#14141426). */
+  --cg-input-bg: #FCFCFC;
+  --cg-input-fg: #141414;
+  --cg-input-border: rgb(20 20 20 / 15%);
+  --cg-input-focus-border: var(--cg-focus-ring-color);
+  --cg-input-disabled-bg: #F3F3F3;
+  /* Popups / tooltips — editorWidget / editorHoverWidget. */
+  --cg-tooltip-bg: #F3F3F3;
+  --cg-tooltip-fg: #141414;
+  --cg-tooltip-border: rgb(20 20 20 / 15%);
+  --cg-checkbox-checked-bg: #3C7CAB;
+  --cg-checkbox-checked-fg: #FCFCFC;
+  --cg-cell-horizontal-border-color: transparent;
+  --cg-popup-bg: #F3F3F3;
+  --cg-popup-border: rgb(20 20 20 / 15%);
+  --cg-menu-hover-bg: rgb(20 20 20 / 6.7%);
+  --cg-cell-padding-x: 8px;
+}
+
+.cg-theme-cursor-dark {
+  color-scheme: dark;
+  --cg-font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --cg-cell-font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', Menlo, Consolas, monospace;
+  --cg-font-size: 13px;
+  --cg-font-size-sm: 12px;
+  --cg-row-height: 32px;
+  --cg-header-height: 40px;
+  --cg-radius: 2px;
+  /* Surfaces — the plane inversion: data (#181818, editor.background) sits
+   * ABOVE the chrome (#141414, sideBar/titleBar) in brightness. */
+  --cg-fg-color: #F0F0F0;
+  --cg-bg-color: #181818;
+  --cg-row-alt-bg: rgb(240 240 240 / 2%);
+  --cg-header-bg: #141414;
+  --cg-header-fg: rgb(240 240 240 / 74%);
+  --cg-border-color: rgb(240 240 240 / 7.5%);
+  --cg-grid-line-color: rgb(240 240 240 / 5%);
+  /* Neutral fg-alpha washes — list.hoverBackground / activeSelection. */
+  --cg-row-hover-bg: rgb(240 240 240 / 6.7%);
+  --cg-row-selected-bg: rgb(240 240 240 / 11.8%);
+  /* Accent — button.background / textLink (nordic blue). */
+  --cg-chrome-accent: #81A1C1;
+  --cg-focus-ring-color: #81A1C1;
+  --cg-focus-ring-width: 2px;
+  --cg-editor-invalid-color: var(--cg-neg-color);
+  --cg-flash-from-color: rgb(241 180 103 / 28%);
+  --cg-flash-to-color: rgb(241 180 103 / 0%);
+  --cg-resizer-hot-zone: 4px;
+  --cg-scrollbar-thickness: 10px;
+  --cg-floating-filter-bg: rgb(240 240 240 / 4%);
+  --cg-floating-filter-border: rgb(240 240 240 / 7.5%);
+  --cg-floating-filter-placeholder: rgb(240 240 240 / 36%);
+  --cg-quick-filter-match-bg: rgb(241 180 103 / 20%);
+  --cg-unsort-icon-color: rgb(240 240 240 / 36%);
+  --cg-range-fill-color: rgb(129 161 193 / 14%);
+  --cg-range-border-color: rgb(129 161 193 / 55%);
+  /* Totals / pinned — one step above the data plane (#262626 is Cursor's
+   * lineHighlight); the synthesis rows are the only surfaces brighter
+   * than data, mirroring how Cursor lifts the active line. */
+  --cg-totals-bg: #202020;
+  --cg-totals-fg: #F0F0F0;
+  --cg-totals-border-top: rgb(240 240 240 / 16%);
+  --cg-totals-fg-muted: rgb(240 240 240 / 55%);
+  --cg-totals-font-weight: 500;
+  --cg-pinned-row-bg: #1E1E1E;
+  --cg-pinned-row-fg: var(--cg-fg-color);
+  --cg-pinned-row-border: var(--cg-totals-border-top);
+  --cg-group-chevron-color: var(--cg-totals-fg-muted);
+  --cg-group-count-color: var(--cg-totals-fg-muted);
+  --cg-group-indent: 14px;
+  --cg-group-row-bg: #1C1C1C;
+  --cg-group-checkbox-border-color: rgb(240 240 240 / 40%);
+  --cg-group-checkbox-check-color: var(--cg-fg-color);
+  --cg-group-checkbox-indeterminate-color: var(--cg-fg-color);
+  --cg-group-checkbox-fill: transparent;
+  --cg-group-footer-bg: var(--cg-totals-bg);
+  --cg-group-footer-fg: var(--cg-totals-fg);
+  --cg-group-footer-border-top: var(--cg-totals-border-top);
+  --cg-group-footer-font-weight: var(--cg-totals-font-weight);
+  /* Inputs — input.background #F0F0F00A / input.border #F0F0F013. */
+  --cg-input-bg: rgb(240 240 240 / 4%);
+  --cg-input-fg: #F0F0F0;
+  --cg-input-border: rgb(240 240 240 / 7.5%);
+  --cg-input-focus-border: var(--cg-focus-ring-color);
+  --cg-input-disabled-bg: rgb(240 240 240 / 2%);
+  /* Popups / tooltips — editorWidget.background #141414 with the
+   * hover-widget border (#F0F0F026). */
+  --cg-tooltip-bg: #141414;
+  --cg-tooltip-fg: #F0F0F0;
+  --cg-tooltip-border: rgb(240 240 240 / 15%);
+  --cg-checkbox-checked-bg: #81A1C1;
+  --cg-checkbox-checked-fg: #191C22;
+  --cg-cell-horizontal-border-color: transparent;
+  --cg-popup-bg: #141414;
+  --cg-popup-border: rgb(240 240 240 / 15%);
+  --cg-menu-hover-bg: rgb(240 240 240 / 6.7%);
+  --cg-cell-padding-x: 8px;
+}
+
 /* Cycle 24 / Task 5 — high-contrast theme. WCAG 2.1 AAA: ≥ 7:1 body
  * text contrast, thicker focus rings (3px), no semi-transparent fills.
  * Black-on-white pairing for maximum contrast; the dark variant
@@ -615,11 +788,24 @@
   --cg-pos-color: #2dd4bf;
   --cg-neg-color: #fb7185;
 }
+/* Cursor themes use Cursor's own semantic pair (progressBar green /
+ * errorForeground rose) — already teal- and rose-leaning, so formatting
+ * colors stay in the palette's family. */
+.cg-theme-cursor {
+  --cg-pos-color: #1F8A65;
+  --cg-neg-color: #CF2D56;
+}
+.cg-theme-cursor-dark {
+  --cg-pos-color: #3FA266;
+  --cg-neg-color: #E34671;
+}
 
 .cg-theme-quartz,
 .cg-theme-quartz-dark,
 .cg-theme-starui,
 .cg-theme-starui-dark,
+.cg-theme-cursor,
+.cg-theme-cursor-dark,
 .cg-theme-high-contrast,
 .cg-theme-high-contrast-dark,
 .cg-theme-auto {
@@ -628,7 +814,9 @@
   --cg-muted-color: #8a8f98;
   --cg-bar-height: 8px;
   --cg-chip-height: 16px;
-  --cg-chip-radius: 3px;
+  /* Chips follow the theme's global radius (StarUI/Cursor flatten to 2px);
+   * themes without --cg-radius keep the original 3px. */
+  --cg-chip-radius: var(--cg-radius, 3px);
   /* Workstream A, part 2 — StatusPill's 6 order/fill states. `dashed` is
    * NOT a token (structural, code-only — see cssReader.ts); only bg/fg/
    * border color values live here. */
@@ -947,6 +1135,57 @@
   background: transparent;
 }
 
+/* Cursor scrollbar — Cursor IDE's slim neutral slider: transparent track,
+ * foreground-alpha thumb (scrollbarSlider.background #F0F0F011 dark /
+ * #1414141E light, stepping up on hover/active), no buttons, flat 2px
+ * corners. 10px matches --cg-scrollbar-thickness above so the canvas
+ * reserves the exact gutter. */
+.cg-theme-cursor .cg-scrollbar::-webkit-scrollbar,
+.cg-theme-cursor-dark .cg-scrollbar::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+  -webkit-appearance: none;
+}
+.cg-theme-cursor .cg-scrollbar::-webkit-scrollbar-track,
+.cg-theme-cursor-dark .cg-scrollbar::-webkit-scrollbar-track {
+  background: transparent;
+}
+.cg-theme-cursor .cg-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgb(20 20 20 / 12%);
+}
+.cg-theme-cursor-dark .cg-scrollbar::-webkit-scrollbar-thumb {
+  background-color: rgb(240 240 240 / 6.7%);
+}
+.cg-theme-cursor .cg-scrollbar::-webkit-scrollbar-thumb,
+.cg-theme-cursor-dark .cg-scrollbar::-webkit-scrollbar-thumb {
+  border-radius: 2px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 120ms ease;
+}
+.cg-theme-cursor .cg-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(20 20 20 / 19%);
+}
+.cg-theme-cursor-dark .cg-scrollbar::-webkit-scrollbar-thumb:hover {
+  background-color: rgb(240 240 240 / 11.8%);
+}
+.cg-theme-cursor .cg-scrollbar::-webkit-scrollbar-thumb:active {
+  background-color: rgb(20 20 20 / 28%);
+}
+.cg-theme-cursor-dark .cg-scrollbar::-webkit-scrollbar-thumb:active {
+  background-color: rgb(240 240 240 / 19%);
+}
+.cg-theme-cursor .cg-scrollbar::-webkit-scrollbar-button,
+.cg-theme-cursor-dark .cg-scrollbar::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+.cg-theme-cursor .cg-scrollbar::-webkit-scrollbar-corner,
+.cg-theme-cursor-dark .cg-scrollbar::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
 /* Firefox: scrollbar-color provides the equivalent of our
  * ::-webkit-scrollbar-thumb / -track colours. Intentionally NOT applied
  * to Chromium (Chrome 121+ silently disables ALL ::-webkit-scrollbar
@@ -963,6 +1202,14 @@
   .cg-theme-quartz .cg-scrollbar {
     scrollbar-width: thin;
     scrollbar-color: #b5bdc6 #eceff2;
+  }
+  .cg-theme-cursor-dark .cg-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #3a3a3a transparent;
+  }
+  .cg-theme-cursor .cg-scrollbar {
+    scrollbar-width: thin;
+    scrollbar-color: #c9c9c9 transparent;
   }
 }
 
@@ -1461,7 +1708,7 @@
   position: relative;
   width: 28px;
   height: 16px;
-  border-radius: 8px;
+  border-radius: var(--cg-radius, 8px);
   background: color-mix(in srgb, var(--cg-fg-color) 30%, transparent);
   border: none;
   cursor: pointer;
@@ -1478,7 +1725,7 @@
   left: 2px;
   width: 12px;
   height: 12px;
-  border-radius: 50%;
+  border-radius: var(--cg-radius, 50%);
   background: var(--cg-bg-color);
   transition: transform 120ms ease;
 }
@@ -2308,7 +2555,7 @@
   color: var(--cg-fg-color);
   background: transparent;
   border: 1px solid var(--cg-border-color);
-  border-radius: 999px;
+  border-radius: var(--cg-radius, 999px);
   cursor: pointer;
   white-space: nowrap;
   opacity: 0.75;
@@ -2375,7 +2622,7 @@
   text-align: center;
   color: var(--cg-bg-color);
   background: var(--cg-settings-accent);
-  border-radius: 999px;
+  border-radius: var(--cg-radius, 999px);
 }
 .cg-settings-row {
   position: relative;
@@ -2463,7 +2710,7 @@
   position: relative;
   width: 28px;
   height: 16px;
-  border-radius: 8px;
+  border-radius: var(--cg-radius, 8px);
   background: color-mix(in srgb, var(--cg-fg-color) 30%, transparent);
   border: none;
   cursor: pointer;
@@ -2480,7 +2727,7 @@
   left: 2px;
   width: 12px;
   height: 12px;
-  border-radius: 50%;
+  border-radius: var(--cg-radius, 50%);
   background: var(--cg-bg-color);
   transition: transform 120ms ease;
 }
@@ -3721,7 +3968,7 @@
   --cg-row-group-panel-padding-x: 8px;
   --cg-row-group-panel-gap: 6px;
   --cg-row-group-chip-height: 22px;
-  --cg-row-group-chip-radius: 11px;
+  --cg-row-group-chip-radius: var(--cg-radius, 11px);
   --cg-row-group-chip-padding-x: 7px;
   --cg-row-group-chip-gap: 4px;
   /* Chip background — slightly elevated above header-bg via a mix with
@@ -3971,7 +4218,7 @@
    * same way under either parent. Kept in lockstep with the row-group
    * definitions above. */
   --cg-row-group-chip-height: 22px;
-  --cg-row-group-chip-radius: 11px;
+  --cg-row-group-chip-radius: var(--cg-radius, 11px);
   --cg-row-group-chip-padding-x: 7px;
   --cg-row-group-chip-gap: 4px;
   --cg-row-group-chip-bg:

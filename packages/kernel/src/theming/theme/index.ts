@@ -16,7 +16,7 @@ export type {
   StatusColorEntry,
 } from './themeObject';
 
-export { themeQuartz, themeStarui, baseTheme } from './builtins';
+export { themeQuartz, themeStarui, themeCursor, baseTheme } from './builtins';
 
 export { compactInputs, accentInputs } from './parts';
 

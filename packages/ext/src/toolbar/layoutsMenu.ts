@@ -435,14 +435,14 @@ const LAYOUTS_CSS = `
 }
 .cgext-layouts-row {
   position: relative; display: flex; align-items: center; gap: 8px;
-  padding: 7px 8px; border-radius: 7px; cursor: pointer;
+  padding: 7px 8px; border-radius: var(--cg-radius, 7px); cursor: pointer;
   color: var(--cg-fg-color, #e5e9f0); font-size: 12.5px;
 }
 .cgext-layouts-row:hover { background: var(--cg-row-alt-bg, rgba(255,255,255,0.06)); }
 .cgext-layouts-row.is-active { background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 14%, transparent); }
 .cgext-layouts-row.is-active::before {
   content: ''; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px;
-  border-radius: 2px; background: var(--cg-accent-color, #4f9cf9);
+  border-radius: var(--cg-radius, 2px); background: var(--cg-accent-color, #4f9cf9);
 }
 .cgext-layouts-mark { width: 16px; display: inline-flex; justify-content: center; color: var(--cg-accent-color, #4f9cf9); }
 .cgext-layouts-dot { width: 5px; height: 5px; border-radius: 50%; background: var(--cg-muted-fg-color, #9aa4b6); opacity: 0.6; }
@@ -460,7 +460,7 @@ const LAYOUTS_CSS = `
 .cgext-layouts-row:focus-within .cgext-layouts-actions { visibility: visible; opacity: 1; }
 .cgext-layouts-act {
   appearance: none; border: none; background: transparent;
-  width: 24px; height: 24px; border-radius: 6px;
+  width: 24px; height: 24px; border-radius: var(--cg-radius, 6px);
   display: inline-flex; align-items: center; justify-content: center;
   color: var(--cg-muted-fg-color, #9aa4b6); cursor: pointer;
 }
@@ -469,7 +469,7 @@ const LAYOUTS_CSS = `
 .cgext-layouts-lock { width: 24px; display: inline-flex; justify-content: center; color: var(--cg-muted-fg-color, #9aa4b6); opacity: 0.7; }
 .cgext-layouts-rename {
   flex: 1 1 auto; min-width: 0; height: 26px; padding: 0 8px;
-  border: 1px solid var(--cg-accent-color, #4f9cf9); border-radius: 6px;
+  border: 1px solid var(--cg-accent-color, #4f9cf9); border-radius: var(--cg-radius, 6px);
   background: var(--cg-control-bg, rgba(0,0,0,0.25));
   color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
 }
@@ -482,14 +482,14 @@ const LAYOUTS_CSS = `
 }
 .cgext-layouts-new input {
   flex: 1 1 auto; min-width: 0; height: 28px; padding: 0 9px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 7px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 7px);
   background: var(--cg-control-bg, rgba(0,0,0,0.25));
   color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
 }
 .cgext-layouts-new input:focus { outline: none; border-color: var(--cg-accent-color, #4f9cf9); }
 .cgext-layouts-savenew {
   height: 28px; padding: 0 12px; white-space: nowrap;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 7px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 7px);
   background: var(--cg-control-bg, rgba(255,255,255,0.04));
   color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px; font-weight: 550;
   cursor: pointer; transition: border-color 120ms ease;
@@ -500,7 +500,7 @@ const LAYOUTS_CSS = `
 .cgext-layouts-foot button {
   flex: 1; height: 28px;
   display: inline-flex; align-items: center; justify-content: center; gap: 6px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 7px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 7px);
   background: var(--cg-control-bg, rgba(255,255,255,0.04));
   color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px; font-weight: 550;
   cursor: pointer; transition: border-color 120ms ease;

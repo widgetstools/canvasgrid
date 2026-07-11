@@ -24,6 +24,13 @@ export const themeStarui = createTheme({
   baseClass: { light: 'cg-theme-starui', dark: 'cg-theme-starui-dark' },
 });
 
+/** The Cursor theme as a `CgTheme`, wrapping `cg-theme-cursor[-dark]` —
+ *  the Cursor IDE (Anysphere) palette: recessed chrome under a brighter
+ *  data plane, fg-alpha hairlines, nordic-blue accent, flat 2px radius. */
+export const themeCursor = createTheme({
+  baseClass: { light: 'cg-theme-cursor', dark: 'cg-theme-cursor-dark' },
+});
+
 /** Alias for `themeQuartz` — the neutral starting point most consumers
  *  should `withParams`/`withPart` from. */
 export const baseTheme = themeQuartz;

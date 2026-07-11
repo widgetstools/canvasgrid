@@ -217,11 +217,24 @@ export function injectTitleBarStyles(): void {
 }
 
 const TITLEBAR_CSS = `
+/* Ext chrome token aliases — the ext stylesheets consume three tokens the
+ * kernel themes don't declare (--cg-accent-color / --cg-muted-fg-color /
+ * --cg-control-bg). Derive them from the active theme's own tokens on ANY
+ * cg-theme-* class (grid root AND body-mounted popups, which mirror the
+ * theme class) so every control follows the theme instead of falling back
+ * to per-rule hardcoded colors. Fallbacks preserve the pre-token look for
+ * unthemed hosts. */
+[class*="cg-theme-"] {
+  --cg-accent-color: var(--cg-chrome-accent, #4f9cf9);
+  --cg-muted-fg-color: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 62%, transparent);
+  --cg-control-bg: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 6%, transparent);
+}
+
 .cgext-iconbtn {
   appearance: none;
   width: 30px; height: 30px;
   display: inline-flex; align-items: center; justify-content: center;
-  border: none; border-radius: 7px;
+  border: none; border-radius: var(--cg-radius, 7px);
   background: transparent;
   color: var(--cg-muted-fg-color, #9aa4b6);
   cursor: pointer;
@@ -237,10 +250,10 @@ const TITLEBAR_CSS = `
 .cgext-brand-collapse { width: 26px; height: 26px; }
 
 .cgext-search { display: inline-flex; align-items: center; gap: 4px; }
-.cgext-search-open { background: var(--cg-control-bg, rgba(255,255,255,0.05)); border-radius: 8px; padding-left: 2px; }
+.cgext-search-open { background: var(--cg-control-bg, rgba(255,255,255,0.05)); border-radius: var(--cg-radius, 8px); padding-left: 2px; }
 .cgext-search-input {
   width: 260px; height: 28px; padding: 0 10px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 8px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 8px);
   background: var(--cg-control-bg, rgba(0,0,0,0.25));
   color: var(--cg-fg-color, #e5e9f0); font: inherit;
 }
@@ -249,7 +262,7 @@ const TITLEBAR_CSS = `
 .cgext-profile {
   display: inline-flex; align-items: center; gap: 7px;
   height: 30px; padding: 0 8px 0 5px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 8px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 8px);
   background: var(--cg-control-bg, rgba(255,255,255,0.04));
   color: var(--cg-fg-color, #e5e9f0); font: inherit; cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease;
@@ -272,7 +285,7 @@ const TITLEBAR_CSS = `
 .cgext-date {
   display: inline-flex; align-items: center; gap: 6px;
   height: 30px; padding: 0 10px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 8px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 8px);
   color: var(--cg-fg-color, #e5e9f0); font-size: 12.5px; font-variant-numeric: tabular-nums;
 }
 .cgext-date svg { color: var(--cg-muted-fg-color, #9aa4b6); }
@@ -284,7 +297,7 @@ const TITLEBAR_CSS = `
   position: fixed; z-index: 60; min-width: 190px;
   padding: 5px;
   background: var(--cg-popup-bg, #171c26);
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 10px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 10px);
   box-shadow: 0 12px 32px rgba(0,0,0,0.4);
   color: var(--cg-fg-color, #e5e9f0);
   font: 13px/1.4 var(--cg-font-family, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif);
@@ -292,7 +305,7 @@ const TITLEBAR_CSS = `
 .cgext-menu-list { display: flex; flex-direction: column; }
 .cgext-menu-item {
   display: flex; align-items: center; gap: 9px;
-  padding: 7px 9px; border: none; border-radius: 7px;
+  padding: 7px 9px; border: none; border-radius: var(--cg-radius, 7px);
   background: transparent; color: inherit; font: inherit; text-align: left;
   cursor: pointer;
 }
