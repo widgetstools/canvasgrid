@@ -53,3 +53,22 @@ Reproduce the measurements with `perf-probe.mjs` (hosted window via CDP
 `npm run build && npx vite preview --port 4188` and launching
 `openfin --launch --config openfin/app.json` from a shell without
 `ELECTRON_RUN_AS_NODE`.
+
+## After damage-region rendering (2026-07-11, runtime 41.134.102.3)
+
+Steady state, live STOMP ticking, 10s window (`getPaintStats()`):
+306/306 paints partial, avg **2.0ms** per paint (was 50–100ms full paints),
+`fullPaints: 0`. Probe: 59fps with a single >50ms frame per ~8–10s
+(worst 64–90ms — one outlier partial paint, suspected GC coincidence;
+under investigation in the closeout fix wave).
+
+Scroll (6s continuous wheel): 57fps, but 128 of 201 paints still FULL —
+every scrolled window-move chunk arrival takes the conservative
+`repaintFull()` branch (recorded Task-5 concern), overriding the blit
+path (35 blits happened, avg paint 5.8ms, worst 62ms). Fix identified:
+overlap-aware window-move damage (repaint only newly-entered rows ∪
+touchedRows when the new fetch window overlaps the old).
+
+Bar status: steady-state effectively met (one rare outlier vs. the
+previous constant hitching); scroll p99 ≤ 34ms NOT yet met — addressed
+in the batch fix wave.
