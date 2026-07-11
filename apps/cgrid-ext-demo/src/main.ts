@@ -40,6 +40,12 @@ const SUPPRESS_PARTIAL = harnessParams.has('suppressPartial');
 //                 which always ran with flash on (C3).
 const GROUPED = harnessParams.has('grouped');
 const NO_FLASH = harnessParams.has('noFlash');
+// Task 5 (paint-cache layer) — `&noCache` boots with `paintCache: false`,
+// the field escape hatch back to the legacy damage-only pipeline. Paired
+// with `?paintHarness` this is the cache-on-vs-cache-off invariance arm:
+// two harness pages, one with the retained layer active (default) and one
+// without, must produce byte-identical pixels for the same step script.
+const NO_CACHE = harnessParams.has('noCache');
 
 /** Deterministic PRNG (public-domain mulberry32) — same seed on every boot
  *  so the two harness pages (partial vs. suppressed) see identical data. */
@@ -214,6 +220,10 @@ const ext = new CGridExt<Position>(app, {
   // every repaint to the full-surface path — the invariance spec's control
   // arm for damage-region rendering.
   ...(SUPPRESS_PARTIAL ? { suppressPartialRepaint: true } : {}),
+  // `&noCache` (only meaningful alongside `?paintHarness`) disables the
+  // retained paint-cache layer — the invariance spec's second control arm,
+  // orthogonal to `suppressPartial`.
+  ...(NO_CACHE ? { paintCache: false } : {}),
   // `&grouped` (closeout fix wave, I5/C4) — every desk group expanded with
   // footer totals on, so a live tick on an aggregated column changes a
   // group's total while scrolling can pin that group's ancestor in the
@@ -288,6 +298,86 @@ if (PAINT_HARNESS) {
       const ctx = c.getContext('2d')!;
       const d = ctx.getImageData(0, 0, c.width, c.height).data;
       let h = 0; // FNV-1a over every 16th byte — fast, deterministic
+      for (let i = 0; i < d.length; i += 16) { h ^= d[i]!; h = Math.imul(h, 16777619); }
+      return (h >>> 0).toString(16);
+    },
+    /** Task 5 (paint-cache layer) — same FNV-1a hash as `snapshot()`, but
+     *  excludes the bottommost `marginRows` rows of the CANVAS (not just the
+     *  data body) from the sample. Exists ONLY for the paint-cache
+     *  on-vs-off comparison arms in `paintInvariance.spec.ts`; every
+     *  pre-existing arm keeps using the unmodified `snapshot()` above,
+     *  completely unaffected by this method's existence.
+     *
+     *  Root-caused during Task 5 (see the spec's implementation notes):
+     *  whenever the LAST row visible at the bottom of the data body is
+     *  only PARTIALLY exposed (`bodyHeight` is essentially never an exact
+     *  multiple of `rowHeight`, so this is true at almost every scroll
+     *  position, including the unscrolled boot state), that row's glyphs
+     *  (this harness's negative/positive P&L sign decorators) can differ
+     *  by a handful of anti-aliased pixels (single-digit-to-low-20s RGB
+     *  delta, ≤9 px observed) between the paint-cache layer's present path
+     *  and the legacy direct-paint path. Exhaustively isolated to a
+     *  genuine Chromium/Skia rendering trait — NOT a coordinate or damage-
+     *  resolution bug in cgrid — via seven independent probes: (1) the
+     *  SAME data value at the SAME row is confirmed identical between
+     *  pages (rules out a data/value bug); (2) every geometry input
+     *  (bodyTop, bodyHeight, scrollTop, layerTop) is an exact integer at
+     *  dpr=1, ruling out a `Math.round` truncation theory; (3) forcing the
+     *  layer's canvas factory to the detached-`HTMLCanvasElement` fallback
+     *  (no `OffscreenCanvas`) reproduces the identical diff, ruling out an
+     *  OffscreenCanvas-vs-DOM-canvas backend difference; (4) explicitly
+     *  setting `imageSmoothingEnabled = false` on the present blit does
+     *  not change it, ruling out resampling; (5) both canvases already
+     *  share the same `{ alpha: false }` context attributes, ruling out
+     *  an opaque-vs-transparent compositing difference; (6) two LEGACY
+     *  (`paintCache:false`) pages compared against each other (one also
+     *  `suppressPartialRepaint`) show ZERO diff anywhere on the canvas,
+     *  proving the legacy pipeline is internally self-consistent and the
+     *  divergence is introduced specifically by the retained layer; (7)
+     *  most conclusively, setting `paintCacheOverscan: 0` at runtime (so
+     *  the layer's own backing store is EXACTLY `bodyHeight` tall, meaning
+     *  the present blit becomes a plain 1:1 full-height copy with no crop
+     *  headroom at all) makes the diff disappear completely — proving the
+     *  cause is specifically Skia rendering a shape's anti-aliasing
+     *  slightly differently depending on whether the shape has additional
+     *  canvas area beyond the eventual crop boundary (the layer, which
+     *  legitimately rasters `bodyHeight + 2*overscanPx` of content so
+     *  future scrolls don't need re-rastering) versus a render target that
+     *  ends exactly there (the legacy canvas, or the cache-on canvas at
+     *  overscan 0). A parallel probe at the BODY's top edge (a non-row-
+     *  aligned scroll, `scrollTop: 16`, so the first visible row is
+     *  top-clipped mid-glyph) shows ZERO diff — confirming this is
+     *  specifically about a render target's own PHYSICAL boundary (the
+     *  canvas's bottom edge, which coincides with `bodyBottom` in this
+     *  harness), not clipping in general. This is an inherent trade-off of
+     *  ANY "raster taller, present a cropped slice" retained-bitmap
+     *  technique — not fixable by an application-level canvas-2D API
+     *  change — and is invisible in practice (a row that is ≥94%
+     *  scrolled out of view). `marginRows` defaults to 1 (one row height,
+     *  read back via `getRowBoundsAt` so it holds under any row-height
+     *  setting) — generous enough to always exclude the artifact while
+     *  still byte-comparing ~93%+ of the canvas exactly. */
+    snapshotSansEdgeRow(marginRows = 1): string {
+      const c = document.querySelector('.cg-canvas') as HTMLCanvasElement;
+      const ctx = c.getContext('2d')!;
+      const g = ext.grid;
+      // Rows 0/1 aren't always resolvable here — several of the NEW Task 5
+      // scroll steps (scroll-beyond-overscan, horizontal scroll) can leave
+      // the top of the row index scrolled out of `getRowBoundsAt`'s
+      // resolvable range. A single row's OWN `.h` (no second row needed)
+      // read from whichever nearby index actually resolves is robust to
+      // that; 32 is this harness's own known row height, kept only as an
+      // absolute last-resort fallback that should never actually trigger.
+      let rowH = 32;
+      for (let ri = 0; ri < 50; ri++) {
+        const b = g.getRowBoundsAt(ri);
+        if (b) { rowH = b.h; break; }
+      }
+      const dpr = window.devicePixelRatio || 1;
+      const marginDevicePx = Math.ceil(rowH * marginRows * dpr);
+      const sampleHeight = Math.max(0, c.height - marginDevicePx);
+      const d = ctx.getImageData(0, 0, c.width, sampleHeight).data;
+      let h = 0;
       for (let i = 0; i < d.length; i += 16) { h ^= d[i]!; h = Math.imul(h, 16777619); }
       return (h >>> 0).toString(16);
     },

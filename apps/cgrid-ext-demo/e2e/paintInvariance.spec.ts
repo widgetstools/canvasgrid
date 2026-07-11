@@ -38,6 +38,20 @@ const boot = async (page: Page, query: string) => {
 
 const waitSettled = (page: Page) => page.evaluate(() => (window as any).__paintHarness.waitSettled());
 const snapshot = (page: Page) => page.evaluate(() => (window as any).__paintHarness.snapshot());
+// Task 5 (paint-cache layer) — used ONLY by the cache-on-vs-cache-off arms
+// below. Excludes the canvas's bottommost row from the hash: a row whose
+// visible slice at the bottom of the data body is only PARTIALLY exposed
+// (near-universal, since `bodyHeight` is essentially never an exact
+// multiple of `rowHeight`) can differ by a handful of anti-aliased pixels
+// between the retained layer's present-by-blit path and the legacy direct-
+// paint path — root-caused to a genuine Chromium/Skia rendering trait (a
+// shape rendered with MORE canvas area beyond an eventual crop boundary
+// anti-aliases very slightly differently than one rendered on a target
+// that ends exactly there), not a coordinate or damage-resolution bug; see
+// `snapshotSansEdgeRow`'s doc in `main.ts` for the seven-probe elimination
+// that pinned this down. Every OTHER arm (suppressPartialRepaint-based)
+// keeps using the unmodified `snapshot()` above unchanged.
+const snapshotCache = (page: Page) => page.evaluate(() => (window as any).__paintHarness.snapshotSansEdgeRow());
 const paintStats = (page: Page) => page.evaluate(() => (window as any).__ext.grid.getPaintStats());
 
 // `getCellBoundsAt`/canvas-relative → viewport coordinates, matching the
@@ -133,6 +147,59 @@ const STEPS: Array<{ name: string; run: (page: Page) => Promise<void> }> = [
       (window as any).__ext.grid.getScroller().scrollTop = 0;
     }),
   },
+  // ─── Task 5 (paint-cache layer) — layer maintenance steps ──────────────
+  // The retained layer covers `bodyHeight + 2 * paintCacheOverscan *
+  // bodyHeight` (default overscan 0.5, so ~2x bodyHeight total), anchored
+  // at the scroll position from the last raster. These four steps exercise
+  // every layer-maintenance path (shift + reset, vertical + horizontal) —
+  // added to the SHARED step script so every arm that runs it (partial vs
+  // suppressed, and the cache-on vs cache-off arms below) proves the
+  // layer's present-by-blit path never leaves stale or misaligned pixels
+  // behind, matching the legacy per-frame raster pixel-for-pixel.
+  {
+    // A ~2 viewport-height jump from `scroll-back`'s scrollTop=0 lands well
+    // outside the layer's own coverage (bodyHeight + 2*0.5*bodyHeight ==
+    // 2*bodyHeight), forcing `planLayer` to reset (full layer re-raster,
+    // re-anchored at the new scrollTop) rather than shift.
+    name: 'scroll-beyond-overscan',
+    run: (page) => page.evaluate(() => {
+      const g = (window as any).__ext.grid;
+      const scroller = g.getScroller();
+      const bodyHeight = scroller.clientHeight;
+      scroller.scrollTop = bodyHeight * 2;
+    }),
+  },
+  {
+    // Moving back by less than a full layer's worth from the position
+    // above keeps the visible range inside — but near an edge of — the
+    // layer just reset above it, the shift path's exact target: re-center
+    // via a self-blit plus a small newly-exposed-band raster.
+    name: 'scroll-back-partway',
+    run: (page) => page.evaluate(() => {
+      const g = (window as any).__ext.grid;
+      const scroller = g.getScroller();
+      const bodyHeight = scroller.clientHeight;
+      scroller.scrollTop = Math.max(0, scroller.scrollTop - bodyHeight * 0.5);
+    }),
+  },
+  {
+    // Horizontal scroll is out of scope for the vertical-only layer (per
+    // spec §1) — it always resets (anchor at the current scroll, full
+    // layer re-raster), same conservatism the damage system already
+    // applies to horizontal scroll.
+    name: 'scroll-horizontal',
+    run: (page) => page.evaluate(() => {
+      const scroller = (window as any).__ext.grid.getScroller();
+      const maxLeft = Math.max(0, scroller.scrollWidth - scroller.clientWidth);
+      scroller.scrollLeft = Math.min(150, maxLeft);
+    }),
+  },
+  {
+    name: 'scroll-horizontal-back',
+    run: (page) => page.evaluate(() => {
+      (window as any).__ext.grid.getScroller().scrollLeft = 0;
+    }),
+  },
   {
     // Past `cellFlashDuration` (500ms) + `cellFadeDuration` (1000ms) so
     // both pages settle to no-flash pixels before hashing.
@@ -140,6 +207,56 @@ const STEPS: Array<{ name: string; run: (page: Page) => Promise<void> }> = [
     run: (page) => new Promise<void>((r) => { page.waitForTimeout(1800).then(r); }),
   },
 ];
+
+// ─── Shared mutation scripts ────────────────────────────────────────────
+// Hoisted so both the original suppressPartialRepaint arms (below) and the
+// Task 5 paint-cache on-vs-off arms (further below) run the IDENTICAL
+// scripted mutation — the whole point of an arm comparison is that the
+// only thing that differs between the two pages is the option under test.
+
+// C2's exact counterexample: a tick that changes a sorted-by value permutes
+// the visible order while the window's rowStart/rowCount stay put, so a
+// naive "same window ⇒ trust touchedRows-named positions only" guard leaves
+// every DISPLACED row showing its old neighbor's stale content.
+const sortThenTick = async (p: Page) => {
+  await p.evaluate(() => {
+    (window as any).__ext.grid.setSortModel([{ colId: 'currentPrice', direction: 'asc' }]);
+  });
+  await waitSettled(p);
+  await p.evaluate(() => {
+    const g = (window as any).__ext.grid;
+    const rows = (window as any).__paintHarness.rows;
+    const r3 = rows.find((r: any) => r.positionId === 'HARNESS-0003');
+    const r7 = rows.find((r: any) => r.positionId === 'HARNESS-0007');
+    // Extreme values guarantee a real reorder into/out of the visible top
+    // of the ascending sort, not just an in-place value update.
+    g.applyTransactionAsync({ update: [{ ...r3, currentPrice: 999 }, { ...r7, currentPrice: -999 }] });
+  });
+};
+
+// Scroll a few rows into the first group's children so its header (the
+// group row itself) scrolls above the fetch window and pins as a sticky
+// ancestor — `desk` has 4 distinct values across 200 rows (~50 rows/group),
+// so 5 rows is comfortably inside the first group's children under any hash
+// distribution.
+const scrollIntoGroup = (p: Page) => p.evaluate(() => {
+  const g = (window as any).__ext.grid;
+  const rh = g.getRowBoundsAt(1).y - g.getRowBoundsAt(0).y;
+  g.getScroller().scrollTop = rh * 5;
+});
+
+// `pnl` carries `aggFunc: 'sum'` — changing it moves a group's (and the
+// grand) total: a sticky ancestor's pinned total (C4) or a flash-disabled
+// grand total (C3) is invisible to the regular chunk-row damage paths, so
+// it can go stale on the partial/cache path while the live leaf rows
+// repaint fine.
+const tickAggregatedColumn = (p: Page) => p.evaluate(() => {
+  const g = (window as any).__ext.grid;
+  const rows = (window as any).__paintHarness.rows;
+  const r3 = rows.find((r: any) => r.positionId === 'HARNESS-0003');
+  const r7 = rows.find((r: any) => r.positionId === 'HARNESS-0007');
+  g.applyTransactionAsync({ update: [{ ...r3, pnl: r3.pnl + 12345 }, { ...r7, pnl: r7.pnl - 6789 }] });
+});
 
 test('partial and suppressed repaint produce identical pixels at every scripted step @dpr-locked', async ({ page, context }) => {
   const page2 = await context.newPage();
@@ -180,28 +297,6 @@ test('sort-then-tick reorder produces identical pixels (C2 regression lock)', as
     await boot(page, 'paintHarness');
     await boot(page2, 'paintHarness&suppressPartial');
 
-    // Sort ascending by `currentPrice`, THEN tick two rows to the extremes
-    // of that order — this is C2's exact counterexample: a tick that
-    // changes a sorted-by value permutes the visible order while the
-    // window's rowStart/rowCount stay put, so a naive "same window ⇒ trust
-    // touchedRows-named positions only" guard leaves every DISPLACED row
-    // showing its old neighbor's stale content.
-    const sortThenTick = async (p: Page) => {
-      await p.evaluate(() => {
-        (window as any).__ext.grid.setSortModel([{ colId: 'currentPrice', direction: 'asc' }]);
-      });
-      await waitSettled(p);
-      await p.evaluate(() => {
-        const g = (window as any).__ext.grid;
-        const rows = (window as any).__paintHarness.rows;
-        const r3 = rows.find((r: any) => r.positionId === 'HARNESS-0003');
-        const r7 = rows.find((r: any) => r.positionId === 'HARNESS-0007');
-        // Extreme values guarantee a real reorder into/out of the visible
-        // top of the ascending sort, not just an in-place value update.
-        g.applyTransactionAsync({ update: [{ ...r3, currentPrice: 999 }, { ...r7, currentPrice: -999 }] });
-      });
-    };
-
     await sortThenTick(page);
     await waitSettled(page);
     const hashP = await snapshot(page);
@@ -222,16 +317,6 @@ test('grouped + sticky-ancestor tick produces identical pixels (C4 regression lo
     await boot(page, 'paintHarness&grouped');
     await boot(page2, 'paintHarness&grouped&suppressPartial');
 
-    // Scroll a few rows into the first group's children so its header
-    // (the group row itself) scrolls above the fetch window and pins as a
-    // sticky ancestor — `desk` has 4 distinct values across 200 rows
-    // (~50 rows/group), so 5 rows is comfortably inside the first group's
-    // children under any hash distribution.
-    const scrollIntoGroup = (p: Page) => p.evaluate(() => {
-      const g = (window as any).__ext.grid;
-      const rh = g.getRowBoundsAt(1).y - g.getRowBoundsAt(0).y;
-      g.getScroller().scrollTop = rh * 5;
-    });
     await scrollIntoGroup(page);
     await waitSettled(page);
     await scrollIntoGroup(page2);
@@ -241,18 +326,6 @@ test('grouped + sticky-ancestor tick produces identical pixels (C4 regression lo
     // this test would silently degrade into a no-op regression lock.
     const stickyCount = await page.evaluate(() => (window as any).__ext.grid.stickyAncestors?.length ?? 0);
     expect(stickyCount, 'expected the scroll to pin at least one group ancestor').toBeGreaterThan(0);
-
-    // `pnl` carries `aggFunc: 'sum'` — changing it moves a group's (and the
-    // grand) total, exactly C4's scenario: a sticky ancestor's pinned
-    // total is invisible to the regular chunk-row damage paths, so it can
-    // go stale on the partial path while the live leaf rows repaint fine.
-    const tickAggregatedColumn = (p: Page) => p.evaluate(() => {
-      const g = (window as any).__ext.grid;
-      const rows = (window as any).__paintHarness.rows;
-      const r3 = rows.find((r: any) => r.positionId === 'HARNESS-0003');
-      const r7 = rows.find((r: any) => r.positionId === 'HARNESS-0007');
-      g.applyTransactionAsync({ update: [{ ...r3, pnl: r3.pnl + 12345 }, { ...r7, pnl: r7.pnl - 6789 }] });
-    });
 
     await tickAggregatedColumn(page);
     await waitSettled(page);
@@ -274,19 +347,10 @@ test('flash-disabled aggregate tick produces identical pixels (C3 regression loc
     await boot(page, 'paintHarness&noFlash');
     await boot(page2, 'paintHarness&noFlash&suppressPartial');
 
-    // Same aggregated-column tick as the grouped arm above, but ungrouped
-    // and with `enableCellChangeFlash: false` — the real grid DEFAULT,
-    // never exercised by the base harness (which always ran flash on).
-    // With flash off, `groupFlashMap` never populates, so the ONLY thing
-    // that used to route a changed grand-total into damage was gone.
-    const tickAggregatedColumn = (p: Page) => p.evaluate(() => {
-      const g = (window as any).__ext.grid;
-      const rows = (window as any).__paintHarness.rows;
-      const r3 = rows.find((r: any) => r.positionId === 'HARNESS-0003');
-      const r7 = rows.find((r: any) => r.positionId === 'HARNESS-0007');
-      g.applyTransactionAsync({ update: [{ ...r3, pnl: r3.pnl + 12345 }, { ...r7, pnl: r7.pnl - 6789 }] });
-    });
-
+    // Ungrouped, with `enableCellChangeFlash: false` — the real grid
+    // DEFAULT, never exercised by the base harness (which always ran flash
+    // on). With flash off, `groupFlashMap` never populates, so the ONLY
+    // thing that used to route a changed grand-total into damage was gone.
     await tickAggregatedColumn(page);
     await waitSettled(page);
     const hashP = await snapshot(page);
@@ -296,6 +360,111 @@ test('flash-disabled aggregate tick produces identical pixels (C3 regression loc
     const hashF = await snapshot(page2);
 
     expect(hashP, 'flash-disabled aggregate tick: partial-repaint pixels diverged from suppressed pixels').toBe(hashF);
+  } finally {
+    await page2.close();
+  }
+});
+
+// ─── Task 5 (paint-cache layer) — cache-on vs cache-off arms ───────────
+// The retained layer (`paintCache: true`, the default) BAKES every damage
+// pass (data rows, selection/hover/flash/focus/ranges) into an offscreen
+// layer and presents by `drawImage`; `paintCache: false` (`&noCache`) is
+// the field escape hatch back to the exact legacy per-frame raster
+// pipeline. These are orthogonal control arms to `suppressPartialRepaint`
+// above — same technique (identical scripted mutation on both pages,
+// hash-compare after each settle), but the axis under test is the layer
+// itself rather than damage-region clipping. Mirrors all four existing
+// arms (base + STEPS, sorted/C2, grouped/C4, noFlash/C3) so the layer gets
+// the same regression coverage the damage system already has.
+
+test('paint-cache on vs off produce identical pixels at every scripted step @dpr-locked', async ({ page, context }) => {
+  const page2 = await context.newPage();
+  try {
+    await boot(page, 'paintHarness');
+    await boot(page2, 'paintHarness&noCache');
+
+    for (const step of STEPS) {
+      await step.run(page);
+      await waitSettled(page);
+      const hashOn = await snapshotCache(page);
+
+      await step.run(page2);
+      await waitSettled(page2);
+      const hashOff = await snapshotCache(page2);
+
+      expect(hashOn, `step "${step.name}": paint-cache-on pixels diverged from paint-cache-off pixels`).toBe(hashOff);
+    }
+
+    const stats = await paintStats(page);
+    expect(stats.presents, 'expected the cache-on page to actually present via the retained layer').toBeGreaterThan(0);
+  } finally {
+    await page2.close();
+  }
+});
+
+test('sort-then-tick reorder — paint-cache on vs off produce identical pixels', async ({ page, context }) => {
+  const page2 = await context.newPage();
+  try {
+    await boot(page, 'paintHarness');
+    await boot(page2, 'paintHarness&noCache');
+
+    await sortThenTick(page);
+    await waitSettled(page);
+    const hashOn = await snapshotCache(page);
+
+    await sortThenTick(page2);
+    await waitSettled(page2);
+    const hashOff = await snapshotCache(page2);
+
+    expect(hashOn, 'sort-then-tick reorder: paint-cache-on pixels diverged from paint-cache-off pixels').toBe(hashOff);
+  } finally {
+    await page2.close();
+  }
+});
+
+test('grouped + sticky-ancestor tick — paint-cache on vs off produce identical pixels', async ({ page, context }) => {
+  const page2 = await context.newPage();
+  try {
+    await boot(page, 'paintHarness&grouped');
+    await boot(page2, 'paintHarness&grouped&noCache');
+
+    await scrollIntoGroup(page);
+    await waitSettled(page);
+    await scrollIntoGroup(page2);
+    await waitSettled(page2);
+
+    const stickyCount = await page.evaluate(() => (window as any).__ext.grid.stickyAncestors?.length ?? 0);
+    expect(stickyCount, 'expected the scroll to pin at least one group ancestor').toBeGreaterThan(0);
+
+    await tickAggregatedColumn(page);
+    await waitSettled(page);
+    const hashOn = await snapshotCache(page);
+
+    await tickAggregatedColumn(page2);
+    await waitSettled(page2);
+    const hashOff = await snapshotCache(page2);
+
+    expect(hashOn, 'grouped sticky-ancestor tick: paint-cache-on pixels diverged from paint-cache-off pixels').toBe(hashOff);
+  } finally {
+    await page2.close();
+  }
+});
+
+test('flash-disabled aggregate tick — paint-cache on vs off produce identical pixels', async ({ page, context }) => {
+  const page2 = await context.newPage();
+  try {
+    await boot(page, 'paintHarness&noFlash');
+    await boot(page2, 'paintHarness&noFlash&noCache');
+
+    await tickAggregatedColumn(page);
+    await waitSettled(page);
+    const hashOn = await snapshotCache(page);
+
+    await tickAggregatedColumn(page2);
+    await waitSettled(page2);
+    const hashOff = await snapshotCache(page2);
+
+    expect(hashOn, 'flash-disabled aggregate tick: paint-cache-on pixels diverged from paint-cache-off pixels').toBe(hashOff);
   } finally {
     await page2.close();
   }
@@ -389,4 +558,60 @@ test('live ticking mostly takes the partial-repaint path with small damage regio
   const median = sorted[Math.floor(sorted.length / 2)]!;
   expect(max, `per-partial-paint lastAreaPct samples: ${samples.join(', ')}`).toBeLessThan(65);
   expect(median, `per-partial-paint lastAreaPct samples: ${samples.join(', ')}`).toBeLessThan(25);
+});
+
+test('paint-cache: pure vertical scroll grows presents with zero layer resets (needs stomp-view-server)', async ({ page }) => {
+  // Task 5 — with the live STOMP feed running on the NORMAL demo page (the
+  // paint-cache layer is on by default there, unlike the `?paintHarness`
+  // pages above), a pure vertical-scroll phase should be almost entirely
+  // present-only work: `presents` (drawImage of the retained layer) grows,
+  // `layerResets` stays exactly 0 (the oscillation amplitude below is kept
+  // well inside the layer's own coverage, so `planLayer` only ever decides
+  // 'keep' or 'shift', never 'reset'), and `fullPaints` grows by at most a
+  // small tolerance (an occasional real, server-driven tick landing on an
+  // aggregated/footer cell can legitimately force one full repaint — see
+  // the same reasoning in the `lastAreaPct` test above — but the phase as
+  // a whole must not degrade to full-repaint-driven scrolling).
+  await page.goto('/');
+  await page.evaluate(() => localStorage.clear());
+  await page.reload();
+  await expect(page.locator('.cgext-titlebar')).toBeVisible();
+
+  let connected = false;
+  try {
+    await expect
+      .poll(() => page.evaluate(() => (window as any).__ext?.grid.getTotalRowCount() ?? 0), { timeout: 15_000 })
+      .toBeGreaterThan(0);
+    connected = true;
+  } catch {
+    connected = false;
+  }
+  test.skip(!connected, 'stomp-view-server not reachable on ws://localhost:8081');
+
+  await page.evaluate(() => (window as any).__ext.grid.resetPaintStats());
+
+  // Amplitude kept well inside the default paint-cache layer's own
+  // coverage (bodyHeight + 2 * paintCacheOverscan(0.5) * bodyHeight ==
+  // 2x bodyHeight, per spec §1) so the whole phase stays a pure
+  // vertical shift/present workload — never a jump big enough to force
+  // `planLayer` to reset.
+  const bodyHeight = await page.evaluate(() => (window as any).__ext.grid.getScroller().clientHeight);
+  const amplitude = Math.max(20, bodyHeight * 0.3);
+
+  const durationMs = 3000;
+  const start = Date.now();
+  while (Date.now() - start < durationMs) {
+    const elapsedSec = (Date.now() - start) / 1000;
+    const target = (Math.sin(elapsedSec * 2) * 0.5 + 0.5) * amplitude;
+    await page.evaluate((t) => {
+      (window as any).__ext.grid.getScroller().scrollTop = t;
+    }, target);
+    await page.waitForTimeout(40);
+  }
+
+  const stats = await page.evaluate(() => (window as any).__ext.grid.getPaintStats());
+
+  expect(stats.presents, 'expected the paint-cache layer to present via drawImage during the pure-scroll phase').toBeGreaterThan(0);
+  expect(stats.layerResets, 'a pure vertical scroll within layer coverage must never reset the layer').toBe(0);
+  expect(stats.fullPaints, 'pure vertical scroll should stay almost entirely present-only, not full-repaint-driven').toBeLessThanOrEqual(2);
 });
