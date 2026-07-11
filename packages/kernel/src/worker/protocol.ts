@@ -175,6 +175,12 @@ export interface ViewportChunk {
   numericCols: Record<string, Float64Array>;
   textCols: Record<string, { offsets: Uint32Array; bytes: Uint8Array }>;
   flashMask?: Uint8Array;
+  /** Damage-region rendering — window-relative indices of rows touched by
+   *  transactions since the previous slice for this client. Structured-clone
+   *  path (like stringRowIds); absent ⇒ receiver must treat the whole chunk
+   *  as changed (full damage), present-but-empty never ships (undefined
+   *  instead). See specs/2026-07-11-damage-region-rendering-design.md §3d. */
+  touchedRows?: Uint32Array;
   /** Grand-total aggregation results (undefined when no aggFunc columns).
    *  Widened from `number | null` in Cycle 14 / Task 3 because custom
    *  aggFuncs may return strings, dates, or other primitives (e.g.

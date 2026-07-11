@@ -451,6 +451,11 @@ export function createWorkerHost(post: PostFn): WorkerHost {
         for (const u of r.update) touched.add(u.rowId);
         for (const x of r.remove) touched.add(x.rowId);
       }
+      // Damage-region rendering (Task 3) — stage every touched rowId for
+      // the next `getViewport`'s `touchedRows`. Async-flush-only in this
+      // task (mirrors where `pendingFlashes` is staged for the same
+      // async-queue path); drained per-rowId in the getViewport handler.
+      for (const id of touched) state!.pendingTouched.add(id);
       state!.quickFilter.invalidateRows(touched);
       state!.distinct.invalidateRows(touched);
       // Drop removed rows from the alwaysPass set so the worker never
@@ -549,6 +554,8 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       nextPostSortRowsCallId: 1,
       enableCellChangeFlash: payload.enableCellChangeFlash === true,
       pendingFlashes: new Map(),
+      // Damage-region rendering (Task 3) — see workerState.ts doc comment.
+      pendingTouched: new Set(),
       // Cycle 15 / Task 10 — captured at init; threaded into
       // `sliceGroupedViewport` on every `getViewport` so data-row
       // `groupValue[i]` slots populate when the option is on.

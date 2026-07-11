@@ -53,6 +53,11 @@ export async function handleDataPipeline(
       state.distinct.invalidateRows([]);
       // Cycle 4 / Task 11 — wipe pendingFlashes.
       state.pendingFlashes.clear();
+      // Damage-region rendering (Task 3) — a full data replace invalidates
+      // any staged touched-row bookkeeping the same way it invalidates
+      // pendingFlashes (row identities from the old dataset are meaningless
+      // against the new one).
+      state.pendingTouched.clear();
       state.visibleCache = null;
       const visibleCount = await helpers.invalidateAndCount();
       // Cycle 15 / Task 7 — ride the groupKeys snapshot back on the

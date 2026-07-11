@@ -88,6 +88,15 @@ export interface State {
   enableCellChangeFlash: boolean;
   /** Cycle 4 / Task 11 — staged changed-field set per rowId. */
   pendingFlashes: Map<string, Set<string>>;
+  /** Damage-region rendering (Task 3) — rowIds touched by a transaction
+   *  since the last slice that included them, staged for the next
+   *  `getViewport`'s `ViewportChunk.touchedRows`. Drained per-rowId in the
+   *  `getViewport` handler the same way `pendingFlashes` drains per-field
+   *  (mirrors its lifecycle line-for-line); wiped wholesale wherever
+   *  `pendingFlashes` is wiped wholesale (e.g. `setRowData`). Unlike
+   *  `pendingFlashes` this is NOT gated by `enableCellChangeFlash` — damage
+   *  tracking is independent of the cell-flash feature. */
+  pendingTouched: Set<string>;
   /** Cycle 21d / Task 10 — calculated-column program store. Always
    *  constructed (no-program = inert); CalcPass stages gate on
    *  `calc.hasProgram()` so absent programs cost nothing. */

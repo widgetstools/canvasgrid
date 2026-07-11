@@ -704,6 +704,14 @@ export class CGrid<TRow = any> {
    *  so behavior is byte-identical to pre-damage-region rendering until a
    *  later task migrates a source to `repaintRows`/`repaintCells`. */
   private readonly damageLedger = new DamageLedger();
+  /** Damage-region rendering (Task 3) — the data-window (rowStart, rowCount)
+   *  the LAST chunk landed for, used by `handleViewportChunk` to decide
+   *  whether a new chunk's `touchedRows` is trustworthy (same window) or
+   *  must fall back to a full repaint (window moved — scroll, sort,
+   *  filter, group toggle). `-1` sentinel so the very first chunk never
+   *  matches. */
+  private lastDamageWindowStart = -1;
+  private lastDamageWindowCount = -1;
   /** Damage-region rendering — cumulative paint telemetry surfaced via
    *  `getPaintStats()`. Reset via `resetPaintStats()`. */
   private paintStats: PaintStats = {
@@ -2008,7 +2016,11 @@ export class CGrid<TRow = any> {
       getFlashDuration: () => this.options.cellFlashDuration ?? 500,
       getFadeDuration: () => this.options.cellFadeDuration ?? 1000,
       getReducedMotion: () => this.reducedMotion,
-      requestRepaint: () => this.cgridCanvas?.requestRepaint(),
+      // Damage-region rendering (Task 3) — route the per-rAF fade repaint
+      // through `repaintCells` (the active flash entries' rowId/colId
+      // cells) instead of a bare `requestRepaint()`, which the ledger
+      // would resolve to a full-surface repaint every tick.
+      requestRepaint: () => this.repaintCells(this.flashRegistry.activeCells()),
     });
 
     this.a11y = new A11yOverlay(this.root);
@@ -7705,6 +7717,12 @@ export class CGrid<TRow = any> {
     // totals records here on the main thread. groupTotals covers per-group
     // group rows AND per-group footer rows. chunk.totals covers the grand-
     // total footer (groupKey='').
+    // Damage-region rendering (Task 3) — did THIS chunk add any group/
+    // footer flash entries? Those cells live on group/footer rows, which
+    // carry no rowId and so never appear in `touchedRows` — the partial
+    // (`repaintRows`) branch below must degrade to full whenever this is
+    // true, regardless of `sameWindow`.
+    let groupFlashChanged = false;
     if (this.options.enableCellChangeFlash) {
       const now = performance.now();
       if (chunk.groupTotals && prevGroupTotals) {
@@ -7714,6 +7732,7 @@ export class CGrid<TRow = any> {
           for (const colId of Object.keys(newRec)) {
             if (oldRec?.[colId] !== newRec[colId]) {
               this.groupFlashMap.set(`${groupKey}\0${colId}`, now);
+              groupFlashChanged = true;
             }
           }
         }
@@ -7725,6 +7744,7 @@ export class CGrid<TRow = any> {
         for (const colId of Object.keys(chunk.totals)) {
           if (prevChunkTotals[colId] !== chunk.totals[colId]) {
             this.groupFlashMap.set(`\0${colId}`, now);
+            groupFlashChanged = true;
           }
         }
       }
@@ -7744,7 +7764,24 @@ export class CGrid<TRow = any> {
     // variable-height rows paint at the fallback until the next scroll
     // triggers another recompute.
     this.recomputeViewport();
-    this.cgridCanvas.requestRepaint();
+    // Damage-region rendering (Task 3) — a chunk for the SAME window whose
+    // touchedRows names the changed rows repaints only those bands. A chunk
+    // with no touchedRows field (older worker, first fetch, window move,
+    // sort/filter reorder) repaints fully — absence means "unknown", never
+    // "nothing". A chunk that also changed group/footer totals this round
+    // degrades to full too — those cells have no rowId and never appear in
+    // touchedRows, so a partial repaint would under-paint them.
+    const sameWindow = chunk.rowStart === this.lastDamageWindowStart
+      && chunk.rowCount === this.lastDamageWindowCount;
+    this.lastDamageWindowStart = chunk.rowStart;
+    this.lastDamageWindowCount = chunk.rowCount;
+    if (sameWindow && chunk.touchedRows !== undefined && !groupFlashChanged) {
+      const indices: number[] = [];
+      for (const r of chunk.touchedRows) indices.push(chunk.rowStart + r);
+      this.repaintRows(indices);
+    } else {
+      this.repaintFull();
+    }
     this.updateA11y();
     // Cycle 14 / Task 6 — emit `aggregationChanged` ONLY when the mutation
     // that drove this fetch actually changed the totals (data / filter /
@@ -7853,7 +7890,11 @@ export class CGrid<TRow = any> {
         for (const [k, startedAt] of this.groupFlashMap) {
           if (startedAt < cutoff) this.groupFlashMap.delete(k);
         }
-        if (this.groupFlashMap.size > 0) this.cgridCanvas.requestRepaint();
+        // Damage-region rendering (Task 3) — `repaintFull()`, not
+        // `requestRepaint()`. Group/footer rows carry no rowId, so there's
+        // no cell-rect damage helper for them yet; full is the correct
+        // conservative damage while any group/footer fade is still live.
+        if (this.groupFlashMap.size > 0) this.repaintFull();
       }
       // Cycle 21e / Task 13 — expire staged flash overrides.
       if (this.flashOverrides.size > 0) {

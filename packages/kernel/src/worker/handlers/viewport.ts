@@ -90,6 +90,11 @@ export async function handleViewport(
       const visIds = await helpers.visibleAsync();
       // Cycle 4 / Task 11 — pass pendingFlashes to the slicer.
       const pending = state.enableCellChangeFlash ? state.pendingFlashes : undefined;
+      // Damage-region rendering (Task 3) — pass pendingTouched to the
+      // slicer. Unlike `pending`, this is NOT gated by
+      // `enableCellChangeFlash` (damage tracking is independent of the
+      // cell-flash feature).
+      const touchedPending = state.pendingTouched.size > 0 ? state.pendingTouched : undefined;
       // Cycle 15 / Task 4 — walk the collapse-aware visible order when
       // grouping is active.
       let chunk;
@@ -112,6 +117,7 @@ export async function handleViewport(
           (key) => metaLookup.get(key),
           state.showOpenedGroup,
           state.calc.hasProgram() ? state.calc : undefined,
+          touchedPending,
         );
         // Cycle 15 / Task 16 — sticky ancestors from the ordered group
         // tree above firstRow.
@@ -125,7 +131,7 @@ export async function handleViewport(
           visibleSliceIds[r] = visIds[entry.rowIndex] ?? '';
         }
       } else {
-        chunk = state.slicer.slice(visIds, req.payload, pending);
+        chunk = state.slicer.slice(visIds, req.payload, pending, touchedPending);
         visibleSliceIds = visIds.slice(chunk.rowStart, chunk.rowStart + chunk.rowCount);
       }
       if (pending !== undefined && chunk.flashMask !== undefined) {
@@ -141,6 +147,17 @@ export async function handleViewport(
           if (!set) continue;
           for (const f of colFields) set.delete(f);
           if (set.size === 0) pending.delete(rowId);
+        }
+      }
+      // Damage-region rendering (Task 3) — drain: each rowId this chunk
+      // reported as touched fires exactly once. Whole-entry delete (no
+      // per-field granularity — `pendingTouched` is a flat rowId set,
+      // unlike `pendingFlashes`'s per-field map), same drain-after-slice
+      // lifecycle as the flashMask block above.
+      if (touchedPending !== undefined && chunk.touchedRows !== undefined) {
+        for (const r of chunk.touchedRows) {
+          const rowId = visibleSliceIds[r];
+          if (rowId) touchedPending.delete(rowId);
         }
       }
       // Wire AggPass: compute grand-total aggregations over all visible rows.

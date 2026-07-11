@@ -886,6 +886,12 @@ export class ViewportSlicer<TRow = any> {
      *  pending-flash set. The caller drains `pendingFlashes` after
      *  slicing so each flash fires exactly once. */
     pendingFlashes?: Map<string, Set<string>>,
+    /** Damage-region rendering (Task 3) — rowIds touched by a transaction
+     *  since the previous slice. When supplied AND non-empty, the slicer
+     *  packs `touchedRows: Uint32Array` — window-relative indices of rows
+     *  whose id is in the set. Caller drains the matched ids after slicing
+     *  (mirrors the `pendingFlashes` drain-after-slice contract). */
+    pendingTouched?: Set<string>,
   ): ViewportChunk {
     const rowStart = Math.max(0, req.rowStart);
     const rowEnd = Math.min(visibleIds.length, req.rowEnd);
@@ -1003,6 +1009,19 @@ export class ViewportSlicer<TRow = any> {
       if (anySet) flashMask = mask;
     }
 
+    // Damage-region rendering (Task 3) — touchedRows packing. Same window
+    // walk as flashMask above but rowId-only (no per-column fan-out): bit
+    // `r` set iff `visibleIds[rowStart + r]` is in `pendingTouched`.
+    let touchedRows: Uint32Array | undefined;
+    if (pendingTouched !== undefined && pendingTouched.size > 0 && count > 0) {
+      const hit: number[] = [];
+      for (let r = 0; r < count; r++) {
+        const rowId = visibleIds[rowStart + r];
+        if (rowId !== undefined && pendingTouched.has(rowId)) hit.push(r);
+      }
+      if (hit.length > 0) touchedRows = Uint32Array.from(hit);
+    }
+
     return {
       rowStart,
       rowCount: count,
@@ -1014,6 +1033,7 @@ export class ViewportSlicer<TRow = any> {
       numericCols,
       textCols,
       flashMask,
+      touchedRows,
       groupValue,
       groupChildCount,
       isExpanded,

@@ -207,6 +207,17 @@ export class FlashRegistry {
     return this.entries.size;
   }
 
+  /** Damage-region rendering (Task 3) — active (non-expired) cell keys, for
+   *  the registry's repaint dep to hand `CGrid.repaintCells` an exact damage
+   *  set instead of a bare `requestRepaint()` (which the ledger would
+   *  resolve to a full repaint). Cheap: one array per tick, sized to the
+   *  live entry count (typically small — flashes fade out fast). */
+  activeCells(): Array<{ rowId: number; colId: string }> {
+    const out: Array<{ rowId: number; colId: string }> = [];
+    for (const e of this.entries.values()) out.push({ rowId: e.rowId, colId: e.colId });
+    return out;
+  }
+
   /** Tear down — clears entries and makes future `flash()` calls
    *  no-op. Idempotent. */
   destroy(): void {

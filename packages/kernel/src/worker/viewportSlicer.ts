@@ -185,6 +185,12 @@ export function sliceGroupedViewport<TRow>(
    *  textCols) for `entry.kind === 'row'` slots the same way a data
    *  column does; group/footer slots keep their zero/`''` defaults. */
   calcSource?: CalcValueSource,
+  /** Damage-region rendering (Task 3) — rowIds touched by a transaction
+   *  since the previous slice. When supplied AND non-empty, the slicer
+   *  packs `touchedRows: Uint32Array` — window-relative indices of rows
+   *  whose id is in the set. Caller drains the matched ids after slicing
+   *  (mirrors the `pendingFlashes` drain-after-slice contract). */
+  pendingTouched?: Set<string>,
 ): ViewportChunk {
   const rowStart = Math.max(0, req.rowStart);
   const rowEnd = Math.min(visibleOrder.length, req.rowEnd);
@@ -395,6 +401,22 @@ export function sliceGroupedViewport<TRow>(
     if (anySet) flashMask = mask;
   }
 
+  // Damage-region rendering (Task 3) — touchedRows packing. Group rows
+  // contribute no pending touches (same rationale as the flashMask block
+  // above — a group's rowKey is never in pendingTouched). Same window walk
+  // idiom: `visibleOrder[rowStart + r]` / `postFilterIds[entry.rowIndex]`.
+  let touchedRows: Uint32Array | undefined;
+  if (pendingTouched !== undefined && pendingTouched.size > 0 && count > 0) {
+    const hit: number[] = [];
+    for (let r = 0; r < count; r++) {
+      const entry = visibleOrder[rowStart + r]!;
+      if (entry.kind !== 'row') continue;
+      const rowId = postFilterIds[entry.rowIndex];
+      if (rowId !== undefined && pendingTouched.has(rowId)) hit.push(r);
+    }
+    if (hit.length > 0) touchedRows = Uint32Array.from(hit);
+  }
+
   return {
     rowStart,
     rowCount: count,
@@ -406,6 +428,7 @@ export function sliceGroupedViewport<TRow>(
     numericCols,
     textCols,
     flashMask,
+    touchedRows,
     groupValue,
     groupChildCount,
     isExpanded,
