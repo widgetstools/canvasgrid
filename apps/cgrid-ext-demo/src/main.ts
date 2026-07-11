@@ -32,6 +32,14 @@ import { connectStomp, type Position } from './stomp';
 const harnessParams = new URLSearchParams(location.search);
 const PAINT_HARNESS = harnessParams.has('paintHarness');
 const SUPPRESS_PARTIAL = harnessParams.has('suppressPartial');
+// Closeout fix wave (I5) — two more harness-only variants, each locking a
+// specific bug the base `?paintHarness` boot couldn't reach:
+//   `&grouped`  — row-groups the `desk` column (C4: sticky ancestor totals).
+//   `&noFlash`  — boots with `enableCellChangeFlash: false`, the DEFAULT
+//                 for a real app but never exercised by the base harness,
+//                 which always ran with flash on (C3).
+const GROUPED = harnessParams.has('grouped');
+const NO_FLASH = harnessParams.has('noFlash');
 
 /** Deterministic PRNG (public-domain mulberry32) — same seed on every boot
  *  so the two harness pages (partial vs. suppressed) see identical data. */
@@ -197,12 +205,20 @@ const ext = new CGridExt<Position>(app, {
   defaultColDef: { resizable: true, sortable: true, editable: true, flex: 1, minWidth: 80 },
   rowGroupPanelShow: 'always',
   sideBar: { toolPanels: ['columns', 'filters', 'gridOptions', 'columnGroups'] },
-  enableCellChangeFlash: true,
+  // `&noFlash` (closeout fix wave, I5/C3) boots with flash OFF — the real
+  // default for a plain grid, and the exact configuration C3's bug needed
+  // (the base harness always ran with flash on, which happened to mask it).
+  enableCellChangeFlash: !NO_FLASH,
   cellSelection: {},
   // `&suppressPartial` (only meaningful alongside `?paintHarness`) forces
   // every repaint to the full-surface path — the invariance spec's control
   // arm for damage-region rendering.
   ...(SUPPRESS_PARTIAL ? { suppressPartialRepaint: true } : {}),
+  // `&grouped` (closeout fix wave, I5/C4) — every desk group expanded with
+  // footer totals on, so a live tick on an aggregated column changes a
+  // group's total while scrolling can pin that group's ancestor in the
+  // sticky band above the fetch window.
+  ...(GROUPED ? { groupIncludeFooter: true, groupDefaultExpanded: 'all' as const } : {}),
   ext: {
     // Replace the spine's bare Settings/Save with the full MarketsGrid-style
     // title bar (brand, search, notifications, profiles, save, date, settings,
@@ -250,6 +266,20 @@ if (PAINT_HARNESS) {
   const rows = seedHarnessRows();
   rows.forEach(decorateWithCategoricals);
   ext.setRowData(rows);
+
+  // Closeout fix wave (I5 / C4) — `&grouped` row-groups the `desk` column
+  // (4 distinct values across 200 harness rows, ~50 rows/group) with every
+  // group expanded + footer totals on, so scrolling partway into a group
+  // pins its ancestor(s) in the sticky band above the fetch window — the
+  // exact "grouped + sticky + live tick" configuration C4 targets. A
+  // colDef-level `rowGroup: true` does NOT auto-activate grouping at
+  // construction (`GroupingCoordinator` is always seeded with an empty
+  // `rowGroupCols` — see cgrid.ts's ctor comment), so this goes through
+  // the real runtime API instead, same as a user dragging the column into
+  // the row-group panel would.
+  if (GROUPED) {
+    ext.grid.setRowGroupColumns(['desk']);
+  }
 
   (window as unknown as { __paintHarness: unknown }).__paintHarness = {
     rows,
