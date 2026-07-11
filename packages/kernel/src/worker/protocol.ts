@@ -140,6 +140,15 @@ export interface ViewportRequest {
   rowEnd: number;                // exclusive
   columns: string[];             // colIds, in render order
   includeFlashMask?: boolean;
+  /** Task 5 (paint-cache layer) fix — the true on-screen first-visible row
+   *  (unpadded by row overscan). `computeStickyAncestors` uses this instead
+   *  of `rowStart` (the overscan-widened fetch window) so the sticky band
+   *  tracks the real scroll position — see `ViewportState.
+   *  firstVisibleDataRow`'s doc (core/viewport.ts) for the full story.
+   *  Optional + falls back to `rowStart` so any caller that hasn't been
+   *  updated (or a stale client build) degrades to the pre-fix behavior
+   *  rather than throwing. */
+  stickyBoundaryRow?: number;
 }
 
 /** Wire-format version tag for `ViewportChunk` payloads.

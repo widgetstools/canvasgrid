@@ -27,9 +27,20 @@ export interface ViewportState {
   visibleColumns: ViewportColumn[];
   visibleRows: ViewportRow[];
   /** First/last visible *data* row index (in the DataSubgrid's local index space).
-   * `lastRow = -1` when no data rows are visible. Used by the worker viewport fetch. */
+   * `lastRow = -1` when no data rows are visible. Used by the worker viewport fetch.
+   * Both are widened by `overscan` — use `firstVisibleDataRow` for the true
+   * on-screen boundary (e.g. the sticky-ancestor decision). */
   firstRow: number;
   lastRow: number;
+  /** Task 5 (paint-cache layer) fix — the UNPADDED first visible data row,
+   *  i.e. `firstRow` before `overscan` widens it downward. Threaded to the
+   *  worker as `stickyBoundaryRow` so the sticky-ancestor band tracks the
+   *  real on-screen scroll position rather than the (now overscan-widened)
+   *  fetch window. Optional so pre-existing hand-built `ViewportState` test
+   *  fixtures (which never exercised this field) keep compiling; every
+   *  real `computeViewport()` result always sets it. Consumers fall back
+   *  to `firstRow` when absent. */
+  firstVisibleDataRow?: number;
   scrollLeft: number;
   scrollTop: number;
   bodyLeft: number;
@@ -104,6 +115,21 @@ export function computeViewport(opts: ViewportInput): ViewportState {
   let bodyTop = 0;
   let firstDataRow = 0;
   let lastDataRow = -1;
+  // Task 5 (paint-cache layer) fix — the UNPADDED first visible data row
+  // (before `overscan` widens `firstDataRow` downward). Task 3 widened the
+  // row overscan so the worker fetch window covers the retained layer's
+  // coverage (spec §1's fetch-window coupling) — but the worker's sticky-
+  // ancestor computation (`computeStickyAncestors`) was keyed off the
+  // FETCHED window's `rowStart`, using it as a proxy for "the first row
+  // rendered on screen". Widening overscan legitimately grows the gap
+  // between "first fetched row" and "first VISIBLE row", so a scroll depth
+  // smaller than the (now larger) overscan buffer left `rowStart` at 0
+  // even though the user had genuinely scrolled a group's header off
+  // screen — the sticky band silently stopped appearing. Exposing the
+  // true unpadded boundary here lets `ViewportManager`/`WorkerCoordinator`
+  // thread it to the worker as `stickyBoundaryRow`, decoupling the visual
+  // sticky-pin decision from the fetch-window's overscan padding entirely.
+  let firstVisibleDataRow = 0;
   let dataContentHeight = 0;
   let floatingFilterRowTop: number | undefined;
   let floatingFilterRowHeight: number | undefined;
@@ -195,16 +221,19 @@ export function computeViewport(opts: ViewportInput): ViewportState {
     if (suppressRows) {
       firstDataRow = 0;
       lastDataRow = totalRows - 1;
+      firstVisibleDataRow = idx ? idx.rowAt(opts.scrollTop) : Math.floor(opts.scrollTop / fallbackH);
     } else if (idx) {
       const firstRowRaw = idx.rowAt(opts.scrollTop);
       const lastRowRaw = idx.rowAt(opts.scrollTop + bodyHeight);
       firstDataRow = Math.max(0, firstRowRaw - overscan);
       lastDataRow = Math.min(totalRows - 1, lastRowRaw + overscan);
+      firstVisibleDataRow = Math.max(0, firstRowRaw);
     } else {
       const firstRowRaw = Math.floor(opts.scrollTop / fallbackH);
       const lastRowRaw = Math.floor((opts.scrollTop + bodyHeight) / fallbackH);
       firstDataRow = Math.max(0, firstRowRaw - overscan);
       lastDataRow = Math.min(totalRows - 1, lastRowRaw + overscan);
+      firstVisibleDataRow = Math.max(0, firstRowRaw);
     }
 
     // Pre-window top: one Fenwick query when the index is present, else a
@@ -334,6 +363,7 @@ export function computeViewport(opts: ViewportInput): ViewportState {
     visibleRows,
     firstRow: firstDataRow,
     lastRow: lastDataRow,
+    firstVisibleDataRow,
     scrollLeft: opts.scrollLeft,
     scrollTop: opts.scrollTop,
     bodyLeft,

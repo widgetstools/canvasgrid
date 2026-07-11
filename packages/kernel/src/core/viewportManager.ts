@@ -81,6 +81,12 @@ export interface ViewportManagerDeps {
     rowStart: number;
     rowEnd: number;
     columns: string[];
+    /** Task 5 (paint-cache layer) fix — the true on-screen first-visible
+     *  row (unpadded by row overscan), so the worker's sticky-ancestor
+     *  computation tracks the real scroll position rather than the
+     *  (now overscan-widened) fetch window. See `ViewportState.
+     *  firstVisibleDataRow`'s doc for the full regression story. */
+    stickyBoundaryRow: number;
   }): Promise<void>;
 }
 
@@ -432,7 +438,8 @@ export class ViewportManager {
       this.currentState.lastRow + 1,
       this._scrollVelocityRows,
     );
-    this.deps.dispatchViewportRequest({ rowStart, rowEnd, columns: cols })
+    const stickyBoundaryRow = this.currentState.firstVisibleDataRow ?? this.currentState.firstRow;
+    this.deps.dispatchViewportRequest({ rowStart, rowEnd, columns: cols, stickyBoundaryRow })
       .then(() => {
         this.requestPending = false;
         if (this.requestQueued) {

@@ -120,8 +120,22 @@ export async function handleViewport(
           touchedPending,
         );
         // Cycle 15 / Task 16 — sticky ancestors from the ordered group
-        // tree above firstRow.
-        stickyAncestors = helpers.computeStickyAncestors(visibleOrder, chunk.rowStart, metaLookup);
+        // tree above firstRow. Task 5 (paint-cache layer) fix — use the
+        // caller's TRUE on-screen first-visible row (`stickyBoundaryRow`)
+        // when supplied, not `chunk.rowStart` (the fetch window, widened
+        // by row overscan for the retained layer's coverage per spec §1
+        // — see `ViewportState.firstVisibleDataRow`'s doc, core/
+        // viewport.ts). Using the overscan-padded `rowStart` here made a
+        // group's header stay "in view" (fetched) long after it had
+        // genuinely scrolled off screen, so the sticky band silently
+        // failed to appear for any scroll shallower than the overscan
+        // buffer. Falls back to `chunk.rowStart` for an older/stale
+        // client build that hasn't sent the field.
+        stickyAncestors = helpers.computeStickyAncestors(
+          visibleOrder,
+          req.payload.stickyBoundaryRow ?? chunk.rowStart,
+          metaLookup,
+        );
         // Build a per-slot rowId array so the flash drain works
         // identically to the flat path.
         visibleSliceIds = new Array<string>(chunk.rowCount);

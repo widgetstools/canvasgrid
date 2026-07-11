@@ -129,10 +129,11 @@ export class WorkerCoordinator {
    *  pending flash diffs, so the additional payload cost is zero when
    *  the feature is off. */
   async dispatchViewportRequest(opts: {
-    rowStart: number; rowEnd: number; columns: string[];
+    rowStart: number; rowEnd: number; columns: string[]; stickyBoundaryRow: number;
   }): Promise<void> {
     const { chunk, stickyAncestors } = await this.client.getViewport({
       rowStart: opts.rowStart, rowEnd: opts.rowEnd, columns: opts.columns,
+      stickyBoundaryRow: opts.stickyBoundaryRow,
       includeFlashMask: true,
     });
     await this.deps.onViewportChunk(opts, chunk, stickyAncestors ?? []);
