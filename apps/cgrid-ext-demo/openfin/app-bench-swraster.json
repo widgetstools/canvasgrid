@@ -1,0 +1,22 @@
+{
+  "devtools_port": 9223,
+  "runtime": {
+    "version": "41.134.102.3",
+    "arguments": "--remote-debugging-port=9223 --disable-gpu"
+  },
+  "startup_app": {
+    "uuid": "cgrid-grain-bench-swraster",
+    "name": "CGrid Grain Bench (swraster)",
+    "description": "Raster-grain benchmark page (Cycle 22 Task 0) in OpenFin with --disable-gpu (software raster regime).",
+    "url": "http://localhost:4188/bench/raster-grain.html",
+    "autoShow": true,
+    "frame": true,
+    "defaultWidth": 1680,
+    "defaultHeight": 960,
+    "defaultTop": 60,
+    "defaultLeft": 60,
+    "backgroundColor": "#181818",
+    "saveWindowState": false,
+    "contextMenu": true
+  }
+}
