@@ -273,6 +273,46 @@ describe('DamageLedger', () => {
       expect(totalRects(inactive)).toBeGreaterThanOrEqual(totalRects(active));
     });
 
+    // ─── Closeout fix wave — C-1 regression lock ─────────────────────────
+    // `rowBand` can return a band whose SCREEN top/bottom sit entirely off
+    // the canvas (Task 3's widened viewport surfaces off-screen-but-
+    // in-layer rows). Before the C-1 fix, `expand()`'s unconditional
+    // `[0, canvasHeight]` clamp collapsed such a band to non-positive
+    // height and the `.filter((r) => r.h > 0)` upstream dropped it — a live
+    // tick to an off-screen in-layer row never damaged the layer.
+    it('a rowBand entirely above the canvas resolves to a non-empty dataRects entry (content space) when paintCacheLayerActive', () => {
+      const l = new DamageLedger();
+      l.add({ kind: 'rows', rowIndices: [0] });
+      // Layer's screen extent [layerTopScreen, layerBottomScreen] =
+      // [bodyTop + (layerTop - scrollTop), + layerHeight] = [-260, 280] —
+      // comfortably covers the off-canvas band below.
+      const layerCtx = ctx({
+        scrollTop: 1000, layerTop: 700, layerHeight: 540,
+        paintCacheLayerActive: true,
+        rowBand: () => ({ top: -160, bottom: -136 }),
+      });
+      const r = l.takeResolved(layerCtx);
+      expect(r.full).toBe(false);
+      expect(r.dataRects.length).toBeGreaterThanOrEqual(1);
+      const rect = r.dataRects[0]!;
+      // Content space: contentY = screenY - bodyTop + scrollTop.
+      expect(rect.y).toBe(screenYToContentY(-162, layerCtx));
+      expect(rect.y + rect.h).toBe(screenYToContentY(-134, layerCtx));
+    });
+
+    it('the SAME off-canvas rowBand resolves to NOTHING when the layer is inactive (byte-identical cache-off behavior)', () => {
+      const l = new DamageLedger();
+      l.add({ kind: 'rows', rowIndices: [0] });
+      const inactiveCtx = ctx({
+        scrollTop: 1000, layerTop: 700, layerHeight: 540,
+        // paintCacheLayerActive left at its default (falsy).
+        rowBand: () => ({ top: -160, bottom: -136 }),
+      });
+      const r = l.takeResolved(inactiveCtx);
+      expect(r.full).toBe(false);
+      expect(r.dataRects).toHaveLength(0);
+    });
+
     it('a non-scroll partial (rows/cells) is completely unaffected by the flag', () => {
       const l1 = new DamageLedger();
       l1.add({ kind: 'rows', rowIndices: [2] });

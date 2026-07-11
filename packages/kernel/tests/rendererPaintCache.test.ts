@@ -531,4 +531,151 @@ describe('CGrid + paint-cache layer — stats + reset triggers (Task 4)', () => 
     grid.destroy();
     restore();
   });
+
+  // ─── Closeout fix wave — D.1/D.2 coverage gaps + I-4 regression lock ───
+
+  it('(C-1 regression lock / spec §5) chunk arrival for an off-screen in-layer row rasters the LAYER (stats), not the screen', async () => {
+    const { grid, restore } = buildWiredGrid(rows(200), cols);
+    const canvas = (grid as any).cgridCanvas;
+    const g = grid as any;
+
+    await new Promise((r) => setTimeout(r, 50));
+    canvas.tickPaint(performance.now());
+
+    // A handful of rows below the visible window but comfortably inside
+    // the retained layer's default overscan coverage (0.5 * bodyHeight on
+    // each side) — off-screen, but NOT off-layer.
+    const rowHeight = g.theme.rowHeight as number;
+    const bodyHeight = g.viewport.bodyHeight as number;
+    const visibleRowCount = Math.ceil(bodyHeight / rowHeight);
+    const targetRowIndex = Math.min(199, visibleRowCount + 3);
+    expect(targetRowIndex, 'sanity: target row must genuinely be off-screen').toBeGreaterThan(visibleRowCount);
+
+    grid.resetPaintStats();
+    grid.applyTransactionAsync({ update: [{ id: `r${targetRowIndex}`, v: 999999 }] });
+    // Real wait past the worker's TransactionQueue batching window (50ms)
+    // + the modelUpdated push's own RAF coalescing + the getViewport
+    // round-trip (same idiom as tests/paintStats.integration.test.ts,
+    // minus its manual RAF-queue override — this file's `beforeAll`
+    // doesn't stub `requestAnimationFrame`, so happy-dom's real one fires
+    // on its own within this window).
+    await new Promise((r) => setTimeout(r, 200));
+    canvas.tickPaint(performance.now() + 1000);
+
+    const stats = grid.getPaintStats();
+    expect(stats.fullPaints).toBe(0);
+    expect(stats.presents).toBeGreaterThanOrEqual(1);
+    // Pre-C-1-fix: the off-screen-in-layer row's damage resolved to EMPTY
+    // dataRects (`expand()`'s unconditional canvas clamp dropped a band
+    // whose screen-space top/bottom sat entirely off-canvas) -> a
+    // present-only frame, `lastRects === 0`. Post-fix: the row's band
+    // survives (clamped to the LAYER's own screen extent instead) -> a
+    // real raster this tick.
+    expect(stats.lastRects, 'expected the off-screen-in-layer row damage to actually raster the layer').toBeGreaterThanOrEqual(1);
+
+    grid.destroy();
+    restore();
+  });
+
+  it('(D.2 / spec §4) a present-only frame (pure in-coverage scroll, nothing else damaged) reports partialPaints++ with lastRects===0 and lastAreaPct===0', async () => {
+    const { grid, restore } = buildWiredGrid(rows(200), cols);
+    const canvas = (grid as any).cgridCanvas;
+    const g = grid as any;
+
+    await new Promise((r) => setTimeout(r, 50));
+    canvas.tickPaint(performance.now());
+    grid.resetPaintStats();
+
+    // A tiny scroll well within the layer's overscan margin -> 'keep',
+    // nothing else damaged -> the present-only fast path (spec §4).
+    const rowHeight = g.theme.rowHeight as number;
+    g.onScrollerScroll(0, rowHeight);
+    g.recomputeViewport(); // Task 3 gotcha: CGrid.viewport lags until this runs.
+    canvas.tickPaint(performance.now() + 1000);
+
+    const stats = grid.getPaintStats();
+    expect(stats.fullPaints).toBe(0);
+    expect(stats.layerResets).toBe(0);
+    expect(stats.partialPaints).toBeGreaterThanOrEqual(1);
+    expect(stats.presents).toBeGreaterThanOrEqual(1);
+    expect(stats.lastRects).toBe(0);
+    expect(stats.lastAreaPct).toBe(0);
+
+    grid.destroy();
+    restore();
+  });
+
+  it('(I-4 regression lock) a sub-device-px bodyHeight jitter (backing store size unchanged) still forces planLayer to reset, not a silent stale keep', async () => {
+    const { grid, restore } = buildWiredGrid(rows(200), cols);
+    const canvas = (grid as any).cgridCanvas;
+    const g = grid as any;
+
+    await new Promise((r) => setTimeout(r, 50));
+    canvas.tickPaint(performance.now());
+    grid.resetPaintStats();
+
+    // dpr is 1 in this test env (`window.devicePixelRatio` undefined) — a
+    // bodyHeight delta small enough that `2 * delta < 0.5` keeps
+    // `round(layerHeightCss * dpr)` (the layer's ACTUAL backing-store
+    // size) identical, so `PaintCacheLayer.ensureSize` never reallocates
+    // and never itself forces `paintCacheLayerAnchored = false`. Directly
+    // mutating `canvasBounds.height` (bypassing `cgridCanvas.resize()`, so
+    // the DISPLAY canvas's own backing store is untouched, and the base
+    // damage system's `boundsChanged` bail — which only fires from a
+    // SCROLL tick, not a bare `recomputeViewport()` — never enters into
+    // it either) isolates EXACTLY the I-4 scenario: a real bodyHeight
+    // change too small to trip any reallocation-based defense.
+    g.canvasBounds.height += 0.1;
+    g.recomputeViewport();
+    g.cgridCanvas.requestRepaint();
+    canvas.tickPaint(performance.now() + 1000);
+
+    const stats = grid.getPaintStats();
+    expect(
+      stats.layerResets,
+      'a bodyHeight change small enough to keep the backing store size identical must still reset planLayer\'s own decision (I-4) — otherwise it silently keeps against geometry whose height changed underneath it',
+    ).toBeGreaterThanOrEqual(1);
+
+    grid.destroy();
+    restore();
+  });
+
+  it('(directive B.3 regression lock) the budgeted drain converges the pending backlog to zero within a few subsequent paint ticks', async () => {
+    const { grid, restore } = buildWiredGrid(rows(2000), cols);
+    const canvas = (grid as any).cgridCanvas;
+    const g = grid as any;
+
+    await new Promise((r) => setTimeout(r, 50));
+    canvas.tickPaint(performance.now());
+    grid.resetPaintStats();
+
+    // A scroll comfortably inside the layer's coverage but big enough to
+    // erode a margin below `planLayer`'s 25%-of-overscan threshold ->
+    // 'shift', which (directive B) defers its newly-exposed band to the
+    // pending ledger instead of rastering it inline this frame.
+    const bodyHeight = g.viewport.bodyHeight as number;
+    g.onScrollerScroll(0, bodyHeight * 1.0);
+    g.recomputeViewport();
+    canvas.tickPaint(performance.now() + 1000);
+
+    let stats = grid.getPaintStats();
+    expect(stats.layerShifts, 'expected this scroll to actually trigger a shift').toBeGreaterThanOrEqual(1);
+
+    // Drain across a handful of subsequent ticks — mirrors the real RAF
+    // loop's repeated `requestRepaint()` while backlog remains (directive
+    // B.3: "a settled grid must have zero pending").
+    let ticks = 0;
+    let now = performance.now() + 2000;
+    while (grid.getPaintStats().layerBacklogPx > 0 && ticks < 50) {
+      now += 20;
+      canvas.tickPaint(now);
+      ticks++;
+    }
+
+    stats = grid.getPaintStats();
+    expect(stats.layerBacklogPx, 'a settled grid must have zero pending backlog').toBe(0);
+
+    grid.destroy();
+    restore();
+  });
 });
