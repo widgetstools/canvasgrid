@@ -62,11 +62,13 @@ import {
   type ColumnLayout,
 } from './core/layout';
 import {
+  computeViewport,
   type ViewportColumn,
   type ViewportRow,
   type ViewportState,
 } from './core/viewport';
 import { RowHeightIndex } from './core/rowHeightIndex';
+import type { LayerGeometry } from './core/paintCache';
 import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, TotalsSubgrid, PinnedRowsSubgrid, type Subgrid, type SubgridCell } from './core/subgrid';
 import { FloatingFilterSubgrid } from './core/floatingFilterSubgrid';
 import { FloatingFilterOverlay } from './interaction/floatingFilterOverlay';
@@ -940,6 +942,18 @@ export class CGrid<TRow = any> {
   private renderer: Renderer;
   private subgrids: Subgrid[] = [];
   private viewport!: ViewportState;
+  /** Task 3 (paint-cache layer) — memoizes `buildLayerViewport`'s result.
+   *  Keyed on the live `ViewportState` object reference (a fresh object
+   *  every `recomputeViewport()` call, so identity alone detects "the real
+   *  viewport changed since the last layer-viewport build" with no extra
+   *  generation counter) plus the requested layer geometry. `null` until
+   *  the first call. */
+  private layerViewportCache: {
+    vs: ViewportState;
+    layerTop: number;
+    layerHeight: number;
+    result: ViewportState;
+  } | null = null;
   private selection: SelectionModel;
   private hitTester: HitTester;
   private featureChain: FeatureChain;
@@ -8033,6 +8047,58 @@ export class CGrid<TRow = any> {
    *  re-pin (via the `afterRecompute` dep). */
   private recomputeViewport(afterScroll: boolean = false): void {
     this.viewport = this.viewportManager.recompute(afterScroll);
+  }
+
+  /** Task 3 (paint-cache layer, spec §1 "Layer layout") — the synthetic
+   *  second `computeViewport` call that lays out rows for the retained
+   *  offscreen layer, independent of the on-screen viewport. Mirrors the
+   *  real recompute's argument construction (`ViewportManager.
+   *  computeCurrentViewport`) — same columnLayout / subgrids / scrollLeft /
+   *  dataRowHeightIndex / column-virtualisation suppression — but re-
+   *  anchored to the layer's own coverage: `scrollTop: layerTop`,
+   *  `containerHeight: bodyTop + layerHeight` (so the returned
+   *  `bodyHeight` is exactly `layerHeight`), `overscanRows: 0` (the
+   *  layer's own extent IS its buffer — no additional row padding), and
+   *  `suppressRowVirtualisation: false` (unlike whatever the live grid
+   *  option says — the layer always virtualises to its own bounded
+   *  coverage, never "every row").
+   *
+   *  Memoized on (the live `this.viewport` object reference, `layerTop`,
+   *  `layerHeight`) — `recomputeViewport()` always assigns a NEW
+   *  `ViewportState` object, so reference equality alone detects "the real
+   *  viewport changed since the last build" without a separate generation
+   *  counter. Returns the same object back-to-back for the same geometry
+   *  against the same real-viewport snapshot. */
+  buildLayerViewport(geometry: LayerGeometry): ViewportState {
+    const vs = this.viewport;
+    const cached = this.layerViewportCache;
+    if (
+      cached
+      && cached.vs === vs
+      && cached.layerTop === geometry.layerTop
+      && cached.layerHeight === geometry.layerHeight
+    ) {
+      return cached.result;
+    }
+    const containerWidth =
+      this.canvasBounds.width || this.scroller.clientWidth || this.root.clientWidth || 800;
+    const result = computeViewport({
+      columnLayout: this.columnLayout,
+      subgrids: this.subgrids,
+      containerWidth,
+      containerHeight: vs.bodyTop + geometry.layerHeight,
+      scrollLeft: vs.scrollLeft,
+      scrollTop: geometry.layerTop,
+      overscanRows: 0,
+      suppressColumnVirtualisation:
+        this.options.suppressColumnVirtualisation || this.options.domLayout === 'print',
+      suppressRowVirtualisation: false,
+      dataRowHeightIndex: this.rowHeightIndex ?? undefined,
+    });
+    this.layerViewportCache = {
+      vs, layerTop: geometry.layerTop, layerHeight: geometry.layerHeight, result,
+    };
+    return result;
   }
 
   /** Cycle 19 / Task 4 — delegating wrapper. The viewport-tick anchor +

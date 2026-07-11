@@ -34,6 +34,15 @@ export interface ViewportComputeOptions {
   suppressRowVirtualisation?: boolean;
   domLayout?: 'normal' | 'autoHeight' | 'print';
   rowHeight?: number;
+  /** Paint-cache layer (Task 3 / spec §1 "Fetch window coupling") — when
+   *  not explicitly `false` (the default), the row overscan that feeds
+   *  `computeViewport`'s `firstRow`/`lastRow` widens so the worker fetch
+   *  window covers the retained layer's coverage, not just the on-screen
+   *  rows. `false` reproduces today's overscan exactly. */
+  paintCache?: boolean;
+  /** Coverage margin (× bodyHeight) the paint-cache layer banks on each
+   *  side of the visible body. Defaults to `0.5`; clamped to `[0, 2]`. */
+  paintCacheOverscan?: number;
 }
 
 export interface ViewportManagerDeps {
@@ -159,14 +168,13 @@ export class ViewportManager {
     const w = bounds.width || scroller.clientWidth || root.clientWidth || 800;
     const h = bounds.height || scroller.clientHeight || root.clientHeight || 600;
     const opts = this.deps.getOptions();
-    return computeViewport({
+    const baseArgs = {
       columnLayout: this.deps.getColumnLayout(),
       subgrids: this.deps.getSubgrids(),
       containerWidth: w,
       containerHeight: h,
       scrollLeft: this._scrollLeft,
       scrollTop: this._scrollTop,
-      rowBuffer: opts.rowBuffer,
       // Cycle 20 / Task 6 — `domLayout: 'print'` forces every row + every
       // column to materialise so the browser print path captures the
       // entire grid.
@@ -175,7 +183,23 @@ export class ViewportManager {
       suppressRowVirtualisation:
         opts.suppressRowVirtualisation || opts.domLayout === 'print',
       dataRowHeightIndex: this.deps.getRowHeightIndex() ?? undefined,
-    });
+    };
+    const state = computeViewport({ ...baseArgs, rowBuffer: opts.rowBuffer });
+    // Task 3 (paint-cache layer, spec §1 "Fetch window coupling") — widen
+    // the row overscan that feeds `firstRow`/`lastRow` (and therefore the
+    // worker fetch window, see `request()` below) so it spans the retained
+    // layer's coverage, not just the on-screen rows. `paintCache: false` is
+    // the field escape hatch — it must reproduce today's overscan exactly,
+    // so the widened path is skipped entirely rather than widened-to-zero.
+    if (opts.paintCache === false) return state;
+    const rowHeightFallback = this.deps.getRowHeightFallback() || 1;
+    const paintCacheOverscan = Math.max(0, Math.min(2, opts.paintCacheOverscan ?? 0.5));
+    const overscanPx = paintCacheOverscan * state.bodyHeight;
+    const widenedRows = Math.ceil(overscanPx / rowHeightFallback);
+    const baseOverscan = opts.rowBuffer ?? 3;
+    const widened = Math.max(baseOverscan, widenedRows);
+    if (widened <= baseOverscan) return state;
+    return computeViewport({ ...baseArgs, rowBuffer: widened });
   }
 
   /** Size the invisible sizer to match the viewport's scrollable extent so the

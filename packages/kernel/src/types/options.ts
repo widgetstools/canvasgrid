@@ -266,6 +266,26 @@ export interface CGridOptions<TRow = any> {
    *  NOTE: This commit ships the option + detection; the worker
    *  painter itself is the follow-up that closes Task 4. */
   paintMode?: 'auto' | 'main' | 'offscreen';
+  /** Retained paint-cache layer (Phase C of the damage-region system) —
+   *  when `true` (the default), scroll frames present via a single
+   *  `drawImage` of an offscreen layer instead of re-rastering every
+   *  visible row each tick; text only rasters when content actually
+   *  changes or the layer's coverage needs to extend. `false` is the
+   *  field escape hatch: reproduces the exact pre-paint-cache damage
+   *  pipeline (same as `suppressPartialRepaint` for the base damage
+   *  system). Runtime-mutable via `updateGridOptions` — flipping it
+   *  tears down / rebuilds the layer.
+   *  See docs/superpowers/specs/2026-07-11-paint-cache-layer-design.md. */
+  paintCache?: boolean;
+  /** Coverage margin banked on each side of the visible body for the
+   *  paint-cache layer, as a multiple of body height — e.g. `0.5` (the
+   *  default) banks half a screen's worth of rows above AND below the
+   *  visible range so ordinary scroll velocity slides within the
+   *  layer without a re-raster. Clamped to `[0, 2]`. Widens the
+   *  worker's row-fetch window (`rowBuffer`) to match so the fetched
+   *  data always covers the layer's coverage. Ignored when
+   *  `paintCache: false`. */
+  paintCacheOverscan?: number;
   /** Cycle 25 / Task 10 — soft cap on the cumulative byte size of
    *  cached viewport chunks the grid holds across requests. When
    *  exceeded, older chunks are evicted from the LRU (which itself
