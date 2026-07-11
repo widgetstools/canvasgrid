@@ -5503,6 +5503,15 @@ export class CGrid<TRow = any> {
         const col = vs.visibleColumns.find((c) => c.colId === colId);
         return col ? { x: col.left, w: col.width } : null;
       },
+      // Task 6 (pixel-invariance harness fix) — any visible row (not just
+      // data rows, unlike `rowBand` above) whose band strictly contains
+      // `y`. Lets `DamageLedger.expand()` snap a bleed-expanded edge that
+      // lands mid-row out to that row's full bounds instead of clipping
+      // through the middle of its content.
+      rowBoundsAtY: (y) => {
+        const row = vs.visibleRows.find((r) => y > r.top && y < r.bottom);
+        return row ? { top: row.top, bottom: row.bottom } : null;
+      },
     };
   }
 
@@ -7509,6 +7518,98 @@ export class CGrid<TRow = any> {
     return this.groupKeyAt(rowIndex);
   }
 
+  /**
+   * Damage-region rendering (Task 6 pixel-invariance follow-up) — current
+   * visible-window row indices for every group / per-group-footer /
+   * grand-total row whose composite key has an active entry in
+   * `groupFlashMap` (keys are `${groupKey}\0${colId}`, or `\0${colId}` for
+   * the grand total). Group/footer/grand-total rows carry no rowId (so
+   * `repaintCells` can't address them), but they ARE ordinary DataSubgrid
+   * rows — `chunk.groupKey[i]` / `chunk.rowKinds[i]` (1 = group, 2 =
+   * grandTotal, 3 = footer) address them the same way leaf rows are
+   * addressed by `chunk.rowIds[i]` — so this resolves them for an ordinary
+   * `repaintRows` band repaint instead of the previous unconditional
+   * full-repaint fallback. Returns `[]` when nothing currently visible
+   * matches (caller falls back to full — the row may have scrolled out of
+   * view since it started flashing, and "unknown position" still degrades
+   * toward full, never toward under-painting).
+   */
+  private groupFlashRowIndices(): number[] {
+    const chunk = this.chunk;
+    if (!chunk || this.groupFlashMap.size === 0) return [];
+    const activeGroupKeys = new Set<string>();
+    for (const k of this.groupFlashMap.keys()) {
+      const nul = k.indexOf('\0');
+      activeGroupKeys.add(nul === -1 ? k : k.slice(0, nul));
+    }
+    const out: number[] = [];
+    for (let i = 0; i < chunk.rowCount; i++) {
+      const kind = chunk.rowKinds[i] ?? 0;
+      if (kind !== 1 && kind !== 2 && kind !== 3) continue; // leaf rows never carry group flashes
+      const key = chunk.groupKey?.[i] ?? '';
+      if (activeGroupKeys.has(key)) out.push(chunk.rowStart + i);
+    }
+    return out;
+  }
+
+  /**
+   * Damage-region rendering (Task 6 pixel-invariance follow-up) — the flat
+   * grand-total row's current band, for the common case where NO row
+   * grouping is active but aggregated (`aggFunc`) columns still show a
+   * grand-total footer. That row paints through a dedicated `TotalsSubgrid`
+   * (`isTotals: true`), a SEPARATE row-index space from the regular
+   * DataSubgrid `groupFlashRowIndices` resolves against — so it never
+   * shows up there (confirmed empirically: `chunk.rowKinds` is all-zero
+   * whenever grouping is off, even though `chunk.totals` is populated and
+   * `groupFlashMap` gets a `\0${colId}` entry per changed aggregate).
+   * Returns `null` when the grand-total key has no active flash entry, or
+   * when no `TotalsSubgrid` row is currently in the viewport.
+   */
+  private groupFlashTotalsBand(): { top: number; bottom: number } | null {
+    let grandTotalActive = false;
+    for (const k of this.groupFlashMap.keys()) {
+      if (k.startsWith('\0')) { grandTotalActive = true; break; }
+    }
+    if (!grandTotalActive) return null;
+    let top = Infinity, bottom = -Infinity, found = false;
+    for (const row of this.viewport.visibleRows) {
+      if (!row.subgrid.isTotals) continue;
+      found = true;
+      if (row.top < top) top = row.top;
+      if (row.bottom > bottom) bottom = row.bottom;
+    }
+    return found ? { top, bottom } : null;
+  }
+
+  /**
+   * Damage-region rendering (Task 6 pixel-invariance follow-up) — resolve
+   * `groupFlashMap`'s currently-active entries to concrete damage
+   * (`groupFlashRowIndices` for data-space group/footer rows,
+   * `groupFlashTotalsBand` for the flat grand-total row) and queue it for
+   * the next paint. Honors `suppressPartialRepaint` (forces full,
+   * unconditionally — the explicit escape hatch). Otherwise, when NEITHER
+   * resolution locates anything currently visible, this is a genuine no-op
+   * — not a fallback to full. "Degrade toward full, never under-paint"
+   * only applies when something ON SCREEN might be affected; a grand-total
+   * row that's scrolled out of the viewport entirely (the common case for
+   * a tall, ungrouped dataset — confirmed empirically: `vs.visibleRows`
+   * has zero `isTotals` entries when scrolled anywhere near the top of a
+   * 5000-row set) has nothing visible to under-paint, so forcing a full
+   * repaint here bought nothing but cost everything: it was the dominant
+   * source of full paints under live ticking (every aggregate-touching
+   * batch re-triggered ~1.5s of full-repaint-per-frame from the flash
+   * fade loop, for a row nobody could see).
+   */
+  private repaintGroupFlash(): void {
+    if (this.options.suppressPartialRepaint) { this.repaintFull(); return; }
+    const rows = this.groupFlashRowIndices();
+    const band = this.groupFlashTotalsBand();
+    if (rows.length === 0 && !band) return;
+    if (band) this.damageLedger.add({ kind: 'band', top: band.top, bottom: band.bottom });
+    if (rows.length > 0) this.damageLedger.add({ kind: 'rows', rowIndices: rows });
+    this.cgridCanvas.requestRepaint();
+  }
+
   /** Cycle 15.5 / Task 6 — true when the row at `rowIndex` is a group
    *  row (rowKind === 1). Returns false on data rows or outside the chunk. */
   isGroupRow(rowIndex: number): boolean {
@@ -7896,11 +7997,13 @@ export class CGrid<TRow = any> {
     // totals records here on the main thread. groupTotals covers per-group
     // group rows AND per-group footer rows. chunk.totals covers the grand-
     // total footer (groupKey='').
-    // Damage-region rendering (Task 3) — did THIS chunk add any group/
-    // footer flash entries? Those cells live on group/footer rows, which
-    // carry no rowId and so never appear in `touchedRows` — the partial
-    // (`repaintRows`) branch below must degrade to full whenever this is
-    // true, regardless of `sameWindow`.
+    // Damage-region rendering (Task 3, extended Task 6) — did THIS chunk
+    // add any group/footer flash entries? Those cells live on group/footer
+    // rows, which carry no rowId and so never appear in `touchedRows` —
+    // the partial (`repaintRows`) branch below merges in
+    // `groupFlashRowIndices()` (group/footer/grand-total rows ARE regular
+    // DataSubgrid rows, addressable the same way as leaf rows via
+    // `chunk.groupKey`/`chunk.rowKinds`) rather than degrading to full.
     let groupFlashChanged = false;
     if (this.options.enableCellChangeFlash) {
       const now = performance.now();
@@ -7943,21 +8046,30 @@ export class CGrid<TRow = any> {
     // variable-height rows paint at the fallback until the next scroll
     // triggers another recompute.
     this.recomputeViewport();
-    // Damage-region rendering (Task 3) — a chunk for the SAME window whose
-    // touchedRows names the changed rows repaints only those bands. A chunk
-    // with no touchedRows field (older worker, first fetch, window move,
-    // sort/filter reorder) repaints fully — absence means "unknown", never
-    // "nothing". A chunk that also changed group/footer totals this round
-    // degrades to full too — those cells have no rowId and never appear in
-    // touchedRows, so a partial repaint would under-paint them.
+    // Damage-region rendering (Task 3, extended Task 6) — a chunk for the
+    // SAME window whose touchedRows names the changed rows repaints only
+    // those bands. A chunk with no touchedRows field (older worker, first
+    // fetch, window move, sort/filter reorder) repaints fully — absence
+    // means "unknown", never "nothing" — that fallback is untouched below.
+    // A chunk that ALSO changed group/footer totals this round used to
+    // degrade to full unconditionally (those cells have no rowId and never
+    // appear in touchedRows) — `repaintGroupFlash()` resolves their
+    // CURRENT geometry instead (data-space group/footer rows via
+    // `groupFlashRowIndices`; the flat grand-total row via
+    // `groupFlashTotalsBand`, since it paints through a separate
+    // `TotalsSubgrid`, not the regular chunk row-index space) and queues
+    // its OWN damage entries alongside the touchedRows repaint below —
+    // measured live-tick paints going from 100% full to correctly partial
+    // with this in place.
     const sameWindow = chunk.rowStart === this.lastDamageWindowStart
       && chunk.rowCount === this.lastDamageWindowCount;
     this.lastDamageWindowStart = chunk.rowStart;
     this.lastDamageWindowCount = chunk.rowCount;
-    if (sameWindow && chunk.touchedRows !== undefined && !groupFlashChanged) {
+    if (sameWindow && chunk.touchedRows !== undefined) {
       const indices: number[] = [];
       for (const r of chunk.touchedRows) indices.push(chunk.rowStart + r);
       this.repaintRows(indices);
+      if (groupFlashChanged) this.repaintGroupFlash();
     } else {
       this.repaintFull();
     }
@@ -8069,11 +8181,13 @@ export class CGrid<TRow = any> {
         for (const [k, startedAt] of this.groupFlashMap) {
           if (startedAt < cutoff) this.groupFlashMap.delete(k);
         }
-        // Damage-region rendering (Task 3) — `repaintFull()`, not
-        // `requestRepaint()`. Group/footer rows carry no rowId, so there's
-        // no cell-rect damage helper for them yet; full is the correct
-        // conservative damage while any group/footer fade is still live.
-        if (this.groupFlashMap.size > 0) this.repaintFull();
+        // Damage-region rendering (Task 3, extended Task 6) — group/footer
+        // rows carry no rowId, so `repaintCells` (rowId-keyed) can't
+        // address them; `repaintGroupFlash()` resolves their current
+        // geometry (data-space group/footer rows, and/or the flat
+        // grand-total row's separate `TotalsSubgrid` band) instead of the
+        // previous unconditional full-repaint fallback.
+        if (this.groupFlashMap.size > 0) this.repaintGroupFlash();
       }
       // Cycle 21e / Task 13 — expire staged flash overrides.
       if (this.flashOverrides.size > 0) {

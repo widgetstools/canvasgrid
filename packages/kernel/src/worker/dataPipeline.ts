@@ -1009,9 +1009,26 @@ export class ViewportSlicer<TRow = any> {
       if (anySet) flashMask = mask;
     }
 
-    // Damage-region rendering (Task 3) — touchedRows packing. Same window
-    // walk as flashMask above but rowId-only (no per-column fan-out): bit
-    // `r` set iff `visibleIds[rowStart + r]` is in `pendingTouched`.
+    // Damage-region rendering (Task 3, corrected Task 6) — touchedRows
+    // packing. Same window walk as flashMask above but rowId-only (no
+    // per-column fan-out): bit `r` set iff `visibleIds[rowStart + r]` is in
+    // `pendingTouched`. `touchedRows` is assigned WHENEVER `pendingTouched`
+    // is defined (a transaction landed since the last slice) — including an
+    // EMPTY `Uint32Array` when none of the touched rowIds fall inside this
+    // window. That's a meaningfully different signal from "no diff info at
+    // all" (the true `undefined`/unknown case — window moved, first fetch,
+    // older worker): an empty-but-defined `touchedRows` tells the caller
+    // "checked, and nothing in the visible window changed", which resolves
+    // to a correctly-partial (zero-rect, no-op) repaint instead of
+    // needlessly degrading to full. The previous `hit.length > 0 ? ... :
+    // undefined` conflated the two cases, so ANY transaction landing
+    // entirely outside the current viewport (the common case for a sparse
+    // live feed ticking a small fraction of a large row set per batch)
+    // forced a full repaint every time — confirmed empirically against the
+    // cgrid-ext-demo's live STOMP feed: 100% full paints regardless of
+    // scroll position or observation window, because `touchedRows` was
+    // never anything but `undefined` whenever this batch's touched ids
+    // didn't happen to include a currently-visible row.
     let touchedRows: Uint32Array | undefined;
     if (pendingTouched !== undefined && pendingTouched.size > 0 && count > 0) {
       const hit: number[] = [];
@@ -1019,7 +1036,7 @@ export class ViewportSlicer<TRow = any> {
         const rowId = visibleIds[rowStart + r];
         if (rowId !== undefined && pendingTouched.has(rowId)) hit.push(r);
       }
-      if (hit.length > 0) touchedRows = Uint32Array.from(hit);
+      touchedRows = Uint32Array.from(hit);
     }
 
     return {

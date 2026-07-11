@@ -40,13 +40,21 @@ describe('ViewportSlicer.slice touchedRows (flat path)', () => {
     expect(Array.from(chunk.touchedRows!)).toEqual([0]);
   });
 
-  it('reports an off-window touched rowId as absent from this chunk (no window-relative index)', () => {
+  it('reports an EMPTY (but defined) touchedRows when the touched rowId is off-window — distinct from the true "unknown" case', () => {
     const s = store();
     const v = new ViewportSlicer(s, cols);
-    // 'c' is touched but the window only covers rows 0..2 (a, b).
+    // 'c' is touched but the window only covers rows 0..2 (a, b). A
+    // transaction landed (pendingTouched is non-empty) and we DID check
+    // this window — we just found nothing in it, which is a meaningfully
+    // different signal from "no diff info at all" (`undefined`, covered by
+    // the two tests below). Conflating the two used to force a full
+    // repaint on every chunk arrival whose transaction happened not to
+    // touch the visible window — the common case for a sparse live feed
+    // ticking a small fraction of a large row set per batch.
     const pendingTouched = new Set(['c']);
     const chunk = v.slice(['a', 'b', 'c'], { rowStart: 0, rowEnd: 2, columns: ['name', 'pri'] }, undefined, pendingTouched);
-    expect(chunk.touchedRows).toBeUndefined();
+    expect(chunk.touchedRows).toBeDefined();
+    expect(Array.from(chunk.touchedRows!)).toEqual([]);
   });
 
   it('touchedRows is undefined when pendingTouched is empty', () => {
@@ -89,6 +97,21 @@ describe('sliceGroupedViewport touchedRows (grouped path, flat visibleOrder)', (
     );
     expect(chunk.touchedRows).toBeDefined();
     expect(Array.from(chunk.touchedRows!)).toEqual([0]);
+  });
+
+  it('reports an EMPTY (but defined) touchedRows when the touched rowId is off-window', () => {
+    const s = store();
+    // 'c' is touched but the window only covers rows 0..2 (a, b) — same
+    // distinction as the flat-path test above.
+    const pendingTouched = new Set(['c']);
+    const chunk = sliceGroupedViewport(
+      s, colIndex(), postFilterIds, visibleOrder,
+      { rowStart: 0, rowEnd: 2, columns: ['name', 'pri'] },
+      undefined, undefined, undefined, undefined,
+      pendingTouched,
+    );
+    expect(chunk.touchedRows).toBeDefined();
+    expect(Array.from(chunk.touchedRows!)).toEqual([]);
   });
 
   it('touchedRows is undefined when pendingTouched is empty', () => {

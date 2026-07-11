@@ -34,6 +34,15 @@ export interface DamageResolveCtx {
   rowBand(localRowIndex: number): { top: number; bottom: number } | null;
   rowIndexForRowId(rowId: number): number | null;
   colBounds(colId: string): { x: number; w: number } | null;
+  /** Task 6 (pixel-invariance harness) — reverse lookup: the visible row
+   *  (any kind — data/header/totals/pinned) whose band STRICTLY contains
+   *  pixel `y` (`top < y < bottom`; a `y` exactly ON a boundary matches
+   *  neither side, so an already row-aligned edge is left alone). Used by
+   *  `expand()` to snap a bleed-expanded edge that lands mid-row out to
+   *  that row's full bounds — see the row-atomic bleed comment there.
+   *  Optional so existing `DamageResolveCtx` test fixtures (which don't
+   *  exercise this path) don't need updating. */
+  rowBoundsAtY?(y: number): { top: number; bottom: number } | null;
 }
 
 export const DAMAGE_BLEED_PX = 2;
@@ -171,6 +180,25 @@ export class DamageLedger {
         x0 = Math.min(x0, b.x); y0 = Math.min(y0, b.y);
         x1 = Math.max(x1, b.x + b.w); y1 = Math.max(y1, b.y + b.h);
       }
+    }
+    // Row-atomic bleed (Task 6 pixel-invariance harness fix): the flat
+    // ±bleed expansion above can land partway into a NEIGHBORING row's
+    // band instead of exactly on its boundary — e.g. a hovered row whose
+    // bled bottom edge creeps 2px into the row below. That's a clip
+    // boundary through the MIDDLE of the neighbor's content, and canvas
+    // text/decorator anti-aliasing genuinely differs at a mid-glyph clip
+    // edge vs. an unclipped (full-surface) paint of the same glyph — Skia
+    // resolves glyph coverage against the active clip, so a partial-row
+    // slice can leave a stray edge scanline that a full paint never
+    // produces. Rows are the atomic unit for row-based damage (hover,
+    // selection, focus, ticks): snap the bled edge OUT to the full bounds
+    // of whichever row it lands inside, so a repaint always includes a
+    // neighboring row completely or not at all.
+    if (ctx.rowBoundsAtY) {
+      const topRow = ctx.rowBoundsAtY(y0);
+      if (topRow && topRow.top < y0) y0 = topRow.top;
+      const bottomRow = ctx.rowBoundsAtY(y1);
+      if (bottomRow && bottomRow.bottom > y1) y1 = bottomRow.bottom;
     }
     // Clamp to canvas.
     x0 = Math.max(0, x0); y0 = Math.max(0, y0);

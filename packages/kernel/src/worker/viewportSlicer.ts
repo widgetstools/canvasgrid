@@ -401,10 +401,17 @@ export function sliceGroupedViewport<TRow>(
     if (anySet) flashMask = mask;
   }
 
-  // Damage-region rendering (Task 3) — touchedRows packing. Group rows
-  // contribute no pending touches (same rationale as the flashMask block
-  // above — a group's rowKey is never in pendingTouched). Same window walk
-  // idiom: `visibleOrder[rowStart + r]` / `postFilterIds[entry.rowIndex]`.
+  // Damage-region rendering (Task 3, corrected Task 6) — touchedRows
+  // packing. Group rows contribute no pending touches (same rationale as
+  // the flashMask block above — a group's rowKey is never in
+  // pendingTouched). Same window walk idiom: `visibleOrder[rowStart + r]` /
+  // `postFilterIds[entry.rowIndex]`. `touchedRows` is assigned whenever
+  // `pendingTouched` is defined — including an EMPTY `Uint32Array` when
+  // none of the touched rowIds land in this window — so the caller can
+  // tell "checked, nothing here changed" (repaints nothing) apart from
+  // true "unknown" (`undefined` — window moved, first fetch, older
+  // worker), which must still degrade to full. See dataPipeline.ts's
+  // `ViewportSlicer.slice` for the matching fix + full rationale.
   let touchedRows: Uint32Array | undefined;
   if (pendingTouched !== undefined && pendingTouched.size > 0 && count > 0) {
     const hit: number[] = [];
@@ -414,7 +421,7 @@ export function sliceGroupedViewport<TRow>(
       const rowId = postFilterIds[entry.rowIndex];
       if (rowId !== undefined && pendingTouched.has(rowId)) hit.push(r);
     }
-    if (hit.length > 0) touchedRows = Uint32Array.from(hit);
+    touchedRows = Uint32Array.from(hit);
   }
 
   return {
