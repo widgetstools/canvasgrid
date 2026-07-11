@@ -1,0 +1,22 @@
+{
+  "devtools_port": 9223,
+  "runtime": {
+    "version": "41.134.102.3",
+    "arguments": "--remote-debugging-port=9223"
+  },
+  "startup_app": {
+    "uuid": "cgrid-ext-demo",
+    "name": "CGridExt Demo",
+    "description": "CGridExt ribbon demo hosted in OpenFin (points at the vite preview server: npm run build && npx vite preview --port 4188)",
+    "url": "http://localhost:4188/",
+    "autoShow": true,
+    "frame": true,
+    "defaultWidth": 1680,
+    "defaultHeight": 960,
+    "defaultTop": 60,
+    "defaultLeft": 60,
+    "backgroundColor": "#181818",
+    "saveWindowState": false,
+    "contextMenu": true
+  }
+}

@@ -16,7 +16,7 @@
     }
   },
   "scripts": {
-    "build": "vite build && tsc --emitDeclarationOnly",
+    "build": "vite build && vite build -c vite.worker.config.ts && tsc --emitDeclarationOnly",
     "build:watch": "vite build --watch",
     "prebuild-icons": "tsx src/icons/build-lucide.ts",
     "test": "vitest run --passWithNoTests",
