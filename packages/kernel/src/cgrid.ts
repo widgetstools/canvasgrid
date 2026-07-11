@@ -145,7 +145,7 @@ import {
   resolveGroupDisplayType,
 } from './core/autoGroupColumn';
 import { Renderer } from './renderer/renderer';
-import { DamageLedger, type DamageResolveCtx } from './core/damageLedger';
+import { DamageLedger, decideScrollDamage, type DamageResolveCtx, type Rect } from './core/damageLedger';
 import { HitTester } from './interaction/hitTester';
 import { SelectionModel } from './interaction/selectionModel';
 import { FeatureChain } from './interaction/featureChain';
@@ -704,6 +704,32 @@ export class CGrid<TRow = any> {
    *  so behavior is byte-identical to pre-damage-region rendering until a
    *  later task migrates a source to `repaintRows`/`repaintCells`. */
   private readonly damageLedger = new DamageLedger();
+  /** Task 5 — scroll self-blit. Scroll position + DPR/bounds snapshot at
+   *  the LAST PAINT (not the last scroll tick) — `afterScrollTick` diffs
+   *  against these so deltas accumulate correctly across frames the fps
+   *  gate skips, and updates them INSIDE the paint closure after every
+   *  paint so a skipped frame's un-painted delta isn't dropped. Bounds/DPR
+   *  start at sentinel values that never equal a real reading, so a scroll
+   *  landing before the very first paint safely bails to full via
+   *  `decideScrollDamage`'s `boundsChanged`/`dprChanged` inputs. */
+  private lastPaintedScrollLeft = 0;
+  private lastPaintedScrollTop = 0;
+  private lastPaintedDpr = 0;
+  private lastPaintedCanvasWidth = 0;
+  private lastPaintedCanvasHeight = 0;
+  /** Task 5 — scroll position as of the LAST `afterScrollTick` (every tick,
+   *  not just paints). `DamageLedger.add({kind:'scroll'})` accumulates via
+   *  `+=` (same additive contract as `repaintRows`/`repaintCells` — each
+   *  call contributes NEW damage on top of whatever's already queued), so
+   *  the value pushed per tick must be the INCREMENT since the previous
+   *  tick, not the cumulative delta since the last paint — multiple scroll
+   *  ticks can land before the fps-gated paint fires (browsers don't
+   *  guarantee one 'scroll' event per animation frame), and re-pushing the
+   *  since-last-paint total on every one of them would double-count the
+   *  overlap. `lastPaintedScrollTop` above stays reserved for the
+   *  bail-decision inputs (bodyHeight/dpr/bounds), which DO want the true
+   *  cumulative-since-paint magnitude. */
+  private lastTickScrollTop = 0;
   /** Damage-region rendering (Task 3) — the data-window (rowStart, rowCount)
    *  the LAST chunk landed for, used by `handleViewportChunk` to decide
    *  whether a new chunk's `touchedRows` is trustworthy (same window) or
@@ -1350,6 +1376,39 @@ export class CGrid<TRow = any> {
         if (this.floatingFilterOverlay) this.floatingFilterOverlay.repositionAll(vp);
       },
       afterScrollTick: () => {
+        // Task 5 — scroll self-blit decision. Reads the freshest scroll
+        // position off `ViewportManager` (not `this.viewport`, which can
+        // lag a tick behind a native scroll event until the async chunk
+        // round-trip re-syncs it) so the delta is always against real
+        // scroll state. Phase B scope is vertical-only: any horizontal
+        // component (dx !== 0) bails to full inside `decideScrollDamage`.
+        // Pinned rows / totals bands: the resolver already redamages the
+        // sticky band on scroll AND (Task 5) unconditionally pushes every
+        // `pinnedBandRects` rect whenever `blit !== null` — see
+        // `DamageLedger.takeResolved`.
+        const curLeft = this.viewportManager.scrollLeft;
+        const curTop = this.viewportManager.scrollTop;
+        const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+        const decision = decideScrollDamage({
+          dx: curLeft - this.lastPaintedScrollLeft,
+          dy: curTop - this.lastPaintedScrollTop,
+          bodyHeight: this.viewportManager.state.bodyHeight,
+          dprChanged: dpr !== this.lastPaintedDpr,
+          boundsChanged: this.canvasBounds.width !== this.lastPaintedCanvasWidth
+            || this.canvasBounds.height !== this.lastPaintedCanvasHeight,
+        });
+        if (decision.kind === 'full') {
+          this.damageLedger.add(decision);
+        } else {
+          // Push the INCREMENT since the last TICK (not `decision.dy`, the
+          // cumulative-since-last-PAINT total decideScrollDamage validated
+          // against bodyHeight) — see `lastTickScrollTop`'s doc comment.
+          // `DamageLedger.add` sums 'scroll' entries via `+=`, so pushing
+          // the running total on every tick of a multi-tick un-painted
+          // window would double-count the overlap.
+          this.damageLedger.add({ kind: 'scroll', dy: curTop - this.lastTickScrollTop });
+        }
+        this.lastTickScrollTop = curTop;
         this.cgridCanvas.requestRepaint();
         this.editController.syncOpenEditorPosition();
       },
@@ -1436,6 +1495,10 @@ export class CGrid<TRow = any> {
       // painter restricts use to BRANCH pivot groups, so non-pivot
       // group headers (Cycle 4) never call into this lookup.
       getColumnGroupOpen: (groupId) => this.columnGroupState.isOpen(groupId),
+      // Task 5 — scroll self-blit source. `this.cgridCanvas` isn't assigned
+      // until the CGridCanvas construction below, but this closure only
+      // dereferences it at paint time (long after construction completes).
+      getCanvasElement: () => this.cgridCanvas.canvas,
     });
 
     // 7. Canvas wrapper — owns the <canvas>, gc cache, RAF + resize polling.
@@ -1484,6 +1547,20 @@ export class CGrid<TRow = any> {
           ? { full: true as const, rects: [], blit: null }
           : this.damageLedger.takeResolved(this.buildDamageResolveCtx());
         this.renderer.paint(gc, damage);
+        // Task 5 — snapshot the position/DPR/bounds THIS paint actually
+        // painted at, so the next `afterScrollTick`'s delta (and its
+        // dprChanged/boundsChanged bail checks) are always relative to
+        // what's really on the canvas — never the scroll handler's own
+        // read, which would double-count or drop deltas across frames the
+        // fps gate skips.
+        this.lastPaintedScrollLeft = this.viewportManager.scrollLeft;
+        this.lastPaintedScrollTop = this.viewportManager.scrollTop;
+        this.lastPaintedDpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+        this.lastPaintedCanvasWidth = this.canvasBounds.width;
+        this.lastPaintedCanvasHeight = this.canvasBounds.height;
+        // Every consumed tick's increment is now reflected on the canvas —
+        // the per-tick baseline resets alongside the per-paint one.
+        this.lastTickScrollTop = this.lastPaintedScrollTop;
         const ms = performance.now() - t0;
         const s = this.paintStats;
         s.paints++;
@@ -5405,9 +5482,9 @@ export class CGrid<TRow = any> {
       bodyLeft: vs.bodyLeft,
       bodyRight: vs.bodyRight,
       stickyBandBottom,
-      // Task 1 note: later tasks populate pinned/totals band rects; empty
-      // here means the ledger's band-atomic-extend logic (§4.4) is a no-op.
-      pinnedBandRects: [],
+      // Task 5 — totals-row / static-pinned-row bands (top or bottom
+      // position), derived from the live viewport's non-data subgrid rows.
+      pinnedBandRects: this.buildPinnedBandRects(vs),
       rowBand: (localRowIndex) => {
         const row = vs.visibleRows.find(
           (r) => r.subgrid.isData && r.localRowIndex === localRowIndex,
@@ -5427,6 +5504,36 @@ export class CGrid<TRow = any> {
         return col ? { x: col.left, w: col.width } : null;
       },
     };
+  }
+
+  /** Task 5 — pinned/totals band rects for the damage-resolve ctx. Any
+   *  non-data subgrid whose rows are a totals row OR a static pinned row
+   *  (top or bottom position — see `rebuildSubgridStack`'s stack-order
+   *  comment) contributes one full-width rect spanning the min/max
+   *  top/bottom of its visible rows THIS frame. Header + floating-filter
+   *  subgrids are excluded — they sit entirely above `bodyTop`, never
+   *  touched by the scroll blit, so redamaging them every scroll frame
+   *  would be pure waste. Returns `[]` when the grid has neither (the
+   *  common case) so the ledger's band-atomic-extend logic (§4.4) and the
+   *  Task 5 unconditional-scroll-redamage are both no-ops. */
+  private buildPinnedBandRects(vs: ViewportState): Rect[] {
+    const bands = new Map<Subgrid, { top: number; bottom: number }>();
+    for (const row of vs.visibleRows) {
+      const sg = row.subgrid;
+      if (sg.isData) continue;
+      if (!sg.isTotals && !(sg instanceof PinnedRowsSubgrid)) continue;
+      const cur = bands.get(sg);
+      if (!cur) bands.set(sg, { top: row.top, bottom: row.bottom });
+      else {
+        if (row.top < cur.top) cur.top = row.top;
+        if (row.bottom > cur.bottom) cur.bottom = row.bottom;
+      }
+    }
+    const rects: Rect[] = [];
+    for (const b of bands.values()) {
+      rects.push({ x: 0, y: b.top, w: this.canvasBounds.width, h: b.bottom - b.top });
+    }
+    return rects;
   }
 
   /** Cycle 11 / Task 5 — re-render a mounted tool panel. Forwards to

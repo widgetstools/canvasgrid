@@ -146,6 +146,15 @@ export interface RendererOpts {
    * headers (Cycle 4) never accidentally get a chevron.
    */
   getColumnGroupOpen?: (groupId: string) => boolean;
+  /**
+   * Task 5 — scroll self-blit. Returns the live `<canvas>` element so
+   * `Renderer.paint` can `drawImage` the canvas onto itself (shifting the
+   * still-valid body pixels by the scroll delta) before repainting only
+   * the newly-exposed band. Optional: when omitted (or the damage has no
+   * `blit`), the blit step is skipped and painting falls back to whatever
+   * `damage` already specifies — never a correctness dependency.
+   */
+  getCanvasElement?: () => HTMLCanvasElement;
 }
 
 /** Damage-region rendering — bounding box of a set of already-merged damage
@@ -210,6 +219,27 @@ export class Renderer {
     };
     const w = this.opts.getCanvasWidth();
     const h = this.opts.getCanvasHeight();
+
+    // Task 5 — scroll self-blit. Copies the still-valid body pixels by the
+    // scroll delta BEFORE the clip/fill block below repaints only the
+    // newly-exposed band (already part of `damage.rects` — see
+    // `DamageLedger.takeResolved`). Runs in DEVICE px (1:1 scale) since
+    // `drawImage`'s source/dest args address the backing store, not CSS
+    // px. Silently skipped — falling back to the ordinary clip/fill/repaint
+    // path below — when `getCanvasElement` isn't wired or reports nothing;
+    // the blit is an optimization, never a correctness dependency.
+    if (partial && damage.blit) {
+      const canvas = this.opts.getCanvasElement?.();
+      if (canvas) {
+        const dpr = canvas.width / Math.max(1, w); // backing / CSS ratio
+        const bodyTop = pctx.viewport.bodyTop, bodyBottom = pctx.viewport.bodyBottom;
+        const dy = damage.blit.dy;
+        const sy = (bodyTop + Math.max(0, dy)) * dpr;
+        const dyDst = (bodyTop + Math.max(0, -dy)) * dpr;
+        const hPx = (bodyBottom - bodyTop - Math.abs(dy)) * dpr;
+        if (hPx > 0) gc.drawImage(canvas, 0, sy, w * dpr, hPx, 0, dyDst, w * dpr, hPx);
+      }
+    }
 
     if (partial) {
       // Clip to the union of damage rects so every painter below — cell

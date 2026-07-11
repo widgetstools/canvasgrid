@@ -43,6 +43,39 @@ export const STICKY_SHADOW_BLEED_PX = 8;
 
 const FULL: ResolvedDamage = { full: true, rects: [], blit: null };
 
+export interface ScrollDamageInput {
+  /** Horizontal scroll delta (CSS px) since the last paint. */
+  dx: number;
+  /** Vertical scroll delta (CSS px) since the last paint. */
+  dy: number;
+  /** Current body height (CSS px) — the blit can only shift within it. */
+  bodyHeight: number;
+  /** `true` when devicePixelRatio changed since the last paint. */
+  dprChanged: boolean;
+  /** `true` when canvas CSS bounds changed since the last paint. */
+  boundsChanged: boolean;
+}
+
+/**
+ * Pure decision function — spec §5.4. The scroll blit is an OPTIMIZATION
+ * with a full-paint fallback, never a correctness dependency: every
+ * ambiguous or out-of-bounds case below degrades to `{kind:'full'}` rather
+ * than guessing. Phase B scope is vertical-only scrolling, so ANY
+ * horizontal component (`dx !== 0`) bails to full — a horizontal scroll
+ * shifts pinned-left/right columns in ways the single-axis blit doesn't
+ * model. A DPR or canvas-bounds change since the last paint means the
+ * backing store's pixel content no longer matches what the blit's device-
+ * px math assumes, so that also bails to full (the FIRST paint after a
+ * resize/DPR change must never blit).
+ */
+export function decideScrollDamage(input: ScrollDamageInput): Damage {
+  const { dx, dy, bodyHeight, dprChanged, boundsChanged } = input;
+  if (dprChanged || boundsChanged) return { kind: 'full' };
+  if (dx !== 0) return { kind: 'full' };
+  if (Math.abs(dy) >= bodyHeight) return { kind: 'full' };
+  return { kind: 'scroll', dy };
+}
+
 export class DamageLedger {
   private entries: Damage[] = [];
   private isFull = false;
@@ -103,6 +136,13 @@ export class DamageLedger {
       else pushBand(ctx.bodyTop, ctx.bodyTop + exposed);
       // Sticky band + shadow never scrolls with content — always redamage it.
       if (ctx.stickyBandBottom !== null) pushBand(ctx.bodyTop, ctx.stickyBandBottom + STICKY_SHADOW_BLEED_PX);
+      // Task 5 — pinned/totals bands (top or bottom) always redamage on any
+      // scroll frame, unconditionally (not just when they geometrically
+      // intersect the exposed strip). The blit shifts the WHOLE body region
+      // including any pinned/totals rows that live inside it, so without
+      // this they'd show blit-shifted pixels for one frame before their
+      // own row-level damage (if any) caught up.
+      for (const r of ctx.pinnedBandRects) rects.push({ ...r });
     }
 
     // Bleed + sticky extension + clamp + snap.

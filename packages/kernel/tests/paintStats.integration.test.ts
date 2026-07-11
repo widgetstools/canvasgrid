@@ -59,6 +59,10 @@ beforeAll(() => {
       save: vi.fn(), restore: vi.fn(), rect: vi.fn(), clip: vi.fn(),
       beginPath: vi.fn(), stroke: vi.fn(), moveTo: vi.fn(), lineTo: vi.fn(),
       setTransform: vi.fn(), clearRect: vi.fn(), translate: vi.fn(), scale: vi.fn(),
+      // Task 5 — scroll self-blit calls `gc.drawImage(canvas, ...)`. A real
+      // browser 2D context always has this; the fake mock below needs an
+      // explicit stub so the new scroll-blit tests don't throw.
+      drawImage: vi.fn(),
       measureText: () => ({ width: 50 }),
       fillStyle: '', strokeStyle: '', font: '', textBaseline: '',
       textAlign: '', lineWidth: 1, globalAlpha: 1,
@@ -305,6 +309,70 @@ describe('Damage-region rendering — hover, selection, and focus damage (paint 
     // is `partialPaints === 0` above, i.e. `repaintRows` was never called
     // at all for this change).
     expect(stats.lastAreaPct).toBe(100);
+
+    grid.destroy();
+    restore();
+  });
+});
+
+/**
+ * Damage-region rendering (Task 5) — scroll self-blit, end to end through
+ * the real `ViewportManager.onScrollerScroll` → `afterScrollTick` →
+ * `decideScrollDamage` → `DamageLedger` → `Renderer.paint` blit path (the
+ * same idiom `tests/virtualColumnsChanged.test.ts` / `aggregationEvent.test.ts`
+ * use to drive scroll: reach in via `(grid as any).onScrollerScroll(x, y)`,
+ * the back-compat shim for the native 'scroll' listener registered inside
+ * `ViewportManager`).
+ */
+describe('Damage-region rendering — scroll self-blit (paint stats)', () => {
+  it('a one-row-height vertical scroll drives a blit with a small damaged area', async () => {
+    const { grid, restore } = buildWiredGrid(rows(200), cols);
+    const canvas = (grid as any).cgridCanvas;
+
+    await new Promise((r) => setTimeout(r, 50));
+    canvas.tickPaint(performance.now());
+    grid.resetPaintStats();
+
+    const rowHeight = (grid as any).theme.rowHeight as number;
+    (grid as any).onScrollerScroll(0, rowHeight);
+    // Tick paint SYNCHRONOUSLY (same turn, no `await` in between) with a
+    // synthetic `now` far enough past `lastRepaintTime` to clear the fps
+    // gate WITHOUT any real wall-clock wait. That matters here: a real wait
+    // (even `setTimeout(…, 0)`) lets the microtask queue drain, which is
+    // where the async viewport-fetch chunk lands — `handleViewportChunk`
+    // unconditionally `repaintFull()`s on a window move (a real scroll
+    // virtualizes a different row window), which would clobber the scroll
+    // damage before this assertion ever saw the blit. Ticking synchronously
+    // proves the blit path fires for the frame BEFORE that chunk arrives —
+    // exactly the frame the self-blit optimization exists for.
+    canvas.tickPaint(performance.now() + 1000);
+
+    const stats = grid.getPaintStats();
+    expect(stats.blits).toBeGreaterThanOrEqual(1);
+    expect(stats.partialPaints).toBeGreaterThanOrEqual(1);
+    expect(stats.fullPaints).toBe(0);
+    expect(stats.lastAreaPct).toBeLessThan(30);
+
+    grid.destroy();
+    restore();
+  });
+
+  it('a full-page scroll jump (>= body height) bails to a full repaint, blits unchanged', async () => {
+    const { grid, restore } = buildWiredGrid(rows(200), cols);
+    const canvas = (grid as any).cgridCanvas;
+
+    await new Promise((r) => setTimeout(r, 50));
+    canvas.tickPaint(performance.now());
+    grid.resetPaintStats();
+
+    const bodyHeight = (grid as any).viewport.bodyHeight as number;
+    (grid as any).onScrollerScroll(0, Math.ceil(bodyHeight) + 200);
+    await new Promise((r) => setTimeout(r, 20));
+    canvas.tickPaint(performance.now());
+
+    const stats = grid.getPaintStats();
+    expect(stats.fullPaints).toBeGreaterThanOrEqual(1);
+    expect(stats.blits).toBe(0);
 
     grid.destroy();
     restore();
