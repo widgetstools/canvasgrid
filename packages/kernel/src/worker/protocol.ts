@@ -177,9 +177,21 @@ export interface ViewportChunk {
   flashMask?: Uint8Array;
   /** Damage-region rendering — window-relative indices of rows touched by
    *  transactions since the previous slice for this client. Structured-clone
-   *  path (like stringRowIds); absent ⇒ receiver must treat the whole chunk
-   *  as changed (full damage), present-but-empty never ships (undefined
-   *  instead). See specs/2026-07-11-damage-region-rendering-design.md §3d. */
+   *  path (like stringRowIds). I3 fix — corrected semantics (commit
+   *  185beb6 made this the shipped behavior; this comment previously said
+   *  the opposite and was actively misleading): `undefined` ⇒ UNKNOWN —
+   *  receiver must treat the whole chunk as changed (full damage) — first
+   *  fetch, an older worker that never sets this field, or (main-side) a
+   *  window whose previous chunk isn't available to diff against. A
+   *  PRESENT array — including an EMPTY one — is the authoritative,
+   *  checked diff for this window: "nothing in the visible window
+   *  changed" resolves to a correctly-partial (zero-rect) repaint instead
+   *  of degrading to full. Never conflate the two: treating empty as
+   *  unknown reintroduces the 100%-full-paint regression this field was
+   *  added to fix. Old-worker/new-main compatibility: an old worker never
+   *  sets this field, so it decodes as `undefined` → full — correct
+   *  degradation, no compat shim needed. See
+   *  specs/2026-07-11-damage-region-rendering-design.md §3d. */
   touchedRows?: Uint32Array;
   /** Grand-total aggregation results (undefined when no aggFunc columns).
    *  Widened from `number | null` in Cycle 14 / Task 3 because custom

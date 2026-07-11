@@ -213,8 +213,19 @@ export class FlashRegistry {
    *  resolve to a full repaint). Cheap: one array per tick, sized to the
    *  live entry count (typically small — flashes fade out fast). */
   activeCells(): Array<{ rowId: number; colId: string }> {
-    const out: Array<{ rowId: number; colId: string }> = [];
-    for (const e of this.entries.values()) out.push({ rowId: e.rowId, colId: e.colId });
+    // I6 fix — pre-size the output array instead of `push`ing (avoids the
+    // dynamic-growth reallocation churn `push` can trigger). Called every
+    // rAF while any entry is fading (up to ~1.5s of frames per flash
+    // generation) via the `requestRepaint` dep, so this is a genuine
+    // per-frame hot path, not a one-off. The returned array is handed
+    // straight to `CGrid.repaintCells` → `DamageLedger.add({kind:'cells'})`,
+    // which only reads it (never retains it past the next `takeResolved`),
+    // so pooling the {rowId,colId} objects THEMSELVES across calls isn't
+    // safe here — a skipped paint frame could leave a queued ledger entry
+    // aliasing objects this method then overwrites on the next tick.
+    const out = new Array<{ rowId: number; colId: string }>(this.entries.size);
+    let i = 0;
+    for (const e of this.entries.values()) out[i++] = { rowId: e.rowId, colId: e.colId };
     return out;
   }
 

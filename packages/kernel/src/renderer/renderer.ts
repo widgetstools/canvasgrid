@@ -155,6 +155,18 @@ export interface RendererOpts {
    * `damage` already specifies — never a correctness dependency.
    */
   getCanvasElement?: () => HTMLCanvasElement;
+  /**
+   * C1 fix — the live `devicePixelRatio` the canvas's backing store was
+   * sized at (`CGridCanvas.devicePixelRatio`), used by the scroll blit to
+   * convert between device px (source rect — `drawImage` addresses the
+   * backing store directly, CTM-independent) and CSS px (destination
+   * rect — goes through the canvas's persistent `setTransform(dpr, 0, 0,
+   * dpr, 0, 0)` CTM). Optional so existing tests/fixtures that don't wire
+   * it fall back to `canvas.width / cssWidth`, which is exact except for
+   * odd CSS widths where `round(w*dpr)` doesn't divide back to dpr
+   * cleanly — real call sites should always wire this.
+   */
+  getDevicePixelRatio?: () => number;
 }
 
 /** Damage-region rendering — bounding box of a set of already-merged damage
@@ -223,21 +235,30 @@ export class Renderer {
     // Task 5 — scroll self-blit. Copies the still-valid body pixels by the
     // scroll delta BEFORE the clip/fill block below repaints only the
     // newly-exposed band (already part of `damage.rects` — see
-    // `DamageLedger.takeResolved`). Runs in DEVICE px (1:1 scale) since
-    // `drawImage`'s source/dest args address the backing store, not CSS
-    // px. Silently skipped — falling back to the ordinary clip/fill/repaint
-    // path below — when `getCanvasElement` isn't wired or reports nothing;
-    // the blit is an optimization, never a correctness dependency.
+    // `DamageLedger.takeResolved`). C1 fix — `drawImage`'s SOURCE rect
+    // addresses the canvas's backing store directly (device px,
+    // CTM-independent), but the DESTINATION rect goes through `gc`'s
+    // persistent `setTransform(dpr, 0, 0, dpr, 0, 0)` CTM (installed by
+    // `CGridCanvas.resize`) — so the destination must be passed in CSS px,
+    // NOT device px, or a dpr≠1 backing store double-scales the paste
+    // (smearing a 2×-sized copy of the grid outside the damage clip on
+    // every partial scroll at dpr=2). Silently skipped — falling back to
+    // the ordinary clip/fill/repaint path below — when `getCanvasElement`
+    // isn't wired or reports nothing; the blit is an optimization, never a
+    // correctness dependency.
     if (partial && damage.blit) {
       const canvas = this.opts.getCanvasElement?.();
       if (canvas) {
-        const dpr = canvas.width / Math.max(1, w); // backing / CSS ratio
+        const dpr = this.opts.getDevicePixelRatio?.() ?? (canvas.width / Math.max(1, w));
         const bodyTop = pctx.viewport.bodyTop, bodyBottom = pctx.viewport.bodyBottom;
         const dy = damage.blit.dy;
+        // Source rect: device px — addresses the backing store, CTM-independent.
         const sy = (bodyTop + Math.max(0, dy)) * dpr;
-        const dyDst = (bodyTop + Math.max(0, -dy)) * dpr;
-        const hPx = (bodyBottom - bodyTop - Math.abs(dy)) * dpr;
-        if (hPx > 0) gc.drawImage(canvas, 0, sy, w * dpr, hPx, 0, dyDst, w * dpr, hPx);
+        const hCss = bodyBottom - bodyTop - Math.abs(dy);
+        const hDevicePx = hCss * dpr;
+        // Destination rect: CSS px — the CTM scales it back up to device px.
+        const dyDst = bodyTop + Math.max(0, -dy);
+        if (hDevicePx > 0) gc.drawImage(canvas, 0, sy, canvas.width, hDevicePx, 0, dyDst, w, hCss);
       }
     }
 
@@ -257,8 +278,12 @@ export class Renderer {
       // Fill the entire drawable area with theme bg as the FIRST instruction
       // so there's no transparent moment between the prior frame's pixels (or
       // a freshly-cleared backing store after a canvas.width assignment) and
-      // the grid content. CGridCanvas sized the canvas to CSS px so we draw
-      // in CSS px.
+      // the grid content. M2 fix (stale since HiDPI backing landed) — the
+      // backing store is sized to `round(cssPx * dpr)` device px, NOT CSS
+      // px; we draw in CSS px here because `gc`'s persistent CTM
+      // (`setTransform(dpr, 0, 0, dpr, 0, 0)`, installed by
+      // `CGridCanvas.resize`) scales every CSS-px call up to the device
+      // backing store automatically.
       gc.cache.fillStyle = pctx.theme.bg;
       gc.fillRect(0, 0, w, h);
     }

@@ -154,11 +154,36 @@ export async function handleViewport(
       // per-field granularity — `pendingTouched` is a flat rowId set,
       // unlike `pendingFlashes`'s per-field map), same drain-after-slice
       // lifecycle as the flashMask block above.
+      //
+      // M1 (closeout review) — REVISED from "drain the whole set after
+      // every slice" after the fix-wave's OWN OpenFin re-measure caught a
+      // regression: `resolveWindowDamage` (adjudication B, cgrid.ts) bails
+      // to FULL whenever `chunk.touchedRows === undefined` ("unknown stays
+      // full"), and `touchedRows` is undefined exactly when
+      // `pendingTouched.size === 0` at request time. Draining the WHOLE
+      // set on every slice meant the FIRST scroll-driven fetch after any
+      // tick emptied it immediately, so every SUBSEQUENT scroll fetch
+      // before the next tick saw `touchedRows === undefined` and fell back
+      // to full — measured 199/209 full paints under continuous scroll
+      // (worse than the 128/201 pre-fix baseline). Draining only the
+      // in-window subset keeps off-window entries around, which keeps
+      // `touchedRows` a defined (if empty) "checked, nothing here" signal
+      // across a whole scroll sequence between ticks — exactly what
+      // `resolveWindowDamage`'s identity-diff needs to activate instead of
+      // bailing. The unbounded-growth concern M1 originally raised is
+      // handled by the size cap below instead: a size this large is
+      // already pathological (a live feed spread across a huge fraction
+      // of the whole row set with a viewport that never revisits most of
+      // it), so paying for ONE full repaint to reset the set is cheap
+      // insurance against genuine unbounded growth.
       if (touchedPending !== undefined && chunk.touchedRows !== undefined) {
         for (const r of chunk.touchedRows) {
           const rowId = visibleSliceIds[r];
           if (rowId) touchedPending.delete(rowId);
         }
+      }
+      if (touchedPending !== undefined && touchedPending.size > Math.max(1000, visIds.length / 2)) {
+        touchedPending.clear();
       }
       // Wire AggPass: compute grand-total aggregations over all visible rows.
       const aggResult = state.agg.apply(visIds);

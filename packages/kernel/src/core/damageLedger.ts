@@ -43,12 +43,28 @@ export interface DamageResolveCtx {
    *  Optional so existing `DamageResolveCtx` test fixtures (which don't
    *  exercise this path) don't need updating. */
   rowBoundsAtY?(y: number): { top: number; bottom: number } | null;
+  /** I1 fix — mirror of `rowBoundsAtY` for the horizontal axis: the visible
+   *  column whose bounds STRICTLY contain pixel `x` (`left < x < right`; a
+   *  boundary-aligned `x` matches neither side and is left alone). Cell-
+   *  scoped damage (flash cells) has vertical clip edges at `colX ±
+   *  DAMAGE_BLEED_PX`, and cell renderers do not clip per cell, so the
+   *  same T6-discovered Skia AA divergence class (a clip edge landing
+   *  mid-glyph paints differently than an unclipped full-surface paint of
+   *  the same glyph) applies on this axis too — `expand()` snaps a bled
+   *  x-edge out to the full bounds of whichever column it lands inside.
+   *  Optional so existing `DamageResolveCtx` test fixtures that don't
+   *  exercise this path don't need updating. */
+  colBoundsAtX?(x: number): { left: number; right: number } | null;
 }
 
 export const DAMAGE_BLEED_PX = 2;
 export const DAMAGE_MAX_RECTS = 12;
 export const DAMAGE_MAX_AREA_FRACTION = 0.6;
 export const STICKY_SHADOW_BLEED_PX = 8;
+/** I6 fix — raw (post-expand, pre-merge) rect count above which
+ *  `takeResolved` bails to FULL rather than paying for `mergeRects`' O(n²)
+ *  (worst-case O(n³) — it restarts the scan after every single merge). */
+export const DAMAGE_PRE_MERGE_CAP = 64;
 
 const FULL: ResolvedDamage = { full: true, rects: [], blit: null };
 
@@ -63,6 +79,12 @@ export interface ScrollDamageInput {
   dprChanged: boolean;
   /** `true` when canvas CSS bounds changed since the last paint. */
   boundsChanged: boolean;
+  /** C1 fix — current devicePixelRatio, used to bail the blit when `dy *
+   *  dpr` isn't an integer (a fractional device-px source rect resamples
+   *  under `imageSmoothing`, and a same-window scroll ships no follow-up
+   *  chunk to correct a blurred blit — it would be the FINAL state, not a
+   *  transient one). */
+  dpr: number;
 }
 
 /**
@@ -78,10 +100,15 @@ export interface ScrollDamageInput {
  * resize/DPR change must never blit).
  */
 export function decideScrollDamage(input: ScrollDamageInput): Damage {
-  const { dx, dy, bodyHeight, dprChanged, boundsChanged } = input;
+  const { dx, dy, bodyHeight, dprChanged, boundsChanged, dpr } = input;
   if (dprChanged || boundsChanged) return { kind: 'full' };
   if (dx !== 0) return { kind: 'full' };
   if (Math.abs(dy) >= bodyHeight) return { kind: 'full' };
+  // C1 fix — a non-integer device-px delta means the blit's source rect
+  // would land on a fractional row of the backing store; bail to full
+  // rather than resample (see ScrollDamageInput.dpr doc).
+  const devicePx = dy * dpr;
+  if (Math.abs(devicePx - Math.round(devicePx)) > 1e-6) return { kind: 'full' };
   return { kind: 'scroll', dy };
 }
 
@@ -111,6 +138,17 @@ export class DamageLedger {
       rects.push({ x: 0, y: top, w: ctx.canvasWidth, h: bottom - top });
     };
 
+    // I6 fix — bucket 'cells' damage by row BEFORE creating any rects. A
+    // broad tick/flash burst can carry up to visibleRows×flashedCols raw
+    // cell entries (~300+); pushing one rect per cell fed `mergeRects`'
+    // restart-after-every-merge loop an O(n³)-shaped worst case. Unioning
+    // each row's touched column spans caps this at ≤ window-size rects
+    // (one per distinct row) and makes the merge below trivial. Rows with
+    // an unknown column (or where any cell overlaps an unknown column)
+    // fall back to the row-atomic full-width band, same as before.
+    const rowCellSpans = new Map<number, {
+      top: number; bottom: number; minX: number; maxX: number; fullRow: boolean;
+    }>();
     for (const d of entries) {
       switch (d.kind) {
         case 'rows':
@@ -125,15 +163,28 @@ export class DamageLedger {
             if (idx === null) continue;
             const b = ctx.rowBand(idx);
             if (!b) continue;
+            let span = rowCellSpans.get(idx);
+            if (!span) {
+              span = { top: b.top, bottom: b.bottom, minX: Infinity, maxX: -Infinity, fullRow: false };
+              rowCellSpans.set(idx, span);
+            }
             const col = ctx.colBounds(c.colId);
-            if (col) rects.push({ x: col.x, y: b.top, w: col.w, h: b.bottom - b.top });
-            else pushBand(b.top, b.bottom); // unknown column → row-atomic
+            if (col) {
+              if (col.x < span.minX) span.minX = col.x;
+              if (col.x + col.w > span.maxX) span.maxX = col.x + col.w;
+            } else {
+              span.fullRow = true; // unknown column → row-atomic
+            }
           }
           break;
         case 'band': pushBand(d.top, d.bottom); break;
         case 'rect': rects.push({ x: d.x, y: d.y, w: d.w, h: d.h }); break;
         // 'full'/'scroll' never stored in entries
       }
+    }
+    for (const span of rowCellSpans.values()) {
+      if (span.fullRow || span.minX > span.maxX) pushBand(span.top, span.bottom);
+      else rects.push({ x: span.minX, y: span.top, w: span.maxX - span.minX, h: span.bottom - span.top });
     }
 
     // Scroll: only usable as a blit when no full; exposed band becomes damage.
@@ -151,11 +202,20 @@ export class DamageLedger {
       // including any pinned/totals rows that live inside it, so without
       // this they'd show blit-shifted pixels for one frame before their
       // own row-level damage (if any) caught up.
-      for (const r of ctx.pinnedBandRects) rects.push({ ...r });
+      // I6 fix — push the rect directly instead of cloning: nothing below
+      // ever mutates a rect's fields in place (`expand()` and `mergeRects`
+      // both produce brand-new rect objects rather than writing through an
+      // existing one), so the defensive `{ ...r }` clone was pure garbage.
+      for (const r of ctx.pinnedBandRects) rects.push(r);
     }
 
     // Bleed + sticky extension + clamp + snap.
     const snapped = rects.map((r) => this.expand(r, ctx)).filter((r) => r.w > 0 && r.h > 0);
+    // I6 fix — pre-merge cap: bail to FULL before paying for `mergeRects`'
+    // O(n²) (restart-after-every-merge, so worst-case O(n³)) scan. A batch
+    // this wide is heading toward the area-fraction cap below anyway, so
+    // this loses nothing but the wasted merge work.
+    if (snapped.length > DAMAGE_PRE_MERGE_CAP) return FULL;
     const merged = mergeRects(snapped);
 
     const area = merged.reduce((a, r) => a + r.w * r.h, 0);
@@ -200,6 +260,17 @@ export class DamageLedger {
       const bottomRow = ctx.rowBoundsAtY(y1);
       if (bottomRow && bottomRow.bottom > y1) y1 = bottomRow.bottom;
     }
+    // I1 fix — same column-atomic snap on the horizontal axis. Cell-scoped
+    // damage (flash cells) bleeds `x0`/`x1` by `DAMAGE_BLEED_PX`, which can
+    // land partway into a NEIGHBORING column's band instead of exactly on
+    // its boundary; snap out to that column's full bounds so a clip edge
+    // never cuts through the middle of a neighboring cell's glyphs.
+    if (ctx.colBoundsAtX) {
+      const leftCol = ctx.colBoundsAtX(x0);
+      if (leftCol && leftCol.left < x0) x0 = leftCol.left;
+      const rightCol = ctx.colBoundsAtX(x1);
+      if (rightCol && rightCol.right > x1) x1 = rightCol.right;
+    }
     // Clamp to canvas.
     x0 = Math.max(0, x0); y0 = Math.max(0, y0);
     x1 = Math.min(ctx.canvasWidth, x1); y1 = Math.min(ctx.canvasHeight, y1);
@@ -211,9 +282,15 @@ export class DamageLedger {
   }
 }
 
-/** Merge overlapping/touching rects until fixpoint. O(n²) on ≤ ~20 rects. */
+/** Merge overlapping/touching rects until fixpoint. O(n²) on ≤ ~20 rects
+ *  (bounded by `DAMAGE_PRE_MERGE_CAP` upstream). I6 fix — `.slice()`
+ *  instead of `rects.map((r) => ({...r}))`: the loop below only ever
+ *  REASSIGNS `out[i]` to a brand-new merged rect object or `splice`s an
+ *  entry out — it never mutates an individual rect's fields in place — so
+ *  a shallow array copy (no per-rect object clone) is sufficient to avoid
+ *  mutating the caller's input array. */
 export function mergeRects(rects: Rect[]): Rect[] {
-  const out = rects.map((r) => ({ ...r }));
+  const out = rects.slice();
   let changed = true;
   while (changed) {
     changed = false;

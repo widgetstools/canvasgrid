@@ -145,7 +145,13 @@ import {
   resolveGroupDisplayType,
 } from './core/autoGroupColumn';
 import { Renderer } from './renderer/renderer';
-import { DamageLedger, decideScrollDamage, type DamageResolveCtx, type Rect } from './core/damageLedger';
+import {
+  DamageLedger,
+  decideScrollDamage,
+  STICKY_SHADOW_BLEED_PX,
+  type DamageResolveCtx,
+  type Rect,
+} from './core/damageLedger';
 import { HitTester } from './interaction/hitTester';
 import { SelectionModel } from './interaction/selectionModel';
 import { FeatureChain } from './interaction/featureChain';
@@ -593,6 +599,110 @@ function rangesEqual(a: SelectionRange[], b: SelectionRange[]): boolean {
   return true;
 }
 
+/** Closeout fix — adjudication B: max mismatched/newly-entered row count
+ *  a window-diff will still resolve as partial damage before bailing to a
+ *  full repaint. Mirrors the existing ≤24 cap used by the selection
+ *  classifier (`rowDelta.length > 24`) and `DAMAGE_MAX_RECTS`-style "cap
+ *  philosophy" elsewhere in the ledger. */
+const WINDOW_DIFF_MAX_ROWS = 24;
+
+/**
+ * Closeout fix — C2 + adjudication B's MANDATED guard. Replaces the old
+ * `sameWindow` check (which compared only `(rowStart, rowCount)` and so
+ * could not tell a window MOVE apart from a REORDER at an overlapping —
+ * or identical — window). Diffs the previous chunk's row identity
+ * (rowId + rowKind + groupKey, positionally, shifted by the window delta)
+ * against the new chunk to find exactly which on-screen positions now
+ * show a DIFFERENT row than they did last paint — those need repainting
+ * even though their WINDOW POSITION didn't change. Any per-row height
+ * mismatch inside the overlap bails to `'full'` outright: a height change
+ * shifts every row below it, which is a geometry invalidation the
+ * position-diff can't reason about locally (spec's "ambiguous → full").
+ *
+ * Returns `'full'` when there's no previous chunk to diff against (first
+ * chunk ever), when `chunk.touchedRows` is `undefined` (unknown whether
+ * any VALUE changed at an identity-matched position — "unknown stays
+ * full", never assume "nothing changed" from absence), when a height
+ * mismatch is found, or when the resulting damage set exceeds
+ * `WINDOW_DIFF_MAX_ROWS`. Otherwise returns the array of window-relative
+ * row indices (0-based, add `chunk.rowStart` for the global index) that
+ * need repainting: positionally-mismatched rows, rows newly scrolled
+ * into the window (outside the overlap — this also covers the
+ * previously-blitted "exposed band" per spec §5's chunk-arrival
+ * re-damage contract), and `touchedRows` (value changes at an
+ * identity-matched position — e.g. a live tick that doesn't reorder).
+ */
+function resolveWindowDamage(
+  chunk: ViewportChunk,
+  prevChunk: ViewportChunk | null,
+): number[] | 'full' {
+  if (!prevChunk) return 'full';
+  if (chunk.touchedRows === undefined) return 'full';
+  const delta = chunk.rowStart - prevChunk.rowStart;
+  const newCount = chunk.rowCount;
+  const prevCount = prevChunk.rowCount;
+  const overlapStart = Math.max(0, -delta);
+  const overlapEnd = Math.min(newCount, prevCount - delta);
+  const damaged = new Set<number>();
+  for (let i = 0; i < newCount; i++) {
+    if (i >= overlapStart && i < overlapEnd) {
+      const j = i + delta;
+      if (chunk.heights[i] !== prevChunk.heights[j]) return 'full';
+      // rowIds alone is insufficient — group/footer rows share sentinel
+      // ids, so identity also requires rowKind + groupKey agreement.
+      const idMatch = chunk.rowIds[i] === prevChunk.rowIds[j]
+        && chunk.rowKinds[i] === prevChunk.rowKinds[j]
+        && (chunk.groupKey?.[i] ?? '') === (prevChunk.groupKey?.[j] ?? '');
+      if (!idMatch) damaged.add(i);
+    } else {
+      damaged.add(i); // newly entered position — outside the overlap window
+    }
+  }
+  for (const r of chunk.touchedRows) damaged.add(r);
+  if (damaged.size > WINDOW_DIFF_MAX_ROWS) return 'full';
+  return Array.from(damaged);
+}
+
+/** Closeout fix — C3: has any group/footer total or the grand-total
+ *  changed since the previous chunk? Computed UNCONDITIONALLY (unlike the
+ *  old code, which only ran this diff inside `enableCellChangeFlash` —
+ *  the ONLY thing that routed changed totals into damage, so a
+ *  flash-disabled grid never repainted a changed aggregate on the
+ *  partial path). `changedGroupKeys` drives `repaintAggregateDamage`'s
+ *  row lookup; `grandTotalChanged` drives its totals-band lookup. Absence
+ *  of a previous totals record (first chunk with totals, or grouping/agg
+ *  just activated) is NOT a change — there's no stale pixel to correct. */
+function diffAggregates(
+  chunk: ViewportChunk,
+  prevGroupTotals: Record<string, Record<string, unknown>> | undefined,
+  prevChunkTotals: Record<string, unknown> | undefined,
+): { changedGroupKeys: Set<string>; grandTotalChanged: boolean } {
+  const changedGroupKeys = new Set<string>();
+  if (chunk.groupTotals && prevGroupTotals) {
+    for (const groupKey of Object.keys(chunk.groupTotals)) {
+      const oldRec = prevGroupTotals[groupKey];
+      const newRec = chunk.groupTotals[groupKey]!;
+      if (recordChanged(oldRec, newRec)) changedGroupKeys.add(groupKey);
+    }
+  }
+  const grandTotalChanged = chunk.totals !== undefined && prevChunkTotals !== undefined
+    && recordChanged(prevChunkTotals, chunk.totals);
+  return { changedGroupKeys, grandTotalChanged };
+}
+
+/** Shallow value diff — `true` when any key in `newRec` differs from
+ *  `oldRec` (or `oldRec` is absent, i.e. a brand-new group this chunk). */
+function recordChanged(
+  oldRec: Record<string, unknown> | undefined,
+  newRec: Record<string, unknown>,
+): boolean {
+  if (!oldRec) return true;
+  for (const k of Object.keys(newRec)) {
+    if (oldRec[k] !== newRec[k]) return true;
+  }
+  return false;
+}
+
 export function defaultFillExtrapolate(sourceValues: unknown[], targetIndex: number): unknown {
   if (sourceValues.length === 0) return undefined;
   const allNumeric = sourceValues.every((v) => typeof v === 'number' && Number.isFinite(v));
@@ -730,14 +840,6 @@ export class CGrid<TRow = any> {
    *  bail-decision inputs (bodyHeight/dpr/bounds), which DO want the true
    *  cumulative-since-paint magnitude. */
   private lastTickScrollTop = 0;
-  /** Damage-region rendering (Task 3) — the data-window (rowStart, rowCount)
-   *  the LAST chunk landed for, used by `handleViewportChunk` to decide
-   *  whether a new chunk's `touchedRows` is trustworthy (same window) or
-   *  must fall back to a full repaint (window moved — scroll, sort,
-   *  filter, group toggle). `-1` sentinel so the very first chunk never
-   *  matches. */
-  private lastDamageWindowStart = -1;
-  private lastDamageWindowCount = -1;
   /** Damage-region rendering — cumulative paint telemetry surfaced via
    *  `getPaintStats()`. Reset via `resetPaintStats()`. */
   private paintStats: PaintStats = {
@@ -1396,6 +1498,7 @@ export class CGrid<TRow = any> {
           dprChanged: dpr !== this.lastPaintedDpr,
           boundsChanged: this.canvasBounds.width !== this.lastPaintedCanvasWidth
             || this.canvasBounds.height !== this.lastPaintedCanvasHeight,
+          dpr,
         });
         if (decision.kind === 'full') {
           this.damageLedger.add(decision);
@@ -1499,6 +1602,10 @@ export class CGrid<TRow = any> {
       // until the CGridCanvas construction below, but this closure only
       // dereferences it at paint time (long after construction completes).
       getCanvasElement: () => this.cgridCanvas.canvas,
+      // C1 fix — the actual backing-store dpr (not a `canvas.width /
+      // cssWidth` derived ratio) so the scroll blit's destination-rect math
+      // is exact even at odd CSS widths.
+      getDevicePixelRatio: () => this.cgridCanvas.devicePixelRatio,
     });
 
     // 7. Canvas wrapper — owns the <canvas>, gc cache, RAF + resize polling.
@@ -1543,9 +1650,18 @@ export class CGrid<TRow = any> {
         // enqueue. An empty ledger (no `repaint*` call site has recorded
         // anything yet) resolves to full, so this is a byte-identical no-op
         // until a later task migrates a `requestRepaint()` source.
+        // I4 fix — the suppressed branch used to build its `{full:true}`
+        // WITHOUT draining the ledger, so `afterScrollTick`'s accumulated
+        // `scrollDy` (and any other queued damage) survived underneath it.
+        // Flipping the option back off mid-session would then resolve a
+        // stale net `dy` on the FIRST unsuppressed paint — a wrong blit
+        // over an already-correct canvas. Always drain via `takeResolved`
+        // (discarding the result while suppressed) so the ledger stays
+        // honest regardless of which branch actually painted.
+        const resolved = this.damageLedger.takeResolved(this.buildDamageResolveCtx());
         const damage = this.options.suppressPartialRepaint
           ? { full: true as const, rects: [], blit: null }
-          : this.damageLedger.takeResolved(this.buildDamageResolveCtx());
+          : resolved;
         this.renderer.paint(gc, damage);
         // Task 5 — snapshot the position/DPR/bounds THIS paint actually
         // painted at, so the next `afterScrollTick`'s delta (and its
@@ -2513,6 +2629,17 @@ export class CGrid<TRow = any> {
       if (rangesChanged) {
         this.repaintFull();
       } else if (rowSelectionChanged) {
+        // I2 fix — a single emit can carry BOTH a row-selection delta AND
+        // a focus move (the model-rebuild emit that re-resolves selection
+        // indices and `focusedRowIndex` together). Without this, the OLD
+        // focus row's ring survives because this branch only repaints
+        // `rowDelta` — union the old/new focus rows in (still subject to
+        // the same ≤24 cap below) so the stale ring gets repainted too.
+        if (focusChanged) {
+          for (const r of [oldFocusRowForDamage, state.focusedRowIndex]) {
+            if (r !== null && !rowDelta.includes(r)) rowDelta.push(r);
+          }
+        }
         const tooLarge = lastSelDamage.selectedRowIndices === 'all'
           || newSelSnapshot === 'all'
           || rowDelta.length > 24;
@@ -5470,6 +5597,22 @@ export class CGrid<TRow = any> {
    */
   private buildDamageResolveCtx(): DamageResolveCtx {
     const vs = this.viewport;
+    // M3 (closeout review, SKIPPED — not cheap) — assumes every sticky
+    // ancestor row paints at the uniform `theme.rowHeight`. Under
+    // variable/autoHeight row heights, a taller ancestor row makes this
+    // underestimate the band, so the scroll-redamage band
+    // (`DamageLedger.takeResolved`'s unconditional sticky-band push) can
+    // fall short and leave a stale lower sticky row for one frame. A real
+    // fix needs a source row index on `StickyAncestor` (currently only
+    // `depth`/`key`/`colId`/`value`/`childCount`/`isExpanded` — see
+    // `worker/protocol.ts`) threaded from the worker's
+    // `computeStickyAncestors` so this could sum `RowHeightIndex` entries
+    // instead of multiplying by a constant — a worker↔main wire-protocol
+    // change out of scope for this fix wave's Minor-severity bar. The
+    // renderer's own `paintStickyGroups` makes the identical
+    // uniform-height assumption (`ancestors.length * rowH`), so this stays
+    // internally consistent (the redamage band matches what's painted)
+    // even though both are wrong together under autoHeight groups.
     const stickyBandBottom = this.stickyAncestors.length > 0
       ? vs.bodyTop + this.stickyAncestors.length * this.theme.rowHeight
       : null;
@@ -5511,6 +5654,13 @@ export class CGrid<TRow = any> {
       rowBoundsAtY: (y) => {
         const row = vs.visibleRows.find((r) => y > r.top && y < r.bottom);
         return row ? { top: row.top, bottom: row.bottom } : null;
+      },
+      // I1 fix — horizontal mirror of `rowBoundsAtY`: the visible column
+      // whose bounds strictly contain `x`, so `DamageLedger.expand()` can
+      // snap a bleed-expanded vertical edge out to full column bounds.
+      colBoundsAtX: (x) => {
+        const col = vs.visibleColumns.find((c) => x > c.left && x < c.right);
+        return col ? { left: col.left, right: col.right } : null;
       },
     };
   }
@@ -7607,7 +7757,67 @@ export class CGrid<TRow = any> {
     if (rows.length === 0 && !band) return;
     if (band) this.damageLedger.add({ kind: 'band', top: band.top, bottom: band.bottom });
     if (rows.length > 0) this.damageLedger.add({ kind: 'rows', rowIndices: rows });
+    // C4 — a sticky ancestor's LIVE total (painted via
+    // `getStickyGroupTotals`, not the regular chunk row it's derived from)
+    // is invisible to both `groupFlashRowIndices` (walks only chunk-window
+    // rows) and `groupFlashTotalsBand` (the flat `TotalsSubgrid` only) — a
+    // sticky ancestor is by definition scrolled ABOVE the fetch window. Any
+    // group total change might belong to a pinned ancestor, so redamage
+    // the whole sticky band whenever one is showing rather than trying to
+    // identify which ancestor (cheap: the band is small).
+    if (this.stickyAncestors.length > 0) this.repaintStickyBand();
     this.cgridCanvas.requestRepaint();
+  }
+
+  /**
+   * C3 fix — resolve CHANGED aggregate cells to damage regardless of
+   * `enableCellChangeFlash`. Mirrors `groupFlashRowIndices` /
+   * `groupFlashTotalsBand` but is driven directly by the diff computed in
+   * `diffAggregates` (this chunk's changed group keys / grand-total flag)
+   * rather than `groupFlashMap`, which stays empty — and so resolves to no
+   * damage at all — when flash is disabled (the DEFAULT). Also redamages
+   * the sticky band (C4) since a changed group total may belong to a
+   * pinned ancestor.
+   */
+  private repaintAggregateDamage(changedGroupKeys: Set<string>, grandTotalChanged: boolean): void {
+    if (this.options.suppressPartialRepaint) { this.repaintFull(); return; }
+    const chunk = this.chunk;
+    if (chunk && changedGroupKeys.size > 0) {
+      const rows: number[] = [];
+      for (let i = 0; i < chunk.rowCount; i++) {
+        const kind = chunk.rowKinds[i] ?? 0;
+        if (kind !== 1 && kind !== 2 && kind !== 3) continue; // leaf rows never carry group totals
+        const key = chunk.groupKey?.[i] ?? '';
+        if (changedGroupKeys.has(key)) rows.push(chunk.rowStart + i);
+      }
+      if (rows.length > 0) this.damageLedger.add({ kind: 'rows', rowIndices: rows });
+    }
+    if (grandTotalChanged) {
+      let top = Infinity, bottom = -Infinity, found = false;
+      for (const row of this.viewport.visibleRows) {
+        if (!row.subgrid.isTotals) continue;
+        found = true;
+        if (row.top < top) top = row.top;
+        if (row.bottom > bottom) bottom = row.bottom;
+      }
+      if (found) this.damageLedger.add({ kind: 'band', top, bottom });
+    }
+    if (this.stickyAncestors.length > 0) this.repaintStickyBand();
+    this.cgridCanvas.requestRepaint();
+  }
+
+  /** C4 — redamage the sticky ancestor band + its drop-shadow bleed.
+   *  Shared by `repaintGroupFlash` (flash-enabled aggregate changes) and
+   *  `repaintAggregateDamage` (C3's flash-disabled path) — both are places
+   *  a group total can change while an ancestor of that group is pinned
+   *  above the fetch window, invisible to the regular chunk-row damage
+   *  paths above. */
+  private repaintStickyBand(): void {
+    const bandTop = this.viewport.bodyTop;
+    const bandBottom = bandTop
+      + this.stickyAncestors.length * this.theme.rowHeight
+      + STICKY_SHADOW_BLEED_PX;
+    this.damageLedger.add({ kind: 'band', top: bandTop, bottom: bandBottom });
   }
 
   /** Cycle 15.5 / Task 6 — true when the row at `rowIndex` is a group
@@ -7934,10 +8144,13 @@ export class CGrid<TRow = any> {
     stickyAncestors: StickyAncestor[],
   ): Promise<void> {
     const { rowStart, rowEnd, columns: cols } = opts;
-    // Capture the previous chunk's totals BEFORE overwriting this.chunk
-    // so the aggregate-flash diff can compare old vs new values.
-    const prevGroupTotals = this.chunk?.groupTotals;
-    const prevChunkTotals = this.chunk?.totals;
+    // Capture the previous chunk's totals + full row identity BEFORE
+    // overwriting `this.chunk` — the aggregate diff (C3) and the
+    // positional-identity window diff (C2 / adjudication B) both compare
+    // against the OLD chunk.
+    const prevChunk = this.chunk;
+    const prevGroupTotals = prevChunk?.groupTotals;
+    const prevChunkTotals = prevChunk?.totals;
     this.chunk = chunk;
     this.stickyAncestors = stickyAncestors;
     this.decodedTextCols.clear();
@@ -7997,34 +8210,40 @@ export class CGrid<TRow = any> {
     // totals records here on the main thread. groupTotals covers per-group
     // group rows AND per-group footer rows. chunk.totals covers the grand-
     // total footer (groupKey='').
+    // C3 fix — this diff used to run ONLY inside `enableCellChangeFlash`,
+    // which meant it was the ONLY thing that routed changed totals into
+    // damage — a flash-disabled grid (the DEFAULT) never repainted a
+    // changed aggregate on the partial path at all. `diffAggregates` now
+    // runs unconditionally; `enableCellChangeFlash` only gates whether the
+    // change ALSO drives the visual flash-fade effect.
+    const { changedGroupKeys, grandTotalChanged } =
+      diffAggregates(chunk, prevGroupTotals, prevChunkTotals);
+    const aggregatesChanged = changedGroupKeys.size > 0 || grandTotalChanged;
     // Damage-region rendering (Task 3, extended Task 6) — did THIS chunk
     // add any group/footer flash entries? Those cells live on group/footer
     // rows, which carry no rowId and so never appear in `touchedRows` —
-    // the partial (`repaintRows`) branch below merges in
-    // `groupFlashRowIndices()` (group/footer/grand-total rows ARE regular
-    // DataSubgrid rows, addressable the same way as leaf rows via
-    // `chunk.groupKey`/`chunk.rowKinds`) rather than degrading to full.
+    // the partial branch below calls `repaintGroupFlash()` (flash-enabled
+    // path) or `repaintAggregateDamage()` (C3's flash-disabled path)
+    // instead of degrading to full.
     let groupFlashChanged = false;
     if (this.options.enableCellChangeFlash) {
       const now = performance.now();
-      if (chunk.groupTotals && prevGroupTotals) {
-        for (const groupKey of Object.keys(chunk.groupTotals)) {
-          const oldRec = prevGroupTotals[groupKey];
-          const newRec = chunk.groupTotals[groupKey]!;
-          for (const colId of Object.keys(newRec)) {
-            if (oldRec?.[colId] !== newRec[colId]) {
-              this.groupFlashMap.set(`${groupKey}\0${colId}`, now);
-              groupFlashChanged = true;
-            }
+      for (const groupKey of changedGroupKeys) {
+        const oldRec = prevGroupTotals?.[groupKey];
+        const newRec = chunk.groupTotals![groupKey]!;
+        for (const colId of Object.keys(newRec)) {
+          if (oldRec?.[colId] !== newRec[colId]) {
+            this.groupFlashMap.set(`${groupKey}\0${colId}`, now);
+            groupFlashChanged = true;
           }
         }
       }
       // Grand-total footer (groupKey='') sources from chunk.totals, not
       // groupTotals. Diff it separately; store under the '' key so
       // groupFlashAlpha('', colId) resolves for rowKind=3 + empty key.
-      if (chunk.totals && prevChunkTotals) {
+      if (grandTotalChanged && chunk.totals) {
         for (const colId of Object.keys(chunk.totals)) {
-          if (prevChunkTotals[colId] !== chunk.totals[colId]) {
+          if (prevChunkTotals?.[colId] !== chunk.totals[colId]) {
             this.groupFlashMap.set(`\0${colId}`, now);
             groupFlashChanged = true;
           }
@@ -8046,32 +8265,35 @@ export class CGrid<TRow = any> {
     // variable-height rows paint at the fallback until the next scroll
     // triggers another recompute.
     this.recomputeViewport();
-    // Damage-region rendering (Task 3, extended Task 6) — a chunk for the
-    // SAME window whose touchedRows names the changed rows repaints only
-    // those bands. A chunk with no touchedRows field (older worker, first
-    // fetch, window move, sort/filter reorder) repaints fully — absence
-    // means "unknown", never "nothing" — that fallback is untouched below.
-    // A chunk that ALSO changed group/footer totals this round used to
-    // degrade to full unconditionally (those cells have no rowId and never
-    // appear in touchedRows) — `repaintGroupFlash()` resolves their
-    // CURRENT geometry instead (data-space group/footer rows via
-    // `groupFlashRowIndices`; the flat grand-total row via
-    // `groupFlashTotalsBand`, since it paints through a separate
-    // `TotalsSubgrid`, not the regular chunk row-index space) and queues
-    // its OWN damage entries alongside the touchedRows repaint below —
-    // measured live-tick paints going from 100% full to correctly partial
-    // with this in place.
-    const sameWindow = chunk.rowStart === this.lastDamageWindowStart
-      && chunk.rowCount === this.lastDamageWindowCount;
-    this.lastDamageWindowStart = chunk.rowStart;
-    this.lastDamageWindowCount = chunk.rowCount;
-    if (sameWindow && chunk.touchedRows !== undefined) {
-      const indices: number[] = [];
-      for (const r of chunk.touchedRows) indices.push(chunk.rowStart + r);
-      this.repaintRows(indices);
-      if (groupFlashChanged) this.repaintGroupFlash();
-    } else {
+    // C2 + adjudication B — `resolveWindowDamage` replaces the old bare
+    // `sameWindow` (rowStart+rowCount) check, which trusted `touchedRows`
+    // at face value whenever the window looked unchanged. That's unsafe
+    // under an active sort: a tick can permute the visible order while
+    // rowStart/rowCount stay put, displacing rows that `touchedRows` (named
+    // at their NEW positions) never flags — their old content just sits
+    // there stale. The position-diff below compares row IDENTITY
+    // (rowId+rowKind+groupKey) at every overlapping position (shifted by
+    // the window-move delta), so a reorder, a filter-driven window move,
+    // AND an ordinary scroll-driven window move all resolve through the
+    // same mechanism — closing both C2 (reorder-under-sort) and the
+    // scroll-driven full-repaint gap in one guard. See `resolveWindowDamage`
+    // doc for the exact bail conditions (every one degrades to full, never
+    // to under-painting).
+    const windowDamage = resolveWindowDamage(chunk, prevChunk);
+    if (windowDamage === 'full') {
       this.repaintFull();
+    } else {
+      if (windowDamage.length > 0) {
+        this.repaintRows(windowDamage.map((r) => chunk.rowStart + r));
+      }
+      if (groupFlashChanged) {
+        this.repaintGroupFlash();
+      } else if (aggregatesChanged) {
+        // C3 — flash disabled (or suppressed), but a total still changed:
+        // damage the changed aggregate cells directly instead of relying
+        // on `groupFlashMap`, which stays empty when flash is off.
+        this.repaintAggregateDamage(changedGroupKeys, grandTotalChanged);
+      }
     }
     this.updateA11y();
     // Cycle 14 / Task 6 — emit `aggregationChanged` ONLY when the mutation
@@ -8207,7 +8429,16 @@ export class CGrid<TRow = any> {
    *  mapping resolves; the flash actually paints on the next viewport
    *  chunk reply. No-op when `enableCellChangeFlash: false`,
    *  `prefers-reduced-motion: reduce`, or the row IDs are unknown
-   *  worker-side. */
+   *  worker-side.
+   *
+   *  M5 (closeout review, known + documented cost) — this call forces a
+   *  `getViewport` refresh with no STAGED transaction behind it, so
+   *  `pendingTouched` is untouched and the resulting chunk's
+   *  `touchedRows` comes back `undefined` (nothing was checked — the
+   *  worker never even looked, since there's nothing in `pendingTouched`
+   *  to check against). `resolveWindowDamage`'s "unknown stays full" rule
+   *  then degrades the paint to full. Conservative and correct — just
+   *  don't be surprised that a `flashCells()` call full-paints once. */
   flashCells(params: FlashCellsParams): void {
     if (this.destroyed) return;
     if (this.options.enableCellChangeFlash !== true) return;
