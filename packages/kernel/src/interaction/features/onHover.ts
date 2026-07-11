@@ -36,7 +36,13 @@ export class OnHover extends Feature {
     }
     this.lastHover = null;
     grid.setHoveredRow?.(null);
-    grid.canvas.requestRepaint();
+    // Damage-region rendering (Task 4) — only the row that was hovered
+    // needs repainting (the highlight is disappearing); fall back to a
+    // full repaint when the grid doesn't expose `repaintRows` (stub grids
+    // in existing tests) or there was no hovered row to clear.
+    const prevRow = prev?.kind === 'cell' ? prev.rowIndex : null;
+    if (prevRow !== null && grid.repaintRows) grid.repaintRows([prevRow]);
+    else grid.canvas.requestRepaint();
   }
 
   override handleMouseMove(ctx: CGridEventCtx): void {
@@ -71,7 +77,18 @@ export class OnHover extends Feature {
         ctx.grid.setHoveredRow?.(nextRow);
       }
       this.lastHover = key;
-      ctx.grid.canvas.requestRepaint();
+      // Damage-region rendering (Task 4) — the hover highlight only
+      // touches the previous/next hovered row band, so repaint just
+      // those rows (`hit.rowIndex` is the DATA-local index `repaintRows`
+      // expects — same space as `visibleRowIndices()` / `cellAt`).
+      // Falls back to a full repaint when neither transition involved a
+      // data row (e.g. header↔header) or the grid has no `repaintRows`
+      // (stub grids in existing tests).
+      const rows: number[] = [];
+      if (prevRow !== null) rows.push(prevRow);
+      if (nextRow !== null) rows.push(nextRow);
+      if (rows.length && ctx.grid.repaintRows) ctx.grid.repaintRows(rows);
+      else ctx.grid.canvas.requestRepaint();
     }
     super.handleMouseMove(ctx);
   }

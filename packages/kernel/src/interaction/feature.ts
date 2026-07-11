@@ -166,6 +166,13 @@ export interface CGridLike {
    *  when off any data row) so the painter can render the row-hover
    *  highlight. No-op / null when `suppressRowHoverHighlight`. */
   setHoveredRow?(rowIndex: number | null): void;
+  /** Damage-region rendering (Task 4) — record damage for a set of
+   *  DATA-row indices (same index space as `hit.rowIndex` /
+   *  `visibleRowIndices()`) and request the next frame, instead of a
+   *  blanket full repaint. Optional so stub grids in existing feature
+   *  tests keep compiling; `OnHover` falls back to
+   *  `canvas.requestRepaint()` when absent. */
+  repaintRows?(rows: number[]): void;
   /** Cycle 23 / Task 4 — fan out a cellKeyDown for the focused cell.
    *  Returns `true` when the listener called `event.preventDefault()`
    *  so the chain can short-circuit and skip downstream key handlers. */

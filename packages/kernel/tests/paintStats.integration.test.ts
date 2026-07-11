@@ -189,3 +189,124 @@ describe('Damage-region rendering — tick + flash damage (paint stats)', () => 
     restore();
   });
 });
+
+/**
+ * Damage-region rendering (Task 4) — hover, selection, and focus damage.
+ *
+ * Hover-index-space check: `HitTester.locate` resolves a cell hit's
+ * `rowIndex` from `ViewportRow.localRowIndex` on a `DataSubgrid` row (see
+ * `src/interaction/hitTester.ts`, "Hits only count when they land in a
+ * DataSubgrid row — `localRowIndex` is the data-row index"). That's the
+ * SAME index space `CGrid.repaintRows` expects (`cellAt`'s `rowIndex` /
+ * the chunk's `rowStart`-relative local index — confirmed by Task 3's
+ * report). So `OnHover` can forward `hit.rowIndex` straight into
+ * `ctx.grid.repaintRows` with no conversion. These tests dispatch a real
+ * `mousemove` at the canvas element (not a synthetic feature-level ctx)
+ * so the whole hit-test → OnHover → CGrid.repaintRows → paint path is
+ * exercised end-to-end, the same way the touchedRows test above exercises
+ * the worker → chunk → repaintRows path.
+ */
+describe('Damage-region rendering — hover, selection, and focus damage (paint stats)', () => {
+  /** happy-dom's canvas `getBoundingClientRect()` reports an all-zero rect,
+   *  so `FeatureChain.toLocal` maps `clientX/clientY` directly onto
+   *  canvas-local CSS px with no offset — `dataRowPoint` just needs to
+   *  land inside a real DataSubgrid row's painted band + a visible
+   *  column's span, read live off `grid.viewport` so the test doesn't
+   *  hard-code theme row/header heights. */
+  function dataRowPoint(grid: any, localRowIndex: number): { x: number; y: number } {
+    const vs = grid.viewport;
+    const row = vs.visibleRows.find(
+      (r: any) => r.subgrid.isData && r.localRowIndex === localRowIndex,
+    );
+    if (!row) throw new Error(`row ${localRowIndex} not in viewport`);
+    const col = vs.visibleColumns[0];
+    return { x: col.left + 5, y: row.top + 5 };
+  }
+
+  function moveTo(grid: any, point: { x: number; y: number }): void {
+    grid.cgridCanvas.canvas.dispatchEvent(
+      new MouseEvent('mousemove', { clientX: point.x, clientY: point.y, bubbles: true }),
+    );
+  }
+
+  it('a hovered-row change drives a partial repaint with a small area', async () => {
+    const { grid, restore } = buildWiredGrid(rows(20), cols);
+    const canvas = (grid as any).cgridCanvas;
+
+    await new Promise((r) => setTimeout(r, 50));
+    canvas.tickPaint(performance.now());
+    grid.resetPaintStats();
+
+    // Enter row 0, then move to row 1 — the second move is the "steady
+    // state" hover transition (prevRow=0, nextRow=1) most representative
+    // of ordinary pointer travel.
+    moveTo(grid, dataRowPoint(grid, 0));
+    moveTo(grid, dataRowPoint(grid, 1));
+    // `tickPaint` is fps-gated on real elapsed time since the last paint
+    // (`canvas.ts`'s `elapsed > interval` check) — a real wait is needed
+    // between the two `tickPaint` calls or the second one no-ops even
+    // though `dirty` is true.
+    await new Promise((r) => setTimeout(r, 20));
+    canvas.tickPaint(performance.now());
+
+    const stats = grid.getPaintStats();
+    expect(stats.partialPaints).toBeGreaterThanOrEqual(1);
+    expect(stats.fullPaints).toBe(0);
+    expect(stats.lastAreaPct).toBeGreaterThan(0);
+    expect(stats.lastAreaPct).toBeLessThan(30);
+
+    grid.destroy();
+    restore();
+  });
+
+  it('focusing a cell via setFocusedCell drives a partial repaint', async () => {
+    const { grid, restore } = buildWiredGrid(rows(20), cols);
+    const canvas = (grid as any).cgridCanvas;
+
+    await new Promise((r) => setTimeout(r, 50));
+    canvas.tickPaint(performance.now());
+    grid.resetPaintStats();
+
+    grid.setFocusedCell('r5', 'v');
+    await new Promise((r) => setTimeout(r, 50));
+    canvas.tickPaint(performance.now());
+
+    const stats = grid.getPaintStats();
+    expect(stats.partialPaints).toBeGreaterThanOrEqual(1);
+    expect(stats.fullPaints).toBe(0);
+    expect(stats.lastAreaPct).toBeGreaterThan(0);
+    expect(stats.lastAreaPct).toBeLessThan(30);
+
+    grid.destroy();
+    restore();
+  });
+
+  it('selectAll on a large row set drives a FULL repaint, never enumerating every row into the ledger', async () => {
+    const { grid, restore } = buildWiredGrid(rows(5000), cols, { rowSelection: 'multiple' } as any);
+    const canvas = (grid as any).cgridCanvas;
+
+    await new Promise((r) => setTimeout(r, 50));
+    canvas.tickPaint(performance.now());
+    grid.resetPaintStats();
+
+    (grid as any).selectAll();
+    // See the fps-gate note above — a real wait is required before the
+    // next `tickPaint` actually re-paints.
+    await new Promise((r) => setTimeout(r, 20));
+    canvas.tickPaint(performance.now());
+
+    const stats = grid.getPaintStats();
+    expect(stats.fullPaints).toBeGreaterThanOrEqual(1);
+    expect(stats.partialPaints).toBe(0);
+    // A full paint always reports 100% — the actual proof that select-all
+    // did NOT resolve through the row-delta path (which would report a
+    // small `lastAreaPct` even for a 5,000-row delta, since `repaintRows`
+    // would still just be handed a huge array; the assertion that matters
+    // is `partialPaints === 0` above, i.e. `repaintRows` was never called
+    // at all for this change).
+    expect(stats.lastAreaPct).toBe(100);
+
+    grid.destroy();
+    restore();
+  });
+});

@@ -1765,6 +1765,11 @@ export class CGrid<TRow = any> {
         // Suppressed → never track (stays null so the painter skips it).
         this.hoveredRowIndex = this.options.suppressRowHoverHighlight ? null : rowIndex;
       },
+      // Damage-region rendering (Task 4) — thin wrapper over the private
+      // `repaintRows` helper so `OnHover` (hover) and future row-scoped
+      // features reach the ledger through `CGridLike` instead of a
+      // blanket `canvas.requestRepaint()`.
+      repaintRows: (rows) => this.repaintRows(rows),
       // Cycle 23 / Task 4 — cell keyboard events. The CellKeyboardEvents
       // feature sits at the HEAD of the chain; it returns the
       // `event.defaultPrevented` flag back upstream so the chain can
@@ -2349,7 +2354,17 @@ export class CGrid<TRow = any> {
     let lastFocusRow: number | null = null;
     let lastFocusCol: string | null = null;
     let lastFocusEmitKey: string | null = null;
+    // Damage-region rendering (Task 4) — snapshot of the previous
+    // selection state used to classify each onChange below instead of a
+    // blanket full repaint. `selectedRowIndices: 'all'` is a sentinel for
+    // a full-grid row selection (selectAll / header checkbox) so a
+    // 5,000-row selectAll never materializes a 5,000-entry array just to
+    // diff against the NEXT change.
+    let lastSelDamage: { selectedRowIndices: number[] | 'all'; rangesKey: string } = {
+      selectedRowIndices: [], rangesKey: JSON.stringify([]),
+    };
     this.selectionUnsubscribe = this.selection.onChange((state) => {
+      const oldFocusRowForDamage = lastFocusRow;
       const focusChanged =
         state.focusedRowIndex !== lastFocusRow || state.focusedColId !== lastFocusCol;
       if (focusChanged) {
@@ -2379,7 +2394,64 @@ export class CGrid<TRow = any> {
           if (fc) this.events.emit({ type: 'cellFocused', rowId: fc.rowId, colId: fc.colId });
         }
       }
-      this.cgridCanvas.requestRepaint();
+      // Damage-region rendering (Task 4) — classify the change instead of
+      // a blanket full repaint. Priority order (first match wins):
+      //   1. ranges changed (range gestures / header column-band select)
+      //      → FULL. Range-rect precision is future work — full-on-
+      //      range-change is correct and still rare.
+      //   2. row-selection SET changed: a small delta (≤24 indices)
+      //      repaints just those rows; a large delta, a transition
+      //      into/out of a full selectAll, or select-all itself → FULL
+      //      (never enumerates a multi-thousand-row selection into the
+      //      ledger).
+      //   3. focus-only change (selection set + ranges untouched):
+      //      repaint just the old/new focused row band.
+      //   4. anything else (onChange fired with no tracked-field delta
+      //      detected) → FULL. Global Constraint: ambiguous never means
+      //      partial.
+      const rangesKey = JSON.stringify(state.ranges);
+      const rangesChanged = rangesKey !== lastSelDamage.rangesKey;
+      const newSelSize = state.selectedRowIndices.size;
+      const isFullSelectAll = newSelSize > 0 && newSelSize === this.rowCount;
+      const newSelSnapshot: number[] | 'all' = isFullSelectAll
+        ? 'all'
+        : Array.from(state.selectedRowIndices);
+
+      let rowSelectionChanged: boolean;
+      const rowDelta: number[] = [];
+      if (lastSelDamage.selectedRowIndices === 'all' && newSelSnapshot === 'all') {
+        rowSelectionChanged = false;
+      } else if (lastSelDamage.selectedRowIndices === 'all' || newSelSnapshot === 'all') {
+        // Transition into/out of a full selection — always "changed";
+        // the size check below routes it to FULL regardless of rowDelta.
+        rowSelectionChanged = true;
+      } else {
+        const oldSet = new Set(lastSelDamage.selectedRowIndices);
+        const newSet = state.selectedRowIndices;
+        for (const idx of oldSet) if (!newSet.has(idx)) rowDelta.push(idx);
+        for (const idx of newSet) if (!oldSet.has(idx)) rowDelta.push(idx);
+        rowSelectionChanged = rowDelta.length > 0;
+      }
+
+      if (rangesChanged) {
+        this.repaintFull();
+      } else if (rowSelectionChanged) {
+        const tooLarge = lastSelDamage.selectedRowIndices === 'all'
+          || newSelSnapshot === 'all'
+          || rowDelta.length > 24;
+        if (tooLarge) this.repaintFull();
+        else this.repaintRows(rowDelta);
+      } else if (focusChanged) {
+        const focusRows = Array.from(new Set(
+          [oldFocusRowForDamage, state.focusedRowIndex].filter((n): n is number => n !== null),
+        ));
+        if (focusRows.length) this.repaintRows(focusRows);
+        else this.repaintFull();
+      } else {
+        this.repaintFull();
+      }
+      lastSelDamage = { selectedRowIndices: newSelSnapshot, rangesKey };
+
       this.events.emit({ type: 'selectionChanged', selectedRowIds: this.getSelectedRowIds() });
       this.updateA11y();
     });
