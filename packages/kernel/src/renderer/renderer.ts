@@ -442,6 +442,7 @@ export class Renderer {
   ): void {
     const hCss = dest.bodyBottom - dest.bodyTop;
     if (hCss <= 0 || src.sh <= 0 || srcWidthDevicePx <= 0) return;
+    gc.cache.imageSmoothingEnabled = false;
     gc.drawImage(layerCanvas, 0, src.sy, srcWidthDevicePx, src.sh, 0, dest.bodyTop, dest.width, hCss);
   }
 

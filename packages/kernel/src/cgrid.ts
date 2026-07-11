@@ -1799,9 +1799,28 @@ export class CGrid<TRow = any> {
               }
               for (const r of damage.dataRects) rasterAreaRects.push(r);
             }
-            const layerLocalRects = rasterAreaRects.map((r) => ({
-              x: r.x, y: layer.contentToLayerY(r.y), w: r.w, h: r.h,
-            }));
+            // `paintLayer`'s `!full` branch clips/fills/paints under the
+            // SAME ambient `ctx.translate(0, -vsNow.bodyTop)` the caller
+            // applies below as its `full` branch's `layerVs.bodyTop`-
+            // relative `fillRect` already assumes — so these rects must be
+            // in that SAME vs2/bodyTop-relative space, NOT the raw
+            // layer-local (`contentToLayerY`) space (which is only valid
+            // for the untransformed raw-canvas ops in
+            // `PaintCacheLayer.shift`/`reset`/`visibleSrcRect`, none of
+            // which run under this translate). Reusing `dataRectToScreen`
+            // with `scrollTop: layerTop` computes exactly that: `y: r.y +
+            // bodyTop - layerTop`, which the ambient translate then
+            // correctly reduces to `r.y - layerTop` (`contentToLayerY`) at
+            // the physical canvas level — matching where `paintCellsByRows`
+            // actually draws each row via `layerVs`. Passing raw
+            // `contentToLayerY` rects here double-subtracted `bodyTop`,
+            // clipping the fill/clip region `bodyTop` px away from where
+            // cell content actually painted: content painted correctly but
+            // landed OUTSIDE the clip, leaving damaged cells blank (caught
+            // by the paint-cache invariance harness, Task 5).
+            const layerLocalRects = rasterAreaRects.map((r) =>
+              dataRectToScreen(r, { scrollTop: layer.geometry().layerTop, bodyTop: vsNow.bodyTop }),
+            );
             if (layerRasterFull || layerLocalRects.length > 0) {
               const rt0 = performance.now();
               // `.cache.save()`/`.cache.restore()` (NOT raw `save`/
@@ -1839,17 +1858,24 @@ export class CGrid<TRow = any> {
           }
           s.presents++;
 
-          // 4/5. Chrome + sticky, on-screen — the Task-2 bridge formula
-          // (chromeRects already screen-space, dataRects content-space
-          // mapped back) gives the chrome pass the SAME clip union the
-          // legacy pipeline would have used, so pinned/totals/sticky
-          // redamage-on-scroll semantics stay pixel-identical.
+          // 4/5. Chrome + sticky, on-screen. `paintChrome`'s `!full` branch
+          // paints in `'chrome'` mode, which deliberately SKIPS every data
+          // band (`paintCellsByRows`'s `mode === 'chrome' && isData`
+          // guard) — the data region is already fully handled by the
+          // present() blit above plus the layer raster pass. Only
+          // `damage.chromeRects` (genuinely screen-space chrome damage:
+          // header/floating-filter/totals/pinned-row/sticky) belongs here.
+          // Task-4 fix — the Task-2 bridge formula this used to reuse
+          // (`chromeRects` UNION `dataRects` mapped back to screen) was
+          // correct ONLY for the legacy `Renderer.paint()`, whose single
+          // undifferentiated pass repaints BOTH data and chrome inside
+          // that same clip; folding `dataRects` in here instead
+          // background-filled the on-screen data region the present blit
+          // had just drawn, then skipped repainting it (chrome mode never
+          // touches data bands) — the just-presented cells went blank.
+          // Caught by the paint-cache invariance harness (Task 5).
           const chromeFull = damage.full;
-          chromeAreaRects = chromeFull
-            ? []
-            : damage.chromeRects.concat(
-                damage.dataRects.map((r) => dataRectToScreen(r, { scrollTop: vsNow.scrollTop, bodyTop: vsNow.bodyTop })),
-              );
+          chromeAreaRects = chromeFull ? [] : damage.chromeRects;
           this.renderer.paintChrome(gc, chromeFull, chromeAreaRects);
 
           if (plan.kind === 'reset') s.layerResets++;
