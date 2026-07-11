@@ -136,8 +136,10 @@ export type PaintCacheCanvasFactory = () => PaintCacheCanvasLike | null;
 /** Default factory: `OffscreenCanvas` when the platform supports it
  *  (`renderer/offscreenSupport.ts`), else a detached `HTMLCanvasElement`.
  *  Never throws — any construction failure just returns `null`, which
- *  `PaintCacheLayer` turns into `available = false`. */
-function defaultCanvasFactory(): PaintCacheCanvasLike | null {
+ *  `PaintCacheLayer` turns into `available = false`. Exported (Cycle 22 /
+ *  Task 2) so CGrid hands the SAME platform-canvas policy to the
+ *  raster-cache stores (`CellBitmapCache` / `RowStripCache`). */
+export function defaultCanvasFactory(): PaintCacheCanvasLike | null {
   if (isOffscreenCanvasSupported()) {
     try {
       const OffscreenCanvasCtor = (globalThis as unknown as { OffscreenCanvas: new (w: number, h: number) => PaintCacheCanvasLike }).OffscreenCanvas;

@@ -225,10 +225,35 @@ export interface CellPainter {
   paint(gc: CachedContext2D, p: CellPaintConfig): void;
 }
 
+/** Cycle 22 / Task 2 — options for `CellRendererRegistry.register`. */
+export interface RegisterCellRendererOpts {
+  /** Opt this renderer's cells into the Tier-1 content-keyed bitmap cache
+   *  (`renderer/rasterCache/cellCache.ts`). Defaults to `false`: a painter
+   *  whose pixels can depend on state OUTSIDE `cellStyleSignature`'s
+   *  covered-field list (opaque `params`, `rowData` reads, module state,
+   *  time) must paint live — a bypass is a perf miss, a stale bitmap is a
+   *  bug. Only set `true` after auditing every `config.` read against the
+   *  signature (built-ins that qualify are opted in at their cgrid.ts
+   *  registration site). */
+  cacheable?: boolean;
+}
+
 export class CellRendererRegistry {
   private map = new Map<string, CellPainter>();
-  register(name: string, painter: CellPainter): void {
+  /** Cycle 22 / Task 2 — names opted into the Tier-1 cell-bitmap cache.
+   *  Maintained by `register`; re-registering a name WITHOUT the opt-in
+   *  clears it (an override painter's pixels are unknown — conservative
+   *  is correct). */
+  private cacheableNames = new Set<string>();
+  register(name: string, painter: CellPainter, opts?: RegisterCellRendererOpts): void {
     this.map.set(name, painter);
+    if (opts?.cacheable === true) this.cacheableNames.add(name);
+    else this.cacheableNames.delete(name);
+  }
+  /** Cycle 22 / Task 2 — `true` only for renderers explicitly opted into
+   *  the Tier-1 cell-bitmap cache at registration time. */
+  isCacheable(name: string): boolean {
+    return this.cacheableNames.has(name);
   }
   get(name: string): CellPainter {
     const p = this.map.get(name);

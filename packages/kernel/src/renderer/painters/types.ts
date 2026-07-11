@@ -5,6 +5,28 @@ import type { CellRendererRegistry } from '../cellRenderers/registry';
 import type { GroupCellValue } from '../cellRenderers/group';
 import type { SortModel, SelectionRange } from '../../types';
 import type { StickyAncestor } from '../../worker/protocol';
+import type { CellBitmapCache } from '../rasterCache';
+
+/**
+ * Cycle 22 / Task 2 — Tier-1 cell-bitmap cache handle threaded into the
+ * byRows cell-paint seam. `cache` is the content-keyed bitmap store
+ * (`renderer/rasterCache/cellCache.ts`); `dpr` is the devicePixelRatio the
+ * bitmaps must be rasterized at (must match the CTM scale of the context
+ * they're blitted into — main canvas AND retained layer both run the same
+ * `setTransform(dpr,0,0,dpr,0,0)`). `stats`, when present, receives the
+ * per-cell hit/miss/bypass counters (CGrid passes its live `PaintStats`
+ * object). Absent/null ⇒ every cell paints live, byte-identical to the
+ * shipped pipeline.
+ */
+export interface RasterCellsCtx {
+  cache: CellBitmapCache;
+  dpr: number;
+  stats?: {
+    cellCacheHits: number;
+    cellCacheMisses: number;
+    cellCacheBypasses: number;
+  };
+}
 
 export type CellDataLookup = (
   rowIndex: number,
@@ -177,4 +199,11 @@ export interface PainterCtx {
    * don't need to thread a stub through — absence means "no culling".
    */
   damageBounds?: { minX: number; minY: number; maxX: number; maxY: number } | null;
+  /**
+   * Cycle 22 / Task 2 — Tier-1 cell-bitmap cache (see `RasterCellsCtx`).
+   * Optional AND nullable so pre-existing test harnesses building partial
+   * `PainterCtx` instances need no stub — absence means "paint every cell
+   * live", exactly the shipped pipeline (`rasterCache: false`).
+   */
+  rasterCells?: RasterCellsCtx | null;
 }

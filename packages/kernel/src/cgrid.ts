@@ -68,7 +68,9 @@ import {
   type ViewportState,
 } from './core/viewport';
 import { RowHeightIndex } from './core/rowHeightIndex';
-import { PaintCacheLayer, planLayer, type LayerGeometry, type LayerPlan } from './core/paintCache';
+import { PaintCacheLayer, planLayer, defaultCanvasFactory, type LayerGeometry, type LayerPlan } from './core/paintCache';
+import { RasterBudget, CellBitmapCache, RowStripCache } from './renderer/rasterCache';
+import type { RasterCellsCtx } from './renderer/painters/types';
 import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, TotalsSubgrid, PinnedRowsSubgrid, type Subgrid, type SubgridCell } from './core/subgrid';
 import { FloatingFilterSubgrid } from './core/floatingFilterSubgrid';
 import { FloatingFilterOverlay } from './interaction/floatingFilterOverlay';
@@ -131,7 +133,7 @@ import {
 // below directly from `./theming/theme` — no local binding needed since
 // this file never constructs/inspects them itself.
 import { CgTheme, type ThemeMode } from './theming/theme';
-import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell, type CellPainter } from './renderer/cellRenderers/registry';
+import { CellRendererRegistry, textCell, numberCell, checkboxCell, headerCell, type CellPainter, type RegisterCellRendererOpts } from './renderer/cellRenderers/registry';
 import { wrapTextCell } from './renderer/cellRenderers/wrapText';
 import { totalsCell } from './renderer/cellRenderers/totals';
 import { groupCell, GROUP_CELL_GEOMETRY, type GroupCellValue } from './renderer/cellRenderers/group';
@@ -240,7 +242,7 @@ export type { ConditionalRuleShape } from './core/ruleEngineSlot';
 // Grid Layouts (Phase A) — public value exports (reserved id, tier default,
 // bundle version).
 export { DEFAULT_LAYOUT_ID, DEFAULT_GRID_LEVEL_MODULES, LAYOUTS_BUNDLE_VERSION } from './types';
-export type { CellPainter, CellPaintConfig } from './renderer/cellRenderers/registry';
+export type { CellPainter, CellPaintConfig, RegisterCellRendererOpts } from './renderer/cellRenderers/registry';
 // Workstream A (2026-07-06 CSS styling model) — renderer-palette bundle
 // type, so @cgrid/renderers (and follow-on structured-map work) can name
 // the shape of `CellPaintConfig.palette` directly.
@@ -852,6 +854,7 @@ export class CGrid<TRow = any> {
     presents: 0, layerShifts: 0, layerResets: 0, layerRasterMs: 0,
     lastRects: 0, lastAreaPct: 100, avgPaintMs: 0, worstPaintMs: 0,
     layerSyncFills: 0, layerBacklogPx: 0,
+    cellCacheHits: 0, cellCacheMisses: 0, cellCacheBypasses: 0, rasterCacheBytes: 0,
   };
   private columnTree!: ColumnTree;
   /** Grid Layouts / column-group-drag feature (Task 1) — lazily-built
@@ -977,6 +980,24 @@ export class CGrid<TRow = any> {
    *  `damage.full` via the pre-existing damage system) never lets a stale
    *  layer `'keep'`/`'shift'` through. */
   private paintCacheLayerAnchored = false;
+  /** Cycle 22 / Task 2 — the ONE byte budget shared by BOTH raster-cache
+   *  tiers (cross-tier LRU: a cell-bitmap charge can evict a row strip
+   *  and vice versa). Sized from `rasterCacheBudgetMB` (default 48).
+   *  `null` when `rasterCache: false`. */
+  private rasterBudget: RasterBudget | null = null;
+  /** Cycle 22 / Task 2 — Tier-1 content-keyed cell-bitmap store, consumed
+   *  at the byRows cell-paint seam via `getRasterCellsCtx()`. `null` when
+   *  `rasterCache: false`; an instance whose canvas construction failed
+   *  stays non-null but `available === false` (the ctx getter gates). */
+  private rasterCells: CellBitmapCache | null = null;
+  /** Cycle 22 / Task 2 — Tier-2 row-strip store. Constructed here (same
+   *  shared budget, same lifecycle/epoch wiring) even though its CONSUME
+   *  path (the paint-cache layer's band raster) lands in Task 3. */
+  private rasterStrips: RowStripCache | null = null;
+  /** Cycle 22 / Task 2 — the dpr the cell bitmaps were last rasterized
+   *  at. A change is an epoch bump (old backing stores are sized at the
+   *  old dpr — blitting them would scale/blur). `0` = not yet observed. */
+  private rasterCellsDpr = 0;
   private selection: SelectionModel;
   private hitTester: HitTester;
   private featureChain: FeatureChain;
@@ -1309,12 +1330,30 @@ export class CGrid<TRow = any> {
     // so any setup-time events (initial column resolution, etc.) get
     // captured.
     this.stateUpdatedBus = new StateUpdatedBus(this.events, () => this.getState());
-    this.cellRenderers.register('text', textCell);
-    this.cellRenderers.register('number', numberCell);
-    this.cellRenderers.register('checkbox', checkboxCell);
-    this.cellRenderers.register('header', headerCell);
-    this.cellRenderers.register('text-wrap', wrapTextCell);
-    this.cellRenderers.register('totals', totalsCell);
+    // Cycle 22 / Task 2 — `cacheable: true` opts a built-in into the
+    // Tier-1 cell-bitmap cache. Set ONLY where every `config.` read the
+    // painter makes is (a) a `cellStyleSignature` covered field, (b) a
+    // theme-scoped field that rides the epoch (`checkboxCheckedBg/Fg`,
+    // `emptyFg` — see cellCache.ts's module doc), or (c) a field whose
+    // presence already forces a seam bypass (`flashAlpha`, `content`,
+    // `decorators`, `params`, `pivotGroupExpand`). Audited per renderer:
+    //   text / number / checkbox / header / text-wrap / totals /
+    //   rowSelectCheckbox → all reads covered → cacheable.
+    //   group / groupFooter → read a `GroupCellValue` PAYLOAD object off
+    //     `p.value` (depth / isExpanded / childCount / selectionState /
+    //     payload.valueFormatted) — `String(value)` is '[object Object]',
+    //     so the key can't see the pixels → NOT cacheable.
+    //   sparkline → `p.value` may be an arbitrary object shape and the
+    //     variant painters read `p.params` + `p.palette` → NOT cacheable.
+    //   composite → binding Task-1 carry-forward: pixels depend on
+    //     `compositeProgram` + `rowData` reads OUTSIDE the signature →
+    //     NOT cacheable.
+    this.cellRenderers.register('text', textCell, { cacheable: true });
+    this.cellRenderers.register('number', numberCell, { cacheable: true });
+    this.cellRenderers.register('checkbox', checkboxCell, { cacheable: true });
+    this.cellRenderers.register('header', headerCell, { cacheable: true });
+    this.cellRenderers.register('text-wrap', wrapTextCell, { cacheable: true });
+    this.cellRenderers.register('totals', totalsCell, { cacheable: true });
     this.cellRenderers.register('group', groupCell);
     this.cellRenderers.register('groupFooter', groupFooterCell);
     // Cycle 21 / Task 1 — canvas-painted sparkline (line variant; Task 2
@@ -1324,7 +1363,7 @@ export class CGrid<TRow = any> {
     // Per-row checkbox renderer — forced as the cellRenderer for any
     // column declaring `checkboxSelection: true`. Reads `p.isSelected`
     // for state (NOT row data); a chain feature claims the click.
-    this.cellRenderers.register('rowSelectCheckbox', rowSelectCheckboxCell);
+    this.cellRenderers.register('rowSelectCheckbox', rowSelectCheckboxCell, { cacheable: true });
     // Cycle 21c / Task 13 — composite fragment renderer. Only reached
     // when a `type: 'composite'` ColDef compiled successfully via the
     // injected format compiler (see propertyChain.compileFormatSlots).
@@ -1649,6 +1688,9 @@ export class CGrid<TRow = any> {
       // cssWidth` derived ratio) so the scroll blit's destination-rect math
       // is exact even at odd CSS widths.
       getDevicePixelRatio: () => this.cgridCanvas.devicePixelRatio,
+      // Cycle 22 / Task 2 — Tier-1 cell-bitmap cache handle. Read fresh
+      // per paint (gates on the option + availability, tracks dpr).
+      getRasterCells: () => this.getRasterCellsCtx(),
     });
 
     // Task 4 (paint-cache layer) — construct the retained offscreen layer
@@ -1659,6 +1701,14 @@ export class CGrid<TRow = any> {
     // actual use on both the option AND `.available`.
     if (this.options.paintCache !== false) {
       this.paintCacheLayer = new PaintCacheLayer();
+    }
+
+    // Cycle 22 / Task 2 — raster caches (Tier 1 cell bitmaps + Tier 2 row
+    // strips) under ONE shared budget. Construction never throws (a
+    // failed/unsupported canvas degrades to `available = false`, and
+    // `getRasterCellsCtx()` gates every use), so this is safe headless.
+    if (this.options.rasterCache !== false) {
+      this.buildRasterCaches();
     }
 
     // 7. Canvas wrapper — owns the <canvas>, gc cache, RAF + resize polling.
@@ -2024,6 +2074,9 @@ export class CGrid<TRow = any> {
         }
         s.avgPaintMs = s.avgPaintMs === 0 ? ms : s.avgPaintMs * 0.9 + ms * 0.1;
         if (ms > s.worstPaintMs) s.worstPaintMs = ms;
+        // Cycle 22 / Task 2 — raster-cache byte gauge (both tiers share
+        // the one budget). Refreshed per paint; `0` when disabled.
+        s.rasterCacheBytes = this.rasterBudget?.spent() ?? 0;
       },
     }, {
       // Drawable size = scroller's inner area MINUS the scrollbar thickness.
@@ -6424,8 +6477,8 @@ export class CGrid<TRow = any> {
    *  `{ component: name }`) will dispatch to `painter`. Built-in names
    *  ('text', 'number', 'checkbox', 'header') can be overridden by
    *  re-registering; the override applies on the next repaint. */
-  registerCellRenderer(name: string, painter: CellPainter): void {
-    this.cellRenderers.register(name, painter);
+  registerCellRenderer(name: string, painter: CellPainter, opts?: RegisterCellRendererOpts): void {
+    this.cellRenderers.register(name, painter, opts);
     this.cgridCanvas?.requestRepaint();
   }
 
@@ -6573,6 +6626,10 @@ export class CGrid<TRow = any> {
   setThemeParams(patch: Readonly<Record<string, string>>): void {
     themeParamsSet(this.root, patch);
     this.theme = this.cssReader.read();
+    // Cycle 22 / Task 2 — any theme re-read is a raster-cache epoch: the
+    // per-cell keys cover fg/bg/font, but theme-scoped colors
+    // (checkboxCheckedBg, group*, emptyFg, palette) ride the epoch.
+    this.rasterCacheEpochBump();
     this.recomputeViewport();
     this.cgridCanvas.requestRepaint();
     // Cycle 21i / Phase 1 — theme-token overrides ride in the GridState
@@ -6705,6 +6762,9 @@ export class CGrid<TRow = any> {
     this.clearThemeObjectInjection();
     this.injectThemeObject(theme, mode);
     this.theme = this.cssReader.read();
+    // Cycle 22 / Task 2 — theme mode swap is a raster-cache epoch (same
+    // trigger family as the paint-cache layer reset below).
+    this.rasterCacheEpochBump();
     this.recomputeViewport();
     // Task 4 (paint-cache layer) — a theme swap is one of the layer's
     // required reset triggers; `repaintFull()` (not a bare
@@ -6742,6 +6802,9 @@ export class CGrid<TRow = any> {
     current.forEach((c) => this.root.classList.remove(c));
     this.applyThemeOption(theme, this.root);
     this.theme = this.cssReader.read();
+    // Cycle 22 / Task 2 — theme swap is a raster-cache epoch (same
+    // trigger family as the paint-cache layer reset below).
+    this.rasterCacheEpochBump();
     this.options.theme = theme;
     this.recomputeViewport();
     // Task 4 — see `applyThemeModeSwap`'s doc: a theme change is a
@@ -6764,6 +6827,10 @@ export class CGrid<TRow = any> {
     }
     this.options.density = density ?? undefined;
     this.theme = this.cssReader.read();
+    // Cycle 22 / Task 2 — density re-reads the theme (row heights change
+    // cell bounds — already in the key — but padding/font tokens can move
+    // too): raster-cache epoch.
+    this.rasterCacheEpochBump();
     this.recomputeViewport();
     // Task 4 — density changes row/header height, which is functionally
     // a resize for the paint-cache layer (its own reset condition already
@@ -6913,6 +6980,7 @@ export class CGrid<TRow = any> {
         this.rowGroupPanel?.setRenderOptions({ suppressSort: suppress }),
       updateGroupSelectsChildren: (enabled) => this.applyGroupSelectsChildren(enabled),
       resetPaintCacheLayer: () => this.resetPaintCacheLayer(),
+      resetRasterCache: () => this.resetRasterCache(),
     };
   }
 
@@ -7327,6 +7395,14 @@ export class CGrid<TRow = any> {
     this.paintCacheLayer?.dispose();
     this.paintCacheLayer = null;
     this.layerViewportCache = null;
+    // Cycle 22 / Task 2 — release both raster-cache tiers' retained
+    // bitmaps (same rationale as the layer dispose above: a destroyed-
+    // but-still-referenced grid must not pin tens of MB of canvases).
+    this.rasterCells?.dispose();
+    this.rasterStrips?.dispose();
+    this.rasterCells = null;
+    this.rasterStrips = null;
+    this.rasterBudget = null;
     this.cgridCanvas.destroy();
     this.workerCoord.destroy();
     this.featureChain.destroy();
@@ -7497,7 +7573,7 @@ export class CGrid<TRow = any> {
       getGridOption: (k) => this.getGridOption(k),
       setGridOption: (k, v) => this.setGridOption(k, v),
       updateGridOptions: (p) => this.updateGridOptions(p),
-      registerCellRenderer: (n, p) => this.registerCellRenderer(n, p),
+      registerCellRenderer: (n, p, o) => this.registerCellRenderer(n, p, o),
       registerFormatCompiler: (fn) => this.registerFormatCompiler(fn),
       registerRuleEngine: (engine) => this.registerRuleEngine(engine),
       registerCalcProvider: (provider) => this.registerCalcProvider(provider),
@@ -8422,6 +8498,73 @@ export class CGrid<TRow = any> {
     this.repaintFull();
   }
 
+  /** Cycle 22 / Task 2 — construct both raster-cache tiers from ONE
+   *  shared `RasterBudget` sized by `rasterCacheBudgetMB` (default 48).
+   *  Both stores use the same platform-canvas policy the paint-cache
+   *  layer uses (`defaultCanvasFactory`); construction never throws. */
+  private buildRasterCaches(): void {
+    const mb = this.options.rasterCacheBudgetMB ?? 48;
+    const budget = new RasterBudget(Math.max(1, mb) * 1024 * 1024);
+    this.rasterBudget = budget;
+    this.rasterCells = new CellBitmapCache(budget, defaultCanvasFactory);
+    this.rasterStrips = new RowStripCache(budget, defaultCanvasFactory);
+    this.rasterCellsDpr = 0;
+  }
+
+  /** Cycle 22 / Task 2 — the per-paint Tier-1 handle for the byRows cell
+   *  seam. `null` (⇒ every cell paints live, the exact shipped pipeline)
+   *  when `rasterCache: false` or the store's canvas construction failed.
+   *  Also owns the DPR epoch: a devicePixelRatio change invalidates every
+   *  cached bitmap (they were rasterized at the old dpr — blitting them
+   *  under the new CTM would scale/blur, the C1 lesson's cousin). Reads
+   *  `window.devicePixelRatio` fresh (NOT `cgridCanvas.devicePixelRatio`)
+   *  because the paint closure can run synchronously from inside
+   *  `CGridCanvas`'s own constructor, before `this.cgridCanvas` exists —
+   *  the same gotcha the layer's own dpr read documents. */
+  private getRasterCellsCtx(): RasterCellsCtx | null {
+    const cache = this.rasterCells;
+    if (this.options.rasterCache === false || cache === null || !cache.available) return null;
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+    if (dpr !== this.rasterCellsDpr) {
+      if (this.rasterCellsDpr !== 0) this.rasterCacheEpochBump();
+      this.rasterCellsDpr = dpr;
+    }
+    return { cache, dpr, stats: this.paintStats };
+  }
+
+  /** Cycle 22 / Task 2 — theme/dpr epoch: invalidate EVERY cached raster
+   *  in both tiers (bytes return to the shared budget immediately; the
+   *  backing canvases land in the reuse pools). Wired at the same sites
+   *  the paint-cache layer already resets on: every theme re-read
+   *  (`setTheme` / `setThemeMode` / `setThemeParams` / `setDensity` /
+   *  `setState`'s themeParams clear) and a devicePixelRatio change
+   *  (detected in `getRasterCellsCtx`). Theme-scoped colors deliberately
+   *  OUTSIDE `cellStyleSignature`'s key (`checkboxCheckedBg/Fg`,
+   *  `group*`, `emptyFg`, `palette`) ride exactly this epoch. */
+  private rasterCacheEpochBump(): void {
+    this.rasterCells?.epochBump();
+    this.rasterStrips?.layoutEpochBump();
+  }
+
+  /** Cycle 22 / Task 2 — runtime `rasterCache` / `rasterCacheBudgetMB`
+   *  flip handler (wired via `RuntimeOptionTarget.resetRasterCache`).
+   *  Disposes BOTH tiers (every byte credited back, stores permanently
+   *  inert) and, when the option is now active, rebuilds them under a
+   *  fresh shared budget. `repaintFull()` so the flip lands on the next
+   *  frame either way. */
+  private resetRasterCache(): void {
+    this.rasterCells?.dispose();
+    this.rasterStrips?.dispose();
+    this.rasterCells = null;
+    this.rasterStrips = null;
+    this.rasterBudget = null;
+    this.rasterCellsDpr = 0;
+    if (this.options.rasterCache !== false) {
+      this.buildRasterCaches();
+    }
+    this.repaintFull();
+  }
+
   /** Task 3 (paint-cache layer, spec §1 "Layer layout") — the synthetic
    *  second `computeViewport` call that lays out rows for the retained
    *  offscreen layer, independent of the on-screen viewport. Mirrors the
@@ -9066,6 +9209,7 @@ export class CGrid<TRow = any> {
       presents: 0, layerShifts: 0, layerResets: 0, layerRasterMs: 0,
       lastRects: 0, lastAreaPct: 100, avgPaintMs: 0, worstPaintMs: 0,
       layerSyncFills: 0, layerBacklogPx: 0,
+      cellCacheHits: 0, cellCacheMisses: 0, cellCacheBypasses: 0, rasterCacheBytes: 0,
     };
   }
 
@@ -9552,6 +9696,8 @@ export class CGrid<TRow = any> {
     } else if (exhaustive && Object.keys(this.getThemeParams()).length > 0) {
       themeParamsClear(this.root);
       this.theme = this.cssReader.read();
+      // Cycle 22 / Task 2 — theme-token clear is a raster-cache epoch.
+      this.rasterCacheEpochBump();
       this.recomputeViewport();
       this.cgridCanvas.requestRepaint();
       this.stateUpdatedBus?.markChanged('themeParams');

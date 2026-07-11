@@ -1,7 +1,8 @@
-import type { PainterCtx } from './types';
+import type { PainterCtx, RasterCellsCtx } from './types';
 import type { CachedContext2D } from '../gc';
 import type { ViewportColumn, ViewportRow } from '../../core/viewport';
-import type { CellPaintConfig } from '../cellRenderers/registry';
+import type { CellPaintConfig, CellPainter } from '../cellRenderers/registry';
+import { cellStyleSignature, cellCacheBypass } from '../rasterCache';
 import type { ResolvedColDef } from '../../core/propertyChain';
 import type { ResolvedColGroupDef } from '../../core/columnTree';
 import { applyCellProps } from '../../core/propertyChain';
@@ -351,6 +352,7 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx, mode?: ByRo
     lastVisibleColId,
     groupHeaderRows,
     damageBounds: db,
+    rasterCells: p.rasterCells,
   };
 
   for (const sb of subgridBands) {
@@ -446,6 +448,97 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx, mode?: ByRo
   }
 }
 
+/**
+ * Cycle 22 / Task 2 — the Tier-1 cell-bitmap seam, shared by BOTH painter
+ * invocations in this file (the data/totals/pinned/leaf-header path and the
+ * merged column-group-header path). Exported for unit coverage (bypass
+ * matrix states the integration fixture can't reach).
+ *
+ * Contract (the task brief, verbatim): when `rc` is present AND no bypass
+ * applies → `key = cellStyleSignature(...)`; a hit blits the cached bitmap
+ * (`gc.drawImage(bitmap, x, y, w, h)` — destination in CSS px under the
+ * dpr CTM, the C1 lesson; the WHOLE bitmap is the source, no src-rect
+ * math) and the painter is NOT called; a miss rasterizes via
+ * `cache.render(...)` then performs the same blit; `render` returning
+ * `null` (budget exhaustion / unavailable store) paints live exactly as
+ * today. `rc` absent ⇒ straight live paint, byte-identical to the shipped
+ * pipeline.
+ *
+ * The miss raster reuses the SAME shared `config` object with `bounds`
+ * temporarily rebased to `(0,0,w,h)` — restored in a `finally` so a
+ * throwing painter can't corrupt the shared config for subsequent cells.
+ * The scratch is pre-filled with `config.prefillColor` so the painter's
+ * own `bg !== prefillColor` skip-fill logic runs unchanged and cached
+ * pixels stay byte-identical to live-painted ones (prefillColor is in the
+ * signature, so a different underlying row bg is a different key — never
+ * a reused bitmap).
+ *
+ * Bypass inputs: `liveOnly` (the caller resolved a pending inline icon —
+ * the icon draws OVER the painter's output at real coords, so the cell
+ * must paint live), `config.pivotGroupExpand` (the column-group caret is
+ * painted by the header renderer but is NOT a `cellStyleSignature` field —
+ * group headers are few, a bypass is the conservative-correct call), and
+ * everything `cellCacheBypass` covers (non-opted-in renderer, flashAlpha,
+ * content slot, decorators, params).
+ */
+export function paintCellThroughCache(
+  gc: CachedContext2D,
+  rc: RasterCellsCtx | null | undefined,
+  painter: CellPainter,
+  cacheable: boolean,
+  rendererName: string,
+  config: CellPaintConfig,
+  liveOnly: boolean,
+): void {
+  if (!rc) {
+    painter.paint(gc, config);
+    return;
+  }
+  const stats = rc.stats;
+  if (
+    liveOnly
+    || config.pivotGroupExpand !== undefined
+    || cellCacheBypass(rendererName, config, cacheable)
+  ) {
+    if (stats) stats.cellCacheBypasses++;
+    painter.paint(gc, config);
+    return;
+  }
+  const b = config.bounds;
+  const x = b.x, y = b.y, w = b.w, h = b.h;
+  const key = cellStyleSignature(rendererName, config);
+  let bitmap = rc.cache.get(key);
+  if (bitmap !== null) {
+    if (stats) stats.cellCacheHits++;
+  } else {
+    bitmap = rc.cache.render(key, w, h, rc.dpr, (sgc) => {
+      b.x = 0;
+      b.y = 0;
+      try {
+        // Reproduce the bundle prefill so the painter's skip-fill branch
+        // (`bg !== prefillColor`) behaves exactly as on the live canvas.
+        sgc.cache.fillStyle = config.prefillColor;
+        sgc.fillRect(0, 0, w, h);
+        painter.paint(sgc, config);
+      } finally {
+        b.x = x;
+        b.y = y;
+      }
+    });
+    if (bitmap === null) {
+      // Budget exhaustion / store unavailable — live paint exactly as
+      // today (counted as a bypass: the cache did not serve this cell).
+      if (stats) stats.cellCacheBypasses++;
+      painter.paint(gc, config);
+      return;
+    }
+    if (stats) stats.cellCacheMisses++;
+  }
+  // C1 lesson — destination in CSS px; the ambient dpr CTM scales it onto
+  // the device backing store, landing the bitmap's device pixels 1:1.
+  gc.drawImage(bitmap as unknown as CanvasImageSource, x, y, w, h);
+}
+
 /** Cycle 19 / Task 8b — geometry + `clip` for a single `paintBand`
  *  call. Fresh per invocation (three per subgrid band — left-pinned,
  *  center, right-pinned). */
@@ -494,6 +587,9 @@ interface PaintBandCtx {
   /** Damage-region rendering — perf-only row/column cull bounds; `null`
    *  under a full-surface paint. See `PainterCtx.damageBounds`. */
   damageBounds: { minX: number; minY: number; maxX: number; maxY: number } | null;
+  /** Cycle 22 / Task 2 — Tier-1 cell-bitmap cache handle (see
+   *  `PainterCtx.rasterCells`). Absent/null ⇒ live paint. */
+  rasterCells: PainterCtx['rasterCells'];
 }
 
 function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void {
@@ -622,7 +718,14 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
             groupHeaderStyleFn: groupDef?.headerStyleFn,
             pivotGroupExpand,
           });
-          cellRenderers.get('header').paint(gc, config);
+          // Cycle 22 / Task 2 — group headers route through the SAME
+          // cell-bitmap seam as leaf cells (one shared helper, not two
+          // copies). `pivotGroupExpand`-carrying groups bypass inside the
+          // helper (the caret is not a signature field).
+          paintCellThroughCache(
+            gc, ctx.rasterCells, cellRenderers.get('header'),
+            cellRenderers.isCacheable('header'), 'header', config, false,
+          );
         }
         i += span;
       }
@@ -976,7 +1079,16 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
       gc.beginPath();
       gc.rect(col.left, cellTop, col.width, row.bottom - cellTop);
       gc.clip();
-      cellRenderers.get(rendererName).paint(gc, config);
+      // Cycle 22 / Task 2 — cell paints route through the Tier-1
+      // cell-bitmap seam. A pending inline icon forces a live paint
+      // (`liveOnly`) — the icon draws OVER the painter's output below at
+      // real cell coords, so the cell itself must not come from a
+      // position-independent bitmap.
+      paintCellThroughCache(
+        gc, ctx.rasterCells, cellRenderers.get(rendererName),
+        cellRenderers.isCacheable(rendererName), rendererName, config,
+        pendingIcon !== null,
+      );
       // Cycle 21c / Task 16 — icon draws after the painter so it sits on
       // top of the cell bg, inside the same clip so it can't bleed.
       if (pendingIcon) drawCellIcon(gc, pendingIcon);

@@ -35,7 +35,19 @@ beforeEach(() => {
       lineCap: 'butt', lineJoin: 'miter', miterLimit: 10,
       direction: 'inherit', filter: 'none',
     };
-    return () => fakeCtx as CanvasRenderingContext2D;
+    // Cycle 22 / Task 2 — one ctx PER CANVAS (browser-faithful: the raster
+    // caches attach a gc cache onto every scratch canvas they pool; a single
+    // shared ctx object would have its cache closure clobbered mid-paint,
+    // corrupting the main canvas's save/restore stack).
+    const perCanvas = new WeakMap<object, any>();
+    return function (this: object) {
+      let ctx = perCanvas.get(this);
+      if (!ctx) {
+        ctx = { ...fakeCtx, canvas: this };
+        perCanvas.set(this, ctx);
+      }
+      return ctx;
+    };
   })() as typeof HTMLCanvasElement.prototype.getContext;
 });
 

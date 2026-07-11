@@ -286,6 +286,20 @@ export interface CGridOptions<TRow = any> {
    *  data always covers the layer's coverage. Ignored when
    *  `paintCache: false`. */
   paintCacheOverscan?: number;
+  /** Cycle 22 raster cache — Tier-1 content-keyed cell bitmaps (the
+   *  Tier-2 row-strip store is constructed alongside it, consuming in a
+   *  later task): when `true` (the default), a cell whose full
+   *  style+content signature has been painted before blits from a cached
+   *  bitmap instead of re-running its cell painter. `false` is the field
+   *  escape hatch: reproduces the exact shipped cell-paint pipeline
+   *  (mirrors `paintCache`'s framing). Runtime-mutable via
+   *  `updateGridOptions` — flipping it disposes / rebuilds both tiers. */
+  rasterCache?: boolean;
+  /** Byte budget shared by BOTH raster-cache tiers (cell bitmaps + row
+   *  strips) as ONE global cross-tier LRU, in MB. Default 48. Ignored
+   *  when `rasterCache: false`. Runtime-mutable — a change rebuilds both
+   *  tiers under a fresh budget. */
+  rasterCacheBudgetMB?: number;
   /** Cycle 25 / Task 10 — soft cap on the cumulative byte size of
    *  cached viewport chunks the grid holds across requests. When
    *  exceeded, older chunks are evicted from the LRU (which itself

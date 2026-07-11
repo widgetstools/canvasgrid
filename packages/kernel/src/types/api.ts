@@ -106,6 +106,22 @@ export interface PaintStats {
    *  caught up; nonzero only transiently after a shift/reset/full-damage
    *  frame until subsequent frames' drain (or a sync-fill) empties it. */
   layerBacklogPx: number;
+  /** Cycle 22 raster cache (Tier 1) — cells served straight from the
+   *  content-keyed bitmap cache (one `drawImage`, zero painter calls). */
+  cellCacheHits: number;
+  /** Cycle 22 raster cache (Tier 1) — cells rasterized INTO the cache
+   *  (first sighting of a signature; the same paint also blits it). */
+  cellCacheMisses: number;
+  /** Cycle 22 raster cache (Tier 1) — cells painted live at the seam
+   *  while the cache was active: the bypass matrix (non-opted-in
+   *  renderer, flashAlpha, content slot, decorators, params, pending
+   *  inline icon, group-header caret) plus budget-exhaustion fallbacks.
+   *  Stays `0` for `rasterCache: false` (the seam never engages). */
+  cellCacheBypasses: number;
+  /** Cycle 22 raster cache — CURRENT bytes retained across BOTH tiers'
+   *  shared `RasterBudget` (a gauge refreshed per paint, not a running
+   *  total). `0` when `rasterCache: false`. */
+  rasterCacheBytes: number;
 }
 
 /** Cycle 21i Phase 2 / T3 — one live column-GROUP node handed to the
@@ -566,8 +582,16 @@ export interface CGridApi<TRow = any> {
   /** Register a custom cell renderer under `name`. Columns referencing the
    *  name via `cellRenderer` (or a `cellRendererSelector` return value)
    *  will dispatch to `painter` at paint time. Built-in names ('text',
-   *  'number', 'checkbox', 'header') can be overridden by re-registering. */
-  registerCellRenderer(name: string, painter: import('../renderer/cellRenderers/registry').CellPainter): void;
+   *  'number', 'checkbox', 'header') can be overridden by re-registering.
+   *  Cycle 22 / Task 2 — pass `{ cacheable: true }` ONLY when every pixel
+   *  the painter draws is a pure function of `cellStyleSignature`'s
+   *  covered fields (see `renderer/rasterCache/cellCache.ts`); the
+   *  default (`false`) always paints live. */
+  registerCellRenderer(
+    name: string,
+    painter: import('../renderer/cellRenderers/registry').CellPainter,
+    opts?: import('../renderer/cellRenderers/registry').RegisterCellRendererOpts,
+  ): void;
 
   /** Cycle 21i Phase 2 / T3 — instance-truth renderer enumeration:
    *  built-ins plus everything registered on THIS grid, registration

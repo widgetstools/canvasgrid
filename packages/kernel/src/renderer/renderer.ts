@@ -3,7 +3,7 @@ import type { ResolvedColDef } from '../core/propertyChain';
 import type { ResolvedTheme } from '../theming/cssReader';
 import type { CellRendererRegistry } from './cellRenderers/registry';
 import type { GroupCellValue } from './cellRenderers/group';
-import type { CellDataLookup } from './painters/types';
+import type { CellDataLookup, RasterCellsCtx } from './painters/types';
 import type { SortModel, SelectionRange } from '../types';
 import type { StickyAncestor } from '../worker/protocol';
 import type { CachedContext2D } from './gc';
@@ -164,6 +164,14 @@ export interface RendererOpts {
    */
   getCanvasElement?: () => HTMLCanvasElement;
   /**
+   * Cycle 22 / Task 2 — Tier-1 cell-bitmap cache handle for the byRows
+   * cell-paint seam (see `PainterCtx.rasterCells`). Read fresh per paint
+   * (dpr can change; CGrid gates on `rasterCache` + availability). Absent
+   * or returning `null` ⇒ every cell paints live, byte-identical to the
+   * shipped pipeline — this is the `rasterCache: false` escape hatch.
+   */
+  getRasterCells?: () => RasterCellsCtx | null;
+  /**
    * C1 fix — the live `devicePixelRatio` the canvas's backing store was
    * sized at (`CGridCanvas.devicePixelRatio`), used by the scroll blit to
    * convert between device px (source rect — `drawImage` addresses the
@@ -251,6 +259,8 @@ export class Renderer {
       getColumnGroupOpen: this.opts.getColumnGroupOpen,
       // Damage-region rendering — null under full paint (no culling).
       damageBounds: partial ? boundsOf(rects) : null,
+      // Cycle 22 / Task 2 — Tier-1 cell-bitmap cache (null ⇒ live paint).
+      rasterCells: this.opts.getRasterCells?.() ?? null,
     };
     const w = this.opts.getCanvasWidth();
     const h = this.opts.getCanvasHeight();
@@ -373,6 +383,10 @@ export class Renderer {
       getStickyGroupTotals: this.opts.getStickyGroupTotals,
       getColumnGroupOpen: this.opts.getColumnGroupOpen,
       damageBounds,
+      // Cycle 22 / Task 2 — Tier-1 cell-bitmap cache (null ⇒ live paint).
+      // Threaded into BOTH the layer raster pass and the chrome pass —
+      // bitmaps are rasterized at the same dpr both contexts' CTMs use.
+      rasterCells: this.opts.getRasterCells?.() ?? null,
     };
   }
 

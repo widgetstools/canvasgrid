@@ -96,7 +96,9 @@ export type RuntimeOption =
   | 'suppressClickEdit'
   | 'enableExcelEditing'
   | 'paintCache'
-  | 'paintCacheOverscan';
+  | 'paintCacheOverscan'
+  | 'rasterCache'
+  | 'rasterCacheBudgetMB';
 
 /** Minimal grid surface the apply table needs. Lives here to avoid a circular
  *  import on `CGrid` (cgrid.ts imports this module). */
@@ -194,6 +196,13 @@ export interface RuntimeOptionTarget<TRow = any> {
    *  full repaint — a flip is a teardown/rebuild, never a stale-present
    *  frame. */
   resetPaintCacheLayer(): void;
+  /** Cycle 22 / Task 2 — runtime `rasterCache` / `rasterCacheBudgetMB`
+   *  flip. CGrid's implementation disposes BOTH raster-cache tiers (cell
+   *  bitmaps + row strips) and, when the option is now active, rebuilds
+   *  them under a fresh shared `RasterBudget`, then forces a full
+   *  repaint. `rasterCache: false` must land as "both tiers disposed" —
+   *  the exact shipped cell-paint pipeline with zero retained bytes. */
+  resetRasterCache(): void;
 }
 
 /**
@@ -454,6 +463,12 @@ export function applyRuntimeOption<TRow>(
       // forces a full repaint (see `resetPaintCacheLayer`'s doc).
       target.resetPaintCacheLayer();
       return;
+    case 'rasterCache':
+    case 'rasterCacheBudgetMB':
+      // Cycle 22 / Task 2 — a flip disposes / rebuilds both raster-cache
+      // tiers and forces a full repaint (see `resetRasterCache`'s doc).
+      target.resetRasterCache();
+      return;
   }
 }
 
@@ -499,4 +514,5 @@ export const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOpt
   'groupSelectsChildren',
   'suppressCount', 'singleClickEdit', 'suppressClickEdit', 'enableExcelEditing',
   'paintCache', 'paintCacheOverscan',
+  'rasterCache', 'rasterCacheBudgetMB',
 ]);
