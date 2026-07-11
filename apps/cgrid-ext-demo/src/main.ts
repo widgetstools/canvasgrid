@@ -21,6 +21,59 @@ import { wireIntoKernel as wireCalc } from '@cgrid/calc';
 import { wireIntoKernel as wireRules } from '@cgrid/rules';
 import { connectStomp, type Position } from './stomp';
 
+// ─── Pixel-invariance test harness ──────────────────────────────────────
+// `?paintHarness` swaps the live STOMP feed for a fixed, deterministic
+// 200-row dataset and exposes `window.__paintHarness` so an E2E spec can
+// hash the live `.cg-canvas` pixels and diff a `suppressPartialRepaint:
+// true` run against the default damage-region run. Never default-on:
+// `getImageData` on the live canvas can force it off the GPU compositing
+// path for the page's whole lifetime (see `snapshot()` below), so this
+// path is opt-in and disconnected from the real feed entirely.
+const harnessParams = new URLSearchParams(location.search);
+const PAINT_HARNESS = harnessParams.has('paintHarness');
+const SUPPRESS_PARTIAL = harnessParams.has('suppressPartial');
+
+/** Deterministic PRNG (public-domain mulberry32) — same seed on every boot
+ *  so the two harness pages (partial vs. suppressed) see identical data. */
+function mulberry32(seed: number): () => number {
+  let s = seed;
+  return () => {
+    s |= 0;
+    s = (s + 0x6d2b79f5) | 0;
+    let t = Math.imul(s ^ (s >>> 15), 1 | s);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Fixed 200-row seed, same `Position` shape stomp.ts publishes, ids
+ *  `HARNESS-0000`…`HARNESS-0199` (the invariance spec's STEPS reference
+ *  a couple of these ids directly). */
+function seedHarnessRows(): Position[] {
+  const rng = mulberry32(42);
+  const rows: Position[] = [];
+  for (let i = 0; i < 200; i++) {
+    const notional = Math.round(rng() * 9_000_000 + 1_000_000);
+    const price = 95 + rng() * 10;
+    rows.push({
+      positionId: `HARNESS-${String(i).padStart(4, '0')}`,
+      cusip: `CUSIP${String(i).padStart(5, '0')}`,
+      ticker: `TICK${i % 40}`,
+      notionalAmount: notional,
+      marketValue: Math.round(notional * (price / 100)),
+      currentPrice: price,
+      pnl: Math.round((rng() - 0.5) * 200_000),
+      dailyPnl: Math.round((rng() - 0.5) * 50_000),
+      unrealizedPnl: Math.round((rng() - 0.5) * 100_000),
+      yield: rng() * 8,
+      spread: rng() * 300,
+      dv01: rng() * 5000,
+      pv01: rng() * 5000,
+    });
+  }
+  return rows;
+}
+
 const DESKS = ['RATES', 'CREDIT', 'FX', 'EQD'];
 const REGIONS = ['AMER', 'EMEA', 'APAC'];
 const CURRENCIES = ['USD', 'EUR', 'GBP', 'JPY'];
@@ -146,6 +199,10 @@ const ext = new CGridExt<Position>(app, {
   sideBar: { toolPanels: ['columns', 'filters', 'gridOptions', 'columnGroups'] },
   enableCellChangeFlash: true,
   cellSelection: {},
+  // `&suppressPartial` (only meaningful alongside `?paintHarness`) forces
+  // every repaint to the full-surface path — the invariance spec's control
+  // arm for damage-region rendering.
+  ...(SUPPRESS_PARTIAL ? { suppressPartialRepaint: true } : {}),
   ext: {
     // Replace the spine's bare Settings/Save with the full MarketsGrid-style
     // title bar (brand, search, notifications, profiles, save, date, settings,
@@ -185,11 +242,71 @@ showSidebar();
 requestAnimationFrame(showSidebar);
 setTimeout(showSidebar, 250);
 
-// ─── STOMP feed ──────────────────────────────────────────────────────────
-// The shell + grid are already mounted above and stay visible regardless of
-// feed state; connectStomp's onPhase('error') only affects these logs.
-connectStomp({
-  onPhase: (phase) => { console.info(`[cgrid-ext-demo] stomp phase: ${phase}`); },
-  onSnapshot: (rows) => { rows.forEach(decorateWithCategoricals); ext.setRowData(rows); },
-  onLiveUpdate: (updates) => { updates.forEach(decorateWithCategoricals); ext.grid.applyTransactionAsync({ update: updates }); },
-});
+if (PAINT_HARNESS) {
+  // ─── Pixel-invariance harness boot ────────────────────────────────────
+  // No STOMP feed at all — both the partial and suppressed harness pages
+  // must see byte-identical data, so the feed (async, server-driven) is
+  // never in the loop.
+  const rows = seedHarnessRows();
+  rows.forEach(decorateWithCategoricals);
+  ext.setRowData(rows);
+
+  (window as unknown as { __paintHarness: unknown }).__paintHarness = {
+    rows,
+    snapshot(): string {
+      const c = document.querySelector('.cg-canvas') as HTMLCanvasElement;
+      const ctx = c.getContext('2d')!;
+      const d = ctx.getImageData(0, 0, c.width, c.height).data;
+      let h = 0; // FNV-1a over every 16th byte — fast, deterministic
+      for (let i = 0; i < d.length; i += 16) { h ^= d[i]!; h = Math.imul(h, 16777619); }
+      return (h >>> 0).toString(16);
+    },
+    /** Resolves once `getPaintStats().paints` is unchanged for at least two
+     *  consecutive animation frames AND a short quiet window — the "fully
+     *  settled" signal the invariance spec waits on before hashing. A pure
+     *  frame-count check (e.g. "2 RAFs with no change") is too tight here:
+     *  a mutation's repaint often depends on an async worker round-trip
+     *  (postMessage for the recomputed viewport chunk) that can still be
+     *  in flight after 2 RAFs have already ticked with no visible change,
+     *  which would report "settled" before the real repaint ever lands.
+     *  The quiet-time floor absorbs that latency regardless of how many
+     *  frames it spans. */
+    waitSettled(): Promise<void> {
+      const QUIET_MS = 250;
+      const MAX_MS = 8000;
+      return new Promise((resolve) => {
+        const g = ext.grid;
+        let last = g.getPaintStats().paints;
+        let lastChangeTime = performance.now();
+        let framesSinceChange = 0;
+        const start = performance.now();
+        const tick = () => {
+          requestAnimationFrame(() => {
+            const now = performance.now();
+            const cur = g.getPaintStats().paints;
+            if (cur !== last) {
+              last = cur;
+              lastChangeTime = now;
+              framesSinceChange = 0;
+            } else {
+              framesSinceChange++;
+            }
+            const settled = framesSinceChange >= 2 && (now - lastChangeTime) >= QUIET_MS;
+            if (settled || (now - start) > MAX_MS) { resolve(); return; }
+            tick();
+          });
+        };
+        tick();
+      });
+    },
+  };
+} else {
+  // ─── STOMP feed ────────────────────────────────────────────────────────
+  // The shell + grid are already mounted above and stay visible regardless
+  // of feed state; connectStomp's onPhase('error') only affects these logs.
+  connectStomp({
+    onPhase: (phase) => { console.info(`[cgrid-ext-demo] stomp phase: ${phase}`); },
+    onSnapshot: (rows) => { rows.forEach(decorateWithCategoricals); ext.setRowData(rows); },
+    onLiveUpdate: (updates) => { updates.forEach(decorateWithCategoricals); ext.grid.applyTransactionAsync({ update: updates }); },
+  });
+}
