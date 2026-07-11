@@ -129,7 +129,14 @@ rects stay correct:
 3. Row-band rects span the full body width (gridline horizontals, row
    backgrounds, and selection tints are row-atomic anyway); cell rects stay
    cell-scoped horizontally but their row's gridline row-bottom line is
-   inside the +2px bleed.
+   inside the +2px bleed. **Amended (closeout fix wave) — I1:** T6's
+   discovery that a clip edge landing mid-glyph produces Skia AA
+   divergence (fixed for horizontal/row edges via `rowBoundsAtY`
+   row-atomic snapping) applies identically to the vertical/column axis —
+   cell renderers don't clip per cell, so a bled vertical edge can still
+   land mid-glyph at a column boundary. `colBoundsAtX` mirrors
+   `rowBoundsAtY`: a cell rect's bled x-edges snap OUT to the full bounds
+   of whichever column they land inside, same as rows do.
 4. If the totals/pinned band or header band intersects damage, extend to
    that band's full rect (their painters assume band-atomic draws).
 5. DPR: rects snap OUT to device-pixel boundaries
@@ -174,8 +181,9 @@ api.getPaintStats(): PaintStats; api.resetPaintStats(): void;
 ```
 
 Collected in `paintNow` (first real paint timing in the kernel). This is
-how E2E asserts the feature (tick paints must report `areaPct < 5`), how
-PERF-NOTES probes verify OpenFin, and how regressions get caught.
+how E2E asserts the feature (tick paints must report `areaPct < 25` — see
+the §7 amendment below for why the bar moved from the original `< 5`),
+how PERF-NOTES probes verify OpenFin, and how regressions get caught.
 
 ## 7. Testing
 
@@ -196,10 +204,31 @@ PERF-NOTES probes verify OpenFin, and how regressions get caught.
   paints with `areaPct` proportional to touched rows; scroll produces
   blit+band; theme change produces full.
 - **E2E (ext demo):** live-tick steady state reports `partialPaints ≫
-  fullPaints` and `lastAreaPct < 5`; visual behavior suites unchanged.
+  fullPaints` and `lastAreaPct < 25` (see amendment below); visual
+  behavior suites unchanged. Sample `lastAreaPct` repeatedly across the
+  observation window (not a single snapshot) and assert both a max and a
+  median bound — a single lucky small paint must not be able to mask a
+  regression drifting toward the 60% full-repaint cap.
 - **OpenFin verification (manual gate):** `openfin/perf-probe.mjs` on the
   hosted demo — success bar: **zero frames > 50ms over 30s** at default
   tick load at rest, and scroll p99 ≤ 34ms (two 60Hz frames).
+
+**Amendment (closeout fix wave, 2026-07-11) — `areaPct` bar relaxed from
+`< 5` to `< 25`.** The original `< 5` bound was geometrically
+unattainable, not a masked inefficiency: one full-width single-row band
+is `rowHeight / canvasHeight` ≈ 32px / ~450px ≈ 7% at the demo's test
+viewport — already over the original bar for the SMALLEST possible
+non-empty tick damage. More generally, steady-state `areaPct` ≈ (rows
+touched per batch / visible rows) × (visible rows × rowHeight /
+canvasHeight) ≈ batchSize / totalRows — a function of the tick batch
+size relative to the dataset, not of viewport height (a taller viewport
+doesn't help: more visible rows to touch scales the fraction back up).
+`< 25` keeps the assertion meaningful (a regression toward the 60%
+`DAMAGE_MAX_AREA_FRACTION` full-repaint cap still fails it) without
+penalizing correct, already-minimal per-row damage. The harness hardens
+this with the multi-sample max/median check above so the relaxed
+single-sample-friendly bound can't quietly hide a drift upward — measured
+envelope at closeout: 0–17%, `fullPaints: 0`.
 
 ## 8. Rollout / escape hatch
 

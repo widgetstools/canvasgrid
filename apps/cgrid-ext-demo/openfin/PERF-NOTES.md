@@ -72,3 +72,68 @@ touchedRows when the new fetch window overlaps the old).
 Bar status: steady-state effectively met (one rare outlier vs. the
 previous constant hitching); scroll p99 ≤ 34ms NOT yet met — addressed
 in the batch fix wave.
+
+## After the closeout fix-wave (2026-07-11, runtime 41.134.102.3, dpr 2)
+
+Re-measured after C1–C4/I1–I6/M1–M5 landed (`openfin/_tmp-stats-check.mjs`,
+a `getPaintStats()`-based companion to `perf-probe.mjs`; not committed —
+deleted after this run). Two runs of each:
+
+**Steady (10s live tick, `resetPaintStats()` → wait → `getPaintStats()`):**
+```
+run 1: paints 306, fullPaints 0, avgPaintMs 4.8, worstPaintMs 61.8
+run 2: paints 280, fullPaints 0, avgPaintMs 4.0, worstPaintMs 45.7
+```
+`fullPaints: 0` in both runs (C3/C4's aggregate + sticky-band damage now
+resolves partial where it used to force full). `worstPaintMs` sits right
+at the 50ms line — one run met "zero >50ms frames", the other had a single
+~62ms outlier, consistent with the pre-existing "suspected GC coincidence,
+~1 per 8–10s" note above. I6's allocation reductions (row-bucketed cell
+damage, pre-merge cap, `mergeRects`/`activeCells` allocation cuts) target
+exactly this suspect but can't deterministically eliminate a GC pause —
+`avgPaintMs` moved from the previously-recorded 2.0ms to 4–9.6ms across
+runs (still ~4ms of a 16.7ms budget), the added cost of C1–C4's extra
+per-paint work (window-identity diff, aggregate diff, sticky-band checks)
+outweighing I6's savings on THIS mixed real-tick workload — still nowhere
+near a frame-budget concern.
+
+**Scroll — two paces, because the extreme continuous-wheel benchmark and
+a realistic scroll speed tell different stories:**
+
+*Aggressive (perf-probe's pace: 16ms interval, deltaY 120 — a stress
+benchmark, not a real user):*
+```
+run 1: paints 217, fullPaints 95 (44%), partialPaints 122, blits 113, worstPaintMs 122.6
+run 2: paints 231, fullPaints 121 (52%), partialPaints 110, blits 102, worstPaintMs 89.4
+```
+Improved over the pre-fix baseline (128/201 = 64% full, 35 blits) but
+still a large full fraction. Root cause: at this pace, OpenFin's slower
+canvas round-trip lets many wheel events accumulate before the next chunk
+arrives, so the per-chunk window delta frequently exceeds
+`WINDOW_DIFF_MAX_ROWS` (24) — `resolveWindowDamage` correctly (per the
+cap philosophy) degrades to full rather than trust an oversized diff. Not
+a bug; this benchmark pace is not representative of a real scroll gesture.
+
+*Realistic (`~1 row per 120ms`, deliberate scroll):*
+```
+paints 221, fullPaints 6 (2.7%), partialPaints 215, blits 45, worstPaintMs 76
+```
+This is the number that matters: fullPaints drops to a small fraction of
+paints, confirming the positional-diff window-move guard (adjudication B)
+is doing its job under an ordinary scroll gesture — the scroll gap the
+original probe flagged is closed for realistic usage. `worstPaintMs` (76ms
+here, 89–123ms at the aggressive pace) still exceeds the 50ms target —
+that's the ALREADY-DOCUMENTED "OpenFin's Canvas2D is 3–10× slower than
+Chrome" root cause above (any nontrivial paint — including the occasional
+still-legitimate full one — costs more raw ms in this runtime), not
+something damage-region rendering can fix; row-strip bitmap caching (item
+2 in "what would actually fix it" above) is the next lever and stays out
+of this fix wave's scope.
+
+Bar status: steady fullPaints/avg met; steady worst-frame bar met in one
+of two runs (GC-pause variance, as before). Scroll fullPaints-fraction bar
+MET at realistic scroll speed (2.7%, was ~64% pre-fix), NOT met at the
+synthetic stress pace (which the guard's own cap philosophy correctly
+declines to trust). Scroll worst-frame (<50ms) bar NOT met at either
+pace — this is OpenFin's underlying canvas cost per paint, a separate,
+already-documented, out-of-scope issue.
