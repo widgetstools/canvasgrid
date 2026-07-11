@@ -1325,7 +1325,7 @@ const RIBBON_CSS = `
 
 .cgext-rb-stepper {
   display: inline-flex; align-items: center; gap: 5px;
-  height: 24px; padding: 0 4px 0 8px;
+  height: 24px; padding: 0 4px 0 8px; box-sizing: border-box;
   border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 6px);
   background: var(--cg-control-bg, rgba(255,255,255,0.04)); font-size: 12px; color: var(--cg-fg-color, #d6dce8);
 }
