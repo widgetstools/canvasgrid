@@ -1660,7 +1660,7 @@ export class CGrid<TRow = any> {
         // honest regardless of which branch actually painted.
         const resolved = this.damageLedger.takeResolved(this.buildDamageResolveCtx());
         const damage = this.options.suppressPartialRepaint
-          ? { full: true as const, rects: [], blit: null }
+          ? { full: true as const, chromeRects: [], dataRects: [], blit: null }
           : resolved;
         this.renderer.paint(gc, damage);
         // Task 5 — snapshot the position/DPR/bounds THIS paint actually
@@ -1687,8 +1687,13 @@ export class CGrid<TRow = any> {
         } else {
           s.partialPaints++;
           if (damage.blit) s.blits++;
-          s.lastRects = damage.rects.length;
-          const area = damage.rects.reduce((a, r) => a + r.w * r.h, 0);
+          // Two-domain damage (Task 2) — `chromeRects` (screen space) and
+          // `dataRects` (content space) never overlap in the region they
+          // cover, and area (w×h) is translation-invariant, so summing raw
+          // w×h from both arrays without transforming is exact.
+          s.lastRects = damage.chromeRects.length + damage.dataRects.length;
+          const area = damage.chromeRects.reduce((a, r) => a + r.w * r.h, 0)
+            + damage.dataRects.reduce((a, r) => a + r.w * r.h, 0);
           const ca = this.canvasBounds.width * this.canvasBounds.height;
           s.lastAreaPct = ca > 0 ? Math.round((area / ca) * 1000) / 10 : 0;
         }
@@ -5624,6 +5629,17 @@ export class CGrid<TRow = any> {
       bodyBottom: vs.bodyBottom,
       bodyLeft: vs.bodyLeft,
       bodyRight: vs.bodyRight,
+      // Two-domain damage (Task 2) — `scrollTop` pivots the screen↔content
+      // transform (`screenYToContentY`/`dataRectToScreen`). No retained
+      // layer exists yet (Task 4 wires the real geometry), so `layerTop`
+      // mirrors the live scroll position (no extra layer-anchor
+      // indirection) and `layerHeight` mirrors today's body height — the
+      // data-domain area cap below degrades to today's body-height bound,
+      // and the content transform is a lossless round-trip the temporary
+      // renderer bridge inverts, so behavior is unchanged.
+      scrollTop: vs.scrollTop,
+      layerTop: vs.scrollTop,
+      layerHeight: vs.bodyBottom - vs.bodyTop,
       stickyBandBottom,
       // Task 5 — totals-row / static-pinned-row bands (top or bottom
       // position), derived from the live viewport's non-data subgrid rows.

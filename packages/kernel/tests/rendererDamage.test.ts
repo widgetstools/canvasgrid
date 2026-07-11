@@ -100,14 +100,17 @@ describe('Renderer.paint — damage-aware clip + background fill', () => {
 
   it('full damage paints without any clip', () => {
     const { gc, calls } = fakeGc();
-    renderer.paint(gc, { full: true, rects: [], blit: null });
+    renderer.paint(gc, { full: true, chromeRects: [], dataRects: [], blit: null });
     expect(calls.filter((c) => c.m === 'clip')).toHaveLength(0);
     expect(calls.some((c) => c.m === 'fillRect' && c.args[2] === CANVAS_W && c.args[3] === CANVAS_H)).toBe(true);
   });
 
+  // `makeEmptyViewport` has scrollTop === bodyTop === 0, so `dataRects`
+  // entries map back to screen space unchanged (`dataRectToScreen` is a
+  // numeric no-op) — same rect values the pre-two-domain `rects` field used.
   it('partial damage clips to the union and background-fills per rect', () => {
     const { gc, calls } = fakeGc();
-    renderer.paint(gc, { full: false, rects: [{ x: 10, y: 20, w: 100, h: 50 }], blit: null });
+    renderer.paint(gc, { full: false, chromeRects: [], dataRects: [{ x: 10, y: 20, w: 100, h: 50 }], blit: null });
     expect(calls.some((c) => c.m === 'clip')).toBe(true);
     expect(calls.some((c) => c.m === 'rect' && c.args[0] === 10 && c.args[1] === 20)).toBe(true);
     // background fill is per damage rect, NOT full surface
@@ -118,7 +121,7 @@ describe('Renderer.paint — damage-aware clip + background fill', () => {
   it('zero-rect partial damage paints nothing', () => {
     const { gc, calls } = fakeGc();
     const before = calls.length;
-    renderer.paint(gc, { full: false, rects: [], blit: null });
+    renderer.paint(gc, { full: false, chromeRects: [], dataRects: [], blit: null });
     expect(calls.length).toBe(before); // no draw calls at all
   });
 
@@ -130,7 +133,7 @@ describe('Renderer.paint — damage-aware clip + background fill', () => {
 
   it('partial damage wraps the clip + fills in a save/restore pair', () => {
     const { gc, calls } = fakeGc();
-    renderer.paint(gc, { full: false, rects: [{ x: 0, y: 0, w: 10, h: 10 }], blit: null });
+    renderer.paint(gc, { full: false, chromeRects: [{ x: 0, y: 0, w: 10, h: 10 }], dataRects: [], blit: null });
     expect(calls[0]!.m).toBe('save');
     expect(calls[calls.length - 1]!.m).toBe('restore');
   });

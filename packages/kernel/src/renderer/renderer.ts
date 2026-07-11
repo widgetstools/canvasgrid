@@ -7,7 +7,7 @@ import type { CellDataLookup } from './painters/types';
 import type { SortModel, SelectionRange } from '../types';
 import type { StickyAncestor } from '../worker/protocol';
 import type { CachedContext2D } from './gc';
-import type { ResolvedDamage, Rect } from '../core/damageLedger';
+import { dataRectToScreen, type ResolvedDamage, type Rect } from '../core/damageLedger';
 import { paintCellsByRows } from './painters/byRows';
 import { paintGridLines } from './painters/gridLinesPainter';
 import { paintOverlay } from './painters/overlayPainter';
@@ -190,18 +190,33 @@ export class Renderer {
   /**
    * `damage` is `undefined` or `{ full: true, ... }` for the legacy
    * full-surface paint (byte-identical to pre-damage-region behavior).
-   * `{ full: false, rects, blit }` clips the canvas to the union of `rects`
-   * and background-fills only those rects instead of the whole surface —
-   * `byRows.ts` additionally culls rows/columns outside `pctx.damageBounds`.
-   * An empty `rects` array under partial damage means nothing visible
-   * changed, so `paint` returns immediately without touching the canvas.
+   * `{ full: false, chromeRects, dataRects, blit }` clips the canvas to
+   * the union of both rect arrays and background-fills only that union
+   * instead of the whole surface — `byRows.ts` additionally culls rows/
+   * columns outside `pctx.damageBounds`. An empty union under partial
+   * damage means nothing visible changed, so `paint` returns immediately
+   * without touching the canvas.
+   *
+   * Task 2 bridge (temporary — replaced by the real layer raster/present
+   * path in Task 4): `chromeRects` are already screen space; `dataRects`
+   * are CONTENT space and map back to screen space via `dataRectToScreen`,
+   * using the LIVE viewport's `scrollTop`/`bodyTop` (read fresh here, same
+   * live-viewport discipline the rest of this method already follows) —
+   * reproducing the exact single screen-space rect list the pre-two-domain
+   * pipeline used to hand this method, so painting stays byte-identical.
    */
   paint(gc: CachedContext2D, damage?: ResolvedDamage): void {
     const partial = damage !== undefined && !damage.full;
-    if (partial && damage.rects.length === 0 && !damage.blit) return; // nothing visible changed
+    const viewport = this.opts.getViewport();
+    const rects = partial
+      ? damage.chromeRects.concat(
+          damage.dataRects.map((r) => dataRectToScreen(r, { scrollTop: viewport.scrollTop, bodyTop: viewport.bodyTop })),
+        )
+      : [];
+    if (partial && rects.length === 0 && !damage.blit) return; // nothing visible changed
 
     const pctx = {
-      viewport: this.opts.getViewport(),
+      viewport,
       theme: this.opts.getTheme(),
       columnDefs: this.opts.getColumnDefs(),
       cellRenderers: this.opts.cellRenderers,
@@ -227,14 +242,14 @@ export class Renderer {
       getStickyGroupTotals: this.opts.getStickyGroupTotals,
       getColumnGroupOpen: this.opts.getColumnGroupOpen,
       // Damage-region rendering — null under full paint (no culling).
-      damageBounds: partial ? boundsOf(damage.rects) : null,
+      damageBounds: partial ? boundsOf(rects) : null,
     };
     const w = this.opts.getCanvasWidth();
     const h = this.opts.getCanvasHeight();
 
     // Task 5 — scroll self-blit. Copies the still-valid body pixels by the
     // scroll delta BEFORE the clip/fill block below repaints only the
-    // newly-exposed band (already part of `damage.rects` — see
+    // newly-exposed band (already part of `rects` above — see
     // `DamageLedger.takeResolved`). C1 fix — `drawImage`'s SOURCE rect
     // addresses the canvas's backing store directly (device px,
     // CTM-independent), but the DESTINATION rect goes through `gc`'s
@@ -269,11 +284,11 @@ export class Renderer {
       // not a correctness requirement (the clip is the correctness backstop).
       gc.save();
       gc.beginPath();
-      for (const r of damage.rects) gc.rect(r.x, r.y, r.w, r.h);
+      for (const r of rects) gc.rect(r.x, r.y, r.w, r.h);
       gc.clip();
       // Background-fill only the damaged rects, not the whole surface.
       gc.cache.fillStyle = pctx.theme.bg;
-      for (const r of damage.rects) gc.fillRect(r.x, r.y, r.w, r.h);
+      for (const r of rects) gc.fillRect(r.x, r.y, r.w, r.h);
     } else {
       // Fill the entire drawable area with theme bg as the FIRST instruction
       // so there's no transparent moment between the prior frame's pixels (or

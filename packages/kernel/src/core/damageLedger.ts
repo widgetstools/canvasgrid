@@ -20,15 +20,47 @@ export type Damage =
 
 export interface Rect { x: number; y: number; w: number; h: number }
 
+/**
+ * Two-domain damage resolution (paint-cache layer spec §2). `chromeRects`
+ * are SCREEN-space (CSS px against the live canvas) — header, floating-
+ * filter, totals, pinned-row, and sticky-band damage, plus any portion of
+ * ambiguous `band`/`rect` damage that falls outside the data-body region.
+ * `dataRects` are CONTENT-space (scroll space, CSS px) — row/cell damage
+ * (always data-domain, resolved through `rowBand`/`rowIndexForRowId`) plus
+ * whatever portion of `band`/`rect` damage falls INSIDE the data-body
+ * region. See `screenYToContentY`/`dataRectToScreen` for the ONE transform
+ * used everywhere a screen y needs to become (or come back from) a content
+ * y. Until the retained layer lands (Task 4), `renderer.ts` maps
+ * `dataRects` straight back to screen space and paints the union of both
+ * arrays exactly like the pre-two-domain single `rects` array — byte-
+ * identical behavior.
+ */
 export interface ResolvedDamage {
   full: boolean;
-  rects: Rect[];
+  chromeRects: Rect[];
+  dataRects: Rect[];
   blit: { dy: number } | null;
 }
 
 export interface DamageResolveCtx {
   canvasWidth: number; canvasHeight: number; dpr: number;
   bodyTop: number; bodyBottom: number; bodyLeft: number; bodyRight: number;
+  /** Current vertical scroll position (CONTENT px) — the pivot of the
+   *  screen↔content transform (see `screenYToContentY`/`dataRectToScreen`).
+   *  A screen y of `bodyTop` always corresponds to content y `scrollTop`. */
+  scrollTop: number;
+  /** Retained paint-cache layer's current anchor, CONTENT px (Task 4 wires
+   *  the real geometry; until then callers pass `layerTop = scrollTop`, so
+   *  the layer's own coordinate space coincides with the live scroll
+   *  position — no extra indirection). Not used by the transform itself
+   *  (that only needs `scrollTop`); reserved for widened-range row
+   *  resolution wired in later tasks. */
+  layerTop: number;
+  /** Retained paint-cache layer's vertical extent, CSS px (Task 4 wires
+   *  the real `bodyHeight + 2*overscanPx`; until then callers pass
+   *  `layerHeight = bodyBottom - bodyTop`, so the data-domain area cap
+   *  below degrades to today's body-height bound). */
+  layerHeight: number;
   stickyBandBottom: number | null;
   pinnedBandRects: Rect[];
   rowBand(localRowIndex: number): { top: number; bottom: number } | null;
@@ -66,7 +98,29 @@ export const STICKY_SHADOW_BLEED_PX = 8;
  *  (worst-case O(n³) — it restarts the scan after every single merge). */
 export const DAMAGE_PRE_MERGE_CAP = 64;
 
-const FULL: ResolvedDamage = { full: true, rects: [], blit: null };
+const FULL: ResolvedDamage = { full: true, chromeRects: [], dataRects: [], blit: null };
+
+/**
+ * The ONE screen→content transform used throughout two-domain damage
+ * resolution (spec §2): a data-body pixel at screen y `bodyTop` sits at
+ * content (scroll-space) y `scrollTop` — i.e. `contentY = screenY -
+ * bodyTop + scrollTop`. Vertical only: horizontal scroll always resets the
+ * paint-cache layer (spec §1), so x is never remapped between the two
+ * spaces.
+ */
+export function screenYToContentY(y: number, ctx: { scrollTop: number; bodyTop: number }): number {
+  return y - ctx.bodyTop + ctx.scrollTop;
+}
+
+/**
+ * Inverse of `screenYToContentY`. Task 2's renderer bridge uses this to map
+ * a `dataRects` entry (CONTENT space) back to screen space so painting
+ * stays byte-identical to the pre-two-domain pipeline until the real
+ * retained layer (Task 4) consumes `dataRects` directly.
+ */
+export function dataRectToScreen(rect: Rect, ctx: { scrollTop: number; bodyTop: number }): Rect {
+  return { x: rect.x, y: rect.y + ctx.bodyTop - ctx.scrollTop, w: rect.w, h: rect.h };
+}
 
 export interface ScrollDamageInput {
   /** Horizontal scroll delta (CSS px) since the last paint. */
@@ -133,9 +187,23 @@ export class DamageLedger {
     // Empty ledger = legacy requestRepaint() with no recorded damage → full.
     if (wasFull || (entries.length === 0 && dy === 0)) return FULL;
 
-    const rects: Rect[] = [];
-    const pushBand = (top: number, bottom: number): void => {
-      rects.push({ x: 0, y: top, w: ctx.canvasWidth, h: bottom - top });
+    // Two-domain bucketing (spec §2). `dataRaw` entries are ALWAYS
+    // data-domain — rows/cells resolve through `rowBand`/
+    // `rowIndexForRowId`, which only ever addresses data-subgrid rows, and
+    // (once a widened/layer viewport lands — Task 3/4) may legitimately
+    // return bands beyond the visible screen; those are never body-clipped,
+    // just converted straight to content space below. `splitRaw` entries
+    // are geometry-AMBIGUOUS 'band'/'rect' damage (plus the scroll-exposed
+    // band, the sticky band, and pinned/totals band redamage below) —
+    // their domain is resolved by intersecting with the live body region
+    // once the geometry is final (after `expand()`/merge).
+    const dataRaw: Rect[] = [];
+    const splitRaw: Rect[] = [];
+    const pushData = (top: number, bottom: number): void => {
+      dataRaw.push({ x: 0, y: top, w: ctx.canvasWidth, h: bottom - top });
+    };
+    const pushSplit = (top: number, bottom: number): void => {
+      splitRaw.push({ x: 0, y: top, w: ctx.canvasWidth, h: bottom - top });
     };
 
     // I6 fix — bucket 'cells' damage by row BEFORE creating any rects. A
@@ -154,7 +222,7 @@ export class DamageLedger {
         case 'rows':
           for (const i of d.rowIndices) {
             const b = ctx.rowBand(i);
-            if (b) pushBand(b.top, b.bottom);
+            if (b) pushData(b.top, b.bottom);
           }
           break;
         case 'cells':
@@ -177,25 +245,31 @@ export class DamageLedger {
             }
           }
           break;
-        case 'band': pushBand(d.top, d.bottom); break;
-        case 'rect': rects.push({ x: d.x, y: d.y, w: d.w, h: d.h }); break;
+        case 'band': pushSplit(d.top, d.bottom); break;
+        case 'rect': splitRaw.push({ x: d.x, y: d.y, w: d.w, h: d.h }); break;
         // 'full'/'scroll' never stored in entries
       }
     }
     for (const span of rowCellSpans.values()) {
-      if (span.fullRow || span.minX > span.maxX) pushBand(span.top, span.bottom);
-      else rects.push({ x: span.minX, y: span.top, w: span.maxX - span.minX, h: span.bottom - span.top });
+      if (span.fullRow || span.minX > span.maxX) pushData(span.top, span.bottom);
+      else dataRaw.push({ x: span.minX, y: span.top, w: span.maxX - span.minX, h: span.bottom - span.top });
     }
 
-    // Scroll: only usable as a blit when no full; exposed band becomes damage.
+    // Scroll: only usable as a blit when no full; exposed band becomes
+    // damage. The exposed band is newly-scrolled-into-view DATA content
+    // (always inside [bodyTop, bodyBottom] by construction — `exposed` is
+    // clamped to the body height), so it goes straight into `dataRaw`.
     let blit: { dy: number } | null = null;
     if (dy !== 0) {
       blit = { dy };
       const exposed = Math.min(Math.abs(dy), ctx.bodyBottom - ctx.bodyTop);
-      if (dy > 0) pushBand(ctx.bodyBottom - exposed, ctx.bodyBottom);
-      else pushBand(ctx.bodyTop, ctx.bodyTop + exposed);
-      // Sticky band + shadow never scrolls with content — always redamage it.
-      if (ctx.stickyBandBottom !== null) pushBand(ctx.bodyTop, ctx.stickyBandBottom + STICKY_SHADOW_BLEED_PX);
+      if (dy > 0) pushData(ctx.bodyBottom - exposed, ctx.bodyBottom);
+      else pushData(ctx.bodyTop, ctx.bodyTop + exposed);
+      // Sticky band + shadow never scrolls with content — always redamage
+      // it. Geometry-ambiguous (screen-anchored chrome that happens to sit
+      // inside the body's y-range) — resolved by the body-intersection
+      // split below, same as any other `splitRaw` entry.
+      if (ctx.stickyBandBottom !== null) pushSplit(ctx.bodyTop, ctx.stickyBandBottom + STICKY_SHADOW_BLEED_PX);
       // Task 5 — pinned/totals bands (top or bottom) always redamage on any
       // scroll frame, unconditionally (not just when they geometrically
       // intersect the exposed strip). The blit shifts the WHOLE body region
@@ -206,23 +280,66 @@ export class DamageLedger {
       // ever mutates a rect's fields in place (`expand()` and `mergeRects`
       // both produce brand-new rect objects rather than writing through an
       // existing one), so the defensive `{ ...r }` clone was pure garbage.
-      for (const r of ctx.pinnedBandRects) rects.push(r);
+      for (const r of ctx.pinnedBandRects) splitRaw.push(r);
     }
 
-    // Bleed + sticky extension + clamp + snap.
-    const snapped = rects.map((r) => this.expand(r, ctx)).filter((r) => r.w > 0 && r.h > 0);
+    // Bleed + sticky extension + clamp + snap — same `expand()` for both
+    // buckets (still entirely screen-space geometry; the domain split
+    // happens AFTER, once every rect's final bounds are settled).
+    const dataSnapped = dataRaw.map((r) => this.expand(r, ctx)).filter((r) => r.w > 0 && r.h > 0);
+    const splitSnapped = splitRaw.map((r) => this.expand(r, ctx)).filter((r) => r.w > 0 && r.h > 0);
     // I6 fix — pre-merge cap: bail to FULL before paying for `mergeRects`'
     // O(n²) (restart-after-every-merge, so worst-case O(n³)) scan. A batch
-    // this wide is heading toward the area-fraction cap below anyway, so
-    // this loses nothing but the wasted merge work.
-    if (snapped.length > DAMAGE_PRE_MERGE_CAP) return FULL;
-    const merged = mergeRects(snapped);
+    // this wide is heading toward one of the area-fraction caps below
+    // anyway, so this loses nothing but the wasted merge work.
+    if (dataSnapped.length + splitSnapped.length > DAMAGE_PRE_MERGE_CAP) return FULL;
+    const mergedData = mergeRects(dataSnapped);
+    const mergedSplit = mergeRects(splitSnapped);
 
-    const area = merged.reduce((a, r) => a + r.w * r.h, 0);
+    // Domain split (spec §2): `mergedData` is already data-domain (rows/
+    // cells) and converts to content space directly, with NO body clip —
+    // a widened (Task 3/4) `rowBand` result beyond the visible screen
+    // still resolves correctly. `mergedSplit` entries are geometry-
+    // ambiguous until now: the portion inside the data-body region
+    // [bodyTop, bodyBottom] converts to CONTENT space and joins
+    // `dataRects`; the remainder stays screen-space `chromeRects`.
+    const chromeRects: Rect[] = [];
+    const dataRects: Rect[] = [];
+    for (const r of mergedData) {
+      dataRects.push({ x: r.x, y: screenYToContentY(r.y, ctx), w: r.w, h: r.h });
+    }
+    for (const r of mergedSplit) {
+      if (r.y < ctx.bodyTop) {
+        const h = Math.min(r.y + r.h, ctx.bodyTop) - r.y;
+        if (h > 0) chromeRects.push({ x: r.x, y: r.y, w: r.w, h });
+      }
+      if (r.y + r.h > ctx.bodyBottom) {
+        const y0 = Math.max(r.y, ctx.bodyBottom);
+        const h = (r.y + r.h) - y0;
+        if (h > 0) chromeRects.push({ x: r.x, y: y0, w: r.w, h });
+      }
+      const top = Math.max(r.y, ctx.bodyTop);
+      const bottom = Math.min(r.y + r.h, ctx.bodyBottom);
+      if (bottom > top) {
+        dataRects.push({ x: r.x, y: screenYToContentY(top, ctx), w: r.w, h: bottom - top });
+      }
+    }
+
+    // Per-domain caps (spec §2): chrome against the canvas, same as
+    // today's single unified cap; data against the LAYER area — with no
+    // real layer yet, `ctx.layerHeight` is passed as the body height, so
+    // this reduces to today's bound scoped to the body's own area (Task 4
+    // wires the real, wider layer extent). Either domain overflowing
+    // degrades the WHOLE resolution to full — same conservatism as before,
+    // never a partial result built from an over-cap domain.
+    const chromeArea = chromeRects.reduce((a, r) => a + r.w * r.h, 0);
     const canvasArea = ctx.canvasWidth * ctx.canvasHeight;
-    if (merged.length > DAMAGE_MAX_RECTS || area > canvasArea * DAMAGE_MAX_AREA_FRACTION) return FULL;
+    if (chromeRects.length > DAMAGE_MAX_RECTS || chromeArea > canvasArea * DAMAGE_MAX_AREA_FRACTION) return FULL;
+    const dataArea = dataRects.reduce((a, r) => a + r.w * r.h, 0);
+    const layerArea = ctx.layerHeight * ctx.canvasWidth;
+    if (dataRects.length > DAMAGE_MAX_RECTS || dataArea > layerArea * DAMAGE_MAX_AREA_FRACTION) return FULL;
 
-    return { full: false, rects: merged, blit };
+    return { full: false, chromeRects, dataRects, blit };
   }
 
   private expand(r: Rect, ctx: DamageResolveCtx): Rect {
