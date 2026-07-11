@@ -151,3 +151,112 @@ system's smooth per-frame sliver raster into periodic half-viewport lumps.
 Fix direction for the closeout wave: amortize shift-band raster across
 frames (the band is overscan — invisible — so it can fill lazily with a
 synchronous fallback only if scrolling outruns it).
+
+## After the paint-cache closeout fix wave — directive B amortized drain (2026-07-11, runtime 41.134.102.3, dpr 2)
+
+Re-measured after C-1/I-1..I-4/directive-B/M-1/M-3/M-4 landed. `perf-probe.mjs`
+(raw FPS + `PerformanceObserver('longtask')`) plus a companion
+`_tmp-stats-check.mjs` (`getPaintStats()` directly — not committed, deleted
+after this run, same convention as the prior closeout's own tmp script).
+
+**Kernel-level behavior (the part directive B actually controls) — confirmed
+correct:** across every stats-check run, `layerResets: 0` and
+`layerBacklogPx: 0` at read time in BOTH phases — the layer never stale-resets
+during steady vertical presentation, and the budgeted drain always fully
+converges the pending backlog before the next read (the "a settled grid must
+have zero pending" invariant directive B.3 exists to guarantee — this is the
+same invariant `tests/rendererPaintCache.test.ts`'s new regression lock checks
+deterministically at the kernel level, where there's no host-machine noise).
+`presents === paints` in both phases (every cache-on frame still presents by
+blit, never skipped). The old "one shift = one ~half-viewport synchronous
+lump" class of stall (146ms worst, pre-fix-wave) is gone — no single frame's
+cost is dominated by one big monolithic raster anymore; work is now spread
+across a present-safety sync-fill (bounded to the visible range ± 1 row) and
+a ~3ms-budgeted background drain.
+
+**Stats pass** (reset → 8s live ticking → read; reset → 100 wheel steps @16ms
+→ read):
+```
+steady: paints 306, fullPaints 0, partialPaints 306, presents 306,
+        layerShifts 0, layerResets 0, layerSyncFills 0, layerBacklogPx 0,
+        avgPaintMs 3.9, worstPaintMs 125.8
+scroll: paints 128, fullPaints 71, partialPaints 57, presents 128,
+        layerShifts 44, layerResets 0, layerSyncFills 89, layerBacklogPx 0,
+        avgPaintMs 10.4, worstPaintMs 94.2
+```
+A repeat stats-check ~30s later (same build, no code change) measured
+steady `worstPaintMs` 75.5 / avgPaintMs 9.0 and scroll `worstPaintMs` 96.5 /
+`layerSyncFills` 86 — consistent with the run above on every count except
+the exact `worstPaintMs` outlier magnitude, which moved around run to run
+(see "not fully met" discussion below).
+
+**Two measured `perf-probe.mjs` runs** (raw FPS + browser longtask API):
+```
+run 1: steady fps 57, longTasks 2, worst 113ms | scroll fps 46, longTasks 10, worst 122ms
+run 2: steady fps 56, longTasks 5, worst 122ms | scroll fps 50, longTasks 7,  worst 113ms
+```
+A THIRD, earlier pair taken immediately after the very first fresh OpenFin
+launch this session (before ~30 minutes of this same session's own heavy
+kernel-test/build/playwright activity had accumulated on the shared
+machine) measured steady fps 60/worst 0ms and fps 59/worst 51ms, scroll
+worst 138ms and 97ms — i.e. the STEADY bar (zero >50ms frames) was cleanly
+met on that first pair, and scroll worst was noticeably better (97–138ms
+vs 113–122ms later).
+
+**Bar status — honest accounting, not fully met, with root-cause evidence:**
+- Steady "zero >50ms frames": met on the first (quietest) measurement pair;
+  NOT met on the two official runs above or the repeat stats-check. The
+  kernel-level evidence rules out a paint-cache regression as the cause: the
+  steady phase's own stats show `layerShifts: 0, layerResets: 0,
+  layerSyncFills: 0` throughout — a present-only frame is architecturally
+  just one `drawImage` + a tiny/no chrome raster, so a 75–126ms stall on
+  such a frame cannot be the retained layer doing extra work; it has none to
+  do. `vm_stat`/`top` at the time showed ~15GB of memory COMPRESSED (of 34GB
+  used) on this shared dev machine with heavy concurrent load from this same
+  session's own test/build runs — a plausible external stall (page
+  decompression, GC pause in a neighboring process, OS scheduling) landing
+  on the sampled frame, consistent with PERF-NOTES' own pre-existing
+  "OpenFin/Canvas2D 3–10x slower + occasional 50–210ms frames even on
+  isolated microbenchmarks" finding at the top of this file (unrelated to
+  cgrid's own code). A deliberate re-test attempt at `BUDGET_MS: 6` (vs the
+  shipped `3`) made both phases WORSE (steady worst 190ms, scroll worst
+  225ms) and was reverted — larger per-drain-call chunks cost more
+  synchronous time per call on OpenFin's slower canvas, so a bigger budget
+  is the wrong lever here; `3` (as specified) stays.
+- Scroll "worst <50ms": NOT met in any run (best observed: 94–97ms via
+  stats, 97–138ms via probe) — worse than the steady bar's noise floor
+  would predict alone, but still a real, measured improvement over the
+  pre-fix-wave 146ms lump, and no longer dominated by one single mechanism
+  (the cost is now spread across sync-fills + drain calls, each doing much
+  less than the old monolithic shift-raster).
+- "`layerSyncFills` small relative to `layerShifts`": NOT met — observed
+  ratio is roughly 2:1 (86–105 sync-fills against 42–48 shifts across
+  three stats-check runs), not "small". Root cause: `perf-probe.mjs`'s
+  scroll benchmark (continuous wheel every 16ms, alternating direction
+  every 40 sends) is the SAME synthetic stress pace already flagged
+  earlier in this file as exceeding `WINDOW_DIFF_MAX_ROWS` and forcing an
+  outsized full-paint fraction (44–57% here, vs the 2.7% measured at a
+  "realistic ~1 row per 120ms" pace) — under continuous scrolling this
+  fast, the viewport re-approaches a just-shifted layer edge before the
+  lazy budgeted drain can get ahead of it, so the present-safety sync-fill
+  (which is DESIGNED to be the correctness fallback precisely for "scroll
+  outran the budget") legitimately fires often. This is the same category
+  of finding as the pre-existing fullPaints one: a synthetic stress
+  benchmark exercising the fallback path more than a realistic scroll
+  gesture would, not a broken amortization scheme — `layerBacklogPx: 0` at
+  every read confirms the ledger still fully converges either way.
+
+**What would actually close the remaining gap:** the steady-bar noise is a
+shared-machine/host-runtime artifact, not addressable in kernel code (see
+the file's own root-cause section). The scroll-worst/syncFills gap is
+bounded by OpenFin's per-canvas-op cost (each drain/sync-fill raster call,
+however small, still pays the 3–10x Canvas2D tax) — the row-strip bitmap
+caching lever named earlier in this file remains the next actionable step,
+out of this fix wave's scope.
+
+Kernel-level regression lock for the invariant that matters most (pending
+backlog always converges to zero, deterministically, with no host-machine
+noise): `packages/kernel/tests/rendererPaintCache.test.ts`, "(directive B.3
+regression lock) the budgeted drain converges the pending backlog to zero
+within a few subsequent paint ticks" — verified to fail when the drain's
+`requestRepaint()` re-arm is disabled.
