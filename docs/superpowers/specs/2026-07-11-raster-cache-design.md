@@ -108,6 +108,63 @@ Theme change, dpr change, column resize/reorder/visibility change → epoch
 bumps (logical whole-cache invalidation, no scanning). Row data version comes
 from the existing tick/damage bookkeeping.
 
+**Fractional-dpr adjudication (closeout I-2, BINDING):** at non-integer
+`devicePixelRatio` (Windows 125%/150% scaling → 1.25/1.5), Tier-1 hit blits
+would resample (CSS-px dest rect → fractional device origin) and the strip
+*patch* would land sub-pixel-shifted vs the live raster — neither is
+byte-identical, and the invariance harness only runs dpr 1 and 2. Per the
+ambiguous-cases-bypass constraint: `getRasterCellsCtx()` returns `null` when
+`dpr` is non-integer (Tier 1 fully dormant), and the cell-damage path never
+patches at non-integer dpr (`applyStripCellDamage` drops the strip instead;
+versions keep tracking). Strip **capture/consume stay enabled at any dpr** —
+they are pure integer-device-px copies of the layer's own raster,
+round-tripped through the same rounding, and cannot diverge. A future
+refinement may re-enable Tier 1 with device-snapped bounds if the perf is
+ever needed there.
+
+**Patch-on-tick production status (closeout I-3, adjudicated by an
+instrumented live-feed run 2026-07-12):** `stripPatches = 0` in production
+had TWO causes, neither of them the suspected fractional flex widths (the
+`fracColGeom` probe never fired on the live feed). (1) Wiring: the only
+caller of the patch path was the flash-fade rAF loop — the tick itself (the
+worker's diff-armed chunk reply) resolves to row-level damage and never
+attempted a patch. Fixed: `handleViewportChunk` now derives the tick's
+cell-granular damage from the chunk's `flashMask` (the worker's per-cell
+diff) and patches retained strips ONCE per tick, AFTER `repaintRows` has
+bumped the touched rows, so the patched strip is current at the row's final
+post-tick version. (2) Bail: the patch bailed on `typeof def.cellIcon ===
+'function'` — but format-compiled columns synthesize that fn on EVERY def
+(it returns null unless the format carries an `icon()`), so every ticking
+numeric column killed its row's patch on first tick (probe evidence:
+`cellIcon` bail ×8/25s, sample col `marketValue`; then `noStrip` ×1950 as
+the fade loop found the dropped strip). Fixed: the bail now uses byRows'
+exact drawability decision (`resolveDrawableCellIcon`, one shared helper so
+the two sites cannot drift).
+
+Known remaining bail (kept, conservative): a tick whose damaged span set
+includes a band's LAST column (its right edge is a band-boundary line, not
+the interior gridline the patch reproduces) still drops the strip. On the
+ext-demo live feed every tick touches `dv01` (the rightmost center-band
+column), so committed patches are 0 THERE by layout; the kernel suite locks
+the patch path for ticks that avoid band-final columns. To keep bailed rows
+from staying permanently cold (flash blocks capture while fading, and
+cell-sized fade rects can never re-capture), the flash registry now reports
+row settle (`onRowsSettled`) and cgrid issues ONE row-level repaint for
+settled rows whose strip is missing/stale — the resulting full-width raster
+re-captures the row. Measured on the live feed (30s window, fix vs pre-fix):
+`noStrip` churn 1950 → 1, `stripMisses` 408 → 86, `stripHits` 3016 → 6520,
+settle re-captures observed (+20 post-boot). `stripPatches` now counts only
+COMMITTED full-row patches — spans painted before a later bail never serve
+a pixel and are no longer counted.
+
+**Static-data scroll wipe (closeout M-2, accepted perf ceiling):** a grid
+that has never applied a transaction gets `windowDamage === 'full'` on every
+scroll chunk (`touchedRows` undefined → zebra parity untrusted through the
+move) → full strip wipe, so Tier 2 never warms for static-data grids under
+scroll. Correctness-conservative and correct per the constraints; the
+diff-armed live feed (the target workload) is unaffected. A future
+refinement can use the position-identity diff to invalidate only moved rows.
+
 **Drain-budget closure:** after the cache lands, re-evaluate the open
 `BUDGET_MS: 3` decision — cached-strip drain calls cost far less per call, so
 the budget's effective row throughput rises without raising the ms budget.
