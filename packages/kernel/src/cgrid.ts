@@ -143,7 +143,7 @@ import { sparklineCell } from './renderer/cellRenderers/sparkline';
 import { compositeCell } from './renderer/cellRenderers/composite';
 import { rowSelectCheckboxCell } from './renderer/cellRenderers/rowSelectCheckbox';
 import { coerceToNumberArray } from './renderer/cellRenderers/sparkline/coerceToNumberArray';
-import { decorateHeader } from './renderer/painters/byRows';
+import { decorateHeader, resolveDrawableCellIcon } from './renderer/painters/byRows';
 import {
   autoGroupColumnDepthFromId,
   isAutoGroupColumnId,
@@ -890,8 +890,8 @@ export class CGrid<TRow = any> {
     lastRects: 0, lastAreaPct: 100, avgPaintMs: 0, worstPaintMs: 0,
     layerSyncFills: 0, layerBacklogPx: 0,
     cellCacheHits: 0, cellCacheMisses: 0, cellCacheBypasses: 0,
-    stripHits: 0, stripMisses: 0, stripCaptures: 0, stripPatches: 0,
-    rasterCacheBytes: 0,
+    stripHits: 0, stripMisses: 0, stripMissesUncoverable: 0, stripCaptures: 0, stripPatches: 0,
+    rasterCacheBytes: 0, rasterCachePooledBytes: 0,
   };
   private columnTree!: ColumnTree;
   /** Grid Layouts / column-group-drag feature (Task 1) — lazily-built
@@ -2174,6 +2174,11 @@ export class CGrid<TRow = any> {
         // Cycle 22 / Task 2 — raster-cache byte gauge (both tiers share
         // the one budget). Refreshed per paint; `0` when disabled.
         s.rasterCacheBytes = this.rasterBudget?.spent() ?? 0;
+        // Closeout M-1 — the OFF-ledger canvas reuse pools, so the
+        // reported envelope can't under-report retained memory (ledger +
+        // pools together worst-case ≈ 2× the configured budget).
+        s.rasterCachePooledBytes =
+          (this.rasterCells?.pooledBytes() ?? 0) + (this.rasterStrips?.pooledBytes() ?? 0);
       },
     }, {
       // Drawable size = scroller's inner area MINUS the scrollbar thickness.
@@ -2695,10 +2700,20 @@ export class CGrid<TRow = any> {
       getFadeDuration: () => this.options.cellFadeDuration ?? 1000,
       getReducedMotion: () => this.reducedMotion,
       // Damage-region rendering (Task 3) — route the per-rAF fade repaint
-      // through `repaintCells` (the active flash entries' rowId/colId
-      // cells) instead of a bare `requestRepaint()`, which the ledger
-      // would resolve to a full-surface repaint every tick.
-      requestRepaint: () => this.repaintCells(this.flashRegistry.activeCells()),
+      // through the cells-damage ledger (the active flash entries'
+      // rowId/colId cells) instead of a bare `requestRepaint()`, which the
+      // ledger would resolve to a full-surface repaint every tick.
+      // Closeout I-4 — fade frames use `repaintCellsFlashFade` (identical
+      // ledger damage, NO Tier-2 strip bookkeeping): a fade frame carries
+      // no content change, so per-rAF version bumps + re-patches of the
+      // same settled span (~90 frames per 1.5s fade) are pure waste.
+      requestRepaint: () => this.repaintCellsFlashFade(this.flashRegistry.activeCells()),
+      // Cycle 22 / closeout I-3 — when a row's LAST flash expires it is
+      // strip-eligible again: re-capture it if its strip is missing/stale
+      // (the tick-time patch bailed — icon cell, last-in-band column,
+      // fractional geometry...). One row repaint per flash generation,
+      // replacing "stays cold and paints live at every subsequent raster".
+      onRowsSettled: (rowIds) => this.recaptureSettledFlashRows(rowIds),
     });
 
     this.a11y = new A11yOverlay(this.root);
@@ -6112,6 +6127,65 @@ export class CGrid<TRow = any> {
   }
 
   /**
+   * Cycle 22 / closeout I-4 — the flash-fade per-rAF repaint path.
+   * Identical to `repaintCells` MINUS the Tier-2 strip bookkeeping: a fade
+   * frame carries NO content change — the ORIGINAL tick's damage already
+   * bumped the row version and patched (or dropped) the strip — so per-rAF
+   * version bumps and re-patches of the same settled span (~90 frames per
+   * 1.5s fade, `localByNumericId` rebuilt O(chunk) each) are pure hot-path
+   * waste, and a version bump WITHOUT the matching patch would force a
+   * needless full-row re-raster at fade settle. While the fade runs the
+   * row is strip-ineligible (live flash) and paints live; at settle the
+   * strip patched at tick time hits at the still-current version. Visible
+   * fade behavior is untouched — same ledger damage, same repaint request.
+   * (`api.flashCells` without a data change is also correct here: nothing
+   * changed, so the retained strip's settled pixels stay valid.)
+   */
+  private repaintCellsFlashFade(cells: Array<{ rowId: number; colId: string }>): void {
+    if (this.options.suppressPartialRepaint) { this.repaintFull(); return; }
+    this.damageLedger.add({ kind: 'cells', cells });
+    this.cgridCanvas.requestRepaint();
+  }
+
+  /**
+   * Cycle 22 / closeout I-3 — re-capture seam for rows whose tick-time
+   * strip patch BAILED (icon cell, last-in-band damaged column, fractional
+   * geometry — the strip was dropped, correctly). While such a row keeps
+   * flashing it is strip-ineligible, and once settled nothing ever damages
+   * it full-width again: cell-sized fade rects can never re-capture, so
+   * the row would paint live at EVERY subsequent raster — the exact
+   * "stripPatches = 0 and strips stay cold under steady ticking" shape the
+   * closeout measured on the live feed. Called from the flash registry
+   * when a row's last flash expires (it is eligible again): if the strip
+   * is still current (the tick-time patch SUCCEEDED), do nothing — a row
+   * repaint would only bump the version and waste the patch. Otherwise
+   * issue one row-level repaint; the resulting full-width raster of the
+   * settled row re-captures it, and every later raster HITS.
+   */
+  private recaptureSettledFlashRows(rowIds: number[]): void {
+    const strips = this.rasterStrips;
+    const chunk = this.chunk;
+    if (strips === null || !strips.available || chunk === null) return;
+    let rowIndices: number[] | null = null;
+    for (const nid of rowIds) {
+      // O(chunk) per settled row is fine: settle batches are small (a few
+      // rows per flash generation) and this runs once per generation, not
+      // per rAF.
+      let local = -1;
+      for (let i = 0; i < chunk.rowCount; i++) {
+        if (chunk.rowIds[i] === nid) { local = i; break; }
+      }
+      if (local === -1) continue; // scrolled out of the window — nothing retained to warm
+      const sid = chunk.stringRowIds?.[local];
+      if (sid === undefined || sid === null || sid === '') continue;
+      const version = this.rowVersionByRowId.get(sid) ?? 0;
+      if (strips.get(sid, version, this.stripLayoutEpoch) !== null) continue; // patched & current — keep it
+      (rowIndices ??= []).push(chunk.rowStart + local);
+    }
+    if (rowIndices !== null) this.repaintRows(rowIndices);
+  }
+
+  /**
    * Cycle 22 / Task 3 — the cell-damage half of the Tier-2 bookkeeping.
    * For every damaged (numeric rowId, colId) cell that resolves into the
    * current chunk window:
@@ -6146,6 +6220,13 @@ export class CGrid<TRow = any> {
     // device backing store — it MUST receive the LIVE dpr or strips
     // corrupt at dpr≠1. Same read discipline as `getRasterCellsCtx`.
     const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+    // Cycle 22 / closeout I-2 (adjudicated BYPASS) — at non-integer dpr the
+    // patch rounds its span origin (`x0 = round(xCss*dpr)`), so painter
+    // output can land sub-pixel-shifted vs the live raster. Never patch:
+    // drop the strip instead (versions keep tracking; the next full-row
+    // raster re-captures). Capture/consume stay on — they are pure
+    // integer-device-px copies of the layer's own raster.
+    const dprPatchable = Number.isInteger(dpr);
     for (const [local, colIds] of colsByLocal) {
       const rowId = chunk.stringRowIds?.[local];
       if (rowId === undefined || rowId === null || rowId === '') continue;
@@ -6153,7 +6234,7 @@ export class CGrid<TRow = any> {
       const newVersion = (this.rowVersionByRowId.get(rowId) ?? 0) + 1;
       this.rowVersionByRowId.set(rowId, newVersion);
       if (!strips.available || !strips.has(rowId)) continue;
-      if (!this.patchStripCells(strips, rowIndex, rowId, newVersion, colIds, dpr)) {
+      if (!dprPatchable || !this.patchStripCells(strips, rowIndex, rowId, newVersion, colIds, dpr)) {
         strips.invalidateRow(rowId);
       }
     }
@@ -6192,6 +6273,16 @@ export class CGrid<TRow = any> {
     // and the gridline math below assumes integer CSS geometry (the
     // overwhelmingly common case — fractional layouts bypass).
     if (!Number.isInteger(hCss) || hCss <= 0) return false;
+    // Closeout M-3 — the capture rounds its DEVICE origin from the row's
+    // absolute top, while the patch paints its bottom hairline at
+    // span-local `hCss - 1`: with a FRACTIONAL row top (measured/wrapped
+    // heights somewhere above this row) the two roundings can disagree by
+    // one device px at dpr > 1. Same conservative bypass as fractional
+    // heights — a bail is a perf miss, a shifted hairline is a bug.
+    const rowTopCss = this.rowHeightIndex !== null
+      ? this.rowHeightIndex.topOf(rowIndex)
+      : rowIndex * (this.options.rowHeight ?? this.theme.rowHeight);
+    if (!Number.isInteger(rowTopCss)) return false;
     // Band split mirrors byRows: a column's interior right-edge vertical
     // only exists for non-last-in-band columns; the last column's right
     // edge is a band boundary (pinned-edge borderColor line / canvas edge)
@@ -6206,6 +6297,13 @@ export class CGrid<TRow = any> {
     }
     const rowData = this.rowDataSnapshotAt(rowIndex);
     const ruleRow = (this.rowDataById.get(rowId) as Record<string, unknown> | undefined) ?? rowData;
+    // Closeout I-3 — count spans locally and commit to PaintStats only when
+    // the WHOLE row patched: a later column's bail drops the strip, so
+    // spans painted before it never serve a pixel. Committing per-span
+    // inflated `stripPatches` on rows that ultimately bailed (the live-feed
+    // probe run showed 55 "patches" from rows that all bailed last-in-band
+    // — semantically zero).
+    let patchedSpans = 0;
     for (const colId of colIds) {
       const col = vs.visibleColumns.find((c) => c.colId === colId);
       if (col === undefined) return false; // column not visible → span unknown
@@ -6217,10 +6315,23 @@ export class CGrid<TRow = any> {
       if (!Number.isInteger(col.left) || !Number.isInteger(col.width)) return false;
       const def = this.columnDefsMap.get(colId);
       if (def === undefined) return false;
-      if (typeof def.cellIcon === 'function') return false; // icon draws over the painter — live only
       const cell = this.cellAt(rowIndex, colId);
       const value = cell?.value ?? '';
       const valueFormatted = cell?.valueFormatted ?? '';
+      // Closeout I-3 — bail only when a cell icon WOULD DRAW for this
+      // cell's current value (byRows' exact decision, shared via
+      // `resolveDrawableCellIcon`): the icon draws OVER the painter at
+      // live coords, which the patch closure does not reproduce. The old
+      // `typeof def.cellIcon === 'function'` existence test killed
+      // patch-on-tick in production (stripPatches=0 on the live feed):
+      // format-compiled columns synthesize the fn on EVERY def — it
+      // returns null unless the format carries an icon() — and every
+      // ticking numeric column is format-compiled, so the first tick
+      // dropped the strip and cell-sized rasters could never recapture.
+      if (resolveDrawableCellIcon(def as ResolvedColDef, {
+        value, data: (rowData ?? {}) as never, colId,
+        rowId, themeKind: this.getThemeKind(),
+      }) !== null) return false; // icon draws over the painter — live only
       let rendererName: string;
       let params: unknown;
       if (def.cellRendererSelector) {
@@ -6298,8 +6409,9 @@ export class CGrid<TRow = any> {
         sgc.fillRect(lineX, 0, 1, hCss);
       }, dpr);
       if (!ok) return false;
-      this.paintStats.stripPatches++;
+      patchedSpans++;
     }
+    this.paintStats.stripPatches += patchedSpans;
     return true;
   }
 
@@ -6812,6 +6924,12 @@ export class CGrid<TRow = any> {
    *  re-registering; the override applies on the next repaint. */
   registerCellRenderer(name: string, painter: CellPainter, opts?: RegisterCellRendererOpts): void {
     this.cellRenderers.register(name, painter, opts);
+    // Cycle 22 / closeout I-1 — layoutEpoch contract: re-registering an
+    // in-use renderer name changes what its cells paint, but retained
+    // strips hold the OLD painter's pixels at unchanged keys. Harmless at
+    // boot (the store is empty). Tier 1 needs no bump: an override clears
+    // `cacheableNames`, so those cells bypass the bitmap cache entirely.
+    if (this.rasterStrips !== null) this.stripLayoutEpochBump();
     this.cgridCanvas?.requestRepaint();
   }
 
@@ -6861,6 +6979,11 @@ export class CGrid<TRow = any> {
    *  obtain it. Apps that never call this see no behavior change. */
   registerRuleEngine(engine: RuleEngineShape): void {
     slotRegisterRuleEngine(engine);
+    // Cycle 22 / closeout I-1 — layoutEpoch contract: registering (or
+    // swapping) the rule engine post-boot activates the rule fold for
+    // every cell, but retained strips hold pre-fold pixels at unchanged
+    // keys. Harmless at boot (the store is empty).
+    if (this.rasterStrips !== null) this.stripLayoutEpochBump();
     this.cgridCanvas?.requestRepaint();
   }
 
@@ -8895,6 +9018,17 @@ export class CGrid<TRow = any> {
     const cache = this.rasterCells;
     if (this.options.rasterCache === false || cache === null || !cache.available) return null;
     const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+    // Cycle 22 / closeout I-2 (adjudicated BYPASS) — at non-integer dpr
+    // (Windows 125%/150% scaling) the hit blit's CSS-px dest rect maps to a
+    // FRACTIONAL device origin, so `drawImage` resamples: hit pixels would
+    // not be byte-identical to a live paint. Tier 1 goes fully dormant
+    // (every cell paints live — the shipped pipeline). Gated BEFORE the
+    // dpr-epoch tracking below so an integer→fractional→same-integer round
+    // trip keeps its still-valid integer-dpr bitmaps. Strip capture/consume
+    // stay on at any dpr (integer-device-px copies of the layer's own
+    // raster); the strip PATCH path carries its own gate — see
+    // `applyStripCellDamage`. A bypass is a perf miss, a stale blit is a bug.
+    if (!Number.isInteger(dpr)) return null;
     if (dpr !== this.rasterCellsDpr) {
       if (this.rasterCellsDpr !== 0) this.rasterCacheEpochBump();
       this.rasterCellsDpr = dpr;
@@ -9375,6 +9509,29 @@ export class CGrid<TRow = any> {
     // worker's stable mapping); the painter's cellData callback reads
     // `registry.getAlpha(numericRowId, colId, now)` to produce flashAlpha
     // per visible cell.
+    // Cycle 22 / closeout I-3 — patch-on-tick's PRODUCTION seam. The
+    // worker's flashMask IS the tick's cell-granular diff (row-major bits
+    // over rowIds × cols): collect the changed cells here so the
+    // diff-armed branch below can patch retained strips ONCE per tick
+    // (after `repaintRows` has bumped the touched rows, so the patch lands
+    // at the row's FINAL post-tick version and the strip HITS at fade
+    // settle). Before this seam existed, the only caller of the patch path
+    // was the flash-fade rAF loop — whose first attempt died on the
+    // cellIcon-existence bail (see `patchStripCells`) and whose per-rAF
+    // churn was closeout I-4 — so `stripPatches` was 0 in production.
+    let tickDamagedCells: Array<{ rowId: number; colId: string }> | null = null;
+    if (chunk.flashMask && this.rasterStrips !== null) {
+      const mask = chunk.flashMask;
+      const rowCount = chunk.rowIds.length;
+      const colCount = cols.length;
+      for (let r = 0; r < rowCount; r++) {
+        for (let c = 0; c < colCount; c++) {
+          const bitIdx = r * colCount + c;
+          if (((mask[bitIdx >>> 3] ?? 0) & (1 << (bitIdx & 7))) === 0) continue;
+          (tickDamagedCells ??= []).push({ rowId: chunk.rowIds[r]!, colId: cols[c]! });
+        }
+      }
+    }
     if (chunk.flashMask) {
       // Cycle 21e / Task 13 — join per-call flashCells overrides by the
       // chunk's string rowIds. Zero-cost when the override map is empty
@@ -9486,6 +9643,17 @@ export class CGrid<TRow = any> {
     } else {
       if (windowDamage.length > 0) {
         this.repaintRows(windowDamage.map((r) => chunk.rowStart + r));
+      }
+      // Cycle 22 / closeout I-3 — patch-on-tick, at the tick itself.
+      // AFTER `repaintRows` (which bumped every touched row) so the patch
+      // advances each patched row to its final post-tick version: the
+      // strip holds the SETTLED pixels (flash suppressed) through the
+      // fade and HITS the moment the row is eligible again, instead of
+      // forcing a full-row live re-raster that cell-sized fade rects can
+      // never recapture. Runs under `suppressPartialRepaint` too — same
+      // keep-tracking contract as the version bumps in `repaintRows`.
+      if (tickDamagedCells !== null) {
+        this.applyStripCellDamage(tickDamagedCells);
       }
       if (groupFlashChanged) {
         this.repaintGroupFlash();
@@ -9698,8 +9866,8 @@ export class CGrid<TRow = any> {
       lastRects: 0, lastAreaPct: 100, avgPaintMs: 0, worstPaintMs: 0,
       layerSyncFills: 0, layerBacklogPx: 0,
       cellCacheHits: 0, cellCacheMisses: 0, cellCacheBypasses: 0,
-      stripHits: 0, stripMisses: 0, stripCaptures: 0, stripPatches: 0,
-      rasterCacheBytes: 0,
+      stripHits: 0, stripMisses: 0, stripMissesUncoverable: 0, stripCaptures: 0, stripPatches: 0,
+      rasterCacheBytes: 0, rasterCachePooledBytes: 0,
     };
   }
 
@@ -10684,6 +10852,14 @@ export class CGrid<TRow = any> {
 
   private emitRulesChanged(source: RuleChangeSource, ruleId?: string): void {
     this.events.emit({ type: 'rulesChanged', source, ruleId });
+    // Cycle 22 / closeout C-2 — layoutEpoch contract: a rule mutation
+    // changes matching cells' resolved fg/bg/indicator with NO data change,
+    // column rebuild, or geometry change — rowVersionByRowId and the strip
+    // keys all stand still, so retained strips would keep serving pre-rule
+    // pixels at rest. All five CGridApi rule mutators route through here.
+    // (Tier 1 is safe without this: rule-resolved styles and ruleIndicator
+    // are cellStyleSignature fields, so the key itself changes.)
+    if (this.rasterStrips !== null) this.stripLayoutEpochBump();
     this.refresh();
   }
 

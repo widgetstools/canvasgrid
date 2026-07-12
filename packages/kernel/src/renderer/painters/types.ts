@@ -78,6 +78,9 @@ export interface RasterStripsCtx {
   stats?: {
     stripHits: number;
     stripMisses: number;
+    /** Closeout M-4 — subset of `stripMisses` where this raster's rects
+     *  could never have captured the row anyway (partial, cell-sized). */
+    stripMissesUncoverable: number;
     stripCaptures: number;
     stripPatches: number;
   };

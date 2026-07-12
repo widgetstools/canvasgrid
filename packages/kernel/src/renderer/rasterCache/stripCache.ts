@@ -217,6 +217,11 @@ export class RowStripCache {
     this.bytesTotal = 0;
   }
 
+  /** Closeout M-1 — off-ledger free-list bytes (see SurfacePool.bytes). */
+  pooledBytes(): number {
+    return this.pool.bytes();
+  }
+
   stats(): { entries: number; bytes: number } {
     return { entries: this.entries.size, bytes: this.bytesTotal };
   }

@@ -449,8 +449,12 @@ function round2(v: number): number {
 
 function summarize(paints: number[], deltas: number[], frames: number): BenchResult {
   const sorted = [...paints].sort((a, b) => a - b);
+  // Closeout M-5 — nearest-rank percentile: index ceil(n*p) - 1, not
+  // floor(n*p) (which returned the UPPER median for p=0.5 on even n and
+  // P95.17 for p=0.95 at n=600). Bench-only; the Task 0 decision margins
+  // (2–16×) were far beyond the off-by-one.
   const pct = (p: number): number =>
-    sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * p))] ?? 0;
+    sorted[Math.max(0, Math.min(sorted.length - 1, Math.ceil(sorted.length * p) - 1))] ?? 0;
   let frameWorst = 0;
   let long = 0;
   for (const d of deltas) {

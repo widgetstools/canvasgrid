@@ -50,6 +50,14 @@ export interface CanvasPaintState {
 export interface CachedContext2D extends CanvasRenderingContext2D {
   cache: CanvasPaintState;
   clearFill(x: number, y: number, w: number, h: number, color: string): void;
+  /** Closeout C-1 — drop every cached value so the lazy-prime / first-write
+   *  path re-syncs from the LIVE context. MUST be called whenever the
+   *  canvas backing store is resized (`canvas.width`/`height` assignment
+   *  resets the real 2d context to defaults — verified in real Chrome for
+   *  both `HTMLCanvasElement` and `OffscreenCanvas` — while this cache
+   *  would otherwise persist, silently skipping writes equal to the stale
+   *  cached value). Call it OUTSIDE any `cache.save()` frame. */
+  resetCache(): void;
 }
 
 // Matches 'transparent' or 'rgba(...)' / 'hsla(...)'. Group 4 = alpha number.
@@ -119,6 +127,9 @@ export function attachGcCache(
 
   const cached = gc as CachedContext2D;
   cached.cache = props as unknown as CanvasPaintState;
+  cached.resetCache = function resetCache(): void {
+    values = {};
+  };
   cached.clearFill = function clearFill(x, y, w, h, color): void {
     const a = alpha(color);
     if (a < 1) {

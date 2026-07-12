@@ -74,6 +74,14 @@ export interface FlashRegistryDeps {
    *  active entries remain so the fade animation keeps painting. cgrid
    *  passes `cgridCanvas.requestRepaint`. */
   requestRepaint: () => void;
+  /** Cycle 22 / closeout I-3 — called from `tick(now)` with the (deduped)
+   *  numeric rowIds whose LAST flash entry just expired: the row has fully
+   *  settled and is strip-eligible again. cgrid uses this to issue one
+   *  row-level repaint for rows whose Tier-2 strip is missing or stale
+   *  (patch bailed at tick time), so the settled row re-captures instead
+   *  of staying permanently cold on the ticking workload. Optional — the
+   *  registry works unchanged without it. */
+  onRowsSettled?: (rowIds: number[]) => void;
 }
 
 /** Map-key encoding: `(rowId, colId)` → `"<rowId>\0<colId>"`. NUL
@@ -168,10 +176,21 @@ export class FlashRegistry {
   tick(now: number): void {
     if (this.destroyed) return;
     if (this.entries.size === 0) return;
+    // Cycle 22 / closeout I-3 — collect rows whose flashes are expiring so
+    // `onRowsSettled` can fire for rows with NO remaining entry (a row is
+    // only "settled" once its last flashing cell expires).
+    let expiredRows: Set<number> | null = null;
     for (const [k, e] of this.entries) {
       if (now > e.startedAt + e.flashDuration + e.fadeDuration) {
         this.entries.delete(k);
+        if (this.deps.onRowsSettled !== undefined) (expiredRows ??= new Set()).add(e.rowId);
       }
+    }
+    if (expiredRows !== null) {
+      for (const rowId of expiredRows) {
+        if (this.hasRow(rowId)) expiredRows.delete(rowId); // another cell still fading
+      }
+      if (expiredRows.size > 0) this.deps.onRowsSettled!([...expiredRows]);
     }
     if (this.entries.size > 0) {
       this.deps.requestRepaint();

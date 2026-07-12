@@ -490,10 +490,20 @@ export class Renderer {
           if (st) st.stripHits++;
           continue;
         }
-        if (st) st.stripMisses++;
         const covered = full || contentRects.some(
           (r) => r.x <= 0 && r.x + r.w >= w && r.y <= row.top && r.y + r.h >= row.bottom,
         );
+        if (st) {
+          st.stripMisses++;
+          // Closeout M-4 — split out misses this raster could never have
+          // turned into a capture anyway (cell-sized partial rects that
+          // don't cover the row): on a steady ticking feed these dominate
+          // the raw miss counter and made the Tier-2 hit ratio look far
+          // worse than it is. `stripMisses` keeps its original meaning
+          // (every eligible-but-unserved row per raster); subtract this
+          // to get "misses with a real capture candidate".
+          if (!covered) st.stripMissesUncoverable++;
+        }
         if (covered) (captures ??= []).push({ rowId, version, yDev, hDev });
       }
     }

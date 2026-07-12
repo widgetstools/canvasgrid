@@ -298,7 +298,14 @@ export interface CGridOptions<TRow = any> {
   /** Byte budget shared by BOTH raster-cache tiers (cell bitmaps + row
    *  strips) as ONE global cross-tier LRU, in MB. Default 48. Ignored
    *  when `rasterCache: false`. Runtime-mutable — a change rebuilds both
-   *  tiers under a fresh budget. */
+   *  tiers under a fresh budget.
+   *
+   *  Retained-memory envelope (closeout M-1): this budget caps the LIVE
+   *  entries; each tier additionally keeps an OFF-ledger canvas reuse
+   *  pool (evicted backing stores held for recycling, capped at half
+   *  this budget per pool), so worst-case total retention is ≈ 2× this
+   *  value. Both figures are observable: `PaintStats.rasterCacheBytes`
+   *  (ledger) + `PaintStats.rasterCachePooledBytes` (pools). */
   rasterCacheBudgetMB?: number;
   /** Cycle 25 / Task 10 — soft cap on the cumulative byte size of
    *  cached viewport chunks the grid holds across requests. When

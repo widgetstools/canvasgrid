@@ -39,6 +39,15 @@ export class SurfacePool {
   private pool: PooledSurface[] = [];
   private pooledBytes = 0;
 
+  /** Closeout M-1 — current free-list backing-store bytes (0 when every
+   *  surface is checked out). Off-ledger by design: the shared
+   *  `RasterBudget` counts LIVE entries only, so the true retained
+   *  envelope is `budget.spent() + both pools' bytes()` — surfaced as
+   *  `PaintStats.rasterCachePooledBytes` so the gauge can't under-report. */
+  bytes(): number {
+    return this.pooledBytes;
+  }
+
   constructor(
     private readonly factory: PaintCacheCanvasFactory | null,
     /** Pool byte ceiling — stores pass `budget.maxBytes() / 2`. */
@@ -90,6 +99,14 @@ export class SurfacePool {
     if (surf.canvas.width !== wDev || surf.canvas.height !== hDev) {
       surf.canvas.width = wDev;
       surf.canvas.height = hDev;
+      // Closeout C-1 — the width/height assignment just reset the REAL 2d
+      // context to defaults (real-Chrome-verified for HTMLCanvasElement and
+      // OffscreenCanvas), but the attached gc value cache would persist:
+      // any later painter write equal to the stale cached value would be
+      // skipped while the context sits at defaults, rasterizing corrupted
+      // bitmaps that are then served BY KEY. Re-sync the cache so the
+      // lazy-prime / first-write path reads the live (default) state.
+      surf.gc.resetCache();
     }
     surf.bytes = 0;
     return surf;

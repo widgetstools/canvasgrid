@@ -51,6 +51,56 @@ interface PendingCellIcon {
 const CELL_ICON_EDGE_PAD = 6;
 const CELL_ICON_GUTTER = 4;
 
+/** Cycle 22 / closeout I-3 — an IconRef that resolved to something that
+ *  WILL actually draw (name XOR emoji validated, Path2D resolved, position
+ *  defaulted). `null` means byRows paints NOTHING for this ref. */
+export interface ResolvedDrawableIcon {
+  path: Path2D | null; // null → emoji glyph
+  emoji: string | undefined;
+  color: string | undefined;
+  position: 'leading' | 'trailing';
+}
+
+/** Cycle 22 / closeout I-3 — THE drawability decision for an inline cell /
+ *  rule icon, shared between byRows' pendingIcon construction below and
+ *  `CGrid.patchStripCells`' bail (the icon draws OVER the painter at live
+ *  coords, which a strip patch cannot reproduce — so the patch bails
+ *  exactly when this returns non-null, and ONLY then). Contract per
+ *  IconRef: exactly one of name|emoji resolves; both or neither paints
+ *  nothing (silent, not an error); an unresolvable name paints nothing. */
+export function resolveDrawableIcon(
+  iconRef: { name?: string; emoji?: string; color?: string; position?: 'leading' | 'trailing' } | null | undefined,
+): ResolvedDrawableIcon | null {
+  if (!iconRef) return null;
+  const emoji = iconRef.emoji;
+  if (!(iconRef.name || emoji) || (iconRef.name && emoji)) return null;
+  const path = iconRef.name ? resolveIconPath(iconRef.name) : null;
+  if (!path && !emoji) return null;
+  return { path, emoji, color: iconRef.color, position: iconRef.position ?? 'leading' };
+}
+
+/** Cycle 22 / closeout I-3 — evaluate a def's `cellIcon` fn (byRows' exact
+ *  semantics: try/catch → null on throw) and resolve drawability. CRITICAL:
+ *  format-compiled columns synthesize a `cellIcon` FUNCTION on every def
+ *  (`resolveColDefWithFormat`) that returns null unless the format carries
+ *  an icon() — so mere function EXISTENCE must never be treated as "an
+ *  icon will draw" (that assumption killed patch-on-tick in production:
+ *  stripPatches=0 on the live feed, every ticking numeric column being
+ *  format-compiled). */
+export function resolveDrawableCellIcon<TRow>(
+  def: ResolvedColDef<TRow>,
+  params: Parameters<NonNullable<ResolvedColDef<TRow>['cellIcon']>>[0],
+): ResolvedDrawableIcon | null {
+  if (typeof def.cellIcon !== 'function') return null;
+  let iconRef: ReturnType<NonNullable<ResolvedColDef<TRow>['cellIcon']>>;
+  try {
+    iconRef = def.cellIcon(params);
+  } catch {
+    iconRef = null;
+  }
+  return resolveDrawableIcon(iconRef);
+}
+
 function drawCellIcon(gc: CachedContext2D, icon: PendingCellIcon): void {
   gc.cache.save();
   if (icon.path === null) {
@@ -1006,50 +1056,37 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
           };
         }
       }
-      if (
-        ruleIconRef !== null
-        || (row.subgrid.isData
-          && !isFooterRow[r]
-          && typeof def.cellIcon === 'function')
-      ) {
-        let iconRef: { name?: string; emoji?: string; color?: string; position?: 'leading' | 'trailing' } | null = ruleIconRef;
-        if (iconRef === null) {
-          try {
-            iconRef = def.cellIcon!({
+      if (ruleIconRef !== null || (row.subgrid.isData && !isFooterRow[r])) {
+        // Closeout I-3 — the drawability decision lives in
+        // `resolveDrawableIcon` / `resolveDrawableCellIcon` (shared with
+        // `CGrid.patchStripCells`' bail so the two sites cannot drift; the
+        // strip patch must bail EXACTLY when an icon draws here).
+        const drawable = ruleIconRef !== null
+          ? resolveDrawableIcon(ruleIconRef)
+          : resolveDrawableCellIcon(def, {
               value, data: (rowData ?? {}) as never, colId: col.colId,
               rowId: ruleRowId, themeKind: ctx.themeKind,
             });
-          } catch {
-            iconRef = null;
+        if (drawable !== null) {
+          const iconSize = Math.floor(row.height * 0.55);
+          const position = drawable.position;
+          pendingIcon = {
+            path: drawable.path,
+            emoji: drawable.emoji,
+            x: position === 'leading'
+              ? col.left + CELL_ICON_EDGE_PAD
+              : col.left + col.width - CELL_ICON_EDGE_PAD - iconSize,
+            y: row.top + (row.height - iconSize) / 2,
+            size: iconSize,
+            tint: drawable.color ?? config.fg,
+          };
+          const pad = { ...(config.padding ?? {}) };
+          if (position === 'leading') {
+            pad.left = (pad.left ?? CELL_ICON_EDGE_PAD) + iconSize + CELL_ICON_GUTTER;
+          } else {
+            pad.right = (pad.right ?? CELL_ICON_EDGE_PAD) + iconSize + CELL_ICON_GUTTER;
           }
-        }
-        // Exactly one of name|emoji resolves; both or neither paints nothing
-        // (per IconRef's contract — silent, not an error).
-        if (iconRef && (iconRef.name || (iconRef as { emoji?: string }).emoji)
-            && !(iconRef.name && (iconRef as { emoji?: string }).emoji)) {
-          const emoji = (iconRef as { emoji?: string }).emoji;
-          const path = iconRef.name ? resolveIconPath(iconRef.name) : null;
-          if (path || emoji) {
-            const iconSize = Math.floor(row.height * 0.55);
-            const position = iconRef.position ?? 'leading';
-            pendingIcon = {
-              path,
-              emoji,
-              x: position === 'leading'
-                ? col.left + CELL_ICON_EDGE_PAD
-                : col.left + col.width - CELL_ICON_EDGE_PAD - iconSize,
-              y: row.top + (row.height - iconSize) / 2,
-              size: iconSize,
-              tint: iconRef.color ?? config.fg,
-            };
-            const pad = { ...(config.padding ?? {}) };
-            if (position === 'leading') {
-              pad.left = (pad.left ?? CELL_ICON_EDGE_PAD) + iconSize + CELL_ICON_GUTTER;
-            } else {
-              pad.right = (pad.right ?? CELL_ICON_EDGE_PAD) + iconSize + CELL_ICON_GUTTER;
-            }
-            config.padding = pad;
-          }
+          config.padding = pad;
         }
       }
 

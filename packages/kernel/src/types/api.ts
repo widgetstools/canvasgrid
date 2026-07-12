@@ -126,6 +126,13 @@ export interface PaintStats {
    *  missed (no strip yet, stale rowVersion after damage, or a stale
    *  layoutEpoch) and therefore painted live this raster. */
   stripMisses: number;
+  /** Cycle 22 raster cache (closeout M-4) — the subset of `stripMisses`
+   *  where the raster's damage rects could NOT have captured the row
+   *  anyway (cell-sized partial rects, row not fully covered). On steady
+   *  ticking feeds these dominate the raw miss counter;
+   *  `stripMisses - stripMissesUncoverable` is the "real" miss count
+   *  (rows a full-width raster failed to serve from a strip). */
+  stripMissesUncoverable: number;
   /** Cycle 22 raster cache (Tier 2) — fully-rastered eligible rows copied
    *  OUT of the layer into a retained strip (device-px copy, strictly
    *  between the band's gridlines and the overlay bake). */
@@ -139,6 +146,14 @@ export interface PaintStats {
    *  shared `RasterBudget` (a gauge refreshed per paint, not a running
    *  total). `0` when `rasterCache: false`. */
   rasterCacheBytes: number;
+  /** Cycle 22 raster cache (closeout M-1) — CURRENT bytes retained in the
+   *  two tiers' OFF-ledger canvas reuse pools (evicted backing stores held
+   *  for recycling; each pool caps at half the budget, and the most
+   *  recent evictee is always kept). The full retained envelope is
+   *  `rasterCacheBytes + rasterCachePooledBytes` — worst case ≈ 2× the
+   *  configured `rasterCacheBudgetMB`. Gauge refreshed per paint; `0`
+   *  when `rasterCache: false`. */
+  rasterCachePooledBytes: number;
 }
 
 /** Cycle 21i Phase 2 / T3 — one live column-GROUP node handed to the
