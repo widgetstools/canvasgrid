@@ -3,8 +3,20 @@
   "compilerOptions": {
     "outDir": "dist",
     "noEmit": true,
+    // Kernel src (mapped below) imports `./theming/tokens.css?inline` —
+    // vite/client supplies the `*?inline` ambient module, same as kernel's
+    // own tsconfig.
+    "types": ["vite/client"],
     "paths": {
-      "@kernel-src/*": ["../kernel/src/*"]
+      "@kernel-src/*": ["../kernel/src/*"],
+      // Type-only unification: tests import kernel types via relative src
+      // paths while src imports `@cgrid/kernel` (dist d.ts). Since CgTheme
+      // gained a private member, the src and dist declarations of the same
+      // class are nominally incompatible — map the bare specifier to src so
+      // ONE declaration set flows through the whole compilation. Runtime
+      // resolution (vitest/node) is untouched: it still hits dist via the
+      // workspace symlink.
+      "@cgrid/kernel": ["../kernel/src/cgrid.ts"]
     }
   },
   "include": ["src/**/*", "tests/**/*"],
