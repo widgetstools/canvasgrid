@@ -289,6 +289,50 @@ const STEPS: Array<{ name: string; run: (page: Page) => Promise<void> }> = [
     name: 'flash-expire',
     run: (page) => new Promise<void>((r) => { page.waitForTimeout(1800).then(r); }),
   },
+  // ─── Cycle 22 Task 4 (raster cache) — strip patch → consume ───────────
+  // The one Tier-2 sequence the script above never exercises end-to-end:
+  // a retained row strip is PATCHED in place by a tick (patch-on-tick,
+  // `applyStripCellDamage` → `RowStripCache.patch`), the row then scrolls
+  // OUT of the layer's coverage and BACK, and the returning band raster
+  // CONSUMES the patched strip (a `stripHits` blit of pixels that were
+  // last written by the patch path, not by a full row raster). If the
+  // patch ever wrote wrong pixels — wrong span, wrong dpr mapping, stale
+  // value, missing gridline slice — the consumed blit diverges from the
+  // raster-off page here and the step's hash-compare fails. Four phases,
+  // each settled internally so the sequence is deterministic on every
+  // arm (raster on/off, cache on/off, partial/suppressed alike):
+  //  1. back to the top — the reset raster CAPTURES strips for the rows
+  //     about to be ticked (they are plain data rows: outside the
+  //     focused/selected 2–6 band and the hovered row);
+  //  2. tick two of those rows (`currentPrice`, no aggFunc — same
+  //     reasoning as `tx-update-2rows` above) — patch-on-tick repaints
+  //     the ticked spans inside the retained strips; the settle absorbs
+  //     the full flash+fade;
+  //  3. jump beyond the layer's own coverage (forces `planLayer` reset,
+  //     re-anchored far away — the patched rows leave the layer);
+  //  4. jump back to the top — the reset raster back at 0 consumes the
+  //     patched strips. The step loop's own settle + hash runs after.
+  {
+    name: 'tick-then-scroll-back',
+    run: async (page) => {
+      await page.evaluate(() => { (window as any).__ext.grid.getScroller().scrollTop = 0; });
+      await page.evaluate(() => (window as any).__paintHarness.waitSettled());
+      await page.evaluate(() => {
+        const g = (window as any).__ext.grid;
+        const rows = (window as any).__paintHarness.rows;
+        const r10 = rows.find((r: any) => r.positionId === 'HARNESS-0010');
+        const r12 = rows.find((r: any) => r.positionId === 'HARNESS-0012');
+        g.applyTransactionAsync({ update: [{ ...r10, currentPrice: 103.75 }, { ...r12, currentPrice: 97.5 }] });
+      });
+      await page.evaluate(() => (window as any).__paintHarness.waitSettled());
+      await page.evaluate(() => {
+        const scroller = (window as any).__ext.grid.getScroller();
+        scroller.scrollTop = scroller.clientHeight * 2.5;
+      });
+      await page.evaluate(() => (window as any).__paintHarness.waitSettled());
+      await page.evaluate(() => { (window as any).__ext.grid.getScroller().scrollTop = 0; });
+    },
+  },
 ];
 
 // ─── Shared mutation scripts ────────────────────────────────────────────
@@ -589,7 +633,149 @@ test('flash-disabled aggregate tick — paint-cache on vs off produce identical 
   }
 });
 
-test('live ticking mostly takes the partial-repaint path with small damage regions (needs stomp-view-server)', async ({ page }) => {
+// ─── Cycle 22 Task 4 (raster cache) — raster-on vs raster-off arms ─────
+// `rasterCache: true` (the default) serves cells from the Tier-1 content-
+// keyed bitmap cache at the byRows seam and whole data rows from Tier-2
+// retained strips inside the layer band raster; `rasterCache: false`
+// (`&noRaster`) paints every cell live through the exact same pipeline.
+// A third orthogonal control axis next to `suppressPartial` (damage
+// clipping) and `noCache` (the retained layer): same technique — the
+// IDENTICAL shared step script on both pages, hash-compare after each
+// settle — with the raster tiers as the only variable. Mirrors all four
+// cache arms (base + STEPS, sorted/C2, grouped/C4, noFlash/C3) so the
+// raster tiers get the same permanent regression coverage the damage
+// system and the paint-cache layer already have. Uses the same
+// `snapshotSansEdgeRow` + bounded-edge-diff treatment as the other arms
+// (both pages keep the retained LAYER active, so the adjudication-A
+// bottom-edge AA trait applies to this comparison exactly as it does to
+// the suppressed arms post-M-4).
+
+test('raster-cache on vs off produce identical pixels at every scripted step @dpr-locked', async ({ page, context }) => {
+  const page2 = await context.newPage();
+  try {
+    await boot(page, 'paintHarness');
+    await boot(page2, 'paintHarness&noRaster');
+
+    for (const step of STEPS) {
+      const before = await paintStats(page);
+
+      await step.run(page);
+      await waitSettled(page);
+      const hashOn = await snapshotCache(page);
+
+      await step.run(page2);
+      await waitSettled(page2);
+      const hashOff = await snapshotCache(page2);
+
+      expect(hashOn, `step "${step.name}": raster-cache-on pixels diverged from raster-cache-off pixels`).toBe(hashOff);
+      assertBoundedEdgeDiff(await edgeRowSample(page), await edgeRowSample(page2), `step "${step.name}"`);
+
+      // The patch→consume step must ACTUALLY drive Tier-2 patch and
+      // consume on the raster-on page — asserted via stats deltas, not
+      // assumed from the scroll choreography. `stripPatches` proves the
+      // tick patched a retained strip in place (phase 2); `stripHits`
+      // proves the returning band raster consumed retained strips
+      // (phase 4 — the hash-compare above is what proves the consumed
+      // pixels were CORRECT).
+      if (step.name === 'tick-then-scroll-back') {
+        const after = await paintStats(page);
+        expect(after.stripPatches - before.stripPatches,
+          'tick-then-scroll-back: expected the tick to patch at least one retained strip in place').toBeGreaterThan(0);
+        expect(after.stripHits - before.stripHits,
+          'tick-then-scroll-back: expected the returning raster to consume retained strips').toBeGreaterThan(0);
+      }
+    }
+
+    // The comparison is only meaningful if the two pages actually took
+    // different paths: the raster-on page must have engaged both tiers
+    // across the script, and the raster-off page must have stayed fully
+    // dormant (its seam never engages — every counter pinned at 0).
+    const on = await paintStats(page);
+    expect(on.cellCacheHits, 'expected the raster-on page to serve cells from the Tier-1 bitmap cache').toBeGreaterThan(0);
+    expect(on.stripCaptures, 'expected the raster-on page to capture Tier-2 row strips').toBeGreaterThan(0);
+    const off = await paintStats(page2);
+    expect(off.cellCacheHits + off.cellCacheMisses + off.cellCacheBypasses,
+      'raster-off page: the Tier-1 seam must never engage').toBe(0);
+    expect(off.stripHits + off.stripMisses + off.stripCaptures + off.stripPatches,
+      'raster-off page: the Tier-2 strip path must stay fully dormant').toBe(0);
+    expect(off.rasterCacheBytes, 'raster-off page: no raster-cache bytes may be retained').toBe(0);
+  } finally {
+    await page2.close();
+  }
+});
+
+test('sort-then-tick reorder — raster-cache on vs off produce identical pixels', async ({ page, context }) => {
+  const page2 = await context.newPage();
+  try {
+    await boot(page, 'paintHarness');
+    await boot(page2, 'paintHarness&noRaster');
+
+    await sortThenTick(page);
+    await waitSettled(page);
+    const hashOn = await snapshotCache(page);
+
+    await sortThenTick(page2);
+    await waitSettled(page2);
+    const hashOff = await snapshotCache(page2);
+
+    expect(hashOn, 'sort-then-tick reorder: raster-cache-on pixels diverged from raster-cache-off pixels').toBe(hashOff);
+    assertBoundedEdgeDiff(await edgeRowSample(page), await edgeRowSample(page2), 'sort-then-tick reorder (raster arm)');
+  } finally {
+    await page2.close();
+  }
+});
+
+test('grouped + sticky-ancestor tick — raster-cache on vs off produce identical pixels', async ({ page, context }) => {
+  const page2 = await context.newPage();
+  try {
+    await boot(page, 'paintHarness&grouped');
+    await boot(page2, 'paintHarness&grouped&noRaster');
+
+    await scrollIntoGroup(page);
+    await waitSettled(page);
+    await scrollIntoGroup(page2);
+    await waitSettled(page2);
+
+    const stickyCount = await page.evaluate(() => (window as any).__ext.grid.stickyAncestors?.length ?? 0);
+    expect(stickyCount, 'expected the scroll to pin at least one group ancestor').toBeGreaterThan(0);
+
+    await tickAggregatedColumn(page);
+    await waitSettled(page);
+    const hashOn = await snapshotCache(page);
+
+    await tickAggregatedColumn(page2);
+    await waitSettled(page2);
+    const hashOff = await snapshotCache(page2);
+
+    expect(hashOn, 'grouped sticky-ancestor tick: raster-cache-on pixels diverged from raster-cache-off pixels').toBe(hashOff);
+    assertBoundedEdgeDiff(await edgeRowSample(page), await edgeRowSample(page2), 'grouped sticky-ancestor tick (raster arm)');
+  } finally {
+    await page2.close();
+  }
+});
+
+test('flash-disabled aggregate tick — raster-cache on vs off produce identical pixels', async ({ page, context }) => {
+  const page2 = await context.newPage();
+  try {
+    await boot(page, 'paintHarness&noFlash');
+    await boot(page2, 'paintHarness&noFlash&noRaster');
+
+    await tickAggregatedColumn(page);
+    await waitSettled(page);
+    const hashOn = await snapshotCache(page);
+
+    await tickAggregatedColumn(page2);
+    await waitSettled(page2);
+    const hashOff = await snapshotCache(page2);
+
+    expect(hashOn, 'flash-disabled aggregate tick: raster-cache-on pixels diverged from raster-cache-off pixels').toBe(hashOff);
+    assertBoundedEdgeDiff(await edgeRowSample(page), await edgeRowSample(page2), 'flash-disabled aggregate tick (raster arm)');
+  } finally {
+    await page2.close();
+  }
+});
+
+test('live ticking mostly takes the partial-repaint path with small damage regions (needs stomp-view-server)', async ({ page }, testInfo) => {
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());
   await page.reload();
@@ -677,6 +863,46 @@ test('live ticking mostly takes the partial-repaint path with small damage regio
   const median = sorted[Math.floor(sorted.length / 2)]!;
   expect(max, `per-partial-paint lastAreaPct samples: ${samples.join(', ')}`).toBeLessThan(65);
   expect(median, `per-partial-paint lastAreaPct samples: ${samples.join(', ')}`).toBeLessThan(25);
+
+  // ─── Cycle 22 Task 4 (raster cache) — scroll phase over the live feed ──
+  // Two IDENTICAL scroll sweeps (down ~2×bodyHeight in half-viewport
+  // steps, then back — each step big enough to force `planLayer` shifts,
+  // whose newly-exposed band rasters are where the Tier-2 strip pre-pass
+  // runs). Sweep 1 warms the store: eligible rows miss and are CAPTURED.
+  // Sweep 2 re-exposes the same rows: their strips must now HIT — even
+  // rows the live feed ticked in between stay current, because
+  // patch-on-tick advances the retained strip in place rather than
+  // dropping it. `stripHits` growing across the warmed sweep is the
+  // assertion; a plateau means the consume path (or patch-on-tick's
+  // version bookkeeping) regressed and every band raster is paying full
+  // row-paint cost again.
+  const bodyHeight = await page.evaluate(() => (window as any).__ext.grid.getScroller().clientHeight);
+  const sweep = async () => {
+    const stops = [0.5, 1.0, 1.5, 2.0, 1.5, 1.0, 0.5, 0];
+    for (const s of stops) {
+      await page.evaluate((t) => {
+        (window as any).__ext.grid.getScroller().scrollTop = t;
+      }, s * bodyHeight);
+      await page.waitForTimeout(150);
+    }
+  };
+  await sweep();
+  const warm = await page.evaluate(() => (window as any).__ext.grid.getPaintStats());
+  expect(warm.stripCaptures, 'warm sweep: expected the band rasters to capture row strips').toBeGreaterThan(0);
+  await sweep();
+  const end = await page.evaluate(() => (window as any).__ext.grid.getPaintStats());
+  expect(end.stripHits, `warmed sweep: expected stripHits to grow (warm=${warm.stripHits}, end=${end.stripHits})`).toBeGreaterThan(warm.stripHits);
+
+  // Tier-1 cell-cache hit ratio over the whole test (5s live ticking +
+  // both sweeps) — REPORTED (annotation + stdout) rather than bounded:
+  // the live feed's tick mix is uncontrolled, so a hard ratio bar would
+  // be flaky by construction; the OpenFin measurement (Task 5) owns the
+  // perf verdict. The denominator guard just keeps the ratio well-defined.
+  expect(end.cellCacheHits + end.cellCacheMisses, 'expected the Tier-1 seam to have engaged during live ticking').toBeGreaterThan(0);
+  const hitRatio = end.cellCacheHits / (end.cellCacheHits + end.cellCacheMisses);
+  const ratioLine = `cellCache hit ratio ${(hitRatio * 100).toFixed(1)}% (hits=${end.cellCacheHits}, misses=${end.cellCacheMisses}, bypasses=${end.cellCacheBypasses}); strips: hits=${end.stripHits}, misses=${end.stripMisses}, captures=${end.stripCaptures}, patches=${end.stripPatches}; rasterCacheBytes=${end.rasterCacheBytes}`;
+  testInfo.annotations.push({ type: 'raster-cache-stats', description: ratioLine });
+  console.log(`[raster-cache] ${ratioLine}`);
 });
 
 test('paint-cache: pure vertical scroll grows presents with zero layer resets (needs stomp-view-server)', async ({ page }) => {

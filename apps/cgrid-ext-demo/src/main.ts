@@ -46,6 +46,15 @@ const NO_FLASH = harnessParams.has('noFlash');
 // two harness pages, one with the retained layer active (default) and one
 // without, must produce byte-identical pixels for the same step script.
 const NO_CACHE = harnessParams.has('noCache');
+// Cycle 22 (raster cache) — `&noRaster` boots with `rasterCache: false`,
+// the field escape hatch that keeps the paint-cache layer live but fully
+// disables BOTH raster-cache tiers (Tier-1 content-keyed cell bitmaps at
+// the byRows seam + Tier-2 retained row strips). Paired with
+// `?paintHarness` this is the raster-on-vs-raster-off invariance arm:
+// identical step script on both pages, byte-identical pixels required —
+// orthogonal to `&suppressPartial` (damage clipping) and `&noCache`
+// (the retained layer itself).
+const NO_RASTER = harnessParams.has('noRaster');
 
 /** Deterministic PRNG (public-domain mulberry32) — same seed on every boot
  *  so the two harness pages (partial vs. suppressed) see identical data. */
@@ -224,6 +233,10 @@ const ext = new CGridExt<Position>(app, {
   // retained paint-cache layer — the invariance spec's second control arm,
   // orthogonal to `suppressPartial`.
   ...(NO_CACHE ? { paintCache: false } : {}),
+  // `&noRaster` (only meaningful alongside `?paintHarness`) disables both
+  // raster-cache tiers (cell bitmaps + row strips) — the invariance spec's
+  // third control arm, orthogonal to `suppressPartial` and `noCache`.
+  ...(NO_RASTER ? { rasterCache: false } : {}),
   // `&grouped` (closeout fix wave, I5/C4) — every desk group expanded with
   // footer totals on, so a live tick on an aggregated column changes a
   // group's total while scrolling can pin that group's ancestor in the
