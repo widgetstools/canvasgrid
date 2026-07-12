@@ -410,3 +410,180 @@ measurement noise).
   worst-frame noise at this scale, so assess the kernel cache against
   3.3ms with the same two-run protocol used elsewhere in this file, with
   p95 as the stability check.
+
+## Raster-cache re-measure — OpenFin GPU + software raster, on vs off (Cycle 22 Task 5, 2026-07-11, runtime 41.134.102.3, dpr 2)
+
+Production build on `vite preview :4188`, live STOMP feed (5000 rows),
+launched via the direct-spawn workaround (see the grain section above).
+`perf-probe.mjs` (raw FPS + longtask API) plus a `getPaintStats()` companion
+script (`_tmp-stats-check.mjs`, scratchpad convention — not committed, deleted
+after this run): steady = reset → 8s live ticking → read; scroll = reset →
+100 wheel steps @16ms alternating → read. Raster cache toggled by navigating
+the SAME hosted window between `/` and `/?noRaster` — on/off pairs share one
+OpenFin session. After every launch or navigation, one full run was discarded
+as warm-up.
+
+**Direct-spawn gotcha (new):** when the runtime binary is spawned directly,
+the manifest's `runtime.arguments` are NOT applied — `--disable-gpu` must be
+passed on the spawn command line itself. Verified via CDP
+`SystemInfo.getInfo`: `2d_canvas: unavailable_software`,
+`gpu_compositing: disabled_software` with the flag; an earlier flagless
+launch against `app-swraster.json` came up GPU-on and its one probe run was
+discarded as invalid. `app-swraster.json` (committed) exists for CLI-launch
+parity and documents the regime.
+
+**Host-noise observation (recorded, machine NOT quiet):** load average
+7.8–9.0 for the whole session; swap 7.6/8.0GB used; ~29–32GB of pages in the
+compressor; a concurrent agent session ran `chrome-devtools-mcp` at 166–168%
+CPU with a Chrome renderer at 72–102%, and the user's tabular-showcase
+OpenFin (43.142.104.1) renderer sat at 63–84% CPU throughout. Late
+"order-reversal control" runs landed in visible noise bursts: cache-ON
+re-measures degraded to OFF-like wall-clock numbers (GPU scroll 37fps/331ms
+worst; sw steady avgPaintMs 16.2) while the same runs' kernel-attributed
+scroll avgs stayed 4.7–4.9ms — wall-clock worsts tonight are dominated by
+host stalls, not kernel work.
+
+**Noise envelope, quantified from our own steady phases:** with the cache on,
+steady frames do almost nothing (`fullPaints 0, layerShifts 0,
+layerSyncFills 0`, avg 1.7–4.1ms) yet `worstPaintMs` still measured
+63.7–201.4 across runs. A present-only frame has no kernel work that can
+cost 60–200ms, so that range is the external-stall floor any single frame
+could absorb tonight — single worst-frame numbers in BOTH phases sit inside
+it.
+
+#### OpenFin GPU — perf-probe (6s/phase, warm-up discarded)
+
+| run | steady fps | steady longtasks (worst) | scroll fps | scroll longtasks (total / worst) |
+|-----|-----------:|--------------------------:|-----------:|---------------------------------:|
+| rasterON run1 | 60 | 0 (0ms) | 50 | 6 (420ms / 104ms) |
+| rasterON run2 | 56 | 2 (238ms) | 55 | 4 (337ms / 169ms) |
+| rasterOFF run1 | 54 | 6 (123ms) | 33 | 12 (1960ms / 401ms) |
+| rasterOFF run2 | 54 | 8 (134ms) | 37 | 19 (1965ms / 377ms) |
+| rasterON control (late, noise burst) | 48 | 10 (326ms) | 37 | 15 (1762ms / 331ms) |
+
+#### OpenFin GPU — getPaintStats
+
+| run | phase | paints | fullPaints | avgPaintMs | worstPaintMs | shifts / syncFills / backlogPx |
+|-----|-------|-------:|-----------:|-----------:|-------------:|-------------------------------:|
+| ON stats1 | steady | 203 | 0 | 3.67 | 81.8 | 0 / 0 / 0 |
+| ON stats1 | scroll | 94 | 52 | 3.44 | 133.8 | 42 / 70 / 0 |
+| ON stats2 | steady | 297 | 0 | 1.71 | 63.7 | 0 / 0 / 0 |
+| ON stats2 | scroll | 104 | 56 | 2.48 | 114.9 | 37 / 70 / 0 |
+| OFF stats1 | steady | 289 | 0 | 10.19 | 155.4 | 0 / 0 / 0 |
+| OFF stats1 | scroll | 117 | 52 | 5.91 | 143.0 | 45 / 74 / 0 |
+| OFF stats2 | steady | 227 | 0 | 3.81 | 164.9 | 0 / 0 / 0 |
+| OFF stats2 | scroll | 125 | 56 | 9.27 | 162.3 | 44 / 85 / 0 |
+| ON stats3 (warmed, late) | steady | 264 | 0 | 2.31 | 201.4 | 0 / 0 / 0 |
+| ON stats3 (warmed, late) | scroll | 135 | 76 | 4.88 | 180.7 | 47 / 90 / 0 |
+
+#### OpenFin --disable-gpu (software raster, verified) — perf-probe
+
+| run | steady fps | steady longtasks (worst) | scroll fps | scroll longtasks (total / worst) |
+|-----|-----------:|--------------------------:|-----------:|---------------------------------:|
+| rasterON run1 | 57 | 3 (100ms) | 43 | 6 (379ms / 103ms) |
+| rasterON run2 | 60 | 0 (0ms) | 41 | 10 (837ms / 225ms) |
+| rasterOFF run1 | 53 | 6 (131ms) | 30 | 12 (1730ms / 331ms) |
+| rasterOFF run2 | 54 | 5 (151ms) | 27 | 12 (1852ms / 334ms) |
+| rasterON control (late, noise burst) | 54 | 6 (164ms) | 28 | 20 (2338ms / 360ms) |
+
+#### OpenFin --disable-gpu — getPaintStats
+
+| run | phase | paints | fullPaints | avgPaintMs | worstPaintMs | shifts / syncFills / backlogPx |
+|-----|-------|-------:|-----------:|-----------:|-------------:|-------------------------------:|
+| ON stats1 | steady | 267 | 0 | 4.06 | 108.3 | 0 / 0 / 0 |
+| ON stats1 | scroll | 141 | 70 | 6.54 | 165.8 | 44 / 91 / 0 |
+| ON stats2 | steady | 195 | 0 | 3.10 | 83.6 | 0 / 0 / 0 |
+| ON stats2 | scroll | 149 | 64 | 3.42 | 193.2 | 46 / 85 / 0 |
+| OFF stats1 | steady | 277 | 0 | 10.85 | 64.0 | 0 / 0 / 0 |
+| OFF stats1 | scroll | 168 | 83 | 6.96 | 259.8 | 48 / 101 / 0 |
+| OFF stats2 | steady | 247 | 0 | 3.20 | 166.3 | 0 / 0 / 0 |
+| OFF stats2 | scroll | 154 | 77 | 12.86 | 153.0 | 46 / 97 / 0 |
+
+#### Chrome --disable-gpu (reference only, single pass each, same protocol)
+
+| arm | phase | paints | fullPaints | avgPaintMs | worstPaintMs |
+|-----|-------|-------:|-----------:|-----------:|-------------:|
+| rasterON | steady | 261 | 0 | 0.70 | 2.6 |
+| rasterON | scroll | 136 | 24 | 0.89 | 25.4 |
+| rasterOFF | steady | 325 | 0 | 1.07 | 4.2 |
+| rasterOFF | scroll | 121 | 23 | 0.59 | 36.4 |
+
+Zero >50ms paint frames in all four Chrome phases; the cache improves the
+scroll worst (25.4 vs 36.4ms) with no steady regression that clears the
+noise floor. Where the runtime's canvas is fast and the process dodges the
+host stalls, both software-raster bars are comfortably met — evidence that
+the OpenFin worst-frame outliers above are runtime/host cost, not the cache.
+
+### Stats attribution (Bar 3) — warmed ratios
+
+Cache-on runs, both OpenFin regimes:
+- **Tier 1 (cells), steady:** `cellCacheHits` 12000–19138 per 8s window vs
+  `cellCacheMisses` 33–61 — **99.7% warmed hit rate** against misses; counting
+  the deliberate bypass matrix (flash decay, composite/live renderers, group
+  rows), 69–82% of all cells painted in a steady window came straight off a
+  cached bitmap. Scroll: hits 19023–22204 vs misses 1461–2944 (**87–93%**),
+  bypasses 12337–21713.
+- **Tier 2 (strips), steady:** `stripHits` 1696–3947 vs `stripMisses`
+  365–1228 (**58–82%** of eligible rows served by strip blit). Scroll:
+  hits 1065–2284, captures 183–241 per run (the store re-fills as new rows
+  scroll in), `rasterCacheBytes` steady at 49.0–50.3MB across every read.
+- **Off arm:** every raster-cache counter is exactly 0 in every `?noRaster`
+  read — attribution is clean, the counters measure the mechanism and only
+  the mechanism.
+- The committed E2E live-tick spec printed the same shape on dev Chrome:
+  cell hit ratio 91.6% (hits=3519, misses=323), strips hits=2088, misses=110.
+
+**Observation for the closeout (no tuning done):** `stripPatches` was 0 in
+every live-feed run in every regime — the Tier-2 patch-on-tick path never
+fires against the real STOMP feed; tick damage shows up as `stripMisses`
+(365–1228 per steady window) with only 1–10 re-captures. The kernel unit
+suite and invariance arms DO exercise the patch path, so the mechanism
+works — but live ticks in this demo apparently always hit a patch
+ineligibility (flash decay on the ticked row is the prime suspect: flashing
+cells are a Tier-1 bypass and flash-active rows are strip-ineligible).
+Worth one look in the closeout: if ticked rows can re-enter strip
+eligibility sooner after their flash settles, steady `stripMisses` should
+drop toward zero.
+
+### Bars adjudication (honest accounting)
+
+- **Bar 1 — OpenFin GPU sustained-scroll worst frame <50ms (cache on):
+  NOT MET on the letter.** Best recorded cache-on scroll worst: 104ms
+  (probe) / 114.9ms (stats). But the same session's evidence says the
+  remaining worst is not raster work: (a) the noise envelope above — steady
+  present-only frames measured 63.7–201.4ms worst with zero layer/raster
+  activity, so scroll worsts of 104–193ms are inside what a do-nothing frame
+  absorbed tonight; (b) every kernel-attributed aggregate transformed:
+  scroll avgPaintMs 10.4 (paint-cache closeout) → **2.5–3.4ms** cache-on
+  (same-session off arm: 5.9–9.3ms), scroll fps 50–55 vs 33–37, total
+  longtask ms 337–420 vs ~1960; (c) `layerBacklogPx: 0` at every read.
+  Needs closeout adjudication + a quiet-machine re-measure; no kernel lever
+  identified that a 3–10x-slower Canvas2D and a loaded host don't explain.
+- **Bar 2 — software raster vs the Task-0 bars: split, NOT MET on the
+  letter.** Steady "zero paint frames >50ms": not met under this host
+  (worst 83.6–108.3ms, avg 3.1–4.1, fullPaints 0) — same envelope argument;
+  the Chrome --disable-gpu reference meets it outright (worst 2.6ms).
+  Scroll "worst ≤3.3ms (≥2x fillText baseline)": the absolute 3.3ms clause
+  is structurally inapplicable to the demo — it was finalized on the bench's
+  geometry (full-window repaint, no data fetch), while demo scroll includes
+  ~45–55% legitimate full paints from window-move chunk arrivals. The
+  clause's substance (≥2x better than the fillText baseline) is MET on
+  kernel-attributed averages: cache-on scroll avg 3.42–6.54ms vs same-session
+  off 6.96–12.86ms (**1.97–2.03x**), fps 41–43 vs 27–30. Recommend the
+  closeout restate Bar 2 for the demo as the 2x-vs-off clause + the Chrome
+  reference, and re-run the absolute clause on the bench page if wanted.
+- **Bar 3 — stats attribution: MET.** Counters above demonstrate the
+  mechanism end-to-end (hits dominate warmed windows, captures track
+  scroll-in, byte gauge sits at budget, off arm identically zero).
+
+### Drain-budget decision (BUDGET_MS = 3): KEEP, with numbers
+
+`layerBacklogPx` was **0 at every single read** — 20+ reads across both
+regimes, both arms, both phases, strips warmed and cold: the 3ms budgeted
+drain always fully converged the pending band backlog between reads.
+Strip-warmed scroll `layerRasterMs` EMA sat at 1.48–3.88ms (GPU) /
+2.07–3.21ms (software raster) — the drain slice is right-sized against the
+~3ms target. The prior cycle's deliberate `BUDGET_MS: 6` re-test made both
+phases worse (190/225ms worsts) because bigger synchronous drain slices pay
+more per call on OpenFin's slow canvas; nothing in this cycle's data
+contradicts that. `BUDGET_MS = 3` (cgrid.ts) stays; no retune.

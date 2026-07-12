@@ -1,0 +1,22 @@
+{
+  "devtools_port": 9223,
+  "runtime": {
+    "version": "41.134.102.3",
+    "arguments": "--remote-debugging-port=9223 --disable-gpu"
+  },
+  "startup_app": {
+    "uuid": "cgrid-ext-demo-swraster",
+    "name": "CGridExt Demo (swraster)",
+    "description": "cgrid-ext-demo in OpenFin with --disable-gpu (software raster regime) — Cycle 22 raster-cache Bar 2 measurement manifest; same pattern as app-bench-swraster.json.",
+    "url": "http://localhost:4188/",
+    "autoShow": true,
+    "frame": true,
+    "defaultWidth": 1680,
+    "defaultHeight": 960,
+    "defaultTop": 60,
+    "defaultLeft": 60,
+    "backgroundColor": "#181818",
+    "saveWindowState": false,
+    "contextMenu": true
+  }
+}
