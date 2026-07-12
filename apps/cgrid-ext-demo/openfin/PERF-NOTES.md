@@ -587,3 +587,103 @@ Strip-warmed scroll `layerRasterMs` EMA sat at 1.48–3.88ms (GPU) /
 phases worse (190/225ms worsts) because bigger synchronous drain slices pay
 more per call on OpenFin's slow canvas; nothing in this cycle's data
 contradicts that. `BUDGET_MS = 3` (cgrid.ts) stays; no retune.
+
+## Quiet-machine re-measure — Bars 1/2 final adjudication (2026-07-12, main post-closeout, runtime 41.134.102.3, dpr 2)
+
+Re-run of the Task-5 protocol after the cycle's concurrent automation load
+finished, from current `main` (closeout fix wave included: patch-at-tick
+bails on calc/rules/format-program hazards, so `stripPatches: 0` with
+captures healing is BY DESIGN). Same discipline: warm-up run discarded
+after every launch/navigation, on-vs-off in the same OpenFin session,
+`--disable-gpu` passed on the spawn command line and verified via
+`SystemInfo.getInfo` (`2d_canvas: unavailable_software`).
+
+**Quietness observation (recorded, mixed):** the previous session's
+automation load is GONE (no chrome-devtools-mcp burn, no competing
+tabular OpenFin renderer; compressor occupancy down from ~13GB to ~1GB).
+Remaining: ordinary interactive desktop — load avg 6.3–7.8 at start,
+WebKit WebContent at 42–63% (media), Cursor/Chrome renderers 33–47%,
+WindowServer ~40%. Quiet WINDOWS clearly exist (three steady probe phases
+measured 60fps with ZERO longtasks), but stall bursts still recur — and
+near the end of the session a fresh user-activity burst arrived (load avg
+14.2, three Chrome renderers at 112–145%), contaminating the late control
+runs. Runs are annotated below. The feed server was also freshly started:
+its per-window tick volume varied run-to-run (steady paints 83–300 per 8s
+window), so per-run average comparisons are coarser than last session's.
+One cache-on stats run caught the feed still ramping (steady paints = 10)
+and was discarded as invalid.
+
+#### OpenFin GPU — cache ON (recorded runs)
+
+| run | steady | scroll |
+|-----|--------|--------|
+| probe1 | 53fps, worst 179ms (burst) | 52fps, worst 218ms |
+| probe2 | 60fps, 0 longtasks | 57fps, worst 97ms |
+| probe3 | 60fps, worst 51ms | 56fps, worst 82ms |
+| probe4 | 60fps, 0 longtasks | 55fps, worst 133ms |
+| probe5 | 44fps, worst 178ms (burst) | 51fps, worst 97ms |
+| stats2 | 300 paints, full 0, avg 1.92, **worst 44.6** | 86 paints, full 45, avg 3.52, worst 82.0 |
+| stats3 | 113 paints, full 0, avg 3.48, worst 118.7 | 100 paints, full 40, avg 3.93, worst 157.0 |
+
+#### OpenFin GPU — cache OFF (same session, `?noRaster`)
+
+| run | steady | scroll |
+|-----|--------|--------|
+| stats1 | 207 paints, avg 2.97, worst 104.6 | 98 paints, avg 4.86, worst 128.7 |
+| stats2 | 83 paints, avg 5.59, worst 65.1 | 117 paints, avg 2.21, worst 164.2 |
+| probe1 | 60fps, 0 longtasks | 52fps, worst 151ms |
+| probe2 | 56fps, worst 256ms | 50fps, worst 220ms |
+
+#### OpenFin --disable-gpu (verified) — cache ON
+
+| run | steady | scroll |
+|-----|--------|--------|
+| probe1 | 61fps, 0 longtasks | 49fps, worst 240ms |
+| probe2 | 57fps, worst 141ms | 48fps, worst 188ms |
+| stats1 | 188 paints, full 0, avg 2.37, **worst 37.4** | 140 paints, full 69, avg 1.95, worst 200.1 |
+| stats2 | 118 paints, full 0, avg 3.74, **worst 37.9** | 134 paints, full 35, avg 4.51, worst 143.5 |
+| stats3 control (load-14 burst) | 124 paints, avg 1.63, worst 94.1 | 124 paints, avg 2.76, worst 193.2 |
+
+#### OpenFin --disable-gpu — cache OFF (same session)
+
+| run | steady | scroll |
+|-----|--------|--------|
+| stats1 | 121 paints, avg 0.37, **worst 108.0** | 116 paints, avg 5.75, worst 115.7 |
+| stats2 | 169 paints, avg 3.72, **worst 72.5** | 111 paints, avg 3.76, worst 121.7 |
+| probe1 | 59fps, worst 72ms | 49fps, worst 137ms |
+
+Attribution held throughout: `layerBacklogPx: 0` at every read;
+`rasterCacheBytes` ~49.7–50.3MB; warmed steady cell hit rate 98.7–99.4%
+vs misses; and the fix wave's strip healing is visible — steady
+`stripMisses` collapsed to 2–6 per window (was 365–1228 pre-fix-wave)
+with captures re-priming them; `stripPatches: 0` by design (hazard bail).
+Off arm: all counters 0.
+
+### Final bar adjudication
+
+- **Bar 1 — OpenFin GPU sustained-scroll worst frame <50ms (cache on):
+  NOT MET, final.** Eight cache-on scroll samples measured 82–218ms worst
+  (best: 82ms, twice) — including samples taken inside demonstrably quiet
+  windows (same session's steady phases at 60fps / zero longtasks / worst
+  0–44.6ms). Quietness is therefore not the blocker: at perf-probe's
+  synthetic stress pace, 1–2 scroll frames per run genuinely exceed 50ms
+  on OpenFin's canvas (the oversized-window-diff / direction-reversal
+  full paints the damage system deliberately degrades to, painting
+  ~2k+ live cells through the bypass matrix in one frame). The cache still
+  helps (scroll avg 2.8–3.9ms ON vs 2.2–5.8ms OFF; steady worst <50 ON
+  vs 65–105 OFF), but the <50ms worst-frame letter is out of reach at
+  this pace in this runtime. Realistic-pace scrolling (the file's earlier
+  "~1 row per 120ms" finding) remains the representative case.
+- **Bar 2 — software raster: steady clause MET; scroll absolute clause
+  NOT MET.** Steady "zero paint frames >50ms": **MET** — both recorded
+  cache-on runs worst 37.4/37.9ms (fullPaints 0), while the same-session
+  off arm breached in BOTH runs (72.5/108.0ms) — a clean on/off
+  discriminator, first time this clause has been met in OpenFin. (The
+  late back-ON control breached at 94.1ms during the documented load-14
+  Chrome burst.) Scroll "worst ≤3.3ms": NOT MET (143.5–200.1ms) and
+  stands as structurally inapplicable to the demo (bench full-window
+  geometry vs demo fetch-chunk full paints — see the Task-5 section).
+  The ≥2x-vs-baseline substance: inconclusive tonight on scroll averages
+  (feed-volume variance between runs; pairwise 2.9x and 0.83x), MET on
+  steady worsts (1.9–2.9x better ON) and previously MET 1.97–2.03x on
+  the Task-5 same-session scroll averages.
