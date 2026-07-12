@@ -1,7 +1,7 @@
 # Raster Cache — Design (Cycle 22)
 
 **Date:** 2026-07-11
-**Status:** Implemented (Tasks 0–5 on `cycle22/raster-cache`) — bars measured 2026-07-11: Bar 3 (stats attribution) MET; Bars 1–2 NOT MET on the letter under a loaded shared host (kernel-attributed scroll avg improved ~2–4x on-vs-off in-session; worst-frame numbers sat inside the measured 64–201ms external-stall envelope; Chrome `--disable-gpu` reference meets both software-raster bars outright). Drain budget kept at `BUDGET_MS = 3`. Full matrix + adjudication: `apps/cgrid-ext-demo/openfin/PERF-NOTES.md` "Raster-cache re-measure". Closeout review pending.
+**Status:** Implemented (Tasks 0–5 on `cycle22/raster-cache`) — bars measured 2026-07-11: Bar 3 (stats attribution) MET; Bars 1–2 NOT MET on the letter under a loaded shared host (kernel-attributed scroll avg improved ~2–4x on-vs-off in-session; worst-frame numbers sat inside the measured 64–201ms external-stall envelope; Chrome `--disable-gpu` reference meets both software-raster bars outright). Drain budget kept at `BUDGET_MS = 3`. Full matrix + adjudication: `apps/cgrid-ext-demo/openfin/PERF-NOTES.md` "Raster-cache re-measure". Closeout review COMPLETE 2026-07-12 (verdict: ready to merge) — 2 Critical + 4 Important + 5 Minor findings all fixed/dispositioned in one fix wave plus two adjudicated follow-ons (N-1 cross-column patch bail `f3ca5d8`, format-program patch bail `6757c68`); accepted residuals + the `usesRowFields` follow-up are documented in this spec's notes. Also fixed en route (user-reported, pre-existing): horizontal-scroll damage race (`929aefe`).
 **Branch:** `cycle22/raster-cache` (based on the paint-cache tip, `75c7899`; that work is not yet on `main`)
 
 ## Problem
