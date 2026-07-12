@@ -6197,8 +6197,9 @@ export class CGrid<TRow = any> {
    *     consume hits without a full row re-raster;
    *  3. when ANY span can't be patched safely (column not fully visible in
    *     its band, last-in-band right edge, icon/rule-indicator cell,
-   *     fractional geometry), drop the strip instead — a bypass is a perf
-   *     miss, a stale strip is a bug.
+   *     fractional geometry, a live cross-column dependency — see
+   *     `stripPatchCrossColumnSafe`), drop the strip instead — a bypass is
+   *     a perf miss, a stale strip is a bug.
    */
   private applyStripCellDamage(cells: Array<{ rowId: number; colId: string }>): void {
     const strips = this.rasterStrips;
@@ -6227,6 +6228,22 @@ export class CGrid<TRow = any> {
     // raster re-captures). Capture/consume stay on — they are pure
     // integer-device-px copies of the layer's own raster.
     const dprPatchable = Number.isInteger(dpr);
+    // Cycle 22 / closeout N-1 — cross-column dependency bail. The damage
+    // this helper receives is RAW-FIELD-granular (the tick seam derives it
+    // from the worker's flashMask = diffRowFields ∧ column.field), yet a
+    // committed patch advances the strip to FULL-ROW validity at the final
+    // version. Any column whose pixels can change WITHOUT its own field
+    // being flagged — a calc column computed from the ticked field
+    // (fieldless, never flagged by construction) or a row-scope rule STYLE
+    // repainting an unflagged span (the `ruleIndicator` bail in
+    // `patchStripCells` covers indicators only) — would keep PRE-TICK
+    // pixels in its span, and the settle/scroll consume would serve them
+    // at rest. While either hazard is live, never patch: drop the strip
+    // (versions keep tracking; the `onRowsSettled` recapture heals the row
+    // with one full-width raster — Run C measured recapture alone as
+    // sufficient to sustain the Tier-2 win). A bypass is a perf miss, a
+    // stale strip is a bug.
+    const crossColumnSafe = this.stripPatchCrossColumnSafe();
     for (const [local, colIds] of colsByLocal) {
       const rowId = chunk.stringRowIds?.[local];
       if (rowId === undefined || rowId === null || rowId === '') continue;
@@ -6234,10 +6251,46 @@ export class CGrid<TRow = any> {
       const newVersion = (this.rowVersionByRowId.get(rowId) ?? 0) + 1;
       this.rowVersionByRowId.set(rowId, newVersion);
       if (!strips.available || !strips.has(rowId)) continue;
-      if (!dprPatchable || !this.patchStripCells(strips, rowIndex, rowId, newVersion, colIds, dpr)) {
+      if (!dprPatchable || !crossColumnSafe
+        || !this.patchStripCells(strips, rowIndex, rowId, newVersion, colIds, dpr)) {
         strips.invalidateRow(rowId);
       }
     }
+  }
+
+  /**
+   * Cycle 22 / closeout N-1 — is a cell-granular strip patch safe against
+   * cross-column dependencies? `false` (BYPASS — the caller drops the
+   * strip instead of patching) whenever:
+   *  - a calc-column provider is registered AND at least one of its
+   *    synthesized (fieldless) calc columns is VISIBLE: its value can
+   *    change when a raw input field ticks, but the flashMask never flags
+   *    it, so its span would survive a patch with pre-tick pixels;
+   *  - a rule engine is registered with ≥1 rule — row-scope rule styles
+   *    can repaint spans whose own field never ticked. An engine that
+   *    doesn't expose `getRules` (a paint-only adapter) has an UNKNOWN
+   *    rule set — ambiguous, and ambiguous means BYPASS.
+   * Cheap: runs once per damage batch (not per span), and both slots are
+   * empty for grids that never wire @cgrid/calc / @cgrid/rules.
+   */
+  private stripPatchCrossColumnSafe(): boolean {
+    const engine = getRuleEngine();
+    if (engine !== null) {
+      const rules = engine.getRules?.();
+      if (rules === undefined || rules.length > 0) return false;
+    }
+    const provider = getCalcProvider();
+    if (provider !== null) {
+      const synthesized = provider.synthesizedColDefs();
+      if (synthesized.length > 0) {
+        const visible = this.viewport.visibleColumns;
+        for (const def of synthesized) {
+          const colId = def.colId;
+          if (typeof colId === 'string' && visible.some((c) => c.colId === colId)) return false;
+        }
+      }
+    }
+    return true;
   }
 
   /**

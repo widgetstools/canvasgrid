@@ -859,6 +859,137 @@ describe('CGrid + Tier-2 strips — eligibility, versions, epochs, patch (Task 3
     restore();
   });
 
+  it('a tick on a raw field feeding a VISIBLE calc column drops the strip instead of patching (closeout N-1)', async () => {
+    // The tick seam's damage is RAW-FIELD-granular (flashMask =
+    // diffRowFields ∧ column.field), yet a committed patch advances the
+    // strip to FULL-ROW validity. A calc column computed from the ticked
+    // field is fieldless — NEVER flagged by construction — so its span
+    // would survive the patch with PRE-TICK pixels, and the settle
+    // recapture (which skips "patched & current" strips) would let the
+    // next consume serve them at rest. With a calc provider registered
+    // and ≥1 calc column visible, the patch must bail: drop the strip
+    // (versions keep tracking; the settle recapture heals the row).
+    const cols3 = [{ field: 'id' }, { field: 'v', type: 'number' }, { field: 'w', type: 'number' }];
+    const data = Array.from({ length: 200 }, (_, i) => ({ id: `r${i}`, v: i, w: i }));
+    const { grid, restore } = buildWiredGrid(data, cols3, { enableCellChangeFlash: true });
+    grid.registerCalcProvider({
+      // A visible calc column derived from `v` (the field we tick). The
+      // program itself is irrelevant to the strip bookkeeping — the
+      // hazard is structural: fieldless ⇒ never in the flashMask.
+      synthesizedColDefs: () => [{
+        colId: 'vTotal', headerName: 'V total', cellDataType: 'number',
+        editable: false, __calcColumn: true,
+      }],
+      resolvedPatchFor: () => null,
+      workerProgram: () => null,
+      onColumnsChanged: () => () => {},
+    });
+    await settle(grid, 200); // registration → rebuild + updateColumns → recapture
+    const g = grid as any;
+    const canvas = g.cgridCanvas;
+    expect(g.viewport.visibleColumns.some((c: any) => c.colId === 'vTotal'),
+      'precondition: the calc column must be VISIBLE').toBe(true);
+    expect(g.rasterStrips.get('r3', g.rowVersionByRowId.get('r3') ?? 0, g.stripLayoutEpoch),
+      'precondition: r3 must be strip-cached').not.toBeNull();
+    grid.resetPaintStats();
+
+    // Tick v — a MIDDLE raw column that WOULD patch (see the I-3
+    // production-wiring test) were the calc hazard absent — through the
+    // real async-transaction path.
+    grid.applyTransactionAsync({ update: [{ id: 'r3', v: 999, w: 3 }] });
+    await new Promise((r) => setTimeout(r, 200));
+    canvas.tickPaint(performance.now());
+
+    expect(grid.getPaintStats().stripPatches,
+      'no patch may commit while a visible calc column is live — its span would go stale').toBe(0);
+    expect(g.rasterStrips.has('r3'),
+      'the strip must be DROPPED — a patched strip would serve the pre-tick calc span at rest').toBe(false);
+    const verAfterTick = g.rowVersionByRowId.get('r3') as number;
+    expect(verAfterTick, 'versions must keep tracking through the bail').toBeGreaterThanOrEqual(1);
+
+    // The heal path the bail relies on: flash expiry → onRowsSettled →
+    // one full-width row repaint re-captures the settled row (calc span
+    // included, painted live from current data).
+    g.flashRegistry.tick(performance.now() + 60_000);
+    canvas.tickPaint(performance.now() + 60_100);
+    const verSettled = g.rowVersionByRowId.get('r3') as number;
+    expect(g.rasterStrips.get('r3', verSettled, g.stripLayoutEpoch),
+      'the settle recapture must heal the dropped strip').not.toBeNull();
+
+    const { _resetCalcProvider_forTests } = await import('../src/core/calcSlot');
+    _resetCalcProvider_forTests();
+    grid.destroy();
+    restore();
+  });
+
+  it('a rule engine with ≥1 rule (or an unknown rule set) bails the patch; an EMPTY rule set keeps patch-on-tick alive (closeout N-1)', async () => {
+    // Row-scope rule STYLES can repaint spans whose own field never
+    // ticked (the ruleIndicator bail covers indicators only), so any
+    // registered engine with ≥1 rule must bail the patch. An engine that
+    // doesn't expose getRules has an UNKNOWN rule set — ambiguous, and
+    // ambiguous means BYPASS. An engine with ZERO rules is provably
+    // hazard-free and must NOT kill patch-on-tick (the perf win stays).
+    const cols3 = [{ field: 'id' }, { field: 'v', type: 'number' }, { field: 'w', type: 'number' }];
+    const data = Array.from({ length: 200 }, (_, i) => ({ id: `r${i}`, v: i, w: i }));
+    const { grid, restore } = buildWiredGrid(data, cols3, { enableCellChangeFlash: true });
+    await settle(grid);
+    const g = grid as any;
+    const canvas = g.cgridCanvas;
+    let rules: any[] = [];
+    grid.registerRuleEngine({
+      evaluateCell: () => ({ matched: [], style: null, indicator: null, formatProgram: null }),
+      resolveRuleRef: () => null,
+      getRules: () => rules,
+      setRules: (r: any[]) => { rules = r; },
+    });
+    await settle(grid); // registration epoch bump → recapture
+
+    // Arm 1 — ZERO rules: the tick must still patch (no over-bail).
+    expect(g.rasterStrips.get('r3', g.rowVersionByRowId.get('r3') ?? 0, g.stripLayoutEpoch)).not.toBeNull();
+    grid.resetPaintStats();
+    grid.applyTransactionAsync({ update: [{ id: 'r3', v: 999, w: 3 }] });
+    await new Promise((r) => setTimeout(r, 200));
+    canvas.tickPaint(performance.now());
+    expect(grid.getPaintStats().stripPatches,
+      'an empty rule set is hazard-free — the tick must still patch').toBeGreaterThanOrEqual(1);
+
+    // Arm 2 — ≥1 rule: the tick must bail and drop.
+    grid.addRule({ id: 'n1', enabled: true }); // epoch bump + wipe (C-2)
+    g.repaintFull(); // full-width damage → the settle paint re-captures
+    await settle(grid);
+    const ver0 = g.rowVersionByRowId.get('r5') ?? 0;
+    expect(g.rasterStrips.get('r5', ver0, g.stripLayoutEpoch)).not.toBeNull();
+    grid.resetPaintStats();
+    grid.applyTransactionAsync({ update: [{ id: 'r5', v: 999, w: 5 }] });
+    await new Promise((r) => setTimeout(r, 200));
+    canvas.tickPaint(performance.now());
+    expect(grid.getPaintStats().stripPatches,
+      'no patch may commit with a live rule — row-scope styles can repaint unflagged spans').toBe(0);
+    expect(g.rasterStrips.has('r5'), 'the strip must be dropped, not patched').toBe(false);
+
+    // Arm 3 — engine WITHOUT getRules: unknown rule set → ambiguous → bail.
+    grid.registerRuleEngine({
+      evaluateCell: () => ({ matched: [], style: null, indicator: null, formatProgram: null }),
+      resolveRuleRef: () => null,
+    });
+    g.repaintFull();
+    await settle(grid);
+    const ver7 = g.rowVersionByRowId.get('r7') ?? 0;
+    expect(g.rasterStrips.get('r7', ver7, g.stripLayoutEpoch)).not.toBeNull();
+    grid.resetPaintStats();
+    grid.applyTransactionAsync({ update: [{ id: 'r7', v: 999, w: 7 }] });
+    await new Promise((r) => setTimeout(r, 200));
+    canvas.tickPaint(performance.now());
+    expect(grid.getPaintStats().stripPatches,
+      'an unknown rule set is ambiguous — ambiguous means BYPASS').toBe(0);
+    expect(g.rasterStrips.has('r7')).toBe(false);
+
+    const { _resetRuleEngine_forTests } = await import('../src/core/ruleEngineSlot');
+    _resetRuleEngine_forTests();
+    grid.destroy();
+    restore();
+  });
+
   it('fractional dpr (1.5): Tier-1 fully dormant, patch bails to invalidateRow, strip capture/consume stay on (closeout I-2)', async () => {
     // The adjudicated BYPASS: at non-integer dpr a Tier-1 hit blit's CSS-px
     // dest rect maps to fractional device coordinates (drawImage resamples
