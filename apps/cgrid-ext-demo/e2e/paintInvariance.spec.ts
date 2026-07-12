@@ -960,3 +960,89 @@ test('paint-cache: pure vertical scroll grows presents with zero layer resets (n
   expect(stats.layerResets, 'a pure vertical scroll within layer coverage must never reset the layer').toBe(0);
   expect(stats.fullPaints, 'pure vertical scroll should stay almost entirely present-only, not full-repaint-driven').toBeLessThanOrEqual(2);
 });
+
+// ─── Horizontal-scroll staleness (Cycle 22 closeout, user-reported) ──────
+// The bug: `afterScrollTick` (dx !== 0) queues FULL damage, but the next
+// rAF paint can run BEFORE the scroll's viewport fetch round-trips, so it
+// consumes that full damage against the STALE `this.viewport` — the whole
+// surface re-renders the OLD scrollLeft and the damage is spent. When the
+// chunk then moves the viewport, a diff-armed reply (`touchedRows`
+// defined — any grid that has ever applied a transaction, with touched
+// rowIds lingering OUTSIDE the fetch window keeping the worker's
+// `pendingTouched` non-empty, i.e. every sparse live feed) resolves to
+// row-level damage only: nothing ever re-rasters the surface at the new
+// scrollLeft, and every later row-level repaint lands at the new offset
+// over a canvas painted at the old one — persistent per-row horizontal
+// misalignment (the user's screenshot).
+//
+// Why no existing arm caught it: (1) the arm-vs-arm hash comparisons run
+// the IDENTICAL script on both pages, and this staleness is
+// arm-INDEPENDENT (reproduced byte-identically with `&noRaster` and
+// `&noRaster&noCache` during root-causing) — both pages go stale the same
+// way and the hashes still match; (2) the shared script's
+// `scroll-horizontal` step scrolls with an EMPTY worker diff set (no
+// lingering off-window touched ids at that point in the script), so its
+// post-scroll reply carries `touchedRows === undefined` → windowDamage
+// 'full' → `repaintFull()` heals the burn before the settle+hash.
+//
+// This test is therefore a GROUND-TRUTH self-comparison on one page per
+// arm: run the user's recipe (warm vertically → tick mostly-off-screen
+// rows → plain horizontal scroll → settle), hash; then force a known-good
+// full re-raster via the net-zero viewport-resize pair (the M-5 idiom:
+// bounds change → backing-store reallocation → layer reset + full repaint
+// at the TRUE current viewport) and require pixel identity. Pre-fix, the
+// settled hash is the old-scrollLeft surface and differs from the healed
+// one; the fix (`recomputeViewport` re-queues `repaintFull()` whenever the
+// recomputed viewport's scrollLeft differs from what the last paint
+// actually rendered) makes them identical. Runs on BOTH raster arms so
+// neither tier can regress it silently.
+
+for (const arm of ['paintHarness', 'paintHarness&noRaster'] as const) {
+  test(`horizontal scroll after off-screen ticks settles at the new scrollLeft — ${arm}`, async ({ page }) => {
+    await boot(page, arm);
+    // Warm: 3 rows down (captures Tier-2 strips on the raster arm), settle.
+    await page.evaluate(() => {
+      const g = (window as any).__ext.grid;
+      const rh = g.getRowBoundsAt(1).y - g.getRowBoundsAt(0).y;
+      g.getScroller().scrollTop = rh * 3;
+    });
+    await waitSettled(page);
+    // Arm the worker's diff tracking the way a live feed does: 120 of the
+    // 200 rows tick, most of them outside the ~20-row visible window —
+    // their rowIds keep `pendingTouched` non-empty, so every subsequent
+    // window-read reply carries a DEFINED `touchedRows`.
+    await page.evaluate(() => {
+      const g = (window as any).__ext.grid;
+      const rows = (window as any).__paintHarness.rows;
+      const update = rows.slice(0, 120).map((r: any) => ({ ...r, currentPrice: (r.currentPrice ?? 100) + 0.25 }));
+      g.applyTransactionAsync({ update });
+    });
+    await waitSettled(page);
+    await page.waitForTimeout(1800); // flash + fade fully expired
+    await waitSettled(page);
+    // The user's gesture: a plain horizontal scroll. The extra settle
+    // round absorbs the fetch round-trip regardless of which side of the
+    // rAF race it lands on.
+    await page.evaluate(() => { (window as any).__ext.grid.getScroller().scrollLeft = 150; });
+    await waitSettled(page);
+    await page.waitForTimeout(150);
+    await waitSettled(page);
+    const settled = await snapshotCache(page);
+    const settledEdge = await edgeRowSample(page);
+
+    // Ground truth: net-zero resize pair — a bounds change reallocates the
+    // backing stores, invalidates the layer anchor, and full-repaints at
+    // the CURRENT (post-recompute) viewport.
+    const vp = page.viewportSize()!;
+    await page.setViewportSize({ width: vp.width - 80, height: vp.height - 80 });
+    await waitSettled(page);
+    await page.setViewportSize({ width: vp.width, height: vp.height });
+    await waitSettled(page);
+    const healed = await snapshotCache(page);
+
+    expect(settled,
+      `${arm}: the settled post-scroll surface differs from a forced full re-raster at the same state — ` +
+      'the horizontal scroll left stale old-scrollLeft pixels behind (per-row misalignment class)').toBe(healed);
+    assertBoundedEdgeDiff(settledEdge, await edgeRowSample(page), `hscroll staleness (${arm})`);
+  });
+}

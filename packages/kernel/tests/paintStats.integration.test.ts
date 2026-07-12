@@ -401,3 +401,115 @@ describe('Damage-region rendering — scroll self-blit (paint stats)', () => {
     restore();
   });
 });
+
+/**
+ * Horizontal-scroll staleness regression (Cycle 22 closeout, user-reported
+ * per-row misalignment in the ext demo). The race:
+ *   1. `afterScrollTick` (dx !== 0) queues FULL damage and dispatches the
+ *      viewport fetch — but the next paint can run BEFORE the worker's
+ *      chunk lands, so it consumes that full damage against the STALE
+ *      `this.viewport` (old scrollLeft): the whole surface re-renders the
+ *      OLD position and the damage is spent.
+ *   2. The chunk then lands, `recomputeViewport` moves the viewport to the
+ *      new scrollLeft — and on a grid whose worker diff-tracking has been
+ *      armed by ANY prior transaction (i.e. every live-ticking blotter),
+ *      the reply carries `touchedRows` (defined, here empty), so
+ *      `resolveWindowDamage` yields row-level damage only. Nothing ever
+ *      re-rasters the surface at the new scrollLeft; every later row-level
+ *      repaint lands at the new offset over a canvas painted at the old
+ *      one — persistent per-row horizontal misalignment.
+ * The fix: `recomputeViewport` compares the fresh viewport's scrollLeft
+ * against `lastPaintedViewportScrollLeft` (what the last paint ACTUALLY
+ * rendered, recorded in the paint closure) and re-queues `repaintFull()`
+ * on mismatch. This test drives the exact race deterministically and
+ * pins the healing full repaint; it FAILS on the pre-fix code (final
+ * fullPaints stays at 1 — the burned paint — and the second tick paints
+ * nothing).
+ */
+describe('Horizontal-scroll staleness — recompute re-queues the burned full repaint', () => {
+  // Wide layout so scrollLeft 150 is a real horizontal scroll (the shared
+  // 2-column `cols` fits inside the 800px container — maxScrollLeft 0).
+  const wideCols = Array.from({ length: 10 }, (_, i) => ({
+    colId: `c${i}`,
+    field: i === 0 ? 'id' : 'v',
+    headerName: `C${i}`,
+    width: 200,
+  }));
+
+  it('scroll full-paint before the chunk + diff-armed reply still repaints fully at the new scrollLeft', async () => {
+    const { grid, restore } = buildWiredGrid(rows(200), wideCols);
+    const canvas = (grid as any).cgridCanvas;
+
+    await new Promise((r) => setTimeout(r, 50));
+    canvas.tickPaint(performance.now());
+
+    // Arm the worker's diff tracking with an OFF-SCREEN row: its rowId
+    // stays in `pendingTouched` (the per-window drain never reaches it),
+    // so every subsequent window-read reply carries `touchedRows: []`
+    // (defined-but-empty — "checked, nothing visible changed") instead of
+    // `undefined` — `resolveWindowDamage` stops degrading window moves to
+    // 'full'. This is exactly what a sparse live feed ticking rows outside
+    // the viewport looks like (the ext demo's STOMP blotter).
+    grid.applyTransactionAsync({ update: [{ id: 'r150', v: 999 }] });
+    await new Promise((r) => setTimeout(r, 120));
+    flushFrame();
+    await new Promise((r) => setTimeout(r, 20));
+    canvas.tickPaint(performance.now());
+
+    grid.resetPaintStats();
+    // Horizontal scroll: queues FULL damage via `afterScrollTick` and
+    // dispatches the fetch (microtask round-trip). Paint IMMEDIATELY —
+    // before the chunk lands — exactly the race the bug needs. The
+    // `+ 1000` timestamps step past `tickPaint`'s fps gate (same idiom as
+    // the scroll-blit test above).
+    const t0 = performance.now();
+    (grid as any).onScrollerScroll(150, 0);
+    expect((grid as any).viewport.scrollLeft).toBe(0); // viewport still stale
+    canvas.tickPaint(t0 + 1000);
+    expect(grid.getPaintStats().fullPaints).toBe(1); // burned at the OLD scrollLeft
+
+    // Chunk lands → recomputeViewport moves the viewport to 150; the
+    // diff-armed reply resolves to row damage only. The fix's mismatch
+    // check must re-queue a full repaint here.
+    await new Promise((r) => setTimeout(r, 20));
+    expect((grid as any).viewport.scrollLeft).toBe(150);
+    canvas.tickPaint(t0 + 2000);
+    expect(grid.getPaintStats().fullPaints).toBeGreaterThanOrEqual(2); // healing full at 150
+
+    grid.destroy();
+    restore();
+  });
+
+  it('the fast path (chunk lands before the paint) still paints exactly one full — no double repaint', async () => {
+    const { grid, restore } = buildWiredGrid(rows(200), wideCols);
+    const canvas = (grid as any).cgridCanvas;
+
+    await new Promise((r) => setTimeout(r, 50));
+    canvas.tickPaint(performance.now());
+    // Same off-screen-tick arming as the race test above.
+    grid.applyTransactionAsync({ update: [{ id: 'r150', v: 999 }] });
+    await new Promise((r) => setTimeout(r, 120));
+    flushFrame();
+    await new Promise((r) => setTimeout(r, 20));
+    canvas.tickPaint(performance.now());
+
+    grid.resetPaintStats();
+    const t0 = performance.now();
+    (grid as any).onScrollerScroll(150, 0);
+    // Let the chunk land FIRST (the common fast path)...
+    await new Promise((r) => setTimeout(r, 20));
+    expect((grid as any).viewport.scrollLeft).toBe(150);
+    // ...then paint: the scroll's full damage and the recompute's re-queued
+    // full coalesce on the ledger into ONE full paint at the new position.
+    canvas.tickPaint(t0 + 1000);
+    const stats = grid.getPaintStats();
+    expect(stats.fullPaints).toBe(1);
+    // Settled: nothing left dirty — the mismatch check must not re-fire
+    // once the painted scrollLeft caught up.
+    canvas.tickPaint(t0 + 2000);
+    expect(grid.getPaintStats().fullPaints).toBe(1);
+
+    grid.destroy();
+    restore();
+  });
+});
