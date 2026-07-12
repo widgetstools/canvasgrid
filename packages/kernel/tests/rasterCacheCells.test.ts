@@ -244,7 +244,7 @@ function makeCacheCtx(budgetBytes = 8 * 1024 * 1024): {
   const { factory, canvases } = makeScratchFactory();
   const cache = new CellBitmapCache(new RasterBudget(budgetBytes), factory);
   const stats = freshStats();
-  return { rc: { cache, dpr: 1, stats }, stats, canvases };
+  return { rc: { cache, dpr: 1, stats, surfaceBg: theme.bg }, stats, canvases };
 }
 
 // ─── registry cacheable flag ────────────────────────────────────────────────
@@ -475,6 +475,97 @@ describe('paintCellThroughCache — direct bypass coverage', () => {
     expect(() => paintCellThroughCache(gc, rc, throwing, true, 'text', config, false))
       .toThrow('boom');
     expect(config.bounds).toEqual({ x: 10, y: 20, w: 100, h: 24 });
+  });
+});
+
+// ─── Cycle 22 / Task 4 — surface-flattened miss scratch ─────────────────────
+// The live pipeline paints every cell over an OPAQUE surface fill of
+// `theme.bg` (byRows step 4's bundles composite semi-transparent row bgs
+// over it — see the step-4 comment in byRows.ts). A miss raster into a
+// CLEARED (transparent) scratch instead composites a translucent
+// prefill/bg TWICE through 8-bit premultiplied storage (once into the
+// bitmap, once at the blit) — measured at up to 5 LSB off vs the live
+// single composite when cursor-dark's 2%-alpha zebra (`--cg-row-alt-bg:
+// rgb(240 240 240 / 2%)`) rode Tier-1 bitmaps (caught by the E2E
+// raster-on-vs-off invariance arm). The scratch must therefore start from
+// `surfaceBg` (the epoch-scoped opaque surface color): fill surfaceBg,
+// then the bundle prefill only when it differs (live creates no bundle
+// when rowBg === theme.bg), then the painter — the exact live op order.
+
+describe('seam — miss scratch is flattened over the opaque surface bg', () => {
+  /** Local color-logging factory: same shape as `makeScratchFactory` but
+   *  records `fillStyle=<color>` assignments interleaved with the calls,
+   *  so the fill ORDER AND COLORS are assertable. */
+  function makeColorLoggingFactory(): { factory: PaintCacheCanvasFactory; logs: string[][] } {
+    const logs: string[][] = [];
+    const factory = (): any => {
+      const log: string[] = [];
+      logs.push(log);
+      const canvas: any = { width: 0, height: 0 };
+      let fillStyle = '';
+      const ctx: any = {
+        canvas,
+        setTransform: () => {}, clearRect: () => {},
+        fillRect: (...a: number[]) => { log.push(`fillRect(${a.join(',')})<${fillStyle}>`); },
+        fillText: (...a: unknown[]) => { log.push(`fillText(${String(a[0])})`); },
+        drawImage: () => {}, save: () => {}, restore: () => {},
+        beginPath: () => {}, rect: () => {}, clip: () => {}, stroke: () => {},
+        moveTo: () => {}, lineTo: () => {},
+        measureText: () => ({ width: 10 }),
+      };
+      Object.defineProperty(ctx, 'fillStyle', {
+        get: () => fillStyle,
+        set: (v: string) => { fillStyle = v; },
+      });
+      canvas.getContext = () => ctx;
+      return canvas;
+    };
+    return { factory: factory as unknown as PaintCacheCanvasFactory, logs };
+  }
+
+  function flattenFixture(prefillColor: string): { logs: string[][]; run: () => void } {
+    const { factory, logs } = makeColorLoggingFactory();
+    const cache = new CellBitmapCache(new RasterBudget(8 * 1024 * 1024), factory);
+    const rc: RasterCellsCtx = { cache, dpr: 1, stats: freshStats(), surfaceBg: '#181818' };
+    const painter: CellPainter = {
+      paint(gc, p) {
+        // Real-painter skip-fill discipline: bg === prefillColor ⇒ no bg fill.
+        if (p.bg !== p.prefillColor) {
+          gc.cache.fillStyle = p.bg;
+          gc.fillRect(p.bounds.x, p.bounds.y, p.bounds.w, p.bounds.h);
+        }
+        gc.fillText(p.valueFormatted, 6, 12);
+      },
+    };
+    const config: CellPaintConfig = {
+      value: 'v', valueFormatted: 'v',
+      bounds: { x: 10, y: 20, w: 100, h: 24 },
+      font: '12px Inter', fg: '#ddd', bg: prefillColor, borderColor: '#333',
+      halign: 'left', prefillColor,
+      isFocused: false, isSelected: false, isHovered: false, isHeader: false,
+    };
+    return { logs, run: () => paintCellThroughCache(fakeGc().gc, rc, painter, true, 'text', config, false) };
+  }
+
+  it('translucent prefill (zebra alt row): surfaceBg fill THEN prefill fill, both full-scratch, before the painter', () => {
+    const { logs, run } = flattenFixture('rgb(240 240 240 / 2%)');
+    run();
+    const log = logs.flat();
+    expect(log).toEqual([
+      'fillRect(0,0,100,24)<#181818>',
+      'fillRect(0,0,100,24)<rgb(240 240 240 / 2%)>',
+      'fillText(v)',
+    ]);
+  });
+
+  it('prefill === surfaceBg: exactly ONE base fill (live creates no bundle when rowBg === theme.bg)', () => {
+    const { logs, run } = flattenFixture('#181818');
+    run();
+    const log = logs.flat();
+    expect(log).toEqual([
+      'fillRect(0,0,100,24)<#181818>',
+      'fillText(v)',
+    ]);
   });
 });
 

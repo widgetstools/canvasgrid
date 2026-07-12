@@ -6247,9 +6247,21 @@ export class CGrid<TRow = any> {
       const colRight = col.right;
       const gridLineColor = theme.gridLineColor;
       const ok = strips.patch(rowId, newVersion, colLeft, wCss, (sgc) => {
-        // Live order: bg bundle → cell painter → gridlines on top.
-        sgc.cache.fillStyle = rowBg;
+        // Task 4 — flatten over the opaque surface first (the Tier-1 miss
+        // scratch's exact discipline, see `paintCellThroughCache`):
+        // `patch` CLEARS the span to transparent, so opening directly
+        // with a translucent rowBg (cursor-dark's 2%-alpha zebra) would
+        // store double-composited premultiplied pixels that diverge from
+        // the live raster by a few LSB at the next consume. The live
+        // layer raster's op order is: band `theme.bg` fill → row-bg
+        // bundle (only when the row bg differs) → cell painter →
+        // gridlines on top; reproduce it verbatim.
+        sgc.cache.fillStyle = theme.bg;
         sgc.fillRect(0, 0, wCss, hCss);
+        if (rowBg !== theme.bg) {
+          sgc.cache.fillStyle = rowBg;
+          sgc.fillRect(0, 0, wCss, hCss);
+        }
         painter.paint(sgc, config);
         sgc.cache.fillStyle = gridLineColor;
         // The row's bottom horizontal hairline slice (every in-body data
@@ -8838,7 +8850,11 @@ export class CGrid<TRow = any> {
       if (this.rasterCellsDpr !== 0) this.rasterCacheEpochBump();
       this.rasterCellsDpr = dpr;
     }
-    return { cache, dpr, stats: this.paintStats };
+    // Task 4 — `surfaceBg` (the opaque base the miss scratch flattens
+    // over) is read fresh per paint; it only moves on a theme swap, which
+    // already bumps the epoch, so stale bitmaps can never be served
+    // against a new surface color.
+    return { cache, dpr, surfaceBg: this.theme.bg, stats: this.paintStats };
   }
 
   /** Cycle 22 / Task 2 — theme/dpr epoch: invalidate EVERY cached raster

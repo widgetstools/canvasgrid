@@ -574,6 +574,62 @@ describe('CGrid + Tier-2 strips — eligibility, versions, epochs, patch (Task 3
     restore();
   });
 
+  it('patch paint closure flattens the span over the opaque surface bg before the row bg (Task 4)', async () => {
+    // Cycle 22 / Task 4 — same flatten contract the Tier-1 miss scratch
+    // follows (see rasterCacheCells.test.ts): `RowStripCache.patch` CLEARS
+    // the span to transparent before invoking the closure, so a closure
+    // that opens with a translucent row bg (cursor-dark's 2%-alpha zebra)
+    // would store double-composited premultiplied pixels — up to ~5 LSB
+    // off the live raster at consume time. The closure must fill the
+    // opaque `theme.bg` first, then the row bg only when it differs —
+    // the exact op order the live layer raster uses (band theme.bg fill,
+    // then the row-bg bundle, then the painter).
+    const { RowStripCache: RSC } = await import('../src/renderer/rasterCache');
+    const patchSpy = vi.spyOn(RSC.prototype, 'patch');
+    const { grid, restore } = buildWiredGrid(rows(200), cols);
+    await settle(grid);
+    const g = grid as any;
+    const sid = g.chunk.stringRowIds[3];
+    const nid = g.chunk.rowIds[3];
+    expect(g.rasterStrips.get(sid, 0, g.stripLayoutEpoch)).not.toBeNull();
+
+    g.repaintCells([{ rowId: nid, colId: 'id' }]); // row 3 is odd → rowBg = rowAltBg ≠ theme.bg
+    expect(patchSpy).toHaveBeenCalled();
+    const paintClosure = patchSpy.mock.calls[patchSpy.mock.calls.length - 1]![4] as (sgc: any) => void;
+
+    // Replay the captured closure against a color-logging gc.
+    const fills: Array<{ color: string; args: number[] }> = [];
+    let fillStyle = '';
+    const sgc: any = {
+      fillRect: (...a: number[]) => { fills.push({ color: fillStyle, args: a }); },
+      fillText: () => {}, save: () => {}, restore: () => {},
+      beginPath: () => {}, rect: () => {}, clip: () => {}, stroke: () => {},
+      moveTo: () => {}, lineTo: () => {}, setTransform: () => {}, clearRect: () => {},
+      drawImage: () => {}, translate: () => {}, scale: () => {},
+      measureText: () => ({ width: 10 }),
+      createLinearGradient: () => ({ addColorStop: () => {} }),
+    };
+    Object.defineProperty(sgc, 'fillStyle', { get: () => fillStyle, set: (v: string) => { fillStyle = v; } });
+    sgc.cache = new Proxy(sgc, {
+      get(target, key) { return target[key]; },
+      set(target, key, value) { target[key] = value; return true; },
+    });
+    paintClosure(sgc);
+
+    const themeBg = g.theme.bg;
+    const rowAltBg = g.theme.rowAltBg;
+    expect(rowAltBg).not.toBe(themeBg); // fixture sanity — the two-fill case is actually exercised
+    // Fill order: opaque surface base first, then the row bg — both
+    // full-span — before anything else lands.
+    expect(fills.length).toBeGreaterThanOrEqual(2);
+    expect(fills[0]!.color).toBe(themeBg);
+    expect(fills[1]!.color).toBe(rowAltBg);
+    expect(fills[0]!.args).toEqual(fills[1]!.args);
+    patchSpy.mockRestore();
+    grid.destroy();
+    restore();
+  });
+
   it('layoutEpoch bumps on: column resize, quick-filter term change, sort change, theme param change', async () => {
     const { grid, restore } = buildWiredGrid(rows(200), cols);
     await settle(grid);

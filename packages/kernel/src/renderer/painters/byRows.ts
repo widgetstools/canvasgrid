@@ -516,10 +516,30 @@ export function paintCellThroughCache(
       b.x = 0;
       b.y = 0;
       try {
+        // Task 4 — flatten the surface base FIRST. The live pipeline
+        // paints every cell over an opaque `theme.bg` surface fill (the
+        // byRows step-4 bundles composite semi-transparent row bgs over
+        // it); `render` hands this closure a CLEARED (transparent)
+        // scratch, so a translucent prefill painted directly onto it
+        // would be composited TWICE through 8-bit premultiplied storage
+        // (once into the bitmap, once at the blit) — measured at up to
+        // 5 LSB off the live single composite when cursor-dark's
+        // 2%-alpha zebra (`rgb(240 240 240 / 2%)`) rode Tier-1 bitmaps
+        // (caught by the raster-on-vs-off E2E invariance arm). Filling
+        // `surfaceBg` first reproduces the live op sequence exactly and
+        // makes the stored bitmap fully opaque, so the blit is a plain
+        // copy. Epoch discipline: `surfaceBg` is `theme.bg`, which only
+        // moves on a theme swap — already an epoch bump.
+        sgc.cache.fillStyle = rc.surfaceBg;
+        sgc.fillRect(0, 0, w, h);
         // Reproduce the bundle prefill so the painter's skip-fill branch
         // (`bg !== prefillColor`) behaves exactly as on the live canvas.
-        sgc.cache.fillStyle = config.prefillColor;
-        sgc.fillRect(0, 0, w, h);
+        // Skipped when it IS the surface color — live paints no bundle
+        // for rows whose bg equals `theme.bg` (byRows step 3).
+        if (config.prefillColor !== rc.surfaceBg) {
+          sgc.cache.fillStyle = config.prefillColor;
+          sgc.fillRect(0, 0, w, h);
+        }
         painter.paint(sgc, config);
       } finally {
         b.x = x;

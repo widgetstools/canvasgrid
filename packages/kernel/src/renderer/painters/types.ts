@@ -21,6 +21,18 @@ import type { CellBitmapCache, RowStripCache } from '../rasterCache';
 export interface RasterCellsCtx {
   cache: CellBitmapCache;
   dpr: number;
+  /** Cycle 22 / Task 4 — the OPAQUE surface color every live cell paints
+   *  over (`theme.bg`: the byRows surface fill that row-bg bundles
+   *  composite semi-transparent colors onto — see byRows step 4). A miss
+   *  raster must fill this FIRST so the scratch reproduces the live
+   *  compositing base: rendering a translucent prefill/bg into a CLEARED
+   *  (transparent) scratch instead composites it twice through 8-bit
+   *  premultiplied storage (once into the bitmap, once at the blit) — up
+   *  to ~5 LSB off the live single composite (cursor-dark's 2%-alpha
+   *  zebra, caught by the raster-on-vs-off E2E invariance arm). Epoch
+   *  discipline: bitmap pixels now depend on this color, which only moves
+   *  on a theme swap — already covered by `rasterCacheEpochBump`. */
+  surfaceBg: string;
   stats?: {
     cellCacheHits: number;
     cellCacheMisses: number;
