@@ -70,7 +70,8 @@ import {
 import { RowHeightIndex } from './core/rowHeightIndex';
 import { PaintCacheLayer, planLayer, defaultCanvasFactory, type LayerGeometry, type LayerPlan } from './core/paintCache';
 import { RasterBudget, CellBitmapCache, RowStripCache } from './renderer/rasterCache';
-import type { RasterCellsCtx } from './renderer/painters/types';
+import type { RasterCellsCtx, RasterStripsCtx } from './renderer/painters/types';
+import type { CellPaintConfig } from './renderer/cellRenderers/registry';
 import { HeaderSubgrid, HeaderGroupSubgrid, DataSubgrid, TotalsSubgrid, PinnedRowsSubgrid, type Subgrid, type SubgridCell } from './core/subgrid';
 import { FloatingFilterSubgrid } from './core/floatingFilterSubgrid';
 import { FloatingFilterOverlay } from './interaction/floatingFilterOverlay';
@@ -710,6 +711,22 @@ function recordChanged(
   return false;
 }
 
+/** Cycle 22 / Task 3 — value equality for the `columnLayout` setter's
+ *  layoutEpoch guard. A repaint-poll re-measure reassigns a freshly-built
+ *  but IDENTICAL layout every tick; comparing by value keeps those from
+ *  wiping the Tier-2 strip store. O(columns), only runs while the strip
+ *  store is live. */
+function columnLayoutsEqual(a: ColumnLayout[], b: ColumnLayout[]): boolean {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i]!, y = b[i]!;
+    if (x.colId !== y.colId || x.left !== y.left || x.width !== y.width || x.pinned !== y.pinned) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export function defaultFillExtrapolate(sourceValues: unknown[], targetIndex: number): unknown {
   if (sourceValues.length === 0) return undefined;
   const allNumeric = sourceValues.every((v) => typeof v === 'number' && Number.isFinite(v));
@@ -854,7 +871,9 @@ export class CGrid<TRow = any> {
     presents: 0, layerShifts: 0, layerResets: 0, layerRasterMs: 0,
     lastRects: 0, lastAreaPct: 100, avgPaintMs: 0, worstPaintMs: 0,
     layerSyncFills: 0, layerBacklogPx: 0,
-    cellCacheHits: 0, cellCacheMisses: 0, cellCacheBypasses: 0, rasterCacheBytes: 0,
+    cellCacheHits: 0, cellCacheMisses: 0, cellCacheBypasses: 0,
+    stripHits: 0, stripMisses: 0, stripCaptures: 0, stripPatches: 0,
+    rasterCacheBytes: 0,
   };
   private columnTree!: ColumnTree;
   /** Grid Layouts / column-group-drag feature (Task 1) — lazily-built
@@ -870,7 +889,25 @@ export class CGrid<TRow = any> {
   private columnGroupState!: ColumnGroupState;
   private columnDefsMap: Map<string, ResolvedColDef<TRow>> = new Map();
   private columnOrder: ResolvedColDef<TRow>[] = [];
-  private columnLayout: ColumnLayout[] = [];
+  private _columnLayout: ColumnLayout[] = [];
+  /** Cycle 22 / Task 3 — layoutEpoch contract, column-geometry choke
+   *  point. EVERY column width / order / visibility / pin change (and a
+   *  canvas-width change that reflows flex columns) flows through a
+   *  `this.columnLayout = …` assignment — the constructor, `setBounds`,
+   *  `rebuildColumns`, `resizeColumn`, `sizeColumnsToFit`, `autoSize*`,
+   *  `relayoutAfterColumnMutation`, the column-group open/close
+   *  subscription, and the grouping/pivot engines' `setColumnLayout`
+   *  deps. Funnelling the epoch bump through this ONE setter (with a
+   *  value-equality guard so repaint-poll re-measures that resolve the
+   *  identical layout never thrash the strip store) means no current or
+   *  FUTURE column mutation can silently skip the bump. */
+  private get columnLayout(): ColumnLayout[] { return this._columnLayout; }
+  private set columnLayout(layout: ColumnLayout[]) {
+    if (this.rasterStrips !== null && !columnLayoutsEqual(this._columnLayout, layout)) {
+      this.stripLayoutEpochBump();
+    }
+    this._columnLayout = layout;
+  }
   private theme: ResolvedTheme;
   /** Theming Task 6/7 — the active programmatic `CgTheme`, when
    *  `options.theme` (or a `setTheme`/`setGridOption('theme', …)` swap) was
@@ -998,6 +1035,30 @@ export class CGrid<TRow = any> {
    *  at. A change is an epoch bump (old backing stores are sized at the
    *  old dpr — blitting them would scale/blur). `0` = not yet observed. */
   private rasterCellsDpr = 0;
+  /** Cycle 22 / Task 3 — per-row content version for the Tier-2 strip
+   *  store, keyed by string rowId. Bumped in the SAME code paths that
+   *  record `cells`/`rows` damage plus on any row-level data apply (chunk
+   *  arrival window-diff rows), so a strip captured at version N can never
+   *  be consumed after the row's pixels changed. Rows never damaged sit at
+   *  the implicit version 0. Cleared on the unknown-diff chunk wipe and on
+   *  a `rasterCache` runtime flip. Zero bookkeeping when `rasterStrips` is
+   *  null. */
+  private rowVersionByRowId = new Map<string, number>();
+  /** Cycle 22 / Task 3 — monotonic layout epoch for the Tier-2 strip
+   *  store. Every bump site is annotated "layoutEpoch contract" at the
+   *  call site: column width/order/visibility/pin (the `columnLayout`
+   *  setter), column-group open/close, theme + dpr
+   *  (`rasterCacheEpochBump`), canvas width (`setBounds`), horizontal
+   *  scroll (`getRasterStripsCtx`), quick-filter term change
+   *  (`applyQuickFilter`), sort change (`setSortModel`), and def-level
+   *  rule/format/renderer changes (`rebuildColumns`). */
+  private stripLayoutEpoch = 0;
+  /** Cycle 22 / Task 3 — the scrollLeft the current strip epoch is valid
+   *  for (strips are absolute-x device-px row snapshots). */
+  private stripScrollLeft = 0;
+  /** Cycle 22 / Task 3 — memoized `RasterStripsCtx` (the closures are
+   *  stable; only `dpr`/`stats` re-point per read). */
+  private stripsCtxMemo: RasterStripsCtx | null = null;
   private selection: SelectionModel;
   private hitTester: HitTester;
   private featureChain: FeatureChain;
@@ -1691,6 +1752,10 @@ export class CGrid<TRow = any> {
       // Cycle 22 / Task 2 — Tier-1 cell-bitmap cache handle. Read fresh
       // per paint (gates on the option + availability, tracks dpr).
       getRasterCells: () => this.getRasterCellsCtx(),
+      // Cycle 22 / Task 3 — Tier-2 row-strip handle for the layer band
+      // raster. Same gating discipline as Tier-1; also owns the
+      // horizontal-scroll layoutEpoch bump (see `getRasterStripsCtx`).
+      getRasterStrips: () => this.getRasterStripsCtx(),
     });
 
     // Task 4 (paint-cache layer) — construct the retained offscreen layer
@@ -1718,6 +1783,13 @@ export class CGrid<TRow = any> {
     // not from this.cgridCanvas.bounds.
     this.cgridCanvas = new CGridCanvas(this.root, {
       setBounds: (b) => {
+        // Cycle 22 / Task 3 — layoutEpoch contract: canvas WIDTH change.
+        // Strips span the layer's full backing-store width, so a width
+        // change stales every strip even when the resolved column layout
+        // happens to come back identical (all-fixed-width columns).
+        if (this.rasterStrips !== null && b.width !== this.canvasBounds.width) {
+          this.stripLayoutEpochBump();
+        }
         this.canvasBounds.width = b.width;
         this.canvasBounds.height = b.height;
         this.columnLayout = resolveColumnWidths(this.columnOrder, b.width);
@@ -3389,6 +3461,11 @@ export class CGrid<TRow = any> {
       }
     }
     this.sortModel = s;
+    // Cycle 22 / Task 3 — layoutEpoch contract: SORT change. A sort
+    // permutes row positions, and zebra parity (dataIdx % 2) is baked
+    // into every strip's pixels — belt-and-suspenders over the chunk
+    // window-diff (which also degrades to a full wipe for big reorders).
+    if (this.rasterStrips !== null) this.stripLayoutEpochBump();
     this.workerCoord.setSortModel(s).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
       // Sort reorders rows — invalidate the Fenwick index so stale per-row
@@ -3809,9 +3886,20 @@ export class CGrid<TRow = any> {
     // per-cell `includes` check). Updated SYNCHRONOUSLY so a fast typer
     // typing "6672" → "66721" sees the next paint use the new terms
     // immediately, never the previous-substring matches.
-    this.quickFilterLowerTerms = terms === null
-      ? []
-      : terms.map((t) => t.toLowerCase());
+    // Cycle 22 / Task 3 — layoutEpoch contract: QUICK-FILTER term change.
+    // The per-cell match tint isn't part of the strip version key, and the
+    // filtered row set re-shuffles zebra parity — any term change (set,
+    // edit, or clear) stales every strip. Value-compared so the periodic
+    // option re-apply with identical terms never thrashes the store.
+    const nextQuickFilterTerms = terms === null ? [] : terms.map((t) => t.toLowerCase());
+    if (this.rasterStrips !== null) {
+      const prevTerms = this.quickFilterLowerTerms;
+      if (prevTerms.length !== nextQuickFilterTerms.length
+        || nextQuickFilterTerms.some((t, i) => t !== prevTerms[i])) {
+        this.stripLayoutEpochBump();
+      }
+    }
+    this.quickFilterLowerTerms = nextQuickFilterTerms;
     // Trigger a repaint right away so the highlight reflects the new
     // terms even before the worker round-trip lands. The visible row set
     // may still be stale for one frame — that's fine; cells that no
@@ -5953,6 +6041,23 @@ export class CGrid<TRow = any> {
    * in this task — it's plumbed for later tasks (hover/selection/scroll).
    */
   private repaintRows(rowIndices: number[]): void {
+    // Cycle 22 / Task 3 — rowVersionByRowId contract: 'rows' damage bumps
+    // every damaged row's strip version, so a Tier-2 strip captured before
+    // this damage can never be consumed again (the next layer raster of
+    // the row paints live and re-captures). Deliberately ABOVE the
+    // suppressPartialRepaint short-circuit: while suppressed the grid
+    // paints through the legacy full path (strips dormant), but retained
+    // strips + versions must keep tracking damage or flipping the option
+    // back off would consume pre-flip pixels at matching versions. Zero
+    // cost when strips are off.
+    if (this.rasterStrips !== null) {
+      for (const r of rowIndices) {
+        const id = this.stringRowIdAt(r);
+        if (id !== null && id !== '') {
+          this.rowVersionByRowId.set(id, (this.rowVersionByRowId.get(id) ?? 0) + 1);
+        }
+      }
+    }
     if (this.options.suppressPartialRepaint) { this.repaintFull(); return; }
     this.damageLedger.add({ kind: 'rows', rowIndices });
     this.cgridCanvas.requestRepaint();
@@ -5965,9 +6070,200 @@ export class CGrid<TRow = any> {
    * task — it's plumbed for later tasks (flash, cell edits, formula recalc).
    */
   private repaintCells(cells: Array<{ rowId: number; colId: string }>): void {
+    // Cycle 22 / Task 3 — rowVersionByRowId contract ('cells' damage) +
+    // patch-on-tick. Runs BEFORE the ledger add / repaint request, so the
+    // layer raster that consumes the resolved cell rects on the next frame
+    // already sees the advanced versions (and, when the patch succeeded,
+    // an up-to-date strip that HITS at the new version instead of forcing
+    // a full row re-raster). ABOVE the suppressPartialRepaint
+    // short-circuit for the same reason as `repaintRows` — retained
+    // strips must keep tracking damage while suppressed.
+    if (this.rasterStrips !== null && cells.length > 0) {
+      this.applyStripCellDamage(cells);
+    }
     if (this.options.suppressPartialRepaint) { this.repaintFull(); return; }
     this.damageLedger.add({ kind: 'cells', cells });
     this.cgridCanvas.requestRepaint();
+  }
+
+  /**
+   * Cycle 22 / Task 3 — the cell-damage half of the Tier-2 bookkeeping.
+   * For every damaged (numeric rowId, colId) cell that resolves into the
+   * current chunk window:
+   *  1. bump the row's `rowVersionByRowId` entry (once per row per call);
+   *  2. when a strip is retained for the row, PATCH the damaged cell spans
+   *     in place — repaint just those spans inside the strip via the live
+   *     cell painter (flash suppressed: a strip must only ever hold the
+   *     row's SETTLED pixels) and advance the stored version so the next
+   *     consume hits without a full row re-raster;
+   *  3. when ANY span can't be patched safely (column not fully visible in
+   *     its band, last-in-band right edge, icon/rule-indicator cell,
+   *     fractional geometry), drop the strip instead — a bypass is a perf
+   *     miss, a stale strip is a bug.
+   */
+  private applyStripCellDamage(cells: Array<{ rowId: number; colId: string }>): void {
+    const strips = this.rasterStrips;
+    const chunk = this.chunk;
+    if (strips === null || chunk === null) return;
+    // numeric rowId → chunk-local index (numeric ids are the damage keys;
+    // strips + versions key on string rowIds).
+    const localByNumericId = new Map<number, number>();
+    for (let i = 0; i < chunk.rowCount; i++) localByNumericId.set(chunk.rowIds[i]!, i);
+    const colsByLocal = new Map<number, string[]>();
+    for (const c of cells) {
+      const local = localByNumericId.get(c.rowId);
+      if (local === undefined) continue;
+      const list = colsByLocal.get(local);
+      if (list === undefined) colsByLocal.set(local, [c.colId]);
+      else if (!list.includes(c.colId)) list.push(c.colId);
+    }
+    // Carry-forward (Task 1): `patch` maps CSS-px spans onto the strip's
+    // device backing store — it MUST receive the LIVE dpr or strips
+    // corrupt at dpr≠1. Same read discipline as `getRasterCellsCtx`.
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+    for (const [local, colIds] of colsByLocal) {
+      const rowId = chunk.stringRowIds?.[local];
+      if (rowId === undefined || rowId === null || rowId === '') continue;
+      const rowIndex = chunk.rowStart + local;
+      const newVersion = (this.rowVersionByRowId.get(rowId) ?? 0) + 1;
+      this.rowVersionByRowId.set(rowId, newVersion);
+      if (!strips.available || !strips.has(rowId)) continue;
+      if (!this.patchStripCells(strips, rowIndex, rowId, newVersion, colIds, dpr)) {
+        strips.invalidateRow(rowId);
+      }
+    }
+  }
+
+  /**
+   * Cycle 22 / Task 3 — patch every damaged cell span of one retained
+   * strip in place. Reproduces EXACTLY what the live layer raster lays
+   * down for that span, in the same order: row bg fill → cell painter
+   * (the Tier-1/live cell paint, bounds rebased to the span origin, flash
+   * suppressed) → the span's slice of the row's bottom horizontal
+   * gridline → the column's interior right-edge vertical. Returns `false`
+   * on ANY ambiguity — the caller drops the strip so it can never go
+   * stale (the version was already bumped; the next full-row raster
+   * re-captures).
+   */
+  private patchStripCells(
+    strips: RowStripCache,
+    rowIndex: number,
+    rowId: string,
+    newVersion: number,
+    colIds: string[],
+    dpr: number,
+  ): boolean {
+    const vs = this.viewport;
+    const theme = this.theme;
+    // NOTE: deliberately NOT gated on `stripRowEligible` — a FLASHING
+    // row's strip is exactly what patch-on-tick exists for: the row
+    // paints live (bypass) while the flash runs, and the patched strip
+    // (settled pixels, new version) hits the moment the flash fades. An
+    // active quick filter can't reach here: activating it bumps the
+    // layout epoch (wiping every strip), so `strips.has()` upstream
+    // already returned false.
+    const hCss = this.rowHeightAt(rowIndex);
+    // The strip's device height must match what this row's patch assumes,
+    // and the gridline math below assumes integer CSS geometry (the
+    // overwhelmingly common case — fractional layouts bypass).
+    if (!Number.isInteger(hCss) || hCss <= 0) return false;
+    // Band split mirrors byRows: a column's interior right-edge vertical
+    // only exists for non-last-in-band columns; the last column's right
+    // edge is a band boundary (pinned-edge borderColor line / canvas edge)
+    // — conservative bypass rather than reproducing that logic here.
+    const leftPinned: typeof vs.visibleColumns = [];
+    const center: typeof vs.visibleColumns = [];
+    const rightPinned: typeof vs.visibleColumns = [];
+    for (const col of vs.visibleColumns) {
+      if (col.pinned === 'left') leftPinned.push(col);
+      else if (col.pinned === 'right') rightPinned.push(col);
+      else center.push(col);
+    }
+    const rowData = this.rowDataSnapshotAt(rowIndex);
+    const ruleRow = (this.rowDataById.get(rowId) as Record<string, unknown> | undefined) ?? rowData;
+    for (const colId of colIds) {
+      const col = vs.visibleColumns.find((c) => c.colId === colId);
+      if (col === undefined) return false; // column not visible → span unknown
+      const band = col.pinned === 'left' ? leftPinned : col.pinned === 'right' ? rightPinned : center;
+      if (band[band.length - 1] === col) return false; // last-in-band → band-edge line, bypass
+      // Center-band cells clipped at a pinned boundary paint partially
+      // live — a full-span patch would repaint clipped pixels. Bypass.
+      if (col.pinned === undefined && (col.left < vs.bodyLeft || col.right > vs.bodyRight)) return false;
+      if (!Number.isInteger(col.left) || !Number.isInteger(col.width)) return false;
+      const def = this.columnDefsMap.get(colId);
+      if (def === undefined) return false;
+      if (typeof def.cellIcon === 'function') return false; // icon draws over the painter — live only
+      const cell = this.cellAt(rowIndex, colId);
+      const value = cell?.value ?? '';
+      const valueFormatted = cell?.valueFormatted ?? '';
+      let rendererName: string;
+      let params: unknown;
+      if (def.cellRendererSelector) {
+        const selected = def.cellRendererSelector({ value, colId, data: null });
+        rendererName = selected?.component ?? def.cellRenderer;
+        params = selected?.params !== undefined ? selected.params : def.cellRendererParams;
+      } else {
+        rendererName = def.cellRenderer;
+        params = def.cellRendererParams;
+      }
+      // Strip rows are eligible-only (plain data rows), so the bg is the
+      // plain zebra — never hover/selection (those rows have no strips).
+      const rowBg = rowIndex % 2 === 1 ? theme.rowAltBg : theme.bg;
+      const config: CellPaintConfig = {
+        value: '', valueFormatted: '',
+        bounds: { x: 0, y: 0, w: 0, h: 0 },
+        font: '', fg: '', bg: '', borderColor: '',
+        halign: 'left', prefillColor: '',
+        isFocused: false, isSelected: false, isHovered: false, isHeader: false,
+      };
+      applyCellProps(config, {
+        theme,
+        colDef: def as ResolvedColDef,
+        value,
+        valueFormatted,
+        // Span-origin bounds — the patch CTM (`setTransform(dpr,0,0,dpr,
+        // x0,0)`) lands (0,0,w,h) exactly on the cell's device span, the
+        // same rebase discipline as a Tier-1 miss render.
+        x: 0, y: 0, w: col.width, h: hCss,
+        rowBg,
+        prefillColor: rowBg,
+        isFocused: false, isSelected: false, isHovered: false, isHeader: false,
+        iconColor: theme.focusRingColor,
+        // Flash suppressed by contract: the strip holds the SETTLED cell.
+        // While the flash is live the row is ineligible and paints live;
+        // once it fades, the next consume blits this settled patch.
+        flashAlpha: undefined,
+        params,
+        rowData,
+        rowIndex,
+        rowId,
+        ruleRow,
+        themeKind: this.getThemeKind(),
+      });
+      if (config.ruleIndicator !== undefined) return false; // indicator icon → live only
+      const painter = this.cellRenderers.get(rendererName);
+      const wCss = col.width;
+      const colLeft = col.left;
+      const colRight = col.right;
+      const gridLineColor = theme.gridLineColor;
+      const ok = strips.patch(rowId, newVersion, colLeft, wCss, (sgc) => {
+        // Live order: bg bundle → cell painter → gridlines on top.
+        sgc.cache.fillStyle = rowBg;
+        sgc.fillRect(0, 0, wCss, hCss);
+        painter.paint(sgc, config);
+        sgc.cache.fillStyle = gridLineColor;
+        // The row's bottom horizontal hairline slice (every in-body data
+        // row paints one at round(row.bottom)-1 → span-local hCss-1).
+        sgc.fillRect(0, hCss - 1, wCss, 1);
+        // The column's interior right-edge vertical at round(col.right)-1
+        // — span-local, exact against the patch's own x0 rounding.
+        const lineX = (dpr * (Math.round(colRight) - 1) - Math.round(colLeft * dpr)) / dpr;
+        sgc.fillRect(lineX, 0, 1, hCss);
+      }, dpr);
+      if (!ok) return false;
+      this.paintStats.stripPatches++;
+    }
+    return true;
   }
 
   /**
@@ -7044,6 +7340,13 @@ export class CGrid<TRow = any> {
    *  visible column list, refresh layout, and rebuild the subgrid stack so
    *  any change in group depth lands a matching number of header rows. */
   private rebuildColumns({ defaultColDef }: { defaultColDef?: Partial<any> }): void {
+    // Cycle 22 / Task 3 — layoutEpoch contract: DEF-LEVEL rule / format /
+    // renderer / cellStyle changes. A columnDefs / defaultColDef rebuild
+    // can change every cell's pixels without any data changing OR the
+    // resolved geometry differing (which is why the `columnLayout`
+    // setter's equality guard alone can't cover this site) — bump
+    // unconditionally.
+    if (this.rasterStrips !== null) this.stripLayoutEpochBump();
     const prevLeaves = this.columnDefsMap as Map<string, ResolvedColDef<TRow>> | undefined;
     // Cycle 21d / Task 9 — same calc-provider fold as the constructor path.
     this.columnTree = resolveColumnTree(foldCalcColumnDefs<CColDef<TRow> | CColGroupDef<TRow>>(this.options.columnDefs), defaultColDef ?? this.options.defaultColDef, this.options.columnTypes);
@@ -7742,6 +8045,12 @@ export class CGrid<TRow = any> {
   private subscribeColumnGroupState(): void {
     if (this.columnGroupStateUnsubscribe) this.columnGroupStateUnsubscribe();
     this.columnGroupStateUnsubscribe = this.columnGroupState.onChange((changed) => {
+      // Cycle 22 / Task 3 — layoutEpoch contract: COLUMN-GROUP OPEN/CLOSE
+      // (Task 1 carry-forward #2). A toggle changes column visibility /
+      // geometry; bump explicitly (the `columnLayout` setter below also
+      // catches the geometric case, but a toggle whose layout happens to
+      // resolve identically must still never reuse pre-toggle strips).
+      if (this.rasterStrips !== null) this.stripLayoutEpochBump();
       this.columnOrder = this.computeVisibleColumnOrder();
       this.columnLayout = resolveColumnWidths(this.columnOrder, this.canvasBounds.width || this.scroller.clientWidth || 800);
       this.recomputeViewport();
@@ -8543,7 +8852,105 @@ export class CGrid<TRow = any> {
    *  `group*`, `emptyFg`, `palette`) ride exactly this epoch. */
   private rasterCacheEpochBump(): void {
     this.rasterCells?.epochBump();
+    // Cycle 22 / Task 3 — layoutEpoch contract: THEME changes (every
+    // caller of this method) and DPR changes (`getRasterCellsCtx`'s
+    // detector) stale every strip's pixels; `stripLayoutEpochBump` both
+    // advances the epoch counter and drops the store.
+    this.stripLayoutEpochBump();
+  }
+
+  /** Cycle 22 / Task 3 — advance the Tier-2 strip layout epoch AND drop
+   *  every retained strip. THE single mechanism behind every "layoutEpoch
+   *  contract" call site: column width/order/visibility/pin (the
+   *  `columnLayout` setter), column-group open/close
+   *  (`subscribeColumnGroupState`), theme + dpr (`rasterCacheEpochBump`),
+   *  canvas width (`setBounds`), horizontal scroll
+   *  (`getRasterStripsCtx`), quick-filter term change
+   *  (`applyQuickFilter`), sort change (`setSortModel`), def-level
+   *  rule/format/renderer changes (`rebuildColumns`), and the
+   *  unknown-diff chunk wipe (`handleViewportChunk`). */
+  private stripLayoutEpochBump(): void {
+    this.stripLayoutEpoch++;
     this.rasterStrips?.layoutEpochBump();
+  }
+
+  /** Cycle 22 / Task 3 — the per-paint Tier-2 handle for the retained
+   *  layer's band raster. `null` (⇒ the strip path is fully dormant,
+   *  byte-identical call sequence to the shipped pipeline) when
+   *  `rasterCache: false` or the store's canvas construction failed.
+   *  Also owns the HORIZONTAL-SCROLL layoutEpoch bump: strips are
+   *  absolute-x device-px snapshots of full layer rows, and `scrollLeft`
+   *  shifts every column's pixels, so any change stales the whole store
+   *  (the vertical axis needs no such bump — strips are re-anchored per
+   *  row at blit time). Checked here, at the consume site, so no scroll
+   *  entry point can be missed. */
+  private getRasterStripsCtx(): RasterStripsCtx | null {
+    const cache = this.rasterStrips;
+    if (this.options.rasterCache === false || cache === null || !cache.available) return null;
+    // layoutEpoch contract — horizontal scroll.
+    const sl = this.viewport.scrollLeft;
+    if (sl !== this.stripScrollLeft) {
+      this.stripScrollLeft = sl;
+      this.stripLayoutEpochBump();
+    }
+    const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+    let ctx = this.stripsCtxMemo;
+    if (ctx === null || ctx.cache !== cache) {
+      ctx = {
+        cache,
+        dpr,
+        rowVersionOf: (rowIndex) => {
+          const id = this.stringRowIdAt(rowIndex);
+          if (id === null || id === '') return null;
+          return this.rowVersionByRowId.get(id) ?? 0;
+        },
+        stringRowIdAt: (rowIndex) => this.stringRowIdAt(rowIndex),
+        eligible: (rowIndex) => this.stripRowEligible(rowIndex),
+        layoutEpoch: () => this.stripLayoutEpoch,
+        stats: this.paintStats,
+      };
+      this.stripsCtxMemo = ctx;
+    } else {
+      ctx.dpr = dpr;
+      // `resetPaintStats` swaps the whole object — re-point every read.
+      ctx.stats = this.paintStats;
+    }
+    return ctx;
+  }
+
+  /** Cycle 22 / Task 3 — the BINDING Tier-2 eligibility contract,
+   *  enforced identically on capture and consume (the renderer calls this
+   *  once per candidate row per layer raster). A row is strip-cacheable
+   *  only when it is a PLAIN data row:
+   *   - no active quick-filter terms (the match tint is data+term
+   *     dependent, not captured in the version key);
+   *   - inside the current chunk window with rowKind 0 (group=1 and
+   *     footer=3 rows carry structural chrome; totals/pinned/sticky rows
+   *     never reach here — they are not DataSubgrid rows);
+   *   - NOT immediately above a footer row (`groupFooterBorderTop`
+   *     overpaints this row's bottom pixel line with the footer border —
+   *     that line must never ride a strip);
+   *   - not holding the focused cell, not selected, not hovered;
+   *   - no live flash on any of its cells.
+   *  Anything else paints live: a bypass is a perf miss, a stale strip is
+   *  a bug. */
+  private stripRowEligible(rowIndex: number): boolean {
+    if (this.quickFilterLowerTerms.length > 0) return false;
+    const chunk = this.chunk;
+    if (chunk === null) return false;
+    const local = rowIndex - chunk.rowStart;
+    if (local < 0 || local >= chunk.rowCount) return false;
+    if ((chunk.rowKinds[local] ?? 0) !== 0) return false;
+    if (local + 1 < chunk.rowCount && (chunk.rowKinds[local + 1] ?? 0) === 3) return false;
+    const sel = this.selection.state;
+    if (sel.focusedRowIndex === rowIndex) return false;
+    if (sel.selectedRowIndices.has(rowIndex)) return false;
+    if (!this.options.suppressRowHoverHighlight && this.hoveredRowIndex === rowIndex) return false;
+    if (this.flashRegistry.size() > 0) {
+      const nid = chunk.rowIds[local];
+      if (nid !== undefined && this.flashRegistry.hasRow(nid)) return false;
+    }
+    return true;
   }
 
   /** Cycle 22 / Task 2 — runtime `rasterCache` / `rasterCacheBudgetMB`
@@ -8559,6 +8966,10 @@ export class CGrid<TRow = any> {
     this.rasterStrips = null;
     this.rasterBudget = null;
     this.rasterCellsDpr = 0;
+    // Cycle 22 / Task 3 — Tier-2 bookkeeping restarts with the stores.
+    this.rowVersionByRowId.clear();
+    this.stripsCtxMemo = null;
+    this.stripLayoutEpoch++;
     if (this.options.rasterCache !== false) {
       this.buildRasterCaches();
     }
@@ -8994,6 +9405,18 @@ export class CGrid<TRow = any> {
     // to under-painting).
     const windowDamage = resolveWindowDamage(chunk, prevChunk);
     if (windowDamage === 'full') {
+      // Cycle 22 / Task 3 — unknown-diff chunk: no touchedRows (untracked
+      // data apply — setRowData, filter/sort/group model change — OR a
+      // plain window move with nothing staged), a height change, or a
+      // diff past the cap. Any of these can reorder rows (zebra parity is
+      // baked into a strip's pixels) or change content invisibly, so
+      // EVERY retained strip is untrusted — wipe the store and the
+      // version map together (fresh captures restart at version 0). A
+      // stale strip is a bug; re-capturing is a cheap drawImage per row.
+      if (this.rasterStrips !== null) {
+        this.stripLayoutEpochBump();
+        this.rowVersionByRowId.clear();
+      }
       this.repaintFull();
     } else {
       if (windowDamage.length > 0) {
@@ -9209,7 +9632,9 @@ export class CGrid<TRow = any> {
       presents: 0, layerShifts: 0, layerResets: 0, layerRasterMs: 0,
       lastRects: 0, lastAreaPct: 100, avgPaintMs: 0, worstPaintMs: 0,
       layerSyncFills: 0, layerBacklogPx: 0,
-      cellCacheHits: 0, cellCacheMisses: 0, cellCacheBypasses: 0, rasterCacheBytes: 0,
+      cellCacheHits: 0, cellCacheMisses: 0, cellCacheBypasses: 0,
+      stripHits: 0, stripMisses: 0, stripCaptures: 0, stripPatches: 0,
+      rasterCacheBytes: 0,
     };
   }
 

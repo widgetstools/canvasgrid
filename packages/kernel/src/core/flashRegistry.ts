@@ -207,6 +207,20 @@ export class FlashRegistry {
     return this.entries.size;
   }
 
+  /** Cycle 22 / Task 3 — row-level probe for the Tier-2 strip eligibility
+   *  contract ("no live flash on any of its cells"). Conservative: a
+   *  tracked-but-past-fade entry (not yet pruned by `tick`) still counts —
+   *  a bypass is a perf miss, a stale strip is a bug. O(entries), but
+   *  callers short-circuit on `size() === 0` (the common case) and the
+   *  active set is small by construction (flashes fade out fast). */
+  hasRow(rowId: number): boolean {
+    if (this.destroyed || this.entries.size === 0) return false;
+    for (const e of this.entries.values()) {
+      if (e.rowId === rowId) return true;
+    }
+    return false;
+  }
+
   /** Damage-region rendering (Task 3) — active (non-expired) cell keys, for
    *  the registry's repaint dep to hand `CGrid.repaintCells` an exact damage
    *  set instead of a bare `requestRepaint()` (which the ledger would

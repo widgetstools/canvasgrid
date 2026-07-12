@@ -97,6 +97,12 @@ export function paintGridLines(gc: CachedContext2D, p: PainterCtx, mode?: 'layer
     if (chromeOnly && row.subgrid.isData) continue;
     if (row.subgrid.isData) {
       if (row.bottom <= vs.bodyTop || row.bottom > vs.bodyBottom) continue;
+      // Cycle 22 / Task 3 — rows served by a Tier-2 strip blit skip their
+      // horizontal row stroke: the strip was captured strictly AFTER this
+      // painter ran (gridlines come WITH the strip), so re-stroking here
+      // would double-draw under the blit. `null`/absent ⇒ shipped pipeline.
+      const skip = p.skipRows;
+      if (skip !== undefined && skip !== null && skip.has(row.localRowIndex)) continue;
     } else if (!row.subgrid.isHeader && !row.subgrid.isPinned) {
       continue; // totals/footer skip the per-row gridline (totals draws its own border below)
     }

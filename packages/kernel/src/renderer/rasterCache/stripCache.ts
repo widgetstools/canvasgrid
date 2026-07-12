@@ -188,6 +188,14 @@ export class RowStripCache {
     return true;
   }
 
+  /** Cycle 22 / Task 3 — cheap presence probe (any version/epoch), so the
+   *  patch-on-tick path can skip its config-build work for rows that have
+   *  no retained strip at all. Never touches the LRU. */
+  has(rowId: string): boolean {
+    if (!this.available || this.disposed) return false;
+    return this.entries.has(rowId);
+  }
+
   /** Drop one row's strip (row data changed shape / row removed). */
   invalidateRow(rowId: string): void {
     if (!this.available || this.disposed) return;

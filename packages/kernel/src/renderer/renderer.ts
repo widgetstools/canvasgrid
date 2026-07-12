@@ -3,7 +3,8 @@ import type { ResolvedColDef } from '../core/propertyChain';
 import type { ResolvedTheme } from '../theming/cssReader';
 import type { CellRendererRegistry } from './cellRenderers/registry';
 import type { GroupCellValue } from './cellRenderers/group';
-import type { CellDataLookup, RasterCellsCtx } from './painters/types';
+import type { CellDataLookup, RasterCellsCtx, RasterStripsCtx } from './painters/types';
+import type { PaintCacheCanvasLike } from '../core/paintCache';
 import type { SortModel, SelectionRange } from '../types';
 import type { StickyAncestor } from '../worker/protocol';
 import type { CachedContext2D } from './gc';
@@ -171,6 +172,16 @@ export interface RendererOpts {
    * shipped pipeline — this is the `rasterCache: false` escape hatch.
    */
   getRasterCells?: () => RasterCellsCtx | null;
+  /**
+   * Cycle 22 / Task 3 — Tier-2 row-strip cache handle for the retained
+   * layer's band raster (see `RasterStripsCtx`). Read fresh per
+   * `paintLayer` call (CGrid gates on `rasterCache` + availability and
+   * owns the eligibility/version/epoch closures). Absent or returning
+   * `null` ⇒ the strip path is fully dormant — the call sequence stays
+   * byte-identical to the shipped pipeline. Only `paintLayer` consults
+   * this; the legacy `paint()` and `paintChrome` never touch strips.
+   */
+  getRasterStrips?: () => RasterStripsCtx | null;
   /**
    * C1 fix — the live `devicePixelRatio` the canvas's backing store was
    * sized at (`CGridCanvas.devicePixelRatio`), used by the scroll blit to
@@ -354,6 +365,7 @@ export class Renderer {
     viewport: ViewportState,
     damageBounds: { minX: number; minY: number; maxX: number; maxY: number } | null,
     boundsVs?: ViewportState,
+    skipRows?: Set<number>,
   ) {
     return {
       viewport,
@@ -387,6 +399,10 @@ export class Renderer {
       // Threaded into BOTH the layer raster pass and the chrome pass —
       // bitmaps are rasterized at the same dpr both contexts' CTMs use.
       rasterCells: this.opts.getRasterCells?.() ?? null,
+      // Cycle 22 / Task 3 — Tier-2 strip-blitted rows this pass. Only the
+      // layer raster ever supplies this; chrome/legacy leave it null so
+      // their painters' guards short-circuit exactly like today.
+      skipRows: skipRows ?? null,
     };
   }
 
@@ -416,8 +432,73 @@ export class Renderer {
    */
   paintLayer(gc: CachedContext2D, layerVs: ViewportState, full: boolean, contentRects: Rect[]): void {
     if (!full && contentRects.length === 0) return;
-    const pctx = this.buildPctx(layerVs, full ? null : boundsOf(contentRects), layerVs);
     const w = this.opts.getCanvasWidth();
+    const db = full ? null : boundsOf(contentRects);
+
+    // Cycle 22 / Task 3 — Tier-2 strip pre-pass (pure lookups, ZERO gc
+    // calls — with strips absent/null the whole block is skipped and the
+    // call sequence below stays byte-identical to the shipped pipeline).
+    // For every data row this raster touches: an eligible row with a
+    // current strip (`get` hit on rowId + rowVersion + layoutEpoch) is
+    // CONSUMED — recorded for a device-px blit after the cells+gridlines
+    // pass and added to `skipRows` so both painters skip it. An eligible
+    // row that missed is a CAPTURE candidate — but only when this raster
+    // fully covers it (a full-width, row-spanning rect): a cell-sized
+    // damage rect repaints one cell into a row whose remaining pixels may
+    // be anything (even an unrastered pending band), so copying such a row
+    // out would retain garbage. Every ambiguity bypasses live (a bypass is
+    // a perf miss; a stale strip is a bug).
+    const strips = this.opts.getRasterStrips?.() ?? null;
+    // The capture source is the layer's own backing store — the context's
+    // canvas. Recorded-gc harnesses without a `.canvas` keep strips inert.
+    const layerCanvas = strips !== null
+      ? (gc as CanvasRenderingContext2D).canvas as unknown as (PaintCacheCanvasLike & CanvasImageSource) | undefined
+      : undefined;
+    let skipRows: Set<number> | undefined;
+    let blits: Array<{ strip: PaintCacheCanvasLike; yDev: number }> | null = null;
+    let captures: Array<{ rowId: string; version: number; yDev: number; hDev: number }> | null = null;
+    let stripEpoch = 0;
+    if (strips !== null && layerCanvas !== undefined
+        && typeof layerCanvas.width === 'number' && typeof layerCanvas.height === 'number') {
+      stripEpoch = strips.layoutEpoch();
+      const dpr = strips.dpr;
+      const st = strips.stats;
+      for (const row of layerVs.visibleRows) {
+        if (!row.subgrid.isData) continue;
+        // Rows partially clamped by the layer's body region paint clamped
+        // bg bundles / suppressed edge gridlines — never strip-able (a
+        // strip must be a position-independent full-row raster).
+        if (row.top < layerVs.bodyTop || row.bottom > layerVs.bodyBottom) continue;
+        if (db !== null && (row.bottom < db.minY || row.top > db.maxY)) continue;
+        const ri = row.localRowIndex;
+        if (!strips.eligible(ri)) continue;
+        const rowId = strips.stringRowIdAt(ri);
+        if (rowId === null || rowId === '') continue;
+        const version = strips.rowVersionOf(ri);
+        if (version === null) continue;
+        // Device-px band on the layer backing store — rounded exactly like
+        // `PaintCacheLayer.visibleSrcRect`, so capture and blit tile
+        // without seams. `row.top - bodyTop` is the layer-local CSS y (the
+        // ambient translate the caller installs maps layerVs rows there).
+        const yDev = Math.round((row.top - layerVs.bodyTop) * dpr);
+        const hDev = Math.round((row.bottom - layerVs.bodyTop) * dpr) - yDev;
+        if (hDev <= 0 || yDev < 0 || yDev + hDev > layerCanvas.height) continue;
+        const hit = strips.cache.get(rowId, version, stripEpoch);
+        if (hit !== null && hit.width === layerCanvas.width && hit.height === hDev) {
+          (skipRows ??= new Set()).add(ri);
+          (blits ??= []).push({ strip: hit, yDev });
+          if (st) st.stripHits++;
+          continue;
+        }
+        if (st) st.stripMisses++;
+        const covered = full || contentRects.some(
+          (r) => r.x <= 0 && r.x + r.w >= w && r.y <= row.top && r.y + r.h >= row.bottom,
+        );
+        if (covered) (captures ??= []).push({ rowId, version, yDev, hDev });
+      }
+    }
+
+    const pctx = this.buildPctx(layerVs, db, layerVs, skipRows);
     if (full) {
       gc.cache.fillStyle = pctx.theme.bg;
       gc.fillRect(0, layerVs.bodyTop, w, Math.max(0, layerVs.bodyBottom - layerVs.bodyTop));
@@ -431,6 +512,41 @@ export class Renderer {
     }
     paintCellsByRows(gc, pctx, 'layer');
     paintGridLines(gc, pctx, 'layer');
+    // Task 3 — consume: one untransformed DEVICE-px drawImage per hit
+    // strip, at the row's layer-local device y. Runs AFTER cells+gridlines
+    // (a row-bg bundle may span skipped rows — the opaque strip overpaints
+    // it, byte-identical to what the live pass captured) and BEFORE the
+    // overlay bake (overlays paint over blitted and fresh rows alike).
+    // Same save/setTransform(identity)/restore discipline as
+    // `PaintCacheLayer.shift` (core/paintCache.ts:256-286): mixing a
+    // device-px source with a CTM-scaled destination is the C1 bug class.
+    // Raw save/restore (not `.cache.`) — only the transform changes, no
+    // cached state values.
+    if (blits !== null) {
+      gc.save();
+      gc.setTransform(1, 0, 0, 1, 0, 0);
+      for (const b of blits) {
+        gc.drawImage(
+          b.strip as unknown as CanvasImageSource,
+          0, 0, b.strip.width, b.strip.height,
+          0, b.yDev, b.strip.width, b.strip.height,
+        );
+      }
+      gc.restore();
+    }
+    // Task 3 — capture: copy each fully-rastered eligible row out of the
+    // layer canvas, strictly AFTER the band's gridlines landed and strictly
+    // BEFORE `paintOverlay`/`paintRangeOverlay` bake below — overlays must
+    // NEVER enter a strip. Device-px copy-out; no gc calls on the layer.
+    if (captures !== null && strips !== null && layerCanvas !== undefined) {
+      for (const c of captures) {
+        strips.cache.capture(
+          { rowId: c.rowId, rowVersion: c.version, layoutEpoch: stripEpoch },
+          layerCanvas, c.yDev, layerCanvas.width, c.hDev,
+        );
+        if (strips.stats) strips.stats.stripCaptures++;
+      }
+    }
     paintOverlay(gc, pctx);
     paintRangeOverlay(gc, pctx);
     if (!full) gc.restore();

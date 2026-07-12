@@ -5,7 +5,7 @@ import type { CellRendererRegistry } from '../cellRenderers/registry';
 import type { GroupCellValue } from '../cellRenderers/group';
 import type { SortModel, SelectionRange } from '../../types';
 import type { StickyAncestor } from '../../worker/protocol';
-import type { CellBitmapCache } from '../rasterCache';
+import type { CellBitmapCache, RowStripCache } from '../rasterCache';
 
 /**
  * Cycle 22 / Task 2 — Tier-1 cell-bitmap cache handle threaded into the
@@ -25,6 +25,49 @@ export interface RasterCellsCtx {
     cellCacheHits: number;
     cellCacheMisses: number;
     cellCacheBypasses: number;
+  };
+}
+
+/**
+ * Cycle 22 / Task 3 — Tier-2 row-strip cache handle threaded into the
+ * retained layer's band raster (`Renderer.paintLayer`). One strip = one
+ * fully-rastered data row (cells + gridlines, NEVER overlays), keyed by
+ * `(rowId, rowVersion, layoutEpoch)`.
+ *
+ * All lookups take the DATA-space row index (`ViewportRow.localRowIndex`
+ * — the same index space `cellData`/`stringRowIdAt` use):
+ *  - `eligible(rowIndex)` is the binding capture/consume contract: `true`
+ *    only for a plain data row — not hovered, not selected, not holding
+ *    the focused cell, no live flash on any of its cells, no active
+ *    quick-filter terms, not a group/footer/totals/pinned/sticky row.
+ *    Anything else paints live (a bypass is a perf miss; a stale strip
+ *    is a bug). CGrid owns the implementation; the renderer only asks.
+ *  - `rowVersionOf` / `stringRowIdAt` return `null` to force a bypass
+ *    (row outside the chunk window, no real rowId).
+ *  - `layoutEpoch()` is CGrid's monotonic column-geometry/theme/dpr/
+ *    canvas-width/quick-filter/sort epoch — a strip captured under any
+ *    other epoch never consumes.
+ *
+ * `dpr` is the devicePixelRatio the retained layer's backing store is
+ * sized at this paint: captures copy DEVICE px out of the layer canvas
+ * and consumes blit DEVICE px back in (untransformed, the
+ * `PaintCacheLayer.shift` discipline). `stats`, when present, receives
+ * the strip hit/miss/capture/patch counters (CGrid passes its live
+ * `PaintStats`). Absent/null ⇒ the strip path is fully dormant and the
+ * call sequence is byte-identical to the shipped pipeline.
+ */
+export interface RasterStripsCtx {
+  cache: RowStripCache;
+  dpr: number;
+  rowVersionOf(rowIndex: number): number | null;
+  stringRowIdAt(rowIndex: number): string | null;
+  eligible(rowIndex: number): boolean;
+  layoutEpoch(): number;
+  stats?: {
+    stripHits: number;
+    stripMisses: number;
+    stripCaptures: number;
+    stripPatches: number;
   };
 }
 
@@ -206,4 +249,15 @@ export interface PainterCtx {
    * live", exactly the shipped pipeline (`rasterCache: false`).
    */
   rasterCells?: RasterCellsCtx | null;
+  /**
+   * Cycle 22 / Task 3 — data-space row indices (`ViewportRow.
+   * localRowIndex`) whose pixels are being served by a Tier-2 strip blit
+   * this pass. The byRows row loop skips these rows' cell paints and the
+   * gridlines painter skips their horizontal row strokes — both come
+   * WITH the strip (captured strictly after the band's gridlines).
+   * Optional AND nullable so every pre-existing harness building a
+   * partial `PainterCtx` needs no stub — absence means "skip nothing",
+   * exactly the shipped pipeline.
+   */
+  skipRows?: Set<number> | null;
 }

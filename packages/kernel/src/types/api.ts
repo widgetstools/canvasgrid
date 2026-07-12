@@ -118,6 +118,23 @@ export interface PaintStats {
    *  inline icon, group-header caret) plus budget-exhaustion fallbacks.
    *  Stays `0` for `rasterCache: false` (the seam never engages). */
   cellCacheBypasses: number;
+  /** Cycle 22 raster cache (Tier 2) — data rows served by a retained
+   *  row-strip blit inside the layer band raster (one device-px
+   *  `drawImage`, the row's whole cell loop + gridline stroke skipped). */
+  stripHits: number;
+  /** Cycle 22 raster cache (Tier 2) — eligible rows whose strip lookup
+   *  missed (no strip yet, stale rowVersion after damage, or a stale
+   *  layoutEpoch) and therefore painted live this raster. */
+  stripMisses: number;
+  /** Cycle 22 raster cache (Tier 2) — fully-rastered eligible rows copied
+   *  OUT of the layer into a retained strip (device-px copy, strictly
+   *  between the band's gridlines and the overlay bake). */
+  stripCaptures: number;
+  /** Cycle 22 raster cache (Tier 2) — in-place single-cell strip repaints
+   *  driven from the cell-damage path (patch-on-tick): the strip's stored
+   *  version advances so the NEXT consume hits without a full row
+   *  re-raster. */
+  stripPatches: number;
   /** Cycle 22 raster cache — CURRENT bytes retained across BOTH tiers'
    *  shared `RasterBudget` (a gauge refreshed per paint, not a running
    *  total). `0` when `rasterCache: false`. */

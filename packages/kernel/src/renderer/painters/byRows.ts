@@ -353,6 +353,7 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx, mode?: ByRo
     groupHeaderRows,
     damageBounds: db,
     rasterCells: p.rasterCells,
+    skipRows: p.skipRows ?? null,
   };
 
   for (const sb of subgridBands) {
@@ -590,6 +591,9 @@ interface PaintBandCtx {
   /** Cycle 22 / Task 2 — Tier-1 cell-bitmap cache handle (see
    *  `PainterCtx.rasterCells`). Absent/null ⇒ live paint. */
   rasterCells: PainterCtx['rasterCells'];
+  /** Cycle 22 / Task 3 — data rows whose pixels come from a Tier-2 strip
+   *  blit this pass (see `PainterCtx.skipRows`). `null` ⇒ skip nothing. */
+  skipRows: Set<number> | null;
 }
 
 function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void {
@@ -617,6 +621,11 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
     // canvas, so an imprecise cull here can only cost cycles, never
     // under-paint.
     if (db && (row.bottom < db.minY || row.top > db.maxY)) continue;
+    // Cycle 22 / Task 3 — rows served by a Tier-2 strip blit this pass
+    // skip their cell loop entirely: the strip (blitted after this pass,
+    // before the overlay bake) carries the full row raster, cells AND
+    // gridlines. `null`/absent ⇒ shipped-pipeline behavior, zero cost.
+    if (ctx.skipRows !== null && row.subgrid.isData && ctx.skipRows.has(row.localRowIndex)) continue;
     const r = row.rowIndex;
     const rowBg = rowBgs[r]!;
     // Cycle 15 / Task 5 — strip-mode group rows skip per-cell painting
