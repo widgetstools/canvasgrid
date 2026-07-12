@@ -6269,9 +6269,21 @@ export class CGrid<TRow = any> {
    *  - a rule engine is registered with ≥1 rule — row-scope rule styles
    *    can repaint spans whose own field never ticked. An engine that
    *    doesn't expose `getRules` (a paint-only adapter) has an UNKNOWN
-   *    rule set — ambiguous, and ambiguous means BYPASS.
-   * Cheap: runs once per damage batch (not per span), and both slots are
-   * empty for grids that never wire @cgrid/calc / @cgrid/rules.
+   *    rule set — ambiguous, and ambiguous means BYPASS;
+   *  - ANY visible column carries a compiled format program (string-DSL
+   *    `_formatProgram` or composite `_compositeProgram`): every program
+   *    evaluates against the FULL row (`FormatEvalCtxShape.row` — e.g.
+   *    `[color=[qty] > 100]` on the price column), so a tick on field A
+   *    can restyle column B's span without B ever being flagged. The
+   *    `tiers` flags CANNOT prove row-independence — the `=expr`
+   *    value-formatter form is tier0-flagged yet evaluates against the
+   *    row — so per the house rule (ambiguous means BYPASS) ANY compiled
+   *    program bails; a compile-time `usesRowFields` flag on
+   *    `FormatProgramShape` (precedented by `hasRuleRefs`) is the filed
+   *    refinement that would re-enable patching for value-only programs.
+   * Cheap: runs once per damage batch (not per span); the format scan is
+   * O(visible columns), and all three slots are empty for grids that
+   * never wire @cgrid/format / @cgrid/calc / @cgrid/rules.
    */
   private stripPatchCrossColumnSafe(): boolean {
     const engine = getRuleEngine();
@@ -6279,11 +6291,18 @@ export class CGrid<TRow = any> {
       const rules = engine.getRules?.();
       if (rules === undefined || rules.length > 0) return false;
     }
+    const visible = this.viewport.visibleColumns;
+    for (const col of visible) {
+      const def = this.columnDefsMap.get(col.colId);
+      if (def !== undefined
+        && (def._formatProgram !== undefined || def._compositeProgram !== undefined)) {
+        return false;
+      }
+    }
     const provider = getCalcProvider();
     if (provider !== null) {
       const synthesized = provider.synthesizedColDefs();
       if (synthesized.length > 0) {
-        const visible = this.viewport.visibleColumns;
         for (const def of synthesized) {
           const colId = def.colId;
           if (typeof colId === 'string' && visible.some((c) => c.colId === colId)) return false;

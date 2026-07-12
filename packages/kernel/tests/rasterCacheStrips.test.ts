@@ -990,6 +990,74 @@ describe('CGrid + Tier-2 strips — eligibility, versions, epochs, patch (Task 3
     restore();
   });
 
+  it('a tick on a raw field feeding a VISIBLE compiled format program drops the strip instead of patching (closeout format-program adjudication)', async () => {
+    // Every compiled format program evaluates against the FULL row
+    // (`FormatEvalCtxShape.row`): a program on column w reading field v
+    // means a tick on v changes w's formatted pixels while the flashMask
+    // flags only v — a committed patch would advance the strip to
+    // full-row validity with w's PRE-TICK formatted span, and the settle
+    // recapture (which skips "patched & current" strips) would let the
+    // next consume serve it at rest. The `tiers` flags cannot prove
+    // row-independence (`=expr` is tier0-flagged yet row-reading), so
+    // ANY visible compiled program must bail the patch: drop the strip
+    // (versions keep tracking; the settle recapture heals the row).
+    const { registerFormatCompiler, _resetFormatCompiler_forTests } =
+      await import('../src/core/formatCompilerSlot');
+    // Structural compiler double — column w's TEXT is derived from
+    // row.v, the exact cross-field shape of the finding.
+    registerFormatCompiler((src) => ({
+      ok: true,
+      program: {
+        formatText: (ctx) => `${String((ctx.row as Record<string, unknown> | undefined)?.v ?? '')}|${String(ctx.value)}`,
+        resolveStyle: () => null,
+        resolveIcon: () => null,
+        resolveFragments: () => null,
+        source: src,
+        tiers: { tier0: true, tier1: false, tier2: false },
+      },
+    }));
+    const cols3 = [
+      { field: 'id' },
+      { field: 'v', type: 'number' },
+      { field: 'w', type: 'number', valueFormatter: '=[v] cross-field' },
+    ];
+    const data = Array.from({ length: 200 }, (_, i) => ({ id: `r${i}`, v: i, w: i }));
+    const { grid, restore } = buildWiredGrid(data, cols3, { enableCellChangeFlash: true });
+    await settle(grid);
+    const g = grid as any;
+    const canvas = g.cgridCanvas;
+    expect(g.rasterStrips.get('r3', g.rowVersionByRowId.get('r3') ?? 0, g.stripLayoutEpoch),
+      'precondition: r3 must be strip-cached').not.toBeNull();
+    grid.resetPaintStats();
+
+    // Tick v — a MIDDLE raw column that WOULD patch (see the I-3
+    // production-wiring test) were the format hazard absent. w's
+    // formatted text (derived from v) changes; w is never flagged.
+    grid.applyTransactionAsync({ update: [{ id: 'r3', v: 999, w: 3 }] });
+    await new Promise((r) => setTimeout(r, 200));
+    canvas.tickPaint(performance.now());
+
+    expect(grid.getPaintStats().stripPatches,
+      'no patch may commit while a visible compiled format program is live — the cross-field span would go stale').toBe(0);
+    expect(g.rasterStrips.has('r3'),
+      'the strip must be DROPPED — never servable at the post-tick version with the stale formatted span').toBe(false);
+    const verAfterTick = g.rowVersionByRowId.get('r3') as number;
+    expect(verAfterTick, 'versions must keep tracking through the bail').toBeGreaterThanOrEqual(1);
+
+    // The heal path the bail relies on: flash expiry → onRowsSettled →
+    // one full-width row repaint re-captures the settled row with w's
+    // CURRENT formatted pixels.
+    g.flashRegistry.tick(performance.now() + 60_000);
+    canvas.tickPaint(performance.now() + 60_100);
+    const verSettled = g.rowVersionByRowId.get('r3') as number;
+    expect(g.rasterStrips.get('r3', verSettled, g.stripLayoutEpoch),
+      'the settle recapture must heal the dropped strip').not.toBeNull();
+
+    _resetFormatCompiler_forTests();
+    grid.destroy();
+    restore();
+  });
+
   it('fractional dpr (1.5): Tier-1 fully dormant, patch bails to invalidateRow, strip capture/consume stay on (closeout I-2)', async () => {
     // The adjudicated BYPASS: at non-integer dpr a Tier-1 hit blit's CSS-px
     // dest rect maps to fractional device coordinates (drawImage resamples

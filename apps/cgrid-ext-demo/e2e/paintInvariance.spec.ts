@@ -670,17 +670,29 @@ test('raster-cache on vs off produce identical pixels at every scripted step @dp
       expect(hashOn, `step "${step.name}": raster-cache-on pixels diverged from raster-cache-off pixels`).toBe(hashOff);
       assertBoundedEdgeDiff(await edgeRowSample(page), await edgeRowSample(page2), `step "${step.name}"`);
 
-      // The patch→consume step must ACTUALLY drive Tier-2 patch and
-      // consume on the raster-on page — asserted via stats deltas, not
-      // assumed from the scroll choreography. `stripPatches` proves the
-      // tick patched a retained strip in place (phase 2); `stripHits`
-      // proves the returning band raster consumed retained strips
-      // (phase 4 — the hash-compare above is what proves the consumed
-      // pixels were CORRECT).
+      // The tick→drop→recapture→consume step must ACTUALLY drive Tier-2
+      // on the raster-on page — asserted via stats deltas, not assumed
+      // from the scroll choreography.
+      //
+      // Closeout adjudication (format-program patch bail): this grid's
+      // visible columns carry compiled format strings ('#,##0', …), and
+      // every compiled program evaluates against the FULL row — so the
+      // kernel's cross-column bail now DROPS the ticked rows' strips
+      // instead of patching them (a patched strip could hold a stale
+      // cross-field formatted span). `stripPatches` is therefore PINNED
+      // at 0 here — this locks the bail end-to-end; the patch-alive
+      // property (a format/rule/calc-free grid still patches at the
+      // tick) is locked kernel-side in rasterCacheStrips.test.ts.
+      // `stripCaptures` proves the drop→recapture heal engaged and the
+      // scroll captured fresh strips; `stripHits` proves the returning
+      // band raster consumed retained strips (the hash-compare above is
+      // what proves the consumed pixels were CORRECT).
       if (step.name === 'tick-then-scroll-back') {
         const after = await paintStats(page);
         expect(after.stripPatches - before.stripPatches,
-          'tick-then-scroll-back: expected the tick to patch at least one retained strip in place').toBeGreaterThan(0);
+          'tick-then-scroll-back: no patch may commit while compiled format programs are visible (cross-column bail)').toBe(0);
+        expect(after.stripCaptures - before.stripCaptures,
+          'tick-then-scroll-back: expected dropped/scrolled rows to re-capture strips').toBeGreaterThan(0);
         expect(after.stripHits - before.stripHits,
           'tick-then-scroll-back: expected the returning raster to consume retained strips').toBeGreaterThan(0);
       }

@@ -157,6 +157,28 @@ settle re-captures observed (+20 post-boot). `stripPatches` now counts only
 COMMITTED full-row patches — spans painted before a later bail never serve
 a pixel and are no longer counted.
 
+**Cross-column patch bail (closeout re-review N-1 + format-program
+adjudication, BINDING):** the tick seam's damage is raw-field-granular
+(flashMask = `diffRowFields` ∧ `column.field`), yet a committed patch
+advances the strip to FULL-ROW validity — so `applyStripCellDamage` never
+patches (drops the strip; the `onRowsSettled` recapture heals it, which Run
+C measured as sufficient to sustain the Tier-2 win) while any cross-column
+hazard is live: a registered calc provider with ≥1 VISIBLE calc column
+(fieldless → never flagged), a rule engine with ≥1 rule (or an unknown rule
+set — no `getRules`), or ANY visible column carrying a compiled format
+program (string-DSL `_formatProgram` / composite `_compositeProgram`).
+Format programs receive the FULL row (`FormatEvalCtxShape.row`); the
+`tiers` flags cannot prove row-independence — the `=expr` value-formatter
+form is tier0-flagged yet evaluates against the row — so per the
+ambiguous-cases-bypass constraint ANY compiled program bails, tier0-only
+included. Consequence: on grids whose visible columns carry format strings
+(the ext demo), `stripPatches` is 0 by design and the harness pins it;
+patch-alive is locked kernel-side for format/rule/calc-free grids. Filed
+refinement (c): a compile-time `usesRowFields` flag on `FormatProgramShape`
+(precedented by `hasRuleRefs`) would let value-only programs keep
+patch-on-tick (and would also let the format-eval memo's cross-paint reuse
+gate on proof rather than tier flags).
+
 **Static-data scroll wipe (closeout M-2, accepted perf ceiling):** a grid
 that has never applied a transaction gets `windowDamage === 'full'` on every
 scroll chunk (`touchedRows` undefined → zebra parity untrusted through the

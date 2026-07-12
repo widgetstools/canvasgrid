@@ -47,6 +47,15 @@ export interface ResolvedColDef<TRow = any> {
   headerIcon?: (params: { colId: string }) => import('@cgrid/format').IconRef | null;
   /** @internal — populated by compileFormatSlots for composite ColDefs. */
   _compositeProgram?: import('../types/formatProgramShape').FormatProgramShape;
+  /** @internal — populated by compileFormatSlots' string-valueFormatter
+   *  path (the tier-0/1 DSL). Read ONLY by the Tier-2 strip patch's
+   *  cross-column bail (`CGrid.stripPatchCrossColumnSafe`): every format
+   *  program receives the FULL row (`FormatEvalCtxShape.row`), and the
+   *  `tiers` flags cannot prove row-independence (the `=expr` form is
+   *  tier0-flagged yet evaluates against the row), so a visible column
+   *  carrying ANY compiled program makes cell-granular patches unsafe.
+   *  Cycle 22 closeout adjudication (format-program patch bail). */
+  _formatProgram?: import('../types/formatProgramShape').FormatProgramShape;
   /** Composite fragment-run alignment (`CColDef.align`). Only meaningful
    *  when `_compositeProgram` is set. Cycle 21c / Task 13. */
   compositeAlign?: 'left' | 'center' | 'right';
@@ -1120,6 +1129,10 @@ function compileFormatSlots<TRow>(
     const program = res.program;
     return {
       ...merged,
+      // Closeout adjudication (format-program patch bail) — expose the
+      // compiled program so the Tier-2 strip patch can detect it (see the
+      // `_formatProgram` field doc on ResolvedColDef).
+      _formatProgram: program,
       valueFormatter: (p: CValueFormatterParams<TRow, unknown>) =>
         evalFormatProgram(program, p).text,
       cellStyle: mergeCellStyle(
@@ -1236,6 +1249,9 @@ export function resolveColDef<TRow>(
     headerIcon: normalizeHeaderIcon(merged.headerIcon),
     // @internal composite program — populated by compileFormatSlots.
     _compositeProgram: (compiledMerged as unknown as { _compositeProgram?: ResolvedColDef<TRow>['_compositeProgram'] })._compositeProgram,
+    // @internal string-DSL program — populated by compileFormatSlots
+    // (closeout adjudication: format-program patch bail).
+    _formatProgram: (compiledMerged as unknown as { _formatProgram?: ResolvedColDef<TRow>['_formatProgram'] })._formatProgram,
     // Composite alignment + overflow (Cycle 21c / Task 13) — carried
     // through so the 'composite' renderer can read them off the config.
     compositeAlign: merged.align,
