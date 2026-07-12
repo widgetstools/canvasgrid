@@ -851,6 +851,24 @@ export class CGrid<TRow = any> {
   private lastPaintedDpr = 0;
   private lastPaintedCanvasWidth = 0;
   private lastPaintedCanvasHeight = 0;
+  /** Horizontal-scroll staleness fix (Cycle 22 closeout) — the
+   *  `this.viewport.scrollLeft` the last executed paint ACTUALLY rendered.
+   *  Distinct from `lastPaintedScrollLeft` above, which snapshots the
+   *  MANAGER's live scroll position (for `afterScrollTick`'s delta
+   *  bookkeeping) and runs AHEAD of what was painted while a horizontal
+   *  scroll's fetch→chunk→`recomputeViewport` round-trip is still in
+   *  flight: the rAF paint consumes the scroll's queued FULL damage
+   *  against the not-yet-recomputed `this.viewport`, re-rendering the OLD
+   *  scrollLeft — and once the chunk finally moves the viewport, a
+   *  diff-armed reply (`touchedRows` defined) resolves to row-level
+   *  damage only, so nothing ever re-rasters the surface at the NEW
+   *  scrollLeft. Every later row-level repaint then lands at the new
+   *  offset over a canvas painted at the old one — the per-row
+   *  horizontal misalignment bug. `recomputeViewport` compares the fresh
+   *  viewport against this and re-queues `repaintFull()` on mismatch.
+   *  Vertical needs no equivalent: scroll dy is carried by the self-blit
+   *  ('scroll' damage) and the chunk-side position-identity diff. */
+  private lastPaintedViewportScrollLeft = 0;
   /** Task 5 — scroll position as of the LAST `afterScrollTick` (every tick,
    *  not just paints). `DamageLedger.add({kind:'scroll'})` accumulates via
    *  `+=` (same additive contract as `repaintRows`/`repaintCells` — each
@@ -2114,6 +2132,13 @@ export class CGrid<TRow = any> {
         // fps gate skips.
         this.lastPaintedScrollLeft = this.viewportManager.scrollLeft;
         this.lastPaintedScrollTop = this.viewportManager.scrollTop;
+        // Horizontal-scroll staleness fix — record the scrollLeft this
+        // paint ACTUALLY rendered (every branch above paints from
+        // `this.viewport`), so `recomputeViewport` can detect a viewport
+        // that moved horizontally AFTER the scroll's full damage was
+        // already consumed, and re-queue the full repaint. See the
+        // `lastPaintedViewportScrollLeft` field doc.
+        this.lastPaintedViewportScrollLeft = this.viewport.scrollLeft;
         this.lastPaintedDpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
         this.lastPaintedCanvasWidth = this.canvasBounds.width;
         this.lastPaintedCanvasHeight = this.canvasBounds.height;
@@ -8788,6 +8813,30 @@ export class CGrid<TRow = any> {
    *  re-pin (via the `afterRecompute` dep). */
   private recomputeViewport(afterScroll: boolean = false): void {
     this.viewport = this.viewportManager.recompute(afterScroll);
+    // Horizontal-scroll staleness fix (Cycle 22 closeout) — the viewport
+    // now carries a scrollLeft the canvas was NOT last painted at: the
+    // scroll handler's queued FULL damage was consumed by a paint that
+    // ran BEFORE this recompute (the async fetch→chunk round-trip), so it
+    // re-rendered the OLD position and the damage is spent. A diff-armed
+    // chunk reply (`touchedRows` defined — any grid that has ever applied
+    // a transaction, i.e. every live-ticking blotter) then resolves to
+    // row-level damage only, leaving the surface at the old scrollLeft
+    // forever while later row repaints land at the new one — per-row
+    // horizontal misalignment, persistent at rest. Re-queue the full
+    // repaint HERE, the single choke point where `this.viewport` moves,
+    // so no scroll entry point (wheel, API, clamp) can miss it. The
+    // ledger's 'full' entry absorbs/coalesces with any damage already
+    // queued, so the common fast path (chunk lands before the paint, or
+    // an undiffed reply that already resolves 'full') costs nothing
+    // extra. `cgridCanvas` is unassigned during the constructor's first
+    // recompute — nothing has painted yet, the first paint is full anyway.
+    if (
+      this.viewport.scrollLeft !== this.lastPaintedViewportScrollLeft
+      && this.cgridCanvas
+      && !this.destroyed
+    ) {
+      this.repaintFull();
+    }
   }
 
   /** Task 4 (paint-cache layer) — `true` when the retained layer is
