@@ -775,6 +775,72 @@ test('flash-disabled aggregate tick — raster-cache on vs off produce identical
   }
 });
 
+test('mid-script theme + density swap — raster-cache on vs off produce identical pixels (C-1 pool-resize lock)', async ({ page, context }) => {
+  // Closeout C-1's production trigger, end-to-end in a REAL browser: an
+  // epoch bump (theme swap / density change) releases every cached surface
+  // into the reuse POOLS; the density change re-renders cells at NEW dims,
+  // so re-acquisition takes the pool's RESIZE path — where assigning
+  // canvas.width/height resets the real 2d context to defaults behind the
+  // gc value cache's back. Pre-fix, the recycled scratch then rasterized
+  // text at '10px sans-serif' into content-keyed bitmaps served everywhere
+  // that key appears; the on-vs-off hash below catches exactly that. (The
+  // kernel suite locks the same seam with a browser-faithful fake; this
+  // arm crosses it with Chrome's actual reset-on-resize semantics.)
+  const page2 = await context.newPage();
+  try {
+    await boot(page, 'paintHarness');
+    await boot(page2, 'paintHarness&noRaster');
+
+    const swapAndTick = async (p: Page) => {
+      // Phase 1 — populate both tiers (initial paint already captured
+      // strips; a scroll band pulls more rows through the cell cache).
+      await p.evaluate(() => { const s = (window as any).__ext.grid.getScroller(); s.scrollTop = s.clientHeight * 1.5; });
+      await p.evaluate(() => (window as any).__paintHarness.waitSettled());
+      await p.evaluate(() => { (window as any).__ext.grid.getScroller().scrollTop = 0; });
+      await p.evaluate(() => (window as any).__paintHarness.waitSettled());
+      // Phase 2 — theme swap, then density change: two epoch bumps; the
+      // second re-renders at new cell heights → pool RESIZE reuse.
+      await p.evaluate(() => { (window as any).__ext.grid.setTheme('cg-theme-quartz-dark'); });
+      await p.evaluate(() => (window as any).__paintHarness.waitSettled());
+      await p.evaluate(() => { (window as any).__ext.grid.setDensity('compact'); });
+      await p.evaluate(() => (window as any).__paintHarness.waitSettled());
+      // Phase 3 — tick + a scroll round-trip so pool-recycled bitmaps and
+      // fresh strips actually serve pixels post-swap.
+      await p.evaluate(() => {
+        const g = (window as any).__ext.grid;
+        const rows = (window as any).__paintHarness.rows;
+        const r5 = rows.find((r: any) => r.positionId === 'HARNESS-0005');
+        g.applyTransactionAsync({ update: [{ ...r5, currentPrice: 111.5 }] });
+      });
+      await p.evaluate(() => (window as any).__paintHarness.waitSettled());
+      await p.evaluate(() => { const s = (window as any).__ext.grid.getScroller(); s.scrollTop = s.clientHeight * 1.5; });
+      await p.evaluate(() => (window as any).__paintHarness.waitSettled());
+      await p.evaluate(() => { (window as any).__ext.grid.getScroller().scrollTop = 0; });
+      await p.evaluate(() => (window as any).__paintHarness.waitSettled());
+    };
+
+    await swapAndTick(page);
+    await waitSettled(page);
+    const hashOn = await snapshotCache(page);
+
+    await swapAndTick(page2);
+    await waitSettled(page2);
+    const hashOff = await snapshotCache(page2);
+
+    expect(hashOn, 'theme+density swap: raster-cache-on pixels diverged from raster-cache-off pixels').toBe(hashOff);
+    assertBoundedEdgeDiff(await edgeRowSample(page), await edgeRowSample(page2), 'theme+density swap (raster arm)');
+
+    // The choreography must actually have re-engaged Tier 1 AFTER the
+    // bumps (fresh misses AND hits post-swap), or the comparison proves
+    // nothing about recycled surfaces.
+    const on = await paintStats(page);
+    expect(on.cellCacheMisses, 'theme+density swap: expected post-bump re-renders through the (recycled) cell cache').toBeGreaterThan(0);
+    expect(on.cellCacheHits, 'theme+density swap: expected post-bump cache hits to serve pixels').toBeGreaterThan(0);
+  } finally {
+    await page2.close();
+  }
+});
+
 test('live ticking mostly takes the partial-repaint path with small damage regions (needs stomp-view-server)', async ({ page }, testInfo) => {
   await page.goto('/');
   await page.evaluate(() => localStorage.clear());

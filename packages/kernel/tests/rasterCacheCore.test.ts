@@ -8,6 +8,7 @@ import {
   CellBitmapCache,
   RowStripCache,
 } from '../src/renderer/rasterCache';
+import { SurfacePool } from '../src/renderer/rasterCache/surfacePool';
 
 // ---------------------------------------------------------------------------
 // Fake canvas factory (paintCache.test.ts fixture style) — no DOM. Tracks
@@ -567,6 +568,138 @@ describe('shared RasterBudget across CellBitmapCache + RowStripCache', () => {
     expect(strips.get('s2', 1, 0)).not.toBeNull();
     expect(cells.get('a')).not.toBeNull();
     expect(budget.spent()).toBe(300);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// C-1 (closeout) — pool-recycled canvas RESIZE resets the REAL 2d context's
+// state (verified in real Chrome for HTMLCanvasElement AND OffscreenCanvas:
+// font → '10px sans-serif', fillStyle → '#000000', identity transform), but
+// the attachGcCache values map attached to that canvas would survive it —
+// so a painter write equal to the stale cached value would be SKIPPED while
+// the real context sits at defaults, rasterizing corrupted bitmaps that are
+// then served BY KEY. This fake reproduces the browser's reset-on-resize
+// semantics (the plain `{ width, height }` fakes above can't see the bug).
+// ---------------------------------------------------------------------------
+
+const BROWSER_CTX_DEFAULTS = {
+  font: '10px sans-serif',
+  fillStyle: '#000000',
+  strokeStyle: '#000000',
+  textAlign: 'start',
+  textBaseline: 'alphabetic',
+  globalAlpha: 1,
+} as const;
+
+interface BrowserFaithfulCanvas {
+  width: number;
+  height: number;
+  getContext(type: '2d', attrs?: unknown): unknown;
+  /** The live ctx state — what the browser would actually rasterize with. */
+  __state: Record<string, unknown>;
+}
+
+function makeBrowserFaithfulFactory(): {
+  factory: PaintCacheCanvasFactory;
+  canvases: BrowserFaithfulCanvas[];
+} {
+  const canvases: BrowserFaithfulCanvas[] = [];
+  const factory = (): BrowserFaithfulCanvas => {
+    const state: Record<string, unknown> = { ...BROWSER_CTX_DEFAULTS };
+    const ctx: Record<string, unknown> = {
+      setTransform: vi.fn(), clearRect: vi.fn(), drawImage: vi.fn(),
+      save: vi.fn(), restore: vi.fn(), beginPath: vi.fn(), rect: vi.fn(),
+      clip: vi.fn(), fillRect: vi.fn(), fillText: vi.fn(),
+      measureText: vi.fn(() => ({ width: 10 })),
+    };
+    for (const k of Object.keys(BROWSER_CTX_DEFAULTS)) {
+      Object.defineProperty(ctx, k, {
+        enumerable: true, configurable: true,
+        get: () => state[k],
+        set: (v: unknown) => { state[k] = v; },
+      });
+    }
+    let w = 0;
+    let h = 0;
+    const canvas = { __state: state } as BrowserFaithfulCanvas;
+    // Browser semantics: ASSIGNING width/height resets the context state to
+    // defaults (even for an unchanged value — but the pool never does that).
+    Object.defineProperty(canvas, 'width', {
+      get: () => w,
+      set: (v: number) => { w = v; Object.assign(state, BROWSER_CTX_DEFAULTS); },
+    });
+    Object.defineProperty(canvas, 'height', {
+      get: () => h,
+      set: (v: number) => { h = v; Object.assign(state, BROWSER_CTX_DEFAULTS); },
+    });
+    (canvas as unknown as { getContext: unknown }).getContext = () => ctx;
+    canvases.push(canvas);
+    return canvas;
+  };
+  return { factory: factory as unknown as PaintCacheCanvasFactory, canvases };
+}
+
+describe('SurfacePool + gc cache vs browser reset-on-resize (closeout C-1)', () => {
+  it('a resize-on-acquire re-syncs the gc value cache: a write equal to the stale cached value still reaches the real context', () => {
+    const { factory } = makeBrowserFaithfulFactory();
+    const pool = new SurfacePool(factory, 1 << 20);
+
+    // First life: painter-style write through the cache lands on the ctx.
+    const s1 = pool.acquire(10, 10)!;
+    expect(s1).not.toBeNull();
+    s1.gc.cache.font = '12px Inter';
+    s1.gc.cache.fillStyle = '#ff0000';
+    const state = (s1.canvas as unknown as BrowserFaithfulCanvas).__state;
+    expect(state['font']).toBe('12px Inter');
+
+    // Evict → recycle → re-acquire at DIFFERENT dims: the resize path. The
+    // browser resets the real ctx to defaults; the gc values map must not
+    // survive it.
+    pool.recycle(s1.canvas, s1.gc);
+    const s2 = pool.acquire(20, 20)!;
+    expect(s2.canvas).toBe(s1.canvas); // same recycled canvas object
+    expect(state['font']).toBe('10px sans-serif'); // the browser reset fired
+
+    // The near-uniform-font collision from the finding: the new render
+    // writes the SAME font the stale cache remembers. It must forward.
+    s2.gc.cache.font = '12px Inter';
+    s2.gc.cache.fillStyle = '#ff0000';
+    expect(state['font']).toBe('12px Inter');
+    expect(state['fillStyle']).toBe('#ff0000');
+  });
+
+  it('an exact-dims re-acquire (no resize) keeps the cache valid — the ctx state genuinely survives, and a same-value write may skip', () => {
+    const { factory } = makeBrowserFaithfulFactory();
+    const pool = new SurfacePool(factory, 1 << 20);
+    const s1 = pool.acquire(10, 10)!;
+    s1.gc.cache.font = '12px Inter';
+    const state = (s1.canvas as unknown as BrowserFaithfulCanvas).__state;
+    pool.recycle(s1.canvas, s1.gc);
+    const s2 = pool.acquire(10, 10)!; // exact dims — no width/height assignment
+    expect(s2.canvas).toBe(s1.canvas);
+    expect(state['font']).toBe('12px Inter'); // no browser reset happened
+    s2.gc.cache.font = '12px Inter';
+    expect(state['font']).toBe('12px Inter'); // still correct either way
+  });
+
+  it('CellBitmapCache end-to-end: an evict → different-dims re-render rasterizes with the painter font, not the browser default', () => {
+    // Budget fits exactly one entry: k2's render evicts k1, pooling its
+    // canvas; the k2 acquire takes the RESIZE path (5×5 → 6×6).
+    const budget = new RasterBudget(150);
+    const { factory } = makeBrowserFaithfulFactory();
+    const cache = new CellBitmapCache(budget, factory);
+    const paintWith = (font: string) => (gc: { cache: { font: string } }) => { gc.cache.font = font; };
+
+    const c1 = cache.render('k1', 5, 5, 1, paintWith('12px Inter') as never);
+    expect(c1).not.toBeNull();
+    const state = (c1 as unknown as BrowserFaithfulCanvas).__state;
+    expect(state['font']).toBe('12px Inter');
+
+    const c2 = cache.render('k2', 6, 6, 1, paintWith('12px Inter') as never);
+    expect(c2).toBe(c1); // recycled through the pool, resized
+    // Pre-fix: the stale gc cache skips the font write and this bitmap is
+    // rasterized at '10px sans-serif' — then served from cache by key.
+    expect(state['font']).toBe('12px Inter');
   });
 });
 

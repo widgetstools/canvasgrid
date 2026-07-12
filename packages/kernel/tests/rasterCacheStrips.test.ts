@@ -708,6 +708,275 @@ describe('CGrid + Tier-2 strips — eligibility, versions, epochs, patch (Task 3
     restore();
   });
 
+  it('a cellIcon fn that returns null (format-compiled columns synthesize one on EVERY def) does not bail the patch (closeout I-3)', async () => {
+    // Root cause of stripPatches=0 in production: resolveColDefWithFormat
+    // synthesizes a `cellIcon` FUNCTION for every format-compiled column
+    // (it returns null unless the format carries an icon()), and the patch
+    // path bailed on mere function EXISTENCE — so every ticking numeric
+    // column dropped its row's strip on first tick, and cell-sized rasters
+    // can never recapture. The bail must use byRows' ACTUAL decision:
+    // does the icon fn resolve to something that WILL DRAW for this cell?
+    const iconCols = [
+      { field: 'id', cellIcon: () => null },
+      { field: 'v', type: 'number' },
+    ];
+    const { grid, restore } = buildWiredGrid(rows(200), iconCols as any);
+    await settle(grid);
+    const g = grid as any;
+    const strips = g.rasterStrips;
+    const sid = g.chunk.stringRowIds[3];
+    const nid = g.chunk.rowIds[3];
+    expect(strips.get(sid, 0, g.stripLayoutEpoch)).not.toBeNull();
+
+    g.repaintCells([{ rowId: nid, colId: 'id' }]);
+    expect(g.rowVersionByRowId.get(sid)).toBe(1);
+    expect(grid.getPaintStats().stripPatches, 'a null-returning cellIcon fn must not kill the patch').toBeGreaterThanOrEqual(1);
+    expect(strips.get(sid, 1, g.stripLayoutEpoch), 'strip must be patched, not dropped').not.toBeNull();
+    grid.destroy();
+    restore();
+  });
+
+  it('a cellIcon that WOULD draw still bails the patch and drops the strip (closeout I-3, conservative arm)', async () => {
+    const iconCols = [
+      { field: 'id', cellIcon: () => ({ emoji: '▲' }) },
+      { field: 'v', type: 'number' },
+    ];
+    const { grid, restore } = buildWiredGrid(rows(200), iconCols as any);
+    await settle(grid);
+    const g = grid as any;
+    const strips = g.rasterStrips;
+    const sid = g.chunk.stringRowIds[3];
+    const nid = g.chunk.rowIds[3];
+    expect(strips.get(sid, 0, g.stripLayoutEpoch)).not.toBeNull();
+
+    g.repaintCells([{ rowId: nid, colId: 'id' }]);
+    expect(g.rowVersionByRowId.get(sid)).toBe(1);
+    expect(grid.getPaintStats().stripPatches, 'a drawable icon must never be patched over').toBe(0);
+    expect(strips.get(sid, 0, g.stripLayoutEpoch)).toBeNull();
+    expect(strips.get(sid, 1, g.stripLayoutEpoch)).toBeNull();
+    grid.destroy();
+    restore();
+  });
+
+  it('flash-fade rAF ticks do not churn strip versions or re-patch settled spans (closeout I-4)', async () => {
+    // Every fading cell re-enters the cell-damage path per animation frame
+    // (~90 frames per 1.5s fade). Fade frames carry NO content change — the
+    // original tick's damage already bumped the version and patched the
+    // strip — so per-rAF version bumps + re-patches of the same settled
+    // span are pure hot-path waste (and a bump without a patch would force
+    // a needless full-row re-raster at fade settle).
+    const { grid, restore } = buildWiredGrid(rows(200), cols, { enableCellChangeFlash: true });
+    await settle(grid);
+    const g = grid as any;
+    const sid = g.chunk.stringRowIds[3];
+    const nid = g.chunk.rowIds[3];
+    expect(g.rasterStrips.get(sid, 0, g.stripLayoutEpoch)).not.toBeNull();
+
+    // The tick itself: flash + content damage → version 1, strip patched.
+    g.flashRegistry.flash(nid, 'id');
+    g.repaintCells([{ rowId: nid, colId: 'id' }]);
+    expect(g.rowVersionByRowId.get(sid)).toBe(1);
+    const patchesAfterTick = grid.getPaintStats().stripPatches;
+    expect(patchesAfterTick).toBeGreaterThanOrEqual(1);
+
+    // Fade animation: rAF ticks re-request repaints for the fading cell.
+    for (let i = 0; i < 10; i++) g.flashRegistry.tick(performance.now());
+    expect(g.rowVersionByRowId.get(sid), 'fade frames must not bump row versions').toBe(1);
+    expect(grid.getPaintStats().stripPatches, 'fade frames must not re-patch the settled span').toBe(patchesAfterTick);
+    grid.destroy();
+    restore();
+  });
+
+  it('a live transaction tick patches retained strips at the chunk-arrival seam (closeout I-3, production wiring)', async () => {
+    // The instrumented live-feed run showed the fade rAF loop was the ONLY
+    // caller of the patch path (and I-4 rightly removed it): the tick
+    // itself — the worker's diff-armed chunk reply — never attempted a
+    // patch, so `stripPatches` was 0 in production by wiring, not by bail.
+    // The chunk's flashMask IS the tick's cell-granular diff; the seam in
+    // `handleViewportChunk` must patch retained strips from it, AFTER
+    // `repaintRows` bumped the touched rows, so the patched strip is
+    // current at the row's final post-tick version.
+    const cols3 = [{ field: 'id' }, { field: 'v', type: 'number' }, { field: 'w', type: 'number' }];
+    const data = Array.from({ length: 200 }, (_, i) => ({ id: `r${i}`, v: i, w: i }));
+    const { grid, restore } = buildWiredGrid(data, cols3, { enableCellChangeFlash: true });
+    await settle(grid);
+    const g = grid as any;
+    const canvas = g.cgridCanvas;
+    expect(g.rasterStrips.get('r3', 0, g.stripLayoutEpoch)).not.toBeNull();
+
+    // Tick a MIDDLE column (v — not last-in-band, no icon) through the
+    // real async-transaction path: worker TransactionQueue (50ms) →
+    // modelUpdated push → getViewport round-trip → handleViewportChunk.
+    grid.applyTransactionAsync({ update: [{ id: 'r3', v: 999, w: 3 }] });
+    await new Promise((r) => setTimeout(r, 200));
+    canvas.tickPaint(performance.now());
+
+    expect(grid.getPaintStats().stripPatches, 'the tick itself must patch the retained strip').toBeGreaterThanOrEqual(1);
+    const ver = g.rowVersionByRowId.get('r3') as number;
+    expect(ver).toBeGreaterThanOrEqual(1);
+    expect(g.rasterStrips.get('r3', ver, g.stripLayoutEpoch),
+      'strip must be current at the final post-tick version (patch AFTER the repaintRows bump)').not.toBeNull();
+    grid.destroy();
+    restore();
+  });
+
+  it('a row whose tick-time patch bailed re-captures once its flash settles (closeout I-3, recapture seam)', async () => {
+    // When the damaged span can't be patched (here: the LAST center-band
+    // column — band-edge line, conservative bypass) the strip is dropped.
+    // While the row flashes it is strip-ineligible, and after settling
+    // nothing ever damages it full-width again — without the settle seam
+    // it would paint live at every subsequent raster forever (the exact
+    // cold-strips shape the closeout measured). The flash registry's
+    // `onRowsSettled` must trigger ONE row repaint whose raster
+    // re-captures the settled row.
+    const cols3 = [{ field: 'id' }, { field: 'v', type: 'number' }, { field: 'w', type: 'number' }];
+    const data = Array.from({ length: 200 }, (_, i) => ({ id: `r${i}`, v: i, w: i }));
+    const { grid, restore } = buildWiredGrid(data, cols3, { enableCellChangeFlash: true });
+    await settle(grid);
+    const g = grid as any;
+    const canvas = g.cgridCanvas;
+    expect(g.rasterStrips.get('r3', 0, g.stripLayoutEpoch)).not.toBeNull();
+
+    // Tick the LAST center-band column (w) — the patch must bail and drop
+    // the strip (a band-edge span is a conservative bypass, not patchable).
+    grid.applyTransactionAsync({ update: [{ id: 'r3', v: 3, w: 999 }] });
+    await new Promise((r) => setTimeout(r, 200));
+    canvas.tickPaint(performance.now());
+    expect(g.rasterStrips.has('r3'), 'last-in-band tick must drop the strip, not patch it').toBe(false);
+    const verAfterTick = g.rowVersionByRowId.get('r3') as number;
+
+    // Flash expiry: drive the registry past flash+fade. `onRowsSettled`
+    // fires for r3 (strip missing) → one row-level repaint is queued.
+    g.flashRegistry.tick(performance.now() + 60_000);
+    expect(g.flashRegistry.hasRow(g.chunk.rowIds[3]!)).toBe(false);
+    canvas.tickPaint(performance.now() + 60_100);
+
+    const verSettled = g.rowVersionByRowId.get('r3') as number;
+    expect(verSettled, 'the settle repaint must bump the row version').toBeGreaterThan(verAfterTick);
+    expect(g.rasterStrips.get('r3', verSettled, g.stripLayoutEpoch),
+      'the settled full-width raster must re-capture the row').not.toBeNull();
+    grid.destroy();
+    restore();
+  });
+
+  it('fractional dpr (1.5): Tier-1 fully dormant, patch bails to invalidateRow, strip capture/consume stay on (closeout I-2)', async () => {
+    // The adjudicated BYPASS: at non-integer dpr a Tier-1 hit blit's CSS-px
+    // dest rect maps to fractional device coordinates (drawImage resamples
+    // — not byte-identical to a live paint), and the strip PATCH rounds its
+    // span origin (sub-pixel shift vs the live raster). Strip capture and
+    // consume are pure integer-device-px copies of the layer's OWN raster,
+    // round-tripped through the same rounding — they cannot diverge and
+    // stay enabled at any dpr.
+    (window as any).devicePixelRatio = 1.5;
+    const { grid, restore } = buildWiredGrid(rows(200), cols);
+    await settle(grid);
+    const g = grid as any;
+
+    // Tier-1 dormant.
+    expect(g.getRasterCellsCtx(), 'Tier-1 must be dormant at fractional dpr').toBeNull();
+
+    // Tier-2 capture/consume live.
+    expect(g.getRasterStripsCtx()).not.toBeNull();
+    expect(g.rasterStrips.stats().entries).toBeGreaterThan(0);
+
+    // Patch path: version still tracks, but the strip is DROPPED (never
+    // patched — a sub-pixel-shifted patch is a stale-pixels bug).
+    const sid = g.chunk.stringRowIds[3];
+    const nid = g.chunk.rowIds[3];
+    expect(g.rasterStrips.get(sid, 0, g.stripLayoutEpoch)).not.toBeNull();
+    g.repaintCells([{ rowId: nid, colId: 'id' }]);
+    expect(g.rowVersionByRowId.get(sid)).toBe(1);
+    expect(grid.getPaintStats().stripPatches, 'no patch may land at fractional dpr').toBe(0);
+    expect(g.rasterStrips.get(sid, 0, g.stripLayoutEpoch)).toBeNull();
+    expect(g.rasterStrips.get(sid, 1, g.stripLayoutEpoch)).toBeNull();
+    grid.destroy();
+    restore();
+  });
+
+  it('integer dpr (2): the I-2 gate is fractional-only — Tier-1 ctx stays live', async () => {
+    (window as any).devicePixelRatio = 2;
+    const { grid, restore } = buildWiredGrid(rows(200), cols);
+    await settle(grid);
+    const g = grid as any;
+    expect(g.getRasterCellsCtx()).not.toBeNull();
+    expect(g.getRasterCellsCtx().dpr).toBe(2);
+    grid.destroy();
+    restore();
+  });
+
+  it('runtime rule CRUD bumps the strip layout epoch and wipes the store (closeout C-2)', async () => {
+    // A rule mutation changes matching cells' resolved fg/bg/indicator with
+    // NO data change / column rebuild / geometry change — rowVersionByRowId
+    // and the strip keys all stand still, so without an epoch bump the
+    // strip pre-pass would keep CONSUMING pre-rule pixels at rest.
+    const { grid, restore } = buildWiredGrid(rows(200), cols);
+    await settle(grid);
+    const g = grid as any;
+    let rules: any[] = [];
+    grid.registerRuleEngine({
+      evaluateCell: () => ({ matched: [], style: null, indicator: null, formatProgram: null }),
+      resolveRuleRef: () => null,
+      getRules: () => rules,
+      setRules: (r: any[]) => { rules = r; },
+    });
+    await settle(grid); // re-captures strips after the registration repaint
+    expect(g.rasterStrips.stats().entries).toBeGreaterThan(0);
+
+    let e = g.stripLayoutEpoch;
+    grid.addRule({ id: 'r1', enabled: true });
+    expect(g.stripLayoutEpoch, 'addRule must bump the strip layout epoch').toBeGreaterThan(e);
+    expect(g.rasterStrips.stats().entries, 'addRule must wipe the strip store').toBe(0);
+
+    e = g.stripLayoutEpoch;
+    grid.updateRule('r1', { priority: 5 });
+    expect(g.stripLayoutEpoch, 'updateRule must bump the strip layout epoch').toBeGreaterThan(e);
+
+    e = g.stripLayoutEpoch;
+    grid.setRuleEnabled('r1', false);
+    expect(g.stripLayoutEpoch, 'setRuleEnabled must bump the strip layout epoch').toBeGreaterThan(e);
+
+    grid.addRule({ id: 'r2', enabled: true });
+    e = g.stripLayoutEpoch;
+    grid.reorderRules(['r2', 'r1']);
+    expect(g.stripLayoutEpoch, 'reorderRules must bump the strip layout epoch').toBeGreaterThan(e);
+
+    e = g.stripLayoutEpoch;
+    grid.deleteRule('r1');
+    expect(g.stripLayoutEpoch, 'deleteRule must bump the strip layout epoch').toBeGreaterThan(e);
+
+    const { _resetRuleEngine_forTests } = await import('../src/core/ruleEngineSlot');
+    _resetRuleEngine_forTests();
+    grid.destroy();
+    restore();
+  });
+
+  it('runtime renderer re-registration and rule-engine registration bump the strip layout epoch (closeout I-1)', async () => {
+    // Retained strips hold the OLD painter's pixels at unchanged keys —
+    // "the override applies on the next repaint" must extend to strips.
+    const { grid, restore } = buildWiredGrid(rows(200), cols);
+    await settle(grid);
+    const g = grid as any;
+    expect(g.rasterStrips.stats().entries).toBeGreaterThan(0);
+
+    let e = g.stripLayoutEpoch;
+    grid.registerCellRenderer('text', { paint: () => {} } as any);
+    expect(g.stripLayoutEpoch, 'registerCellRenderer must bump the strip layout epoch').toBeGreaterThan(e);
+    expect(g.rasterStrips.stats().entries, 'registerCellRenderer must wipe the strip store').toBe(0);
+
+    await settle(grid); // re-capture
+    e = g.stripLayoutEpoch;
+    grid.registerRuleEngine({
+      evaluateCell: () => ({ matched: [], style: null, indicator: null, formatProgram: null }),
+      resolveRuleRef: () => null,
+    });
+    expect(g.stripLayoutEpoch, 'registerRuleEngine must bump the strip layout epoch').toBeGreaterThan(e);
+
+    const { _resetRuleEngine_forTests } = await import('../src/core/ruleEngineSlot');
+    _resetRuleEngine_forTests();
+    grid.destroy();
+    restore();
+  });
+
   it('rasterCache: false — no strips ctx, no version bookkeeping, zero strip stats', async () => {
     const { grid, restore } = buildWiredGrid(rows(200), cols, { rasterCache: false });
     await settle(grid);

@@ -107,4 +107,29 @@ describe('attachGcCache', () => {
     expect(cleared).toBe(2);
     expect(filled).toBe(2);
   });
+
+  it('resetCache drops the values map: same-value writes forward again and reads re-prime from the live ctx (closeout C-1 seam)', () => {
+    const { canvas, ctx, writeLog } = makeCanvasWithSpyCtx();
+    const gc = attachGcCache(canvas as any);
+    writeLog.length = 0;
+
+    gc.cache.fillStyle = 'red';
+    gc.cache.fillStyle = 'red'; // coalesced
+    expect(writeLog).toEqual([['fillStyle', 'red']]);
+
+    // Simulate the browser's reset-on-resize: the real ctx snaps back to a
+    // default behind the cache's back.
+    ctx._fillStyle = '#000000';
+    gc.resetCache();
+
+    // Same-value write now forwards (the cache no longer believes 'red').
+    gc.cache.fillStyle = 'red';
+    expect(writeLog).toEqual([['fillStyle', 'red'], ['fillStyle', 'red']]);
+    expect(ctx._fillStyle).toBe('red');
+
+    // Reads after a reset lazy-prime from the LIVE ctx.
+    ctx._font = '10px sans-serif';
+    gc.resetCache();
+    expect(gc.cache.font).toBe('10px sans-serif');
+  });
 });
