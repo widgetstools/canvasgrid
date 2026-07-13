@@ -135,6 +135,17 @@ export function paintStickyGroups(gc: CachedContext2D, p: PainterCtx): void {
         if (col.colId.startsWith('ag-Grid-AutoColumn')) continue;
         const entry = p.getStickyGroupTotals(ancestor.key, col.colId);
         if (!entry || entry.valueFormatted === '') continue;
+        // Clip each value to its own column before painting. A group sum can
+        // be far wider than its column (e.g. a trillion-scale Notional total
+        // in a narrow column); right-aligned, the excess extends LEFT and,
+        // without this clip, bleeds over the previous column's value. The
+        // body painter clips every cell the same way (byRows.ts) — mirror it
+        // so sticky aggregates never overflow into a neighbour. The band
+        // clip already established above bounds the vertical extent.
+        gc.cache.save();
+        gc.beginPath();
+        gc.rect(col.left, paintY, col.width, rowH);
+        gc.clip();
         const colRight = col.right - PADDING;
         gc.fillStyle = theme.fg;
         // Aggregate value text reads as data — use the cell font so
@@ -143,6 +154,7 @@ export function paintStickyGroups(gc: CachedContext2D, p: PainterCtx): void {
         gc.textBaseline = 'middle';
         gc.textAlign = 'right';
         gc.fillText(entry.valueFormatted, colRight, cy);
+        gc.cache.restore();
       }
       gc.textAlign = 'left';
     }
