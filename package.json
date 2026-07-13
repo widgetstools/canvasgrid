@@ -11,6 +11,9 @@
     "dev:showcase": "npm run dev --workspace=cgrid-showcase",
     "dev:positions": "npm run dev --workspace=cgrid-positions",
     "dev:colgroups": "npm run dev --workspace=colgroups",
+    "dev:ext-demo": "npm run dev --workspace=cgrid-ext-demo",
+    "dev:stomp": "node ../starui/apps/stomp-view-server/dist/main.js",
+    "ext-demo:openfin": "concurrently -k -n stomp,vite,openfin -c yellow,cyan,magenta \"npm run dev:stomp\" \"npm run dev:ext-demo\" \"wait-on http://localhost:5188 && node apps/cgrid-ext-demo/openfin/launch.mjs\"",
     "build": "turbo run build",
     "build:kernel": "npm run build --workspace=@cgrid/kernel",
     "test": "turbo run test",
@@ -19,8 +22,11 @@
     "lint": "eslint \"packages/*/src/**/*.ts\" \"packages/*/tests/**/*.ts\" \"apps/cgrid-positions/src/**/*.ts\" \"apps/cgrid-positions/e2e/**/*.ts\" \"apps/cgrid-showcase/src/**/*.ts\" \"apps/cgrid-showcase/e2e/**/*.ts\""
   },
   "devDependencies": {
+    "@openfin/node-adapter": "^43.101.2",
+    "concurrently": "^10.0.3",
     "eslint": "^9.39.4",
     "turbo": "^2.10.2",
-    "typescript-eslint": "^8.62.1"
+    "typescript-eslint": "^8.62.1",
+    "wait-on": "^9.0.10"
   }
 }
