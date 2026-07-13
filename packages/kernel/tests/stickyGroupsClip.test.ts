@@ -29,15 +29,18 @@ function fakeGc(): CachedContext2D {
   return ctx as CachedContext2D;
 }
 
-// Minimal PainterCtx exercising ONLY what paintStickyGroups reads. One narrow
-// (60px) value column carrying a group aggregate far wider than the column.
+// Minimal PainterCtx exercising ONLY what paintStickyGroups reads. The
+// auto-group column is pinned-left over [0, 150] (bodyLeft = 150). The value
+// column is a SCROLLING column scrolled partly UNDER the pinned group
+// (left 100 < bodyLeft) carrying an aggregate far wider than the column — the
+// reported case where "…tional" is cut off under the Group column.
 function makeCtx(): PainterCtx {
   return {
     viewport: {
-      bodyTop: 40, bodyLeft: 0, bodyRight: 300, bodyBottom: 400,
+      bodyTop: 40, bodyLeft: 150, bodyRight: 300, bodyBottom: 400,
       visibleColumns: [
-        { colId: 'ag-Grid-AutoColumn', index: 0, left: 0, right: 150, width: 150 },
-        { colId: 'notional', index: 1, left: 150, right: 210, width: 60 },
+        { colId: 'ag-Grid-AutoColumn', index: 0, left: 0, right: 150, width: 150, pinned: 'left' },
+        { colId: 'notional', index: 1, left: 100, right: 210, width: 110 },
       ],
       visibleRows: [],
     } as any,
@@ -58,16 +61,18 @@ function makeCtx(): PainterCtx {
 }
 
 describe('paintStickyGroups — per-column aggregate clip', () => {
-  it('clips each aggregate value to its column bounds so a wide group sum cannot overflow into the neighbour', () => {
+  it('clips a scrolling aggregate to the scrolling body, never under the pinned group column', () => {
     const gc = fakeGc();
     paintStickyGroups(gc, makeCtx());
 
-    // The fix must establish a clip rect covering exactly the narrow value
-    // column (left 150, width 60) at the sticky row band before painting its
-    // aggregate — the same per-cell clip the body painter applies. Pre-fix the
-    // ONLY rect is the whole-band clip (0, 40, 300, …), so this fails.
+    // The value column spans [100, 210] but is scrolled under the pinned group
+    // (bodyLeft = 150). The aggregate clip must be bounded to the VISIBLE
+    // scrolling region [150, 210] (width 60) — never [100, …], which would
+    // paint the wide right-aligned sum on top of the pinned Group cell. A plain
+    // per-column clip (rect at x=100, width 110) fails this assertion.
     expect(gc.rect).toHaveBeenCalledWith(150, expect.any(Number), 60, 30);
-    // The aggregate value is still painted (right-aligned inside the column).
+    expect(gc.rect).not.toHaveBeenCalledWith(100, expect.any(Number), 110, 30);
+    // The aggregate value is still painted, right-aligned at the column edge.
     expect(gc.fillText).toHaveBeenCalledWith('25,041,234,254,565,720,702', 210 - 6, expect.any(Number));
   });
 });

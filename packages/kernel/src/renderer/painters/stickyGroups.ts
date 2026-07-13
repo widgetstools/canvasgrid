@@ -135,16 +135,24 @@ export function paintStickyGroups(gc: CachedContext2D, p: PainterCtx): void {
         if (col.colId.startsWith('ag-Grid-AutoColumn')) continue;
         const entry = p.getStickyGroupTotals(ancestor.key, col.colId);
         if (!entry || entry.valueFormatted === '') continue;
-        // Clip each value to its own column before painting. A group sum can
-        // be far wider than its column (e.g. a trillion-scale Notional total
-        // in a narrow column); right-aligned, the excess extends LEFT and,
-        // without this clip, bleeds over the previous column's value. The
-        // body painter clips every cell the same way (byRows.ts) — mirror it
-        // so sticky aggregates never overflow into a neighbour. The band
-        // clip already established above bounds the vertical extent.
+        // Clip each value to its column before painting. A group sum can be
+        // far wider than its column (e.g. a trillion-scale Notional total in a
+        // narrow column); right-aligned, the excess extends LEFT and without a
+        // clip bleeds over the neighbour. For a SCROLLING column the clip is
+        // additionally bounded by the scrolling body [bodyLeft, bodyRight]:
+        // when the column is scrolled partly under the pinned auto-group
+        // column (col.left < bodyLeft), its own bounds still cover the pinned
+        // region, so a plain per-column clip would paint the aggregate on top
+        // of the pinned Group cell. Mirrors how the body clips scrolling cells
+        // to the body region on top of the per-cell clip (byRows.ts). Pinned
+        // columns keep their own bounds. The band clip bounds the vertical.
+        const scrolling = col.pinned !== 'left' && col.pinned !== 'right';
+        const clipL = scrolling ? Math.max(col.left, bodyLeft) : col.left;
+        const clipR = scrolling ? Math.min(col.right, bodyRight) : col.right;
+        if (clipR <= clipL) continue;
         gc.cache.save();
         gc.beginPath();
-        gc.rect(col.left, paintY, col.width, rowH);
+        gc.rect(clipL, paintY, clipR - clipL, rowH);
         gc.clip();
         const colRight = col.right - PADDING;
         gc.fillStyle = theme.fg;
