@@ -7848,8 +7848,17 @@ export class CGrid<TRow = any> {
       }
     }
     let raw: unknown;
-    if (parentGroupKey !== '' && chunk.groupTotals) {
-      const groupRec = chunk.groupTotals[parentGroupKey];
+    if (parentGroupKey !== '') {
+      // Collapsed-group aggregate fix — a per-group lookup must NEVER
+      // fall back to the grand-total `chunk.totals` record. It used to
+      // (`parentGroupKey !== '' && chunk.groupTotals` fell into the
+      // else-branch when `groupTotals` hadn't shipped), which painted
+      // the GRAND total on every group row — byte-identical values
+      // across distinct groups — and, because grand-total damage only
+      // targets the totals band / `groupKey: ''`, those rows never
+      // repainted on later ticks either. No per-group record ⇒ paint
+      // the cell empty until the worker ships `groupTotals`.
+      const groupRec = chunk.groupTotals?.[parentGroupKey];
       if (groupRec === undefined) return null;
       raw = groupRec[colId];
     } else {

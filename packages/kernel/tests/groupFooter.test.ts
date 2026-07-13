@@ -313,3 +313,131 @@ describe('Worker round-trip — chunk carries groupTotals and footer rows', () =
     expect(chunk.groupTotals!['desk:EMEA']!.qty).toBe(7);
   });
 });
+
+// Collapsed-group aggregate regression — a grouped grid WITHOUT
+// `groupIncludeFooter` must still ship fresh, per-group-distinct
+// `chunk.groupTotals` on every viewport reply, including with every
+// group collapsed. The old handler gated `applyGroups` on
+// `getIncludeFooter()`, so this configuration never shipped groupTotals:
+// the main thread's `totalsCellLookup` then served the GRAND total for
+// every group row (byte-identical values across distinct groups) and
+// `diffAggregates` never saw a changed group key, so a live tick never
+// repainted a collapsed group row — stale pixels until a full repaint.
+// Footer ROW synthesis must stay off: that is what `includeFooter`
+// actually controls.
+describe('Worker round-trip — collapsed groups get fresh distinct groupTotals WITHOUT includeFooter', () => {
+  it('ships per-group totals with footers off + collapsed, and updates them on a transaction', async () => {
+    const replies: WorkerResponse[] = [];
+    const host = createWorkerHost((msg: WorkerResponse | WorkerPush) => {
+      if ('id' in msg) replies.push(msg);
+    });
+    function send(req: WorkerRequest): void { host.handle(req); }
+    function wait(ms = 100): Promise<void> { return new Promise((r) => setTimeout(r, ms)); }
+    function take(id: number): WorkerResponse | undefined {
+      const idx = replies.findIndex((r) => 'id' in r && r.id === id);
+      if (idx === -1) return undefined;
+      return replies.splice(idx, 1)[0];
+    }
+    type Chunk = {
+      rowCount: number;
+      rowKinds: Uint8Array;
+      groupKey?: string[];
+      groupTotals?: Record<string, Record<string, unknown>>;
+    };
+    function takeChunk(id: number): Chunk {
+      const vp = take(id);
+      expect(vp).toBeDefined();
+      expect(vp!.type).toBe('viewport');
+      return (vp as { type: 'viewport'; chunk: Chunk }).chunk;
+    }
+    // NOTE: no `groupIncludeFooter` in init — the repro configuration.
+    send({ id: 1, type: 'init', payload: { columns: cols, rowIdField: 'id' } });
+    await wait();
+    take(1);
+    send({ id: 2, type: 'setRowData', payload: { rows: [
+      { id: '1', desk: 'APAC', region: 'Rates',  qty: 5, price: 100 },
+      { id: '2', desk: 'APAC', region: 'Credit', qty: 3, price: 110 },
+      { id: '3', desk: 'EMEA', region: 'Rates',  qty: 7, price: 200 },
+    ] } });
+    await wait();
+    take(2);
+    send({ id: 3, type: 'setGroupModel', payload: { rowGroupCols: ['desk'] } });
+    await wait();
+    take(3);
+    // Collapse every group — the reported bug's exact state.
+    send({ id: 4, type: 'setExpandedKeys', payload: { keys: [] } });
+    await wait();
+    take(4);
+    send({ id: 5, type: 'getViewport', payload: { rowStart: 0, rowEnd: 20, columns: ['qty', 'price'] } });
+    await wait();
+    const chunk = takeChunk(5);
+    // Collapsed: only the two group rows are visible, no footer rows.
+    expect(chunk.rowCount).toBe(2);
+    for (let i = 0; i < chunk.rowCount; i++) {
+      expect(chunk.rowKinds[i]).toBe(1);
+    }
+    // groupTotals ship WITHOUT includeFooter, distinct per group.
+    expect(chunk.groupTotals).toBeDefined();
+    expect(chunk.groupTotals!['desk:APAC']!.qty).toBe(8);
+    expect(chunk.groupTotals!['desk:EMEA']!.qty).toBe(7);
+    // Live tick: update a collapsed APAC leaf — the next viewport reply
+    // must carry the FRESH total for the collapsed group.
+    send({ id: 6, type: 'applyTransaction', payload: {
+      update: [{ id: '1', desk: 'APAC', region: 'Rates', qty: 50, price: 100 }],
+      async: false,
+    } });
+    await wait();
+    take(6);
+    send({ id: 7, type: 'getViewport', payload: { rowStart: 0, rowEnd: 20, columns: ['qty', 'price'] } });
+    await wait();
+    const chunk2 = takeChunk(7);
+    expect(chunk2.groupTotals).toBeDefined();
+    expect(chunk2.groupTotals!['desk:APAC']!.qty).toBe(53);
+    expect(chunk2.groupTotals!['desk:EMEA']!.qty).toBe(7);
+  });
+});
+
+// Main-thread half of the collapsed-group aggregate regression — the
+// per-group `totalsCellLookup` must return null (⇒ empty cell) when the
+// chunk carries no `groupTotals`, NOT fall back to the grand-total
+// `chunk.totals` record. The old fallback painted the grand total on
+// EVERY group row (byte-identical values across distinct groups — the
+// user-visible "EMEA and AMER show identical sums" symptom). Runs the
+// REAL production method against a minimal `this` so the branch under
+// test is exactly the shipped one.
+describe('totalsCellLookup — per-group lookup never serves the grand total', () => {
+  // Deferred import type-dance: pull the class lazily so this file keeps
+  // its worker-only imports lean for the other suites.
+  async function lookupOn(chunk: unknown): Promise<(colId: string, groupKey?: string) => unknown> {
+    const { CGrid } = await import('../src/cgrid');
+    const fakeThis = {
+      chunk,
+      pivotEngine: { isPivotActive: () => false },
+      formatNumber: (_colId: string, v: number) => String(v),
+    };
+    const fn = (CGrid.prototype as unknown as {
+      totalsCellLookup: (colId: string, parentGroupKey?: string) => unknown;
+    }).totalsCellLookup;
+    return (colId, groupKey) => fn.call(fakeThis, colId, groupKey);
+  }
+
+  it('returns null for a group key when the chunk has no groupTotals', async () => {
+    const lookup = await lookupOn({ totals: { qty: 999 } });
+    // Pre-fix this returned { value: 999, ... } — the grand total — for
+    // BOTH groups: byte-identical aggregates across distinct groups.
+    expect(lookup('qty', 'desk:APAC')).toBeNull();
+    expect(lookup('qty', 'desk:EMEA')).toBeNull();
+  });
+
+  it('still serves the grand total for the empty key and per-group records when present', async () => {
+    const lookup = await lookupOn({
+      totals: { qty: 999 },
+      groupTotals: { 'desk:APAC': { qty: 8 }, 'desk:EMEA': { qty: 7 } },
+    });
+    expect(lookup('qty', '')).toEqual({ value: 999, valueFormatted: '999' });
+    expect(lookup('qty', 'desk:APAC')).toEqual({ value: 8, valueFormatted: '8' });
+    expect(lookup('qty', 'desk:EMEA')).toEqual({ value: 7, valueFormatted: '7' });
+    // Unknown group key ⇒ null, not the grand total.
+    expect(lookup('qty', 'desk:UNKNOWN')).toBeNull();
+  });
+});

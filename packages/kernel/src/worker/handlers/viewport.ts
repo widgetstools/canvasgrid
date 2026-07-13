@@ -205,9 +205,23 @@ export async function handleViewport(
         chunk.totals = aggResult.totals;
       }
       // Cycle 15 / Task 12 — per-group totals.
+      //
+      // Collapsed-group aggregate fix — this used to ALSO gate on
+      // `state.group.getIncludeFooter()`, but group ROWS (rowKind 1)
+      // display per-group aggregates whenever aggregated columns exist,
+      // footers or not (AG parity: the group header carries the sums).
+      // With the gate in place, a grouped grid without
+      // `groupIncludeFooter` never shipped `chunk.groupTotals`, so the
+      // main thread's `totalsCellLookup` had nothing per-group to read
+      // AND `diffAggregates` never saw a changed group key — collapsed
+      // group rows painted once and went permanently stale.
+      // `includeFooter` only controls footer ROW synthesis (GroupPass /
+      // sortPass flatten); the totals DATA ships whenever grouping is
+      // active. AggPass emits no entries when no column carries an
+      // aggFunc, and the length guard below keeps the field absent in
+      // that case — so ungrouped/unaggregated grids are unaffected.
       if (
         helpers.isGroupingActive()
-        && state.group.getIncludeFooter()
         && state.groupInputIds !== null
         && state.groupOutput !== null
       ) {
