@@ -24,6 +24,7 @@ apps/*/package-lock.json
 # Playwright artifacts
 test-results/
 playwright-report/
+e2e-results/
 
 # Autonomous task runner logs (one file per task per run)
 .runner-logs/
