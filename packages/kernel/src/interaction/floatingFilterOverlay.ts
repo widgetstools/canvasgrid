@@ -49,6 +49,9 @@ export interface FloatingFilterOverlayDeps {
   getRowTop: () => number;
   /** Pixel height of the floating-filter row. Drives `<input>.style.height`. */
   getRowHeight: () => number;
+  /** Optional top/bottom inset (CSS px) of the input inside its row. Defaults
+   *  to `4` when unwired. Larger = more vertical margin around the input. */
+  getInsetY?: () => number;
   /** Optional override of the per-input typing debounce. Defaults to 500ms
    *  to match the catalog's text/number filter `debounceMs` default. */
   debounceMs?: number;
@@ -113,7 +116,7 @@ export class FloatingFilterOverlay {
     // Inset the cell inside its column rect so the input border + padding
     // land visually between the cell edges. Matched in `tokens.css`.
     const INSET_X = 6;
-    const INSET_Y = 4;
+    const INSET_Y = this.deps.getInsetY?.() ?? 4;
     const seen = new Set<string>();
     for (const col of viewport.visibleColumns) {
       const def = this.deps.getColDef(col.colId);

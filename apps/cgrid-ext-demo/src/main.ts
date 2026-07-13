@@ -218,6 +218,7 @@ const ext = new CGridExt<Position>(app, {
   columnDefs,
   theme: 'cg-theme-quartz-dark',
   floatingFilterHeight: 34,
+  floatingFilterInsetY: 8,
   defaultColDef: { resizable: true, sortable: true, editable: true, flex: 1, minWidth: 80 },
   rowGroupPanelShow: 'always',
   sideBar: { toolPanels: ['columns', 'filters', 'gridOptions', 'columnGroups'] },

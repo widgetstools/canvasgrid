@@ -380,6 +380,10 @@ export interface CGridOptions<TRow = any> {
   /** Pixel height of the floating-filter row. Defaults to `28`. Forwarded
    *  to `FloatingFilterSubgrid` + `FloatingFilterOverlay`. Cycle 7 / Task 1. */
   floatingFilterHeight?: number;
+  /** Top/bottom inset (CSS px) of each floating-filter `<input>` inside its
+   *  row — the input's height is `floatingFilterHeight - 2 × this`. Larger
+   *  values give the inputs more vertical margin. Defaults to `4`. */
+  floatingFilterInsetY?: number;
   /** Cross-column quick filter text. When non-empty, the grid evaluates a
    *  worker-side `QuickFilterPass` BEFORE the per-column `FilterPass`: the
    *  text is split into terms by `quickFilterParser` (defaults to

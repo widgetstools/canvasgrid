@@ -2665,6 +2665,7 @@ export class CGrid<TRow = any> {
       openColumnFilter: (colId) => this.showColumnFilter(colId),
       getRowTop: () => this.viewport.floatingFilterRowTop ?? 0,
       getRowHeight: () => this.viewport.floatingFilterRowHeight ?? (this.options.floatingFilterHeight ?? 28),
+      getInsetY: () => this.options.floatingFilterInsetY ?? 4,
     });
     // Cycle 7 / Task 3 — per-column filter popup orchestration. Mounts
     // into the editor overlay container (same stacking context as the
