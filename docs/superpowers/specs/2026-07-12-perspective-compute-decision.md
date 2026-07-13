@@ -1,7 +1,41 @@
 # FINOS Perspective as cgrid's Compute Engine — Decision Doc
 
-**Date:** 2026-07-12
-**Status:** Discussion — options + tradeoffs, no decision taken
+**Date:** 2026-07-12 (decision recorded 2026-07-13)
+**Status:** DECIDED — **Option B: division of labor.** cgrid owns rendering
+(canvas renderer, virtualization, damage/raster cache, interaction);
+**Perspective owns aggregation/grouping/pivoting + the incremental delta
+stream.** cgrid's worker FilterPass/SortPass/GroupPass/AggPass/PivotPass are
+superseded by Perspective views; the delta→chunk bridge feeds cgrid's existing
+renderer + damage system.
+
+**Why the earlier "Option A" reversed (2026-07-13):** the throughput kill-rule
+that gated Perspective out — "60Hz × 50k" — was NOT a real requirement. It was
+a *default assumption* from the Cycle-20 pivot brief (memory
+[[cgrid-cycle-20-excel-pivot]]: "Tick target: rate × row-count, **default
+assumed** 60Hz × 50k"), enshrined as a "locked decision" and imported into the
+spike as a hard gate without validation. The real load is UI-**coalesced**:
+cgrid's `TransactionQueue` (~50ms batch) + the demo's conflation to **max ~6
+updates per cell** mean the engine never sees the stomp firehose (a stress-test
+ingest rate), only the coalesced delta. The spike ALREADY measured that regime
+and Perspective PASSED — "10k updates/s coalesced to 60Hz: **p95 8.8ms, zero
+backlog**." Only the raw uncoalesced firehose and the aspirational 50k
+`split_by` "failed" — artifacts, not the workload.
+
+**Corroborating evidence (correctness/maintenance axis):** the in-house compute
+layer keeps producing plumbing bugs this session — collapsed-group aggregates
+served the grand total (`getIncludeFooter` gate coupling + totalsCellLookup
+fallback, fix `0b719ae`), and the cross-column derived-cell bails (N-1
+`f3ca5d8`, format-program `6757c68`). Perspective's view model makes per-group
+aggregates intrinsic, eliminating that class of "forgot-to-wire / mis-gated the
+aggregate" bug.
+
+**Task-zero before implementation (two unvalidated corners, not throughput):**
+(1) `split_by` under COALESCED load at real scale (the spike's split_by failure
+was at raw firehose rate — the one unmeasured case); (2) the Excel-semantics
+matrix walk (show-values-as / calc items / value filters — correctness, never
+done). See the Recommendation section's two probes, now re-scoped to coalesced
+numbers.
+
 **Question (user):** can we use the FINOS engine (Perspective) as our compute engine for cgrid?
 
 ## What Perspective actually is (verified against current docs 2026-07-12)
