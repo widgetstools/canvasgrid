@@ -63,6 +63,10 @@ export default tseslint.config(
       reportUnusedDisableDirectives: 'off',
     },
     rules: {
+      // Core hygiene (kept light — type-aware floating-promise rules stay
+      // deferred until the workspace can afford project-service lint cost).
+      'no-debugger': 'error',
+      'no-var': 'error',
       'no-restricted-syntax': [
         'error',
         {

@@ -132,11 +132,20 @@ describe('TooltipProvider feature — DOM tooltip', () => {
     expect(el.querySelector('b')).toBeNull();
   });
 
-  it('html payload renders markup', () => {
+  it('html payload renders allowlisted markup', () => {
     const feature = new TooltipProvider();
     feature.showTooltip({ html: '<b>bold</b>' }, rect);
     const el = document.getElementById('cgrid-tooltip-provider')!;
     expect(el.querySelector('b')).not.toBeNull();
+  });
+
+  it('html payload strips script / event handlers', () => {
+    const feature = new TooltipProvider();
+    feature.showTooltip({ html: '<b>x</b><script>alert(1)</script><img src=x onerror=alert(1)>' }, rect);
+    const el = document.getElementById('cgrid-tooltip-provider')!;
+    expect(el.querySelector('b')).not.toBeNull();
+    expect(el.querySelector('script')).toBeNull();
+    expect(el.querySelector('img')).toBeNull();
   });
 
   it('element is pooled across shows; hide sets display:none', () => {

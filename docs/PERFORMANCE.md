@@ -42,8 +42,6 @@ foundation for the follow-up that finishes routing each one:
 - **Dict-coded text / varint numeric encoders (Tasks 2 + 3)** —
   pure helpers; `serializeChunk` still emits the inline
   `{ offsets, bytes }` shape and `Float64Array` columns.
-- **Flash alpha mask (Task 7)** — `buildFlashAlphaMask` exists and
-  is tested; the painter still calls `registry.getAlpha` per cell.
 - **Raw cell access (Task 6)** — `rawNumericAt` / `rawTextAt` /
   `rawRowKindAt` exist and are tested; `cgrid.cellAt` is unchanged.
 - **Memory budget (Task 10)** — the LRU stores fresh chunks but
@@ -60,6 +58,9 @@ The wins that DO land at runtime:
   chunk so the next paint reads from the existing chunk.
 - **Paint allocation audit** (Task 5) — fewer GC pauses on a
   frame's hottest paint paths.
+- **Flash alpha mask (Task 7)** — `rebuildFlashAlphaMaskForPaint`
+  builds a `Float32Array` once per paint; `cellAt` indexes the mask
+  for visible columns (falls back to `registry.getAlpha` off-mask).
 
 ## Regressing the benches
 
@@ -80,11 +81,9 @@ In rough priority for the next perf-focused cycle:
    varint-coded numeric columns under a new chunk format version.
    Both encoders have round-trip tests; the slicer + deserializer
    need to learn the new flags.
-2. Wire `buildFlashAlphaMask` into the renderer's paint loop so
-   the per-cell `getAlpha` lookup goes away.
-3. Wire `ChunkLRU` lookups on the request path. Key on the
+2. Wire `ChunkLRU` lookups on the request path. Key on the
    composite model version (sort / filter / group / pivot
    snapshots) so a stale chunk never paints.
-4. Build the worker painter. The `paintMode` option already
+3. Build the worker painter. The `paintMode` option already
    resolves correctly; transferControlToOffscreen on the canvas
    and ship a `PaintWorker` that mirrors `byRows.ts`.

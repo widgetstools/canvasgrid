@@ -13,6 +13,7 @@
 // `super.handleMouseMove` so neither claims the move.
 
 import { Feature, type CGridEventCtx } from '../feature';
+import { sanitizeTooltipHtml } from '../../core/sanitizeHtml';
 
 export interface TooltipParams {
   row: unknown;
@@ -110,7 +111,8 @@ export class TooltipProvider extends Feature {
   /** Overridable — default DOM tooltip using the kernel's tooltip
    *  chrome tokens (`--cg-tooltip-bg/fg/border`). A single element is
    *  pooled on document.body; `{ plain }` renders via textContent,
-   *  `{ html }` via innerHTML. */
+   *  `{ html }` via allowlist-sanitized innerHTML. Prefer `{ plain }`
+   *  for untrusted row data. */
   showTooltip(payload: TooltipPayload, rect: TooltipParams['rect']): void {
     if (typeof document === 'undefined') return;
     let el = document.getElementById(TOOLTIP_ID);
@@ -135,7 +137,7 @@ export class TooltipProvider extends Feature {
     if ('plain' in payload) {
       el.textContent = payload.plain;
     } else {
-      el.innerHTML = payload.html;
+      el.innerHTML = sanitizeTooltipHtml(payload.html);
     }
     el.style.left = `${rect.x + rect.w}px`;
     el.style.top = `${rect.y}px`;

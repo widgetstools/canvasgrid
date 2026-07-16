@@ -19,13 +19,13 @@
     "test": "turbo run test",
     "test:kernel": "npm test --workspace=@cgrid/kernel",
     "typecheck": "turbo run typecheck",
-    "lint": "eslint \"packages/*/src/**/*.ts\" \"packages/*/tests/**/*.ts\" \"apps/cgrid-positions/src/**/*.ts\" \"apps/cgrid-positions/e2e/**/*.ts\" \"apps/cgrid-showcase/src/**/*.ts\" \"apps/cgrid-showcase/e2e/**/*.ts\""
+    "lint": "eslint \"packages/*/src/**/*.ts\" \"packages/*/tests/**/*.ts\" \"apps/*/src/**/*.{ts,tsx}\" \"apps/*/e2e/**/*.ts\""
   },
   "devDependencies": {
     "@openfin/node-adapter": "^43.101.2",
     "concurrently": "^10.0.3",
     "eslint": "^9.39.4",
-    "turbo": "^2.10.2",
+    "turbo": "^2.10.5",
     "typescript-eslint": "^8.62.1",
     "wait-on": "^9.0.10"
   }

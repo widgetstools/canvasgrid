@@ -127,3 +127,35 @@ export function resolveSelection<TRow = unknown>(
     syntheticCheckboxColumn,
   };
 }
+
+/** Minimal options surface mutated by unified `selection` resolution. */
+export interface SelectionApplyTarget<TRow = unknown> {
+  rowSelection?: 'none' | 'single' | 'multiple';
+  suppressRowClickSelection?: boolean;
+  rowMultiSelectWithClick?: boolean;
+  /** Leaf + group defs; only leaf `colId` is inspected for idempotency. */
+  columnDefs: Array<CColDef<TRow> | { colId?: string; children?: unknown }>;
+}
+
+/**
+ * Apply a resolved `selection` config onto legacy options fields and
+ * optionally prepend the synthetic checkbox column. Pure aside from
+ * mutating `options` in place (constructor / setGridOption path).
+ */
+export function applyResolvedSelectionToOptions<TRow = unknown>(
+  options: SelectionApplyTarget<TRow>,
+  resolved: ResolvedSelection<TRow> | null,
+): void {
+  if (!resolved) return;
+  options.rowSelection = resolved.rowSelectionMode;
+  if (resolved.suppressRowClickSelection) options.suppressRowClickSelection = true;
+  if (resolved.rowMultiSelectWithClick) options.rowMultiSelectWithClick = true;
+  if (resolved.syntheticCheckboxColumn) {
+    const hasIt = options.columnDefs.some(
+      (d) => (d as { colId?: string }).colId === resolved.syntheticCheckboxColumn!.colId,
+    );
+    if (!hasIt) {
+      options.columnDefs = [resolved.syntheticCheckboxColumn, ...options.columnDefs];
+    }
+  }
+}

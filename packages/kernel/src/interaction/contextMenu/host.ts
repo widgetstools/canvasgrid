@@ -35,6 +35,7 @@
  * its target).
  */
 import type { GetContextMenuItemsParams, GetMainMenuItemsParams, MenuItem } from './types';
+import { sanitizeIconHtml } from '../../core/sanitizeHtml';
 
 /** Params handed to `MenuItem.action` callbacks. The host threads the
  *  object through without inspecting it — item authors cast (or close
@@ -146,7 +147,7 @@ export class ContextMenuHost {
 
     const iconSlot = document.createElement('span');
     iconSlot.className = 'cg-menu-item-icon';
-    if (item.icon) iconSlot.innerHTML = item.icon;
+    if (item.icon) iconSlot.innerHTML = sanitizeIconHtml(item.icon);
     row.appendChild(iconSlot);
 
     const label = document.createElement('span');

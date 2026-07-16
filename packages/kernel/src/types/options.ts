@@ -688,7 +688,10 @@ export interface CGridOptions<TRow = any> {
    *  Functions string-serialise via `Function.prototype.toString()` and
    *  reconstruct on the worker via `new Function(...)`, so they MUST be
    *  pure: no closures over external scope, no calls to main-thread
-   *  globals. Closure capture is detected at registration time (the
+   *  globals. **Trust boundary:** treat aggFunc sources as trusted
+   *  application code — never feed untrusted / user-authored function
+   *  strings into this map (use `@cgrid/expression` for sandboxed
+   *  formulas). Closure capture is detected at registration time (the
    *  function is rebuilt + invoked against a probe input on the main
    *  thread; a mismatch / throw rejects the registration with an error
    *  that points at this constraint).

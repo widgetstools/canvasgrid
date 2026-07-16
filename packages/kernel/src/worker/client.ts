@@ -394,7 +394,7 @@ export class WorkerClient {
    *  wholesale. Each entry's `source` is the original function's
    *  `Function.prototype.toString()` form (main side has already
    *  rebuilt + probed it to screen for closures over external scope
-   *  — see `cgrid.ts` `serializeAggFunc`). The worker rebuilds via
+   *  — see `core/aggFuncSerialization.ts`). The worker rebuilds via
    *  `new Function(...)`; built-in names (`sum / avg / …`) stay
    *  pre-registered and remain visible unless an entry here shadows
    *  them. AggPass reads through the registry on every viewport

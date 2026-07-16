@@ -19,7 +19,9 @@ import { ViewportManager } from './core/viewportManager';
 import { type ResolvedColDef, applyCellProps, composeFont } from './core/propertyChain';
 import { resolveColumnTree, isColGroupDef, type ColumnTree, type ColumnTreeNode, type ResolvedColGroupDef } from './core/columnTree';
 import { moveColumnToGroup as moveColumnToGroupPure, moveColumnGroup as moveColumnGroupPure } from './core/columnGroupMutation';
-import { resolveSelection } from './core/selectionConfig';
+import { resolveSelection, applyResolvedSelectionToOptions } from './core/selectionConfig';
+import { serializeAggFuncsMap } from './core/aggFuncSerialization';
+import { buildFlashAlphaMask } from './core/flashAlphaMask';
 import {
   commitPanelMove as commitPanelMoveHelper,
   resolveDragTargetRole as resolveDragTargetRoleHelper,
@@ -374,82 +376,6 @@ export function inferRowIdField<T>(getRowId: (row: T) => string): string {
  *  Apps override via `CGridOptions.quickFilterParser`. */
 function defaultQuickFilterParser(text: string): string[] {
   return text.split(/\s+/).filter((t) => t.length > 0);
-}
-
-/**
- * Cycle 14 / Task 3 — round-trip a custom aggFunc through
- * `Function.toString()` + `new Function(...)` BEFORE it ships to the
- * worker, and detect closures over outer scope as part of the trip.
- *
- * The worker reconstructs the function via the same `new Function(...)`
- * call inside `setAggFuncs`. Doing the round-trip here first means:
- *
- * 1. **Closure capture surfaces synchronously**. The thrown error rides
- *    out the `setGridOption` call (or the constructor) — apps see the
- *    failure where they wrote the broken function, not on a delayed
- *    worker `error` reply that they may or may not be listening for.
- * 2. **The worker never sees a half-broken func**. If a closure-over-
- *    outer-scope reference would throw inside the worker, this
- *    detector throws first; the worker's `setAggFuncs` payload only
- *    ever carries functions that round-trip cleanly.
- *
- * The detector probes with `{ values: [1, 2], colId: '__probe__' }` —
- * arbitrary numeric input, just enough to evaluate the function body
- * once. If the rebuilt copy throws on the probe AND the original DOES
- * NOT, the source referenced something only available in the original's
- * closure. If both versions return the same value (NaN-safe via
- * `Object.is`), the function is pure and safe to ship. Returns the
- * serialised `source` string the worker should rebuild from.
- */
-function serializeAggFunc(name: string, fn: IAggFunc): string {
-  const source = fn.toString();
-  let rebuilt: IAggFunc;
-  try {
-    rebuilt = new Function(`"use strict"; return (${source});`)() as IAggFunc;
-  } catch (e) {
-    throw new Error(
-      `[cgrid] aggFunc '${name}' failed to serialise (syntax error in toString output): ${
-        String((e as Error).message ?? e)
-      }. Custom aggFuncs MUST be plain function expressions or arrows — no class methods.`,
-    );
-  }
-  if (typeof rebuilt !== 'function') {
-    throw new Error(
-      `[cgrid] aggFunc '${name}' did not deserialise to a function — check the function shape`,
-    );
-  }
-  const probe: IAggFuncParams = { values: [1, 2], colId: '__cgrid_probe__' };
-  let originalRes: unknown;
-  let originalThrew = false;
-  try { originalRes = fn(probe); } catch { originalThrew = true; }
-  let rebuiltRes: unknown;
-  let rebuiltErr: Error | null = null;
-  try { rebuiltRes = rebuilt(probe); } catch (e) { rebuiltErr = e as Error; }
-  if (rebuiltErr && !originalThrew) {
-    // Closure over outer scope — the rebuilt copy can't see the
-    // identifier the source referenced, so it throws ReferenceError
-    // (or TypeError on a closed-over object access). Point the app
-    // straight at the constraint.
-    throw new Error(
-      `[cgrid] aggFunc '${name}' closes over outer scope ` +
-      `(rebuilt copy threw '${rebuiltErr.message}' when invoked). ` +
-      `Custom aggFuncs MUST be pure — no references to variables, ` +
-      `imports, or this-bound state from the surrounding closure. ` +
-      `Pre-bake any external data into the values via a column ` +
-      `valueGetter instead.`,
-    );
-  }
-  if (!rebuiltErr && !originalThrew && !Object.is(originalRes, rebuiltRes)) {
-    // Both ran without throwing but produced different results — the
-    // source must reference an outer-scope value that the rebuilt copy
-    // resolved to a different binding (e.g. a global with the same
-    // name but different value). Same root cause: not pure.
-    throw new Error(
-      `[cgrid] aggFunc '${name}' produced different results pre- and post-serialisation ` +
-      `(probably closes over outer scope). Custom aggFuncs MUST be pure.`,
-    );
-  }
-  return source;
 }
 
 /** Cycle 8 / Task 2 — find the next stage in `sortingOrder` given the
@@ -1177,6 +1103,14 @@ export class CGrid<TRow = any> {
    *  Drained from each `getViewport` chunk's `flashMask` and queried
    *  by the painter's `cellData` callback to produce `flashAlpha`. */
   private flashRegistry: FlashRegistry;
+  /** Cycle 25 / Task 7 wiring — paint-frame flash alpha mask built once
+   *  per paint from `buildFlashAlphaMask`. Indexed
+   *  `localRow × colCount + colIndex`; `cellAt` reads from this instead
+   *  of calling `registry.getAlpha` per cell when the mask is warm. */
+  private flashAlphaMask: Float32Array | null = null;
+  private flashAlphaMaskColIds: string[] = [];
+  private flashAlphaMaskColIndex = new Map<string, number>();
+  private flashAlphaMaskOut: Float32Array | undefined;
   /** Cycle 21e / Task 13 — per-call flashCells overrides awaiting the
    *  next mask ingest. Keyed `${stringRowId}\0${colId}`; the
    *  `\0*` colId wildcard covers "all columns" calls. `expiresAt`
@@ -1500,23 +1434,10 @@ export class CGrid<TRow = any> {
     // `rowMultiSelectWithClick` and may auto-inject a pinned-left
     // checkbox column at index 0 (pre-tree-build so the column shows
     // up alongside the rest with no special-case painting path).
-    const resolvedSelection = resolveSelection<TRow>(options.selection);
-    if (resolvedSelection) {
-      options.rowSelection = resolvedSelection.rowSelectionMode;
-      if (resolvedSelection.suppressRowClickSelection) options.suppressRowClickSelection = true;
-      if (resolvedSelection.rowMultiSelectWithClick) options.rowMultiSelectWithClick = true;
-      if (resolvedSelection.syntheticCheckboxColumn) {
-        // Skip if the app already added a column with the same colId
-        // (idempotent if `selection` is set via setGridOption +
-        // updateGridOptions cycle later).
-        const hasIt = options.columnDefs.some(
-          (d) => (d as any).colId === resolvedSelection.syntheticCheckboxColumn!.colId,
-        );
-        if (!hasIt) {
-          options.columnDefs = [resolvedSelection.syntheticCheckboxColumn, ...options.columnDefs];
-        }
-      }
-    }
+    applyResolvedSelectionToOptions(
+      options,
+      resolveSelection<TRow>(options.selection),
+    )
     // Cycle 21d / Task 9 — fold registered calc provider output (synthesized
     // calc columns + override/template patches) into the def array before
     // tree resolution. No provider → same-reference pass-through.
@@ -1833,6 +1754,9 @@ export class CGrid<TRow = any> {
       },
       paint: (gc) => {
         const t0 = performance.now();
+        // Cycle 25 / Task 7 — rebuild the flash alpha mask once per paint
+        // so `cellAt` can index instead of Map-lookup per cell.
+        this.rebuildFlashAlphaMaskForPaint();
         // Task 4 (paint-cache layer) — `paintCache: false` (or a layer
         // whose offscreen-canvas construction failed) short-circuits to
         // the EXISTING shipped pipeline below, byte-for-byte unchanged —
@@ -7538,18 +7462,9 @@ export class CGrid<TRow = any> {
     funcs: Record<string, IAggFunc> | undefined,
     triggerRefresh: boolean = false,
   ): void {
-    const entries: Array<{ name: string; source: string }> = [];
-    if (funcs) {
-      for (const [name, fn] of Object.entries(funcs)) {
-        if (typeof fn !== 'function') {
-          throw new Error(
-            `[cgrid] aggFuncs.${name} is not a function — ` +
-            `entries must be IAggFunc callables (received ${typeof fn})`,
-          );
-        }
-        entries.push({ name, source: serializeAggFunc(name, fn) });
-      }
-    }
+    // Closure detection / new Function round-trip lives in
+    // `serializeAggFuncsMap` — trusted-app source only.
+    const entries = serializeAggFuncsMap(funcs);
     const promise = this.workerCoord.setAggFuncs(entries);
     promise.catch((err) => {
       if (!this.destroyed) console.error('[cgrid] setAggFuncs:', err);
@@ -9953,16 +9868,62 @@ export class CGrid<TRow = any> {
     };
   }
 
+  /**
+   * Cycle 25 / Task 7 — build (or reuse) the per-paint flash alpha mask
+   * for the current chunk × visible columns. No-op when flash is off or
+   * there is no chunk.
+   */
+  private rebuildFlashAlphaMaskForPaint(): void {
+    if (!this.chunk || !this.options.enableCellChangeFlash) {
+      this.flashAlphaMask = null;
+      return;
+    }
+    const colIds = this.viewport.visibleColumns.map((c) => c.colId);
+    if (colIds.length === 0) {
+      this.flashAlphaMask = null;
+      return;
+    }
+    // Rebuild the colId → index map only when the visible set changes.
+    let colsChanged = colIds.length !== this.flashAlphaMaskColIds.length;
+    if (!colsChanged) {
+      for (let i = 0; i < colIds.length; i++) {
+        if (colIds[i] !== this.flashAlphaMaskColIds[i]) {
+          colsChanged = true;
+          break;
+        }
+      }
+    }
+    if (colsChanged) {
+      this.flashAlphaMaskColIds = colIds;
+      this.flashAlphaMaskColIndex = new Map(colIds.map((id, i) => [id, i]));
+    }
+    this.flashAlphaMask = buildFlashAlphaMask({
+      registry: this.flashRegistry,
+      rowIds: this.chunk.rowIds,
+      colIds,
+      now: performance.now(),
+      out: this.flashAlphaMaskOut,
+    });
+    this.flashAlphaMaskOut = this.flashAlphaMask;
+  }
+
   private cellAt(rowIndex: number, colId: string): { value: unknown; valueFormatted: string; flashAlpha?: number; flashColor?: string } | null {
     if (!this.chunk) return null;
     const localIndex = rowIndex - this.chunk.rowStart;
     if (localIndex < 0 || localIndex >= this.chunk.rowCount) return null;
-    // Cycle 4 / Task 11 (cell-flash patch) — per-cell flashAlpha read
-    // from the FlashRegistry. Keyed by the chunk's numeric rowId
-    // (allocation-free per-cell lookup). Returns 0 when no flash is
-    // active or when the registry is disabled / reduced-motion.
+    // Cycle 4 / Task 11 + Cycle 25 / Task 7 — prefer the paint-frame
+    // flash alpha mask (one Map walk per paint) over per-cell
+    // `registry.getAlpha`. Fall back when the mask is cold or the
+    // colId is outside the visible set used to build it.
     const numericRowId = this.chunk.rowIds[localIndex]!;
-    const flashAlpha = this.flashRegistry.getAlpha(numericRowId, colId, performance.now());
+    let flashAlpha = 0;
+    const mask = this.flashAlphaMask;
+    const colIdx = mask ? this.flashAlphaMaskColIndex.get(colId) : undefined;
+    if (mask && colIdx !== undefined) {
+      flashAlpha = mask[localIndex * this.flashAlphaMaskColIds.length + colIdx] ?? 0;
+    } else {
+      flashAlpha = this.flashRegistry.getAlpha(numericRowId, colId, performance.now());
+    }
     const flash = flashAlpha > 0 ? flashAlpha : undefined;
     // Cycle 21e / Task 13 — per-call color override rides alongside the
     // alpha; undefined keeps the theme flashFromColor blend.
