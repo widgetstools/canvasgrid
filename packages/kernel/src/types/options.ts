@@ -266,16 +266,35 @@ export interface CGridOptions<TRow = any> {
    *  NOTE: This commit ships the option + detection; the worker
    *  painter itself is the follow-up that closes Task 4. */
   paintMode?: 'auto' | 'main' | 'offscreen';
+  /**
+   * Paint-quality profile for low-end / no-GPU hosts.
+   *
+   * - `'auto'` (default) — disable the retained paint-cache layer when
+   *   the WebGL renderer is a known software rasterizer (SwiftShader,
+   *   llvmpipe, …). Hardware GL keeps the layer.
+   * - `'performance'` — always disable `paintCache` (and default
+   *   `paintCacheOverscan` to `0`). Keep `rasterCache` on — cell/strip
+   *   bitmaps still help on software Canvas2D.
+   * - `'quality'` — keep the retained layer (ignore software detection).
+   *
+   * Explicit `paintCache: true | false` always wins over this field.
+   */
+  qualityMode?: 'auto' | 'quality' | 'performance';
   /** Retained paint-cache layer (Phase C of the damage-region system) —
-   *  when `true` (the default), scroll frames present via a single
-   *  `drawImage` of an offscreen layer instead of re-rastering every
-   *  visible row each tick; text only rasters when content actually
+   *  when `true` (the default on hardware GL), scroll frames present via
+   *  a single `drawImage` of an offscreen layer instead of re-rastering
+   *  every visible row each tick; text only rasters when content actually
    *  changes or the layer's coverage needs to extend. `false` is the
    *  field escape hatch: reproduces the exact pre-paint-cache damage
    *  pipeline (same as `suppressPartialRepaint` for the base damage
-   *  system). Runtime-mutable via `updateGridOptions` — flipping it
-   *  tears down / rebuilds the layer.
-   *  See docs/superpowers/specs/2026-07-11-paint-cache-layer-design.md. */
+   *  system). Under `qualityMode: 'auto'`, software-GL hosts resolve
+   *  this to `false` at construction. Runtime-mutable via
+   *  `updateGridOptions` — flipping it tears down / rebuilds the layer.
+   *  See docs/superpowers/specs/2026-07-11-paint-cache-layer-design.md.
+   *
+   *  Note: even when the layer is on, `damage.full` frames paint through
+   *  the legacy path (hybrid routing) so continuous scroll does not pay
+   *  a double offscreen+present cost on software raster. */
   paintCache?: boolean;
   /** Coverage margin banked on each side of the visible body for the
    *  paint-cache layer, as a multiple of body height — e.g. `0.5` (the

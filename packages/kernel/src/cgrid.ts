@@ -22,6 +22,7 @@ import { moveColumnToGroup as moveColumnToGroupPure, moveColumnGroup as moveColu
 import { resolveSelection, applyResolvedSelectionToOptions } from './core/selectionConfig';
 import { serializeAggFuncsMap } from './core/aggFuncSerialization';
 import { buildFlashAlphaMask } from './core/flashAlphaMask';
+import { applyPaintQualityDefaults } from './core/paintQuality';
 import {
   commitPanelMove as commitPanelMoveHelper,
   resolveDragTargetRole as resolveDragTargetRoleHelper,
@@ -951,6 +952,13 @@ export class CGrid<TRow = any> {
    *  offscreen-canvas construction failed (headless/unsupported
    *  environment) still gets an instance here, just an inert one. */
   private paintCacheLayer: PaintCacheLayer | null = null;
+  /**
+   * Hybrid routing — when true, `damage.full` frames paint via the legacy
+   * path until the next non-full frame. Avoids paying offscreen+present
+   * on continuous-scroll full streaks (no-GPU / software raster). Cleared
+   * on the first partial/present-only frame so the layer can rebuild.
+   */
+  private paintCacheDeferLayer = false;
   /** Task 4 — `true` once the layer holds a geometry `planLayer` can
    *  legitimately `'keep'`/`'shift'` against. `false` forces `planLayer`'s
    *  `current: null` branch (an unconditional `'reset'`) on the NEXT
@@ -1243,6 +1251,11 @@ export class CGrid<TRow = any> {
 
   constructor(container: HTMLElement, private options: CGridOptions<TRow>) {
     if (!options.getRowId) throw new Error('[cgrid] options.getRowId is required');
+
+    // No-GPU / software-raster profile — resolve `qualityMode` + auto
+    // paintCache policy before any layer construction. Explicit
+    // `paintCache: true|false` always wins (see paintQuality.ts).
+    applyPaintQualityDefaults(options);
 
     // Cycle 25 / Task 10 — memory-pressure release. Holds recent
     // chunks via WeakRef so V8/JSC can collect them ahead of our
@@ -1776,11 +1789,19 @@ export class CGrid<TRow = any> {
         // was ever presented FROM the layer during the suppressed
         // window).
         const cacheOn = this.paintCacheActive() && !this.options.suppressPartialRepaint;
+        // Snapshot BEFORE planLayer — a bootstrap `reset` sets
+        // `paintCacheLayerAnchored = true` this frame; hybrid routing
+        // must key off the pre-maintain state so the first paint still
+        // builds the layer.
+        const wasLayerAnchored = this.paintCacheLayerAnchored;
+        const wasDeferred = this.paintCacheDeferLayer;
         // Task 4 — maintain the layer's geometry (spec §3 step 1) BEFORE
         // resolving damage: `buildDamageResolveCtx()` reads
         // `this.paintCacheLayer.geometry()` for the data-domain area cap,
         // so it must already reflect whatever THIS frame's `planLayer`
-        // decision does to the anchor.
+        // decision does to the anchor. Skip while hybrid-deferred — the
+        // layer is idle and planLayer would only synthesize a reset from
+        // the un-anchored state.
         let layerPlan: LayerPlan | null = null;
         let layerVs: ViewportState | null = null;
         // Task 4 — the dpr the layer's backing store was JUST sized at
@@ -1792,7 +1813,7 @@ export class CGrid<TRow = any> {
         // gotcha `getDevicePixelRatio`'s doc above already calls out for
         // the legacy scroll-blit wiring).
         let layerDpr = 1;
-        if (cacheOn) {
+        if (cacheOn && !wasDeferred) {
           const layer = this.paintCacheLayer!;
           const vsNow = this.viewport;
           const overscanRatio = Math.max(0, Math.min(2, this.options.paintCacheOverscan ?? 0.5));
@@ -1885,23 +1906,69 @@ export class CGrid<TRow = any> {
         let rasterAreaRects: Rect[] = [];
         let chromeAreaRects: Rect[] = [];
 
-        if (!cacheOn) {
+        // Hybrid routing (no-GPU / continuous-scroll): once the layer is
+        // warm, `damage.full` keep/shift frames enter a deferral that
+        // paints via legacy `Renderer.paint` for the WHOLE full streak
+        // (no offscreen+present thrash). Cleared on the first non-full
+        // frame so the layer can rebuild once. Bootstrap / coverage-jump
+        // (`plan.kind === 'reset'` while not yet deferred) still builds
+        // the layer.
+        const planKind = layerPlan?.kind;
+        if (
+          cacheOn
+          && damage.full
+          && planKind !== 'reset'
+          && (wasLayerAnchored || wasDeferred)
+        ) {
+          this.paintCacheDeferLayer = true;
+          this.paintCacheLayerAnchored = false;
+        } else if (cacheOn && wasDeferred && !damage.full) {
+          this.paintCacheDeferLayer = false;
+        }
+        const useLayer = cacheOn && !this.paintCacheDeferLayer;
+
+        if (!useLayer) {
           this.renderer.paint(gc, damage);
         } else {
           // Task 4 — spec §3 frame algorithm, steps 2-5. Step 1 (maintain)
-          // already ran above.
+          // already ran above — unless we just left a hybrid deferral, in
+          // which case maintain now so the layer can reset cleanly.
+          if (!layerPlan) {
+            const layer = this.paintCacheLayer!;
+            const vsNow = this.viewport;
+            const overscanRatio = Math.max(0, Math.min(2, this.options.paintCacheOverscan ?? 0.5));
+            const overscanPx = overscanRatio * vsNow.bodyHeight;
+            const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
+            layerDpr = dpr;
+            const wasAnchored = this.paintCacheLayerAnchored;
+            const geomBefore = wasAnchored ? layer.geometry() : null;
+            if (layer.ensureSize(this.canvasBounds.width, vsNow.bodyHeight + 2 * overscanPx, dpr)) {
+              this.paintCacheLayerAnchored = false;
+            }
+            layerPlan = planLayer({
+              current: this.paintCacheLayerAnchored ? geomBefore : null,
+              scrollTop: vsNow.scrollTop,
+              bodyHeight: vsNow.bodyHeight,
+              overscanPx,
+              contentHeight: vsNow.contentHeight,
+            });
+            if (layerPlan.kind === 'reset') {
+              const qTop = Math.round(layerPlan.newTop * dpr) / dpr;
+              layer.reset(qTop);
+              this.paintCacheLayerAnchored = true;
+            } else if (layerPlan.kind === 'shift') {
+              const qdy = Math.round(layerPlan.dy * dpr) / dpr;
+              layer.shift(qdy);
+            }
+            layerVs = this.buildLayerViewport(layer.geometry());
+          }
           const layer = this.paintCacheLayer!;
           const vsNow = this.viewport;
           const plan = layerPlan!;
           const vs2 = layerVs!;
-          // A reset forces a full layer re-raster regardless of why —
-          // `planLayer`'s own reset OR an unrelated base-system `full`
-          // (e.g. `suppressPartialRepaint`, a ledger cap trip) both mean
-          // "raster the layer's entire current coverage", though only
-          // `plan.kind === 'reset'` re-anchors the geometry itself (an
-          // unrelated `damage.full` leaves a legitimately `'keep'`/
-          // `'shift'`-decided anchor untouched — it's still correct,
-          // just needs its FULL extent re-rastered this frame).
+          // Hybrid routing diverts warm `damage.full` frames to legacy, so
+          // a layer frame only goes "raster full" when `planLayer` itself
+          // reset the anchor (bootstrap / resize / overscan change).
           const layerRasterFull = damage.full || plan.kind === 'reset';
 
           // 2. Raster into the layer. Closeout directive B — a
@@ -8985,6 +9052,7 @@ export class CGrid<TRow = any> {
     this.paintCacheLayer?.dispose();
     this.paintCacheLayer = this.options.paintCache !== false ? new PaintCacheLayer() : null;
     this.paintCacheLayerAnchored = false;
+    this.paintCacheDeferLayer = false;
     this.repaintFull();
   }
 

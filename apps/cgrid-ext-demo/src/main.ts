@@ -46,6 +46,10 @@ const NO_FLASH = harnessParams.has('noFlash');
 // two harness pages, one with the retained layer active (default) and one
 // without, must produce byte-identical pixels for the same step script.
 const NO_CACHE = harnessParams.has('noCache');
+// Low-end / no-GPU profile — `&quality=performance` forces paintCache off
+// via CGridOptions.qualityMode (same effective path as `&noCache`, but
+// exercises the qualityMode resolver apps should use in product).
+const QUALITY_PERF = harnessParams.get('quality') === 'performance';
 // Cycle 22 (raster cache) — `&noRaster` boots with `rasterCache: false`,
 // the field escape hatch that keeps the paint-cache layer live but fully
 // disables BOTH raster-cache tiers (Tier-1 content-keyed cell bitmaps at
@@ -235,6 +239,7 @@ const ext = new CGridExt<Position>(app, {
   // retained paint-cache layer — the invariance spec's second control arm,
   // orthogonal to `suppressPartial`.
   ...(NO_CACHE ? { paintCache: false } : {}),
+  ...(QUALITY_PERF ? { qualityMode: 'performance' as const } : {}),
   // `&noRaster` (only meaningful alongside `?paintHarness`) disables both
   // raster-cache tiers (cell bitmaps + row strips) — the invariance spec's
   // third control arm, orthogonal to `suppressPartial` and `noCache`.
