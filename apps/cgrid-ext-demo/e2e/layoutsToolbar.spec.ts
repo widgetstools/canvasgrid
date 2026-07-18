@@ -11,7 +11,7 @@ test.beforeEach(async ({ page }) => {
   await expect(page.locator('.cgext-titlebar')).toBeVisible();
 });
 
-const trigger = (page: Page) => page.locator('[data-item-id="layouts"] button.cgext-profile');
+const trigger = (page: Page) => page.locator('[data-item-id="layouts"] button.cgext-layouts-trigger');
 const panel = (page: Page) => page.locator('.cgext-menu.cgext-layouts');
 const row = (page: Page, id: string) => panel(page).locator(`.cgext-layouts-row[data-layout-id="${id}"]`);
 const disk = (page: Page) => page.locator('[data-item-id="layout-save"] button');

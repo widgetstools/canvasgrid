@@ -6,13 +6,15 @@
  * sync-fill). On SwiftShader / software GL that misses the frame budget.
  *
  * `qualityMode`:
- *   - `'performance'` — force paintCache off (keep rasterCache).
+ *   - `'performance'` — force paintCache off (keep rasterCache) and use
+ *     Deephaven-style full viewport redraw on scroll (no canvas self-blit).
  *   - `'quality'` — keep the retained layer (default paintCache behaviour).
  *   - `'auto'` (default) — disable paintCache when the WebGL renderer is
  *     a known software rasterizer (SwiftShader, llvmpipe, …).
  *
  * Explicit `paintCache: true | false` always wins over `qualityMode`.
- */
+ * When paintCache is off (for any reason), scroll never self-blits — fast
+ * wheel thrashing used to tear mid-body rows via overlapping drawImage. */
 
 export type QualityMode = 'auto' | 'quality' | 'performance';
 

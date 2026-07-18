@@ -9,6 +9,7 @@
 // options" for the source of truth on which keys belong in which bucket.
 
 import type { CGridOptions } from '../types';
+import { clampRowHeight } from '../types/options';
 import { CgTheme } from '../theming/theme/themeObject';
 
 /**
@@ -55,6 +56,8 @@ export type RuntimeOption =
   | 'cellFlashDuration'
   | 'cellFadeDuration'
   | 'asyncTransactionWaitMillis'
+  | 'asyncTransactionConflate'
+  | 'asyncTransactionThrottleMillis'
   | 'rowBuffer'
   | 'context'
   | 'loading'
@@ -137,6 +140,8 @@ export interface RuntimeOptionTarget<TRow = any> {
    *  starts / stops on the next applyTransaction. Implementation in
    *  `cgrid.ts` calls `workerClient.setEnableCellChangeFlash`. */
   forwardEnableCellChangeFlash(enabled: boolean): void;
+  /** Forward async-transaction batching knobs to the worker queue. */
+  forwardAsyncTransactionOptions(): void;
   /** Cycle 14 / Task 2 — rebuild the subgrid stack (without re-resolving
    *  the column tree) and recompute the viewport. The pinnedTopRowData /
    *  pinnedBottomRowData runtime flips route through here: a re-mount
@@ -231,6 +236,14 @@ export function applyRuntimeOption<TRow>(
       }
       return;
     case 'rowHeight':
+      // Floor at MIN_ROW_HEIGHT_PX so HiDPI scroll-blit seams can't look
+      // like squashed / uneven rows when an app (or Grid Options) dials
+      // the height too low.
+      if (typeof value === 'number') {
+        (target as { options: CGridOptions<any> }).options.rowHeight = clampRowHeight(value);
+      }
+      target.refreshLayout();
+      return;
     case 'headerHeight':
       target.refreshLayout();
       return;
@@ -302,6 +315,10 @@ export function applyRuntimeOption<TRow>(
     case 'cellFlashDuration':
     case 'cellFadeDuration':
     case 'asyncTransactionWaitMillis':
+    case 'asyncTransactionConflate':
+    case 'asyncTransactionThrottleMillis':
+      target.forwardAsyncTransactionOptions();
+      return;
     case 'context':
     case 'debug':
     // Cycle 9 / Task 5 — fill-handle options are storage-only at runtime.
@@ -483,7 +500,8 @@ export const RUNTIME_OPTION_SET: ReadonlySet<RuntimeOption> = new Set<RuntimeOpt
   'suppressRowClickSelection', 'rowMultiSelectWithClick',
   'suppressColumnVirtualisation', 'suppressRowVirtualisation',
   'enableCellChangeFlash', 'cellFlashDuration', 'cellFadeDuration',
-  'asyncTransactionWaitMillis', 'rowBuffer',
+  'asyncTransactionWaitMillis', 'asyncTransactionConflate',
+  'asyncTransactionThrottleMillis', 'rowBuffer',
   'context', 'loading', 'debug', 'rowData',
   'quickFilterText', 'cacheQuickFilter', 'includeHiddenColumnsInQuickFilter',
   'enableFillHandle', 'fillHandleDirection', 'fillOperation',

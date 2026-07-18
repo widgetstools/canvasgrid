@@ -73,6 +73,30 @@ export interface ColumnTree {
   maxDepth: number;
 }
 
+/**
+ * How many group-header rows should paint for the current tree.
+ *
+ * Groups whose every descendant leaf is `hide: true` (e.g. the Column
+ * Groups editor visibility checkbox unchecked, or every leaf hidden)
+ * contribute nothing. When no group has a visible leaf — including a
+ * fully flat tree — returns `0` so the header collapses to the leaf
+ * header row alone (original height).
+ */
+export function visibleHeaderGroupDepth(tree: ColumnTree): number {
+  let max = 0;
+  const walk = (node: ColumnTreeNode): boolean => {
+    if (node.kind === 'leaf') return node.colDef.hide !== true;
+    let any = false;
+    for (const child of node.children) {
+      if (walk(child)) any = true;
+    }
+    if (any) max = Math.max(max, node.depth + 1);
+    return any;
+  };
+  for (const r of tree.roots) walk(r);
+  return max;
+}
+
 /** Discriminator: a def is a group iff it has a `children` array. */
 export function isColGroupDef<TRow>(
   def: CColDef<TRow> | CColGroupDef<TRow>,

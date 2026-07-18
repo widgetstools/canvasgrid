@@ -15,10 +15,9 @@
 // selection rebuilds) stay in CGrid and call into the coordinator only
 // for the worker-side bit.
 //
-// The async-batch flushing timer (`asyncTransactionWaitMillis`) lives
-// inside the worker itself (worker.ts → TransactionQueue with the
-// hard-coded 50ms wait this cycle); `flushAsyncTransactions()` on the main
-// surface is a foundation no-op preserved here for the public API.
+// The async-batch flushing timer (`asyncTransactionWaitMillis` /
+// conflate / throttle) lives inside the worker `TransactionQueue`.
+// `flushAsyncTransactions()` force-drains that queue.
 
 import type { WorkerLike, WorkerClientHandlers } from '../worker/client';
 import { WorkerClient } from '../worker/client';
@@ -70,7 +69,7 @@ export interface WorkerCoordinatorDeps {
    *  Synchronous side effects are fine — the wrapper resolves
    *  immediately in that case. */
   onViewportChunk(
-    opts: { rowStart: number; rowEnd: number; columns: string[] },
+    opts: { rowStart: number; rowEnd: number; columns: string[]; seq?: number },
     chunk: ViewportChunk,
     stickyAncestors: StickyAncestor[],
   ): void | Promise<void>;
@@ -129,7 +128,11 @@ export class WorkerCoordinator {
    *  pending flash diffs, so the additional payload cost is zero when
    *  the feature is off. */
   async dispatchViewportRequest(opts: {
-    rowStart: number; rowEnd: number; columns: string[]; stickyBoundaryRow: number;
+    rowStart: number;
+    rowEnd: number;
+    columns: string[];
+    stickyBoundaryRow: number;
+    seq: number;
   }): Promise<void> {
     const { chunk, stickyAncestors } = await this.client.getViewport({
       rowStart: opts.rowStart, rowEnd: opts.rowEnd, columns: opts.columns,
@@ -141,11 +144,18 @@ export class WorkerCoordinator {
 
   // ── Transaction surface ──────────────────────────────────────────────────
 
-  /** Foundation no-op: the async-batch flushing timer lives inside the
-   *  worker (`TransactionQueue` with the hard-coded 50ms wait); main
-   *  has nothing to flush. Preserved on the surface so the public
-   *  `flushAsyncTransactions` API can call through without a branch. */
-  flushAsyncTransactions(): void { /* deferred — worker-side timer */ }
+  /** Force-drain the worker async transaction queue (ignores throttle). */
+  flushAsyncTransactions(): void {
+    void this.client.flushAsyncTransactions();
+  }
+
+  setAsyncTransactionOptions(opts: {
+    waitMillis?: number;
+    conflate?: boolean;
+    throttleMillis?: number;
+  }): Promise<void> {
+    return this.client.setAsyncTransactionOptions(opts);
+  }
 
   setRowData(
     rows: unknown[], heightsByRowId?: Map<string, number>,

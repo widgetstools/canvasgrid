@@ -1,19 +1,17 @@
-import type { CGrid } from '@cgrid/kernel';
+import type { CGrid, GridState } from '@cgrid/kernel';
 import type {
   ProfileController, ProfileStore, ProfileMeta, Unsub,
 } from '../extension/types';
 
 export interface ProfilesOptions { initialId?: string; extState?: () => Record<string, unknown> }
 
-/** Wave-0 profiles: tracks dirty state (drives the save button) and does a
- *  full-snapshot save/load through a `ProfileStore`. A profile snapshot is
- *  just `grid.getState()` (which already folds in every registered module
- *  slice) plus ext chrome state. Richer switching UI lands in the Profiles
- *  wave against this same class. */
+/** Wave-0 profiles: dirty tracking + snapshot save/load/switch through a
+ *  `ProfileStore`. Title-bar UI (`profilesMenu`) drives this controller. */
 export class ProfilesController implements ProfileController {
   private id: string;
   private dirty = false;
   private listeners = new Set<(d: boolean) => void>();
+  private metaListeners = new Set<() => void>();
 
   constructor(
     private grid: CGrid,
@@ -37,31 +35,97 @@ export class ProfilesController implements ProfileController {
     return () => this.listeners.delete(fn);
   }
 
-  async save(): Promise<void> {
-    await this.store.save(this.id, {
-      meta: { id: this.id, name: this.id, updatedAt: nowStamp() },
+  onListChange(fn: () => void): Unsub {
+    this.metaListeners.add(fn);
+    return () => this.metaListeners.delete(fn);
+  }
+  private notifyList(): void {
+    for (const fn of this.metaListeners) fn();
+  }
+
+  private snapshot(id: string, name?: string): {
+    meta: ProfileMeta;
+    gridState: GridState;
+    ext: Record<string, unknown>;
+  } {
+    return {
+      meta: { id, name: name ?? id, updatedAt: Date.now() },
       gridState: this.grid.getState(),
       ext: this.opts.extState?.() ?? {},
-    });
+    };
+  }
+
+  async save(): Promise<void> {
+    const existing = await this.store.load(this.id);
+    const name = existing?.meta.name ?? this.id;
+    await this.store.save(this.id, this.snapshot(this.id, name));
     this.setDirty(false);
+    this.notifyList();
+  }
+
+  async saveAs(name: string): Promise<string> {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error('Profile name is required');
+    const id = slugId(trimmed);
+    const list = await this.store.list();
+    if (list.some((m) => m.id === id)) {
+      throw new Error(`Profile '${trimmed}' already exists`);
+    }
+    await this.store.save(id, this.snapshot(id, trimmed));
+    this.id = id;
+    this.setDirty(false);
+    this.notifyList();
+    return id;
+  }
+
+  async rename(id: string, name: string): Promise<void> {
+    const trimmed = name.trim();
+    if (!trimmed) throw new Error('Profile name is required');
+    const snap = await this.store.load(id);
+    if (!snap) throw new Error(`Profile '${id}' not found`);
+    snap.meta = { ...snap.meta, name: trimmed, updatedAt: Date.now() };
+    await this.store.save(id, snap);
+    this.notifyList();
+  }
+
+  async remove(id: string): Promise<void> {
+    if (id === this.id) throw new Error('Cannot delete the active profile');
+    await this.store.remove(id);
+    this.notifyList();
   }
 
   async switchTo(id: string): Promise<void> {
     // "Switch to a SAVED profile" — a missing id is a no-op. Load FIRST and
     // only adopt the new id / apply state / clear dirty when the snapshot
     // actually exists; otherwise the active pointer, dirty flag and grid
-    // state are all left untouched. (Adopting an unknown id and clearing
-    // dirty would silently lose the user's current state pointer.)
+    // state are all left untouched.
     const snap = await this.store.load(id);
     if (!snap) return;
     this.id = id;
     this.grid.setState(snap.gridState);
     this.setDirty(false);
+    this.notifyList();
+  }
+
+  /** Load `initialId` if it exists; otherwise seed a 'default' snapshot
+   *  from the current grid so the switcher is never empty. */
+  async bootstrap(): Promise<void> {
+    const existing = await this.store.load(this.id);
+    if (existing) {
+      this.grid.setState(existing.gridState);
+      this.setDirty(false);
+      this.notifyList();
+      return;
+    }
+    await this.store.save(this.id, this.snapshot(this.id, this.id === 'default' ? 'Default' : this.id));
+    this.setDirty(false);
+    this.notifyList();
   }
 
   list(): Promise<ProfileMeta[]> { return this.store.list(); }
 }
 
-/** Stamp helper isolated so tests can tolerate happy-dom; avoids importing
- *  Date at module top for clarity. */
-function nowStamp(): number { return Date.now(); }
+function slugId(name: string): string {
+  const base = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'profile';
+  return base.slice(0, 48);
+}

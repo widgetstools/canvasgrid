@@ -983,10 +983,12 @@ export class ColumnVisibilityPanel {
    *  "insert before row X" always resolves cleanly to X's own immediate
    *  parent (from `ancestorGroupIds`) — nesting falls out of the walk
    *  order, no recursive tree-splicing needed:
-   *   - hovering a GROUP row (either half — its children are the very
-   *     next rows in the flat list, so "at start" and "before the next
-   *     child" are the same position) → drop INTO that group, before
-   *     its first immediate child (or appended, if empty/all filtered).
+   *   - hovering a GROUP row UPPER third → insert BEFORE that group as a
+   *     sibling (under the group's parent / top level).
+   *   - hovering a GROUP row MIDDLE third → drop INTO that group (before
+   *     its first immediate child, or append if empty).
+   *   - hovering a GROUP row LOWER third → insert AFTER that group as a
+   *     sibling (skips the group's descendants in the flat list).
    *   - hovering a LEAF row's upper half → insert before it, within its
    *     current parent (or top level).
    *   - hovering a LEAF row's lower half, or past every row → insert
@@ -1037,9 +1039,23 @@ export class ColumnVisibilityPanel {
 
     const hovered = candidates[hoveredIdx]!;
     if (hovered.row.kind === 'group') {
-      const targetGroupId = hovered.row.groupId;
-      const beforeId = findNextWithParent(hoveredIdx + 1, targetGroupId);
-      return { kind, movingId, targetGroupId, beforeId };
+      const groupId = hovered.row.groupId;
+      const groupParent = parentOf(hovered.key);
+      const rect = hovered.row.el.getBoundingClientRect();
+      const y = clientY - rect.top;
+      const third = rect.height / 3;
+      if (y < third) {
+        // Sibling before this group (ungroup / reorder out of a nest).
+        return { kind, movingId, targetGroupId: groupParent, beforeId: groupId };
+      }
+      if (y > rect.height - third) {
+        // Sibling after this group — skip descendants via parent match.
+        const beforeId = findNextWithParent(hoveredIdx + 1, groupParent);
+        return { kind, movingId, targetGroupId: groupParent, beforeId };
+      }
+      // Middle — nest into this group.
+      const beforeId = findNextWithParent(hoveredIdx + 1, groupId);
+      return { kind, movingId, targetGroupId: groupId, beforeId };
     }
 
     // Leaf row hovered — reorder within (or re-parent into) ITS parent.

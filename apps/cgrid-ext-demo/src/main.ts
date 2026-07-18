@@ -4,7 +4,8 @@
  * ZERO feature code lives here: this app is a plain consumer that
  * instantiates CGridExt (the batteries-included kernel + extension shell)
  * with cgrid's existing tooling enabled — the StarUI theme, the `sideBar`
- * tool panels (Columns / Filters / Grid Options / Column Groups), the
+ * tool panels (Columns / Filters), Options + Column Groups in the ext
+ * settings sheet (toolbar ⋯), the
  * row-group panel, formatted + grouped + conditionally-styled columns — and
  * pipes in the stomp-view-server feed (ws://localhost:8081, run it from
  * /Users/develop/wfh/starui/apps/stomp-view-server). The shell mounts even
@@ -19,7 +20,12 @@ import { wireIntoKernel as wireFormat } from '@cgrid/format';
 import { wireEditIntoKernel } from '@cgrid/edit';
 import { wireIntoKernel as wireCalc } from '@cgrid/calc';
 import { wireIntoKernel as wireRules } from '@cgrid/rules';
-import { connectStomp, type Position } from './stomp';
+import { connectStomp, STOMP_SNAPSHOT_ROWS, type Position, type StompRow } from './stomp';
+import {
+  buildColumnDefsFromRows,
+  flattenRows,
+  type FlatRow,
+} from './fieldDiscovery';
 
 // ─── Pixel-invariance test harness ──────────────────────────────────────
 // `?paintHarness` swaps the live STOMP feed for a fixed, deterministic
@@ -108,15 +114,16 @@ const TRADERS = ['patel', 'okafor', 'lindqvist', 'tanaka', 'reyes'];
 
 /** Deterministic categoricals derived from positionId so grouping affordances
  *  (row-group panel, Columns tool panel) have stable dimensions. */
-function decorateWithCategoricals(row: Position): Position {
+function decorateWithCategoricals<T extends { positionId: string }>(row: T): T {
   let h = 0;
-  for (let i = 0; i < row.positionId.length; i++) {
-    h = (h * 31 + row.positionId.charCodeAt(i)) >>> 0;
+  const id = String(row.positionId);
+  for (let i = 0; i < id.length; i++) {
+    h = (h * 31 + id.charCodeAt(i)) >>> 0;
   }
-  row.desk = DESKS[h % DESKS.length];
-  row.region = REGIONS[(h >>> 2) % REGIONS.length];
-  row.currency = CURRENCIES[(h >>> 4) % CURRENCIES.length];
-  row.trader = TRADERS[(h >>> 6) % TRADERS.length];
+  (row as StompRow).desk = DESKS[h % DESKS.length];
+  (row as StompRow).region = REGIONS[(h >>> 2) % REGIONS.length];
+  (row as StompRow).currency = CURRENCIES[(h >>> 4) % CURRENCIES.length];
+  (row as StompRow).trader = TRADERS[(h >>> 6) % TRADERS.length];
   return row;
 }
 
@@ -215,17 +222,40 @@ const app = document.querySelector<HTMLDivElement>('#app')!;
 // handle once it exists.
 let editHandle: ReturnType<typeof wireEditIntoKernel> | undefined;
 
-const ext = new CGridExt<Position>(app, {
+// STOMP path starts with a placeholder leaf; the first snapshot replaces
+// columnDefs with every discovered field (nested → dotted paths). The
+// paint harness keeps the curated `columnDefs` below via updateGridOptions.
+const PLACEHOLDER_COLS: CColDef<FlatRow>[] = [
+  { colId: 'positionId', field: 'positionId', headerName: 'Position', pinned: 'left', width: 140 },
+];
+
+const ext = new CGridExt<FlatRow>(app, {
   gridId: 'ext-demo',
   persistState: true,
-  getRowId: (r) => r.positionId,
-  columnDefs,
+  getRowId: (r) => String(r.positionId),
+  columnDefs: PAINT_HARNESS ? (columnDefs as CColDef<FlatRow>[]) : PLACEHOLDER_COLS,
   theme: 'cg-theme-quartz-dark',
   floatingFilterHeight: 34,
   floatingFilterInsetY: 8,
-  defaultColDef: { resizable: true, sortable: true, editable: true, flex: 1, minWidth: 80 },
+  // Wide blotters (hundreds of cols): FIXED widths + column virtualisation.
+  // `flex: 1` on every leaf forces minWidth on all N columns (e.g. 500×80
+  // = 40k CSS px) and makes every layout pass touch the full set. Paint
+  // itself only draws `visibleColumns` (~viewport × rows ≈ hundreds of
+  // cells); do not pay flex distribution across the whole model.
+  defaultColDef: PAINT_HARNESS
+    ? { resizable: true, sortable: true, editable: true, flex: 1, minWidth: 80 }
+    : { resizable: true, sortable: true, editable: true, width: 110, minWidth: 72 },
+  // Keep column virtualisation ON (default). Only paint/fetch columns in
+  // the horizontal viewport — required for ~500-column blotters.
+  suppressColumnVirtualisation: false,
+  suppressRowVirtualisation: false,
+  // Deephaven: fetch visible rows "plus a buffer for snappier scrolling".
+  // Default engine overscan is 3 — too tight at 20k + live ticks, so the
+  // lean full-redraw path paints blank bands while the worker chunk lags.
+  // 32 ≈ one extra viewport of rows above + below on a typical host.
+  ...(!PAINT_HARNESS ? { rowBuffer: 32 } : {}),
   rowGroupPanelShow: 'always',
-  sideBar: { toolPanels: ['columns', 'filters', 'gridOptions', 'columnGroups'] },
+  sideBar: { toolPanels: ['columns', 'filters'] },
   // `&noFlash` (closeout fix wave, I5/C3) boots with flash OFF — the real
   // default for a plain grid, and the exact configuration C3's bug needed
   // (the base harness always ran with flash on, which happened to mask it).
@@ -239,7 +269,14 @@ const ext = new CGridExt<Position>(app, {
   // retained paint-cache layer — the invariance spec's second control arm,
   // orthogonal to `suppressPartial`.
   ...(NO_CACHE ? { paintCache: false } : {}),
-  ...(QUALITY_PERF ? { qualityMode: 'performance' as const } : {}),
+  // Quality profile:
+  //   • `?quality=performance` — lean path (paintCache off), for thin-client
+  //     / no-GPU profiling.
+  //   • otherwise `'auto'` — keep the retained layer on hardware GL (smooth
+  //     Deephaven-style present/scroll), disable it only on known software
+  //     rasterizers. Forcing performance on GPU made every scroll a full
+  //     canvas redraw → blank/janky even for a single click-scroll.
+  ...(QUALITY_PERF ? { qualityMode: 'performance' as const } : { qualityMode: 'auto' as const }),
   // `&noRaster` (only meaningful alongside `?paintHarness`) disables both
   // raster-cache tiers (cell bitmaps + row strips) — the invariance spec's
   // third control arm, orthogonal to `suppressPartial` and `noCache`.
@@ -251,8 +288,9 @@ const ext = new CGridExt<Position>(app, {
   ...(GROUPED ? { groupIncludeFooter: true, groupDefaultExpanded: 'all' as const } : {}),
   ext: {
     // Replace the spine's bare Settings/Save with the full MarketsGrid-style
-    // title bar (brand, search, notifications, profiles, save, date, settings,
-    // overflow). The Grid Options module still opens from the settings icon.
+    // title bar (brand, search, notifications, layouts + layout-save, date,
+    // settings, overflow). Column Settings + Expressions live in the settings
+    // sheet via defaultBundle.
     extensions: [
       { remove: 'settings-launcher' },
       { remove: 'save' },
@@ -269,8 +307,11 @@ wireFormat(ext.grid);
 // Re-issue defs so the now-registered format compiler picks up the string
 // valueFormatters ('#,##0.00', '[Red]…'). Must run right after wireFormat and
 // BEFORE calc/rules wire — re-issuing after calc resets its override baseline
-// so later editColumn() edits don't repaint.
-ext.grid.updateGridOptions({ columnDefs });
+// so later editColumn() edits don't repaint. STOMP path re-issues again
+// after field discovery on the first snapshot.
+if (PAINT_HARNESS) {
+  ext.grid.updateGridOptions({ columnDefs: columnDefs as CColDef<FlatRow>[] });
+}
 editHandle = wireEditIntoKernel(ext.grid);
 (window as unknown as { __edit: unknown }).__edit = editHandle;
 wireCalc(ext.grid);
@@ -279,8 +320,9 @@ wireRules(ext.grid);
 // Expose for console poking + the hermetic E2E suite.
 (window as unknown as { __ext: unknown }).__ext = ext;
 
-// cgrid's side-panel rail (Columns / Filters / Grid Options / Column Groups)
-// must always be visible on load. persistState can restore it hidden from a
+// cgrid's side-panel rail (Columns / Filters) must always be visible on
+// load. Options + Column Groups live in the ext settings sheet (⋯).
+// persistState can restore the side bar hidden from a
 // prior session, and that restore runs async after construction — so force it
 // visible now and again after the restore settles.
 const showSidebar = () => { try { ext.grid.setSideBarVisible(true); } catch { /* ignore */ } };
@@ -475,7 +517,40 @@ if (PAINT_HARNESS) {
   // of feed state; connectStomp's onPhase('error') only affects these logs.
   connectStomp({
     onPhase: (phase) => { console.info(`[cgrid-ext-demo] stomp phase: ${phase}`); },
-    onSnapshot: (rows) => { rows.forEach(decorateWithCategoricals); ext.setRowData(rows); },
-    onLiveUpdate: (updates) => { updates.forEach(decorateWithCategoricals); ext.grid.applyTransactionAsync({ update: updates }); },
+    onSnapshot: (rows) => {
+      rows.forEach(decorateWithCategoricals);
+      // Flatten nested objects to dotted keys (`risk.dv01`) so every server
+      // field becomes a column; worker reads `row[field]` with those keys.
+      const flat = flattenRows(rows);
+      const defs = buildColumnDefsFromRows(flat);
+      ext.grid.updateGridOptions({ columnDefs: defs });
+      console.info(
+        `[cgrid-ext-demo] discovered ${defs.length} column roots / ` +
+        `${flat.length} rows from STOMP snapshot` +
+        (flat.length < STOMP_SNAPSHOT_ROWS
+          ? ` (requested ${STOMP_SNAPSHOT_ROWS} — check stomp-view-server snapshot-rows)`
+          : ''),
+      );
+      ext.setRowData(flat);
+      // Persist/profile restore often paints row-group chips against
+      // placeholder columns (worker rejects unknown ids). After real
+      // columnDefs + data land, force-ship the group model. Also covers
+      // restore that wins the race and lands in the same turn.
+      setTimeout(() => {
+        try {
+          const cols = ext.grid.getRowGroupColumns();
+          if (cols.length > 0) {
+            ext.grid.setGroupModel({ rowGroupCols: [...cols] });
+          }
+        } catch { /* grid torn down */ }
+      }, 0);
+    },
+    onLiveUpdate: (updates) => {
+      updates.forEach(decorateWithCategoricals);
+      // Kernel defers applyTransactionAsync during bodyScroll and flushes
+      // on bodyScrollEnd (deferAsyncTransactionsWhileScrolling, default on)
+      // so live ticks do not contend with scroll paints / viewport fetches.
+      ext.grid.applyTransactionAsync({ update: flattenRows(updates) });
+    },
   });
 }

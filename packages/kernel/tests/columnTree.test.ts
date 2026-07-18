@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { resolveColumnTree, isColGroupDef } from '../src/core/columnTree';
+import { resolveColumnTree, isColGroupDef, visibleHeaderGroupDepth } from '../src/core/columnTree';
 import type { CColDef, CColGroupDef } from '../src/types';
 
 describe('isColGroupDef', () => {
@@ -190,5 +190,42 @@ describe('resolveColumnTree — errors', () => {
         { groupId: 'g', children: [{ field: 'b' }] },
       ]),
     ).toThrow(/duplicate.*groupId/i);
+  });
+});
+
+describe('visibleHeaderGroupDepth', () => {
+  it('is 0 for a flat tree (no column groups)', () => {
+    const tree = resolveColumnTree([{ field: 'a' }, { field: 'b' }]);
+    expect(visibleHeaderGroupDepth(tree)).toBe(0);
+  });
+
+  it('matches maxDepth when groups have visible leaves', () => {
+    const tree = resolveColumnTree([
+      { groupId: 'g', headerName: 'G', children: [{ field: 'a' }, { field: 'b' }] },
+    ]);
+    expect(tree.maxDepth).toBe(1);
+    expect(visibleHeaderGroupDepth(tree)).toBe(1);
+  });
+
+  it('collapses to 0 when every leaf under groups is hidden', () => {
+    const tree = resolveColumnTree([
+      { groupId: 'g', headerName: 'G', children: [
+        { field: 'a', hide: true }, { field: 'b', hide: true },
+      ] },
+      { field: 'c' },
+    ]);
+    expect(tree.maxDepth).toBe(1);
+    expect(visibleHeaderGroupDepth(tree)).toBe(0);
+  });
+
+  it('keeps depth for nested groups that still have a visible leaf', () => {
+    const tree = resolveColumnTree([
+      { groupId: 'outer', headerName: 'Outer', children: [
+        { groupId: 'inner', headerName: 'Inner', children: [
+          { field: 'a', hide: true }, { field: 'b' },
+        ] },
+      ] },
+    ]);
+    expect(visibleHeaderGroupDepth(tree)).toBe(2);
   });
 });

@@ -18,6 +18,10 @@ export interface GroupNode {
   headerName: string;
   openByDefault?: boolean;
   marryChildren?: boolean;
+  /** Editor/profile visibility — when true, Apply hides every descendant
+   *  leaf column. Persisted on the projected `CColGroupDef.hide` so the
+   *  checkbox state round-trips through layouts/profiles. */
+  hide?: boolean;
   /** ag-grid-parity sub-group visibility relative to the immediate parent
    *  group's open state — same semantics as `ColumnNode.columnGroupShow`
    *  below, applied to a whole sub-group (a hidden group hides its
@@ -53,19 +57,60 @@ const isGroupDef = (d: CColDef | CColGroupDef): d is CColGroupDef =>
   Array.isArray((d as CColGroupDef).children);
 
 let seq = 0;
-const nextGroupId = (existing?: string) => existing ?? `cg-grp-${++seq}`;
+
+/** Keep the allocator ahead of any `cg-grp-N` already present (persisted
+ *  layouts / `ensureGroupIds` / prior Apply). Without this, a remount or
+ *  seed with existing `cg-grp-1` while `seq` is still 0 reuses that id and
+ *  the editor treats two groups as one (shared rename + shared columns). */
+function noteExistingId(id: string): void {
+  const m = /^cg-grp-(\d+)$/.exec(id);
+  if (m) seq = Math.max(seq, Number(m[1]));
+}
+
+function allocateGroupId(used: Set<string>): string {
+  let id: string;
+  do {
+    id = `cg-grp-${++seq}`;
+  } while (used.has(id));
+  used.add(id);
+  return id;
+}
+
+/** Prefer authored `groupId`; otherwise allocate. Never returns an id
+ *  already in `used` (duplicate authored ids get a fresh allocation). */
+function nextGroupId(existing: string | undefined, used: Set<string>): string {
+  if (existing) {
+    noteExistingId(existing);
+    if (!used.has(existing)) {
+      used.add(existing);
+      return existing;
+    }
+  }
+  return allocateGroupId(used);
+}
+
+function usedIds(nodes: readonly Node[]): Set<string> {
+  const used = new Set<string>();
+  for (const n of nodes) {
+    noteExistingId(n.id);
+    used.add(n.id);
+  }
+  return used;
+}
 
 export function flatten(defs: (CColDef | CColGroupDef)[]): Node[] {
   const out: Node[] = [];
+  const used = new Set<string>();
   const walk = (list: (CColDef | CColGroupDef)[], parentId: string | null) => {
     list.forEach((d, order) => {
       if (isGroupDef(d)) {
-        const id = nextGroupId(d.groupId);
+        const id = nextGroupId(d.groupId, used);
         out.push({
           id, kind: 'group', parentId, order,
           headerName: d.headerName ?? '',
           openByDefault: d.openByDefault,
           marryChildren: d.marryChildren,
+          hide: d.hide,
           columnGroupShow: d.columnGroupShow,
           headerStyle: d.headerStyle as ColCellOverrides | undefined,
           headerClass: d.headerClass,
@@ -73,6 +118,8 @@ export function flatten(defs: (CColDef | CColGroupDef)[]): Node[] {
         walk(d.children, id);
       } else {
         const cid = d.colId ?? d.field!;
+        noteExistingId(cid);
+        used.add(cid);
         out.push({
           id: cid, kind: 'column', parentId, order,
           colId: cid, headerName: d.headerName ?? cid,
@@ -95,6 +142,7 @@ export function project(nodes: Node[]): (CColDef | CColGroupDef)[] {
           const g: CColGroupDef = { groupId: n.id, headerName: n.headerName, children: childrenOf(n.id) };
           if (n.openByDefault !== undefined) g.openByDefault = n.openByDefault;
           if (n.marryChildren !== undefined) g.marryChildren = n.marryChildren;
+          if (n.hide !== undefined) g.hide = n.hide;
           if (n.columnGroupShow !== undefined) g.columnGroupShow = n.columnGroupShow;
           if (n.headerStyle !== undefined) g.headerStyle = n.headerStyle;
           if (n.headerClass !== undefined) g.headerClass = n.headerClass;
@@ -131,7 +179,34 @@ const reindex = (nodes: Node[]): Node[] => {
 export function createGroup(nodes: Node[], parentId: string | null, headerName: string): Node[] {
   const next = clone(nodes);
   const siblings = next.filter((n) => n.parentId === parentId).length;
-  next.push({ id: nextGroupId(), kind: 'group', parentId, order: siblings, headerName });
+  const id = allocateGroupId(usedIds(next));
+  next.push({ id, kind: 'group', parentId, order: siblings, headerName });
+  return reindex(next);
+}
+
+/** Create a group and move the given leaf columns into it (in `colIds` order).
+ *  Columns that can't leave their current marryChildren parent are skipped.
+ *  Returns the updated nodes; the new group's id is the last group under
+ *  `parentId` after the call (callers that need the id should find it by
+ *  comparing before/after, or use `createGroupWithColumnsResult`). */
+export function createGroupWithColumns(
+  nodes: Node[],
+  colIds: readonly string[],
+  headerName: string,
+  parentId: string | null = null,
+): Node[] {
+  const next = clone(nodes);
+  const siblings = next.filter((n) => n.parentId === parentId).length;
+  const groupId = allocateGroupId(usedIds(next));
+  next.push({ id: groupId, kind: 'group', parentId, order: siblings, headerName });
+  let order = 0;
+  for (const colId of colIds) {
+    const col = next.find((n) => n.kind === 'column' && n.colId === colId);
+    if (!col) continue;
+    if (!canDrop(next, col.id, groupId)) continue;
+    const i = next.findIndex((n) => n.id === col.id);
+    next[i] = { ...next[i]!, parentId: groupId, order: order++ };
+  }
   return reindex(next);
 }
 
@@ -157,14 +232,56 @@ export function deleteGroup(nodes: Node[], id: string): Node[] {
  * append at the end. E.g. for siblings [a, b, c], moveNode(..., a, parent, 2)
  * moves `a` to land before index 2 (`c`), producing [b, a, c].
  */
-export function moveNode(nodes: Node[], id: string, newParentId: string | null, newOrder: number): Node[] {
-  if (!canDrop(nodes, id, newParentId)) return nodes;
+export function moveNode(
+  nodes: Node[],
+  id: string,
+  newParentId: string | null,
+  newOrder: number,
+  opts?: DropOpts,
+): Node[] {
+  if (!canDrop(nodes, id, newParentId, opts)) return nodes;
   const next = clone(nodes).map((n) => (n.id === id ? { ...n, parentId: newParentId, order: newOrder - 0.5 } : n));
   return reindex(next);
 }
 
 export function setHidden(nodes: Node[], colId: string, hide: boolean): Node[] {
   return clone(nodes).map((n) => (n.kind === 'column' && n.colId === colId ? { ...n, hide } : n));
+}
+
+/** Collect every leaf colId under `groupId` (nested groups included). */
+export function descendantColumnIds(nodes: Node[], groupId: string): string[] {
+  const kids = nodes.filter((n) => n.parentId === groupId);
+  const out: string[] = [];
+  for (const k of kids) {
+    if (k.kind === 'column') out.push(k.colId);
+    else out.push(...descendantColumnIds(nodes, k.id));
+  }
+  return out;
+}
+
+/**
+ * Toggle group visibility for the profile/layout. Sets `GroupNode.hide` and
+ * cascades the same `hide` onto every descendant leaf so Apply hides those
+ * columns in the grid. Nested groups get the same `hide` flag so their
+ * checkboxes stay in sync.
+ */
+export function setGroupHidden(nodes: Node[], groupId: string, hide: boolean): Node[] {
+  const ids = new Set(descendantColumnIds(nodes, groupId));
+  const groupIds = new Set<string>([groupId]);
+  const collectGroups = (id: string) => {
+    for (const n of nodes) {
+      if (n.kind === 'group' && n.parentId === id) {
+        groupIds.add(n.id);
+        collectGroups(n.id);
+      }
+    }
+  };
+  collectGroups(groupId);
+  return clone(nodes).map((n) => {
+    if (n.kind === 'group' && groupIds.has(n.id)) return { ...n, hide };
+    if (n.kind === 'column' && ids.has(n.colId)) return { ...n, hide };
+    return n;
+  });
 }
 
 /** Pure — sets `columnGroupShow` on the one column matching `colId`, leaving
@@ -186,7 +303,20 @@ export function setGroupStyle(
   return clone(nodes).map((n) => (n.id === id && n.kind === 'group' ? { ...n, ...patch } : n));
 }
 
-export function canDrop(nodes: Node[], dragId: string, targetParentId: string | null): boolean {
+/** Options for structural moves. `bypassMarryChildren` is for the Column
+ *  Groups authoring editor — `marryChildren` must still block end-user drag
+ *  in the Columns panel / header, but the editor has to be able to take
+ *  columns out of a married group when the user clicks Remove. */
+export interface DropOpts {
+  bypassMarryChildren?: boolean;
+}
+
+export function canDrop(
+  nodes: Node[],
+  dragId: string,
+  targetParentId: string | null,
+  opts?: DropOpts,
+): boolean {
   if (dragId === targetParentId) return false;
   // Walk up from the target; if we reach dragId, the drop would create a cycle.
   let cur: string | null = targetParentId;
@@ -195,11 +325,16 @@ export function canDrop(nodes: Node[], dragId: string, targetParentId: string | 
     if (cur === dragId) return false;
     cur = byId.get(cur)?.parentId ?? null;
   }
-  // marryChildren: a column may not leave a marry-children group.
-  const drag = byId.get(dragId);
-  if (drag && drag.kind === 'column' && drag.parentId) {
-    const parent = byId.get(drag.parentId);
-    if (parent && parent.kind === 'group' && parent.marryChildren && targetParentId !== drag.parentId) return false;
+  // marryChildren: a column may not leave a marry-children group (runtime
+  // drag). Authoring can opt out via bypassMarryChildren.
+  if (!opts?.bypassMarryChildren) {
+    const drag = byId.get(dragId);
+    if (drag && drag.kind === 'column' && drag.parentId) {
+      const parent = byId.get(drag.parentId);
+      if (parent && parent.kind === 'group' && parent.marryChildren && targetParentId !== drag.parentId) {
+        return false;
+      }
+    }
   }
   return true;
 }

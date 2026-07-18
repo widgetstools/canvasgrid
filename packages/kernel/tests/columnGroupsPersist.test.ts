@@ -389,3 +389,62 @@ describe('column-group RUNTIME open/collapse state persists through getState/set
     g2.destroy();
   });
 });
+
+describe('column-group restore survives late flat columnDefs (STOMP / placeholder race)', () => {
+  const catalog: (CColDef | CColGroupDef)[] = [
+    { colId: 'a', field: 'a' }, { colId: 'b', field: 'b' }, { colId: 'c', field: 'c' },
+  ];
+
+  it('re-applies the pending overlay when a flat leaf catalog arrives after restore', () => {
+    const g1 = mount(catalog);
+    const api1 = (g1 as any).makeApi();
+    api1.updateGridOptions({
+      columnDefs: [
+        { colId: 'a', field: 'a' },
+        {
+          groupId: 'G',
+          headerName: 'Grp',
+          headerStyle: { bg: '#123456' },
+          children: [
+            { colId: 'b', field: 'b' },
+            { colId: 'c', field: 'c' },
+          ],
+        },
+      ],
+    });
+    const snapshot = g1.getState();
+    expect(groupDefsOf(snapshot)?.some((n: any) => n.kind === 'group')).toBe(true);
+    g1.destroy();
+
+    // Boot like the STOMP demo: placeholder leaf only, then restore, then
+    // replace with the full flat catalog discovered from the feed.
+    const placeholder: (CColDef | CColGroupDef)[] = [
+      { colId: 'a', field: 'a' },
+    ];
+    const g2 = mount(placeholder);
+    const api2 = (g2 as any).makeApi();
+    g2.setState(snapshot);
+
+    // While only the placeholder is live, getState must still report the
+    // full overlay (not a pruned tree) so autosave cannot destroy it.
+    expect(groupDefsOf(g2.getState())?.some((n: any) => n.kind === 'group')).toBe(true);
+
+    api2.updateGridOptions({
+      columnDefs: [
+        { colId: 'a', field: 'a' },
+        { colId: 'b', field: 'b' },
+        { colId: 'c', field: 'c' },
+        { colId: 'd', field: 'd' },
+      ],
+    });
+
+    const defs = api2.getColumnGroupDefs();
+    const grp = defs.find((d: any) => d.groupId === 'G');
+    expect(grp).toBeDefined();
+    expect(grp.children.map((c: any) => c.colId)).toEqual(['b', 'c']);
+    expect(grp.headerStyle.bg).toBe('#123456');
+    // New catalog leaf still surfaces ungrouped.
+    expect(defs.some((d: any) => d.colId === 'd')).toBe(true);
+    g2.destroy();
+  });
+});

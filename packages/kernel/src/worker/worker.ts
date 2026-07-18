@@ -417,7 +417,12 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     if (payload.rowHeight != null) store.setGridRowHeight(payload.rowHeight);
 
     const queue = new TransactionQueue({
-      waitMs: 50,
+      waitMs: payload.asyncTransactionWaitMillis ?? 50,
+      throttleMs: payload.asyncTransactionThrottleMillis ?? 0,
+      // Default ON — blotter feeds land many updates per row per window;
+      // last-write-wins before apply. Opt out with asyncTransactionConflate: false.
+      conflate: payload.asyncTransactionConflate !== false,
+      getRowId: (row) => store.getRowId(row),
       onFlush: (results: TransactionResult[]) => {
         post({ type: 'asyncTransactionsFlushed', results });
       },

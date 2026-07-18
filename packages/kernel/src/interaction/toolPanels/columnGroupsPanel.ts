@@ -3,24 +3,16 @@
  * sidebar shortcut `'columnGroups'`). Authors the columnDefs group tree via
  * the normalized flat model; writes to the grid only on Apply.
  *
- * Visual/UX contract mirrors `.cg-settings-panel` (see
- * `packages/kernel/src/theming/tokens.css` — `.cg-colgroups-*` rules sit
- * right after the `.cg-settings-*` block). Selecting a group (via the
- * keyboard-reachable `data-cg-select` gear button — "Edit group style" —
- * on its row) opens a per-group Style editor (`renderStyle`) in a
- * FLOATING panel (`this.api.openFloatingPanel`, Close-only — no dock,
- * since the Style editor has nowhere to dock back to) built on the
- * Phase 1 `SettingsForm` engine, editing `headerStyle`/`headerClass`/
- * `openByDefault`/`marryChildren` on the selected `GroupNode`. Every edit
- * routes through `this.mutate(...)` like any other panel change, so it
- * participates in dirty/Apply — this panel never writes to the grid
- * except on Apply. Deselecting the group (toggling the gear again, or
- * closing the float) closes it.
+ * Layout: master–detail body (groups list | selected-group editor) →
+ * Apply/Reset footer. Left rail lists groups only (select / rename /
+ * delete); column visibility and drag into/out of groups live on the
+ * Columns side panel. The right pane edits the selected group's name,
+ * direct column membership (chips), and style.
  */
 import type { ToolPanel, ToolPanelParams } from './types';
 import {
   flatten, project, createGroup, deleteGroup, moveNode,
-  setHidden, setColumnHeaderName, renameGroup, validate, canDrop, resolveDrop,
+  renameGroup, validate, canDrop,
   setGroupStyle, setColumnGroupShow,
   type Node, type GroupNode, type ColumnNode,
 } from '../columnGroups/model';
@@ -29,10 +21,30 @@ import { ColorPickerControl, parseColor } from '../settingsForm/colorPicker';
 import type { BorderSpec, BorderStyle } from '../../types/cell';
 import { cloneDefsTree } from '../../core/columnTree';
 
-type NodeKind = Node['kind'];
-
 /** One editable side of the box-model border editor, or the `all` fallback. */
 type BorderEdge = 'all' | 'top' | 'right' | 'bottom' | 'left';
+
+type ShowValue = 'open' | 'closed' | null;
+
+const SHOW_ORDER: readonly ShowValue[] = [null, 'open', 'closed'];
+
+function nextShow(v: ShowValue | undefined): ShowValue {
+  const cur = v === undefined ? null : v;
+  const i = SHOW_ORDER.indexOf(cur);
+  return SHOW_ORDER[(i < 0 ? 0 : i + 1) % SHOW_ORDER.length]!;
+}
+
+function showKind(v: ShowValue | undefined): 'always' | 'open' | 'closed' {
+  if (v === 'open') return 'open';
+  if (v === 'closed') return 'closed';
+  return 'always';
+}
+
+function showLabel(kind: 'always' | 'open' | 'closed'): string {
+  if (kind === 'always') return 'Always visible';
+  if (kind === 'open') return 'Show when open';
+  return 'Show when collapsed';
+}
 
 /**
  * Pure — normalize a `BorderSpec` to its lean, canonical form so the model
@@ -78,10 +90,6 @@ function borderSideToCss(s: BorderSpec['all'] | undefined): string {
 }
 
 // ── Icon system ─────────────────────────────────────────────────────────────
-// Every interactive glyph in the panel renders as an inline SVG on a shared
-// 24-unit viewBox at a single CSS size (`.cg-colgroups-ic`, 14px). Unicode
-// glyphs (●/◐/○/⚙/＋/✕) render at inconsistent, font-dependent sizes; SVG on
-// one coordinate space + one render size makes every icon identical.
 const SVG_NS = 'http://www.w3.org/2000/svg';
 function svgEl<K extends keyof SVGElementTagNameMap>(
   tag: K, attrs: Record<string, string>,
@@ -97,167 +105,112 @@ function icon(...children: SVGElement[]): SVGSVGElement {
   return svg;
 }
 const strokeAttrs = { fill: 'none', stroke: 'currentColor', 'stroke-width': '2', 'stroke-linecap': 'round', 'stroke-linejoin': 'round' } as const;
-/** columnGroupShow state icons. Eye = always visible; the two conditional
- *  states echo the group's own disclosure caret — a DOWN chevron for
- *  "visible only when the group is OPEN (expanded)" and a RIGHT chevron for
- *  "visible only when the group is CLOSED (collapsed)". */
 function iconGroupShow(kind: 'always' | 'open' | 'closed'): SVGSVGElement {
   if (kind === 'always') {
-    // Eye — always visible.
     return icon(
       svgEl('path', { d: 'M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z', ...strokeAttrs }),
       svgEl('circle', { cx: '12', cy: '12', r: '3', ...strokeAttrs }),
     );
   }
   if (kind === 'open') {
-    // Chevron-left — mirrors an OPEN group's caret (shown only when expanded).
     return icon(svgEl('path', { d: 'M15 18l-6-6 6-6', ...strokeAttrs }));
   }
-  // Chevron-right — mirrors a CLOSED group's caret (shown only when collapsed).
   return icon(svgEl('path', { d: 'M9 6l6 6-6 6', ...strokeAttrs }));
-}
-/** Group disclosure caret — HORIZONTAL, one vocabulary with the grid's
- *  column-group header band (chevron-left when open = click collapses;
- *  the stylesheet rotates it 180° into chevron-right under
- *  `[aria-expanded="false"]`). Trails the group caption, never leads it. */
-function iconDisclosure(): SVGSVGElement {
-  return icon(svgEl('path', { d: 'M15 18l-6-6 6-6', ...strokeAttrs }));
-}
-function iconGear(): SVGSVGElement {
-  return icon(
-    svgEl('circle', { cx: '12', cy: '12', r: '3', ...strokeAttrs }),
-    svgEl('path', {
-      d: 'M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z',
-      ...strokeAttrs,
-    }),
-  );
 }
 function iconPlus(): SVGSVGElement { return icon(svgEl('path', { d: 'M12 5v14M5 12h14', ...strokeAttrs })); }
 function iconClose(): SVGSVGElement { return icon(svgEl('path', { d: 'M18 6 6 18M6 6l12 12', ...strokeAttrs })); }
-function iconGrip(): SVGSVGElement {
-  const dots = [[9, 6], [15, 6], [9, 12], [15, 12], [9, 18], [15, 18]]
-    .map(([x, y]) => svgEl('circle', { cx: String(x), cy: String(y), r: '1.4', fill: 'currentColor' }));
-  return icon(...dots);
-}
+function iconChevronUp(): SVGSVGElement { return icon(svgEl('path', { d: 'M18 15l-6-6-6 6', ...strokeAttrs })); }
+function iconChevronDown(): SVGSVGElement { return icon(svgEl('path', { d: 'M6 9l6 6 6-6', ...strokeAttrs })); }
 
-interface DragState {
-  id: string;
-  kind: NodeKind;
-  ghost: HTMLElement;
-  offsetX: number;
-  offsetY: number;
-}
-
-/** A mousedown that hasn't yet moved past the drag threshold — a plain
- *  click (mousedown+mouseup with no meaningful movement) never promotes to
- *  a real drag session, so it doesn't churn the DOM with a body-level ghost. */
-interface PendingDrag {
-  node: Node;
-  row: HTMLElement;
-  startX: number;
-  startY: number;
-}
-
-/** Minimum pointer travel (px) before a mousedown becomes a drag session. */
-const DRAG_THRESHOLD_PX = 4;
+/** Optional factory (from `@cgrid/ext`) that mounts Font / Alignment /
+ *  Borders chrome into the style band — keeps kernel free of an ext dep. */
+export type MountGroupStyleChrome = (
+  host: HTMLElement,
+  adapter: {
+    getStyle: () => Record<string, unknown>;
+    applyStyle: (patch: Record<string, unknown>) => void;
+  },
+) => () => void;
 
 export class ColumnGroupsToolPanel implements ToolPanel {
   private root!: HTMLElement;
-  private tree!: HTMLElement;
-  /** The current Style editor's floating-panel BODY element, or `null`
-   *  when no group is selected / the float isn't open. Cached across
-   *  `renderStyle()` calls so an in-place content refresh (e.g. a field
-   *  edit) doesn't need to reopen the float — only a genuine retarget
-   *  (no float open yet, or switching to a different group) does. */
-  private floatBody: HTMLElement | null = null;
-  /** The group id whose content `floatBody` currently holds. `null` iff
-   *  `floatBody` is `null`. Invariant: kept in lockstep so a stale
-   *  `floatBody` is never mistaken for the wrong group's content. */
-  private floatGroupId: string | null = null;
+  private list!: HTMLElement;
+  private listBody!: HTMLElement;
+  private listCount!: HTMLElement;
+  private editor!: HTMLElement;
   /** Live colour-picker controls in the current Style band — destroyed on
    *  panel teardown so no portaled popover outlives the panel. Reset (not
-   *  destroyed) on each `renderStyle()` rebuild so an in-flight popover the
+   *  destroyed) on each editor rebuild so an in-flight popover the
    *  user is dragging is never yanked mid-interaction. */
   private stylePickers: ColorPickerControl[] = [];
+  /** Disposer for the optional Formatting-ribbon style chrome. */
+  private styleChromeDispose: (() => void) | null = null;
   /** Which border edge the box-model editor is currently editing. VIEW-STATE
    *  only (default `'all'`); survives `mutate()`/`render()`. */
   private selectedEdge: BorderEdge = 'all';
   private applyBtn!: HTMLButtonElement;
   private resetBtn!: HTMLButtonElement;
-  private api!: Pick<
-    CGridApi,
-    | 'getColumnGroupDefs'
-    | 'updateGridOptions'
-    | 'openFloatingPanel'
-    | 'closeFloatingPanel'
-    | 'isFloatingPanelOpen'
-    | 'setFloatingPanelTitle'
-    | 'fitFloatingPanelHeight'
-  >;
+  private api!: Pick<CGridApi, 'getColumnGroupDefs' | 'updateGridOptions'>;
   private nodes: Node[] = [];
   /** Canonical JSON of the last-applied projected tree — comparing against
    *  `project(nodes)` (also projected) makes seed→dirty reliably false even
    *  though raw defs and projected defs differ by key order / dropped
    *  undefineds. */
   private baseline = '';
-  private selectedGroupId: string | null = null;
-  /** VIEW-STATE only (not part of the model): ids of groups the user has
-   *  collapsed. Must survive `mutate()`/`render()` so an edit elsewhere in
-   *  the tree doesn't silently re-expand every group. Reset on `seed()`
-   *  since the tree is re-seeded from defs at that point. */
-  private collapsed = new Set<string>();
-  private drag: DragState | null = null;
-  private pending: PendingDrag | null = null;
-  private readonly onDragMove = (e: MouseEvent) => this.handleDragMove(e);
-  private readonly onDragEnd = (e: MouseEvent) => this.handleDragEnd(e);
-  private readonly onPendingMove = (e: MouseEvent) => this.handlePendingMove(e);
-  private readonly onPendingUp = () => this.cancelPendingDrag();
+  /** Selected group id (editor target). VIEW-STATE only. */
+  private selectedId: string | null = null;
+  /** When provided (ext settings sheet), use ribbon Font/Alignment/Borders. */
+  private mountStyleChrome: MountGroupStyleChrome | null = null;
 
   init(params: ToolPanelParams): void {
     this.api = params.api as unknown as typeof this.api;
+    const factory = params.toolPanelParams?.mountStyleChrome;
+    this.mountStyleChrome = typeof factory === 'function'
+      ? (factory as MountGroupStyleChrome)
+      : null;
     this.root = el('div', 'cg-colgroups-panel');
-    this.root.appendChild(this.buildToolbar());   // "New group"
-    this.tree = el('div', 'cg-colgroups-tree cg-scrollbar');
-    this.root.appendChild(this.tree);
-    this.root.appendChild(this.buildFooter());     // Apply / Reset
+    const body = el('div', 'cg-colgroups-body');
+    body.append(this.buildListPane(), this.buildEditorPane());
+    this.root.appendChild(body);
+    this.root.appendChild(this.buildFooter());
     this.seed();
   }
 
   getGui(): HTMLElement { return this.root; }
   refresh(): void { this.seed(); }
   destroy(): void {
-    document.removeEventListener('mousemove', this.onDragMove);
-    document.removeEventListener('mouseup', this.onDragEnd);
-    document.removeEventListener('mousemove', this.onPendingMove);
-    document.removeEventListener('mouseup', this.onPendingUp);
-    this.drag?.ghost.remove();
-    this.drag = null;
-    this.pending = null;
+    this.disposeStyleChrome();
     this.stylePickers.forEach((p) => p.destroy());
     this.stylePickers = [];
-    // Close the Style editor float (if this panel owns it) so it doesn't
-    // outlive the panel — e.g. switching away from the Column Groups
-    // sidebar tab while a group's Style editor is open.
-    this.closeFloatIfOpen();
     this.root.remove();
+  }
+
+  private disposeStyleChrome(): void {
+    if (!this.styleChromeDispose) return;
+    try { this.styleChromeDispose(); } catch { /* */ }
+    this.styleChromeDispose = null;
   }
 
   private seed(): void {
     const defs = this.api.getColumnGroupDefs();
     this.nodes = flatten(cloneDefsTree(defs));
-    this.baseline = JSON.stringify(project(this.nodes)); // canonical, not raw defs
-    this.selectedGroupId = null;
-    this.collapsed = new Set();
+    this.baseline = JSON.stringify(project(this.nodes));
+    const firstGroup = this.nodes
+      .filter((n): n is GroupNode => n.kind === 'group')
+      .sort((a, b) => {
+        if (a.parentId === null && b.parentId !== null) return -1;
+        if (a.parentId !== null && b.parentId === null) return 1;
+        return a.order - b.order;
+      })[0];
+    this.selectedId = firstGroup?.id ?? null;
     this.render();
   }
 
   private mutate(fn: (n: Node[]) => Node[]): void { this.nodes = fn(this.nodes); this.render(); }
 
-  /** Toggle selection: selecting the already-selected group deselects it
-   *  (hides the Style band). Selection is panel VIEW-STATE, not part of
-   *  the editable model. */
+  /** Select a group without toggle-off (StarUI keeps selection on re-click). */
   private selectGroup(id: string): void {
-    this.selectedGroupId = this.selectedGroupId === id ? null : id;
+    this.selectedId = id;
     this.render();
   }
 
@@ -274,89 +227,169 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     this.render();
   }
 
+  private addGroup(): void {
+    const before = new Set(this.nodes.filter((n) => n.kind === 'group').map((n) => n.id));
+    this.nodes = createGroup(this.nodes, null, 'New Group');
+    const created = this.nodes.find((n) => n.kind === 'group' && !before.has(n.id));
+    this.selectedId = created?.id ?? null;
+    this.render();
+  }
+
+  private removeColumnFromGroup(colId: string): void {
+    this.mutate((ns) => {
+      const col = ns.find((n) => n.kind === 'column' && n.colId === colId);
+      if (!col) return ns;
+      // Authoring remove always allowed — marryChildren only guards runtime drag.
+      const top = ns.filter((n) => n.parentId === null).length;
+      return moveNode(ns, col.id, null, top, { bypassMarryChildren: true });
+    });
+  }
+
+  private addColumnToGroup(groupId: string, colId: string): void {
+    this.addColumnsToGroup(groupId, [colId]);
+  }
+
+  /** Move several unassigned columns into `groupId` in one draft mutation. */
+  private addColumnsToGroup(groupId: string, colIds: readonly string[]): void {
+    if (colIds.length === 0) return;
+    this.mutate((ns) => {
+      let next = ns;
+      for (const colId of colIds) {
+        const col = next.find((n) => n.kind === 'column' && n.colId === colId);
+        if (!col) continue;
+        if (!canDrop(next, col.id, groupId, { bypassMarryChildren: true })) continue;
+        const kids = next.filter((n) => n.parentId === groupId).length;
+        next = moveNode(next, col.id, groupId, kids, { bypassMarryChildren: true });
+      }
+      return next;
+    });
+  }
+
+  private moveGroupAmongSiblings(groupId: string, dir: -1 | 1): void {
+    this.mutate((ns) => {
+      const g = ns.find((n) => n.id === groupId && n.kind === 'group');
+      if (!g) return ns;
+      const allSibs = ns
+        .filter((n) => n.parentId === g.parentId)
+        .sort((a, b) => a.order - b.order);
+      const groupSibs = allSibs.filter((n) => n.kind === 'group');
+      const i = groupSibs.findIndex((s) => s.id === groupId);
+      const j = i + dir;
+      if (i < 0 || j < 0 || j >= groupSibs.length) return ns;
+      const targetIdx = allSibs.findIndex((s) => s.id === groupSibs[j]!.id);
+      if (targetIdx < 0) return ns;
+      // moveNode order = PRE-move sibling index to land BEFORE.
+      const order = dir < 0 ? targetIdx : targetIdx + 1;
+      return moveNode(ns, groupId, g.parentId, order);
+    });
+  }
+
   private render(): void {
-    this.tree.replaceChildren();
-    if (this.nodes.length === 0) {
+    this.renderList();
+    this.renderEditor();
+    this.applyBtn.disabled = !this.dirty;
+  }
+
+  // ── List pane ──────────────────────────────────────────────────────
+
+  private buildListPane(): HTMLElement {
+    this.list = el('div', 'cg-colgroups-list');
+    const head = el('div', 'cg-colgroups-list-header');
+    const title = el('span', 'cg-colgroups-list-title');
+    title.textContent = 'Groups';
+    this.listCount = el('span', 'cg-colgroups-list-count');
+    const add = document.createElement('button');
+    add.type = 'button';
+    add.className = 'cg-colgroups-action';
+    add.appendChild(iconPlus());
+    add.title = 'Add group';
+    add.setAttribute('aria-label', 'Add group');
+    add.setAttribute('data-cg-add-group', '');
+    add.onclick = () => this.addGroup();
+    head.append(title, this.listCount, add);
+    this.listBody = el('div', 'cg-colgroups-list-body cg-scrollbar');
+    this.list.append(head, this.listBody);
+    return this.list;
+  }
+
+  private buildEditorPane(): HTMLElement {
+    this.editor = el('div', 'cg-colgroups-editor cg-scrollbar');
+    return this.editor;
+  }
+
+  private renderList(): void {
+    this.listBody.replaceChildren();
+    const groups = this.nodes.filter((n): n is GroupNode => n.kind === 'group');
+    this.listCount.textContent = String(groups.length);
+
+    if (groups.length === 0) {
       const empty = el('div', 'cg-colgroups-empty');
-      empty.textContent = 'No column groups yet. Create one to organize columns.';
-      this.tree.appendChild(empty);
-      this.applyBtn.disabled = !this.dirty;
-      this.renderStyle();
+      empty.textContent = 'No groups yet. Click + to create one.';
+      this.listBody.appendChild(empty);
       return;
     }
-    // Render top-level (parentId null) then recurse by parentId, ordered by order.
-    // `hiddenByAncestor` propagates down: a node is hidden if ANY ancestor is
-    // collapsed, but each group's OWN collapsed flag only governs whether ITS
-    // children are hidden — a collapsed subgroup nested inside a collapsed
-    // ancestor stays independently collapsed once the ancestor re-expands.
-    const renderLevel = (parentId: string | null, depth: number, hiddenByAncestor: boolean) => {
-      const sibs = this.nodes.filter((n) => n.parentId === parentId).sort((a, b) => a.order - b.order);
-      // Depth-0 eyebrows keep ungrouped columns and groups from blurring into
-      // one flat list. Top-level rows can interleave (a column dragged out
-      // of a group can land between two groups), so an eyebrow is emitted
-      // before each CONTIGUOUS RUN of a kind — not just once in first-seen
-      // order — so e.g. `[group, column, group]` renders
-      // `Groups → group1 → Ungrouped → column → Groups → group2` and never
-      // mislabels the second group under a stale "Ungrouped" eyebrow.
-      let prevKind: NodeKind | null = null;
-      sibs.forEach((n) => {
-        if (depth === 0 && n.kind !== prevKind) {
-          this.tree.appendChild(eyebrow(n.kind === 'column' ? 'Ungrouped' : 'Groups'));
-          prevKind = n.kind;
-        }
-        this.tree.appendChild(this.rowFor(n, depth, hiddenByAncestor));
-        const childHidden = hiddenByAncestor || (n.kind === 'group' && this.collapsed.has(n.id));
-        renderLevel(n.id, depth + 1, childHidden);
-      });
+
+    const renderLevel = (parentId: string | null, depth: number) => {
+      const sibs = groups
+        .filter((n) => n.parentId === parentId)
+        .sort((a, b) => a.order - b.order);
+      for (const g of sibs) {
+        this.listBody.appendChild(this.listRow(g, depth));
+        renderLevel(g.id, depth + 1);
+      }
     };
-    renderLevel(null, 0, false);
-    this.applyBtn.disabled = !this.dirty;
-    this.renderStyle();
+    renderLevel(null, 0);
   }
 
-  private rowFor(n: Node, depth: number, hidden: boolean): HTMLElement {
+  private listRow(g: GroupNode, depth: number): HTMLElement {
     const row = el('div', 'cg-colgroups-row');
-    row.setAttribute('data-cg-node', n.id);
-    row.setAttribute('data-kind', n.kind);
-    row.style.paddingInlineStart = `calc(12px + ${depth} * 16px)`;
-    if (hidden) row.style.display = 'none';
+    row.setAttribute('data-cg-node', g.id);
+    row.setAttribute('data-kind', 'group');
+    row.style.paddingInlineStart = `calc(10px + ${depth} * 14px)`;
+    if (this.selectedId === g.id) row.setAttribute('data-selected', '');
+    if (g.hide) row.setAttribute('data-hidden', '');
 
-    // Nesting spine — one hairline guide per ancestor depth level.
-    for (let d = 0; d < depth; d += 1) {
-      const guide = el('span', 'cg-colgroups-guide');
-      guide.style.left = `${8 + d * 16}px`;
-      row.appendChild(guide);
-    }
+    const selectBtn = document.createElement('button');
+    selectBtn.type = 'button';
+    selectBtn.className = 'cg-colgroups-list-item';
+    selectBtn.setAttribute('data-cg-select', '');
+    selectBtn.setAttribute('aria-pressed', String(this.selectedId === g.id));
+    selectBtn.setAttribute('aria-label', `Select group ${g.headerName || g.id}`);
+    const name = el('span', 'cg-colgroups-list-name');
+    name.textContent = g.headerName || g.id;
+    selectBtn.appendChild(name);
+    selectBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.selectGroup(g.id);
+    });
 
-    if (n.kind === 'group') {
-      row.appendChild(this.groupControls(n as GroupNode));
-      if (this.selectedGroupId === n.id) row.setAttribute('data-selected', '');
-      // Mouse convenience: clicking anywhere on the row's non-interactive
-      // surface also selects it. The REAL keyboard-reachable affordance is
-      // the `data-cg-select` button built in `groupControls()` below.
-      row.addEventListener('click', (e) => {
-        const target = e.target as HTMLElement;
-        if (target.closest('button') || target.closest('input')) return;
-        this.selectGroup(n.id);
-      });
-    } else {
-      row.appendChild(this.columnControls(n as ColumnNode));
-    }
-    this.wireDrag(row, n);
+    const errorEl = el('span', 'cg-colgroups-error');
+    errorEl.setAttribute('data-cg-error', g.id);
+
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'cg-colgroups-action';
+    del.appendChild(iconClose());
+    del.title = 'Delete group';
+    del.setAttribute('aria-label', 'Delete group');
+    del.addEventListener('click', (e) => {
+      e.stopPropagation();
+      if (this.selectedId === g.id) {
+        const parent = g.parentId;
+        this.selectedId = parent
+          ?? this.nodes.find((n) => n.kind === 'group' && n.id !== g.id)?.id
+          ?? null;
+      }
+      this.mutate((ns) => deleteGroup(ns, g.id));
+    });
+
+    row.append(selectBtn, errorEl, del);
+    row.addEventListener('click', (e) => {
+      const target = e.target as HTMLElement;
+      if (target.closest('button')) return;
+      this.selectGroup(g.id);
+    });
     return row;
-  }
-
-  // ── Toolbar / footer ──────────────────────────────────────────────
-
-  private buildToolbar(): HTMLElement {
-    const bar = el('div', 'cg-colgroups-toolbar');
-    const add = el('button', 'cg-btn') as HTMLButtonElement;
-    add.type = 'button';
-    add.textContent = 'New group';
-    add.setAttribute('data-cg-add-group', '');
-    add.onclick = () => this.mutate((ns) => createGroup(ns, null, 'New Group'));
-    bar.appendChild(add);
-    return bar;
   }
 
   private buildFooter(): HTMLElement {
@@ -373,127 +406,384 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     return footer;
   }
 
-  /** Close the Style editor float IF this panel currently owns it (i.e.
-   *  `floatBody` is set), and clear the cached float references. Safe to
-   *  call unconditionally — a no-op when nothing is cached. Guards
-   *  against ever calling `closeFloatingPanel()` when this panel doesn't
-   *  believe it owns the float (e.g. double-close reentrancy). */
-  private closeFloatIfOpen(): void {
-    if (this.floatBody !== null) this.api.closeFloatingPanel();
-    this.floatBody = null;
-    this.floatGroupId = null;
-  }
+  // ── Editor pane ────────────────────────────────────────────────────
 
-  /** Rebuilds the Style editor for `this.selectedGroupId` from the
-   *  CURRENT `this.nodes` — called at the end of every `render()` so it
-   *  re-syncs after any mutation (including its own field edits, which
-   *  route through `this.mutate(...)` like every other panel edit —
-   *  Apply-only discipline: nothing here writes to the grid).
-   *
-   *  The Style editor lives in a FLOATING panel (`this.api.
-   *  openFloatingPanel`), not inline in this panel's own DOM — it has
-   *  nowhere to dock back to, so it's Close-only. This method only
-   *  RE-OPENS the float (a `close()` + `open()` on the host, changing
-   *  its title) when it isn't already open for the CURRENTLY selected
-   *  group — an ordinary field edit within the same group reuses the
-   *  cached `floatBody` so the frame's position/focus survive the
-   *  rebuild. No selection (or a selection that no longer resolves to a
-   *  group, e.g. it was just deleted) closes the float. */
-  private renderStyle(): void {
-    // Destroy every live picker before dropping the reference — each one
-    // owns a document/window listener set (+ a body-portaled popover), so
-    // resetting the array without destroying first would orphan them.
+  private renderEditor(): void {
+    this.disposeStyleChrome();
     this.stylePickers.forEach((p) => p.destroy());
     this.stylePickers = [];
+    this.editor.replaceChildren();
 
-    if (!this.selectedGroupId) { this.closeFloatIfOpen(); return; }
-    const g = this.nodes.find((n) => n.id === this.selectedGroupId && n.kind === 'group') as
+    if (!this.selectedId) {
+      const empty = el('div', 'cg-colgroups-editor-empty');
+      empty.textContent = 'Select a group to edit its columns and style.';
+      this.editor.appendChild(empty);
+      return;
+    }
+
+    const node = this.nodes.find((n) => n.id === this.selectedId && n.kind === 'group') as
       | GroupNode
       | undefined;
-    if (!g) { this.selectedGroupId = null; this.closeFloatIfOpen(); return; }
-
-    // Retarget (open, or re-open with a new title) only when the float
-    // isn't currently showing THIS group — switching groups, the float
-    // having been closed externally, or the very first open.
-    if (this.floatBody === null || this.floatGroupId !== g.id || !this.api.isFloatingPanelOpen()) {
-      this.floatBody = this.api.openFloatingPanel({
-        title: `Style — ${g.headerName}`,
-        onClose: () => {
-          // The float's own Close (×) button was clicked — deselect and
-          // re-render. `render()` -> `renderStyle()` then sees no
-          // selection and calls `closeFloatIfOpen()`, which is what
-          // actually tears down the frame (idempotent; does not re-fire
-          // this callback).
-          this.selectedGroupId = null;
-          this.render();
-        },
-      });
-      this.floatGroupId = g.id;
+    if (!node) {
+      this.selectedId = null;
+      const empty = el('div', 'cg-colgroups-editor-empty');
+      empty.textContent = 'Select a group to edit its columns and style.';
+      this.editor.appendChild(empty);
+      return;
     }
-    // Keep the titlebar authoritative on every render (not just on reopen):
-    // an in-place rename of the currently-floated group updates its caption
-    // here, so the frame's position/focus survive while the title stays fresh.
-    this.api.setFloatingPanelTitle(`Style — ${g.headerName}`);
-    const body = this.floatBody;
-    body.replaceChildren();
+
+    this.renderGroupEditor(node);
+  }
+
+  private renderGroupEditor(g: GroupNode): void {
+    const title = el('div', 'cg-colgroups-editor-title');
+    const nameInput = document.createElement('input');
+    nameInput.type = 'text';
+    nameInput.className = 'cg-settings-input cg-colgroups-rename';
+    nameInput.value = g.headerName;
+    nameInput.setAttribute('aria-label', 'Group name');
+    nameInput.addEventListener('change', () => {
+      this.mutate((ns) => renameGroup(ns, g.id, nameInput.value));
+    });
+    title.appendChild(nameInput);
+    this.editor.appendChild(title);
+
+    const actions = el('div', 'cg-colgroups-editor-actions');
+    const hint = el('span', 'cg-colgroups-nest-hint');
+    hint.textContent = 'Use the Columns side panel to show/hide columns and drag columns or groups into or out of a group.';
+    actions.appendChild(hint);
+
+    const moveUp = document.createElement('button');
+    moveUp.type = 'button';
+    moveUp.className = 'cg-colgroups-action';
+    moveUp.appendChild(iconChevronUp());
+    moveUp.title = 'Move up';
+    moveUp.setAttribute('aria-label', 'Move group up');
+    moveUp.setAttribute('data-cg-move-up', '');
+    moveUp.onclick = () => this.moveGroupAmongSiblings(g.id, -1);
+
+    const moveDown = document.createElement('button');
+    moveDown.type = 'button';
+    moveDown.className = 'cg-colgroups-action';
+    moveDown.appendChild(iconChevronDown());
+    moveDown.title = 'Move down';
+    moveDown.setAttribute('aria-label', 'Move group down');
+    moveDown.setAttribute('data-cg-move-down', '');
+    moveDown.onclick = () => this.moveGroupAmongSiblings(g.id, 1);
+
+    const groupSibs = this.nodes
+      .filter((n) => n.kind === 'group' && n.parentId === g.parentId)
+      .sort((a, b) => a.order - b.order);
+    const idx = groupSibs.findIndex((s) => s.id === g.id);
+    moveUp.disabled = idx <= 0;
+    moveDown.disabled = idx < 0 || idx >= groupSibs.length - 1;
+    actions.append(moveUp, moveDown);
+    this.editor.appendChild(actions);
+
+    this.editor.appendChild(this.buildColumnsBand(g));
 
     const section = el('div', 'cg-colgroups-style');
     section.setAttribute('data-cg-style', '');
     section.setAttribute('data-for', g.id);
-    body.appendChild(section);
+    this.editor.appendChild(section);
 
     const patch = (
       p: Partial<Pick<GroupNode, 'headerStyle' | 'headerClass' | 'openByDefault' | 'marryChildren'>>,
     ) => this.mutate((ns) => setGroupStyle(ns, g.id, p));
-    // Merges against the group's CURRENT headerStyle (read from `ns` at
-    // write-time), not the `g` snapshot closed over when the Style band was
-    // built — a colour field may have already live-committed a change via
-    // `commitStyleLive` (Fix 3) without rebuilding this closure, and merging
-    // off a stale `g.headerStyle` here would silently clobber it.
     const patchStyle = (facet: Partial<NonNullable<GroupNode['headerStyle']>>) =>
       this.mutate((ns) => {
         const cur = ns.find((x) => x.id === g.id) as GroupNode | undefined;
         return setGroupStyle(ns, g.id, { headerStyle: { ...cur?.headerStyle, ...facet } });
       });
 
-    section.appendChild(this.buildFillTextCluster(g, patchStyle));
-    section.appendChild(this.buildBorderCluster(g, patch));
+    if (this.mountStyleChrome) {
+      // Formatting-ribbon Font / Alignment / Borders — same chrome as the
+      // toolbar. Writes merge into headerStyle without a full editor rebuild
+      // so toggles stay responsive; Apply still projects the draft tree.
+      const groupId = g.id;
+      this.styleChromeDispose = this.mountStyleChrome(section, {
+        getStyle: () => {
+          const cur = this.nodes.find((x) => x.id === groupId && x.kind === 'group') as
+            | GroupNode
+            | undefined;
+          return { ...(cur?.headerStyle ?? {}) };
+        },
+        applyStyle: (facet) => {
+          this.commitStyleLive((ns) => {
+            const cur = ns.find((x) => x.id === groupId) as GroupNode | undefined;
+            const next = { ...cur?.headerStyle, ...facet } as NonNullable<GroupNode['headerStyle']>;
+            for (const key of Object.keys(next) as Array<keyof typeof next>) {
+              if (next[key] === undefined) delete next[key];
+            }
+            return setGroupStyle(ns, groupId, {
+              headerStyle: Object.keys(next).length > 0 ? next : undefined,
+            });
+          });
+        },
+      });
+    } else {
+      section.appendChild(this.buildFillTextCluster(g, patchStyle));
+      section.appendChild(this.buildBorderCluster(g, patch));
+    }
     section.appendChild(this.buildBehaviorCluster(g, patch));
-
-    // Hug the content: the Style form is fixed-height, so shrink the float to
-    // fit it (dropping any empty lower band left by a restored/oversized rect).
-    this.api.fitFloatingPanelHeight();
   }
 
-  /** Colour-picker commit path (Fix 3) — writes to the model WITHOUT
-   *  rebuilding the Style-band DOM. `ColorPickerControl` emits `onChange` on
-   *  every `pointermove` while the user drags inside its body-portaled
-   *  popover; the ordinary `mutate() -> render() -> renderStyle()` path
-   *  would tear the open popover (and its swatch) out from under an
-   *  in-flight drag. This path sets the model, keeps the Apply button's
-   *  dirty state in sync, and refreshes only the cheap border-preview
-   *  inline styles — nothing else in the Style band is touched, so an
-   *  open popover survives. Apply-only discipline still holds: this
-   *  writes ONLY to `this.nodes`, never the grid (see `onApply`). */
+  private buildColumnsBand(g: GroupNode): HTMLElement {
+    const cluster = el('div', 'cg-colgroups-cluster cg-colgroups-columns');
+    cluster.appendChild(eyebrow('Columns', 'cg-colgroups-cluster-eyebrow'));
+
+    const chips = el('div', 'cg-colgroups-chips');
+    const cols = this.nodes
+      .filter((n): n is ColumnNode => n.kind === 'column' && n.parentId === g.id)
+      .sort((a, b) => a.order - b.order);
+    for (const col of cols) {
+      chips.appendChild(this.columnChip(col));
+    }
+    if (cols.length === 0) {
+      const none = el('div', 'cg-colgroups-chips-empty');
+      none.textContent = 'No columns in this group.';
+      chips.appendChild(none);
+    }
+    cluster.appendChild(chips);
+
+    const unassigned = this.nodes
+      .filter((n): n is ColumnNode => n.kind === 'column' && n.parentId === null)
+      .sort((a, b) => a.headerName.localeCompare(b.headerName))
+      .filter((col) => canDrop(this.nodes, col.id, g.id));
+    cluster.appendChild(this.buildAddColumnPicker(g.id, unassigned));
+    return cluster;
+  }
+
+  /**
+   * Themed multi-select column picker (not a native `<select>`). Checkboxes
+   * let the user add several unassigned columns in one step; OS select
+   * popups ignore dark/light tokens on Windows/Chromium.
+   */
+  private buildAddColumnPicker(groupId: string, unassigned: ColumnNode[]): HTMLElement {
+    const wrap = el('div', 'cg-colgroups-add-col');
+    wrap.setAttribute('data-cg-add-col', '');
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'cg-colgroups-add-col-trigger';
+    trigger.setAttribute('aria-haspopup', 'listbox');
+    trigger.setAttribute('aria-expanded', 'false');
+    trigger.setAttribute('aria-label', 'Add columns to group');
+    trigger.textContent = '+ Columns…';
+    trigger.disabled = unassigned.length === 0;
+
+    const panel = el('div', 'cg-colgroups-add-col-panel');
+    panel.setAttribute('role', 'listbox');
+    panel.setAttribute('aria-multiselectable', 'true');
+    panel.setAttribute('aria-label', 'Unassigned columns');
+    panel.hidden = true;
+
+    const search = document.createElement('input');
+    search.type = 'search';
+    search.className = 'cg-colgroups-add-col-search';
+    search.placeholder = 'Search columns…';
+    search.setAttribute('aria-label', 'Search columns');
+    search.autocomplete = 'off';
+
+    const toolbar = el('div', 'cg-colgroups-add-col-toolbar');
+    const selectAllLabel = document.createElement('label');
+    selectAllLabel.className = 'cg-colgroups-add-col-select-all';
+    const selectAll = document.createElement('input');
+    selectAll.type = 'checkbox';
+    selectAll.className = 'cg-colgroups-checkbox';
+    selectAll.setAttribute('data-cg-add-col-select-all', '');
+    selectAll.setAttribute('aria-label', 'Select all visible columns');
+    const selectAllText = el('span', 'cg-colgroups-add-col-select-all-text');
+    selectAllText.textContent = 'Select all';
+    selectAllLabel.append(selectAll, selectAllText);
+
+    const addBtn = document.createElement('button');
+    addBtn.type = 'button';
+    addBtn.className = 'cg-btn cg-btn-primary cg-colgroups-add-col-commit';
+    addBtn.setAttribute('data-cg-add-col-commit', '');
+    addBtn.textContent = 'Add selected';
+    addBtn.disabled = true;
+    toolbar.append(selectAllLabel, addBtn);
+
+    const list = el('div', 'cg-colgroups-add-col-list cg-scrollbar');
+    const picked = new Set<string>();
+    let visibleIds: string[] = [];
+
+    const syncChrome = () => {
+      const n = picked.size;
+      addBtn.disabled = n === 0;
+      addBtn.textContent = n === 0 ? 'Add selected' : `Add selected (${n})`;
+      const visiblePicked = visibleIds.filter((id) => picked.has(id)).length;
+      selectAll.checked = visibleIds.length > 0 && visiblePicked === visibleIds.length;
+      selectAll.indeterminate = visiblePicked > 0 && visiblePicked < visibleIds.length;
+      selectAll.disabled = visibleIds.length === 0;
+    };
+
+    const paintOptions = (query: string) => {
+      const q = query.trim().toLowerCase();
+      const filtered = q
+        ? unassigned.filter((c) =>
+          c.headerName.toLowerCase().includes(q) || c.colId.toLowerCase().includes(q))
+        : unassigned;
+      visibleIds = filtered.map((c) => c.colId);
+      list.replaceChildren();
+      if (filtered.length === 0) {
+        const empty = el('div', 'cg-colgroups-add-col-empty');
+        empty.textContent = unassigned.length === 0 ? 'No unassigned columns.' : 'No matches.';
+        list.appendChild(empty);
+        syncChrome();
+        return;
+      }
+      for (const col of filtered) {
+        const row = document.createElement('label');
+        row.className = 'cg-colgroups-add-col-option';
+        row.setAttribute('role', 'option');
+        row.setAttribute('aria-selected', String(picked.has(col.colId)));
+        row.setAttribute('data-cg-add-col-id', col.colId);
+
+        const cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.className = 'cg-colgroups-checkbox';
+        cb.checked = picked.has(col.colId);
+        cb.setAttribute('aria-label', `Select ${col.headerName}`);
+        cb.addEventListener('change', (e) => {
+          e.stopPropagation();
+          if (cb.checked) picked.add(col.colId);
+          else picked.delete(col.colId);
+          row.setAttribute('aria-selected', String(cb.checked));
+          syncChrome();
+        });
+        cb.addEventListener('click', (e) => e.stopPropagation());
+
+        const name = el('span', 'cg-colgroups-add-col-option-name');
+        name.textContent = col.headerName;
+        name.title = col.colId !== col.headerName ? col.colId : col.headerName;
+        row.append(cb, name);
+        list.appendChild(row);
+      }
+      syncChrome();
+    };
+
+    let onDoc: ((e: PointerEvent) => void) | null = null;
+    const close = () => {
+      panel.hidden = true;
+      trigger.setAttribute('aria-expanded', 'false');
+      search.value = '';
+      picked.clear();
+      if (onDoc) {
+        document.removeEventListener('pointerdown', onDoc, true);
+        onDoc = null;
+      }
+    };
+    const open = () => {
+      if (!panel.hidden) { close(); return; }
+      picked.clear();
+      paintOptions('');
+      panel.hidden = false;
+      trigger.setAttribute('aria-expanded', 'true');
+      onDoc = (e) => {
+        if (!wrap.contains(e.target as HTMLElement | null)) close();
+      };
+      document.addEventListener('pointerdown', onDoc, true);
+      requestAnimationFrame(() => search.focus());
+    };
+
+    selectAll.addEventListener('change', (e) => {
+      e.stopPropagation();
+      if (selectAll.checked) visibleIds.forEach((id) => picked.add(id));
+      else visibleIds.forEach((id) => picked.delete(id));
+      list.querySelectorAll<HTMLInputElement>('.cg-colgroups-add-col-option input[type="checkbox"]')
+        .forEach((cb) => {
+          const row = cb.closest('[data-cg-add-col-id]');
+          const id = row?.getAttribute('data-cg-add-col-id');
+          if (!id) return;
+          cb.checked = picked.has(id);
+          row?.setAttribute('aria-selected', String(cb.checked));
+        });
+      syncChrome();
+    });
+
+    addBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const ids = [...picked];
+      close();
+      this.addColumnsToGroup(groupId, ids);
+    });
+
+    search.addEventListener('input', () => paintOptions(search.value));
+    search.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        close();
+        trigger.focus();
+      }
+    });
+    trigger.addEventListener('click', (e) => {
+      e.stopPropagation();
+      open();
+    });
+
+    panel.append(search, toolbar, list);
+    wrap.append(trigger, panel);
+    return wrap;
+  }
+
+  private columnChip(col: ColumnNode): HTMLElement {
+    const chip = el('div', 'cg-colgroups-chip');
+    chip.setAttribute('data-cg-chip', col.colId);
+
+    const name = el('span', 'cg-colgroups-chip-name');
+    name.textContent = col.headerName;
+    chip.appendChild(name);
+
+    const kind = showKind(col.columnGroupShow);
+    const showBtn = document.createElement('button');
+    showBtn.type = 'button';
+    showBtn.className = 'cg-colgroups-chip-show';
+    showBtn.setAttribute('data-cg-groupshow', '');
+    showBtn.setAttribute('data-value', kind === 'always' ? '' : kind);
+    showBtn.setAttribute('aria-pressed', 'true');
+    showBtn.setAttribute('aria-label', showLabel(kind));
+    showBtn.title = showLabel(kind);
+    showBtn.appendChild(iconGroupShow(kind));
+    showBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const next = nextShow(col.columnGroupShow ?? null);
+      this.mutate((ns) => setColumnGroupShow(ns, col.colId, next));
+    });
+    chip.appendChild(showBtn);
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'cg-colgroups-chip-remove';
+    remove.appendChild(iconClose());
+    remove.title = 'Remove from group';
+    remove.setAttribute('aria-label', `Remove ${col.headerName} from group`);
+    remove.setAttribute('data-cg-remove-col', '');
+    remove.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.removeColumnFromGroup(col.colId);
+    });
+    chip.appendChild(remove);
+    return chip;
+  }
+
+  /** Colour-picker commit path — writes to the model WITHOUT rebuilding the
+   *  Style-band DOM so an in-flight popover survives. */
   private commitStyleLive(fn: (n: Node[]) => Node[]): void {
     this.nodes = fn(this.nodes);
     this.applyBtn.disabled = !this.dirty;
     this.refreshBorderPreview();
   }
 
-  /** Repaints the border-preview cell's per-side border inline styles for the
-   *  currently selected group from `this.nodes` — the one piece of Style-band
-   *  DOM a live border-colour commit needs to keep current, without rebuilding
-   *  anything else. The preview isolates the BORDER (no fill/text), so a live
-   *  Fill/Text commit leaves it untouched. No-op if the border cluster isn't
-   *  mounted (e.g. no group selected, or the float isn't open). */
   private refreshBorderPreview(): void {
-    if (!this.selectedGroupId || !this.floatBody) return;
-    const g = this.nodes.find((n) => n.id === this.selectedGroupId && n.kind === 'group') as
+    if (!this.selectedId) return;
+    const g = this.nodes.find((n) => n.id === this.selectedId && n.kind === 'group') as
       | GroupNode
       | undefined;
     if (!g) return;
-    const preview = this.floatBody.querySelector('.cg-colgroups-border-preview') as HTMLElement | null;
+    const preview = this.editor.querySelector('.cg-colgroups-border-preview') as HTMLElement | null;
     if (!preview) return;
     const border = g.headerStyle?.border;
     preview.style.borderTop = borderSideToCss(effectiveBorderSide(border, 'top'));
@@ -504,7 +794,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
 
   // ── Style band clusters ────────────────────────────────────────────
 
-  /** FILL & TEXT cluster: bg/fg swatches, a B/I/U segment, size + alignment. */
   private buildFillTextCluster(
     g: GroupNode,
     patchStyle: (facet: Partial<NonNullable<GroupNode['headerStyle']>>) => void,
@@ -512,19 +801,12 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     const cluster = el('div', 'cg-colgroups-cluster');
     cluster.appendChild(eyebrow('Fill & text', 'cg-colgroups-cluster-eyebrow'));
 
-    // Colour edits commit through `commitStyleLive` (Fix 3): the picker
-    // emits `onChange` on every pointermove of a drag, and the ordinary
-    // `mutate() -> render() -> renderStyle()` path would tear the portaled
-    // popover out from under the user mid-drag. Reads the CURRENT node from
-    // `ns` (not the closed-over `g`) so back-to-back live commits compose
-    // instead of clobbering each other off a stale snapshot.
     const patchStyleLive = (facet: Partial<NonNullable<GroupNode['headerStyle']>>) =>
       this.commitStyleLive((ns) => {
         const cur = ns.find((x) => x.id === g.id) as GroupNode | undefined;
         return setGroupStyle(ns, g.id, { headerStyle: { ...cur?.headerStyle, ...facet } });
       });
 
-    // Row 1 — Background + Text colour swatches, side by side.
     const colorRow = el('div', 'cg-colgroups-field-row');
     colorRow.appendChild(this.colorField('bg', 'Fill', g.headerStyle?.bg,
       (rgba) => patchStyleLive({ bg: rgba }), 'Background colour'));
@@ -532,7 +814,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
       (rgba) => patchStyleLive({ fg: rgba }), 'Text colour'));
     cluster.appendChild(colorRow);
 
-    // Row 2 — B / I / U segment + alignment icon segment.
     const styleRow = el('div', 'cg-colgroups-field-row');
 
     const biu = el('div', 'cg-colgroups-seg');
@@ -572,9 +853,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     });
     styleRow.appendChild(align);
 
-    // Font size — inline on the same row as the B/I/U + alignment segments,
-    // shown as a bare `auto`-placeholder field (label-less; its `data-cg-field`
-    // wrapper keeps the E2E/unit `[data-cg-field="fontSize"] input` selector).
     const sizeWrap = el('div', 'cg-colgroups-field cg-colgroups-size');
     sizeWrap.setAttribute('data-cg-field', 'fontSize');
     const sizeInput = document.createElement('input');
@@ -595,13 +873,11 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     return cluster;
   }
 
-  /** BORDER cluster — a live preview of the header cell beside a `Side`
-   *  selector (All / Top / Right / Bottom / Left), over Width / Style / Colour
-   *  controls that read & write whichever side is selected. */
   private buildBorderCluster(
     g: GroupNode,
     patch: (p: Partial<Pick<GroupNode, 'headerStyle'>>) => void,
   ): HTMLElement {
+    void patch;
     const cluster = el('div', 'cg-colgroups-cluster');
     cluster.appendChild(eyebrow('Border', 'cg-colgroups-cluster-eyebrow'));
 
@@ -609,11 +885,8 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     editor.setAttribute('data-cg-border', '');
     const border = g.headerStyle?.border;
 
-    // Head row: live preview box (left) + the Side selector (right).
     const head = el('div', 'cg-colgroups-border-head');
 
-    // A neutral swatch that previews ONLY the border (not the fill) — the
-    // Fill colour has its own field above; here the border reads clearly.
     const preview = el('div', 'cg-colgroups-border-preview');
     preview.setAttribute('aria-hidden', 'true');
     preview.style.borderTop = borderSideToCss(effectiveBorderSide(border, 'top'));
@@ -622,8 +895,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     preview.style.borderLeft = borderSideToCss(effectiveBorderSide(border, 'left'));
     head.appendChild(preview);
 
-    // Side selector — replaces the box-model edge strips: choosing a side
-    // (re-render) scopes the Width / Style / Colour controls to it.
     const sideWrap = el('div', 'cg-colgroups-field cg-colgroups-border-side');
     const sideLabel = labelEl('cg-colgroups-field-label');
     sideLabel.textContent = 'Side';
@@ -648,13 +919,8 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     head.appendChild(sideWrap);
     editor.appendChild(head);
 
-    // Width / style / colour — read & write the SELECTED side.
     const edge = this.selectedEdge;
     const side = border?.[edge];
-    // Reads the CURRENT border off `ns` at write-time rather than the
-    // closed-over `border`/`g` snapshot — a colour edit may already have
-    // live-committed a change via `commitStyleLive` without rebuilding this
-    // closure (Fix 3), and merging off stale state here would clobber it.
     const writeSide = (facet: 'width' | 'style', value: number | string | undefined) => {
       this.mutate((ns) => {
         const cur = ns.find((x) => x.id === g.id) as GroupNode | undefined;
@@ -664,10 +930,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
         return setGroupStyle(ns, g.id, { headerStyle: { ...cur?.headerStyle, border: nextBorder } });
       });
     };
-    // Border colour, specifically, commits through `commitStyleLive` (Fix 3)
-    // instead of `writeSide`/`patch` — same no-rebuild-mid-drag reasoning as
-    // the Fill/Text swatches above. Reads the CURRENT border off `ns` so
-    // consecutive live commits (a hue/alpha drag) compose correctly.
     const writeSideColorLive = (value: string | undefined) => {
       this.commitStyleLive((ns) => {
         const cur = ns.find((x) => x.id === g.id) as GroupNode | undefined;
@@ -712,7 +974,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     return cluster;
   }
 
-  /** BEHAVIOR cluster: marryChildren + openByDefault switches. */
   private buildBehaviorCluster(
     g: GroupNode,
     patch: (p: Partial<Pick<GroupNode, 'openByDefault' | 'marryChildren'>>) => void,
@@ -728,11 +989,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
 
   // ── Style band control builders ────────────────────────────────────
 
-  /** A labelled colour swatch wrapped in `data-cg-field="{key}"`, backed by
-   *  the shared `ColorPickerControl` (the E2E depends on `.cg-colorpicker-swatch`).
-   *  `swatchAriaLabel`, when given, overrides the control's generic default
-   *  ("Choose colour") so the Fill/Text/Border swatches co-present in this
-   *  band read distinctly to a screen reader (Fix 4). */
   private colorField(
     key: string,
     label: string,
@@ -745,9 +1001,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     const lbl = el('span', 'cg-colgroups-field-label');
     lbl.textContent = label;
 
-    // A bordered pill holding the swatch trigger + an inline hex label. The
-    // label mirrors the picker's current colour and refreshes on every (live)
-    // commit; an unset field reads a muted "Default" instead of a fake hex.
     const pill = el('div', 'cg-colgroups-colorfield');
     const valueEl = el('span', 'cg-colgroups-colorfield-value');
     const setLabel = (hex: string): void => {
@@ -774,14 +1027,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     return wrap;
   }
 
-  /** A labelled `<input type="number">` wrapped in `data-cg-field="{key}"`
-   *  (Fix 5) — shared by the Fill & text cluster's Size field and the
-   *  Border cluster's edge-scoped Width field, which were near-identical
-   *  hand-rolled blocks. `normalize` maps the raw parsed number to the
-   *  facet's valid domain (or `undefined` to clear it, e.g. Size allows any
-   *  finite non-zero value while Width additionally requires `n > 0`);
-   *  `onCommit` receives that normalized value and decides how to write it
-   *  (a plain `patchStyle`, or the border cluster's edge-scoped `writeSide`). */
   private numberField(
     key: string,
     label: string,
@@ -813,8 +1058,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     return wrap;
   }
 
-  /** A single toggle in the B/I/U segment: a button carrying `data-cg-field`
-   *  directly, `aria-pressed`, styled per the letter. */
   private toggleSegBtn(
     key: string,
     glyph: string,
@@ -835,8 +1078,6 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     return b;
   }
 
-  /** A label-left / pill-switch-right row wrapped in `data-cg-field="{key}"`.
-   *  The switch reuses the `.cg-settings-toggle` idiom (aria-pressed pill). */
   private switchRow(
     key: string,
     label: string,
@@ -864,307 +1105,9 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     return row;
   }
 
-  // ── Row builders ───────────────────────────────────────────────────
-
-  private groupControls(n: GroupNode): HTMLElement {
-    const wrap = el('div', 'cg-colgroups-row-main');
-
-    const chevron = document.createElement('button');
-    chevron.type = 'button';
-    chevron.className = 'cg-colgroups-chevron';
-    chevron.appendChild(iconDisclosure());
-    chevron.setAttribute('aria-expanded', String(!this.collapsed.has(n.id)));
-    chevron.setAttribute('aria-label', 'Toggle group');
-    chevron.addEventListener('click', (e) => {
-      e.stopPropagation();
-      // Collapse/expand is panel VIEW-STATE (not model state) so it must
-      // survive `render()` on every mutation — see `this.collapsed`.
-      if (this.collapsed.has(n.id)) this.collapsed.delete(n.id);
-      else this.collapsed.add(n.id);
-      this.render();
-    });
-
-    const name = document.createElement('input');
-    name.type = 'text';
-    name.className = 'cg-colgroups-name cg-colgroups-name-group';
-    name.value = n.headerName;
-    name.setAttribute('aria-label', 'Group name');
-    name.addEventListener('change', () => this.mutate((ns) => renameGroup(ns, n.id, name.value)));
-    // Caption first, disclosure caret trailing it — same order as the
-    // grid's column-group header band (caption, then horizontal caret).
-    // The name input is sized to its content (ch-based, tracked while
-    // typing) so the caret hugs the caption's end instead of stranding
-    // at the row's far edge; `.cg-colgroups-row-actions` stays
-    // right-anchored via its own margin-inline-start:auto.
-    const fitName = () => { name.style.width = `${Math.max(3, name.value.length) + 1}ch`; };
-    fitName();
-    name.addEventListener('input', fitName);
-    wrap.appendChild(name);
-    wrap.appendChild(chevron);
-
-    const errorEl = el('span', 'cg-colgroups-error');
-    errorEl.setAttribute('data-cg-error', n.id);
-    wrap.appendChild(errorEl);
-
-    const actions = el('div', 'cg-colgroups-row-actions');
-
-    // Keyboard-reachable selection affordance: a real <button> (not a
-    // click-only row) so choosing a group to style works via Tab + Enter/
-    // Space, with a visible focus ring (`.cg-colgroups-action:focus-visible`).
-    const selectBtn = document.createElement('button');
-    selectBtn.type = 'button';
-    selectBtn.className = 'cg-colgroups-action';
-    selectBtn.appendChild(iconGear());
-    selectBtn.title = 'Edit group style';
-    selectBtn.setAttribute('aria-label', 'Edit group style');
-    selectBtn.setAttribute('data-cg-select', '');
-    selectBtn.setAttribute('aria-pressed', String(this.selectedGroupId === n.id));
-    selectBtn.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.selectGroup(n.id);
-    });
-    actions.appendChild(selectBtn);
-
-    const addSub = document.createElement('button');
-    addSub.type = 'button';
-    addSub.className = 'cg-colgroups-action';
-    addSub.appendChild(iconPlus());
-    addSub.title = 'Add subgroup';
-    addSub.setAttribute('aria-label', 'Add subgroup');
-    addSub.addEventListener('click', (e) => {
-      e.stopPropagation();
-      this.mutate((ns) => createGroup(ns, n.id, 'New Group'));
-    });
-    actions.appendChild(addSub);
-
-    const del = document.createElement('button');
-    del.type = 'button';
-    del.className = 'cg-colgroups-action';
-    del.appendChild(iconClose());
-    del.title = 'Delete group';
-    del.setAttribute('aria-label', 'Delete group');
-    del.addEventListener('click', (e) => {
-      e.stopPropagation();
-      if (this.selectedGroupId === n.id) this.selectedGroupId = null;
-      this.collapsed.delete(n.id);
-      this.mutate((ns) => deleteGroup(ns, n.id));
-    });
-    actions.appendChild(del);
-
-    wrap.appendChild(actions);
-    return wrap;
-  }
-
-  private columnControls(n: ColumnNode): HTMLElement {
-    const wrap = el('div', 'cg-colgroups-row-main');
-
-    const handle = el('span', 'cg-colgroups-handle');
-    handle.setAttribute('aria-hidden', 'true');
-    handle.appendChild(iconGrip());
-    wrap.appendChild(handle);
-
-    const checkboxLabel = document.createElement('label');
-    checkboxLabel.className = 'cg-colgroups-checkbox-label';
-    const checkbox = document.createElement('input');
-    checkbox.type = 'checkbox';
-    checkbox.className = 'cg-colgroups-checkbox';
-    checkbox.checked = n.hide !== true;
-    checkbox.setAttribute('aria-label', `Show ${n.headerName}`);
-    checkbox.addEventListener('change', () => {
-      this.mutate((ns) => setHidden(ns, n.colId, !checkbox.checked));
-    });
-    checkboxLabel.appendChild(checkbox);
-    wrap.appendChild(checkboxLabel);
-
-    const name = document.createElement('input');
-    name.type = 'text';
-    name.className = 'cg-colgroups-name';
-    name.value = n.headerName;
-    name.setAttribute('aria-label', 'Column name');
-    name.addEventListener('change', () => this.mutate((ns) => setColumnHeaderName(ns, n.colId, name.value)));
-    wrap.appendChild(name);
-
-    // Expand/collapse visibility (`columnGroupShow`) only makes sense for a
-    // column that lives INSIDE a group — an ungrouped (top-level) column has
-    // no group to open/close relative to, so no control is rendered for it.
-    if (n.parentId !== null) {
-      wrap.appendChild(this.buildVisibilityControl(n.colId, n.columnGroupShow));
-    }
-
-    return wrap;
-  }
-
-  /** Inline column-group visibility affordance (row-level). Reveals the full
-   *  3-state picker only on row hover (see `.cg-colgroups-visibility` CSS); when
-   *  the row is at rest a single muted caret marks a CONDITIONAL column (open /
-   *  closed) so it reads at a glance, while an always-visible column shows
-   *  nothing — keeping the common case clutter-free. */
-  private buildVisibilityControl(
-    colId: string,
-    value: 'open' | 'closed' | null | undefined,
-  ): HTMLElement {
-    const vis = el('div', 'cg-colgroups-visibility');
-    const state = value ?? '';
-    // Rest-state marker — only for conditional columns.
-    if (state === 'open' || state === 'closed') {
-      const marker = el('span', 'cg-colgroups-vis-current');
-      marker.setAttribute('aria-hidden', 'true');
-      marker.appendChild(iconGroupShow(state));
-      marker.title = state === 'open'
-        ? 'Visible only when the group is expanded'
-        : 'Visible only when the group is collapsed';
-      vis.appendChild(marker);
-    }
-    // Hover-revealed picker.
-    const picker = this.buildGroupShowControl(colId, value);
-    picker.classList.add('cg-colgroups-vis-picker');
-    vis.appendChild(picker);
-    return vis;
-  }
-
-  /** The inline per-row `columnGroupShow` control (tagged `data-cg-groupshow`):
-   *  a 3-state segment (always / show-when-open / show-when-collapsed) whose
-   *  every write goes through `setColumnGroupShow` and triggers
-   *  `mutate()` -> `render()`, so the row's rest-state marker stays in sync. */
-  private buildGroupShowControl(
-    colId: string,
-    value: 'open' | 'closed' | null | undefined,
-  ): HTMLElement {
-    const seg = el('div', 'cg-colgroups-seg cg-colgroups-groupshow');
-    seg.setAttribute('data-cg-groupshow', '');
-    seg.setAttribute('role', 'group');
-    seg.setAttribute('aria-label', 'Column group visibility');
-    const cur = value ?? '';
-    ([
-      { v: '', kind: 'always', title: 'Always visible' },
-      { v: 'open', kind: 'open', title: 'Show when open' },
-      { v: 'closed', kind: 'closed', title: 'Show when collapsed' },
-    ] as const).forEach((opt) => {
-      const b = document.createElement('button');
-      b.type = 'button';
-      b.className = 'cg-colgroups-seg-btn cg-colgroups-seg-icon';
-      b.appendChild(iconGroupShow(opt.kind));
-      b.title = opt.title;
-      b.setAttribute('aria-label', opt.title);
-      b.setAttribute('data-value', opt.v);
-      b.setAttribute('aria-pressed', String(cur === opt.v));
-      b.addEventListener('click', (e) => {
-        e.stopPropagation();
-        const v = opt.v === '' ? null : (opt.v as 'open' | 'closed');
-        this.mutate((ns) => setColumnGroupShow(ns, colId, v));
-      });
-      seg.appendChild(b);
-    });
-    return seg;
-  }
-
   private flagGroup(groupId: string, message: string): void {
-    const errorEl = this.tree.querySelector(`[data-cg-error="${cssEscape(groupId)}"]`);
+    const errorEl = this.listBody.querySelector(`[data-cg-error="${cssEscape(groupId)}"]`);
     if (errorEl) errorEl.textContent = message;
-  }
-
-  // ── Drag & drop ────────────────────────────────────────────────────
-
-  private wireDrag(row: HTMLElement, n: Node): void {
-    const handleEl = n.kind === 'column'
-      ? row.querySelector('.cg-colgroups-handle')
-      : row; // groups are draggable by their row (excluding interactive controls)
-    if (!handleEl) return;
-    handleEl.addEventListener('mousedown', (evt) => {
-      const e = evt as MouseEvent;
-      const target = e.target as HTMLElement;
-      if (n.kind === 'group' && (target.closest('button') || target.closest('input'))) return;
-      // Don't start a drag session (body-level ghost etc.) on a plain
-      // mousedown — only promote to a real drag once the pointer has moved
-      // past DRAG_THRESHOLD_PX, so a simple click-to-select stays cheap.
-      this.pending = { node: n, row, startX: e.clientX, startY: e.clientY };
-      document.addEventListener('mousemove', this.onPendingMove);
-      document.addEventListener('mouseup', this.onPendingUp);
-    });
-  }
-
-  private handlePendingMove(e: MouseEvent): void {
-    const p = this.pending;
-    if (!p) return;
-    const dx = e.clientX - p.startX;
-    const dy = e.clientY - p.startY;
-    if (Math.hypot(dx, dy) <= DRAG_THRESHOLD_PX) return;
-    document.removeEventListener('mousemove', this.onPendingMove);
-    document.removeEventListener('mouseup', this.onPendingUp);
-    this.pending = null;
-    e.preventDefault();
-    this.beginDrag(e, p.node, p.row);
-  }
-
-  private cancelPendingDrag(): void {
-    document.removeEventListener('mousemove', this.onPendingMove);
-    document.removeEventListener('mouseup', this.onPendingUp);
-    this.pending = null;
-  }
-
-  private beginDrag(e: MouseEvent, n: Node, row: HTMLElement): void {
-    const rect = row.getBoundingClientRect();
-    const ghost = row.cloneNode(true) as HTMLElement;
-    ghost.classList.add('cg-colgroups-row-ghost');
-    ghost.style.position = 'fixed';
-    ghost.style.width = `${rect.width}px`;
-    ghost.style.left = `${rect.left}px`;
-    ghost.style.top = `${rect.top}px`;
-    ghost.style.pointerEvents = 'none';
-    document.body.appendChild(ghost);
-
-    this.drag = {
-      id: n.id,
-      kind: n.kind,
-      ghost,
-      offsetX: e.clientX - rect.left,
-      offsetY: e.clientY - rect.top,
-    };
-    row.classList.add('cg-colgroups-row-source');
-    document.addEventListener('mousemove', this.onDragMove);
-    document.addEventListener('mouseup', this.onDragEnd);
-  }
-
-  private handleDragMove(e: MouseEvent): void {
-    if (!this.drag) return;
-    this.drag.ghost.style.left = `${e.clientX - this.drag.offsetX}px`;
-    this.drag.ghost.style.top = `${e.clientY - this.drag.offsetY}px`;
-
-    // Clear previous drop-target markers.
-    this.tree.querySelectorAll('[data-drop]').forEach((r) => r.removeAttribute('data-drop'));
-
-    const under = document.elementFromPoint(e.clientX, e.clientY);
-    const targetRow = under?.closest('[data-cg-node]') as HTMLElement | null;
-    if (!targetRow || targetRow.getAttribute('data-cg-node') === this.drag.id) return;
-    const targetId = targetRow.getAttribute('data-cg-node')!;
-    const targetNode = this.nodes.find((x) => x.id === targetId);
-    if (!targetNode) return;
-    const targetParentId = targetNode.kind === 'group' ? targetNode.id : targetNode.parentId;
-    const accept = canDrop(this.nodes, this.drag.id, targetParentId);
-    targetRow.setAttribute('data-drop', accept ? 'accept' : 'reject');
-  }
-
-  private handleDragEnd(e: MouseEvent): void {
-    document.removeEventListener('mousemove', this.onDragMove);
-    document.removeEventListener('mouseup', this.onDragEnd);
-    const drag = this.drag;
-    this.drag = null;
-    if (!drag) return;
-    drag.ghost.remove();
-    this.tree.querySelectorAll('[data-drop]').forEach((r) => r.removeAttribute('data-drop'));
-    this.tree.querySelectorAll('.cg-colgroups-row-source').forEach((r) => r.classList.remove('cg-colgroups-row-source'));
-
-    const under = document.elementFromPoint(e.clientX, e.clientY);
-    const targetRow = under?.closest('[data-cg-node]') as HTMLElement | null;
-    if (!targetRow) return;
-    const targetId = targetRow.getAttribute('data-cg-node')!;
-    if (targetId === drag.id) return;
-    const targetNode = this.nodes.find((x) => x.id === targetId);
-    if (!targetNode) return;
-    const onGroupHeader = targetNode.kind === 'group';
-    const resolved = resolveDrop(this.nodes, drag.id, targetId, onGroupHeader);
-    if (!resolved || !canDrop(this.nodes, drag.id, resolved.parentId)) return;
-    this.mutate((ns) => moveNode(ns, drag.id, resolved.parentId, resolved.order));
   }
 }
 
@@ -1172,7 +1115,6 @@ function el(tag: string, cls: string): HTMLElement { const e = document.createEl
 
 function labelEl(cls: string): HTMLLabelElement { const e = document.createElement('label'); e.className = cls; return e; }
 
-/** A cluster/section eyebrow (11px, 600, uppercase, tracked, muted). */
 function eyebrow(text: string, cls = 'cg-colgroups-eyebrow'): HTMLElement {
   const e = el('div', cls);
   e.textContent = text;
@@ -1184,10 +1126,6 @@ const uid = (): string => `cg-colgroups-ctl-${++controlSeq}`;
 
 const cap = (s: string): string => s.charAt(0).toUpperCase() + s.slice(1);
 
-/** Format any CSS colour string as an uppercase `#RRGGBB` label for the colour
- *  fields' inline value text (alpha is dropped — the swatch's checkerboard shows
- *  transparency). Returns '' for an unset/unparseable value so the field can
- *  fall back to a muted placeholder. */
 function toHexLabel(value: string | undefined): string {
   if (!value) return '';
   const c = parseColor(value);
@@ -1200,8 +1138,6 @@ function cssEscape(s: string): string {
   return s.replace(/["\\]/g, '\\$&');
 }
 
-// Alignment glyphs for the halign icon segment — currentColor-driven so both
-// themes get correct contrast for free. Rows encode left/center/right ragging.
 const ALIGN_LEFT_SVG =
   '<svg viewBox="0 0 16 16" aria-hidden="true" focusable="false"><g fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"><path d="M2.5 4h11M2.5 8h7M2.5 12h9"/></g></svg>';
 const ALIGN_CENTER_SVG =

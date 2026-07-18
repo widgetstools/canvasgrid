@@ -18,7 +18,7 @@ void _layoutSurfaceCheck;
 afterEach(() => { document.body.replaceChildren(); });
 
 const openPanel = (host: HTMLElement) => {
-  host.querySelector<HTMLButtonElement>('button.cgext-profile')!.click();
+  host.querySelector<HTMLButtonElement>('button.cgext-layouts-trigger')!.click();
   return document.querySelector<HTMLElement>('.cgext-menu.cgext-layouts')!;
 };
 
@@ -27,7 +27,7 @@ describe('layouts trigger button', () => {
     const grid = new FakeGrid();
     grid.layouts.push({ id: 'l1', name: 'Layout 1', state: {} });
     const { host } = mountItem(layoutsItem(), grid);
-    const name = () => host.querySelector('.cgext-profile-name')!.textContent;
+    const name = () => host.querySelector('.cgext-pill-name')!.textContent;
     expect(name()).toBe('Default');
     grid.loadLayout('l1');
     expect(name()).toBe('Layout 1');
@@ -35,7 +35,7 @@ describe('layouts trigger button', () => {
 
   it('opens/closes the panel and syncs aria-expanded', () => {
     const { host } = mountItem(layoutsItem());
-    const btn = host.querySelector<HTMLButtonElement>('button.cgext-profile')!;
+    const btn = host.querySelector<HTMLButtonElement>('button.cgext-layouts-trigger')!;
     expect(btn.getAttribute('aria-expanded')).toBe('false');
     btn.click();
     expect(document.querySelector('.cgext-menu.cgext-layouts')).toBeTruthy();
@@ -101,9 +101,9 @@ describe('layout list', () => {
     const panel = openPanel(host);
     row(panel, 'default').click();
     expect(grid.loadLayout).toHaveBeenCalledWith('default');
-    expect(host.querySelector('.cgext-profile-name')!.textContent).toBe('Default');
+    expect(host.querySelector('.cgext-pill-name')!.textContent).toBe('Default');
     expect(document.querySelector('.cgext-menu.cgext-layouts')).toBeNull(); // selection dismisses
-    expect(host.querySelector('button.cgext-profile')!.getAttribute('aria-expanded')).toBe('false');
+    expect(host.querySelector('button.cgext-layouts-trigger')!.getAttribute('aria-expanded')).toBe('false');
   });
 
   it('clicking the already-active row closes without loading; a failed load keeps the panel open', () => {
@@ -177,7 +177,7 @@ describe('layout list', () => {
     row(panel, 'l1').querySelector<HTMLButtonElement>('[data-act="delete"]')!.click();
     expect(grid.deleteLayout).toHaveBeenCalledWith('l1');
     expect(panel.querySelectorAll('.cgext-layouts-row')).toHaveLength(1);
-    expect(host.querySelector('.cgext-profile-name')!.textContent).toBe('Default');
+    expect(host.querySelector('.cgext-pill-name')!.textContent).toBe('Default');
   });
 });
 
@@ -257,7 +257,7 @@ describe('save-new + import/export', () => {
     newInput(panel).dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
     expect(grid.saveLayout).toHaveBeenCalledWith('Layout 1');
     expect(newInput(panel).value).toBe('');
-    expect(host.querySelector('.cgext-profile-name')!.textContent).toBe('Layout 1'); // kernel activates
+    expect(host.querySelector('.cgext-pill-name')!.textContent).toBe('Layout 1'); // kernel activates
 
     newInput(panel).value = 'layout 1'; // duplicate, case-insensitive
     newInput(panel).dispatchEvent(new Event('input', { bubbles: true }));

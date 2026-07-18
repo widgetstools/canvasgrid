@@ -21,6 +21,7 @@
     "@cgrid/calc": "*",
     "@cgrid/customizer": "*",
     "@cgrid/edit": "*",
+    "@cgrid/expression": "*",
     "@cgrid/format": "*",
     "@cgrid/kernel": "*",
     "@cgrid/renderers": "*",

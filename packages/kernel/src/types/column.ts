@@ -575,6 +575,14 @@ export interface CColGroupDef<TRow = any> {
    * independent of its ancestors' states.
    */
   columnGroupShow?: 'open' | 'closed' | null;
+  /**
+   * Profile/layout visibility for the whole group. When `true`, the
+   * Column Groups editor cascades `hide` onto every descendant leaf on
+   * Apply so those columns disappear from the grid. Round-trips through
+   * the columnDefs overlay; the paint path does not need to read this
+   * (leaf `hide` is authoritative at runtime).
+   */
+  hide?: boolean;
 }
 
 export interface CValueGetterParams<TRow> { data: TRow; colId: string }

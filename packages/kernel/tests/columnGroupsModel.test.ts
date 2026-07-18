@@ -1,8 +1,8 @@
 import { describe, it, expect } from 'vitest';
 import {
-  flatten, project, createGroup, deleteGroup, moveNode, setHidden,
+  flatten, project, createGroup, createGroupWithColumns, deleteGroup, moveNode, setHidden,
   setColumnHeaderName, setGroupStyle, canDrop, validate, renameGroup,
-  resolveDrop, rehydrate, setColumnGroupShow,
+  resolveDrop, rehydrate, setColumnGroupShow, setGroupHidden, descendantColumnIds,
   type Node, type GroupNode, type SerializedNode,
 } from '../src/interaction/columnGroups/model';
 import type { CColDef, CColGroupDef } from '../src/types';
@@ -47,6 +47,50 @@ describe('mutations', () => {
     const g = nodes.find((n) => n.kind === 'group' && (n as GroupNode).headerName === 'Risk');
     expect(g).toBeDefined();
     expect(g!.parentId).toBeNull();
+  });
+
+  it('createGroup never reuses an existing cg-grp-N id (post-Apply remount)', () => {
+    // Simulate seed after Apply: defs already carry synthesized group ids, and
+    // the module seq may be behind those ids (fresh page / remount).
+    const seeded = flatten([
+      {
+        groupId: 'cg-grp-1',
+        headerName: 'Trade',
+        children: [
+          { colId: 'bid', field: 'bid', headerName: 'Bid' },
+          { colId: 'ask', field: 'ask', headerName: 'Ask' },
+        ],
+      },
+    ]);
+    const next = createGroup(seeded, null, 'New Group');
+    const ids = next.filter((n) => n.kind === 'group').map((n) => n.id);
+    expect(ids).toEqual(['cg-grp-1', 'cg-grp-2']);
+    expect(new Set(ids).size).toBe(2);
+
+    const created = next.find((n) => n.kind === 'group' && n.headerName === 'New Group') as GroupNode;
+    expect(created.id).toBe('cg-grp-2');
+    // New group starts empty — columns stay under the original group.
+    expect(next.filter((n) => n.kind === 'column' && n.parentId === created.id)).toHaveLength(0);
+    expect(next.filter((n) => n.kind === 'column' && n.parentId === 'cg-grp-1')).toHaveLength(2);
+
+    const renamed = renameGroup(next, created.id, 'Risk');
+    expect((renamed.find((n) => n.id === 'cg-grp-1') as GroupNode).headerName).toBe('Trade');
+    expect((renamed.find((n) => n.id === 'cg-grp-2') as GroupNode).headerName).toBe('Risk');
+  });
+
+  it('createGroupWithColumns creates a group and moves the given columns into it', () => {
+    const nodes = createGroupWithColumns(flatten(nested), ['sym', 'last'], 'Risk');
+    const g = nodes.find((n) => n.kind === 'group' && (n as GroupNode).headerName === 'Risk') as GroupNode;
+    expect(g).toBeDefined();
+    expect(g.parentId).toBeNull();
+    const sym = nodes.find((n) => n.kind === 'column' && (n as any).colId === 'sym')!;
+    const last = nodes.find((n) => n.kind === 'column' && (n as any).colId === 'last')!;
+    expect(sym.parentId).toBe(g.id);
+    expect(last.parentId).toBe(g.id);
+    expect(sym.order).toBeLessThan(last.order);
+    // bid stays under Prices (not requested)
+    const bid = nodes.find((n) => n.kind === 'column' && (n as any).colId === 'bid')!;
+    expect(bid.parentId).not.toBe(g.id);
   });
 
   it('moveNode reparents a column into a group', () => {
@@ -182,6 +226,9 @@ describe('validation', () => {
     const nodes = flatten(defs);
     const x = nodes.find((n) => n.kind === 'column' && (n as any).colId === 'x')!;
     expect(canDrop(nodes, x.id, null)).toBe(false);
+    expect(canDrop(nodes, x.id, null, { bypassMarryChildren: true })).toBe(true);
+    const moved = moveNode(nodes, x.id, null, 0, { bypassMarryChildren: true });
+    expect(moved.find((n) => n.id === x.id)!.parentId).toBeNull();
   });
 
   it('validate returns ok:true when every group has at least one child', () => {
@@ -346,5 +393,38 @@ describe('rehydrate (persist overlay → nodes)', () => {
     expect(defs.some((d) => (d as CColDef).colId === 'a')).toBe(true);
     expect(defs.some((d) => (d as CColDef).colId === 'b')).toBe(true);
     expect(defs.some((d) => (d as CColDef).colId === 'c')).toBe(true);
+  });
+});
+
+describe('setGroupHidden', () => {
+  it('cascades hide onto every descendant leaf and nested group', () => {
+    const nodes = setGroupHidden(flatten(nested), 'trade', true);
+    const trade = nodes.find((n) => n.id === 'trade') as GroupNode;
+    const prices = nodes.find((n) => n.id === 'prices') as GroupNode;
+    expect(trade.hide).toBe(true);
+    expect(prices.hide).toBe(true);
+    for (const colId of descendantColumnIds(nodes, 'trade')) {
+      const col = nodes.find((n) => n.kind === 'column' && n.colId === colId)!;
+      expect(col.hide).toBe(true);
+    }
+    const sym = nodes.find((n) => n.kind === 'column' && n.colId === 'sym')!;
+    expect(sym.hide).toBeUndefined();
+  });
+
+  it('project round-trips group.hide onto CColGroupDef and leaf hide', () => {
+    const projected = project(setGroupHidden(flatten(nested), 'trade', true));
+    const trade = projected.find((d) => (d as CColGroupDef).groupId === 'trade') as CColGroupDef;
+    expect(trade.hide).toBe(true);
+    const prices = trade.children.find((d) => (d as CColGroupDef).groupId === 'prices') as CColGroupDef;
+    expect(prices.hide).toBe(true);
+    expect((prices.children[0] as CColDef).hide).toBe(true);
+    expect(flatten(projected).find((n) => n.id === 'trade')!.hide).toBe(true);
+  });
+
+  it('unhiding clears hide on the group subtree', () => {
+    const hidden = setGroupHidden(flatten(nested), 'trade', true);
+    const shown = setGroupHidden(hidden, 'trade', false);
+    expect((shown.find((n) => n.id === 'trade') as GroupNode).hide).toBe(false);
+    expect(shown.find((n) => n.kind === 'column' && n.colId === 'bid')!.hide).toBe(false);
   });
 });

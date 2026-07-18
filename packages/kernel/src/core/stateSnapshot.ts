@@ -242,8 +242,16 @@ export function buildSnapshot(sources: StateSnapshotSources): GridState {
   const rowGroupColumns = sources.getRowGroupColumns();
   if (rowGroupColumns.length > 0) snapshot.rowGroupColumns = rowGroupColumns;
 
-  const expanded = Array.from(sources.getExpandedKeys());
-  if (expanded.length > 0) snapshot.expandedRouteIds = expanded;
+  // When grouping is active, always persist expansion — including an
+  // empty array for "all collapsed". Omitting the field would look like
+  // "no opinion" and restore would fall back to groupDefaultExpanded
+  // (typically all open).
+  if (rowGroupColumns.length > 0) {
+    snapshot.expandedRouteIds = Array.from(sources.getExpandedKeys());
+  } else {
+    const expanded = Array.from(sources.getExpandedKeys());
+    if (expanded.length > 0) snapshot.expandedRouteIds = expanded;
+  }
 
   if (sources.isPivotMode()) snapshot.pivotMode = true;
   const pivotCols = sources.getPivotColumns();

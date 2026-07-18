@@ -80,6 +80,10 @@ interface Harness {
   requestRepaint: ReturnType<typeof vi.fn>;
   requestViewport: ReturnType<typeof vi.fn>;
   setExpandedKeys: ReturnType<typeof vi.fn>;
+  getExpandedKeysMirror: ReturnType<typeof vi.fn>;
+  flushPendingExpandedRoutes: ReturnType<typeof vi.fn>;
+  hasPendingExpandedRoutes: ReturnType<typeof vi.fn>;
+  shipExpandedKeys: ReturnType<typeof vi.fn>;
   setKnownGroupKeys: ReturnType<typeof vi.fn>;
   updateGroupDescendantsCache: ReturnType<typeof vi.fn>;
   setRowCount: ReturnType<typeof vi.fn>;
@@ -146,6 +150,10 @@ function makeHarness(opts: {
   const requestRepaint = vi.fn();
   const requestViewport = vi.fn();
   const setExpandedKeys = vi.fn();
+  const getExpandedKeysMirror = vi.fn(() => null);
+  const flushPendingExpandedRoutes = vi.fn(() => false);
+  const hasPendingExpandedRoutes = vi.fn(() => false);
+  const shipExpandedKeys = vi.fn();
   const setKnownGroupKeys = vi.fn();
   const updateGroupDescendantsCache = vi.fn();
   const setRowCount = vi.fn();
@@ -178,6 +186,10 @@ function makeHarness(opts: {
     requestRepaint: () => requestRepaint(),
     requestViewport: () => requestViewport(),
     setExpandedKeys: (k) => setExpandedKeys(k),
+    getExpandedKeysMirror: () => getExpandedKeysMirror(),
+    flushPendingExpandedRoutes: () => flushPendingExpandedRoutes(),
+    hasPendingExpandedRoutes: () => hasPendingExpandedRoutes(),
+    shipExpandedKeys: (k) => shipExpandedKeys(k),
     setKnownGroupKeys: (k) => setKnownGroupKeys(k),
     updateGroupDescendantsCache: (k, d) => updateGroupDescendantsCache(k, d),
     setRowCount: (n) => setRowCount(n),
@@ -203,7 +215,8 @@ function makeHarness(opts: {
     columnTree, columnDefsMap, columnOrder, columnLayout,
     workerColumnsFn, updateWorkerColumns, setWorkerGroupModel,
     computeVisibleColumnOrder, recomputeViewport, requestRepaint,
-    requestViewport, setExpandedKeys, setKnownGroupKeys,
+    requestViewport, setExpandedKeys, getExpandedKeysMirror,
+    flushPendingExpandedRoutes, hasPendingExpandedRoutes, shipExpandedKeys, setKnownGroupKeys,
     updateGroupDescendantsCache, setRowCount, invalidateRowHeightIndex,
     groupCellContextAt, setColumnsVisible, sortModel, setSortModel, reply,
   };

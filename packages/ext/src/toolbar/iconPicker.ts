@@ -180,8 +180,8 @@ export function createIconPicker(opts: { onSelect: (sel: IconSelection) => void 
     // active light/dark mode. Shared helper with ui.ts `menu()`.
     mirrorThemeClass(button, panel);
     const r = button.getBoundingClientRect();
-    panel.style.left = `${Math.max(8, Math.min(r.left, window.innerWidth - 348))}px`;
-    panel.style.top = `${r.bottom + 6}px`;
+    panel.style.setProperty('--cgext-menu-left', `${Math.max(8, Math.min(r.left, window.innerWidth - 348))}px`);
+    panel.style.setProperty('--cgext-menu-top', `${r.bottom + 6}px`);
     panel.hidden = false;
     button.classList.add('is-open');
     (panel.querySelector('[data-ip="search"]') as HTMLInputElement | null)?.focus();

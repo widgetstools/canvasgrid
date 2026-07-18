@@ -37,16 +37,22 @@ export interface ProfileStore {
   remove(id: string): Promise<void>;
 }
 
-/** What modules/toolbar items see of the profiles feature. Wave 0 ships
- *  dirty tracking + snapshot save/load; richer switching UI lands in the
- *  Profiles wave against THIS interface. */
+/** What modules/toolbar items see of the profiles feature. */
 export interface ProfileController {
   activeId(): string;
   isDirty(): boolean;
   markDirty(): void;
   onDirtyChange(fn: (dirty: boolean) => void): Unsub;
+  /** Fires when the saved profile list / active id changes. */
+  onListChange(fn: () => void): Unsub;
   save(): Promise<void>;
+  /** Save current view under a new name; becomes the active profile. */
+  saveAs(name: string): Promise<string>;
+  rename(id: string, name: string): Promise<void>;
+  remove(id: string): Promise<void>;
   switchTo(id: string): Promise<void>;
+  /** Load initial profile or seed a default snapshot. */
+  bootstrap(): Promise<void>;
   list(): Promise<ProfileMeta[]>;
 }
 

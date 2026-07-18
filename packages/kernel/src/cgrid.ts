@@ -12,12 +12,13 @@ import type {
   CFilterModelEntry, GroupModel, FlashCellsParams, SelectionRange,
   AggregationChangedSource, PaintStats,
 } from './types';
+import { clampRowHeight } from './types/options';
 import type { ToolPanel, SideBarDef } from './interaction/toolPanels/types';
 import { TypedEventEmitter } from './core/eventEmitter';
 import { DisposableRegistry } from './core/disposable';
 import { ViewportManager } from './core/viewportManager';
 import { type ResolvedColDef, applyCellProps, composeFont } from './core/propertyChain';
-import { resolveColumnTree, isColGroupDef, type ColumnTree, type ColumnTreeNode, type ResolvedColGroupDef } from './core/columnTree';
+import { resolveColumnTree, isColGroupDef, visibleHeaderGroupDepth, type ColumnTree, type ColumnTreeNode, type ResolvedColGroupDef } from './core/columnTree';
 import { moveColumnToGroup as moveColumnToGroupPure, moveColumnGroup as moveColumnGroupPure } from './core/columnGroupMutation';
 import { resolveSelection, applyResolvedSelectionToOptions } from './core/selectionConfig';
 import { serializeAggFuncsMap } from './core/aggFuncSerialization';
@@ -88,6 +89,10 @@ import { ColumnsToolPanel } from './interaction/toolPanels/columnsPanel';
 import { FiltersToolPanel } from './interaction/toolPanels/filtersPanel';
 import { GridOptionsToolPanel } from './interaction/toolPanels/gridOptionsPanel';
 import { ColumnGroupsToolPanel } from './interaction/toolPanels/columnGroupsPanel';
+// Re-exported so CGridExt (and hosts) can mount these panels in a settings
+// sheet without depending on kernel-internal paths.
+export { GridOptionsToolPanel } from './interaction/toolPanels/gridOptionsPanel';
+export { ColumnGroupsToolPanel } from './interaction/toolPanels/columnGroupsPanel';
 import { SideBarHost, normalizeSideBarOption, type SideBarGridContext } from './interaction/sideBar/host';
 import { StatusBarHost, normalizeStatusBarOption, type StatusBarGridContext } from './interaction/statusBar/host';
 import { StatusPanelRegistry } from './interaction/statusBar/registry';
@@ -557,7 +562,10 @@ const WINDOW_DIFF_MAX_ROWS = 24;
  * Returns `'full'` when there's no previous chunk to diff against (first
  * chunk ever), when `chunk.touchedRows` is `undefined` (unknown whether
  * any VALUE changed at an identity-matched position — "unknown stays
- * full", never assume "nothing changed" from absence), when a height
+ * full", never assume "nothing changed" from absence), when the viewport
+ * COLUMN SET changed (column-group expand/collapse, setColumnsVisible,
+ * column move — new colIds would otherwise stick as blank under a
+ * defined-empty `touchedRows` live-feed reply), when a height
  * mismatch is found, or when the resulting damage set exceeds
  * `WINDOW_DIFF_MAX_ROWS`. Otherwise returns the array of window-relative
  * row indices (0-based, add `chunk.rowStart` for the global index) that
@@ -567,12 +575,51 @@ const WINDOW_DIFF_MAX_ROWS = 24;
  * re-damage contract), and `touchedRows` (value changes at an
  * identity-matched position — e.g. a live tick that doesn't reorder).
  */
+/** Inclusive end row index for a chunk's data window (`[rowStart, end)`). */
+function chunkRowEnd(chunk: ViewportChunk): number {
+  return chunk.rowStart + chunk.rowCount;
+}
+
+/** True when the chunk overlaps `[firstRow, lastRow]` (inclusive). */
+function chunkIntersectsRowRange(
+  chunk: ViewportChunk, firstRow: number, lastRow: number,
+): boolean {
+  if (lastRow < firstRow) return true;
+  return chunk.rowStart <= lastRow && chunkRowEnd(chunk) > firstRow;
+}
+
+/** On-screen data row span (excludes `rowBuffer` / paint-cache overscan
+ *  padding that widens `firstRow`/`lastRow` for the worker fetch). */
+function onScreenDataRowRange(
+  vs: { firstRow: number; lastRow: number; firstVisibleDataRow?: number },
+): { first: number; last: number } | null {
+  if (vs.lastRow < 0) return null;
+  const firstVis = vs.firstVisibleDataRow ?? vs.firstRow;
+  const pad = Math.max(0, firstVis - vs.firstRow);
+  const lastVis = Math.max(firstVis, vs.lastRow - pad);
+  return { first: firstVis, last: lastVis };
+}
+
+/** True when the chunk fully covers the on-screen data rows. */
+function chunkCoversOnScreenRows(
+  chunk: ViewportChunk, vs: { firstRow: number; lastRow: number; firstVisibleDataRow?: number },
+): boolean {
+  const range = onScreenDataRowRange(vs);
+  if (!range) return true;
+  return chunk.rowStart <= range.first && chunkRowEnd(chunk) > range.last;
+}
+
 function resolveWindowDamage(
   chunk: ViewportChunk,
   prevChunk: ViewportChunk | null,
 ): number[] | 'full' {
   if (!prevChunk) return 'full';
   if (chunk.touchedRows === undefined) return 'full';
+  // Column-group expand / showColumns / etc. — row identity is unchanged
+  // so touchedRows is often `[]` on a live blotter, but the chunk now
+  // carries values for colIds the previous paint never had (or drops
+  // ones that collapsed). Force full so those cells aren't left blank.
+  if (viewportColumnSetChanged(prevChunk, chunk)) return 'full';
   const delta = chunk.rowStart - prevChunk.rowStart;
   const newCount = chunk.rowCount;
   const prevCount = prevChunk.rowCount;
@@ -596,6 +643,70 @@ function resolveWindowDamage(
   for (const r of chunk.touchedRows) damaged.add(r);
   if (damaged.size > WINDOW_DIFF_MAX_ROWS) return 'full';
   return Array.from(damaged);
+}
+
+/** True when the set of colIds present in numeric/text payload columns
+ *  differs between two chunks (order-insensitive). */
+function viewportColumnSetChanged(prev: ViewportChunk, next: ViewportChunk): boolean {
+  const prevKeys = viewportChunkColIds(prev);
+  const nextKeys = viewportChunkColIds(next);
+  if (prevKeys.size !== nextKeys.size) return true;
+  for (const id of prevKeys) {
+    if (!nextKeys.has(id)) return true;
+  }
+  return false;
+}
+
+function viewportChunkColIds(chunk: ViewportChunk): Set<string> {
+  const ids = new Set<string>();
+  for (const id of Object.keys(chunk.numericCols)) ids.add(id);
+  for (const id of Object.keys(chunk.textCols)) ids.add(id);
+  return ids;
+}
+
+/** Conflate deferred async transactions for scroll-end flush — last write
+ *  wins per row id (matches worker `asyncTransactionConflate`). */
+function mergeDeferredAsyncTransactions<TRow>(
+  txs: Tx<TRow>[],
+  getRowId: (row: TRow) => string | null,
+): Tx<TRow> {
+  const addById = new Map<string, TRow>();
+  const updateById = new Map<string, TRow>();
+  const removeById = new Map<string, TRow>();
+  for (const t of txs) {
+    if (t.add) {
+      for (const row of t.add) {
+        const id = getRowId(row);
+        if (id === null) continue;
+        removeById.delete(id);
+        updateById.delete(id);
+        addById.set(id, row);
+      }
+    }
+    if (t.update) {
+      for (const row of t.update) {
+        const id = getRowId(row);
+        if (id === null) continue;
+        removeById.delete(id);
+        if (addById.has(id)) addById.set(id, row);
+        else updateById.set(id, row);
+      }
+    }
+    if (t.remove) {
+      for (const row of t.remove) {
+        const id = getRowId(row);
+        if (id === null) continue;
+        addById.delete(id);
+        updateById.delete(id);
+        removeById.set(id, row);
+      }
+    }
+  }
+  const out: Tx<TRow> = {};
+  if (addById.size > 0) out.add = Array.from(addById.values());
+  if (updateById.size > 0) out.update = Array.from(updateById.values());
+  if (removeById.size > 0) out.remove = Array.from(removeById.values());
+  return out;
 }
 
 /** Closeout fix — C3: has any group/footer total or the grand-total
@@ -796,6 +907,21 @@ export class CGrid<TRow = any> {
    *  Vertical needs no equivalent: scroll dy is carried by the self-blit
    *  ('scroll' damage) and the chunk-side position-identity diff. */
   private lastPaintedViewportScrollLeft = 0;
+  /**
+   * Column-geometry / style-layout staleness — same class as
+   * `lastPaintedViewportScrollLeft`. Resize, column move, and alignment
+   * rebuild the live `columnLayout` (and bump strip epochs) but the
+   * retained paint-cache layer can still hold pre-mutation row pixels.
+   * Hybrid routing then paints a correct legacy FULL to the screen and
+   * later present/partial frames re-blit the stale layer for undamaged
+   * rows → per-row staggered cells until scroll. `layoutPaintEpoch`
+   * advances on every geometry/style layout invalidation; only a
+   * `damage.full` paint that actually ran may catch
+   * `lastPaintedLayoutPaintEpoch` up. `recomputeViewport` re-queues
+   * `repaintFull()` while they disagree.
+   */
+  private layoutPaintEpoch = 0;
+  private lastPaintedLayoutPaintEpoch = -1;
   /** Task 5 — scroll position as of the LAST `afterScrollTick` (every tick,
    *  not just paints). `DamageLedger.add({kind:'scroll'})` accumulates via
    *  `+=` (same additive contract as `repaintRows`/`repaintCells` — each
@@ -848,10 +974,15 @@ export class CGrid<TRow = any> {
    *  FUTURE column mutation can silently skip the bump. */
   private get columnLayout(): ColumnLayout[] { return this._columnLayout; }
   private set columnLayout(layout: ColumnLayout[]) {
-    if (this.rasterStrips !== null && !columnLayoutsEqual(this._columnLayout, layout)) {
+    const changed = !columnLayoutsEqual(this._columnLayout, layout);
+    if (this.rasterStrips !== null && changed) {
       this.stripLayoutEpochBump();
     }
     this._columnLayout = layout;
+    // Absolute-x retained surfaces (paint-cache layer + layer-viewport
+    // memo) embed the previous column lefts — wipe them on any geometry
+    // change so a later present/partial cannot resurrect staggered cells.
+    if (changed) this.invalidateRetainedPaintForColumnLayout();
   }
   private theme: ResolvedTheme;
   /** Theming Task 6/7 — the active programmatic `CgTheme`, when
@@ -942,6 +1073,7 @@ export class CGrid<TRow = any> {
     vs: ViewportState;
     layerTop: number;
     layerHeight: number;
+    layoutPaintEpoch: number;
     result: ViewportState;
   } | null = null;
   /** Task 4 (paint-cache layer) — the retained offscreen layer. `null`
@@ -959,6 +1091,18 @@ export class CGrid<TRow = any> {
    * on the first partial/present-only frame so the layer can rebuild.
    */
   private paintCacheDeferLayer = false;
+  /**
+   * Column-resize drag is active. While true, every paint uses the legacy
+   * path (no retained layer): mousemove width updates outrun full paints
+   * under paint-cache, and presenting a warm layer mid-drag mixes rows
+   * rastered at different widths → staircase cells. Also coalesces layout
+   * + repaint to one rAF so we don't pay invalidate/full per pointer event.
+   */
+  private columnResizeDragActive = false;
+  /** Pending rAF handle for coalesced resize layout/paint; 0 when idle. */
+  private columnResizeFlushRaf = 0;
+  /** ColId last touched by `resizeColumn` — emitted on the coalesced flush. */
+  private columnResizeFlushColId: string | null = null;
   /** Task 4 — `true` once the layer holds a geometry `planLayer` can
    *  legitimately `'keep'`/`'shift'` against. `false` forces `planLayer`'s
    *  `current: null` branch (an unconditional `'reset'`) on the NEXT
@@ -1241,6 +1385,23 @@ export class CGrid<TRow = any> {
    *  default-all sentinel) and as the source of truth for
    *  `getExpandedKeys()`'s "everything's expanded" snapshot. */
   private knownGroupKeys: string[] = [];
+  /** Stashed `expandedRouteIds` from `setState` / persist restore.
+   *  Applied after the worker `setGroupModel` reply lands — applying
+   *  during `setState` is a no-op when grouping hasn't materialised
+   *  yet (and a later `setGroupModel` would wipe it). `null` = none
+   *  pending; array (possibly empty) = restore this exact open set. */
+  private pendingExpandedRouteIds: string[] | null = null;
+  /**
+   * Deferred column-group overlay from `setState` / persist restore.
+   * Rehydrating against placeholder / incomplete `columnDefs` (common in
+   * STOMP demos that boot with one leaf then swap in the real catalog)
+   * would prune groups and let autosave persist the destruction. We keep
+   * the overlay here and re-apply in {@link flushPendingColumnGroups}
+   * whenever a later flat `columnDefs` catalog arrives.
+   */
+  private pendingColumnGroupDefs: SerializedNode[] | null = null;
+  /** Re-entrancy guard for {@link flushPendingColumnGroups}. */
+  private applyingPendingColumnGroups = false;
   /** Cycle 15 / Task 8 — `groupKey → descendant leaf rowIds` map
    *  populated from every `groupKeysSnapshot` reply when the worker's
    *  descendant emission is on. Backs the `GroupMembershipResolver`
@@ -1256,6 +1417,9 @@ export class CGrid<TRow = any> {
     // paintCache policy before any layer construction. Explicit
     // `paintCache: true|false` always wins (see paintQuality.ts).
     applyPaintQualityDefaults(options);
+    if (options.rowHeight != null) {
+      options.rowHeight = clampRowHeight(options.rowHeight);
+    }
 
     // Cycle 25 / Task 10 — memory-pressure release. Holds recent
     // chunks via WeakRef so V8/JSC can collect them ahead of our
@@ -1490,6 +1654,15 @@ export class CGrid<TRow = any> {
       id: 'columnGroups',
       version: 1,
       get: () => {
+        // Prefer the deferred restore overlay while leaf coverage is still
+        // incomplete — otherwise a placeholder rehydrate would autosave a
+        // pruned tree and permanently lose the user's groups.
+        if (this.pendingColumnGroupDefs) {
+          const defs = this.pendingColumnGroupDefs;
+          everHadGroups ||= defs.some((n) => n.kind === 'group');
+          const open = this.columnGroupState.getState();
+          return open.length > 0 ? { defs, open } : { defs };
+        }
         const currentDefs = this.options.columnDefs ?? [];
         if (currentDefs !== defsCacheKey) {
           defsCacheKey = currentDefs;
@@ -1505,8 +1678,8 @@ export class CGrid<TRow = any> {
       set: (data) => {
         const slice = data as { defs?: SerializedNode[]; open?: { groupId: string; open: boolean }[] };
         if (slice?.defs) {
-          const rehydrated = rehydrateColumnGroups(slice.defs, this.options.columnDefs ?? []);
-          this.updateGridOptions({ columnDefs: projectColumnGroups(rehydrated) });
+          this.pendingColumnGroupDefs = slice.defs;
+          this.flushPendingColumnGroups();
         }
         if (slice?.open) {
           this.columnGroupState.apply(slice.open);
@@ -1567,29 +1740,64 @@ export class CGrid<TRow = any> {
         if (this.floatingFilterOverlay) this.floatingFilterOverlay.repositionAll(vp);
       },
       afterScrollTick: () => {
-        // Task 5 — scroll self-blit decision. Reads the freshest scroll
-        // position off `ViewportManager` (not `this.viewport`, which can
-        // lag a tick behind a native scroll event until the async chunk
-        // round-trip re-syncs it) so the delta is always against real
-        // scroll state. Phase B scope is vertical-only: any horizontal
-        // component (dx !== 0) bails to full inside `decideScrollDamage`.
-        // Pinned rows / totals bands: the resolver already redamages the
-        // sticky band on scroll AND (Task 5) unconditionally pushes every
-        // `pinnedBandRects` rect whenever `blit !== null` — see
-        // `DamageLedger.takeResolved`.
+        // Scroll paint policy (Deephaven-aligned — iris-grid / @deephaven/grid):
+        //   • Always paint at the LIVE scroll position every tick. Never
+        //     freeze/hold content while the scrollbar moves — that kills
+        //     smooth scrolling. Missing cells paint empty until the chunk
+        //     lands (ViewportDataGridModel returns '' for out-of-window).
+        //   • Retained layer warm + not hybrid-deferred → scroll damage
+        //     feeds present-only frames (layer shift + edge fill) — our
+        //     GPU enhancement over Deephaven's always-full redraw.
+        //   • Otherwise → FULL viewport redraw (Hypergrid / Deephaven lean
+        //     path; `qualityMode: 'performance'` lands here). Never legacy
+        //     canvas self-blit (overlapping drawImage tears mid-body rows).
+        //   • Data lag is absorbed by a ~1-page buffer + throttled
+        //     latest-wins viewport fetches (see ViewportManager.request /
+        //     paintCacheOverscan), not by skipping paints.
         const curLeft = this.viewportManager.scrollLeft;
         const curTop = this.viewportManager.scrollTop;
+        const live = this.viewportManager.state;
+        const dx = curLeft - this.lastPaintedScrollLeft;
+        const dy = curTop - this.lastPaintedScrollTop;
+        const layerScrollOk = this.paintCacheActive()
+          && this.paintCacheLayerAnchored
+          && !this.paintCacheDeferLayer;
+        if (!layerScrollOk) {
+          // Sync metrics now (Deephaven paints from live view metrics);
+          // uncovered rows stay empty until the chunk arrives.
+          this.viewport = live;
+          this.damageLedger.add({ kind: 'full' });
+          this.lastTickScrollTop = curTop;
+          this.cgridCanvas.requestRepaint();
+          this.editController.syncOpenEditorPosition();
+          return;
+        }
+        // Task 5 — scroll self-blit decision for the retained-layer path.
+        // Reads the freshest scroll position off `ViewportManager` (not
+        // `this.viewport`, which can lag a tick behind a native scroll
+        // event until the async chunk round-trip re-syncs it). Phase B
+        // scope is vertical-only: any horizontal component (dx !== 0)
+        // bails to full inside `decideScrollDamage`. Pinned rows / totals
+        // bands: the resolver already redamages the sticky band on scroll
+        // AND (Task 5) unconditionally pushes every `pinnedBandRects`
+        // rect whenever `blit !== null` — see `DamageLedger.takeResolved`.
         const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
         const decision = decideScrollDamage({
-          dx: curLeft - this.lastPaintedScrollLeft,
-          dy: curTop - this.lastPaintedScrollTop,
-          bodyHeight: this.viewportManager.state.bodyHeight,
+          dx,
+          dy,
+          bodyHeight: live.bodyHeight,
           dprChanged: dpr !== this.lastPaintedDpr,
           boundsChanged: this.canvasBounds.width !== this.lastPaintedCanvasWidth
             || this.canvasBounds.height !== this.lastPaintedCanvasHeight,
           dpr,
         });
         if (decision.kind === 'full') {
+          // Large jump: re-anchor the layer at the live scrollTop instead
+          // of hybrid-deferring into the lean path for the rest of a
+          // thumb-drag gesture (which would full-paint empty cells while
+          // the chunk catches up).
+          this.viewport = live;
+          this.paintCacheLayerAnchored = false;
           this.damageLedger.add(decision);
         } else {
           // Push the INCREMENT since the last TICK (not `decision.dy`, the
@@ -1739,13 +1947,27 @@ export class CGrid<TRow = any> {
         // Strips span the layer's full backing-store width, so a width
         // change stales every strip even when the resolved column layout
         // happens to come back identical (all-fixed-width columns).
-        if (this.rasterStrips !== null && b.width !== this.canvasBounds.width) {
+        const widthChanged = b.width !== this.canvasBounds.width;
+        const heightChanged = b.height !== this.canvasBounds.height;
+        if (this.rasterStrips !== null && widthChanged) {
           this.stripLayoutEpochBump();
         }
         this.canvasBounds.width = b.width;
         this.canvasBounds.height = b.height;
         this.columnLayout = resolveColumnWidths(this.columnOrder, b.width);
         this.recomputeViewport();
+        // Canvas resize assigns canvas.width/height which WIPES the
+        // backing store (black). Fixed-width column layouts often resolve
+        // identically after a side-bar open/close (container shrinks but
+        // left/width unchanged), so the columnLayout setter does not
+        // invalidate — queued live-tick PARTIAL damage would then paint
+        // only those rows over a blank canvas (black gaps between
+        // clusters). Always full-damage on a real size change; paintNow
+        // runs synchronously from resize() right after this callback.
+        if (widthChanged || heightChanged) {
+          this.invalidateRetainedPaintForColumnLayout();
+          this.damageLedger.add({ kind: 'full' });
+        }
         // Only request viewport once the worker is connected; before that, the
         // worker client throws on send. After init the gridReady handler does
         // the first fetch and any later resize re-fetches normally.
@@ -1788,7 +2010,12 @@ export class CGrid<TRow = any> {
         // non-suppressed frame re-anchors normally, safely, since nothing
         // was ever presented FROM the layer during the suppressed
         // window).
-        const cacheOn = this.paintCacheActive() && !this.options.suppressPartialRepaint;
+        // Column-resize drag: force cache-off. Width changes faster than a
+        // full layer rebuild; presenting retained rows mid-drag is what
+        // produces the staircase misalignment the user sees while dragging.
+        const cacheOn = this.paintCacheActive()
+          && !this.options.suppressPartialRepaint
+          && !this.columnResizeDragActive;
         // Snapshot BEFORE planLayer — a bootstrap `reset` sets
         // `paintCacheLayerAnchored = true` this frame; hybrid routing
         // must key off the pre-maintain state so the first paint still
@@ -1816,7 +2043,7 @@ export class CGrid<TRow = any> {
         if (cacheOn && !wasDeferred) {
           const layer = this.paintCacheLayer!;
           const vsNow = this.viewport;
-          const overscanRatio = Math.max(0, Math.min(2, this.options.paintCacheOverscan ?? 0.5));
+          const overscanRatio = Math.max(0, Math.min(2, this.options.paintCacheOverscan ?? 1));
           const overscanPx = overscanRatio * vsNow.bodyHeight;
           const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
           layerDpr = dpr;
@@ -1922,6 +2149,13 @@ export class CGrid<TRow = any> {
         ) {
           this.paintCacheDeferLayer = true;
           this.paintCacheLayerAnchored = false;
+          // Legacy paints the screen correctly, but the layer still holds
+          // pre-change column geometry. Wipe it so a later present / exit
+          // from deferral can never blit staggered cells over the canvas.
+          const deferLayer = this.paintCacheLayer;
+          if (deferLayer?.available) {
+            deferLayer.reset(deferLayer.geometry().layerTop);
+          }
         } else if (cacheOn && wasDeferred && !damage.full) {
           this.paintCacheDeferLayer = false;
         }
@@ -1936,7 +2170,7 @@ export class CGrid<TRow = any> {
           if (!layerPlan) {
             const layer = this.paintCacheLayer!;
             const vsNow = this.viewport;
-            const overscanRatio = Math.max(0, Math.min(2, this.options.paintCacheOverscan ?? 0.5));
+            const overscanRatio = Math.max(0, Math.min(2, this.options.paintCacheOverscan ?? 1));
             const overscanPx = overscanRatio * vsNow.bodyHeight;
             const dpr = (typeof window !== 'undefined' && window.devicePixelRatio) || 1;
             layerDpr = dpr;
@@ -2142,6 +2376,10 @@ export class CGrid<TRow = any> {
           s.fullPaints++;
           s.lastRects = 0;
           s.lastAreaPct = 100;
+          // Only full paints may catch the layout epoch up — a partial
+          // that redrew a few rows at the new geometry must NOT silence
+          // the healing full for neighbors still showing old column lefts.
+          this.lastPaintedLayoutPaintEpoch = this.layoutPaintEpoch;
         } else {
           s.partialPaints++;
           if (!cacheOn && damage.blit) s.blits++;
@@ -2708,6 +2946,30 @@ export class CGrid<TRow = any> {
       onRowsSettled: (rowIds) => this.recaptureSettledFlashRows(rowIds),
     });
 
+    // Live-tick deferral: pause async txs + flash fade for the scroll
+    // gesture; flush on bodyScrollEnd (200ms debounce from ViewportManager).
+    // Wired after FlashRegistry exists so bodyScrollEnd can resume fade.
+    this.disposables.add(this.events.on('bodyScroll', () => {
+      this.bodyScrollActive = true;
+      if (this.flashTickHandle !== null && typeof cancelAnimationFrame === 'function') {
+        cancelAnimationFrame(this.flashTickHandle);
+        this.flashTickHandle = null;
+        this.flashPausedForScroll = true;
+      }
+    }));
+    this.disposables.add(this.events.on('bodyScrollEnd', () => {
+      this.bodyScrollActive = false;
+      this.flushDeferredAsyncTransactions();
+      if (
+        this.flashPausedForScroll
+        || this.flashRegistry.size() > 0
+        || this.groupFlashMap.size > 0
+      ) {
+        this.flashPausedForScroll = false;
+        this.startFlashTickLoop();
+      }
+    }));
+
     this.a11y = new A11yOverlay(this.root);
     // Cycle 24 / Task 3 — push the initial aria-label + aria-busy
     // immediately so screen readers see the correct grid name and
@@ -2818,6 +3080,9 @@ export class CGrid<TRow = any> {
       // diffs to main. Runtime mutation via `setGridOption('enableCellChangeFlash', N)`
       // flows through `setEnableCellChangeFlash` later.
       enableCellChangeFlash: this.options.enableCellChangeFlash === true,
+      asyncTransactionWaitMillis: this.options.asyncTransactionWaitMillis,
+      asyncTransactionConflate: this.options.asyncTransactionConflate,
+      asyncTransactionThrottleMillis: this.options.asyncTransactionThrottleMillis,
       // Cycle 15 / Task 9 — forward the default-expansion rule so the
       // first `setGroupModel` reply re-seeds `state.expandedKeys` from
       // the option (and ships back the materialised set). Initial-only
@@ -3172,12 +3437,22 @@ export class CGrid<TRow = any> {
       try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip bad rowId */ }
     }
     this.workerCoord.setRowData(rows, heightsByRowId).then(({ visibleCount, groupKeys }) => {
+      if (this.destroyed) return;
       this.rowCount = visibleCount;
       // Cycle 15 / Task 7 — setRowData may have grown the set of
       // group keys (data flowing into a grouped grid for the first
       // time). The worker rides them back on the reply so the mirror
       // for `getExpandedKeys()` populates before the next UI tick.
       if (groupKeys !== undefined) this.knownGroupKeys = groupKeys;
+      // Persist / profile restore can paint row-group chips while the
+      // worker still rejects unknown group ids (placeholder columnDefs).
+      // `groupKeys === undefined` means the worker is not grouping at all
+      // (`isGroupingActive()` false); an empty array means grouping is on
+      // but the current data has no group nodes.
+      const groupCols = this.grouping.getRowGroupColumns();
+      if (groupCols.length > 0 && groupKeys === undefined) {
+        this.setGroupModel({ rowGroupCols: [...groupCols] });
+      }
       this.recomputeViewport();
       this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
       // Cycle 14 / Task 6 — full row-set replace re-aggregates totals;
@@ -3208,6 +3483,20 @@ export class CGrid<TRow = any> {
   }
 
   applyTransactionAsync(t: Tx<TRow>): void {
+    // During body scroll, buffer live ticks and flush on bodyScrollEnd so
+    // scroll paints / viewport fetches are not competing with worker txs.
+    if (
+      this.bodyScrollActive
+      && this.options.deferAsyncTransactionsWhileScrolling !== false
+    ) {
+      this.deferredAsyncTxs.push(t);
+      return;
+    }
+    this.dispatchAsyncTransaction(t);
+  }
+
+  /** Apply an async transaction immediately (bypasses scroll deferral). */
+  private dispatchAsyncTransaction(t: Tx<TRow>): void {
     const heightsByRowId = this.resolveHeightsForRows([...(t.add ?? []), ...(t.update ?? [])]);
     this.updateRowDataCache(t, 'transactionAsync');
     this.workerCoord.applyTransaction({
@@ -3218,6 +3507,23 @@ export class CGrid<TRow = any> {
       heightsByRowId,
     }).then(() => this.recomputeAlwaysPass())
       .catch((err) => { if (!this.destroyed) console.error('[cgrid] applyTransaction:', err); });
+  }
+
+  /** Merge deferred async txs (last-write-wins per row id) and dispatch. */
+  private flushDeferredAsyncTransactions(): void {
+    if (this.deferredAsyncTxs.length === 0) return;
+    const queued = this.deferredAsyncTxs;
+    this.deferredAsyncTxs = [];
+    const merged = mergeDeferredAsyncTransactions(queued, (row) => {
+      try { return this.options.getRowId(row); } catch { return null; }
+    });
+    if (
+      (merged.add && merged.add.length > 0)
+      || (merged.update && merged.update.length > 0)
+      || (merged.remove && merged.remove.length > 0)
+    ) {
+      this.dispatchAsyncTransaction(merged);
+    }
   }
 
   /** Cycle 7 / Task 8 — keep `rowDataById` in sync with a transaction.
@@ -3464,7 +3770,9 @@ export class CGrid<TRow = any> {
     return out.size === 0 ? undefined : out;
   }
 
-  flushAsyncTransactions(): void { /* Foundation: deferred — relies on worker's setTimeout */ }
+  flushAsyncTransactions(): void {
+    this.workerCoord.flushAsyncTransactions();
+  }
 
   /** Cycle 8 / Task 4 — read the active sort model. Mirrors the api
    *  object's `getSortModel` so callers that hold a CGrid reference (e.g.
@@ -4534,6 +4842,10 @@ export class CGrid<TRow = any> {
       requestRepaint: () => { this.cgridCanvas?.requestRepaint(); },
       requestViewport: () => this.requestViewport(),
       setExpandedKeys: (keys) => { this.expandedKeys = keys; },
+      getExpandedKeysMirror: () => this.expandedKeys,
+      flushPendingExpandedRoutes: () => this.flushPendingExpandedRoutes(),
+      hasPendingExpandedRoutes: () => this.hasPendingExpandedRoutes(),
+      shipExpandedKeys: (keys) => this.shipExpandedKeys(keys),
       setKnownGroupKeys: (keys) => { this.knownGroupKeys = keys; },
       updateGroupDescendantsCache: (keys, desc) =>
         this.updateGroupDescendantsCache(keys, desc),
@@ -4668,6 +4980,33 @@ export class CGrid<TRow = any> {
         this.requestViewport();
       })
       .catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+  }
+
+  /** Apply stashed `expandedRouteIds` from `setState` once grouping is
+   *  active on the main thread. Returns true when pending keys were
+   *  consumed (including the empty "all collapsed" set). Returns false
+   *  only when there is nothing pending — callers must not seed
+   *  groupDefaultExpanded in that case when a restore is still queued
+   *  behind a failed worker round-trip; use `hasPendingExpandedRoutes`. */
+  private flushPendingExpandedRoutes(): boolean {
+    if (this.pendingExpandedRouteIds === null) return false;
+    if (this.grouping.getRowGroupColumns().length === 0) {
+      // Ungrouped restore — drop the stash; nothing to expand.
+      this.pendingExpandedRouteIds = null;
+      this.expandedKeys = new Set();
+      return true;
+    }
+    const ids = this.pendingExpandedRouteIds;
+    this.pendingExpandedRouteIds = null;
+    this.expandedKeys = new Set(ids);
+    this.shipExpandedKeys(ids);
+    return true;
+  }
+
+  /** True while `setState` has stashed expand/collapse keys that have
+   *  not yet been flushed to the worker. */
+  private hasPendingExpandedRoutes(): boolean {
+    return this.pendingExpandedRouteIds !== null;
   }
 
   /** Cycle 15 / Task 8 — re-fetch the worker's descendant snapshot
@@ -6062,7 +6401,7 @@ export class CGrid<TRow = any> {
    */
   private repaintFull(): void {
     this.damageLedger.add({ kind: 'full' });
-    this.cgridCanvas.requestRepaint();
+    this.cgridCanvas?.requestRepaint();
   }
 
   /**
@@ -6535,8 +6874,13 @@ export class CGrid<TRow = any> {
         ? this.paintCacheLayer!.geometry().layerHeight
         : vs.bodyBottom - vs.bodyTop,
       // Task 4 — gates the ledger's scroll-exposed-band push (see
-      // `DamageResolveCtx.paintCacheLayerActive`'s doc).
-      paintCacheLayerActive: this.paintCacheActive(),
+      // `DamageResolveCtx.paintCacheLayerActive`'s doc). While hybrid-
+      // deferred or un-anchored the layer is NOT serving pixels — treat
+      // it inactive so scroll/partial damage still expands correctly and
+      // cannot assume a valid retained present.
+      paintCacheLayerActive: this.paintCacheActive()
+        && this.paintCacheLayerAnchored
+        && !this.paintCacheDeferLayer,
       stickyBandBottom,
       // Task 5 — totals-row / static-pinned-row bands (top or bottom
       // position), derived from the live viewport's non-data subgrid rows.
@@ -7396,6 +7740,34 @@ export class CGrid<TRow = any> {
     }
   }
 
+  /**
+   * Rehydrate {@link pendingColumnGroupDefs} onto the current columnDefs
+   * catalog. Clears the pending overlay once every overlay leaf is present
+   * in the live catalog (full coverage). No-op when nothing is pending.
+   */
+  private flushPendingColumnGroups(): void {
+    if (!this.pendingColumnGroupDefs || this.applyingPendingColumnGroups) return;
+    const overlay = this.pendingColumnGroupDefs;
+    const base = this.options.columnDefs ?? [];
+    const rehydrated = rehydrateColumnGroups(overlay, base);
+    const projected = projectColumnGroups(rehydrated);
+    this.applyingPendingColumnGroups = true;
+    try {
+      this.updateGridOptions({ columnDefs: projected as CGridOptions<TRow>['columnDefs'] });
+    } finally {
+      this.applyingPendingColumnGroups = false;
+    }
+    const baseIds = new Set(
+      flattenColumnGroups(base)
+        .filter((n) => n.kind === 'column')
+        .map((n) => n.colId),
+    );
+    const overlayCols = overlay.filter((n) => n.kind === 'column');
+    if (overlayCols.every((c) => baseIds.has(c.colId))) {
+      this.pendingColumnGroupDefs = null;
+    }
+  }
+
   /** Batch-update grid options. `columnDefs` is honored only via this
    *  entrypoint and rebuilds the column tree, refreshes the worker's column
    *  metadata, and preserves group state for IDs that survive the swap. */
@@ -7403,6 +7775,8 @@ export class CGrid<TRow = any> {
     // Special-case columnDefs first so the tree rebuild happens once even when
     // both columnDefs AND defaultColDef change in the same call.
     if ('columnDefs' in partial && partial.columnDefs) {
+      const incomingHasGroups = flattenColumnGroups(partial.columnDefs)
+        .some((n) => n.kind === 'group');
       const newDefault = partial.defaultColDef ?? this.options.defaultColDef;
       this.options.columnDefs = partial.columnDefs;
       if ('defaultColDef' in partial) this.options.defaultColDef = partial.defaultColDef;
@@ -7414,12 +7788,36 @@ export class CGrid<TRow = any> {
       // round-trip. Emitted synchronously right after the tree rebuild,
       // not gated on the worker round-trip.
       this.events.emit({ type: 'columnDefsChanged' });
+      // Deferred column-group restore (persist / profile): a flat leaf
+      // catalog swap (STOMP discovery, field refresh) must re-apply the
+      // pending overlay. An incoming tree that already carries groups is
+      // treated as authoritative (Column Groups Apply / app-authored) and
+      // drops the deferred overlay so we don't overwrite the user's edit.
+      if (!this.applyingPendingColumnGroups) {
+        if (incomingHasGroups) {
+          this.pendingColumnGroupDefs = null;
+        } else if (this.pendingColumnGroupDefs) {
+          this.flushPendingColumnGroups();
+        }
+      }
       this.workerCoord.updateColumns(this.workerColumns())
         .then(({ visibleCount }) => {
+          if (this.destroyed) return;
           this.rowCount = visibleCount;
           this.recomputeViewport();
           this.events.emit({ type: 'modelUpdated', visibleRowCount: visibleCount });
           this.events.emit({ type: 'displayedColumnsChanged', source: 'columnDefsChanged' });
+          // Persist / profile restore can install `rowGroupColumns` while
+          // only placeholder columnDefs exist (e.g. STOMP demo boot). The
+          // worker then rejects unknown group ids and data stays flat while
+          // chips stay painted. Re-ship the current group model now that
+          // columns exist — `setGroupModel` always pushes the worker even
+          // when the main-thread list is unchanged (unlike
+          // `setRowGroupColumns`, which short-circuits on sameOrder).
+          const groupCols = this.grouping.getRowGroupColumns();
+          if (groupCols.length > 0) {
+            this.setGroupModel({ rowGroupCols: [...groupCols] });
+          }
           // Cycle 14 / Task 6 — `updateGridOptions({ columnDefs })` can
           // change per-column `aggFunc` declarations as part of the swap.
           // Tag as `columnAggFuncChanged` so listeners that care about
@@ -7467,6 +7865,15 @@ export class CGrid<TRow = any> {
         // worker acked the toggle, no main-side state to update.
         this.workerCoord.setEnableCellChangeFlash(enabled).catch((err) => {
           if (!this.destroyed) console.error('[cgrid] setEnableCellChangeFlash:', err);
+        });
+      },
+      forwardAsyncTransactionOptions: () => {
+        this.workerCoord.setAsyncTransactionOptions({
+          waitMillis: this.options.asyncTransactionWaitMillis,
+          conflate: this.options.asyncTransactionConflate,
+          throttleMillis: this.options.asyncTransactionThrottleMillis,
+        }).catch((err) => {
+          if (!this.destroyed) console.error('[cgrid] setAsyncTransactionOptions:', err);
         });
       },
       rebuildSubgrids: () => {
@@ -7602,7 +8009,12 @@ export class CGrid<TRow = any> {
     );
     this.rebuildSubgridStack();
     this.recomputeViewport();
-    this.cgridCanvas?.requestRepaint();
+    // Style-only rebuilds (halign / cellStyle) may leave columnLayout
+    // equal — the setter's geometry guard would skip wipe. Always
+    // invalidate retained paint + full-paint so alignment/move never
+    // leave staggered cells from a warm layer or partial tick.
+    this.invalidateRetainedPaintForColumnLayout();
+    this.repaintFull();
   }
 
   /** Rebuild the subgrid stack so the header-group row count matches the
@@ -7657,7 +8069,11 @@ export class CGrid<TRow = any> {
 
   private rebuildSubgridStack(): void {
     const stack: Subgrid[] = [];
-    for (let depth = 0; depth < this.columnTree.maxDepth; depth++) {
+    // Collapse group-header rows when every group is empty of visible
+    // leaves (no groups, or all groups unchecked/hidden) so the header
+    // band reverts to the single leaf-header height.
+    const groupDepth = visibleHeaderGroupDepth(this.columnTree);
+    for (let depth = 0; depth < groupDepth; depth++) {
       stack.push(new HeaderGroupSubgrid(
         () => this.columnTree,
         () => this.options.headerHeight ?? this.theme.headerHeight,
@@ -7901,7 +8317,14 @@ export class CGrid<TRow = any> {
     // state payload is a stub until Cycle 22's snapshot API; shipping the
     // event surface now means apps can wire listeners against a stable shape.
     this.events.emit({ type: 'gridPreDestroyed', state: {} });
+    if (this.columnResizeFlushRaf !== 0) {
+      cancelAnimationFrame(this.columnResizeFlushRaf);
+      this.columnResizeFlushRaf = 0;
+    }
+    this.columnResizeDragActive = false;
     this.destroyed = true;
+    this.deferredAsyncTxs = [];
+    this.bodyScrollActive = false;
     // Cycle 21i / Phase 1 — flush any pending autosave BEFORE teardown so
     // the last user change survives an immediate page unload.
     this.statePersistence?.destroy();
@@ -8278,7 +8701,8 @@ export class CGrid<TRow = any> {
       this.columnOrder = this.computeVisibleColumnOrder();
       this.columnLayout = resolveColumnWidths(this.columnOrder, this.canvasBounds.width || this.scroller.clientWidth || 800);
       this.recomputeViewport();
-      this.cgridCanvas?.requestRepaint();
+      // columnLayout setter already wiped retained paint; force full.
+      this.repaintFull();
       for (const c of changed) {
         this.events.emit({ type: 'columnGroupOpened', groupId: c.groupId, open: c.open });
       }
@@ -8937,13 +9361,13 @@ export class CGrid<TRow = any> {
   private onHeightsChanged(rowStart: number, heights: Float32Array): void {
     const idx = this.rowHeightIndex;
     if (!idx) return;
-    const fallback = this.options.rowHeight ?? this.theme.rowHeight;
+    const fallback = clampRowHeight(this.options.rowHeight ?? this.theme.rowHeight);
     let any = false;
     for (let i = 0; i < heights.length; i++) {
       const globalIdx = rowStart + i;
       if (globalIdx >= idx.length()) break;
       const raw = heights[i]!;
-      const resolved = raw > 0 ? raw : fallback;
+      const resolved = clampRowHeight(raw > 0 ? raw : fallback);
       if (idx.heightAt(globalIdx) !== resolved) {
         idx.update(globalIdx, resolved);
         any = true;
@@ -8957,7 +9381,9 @@ export class CGrid<TRow = any> {
         for (let i = 0; i < heights.length; i++) {
           const localIdx = rowStart + i - this.chunk.rowStart;
           if (localIdx >= 0 && localIdx < this.chunk.heights.length) {
-            this.chunk.heights[localIdx] = heights[i]!;
+            this.chunk.heights[localIdx] = clampRowHeight(
+              heights[i]! > 0 ? heights[i]! : fallback,
+            );
           }
         }
       }
@@ -9024,6 +9450,37 @@ export class CGrid<TRow = any> {
     ) {
       this.repaintFull();
     }
+    // Column-geometry / style-layout staleness — keep forcing full until a
+    // damage.full paint stamps `lastPaintedLayoutPaintEpoch`. Do NOT
+    // re-bump the epoch here (scroll recomputes every tick); invalidation
+    // sites already advanced it.
+    if (
+      this.layoutPaintEpoch !== this.lastPaintedLayoutPaintEpoch
+      && this.cgridCanvas
+      && !this.destroyed
+    ) {
+      this.repaintFull();
+    }
+  }
+
+  /**
+   * Wipe retained surfaces that embed absolute column x / cell style
+   * (paint-cache layer pixels + layer-viewport memo) and advance
+   * `layoutPaintEpoch` so `recomputeViewport` keeps re-queuing full
+   * paints until a real full frame lands. Does not itself request a
+   * repaint — callers pair with `repaintFull()`.
+   */
+  private invalidateRetainedPaintForColumnLayout(): void {
+    this.layoutPaintEpoch++;
+    this.layerViewportCache = null;
+    this.paintCacheLayerAnchored = false;
+    // Stay on legacy for the whole resize drag — clearing defer here would
+    // let the next frame rebuild/present the layer with mixed widths.
+    this.paintCacheDeferLayer = this.columnResizeDragActive ? true : false;
+    const layer = this.paintCacheLayer;
+    if (layer?.available) {
+      layer.reset(layer.geometry().layerTop);
+    }
   }
 
   /** Task 4 (paint-cache layer) — `true` when the retained layer is
@@ -9053,6 +9510,8 @@ export class CGrid<TRow = any> {
     this.paintCacheLayer = this.options.paintCache !== false ? new PaintCacheLayer() : null;
     this.paintCacheLayerAnchored = false;
     this.paintCacheDeferLayer = false;
+    this.layerViewportCache = null;
+    this.layoutPaintEpoch++;
     this.repaintFull();
   }
 
@@ -9263,11 +9722,13 @@ export class CGrid<TRow = any> {
   buildLayerViewport(geometry: LayerGeometry): ViewportState {
     const vs = this.viewport;
     const cached = this.layerViewportCache;
+    const layoutPaintEpoch = this.layoutPaintEpoch;
     if (
       cached
       && cached.vs === vs
       && cached.layerTop === geometry.layerTop
       && cached.layerHeight === geometry.layerHeight
+      && cached.layoutPaintEpoch === layoutPaintEpoch
     ) {
       return cached.result;
     }
@@ -9287,7 +9748,11 @@ export class CGrid<TRow = any> {
       dataRowHeightIndex: this.rowHeightIndex ?? undefined,
     });
     this.layerViewportCache = {
-      vs, layerTop: geometry.layerTop, layerHeight: geometry.layerHeight, result,
+      vs,
+      layerTop: geometry.layerTop,
+      layerHeight: geometry.layerHeight,
+      layoutPaintEpoch,
+      result,
     };
     return result;
   }
@@ -9527,11 +9992,27 @@ export class CGrid<TRow = any> {
    *  `dispatchViewportRequest`, so ViewportManager's coalescing flag
    *  releases after the mutation lands. */
   private async handleViewportChunk(
-    opts: { rowStart: number; rowEnd: number; columns: string[] },
+    opts: { rowStart: number; rowEnd: number; columns: string[]; seq?: number },
     chunk: ViewportChunk,
     stickyAncestors: StickyAncestor[],
   ): Promise<void> {
     const { rowStart, rowEnd, columns: cols } = opts;
+    // Latest-wins (Deephaven subscription.setViewport): drop superseded
+    // replies, and also drop replies that miss the live fetch window
+    // entirely (coalesced in-flight can still resolve for an old range).
+    if (
+      opts.seq !== undefined
+      && opts.seq < this.viewportManager.viewportReqSeq
+    ) {
+      return;
+    }
+    const liveVs = this.viewportManager.state;
+    if (
+      liveVs.lastRow >= 0
+      && !chunkIntersectsRowRange(chunk, liveVs.firstRow, liveVs.lastRow)
+    ) {
+      return;
+    }
     // Capture the previous chunk's totals + full row identity BEFORE
     // overwriting `this.chunk` — the aggregate diff (C3) and the
     // positional-identity window diff (C2 / adjudication B) both compare
@@ -9676,6 +10157,18 @@ export class CGrid<TRow = any> {
     // variable-height rows paint at the fallback until the next scroll
     // triggers another recompute.
     this.recomputeViewport();
+    // Thumb-drag hybrid defer can stick across a full-damage streak. Once
+    // a covering chunk lands, drop deferral and force a clean layer
+    // re-anchor so the next scrolls return to present/shift instead of
+    // lean full-paints.
+    if (
+      this.paintCacheActive()
+      && this.paintCacheDeferLayer
+      && chunkCoversOnScreenRows(chunk, this.viewport)
+    ) {
+      this.paintCacheDeferLayer = false;
+      this.paintCacheLayerAnchored = false;
+    }
     // C2 + adjudication B — `resolveWindowDamage` replaces the old bare
     // `sameWindow` (rowStart+rowCount) check, which trusted `touchedRows`
     // at face value whenever the window looked unchanged. That's unsafe
@@ -9687,9 +10180,11 @@ export class CGrid<TRow = any> {
     // the window-move delta), so a reorder, a filter-driven window move,
     // AND an ordinary scroll-driven window move all resolve through the
     // same mechanism — closing both C2 (reorder-under-sort) and the
-    // scroll-driven full-repaint gap in one guard. See `resolveWindowDamage`
-    // doc for the exact bail conditions (every one degrades to full, never
-    // to under-painting).
+    // scroll-driven full-repaint gap in one guard. Column-set changes
+    // (group expand / showColumns) also force 'full' here — otherwise a
+    // live-feed empty `touchedRows` leaves newly revealed cells blank.
+    // See `resolveWindowDamage` doc for the exact bail conditions (every
+    // one degrades to full, never to under-painting).
     const windowDamage = resolveWindowDamage(chunk, prevChunk);
     if (windowDamage === 'full') {
       // Cycle 22 / Task 3 — unknown-diff chunk: no touchedRows (untracked
@@ -9764,7 +10259,7 @@ export class CGrid<TRow = any> {
    *  fallback so rows without explicit heights stay at the grid-level
    *  `rowHeight`. Cycle 5 / Task 7. */
   private refreshRowHeightIndex(chunk: ViewportChunk): void {
-    const fallback = this.options.rowHeight ?? this.theme.rowHeight;
+    const fallback = clampRowHeight(this.options.rowHeight ?? this.theme.rowHeight);
     if (!this.rowHeightIndex || this.rowHeightIndex.length() !== this.rowCount) {
       this.rowHeightIndex = new RowHeightIndex(this.rowCount, () => fallback);
     }
@@ -9773,7 +10268,7 @@ export class CGrid<TRow = any> {
       const globalIdx = chunk.rowStart + i;
       if (globalIdx >= idx.length()) break;
       const raw = chunk.heights[i]!;
-      const resolved = raw > 0 ? raw : fallback;
+      const resolved = clampRowHeight(raw > 0 ? raw : fallback);
       if (idx.heightAt(globalIdx) !== resolved) {
         idx.update(globalIdx, resolved);
       }
@@ -9787,7 +10282,7 @@ export class CGrid<TRow = any> {
    *  the fallback so columns with mixed-heights row sets don't shrink to 0.
    *  Task 7's Fenwick tree extends this with O(log n) global coverage. */
   private rowHeightAt(localRowIndex: number): number {
-    const fallback = this.options.rowHeight ?? this.theme.rowHeight;
+    const fallback = clampRowHeight(this.options.rowHeight ?? this.theme.rowHeight);
     if (!this.chunk) return fallback;
     const i = localRowIndex - this.chunk.rowStart;
     if (i < 0 || i >= this.chunk.heights.length) {
@@ -9808,13 +10303,22 @@ export class CGrid<TRow = any> {
       return fallback;
     }
     const h = this.chunk.heights[i]!;
-    return h > 0 ? h : fallback;
+    return clampRowHeight(h > 0 ? h : fallback);
   }
 
   /** Cycle 4 / Task 11 (cell-flash patch) — rAF handle for the
    *  self-sustaining flash tick. Held so a chunk that arrives while
    *  the loop is already running doesn't double-schedule. */
   private flashTickHandle: number | null = null;
+  /**
+   * Live-tick deferral during body scroll (Deephaven-aligned): while the
+   * user is scrolling, async transactions queue here (last-write-wins per
+   * row id) and the flash fade rAF is suspended so scroll owns the frame
+   * budget. Flushed on `bodyScrollEnd`.
+   */
+  private bodyScrollActive = false;
+  private deferredAsyncTxs: Tx<TRow>[] = [];
+  private flashPausedForScroll = false;
 
   /** Start (or keep alive) the per-rAF flash tick. Each tick calls
    *  `registry.tick(now)` which prunes expired entries + requests a
@@ -9824,9 +10328,18 @@ export class CGrid<TRow = any> {
   private startFlashTickLoop(): void {
     if (this.flashTickHandle !== null) return;
     if (typeof requestAnimationFrame !== 'function') return;
+    // Don't compete with scroll paints — resume from bodyScrollEnd.
+    if (this.bodyScrollActive) {
+      this.flashPausedForScroll = true;
+      return;
+    }
     const tick = (now: number): void => {
       this.flashTickHandle = null;
       if (this.destroyed) return;
+      if (this.bodyScrollActive) {
+        this.flashPausedForScroll = true;
+        return;
+      }
       this.flashRegistry.tick(now);
       // Prune expired groupFlashMap entries so the loop self-cancels
       // when both the rowId-keyed and groupKey-keyed flash sets drain.
@@ -10286,17 +10799,54 @@ export class CGrid<TRow = any> {
     if (!def) return;
     const cur = this.columnLayout.find((c) => c.colId === colId);
     if (!cur) return;
-    const newW = Math.max(def.minWidth, cur.width + dx);
+    // Prefer def.width (updated every pointer event) over columnLayout.width
+    // (only refreshed on the coalesced rAF flush) so multiple dx in one
+    // frame accumulate instead of each overwriting from the stale layout.
+    const base = def.width ?? cur.width;
+    const newW = Math.max(def.minWidth, base + dx);
     def.width = newW;
+    // Enter drag paint mode once: wipe the retained layer and keep paints
+    // on the legacy path for the whole gesture (see columnResizeDragActive).
+    if (!this.columnResizeDragActive) {
+      this.columnResizeDragActive = true;
+      this.paintCacheDeferLayer = true;
+      this.paintCacheLayerAnchored = false;
+      this.layerViewportCache = null;
+      const layer = this.paintCacheLayer;
+      if (layer?.available) layer.reset(layer.geometry().layerTop);
+    }
+    // Coalesce layout + repaint to one rAF. Pointer events outrun paints;
+    // applying resolveColumnWidths + invalidate + full per mousemove is
+    // what makes resize feel slow and leaves staircase frames when the
+    // layer path briefly wins.
+    this.columnResizeFlushColId = colId;
+    if (this.columnResizeFlushRaf === 0) {
+      this.columnResizeFlushRaf = requestAnimationFrame(() => {
+        this.columnResizeFlushRaf = 0;
+        this.flushColumnResizePaint();
+      });
+    }
+  }
+
+  /** Apply the coalesced resize layout and request one full legacy paint. */
+  private flushColumnResizePaint(): void {
+    if (this.destroyed) return;
+    const colId = this.columnResizeFlushColId;
     this.columnLayout = resolveColumnWidths(this.columnOrder, this.root.clientWidth);
     this.recomputeViewport();
-    this.cgridCanvas.requestRepaint();
-    // Per-tick emission during a drag: finished:false so apps can defer
+    this.paintCacheDeferLayer = true;
+    this.repaintFull();
+    // Per-frame emission during a drag: finished:false so apps can defer
     // persistence to the mouseup `finished:true` event. Cycle 6 / Task 5.
-    this.events.emit({
-      type: 'columnResized', colId, width: newW,
-      finished: false, source: 'uiColumnResized',
-    });
+    if (colId) {
+      const def = this.columnDefsMap.get(colId);
+      if (def?.width != null) {
+        this.events.emit({
+          type: 'columnResized', colId, width: def.width,
+          finished: false, source: 'uiColumnResized',
+        });
+      }
+    }
   }
 
   /** Emit the trailing `columnResized` with `finished: true` for the last
@@ -10304,6 +10854,17 @@ export class CGrid<TRow = any> {
    *  so apps that persist on `finished: true` fire one save per drag.
    *  Cycle 6 / Task 5. */
   private finishColumnResize(colId: string): void {
+    // Flush any pending coalesced layout so mouseup width matches the drag.
+    if (this.columnResizeFlushRaf !== 0) {
+      cancelAnimationFrame(this.columnResizeFlushRaf);
+      this.columnResizeFlushRaf = 0;
+      this.flushColumnResizePaint();
+    }
+    this.columnResizeDragActive = false;
+    this.columnResizeFlushColId = null;
+    // Rebuild retained paint cleanly now that geometry is stable.
+    this.invalidateRetainedPaintForColumnLayout();
+    this.repaintFull();
     const def = this.columnDefsMap.get(colId);
     if (!def || def.width == null) return;
     this.events.emit({
@@ -10532,6 +11093,17 @@ export class CGrid<TRow = any> {
       this.setSortModel([]);
     }
 
+    // 4→6. Stash expanded routes BEFORE mutating the group model so a
+    // fast `setGroupModel` reply can still consume them. Exhaustive +
+    // omitted field means "all collapsed".
+    if (migrated.expandedRouteIds) {
+      this.pendingExpandedRouteIds = [...migrated.expandedRouteIds];
+    } else if (exhaustive) {
+      this.pendingExpandedRouteIds = [];
+    } else {
+      this.pendingExpandedRouteIds = null;
+    }
+
     // 4. row-group columns.
     if (migrated.rowGroupColumns) {
       this.setRowGroupColumns(migrated.rowGroupColumns);
@@ -10551,20 +11123,10 @@ export class CGrid<TRow = any> {
       this.setPivotColumns([]);
     }
 
-    // 6. expanded routes (group / tree). In exhaustive mode collapse whatever
-    // is currently open first, so the outgoing layout's expansion doesn't
-    // linger; then apply the target's. Applied after grouping so the keys
-    // resolve to live group rows.
-    if (exhaustive) {
-      for (const key of Array.from(this.getExpandedKeys())) {
-        this.setExpanded(key, false);
-      }
-    }
-    if (migrated.expandedRouteIds) {
-      for (const key of migrated.expandedRouteIds) {
-        this.setExpanded(key, true);
-      }
-    }
+    // 6. expanded routes (group / tree) — best-effort immediate apply when
+    // grouping is already live (layout switch on a warm grid). Otherwise
+    // the `setGroupModel` reply path calls `flushPendingExpandedRoutes`.
+    this.flushPendingExpandedRoutes();
 
     // 7. cell + row selection.
     if (migrated.cellSelection) {
@@ -10971,7 +11533,10 @@ export class CGrid<TRow = any> {
     // (Tier 1 is safe without this: rule-resolved styles and ruleIndicator
     // are cellStyleSignature fields, so the key itself changes.)
     if (this.rasterStrips !== null) this.stripLayoutEpochBump();
-    this.refresh();
+    // Rule style changes every matching cell's pixels with no data /
+    // geometry change — wipe retained layer + force full.
+    this.invalidateRetainedPaintForColumnLayout();
+    this.repaintFull();
   }
 
   /** The active layout's conditional-rule set (`[]` when no rules engine is
@@ -11137,7 +11702,7 @@ export class CGrid<TRow = any> {
     if (changes.length === 0) return;
     this.columnLayout = resolveColumnWidths(this.columnOrder, containerWidth);
     this.recomputeViewport();
-    this.cgridCanvas?.requestRepaint();
+    this.repaintFull();
     for (const c of changes) {
       this.events.emit({
         type: 'columnResized',
@@ -11280,7 +11845,7 @@ export class CGrid<TRow = any> {
       this.canvasBounds.width || this.scroller.clientWidth || 800,
     );
     this.recomputeViewport();
-    this.cgridCanvas?.requestRepaint();
+    this.repaintFull();
     for (const c of changes) {
       this.events.emit({
         type: 'columnResized',
@@ -11666,15 +12231,18 @@ export class CGrid<TRow = any> {
    *  `setColumnsPinned` / `setColumnWidths`). Recomputes the visible
    *  column order so hide flips light up, reruns the width pass so
    *  pinned-pane positions update, then one `recomputeViewport +
-   *  requestRepaint`. */
+   *  repaintFull` (geometry change — partial damage would stagger cells). */
   private relayoutAfterColumnMutation(): void {
     this.columnOrder = this.computeVisibleColumnOrder();
     this.columnLayout = resolveColumnWidths(
       this.columnOrder,
       this.canvasBounds.width || this.scroller.clientWidth || 800,
     );
+    // Visibility flips can empty every group of visible leaves — rebuild
+    // the header stack so group-header rows drop and height reverts.
+    this.rebuildSubgridStack();
     this.recomputeViewport();
-    this.cgridCanvas?.requestRepaint();
+    this.repaintFull();
   }
 
   /** Cycle 19 / Task 5-ColState — ColumnStateManager deps bundle.
@@ -11705,7 +12273,12 @@ export class CGrid<TRow = any> {
       getSortModel: () => this.sortModel,
       setSortModel: (m) => this.setSortModel(m),
       recomputeViewport: () => this.recomputeViewport(),
-      requestRepaint: () => { this.cgridCanvas?.requestRepaint(); },
+      // Column-state relayout — wipe retained paint + full (style/order
+      // can change without a columnLayout identity change in edge cases).
+      requestRepaint: () => {
+        this.invalidateRetainedPaintForColumnLayout();
+        this.repaintFull();
+      },
       workerColumns: () => this.workerColumns(),
       updateWorkerColumns: (cols) =>
         this.workerCoord.updateColumns(cols as WorkerColumn[]),

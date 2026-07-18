@@ -1,40 +1,40 @@
 import { Client, type IMessage } from '@stomp/stompjs';
 
-/** Row shape published by stomp-view-server's positions view. */
-export interface Position {
-  positionId: string;
-  cusip: string;
-  ticker: string;
-  notionalAmount: number;
-  marketValue: number;
-  currentPrice: number;
-  pnl: number;
-  dailyPnl: number;
-  unrealizedPnl: number;
-  yield: number;
-  spread: number;
-  dv01: number;
-  pv01: number;
-  // Synthesized client-side (decorateWithCategoricals in main.ts) so the
-  // row-group panel / Columns tool panel have meaningful categorical columns.
+/** Raw row from stomp-view-server — may include nested objects. */
+export type StompRow = Record<string, unknown> & { positionId: string };
+
+/** @deprecated Use StompRow — kept for harness / decorate helpers. */
+export type Position = StompRow & {
+  cusip?: string;
+  ticker?: string;
+  notionalAmount?: number;
+  marketValue?: number;
+  currentPrice?: number;
+  pnl?: number;
+  dailyPnl?: number;
+  unrealizedPnl?: number;
+  yield?: number;
+  spread?: number;
+  dv01?: number;
+  pv01?: number;
   desk?: string;
   region?: string;
   currency?: string;
   trader?: string;
-}
+};
 
 export interface StompCallbacks {
-  onSnapshot: (rows: Position[]) => void;
-  onLiveUpdate: (updates: Position[]) => void;
+  onSnapshot: (rows: StompRow[]) => void;
+  onLiveUpdate: (updates: StompRow[]) => void;
   onPhase: (phase: 'connecting' | 'snapshot' | 'live' | 'error' | 'disconnected') => void;
 }
 
-/** Testbed knobs — moderate by default so the demo feels live without
- *  saturating a dev laptop while panels are being exercised. `?stress=light`
- *  keeps E2E deterministic; `?stress=heavy` matches cgrid-positions. */
+/** Testbed knobs — full 20k server snapshot by default. `?stress=light`
+ *  keeps E2E deterministic (smaller set + slower ticks); `?stress=heavy`
+ *  keeps 20k and raises the live tick rate. */
 const KNOB_SETS = {
   heavy: { snapshotRows: 20_000, rate: 200, batchSize: 50, updatesPerTick: 50 },
-  default: { snapshotRows: 5_000, rate: 60, batchSize: 50, updatesPerTick: 5 },
+  default: { snapshotRows: 20_000, rate: 60, batchSize: 50, updatesPerTick: 5 },
   light: { snapshotRows: 3_000, rate: 7, batchSize: 50, updatesPerTick: 1 },
 } as const;
 
@@ -56,15 +56,37 @@ const DEFAULTS = {
 };
 
 export const STOMP_PUBLISH_RATE_PER_SEC = DEFAULTS.rate * DEFAULTS.updatesPerTick;
+/** Rows requested from stomp-view-server via the `snapshot-rows` header. */
+export const STOMP_SNAPSHOT_ROWS = DEFAULTS.snapshotRows;
 
 const SNAPSHOT_END_TOKEN = 'Success';
 
-function extractRows(parsed: unknown): Partial<Position>[] {
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return v !== null && typeof v === 'object' && !Array.isArray(v) && !(v instanceof Date);
+}
+
+/** Deep-merge sparse live ticks into the stored row (nested objects recurse). */
+export function deepMergeRow(base: StompRow, patch: Partial<StompRow>): StompRow {
+  const out: Record<string, unknown> = { ...base };
+  for (const [key, value] of Object.entries(patch)) {
+    if (key === 'positionId') continue;
+    const prev = out[key];
+    if (isPlainObject(value) && isPlainObject(prev)) {
+      out[key] = deepMergeRow(prev as StompRow, value as Partial<StompRow>);
+    } else if (value !== undefined) {
+      out[key] = value;
+    }
+  }
+  out.positionId = base.positionId;
+  return out as StompRow;
+}
+
+function extractRows(parsed: unknown): Partial<StompRow>[] {
   if (Array.isArray(parsed)) {
-    return parsed.filter((r) => r && typeof r === 'object') as Partial<Position>[];
+    return parsed.filter((r) => r && typeof r === 'object') as Partial<StompRow>[];
   }
   if (parsed && typeof parsed === 'object') {
-    return [parsed as Partial<Position>];
+    return [parsed as Partial<StompRow>];
   }
   return [];
 }
@@ -79,9 +101,9 @@ function extractRows(parsed: unknown): Partial<Position>[] {
  */
 export function connectStomp(cb: StompCallbacks) {
   cb.onPhase('connecting');
-  const liveBuffer: Position[] = [];
-  const snapshotBuffer: Position[] = [];
-  const rowStore = new Map<string, Position>();
+  const liveBuffer: StompRow[] = [];
+  const snapshotBuffer: StompRow[] = [];
+  const rowStore = new Map<string, StompRow>();
   let snapshotComplete = false;
 
   const client = new Client({
@@ -104,7 +126,7 @@ export function connectStomp(cb: StompCallbacks) {
         if (snapshotComplete) return;
         snapshotComplete = true;
         for (const row of snapshotBuffer) {
-          if (row.positionId) rowStore.set(row.positionId, row);
+          if (row.positionId) rowStore.set(String(row.positionId), row);
         }
         const rows = snapshotBuffer.splice(0);
         cb.onSnapshot(rows);
@@ -119,17 +141,19 @@ export function connectStomp(cb: StompCallbacks) {
 
       if (!snapshotComplete) {
         for (const row of deltas) {
-          if (row.positionId) snapshotBuffer.push(row as Position);
+          if (row.positionId != null && row.positionId !== '') {
+            snapshotBuffer.push({ ...row, positionId: String(row.positionId) } as StompRow);
+          }
         }
         return;
       }
 
       for (const delta of deltas) {
-        const id = delta.positionId;
+        const id = delta.positionId != null ? String(delta.positionId) : '';
         if (!id) continue;
         const existing = rowStore.get(id);
         if (!existing) continue;
-        const merged: Position = { ...existing, ...delta, positionId: existing.positionId };
+        const merged = deepMergeRow(existing, delta);
         rowStore.set(id, merged);
         liveBuffer.push(merged);
       }

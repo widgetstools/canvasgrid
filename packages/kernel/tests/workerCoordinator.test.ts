@@ -20,7 +20,7 @@ import type { TransactionResult } from '../src/types';
  *     `onViewportChunk` dep (the seam Task 2 left in CGrid),
  *   • sync + async transactions reach the worker as a single round-trip
  *     and the async push surfaces back via `onAsyncTransactionsFlushed`,
- *   • flushAsyncTransactions stays the foundation no-op,
+ *   • flushAsyncTransactions force-drains the worker queue,
  *   • worker-error propagation lands on `deps.onError`,
  *   • pass-through model setters (setSortModel / setFilterModel) round-trip
  *     and the chunk's downstream visibility reflects the worker pipeline.
@@ -134,9 +134,11 @@ describe('WorkerCoordinator — init + transactions', () => {
     expect(h.events.asyncTxFlushed.length).toBeGreaterThanOrEqual(1);
   });
 
-  it('flushAsyncTransactions is a foundation no-op (worker owns the timer)', () => {
+  it('flushAsyncTransactions force-drains without throwing', async () => {
     const h = makeHarness();
+    await initWithRows(h, [{ id: 'a', pri: 1 }]);
     expect(() => h.coord.flushAsyncTransactions()).not.toThrow();
+    await new Promise((r) => setTimeout(r, 20));
   });
 });
 

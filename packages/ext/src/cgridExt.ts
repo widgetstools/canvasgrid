@@ -55,6 +55,11 @@ export class CGridExt<TRow = any> {
       if (isSettingsModule(e)) this.shell.mountSettingsModule(e, this.ctx);
       else if (isToolbarItem(e)) this.shell.mountToolbarItem(e, this.ctx);
     }
+
+    // Seed / restore the active profile so the switcher is never empty and
+    // `initialId` actually loads. Fire-and-forget — chrome re-syncs via
+    // onListChange when the store settles.
+    void this.profiles.bootstrap();
   }
 
   /** Registers the built-in bundle (settings launcher, save, grid options)

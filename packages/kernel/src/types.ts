@@ -152,6 +152,7 @@ export type {
   CCellSelectionOptions,
   CGridOptions,
 } from './types/options';
+export { MIN_ROW_HEIGHT_PX, clampRowHeight } from './types/options';
 
 export type {
   // api.ts — CGridApi + transaction shapes

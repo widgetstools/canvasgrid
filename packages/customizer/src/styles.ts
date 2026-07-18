@@ -185,7 +185,7 @@ export const inputStyles = css`
     color: var(--cg-fg-color);
     background: color-mix(in srgb, var(--cg-fg-color) 5%, transparent);
     border: 1px solid var(--cg-border-color);
-    border-radius: 4px;
+    border-radius: 2px;
     outline: none;
   }
   select:focus,

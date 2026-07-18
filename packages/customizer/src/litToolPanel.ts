@@ -64,7 +64,7 @@ export function litToolPanel(
       // mounts inside so destroy/re-init cycles never hand the host a
       // disconnected custom element.
       this.gui = document.createElement('div');
-      this.gui.style.cssText = 'display:flex; flex-direction:column; width:100%; height:100%; overflow-y:auto;';
+      this.gui.className = 'cgc-toolpanel-host';
       this.element = document.createElement(tagName) as CgcPanelElement;
       this.element.api = params.api as CGridApi;
       setup?.(this.element);

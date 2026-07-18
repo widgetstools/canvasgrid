@@ -25,6 +25,8 @@ export type DataPipelineRequest = Extract<WorkerRequest, {
     | 'applyTransaction'
     | 'updateColumns'
     | 'setEnableCellChangeFlash'
+    | 'setAsyncTransactionOptions'
+    | 'flushAsyncTransactions'
     | 'flashCells'
     | 'setAggFuncs'
     | 'setCalcProgram'
@@ -159,6 +161,23 @@ export async function handleDataPipeline(
       // Cycle 4 / Task 11 — runtime mutation.
       state.enableCellChangeFlash = req.payload.enabled === true;
       if (!state.enableCellChangeFlash) state.pendingFlashes.clear();
+      post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: state.visibleCache?.length ?? 0 });
+      return;
+    }
+
+    case 'setAsyncTransactionOptions': {
+      const { waitMillis, conflate, throttleMillis } = req.payload;
+      state.queue.setOptions({
+        ...(waitMillis !== undefined ? { waitMs: waitMillis } : {}),
+        ...(conflate !== undefined ? { conflate } : {}),
+        ...(throttleMillis !== undefined ? { throttleMs: throttleMillis } : {}),
+      });
+      post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: state.visibleCache?.length ?? 0 });
+      return;
+    }
+
+    case 'flushAsyncTransactions': {
+      state.queue.flush();
       post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: state.visibleCache?.length ?? 0 });
       return;
     }

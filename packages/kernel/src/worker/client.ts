@@ -367,6 +367,22 @@ export class WorkerClient {
     }).then(() => {});
   }
 
+  setAsyncTransactionOptions(opts: {
+    waitMillis?: number;
+    conflate?: boolean;
+    throttleMillis?: number;
+  }): Promise<void> {
+    return this.send<{ visibleCount: number }>({
+      type: 'setAsyncTransactionOptions', payload: opts,
+    }).then(() => {});
+  }
+
+  flushAsyncTransactions(): Promise<void> {
+    return this.send<{ visibleCount: number }>({
+      type: 'flushAsyncTransactions', payload: {},
+    }).then(() => {});
+  }
+
   /** Cycle 4 / Task 11 (cell-flash patch) — programmatic cell flash.
    *  Worker resolves the string rowIds against its RowStore (drops
    *  unknowns silently), expands empty colIds to "every column with a

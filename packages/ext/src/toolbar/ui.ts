@@ -57,11 +57,12 @@ export function menu(
     mirrorThemeClass(anchor, panel);
     document.body.appendChild(panel);
     const r = anchor.getBoundingClientRect();
-    panel.style.top = `${Math.round(r.bottom + 4)}px`;
-    // Align to the anchor, clamped so wide panels can't go off-screen left.
-    panel.style.left = opts?.align === 'left'
-      ? `${Math.round(Math.max(8, Math.min(r.left, window.innerWidth - panel.offsetWidth - 8)))}px`
-      : `${Math.round(Math.max(8, r.right - panel.offsetWidth))}px`;
+    const top = Math.round(r.bottom + 4);
+    const left = opts?.align === 'left'
+      ? Math.round(Math.max(8, Math.min(r.left, window.innerWidth - panel.offsetWidth - 8)))
+      : Math.round(Math.max(8, r.right - panel.offsetWidth));
+    panel.style.setProperty('--cgext-menu-top', `${top}px`);
+    panel.style.setProperty('--cgext-menu-left', `${left}px`);
     document.addEventListener('pointerdown', onDoc, true);
     onOpenChange?.(true);
   };

@@ -273,11 +273,13 @@ function buildCustomTab(
 
 export function injectFormatPickerStyles(): void {
   if (typeof document === 'undefined') return;
-  if (document.getElementById('cgext-fmt-styles')) return;
-  const style = document.createElement('style');
-  style.id = 'cgext-fmt-styles';
+  let style = document.getElementById('cgext-fmt-styles') as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'cgext-fmt-styles';
+    document.head.appendChild(style);
+  }
   style.textContent = FMT_CSS;
-  document.head.appendChild(style);
 }
 
 const FMT_CSS = `
@@ -286,7 +288,7 @@ const FMT_CSS = `
 .cgext-fmt-current { display: flex; align-items: center; gap: 10px; padding-bottom: 8px; }
 .cgext-fmt-current-chip {
   flex: 1 1 auto; min-width: 0; height: 26px; display: inline-flex; align-items: center;
-  padding: 0 10px; border: 1px dashed var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 6px);
+  padding: 0 10px; border: 1px dashed var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 2px);
   font-family: 'JetBrains Mono', Menlo, Consolas, monospace; font-size: 12px;
   color: var(--cg-muted-fg-color, #9aa4b6);
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
@@ -301,7 +303,7 @@ const FMT_CSS = `
 .cgext-fmt-clear:disabled { opacity: 0.4; cursor: default; }
 .cgext-fmt-search {
   display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 10px;
-  border: 1px solid var(--cg-accent-color, #4f9cf9); border-radius: var(--cg-radius, 8px); margin-bottom: 8px;
+  border: 1px solid var(--cg-accent-color, #4f9cf9); border-radius: var(--cg-radius, 2px); margin-bottom: 8px;
   color: var(--cg-muted-fg-color, #9aa4b6);
 }
 .cgext-fmt-search input {
@@ -356,7 +358,7 @@ const FMT_CSS = `
 .cgext-fmt-symbol:hover { border-color: var(--cg-accent-color, #4f9cf9); }
 .cgext-fmt-custom-input {
   display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 10px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 7px);
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 2px);
   color: var(--cg-muted-fg-color, #9aa4b6);
 }
 .cgext-fmt-custom-input input {

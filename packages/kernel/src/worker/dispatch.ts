@@ -163,6 +163,8 @@ export const dispatchTable: DispatchTable = {
   applyTransaction: handleDataPipeline as Handler,
   updateColumns: handleDataPipeline as Handler,
   setEnableCellChangeFlash: handleDataPipeline as Handler,
+  setAsyncTransactionOptions: handleDataPipeline as Handler,
+  flushAsyncTransactions: handleDataPipeline as Handler,
   flashCells: handleDataPipeline as Handler,
   setAggFuncs: handleDataPipeline as Handler,
   setCalcProgram: handleDataPipeline as Handler,

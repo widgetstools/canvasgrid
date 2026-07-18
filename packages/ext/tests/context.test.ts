@@ -93,4 +93,55 @@ describe('createExtContext + ProfilesController', () => {
     expect(setStateCalls).toEqual([]);
     grid.destroy();
   });
+
+  it('bootstrap seeds a default profile when the store is empty', async () => {
+    const grid = makeGrid();
+    const store = new LocalStorageProfileStore('t');
+    const profiles = new ProfilesController(grid, store, { initialId: 'default' });
+    const listEvents: number[] = [];
+    profiles.onListChange(() => listEvents.push(1));
+
+    await profiles.bootstrap();
+
+    expect(profiles.activeId()).toBe('default');
+    expect(profiles.isDirty()).toBe(false);
+    const loaded = await store.load('default');
+    expect(loaded?.meta.name).toBe('Default');
+    expect(listEvents.length).toBeGreaterThanOrEqual(1);
+    grid.destroy();
+  });
+
+  it('saveAs creates a new id, activates it, and rejects duplicates', async () => {
+    const grid = makeGrid();
+    const store = new LocalStorageProfileStore('t');
+    const profiles = new ProfilesController(grid, store, { initialId: 'default' });
+    await profiles.bootstrap();
+
+    const id = await profiles.saveAs('Desk Alpha');
+    expect(id).toBe('desk-alpha');
+    expect(profiles.activeId()).toBe('desk-alpha');
+    expect((await store.load('desk-alpha'))?.meta.name).toBe('Desk Alpha');
+
+    await expect(profiles.saveAs('Desk Alpha')).rejects.toThrow(/already exists/);
+    grid.destroy();
+  });
+
+  it('rename updates meta; remove refuses the active profile', async () => {
+    const grid = makeGrid();
+    const store = new LocalStorageProfileStore('t');
+    const profiles = new ProfilesController(grid, store, { initialId: 'default' });
+    await profiles.bootstrap();
+    await profiles.saveAs('Keep');
+    await profiles.saveAs('Drop');
+    // saveAs activates the new profile — switch away before delete.
+    await profiles.switchTo('keep');
+
+    await profiles.rename('keep', 'Keeper');
+    expect((await store.load('keep'))?.meta.name).toBe('Keeper');
+
+    await expect(profiles.remove('drop')).resolves.toBeUndefined();
+    expect(await store.load('drop')).toBeNull();
+    await expect(profiles.remove(profiles.activeId())).rejects.toThrow(/active profile/);
+    grid.destroy();
+  });
 });

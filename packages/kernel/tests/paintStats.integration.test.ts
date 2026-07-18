@@ -43,6 +43,11 @@ beforeAll(() => {
     terminate = vi.fn();
   };
 
+  // Column-group header chevrons call drawIcon → Path2D; happy-dom lacks it.
+  if (typeof (globalThis as any).Path2D === 'undefined') {
+    (globalThis as any).Path2D = class { constructor(_d?: string) {} };
+  }
+
   // Manual RAF queue (same idiom as tests/workerClientCoalesce.test.ts) —
   // both `CGridCanvas`'s background paint loop AND `WorkerClient`'s
   // modelUpdated-push coalescing schedule through `requestAnimationFrame`.
@@ -339,16 +344,17 @@ describe('Damage-region rendering — hover, selection, and focus damage (paint 
 });
 
 /**
- * Damage-region rendering (Task 5) — scroll self-blit, end to end through
- * the real `ViewportManager.onScrollerScroll` → `afterScrollTick` →
- * `decideScrollDamage` → `DamageLedger` → `Renderer.paint` blit path (the
- * same idiom `tests/virtualColumnsChanged.test.ts` / `aggregationEvent.test.ts`
- * use to drive scroll: reach in via `(grid as any).onScrollerScroll(x, y)`,
- * the back-compat shim for the native 'scroll' listener registered inside
- * `ViewportManager`).
+ * Damage-region rendering (Task 5) — scroll paint policy through the real
+ * `ViewportManager.onScrollerScroll` → `afterScrollTick` path.
+ *
+ * With `paintCache: false` (ext-demo / `qualityMode: 'performance'`), scroll
+ * is Deephaven-style: FULL viewport redraw, never legacy canvas self-blit
+ * (overlapping drawImage tore mid-body rows under fast wheel). With an
+ * anchored retained layer, small vertical scrolls still resolve to present-
+ * only frames (tracked via `presents`, not `blits`).
  */
-describe('Damage-region rendering — scroll self-blit (paint stats)', () => {
-  it('a one-row-height vertical scroll drives a blit with a small damaged area', async () => {
+describe('Damage-region rendering — scroll paint policy (paint stats)', () => {
+  it('paintCache:false — one-row scroll is a full redraw (no self-blit)', async () => {
     const { grid, restore } = buildWiredGrid(rows(200), cols);
     const canvas = (grid as any).cgridCanvas;
 
@@ -358,29 +364,19 @@ describe('Damage-region rendering — scroll self-blit (paint stats)', () => {
 
     const rowHeight = (grid as any).theme.rowHeight as number;
     (grid as any).onScrollerScroll(0, rowHeight);
-    // Tick paint SYNCHRONOUSLY (same turn, no `await` in between) with a
-    // synthetic `now` far enough past `lastRepaintTime` to clear the fps
-    // gate WITHOUT any real wall-clock wait. That matters here: a real wait
-    // (even `setTimeout(…, 0)`) lets the microtask queue drain, which is
-    // where the async viewport-fetch chunk lands — `handleViewportChunk`
-    // unconditionally `repaintFull()`s on a window move (a real scroll
-    // virtualizes a different row window), which would clobber the scroll
-    // damage before this assertion ever saw the blit. Ticking synchronously
-    // proves the blit path fires for the frame BEFORE that chunk arrives —
-    // exactly the frame the self-blit optimization exists for.
+    // Tick paint SYNCHRONOUSLY before the viewport-fetch chunk can land
+    // and clobber damage with its own full/window-diff paint.
     canvas.tickPaint(performance.now() + 1000);
 
     const stats = grid.getPaintStats();
-    expect(stats.blits).toBeGreaterThanOrEqual(1);
-    expect(stats.partialPaints).toBeGreaterThanOrEqual(1);
-    expect(stats.fullPaints).toBe(0);
-    expect(stats.lastAreaPct).toBeLessThan(30);
+    expect(stats.fullPaints).toBeGreaterThanOrEqual(1);
+    expect(stats.blits).toBe(0);
 
     grid.destroy();
     restore();
   });
 
-  it('a full-page scroll jump (>= body height) bails to a full repaint, blits unchanged', async () => {
+  it('a full-page scroll jump paints live immediately (Deephaven — no freeze)', async () => {
     const { grid, restore } = buildWiredGrid(rows(200), cols);
     const canvas = (grid as any).cgridCanvas;
 
@@ -390,12 +386,15 @@ describe('Damage-region rendering — scroll self-blit (paint stats)', () => {
 
     const bodyHeight = (grid as any).viewport.bodyHeight as number;
     (grid as any).onScrollerScroll(0, Math.ceil(bodyHeight) + 200);
-    await new Promise((r) => setTimeout(r, 20));
-    canvas.tickPaint(performance.now());
+    // Live paint every scroll tick — may briefly show empty cells until
+    // the covering chunk lands (Deephaven ViewportDataGridModel returns '').
+    canvas.tickPaint(performance.now() + 1000);
+    expect(grid.getPaintStats().fullPaints).toBeGreaterThanOrEqual(1);
+    expect(grid.getPaintStats().blits).toBe(0);
 
-    const stats = grid.getPaintStats();
-    expect(stats.fullPaints).toBeGreaterThanOrEqual(1);
-    expect(stats.blits).toBe(0);
+    await new Promise((r) => setTimeout(r, 200));
+    canvas.tickPaint(performance.now() + 2000);
+    expect(grid.getPaintStats().blits).toBe(0);
 
     grid.destroy();
     restore();
@@ -403,30 +402,13 @@ describe('Damage-region rendering — scroll self-blit (paint stats)', () => {
 });
 
 /**
- * Horizontal-scroll staleness regression (Cycle 22 closeout, user-reported
- * per-row misalignment in the ext demo). The race:
- *   1. `afterScrollTick` (dx !== 0) queues FULL damage and dispatches the
- *      viewport fetch — but the next paint can run BEFORE the worker's
- *      chunk lands, so it consumes that full damage against the STALE
- *      `this.viewport` (old scrollLeft): the whole surface re-renders the
- *      OLD position and the damage is spent.
- *   2. The chunk then lands, `recomputeViewport` moves the viewport to the
- *      new scrollLeft — and on a grid whose worker diff-tracking has been
- *      armed by ANY prior transaction (i.e. every live-ticking blotter),
- *      the reply carries `touchedRows` (defined, here empty), so
- *      `resolveWindowDamage` yields row-level damage only. Nothing ever
- *      re-rasters the surface at the new scrollLeft; every later row-level
- *      repaint lands at the new offset over a canvas painted at the old
- *      one — persistent per-row horizontal misalignment.
- * The fix: `recomputeViewport` compares the fresh viewport's scrollLeft
- * against `lastPaintedViewportScrollLeft` (what the last paint ACTUALLY
- * rendered, recorded in the paint closure) and re-queues `repaintFull()`
- * on mismatch. This test drives the exact race deterministically and
- * pins the healing full repaint; it FAILS on the pre-fix code (final
- * fullPaints stays at 1 — the burned paint — and the second tick paints
- * nothing).
+ * Horizontal-scroll + lean path (`paintCache: false`).
+ *
+ * Lean `afterScrollTick` syncs `this.viewport` from ViewportManager before
+ * the full redraw (Deephaven paints from live view metrics), so the first
+ * paint is already at the new scrollLeft — no stale-window burn.
  */
-describe('Horizontal-scroll staleness — recompute re-queues the burned full repaint', () => {
+describe('Horizontal-scroll — lean path syncs viewport before full redraw', () => {
   // Wide layout so scrollLeft 150 is a real horizontal scroll (the shared
   // 2-column `cols` fits inside the 800px container — maxScrollLeft 0).
   const wideCols = Array.from({ length: 10 }, (_, i) => ({
@@ -436,20 +418,14 @@ describe('Horizontal-scroll staleness — recompute re-queues the burned full re
     width: 200,
   }));
 
-  it('scroll full-paint before the chunk + diff-armed reply still repaints fully at the new scrollLeft', async () => {
+  it('scroll full-paint before the chunk paints at the NEW scrollLeft (metrics already synced)', async () => {
     const { grid, restore } = buildWiredGrid(rows(200), wideCols);
     const canvas = (grid as any).cgridCanvas;
 
     await new Promise((r) => setTimeout(r, 50));
     canvas.tickPaint(performance.now());
 
-    // Arm the worker's diff tracking with an OFF-SCREEN row: its rowId
-    // stays in `pendingTouched` (the per-window drain never reaches it),
-    // so every subsequent window-read reply carries `touchedRows: []`
-    // (defined-but-empty — "checked, nothing visible changed") instead of
-    // `undefined` — `resolveWindowDamage` stops degrading window moves to
-    // 'full'. This is exactly what a sparse live feed ticking rows outside
-    // the viewport looks like (the ext demo's STOMP blotter).
+    // Arm defined-empty touchedRows (off-screen tick).
     grid.applyTransactionAsync({ update: [{ id: 'r150', v: 999 }] });
     await new Promise((r) => setTimeout(r, 120));
     flushFrame();
@@ -457,24 +433,20 @@ describe('Horizontal-scroll staleness — recompute re-queues the burned full re
     canvas.tickPaint(performance.now());
 
     grid.resetPaintStats();
-    // Horizontal scroll: queues FULL damage via `afterScrollTick` and
-    // dispatches the fetch (microtask round-trip). Paint IMMEDIATELY —
-    // before the chunk lands — exactly the race the bug needs. The
-    // `+ 1000` timestamps step past `tickPaint`'s fps gate (same idiom as
-    // the scroll-blit test above).
     const t0 = performance.now();
     (grid as any).onScrollerScroll(150, 0);
-    expect((grid as any).viewport.scrollLeft).toBe(0); // viewport still stale
+    // Lean afterScrollTick copies ViewportManager.state → this.viewport
+    // before requesting the repaint.
+    expect((grid as any).viewport.scrollLeft).toBe(150);
     canvas.tickPaint(t0 + 1000);
-    expect(grid.getPaintStats().fullPaints).toBe(1); // burned at the OLD scrollLeft
+    expect(grid.getPaintStats().fullPaints).toBeGreaterThanOrEqual(1);
+    expect((grid as any).lastPaintedViewportScrollLeft).toBe(150);
 
-    // Chunk lands → recomputeViewport moves the viewport to 150; the
-    // diff-armed reply resolves to row damage only. The fix's mismatch
-    // check must re-queue a full repaint here.
+    // Chunk may queue another full; surface must stay at scrollLeft 150.
     await new Promise((r) => setTimeout(r, 20));
     expect((grid as any).viewport.scrollLeft).toBe(150);
     canvas.tickPaint(t0 + 2000);
-    expect(grid.getPaintStats().fullPaints).toBeGreaterThanOrEqual(2); // healing full at 150
+    expect((grid as any).lastPaintedViewportScrollLeft).toBe(150);
 
     grid.destroy();
     restore();
@@ -508,6 +480,291 @@ describe('Horizontal-scroll staleness — recompute re-queues the burned full re
     // once the painted scrollLeft caught up.
     canvas.tickPaint(t0 + 2000);
     expect(grid.getPaintStats().fullPaints).toBe(1);
+
+    grid.destroy();
+    restore();
+  });
+});
+
+/**
+ * Column layout / style mutation staleness (user-reported staggered cells
+ * after resize, column move, or alignment change). Race:
+ *   1. Live ticks leave PARTIAL row/cell damage on the ledger.
+ *   2. A geometry mutation used to call bare `requestRepaint()` — so the
+ *      next paint resolved as partial and only re-rastered those rows at
+ *      the new column lefts; neighbors kept stale x until scroll.
+ * Fix: layout mutation sites call `repaintFull()` so queued partial damage
+ * is cleared and the whole surface re-rasters at the new geometry.
+ */
+describe('Column layout mutation — forces full paint over queued partial damage', () => {
+  it('sizeColumnsToFit after a partial tick paints full (not staggered partial)', async () => {
+    const fitCols = [
+      { field: 'id', width: 100 },
+      { field: 'v', type: 'number', width: 100 },
+    ];
+    const { grid, restore } = buildWiredGrid(rows(40), fitCols);
+    const canvas = (grid as any).cgridCanvas;
+
+    await new Promise((r) => setTimeout(r, 50));
+    canvas.tickPaint(performance.now());
+
+    // Queue real partial damage the way a live blotter does.
+    grid.applyTransactionAsync({ update: [{ id: 'r0', v: 999 }, { id: 'r1', v: 998 }] });
+    await new Promise((r) => setTimeout(r, 120));
+    flushFrame();
+    await new Promise((r) => setTimeout(r, 20));
+    // Do NOT paint yet — leave the partial damage on the ledger, then
+    // mutate column widths (the bug: bare requestRepaint let partial win).
+    grid.resetPaintStats();
+    grid.sizeColumnsToFit();
+    canvas.tickPaint(performance.now() + 1000);
+
+    const stats = grid.getPaintStats();
+    expect(stats.fullPaints,
+      'layout mutation must clear queued partial damage and full-paint').toBeGreaterThanOrEqual(1);
+    expect(stats.partialPaints,
+      'partial must not win over a column-geometry change').toBe(0);
+
+    // Geometry itself must be consistent (monotonic lefts) after the fit.
+    const layout = (grid as any).columnLayout as Array<{ left: number; width: number }>;
+    for (let i = 1; i < layout.length; i++) {
+      expect(layout[i]!.left).toBe(layout[i - 1]!.left + layout[i - 1]!.width);
+    }
+
+    grid.destroy();
+    restore();
+  });
+
+  it('setColumnWidths after queued cell damage also full-paints', async () => {
+    const { grid, restore } = buildWiredGrid(rows(40), cols);
+    const canvas = (grid as any).cgridCanvas;
+
+    await new Promise((r) => setTimeout(r, 50));
+    canvas.tickPaint(performance.now());
+
+    grid.applyTransactionAsync({ update: [{ id: 'r2', v: 42 }] });
+    await new Promise((r) => setTimeout(r, 120));
+    flushFrame();
+    await new Promise((r) => setTimeout(r, 20));
+
+    grid.resetPaintStats();
+    grid.setColumnWidths([{ key: 'v', newWidth: 220 }]);
+    canvas.tickPaint(performance.now() + 1000);
+
+    const stats = grid.getPaintStats();
+    expect(stats.fullPaints).toBeGreaterThanOrEqual(1);
+    expect(stats.partialPaints).toBe(0);
+
+    grid.destroy();
+    restore();
+  });
+
+  it('layoutPaintEpoch mismatch after a burned paint keeps re-queuing full until a full lands', async () => {
+    // Same class as horizontal-scroll staleness: a full can be spent while
+    // the canvas/layer still shows the previous column geometry; later
+    // partials only refresh some rows. The epoch guard must keep forcing
+    // full until a damage.full paint catches lastPaintedLayoutPaintEpoch up.
+    const { grid, restore } = buildWiredGrid(rows(40), cols);
+    const canvas = (grid as any).cgridCanvas;
+    const g = grid as any;
+
+    await new Promise((r) => setTimeout(r, 50));
+    canvas.tickPaint(performance.now());
+    expect(g.lastPaintedLayoutPaintEpoch).toBe(g.layoutPaintEpoch);
+
+    grid.setColumnWidths([{ key: 'v', newWidth: 240 }]);
+    // Simulate a burned paint: epoch advanced (setter wipe) but the stamp
+    // never caught up (as if a partial or pre-layout full consumed damage).
+    g.lastPaintedLayoutPaintEpoch = g.layoutPaintEpoch - 1;
+    grid.resetPaintStats();
+    g.recomputeViewport();
+    canvas.tickPaint(performance.now() + 1000);
+
+    expect(grid.getPaintStats().fullPaints).toBeGreaterThanOrEqual(1);
+    expect(g.lastPaintedLayoutPaintEpoch).toBe(g.layoutPaintEpoch);
+
+    grid.destroy();
+    restore();
+  });
+
+  it('resizeColumn coalesces to one layout flush per animation frame', async () => {
+    const { grid, restore } = buildWiredGrid(rows(40), cols);
+    const canvas = (grid as any).cgridCanvas;
+    const g = grid as any;
+
+    await new Promise((r) => setTimeout(r, 50));
+    canvas.tickPaint(performance.now());
+
+    const widthBefore = (g.columnLayout as Array<{ colId: string; width: number }>)
+      .find((c) => c.colId === 'v')!.width;
+    const widths: number[] = [];
+    grid.addEventListener('columnResized', (e: any) => {
+      if (e.finished === false) widths.push(e.width);
+    });
+
+    // Many pointer-sized updates in one turn — only the rAF flush should
+    // emit finished:false (and apply layout once).
+    g.resizeColumn('v', 10);
+    g.resizeColumn('v', 10);
+    g.resizeColumn('v', 10);
+    expect(widths.length, 'no finished:false until rAF flush').toBe(0);
+    expect(g.columnResizeDragActive).toBe(true);
+
+    // Manual RAF queue (see beforeAll) — one flush applies all three dx.
+    flushFrame();
+    expect(widths.length).toBe(1);
+    expect(widths[0]).toBe(widthBefore + 30);
+
+    g.finishColumnResize('v');
+    expect(g.columnResizeDragActive).toBe(false);
+
+    grid.destroy();
+    restore();
+  });
+
+  it('partial paint must not stamp lastPaintedLayoutPaintEpoch after a width change', async () => {
+    const { grid, restore } = buildWiredGrid(rows(40), cols, { enableCellChangeFlash: true });
+    const canvas = (grid as any).cgridCanvas;
+    const g = grid as any;
+
+    await new Promise((r) => setTimeout(r, 50));
+    canvas.tickPaint(performance.now());
+
+    const epochBefore = g.layoutPaintEpoch;
+    grid.setColumnWidths([{ key: 'v', newWidth: 260 }]);
+    expect(g.layoutPaintEpoch).toBeGreaterThan(epochBefore);
+
+    // Leave the healing full on the ledger, then also land a tick. The
+    // coalesced paint must still be full (and stamp the epoch) — never a
+    // partial that would silence further healing.
+    grid.applyTransactionAsync({ update: [{ id: 'r0', v: 1 }] });
+    await new Promise((r) => setTimeout(r, 120));
+    flushFrame();
+    await new Promise((r) => setTimeout(r, 20));
+    grid.resetPaintStats();
+    canvas.tickPaint(performance.now() + 1000);
+
+    expect(grid.getPaintStats().fullPaints).toBeGreaterThanOrEqual(1);
+    expect(g.lastPaintedLayoutPaintEpoch).toBe(g.layoutPaintEpoch);
+
+    grid.destroy();
+    restore();
+  });
+});
+
+/**
+ * Side-bar open/close (and any canvas resize) wipes the backing store via
+ * `canvas.width` assignment. With fixed-width columns the resolved layout
+ * often does not change, so the columnLayout setter used to skip
+ * invalidate — queued partial tick damage then painted only those rows
+ * over black (user-visible gaps between row clusters).
+ */
+describe('Canvas resize — forces full paint over queued partial damage', () => {
+  it('width shrink with unchanged fixed-width layout full-paints (side-bar class)', async () => {
+    const fixedCols = [
+      { field: 'id', width: 110 },
+      { field: 'v', type: 'number', width: 110 },
+    ];
+    const { grid, restore } = buildWiredGrid(rows(40), fixedCols);
+    const g = grid as any;
+    const canvas = g.cgridCanvas;
+
+    await new Promise((r) => setTimeout(r, 50));
+    canvas.tickPaint(performance.now());
+
+    const layoutBefore = g.columnLayout.map((c: { left: number; width: number }) => ({
+      left: c.left, width: c.width,
+    }));
+
+    grid.applyTransactionAsync({ update: [{ id: 'r0', v: 999 }, { id: 'r5', v: 998 }] });
+    await new Promise((r) => setTimeout(r, 120));
+    flushFrame();
+    await new Promise((r) => setTimeout(r, 20));
+
+    grid.resetPaintStats();
+    // Mimic side-bar open: scroller clientWidth shrinks; resize wipes the
+    // canvas. Fixed widths → identical columnLayout lefts/widths.
+    Object.defineProperty(g.scroller, 'clientWidth', { value: 520, configurable: true });
+    canvas.resize();
+
+    const layoutAfter = g.columnLayout.map((c: { left: number; width: number }) => ({
+      left: c.left, width: c.width,
+    }));
+    expect(layoutAfter).toEqual(layoutBefore);
+
+    const stats = grid.getPaintStats();
+    expect(stats.fullPaints,
+      'canvas wipe must full-paint even when column layout is unchanged').toBeGreaterThanOrEqual(1);
+    expect(stats.partialPaints,
+      'partial must not paint over a wiped backing store').toBe(0);
+
+    grid.destroy();
+    restore();
+  });
+});
+
+/**
+ * Column-group expand + live-feed empty `touchedRows`:
+ * Expanding paints immediately (headers + blank body for new leaves), then
+ * `updateColumns` → `getViewport`. On a blotter whose worker diff-tracking
+ * is armed (defined `touchedRows`, often `[]`), `resolveWindowDamage` used
+ * to return `[]` because row identity was unchanged — so the chunk with
+ * the revealed column's values never triggered a paint and blanks stuck.
+ * The column-set check forces `'full'` when numeric/text colIds change.
+ */
+describe('Column-group expand — column-set change forces full paint', () => {
+  it('expanding with a diff-armed empty touchedRows reply still full-paints revealed columns', async () => {
+    const groupCols = [
+      { colId: 'id', field: 'id', width: 80 },
+      {
+        groupId: 'G',
+        headerName: 'Grp',
+        openByDefault: false,
+        children: [
+          { colId: 'b', field: 'v', headerName: 'B', width: 100, type: 'number' },
+          { colId: 'c', field: 'w', headerName: 'C', width: 100, type: 'number', columnGroupShow: 'open' },
+        ],
+      },
+    ];
+    const data = Array.from({ length: 80 }, (_, i) => ({ id: `r${i}`, v: i, w: i * 10 }));
+    const { grid, restore } = buildWiredGrid(data, groupCols);
+    const canvas = (grid as any).cgridCanvas;
+
+    await new Promise((r) => setTimeout(r, 50));
+    canvas.tickPaint(performance.now());
+
+    // Arm defined-empty touchedRows (off-screen tick).
+    grid.applyTransactionAsync({ update: [{ id: 'r70', v: 999, w: 9990 }] });
+    await new Promise((r) => setTimeout(r, 120));
+    flushFrame();
+    await new Promise((r) => setTimeout(r, 20));
+    canvas.tickPaint(performance.now());
+
+    // Expand: layout full paint runs BEFORE the worker chunk (blank new
+    // columns). Burn that paint the same way the scroll-staleness test
+    // burns the early full — then assert the chunk reply heals.
+    const t0 = performance.now();
+    const api = (grid as any).makeApi();
+    api.setColumnGroupState([{ groupId: 'G', open: true }]);
+    canvas.tickPaint(t0 + 1000); // burns the immediate layout full paint
+    expect(grid.getPaintStats().fullPaints).toBeGreaterThanOrEqual(1);
+
+    grid.resetPaintStats();
+    // updateColumns → requestViewport → chunk that adds col `c`
+    await new Promise((r) => setTimeout(r, 100));
+    flushFrame();
+    await new Promise((r) => setTimeout(r, 40));
+
+    const chunk = (grid as any).chunk as { numericCols: Record<string, unknown> };
+    expect(Object.keys(chunk.numericCols)).toContain('c');
+
+    canvas.tickPaint(t0 + 2000);
+    expect(grid.getPaintStats().fullPaints,
+      'revealed columns must force a full paint even when touchedRows is []').toBeGreaterThanOrEqual(1);
+
+    const cell = (grid as any).cellAt(0, 'c');
+    expect(cell).toBeTruthy();
+    expect(cell.value).toBe(0);
 
     grid.destroy();
     restore();

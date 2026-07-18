@@ -22,6 +22,19 @@ import type {
   ProcessCellFromClipboardCallback,
 } from './clipboard';
 
+/**
+ * Hard floor for data-row height (CSS px). Values below this make partial
+ * scroll paints look like uneven / squashed rows (clipped glyphs between
+ * irregular gridlines). Compact density token is 24 — match that floor.
+ */
+export const MIN_ROW_HEIGHT_PX = 24;
+
+/** Clamp a requested row height to {@link MIN_ROW_HEIGHT_PX}. */
+export function clampRowHeight(h: number): number {
+  if (!Number.isFinite(h) || h <= 0) return MIN_ROW_HEIGHT_PX;
+  return h < MIN_ROW_HEIGHT_PX ? MIN_ROW_HEIGHT_PX : h;
+}
+
 /** Suppression flags for the cell-range selection pathways. Each flag
  *  defaults to `false` when omitted — the matching gesture creates / updates
  *  ranges as usual. Cycle 9 / Task 6. */
@@ -58,6 +71,11 @@ export interface CGridOptions<TRow = any> {
   columnTypes?: Record<string, Partial<CColDef<TRow>>>;
   rowData?: TRow[];
   getRowId: (row: TRow) => string;
+  /**
+   * Default data-row height in CSS px. Clamped to at least
+   * {@link MIN_ROW_HEIGHT_PX} (24) — shorter rows make scroll-blit seams
+   * look like squashed / uneven row heights under HiDPI.
+   */
   rowHeight?: number;
   headerHeight?: number;
   rowSelection?: 'none' | 'single' | 'multiple';
@@ -94,7 +112,38 @@ export interface CGridOptions<TRow = any> {
   enableCellChangeFlash?: boolean;
   cellFlashDuration?: number;
   cellFadeDuration?: number;
+  /**
+   * Debounce window (ms) for `applyTransactionAsync` before the worker
+   * flushes the pending batch. Default `50` when omitted. Pair with
+   * `asyncTransactionConflate` / `asyncTransactionThrottleMillis`.
+   * Runtime-mutable via `setGridOption`.
+   */
   asyncTransactionWaitMillis?: number;
+  /**
+   * When `true` (default), the worker coalesces pending
+   * `applyTransactionAsync` payloads by row id before applying them —
+   * last write wins within the batch window. Set `false` to apply every
+   * queued transaction in arrival order (no drop). Runtime-mutable.
+   */
+  asyncTransactionConflate?: boolean;
+  /**
+   * Minimum milliseconds between async transaction flushes under a
+   * continuous update stream. `0` / omitted disables throttling (flush
+   * as soon as `asyncTransactionWaitMillis` elapses after the first
+   * push in a quiet period). Runtime-mutable.
+   */
+  asyncTransactionThrottleMillis?: number;
+  /**
+   * When `true` (the default), `applyTransactionAsync` calls that arrive
+   * during an active body scroll are buffered on the main thread and
+   * flushed once on `bodyScrollEnd` (conflated by row id). Cell-flash
+   * fade rAF is also paused for the gesture. Matches Deephaven-style
+   * "paint scroll first; apply live ticks when settled" so 20k+ live
+   * feeds do not contend with scroll paints / viewport fetches.
+   * Set `false` to apply every async transaction immediately even while
+   * scrolling.
+   */
+  deferAsyncTransactionsWhileScrolling?: boolean;
   /**
    * A CSS class name (`'cg-theme-quartz'`, the default) OR a programmatic
    * `CgTheme` object (`themeQuartz.withParams({ accentColor: '#2f7bc4' })`).
@@ -253,7 +302,10 @@ export interface CGridOptions<TRow = any> {
    *  `'normal'` to restore the virtualised layout. */
   domLayout?: 'normal' | 'print';
   /** Number of extra rows to materialise above and below the visible window.
-   *  Defaults to the engine's internal overscan (3) when unset. */
+   *  Defaults to the engine's internal overscan (3) when unset. On the lean
+   *  path (`paintCache: false` / `qualityMode: 'performance'`), apps should
+   *  set this explicitly for Deephaven-style snappy scrolling (ext demo uses
+   *  32) — the escape hatch does not invent a larger default. */
   rowBuffer?: number;
   /** Cycle 25 / Task 4 — opt into the worker-side painter.
    *   `'auto'` (default) selects `'offscreen'` when the platform
@@ -297,12 +349,12 @@ export interface CGridOptions<TRow = any> {
    *  a double offscreen+present cost on software raster. */
   paintCache?: boolean;
   /** Coverage margin banked on each side of the visible body for the
-   *  paint-cache layer, as a multiple of body height — e.g. `0.5` (the
-   *  default) banks half a screen's worth of rows above AND below the
-   *  visible range so ordinary scroll velocity slides within the
-   *  layer without a re-raster. Clamped to `[0, 2]`. Widens the
-   *  worker's row-fetch window (`rowBuffer`) to match so the fetched
-   *  data always covers the layer's coverage. Ignored when
+   *  paint-cache layer, as a multiple of body height — e.g. `1` (the
+   *  default, matching Deephaven `ROW_BUFFER_PAGES = 1`) banks a full
+   *  screen of rows above AND below the visible range so ordinary scroll
+   *  velocity and modest thumb drags stay within loaded data. Clamped to
+   *  `[0, 2]`. Widens the worker's row-fetch window (`rowBuffer`) to match
+   *  so the fetched data always covers the layer's coverage. Ignored when
    *  `paintCache: false`. */
   paintCacheOverscan?: number;
   /** Cycle 22 raster cache — Tier-1 content-keyed cell bitmaps (the

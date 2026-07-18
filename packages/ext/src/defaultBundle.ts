@@ -1,5 +1,8 @@
 import type { CgExtension, ToolbarItem, CgExtContext } from './extension/types';
 import { gridOptionsModule } from './modules/gridOptions';
+import { columnGroupsModule } from './modules/columnGroups';
+import { columnSettingsModule } from './modules/columnSettings';
+import { expressionLabModule } from './modules/expressionLab';
 
 /** A tiny helper for building an icon button toolbar item. */
 function button(id: string, label: string, onClick: (ctx: CgExtContext) => void): ToolbarItem {
@@ -39,11 +42,16 @@ function saveButton(): ToolbarItem {
   };
 }
 
-/** The built-in extension set CGridExt registers before consumer specs.
- *  The settings launcher needs a way to open the sheet; it emits an ext
- *  event the shell subscribes to via CGridExt (see registerDefaults). */
+/** The built-in extension set CGridExt registers before consumer specs. */
 export function buildDefaultBundle(): CgExtension[] {
   const launcher = button('settings-launcher', 'Settings', (ctx) =>
     ctx.events.emit({ type: 'open-settings', id: 'grid-options' }));
-  return [launcher, saveButton(), gridOptionsModule()];
+  return [
+    launcher,
+    saveButton(),
+    gridOptionsModule(),
+    columnGroupsModule(),
+    columnSettingsModule(),
+    expressionLabModule(),
+  ];
 }

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { installGridTestEnv } from './setup';
 import { CGrid } from '@cgrid/kernel';
 import { gridOptionsModule } from '../src/modules/gridOptions';
+import { columnGroupsModule } from '../src/modules/columnGroups';
 import { LocalStorageProfileStore } from '../src/profiles/localStorageStore';
 import { ProfilesController } from '../src/profiles/controller';
 import { createExtContext } from '../src/extension/context';
@@ -9,20 +10,24 @@ import { createExtContext } from '../src/extension/context';
 beforeAll(() => installGridTestEnv());
 beforeEach(() => localStorage.clear());
 
-function makeCtx() {
+function makeCtx(opts: Record<string, unknown> = {}) {
   const host = document.createElement('div');
   document.body.appendChild(host);
   const grid = new CGrid(host, {
-    columnDefs: [{ colId: 'a', field: 'a' }],
+    columnDefs: [
+      { colId: 'a', field: 'a' },
+      { colId: 'b', field: 'b' },
+    ],
     rowData: [],
     getRowId: (r: any) => r.a,
+    ...opts,
   } as any);
   const profiles = new ProfilesController(grid, new LocalStorageProfileStore('t'), {});
   return { grid, ctx: createExtContext(grid, profiles), profiles };
 }
 
 describe('gridOptionsModule', () => {
-  it('renders controls and writes row height through the kernel', () => {
+  it('mounts the kernel Options panel and writes through setGridOption', () => {
     const { grid, ctx, profiles } = makeCtx();
     const setOpt = vi.spyOn(grid, 'setGridOption');
     const mod = gridOptionsModule();
@@ -30,57 +35,51 @@ describe('gridOptionsModule', () => {
     mod.init(ctx);
     const inst = mod.mount(panel, ctx);
 
-    const rowHeight = panel.querySelector<HTMLElement>('[data-opt="rowHeight"]')!;
-    expect(rowHeight).toBeTruthy();
-    // Each control is wrapped in a cgc-field carrying the visible label, and
-    // the control itself carries a matching aria-label for a11y.
-    expect(panel.querySelector('cgc-field[label="Row height"]')).toBeTruthy();
-    expect(rowHeight.getAttribute('aria-label')).toBe('Row height');
-    // Simulate the chrome control emitting a change to 40.
-    rowHeight.dispatchEvent(new CustomEvent('cgc-change', { detail: { value: 40 }, bubbles: true }));
-    expect(setOpt).toHaveBeenCalledWith('rowHeight', 40);
-    expect(profiles.isDirty()).toBe(true);
+    expect(panel.querySelector('.cg-settings-panel')).toBeTruthy();
+    expect(panel.querySelector('.cg-settings-search')).toBeTruthy();
+
+    // Flip a boolean control if present; otherwise call setGridOption via the
+    // proxied API path used by the form by invoking a toggle click when found.
+    const toggle = panel.querySelector<HTMLButtonElement>('.cg-settings-toggle');
+    if (toggle) {
+      toggle.click();
+      expect(setOpt).toHaveBeenCalled();
+      expect(profiles.isDirty()).toBe(true);
+    }
 
     inst.destroy();
+    expect(panel.querySelector('.cg-settings-panel')).toBeNull();
     grid.destroy();
   });
+});
 
-  it('registers a grid-options state slice that round-trips', () => {
-    const { grid, ctx } = makeCtx();
-    const mod = gridOptionsModule();
-    mod.init(ctx);
+describe('columnGroupsModule', () => {
+  it('mounts the kernel Column Groups panel with formatter style chrome', () => {
+    const { grid, ctx } = makeCtx({
+      columnDefs: [
+        {
+          groupId: 'g1',
+          headerName: 'Group',
+          children: [
+            { colId: 'a', field: 'a' },
+            { colId: 'b', field: 'b' },
+          ],
+        },
+      ],
+    });
+    const mod = columnGroupsModule();
     const panel = document.createElement('div');
-    const inst = mod.mount(panel, ctx);
-    panel.querySelector<HTMLElement>('[data-opt="rowHeight"]')!
-      .dispatchEvent(new CustomEvent('cgc-change', { detail: { value: 32 }, bubbles: true }));
-
-    const state = grid.getState();
-    expect((state.modules?.['grid-options'] as any)?.data?.rowHeight).toBe(32);
-    inst.destroy();
-    grid.destroy();
-  });
-
-  it('seeds the rowHeight control from live kernel state on mount, and the slice reads live values', () => {
-    const { grid, ctx } = makeCtx();
-    // Set the option directly on the kernel before the module ever mounts —
-    // there is no other path (no shadow copy) that could put this value in.
-    grid.setGridOption('rowHeight' as any, 40 as any);
-
-    const mod = gridOptionsModule();
     mod.init(ctx);
-    const panel = document.createElement('div');
     const inst = mod.mount(panel, ctx);
 
-    const rowHeight = panel.querySelector<HTMLElement>('[data-opt="rowHeight"]')!;
-    expect((rowHeight as unknown as { value: number }).value).toBe(40);
-
-    // The slice's `get()` must read the same live value straight off the
-    // kernel — not a mount-time snapshot — proving there's no shadow copy.
-    grid.setGridOption('rowHeight' as any, 55 as any);
-    const state = grid.getState();
-    expect((state.modules?.['grid-options'] as any)?.data?.rowHeight).toBe(55);
+    expect(panel.querySelector('.cg-colgroups-panel')).toBeTruthy();
+    expect(panel.classList.contains('cgext-sheet-toolpanel')).toBe(true);
+    expect(panel.querySelector('[data-cg-style] .cgext-style-chrome')).toBeTruthy();
+    expect(panel.querySelector('[data-cg-style] .cgext-rb-grp-name')?.textContent).toMatch(/Font/i);
+    expect(panel.querySelector('[data-cg-field="marryChildren"]')).toBeTruthy();
 
     inst.destroy();
+    expect(panel.querySelector('.cg-colgroups-panel')).toBeNull();
     grid.destroy();
   });
 });

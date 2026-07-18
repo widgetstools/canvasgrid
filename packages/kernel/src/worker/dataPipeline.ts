@@ -232,7 +232,14 @@ export class RowStore<TRow = any> {
 }
 
 interface QueueOpts {
+  /** Debounce window after the first push in a quiet period (ms). */
   waitMs: number;
+  /** Minimum interval between flushes under continuous load (ms). 0 = off. */
+  throttleMs?: number;
+  /** When true, merge pending txs by row id (last write wins) before apply. */
+  conflate?: boolean;
+  /** Required when `conflate` is true — extracts the row id from a row object. */
+  getRowId?: (row: any) => string;
   onFlush: (results: TransactionResult[]) => void;
 }
 
@@ -245,43 +252,143 @@ export interface QueuedTx<TRow = any> {
   heightsByRowId?: Map<string, number>;
 }
 
+/**
+ * Merge a batch of queued transactions into at most one coalesced tx:
+ * last write wins per row id; removes beat earlier adds/updates; an
+ * add+update in the same window stays an add with the latest row body.
+ * Heights maps are merged last-wins. Empty input → empty output.
+ */
+export function conflateQueuedTxs<TRow>(
+  txs: QueuedTx<TRow>[],
+  getRowId: (row: TRow) => string,
+): QueuedTx<TRow>[] {
+  if (txs.length <= 1) return txs;
+
+  type Alive = { kind: 'add' | 'update'; row: TRow };
+  const alive = new Map<string, Alive>();
+  const removed = new Set<string>();
+  let heights: Map<string, number> | undefined;
+
+  for (const tx of txs) {
+    if (tx.remove) {
+      for (const id of tx.remove) {
+        alive.delete(id);
+        removed.add(id);
+      }
+    }
+    if (tx.add) {
+      for (const row of tx.add) {
+        let id: string;
+        try { id = getRowId(row); } catch { continue; }
+        removed.delete(id);
+        alive.set(id, { kind: 'add', row });
+      }
+    }
+    if (tx.update) {
+      for (const row of tx.update) {
+        let id: string;
+        try { id = getRowId(row); } catch { continue; }
+        if (removed.has(id)) continue;
+        const prev = alive.get(id);
+        alive.set(id, { kind: prev?.kind === 'add' ? 'add' : 'update', row });
+      }
+    }
+    if (tx.heightsByRowId && tx.heightsByRowId.size > 0) {
+      if (!heights) heights = new Map();
+      for (const [id, h] of tx.heightsByRowId) heights.set(id, h);
+    }
+  }
+
+  const add: TRow[] = [];
+  const update: TRow[] = [];
+  for (const entry of alive.values()) {
+    if (entry.kind === 'add') add.push(entry.row);
+    else update.push(entry.row);
+  }
+  const remove = removed.size > 0 ? [...removed] : undefined;
+  if (add.length === 0 && update.length === 0 && (!remove || remove.length === 0)
+    && (!heights || heights.size === 0)) {
+    return [];
+  }
+  const out: QueuedTx<TRow> = {};
+  if (add.length) out.add = add;
+  if (update.length) out.update = update;
+  if (remove && remove.length) out.remove = remove;
+  if (heights && heights.size) out.heightsByRowId = heights;
+  return [out];
+}
+
 export class TransactionQueue<TRow = any> {
   private pending: QueuedTx<TRow>[] = [];
   private timer: ReturnType<typeof setTimeout> | null = null;
+  private lastFlushAt = 0;
   private flushFn: () => void;
 
   constructor(private opts: QueueOpts) {
     // Default flush: drains the queue and calls onFlush with empty results per tx.
     // Task 12's worker.ts replaces this via setFlushFn once RowStore is available.
-    this.flushFn = () => {
-      const queued = this.pending;
-      this.pending = [];
-      this.timer = null;
-      if (queued.length === 0) return;
-      // Default: pretend each tx produced an empty result (real worker overrides).
-      this.opts.onFlush(queued.map(() => ({ add: [], update: [], remove: [] })));
-    };
+    this.flushFn = () => this.drainWith((queued) =>
+      queued.map(() => ({ add: [], update: [], remove: [] })));
+  }
+
+  /** Update batching knobs at runtime (wait / throttle / conflate). */
+  setOptions(patch: Partial<Pick<QueueOpts, 'waitMs' | 'throttleMs' | 'conflate' | 'getRowId'>>): void {
+    if (patch.waitMs !== undefined) this.opts.waitMs = Math.max(0, patch.waitMs);
+    if (patch.throttleMs !== undefined) this.opts.throttleMs = Math.max(0, patch.throttleMs);
+    if (patch.conflate !== undefined) this.opts.conflate = patch.conflate;
+    if (patch.getRowId !== undefined) this.opts.getRowId = patch.getRowId;
   }
 
   /** Caller (worker.ts) installs the actual flush function once RowStore exists. */
   setFlushFn(fn: (txs: QueuedTx<TRow>[]) => TransactionResult[]): void {
-    this.flushFn = () => {
-      const queued = this.pending;
-      this.pending = [];
-      this.timer = null;
-      if (queued.length === 0) return;
-      const results = fn(queued);
-      this.opts.onFlush(results);
-    };
+    this.flushFn = () => this.drainWith(fn);
+  }
+
+  private drainWith(fn: (txs: QueuedTx<TRow>[]) => TransactionResult[]): void {
+    let queued = this.pending;
+    this.pending = [];
+    this.timer = null;
+    if (queued.length === 0) return;
+    if (this.opts.conflate && this.opts.getRowId) {
+      queued = conflateQueuedTxs(queued, this.opts.getRowId);
+      if (queued.length === 0) {
+        this.lastFlushAt = Date.now();
+        return;
+      }
+    }
+    const results = fn(queued);
+    this.lastFlushAt = Date.now();
+    this.opts.onFlush(results);
+  }
+
+  private schedule(): void {
+    if (this.timer !== null) return;
+    const throttleMs = this.opts.throttleMs ?? 0;
+    const since = Date.now() - this.lastFlushAt;
+    const throttleRemain = throttleMs > 0 ? Math.max(0, throttleMs - since) : 0;
+    const delay = Math.max(this.opts.waitMs, throttleRemain);
+    this.timer = setTimeout(() => this.tryFlush(), delay);
+  }
+
+  private tryFlush(): void {
+    this.timer = null;
+    const throttleMs = this.opts.throttleMs ?? 0;
+    if (throttleMs > 0) {
+      const remain = throttleMs - (Date.now() - this.lastFlushAt);
+      if (remain > 0) {
+        this.timer = setTimeout(() => this.tryFlush(), remain);
+        return;
+      }
+    }
+    this.flushFn();
   }
 
   push(tx: QueuedTx<TRow>): void {
     this.pending.push(tx);
-    if (this.timer === null) {
-      this.timer = setTimeout(() => this.flushFn(), this.opts.waitMs);
-    }
+    this.schedule();
   }
 
+  /** Drain immediately, ignoring throttle (API `flushAsyncTransactions`). */
   flush(): void {
     if (this.timer !== null) {
       clearTimeout(this.timer);

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { RowStore, TransactionQueue } from '../src/worker/dataPipeline';
+import { RowStore, TransactionQueue, conflateQueuedTxs } from '../src/worker/dataPipeline';
 
 describe('RowStore', () => {
   it('stores rows by getRowId(row)[rowIdField]', () => {
@@ -57,5 +57,52 @@ describe('TransactionQueue', () => {
     q.push({ add: [{ rowId: 'x' }] as any });
     q.flush();
     expect(onFlush).toHaveBeenCalledOnce();
+  });
+
+  it('conflates updates by row id before flush (last write wins)', () => {
+    const applied: any[] = [];
+    const q = new TransactionQueue({
+      waitMs: 50,
+      conflate: true,
+      getRowId: (r: any) => r.id,
+      onFlush: () => {},
+    });
+    q.setFlushFn((txs) => {
+      applied.push(...txs);
+      return txs.map(() => ({ add: [], update: [], remove: [] }));
+    });
+    q.push({ update: [{ id: 'a', v: 1 }] });
+    q.push({ update: [{ id: 'a', v: 2 }, { id: 'b', v: 1 }] });
+    q.push({ update: [{ id: 'a', v: 3 }] });
+    vi.advanceTimersByTime(50);
+    expect(applied).toHaveLength(1);
+    expect(applied[0].update).toEqual([{ id: 'a', v: 3 }, { id: 'b', v: 1 }]);
+  });
+
+  it('throttleMs enforces a minimum interval between flushes', () => {
+    const onFlush = vi.fn();
+    const q = new TransactionQueue({ waitMs: 20, throttleMs: 100, onFlush });
+    q.push({ update: [{ id: 'a' }] as any });
+    vi.advanceTimersByTime(20);
+    expect(onFlush).toHaveBeenCalledTimes(1);
+    q.push({ update: [{ id: 'b' }] as any });
+    vi.advanceTimersByTime(20);
+    expect(onFlush).toHaveBeenCalledTimes(1);
+    vi.advanceTimersByTime(80);
+    expect(onFlush).toHaveBeenCalledTimes(2);
+  });
+});
+
+describe('conflateQueuedTxs', () => {
+  it('remove beats earlier update; add after remove resurrects', () => {
+    const out = conflateQueuedTxs(
+      [
+        { update: [{ id: 'a', v: 1 }] },
+        { remove: ['a'] },
+        { add: [{ id: 'a', v: 9 }] },
+      ],
+      (r: { id: string }) => r.id,
+    );
+    expect(out).toEqual([{ add: [{ id: 'a', v: 9 }] }]);
   });
 });

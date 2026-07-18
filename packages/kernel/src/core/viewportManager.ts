@@ -23,7 +23,7 @@ import type { Subgrid } from './subgrid';
 import type { RowHeightIndex } from './rowHeightIndex';
 import type { AggregationChangedSource, CGridEvent } from '../types';
 import { computeViewport, type ViewportState } from './viewport';
-import { expandRangeForVelocity } from './prefetchRange';
+import { expandRangeForScrollDelta, expandRangeForVelocity } from './prefetchRange';
 
 /** Subset of CGridOptions the viewport math reads. Passed through a
  *  closure so per-tick `setGridOption` flips light up on the next
@@ -41,7 +41,9 @@ export interface ViewportComputeOptions {
    *  rows. `false` reproduces today's overscan exactly. */
   paintCache?: boolean;
   /** Coverage margin (× bodyHeight) the paint-cache layer banks on each
-   *  side of the visible body. Defaults to `0.5`; clamped to `[0, 2]`. */
+   *  side of the visible body. Defaults to `1` (Deephaven
+   *  `ROW_BUFFER_PAGES = 1` — one viewport page above AND below); clamped
+   *  to `[0, 2]`. */
   paintCacheOverscan?: number;
 }
 
@@ -87,6 +89,10 @@ export interface ViewportManagerDeps {
      *  (now overscan-widened) fetch window. See `ViewportState.
      *  firstVisibleDataRow`'s doc for the full regression story. */
     stickyBoundaryRow: number;
+    /** Monotonic request id — chunk handler ignores replies whose seq is
+     *  older than `ViewportManager.viewportReqSeq` (Deephaven latest-wins
+     *  `subscription.setViewport` while a prior fetch is in flight). */
+    seq: number;
   }): Promise<void>;
 }
 
@@ -102,8 +108,15 @@ export class ViewportManager {
    *  down). Updated from `onScrollerScroll` deltas; consumed by `request` to
    *  widen the requested range pre-emptively on a fast fling. */
   private _scrollVelocityRows = 0;
+  /** Row delta of the most recent vertical scroll tick (signed). Used to
+   *  prefetch on idle PageDown / keyboard jumps when velocity samples as 0. */
+  private _lastScrollDeltaRows = 0;
   private lastScrollSampleTop = 0;
   private lastScrollSampleTime = 0;
+  /** Last range posted to the worker (after prefetch expansion). Scroll
+   *  throttle is bypassed when the live viewport leaves this window so
+   *  key-repeat / PageDown cannot paint past the in-flight chunk. */
+  private lastDispatchedRange: { rowStart: number; rowEnd: number } | null = null;
 
   /** First / last colId of the materialised center-column slice — the
    *  identity of the virtualisation window. `null` for "no center columns
@@ -123,6 +136,19 @@ export class ViewportManager {
    *  `consumePendingAggSource()`. Most-recent-source wins when multiple
    *  data-affecting calls coalesce on a single in-flight fetch. */
   private pendingAggSource: AggregationChangedSource | null = null;
+  /** Deephaven `SET_VIEWPORT_THROTTLE` (150ms) — scroll-driven fetches are
+   *  leading+trailing throttled so the first scroll tick fetches immediately
+   *  while continuous thumb-drag collapses to ~one fetch / 150ms at the
+   *  latest window. Data-affecting requests bypass this. */
+  private static readonly SCROLL_VIEWPORT_THROTTLE_MS = 150;
+  private scrollRequestTimer: ReturnType<typeof setTimeout> | null = null;
+  private scrollRequestWanted = false;
+  private lastScrollDispatchAt = 0;
+  /** Latest-wins sequence — bumped on every dispatched fetch. */
+  private _viewportReqSeq = 0;
+
+  /** Current viewport request sequence (for stale-chunk rejection). */
+  get viewportReqSeq(): number { return this._viewportReqSeq; }
 
   constructor(private deps: ViewportManagerDeps) {
     deps.disposables.addListener(deps.scroller, 'scroll', () => {
@@ -135,6 +161,10 @@ export class ViewportManager {
       if (this.scrollEndTimer !== null) {
         clearTimeout(this.scrollEndTimer);
         this.scrollEndTimer = null;
+      }
+      if (this.scrollRequestTimer !== null) {
+        clearTimeout(this.scrollRequestTimer);
+        this.scrollRequestTimer = null;
       }
     });
   }
@@ -197,9 +227,22 @@ export class ViewportManager {
     // layer's coverage, not just the on-screen rows. `paintCache: false` is
     // the field escape hatch — it must reproduce today's overscan exactly,
     // so the widened path is skipped entirely rather than widened-to-zero.
-    if (opts.paintCache === false) return state;
+    // (Deephaven-style scroll buffer on the lean path is applied by apps
+    // via an explicit `rowBuffer`, e.g. the ext demo uses 32.)
+    if (opts.paintCache === false) {
+      // Deephaven ROW_BUFFER_PAGES=1 on the lean path when the app did not
+      // set an explicit rowBuffer — buffer ~one viewport of rows each side.
+      // Explicit `rowBuffer` must reproduce the exact overscan (escape hatch).
+      if (opts.rowBuffer !== undefined) return state;
+      const rowHeightFallback = this.deps.getRowHeightFallback() || 1;
+      const pageRows = Math.max(1, Math.ceil(state.bodyHeight / rowHeightFallback));
+      if (pageRows <= 3) return state;
+      return computeViewport({ ...baseArgs, rowBuffer: pageRows });
+    }
     const rowHeightFallback = this.deps.getRowHeightFallback() || 1;
-    const paintCacheOverscan = Math.max(0, Math.min(2, opts.paintCacheOverscan ?? 0.5));
+    // Deephaven ROW_BUFFER_PAGES=1 → default overscan of one bodyHeight
+    // each side (was 0.5). Explicit paintCacheOverscan still wins.
+    const paintCacheOverscan = Math.max(0, Math.min(2, opts.paintCacheOverscan ?? 1));
     const overscanPx = paintCacheOverscan * state.bodyHeight;
     const widenedRows = Math.ceil(overscanPx / rowHeightFallback);
     const baseOverscan = opts.rowBuffer ?? 3;
@@ -273,19 +316,29 @@ export class ViewportManager {
     if (verticalChanged) {
       const now = performance.now();
       const dt = now - this.lastScrollSampleTime;
+      const idx = this.deps.getRowHeightIndex();
+      const fallback = this.deps.getRowHeightFallback();
+      const yRow = idx ? idx.rowAt(y) : Math.floor(y / fallback);
+      const prevYRow = idx
+        ? idx.rowAt(this.lastScrollSampleTop)
+        : Math.floor(this.lastScrollSampleTop / fallback);
+      const deltaRows = yRow - prevYRow;
+      this._lastScrollDeltaRows = deltaRows;
       if (dt > 0 && this.lastScrollSampleTime > 0 && dt < 200) {
-        const idx = this.deps.getRowHeightIndex();
-        const fallback = this.deps.getRowHeightFallback();
-        const yRow = idx ? idx.rowAt(y) : Math.floor(y / fallback);
-        const prevYRow = idx
-          ? idx.rowAt(this.lastScrollSampleTop)
-          : Math.floor(this.lastScrollSampleTop / fallback);
-        this._scrollVelocityRows = (yRow - prevYRow) / dt;
+        this._scrollVelocityRows = deltaRows / dt;
+      } else if (Math.abs(deltaRows) >= 8) {
+        // Idle keyboard Page*/Ctrl+jump — velocity would otherwise stay 0
+        // (sample gap ≥ 200ms) and skip directional prefetch. Use a short
+        // synthetic dt so a 500ms idle gap doesn't crush 10 rows into
+        // 0.02 rows/ms (below the prefetch threshold).
+        this._scrollVelocityRows = deltaRows / 16;
       } else {
         this._scrollVelocityRows = 0;
       }
       this.lastScrollSampleTop = y;
       this.lastScrollSampleTime = now;
+    } else {
+      this._lastScrollDeltaRows = 0;
     }
     this._scrollLeft = x;
     this._scrollTop = y;
@@ -419,32 +472,104 @@ export class ViewportManager {
    *  resize — so the response handler can tell "the totals are the same;
    *  suppress the event" apart from "data / filter / aggFuncs changed; emit".
    *  Most-recent-source wins when multiple data-affecting calls coalesce on
-   *  a single in-flight fetch; null calls preserve any pending source. */
+   *  a single in-flight fetch; null calls preserve any pending source.
+   *
+   *  Scroll-driven calls (`aggSource === null`) are leading+trailing
+   *  throttled at 150ms (Deephaven `SET_VIEWPORT_THROTTLE`) so continuous
+   *  thumb-drag paints every frame while the worker only sees the latest
+   *  window. */
   request(aggSource: AggregationChangedSource | null = null): void {
-    if (aggSource !== null) this.pendingAggSource = aggSource;
+    if (aggSource !== null) {
+      this.pendingAggSource = aggSource;
+      // Data-affecting: flush any pending scroll throttle and dispatch now.
+      this.flushScrollThrottleAndDispatch();
+      return;
+    }
+    const now = performance.now();
+    const elapsed = now - this.lastScrollDispatchAt;
+    const throttle = ViewportManager.SCROLL_VIEWPORT_THROTTLE_MS;
+    // Viewport left the last posted window (key-repeat / PageDown past the
+    // buffer) — fetch immediately so live paint does not sit on empty cells
+    // for a full throttle period.
+    if (this.viewportUncoveredByLastDispatch()) {
+      this.flushScrollThrottleAndDispatch();
+      return;
+    }
+    // Leading edge — first scroll (or >throttle since last) dispatches now.
+    if (this.lastScrollDispatchAt === 0 || elapsed >= throttle) {
+      this.scrollRequestWanted = false;
+      this.lastScrollDispatchAt = now;
+      this.dispatchRequest();
+      return;
+    }
+    // Trailing edge — schedule one follow-up at the latest window.
+    this.scrollRequestWanted = true;
+    if (this.scrollRequestTimer !== null) return;
+    this.scrollRequestTimer = setTimeout(() => {
+      this.scrollRequestTimer = null;
+      if (!this.scrollRequestWanted) return;
+      this.scrollRequestWanted = false;
+      this.lastScrollDispatchAt = performance.now();
+      this.dispatchRequest();
+    }, throttle - elapsed);
+  }
+
+  private flushScrollThrottleAndDispatch(): void {
+    if (this.scrollRequestTimer !== null) {
+      clearTimeout(this.scrollRequestTimer);
+      this.scrollRequestTimer = null;
+    }
+    this.scrollRequestWanted = false;
+    this.lastScrollDispatchAt = performance.now();
+    this.dispatchRequest();
+  }
+
+  /** True when the live overscan window is not fully inside the last
+   *  dispatched fetch range (or nothing has been dispatched yet). */
+  private viewportUncoveredByLastDispatch(): boolean {
+    const needStart = this.currentState.firstRow;
+    const needEnd = this.currentState.lastRow + 1;
+    const last = this.lastDispatchedRange;
+    if (last === null) return true;
+    return needStart < last.rowStart || needEnd > last.rowEnd;
+  }
+
+  private dispatchRequest(): void {
     if (this.requestPending) {
       this.requestQueued = true;
       return;
     }
     this.requestPending = true;
+    const seq = ++this._viewportReqSeq;
     const cols = this.currentState.visibleColumns.map((c) => c.colId);
     // Cycle 25 / Task 8 — widen the row range when scrolling fast so the
     // next chunk already covers the about-to-be-visible rows.
     // expandRangeForVelocity is a no-op when velocity is below the threshold
     // (most scroll ticks), so the request stays at the tight visible range
-    // under normal interaction.
-    const { rowStart, rowEnd } = expandRangeForVelocity(
-      this.currentState.firstRow,
-      this.currentState.lastRow + 1,
+    // under normal interaction. Idle Page*/keyboard jumps also widen via
+    // expandRangeForScrollDelta (velocity often samples as 0).
+    const baseStart = this.currentState.firstRow;
+    const baseEnd = this.currentState.lastRow + 1;
+    const velocityExpanded = expandRangeForVelocity(
+      baseStart,
+      baseEnd,
       this._scrollVelocityRows,
     );
+    const { rowStart, rowEnd } = expandRangeForScrollDelta(
+      velocityExpanded.rowStart,
+      velocityExpanded.rowEnd,
+      this._lastScrollDeltaRows,
+    );
+    this.lastDispatchedRange = { rowStart, rowEnd };
     const stickyBoundaryRow = this.currentState.firstVisibleDataRow ?? this.currentState.firstRow;
-    this.deps.dispatchViewportRequest({ rowStart, rowEnd, columns: cols, stickyBoundaryRow })
+    this.deps.dispatchViewportRequest({
+      rowStart, rowEnd, columns: cols, stickyBoundaryRow, seq,
+    })
       .then(() => {
         this.requestPending = false;
         if (this.requestQueued) {
           this.requestQueued = false;
-          this.request(null);
+          this.dispatchRequest();
         }
       })
       .catch((err) => {

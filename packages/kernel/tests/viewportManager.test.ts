@@ -241,12 +241,13 @@ describe('ViewportManager — request coalescing + prefetch math', () => {
     const inflight = new Promise<void>((r) => { resolveFirst = r; });
     const h = makeHarness({ dispatchImpl: () => inflight });
     h.manager.request();
-    // Second call lands while the first is pending — should NOT dispatch yet.
+    // Second call within the 150ms scroll throttle — trailing edge only.
     h.manager.request();
     expect(h.dispatch).toHaveBeenCalledTimes(1);
-    // Resolve the in-flight fetch; the queued follow-up fires.
+    // Resolve the in-flight fetch; trailing throttle still owes a follow-up.
     resolveFirst();
     await Promise.resolve(); await Promise.resolve();
+    await new Promise((r) => setTimeout(r, 160));
     expect(h.dispatch).toHaveBeenCalledTimes(2);
   });
 
@@ -266,7 +267,7 @@ describe('ViewportManager — request coalescing + prefetch math', () => {
     resolveFirst();
   });
 
-  it('null aggSource calls do not overwrite a previously-set source', () => {
+  it('null aggSource calls do not overwrite a previously-set source', async () => {
     const h = makeHarness();
     let resolveFirst!: () => void;
     h.dispatch.mockImplementationOnce(() => new Promise<void>((r) => { resolveFirst = r; }));
@@ -275,6 +276,7 @@ describe('ViewportManager — request coalescing + prefetch math', () => {
     h.manager.request(null);
     expect(h.manager.consumePendingAggSource()).toBe('filterChanged');
     resolveFirst();
+    await new Promise((r) => setTimeout(r, 0));
   });
 
   it('expands rowEnd in proportion to scroll velocity (prefetch fold-in)', async () => {
@@ -297,10 +299,51 @@ describe('ViewportManager — request coalescing + prefetch math', () => {
     await new Promise<void>((r) => setTimeout(r, 0));
     await new Promise<void>((r) => setTimeout(r, 0));
     h.dispatch.mockClear();
+    // Bypass the 150ms scroll throttle (last setScroll already dispatched).
+    (performance as { now: () => number }).now = vi.fn(() => NOW_A + 300);
     h.manager.request();
     const arg = h.dispatch.mock.calls[0]![0]!;
     // expandRangeForVelocity widens rowEnd when velocity > 0 above threshold.
     expect(arg.rowEnd).toBeGreaterThan(h.manager.state.lastRow + 1);
+    (performance as { now: () => number }).now = original;
+  });
+
+  it('idle PageDown-sized jump synthesizes velocity and widens the fetch', async () => {
+    const h = makeHarness({ rowCount: 5000, rowHeight: 30, containerHeight: 332 });
+    await new Promise<void>((r) => setTimeout(r, 0));
+    // Seed a prior sample (setScroll(0,0) is a no-op at rest), then a
+    // PageDown-sized jump after a long idle gap (>200ms) so the old sampler
+    // would have forced velocity = 0.
+    const original = performance.now.bind(performance);
+    (performance as { now: () => number }).now = vi.fn(() => 1_000);
+    h.manager.setScroll(0, 30);
+    await new Promise<void>((r) => setTimeout(r, 0));
+    h.dispatch.mockClear();
+    (performance as { now: () => number }).now = vi.fn(() => 1_500);
+    // ~10 rows (one body page ≈ 10 rows at 30px / 300px body)
+    h.manager.setScroll(0, 330);
+    expect(Math.abs(h.manager.scrollVelocityRows)).toBeGreaterThan(0.5);
+    await new Promise<void>((r) => setTimeout(r, 0));
+    const arg = h.dispatch.mock.calls[h.dispatch.mock.calls.length - 1]![0]!;
+    expect(arg.rowEnd).toBeGreaterThan(h.manager.state.lastRow + 1);
+    (performance as { now: () => number }).now = original;
+  });
+
+  it('bypasses the 150ms throttle when the live viewport leaves the last fetch', async () => {
+    const h = makeHarness({ rowCount: 5000, rowHeight: 30, containerHeight: 332 });
+    // Seed a dispatched window near the top (setScroll(0,0) is a no-op).
+    const original = performance.now.bind(performance);
+    (performance as { now: () => number }).now = vi.fn(() => 1_000);
+    h.manager.setScroll(0, 30);
+    await new Promise<void>((r) => setTimeout(r, 0));
+    h.dispatch.mockClear();
+    // Within the throttle window, jump far past the seeded window.
+    (performance as { now: () => number }).now = vi.fn(() => 1_050);
+    h.manager.setScroll(0, 9_000);
+    await new Promise<void>((r) => setTimeout(r, 0));
+    // Without the uncovered-window bypass this would be coalesced into the
+    // trailing timer and dispatch would stay at 0 until 150ms elapsed.
+    expect(h.dispatch).toHaveBeenCalled();
     (performance as { now: () => number }).now = original;
   });
 });

@@ -11,6 +11,18 @@ export interface WorkerInitPayload {
    *  contributions — a single short line should not shrink a row below the
    *  user's grid `rowHeight`. */
   rowHeight?: number;
+  /** Async transaction batch debounce (ms). Forwarded to the worker
+   *  `TransactionQueue`. Default 50 when omitted. Runtime-mutable via
+   *  `setAsyncTransactionOptions`. */
+  asyncTransactionWaitMillis?: number;
+  /** When true (default), coalesce pending async txs by row id before
+   *  apply — last write wins within the batch window. Removes beat
+   *  earlier adds/updates. Set `false` to apply every queued tx in order. */
+  asyncTransactionConflate?: boolean;
+  /** Minimum ms between async flushes under continuous load. 0 / omitted
+   *  = no throttle (flush as soon as `asyncTransactionWaitMillis` elapses
+   *  after the first push in a quiet period). */
+  asyncTransactionThrottleMillis?: number;
   /** Cycle 4 / Task 11 (cell-flash patch) — when true, the worker
    *  diffs `applyTransaction.update` rows against the stored row data
    *  and stages the changed (rowId, field) pairs in `pendingFlashes`.
@@ -526,6 +538,14 @@ export type WorkerRequest =
    *  apps that don't use flash). When flipped on the next
    *  `applyTransaction` will start staging diffs. */
   | { id: ReqId; type: 'setEnableCellChangeFlash'; payload: { enabled: boolean } }
+  /** Configure worker async-transaction batching (wait / conflate / throttle). */
+  | { id: ReqId; type: 'setAsyncTransactionOptions'; payload: {
+      waitMillis?: number;
+      conflate?: boolean;
+      throttleMillis?: number;
+    } }
+  /** Force-drain the worker async transaction queue (ignores throttle). */
+  | { id: ReqId; type: 'flushAsyncTransactions'; payload: Record<string, never> }
   /** Cycle 4 / Task 11 (cell-flash patch) — programmatic flash.
    *  `api.flashCells({rowIds, colIds, ...})` routes here so the worker
    *  can resolve the string rowIds via its own `RowStore` lookup and

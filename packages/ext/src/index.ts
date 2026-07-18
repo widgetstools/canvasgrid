@@ -8,6 +8,13 @@ export { ShellLayout } from './shell/shell';
 export { CGridExt, type CGridExtOptions } from './cgridExt';
 export { CgridExtElement, defineCgridExt } from './element';
 export { gridOptionsModule } from './modules/gridOptions';
+export { columnGroupsModule } from './modules/columnGroups';
+export { columnSettingsModule } from './modules/columnSettings';
+export { expressionLabModule } from './modules/expressionLab';
 export { buildDefaultBundle } from './defaultBundle';
 export { titleBarExtensions, injectTitleBarStyles, type TitleBarOptions } from './toolbar/titleBar';
 export { ribbonExtensions, injectRibbonStyles } from './toolbar/ribbon';
+export {
+  mountFormatterStyleChrome,
+  type StyleChromeAdapter,
+} from './toolbar/styleChrome';

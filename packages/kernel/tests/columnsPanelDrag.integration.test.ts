@@ -70,7 +70,18 @@ async function mountWithPanel(
   const colsTab = bar.querySelector('.cg-side-bar-tab[data-id="agColumnsToolPanel"]') as HTMLButtonElement;
   colsTab.dispatchEvent(new MouseEvent('click', { bubbles: true }));
 
+  const destroy = grid.destroy.bind(grid);
+  grid.destroy = () => {
+    destroy();
+    container.remove();
+  };
+
   return grid;
+}
+
+/** Columns panel root for this grid (avoids stale panels left on `document.body`). */
+function panelRoot(grid: CGrid<{ id: string }>): HTMLElement {
+  return (grid as any).root.querySelector('.cg-columns-panel') as HTMLElement;
 }
 
 /** Reach into the mounted sidebar for the live `ColumnVisibilityPanel`
@@ -173,7 +184,7 @@ describe('Columns tool panel — group-aware drag (T3)', () => {
 
     it('hovering the upper half of a top-level leaf resolves to "insert before it" at top level', async () => {
       const grid = await mountWithPanel([{ field: 'a' }, { field: 'b' }, { field: 'c' }]);
-      const root = document.querySelector('.cg-columns-panel') as HTMLElement;
+      const root = panelRoot(grid);
       const pos = pinRowRects(root);
       const panel = getPanelInstance(grid);
       const bTop = pos.get('b')!.top;
@@ -184,7 +195,7 @@ describe('Columns tool panel — group-aware drag (T3)', () => {
 
     it('hovering the lower half of a top-level leaf resolves to "insert after it" (before its next sibling)', async () => {
       const grid = await mountWithPanel([{ field: 'a' }, { field: 'b' }, { field: 'c' }]);
-      const root = document.querySelector('.cg-columns-panel') as HTMLElement;
+      const root = panelRoot(grid);
       const pos = pinRowRects(root);
       const panel = getPanelInstance(grid);
       const bRect = pos.get('b')!;
@@ -194,25 +205,64 @@ describe('Columns tool panel — group-aware drag (T3)', () => {
       grid.destroy();
     });
 
-    it('hovering a group row resolves to targetGroupId = that group, beforeId = its first child', async () => {
+    it('hovering a group row middle third nests into that group', async () => {
       const grid = await mountWithPanel([
         { field: 'a' },
         { groupId: 'G', headerName: 'Grp', children: [{ field: 'b' }, { field: 'c' }] },
       ]);
-      const root = document.querySelector('.cg-columns-panel') as HTMLElement;
+      const root = panelRoot(grid);
       const pos = pinRowRects(root);
       const panel = getPanelInstance(grid);
       const groupRect = pos.get('grp:G')!;
-      // Upper half of the group's own row...
+      const midY = groupRect.top + (groupRect.bottom - groupRect.top) * 0.5;
+      expect(panel.__forTests().resolveDrop(midY, 'a', 'col'))
+        .toEqual({ kind: 'col', movingId: 'a', targetGroupId: 'G', beforeId: 'b' });
+      grid.destroy();
+    });
+
+    it('hovering a group row upper third places the column before the group as a sibling', async () => {
+      const grid = await mountWithPanel([
+        { field: 'a' },
+        { groupId: 'G', headerName: 'Grp', children: [{ field: 'b' }, { field: 'c' }] },
+      ]);
+      const root = panelRoot(grid);
+      const pos = pinRowRects(root);
+      const panel = getPanelInstance(grid);
+      const groupRect = pos.get('grp:G')!;
       const upperY = groupRect.top + 2;
       expect(panel.__forTests().resolveDrop(upperY, 'a', 'col'))
-        .toEqual({ kind: 'col', movingId: 'a', targetGroupId: 'G', beforeId: 'b' });
-      // ...and its lower half both resolve to the same "start of group"
-      // insertion point — the group's children are the very next rows in
-      // the flat list, so there is no distinct "before next child" slot.
+        .toEqual({ kind: 'col', movingId: 'a', targetGroupId: null, beforeId: 'G' });
+      grid.destroy();
+    });
+
+    it('hovering a group row lower third places the column after the group as a sibling', async () => {
+      const grid = await mountWithPanel([
+        { field: 'a' },
+        { groupId: 'G', headerName: 'Grp', children: [{ field: 'b' }, { field: 'c' }] },
+        { field: 'd' },
+      ]);
+      const root = panelRoot(grid);
+      const pos = pinRowRects(root);
+      const panel = getPanelInstance(grid);
+      const groupRect = pos.get('grp:G')!;
       const lowerY = groupRect.bottom - 2;
       expect(panel.__forTests().resolveDrop(lowerY, 'a', 'col'))
-        .toEqual({ kind: 'col', movingId: 'a', targetGroupId: 'G', beforeId: 'b' });
+        .toEqual({ kind: 'col', movingId: 'a', targetGroupId: null, beforeId: 'd' });
+      grid.destroy();
+    });
+
+    it('dragging a nested leaf onto the parent group upper third ungroups it before that group', async () => {
+      const grid = await mountWithPanel([
+        { groupId: 'G', headerName: 'Grp', children: [{ field: 'b' }, { field: 'c' }] },
+        { field: 'a' },
+      ]);
+      const root = panelRoot(grid);
+      const pos = pinRowRects(root);
+      const panel = getPanelInstance(grid);
+      const groupRect = pos.get('grp:G')!;
+      const upperY = groupRect.top + 2;
+      expect(panel.__forTests().resolveDrop(upperY, 'b', 'col'))
+        .toEqual({ kind: 'col', movingId: 'b', targetGroupId: null, beforeId: 'G' });
       grid.destroy();
     });
 
@@ -220,7 +270,7 @@ describe('Columns tool panel — group-aware drag (T3)', () => {
       const grid = await mountWithPanel([
         { groupId: 'G', headerName: 'Grp', children: [{ field: 'a' }] },
       ]);
-      const root = document.querySelector('.cg-columns-panel') as HTMLElement;
+      const root = panelRoot(grid);
       pinRowRects(root);
       const panel = getPanelInstance(grid);
       const resolved = panel.__forTests().resolveDrop(100000, 'a', 'col');
@@ -233,15 +283,21 @@ describe('Columns tool panel — group-aware drag (T3)', () => {
         { groupId: 'G1', headerName: 'G1', children: [{ field: 'a' }, { field: 'b' }] },
         { groupId: 'G2', headerName: 'G2', children: [{ field: 'c' }] },
       ]);
-      const root = document.querySelector('.cg-columns-panel') as HTMLElement;
+      const root = panelRoot(grid);
       const pos = pinRowRects(root);
       const panel = getPanelInstance(grid);
-      // Hover over G1's own child 'a' while dragging G1 itself — 'a' (and
-      // G1's own row) must be excluded from candidates, so the hit lands
-      // on the next real candidate: G2's row.
+      // Hover over G1's own child 'a' while dragging G1 — 'a' (and G1)
+      // are excluded, so the hit selects G2 from above its box → sibling
+      // before G2 (upper-third semantics), never a within-G1 target.
       const aRect = pos.get('a')!;
-      const resolved = panel.__forTests().resolveDrop(aRect.top + 2, 'G1', 'group');
-      expect(resolved.targetGroupId).toBe('G2');
+      const fromChildY = panel.__forTests().resolveDrop(aRect.top + 2, 'G1', 'group');
+      expect(fromChildY).toEqual({
+        kind: 'group', movingId: 'G1', targetGroupId: null, beforeId: 'G2',
+      });
+      // Nesting into G2 still works via that group's middle third.
+      const g2Rect = pos.get('grp:G2')!;
+      const midY = g2Rect.top + (g2Rect.bottom - g2Rect.top) * 0.5;
+      expect(panel.__forTests().resolveDrop(midY, 'G1', 'group').targetGroupId).toBe('G2');
       grid.destroy();
     });
   });
@@ -252,15 +308,17 @@ describe('Columns tool panel — group-aware drag (T3)', () => {
         { field: 'a' },
         { groupId: 'G', headerName: 'Grp', children: [{ field: 'b' }] },
       ]);
-      const root = document.querySelector('.cg-columns-panel') as HTMLElement;
+      const root = panelRoot(grid);
       const pos = pinRowRects(root);
       const spy = vi.spyOn(grid, 'moveColumnToGroup');
 
       const handle = root.querySelector<HTMLElement>('[data-col-id="a"] .cg-columns-panel-row-handle')!;
-      const groupTop = pos.get('grp:G')!.top;
+      const groupRect = pos.get('grp:G')!;
+      // Middle third of the group row = nest into the group.
+      const nestY = groupRect.top + (groupRect.bottom - groupRect.top) * 0.5;
       handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: pos.get('a')!.top + 2, bubbles: true }));
-      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 10, clientY: groupTop + 2 }));
-      window.dispatchEvent(new MouseEvent('mouseup', { clientX: 10, clientY: groupTop + 2 }));
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 10, clientY: nestY }));
+      window.dispatchEvent(new MouseEvent('mouseup', { clientX: 10, clientY: nestY }));
 
       expect(spy).toHaveBeenCalledWith('a', 'G', 'b');
       grid.destroy();
@@ -271,15 +329,16 @@ describe('Columns tool panel — group-aware drag (T3)', () => {
         { groupId: 'G1', headerName: 'G1', children: [{ field: 'a' }] },
         { groupId: 'G2', headerName: 'G2', children: [{ field: 'b' }] },
       ]);
-      const root = document.querySelector('.cg-columns-panel') as HTMLElement;
+      const root = panelRoot(grid);
       const pos = pinRowRects(root);
       const spy = vi.spyOn(grid, 'moveColumnGroup');
 
       const handle = root.querySelector<HTMLElement>('[data-group-id="G1"] .cg-columns-panel-row-handle')!;
-      const g2Top = pos.get('grp:G2')!.top;
+      const g2Rect = pos.get('grp:G2')!;
+      const nestY = g2Rect.top + (g2Rect.bottom - g2Rect.top) * 0.5;
       handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: pos.get('grp:G1')!.top + 2, bubbles: true }));
-      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 10, clientY: g2Top + 2 }));
-      window.dispatchEvent(new MouseEvent('mouseup', { clientX: 10, clientY: g2Top + 2 }));
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 10, clientY: nestY }));
+      window.dispatchEvent(new MouseEvent('mouseup', { clientX: 10, clientY: nestY }));
 
       expect(spy).toHaveBeenCalledWith('G1', 'G2', 'b');
       grid.destroy();
@@ -290,19 +349,20 @@ describe('Columns tool panel — group-aware drag (T3)', () => {
         { field: 'a' },
         { groupId: 'G', headerName: 'Grp', marryChildren: true, children: [{ field: 'b' }] },
       ]);
-      const root = document.querySelector('.cg-columns-panel') as HTMLElement;
+      const root = panelRoot(grid);
       const pos = pinRowRects(root);
 
       const handle = root.querySelector<HTMLElement>('[data-col-id="a"] .cg-columns-panel-row-handle')!;
-      const groupTop = pos.get('grp:G')!.top;
+      const groupRect = pos.get('grp:G')!;
+      const nestY = groupRect.top + (groupRect.bottom - groupRect.top) * 0.5;
       handle.dispatchEvent(new MouseEvent('mousedown', { clientX: 10, clientY: pos.get('a')!.top + 2, bubbles: true }));
-      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 10, clientY: groupTop + 2 }));
+      window.dispatchEvent(new MouseEvent('mousemove', { clientX: 10, clientY: nestY }));
 
       const groupRow = root.querySelector('[data-group-id="G"]')!;
       expect(groupRow.classList.contains('cg-columns-panel-row--drop-reject')).toBe(true);
       expect(groupRow.classList.contains('cg-columns-panel-row--drop-target')).toBe(false);
 
-      window.dispatchEvent(new MouseEvent('mouseup', { clientX: 10, clientY: groupTop + 2 }));
+      window.dispatchEvent(new MouseEvent('mouseup', { clientX: 10, clientY: nestY }));
       // marryChildren rejected the re-parent — 'a' stays at top level.
       expect(grid.getColumnState().map((s) => s.colId)).toEqual(['a', 'b']);
       grid.destroy();

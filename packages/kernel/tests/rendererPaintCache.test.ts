@@ -482,18 +482,20 @@ describe('CGrid + paint-cache layer — stats + reset triggers (Task 4)', () => 
     (grid as any).paintCacheDeferLayer = false;
     grid.resetPaintStats();
 
-    // Layer coverage is bodyHeight * (1 + 2*0.5) = 2 * bodyHeight; a jump
-    // of several screens is well beyond ANY overscan configuration and
-    // must force a reset, never a stale present of pre-jump pixels.
+    // Layer coverage is bodyHeight * (1 + 2*1.0) with default overscan;
+    // a jump of several screens forces a live paint + layer re-anchor once
+    // the covering chunk (or lean full) runs — never a frozen hold.
     const bodyHeight = g.viewport.bodyHeight as number;
     g.onScrollerScroll(0, bodyHeight * 10);
     g.recomputeViewport();
     canvas.tickPaint(now + 1000);
 
+    // Throttled viewport fetch may land shortly after; allow a beat.
+    await new Promise((r) => setTimeout(r, 200));
+    (grid as any).paintCacheDeferLayer = false;
+    canvas.tickPaint(now + 2000);
+
     const stats = grid.getPaintStats();
-    // Hybrid may legacy-paint if the jump also lands as damage.full keep;
-    // a coverage jump that planLayer classifies as reset still increments
-    // layerResets when the layer path runs.
     expect(stats.paints).toBeGreaterThanOrEqual(1);
     if (stats.presents >= 1) {
       expect(stats.layerResets).toBeGreaterThanOrEqual(1);
@@ -573,7 +575,7 @@ describe('CGrid + paint-cache layer — stats + reset triggers (Task 4)', () => 
   // ─── Closeout fix wave — D.1/D.2 coverage gaps + I-4 regression lock ───
 
   it('(C-1 regression lock / spec §5) chunk arrival for an off-screen in-layer row rasters the LAYER (stats), not the screen', async () => {
-    const { grid, restore } = buildWiredGrid(rows(200), cols);
+    const { grid, restore } = buildWiredGrid(rows(200), cols, { paintCacheOverscan: 0.5 });
     const canvas = (grid as any).cgridCanvas;
     const g = grid as any;
 
@@ -581,7 +583,7 @@ describe('CGrid + paint-cache layer — stats + reset triggers (Task 4)', () => 
     canvas.tickPaint(performance.now());
 
     // A handful of rows below the visible window but comfortably inside
-    // the retained layer's default overscan coverage (0.5 * bodyHeight on
+    // the retained layer's overscan coverage (0.5 * bodyHeight on
     // each side) — off-screen, but NOT off-layer.
     const rowHeight = g.theme.rowHeight as number;
     const bodyHeight = g.viewport.bodyHeight as number;

@@ -437,3 +437,115 @@ describe('CGrid — expand / collapse API', () => {
     restore();
   });
 });
+
+describe('CGrid — grouping survives late columnDefs (persist/profile restore race)', () => {
+  it('re-applies rowGroupColumns after updateGridOptions brings missing group cols online', async () => {
+    // Mirrors the STOMP / persist boot path: restore installs rowGroupColumns
+    // while only a placeholder leaf exists; chips paint but the worker rejects
+    // unknown ids. Later columnDefs discovery must re-ship the group model.
+    const { grid, restore } = buildWiredGrid<Row>(SAMPLE_ROWS, [{ field: 'id' }]);
+    await new Promise((r) => setTimeout(r, 50));
+
+    grid.setRowGroupColumns(['desk']);
+    await new Promise((r) => setTimeout(r, 50));
+    // Chips / main-thread state restored…
+    expect(grid.getRowGroupColumns()).toEqual(['desk']);
+    // …but grouping never landed on the worker (desk was unknown).
+    expect(grid.getExpandedKeys().size).toBe(0);
+
+    grid.updateGridOptions({
+      columnDefs: [
+        { field: 'id' },
+        { field: 'desk' },
+        { field: 'pri', type: 'number' },
+      ],
+    });
+    await new Promise((r) => setTimeout(r, 80));
+
+    expect(grid.getRowGroupColumns()).toEqual(['desk']);
+    const keys = grid.getExpandedKeys();
+    expect(keys.size).toBe(3);
+    expect(keys.has('desk:APAC')).toBe(true);
+    expect(keys.has('desk:EMEA')).toBe(true);
+    expect(keys.has('desk:AMER')).toBe(true);
+
+    grid.destroy();
+    restore();
+  });
+
+  it('re-applies grouping after setRowData when worker reply has no groupKeys', async () => {
+    const { grid, restore } = buildWiredGrid<Row>(SAMPLE_ROWS, [{ field: 'id' }]);
+    await new Promise((r) => setTimeout(r, 50));
+    grid.setRowGroupColumns(['desk']);
+    await new Promise((r) => setTimeout(r, 50));
+    expect(grid.getExpandedKeys().size).toBe(0);
+
+    // Columns arrive, then a full data replace — the setRowData reply
+    // should notice missing groupKeys and re-ship the model.
+    grid.updateGridOptions({
+      columnDefs: [
+        { field: 'id' },
+        { field: 'desk' },
+        { field: 'pri', type: 'number' },
+      ],
+    });
+    await new Promise((r) => setTimeout(r, 40));
+    grid.setRowData(SAMPLE_ROWS);
+    await new Promise((r) => setTimeout(r, 100));
+
+    expect(grid.getExpandedKeys().size).toBe(3);
+    grid.destroy();
+    restore();
+  });
+
+  it('getState persists collapsed groups and setState restores them', async () => {
+    const { grid, restore } = buildWiredGrid<Row>(SAMPLE_ROWS, SAMPLE_COLS);
+    await new Promise((r) => setTimeout(r, 50));
+    grid.setRowGroupColumns(['desk']);
+    await new Promise((r) => setTimeout(r, 50));
+    grid.setExpanded('desk:APAC', false);
+    grid.setExpanded('desk:EMEA', false);
+    await new Promise((r) => setTimeout(r, 50));
+    const snap = grid.getState();
+    expect(snap.expandedRouteIds).toEqual(['desk:AMER']);
+
+    // Expand everything, then restore the saved snapshot — collapsed
+    // groups must come back.
+    grid.expandAll();
+    await new Promise((r) => setTimeout(r, 50));
+    expect(grid.getExpandedKeys().size).toBe(3);
+
+    grid.setState({
+      version: snap.version,
+      rowGroupColumns: ['desk'],
+      expandedRouteIds: snap.expandedRouteIds,
+    });
+    await new Promise((r) => setTimeout(r, 80));
+
+    const keys = grid.getExpandedKeys();
+    expect(keys.has('desk:AMER')).toBe(true);
+    expect(keys.has('desk:APAC')).toBe(false);
+    expect(keys.has('desk:EMEA')).toBe(false);
+    grid.destroy();
+    restore();
+  });
+
+  it('restores expandedRouteIds across the late-columnDefs persist race', async () => {
+    const { grid, restore } = buildWiredGrid<Row>(SAMPLE_ROWS, [{ field: 'id' }]);
+    await new Promise((r) => setTimeout(r, 50));
+    grid.setState({
+      version: 4,
+      rowGroupColumns: ['desk'],
+      expandedRouteIds: ['desk:AMER'],
+    });
+    grid.updateGridOptions({ columnDefs: SAMPLE_COLS });
+    await new Promise((r) => setTimeout(r, 150));
+
+    const keys = grid.getExpandedKeys();
+    expect(keys.has('desk:AMER')).toBe(true);
+    expect(keys.has('desk:APAC')).toBe(false);
+    expect(keys.has('desk:EMEA')).toBe(false);
+    grid.destroy();
+    restore();
+  });
+});

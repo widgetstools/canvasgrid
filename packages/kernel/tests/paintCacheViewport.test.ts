@@ -160,7 +160,7 @@ describe('buildLayerViewport — layer row layout (Task 3)', () => {
   });
 
   it('agrees with the real viewport on content-space row position for overlapping rows', async () => {
-    const { grid, restore } = buildWiredGrid(rows(2000), cols);
+    const { grid, restore } = buildWiredGrid(rows(2000), cols, { paintCacheOverscan: 0.5 });
     await waitForFirstChunk();
     const g = grid as any;
 
@@ -192,8 +192,8 @@ describe('buildLayerViewport — layer row layout (Task 3)', () => {
       const layerContentTop = layerRow.top - layerVs.bodyTop + layerTop;
       expect(layerContentTop).toBeCloseTo(realContentTop, 5);
     }
-    // The layer's coverage (bodyHeight + 600px each side) strictly
-    // contains the real viewport's own visible range, so every real data
+    // The layer's coverage (bodyHeight + 600px) strictly contains the real
+    // viewport's own visible range at overscan 0.5, so every real data
     // row must show up in the layer's row set too.
     expect(overlapCount).toBe(realByLocal.size);
     expect(overlapCount).toBeGreaterThan(0);
@@ -206,7 +206,10 @@ describe('buildLayerViewport — layer row layout (Task 3)', () => {
 describe('fetch-window coupling (Task 3)', () => {
   it('paintCache (default true) widens firstRow/lastRow to cover the layer range vs paintCache:false', async () => {
     const { grid: gridOn, restore: restoreOn } = buildWiredGrid(rows(2000), cols);
-    const { grid: gridOff, restore: restoreOff } = buildWiredGrid(rows(2000), cols, { paintCache: false });
+    const { grid: gridOff, restore: restoreOff } = buildWiredGrid(rows(2000), cols, {
+      paintCache: false,
+      rowBuffer: 3,
+    });
     await waitForFirstChunk();
 
     (gridOn as any).onScrollerScroll(0, 5000);
@@ -220,10 +223,10 @@ describe('fetch-window coupling (Task 3)', () => {
     const on = (gridOn as any).viewportManager.state;
     const off = (gridOff as any).viewportManager.state;
 
-    // Widened (cache on) range must fully contain the un-widened (cache
-    // off) range and be strictly larger — the default paintCacheOverscan
-    // (0.5 × bodyHeight) banks far more than the default 3-row overscan
-    // for an ordinary row height.
+    // Widened (cache on, default overscan=1 page) range must fully contain
+    // the un-widened (cache off + explicit rowBuffer:3) range and be
+    // strictly larger — one bodyHeight of overscan banks far more than
+    // 3 rows for an ordinary row height.
     expect(on.firstRow).toBeLessThanOrEqual(off.firstRow);
     expect(on.lastRow).toBeGreaterThanOrEqual(off.lastRow);
     expect(on.lastRow - on.firstRow).toBeGreaterThan(off.lastRow - off.firstRow);
@@ -239,24 +242,31 @@ describe('fetch-window coupling (Task 3)', () => {
     await waitForFirstChunk();
     const g = grid as any;
 
+    // Clear the Deephaven 150ms scroll throttle from the initial fetch /
+    // any prior scroll so this spy sees the dispatch.
+    await new Promise((r) => setTimeout(r, 160));
     const spy = vi.spyOn(g.workerCoord, 'dispatchViewportRequest');
     g.onScrollerScroll(0, 5000);
 
     expect(spy).toHaveBeenCalled();
     const call = spy.mock.calls[spy.mock.calls.length - 1]![0] as { rowStart: number; rowEnd: number };
     const vs = g.viewportManager.state;
-    // A single scroll call samples zero velocity (no prior sample within
-    // the 200ms window), so `expandRangeForVelocity` is a no-op and the
-    // posted range is exactly [firstRow, lastRow + 1).
-    expect(call.rowStart).toBe(vs.firstRow);
-    expect(call.rowEnd).toBe(vs.lastRow + 1);
+    // Large idle jumps synthesize velocity + expandRangeForScrollDelta so
+    // the posted window covers the landing page (avoids blank cells on
+    // PageDown). Range must at least contain the live overscan window.
+    expect(call.rowStart).toBeLessThanOrEqual(vs.firstRow);
+    expect(call.rowEnd).toBeGreaterThanOrEqual(vs.lastRow + 1);
+    expect(call.rowEnd).toBeGreaterThan(vs.lastRow + 1);
 
     grid.destroy();
     restore();
   });
 
   it('paintCache: false reproduces today\'s exact (pre-widening) overscan', async () => {
-    const { grid, restore } = buildWiredGrid(rows(2000), cols, { paintCache: false });
+    const { grid, restore } = buildWiredGrid(rows(2000), cols, {
+      paintCache: false,
+      rowBuffer: 3,
+    });
     await waitForFirstChunk();
     const g = grid as any;
 
@@ -265,9 +275,8 @@ describe('fetch-window coupling (Task 3)', () => {
 
     // Re-derive "today's" value independently via a direct computeViewport
     // call mirroring ViewportManager.computeCurrentViewport's own argument
-    // construction, with `rowBuffer` left undefined (the pre-widening
-    // default) — proves paintCache:false takes the widening branch's early
-    // return rather than merely computing the same number by coincidence.
+    // construction, with `rowBuffer: 3` — proves paintCache:false + explicit
+    // rowBuffer takes the early return rather than auto page-buffering.
     const expected = computeViewport({
       columnLayout: g.columnLayout,
       subgrids: g.subgrids,
@@ -278,6 +287,7 @@ describe('fetch-window coupling (Task 3)', () => {
       suppressColumnVirtualisation: false,
       suppressRowVirtualisation: false,
       dataRowHeightIndex: g.rowHeightIndex ?? undefined,
+      rowBuffer: 3,
     });
 
     expect(vs.firstRow).toBe(expected.firstRow);

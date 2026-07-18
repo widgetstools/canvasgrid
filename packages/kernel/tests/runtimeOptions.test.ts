@@ -75,6 +75,7 @@ describe('INITIAL_ONLY_OPTIONS', () => {
       'theme', 'rowHeight', 'headerHeight', 'defaultColDef', 'animateRows',
       'rowSelection', 'suppressColumnVirtualisation', 'enableCellChangeFlash',
       'cellFlashDuration', 'cellFadeDuration', 'asyncTransactionWaitMillis',
+      'asyncTransactionConflate', 'asyncTransactionThrottleMillis',
       'rowBuffer', 'context', 'loading', 'debug',
     ] as const) {
       expect(INITIAL_ONLY_OPTIONS.has(k)).toBe(false);

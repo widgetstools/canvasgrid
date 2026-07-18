@@ -279,30 +279,52 @@ export class Renderer {
     // Task 5 — scroll self-blit. Copies the still-valid body pixels by the
     // scroll delta BEFORE the clip/fill block below repaints only the
     // newly-exposed band (already part of `rects` above — see
-    // `DamageLedger.takeResolved`). C1 fix — `drawImage`'s SOURCE rect
-    // addresses the canvas's backing store directly (device px,
-    // CTM-independent), but the DESTINATION rect goes through `gc`'s
-    // persistent `setTransform(dpr, 0, 0, dpr, 0, 0)` CTM (installed by
-    // `CGridCanvas.resize`) — so the destination must be passed in CSS px,
-    // NOT device px, or a dpr≠1 backing store double-scales the paste
-    // (smearing a 2×-sized copy of the grid outside the damage clip on
-    // every partial scroll at dpr=2). Silently skipped — falling back to
-    // the ordinary clip/fill/repaint path below — when `getCanvasElement`
-    // isn't wired or reports nothing; the blit is an optimization, never a
-    // correctness dependency.
+    // `DamageLedger.takeResolved`).
+    //
+    // Device-px + identity CTM (same discipline as `PaintCacheLayer.shift`):
+    // the previous path mixed a DEVICE-px source with a CSS-px destination
+    // under the persistent `setTransform(dpr,…)` CTM. At fractional dpr
+    // (1.25 / 1.5) or non-integer `bodyHeight*dpr`, that resampled the keep
+    // band and left mid-viewport seams that look like squashed / uneven
+    // row heights (clipped glyphs + irregular gridline spacing) until a
+    // full paint healed them. Both source and dest are now integer device
+    // px under an identity transform; `imageSmoothingEnabled = false`
+    // keeps the copy nearest-neighbor. Silently skipped when
+    // `getCanvasElement` isn't wired — the blit is an optimization, never
+    // a correctness dependency.
     if (partial && damage.blit) {
       const canvas = this.opts.getCanvasElement?.();
       if (canvas) {
         const dpr = this.opts.getDevicePixelRatio?.() ?? (canvas.width / Math.max(1, w));
-        const bodyTop = pctx.viewport.bodyTop, bodyBottom = pctx.viewport.bodyBottom;
+        const bodyTop = pctx.viewport.bodyTop;
+        const bodyBottom = pctx.viewport.bodyBottom;
         const dy = damage.blit.dy;
-        // Source rect: device px — addresses the backing store, CTM-independent.
-        const sy = (bodyTop + Math.max(0, dy)) * dpr;
-        const hCss = bodyBottom - bodyTop - Math.abs(dy);
-        const hDevicePx = hCss * dpr;
-        // Destination rect: CSS px — the CTM scales it back up to device px.
-        const dyDst = bodyTop + Math.max(0, -dy);
-        if (hDevicePx > 0) gc.drawImage(canvas, 0, sy, canvas.width, hDevicePx, 0, dyDst, w, hCss);
+        const bodyTopDev = Math.round(bodyTop * dpr);
+        const bodyHDev = Math.round((bodyBottom - bodyTop) * dpr);
+        const dyDev = Math.round(dy * dpr);
+        const keepH = bodyHDev - Math.abs(dyDev);
+        if (keepH > 0 && dyDev !== 0) {
+          gc.cache.save();
+          gc.setTransform(1, 0, 0, 1, 0, 0);
+          gc.cache.imageSmoothingEnabled = false;
+          if (dyDev > 0) {
+            // Scrolled down: shift still-valid pixels UP, expose bottom band.
+            gc.drawImage(
+              canvas,
+              0, bodyTopDev + dyDev, canvas.width, keepH,
+              0, bodyTopDev, canvas.width, keepH,
+            );
+          } else {
+            // Scrolled up: shift still-valid pixels DOWN, expose top band.
+            const up = -dyDev;
+            gc.drawImage(
+              canvas,
+              0, bodyTopDev, canvas.width, keepH,
+              0, bodyTopDev + up, canvas.width, keepH,
+            );
+          }
+          gc.cache.restore();
+        }
       }
     }
 

@@ -44,7 +44,8 @@ const surface = (ctx: CgExtContext): LayoutGridSurface => ctx.grid as unknown as
 const DEFAULT_ID = 'default';
 
 const I = {
-  user: 'M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2M12 11m-4 0a4 4 0 1 0 8 0a4 4 0 1 0-8 0',
+  /** Layout / view lens — distinct from the profiles user avatar. */
+  layout: 'M3 3h7v7H3zM14 3h7v7h-7zM14 14h7v7h-7zM3 14h7v7H3z',
   chevronDown: 'M6 9l6 6 6-6',
   check: 'M20 6L9 17l-5-5',
   lock: 'M5 11h14v10H5zM7 11V7a5 5 0 0 1 10 0v4',
@@ -175,14 +176,14 @@ export function layoutsItem(): ToolbarItem {
       const grid = surface(ctx);
       const btn = document.createElement('button');
       btn.type = 'button';
-      btn.className = 'cgext-profile';
+      btn.className = 'cgext-pill cgext-layouts-trigger';
       btn.setAttribute('aria-haspopup', 'menu');
       btn.setAttribute('aria-expanded', 'false');
       btn.innerHTML =
-        `<span class="cgext-profile-avatar">${svg(I.user, 13)}</span>` +
-        `<span class="cgext-profile-name"></span>` +
-        `<span class="cgext-profile-caret">${svg(I.chevronDown, 13)}</span>`;
-      const nameEl = btn.querySelector('.cgext-profile-name')!;
+        `<span class="cgext-pill-icon">${svg(I.layout, 13)}</span>` +
+        `<span class="cgext-pill-name"></span>` +
+        `<span class="cgext-pill-caret">${svg(I.chevronDown, 13)}</span>`;
+      const nameEl = btn.querySelector('.cgext-pill-name')!;
       const paint = () => {
         let name = 'Default';
         try { name = grid.getActiveLayout().name; } catch { /* pre-init grid */ }
@@ -412,11 +413,13 @@ function startRename(grid: LayoutGridSurface, row: HTMLElement, l: { id: string;
 
 export function injectLayoutsMenuStyles(): void {
   if (typeof document === 'undefined') return;
-  if (document.getElementById('cgext-layouts-styles')) return;
-  const style = document.createElement('style');
-  style.id = 'cgext-layouts-styles';
+  let style = document.getElementById('cgext-layouts-styles') as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'cgext-layouts-styles';
+    document.head.appendChild(style);
+  }
   style.textContent = LAYOUTS_CSS;
-  document.head.appendChild(style);
 }
 
 const LAYOUTS_CSS = `
@@ -469,7 +472,7 @@ const LAYOUTS_CSS = `
 .cgext-layouts-lock { width: 24px; display: inline-flex; justify-content: center; color: var(--cg-muted-fg-color, #9aa4b6); opacity: 0.7; }
 .cgext-layouts-rename {
   flex: 1 1 auto; min-width: 0; height: 26px; padding: 0 8px;
-  border: 1px solid var(--cg-accent-color, #4f9cf9); border-radius: var(--cg-radius, 6px);
+  border: 1px solid var(--cg-accent-color, #4f9cf9); border-radius: var(--cg-radius, 2px);
   background: var(--cg-control-bg, rgba(0,0,0,0.25));
   color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
 }
@@ -482,7 +485,7 @@ const LAYOUTS_CSS = `
 }
 .cgext-layouts-new input {
   flex: 1 1 auto; min-width: 0; height: 28px; padding: 0 9px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 7px);
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 2px);
   background: var(--cg-control-bg, rgba(0,0,0,0.25));
   color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
 }

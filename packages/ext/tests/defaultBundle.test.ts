@@ -23,12 +23,10 @@ describe('default bundle', () => {
 
     // Clicking the launcher opens the Grid Options sheet.
     (launcher!.querySelector('button') as HTMLButtonElement).click();
-    // gridOptionsModule's controls are Lit custom elements that render into
-    // shadow DOM (and `cgc-number` doesn't reflect its `label` attribute
-    // into visible text at all), so `.textContent` on the sheet can't see
-    // "Row height" — assert on the mounted control's light-DOM host instead,
-    // which is an equally strong proof the Grid Options module was mounted.
-    expect(host.querySelector('.cgext-sheet [data-opt="rowHeight"]')).toBeTruthy();
+    // gridOptionsModule now mounts the kernel's GridOptionsToolPanel (the same
+    // migration gridOptionsModule.test.ts covers) instead of a hand-built
+    // panel — assert on the tool panel's root class as proof it mounted.
+    expect(host.querySelector('.cgext-sheet .cg-settings-panel')).toBeTruthy();
     ext.destroy();
   });
 });

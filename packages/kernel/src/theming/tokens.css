@@ -190,7 +190,8 @@
    * = color-mix(#fff, #182230 97%) ≈ #1F2936 (navy data plane),
    * --ag-foreground-color ≈ #fff (rendered here as a soft near-white),
    * --ag-active-color #2196f3 (blue accent driving hover/selection/focus).
-   * Borders are rgba(255,255,255,0.16); AG Quartz does not zebra-stripe. */
+   * Borders are rgba(255,255,255,0.16); AG Quartz does not zebra-stripe.
+   * Surfaces below are AG's values × 0.95 (5% darker) for a deeper canvas. */
   color-scheme: dark;
   /* Inter (chrome / DOM panels / canvas-painted headers). Falls
    * back to the system UI sans-serif when Inter isn't loaded —
@@ -206,9 +207,11 @@
   --cg-row-height: 32px;
   --cg-header-height: 40px;
   --cg-fg-color: #E6E8EC;
-  --cg-bg-color: #1F2936;
-  --cg-row-alt-bg: #1F2936;
-  --cg-header-bg: #232D3A;
+  --cg-bg-color: #1A232E;
+  --cg-row-alt-bg: #1A232E;
+  /* Header chrome — darker than the cell plane so the band reads as
+   * structure, not another row of data. */
+  --cg-header-bg: #161D26;
   --cg-header-fg: rgb(255 255 255 / 78%);
   --cg-border-color: rgb(255 255 255 / 16%);
   --cg-grid-line-color: rgb(255 255 255 / 11%);
@@ -222,28 +225,26 @@
   --cg-flash-to-color: rgba(184, 134, 11, 0);
   --cg-resizer-hot-zone: 4px;
   --cg-scrollbar-thickness: 6px;
-  --cg-floating-filter-bg: #1F2936;
+  --cg-floating-filter-bg: #1A232E;
   --cg-floating-filter-border: var(--cg-border-color);
   --cg-floating-filter-placeholder: rgb(255 255 255 / 40%);
-  --cg-quick-filter-match-bg: #4d3700;
+  --cg-quick-filter-match-bg: #493400;
   --cg-unsort-icon-color: rgb(255 255 255 / 40%);
   --cg-range-fill-color: rgb(33 150 243 / 20%);
   --cg-range-border-color: #2196f3;
-  /* Totals — the +2% header lift, light muted fg. */
-  --cg-totals-bg: #232D3A;
+  /* Totals / pinned / group — match the darker header band. */
+  --cg-totals-bg: #161D26;
   --cg-totals-fg: #E6E8EC;
   --cg-totals-border-top: rgb(255 255 255 / 16%);
   --cg-totals-fg-muted: rgb(255 255 255 / 55%);
   --cg-totals-font-weight: 500;
-  /* Pinned rows — single step above body bg. */
-  --cg-pinned-row-bg: #232D3A;
+  --cg-pinned-row-bg: #161D26;
   --cg-pinned-row-fg: var(--cg-fg-color);
   --cg-pinned-row-border: var(--cg-totals-border-top);
-  /* Group rows — same as header so spine reads as structural chrome. */
   --cg-group-chevron-color: var(--cg-totals-fg-muted);
   --cg-group-count-color: var(--cg-totals-fg-muted);
   --cg-group-indent: 14px;
-  --cg-group-row-bg: #232D3A;
+  --cg-group-row-bg: #161D26;
   --cg-group-checkbox-border-color: var(--cg-fg-color);
   --cg-group-checkbox-check-color: var(--cg-fg-color);
   --cg-group-checkbox-indeterminate-color: var(--cg-fg-color);
@@ -252,21 +253,20 @@
   --cg-group-footer-fg: var(--cg-totals-fg);
   --cg-group-footer-border-top: var(--cg-totals-border-top);
   --cg-group-footer-font-weight: var(--cg-totals-font-weight);
-  /* Cycle 22 / Task 1 — dark-mode counterparts. Inputs aliased to a
-   * subtle lift over body bg; tooltip stays slate (same family as
-   * light mode) so the popover reads consistently across themes. */
-  --cg-input-bg: #232D3A;
+  /* Cycle 22 / Task 1 — dark-mode counterparts. Inputs match header
+   * chrome; tooltip/popup stay a step above body for floating panels. */
+  --cg-input-bg: #161D26;
   --cg-input-fg: var(--cg-fg-color);
   --cg-input-border: var(--cg-border-color);
   --cg-input-focus-border: var(--cg-focus-ring-color);
-  --cg-input-disabled-bg: #1F2936;
-  --cg-tooltip-bg: #26303D;
+  --cg-input-disabled-bg: #1A232E;
+  --cg-tooltip-bg: #242E3A;
   --cg-tooltip-fg: #E6E8EC;
   --cg-tooltip-border: rgb(255 255 255 / 20%);
   --cg-checkbox-checked-bg: #2196f3;
   --cg-checkbox-checked-fg: #FFFFFF;
   --cg-cell-horizontal-border-color: transparent;
-  --cg-popup-bg: #26303D;
+  --cg-popup-bg: #242E3A;
   --cg-popup-border: rgb(255 255 255 / 20%);
   --cg-menu-hover-bg: rgb(255 255 255 / 8%);
   /* Cycle 22 / Task 2 — density baseline. Overridden per density class. */
@@ -1719,7 +1719,7 @@
   position: relative;
   width: 28px;
   height: 16px;
-  border-radius: var(--cg-radius, 8px);
+  border-radius: 8px;
   background: color-mix(in srgb, var(--cg-fg-color) 30%, transparent);
   border: none;
   cursor: pointer;
@@ -1736,7 +1736,7 @@
   left: 2px;
   width: 12px;
   height: 12px;
-  border-radius: var(--cg-radius, 50%);
+  border-radius: 50%;
   background: var(--cg-bg-color);
   transition: transform 120ms ease;
 }
@@ -2552,7 +2552,7 @@
   color: var(--cg-fg-color);
   background: color-mix(in srgb, var(--cg-fg-color) 5%, transparent);
   border: 1px solid var(--cg-border-color);
-  border-radius: var(--cg-radius, 4px);
+  border-radius: 2px;
   outline: none;
 }
 .cg-settings-search:focus {
@@ -2566,7 +2566,7 @@
   color: var(--cg-fg-color);
   background: transparent;
   border: 1px solid var(--cg-border-color);
-  border-radius: var(--cg-radius, 999px);
+  border-radius: 999px;
   cursor: pointer;
   white-space: nowrap;
   opacity: 0.75;
@@ -2633,7 +2633,7 @@
   text-align: center;
   color: var(--cg-bg-color);
   background: var(--cg-settings-accent);
-  border-radius: var(--cg-radius, 999px);
+  border-radius: 999px;
 }
 .cg-settings-row {
   position: relative;
@@ -2721,7 +2721,7 @@
   position: relative;
   width: 28px;
   height: 16px;
-  border-radius: var(--cg-radius, 8px);
+  border-radius: 8px;
   background: color-mix(in srgb, var(--cg-fg-color) 30%, transparent);
   border: none;
   cursor: pointer;
@@ -2738,7 +2738,7 @@
   left: 2px;
   width: 12px;
   height: 12px;
-  border-radius: var(--cg-radius, 50%);
+  border-radius: 50%;
   background: var(--cg-bg-color);
   transition: transform 120ms ease;
 }
@@ -2758,7 +2758,7 @@
   color: var(--cg-fg-color);
   background: color-mix(in srgb, var(--cg-fg-color) 5%, transparent);
   border: 1px solid var(--cg-border-color);
-  border-radius: var(--cg-radius, 4px);
+  border-radius: 2px;
   outline: none;
 }
 .cg-settings-input:focus {
@@ -2922,18 +2922,303 @@
   overflow: hidden;
   --cg-settings-accent: var(--cg-focus-ring-color);
 }
-.cg-colgroups-toolbar {
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--cg-border-color);
+/* Master–detail body: groups list (left) + selected-group editor (right). */
+.cg-colgroups-body {
+  display: grid;
+  grid-template-columns: 220px 1fr;
+  min-height: 0;
+  flex: 1;
+  overflow: hidden;
+}
+.cg-colgroups-list {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  border-right: 1px solid var(--cg-border-color);
+  background: color-mix(in srgb, var(--cg-fg-color) 2%, transparent);
+}
+.cg-colgroups-list-header {
   display: flex;
   align-items: center;
   gap: 6px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--cg-border-color);
   flex: 0 0 auto;
 }
-.cg-colgroups-tree {
+.cg-colgroups-list-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--cg-fg-color) 55%, transparent);
+}
+.cg-colgroups-list-count {
+  font-size: 11px;
+  color: color-mix(in srgb, var(--cg-fg-color) 45%, transparent);
+  margin-inline-end: auto;
+}
+.cg-colgroups-list-body {
   flex: 1 1 auto;
   min-height: 0;
   overflow-y: auto;
+}
+.cg-colgroups-list-item {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.cg-colgroups-list-item:focus-visible {
+  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
+  outline-offset: -1px;
+}
+.cg-colgroups-list-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--cg-font-size-sm);
+  font-weight: 500;
+}
+.cg-colgroups-editor {
+  min-width: 0;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.cg-colgroups-editor-empty {
+  padding: 16px 14px;
+  font-size: var(--cg-font-size-sm);
+  line-height: 1.45;
+  color: var(--cg-row-group-panel-empty-fg);
+}
+.cg-colgroups-editor-title {
+  padding: 10px 12px 6px;
+  flex: 0 0 auto;
+}
+.cg-colgroups-rename {
+  width: 100%;
+  font-weight: 600;
+  font-size: calc(var(--cg-font-size) + 1px);
+  border-radius: 2px;
+}
+.cg-colgroups-editor-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px 8px;
+  flex: 0 0 auto;
+}
+.cg-colgroups-columns {
+  margin: 0 10px;
+  padding-top: 4px;
+}
+.cg-colgroups-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.cg-colgroups-chips-empty {
+  font-size: var(--cg-font-size-sm);
+  color: var(--cg-row-group-panel-empty-fg);
+  padding: 4px 0;
+}
+.cg-colgroups-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 2px 4px 2px 8px;
+  border: 1px solid var(--cg-border-color);
+  border-radius: 2px;
+  background: color-mix(in srgb, var(--cg-fg-color) 4%, transparent);
+  font-size: var(--cg-font-size-sm);
+}
+.cg-colgroups-chip-name {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cg-colgroups-chip-show,
+.cg-colgroups-chip-remove {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  border: none;
+  border-radius: 2px;
+  background: transparent;
+  color: color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
+  cursor: pointer;
+}
+.cg-colgroups-chip-show:hover,
+.cg-colgroups-chip-remove:hover {
+  color: var(--cg-fg-color);
+  background: color-mix(in srgb, var(--cg-fg-color) 10%, transparent);
+}
+.cg-colgroups-chip-show:focus-visible,
+.cg-colgroups-chip-remove:focus-visible {
+  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
+  outline-offset: -1px;
+}
+.cg-colgroups-add-col {
+  position: relative;
+  margin-bottom: 4px;
+}
+.cg-colgroups-add-col-trigger {
+  appearance: none;
+  -webkit-appearance: none;
+  display: flex;
+  align-items: center;
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 8px;
+  font: inherit;
+  font-size: var(--cg-font-size-sm);
+  text-align: left;
+  color: var(--cg-fg-color);
+  background: color-mix(in srgb, var(--cg-fg-color) 5%, transparent);
+  border: 1px solid var(--cg-border-color);
+  border-radius: 2px;
+  cursor: pointer;
+  outline: none;
+  box-sizing: border-box;
+}
+.cg-colgroups-add-col-trigger:hover:not(:disabled) {
+  background: var(--cg-row-hover-bg);
+}
+.cg-colgroups-add-col-trigger:focus-visible,
+.cg-colgroups-add-col-trigger[aria-expanded="true"] {
+  border-color: var(--cg-focus-ring-color);
+}
+.cg-colgroups-add-col-trigger:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.cg-colgroups-add-col-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: calc(100% + 4px);
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  max-height: min(280px, 40vh);
+  background: var(--cg-popup-bg, var(--cg-bg-color));
+  color: var(--cg-fg-color);
+  border: 1px solid var(--cg-border-color);
+  border-radius: 2px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  overflow: hidden;
+}
+.cg-colgroups-add-col-panel[hidden] {
+  display: none !important;
+}
+.cg-colgroups-add-col-search {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 auto;
+  width: 100%;
+  margin: 0;
+  padding: 6px 8px;
+  font: inherit;
+  font-size: var(--cg-font-size-sm);
+  color: var(--cg-fg-color);
+  background: color-mix(in srgb, var(--cg-fg-color) 5%, transparent);
+  border: none;
+  border-bottom: 1px solid var(--cg-border-color);
+  border-radius: 0;
+  outline: none;
+  box-sizing: border-box;
+}
+.cg-colgroups-add-col-search:focus {
+  border-bottom-color: var(--cg-focus-ring-color);
+}
+.cg-colgroups-add-col-search::placeholder {
+  color: color-mix(in srgb, var(--cg-fg-color) 45%, transparent);
+}
+.cg-colgroups-add-col-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--cg-border-color);
+  flex: 0 0 auto;
+}
+.cg-colgroups-add-col-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: var(--cg-font-size-sm);
+  color: color-mix(in srgb, var(--cg-fg-color) 75%, transparent);
+  min-width: 0;
+}
+.cg-colgroups-add-col-select-all-text {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+.cg-colgroups-add-col-commit {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  font-size: 11px;
+  border-radius: 2px;
+}
+.cg-colgroups-add-col-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 4px 0;
+}
+.cg-colgroups-add-col-empty {
+  padding: 10px 12px;
+  font-size: var(--cg-font-size-sm);
+  color: color-mix(in srgb, var(--cg-fg-color) 55%, transparent);
+}
+.cg-colgroups-add-col-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 10px;
+  margin: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  color: var(--cg-fg-color);
+  font: inherit;
+  font-size: var(--cg-font-size-sm);
+  text-align: left;
+  cursor: pointer;
+  box-sizing: border-box;
+}
+.cg-colgroups-add-col-option:hover {
+  background: var(--cg-row-hover-bg);
+}
+.cg-colgroups-add-col-option-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 .cg-colgroups-footer {
   padding: 8px 10px;
@@ -2978,9 +3263,7 @@
   outline-offset: -1px;
 }
 
-/* Cluster eyebrow above the two top-level tree clusters (Ungrouped / Groups)
- * — same 11px tracked-uppercase idiom as the settings band headers, so the
- * two kinds of rows never blur into one flat list. */
+/* Cluster eyebrow — tracked-uppercase idiom shared with settings bands. */
 .cg-colgroups-eyebrow {
   padding: 10px 10px 4px;
   font-size: 11px;
@@ -2998,16 +3281,23 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 10px 5px 12px;
+  gap: 4px;
+  padding: 5px 8px 5px 10px;
 }
 .cg-colgroups-row:hover {
   background: var(--cg-row-hover-bg);
 }
-/* Group rows read as subtle bands anchored by a left spine: a hairline in
- * the resting state, promoted to a 2px accent when the group is selected
- * (its Style band is showing) — the same diff-rail device as
- * `.cg-settings-row[data-modified]::before`. */
+.cg-colgroups-row[data-hidden] .cg-colgroups-list-name {
+  opacity: 0.55;
+  text-decoration: line-through;
+}
+.cg-colgroups-nest-hint {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--cg-font-size-sm);
+  color: color-mix(in srgb, var(--cg-fg-color) 55%, transparent);
+}
+/* Group rows: hairline left spine, promoted to accent when selected. */
 .cg-colgroups-row[data-kind="group"]::before {
   content: '';
   position: absolute;
@@ -3027,170 +3317,17 @@
 .cg-colgroups-row[data-selected] {
   background: color-mix(in srgb, var(--cg-settings-accent) 8%, transparent);
 }
-/* Drop-target outline — accept = focus ring; reject = amber. Same
- * vocabulary as `.cg-pivot-panel[data-drop]`. */
-.cg-colgroups-row[data-drop="accept"] {
-  box-shadow: inset 0 0 0 2px var(--cg-pivot-panel-drop-border);
-}
-.cg-colgroups-row[data-drop="reject"] {
-  box-shadow: inset 0 0 0 2px var(--cg-pivot-panel-drop-border-reject);
-}
-/* Drag source — dim in place while the ghost tracks the pointer. */
-.cg-colgroups-row-source {
-  opacity: 0.4;
-}
-/* Floating drag ghost — cloned row, positioned fixed under the pointer. */
-.cg-colgroups-row-ghost {
-  position: fixed;
-  pointer-events: none;
-  z-index: 2147483600;
-  background: var(--cg-row-group-chip-ghost-bg, var(--cg-header-bg));
-  box-shadow: var(--cg-row-group-chip-ghost-shadow, 0 4px 8px rgba(0, 0, 0, 0.12));
-  opacity: var(--cg-row-group-chip-ghost-opacity, 0.92);
-  cursor: grabbing;
-}
 
-/* Nesting spine — one 1px vertical guide per ancestor depth level. */
-.cg-colgroups-guide {
-  position: absolute;
-  top: 0;
-  bottom: 0;
-  width: 1px;
-  background: color-mix(in srgb, var(--cg-border-color) 70%, transparent);
-  pointer-events: none;
-}
-
-.cg-colgroups-row-main {
-  flex: 1 1 auto;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-/* Group disclosure caret — horizontal stroke chevron TRAILING the group
- * name (grid header-band vocabulary: chevron-left open, rotated 180° to
- * chevron-right when collapsed). The `.cg-colgroups-ic` child carries
- * the shared 14px icon sizing. */
-.cg-colgroups-chevron {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: none;
-  background: transparent;
-  color: currentColor;
-  opacity: 0.75;
-  cursor: pointer;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .cg-colgroups-chevron {
-    transition: transform 120ms ease;
-  }
-}
-.cg-colgroups-chevron[aria-expanded="false"] {
-  transform: rotate(180deg);
-}
-.cg-colgroups-chevron:focus-visible {
-  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
-  outline-offset: 2px;
-}
-
-.cg-colgroups-handle {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  color: color-mix(in srgb, var(--cg-fg-color) 45%, transparent);
-  cursor: grab;
-  user-select: none;
-  line-height: 1;
-}
-/* Every interactive glyph renders through this one class at a single size,
- * so all panel icons (● ◐ ○ state, gear / ＋ / ✕ actions, grip) are identical
- * — replacing unicode glyphs whose per-character metrics differ. */
 .cg-colgroups-ic {
   width: 14px;
   height: 14px;
   display: block;
   flex: 0 0 auto;
 }
-.cg-colgroups-action,
-.cg-colgroups-seg-icon {
+.cg-colgroups-action {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-}
-
-.cg-colgroups-checkbox-label {
-  flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-}
-/* Calm hairline checkbox — unchecked = hairline box, checked = accent tick
- * (replaces the heavy native accent-color fill). */
-.cg-colgroups-checkbox {
-  appearance: none;
-  -webkit-appearance: none;
-  position: relative;
-  width: 15px;
-  height: 15px;
-  margin: 0;
-  border: 1px solid var(--cg-border-color);
-  border-radius: var(--cg-radius, 3px);
-  background: transparent;
-  cursor: pointer;
-}
-.cg-colgroups-checkbox:hover {
-  border-color: color-mix(in srgb, var(--cg-fg-color) 45%, transparent);
-}
-.cg-colgroups-checkbox:checked {
-  border-color: color-mix(in srgb, var(--cg-settings-accent) 55%, var(--cg-border-color));
-}
-.cg-colgroups-checkbox:checked::after {
-  content: '';
-  position: absolute;
-  left: 4px;
-  top: 1px;
-  width: 4px;
-  height: 8px;
-  border: solid var(--cg-settings-accent);
-  border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
-}
-.cg-colgroups-checkbox:focus-visible {
-  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
-  outline-offset: 1px;
-}
-
-.cg-colgroups-name {
-  flex: 1 1 auto;
-  min-width: 0;
-  padding: 3px 6px;
-  font: inherit;
-  font-size: var(--cg-font-size-sm);
-  color: var(--cg-fg-color);
-  background: transparent;
-  border: 1px solid transparent;
-  border-radius: var(--cg-radius, 4px);
-  outline: none;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.cg-colgroups-name-group {
-  font-weight: 500;
-  /* Content-sized (JS sets a ch width) so the trailing disclosure caret
-   * hugs the caption; still shrinkable when the row runs out of room. */
-  flex: 0 1 auto;
-}
-.cg-colgroups-name:hover {
-  border-color: color-mix(in srgb, var(--cg-border-color) 80%, transparent);
-}
-.cg-colgroups-name:focus-visible,
-.cg-colgroups-name:focus {
-  border-color: var(--cg-settings-accent);
-  outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
-  outline-offset: -1px;
 }
 
 .cg-colgroups-error {
@@ -3200,54 +3337,63 @@
   white-space: nowrap;
 }
 
-/* Action cluster (＋ subgroup / edit style / ✕) — hover/focus-revealed so
- * idle group rows stay calm. Kept keyboard-reachable: revealed on
- * :focus-within and while the group is selected, too. */
-.cg-colgroups-row-actions {
+/* List-row delete — hover/focus-revealed; always visible while selected. */
+.cg-colgroups-row > .cg-colgroups-action {
   flex: 0 0 auto;
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  margin-inline-start: auto;
-  opacity: 0;
-}
-.cg-colgroups-row:hover .cg-colgroups-row-actions,
-.cg-colgroups-row:focus-within .cg-colgroups-row-actions,
-.cg-colgroups-row[data-selected] .cg-colgroups-row-actions {
-  opacity: 1;
-}
-@media (prefers-reduced-motion: no-preference) {
-  .cg-colgroups-row-actions {
-    transition: opacity 120ms ease;
-  }
-}
-/* One coherent interactive-icon scale for the whole panel: a ~24px hit
- * target with a ~15px glyph — matching the `.cg-colgroups-seg-btn` segment
- * height below (24px) and the alignment icon's own 15x15 SVG, so the group-
- * manipulation icons (⚙ style / ＋ subgroup / ✕ delete) read at the same
- * visual weight as the column-config controls, never smaller. */
-.cg-colgroups-action {
   width: 24px;
   height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   padding: 0;
   font-size: 15px;
   line-height: 1;
   color: color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
   background: transparent;
   border: none;
-  border-radius: var(--cg-radius, 5px);
+  border-radius: 2px;
+  cursor: pointer;
+  opacity: 0;
+}
+.cg-colgroups-row:hover > .cg-colgroups-action,
+.cg-colgroups-row:focus-within > .cg-colgroups-action,
+.cg-colgroups-row[data-selected] > .cg-colgroups-action {
+  opacity: 1;
+}
+.cg-colgroups-editor-actions .cg-colgroups-action {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
+  background: transparent;
+  border: none;
+  border-radius: 2px;
   cursor: pointer;
 }
-.cg-colgroups-action:hover {
+.cg-colgroups-editor-actions .cg-colgroups-action:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.cg-colgroups-list-header .cg-colgroups-action {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: color-mix(in srgb, var(--cg-fg-color) 60%, transparent);
+  background: transparent;
+  border: none;
+  border-radius: 2px;
+  cursor: pointer;
+  opacity: 1;
+}
+.cg-colgroups-action:hover:not(:disabled) {
   color: var(--cg-fg-color);
   background: color-mix(in srgb, var(--cg-fg-color) 10%, transparent);
 }
 .cg-colgroups-action:focus-visible {
   outline: var(--cg-focus-ring-width) solid var(--cg-focus-ring-color);
   outline-offset: -1px;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .cg-colgroups-row > .cg-colgroups-action {
+    transition: opacity 120ms ease;
+  }
 }
 
 .cg-colgroups-empty {
@@ -3261,24 +3407,21 @@
   font-size: var(--cg-font-size-sm);
 }
 
-/* Style editor — per-group header styling, hosted in a FLOATING panel
- * (`CGrid.openFloatingPanel`, invoked from the group row's gear icon) since
- * it has nowhere to dock back to. Sizing/overflow is handled by the float's
- * own `.cg-floating-panel-body` (flex:1 1 auto; overflow:auto); this just
- * supplies the content's padding. Reuses the `.cg-settings-*` classes from
- * the Phase 1 SettingsForm engine verbatim — `--cg-settings-accent` is
- * re-aliased HERE (not just on `.cg-colgroups-panel`, whose subtree this
- * content no longer lives in once it's reparented into the float) so those
- * rules keep resolving identically. */
+/* Style editor — per-group header styling in the right-hand editor pane. */
 .cg-colgroups-style {
   padding: 8px 10px 8px;
   --cg-settings-accent: var(--cg-focus-ring-color);
 }
-/* Group-select affordance (the keyboard-reachable "edit style" button) —
- * lit in the accent color while its group is selected, mirroring the
- * row's own tick-rail state. */
-.cg-colgroups-action[data-cg-select][aria-pressed="true"] {
-  color: var(--cg-settings-accent);
+/* Remaining native selects in this panel (Side / Style) — force option
+ * colors from tokens where the browser honors them; color-scheme follows
+ * the active theme so OS chrome prefers the matching mode. */
+.cg-colgroups-panel {
+  color-scheme: inherit;
+}
+.cg-colgroups-panel select.cg-settings-select,
+.cg-colgroups-panel select.cg-settings-select option {
+  background-color: var(--cg-bg-color);
+  color: var(--cg-fg-color);
 }
 
 /* ── Style band clusters ──────────────────────────────────────────────
@@ -3408,32 +3551,11 @@
   z-index: 1;
 }
 
-/* Inline column-group visibility — the 3-state picker is revealed only on row
- * hover/focus; at rest a single muted caret marks a CONDITIONAL column
- * (expand-only / collapse-only). An always-visible column shows nothing at
- * rest, keeping idle rows uncluttered. */
-.cg-colgroups-visibility {
+/* Inline column-group visibility cycle on membership chips. */
+.cg-colgroups-groupshow {
   flex: 0 0 auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-end;
-  margin-inline-start: auto;
-  padding-inline-start: 6px;
 }
-.cg-colgroups-vis-current {
-  display: inline-flex;
-  align-items: center;
-  color: color-mix(in srgb, var(--cg-fg-color) 42%, transparent);
-}
-.cg-colgroups-vis-picker { display: none; }
-.cg-colgroups-row:hover .cg-colgroups-vis-current,
-.cg-colgroups-row:focus-within .cg-colgroups-vis-current {
-  display: none;
-}
-.cg-colgroups-row:hover .cg-colgroups-vis-picker,
-.cg-colgroups-row:focus-within .cg-colgroups-vis-picker {
-  display: inline-flex;
-}
+
 @media (prefers-reduced-motion: no-preference) {
   .cg-colgroups-seg-btn {
     transition: background 120ms ease, color 120ms ease;
@@ -3443,6 +3565,9 @@
 .cg-colgroups-seg-italic { font-style: italic; font-family: serif; }
 .cg-colgroups-seg-underline { text-decoration: underline; }
 .cg-colgroups-seg-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   padding: 0 6px;
 }
 .cg-colgroups-seg-icon svg {
@@ -3519,11 +3644,10 @@
   cursor: pointer;
 }
 
-/* Task 7 — `columnGroupShow` (always/open/closed) authoring: a compact
- * 3-state segment (● Always · ◐ Open · ○ Closed), the inline tree-row control
- * revealed on row hover. */
-.cg-colgroups-groupshow {
-  flex: 0 0 auto;
+/* Task 7 — `columnGroupShow` (always/open/closed) authoring via chip cycle. */
+.cg-colgroups-chip [data-cg-groupshow] .cg-colgroups-ic {
+  width: 14px;
+  height: 14px;
 }
 
 /* Cycle 13 / Task 1 — status bar shell. Mounts as a sibling of the

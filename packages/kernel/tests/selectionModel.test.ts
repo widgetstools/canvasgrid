@@ -187,5 +187,44 @@ describe('SelectionModel', () => {
       m.rebuildIndices(new Map([['a', 0]]));
       expect(fn).not.toHaveBeenCalled();
     });
+
+    it('rebuildIndices collapses a stale 1×1 range onto the remapped focused cell', () => {
+      // Plain click seeds focus + a companion 1×1 range at the same index.
+      // After a re-sort the focus follows the rowId but the range would
+      // otherwise stay on the previous physical cell — two blue rings.
+      const m = new SelectionModel('multiple');
+      m.setFocusByRowId('b', 'region', 1);
+      m.setRanges([{ rowStart: 1, rowEnd: 1, colIds: ['region'] }]);
+      m.rebuildIndices(new Map([['a', 1], ['b', 0], ['c', 2]]));
+      expect(m.state.focusedRowIndex).toBe(0);
+      expect(m.state.ranges).toEqual([{ rowStart: 0, rowEnd: 0, colIds: ['region'] }]);
+    });
+
+    it('rebuildIndices collapses a multi-cell range when the focused index moves', () => {
+      const m = new SelectionModel('multiple');
+      m.setFocusByRowId('b', 'region', 2);
+      m.setRanges([{ rowStart: 1, rowEnd: 4, colIds: ['region', 'desk'] }]);
+      m.rebuildIndices(new Map([['b', 5]]));
+      expect(m.state.focusedRowIndex).toBe(5);
+      expect(m.state.ranges).toEqual([{ rowStart: 5, rowEnd: 5, colIds: ['region'] }]);
+    });
+
+    it('rebuildIndices preserves ranges when the focused index does not move', () => {
+      const m = new SelectionModel('multiple');
+      m.setFocusByRowId('b', 'region', 2);
+      m.setRanges([{ rowStart: 1, rowEnd: 4, colIds: ['region', 'desk'] }]);
+      m.rebuildIndices(new Map([['b', 2]]));
+      expect(m.state.focusedRowIndex).toBe(2);
+      expect(m.state.ranges).toEqual([{ rowStart: 1, rowEnd: 4, colIds: ['region', 'desk'] }]);
+    });
+
+    it('rebuildIndices clears ranges when the focused row is filtered out', () => {
+      const m = new SelectionModel('multiple');
+      m.setFocusByRowId('b', 'region', 1);
+      m.setRanges([{ rowStart: 1, rowEnd: 1, colIds: ['region'] }]);
+      m.rebuildIndices(new Map()); // b missing
+      expect(m.state.focusedRowIndex).toBeNull();
+      expect(m.state.ranges).toEqual([]);
+    });
   });
 });

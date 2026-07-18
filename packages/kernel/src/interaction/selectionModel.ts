@@ -384,15 +384,25 @@ export class SelectionModel {
    *  id set, using a freshly-built rowId → index map. Called by cgrid.ts on
    *  `modelUpdated` (after sort / transaction / column-defs change). Skips
    *  the emit when nothing actually changes so a steady-state model update
-   *  doesn't churn paint. */
+   *  doesn't churn paint.
+   *
+   *  Also collapses index-based `ranges` onto the remapped focused cell when
+   *  that focus index moves. A plain click seeds a 1×1 range at the focused
+   *  cell; without this remap the range border stays on the previous physical
+   *  row while the focus ring follows the rowId — two blue rings that themes
+   *  paint with the same color. */
   rebuildIndices(rowIdToIndex: ReadonlyMap<string, number>): void {
     // Skip only when there is genuinely nothing to update — both the
     // persistent id sets are empty AND the paint indices are already clear.
     // Without the selectedRowIndices guard, a deselect-all that empties
     // _selectedRowIds would skip the loop and leave stale paint highlights.
+    // Ranges alone can also be stale after a reorder with no persistent ids
+    // (shouldn't happen in practice once focus is id-tracked).
     if (this._selectedRowIds.size === 0 && this._focusedRowId === null
-        && this._state.selectedRowIndices.size === 0 && this._state.focusedRowIndex === null) return;
+        && this._state.selectedRowIndices.size === 0 && this._state.focusedRowIndex === null
+        && this._state.ranges.length === 0) return;
     let changed = false;
+    const prevFocus = this._state.focusedRowIndex;
 
     const nextSelectedIndices = new Set<number>();
     for (const id of this._selectedRowIds) {
@@ -410,6 +420,34 @@ export class SelectionModel {
       const nextFocus = idx === undefined || idx < 0 ? null : idx;
       if (this._state.focusedRowIndex !== nextFocus) {
         this._state.focusedRowIndex = nextFocus;
+        changed = true;
+      }
+    }
+
+    // Cell ranges are visible-row indices. When the focused row moves (sort /
+    // live transaction / filter), collapse any existing ranges to a 1×1 at
+    // the new focus so the previous physical cell does not keep a range
+    // border that reads as a second focus ring. No-op rebuilds that leave
+    // the focus index alone preserve multi-cell ranges. Empty ranges stay
+    // empty (API-only focus must not invent a companion range).
+    const fr = this._state.focusedRowIndex;
+    const fc = this._state.focusedColId;
+    if (prevFocus !== fr && this._state.ranges.length > 0) {
+      if (fr !== null && fc !== null) {
+        const nextRanges = [{ rowStart: fr, rowEnd: fr, colIds: [fc] }];
+        const cur = this._state.ranges;
+        const already =
+          cur.length === 1
+          && cur[0]!.rowStart === fr
+          && cur[0]!.rowEnd === fr
+          && cur[0]!.colIds.length === 1
+          && cur[0]!.colIds[0] === fc;
+        if (!already) {
+          this._state.ranges = nextRanges;
+          changed = true;
+        }
+      } else {
+        this._state.ranges = [];
         changed = true;
       }
     }

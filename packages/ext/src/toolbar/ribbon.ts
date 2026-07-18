@@ -90,10 +90,11 @@ function colorSwatch(icon: string, title: string, defaultColor: string): {
   button.classList.add('cgext-rb-swatch');
   const bar = document.createElement('span');
   bar.className = 'cgext-rb-swatchbar';
-  bar.style.background = input.value;
+  const syncSwatch = () => { bar.style.setProperty('--cgext-swatch', input.value); };
+  syncSwatch();
   button.append(bar);
-  input.addEventListener('input', () => { bar.style.background = input.value; });
-  input.addEventListener('change', () => { bar.style.background = input.value; });
+  input.addEventListener('input', syncSwatch);
+  input.addEventListener('change', syncSwatch);
   button.addEventListener('click', () => input.click());
   return { button, input };
 }
@@ -187,10 +188,9 @@ function pill(text: string, caret = true): HTMLButtonElement {
   b.innerHTML = `<span>${text}</span>` + (caret ? svg('M6 9l6 6 6-6', 12) : '');
   return b;
 }
-function textInput(placeholder: string, width = 70): HTMLInputElement {
+function textInput(placeholder: string, size: 'sm' | 'md' = 'sm'): HTMLInputElement {
   const i = document.createElement('input');
-  i.type = 'text'; i.className = 'cgext-rb-input'; i.placeholder = placeholder;
-  i.style.width = `${width}px`;
+  i.type = 'text'; i.className = `cgext-rb-input cgext-rb-input--${size}`; i.placeholder = placeholder;
   return i;
 }
 // Colour-picker defaults — the swatch a picker shows when the focused
@@ -244,14 +244,14 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       const undo = iconBtn(I.undo, 'Undo');
       const redo = iconBtn(I.redo, 'Redo');
       const histCount = stat('0 entries');
-      const operand = textInput('1', 44); operand.value = '1';
+      const operand = textInput('1', 'sm'); operand.value = '1';
       const opMul = iconBtn('M6 6l12 12M18 6L6 18', 'Multiply');
       const opDiv = iconBtn('M5 12h14M12 6h.01M12 18h.01', 'Divide');
       const opAdd = iconBtn('M12 5v14M5 12h14', 'Add');
       const opSub = iconBtn('M5 12h14', 'Subtract');
       const setBtn = pill('Set…', false);
       const smartCount = stat('0 cells');
-      const bulkValue = textInput('New value', 96);
+      const bulkValue = textInput('New value', 'md');
       const bulkApply = iconBtn('M20 6L9 17l-5-5', 'Apply');
       const bulkCount = stat('0 selected');
 
@@ -400,10 +400,28 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       root.append(formatting, spacer, pop);
       host.append(editStrip, root);
 
+      // Collapse leftover ribbon chrome when strips are toggled off. The
+      // band still hosts a flex spacer + pop-out button after the
+      // formatting cluster is hidden — that left an empty bar above the
+      // row-group panel. Hide spacer/pop with formatting, and hide the
+      // whole `.cgext-ribbon` when BOTH toolbars are off.
+      const syncRibbonChrome = () => {
+        const formatOff = formatting.hidden;
+        const editOff = editStrip.hidden;
+        spacer.hidden = formatOff;
+        pop.hidden = formatOff;
+        root.hidden = formatOff;
+        const ribbonHost = host.closest('.cgext-ribbon');
+        if (ribbonHost instanceof HTMLElement) {
+          ribbonHost.hidden = formatOff && editOff;
+        }
+      };
+
       const off = ctx.events.on('toggle-ribbon', (e) => {
         const section = (e as { section?: string }).section;
         if (section === 'edit') editStrip.hidden = !editStrip.hidden;
         else if (section === 'format') formatting.hidden = !formatting.hidden;
+        syncRibbonChrome();
       });
 
       const disposeEditing = getEdit
@@ -1055,12 +1073,21 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     r.borderSideBtns[side].addEventListener('click', () => { borderSide = side; refresh(); });
   }
   r.borderColorInput.addEventListener('change', applyBorderEdit);
-  const lineSampleItem = (label: string, sampleCss: string, onPick: () => void): HTMLButtonElement => {
+  const lineSampleItem = (
+    label: string,
+    sample: { style?: string; width?: number },
+    onPick: () => void,
+  ): HTMLButtonElement => {
     const it = document.createElement('button');
     it.type = 'button';
     it.className = 'cgext-menu-item';
-    it.innerHTML = `<span class="cgext-rb-linesample" style="${sampleCss}"></span><span></span>`;
-    it.querySelector('span:last-child')!.textContent = label;
+    const sampleEl = document.createElement('span');
+    sampleEl.className = 'cgext-rb-linesample';
+    if (sample.style) sampleEl.dataset.lineStyle = sample.style;
+    if (sample.width != null) sampleEl.dataset.lineWidth = String(sample.width);
+    const lab = document.createElement('span');
+    lab.textContent = label;
+    it.append(sampleEl, lab);
     it.addEventListener('click', onPick);
     return it;
   };
@@ -1069,7 +1096,7 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     for (const styleOpt of ['solid', 'dashed', 'dotted'] as const) {
       list.appendChild(lineSampleItem(
         styleOpt.charAt(0).toUpperCase() + styleOpt.slice(1),
-        `border-top-style:${styleOpt}`,
+        { style: styleOpt },
         () => { borderStyleVal = styleOpt; applyBorderEdit(); close(); },
       ));
     }
@@ -1080,7 +1107,7 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   const borderWidthMenu = menu(r.borderWidthPill, (close) => {
     const list = h('cgext-menu-list');
     for (const w of [1, 2, 3, 4]) {
-      list.appendChild(lineSampleItem(`${w} px`, `border-top-width:${w}px`,
+      list.appendChild(lineSampleItem(`${w} px`, { width: w },
         () => { borderWidthVal = w; applyBorderEdit(); close(); }));
     }
     return list;
@@ -1184,19 +1211,24 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
 // ── styles ──────────────────────────────────────────────────────────────
 export function injectRibbonStyles(): void {
   if (typeof document === 'undefined') return;
-  if (document.getElementById('cgext-ribbon-styles')) return;
-  const style = document.createElement('style');
-  style.id = 'cgext-ribbon-styles';
+  let style = document.getElementById('cgext-ribbon-styles') as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'cgext-ribbon-styles';
+    document.head.appendChild(style);
+  }
   style.textContent = RIBBON_CSS;
-  document.head.appendChild(style);
 }
 
 const RIBBON_CSS = `
 .cgext-ribbon { flex: 0 0 auto; background: var(--cg-header-bg, var(--cg-popup-bg, #141922)); border-bottom: 1px solid var(--cg-border-color, #2a3140); }
+.cgext-ribbon:empty,
+.cgext-ribbon[hidden] { display: none; }
 /* ONE font size for every element in the bar (user request): controls,
    labels, stats, and captions all read at 12px. */
 .cgext-ribbon-band, .cgext-edit-strip { font-size: 12px; }
-.cgext-ribbon-band { display: flex; align-items: stretch; padding: 4px 8px 2px; box-sizing: border-box; }
+.cgext-ribbon-band { display: flex; align-items: stretch; padding: 6px 12px 4px; box-sizing: border-box; gap: 0; }
+.cgext-ribbon-band[hidden] { display: none; }
 .cgext-rb-cluster { display: flex; align-items: stretch; }
 .cgext-rb-cluster[hidden] { display: none; }
 
@@ -1208,35 +1240,37 @@ const RIBBON_CSS = `
 /* Editing strip — standalone single-row toolbar ABOVE the ribbon band. */
 .cgext-edit-strip {
   display: flex; align-items: center; gap: 0;
-  padding: 4px 11px;
+  min-height: 36px;
+  padding: 6px 14px;
   border-bottom: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 70%, transparent);
 }
 .cgext-edit-strip[hidden] { display: none; }
-.cgext-es-seg { display: inline-flex; align-items: center; gap: 3px; }
+.cgext-es-seg { display: inline-flex; align-items: center; gap: 4px; }
 .cgext-es-seg + .cgext-es-seg {
-  margin-left: 14px; padding-left: 14px;
+  margin-left: 16px; padding-left: 16px;
   border-left: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 70%, transparent);
 }
 .cgext-es-label {
-  font-size: 12px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase;
-  color: var(--cg-muted-fg-color, #7f8ba0); margin-right: 6px; white-space: nowrap;
+  font-size: 10.5px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--cg-muted-fg-color, #7f8ba0); margin-right: 8px; white-space: nowrap;
 }
-.cgext-es-seg > .cgext-rb-stat { margin-left: 5px; }
+.cgext-es-seg > .cgext-rb-stat { margin-left: 6px; }
 .cgext-rb-grp {
-  display: flex; flex-direction: column; padding: 0 9px;
+  display: flex; flex-direction: column; padding: 0 10px;
   border-right: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 70%, transparent);
 }
-.cgext-rb-cluster > .cgext-rb-grp:first-child { padding-left: 3px; }
+.cgext-rb-cluster > .cgext-rb-grp:first-child { padding-left: 2px; }
 .cgext-rb-cluster[data-toolbar="formatting"] > .cgext-rb-grp:last-child { border-right: none; }
-.cgext-rb-deck { display: flex; flex-direction: column; gap: 3px; justify-content: center; flex: 1 1 auto; }
-.cgext-rb-mini { display: flex; align-items: center; gap: 2px; }
+.cgext-rb-deck { display: flex; flex-direction: column; gap: 4px; justify-content: center; flex: 1 1 auto; }
+.cgext-rb-mini { display: flex; align-items: center; gap: 3px; }
 .cgext-rb-mini > .cgext-rb-pill:first-child:last-child { flex: 1 1 auto; }
 .cgext-rb-grp-name {
-  padding: 3px 0 1px; text-align: center;
-  font-size: 12px; color: var(--cg-muted-fg-color, #7f8ba0);
+  padding: 4px 0 0; text-align: center;
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+  color: var(--cg-muted-fg-color, #7f8ba0);
   white-space: nowrap;
 }
-.cgext-rb-spacer { flex: 1 1 auto; }
+.cgext-rb-spacer { flex: 1 1 auto; min-width: 8px; }
 
 /* Borders group — side segments with a "has border" dot, live preview chip,
    line-sample dropdown rows. */
@@ -1246,7 +1280,7 @@ const RIBBON_CSS = `
   border-radius: 50%; background: var(--cg-accent-color, #4f9cf9);
 }
 .cgext-rb-bpreview {
-  width: 20px; height: 20px; margin-left: 4px; border-radius: var(--cg-radius, 4px); align-self: center;
+  width: 20px; height: 20px; margin-left: 4px; border-radius: 2px; align-self: center;
   border: 1px dashed color-mix(in srgb, var(--cg-muted-fg-color, #7f8ba0) 55%, transparent);
   box-sizing: border-box;
 }
@@ -1254,6 +1288,13 @@ const RIBBON_CSS = `
   display: inline-block; width: 26px; height: 0;
   border-top: 1px solid currentColor; flex: 0 0 auto;
 }
+.cgext-rb-linesample[data-line-style="solid"] { border-top-style: solid; }
+.cgext-rb-linesample[data-line-style="dashed"] { border-top-style: dashed; }
+.cgext-rb-linesample[data-line-style="dotted"] { border-top-style: dotted; }
+.cgext-rb-linesample[data-line-width="1"] { border-top-width: 1px; }
+.cgext-rb-linesample[data-line-width="2"] { border-top-width: 2px; }
+.cgext-rb-linesample[data-line-width="3"] { border-top-width: 3px; }
+.cgext-rb-linesample[data-line-width="4"] { border-top-width: 4px; }
 
 /* AB — header-caption uppercase toggle (text glyph, not an icon path). */
 .cgext-rb-ab {
@@ -1265,9 +1306,10 @@ const RIBBON_CSS = `
 /* Cell↔header target toggle — the face shows the ACTIVE target, the
    trailing swap arrows signal "click to switch". */
 .cgext-rb-targettoggle {
-  appearance: none; display: inline-flex; align-items: center; gap: 6px;
-  height: 24px; padding: 0 8px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 6px);
+  appearance: none; -webkit-appearance: none;
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 24px; padding: 0 8px; box-sizing: border-box;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 2px;
   background: transparent; color: var(--cg-fg-color, #d3dbe7);
   font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
   transition: border-color 110ms ease, background 110ms ease;
@@ -1282,9 +1324,10 @@ const RIBBON_CSS = `
 .cgext-ribbon-band > .cgext-rb-btn { align-self: flex-start; margin-top: 2px; }
 
 .cgext-rb-btn, .cgext-rb-toggle {
-  appearance: none; width: 24px; height: 24px;
+  appearance: none; -webkit-appearance: none;
+  width: 24px; height: 24px;
   display: inline-flex; align-items: center; justify-content: center;
-  border: none; border-radius: var(--cg-radius, 5px); background: transparent;
+  border: none; border-radius: 2px; background: transparent;
   color: var(--cg-fg-color, #d3dbe7); cursor: pointer;
   transition: background 110ms ease, color 110ms ease;
 }
@@ -1296,16 +1339,18 @@ const RIBBON_CSS = `
 .cgext-rb-swatch svg { transform: translateY(-1.5px); }
 .cgext-rb-swatchbar {
   position: absolute; left: 5px; right: 5px; bottom: 3px; height: 3px;
-  border-radius: var(--cg-radius, 1.5px); pointer-events: none;
+  border-radius: 1.5px; pointer-events: none;
+  background: var(--cgext-swatch, currentColor);
   box-shadow: inset 0 0 0 0.5px rgba(255,255,255,0.18);
 }
 .cgext-rb-btn:focus-visible, .cgext-rb-toggle:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: 1px; }
 .cgext-rb-toggle.is-on { background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 22%, transparent); color: var(--cg-accent-color, #4f9cf9); }
 
 .cgext-rb-pill {
+  appearance: none; -webkit-appearance: none;
   display: inline-flex; align-items: center; gap: 4px;
-  height: 24px; padding: 0 8px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 6px);
+  height: 24px; padding: 0 8px; box-sizing: border-box;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 2px;
   background: var(--cg-control-bg, rgba(255,255,255,0.04));
   color: var(--cg-fg-color, #d6dce8); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
 }
@@ -1315,10 +1360,13 @@ const RIBBON_CSS = `
 .cgext-rb-pill.is-set { color: var(--cg-accent-color, #4f9cf9); }
 
 .cgext-rb-input {
+  appearance: none; -webkit-appearance: none;
   height: 24px; padding: 0 8px; box-sizing: border-box;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 6px);
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 2px;
   background: var(--cg-control-bg, rgba(0,0,0,0.25)); color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12px;
 }
+.cgext-rb-input--sm { width: 44px; }
+.cgext-rb-input--md { width: 96px; }
 .cgext-rb-input:focus { outline: none; border-color: var(--cg-accent-color, #4f9cf9); }
 
 .cgext-rb-stat { font-size: 12px; color: var(--cg-muted-fg-color, #7f8ba0); font-variant-numeric: tabular-nums; }
@@ -1326,11 +1374,11 @@ const RIBBON_CSS = `
 .cgext-rb-stepper {
   display: inline-flex; align-items: center; gap: 5px;
   height: 24px; padding: 0 4px 0 8px; box-sizing: border-box;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 6px);
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 2px;
   background: var(--cg-control-bg, rgba(255,255,255,0.04)); font-size: 12px; color: var(--cg-fg-color, #d6dce8);
 }
 .cgext-rb-step-stack { display: flex; flex-direction: column; }
-.cgext-rb-step { appearance: none; border: none; background: transparent; color: var(--cg-muted-fg-color, #9aa4b6); cursor: pointer; height: 10px; display: flex; align-items: center; padding: 0; }
+.cgext-rb-step { appearance: none; -webkit-appearance: none; border: none; background: transparent; color: var(--cg-muted-fg-color, #9aa4b6); cursor: pointer; height: 10px; display: flex; align-items: center; padding: 0; }
 .cgext-rb-step:hover { color: var(--cg-fg-color, #e5e9f0); }
 
 .cgext-rb-colorinput { width: 0; height: 0; padding: 0; border: none; opacity: 0; position: absolute; pointer-events: none; }
@@ -1342,9 +1390,10 @@ const RIBBON_CSS = `
 /* Labeled trigger (target-toggle chrome): preview well + label + caret —
    the picker is a first-class control now, not an easy-to-miss glyph. */
 .cgext-ip-open {
-  appearance: none; display: inline-flex; align-items: center; gap: 6px;
-  height: 24px; padding: 0 7px 0 3px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 6px);
+  appearance: none; -webkit-appearance: none;
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 24px; padding: 0 7px 0 3px; box-sizing: border-box;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 2px;
   background: transparent; color: var(--cg-fg-color, #d3dbe7);
   font: inherit; font-size: 12px; font-weight: 600; cursor: pointer;
   transition: border-color 110ms ease, background 110ms ease;
@@ -1354,7 +1403,7 @@ const RIBBON_CSS = `
 .cgext-ip-open > svg:last-child { color: var(--cg-muted-fg-color, #7f8ba0); flex: 0 0 auto; }
 .cgext-ip-well {
   width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center;
-  border-radius: var(--cg-radius, 4px); font-size: 12px; line-height: 1;
+  border-radius: 2px; font-size: 12px; line-height: 1;
   color: var(--cg-muted-fg-color, #7f8ba0);
   background: color-mix(in srgb, var(--cg-muted-fg-color, #7f8ba0) 10%, transparent);
 }
@@ -1377,6 +1426,8 @@ const RIBBON_CSS = `
      shell font out here; the browser default serif leaked through). */
   font-family: var(--cg-font-family, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif);
   position: fixed; z-index: 1000; width: 340px; max-height: 428px;
+  top: var(--cgext-menu-top, 0);
+  left: var(--cgext-menu-left, 0);
   display: flex; flex-direction: column; overflow: hidden;
   background: var(--cg-popup-bg, #161b26); border: 1px solid var(--cg-border-color, #2a3140);
   border-radius: var(--cg-radius, 12px); box-shadow: 0 16px 40px rgba(0,0,0,0.5); padding: 10px;
@@ -1386,8 +1437,9 @@ const RIBBON_CSS = `
 .cgext-ip-searchwrap { position: relative; display: flex; align-items: center; margin-bottom: 8px; color: var(--cg-muted-fg-color, #7f8ba0); }
 .cgext-ip-searchwrap > svg { position: absolute; left: 9px; pointer-events: none; }
 .cgext-ip-search {
+  appearance: none; -webkit-appearance: none;
   width: 100%; box-sizing: border-box; height: 30px; padding: 0 10px 0 30px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 8px);
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 2px;
   background: var(--cg-control-bg, rgba(0,0,0,0.25)); color: var(--cg-fg-color, #e5e9f0);
   font: inherit; font-size: 12.5px; transition: border-color 120ms ease, box-shadow 120ms ease;
 }
@@ -1429,7 +1481,7 @@ const RIBBON_CSS = `
 
 .cgext-ip-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 2px; }
 .cgext-ip-tile {
-  appearance: none; border: none; border-radius: var(--cg-radius, 7px); background: transparent;
+  appearance: none; -webkit-appearance: none; border: none; border-radius: 2px; background: transparent;
   width: 100%; aspect-ratio: 1; display: inline-flex; align-items: center; justify-content: center;
   color: var(--cg-muted-fg-color, #9aa4b6); font-size: 15px; line-height: 1; cursor: pointer;
   transition: background 90ms ease, color 90ms ease, transform 90ms ease;
@@ -1455,7 +1507,7 @@ const RIBBON_CSS = `
 }
 .cgext-ip-placehead:first-child { padding-top: 3px; }
 .cgext-ip-placeitem {
-  appearance: none; border: none; background: transparent; border-radius: var(--cg-radius, 6px);
+  appearance: none; -webkit-appearance: none; border: none; background: transparent; border-radius: 2px;
   padding: 6px 10px; text-align: left; font: inherit; font-size: 12px;
   color: var(--cg-fg-color, #d6dce8); cursor: pointer;
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
@@ -1464,4 +1516,18 @@ const RIBBON_CSS = `
 .cgext-ip-placeitem:hover { background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 18%, transparent); }
 .cgext-ip-placeitem.is-active { color: var(--cg-accent-color, #4f9cf9); background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 12%, transparent); }
 .cgext-ip-placeitem.is-active::after { content: ''; width: 6px; height: 6px; border-radius: 50%; background: var(--cg-accent-color, #4f9cf9); flex: 0 0 auto; }
+
+/* Flat 2px chrome — beat UA button/input rounding on Windows/Chromium. */
+.cgext-ribbon .cgext-rb-pill,
+.cgext-ribbon .cgext-rb-input,
+.cgext-ribbon .cgext-rb-stepper,
+.cgext-ribbon .cgext-rb-targettoggle,
+.cgext-ribbon .cgext-rb-btn,
+.cgext-ribbon .cgext-rb-toggle,
+.cgext-ribbon .cgext-ip-open,
+.cgext-edit-strip .cgext-rb-pill,
+.cgext-edit-strip .cgext-rb-input,
+.cgext-edit-strip .cgext-rb-stepper {
+  border-radius: 2px !important;
+}
 `;

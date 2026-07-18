@@ -43,8 +43,25 @@ describe('ShellLayout', () => {
     shell.openSettings('grid-options');
     expect(shell.isSettingsOpen()).toBe(true);
     expect(root.querySelector('.cgext-sheet')!.textContent).toContain('panel:grid-options');
+    expect(root.querySelector('.cgext-sheet-nav')).toBeNull(); // single module → no tabs
     shell.closeSettings();
     expect(shell.isSettingsOpen()).toBe(false);
+  });
+
+  it('shows a module nav and switches panels when multiple modules are mounted', () => {
+    const root = document.createElement('div');
+    const shell = new ShellLayout(root);
+    shell.mountSettingsModule(settingsModule('grid-options'), ctx);
+    shell.mountSettingsModule(settingsModule('column-settings'), ctx);
+    shell.openSettings('grid-options');
+    const nav = root.querySelector('.cgext-sheet-nav')!;
+    expect(nav).toBeTruthy();
+    expect(nav.textContent).toContain('grid-options');
+    expect(nav.textContent).toContain('column-settings');
+    expect(root.querySelector('.cgext-sheet-body')!.textContent).toBe('panel:grid-options');
+    nav.querySelectorAll('button')[1]!.click();
+    expect(root.querySelector('.cgext-sheet-body')!.textContent).toBe('panel:column-settings');
+    expect(root.querySelector('.cgext-sheet-title')!.textContent).toBe('column-settings');
   });
 
   it('destroys mounted toolbar-item instances on teardown', () => {

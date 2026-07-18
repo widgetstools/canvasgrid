@@ -130,6 +130,21 @@ export interface GroupingCoordinatorDeps<TRow> {
    *  handler below overrides it with the explicit set when the worker
    *  materialised one from `groupDefaultExpanded[Keys]`. */
   setExpandedKeys(keys: Set<string> | null): void;
+  /** Snapshot of the current expansion mirror before a same-model
+   *  `setGroupModel` re-ship (late columnDefs / persist restore). `null`
+   *  means the default-all sentinel; a Set is the explicit open set. */
+  getExpandedKeysMirror(): Set<string> | null;
+  /** After a successful `setGroupModel`, apply any pending
+   *  `expandedRouteIds` from `setState` / persist restore. Returns true
+   *  when pending keys were consumed (caller should skip seeding worker
+   *  defaults). */
+  flushPendingExpandedRoutes(): boolean;
+  /** True while a restore still has stashed expand/collapse keys. */
+  hasPendingExpandedRoutes(): boolean;
+  /** Ship an explicit expanded-key set to the worker after preserving
+   *  expansion across a same-model re-ship (worker `setGroupModel`
+   *  resets to defaults on its side). */
+  shipExpandedKeys(keys: string[]): void;
   setKnownGroupKeys(keys: string[]): void;
   updateGroupDescendantsCache(
     keys: readonly string[],
@@ -261,6 +276,13 @@ export class GroupingCoordinator<TRow = unknown> {
     const nextSet = new Set(g.rowGroupCols);
     const toHide = g.rowGroupCols.filter((id) => !prevSet.has(id));
     const toShow = this.groupModel.rowGroupCols.filter((id) => !nextSet.has(id));
+    const sameOrder = toHide.length === 0 && toShow.length === 0
+      && this.groupModel.rowGroupCols.length === g.rowGroupCols.length
+      && this.groupModel.rowGroupCols.every((c, i) => c === g.rowGroupCols[i]);
+    // Same-model re-ship (persist restore after late columnDefs) must keep
+    // the user's expand/collapse set — worker `setGroupModel` resets to
+    // defaults on its side, so we snapshot and re-apply after the reply.
+    const preservedExpansion = sameOrder ? this.deps.getExpandedKeysMirror() : null;
     this.groupModel = { rowGroupCols: [...g.rowGroupCols] };
     this.rebuildAutoGroupColumn();
     // Cycle 15.5 / Task 1 — sync the GroupingState primitive so any
@@ -282,7 +304,14 @@ export class GroupingCoordinator<TRow = unknown> {
     // with the worker's intermediate state before defaults are
     // applied); the reply handler below overrides it with the
     // explicit set when present.
-    this.deps.setExpandedKeys(null);
+    //
+    // Same-order re-ships skip the wipe so a live collapse set isn't
+    // clobbered. A pending persist restore also skips the wipe — the
+    // reply path will flush `expandedRouteIds` instead of seeding
+    // groupDefaultExpanded.
+    if (!sameOrder && !this.deps.hasPendingExpandedRoutes()) {
+      this.deps.setExpandedKeys(null);
+    }
     // Sync the worker's column metadata BEFORE pushing the new
     // group model. The pivot-mode role filter on `computeVisibleColumnOrder`
     // (and the auto-hide on grouped columns) may have pushed the
@@ -297,11 +326,28 @@ export class GroupingCoordinator<TRow = unknown> {
         const { visibleCount, groupKeys, groupDescendants, expandedKeys } = reply;
         this.deps.setKnownGroupKeys(groupKeys);
         this.deps.updateGroupDescendantsCache(groupKeys, groupDescendants);
-        // Cycle 15 / Task 9 — re-seed the mirror from the worker's
-        // materialised default. `null` keeps the all-expanded sentinel
-        // (`getExpandedKeys()` derives from `knownGroupKeys`); a
-        // non-null array installs the explicit starting set.
-        this.deps.setExpandedKeys(expandedKeys === null ? null : new Set(expandedKeys));
+        // Persist / setState may have stashed `expandedRouteIds` before
+        // the worker group model landed. Prefer that over defaults —
+        // and never fall through to groupDefaultExpanded while a
+        // restore is still pending (that produced "all open" ghosts).
+        if (this.deps.flushPendingExpandedRoutes()) {
+          // pending restore applied (ships to worker itself)
+        } else if (this.deps.hasPendingExpandedRoutes()) {
+          // Still waiting (e.g. grouping cols not live yet) — leave
+          // the mirror alone; a later successful setGroupModel retries.
+        } else if (sameOrder && preservedExpansion !== null) {
+          this.deps.setExpandedKeys(preservedExpansion);
+          this.deps.shipExpandedKeys(Array.from(preservedExpansion));
+        } else if (sameOrder && preservedExpansion === null) {
+          // Was default-all — keep sentinel; worker already seeded defaults.
+          this.deps.setExpandedKeys(null);
+        } else {
+          // Cycle 15 / Task 9 — re-seed the mirror from the worker's
+          // materialised default. `null` keeps the all-expanded sentinel
+          // (`getExpandedKeys()` derives from `knownGroupKeys`); a
+          // non-null array installs the explicit starting set.
+          this.deps.setExpandedKeys(expandedKeys === null ? null : new Set(expandedKeys));
+        }
         this.deps.setRowCount(visibleCount);
         this.deps.invalidateRowHeightIndex();
         this.deps.recomputeViewport();

@@ -217,6 +217,20 @@ export class CgcNumber extends LitElement {
 /** Register every chrome component once. Safe to call repeatedly
  *  (skips tags that are already defined — HMR, multiple panels). */
 export function defineChromeComponents(): void {
+  if (typeof document !== 'undefined' && !document.getElementById('cgc-chrome-host-styles')) {
+    const style = document.createElement('style');
+    style.id = 'cgc-chrome-host-styles';
+    style.textContent = `
+.cgc-toolpanel-host {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow-y: auto;
+}
+`;
+    document.head.appendChild(style);
+  }
   const defs: Array<[string, CustomElementConstructor]> = [
     ['cgc-band', CgcBand],
     ['cgc-field', CgcField],

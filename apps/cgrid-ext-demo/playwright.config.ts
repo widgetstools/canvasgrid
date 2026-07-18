@@ -13,7 +13,29 @@ export default defineConfig({
   projects: [
     {
       // Default project — every spec, dpr 1 (unchanged behavior).
+      // Prefer system Chrome when Playwright's bundled browser isn't installed
+      // (perf / GPU path also matches real user acceleration settings).
       name: 'chromium',
+      use: { ...devices['Desktop Chrome'], channel: 'chrome' },
+    },
+    {
+      // Forced software GL — Chrome's settings UI "disable hardware
+      // acceleration" does NOT apply to Playwright-launched Chrome, so
+      // scroll-smoothness must opt into this project to measure no-GPU.
+      name: 'chromium-soft',
+      testMatch: /scrollSmoothness\.spec\.ts/,
+      use: {
+        ...devices['Desktop Chrome'],
+        channel: 'chrome',
+        launchOptions: {
+          args: [
+            '--disable-gpu',
+            '--disable-gpu-compositing',
+            '--use-angle=swiftshader',
+            '--enable-unsafe-swiftshader',
+          ],
+        },
+      },
     },
     {
       // Closeout fix wave (I5 / C1) — re-runs ONLY the pixel-invariance

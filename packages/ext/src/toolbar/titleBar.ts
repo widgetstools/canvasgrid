@@ -2,8 +2,11 @@
  * Title-bar chrome for CGridExt — the slim always-on primary toolbar that
  * matches the MarketsGrid reference: brand + collapse on the left, an
  * expandable search in the center, and a right cluster of notifications,
- * layout switcher, dirty-aware layout-update save, date, settings launcher,
- * and an overflow menu (toolbar toggles + Columns…).
+ * layout switcher + dirty-aware layout save, date, settings launcher,
+ * and an overflow menu.
+ *
+ * "Profile" and "layout" are the same trader concept here — only the
+ * layouts control is mounted (kernel named views).
  *
  * Every item is a `toolbar-item` extension in a `primary-*` slot; all colour
  * comes from the grid's `--cg-*` theme tokens (CGridExt mirrors the theme
@@ -24,7 +27,10 @@ export interface TitleBarOptions {
 
 /** Build the full title-bar extension set. Compose into `ext.extensions`
  *  (removing the default `settings-launcher`/`save` first — this set
- *  supersedes them with the richer bar). */
+ *  supersedes them with the richer bar).
+ *
+ *  Named views live under **layouts** only — "profile" was the same concept
+ *  in MarketsGrid jargon; we do not mount a second switcher. */
 export function titleBarExtensions(opts: TitleBarOptions = {}): CgExtension[] {
   injectTitleBarStyles();
   return [
@@ -34,8 +40,8 @@ export function titleBarExtensions(opts: TitleBarOptions = {}): CgExtension[] {
     layoutsItem(),
     layoutSaveItem(),
     dateItem(opts.date ?? ''),
-    settingsItem(),
     overflowItem(),
+    settingsItem(),
   ];
 }
 
@@ -126,18 +132,10 @@ function dateItem(date: string): ToolbarItem {
 }
 
 function settingsItem(): ToolbarItem {
+  // Sliders icon hosts the More menu (Columns / toolbars / theme).
   return item('settings-launcher', 'primary-right', (host, ctx) => {
-    const btn = iconButton(ICON.sliders, 'Settings');
+    const btn = iconButton(ICON.sliders, 'More');
     btn.classList.add('cgext-settings-launcher');
-    btn.addEventListener('click', () => ctx.events.emit({ type: 'open-settings', id: 'grid-options' }));
-    host.appendChild(btn);
-    return { destroy() { host.replaceChildren(); } };
-  });
-}
-
-function overflowItem(): ToolbarItem {
-  return item('overflow', 'primary-right', (host, ctx) => {
-    const btn = iconButton(ICON.more, 'More');
     const m = menu(btn, (close) => {
       const list = document.createElement('div');
       list.className = 'cgext-menu-list';
@@ -191,12 +189,19 @@ function overflowItem(): ToolbarItem {
         });
         list.appendChild(it);
       };
+      const section = (label: string) => {
+        const h = document.createElement('div');
+        h.className = 'cgext-menu-section';
+        h.textContent = label;
+        list.appendChild(h);
+      };
+      section('View');
       entry(ICON.columns, 'Columns…', () => { try { ctx.grid.openToolPanel?.('columns'); } catch { /* ignore */ } });
       entry(ICON.wand, 'Auto format', () => ctx.events.emit({ type: 'auto-format' }));
-      const sep = document.createElement('div'); sep.className = 'cgext-menu-sep'; list.appendChild(sep);
-      toggleEntry(ICON.brush, 'Formatting toolbar', 'format', 'formatting');
+      section('Toolbars');
       toggleEntry(ICON.pencil, 'Editing toolbar', 'edit', 'editing');
-      const sep2 = document.createElement('div'); sep2.className = 'cgext-menu-sep'; list.appendChild(sep2);
+      toggleEntry(ICON.brush, 'Formatting toolbar', 'format', 'formatting');
+      section('Appearance');
       themeEntry();
       return list;
     });
@@ -206,14 +211,26 @@ function overflowItem(): ToolbarItem {
   });
 }
 
+function overflowItem(): ToolbarItem {
+  // Ellipsis opens the settings drawer.
+  return item('overflow', 'primary-right', (host, ctx) => {
+    const btn = iconButton(ICON.more, 'Settings');
+    btn.addEventListener('click', () => ctx.events.emit({ type: 'open-settings', id: 'grid-options' }));
+    host.appendChild(btn);
+    return { destroy() { host.replaceChildren(); } };
+  });
+}
+
 // ── styles ─────────────────────────────────────────────────────────────────
 export function injectTitleBarStyles(): void {
   if (typeof document === 'undefined') return;
-  if (document.getElementById('cgext-titlebar-styles')) return;
-  const style = document.createElement('style');
-  style.id = 'cgext-titlebar-styles';
+  let style = document.getElementById('cgext-titlebar-styles') as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'cgext-titlebar-styles';
+    document.head.appendChild(style);
+  }
   style.textContent = TITLEBAR_CSS;
-  document.head.appendChild(style);
 }
 
 const TITLEBAR_CSS = `
@@ -228,13 +245,17 @@ const TITLEBAR_CSS = `
   --cg-accent-color: var(--cg-chrome-accent, #4f9cf9);
   --cg-muted-fg-color: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 62%, transparent);
   --cg-control-bg: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 6%, transparent);
+  --cgext-space-1: 4px;
+  --cgext-space-2: 8px;
+  --cgext-space-3: 12px;
+  --cgext-space-4: 16px;
 }
 
 .cgext-iconbtn {
   appearance: none;
-  width: 30px; height: 30px;
+  width: 32px; height: 32px;
   display: inline-flex; align-items: center; justify-content: center;
-  border: none; border-radius: var(--cg-radius, 7px);
+  border: none; border-radius: var(--cg-radius, 2px);
   background: transparent;
   color: var(--cg-muted-fg-color, #9aa4b6);
   cursor: pointer;
@@ -245,37 +266,45 @@ const TITLEBAR_CSS = `
 .cgext-iconbtn:disabled { opacity: 0.5; cursor: default; }
 .cgext-iconbtn:disabled:hover { background: transparent; }
 
-.cgext-brand { display: inline-flex; align-items: center; gap: 6px; padding-right: 4px; }
+.cgext-brand { display: inline-flex; align-items: center; gap: var(--cgext-space-2); padding-right: var(--cgext-space-1); }
 .cgext-brand-name { font-weight: 650; font-size: 14px; letter-spacing: -0.01em; color: var(--cg-fg-color, #e5e9f0); }
-.cgext-brand-collapse { width: 26px; height: 26px; }
+.cgext-brand-collapse { width: 28px; height: 28px; }
 
-.cgext-search { display: inline-flex; align-items: center; gap: 4px; }
-.cgext-search-open { background: var(--cg-control-bg, rgba(255,255,255,0.05)); border-radius: var(--cg-radius, 8px); padding-left: 2px; }
+.cgext-search { display: inline-flex; align-items: center; gap: var(--cgext-space-1); }
+.cgext-search-open { background: var(--cg-control-bg, rgba(255,255,255,0.05)); border-radius: var(--cg-radius, 2px); padding-left: 2px; }
 .cgext-search-input {
-  width: 260px; height: 28px; padding: 0 10px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 8px);
+  width: 260px; height: 30px; padding: 0 var(--cgext-space-3);
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 2px);
   background: var(--cg-control-bg, rgba(0,0,0,0.25));
   color: var(--cg-fg-color, #e5e9f0); font: inherit;
 }
 .cgext-search-input:focus { outline: none; border-color: var(--cg-accent-color, #4f9cf9); }
 
-.cgext-profile {
+/* Shared named-picker chrome: profiles (user) vs layouts (grid).
+ * Pills keep an explicit rounder radius — excluded from the 2px chrome rule. */
+.cgext-pill {
   display: inline-flex; align-items: center; gap: 7px;
-  height: 30px; padding: 0 8px 0 5px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 8px);
+  height: 32px; padding: 0 10px 0 6px;
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 8px;
   background: var(--cg-control-bg, rgba(255,255,255,0.04));
   color: var(--cg-fg-color, #e5e9f0); font: inherit; cursor: pointer;
   transition: border-color 120ms ease, background 120ms ease;
 }
-.cgext-profile:hover { border-color: var(--cg-accent-color, #4f9cf9); }
+.cgext-pill:hover { border-color: var(--cg-accent-color, #4f9cf9); }
+.cgext-pill-icon {
+  width: 20px; height: 20px; border-radius: 5px;
+  display: inline-flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--cg-muted-fg-color, #9aa4b6) 18%, transparent);
+  color: var(--cg-muted-fg-color, #9aa4b6);
+}
 .cgext-profile-avatar {
   width: 20px; height: 20px; border-radius: 50%;
   display: inline-flex; align-items: center; justify-content: center;
   background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 22%, transparent);
   color: var(--cg-accent-color, #4f9cf9);
 }
-.cgext-profile-name { font-weight: 550; font-size: 12.5px; }
-.cgext-profile-caret { color: var(--cg-muted-fg-color, #9aa4b6); display: inline-flex; }
+.cgext-pill-name, .cgext-profile-name { font-weight: 550; font-size: 12.5px; }
+.cgext-pill-caret { color: var(--cg-muted-fg-color, #9aa4b6); display: inline-flex; }
 
 .cgext-save.is-dirty {
   color: var(--cg-warning-color, #e0b341);
@@ -284,37 +313,60 @@ const TITLEBAR_CSS = `
 
 .cgext-date {
   display: inline-flex; align-items: center; gap: 6px;
-  height: 30px; padding: 0 10px;
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 8px);
+  height: 32px; padding: 0 var(--cgext-space-3);
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: 2px;
   color: var(--cg-fg-color, #e5e9f0); font-size: 12.5px; font-variant-numeric: tabular-nums;
 }
 .cgext-date svg { color: var(--cg-muted-fg-color, #9aa4b6); }
 
-/* divider before the right icon cluster */
-.cgext-titlebar > .cgext-slot-primary-right { gap: 6px; }
+/* Right cluster: breathing room + hairline before utility icons. */
+.cgext-titlebar > .cgext-slot-primary-right {
+  gap: var(--cgext-space-1);
+  padding-left: var(--cgext-space-3);
+  margin-left: var(--cgext-space-2);
+  border-left: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 85%, transparent);
+}
 
 .cgext-menu {
-  position: fixed; z-index: 60; min-width: 190px;
-  padding: 5px;
+  position: fixed; z-index: 60; min-width: 220px;
+  top: var(--cgext-menu-top, 0);
+  left: var(--cgext-menu-left, 0);
+  padding: var(--cgext-space-2);
   background: var(--cg-popup-bg, #171c26);
-  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 10px);
-  box-shadow: 0 12px 32px rgba(0,0,0,0.4);
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 2px);
+  box-shadow: 0 14px 36px rgba(0,0,0,0.42);
   color: var(--cg-fg-color, #e5e9f0);
-  font: 13px/1.4 var(--cg-font-family, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif);
+  font: 13px/1.35 var(--cg-font-family, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif);
 }
-.cgext-menu-list { display: flex; flex-direction: column; }
+.cgext-menu-list { display: flex; flex-direction: column; gap: 1px; }
+.cgext-menu-section {
+  margin: var(--cgext-space-2) var(--cgext-space-1) var(--cgext-space-1);
+  padding: 0 2px;
+  font-size: 10.5px; font-weight: 650; letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--cg-muted-fg-color, #9aa4b6);
+}
+.cgext-menu-section:first-child { margin-top: 2px; }
 .cgext-menu-item {
-  display: flex; align-items: center; gap: 9px;
-  padding: 7px 9px; border: none; border-radius: var(--cg-radius, 7px);
-  background: transparent; color: inherit; font: inherit; text-align: left;
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  align-items: center; column-gap: 10px;
+  min-height: 34px;
+  padding: 0 10px; border: none; border-radius: var(--cg-radius, 2px);
+  background: transparent; color: inherit; font: inherit; font-weight: 500; text-align: left;
   cursor: pointer;
 }
 .cgext-menu-item:hover { background: var(--cg-row-alt-bg, rgba(255,255,255,0.07)); }
-.cgext-menu-item svg { color: var(--cg-muted-fg-color, #9aa4b6); }
+.cgext-menu-item > svg:first-child {
+  width: 15px; height: 15px; justify-self: center;
+  color: var(--cg-muted-fg-color, #9aa4b6);
+}
+.cgext-menu-item > span:nth-child(2) { min-width: 0; }
 .cgext-menu-item.is-active { color: var(--cg-accent-color, #4f9cf9); }
-.cgext-menu-item.is-active svg { color: var(--cg-accent-color, #4f9cf9); }
-.cgext-menu-toggle { min-width: 200px; }
-.cgext-menu-toggle span:nth-child(2) { flex: 1 1 auto; }
-.cgext-menu-check { display: inline-flex; width: 14px; color: var(--cg-accent-color, #4f9cf9); }
-.cgext-menu-sep { height: 1px; margin: 5px 4px; background: var(--cg-border-color, #2a3140); }
+.cgext-menu-item.is-active > svg:first-child { color: var(--cg-accent-color, #4f9cf9); }
+.cgext-menu-item.is-active { background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 10%, transparent); }
+.cgext-menu-check {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 16px; color: var(--cg-accent-color, #4f9cf9);
+}
+.cgext-menu-sep { height: 1px; margin: 6px 6px; background: var(--cg-border-color, #2a3140); }
 `;

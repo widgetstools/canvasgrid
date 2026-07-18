@@ -171,7 +171,7 @@ function buildPanel(host: ColumnPanelHost, close: () => void): HTMLElement {
     el.innerHTML = `<div class="cgext-fmt-empty">Select a cell or column first.</div>`;
     return el;
   }
-  renderSections(el, host);
+  renderColumnSettingsSections(el, host);
   return el;
 }
 
@@ -232,12 +232,14 @@ export function sectionCaps(text: string): HTMLElement {
   return h;
 }
 
-function renderSections(el: HTMLElement, host: ColumnPanelHost): void {
+/** Render FILTER / GROUPING / AGGREGATION / BEHAVIOR controls into `el`.
+ *  Shared by the ribbon popover and the Column Settings settings module. */
+export function renderColumnSettingsSections(el: HTMLElement, host: ColumnPanelHost): void {
   const { grid } = host;
   const cols = host.targetCols();
   const rerender = () => {
     el.querySelectorAll('.cgext-col-caps, .cgext-col-row').forEach((n) => n.remove());
-    renderSections(el, host);
+    renderColumnSettingsSections(el, host);
   };
   /** Fan an apply over every target; error-tints the row on throw. */
   const applyAll = (row: HTMLElement, fn: (colId: string) => void): void => {
@@ -364,11 +366,13 @@ function renderSections(el: HTMLElement, host: ColumnPanelHost): void {
 
 export function injectColumnPanelStyles(): void {
   if (typeof document === 'undefined') return;
-  if (document.getElementById('cgext-col-styles')) return;
-  const style = document.createElement('style');
-  style.id = 'cgext-col-styles';
+  let style = document.getElementById('cgext-col-styles') as HTMLStyleElement | null;
+  if (!style) {
+    style = document.createElement('style');
+    style.id = 'cgext-col-styles';
+    document.head.appendChild(style);
+  }
   style.textContent = COL_CSS;
-  document.head.appendChild(style);
 }
 
 const COL_CSS = `
@@ -384,7 +388,7 @@ const COL_CSS = `
 .cgext-col-row:hover { background: var(--cg-row-alt-bg, rgba(255,255,255,0.05)); }
 .cgext-col-label { font-size: 12px; color: var(--cg-fg-color, #e5e9f0); }
 .cgext-col-switch {
-  appearance: none; width: 30px; height: 17px; border-radius: var(--cg-radius, 9px); position: relative;
+  appearance: none; width: 30px; height: 17px; border-radius: 9px; position: relative;
   border: 1px solid transparent;
   background: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 28%, transparent);
   cursor: pointer; flex: 0 0 auto;
@@ -395,7 +399,7 @@ const COL_CSS = `
   border-color: transparent;
 }
 .cgext-col-knob {
-  position: absolute; top: 1px; left: 1px; width: 13px; height: 13px; border-radius: var(--cg-radius, 50%);
+  position: absolute; top: 1px; left: 1px; width: 13px; height: 13px; border-radius: 50%;
   background: var(--cg-bg-color, #e5e9f0); transition: left 120ms ease;
 }
 .cgext-col-switch[aria-checked="true"] .cgext-col-knob { left: 14px; }
@@ -414,7 +418,7 @@ const COL_CSS = `
 }
 .cgext-col-row.is-error { box-shadow: inset 0 0 0 1px var(--cg-neg-color, #e2606c); }
 .cgext-col-select {
-  height: 24px; padding: 0 6px; border-radius: var(--cg-radius, 6px);
+  height: 24px; padding: 0 6px; border-radius: var(--cg-radius, 2px);
   border: 1px solid var(--cg-border-color, #2a3140);
   background: var(--cg-control-bg, rgba(0,0,0,0.25)); color: var(--cg-fg-color, #e5e9f0);
   font: inherit; font-size: 12px;

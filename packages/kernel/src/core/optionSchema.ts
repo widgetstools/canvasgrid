@@ -284,7 +284,9 @@ const OPTION_BANDS: BandSpec[] = [
     title: 'Advanced',
     fields: [
       { key: 'rowBuffer', label: 'Row buffer', type: 'number', min: 0, max: 100, step: 1, hint: 'Overscan rows (empty = auto)' },
-      { key: 'asyncTransactionWaitMillis', label: 'Async txn wait', type: 'number', min: 0, max: 5000, step: 10, hint: 'ms (empty = auto)' },
+      { key: 'asyncTransactionWaitMillis', label: 'Async txn wait', type: 'number', min: 0, max: 5000, step: 10, hint: 'Debounce ms (default 50)' },
+      { key: 'asyncTransactionConflate', label: 'Conflate async txns', type: 'switch', kernelDefault: true, hint: 'Last-write-wins per row in the batch' },
+      { key: 'asyncTransactionThrottleMillis', label: 'Async txn throttle', type: 'number', min: 0, max: 5000, step: 10, hint: 'Min ms between flushes (0 = off)' },
       { key: 'suppressColumnVirtualisation', label: 'No column virtualisation', type: 'switch', kernelDefault: false },
       { key: 'suppressRowVirtualisation', label: 'No row virtualisation', type: 'switch', kernelDefault: false },
     ],
