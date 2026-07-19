@@ -241,6 +241,78 @@ export class Renderer {
         )
       : [];
     if (partial && rects.length === 0 && !damage.blit) return; // nothing visible changed
+    const db = partial ? boundsOf(rects) : null;
+    const w = this.opts.getCanvasWidth();
+    const h = this.opts.getCanvasHeight();
+
+    // Cycle 26 — Tier-2 strip pre-pass for the NON-layer pipeline. This is
+    // the same capture/consume contract as `paintLayer`'s pre-pass above
+    // (which remains the source of truth for the eligibility + coverage
+    // rules — read its comment block first), transposed to SCREEN space:
+    //  - the raster target/capture source is the on-screen canvas, so a
+    //    row's device band is `round(row.top * dpr)` (no layer-local
+    //    re-basing) — self-consistent within this path; a strip captured
+    //    here whose rounding disagrees ±1px with a layer-path strip simply
+    //    misses on the height check and re-captures (fail-safe, never
+    //    corrupt);
+    //  - "covered" (capture candidacy) means a FULL paint or a full-width
+    //    damage rect spanning the row — the exact analogue of the layer
+    //    pass's `full || contentRects.some(...)`.
+    // This is the row-strip lever the raster-grain bench decided for
+    // no-GPU hosts (PERF-NOTES "cellBlit+strips wins both OpenFin
+    // regimes") — previously wired ONLY into the retained-layer path,
+    // which `qualityMode`'s software-raster resolution turns OFF, i.e. the
+    // one pipeline that runs on those hosts was the one without strips.
+    // With strips absent/null every branch below is skipped and the call
+    // sequence stays byte-identical to the shipped pipeline.
+    const strips = this.opts.getRasterStrips?.() ?? null;
+    const screenCanvas = strips !== null
+      ? this.opts.getCanvasElement?.() as (HTMLCanvasElement & CanvasImageSource) | undefined
+      : undefined;
+    let skipRows: Set<number> | undefined;
+    let stripBlits: Array<{ strip: PaintCacheCanvasLike; yDev: number }> | null = null;
+    let stripCaptures: Array<{ rowId: string; version: number; yDev: number; hDev: number }> | null = null;
+    let stripEpoch = 0;
+    if (strips !== null && screenCanvas !== undefined
+        && typeof screenCanvas.width === 'number' && typeof screenCanvas.height === 'number') {
+      stripEpoch = strips.layoutEpoch();
+      const dpr = strips.dpr;
+      const st = strips.stats;
+      for (const row of viewport.visibleRows) {
+        if (!row.subgrid.isData) continue;
+        // Rows clamped by the body region paint clamped bundles /
+        // suppressed edge gridlines — never strip-able (same rule as the
+        // layer pass).
+        if (row.top < viewport.bodyTop || row.bottom > viewport.bodyBottom) continue;
+        // Rows outside this paint's damage aren't repainted (their pixels
+        // are already correct) — neither blit nor capture applies.
+        if (db !== null && (row.bottom < db.minY || row.top > db.maxY)) continue;
+        const ri = row.localRowIndex;
+        if (!strips.eligible(ri)) continue;
+        const rowId = strips.stringRowIdAt(ri);
+        if (rowId === null || rowId === '') continue;
+        const version = strips.rowVersionOf(ri);
+        if (version === null) continue;
+        const yDev = Math.round(row.top * dpr);
+        const hDev = Math.round(row.bottom * dpr) - yDev;
+        if (hDev <= 0 || yDev < 0 || yDev + hDev > screenCanvas.height) continue;
+        const hit = strips.cache.get(rowId, version, stripEpoch);
+        if (hit !== null && hit.width === screenCanvas.width && hit.height === hDev) {
+          (skipRows ??= new Set()).add(ri);
+          (stripBlits ??= []).push({ strip: hit, yDev });
+          if (st) st.stripHits++;
+          continue;
+        }
+        const covered = !partial || rects.some(
+          (r) => r.x <= 0 && r.x + r.w >= w && r.y <= row.top && r.y + r.h >= row.bottom,
+        );
+        if (st) {
+          st.stripMisses++;
+          if (!covered) st.stripMissesUncoverable++;
+        }
+        if (covered) (stripCaptures ??= []).push({ rowId, version, yDev, hDev });
+      }
+    }
 
     const pctx = {
       viewport,
@@ -269,12 +341,14 @@ export class Renderer {
       getStickyGroupTotals: this.opts.getStickyGroupTotals,
       getColumnGroupOpen: this.opts.getColumnGroupOpen,
       // Damage-region rendering — null under full paint (no culling).
-      damageBounds: partial ? boundsOf(rects) : null,
+      damageBounds: db,
       // Cycle 22 / Task 2 — Tier-1 cell-bitmap cache (null ⇒ live paint).
       rasterCells: this.opts.getRasterCells?.() ?? null,
+      // Cycle 26 — Tier-2 strip-blitted rows this pass (see the pre-pass
+      // above). Both byRows' cell loop and the gridlines painter skip
+      // these; the blit after the painters supplies their pixels.
+      skipRows: skipRows ?? null,
     };
-    const w = this.opts.getCanvasWidth();
-    const h = this.opts.getCanvasHeight();
 
     // Task 5 — scroll self-blit. Copies the still-valid body pixels by the
     // scroll delta BEFORE the clip/fill block below repaints only the
@@ -358,6 +432,40 @@ export class Renderer {
     // Gridlines run after all cell paints so they sit on top with no double-stroked
     // seams. Sticky group band paints over the body rows (below the header).
     paintGridLines(gc, pctx);
+    // Cycle 26 — Tier-2 consume: one untransformed DEVICE-px drawImage per
+    // hit strip at the row's absolute device y. Runs AFTER cells+gridlines
+    // (same reasoning as the layer pass: an opaque strip overpaints any
+    // bundle bg that spanned a skipped row) and BEFORE the sticky band /
+    // overlays (they paint over blitted and fresh rows alike). In a
+    // partial paint this runs INSIDE the damage clip, which correctly
+    // restricts the blit to the repainted region — the strip's pixels
+    // there are byte-identical to what the live painters would produce.
+    if (stripBlits !== null) {
+      gc.save();
+      gc.setTransform(1, 0, 0, 1, 0, 0);
+      for (const b of stripBlits) {
+        gc.drawImage(
+          b.strip as unknown as CanvasImageSource,
+          0, 0, b.strip.width, b.strip.height,
+          0, b.yDev, b.strip.width, b.strip.height,
+        );
+      }
+      gc.restore();
+    }
+    // Cycle 26 — Tier-2 capture: copy each fully-repainted eligible row
+    // out of the SCREEN canvas, strictly AFTER gridlines and strictly
+    // BEFORE the sticky band + overlays paint over it — overlays must
+    // NEVER enter a strip (the layer pass's invariant, verbatim).
+    if (stripCaptures !== null && strips !== null && screenCanvas !== undefined) {
+      for (const c of stripCaptures) {
+        strips.cache.capture(
+          { rowId: c.rowId, rowVersion: c.version, layoutEpoch: stripEpoch },
+          screenCanvas as unknown as PaintCacheCanvasLike & CanvasImageSource,
+          c.yDev, screenCanvas.width, c.hDev,
+        );
+        if (strips.stats) strips.stats.stripCaptures++;
+      }
+    }
     // Cycle 15 / Task 16 — sticky group rows pin the ancestor group band
     // above the scrollable body rows. Paints after gridlines so the band
     // bg occludes gridlines at the top of the body area.

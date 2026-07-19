@@ -287,6 +287,11 @@ describe('columnResized finished flag — drag vs imperative', () => {
     grid.on('columnResized', (e) => events.push(e));
     // Drive the private per-tick resize call (same path the resize feature uses).
     (grid as any).resizeColumn('a', 10);
+    // Since the resize-drag rAF coalescing landed (edbee62), the per-tick
+    // layout apply + `finished:false` emission happen on the coalesced
+    // flush, not synchronously per pointer event. Drive the flush the way
+    // the drag's rAF would.
+    (grid as any).flushColumnResizePaint();
     expect(events.length).toBe(1);
     expect(events[0]).toMatchObject({
       colId: 'a', finished: false, source: 'uiColumnResized',

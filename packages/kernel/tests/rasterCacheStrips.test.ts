@@ -637,6 +637,11 @@ describe('CGrid + Tier-2 strips — eligibility, versions, epochs, patch (Task 3
 
     let e = g.stripLayoutEpoch;
     g.resizeColumn('id', 10);
+    // Since the resize-drag rAF coalescing landed (edbee62), the layout
+    // assignment — and therefore the epoch bump in the columnLayout
+    // setter — happens on the coalesced flush, not synchronously per
+    // pointer event. Drive the flush the way the drag's rAF would.
+    g.flushColumnResizePaint();
     expect(g.stripLayoutEpoch).toBeGreaterThan(e);
 
     e = g.stripLayoutEpoch;
