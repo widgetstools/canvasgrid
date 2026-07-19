@@ -162,6 +162,34 @@ export function decorateHeader(def: ResolvedColDef, gridSuppress: boolean): stri
  */
 export type ByRowsMode = 'layer' | 'chrome' | undefined;
 
+/**
+ * Does any visible column declare something that reads the per-row data
+ * snapshot? Three consumers exist, and this predicate must stay in sync
+ * with all three or a callback silently receives `{}` instead of the row:
+ *
+ *   - `applyCellProps` builds `callbackParams.data` only when the column
+ *     has `cellClassFn` / `cellClassRules` / `cellStyleFn`.
+ *   - `resolveDrawableCellIcon` receives `data` for a FUNCTION-form
+ *     `cellIcon` (the string / IconRef forms never read it).
+ *   - the rule-engine `ruleRow`, which PREFERS the full `getRowDataById`
+ *     mirror and only falls back to the snapshot — handled per row in
+ *     `paintBand`, not here, because it depends on the mirror's contents.
+ */
+function rowDataNeededForCols(
+  visibleColumns: PainterCtx['viewport']['visibleColumns'],
+  columnDefs: PainterCtx['columnDefs'],
+): boolean {
+  for (const col of visibleColumns) {
+    const def = columnDefs.get(col.colId);
+    if (def === undefined) continue;
+    if (def.cellClassFn !== undefined
+      || def.cellClassRules !== undefined
+      || def.cellStyleFn !== undefined
+      || typeof def.cellIcon === 'function') return true;
+  }
+  return false;
+}
+
 export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx, mode?: ByRowsMode): void {
   const { viewport: vs, theme, columnDefs, cellRenderers, cellData, selection, sortModel, rowDataSnapshotAt, quickFilterLowerTerms, suppressAggFuncInHeader, groupRowStrip } = p;
   const totalRowCount = p.totalRowCount ?? 0;
@@ -378,6 +406,15 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx, mode?: ByRo
   // every `paintBand` call in the subgrid loop. Same identity across
   // every band so the mutated `sharedConfig` + the resolved lookups
   // stay hot in cache.
+  // Cycle 26 — resolve ONCE per paint whether anything can read the per-row
+  // data snapshot. `rowDataSnapshotAt` calls `cellAt` for every visible
+  // column, so building it per data row doubles the paint's `cellAt` volume
+  // (the cell loop below already fetches each cell for its own paint). On a
+  // grid with no conditional-styling callbacks that entire second pass is
+  // dead work. See `paintBand` for the row-level use and the ruleRow
+  // fallback that can still force a snapshot.
+  const rowDataNeeded = rowDataNeededForCols(vs.visibleColumns, columnDefs);
+
   const bandCtx: PaintBandCtx = {
     rowBgs,
     groupStripRows,
@@ -390,6 +427,7 @@ export function paintCellsByRows(gc: CachedContext2D, p: PainterCtx, mode?: ByRo
     selection,
     theme,
     rowDataSnapshotAt,
+    rowDataNeeded,
     quickFilterActive,
     quickFilterLowerTerms,
     suppressAggFuncInHeader,
@@ -638,6 +676,11 @@ interface PaintBandCtx {
   selection: PainterCtx['selection'];
   theme: PainterCtx['theme'];
   rowDataSnapshotAt: PainterCtx['rowDataSnapshotAt'];
+  /** True when ANY visible column declares something that reads the
+   *  per-row data snapshot (`cellClassFn` / `cellClassRules` /
+   *  `cellStyleFn` / a function-form `cellIcon`). Resolved once per paint;
+   *  see `rowDataNeededForCols`. */
+  rowDataNeeded: boolean;
   quickFilterActive: boolean;
   quickFilterLowerTerms: readonly string[];
   suppressAggFuncInHeader: boolean;
@@ -811,22 +854,32 @@ function paintBand(gc: CachedContext2D, band: BandRect, ctx: PaintBandCtx): void
       continue;
     }
 
-    // Compute rowData once per data row (not per cell) for use by
-    // cellClassRules predicates and function-form cellStyle / cellClass.
-    // Header rows don't need row data.
-    const rowData: Record<string, unknown> | undefined = row.subgrid.isData
-      ? rowDataSnapshotAt(row.localRowIndex)
-      : undefined;
     // Cycle 21e / Task 11 — rule-fold identity. `stringRowIds` is '' for
     // group/footer chunk entries, so `ruleRowId` is undefined exactly on
     // the rows the fold must skip. `ruleRow` prefers the full row from
     // the rowDataById mirror (hidden columns included) and falls back to
     // the visible-column snapshot.
+    //
+    // Cycle 26 — identity + mirror are resolved BEFORE the snapshot so the
+    // snapshot can be skipped. `rowDataSnapshotAt` costs one `cellAt` per
+    // visible column, i.e. a second full pass over the row on top of the
+    // per-cell `cellData` fetch below. It is only observable through three
+    // consumers (see `rowDataNeededForCols`): column callbacks, a
+    // function-form `cellIcon`, and — only when the mirror MISSES — the
+    // ruleRow fallback. When none of those apply the whole pass is dead
+    // work, which on a plain grid halves this paint's `cellAt` volume.
     const ruleRowId: string | undefined = row.subgrid.isData
       ? (ctx.stringRowIdAt?.(row.localRowIndex) || undefined)
       : undefined;
+    const mirrorRow: Record<string, unknown> | undefined = ruleRowId !== undefined
+      ? (ctx.getRowDataById?.(ruleRowId) as Record<string, unknown> | undefined)
+      : undefined;
+    const rowData: Record<string, unknown> | undefined =
+      row.subgrid.isData && (ctx.rowDataNeeded || (ruleRowId !== undefined && mirrorRow === undefined))
+        ? rowDataSnapshotAt(row.localRowIndex)
+        : undefined;
     const ruleRow: Record<string, unknown> | undefined = ruleRowId !== undefined
-      ? ((ctx.getRowDataById?.(ruleRowId) as Record<string, unknown> | undefined) ?? rowData)
+      ? (mirrorRow ?? rowData)
       : undefined;
 
     for (const col of cols) {
