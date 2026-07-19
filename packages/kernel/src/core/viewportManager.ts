@@ -117,6 +117,18 @@ export class ViewportManager {
    *  throttle is bypassed when the live viewport leaves this window so
    *  key-repeat / PageDown cannot paint past the in-flight chunk. */
   private lastDispatchedRange: { rowStart: number; rowEnd: number } | null = null;
+  /** Cycle 26 (scroll-coalescing) — bodyHeight committed by the last
+   *  viewport compute. The widened-overscan rowBuffer derives from it, so
+   *  caching it collapses the old base+widened double `computeViewport`
+   *  into a single pass on every steady scroll tick (bodyHeight is
+   *  scroll-invariant; a resize mismatch self-corrects with one extra
+   *  pass). `null` until the first compute. */
+  private lastBufferBodyHeight: number | null = null;
+  /** Cycle 26 (scroll-coalescing) — inputs of the last applied sizer
+   *  update. Scroll changes neither the content extent (`maxScroll*`) nor
+   *  the canvas bounds, so `syncSizer` skips its DOM reads + style writes
+   *  entirely while these match. `null` forces the first application. */
+  private lastSizerKey: { msl: number; mst: number; bw: number; bh: number } | null = null;
 
   /** First / last colId of the materialised center-column slice — the
    *  identity of the virtualisation window. `null` for "no center columns
@@ -186,10 +198,15 @@ export class ViewportManager {
    *  `virtualColumnsChanged` emission can report `afterScroll: true` in
    *  that case (every other caller — resize, column mutation, group toggle
    *  — passes `false`). Cycle 6 / Task 8. */
-  recompute(afterScroll: boolean = false): ViewportState {
+  recompute(afterScroll: boolean = false, skipColumnDetection = false): ViewportState {
     this.currentState = this.computeCurrentViewport();
     this.syncSizer();
-    this.detectVirtualColumnsChanged(afterScroll);
+    // Cycle 26 (scroll-coalescing) — a vertical-only scroll tick cannot
+    // move the horizontal virtualization window, so its caller passes
+    // `skipColumnDetection` and the first/last-center-column scan is
+    // skipped. Every other caller (resize, column mutation, horizontal
+    // scroll) still detects.
+    if (!skipColumnDetection) this.detectVirtualColumnsChanged(afterScroll);
     this.deps.afterRecompute(this.currentState);
     return this.currentState;
   }
@@ -220,35 +237,62 @@ export class ViewportManager {
         opts.suppressRowVirtualisation || opts.domLayout === 'print',
       dataRowHeightIndex: this.deps.getRowHeightIndex() ?? undefined,
     };
-    const state = computeViewport({ ...baseArgs, rowBuffer: opts.rowBuffer });
     // Task 3 (paint-cache layer, spec §1 "Fetch window coupling") — widen
     // the row overscan that feeds `firstRow`/`lastRow` (and therefore the
     // worker fetch window, see `request()` below) so it spans the retained
     // layer's coverage, not just the on-screen rows. `paintCache: false` is
-    // the field escape hatch — it must reproduce today's overscan exactly,
-    // so the widened path is skipped entirely rather than widened-to-zero.
-    // (Deephaven-style scroll buffer on the lean path is applied by apps
-    // via an explicit `rowBuffer`, e.g. the ext demo uses 32.)
-    if (opts.paintCache === false) {
-      // Deephaven ROW_BUFFER_PAGES=1 on the lean path when the app did not
-      // set an explicit rowBuffer — buffer ~one viewport of rows each side.
-      // Explicit `rowBuffer` must reproduce the exact overscan (escape hatch).
-      if (opts.rowBuffer !== undefined) return state;
-      const rowHeightFallback = this.deps.getRowHeightFallback() || 1;
-      const pageRows = Math.max(1, Math.ceil(state.bodyHeight / rowHeightFallback));
-      if (pageRows <= 3) return state;
-      return computeViewport({ ...baseArgs, rowBuffer: pageRows });
-    }
+    // the field escape hatch with its own Deephaven ROW_BUFFER_PAGES=1
+    // lean-path buffer; an explicit `rowBuffer` reproduces the exact
+    // overscan on either path.
+    //
+    // Cycle 26 (scroll-coalescing) — the widened buffer derives from
+    // `bodyHeight`, which is SCROLL-INVARIANT (container height + subgrid
+    // chrome; only resize / theme / subgrid changes move it). The previous
+    // shape computed a throwaway base viewport every call just to read
+    // `bodyHeight` off it — doubling `computeViewport`'s work + row/column
+    // array allocations on EVERY scroll event. Instead, predict the buffer
+    // from the last committed `bodyHeight` and verify after the single
+    // pass; a mismatch (resize landing this exact tick) self-corrects with
+    // one extra pass, exactly the old cost.
     const rowHeightFallback = this.deps.getRowHeightFallback() || 1;
-    // Deephaven ROW_BUFFER_PAGES=1 → default overscan of one bodyHeight
-    // each side (was 0.5). Explicit paintCacheOverscan still wins.
-    const paintCacheOverscan = Math.max(0, Math.min(2, opts.paintCacheOverscan ?? 1));
-    const overscanPx = paintCacheOverscan * state.bodyHeight;
-    const widenedRows = Math.ceil(overscanPx / rowHeightFallback);
-    const baseOverscan = opts.rowBuffer ?? 3;
-    const widened = Math.max(baseOverscan, widenedRows);
-    if (widened <= baseOverscan) return state;
-    return computeViewport({ ...baseArgs, rowBuffer: widened });
+    const widenedBufferFor = (bodyHeight: number): number | undefined => {
+      if (opts.paintCache === false) {
+        // Deephaven ROW_BUFFER_PAGES=1 on the lean path when the app did
+        // not set an explicit rowBuffer — buffer ~one viewport each side.
+        if (opts.rowBuffer !== undefined) return opts.rowBuffer;
+        const pageRows = Math.max(1, Math.ceil(bodyHeight / rowHeightFallback));
+        return pageRows <= 3 ? opts.rowBuffer : pageRows;
+      }
+      // Deephaven ROW_BUFFER_PAGES=1 → default overscan of one bodyHeight
+      // each side (was 0.5). Explicit paintCacheOverscan still wins.
+      const paintCacheOverscan = Math.max(0, Math.min(2, opts.paintCacheOverscan ?? 1));
+      const overscanPx = paintCacheOverscan * bodyHeight;
+      const widenedRows = Math.ceil(overscanPx / rowHeightFallback);
+      const baseOverscan = opts.rowBuffer ?? 3;
+      const widened = Math.max(baseOverscan, widenedRows);
+      return widened <= baseOverscan ? opts.rowBuffer : widened;
+    };
+    const predictedBodyH = this.lastBufferBodyHeight;
+    if (predictedBodyH !== null) {
+      const state = computeViewport({
+        ...baseArgs,
+        rowBuffer: widenedBufferFor(predictedBodyH),
+      });
+      if (state.bodyHeight === predictedBodyH) return state;
+      // bodyHeight moved under us (resize this tick) — re-derive from the
+      // actual value and take the corrective second pass.
+      this.lastBufferBodyHeight = state.bodyHeight;
+      const corrected = widenedBufferFor(state.bodyHeight);
+      if (corrected === widenedBufferFor(predictedBodyH)) return state;
+      return computeViewport({ ...baseArgs, rowBuffer: corrected });
+    }
+    // First compute (no committed bodyHeight yet) — the original two-pass
+    // shape: base pass to learn bodyHeight, widened pass if it differs.
+    const state = computeViewport({ ...baseArgs, rowBuffer: opts.rowBuffer });
+    this.lastBufferBodyHeight = state.bodyHeight;
+    const buffer = widenedBufferFor(state.bodyHeight);
+    if (buffer === opts.rowBuffer) return state;
+    return computeViewport({ ...baseArgs, rowBuffer: buffer });
   }
 
   /** Size the invisible sizer to match the viewport's scrollable extent so the
@@ -264,6 +308,26 @@ export class ViewportManager {
   private syncSizer(): void {
     const { sizer, scroller, root } = this.deps;
     if (!sizer) return; // happy-dom guard during early construction
+    // Cycle 26 (scroll-coalescing) — the sizer's extent depends on the
+    // content overflow (`maxScroll*`) and the client box, neither of which
+    // a scroll-position change can move. Skipping the no-op refresh keeps
+    // the per-scroll-event path free of `clientWidth`/`clientHeight` reads
+    // (forced-layout hazards) and style writes. Canvas bounds stand in for
+    // the client box in the key: every path that resizes the scroller also
+    // re-measures the canvas (`CGridCanvas.resize` → recompute), so a
+    // client-box change always lands here with fresh bounds.
+    const bounds = this.deps.getCanvasBounds();
+    const key = {
+      msl: this.currentState.maxScrollLeft,
+      mst: this.currentState.maxScrollTop,
+      bw: bounds.width,
+      bh: bounds.height,
+    };
+    const last = this.lastSizerKey;
+    if (last !== null
+      && last.msl === key.msl && last.mst === key.mst
+      && last.bw === key.bw && last.bh === key.bh) return;
+    this.lastSizerKey = key;
     const baseW = scroller.clientWidth || root.clientWidth;
     const baseH = scroller.clientHeight || root.clientHeight;
     const w = this.currentState.maxScrollLeft > 0 ? baseW + this.currentState.maxScrollLeft : 1;
@@ -342,7 +406,7 @@ export class ViewportManager {
     }
     this._scrollLeft = x;
     this._scrollTop = y;
-    this.recompute(/* afterScroll */ horizontal);
+    this.recompute(/* afterScroll */ horizontal, /* skipColumnDetection */ !horizontal);
     this.deps.events.emit({
       type: 'viewportChanged',
       firstRow: this.currentState.firstRow,
