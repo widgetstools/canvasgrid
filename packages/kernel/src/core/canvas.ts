@@ -38,6 +38,17 @@ export interface CanvasOptions {
 const DEFAULT_FPS_CAP = 60;
 const DEFAULT_RESIZE_POLL_MS = 200;
 
+/** Jitter tolerance for the fps gate, in ms.
+ *
+ *  rAF callbacks on a 60Hz display arrive ~16.6–16.7ms apart while a 60fps
+ *  cap computes `interval = 16.667`. A strict `elapsed > interval` test
+ *  therefore fails on every tick that lands a hair early, deferring an
+ *  already-dirty frame to the NEXT rAF (~33ms later). The visible result is
+ *  not a clean 30fps — it is an IRREGULAR 16.7/33.3/16.7/33.3 cadence, which
+ *  is exactly what reads as scroll judder. A small slop absorbs that
+ *  sub-millisecond jitter without materially weakening the cap. */
+const FPS_GATE_JITTER_MS = 1;
+
 // Module-level loops, shared across all CGridCanvas instances.
 // Mirrors hypergrid's single RAF + single resize interval design.
 const paintables: Set<CGridCanvas> = new Set();
@@ -233,16 +244,36 @@ export class CGridCanvas {
     }
   }
 
-  /** RAF tick — gated by fpsCap + dirty flag. */
+  /** RAF tick — gated by fpsCap + dirty flag.
+   *
+   *  Two deliberate details, both about CADENCE rather than throughput:
+   *
+   *  1. `FPS_GATE_JITTER_MS` slop — see the constant. Without it a 60fps cap
+   *     on a 60Hz display drops roughly every other ready frame and produces
+   *     an irregular paint rhythm (the judder this gate used to cause).
+   *
+   *  2. `lastRepaintTime` advances on the INTERVAL GRID (`+= interval`), not
+   *     to `now`. Snapping to `now` makes the cap beat against the display
+   *     refresh whenever they don't divide evenly — a 60fps cap on a 144Hz
+   *     display would settle at ~48fps because each skipped tick pushes the
+   *     next deadline further out. Advancing on the grid self-corrects, so
+   *     the long-run rate converges on the configured cap.
+   *
+   *  When we've fallen more than a full interval behind the grid (tab
+   *  throttling, a long task, the initial `lastRepaintTime = 0`), re-anchor
+   *  to `now` instead of replaying the backlog — the grid is a pacing aid,
+   *  never a reason to burst-paint to "catch up". */
   tickPaint(now: number): void {
     if (this.destroyed) return;
     const fps = this.fpsCap;
     if (fps === 0) return;
     const interval = 1000 / fps;
     const elapsed = now - this.lastRepaintTime;
-    if (elapsed > interval && this.dirty) {
+    if (elapsed >= interval - FPS_GATE_JITTER_MS && this.dirty) {
       this.paintNow();
-      this.lastRepaintTime = now;
+      this.lastRepaintTime = elapsed > interval * 2
+        ? now
+        : this.lastRepaintTime + interval;
     }
   }
 
