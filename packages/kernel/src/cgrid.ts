@@ -1827,7 +1827,22 @@ export class CGrid<TRow = any> {
     // Cycle 21i / Phase 1 — let UI-driven selection record row IDs so it
     // survives `modelUpdated` (live transactions fire it constantly). The
     // resolver maps a visible row index → its string rowId from the chunk.
-    this.selection.setRowIdResolver((rowIndex) => this.rowIdAt(rowIndex));
+    //
+    // REAL ids only — never `rowIdAt`, whose `row-<n>` synthetic fallback
+    // exists for flash/registry contracts. A synthetic id recorded as
+    // persistent focus identity is unresolvable by the worker: the next
+    // `modelUpdated` rebuild got -1 back, nulled the focus, and the next
+    // arrow press navigated from `fr ?? 1` → row 0 — teleporting the
+    // viewport to the top the moment focus had landed on a row outside
+    // the loaded chunk (held-arrow scrolling outruns the 150ms-throttled
+    // fetch routinely). A null id simply means "no persistent identity":
+    // `rebuildIndices` leaves the focus index alone and the focus ring
+    // stays where the user put it. Group/footer rows ('' from
+    // `stringRowIdAt`) also map to null for the same reason.
+    this.selection.setRowIdResolver((rowIndex) => {
+      const id = this.stringRowIdAt(rowIndex);
+      return id ? id : null;
+    });
 
     // 6. Renderer — no canvas, no paint loop; just the per-frame paint logic.
     this.renderer = new Renderer({

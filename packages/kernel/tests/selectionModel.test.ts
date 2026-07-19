@@ -171,12 +171,24 @@ describe('SelectionModel', () => {
       expect(m.getPersistentSelectedRowIds()).toEqual(['a', 'b']);
     });
 
-    it('rebuildIndices drops the focused index when its id is missing', () => {
+    it('rebuildIndices drops the focused index when its id resolved to -1', () => {
       const m = new SelectionModel('single');
       m.setFocusByRowId('a', 'col', 0);
-      m.rebuildIndices(new Map()); // a missing
+      // Production contract: `rebuildSelectionFromPersistentIds` maps EVERY
+      // requested id — a filtered-out/removed row arrives as an explicit -1,
+      // never as an omission. (An id absent from the map means the reply is
+      // STALE — focus moved while the worker round-trip was in flight — and
+      // must leave the focus index alone; see the stale-reply guard.)
+      m.rebuildIndices(new Map([['a', -1]]));
       expect(m.state.focusedRowIndex).toBeNull();
       expect(m.getPersistentFocusedRowId()).toBe('a');
+    });
+
+    it('rebuildIndices leaves focus alone when the CURRENT id is absent (stale reply)', () => {
+      const m = new SelectionModel('single');
+      m.setFocusByRowId('a', 'col', 7);
+      m.rebuildIndices(new Map([['z', 3]])); // reply for a superseded focus
+      expect(m.state.focusedRowIndex).toBe(7);
     });
 
     it('rebuildIndices does not fire onChange when nothing actually changed', () => {
@@ -222,7 +234,9 @@ describe('SelectionModel', () => {
       const m = new SelectionModel('multiple');
       m.setFocusByRowId('b', 'region', 1);
       m.setRanges([{ rowStart: 1, rowEnd: 1, colIds: ['region'] }]);
-      m.rebuildIndices(new Map()); // b missing
+      // Explicit -1 = the worker says the row left the visible set (see the
+      // production-contract note in the drop-focus test above).
+      m.rebuildIndices(new Map([['b', -1]]));
       expect(m.state.focusedRowIndex).toBeNull();
       expect(m.state.ranges).toEqual([]);
     });

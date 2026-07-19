@@ -417,10 +417,21 @@ export class SelectionModel {
 
     if (this._focusedRowId !== null) {
       const idx = rowIdToIndex.get(this._focusedRowId);
-      const nextFocus = idx === undefined || idx < 0 ? null : idx;
-      if (this._state.focusedRowIndex !== nextFocus) {
-        this._state.focusedRowIndex = nextFocus;
-        changed = true;
+      // Stale-reply guard: `rowIdToIndex` was built from the ids captured
+      // when the async worker round-trip was DISPATCHED. If focus moved to
+      // a different row while the reply was in flight (held arrow keys
+      // outrun `getRowIndicesForIds`), the CURRENT id is absent from the
+      // map — leave the focus index alone rather than clobbering the
+      // user's newer position (pre-fix this nulled the focus, and the next
+      // arrow press navigated from `fr ?? 1` → row 0, teleporting the
+      // viewport to the top). An explicit -1 entry — the row genuinely
+      // left the visible set — still clears the focus.
+      if (idx !== undefined) {
+        const nextFocus = idx < 0 ? null : idx;
+        if (this._state.focusedRowIndex !== nextFocus) {
+          this._state.focusedRowIndex = nextFocus;
+          changed = true;
+        }
       }
     }
 
