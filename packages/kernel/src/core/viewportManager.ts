@@ -117,6 +117,10 @@ export class ViewportManager {
    *  throttle is bypassed when the live viewport leaves this window so
    *  key-repeat / PageDown cannot paint past the in-flight chunk. */
   private lastDispatchedRange: { rowStart: number; rowEnd: number } | null = null;
+  /** Cycle 26 (W3) — column ids of the last dispatched fetch (buffered
+   *  window, see `columnFetchWindow`). The throttle bypass consults this
+   *  so horizontal scroll into an unfetched column fetches immediately. */
+  private lastDispatchedCols: Set<string> | null = null;
   /** Cycle 26 (scroll-coalescing) — bodyHeight committed by the last
    *  viewport compute. The widened-overscan rowBuffer derives from it, so
    *  caching it collapses the old base+widened double `computeViewport`
@@ -603,13 +607,61 @@ export class ViewportManager {
   }
 
   /** True when the live overscan window is not fully inside the last
-   *  dispatched fetch range (or nothing has been dispatched yet). */
+   *  dispatched fetch range (or nothing has been dispatched yet).
+   *
+   *  Cycle 26 (W3) — columns count too: a horizontal scroll that brings a
+   *  column OUTSIDE the last dispatched column set into view must fetch
+   *  immediately, not sit out the scroll throttle painting blank cells —
+   *  the exact horizontal twin of the key-repeat/PageDown row bypass. */
   private viewportUncoveredByLastDispatch(): boolean {
     const needStart = this.currentState.firstRow;
     const needEnd = this.currentState.lastRow + 1;
     const last = this.lastDispatchedRange;
     if (last === null) return true;
-    return needStart < last.rowStart || needEnd > last.rowEnd;
+    if (needStart < last.rowStart || needEnd > last.rowEnd) return true;
+    const lastCols = this.lastDispatchedCols;
+    if (lastCols === null) return true;
+    for (const c of this.currentState.visibleColumns) {
+      if (!lastCols.has(c.colId)) return true;
+    }
+    return false;
+  }
+
+  /** Cycle 26 (W3) — the COLUMN fetch window: visible columns plus one
+   *  bodyWidth of buffered center columns on EACH side (Deephaven
+   *  `COLUMN_BUFFER_PAGES = 1` — the row half of that contract was ported
+   *  long ago; the column half was not, so every horizontally-entering
+   *  column painted BLANK for a throttle period + worker round-trip while
+   *  its data was fetched). Built as a UNION with the live visible set so
+   *  it can never be narrower than today's behavior
+   *  (`suppressColumnVirtualisation` keeps its all-columns fetch, pinned
+   *  columns stay included, zero-width edge cases degrade to visible). */
+  private columnFetchWindow(): string[] {
+    const vs = this.currentState;
+    const visible = vs.visibleColumns.map((c) => c.colId);
+    const bodyW = vs.bodyWidth;
+    if (bodyW <= 0) return visible;
+    const layout = this.deps.getColumnLayout();
+    if (layout.length === 0) return visible;
+    let pinnedLeftWidth = 0;
+    for (const c of layout) {
+      if (c.pinned === 'left') pinnedLeftWidth += c.width;
+    }
+    // Center content-space window: visible span ± one bodyWidth per side.
+    const winStart = this._scrollLeft - bodyW;
+    const winEnd = this._scrollLeft + 2 * bodyW;
+    const set = new Set(visible);
+    const out = visible.slice();
+    for (const c of layout) {
+      if (set.has(c.colId)) continue;
+      if (c.pinned) { set.add(c.colId); out.push(c.colId); continue; }
+      const left = c.left - pinnedLeftWidth;
+      if (left < winEnd && left + c.width > winStart) {
+        set.add(c.colId);
+        out.push(c.colId);
+      }
+    }
+    return out;
   }
 
   private dispatchRequest(): void {
@@ -619,7 +671,12 @@ export class ViewportManager {
     }
     this.requestPending = true;
     const seq = ++this._viewportReqSeq;
-    const cols = this.currentState.visibleColumns.map((c) => c.colId);
+    // Cycle 26 (W3) — fetch a buffered column window, not just the visible
+    // columns (see `columnFetchWindow`). Painting still iterates only the
+    // visible set; the buffer exists so horizontally-entering columns have
+    // data the instant they appear.
+    const cols = this.columnFetchWindow();
+    this.lastDispatchedCols = new Set(cols);
     // Cycle 25 / Task 8 — widen the row range when scrolling fast so the
     // next chunk already covers the about-to-be-visible rows.
     // expandRangeForVelocity is a no-op when velocity is below the threshold

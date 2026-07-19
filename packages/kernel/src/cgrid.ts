@@ -10649,6 +10649,34 @@ export class CGrid<TRow = any> {
       // any formatter on text columns.
       return { value, valueFormatted: this.formatText(colId, value), flashAlpha: flash, flashColor };
     }
+    // Cycle 26 (W3) — column absent from the chunk: a horizontally-entering
+    // column whose (now-buffered) fetch hasn't landed yet, or a fast fling
+    // that outran the buffer. For a plain data row the FULL row already
+    // lives in the main-thread `rowDataById` mirror — serve the value from
+    // there, through the same memoized formatters, so entering columns
+    // paint real content immediately instead of a blank that fills in a
+    // throttle period + worker round-trip later. Gated to field-backed
+    // columns without a `valueGetter` (worker-computed values — calc /
+    // pivot-result / getter columns — keep today's blank-until-chunk; a
+    // wrong value is worse than a briefly missing one).
+    if ((this.chunk.rowKinds[localIndex] ?? 0) === 0) {
+      const sid = this.chunk.stringRowIds?.[localIndex];
+      if (sid) {
+        const def = this.columnDefsMap.get(colId);
+        const field = def?.field;
+        if (field !== undefined && def?.valueGetter === undefined) {
+          const row = this.rowDataById.get(sid) as Record<string, unknown> | undefined;
+          const raw = row?.[field];
+          if (raw !== undefined && raw !== null) {
+            if (typeof raw === 'number') {
+              return { value: raw, valueFormatted: this.formatNumber(colId, raw), flashAlpha: flash, flashColor };
+            }
+            const s = String(raw);
+            return { value: s, valueFormatted: this.formatText(colId, s), flashAlpha: flash, flashColor };
+          }
+        }
+      }
+    }
     return { value: '', valueFormatted: '', flashAlpha: flash, flashColor };
   }
 
