@@ -234,12 +234,22 @@ export class DamageLedger {
     const rowCellSpans = new Map<number, {
       top: number; bottom: number; minX: number; maxX: number; fullRow: boolean;
     }>();
+    // Cycle 26 (fling-scroll partials) — 'rows' damage coalesces
+    // CONTIGUOUS rows into single full-width bands BEFORE any rect is
+    // created. A window-move chunk during a scroll damages a long run of
+    // consecutive rows; pushing one rect per row fed the pre-merge cap
+    // (`DAMAGE_PRE_MERGE_CAP`) a rect count proportional to scroll speed
+    // and needlessly degraded those frames to FULL — the exact
+    // "44–52% full paints at fling pace" residue PERF-NOTES measured.
+    // Row geometry still resolves here at paint time (the semantic-damage
+    // contract); only the rect construction is banded.
+    const rowBandsRaw: Array<{ top: number; bottom: number }> = [];
     for (const d of entries) {
       switch (d.kind) {
         case 'rows':
           for (const i of d.rowIndices) {
             const b = ctx.rowBand(i);
-            if (b) pushData(b.top, b.bottom);
+            if (b) rowBandsRaw.push({ top: b.top, bottom: b.bottom });
           }
           break;
         case 'cells':
@@ -266,6 +276,22 @@ export class DamageLedger {
         case 'rect': splitRaw.push({ x: d.x, y: d.y, w: d.w, h: d.h }); break;
         // 'full'/'scroll' never stored in entries
       }
+    }
+    // Merge touching/overlapping row bands (sorted by top) into runs —
+    // N contiguous damaged rows become ONE full-width rect.
+    if (rowBandsRaw.length > 0) {
+      rowBandsRaw.sort((a, b) => a.top - b.top);
+      let cur = rowBandsRaw[0]!;
+      for (let i = 1; i < rowBandsRaw.length; i++) {
+        const next = rowBandsRaw[i]!;
+        if (next.top <= cur.bottom) {
+          if (next.bottom > cur.bottom) cur = { top: cur.top, bottom: next.bottom };
+        } else {
+          pushData(cur.top, cur.bottom);
+          cur = next;
+        }
+      }
+      pushData(cur.top, cur.bottom);
     }
     for (const span of rowCellSpans.values()) {
       if (span.fullRow || span.minX > span.maxX) pushData(span.top, span.bottom);

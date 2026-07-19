@@ -81,6 +81,66 @@ describe('DamageLedger', () => {
     expect(l.takeResolved(ctx()).full).toBe(true);
   });
 
+  // Cycle 26 (fling-scroll partials) — contiguous 'rows' damage bands into
+  // ONE rect before any cap can see it. A window-move chunk during a fast
+  // scroll damages a long consecutive run; pre-banding this produced one
+  // rect per row and tripped DAMAGE_PRE_MERGE_CAP (64) into a needless
+  // full repaint at fling pace.
+  describe('rows banding (fling-scroll partials)', () => {
+    /** rowBand over a tall 150-row window with a matching layer extent so
+     *  (a) >64 contiguous rows exist (the old pre-merge failure mode) and
+     *  (b) a 70-row band stays under the 60% data-domain area cap
+     *  (1680px / 3600px layer ≈ 47%) — i.e. the banding itself is what
+     *  the PARTIAL outcome proves, not a cap side-effect. */
+    const tallCtx = (over: Partial<DamageResolveCtx> = {}): DamageResolveCtx => ctx({
+      rowBand: (i) => (i >= 0 && i < 150 ? { top: 40 + i * 24, bottom: 40 + (i + 1) * 24 } : null),
+      layerHeight: 3600,
+      // Data rects honor the tall layer extent only when the retained
+      // layer is active (inactive clamps to the visible body — where the
+      // area cap correctly sends near-viewport damage to full anyway).
+      paintCacheLayerActive: true,
+      ...over,
+    });
+
+    it('a 70-row contiguous run resolves PARTIAL as one band (pre-fix: tripped the 64-rect pre-merge cap → full)', () => {
+      const l = new DamageLedger();
+      l.add({ kind: 'rows', rowIndices: Array.from({ length: 70 }, (_, i) => i) });
+      const r = l.takeResolved(tallCtx());
+      expect(r.full).toBe(false);
+      expect(r.dataRects).toHaveLength(1);
+      const rect = r.dataRects[0]!;
+      // Band spans rows 0..69: [40, 40 + 70*24 = 1720] (+bleed/snap;
+      // dataRects are CONTENT space — scrollTop === bodyTop here, so the
+      // transform is a numeric no-op).
+      expect(rect.y).toBeLessThanOrEqual(40);
+      expect(rect.y + rect.h).toBeGreaterThanOrEqual(1720);
+    });
+
+    it('two separated runs resolve to exactly two band rects', () => {
+      const l = new DamageLedger();
+      l.add({ kind: 'rows', rowIndices: [2, 3, 4, 40, 41] });
+      const r = l.takeResolved(tallCtx());
+      expect(r.full).toBe(false);
+      expect(r.dataRects).toHaveLength(2);
+    });
+
+    it('duplicate + out-of-order indices across entries still band into one rect', () => {
+      const l = new DamageLedger();
+      l.add({ kind: 'rows', rowIndices: [7, 5] });
+      l.add({ kind: 'rows', rowIndices: [6, 7, 8] });
+      const r = l.takeResolved(tallCtx());
+      expect(r.full).toBe(false);
+      expect(r.dataRects).toHaveLength(1);
+    });
+
+    it('scattered isolated rows still degrade to full via the post-merge cap (cap philosophy intact)', () => {
+      const l = new DamageLedger();
+      // 14 isolated rows, each with a gap — 14 disjoint bands > DAMAGE_MAX_RECTS.
+      l.add({ kind: 'rows', rowIndices: Array.from({ length: 14 }, (_, i) => i * 2) });
+      expect(l.takeResolved(tallCtx()).full).toBe(true);
+    });
+  });
+
   it('caps: union area >60% collapses to full', () => {
     const l = new DamageLedger();
     l.add({ kind: 'rect', x: 0, y: 0, w: 1000, h: 400 }); // 66%

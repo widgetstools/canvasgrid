@@ -539,12 +539,34 @@ function rangesEqual(a: SelectionRange[], b: SelectionRange[]): boolean {
   return true;
 }
 
-/** Closeout fix — adjudication B: max mismatched/newly-entered row count
+/** Cycle 26 (fling-scroll partials) — max CONTIGUOUS RUNS of damaged rows
  *  a window-diff will still resolve as partial damage before bailing to a
- *  full repaint. Mirrors the existing ≤24 cap used by the selection
- *  classifier (`rowDelta.length > 24`) and `DAMAGE_MAX_RECTS`-style "cap
- *  philosophy" elsewhere in the ledger. */
-const WINDOW_DIFF_MAX_ROWS = 24;
+ *  full repaint.
+ *
+ *  This replaces the old `WINDOW_DIFF_MAX_ROWS = 24` ROW-count cap, which
+ *  counted the wrong thing: during a scroll the newly-entered rows are one
+ *  CONTIGUOUS run, and the damage ledger now coalesces contiguous rows
+ *  into a single full-width band rect (`takeResolved`'s rows banding) —
+ *  so 40 consecutive rows cost ONE rect, strictly cheaper than a full
+ *  repaint. Capping rows made every fast-scroll chunk arrival degrade to
+ *  full (PERF-NOTES: 44–52% full paints at fling pace) for damage that
+ *  would have resolved to one or two bands.
+ *
+ *  Runs are what actually cost: each run is one pre-merge rect. 12 aligns
+ *  with the ledger's own `DAMAGE_MAX_RECTS` post-merge cap — beyond that
+ *  the resolution would degrade to full anyway, so bail early here (and
+ *  keep the strip-store wipe semantics of the full path). */
+const WINDOW_DIFF_MAX_RUNS = 12;
+
+/** Count contiguous runs in a sorted ascending index array. */
+function countRuns(sorted: number[]): number {
+  if (sorted.length === 0) return 0;
+  let runs = 1;
+  for (let i = 1; i < sorted.length; i++) {
+    if (sorted[i]! !== sorted[i - 1]! + 1) runs++;
+  }
+  return runs;
+}
 
 /**
  * Closeout fix — C2 + adjudication B's MANDATED guard. Replaces the old
@@ -566,8 +588,9 @@ const WINDOW_DIFF_MAX_ROWS = 24;
  * COLUMN SET changed (column-group expand/collapse, setColumnsVisible,
  * column move — new colIds would otherwise stick as blank under a
  * defined-empty `touchedRows` live-feed reply), when a height
- * mismatch is found, or when the resulting damage set exceeds
- * `WINDOW_DIFF_MAX_ROWS`. Otherwise returns the array of window-relative
+ * mismatch is found, or when the damage spans more than
+ * `WINDOW_DIFF_MAX_RUNS` contiguous runs. Otherwise returns the sorted
+ * array of window-relative
  * row indices (0-based, add `chunk.rowStart` for the global index) that
  * need repainting: positionally-mismatched rows, rows newly scrolled
  * into the window (outside the overlap — this also covers the
@@ -641,8 +664,12 @@ function resolveWindowDamage(
     }
   }
   for (const r of chunk.touchedRows) damaged.add(r);
-  if (damaged.size > WINDOW_DIFF_MAX_ROWS) return 'full';
-  return Array.from(damaged);
+  // Cap on contiguous RUNS, not rows — see WINDOW_DIFF_MAX_RUNS. The
+  // sorted array is returned either way, so run counting is a single
+  // linear pass over data we already produce.
+  const sorted = Array.from(damaged).sort((a, b) => a - b);
+  if (countRuns(sorted) > WINDOW_DIFF_MAX_RUNS) return 'full';
+  return sorted;
 }
 
 /** True when the set of colIds present in numeric/text payload columns
