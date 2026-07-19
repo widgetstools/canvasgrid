@@ -367,7 +367,7 @@ export class ViewportManager {
       });
     }, 200);
     this.deps.afterScrollTick();
-    this.request();
+    this.request(null, 'scroll');
   }
 
   // --- Scroll imperatives ---------------------------------------------------
@@ -474,14 +474,28 @@ export class ViewportManager {
    *  Most-recent-source wins when multiple data-affecting calls coalesce on
    *  a single in-flight fetch; null calls preserve any pending source.
    *
-   *  Scroll-driven calls (`aggSource === null`) are leading+trailing
-   *  throttled at 150ms (Deephaven `SET_VIEWPORT_THROTTLE`) so continuous
-   *  thumb-drag paints every frame while the worker only sees the latest
-   *  window. */
-  request(aggSource: AggregationChangedSource | null = null): void {
-    if (aggSource !== null) {
-      this.pendingAggSource = aggSource;
-      // Data-affecting: flush any pending scroll throttle and dispatch now.
+   *  Scroll-driven calls (`kind === 'scroll'` — the `onScrollerScroll`
+   *  tick is the only such site) are leading+trailing throttled at 150ms
+   *  (Deephaven `SET_VIEWPORT_THROTTLE`) so continuous thumb-drag paints
+   *  every frame while the worker only sees the latest window.
+   *
+   *  Every OTHER caller is model/layout-driven (pivot flip, sort, filter,
+   *  group model, column virtualization change, …) and dispatches
+   *  IMMEDIATELY regardless of `aggSource` — `aggSource === null` must
+   *  never be read as "scroll-driven": cosmetic refetches (e.g. a pivot
+   *  mode flip) pass null yet the user is waiting on the result. Routing
+   *  those through the scroll throttle added up to 150ms of latency to
+   *  every data operation that followed a recent fetch (and broke the
+   *  pivot integration suite, which observes results ~50ms after the
+   *  flip). */
+  request(
+    aggSource: AggregationChangedSource | null = null,
+    kind: 'scroll' | 'data' = 'data',
+  ): void {
+    if (aggSource !== null) this.pendingAggSource = aggSource;
+    if (kind !== 'scroll') {
+      // Model/layout-driven: flush any pending scroll throttle and
+      // dispatch now.
       this.flushScrollThrottleAndDispatch();
       return;
     }
