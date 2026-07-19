@@ -10764,28 +10764,72 @@ export class CGrid<TRow = any> {
     this.events.emit({ type: 'rowMouseOut', rowId, mouse });
   }
 
+  /** Cycle 26 (W2) — per-column formatted-value memo.
+   *
+   *  `formatNumber`/`formatText` run for EVERY data cell on EVERY paint —
+   *  including Tier-1 raster-cache hits, because `cellStyleSignature`
+   *  embeds `valueFormatted` in the bitmap key. Both formatters call
+   *  `valueFormatter({ value, colId, data: undefined })` — `data` is
+   *  explicitly undefined (the documented cross-field limitation) — so
+   *  the output is a pure function of (formatter identity, value).
+   *  Financial grids repeat values heavily (prices, sizes, enums, dates)
+   *  and repaint the same values across flash fades / hover / selection /
+   *  scroll frames, so a value-keyed memo turns the per-cell formatter
+   *  call + string allocation into a Map hit.
+   *
+   *  Invalidation: the entry is dropped when the column's CURRENT
+   *  `valueFormatter` identity differs from the one the entry was built
+   *  under — `setColumnDefs` / `editColumn` / format-toolbar recompiles
+   *  swap the function reference, so staleness self-heals per lookup with
+   *  no epoch plumbing. Assumes formatters are pure (the same assumption
+   *  the raster cache already bakes into bitmap reuse; DSL-compiled
+   *  formatters are pure by construction). Capped per column; overflow
+   *  clears the column's map (values re-memoize immediately — cheaper
+   *  and simpler than LRU bookkeeping at this size). */
+  private formatMemoByCol = new Map<string, { formatter: unknown; cache: Map<unknown, string> }>();
+  private static readonly FORMAT_MEMO_CAP = 4096;
+
+  private formatMemoEntry(colId: string, formatter: unknown): { formatter: unknown; cache: Map<unknown, string> } {
+    let entry = this.formatMemoByCol.get(colId);
+    if (entry === undefined || entry.formatter !== formatter) {
+      entry = { formatter, cache: new Map() };
+      this.formatMemoByCol.set(colId, entry);
+    }
+    return entry;
+  }
+
   private formatNumber(colId: string, value: number): string {
     if (!Number.isFinite(value)) return '';
     const def = this.columnDefsMap.get(colId);
-    if (def?.valueFormatter) {
-      return def.valueFormatter({ value, colId, data: undefined as unknown as TRow });
-    }
-    return value.toString();
+    const entry = this.formatMemoEntry(colId, def?.valueFormatter);
+    const hit = entry.cache.get(value);
+    if (hit !== undefined) return hit;
+    const formatted = def?.valueFormatter
+      ? def.valueFormatter({ value, colId, data: undefined as unknown as TRow })
+      : value.toString();
+    if (entry.cache.size >= CGrid.FORMAT_MEMO_CAP) entry.cache.clear();
+    entry.cache.set(value, formatted);
+    return formatted;
   }
 
   /** Text-column twin of `formatNumber` — runs the column's valueFormatter
    *  (function-form or compiled-from-DSL-string) over the decoded chunk
    *  text; identity when the column has none. Same `data: undefined`
    *  limitation as the numeric path: `[value]`-based programs resolve,
-   *  cross-field references don't. */
+   *  cross-field references don't. Memoized — see `formatMemoByCol`. */
   private formatText(colId: string, value: string): string {
     const def = this.columnDefsMap.get(colId);
-    if (def?.valueFormatter) {
-      try {
-        return String(def.valueFormatter({ value, colId, data: undefined as unknown as TRow }));
-      } catch { return value; }
-    }
-    return value;
+    if (!def?.valueFormatter) return value;
+    const entry = this.formatMemoEntry(colId, def.valueFormatter);
+    const hit = entry.cache.get(value);
+    if (hit !== undefined) return hit;
+    let formatted: string;
+    try {
+      formatted = String(def.valueFormatter({ value, colId, data: undefined as unknown as TRow }));
+    } catch { formatted = value; }
+    if (entry.cache.size >= CGrid.FORMAT_MEMO_CAP) entry.cache.clear();
+    entry.cache.set(value, formatted);
+    return formatted;
   }
 
   /** Compute flash alpha for a group/footer aggregate cell from
