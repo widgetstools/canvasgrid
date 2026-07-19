@@ -128,9 +128,16 @@ export interface CGridOptions<TRow = any> {
   asyncTransactionConflate?: boolean;
   /**
    * Minimum milliseconds between async transaction flushes under a
-   * continuous update stream. `0` / omitted disables throttling (flush
-   * as soon as `asyncTransactionWaitMillis` elapses after the first
-   * push in a quiet period). Runtime-mutable.
+   * continuous update stream — the grid's live-update rate cap.
+   *
+   * Default `200` (at most 5 grid updates per second). Isolated updates
+   * are NOT delayed by the throttle: after a quiet period the first
+   * flush still lands as soon as `asyncTransactionWaitMillis` elapses —
+   * only sustained streams are spaced. Values are clamped to
+   * `[100, 1000]`; an explicit `0` disables throttling entirely (the
+   * programmatic escape hatch for tests / apps that need every flush
+   * immediately — the Grid Options editor offers only the clamped
+   * range). Runtime-mutable via `setGridOption`.
    */
   asyncTransactionThrottleMillis?: number;
   /**

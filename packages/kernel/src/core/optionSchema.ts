@@ -286,7 +286,12 @@ const OPTION_BANDS: BandSpec[] = [
       { key: 'rowBuffer', label: 'Row buffer', type: 'number', min: 0, max: 100, step: 1, hint: 'Overscan rows (empty = auto)' },
       { key: 'asyncTransactionWaitMillis', label: 'Async txn wait', type: 'number', min: 0, max: 5000, step: 10, hint: 'Debounce ms (default 50)' },
       { key: 'asyncTransactionConflate', label: 'Conflate async txns', type: 'switch', kernelDefault: true, hint: 'Last-write-wins per row in the batch' },
-      { key: 'asyncTransactionThrottleMillis', label: 'Async txn throttle', type: 'number', min: 0, max: 5000, step: 10, hint: 'Min ms between flushes (0 = off)' },
+      // Cycle 26 (W3) — the live-update rate cap. Default 200ms = at most
+      // 5 grid updates/second under a continuous stream (isolated updates
+      // still flush after the wait debounce). The editor offers the
+      // clamped [100, 1000] range; the programmatic 0 = off escape hatch
+      // is deliberately NOT reachable from here.
+      { key: 'asyncTransactionThrottleMillis', label: 'Update throttle', type: 'number', kernelDefault: 200, min: 100, max: 1000, step: 50, hint: 'Min ms between updates (default 200 = 5/s)' },
       { key: 'suppressColumnVirtualisation', label: 'No column virtualisation', type: 'switch', kernelDefault: false },
       { key: 'suppressRowVirtualisation', label: 'No row virtualisation', type: 'switch', kernelDefault: false },
     ],

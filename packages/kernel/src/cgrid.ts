@@ -3124,7 +3124,7 @@ export class CGrid<TRow = any> {
       enableCellChangeFlash: this.options.enableCellChangeFlash === true,
       asyncTransactionWaitMillis: this.options.asyncTransactionWaitMillis,
       asyncTransactionConflate: this.options.asyncTransactionConflate,
-      asyncTransactionThrottleMillis: this.options.asyncTransactionThrottleMillis,
+      asyncTransactionThrottleMillis: this.resolveAsyncThrottleMillis(),
       // Cycle 15 / Task 9 — forward the default-expansion rule so the
       // first `setGroupModel` reply re-seeds `state.expandedKeys` from
       // the option (and ships back the materialised set). Initial-only
@@ -3535,6 +3535,22 @@ export class CGrid<TRow = any> {
       return;
     }
     this.dispatchAsyncTransaction(t);
+  }
+
+  /** Cycle 26 (W3) — resolve the effective async-transaction throttle,
+   *  the grid's live-update rate cap. Omitted → 200ms (at most 5 grid
+   *  updates/second); explicit 0 → off (programmatic escape hatch —
+   *  tests / apps needing every flush immediately); anything else clamps
+   *  to [100, 1000], the same range the Grid Options editor offers.
+   *  The single source of truth for BOTH worker forwarding sites (init
+   *  config + `forwardAsyncTransactionOptions`). Isolated updates are
+   *  never delayed by the throttle — the worker's queue only spaces
+   *  flushes under a continuous stream (see dataPipeline `schedule`). */
+  private resolveAsyncThrottleMillis(): number {
+    const v = this.options.asyncTransactionThrottleMillis;
+    if (v === undefined) return 200;
+    if (v === 0) return 0;
+    return Math.max(100, Math.min(1000, v));
   }
 
   /** Apply an async transaction immediately (bypasses scroll deferral). */
@@ -7913,7 +7929,7 @@ export class CGrid<TRow = any> {
         this.workerCoord.setAsyncTransactionOptions({
           waitMillis: this.options.asyncTransactionWaitMillis,
           conflate: this.options.asyncTransactionConflate,
-          throttleMillis: this.options.asyncTransactionThrottleMillis,
+          throttleMillis: this.resolveAsyncThrottleMillis(),
         }).catch((err) => {
           if (!this.destroyed) console.error('[cgrid] setAsyncTransactionOptions:', err);
         });
