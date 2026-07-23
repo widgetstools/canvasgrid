@@ -4,7 +4,7 @@ const out = process.argv[2] ?? '.';
 const errors = [];
 const browser = await chromium.launch({ headless: true, channel: 'chrome' });
 const page = await browser.newPage({ viewport: { width: 2900, height: 950 } });
-page.on('console', (m) => { if (m.type() === 'error') errors.push(m.text().slice(0, 200)); });
+page.on('console', (m) => { if (m.type() === 'error' || m.type() === 'warning') errors.push(`[${m.type()}] ${m.text().slice(0, 200)}`); });
 page.on('pageerror', (e) => errors.push(`PAGEERROR: ${String(e).slice(0, 200)}`));
 
 await page.goto('http://localhost:5191/?feed=seed', { waitUntil: 'domcontentloaded' });

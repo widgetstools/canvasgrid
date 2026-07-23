@@ -63,6 +63,18 @@ export class ServerSideRowModelV2Controller<TRow = any> {
   private readonly leafCaches = new Map<string, Map<number, LeafBlock<TRow>>>();
   private loadedBlockCount = 0;
   private touchClock = 0;
+  /** Bumped on ANY leaf-cache content change — part of the hydrate
+   *  signature so unchanged windows skip the worker round trip entirely
+   *  (viewer-datagrid's "integer window unchanged → do nothing" rule). */
+  private cacheEpoch = 0;
+  /** Identity of the last hydrated window; matching state = no-op. */
+  private lastHydrate: {
+    start: number;
+    end: number;
+    index: FlattenIndex;
+    dataGen: number;
+    cacheEpoch: number;
+  } | null = null;
 
   private flatRowCount = 0;
   private reportedRowCount = 0;
@@ -134,20 +146,54 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     // soft refresh is QUEUED, later ticks ride it; the handle clears when
     // the op starts so ticks landing mid-run coalesce into exactly one
     // follow-up.
+    //
+    // Adaptive pacing (viewer-datagrid style): on top of conflation, the
+    // next soft refresh is delayed by the moving average of recent
+    // refresh durations, so the cadence self-tunes to what the datasource
+    // actually sustains instead of hammering it every tick.
     const soft = params.purge === false;
     if (soft && this.pendingSoftRefresh !== null) {
       return this.pendingSoftRefresh;
     }
-    const p: Promise<void> = this.enqueue(async () => {
-      if (soft && this.pendingSoftRefresh === p) this.pendingSoftRefresh = null;
-      await this.refreshInner(params);
-    });
-    if (soft) this.pendingSoftRefresh = p;
-    return p;
+    if (soft) {
+      let p: Promise<void> | null = null;
+      const run = (): Promise<void> => this.enqueue(async () => {
+        if (this.pendingSoftRefresh === p) this.pendingSoftRefresh = null;
+        const t0 = Date.now();
+        try {
+          await this.refreshInner(params);
+        } finally {
+          this.lastSoftRefreshEnd = Date.now();
+          this.softRefreshDurations.push(this.lastSoftRefreshEnd - t0);
+          if (this.softRefreshDurations.length > 5) this.softRefreshDurations.shift();
+        }
+      });
+      const wait = Math.max(0, this.lastSoftRefreshEnd + this.softRefreshAvgMs() - Date.now());
+      p = wait > 16
+        ? new Promise<void>((resolve, reject) => {
+            setTimeout(() => { run().then(resolve, reject); }, wait);
+          })
+        : run();
+      this.pendingSoftRefresh = p;
+      return p;
+    }
+    return this.enqueue(() => this.refreshInner(params));
   }
 
   /** Conflation handle — at most one QUEUED soft refresh at a time. */
   private pendingSoftRefresh: Promise<void> | null = null;
+  /** Last 5 soft-refresh durations (ms) — the pacing signal. */
+  private readonly softRefreshDurations: number[] = [];
+  private lastSoftRefreshEnd = 0;
+
+  /** Moving average of recent soft-refresh cost, capped at 2s. */
+  private softRefreshAvgMs(): number {
+    const d = this.softRefreshDurations;
+    if (d.length === 0) return 0;
+    let sum = 0;
+    for (const v of d) sum += v;
+    return Math.min(2000, sum / d.length);
+  }
 
   /** Expansion toggle — local reflow, then fill missing leaves. */
   refreshExpansion(): Promise<void> {
@@ -229,6 +275,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
           }
         }
       }
+      this.cacheEpoch++;
       this.host.applyTransaction({ update: tx.update });
     }
     this.host.requestViewport();
@@ -264,6 +311,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       this.groupBaseRows.clear();
       this.leafCaches.clear();
       this.loadedBlockCount = 0;
+      this.cacheEpoch++;
       this.flatRowCount = 0;
       this.host.setGrandTotals?.(null);
       await this.host.hydrateWindow(0, [], Math.max(this.reportedRowCount, 0), true);
@@ -425,6 +473,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       if (block.state === 'loaded') this.loadedBlockCount--;
     }
     this.leafCaches.delete(groupKey);
+    this.cacheEpoch++;
   }
 
   // ─── range loading ───────────────────────────────────────────────────
@@ -524,6 +573,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
             state: complete ? 'loaded' : 'failed',
             touch: ++this.touchClock,
           });
+          this.cacheEpoch++;
           if (complete) {
             this.loadedBlockCount++;
             this.evictIfNeeded();
@@ -533,6 +583,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
         fail: () => {
           this.inflight = Math.max(0, this.inflight - 1);
           cache!.set(blockIdx, { rows: [], state: 'failed', touch: ++this.touchClock });
+          this.cacheEpoch++;
           resolve();
         },
       });
@@ -562,6 +613,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       if (lruIdx < 0) return;
       this.leafCaches.get(lruKey)?.delete(lruIdx);
       this.loadedBlockCount--;
+      this.cacheEpoch++;
     }
   }
 
@@ -576,6 +628,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       if (block) {
         if (block.state === 'loaded') this.loadedBlockCount--;
         cache!.delete(blockIdx);
+        this.cacheEpoch++;
       }
     }
   }
@@ -788,6 +841,20 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     const rowCount = index.rowCount;
     const start = Math.max(0, Math.floor(rowStart));
     const end = Math.min(rowCount, Math.max(start, Math.ceil(rowEnd)));
+    // Window-identity suppression — same window, same index (expansion /
+    // skeleton unchanged), same data generation, no cache mutations since
+    // the last hydrate → the worker already holds exactly these rows.
+    const last = this.lastHydrate;
+    if (
+      last !== null
+      && last.start === start
+      && last.end === end
+      && last.index === index
+      && last.dataGen === this.dataGen
+      && last.cacheEpoch === this.cacheEpoch
+    ) {
+      return;
+    }
     const expanded = new Set(this.host.getExpandedGroupKeys());
 
     const entries = index.entriesInRange(start, end);
@@ -828,6 +895,8 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       }
       if (this.host.isDestroyed()) return;
     }
+
+    this.lastHydrate = { start, end, index, dataGen: this.dataGen, cacheEpoch: this.cacheEpoch };
   }
 
   private waitUntil(pred: () => boolean): Promise<void> {

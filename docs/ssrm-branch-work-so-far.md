@@ -133,6 +133,25 @@ seed / STOMP → Perspective Table + Views
 - **Sparse SSRM v2 — client-owned group skeleton** (`docs/ssrm-group-skeleton-design.md`): CSRM-parity direction — kernel owns all group rows + flatten index, toggles reflow same-frame, datasource shrinks to `getGroupSkeleton` + `getLeafRows`. Supersedes “keep group header rows pinned in store”.
 - Commit / PR when ready
 
+## Worklog: `feat/engine-row-model` smoothness batch (2026-07)
+
+Branched from `feat/ssrm-multi-blotter-stomp` (commit 5478183) after the
+viewer-datagrid study; see the unification addendum in
+`docs/ssrm-group-skeleton-design.md` for the staged plan. Landed:
+
+- Kernel v2 controller: window-identity hydrate suppression
+  (`cacheEpoch` + last-hydrate signature) and adaptive soft-refresh
+  pacing (5-sample moving average of refresh cost). 27 controller tests,
+  50 across the SSRM set, all green.
+- Demo `book.ts`: persistent sorted leaf view per bound view, leaf
+  windows read by offset from prefix-summed `leafRanges` with a
+  contiguity spot-check + filtered-view fallback; `getGroupLeafIds`
+  prefix-scan fast path; all bulk reads via `to_columns_string`.
+- Live-verified on the demo (drive scripts, channel:'chrome'):
+  10,000 flat → 3 collapsed → 674 expanded → 8 recollapsed, ticking
+  aggregates, pinned grand total, sticky band under deep scroll, and no
+  leaf-offset-mismatch warnings — the offset fast path held throughout.
+
 ---
 
 ## Related docs

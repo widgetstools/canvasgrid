@@ -239,6 +239,36 @@ describe('SSRM v2 skeleton controller', () => {
     });
   });
 
+  it('window-identity suppression: an unchanged window skips the hydrate entirely', async () => {
+    expandedKeys.add('g:A');
+    await ctrl.ensureRange(0, BLOCK);
+    const before = hydrates().length;
+    // Same window, same expansion, same caches — zero worker traffic.
+    await ctrl.ensureRange(0, BLOCK);
+    expect(hydrates().length).toBe(before);
+    // A cache mutation (live tick patch) invalidates the signature.
+    ctrl.applyServerSideTransaction({ update: [{ id: 'a1', g: 'A', v: 9 }] });
+    await ctrl.ensureRange(0, BLOCK);
+    expect(hydrates().length).toBeGreaterThan(before);
+  });
+
+  it('adaptive pacing delays a soft refresh by the recent average cost', async () => {
+    await ctrl.ensureRange(0, BLOCK);
+    const internals = ctrl as unknown as {
+      softRefreshDurations: number[];
+      lastSoftRefreshEnd: number;
+    };
+    internals.softRefreshDurations.push(150, 150, 150);
+    internals.lastSoftRefreshEnd = Date.now();
+    const before = skeletonRequests().length;
+    const paced = ctrl.refresh({ purge: false });
+    // Well inside the ~150ms pacing window — nothing fetched yet.
+    await new Promise((r) => setTimeout(r, 40));
+    expect(skeletonRequests().length).toBe(before);
+    await paced;
+    expect(skeletonRequests().length).toBe(before + 1);
+  });
+
   it('hydrates sticky ancestor group rows above the window', async () => {
     expandedKeys.add('g:A');
     await ctrl.ensureRange(50, 60); // deep inside A's leaves

@@ -216,3 +216,42 @@ and `materializeGroupedWindow` are deleted, not ported.
 - Sparse sticky band revived — gate on hydrated `__ssrm` group rows
   (`ssrmGroupMetaSeen`) instead of the worker group model, which is never
   shipped on the sparse path. `tests/ssrmStickyWorker.test.ts`.
+
+## Addendum: engine-local unification (`feat/engine-row-model`, 2026-07)
+
+Direction agreed after studying Perspective's viewer-datagrid: cgrid's
+engine is always local (WASM in the same page), so the CSRM/SSRM split is
+an artifact, not a requirement. Target: **one engine row model** — the v2
+client-owned skeleton becomes *the* row model, with FlattenIndex as the
+single flatten layer and the worker demoted to an optional prep stage.
+Keyed (not index-addressed) expansion stays client-owned: it is what
+survives engine rebuilds, unlike Perspective's ephemeral
+`view.expand(rowIndex)` tree.
+
+Staged plan:
+
+1. **Smoothness batch** (✅ this branch):
+   - *Window-identity suppression* — `hydrateRange` skips when
+     (start, end, FlattenIndex identity, dataGen, cacheEpoch) all match the
+     last hydrate; `cacheEpoch` bumps on any cache mutation (purge, LRU
+     evict, block load/fail, transaction patch). Kills redundant repaints
+     during tick storms. `tests/ssrmV2Controller.test.ts`.
+   - *Adaptive soft-refresh pacing* — viewer-datagrid-style moving average
+     (last 5 refresh durations, capped 2 s) spaces conflated soft
+     refreshes so the queue can never outgrow its drain rate.
+   - *Persistent sorted leaf view + offset windowing* (demo `book.ts`) —
+     one long-lived Perspective view sorted by (group cols, then user
+     sort) replaces per-fetch filtered views; leaf windows are read by
+     row offset from prefix-summed `leafRanges` (built from the skeleton
+     dump's leaf counts), with a contiguity spot-check that falls back to
+     the old filtered-view path if the offset model ever disagrees.
+     `getGroupLeafIds` rides the same ranges. Transport is
+     `to_columns_string` + JSON.parse (columnar, one string copy) instead
+     of `to_json`.
+2. **FlattenIndex feature parity** (next): port GroupPass-only features to
+   the skeleton path — `groupHideOpenParents`, `showOpenedGroup`,
+   single-child elision on sparse; skeleton-fed group-column autosize.
+3. **Worker's fate**: measure direct-path (main-thread FlattenIndex over
+   engine reads) vs thin worker prep; consider `rowData` becoming an
+   internal Perspective table so the flat path and the grouped path share
+   one engine.

@@ -164,6 +164,20 @@ interface BoundView {
   spec: ViewSpec;
   view: View | null;
   totalsView: View | null;
+  /** ONE persistent flat view sorted by [groupBy cols, user sort] — every
+   *  deepest group's leaves are a CONTIGUOUS range in it, so leaf windows
+   *  are offset reads instead of per-fetch view create/read/delete churn
+   *  (the viewer-datagrid model). Null when ungrouped. */
+  leafView: View | null;
+  /** Deepest-group leaf ranges in leafView order (display order). Built
+   *  alongside the skeleton dump; null until then / after invalidation. */
+  leafRanges: Array<{ path: string[]; offset: number; count: number }> | null;
+  /** JSON.stringify(path) → range index into `leafRanges`. */
+  leafRangeByPath: Map<string, number> | null;
+  /** Set when a contiguity spot-check failed (group ordering diverged
+   *  between the grouped view and leafView, e.g. aggregate-sorted groups)
+   *  — offset reads are skipped until the next remount. */
+  leafOffsetsUnreliable: boolean;
   dataUpdateCb: number | null;
   notifyTimer: number | null;
   groupBy: string[];
@@ -175,6 +189,39 @@ interface BoundView {
   rowsServed: number;
   inflight: number;
   projectedRows: number;
+}
+
+/** Transpose Perspective columnar output into row objects. Keeps
+ *  `__ROW_PATH__` (skeleton reads need it), drops `__ID__`. */
+function columnsToRows(cols: Record<string, unknown[]>): Record<string, unknown>[] {
+  const names = Object.keys(cols).filter((n) => n !== '__ID__');
+  const first = names[0];
+  const n = first !== undefined ? (cols[first]?.length ?? 0) : 0;
+  const out: Record<string, unknown>[] = new Array(n);
+  for (let i = 0; i < n; i++) {
+    const row: Record<string, unknown> = {};
+    for (const name of names) row[name] = cols[name]![i];
+    out[i] = row;
+  }
+  return out;
+}
+
+/** Windowed read via `to_columns_string` (columnar JSON string + ONE parse
+ *  across the WASM boundary — viewer-datagrid's transport trick) with a
+ *  `to_json` fallback for older clients. */
+async function readRows(
+  view: View,
+  window?: { start_row?: number; end_row?: number },
+): Promise<Record<string, unknown>[]> {
+  const v = view as unknown as {
+    to_columns_string?: (w?: object) => Promise<string>;
+    to_json: (w?: object) => Promise<unknown[]>;
+  };
+  if (typeof v.to_columns_string === 'function') {
+    const raw = await v.to_columns_string(window ?? {});
+    return columnsToRows(JSON.parse(raw) as Record<string, unknown[]>);
+  }
+  return (await v.to_json(window)) as Record<string, unknown>[];
 }
 
 function rowMatchesViewFilter(spec: ViewSpec, row: PositionRow): boolean {
@@ -466,7 +513,7 @@ export class PerspectiveBook {
         const start = Math.max(0, req.startRow | 0);
         const end = Math.max(start, Math.min(req.endRow | 0, rowCount));
         if (end <= start || rowCount === 0) return { rows: [], rowCount, grandTotals };
-        const rows = (await bound.view!.to_json({ start_row: start, end_row: end })) as PositionRow[];
+        const rows = (await readRows(bound.view!, { start_row: start, end_row: end })) as PositionRow[];
         return { rows, rowCount, grandTotals };
       });
     });
@@ -490,6 +537,36 @@ export class PerspectiveBook {
         bound, viewId, req.sortModel, req.filterModel, req.rowGroupCols,
       );
       if (req.groupPath.length === 0 || req.groupPath.length > bound.groupBy.length) return [];
+      // Fast path — descendant leaves of ANY-depth group are a contiguous
+      // run of deepest-group ranges (display order), so ids are one offset
+      // window on the persistent leafView.
+      if (bound.leafView !== null && !bound.leafOffsetsUnreliable) {
+        if (bound.leafRangeByPath === null) await this.getGroupedRaw(bound);
+        const ranges = bound.leafRanges;
+        if (ranges !== null) {
+          const prefix = req.groupPath;
+          let startOff = -1;
+          let endOff = -1;
+          for (const r of ranges) {
+            const matches = prefix.every((v, i) => r.path[i] === v);
+            if (matches) {
+              if (startOff < 0) startOff = r.offset;
+              endOff = r.offset + r.count;
+            } else if (startOff >= 0) {
+              break; // contiguous run ended
+            }
+          }
+          if (startOff >= 0 && endOff > startOff) {
+            const rows = await this.withTableLock(
+              () => readRows(bound.leafView!, { start_row: startOff, end_row: endOff }),
+            );
+            return rows
+              .map((r) => String((r as { positionId?: unknown }).positionId ?? ''))
+              .filter((s) => s !== '');
+          }
+          return [];
+        }
+      }
       const groupFilter: PspFilter[] = req.groupPath.map(
         (v, i) => [bound.groupBy[i]!, '==', v],
       );
@@ -685,7 +762,16 @@ export class PerspectiveBook {
     );
   }
 
-  /** Windowed leaf rows for one fully-expanded deepest group. */
+  private warnedLeafOffsetMismatch = false;
+
+  /** Windowed leaf rows for one fully-expanded deepest group.
+   *
+   *  Fast path (engine-local unification, 2026-07-23): an OFFSET window on
+   *  the persistent sorted `leafView` — zero view churn, one read. A
+   *  spot-check verifies the first row actually belongs to the group; on
+   *  mismatch (group ordering diverged between the grouped view and the
+   *  leaf sort, e.g. aggregate-ordered groups) offsets are disabled until
+   *  the next remount and the filtered per-fetch path serves instead. */
   private async fetchLeafWindowByPath(
     bound: BoundView,
     groupPath: readonly string[],
@@ -697,6 +783,44 @@ export class PerspectiveBook {
     if (!this.table || leafEnd <= leafStart) return [];
     if (groupPath.length !== bound.groupBy.length) return [];
 
+    if (bound.leafView !== null && !bound.leafOffsetsUnreliable) {
+      if (bound.leafRangeByPath === null) await this.getGroupedRaw(bound);
+      const idx = bound.leafRangeByPath?.get(JSON.stringify([...groupPath]));
+      if (idx !== undefined) {
+        const range = bound.leafRanges![idx]!;
+        const start = range.offset + Math.max(0, leafStart);
+        const end = range.offset + Math.min(range.count, leafEnd);
+        if (end <= start) return [];
+        const rows = (await this.withTableLock(
+          () => readRows(bound.leafView!, { start_row: start, end_row: end }),
+        )) as PositionRow[];
+        const first = rows[0] as Record<string, unknown> | undefined;
+        const contiguous = first === undefined || bound.groupBy.every(
+          (colId, i) => String(first[colId] ?? '') === groupPath[i],
+        );
+        if (contiguous) return rows;
+        if (!this.warnedLeafOffsetMismatch) {
+          this.warnedLeafOffsetMismatch = true;
+          console.warn(
+            '[PerspectiveBook] leaf offset window mismatched its group — grouped-view ordering '
+            + 'diverges from the leaf sort; falling back to filtered leaf reads until remount.',
+          );
+        }
+        bound.leafOffsetsUnreliable = true;
+      }
+    }
+    return this.fetchLeafWindowByFilter(bound, groupPath, leafStart, leafEnd, extraFilter, sort);
+  }
+
+  /** Fallback — filtered per-fetch view (create → read → delete). */
+  private async fetchLeafWindowByFilter(
+    bound: BoundView,
+    groupPath: readonly string[],
+    leafStart: number,
+    leafEnd: number,
+    extraFilter: PspFilter[],
+    sort: Array<[string, 'asc' | 'desc']>,
+  ): Promise<PositionRow[]> {
     const groupFilter: PspFilter[] = bound.groupBy.map(
       (colId, i) => [colId, '==', groupPath[i] ?? ''],
     );
@@ -728,18 +852,31 @@ export class PerspectiveBook {
 
   private async getGroupedRaw(bound: BoundView): Promise<Record<string, unknown>[]> {
     if (bound.groupedRawCache) return bound.groupedRawCache;
-    const raw = await this.withTableLock(
-      () => bound.view!.to_json() as Promise<Record<string, unknown>[]>,
-    );
+    const raw = await this.withTableLock(() => readRows(bound.view!));
     bound.groupedRawCache = raw;
     bound.groupKeys = [];
+    // Rebuild leaf ranges alongside the skeleton dump: deepest-level rows
+    // in dump order → cumulative leafCount offsets into the sorted
+    // leafView (contiguity holds as long as the grouped view's group
+    // ordering matches the leafView's group-column sort — spot-checked at
+    // read time).
+    const ranges: Array<{ path: string[]; offset: number; count: number }> = [];
+    const byPath = new Map<string, number>();
+    let offset = 0;
     for (const row of raw) {
       const path = row.__ROW_PATH__;
       if (!Array.isArray(path) || path.length === 0) continue;
-      bound.groupKeys.push(
-        buildCompositeGroupKey(bound.groupBy, path.map((v) => String(v ?? ''))),
-      );
+      const strPath = path.map((v) => String(v ?? ''));
+      bound.groupKeys.push(buildCompositeGroupKey(bound.groupBy, strPath));
+      if (path.length === bound.groupBy.length) {
+        const count = Math.max(0, Number(row.positionId ?? 0) | 0);
+        byPath.set(JSON.stringify(strPath), ranges.length);
+        ranges.push({ path: strPath, offset, count });
+        offset += count;
+      }
     }
+    bound.leafRanges = ranges;
+    bound.leafRangeByPath = byPath;
     return raw;
   }
 
@@ -754,6 +891,13 @@ export class PerspectiveBook {
     if (bound.totalsView) {
       try { await bound.totalsView.delete(); } catch { /* swallow */ }
     }
+    if (bound.leafView) {
+      try { await bound.leafView.delete(); } catch { /* swallow */ }
+      bound.leafView = null;
+    }
+    bound.leafRanges = null;
+    bound.leafRangeByPath = null;
+    bound.leafOffsetsUnreliable = false;
     if (bound.view) {
       try { await bound.view.delete(); } catch { /* swallow */ }
     }
@@ -780,11 +924,32 @@ export class PerspectiveBook {
       group_by: ['desk'],
       aggregates: { ...VALUE_AGGREGATES },
     } as never);
+    // ONE persistent flat leaf view, sorted by the group columns first
+    // (direction matching any user sort on those columns) so each deepest
+    // group's leaves form a contiguous range — leaf windows become offset
+    // reads on this view instead of per-fetch view create/read/delete.
+    if (bound.groupBy.length > 0) {
+      const dirFor = (colId: string): 'asc' | 'desc' =>
+        sort.find(([c]) => c === colId)?.[1] ?? 'asc';
+      const leafSort: Array<[string, 'asc' | 'desc']> = [
+        ...bound.groupBy.map((colId): [string, 'asc' | 'desc'] => [colId, dirFor(colId)]),
+        ...sort.filter(([c]) => !bound.groupBy.includes(c)),
+      ];
+      bound.leafView = await this.table!.view({
+        columns: [...DATA_COLUMNS],
+        filter,
+        sort: leafSort,
+      } as never);
+    }
     bound.groupedRawCache = null;
     bound.dataUpdateCb = Number(
       await bound.view.on_update(() => {
         bound.groupedRawCache = null;
         bound.groupKeys = [];
+        // Adds/removes can shift leaf counts — recompute with the next
+        // skeleton dump.
+        bound.leafRanges = null;
+        bound.leafRangeByPath = null;
         this.scheduleViewTick(bound.spec.id);
       }),
     );
@@ -803,6 +968,10 @@ export class PerspectiveBook {
       spec,
       view: null,
       totalsView: null,
+      leafView: null,
+      leafRanges: null,
+      leafRangeByPath: null,
+      leafOffsetsUnreliable: false,
       dataUpdateCb: null,
       notifyTimer: null,
       groupBy: [],
@@ -859,6 +1028,9 @@ export class PerspectiveBook {
       }
       if (v.totalsView) {
         try { await v.totalsView.delete(); } catch { /* swallow */ }
+      }
+      if (v.leafView) {
+        try { await v.leafView.delete(); } catch { /* swallow */ }
       }
     });
     this.emitTelemetry();
