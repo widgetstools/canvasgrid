@@ -192,6 +192,14 @@ export interface CGridApi<TRow = any> {
   applyTransactionAsync(t: Tx<TRow>): void;
   flushAsyncTransactions(): void;
 
+  /** SSRM — install / replace the server-side datasource (v1 flat-window
+   *  or v2 skeleton contract; detected by `getGroupSkeleton` presence). */
+  setServerSideDatasource(ds: import('./ssrm').AnyServerSideDatasource<TRow> | null): void;
+  /** SSRM — purge block cache and refetch the current viewport. */
+  refreshServerSide(params?: import('./ssrm').RefreshServerSideParams): void;
+  /** SSRM — patch rows already (or about to be) in the block cache. */
+  applyServerSideTransaction(tx: import('./ssrm').ServerSideTransaction<TRow>): void;
+
   setSortModel(s: SortModel): void;
   setFilterModel(f: FilterModel): void;
   setGroupModel(g: GroupModel): void;
@@ -212,6 +220,10 @@ export interface CGridApi<TRow = any> {
    *  `colId` to the row-group column list. No-op when the column is
    *  already grouped. */
   addRowGroupColumn(colId: string): void;
+  /** AG v33 plural form of `addRowGroupColumn`. */
+  addRowGroupColumns(colIds: string[]): void;
+  /** AG v33 plural form of `removeRowGroupColumn`. */
+  removeRowGroupColumns(colIds: string[]): void;
   /** Cycle 15.5 / Task 1 — primitive grouping mutation: remove
    *  `colId` from the row-group column list. No-op when the column
    *  isn't currently grouped. */

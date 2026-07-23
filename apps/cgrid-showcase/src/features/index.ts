@@ -20,6 +20,7 @@ import { eventsState } from './eventsState';
 import { a11y } from './a11y';
 import { selectionModes } from './selectionModes';
 import { realtimeStomp } from './realtimeStomp';
+import { multiBlotterSsrm } from './multiBlotterSsrm';
 import { formatDSL } from './formatDSL';
 import { conditionalStyling } from './conditionalStyling';
 import { alertsFeature } from './alerts';
@@ -60,6 +61,7 @@ export const FEATURES: Feature[] = [
   a11y,
   selectionModes,
   realtimeStomp,
+  multiBlotterSsrm,
   formatDSL,
   conditionalStyling,
   alertsFeature,

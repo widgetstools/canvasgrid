@@ -84,6 +84,9 @@ export interface ResolvedColDef<TRow = any> {
    *  surface only widens, never narrows. */
   comparator?: string | ((a: unknown, b: unknown, ar: TRow, br: TRow) => number);
   filter?: 'text' | 'number' | 'date' | 'set';
+  /** AG parity 2026-07-21 — group-key derivation for this column; ships
+   *  to the worker as serialized source (see `CColDef.keyCreator`). */
+  keyCreator?: (params: { value: unknown; data: TRow }) => string;
   /** Per-column override of `CGridOptions.floatingFilter`. `undefined` means
    *  inherit the grid-level value at `rebuildSubgridStack` time. The
    *  floating-filter overlay reads this on every `repositionAll`; explicit
@@ -1287,7 +1290,10 @@ export function resolveColDef<TRow>(
     headerCheckboxSelection: merged.headerCheckboxSelection,
     cellRendererSelector: merged.cellRendererSelector as ResolvedColDef<TRow>['cellRendererSelector'],
     comparator: merged.comparator as ResolvedColDef<TRow>['comparator'],
-    filter: merged.filter,
+    // 'agGroupColumnFilter' is resolved to a concrete type during auto-group
+    // column synthesis; anywhere else it means "no filter" (AG parity).
+    filter: merged.filter === 'agGroupColumnFilter' ? undefined : merged.filter,
+    keyCreator: merged.keyCreator as ResolvedColDef<TRow>['keyCreator'],
     floatingFilter: merged.floatingFilter,
     filterParams: merged.filterParams,
     suppressFloatingFilterButton: merged.suppressFloatingFilterButton ?? false,

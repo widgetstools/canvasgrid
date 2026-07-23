@@ -507,6 +507,14 @@ export class GroupingCoordinator<TRow = unknown> {
       override: opts.autoGroupColumnDef as Partial<CColDef<TRow>> | undefined,
       headerNames: this.groupModel.rowGroupCols.map((colId) =>
         columnTree.leafById.get(colId)?.headerName),
+      // AG parity 2026-07-21 — underlying grouped column facts for the
+      // `filter: 'agGroupColumnFilter'` redirect.
+      sourceColumns: this.groupModel.rowGroupCols.map((colId) => {
+        const leaf = columnTree.leafById.get(colId);
+        return leaf
+          ? { field: leaf.field as string | undefined, filter: leaf.filter as string | undefined }
+          : undefined;
+      }),
     });
     this.autoGroupColumns = synth.columns;
     // Mirror the synthesized defs into `columnDefsMap` so the painter's

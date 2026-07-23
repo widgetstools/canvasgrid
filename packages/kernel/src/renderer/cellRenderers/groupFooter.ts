@@ -86,12 +86,23 @@ export const groupFooterCell: CellPainter = {
     // Auto-group column on a footer row. Paint `Total ${groupValue}`
     // at the parent depth's indent. Grand-total footer (empty group
     // value) reads as just `Total`.
+    //
+    // AG parity 2026-07-21 — `totalValueGetter` (renamed from AG's
+    // `footerValueGetter` in v33) customizes the label. Threaded via
+    // `autoGroupColumnDef.cellRendererParams.totalValueGetter`, which
+    // rides `p.params` like every other cellRendererParams field.
     paintBackground(gc, p);
     const indentUnit = p.groupIndent ?? DEFAULT_INDENT_UNIT;
     const indentX = payload.depth * indentUnit;
-    const label = payload.valueFormatted === ''
-      ? 'Total'
-      : `Total ${payload.valueFormatted}`;
+    const totalValueGetter = (p.params as {
+      totalValueGetter?: (params: { value: string; isGrandTotal: boolean }) => unknown;
+    } | undefined)?.totalValueGetter;
+    const label = typeof totalValueGetter === 'function'
+      ? String(totalValueGetter({
+          value: payload.valueFormatted,
+          isGrandTotal: payload.valueFormatted === '',
+        }) ?? '')
+      : (payload.valueFormatted === '' ? 'Total' : `Total ${payload.valueFormatted}`);
     gc.cache.fillStyle = p.fg;
     gc.cache.font = p.font;
     gc.cache.textBaseline = 'middle';

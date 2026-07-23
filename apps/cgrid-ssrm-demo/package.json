@@ -1,0 +1,24 @@
+{
+  "name": "cgrid-ssrm-demo",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "smoke:phase1": "node scripts/phase1-smoke.mjs"
+  },
+  "dependencies": {
+    "@cgrid/kernel": "*",
+    "@perspective-dev/client": "^4.5.2",
+    "@perspective-dev/server": "^4.5.2",
+    "@stomp/stompjs": "^7.3.0"
+  },
+  "devDependencies": {
+    "playwright": "^1.61.1",
+    "typescript": "~5.9.3",
+    "vite": "^7.3.2"
+  }
+}

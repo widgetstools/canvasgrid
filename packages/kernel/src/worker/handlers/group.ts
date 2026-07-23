@@ -43,6 +43,10 @@ export async function handleGroup(
       // default-expansion rule.
       const groupRoots = state.groupOutput?.roots ?? [];
       const defaultExpandedKeys = state.group.computeDefaultExpandedKeys(groupRoots);
+      // AG parity 2026-07-21 — an empty tree means data hasn't arrived
+      // yet; the first non-empty build re-seeds (see buildVisibleAsync).
+      state.pendingDefaultExpandSeed =
+        req.payload.rowGroupCols.length > 0 && groupRoots.length === 0;
       let visibleCount = visibleCount0;
       if (defaultExpandedKeys !== null) {
         state.expandedKeys = defaultExpandedKeys;

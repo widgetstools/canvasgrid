@@ -411,6 +411,9 @@ export interface CGridLike {
   /** True when `groupKey` is currently in the expanded set. Returns false
    *  for unknown / collapsed keys. */
   isGroupExpanded(groupKey: string): boolean;
+  /** AG parity — mirrors `CGridOptions.suppressDoubleClickExpand`. When
+   *  true, the GroupExpandFeature ignores double-clicks on group rows. */
+  isGroupDoubleClickExpandSuppressed(): boolean;
 
   // --- Column autosize (Cycle 6 / Task 4) ---
   /** Autosize a single column — equivalent to `autoSizeColumns([colId])`.

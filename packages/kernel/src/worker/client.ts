@@ -163,9 +163,35 @@ export class WorkerClient {
     return this.send<{ type: 'ready' }>({ type: 'init', payload }).then(() => {});
   }
 
-  setRowData(rows: unknown[], heightsByRowId?: Map<string, number>): Promise<{ count: number; visibleCount: number; groupKeys?: string[] }> {
+  setRowData(rows: unknown[], heightsByRowId?: Map<string, number>): Promise<{ count: number; visibleCount: number; groupKeys?: string[]; expandedKeys?: string[] | null }> {
     return this.send<{ count: number; visibleCount: number; groupKeys?: string[] }>({
       type: 'setRowData', payload: { rows, heightsByRowId },
+    });
+  }
+
+  ssrmHydrate(payload: {
+    rowCount: number;
+    startRow: number;
+    rows: unknown[];
+    reset?: boolean;
+  }): Promise<{ count: number; visibleCount: number }> {
+    return this.send<{ count: number; visibleCount: number }>({
+      type: 'ssrmHydrate',
+      payload,
+    });
+  }
+
+  ssrmSetClientPipeline(enabled: boolean): Promise<{ count: number; visibleCount: number; groupKeys?: string[] }> {
+    return this.send<{ count: number; visibleCount: number; groupKeys?: string[] }>({
+      type: 'ssrmSetClientPipeline',
+      payload: { enabled },
+    });
+  }
+
+  ssrmSetGrandTotals(totals: Record<string, unknown> | null): Promise<{ count: number; visibleCount: number }> {
+    return this.send<{ count: number; visibleCount: number }>({
+      type: 'ssrmSetGrandTotals',
+      payload: { totals },
     });
   }
 

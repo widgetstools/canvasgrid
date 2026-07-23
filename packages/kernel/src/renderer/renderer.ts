@@ -163,7 +163,7 @@ export interface RendererOpts {
    * `blit`), the blit step is skipped and painting falls back to whatever
    * `damage` already specifies — never a correctness dependency.
    */
-  getCanvasElement?: () => HTMLCanvasElement;
+  getCanvasElement?: () => HTMLCanvasElement | undefined;
   /**
    * Cycle 22 / Task 2 — Tier-1 cell-bitmap cache handle for the byRows
    * cell-paint seam (see `PainterCtx.rasterCells`). Read fresh per paint

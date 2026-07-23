@@ -182,8 +182,14 @@ export interface CColDef<TRow = any, TValue = any> {
   /** Filter type for the column. `'text'` / `'number'` / `'date'` route
    *  the floating-filter input through the matching parser grammar.
    *  `'set'` is reserved for Task 9's checkbox popup. When unset, the
-   *  overlay falls back to `cellDataType`. */
-  filter?: 'text' | 'number' | 'date' | 'set';
+   *  overlay falls back to `cellDataType`.
+   *
+   *  `'agGroupColumnFilter'` (AG parity 2026-07-21) is meaningful ONLY on
+   *  `autoGroupColumnDef`: the auto-group column inherits the UNDERLYING
+   *  grouped column's filter (field + concrete type resolved at
+   *  synthesis; per-depth in `'multipleColumns'` mode). On any other
+   *  column it resolves to no filter. */
+  filter?: 'text' | 'number' | 'date' | 'set' | 'agGroupColumnFilter';
   /** Per-column filter UI parameters. Tasks 3-6 + 9 each consume the
    *  relevant subset (`buttons` / `closeOnApply` are honored by every
    *  popup; type-specific knobs like `caseSensitive` arrive with Task
@@ -501,6 +507,14 @@ export interface CColDef<TRow = any, TValue = any> {
    *  UI drag-from-header gesture. Design plan:
    *  `docs/superpowers/plans/notes/cycle-15-grouping-design.md` § Task 6. */
   enableRowGroup?: boolean;
+  /** AG parity 2026-07-21 — derives the string KEY used when grouping by
+   *  this column (and displayed as the group label). Required to group
+   *  object / non-string values. Runs in the WORKER: serialized via
+   *  `Function.prototype.toString()` (same mechanism as custom
+   *  comparators / aggFuncs), so it must be a self-contained pure
+   *  function — closures over outer variables will not survive the
+   *  round-trip. Params: `{ value, data }` (cell value + full row). */
+  keyCreator?: (params: { value: unknown; data: TRow }) => string;
   /** Cycle 18 / Task 3 — gates whether the user may drag this column's
    *  header into the Column Labels (pivot) drop zone. `false` (default,
    *  mirrors ag-grid) rejects the drop; the imperative

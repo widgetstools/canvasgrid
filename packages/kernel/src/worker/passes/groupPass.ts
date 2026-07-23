@@ -129,8 +129,10 @@ export class GroupPass<TRow = any> {
    *  position with no preceding group entries). The TREE shape stays
    *  intact so the `groupMeta` lookup keeps working for every
    *  non-elided group; only the depth-first flat traversal changes.
-   *  Off by default; read by `apply()` on every call. */
-  private removeSingleChildren = false;
+   *  Off by default; read by `apply()` on every call. `'leafGroupsOnly'`
+   *  restricts elision to leaf-level groups (AG v33
+   *  `groupHideParentOfSingleChild: 'leafGroupsOnly'`). */
+  private removeSingleChildren: boolean | 'leafGroupsOnly' = false;
   /** Cycle 15 / Task 12 — `groupIncludeFooter` flag. When `true`, the
    *  flatOrder build appends a `kind: 'footer'` entry at the END of
    *  each non-elided group's child traversal. The footer's `key` is
@@ -198,7 +200,37 @@ export class GroupPass<TRow = any> {
   setColumns(columns: WorkerColumn[]): void {
     this.colIndex.clear();
     for (const col of columns) this.colIndex.set(col.colId, col);
+    // AG `keyCreator` — rebuild per-column functions from their serialized
+    // source (same `new Function` contract as comparators / aggFuncs).
+    // Compiled once per (colId, source); a bad source logs and disables
+    // the creator for that column instead of poisoning the pipeline.
+    for (const col of columns) {
+      const src = col.keyCreatorSource;
+      const cached = this.keyCreatorSrc.get(col.colId);
+      if (src === cached) continue;
+      this.keyCreatorSrc.set(col.colId, src);
+      if (!src) {
+        this.keyCreators.delete(col.colId);
+        continue;
+      }
+      try {
+        const fn = new Function(`"use strict"; return (${src});`)();
+        if (typeof fn === 'function') {
+          this.keyCreators.set(col.colId, fn as (p: { value: unknown; data: unknown }) => unknown);
+        } else {
+          this.keyCreators.delete(col.colId);
+        }
+      } catch (err) {
+        console.error(`[cgrid] keyCreator for '${col.colId}' failed to deserialise:`, err);
+        this.keyCreators.delete(col.colId);
+      }
+    }
   }
+
+  /** Compiled `keyCreator` functions by colId (+ source cache for change
+   *  detection across `setColumns` swaps). */
+  private readonly keyCreators = new Map<string, (p: { value: unknown; data: unknown }) => unknown>();
+  private readonly keyCreatorSrc = new Map<string, string | undefined>();
 
   /** Read-only access for tests + the slicer. */
   getModel(): GroupModel {
@@ -223,11 +255,13 @@ export class GroupPass<TRow = any> {
   }
 
   /** Cycle 15 / Task 10 — toggle the single-child elision rule. Called
-   *  from the worker init handshake when `groupRemoveSingleChildren`
-   *  is set on `CGridOptions`. Off by default (preserves the
-   *  pre-Task-10 behaviour of emitting every group entry); flipping
-   *  on takes effect on the next `apply()`. */
-  setRemoveSingleChildren(enabled: boolean): void {
+   *  from the worker init handshake when `groupRemoveSingleChildren` /
+   *  `groupHideParentOfSingleChild` is set on `CGridOptions`. Off by
+   *  default; `'leafGroupsOnly'` (AG v33
+   *  `groupHideParentOfSingleChild: 'leafGroupsOnly'`) elides only
+   *  LEAF-level single-child groups, leaving higher levels intact.
+   *  Takes effect on the next `apply()`. */
+  setRemoveSingleChildren(enabled: boolean | 'leafGroupsOnly'): void {
     this.removeSingleChildren = enabled;
   }
 
@@ -237,7 +271,7 @@ export class GroupPass<TRow = any> {
    *  the chunk — an elided row's parent group's value should be the
    *  highest non-elided ancestor's value, matching what the renderer
    *  paints). */
-  getRemoveSingleChildren(): boolean {
+  getRemoveSingleChildren(): boolean | 'leafGroupsOnly' {
     return this.removeSingleChildren;
   }
 
@@ -314,13 +348,17 @@ export class GroupPass<TRow = any> {
       return new Set(this.defaultExpandedKeys);
     }
     const expanded = this.defaultExpanded;
-    if (expanded === 'all') return null;
+    // AG parity (2026-07-21): `-1` (or 'all') expands EVERYTHING; `N >= 0`
+    // is the NUMBER OF LEVELS open — `0` opens nothing, `1` opens the
+    // first level (depth 0), etc. (cgrid previously used depth <= N,
+    // off-by-one from ag-grid). Other negatives collapse everything.
+    if (expanded === 'all' || expanded === -1) return null;
     const set = new Set<string>();
-    if (expanded < 0) return set;
-    const maxDepth = expanded;
+    if (expanded <= 0) return set;
+    const openLevels = expanded;
     const walk = (nodes: readonly GroupNode[]): void => {
       for (const node of nodes) {
-        if (node.depth <= maxDepth) set.add(node.key);
+        if (node.depth < openLevels) set.add(node.key);
         if (node.childGroups.length > 0) walk(node.childGroups);
       }
     };
@@ -342,8 +380,11 @@ export class GroupPass<TRow = any> {
     // viewport slicer / value-getter chain treats missing fields.
     const fields = new Array<string | null>(cols.length);
     const colIds = cols;
+    // AG `keyCreator` — per-level compiled creator (null = raw value key).
+    const creators = new Array<((p: { value: unknown; data: unknown }) => unknown) | null>(cols.length);
     for (let d = 0; d < cols.length; d++) {
       fields[d] = this.colIndex.get(cols[d]!)?.field ?? null;
+      creators[d] = this.keyCreators.get(cols[d]!) ?? null;
     }
 
     const deepest = cols.length - 1;
@@ -389,11 +430,22 @@ export class GroupPass<TRow = any> {
         // Cycle 21d / Task 11 — data column → direct field read;
         // fieldless calc column → CalcPass cache; fieldless non-calc
         // column → `undefined` (pre-21d "" bucket for every row).
-        const rawValue = field !== null
+        let rawValue = field !== null
           ? (row as Record<string, unknown>)[field]
           : (this.calcSource !== null && this.calcSource.isCalcCol(colId)
               ? this.calcSource.valueAt(rowId, colId)
               : undefined);
+        // AG `keyCreator` — the creator's return IS the group key (and the
+        // displayed group value), enabling grouping over objects / derived
+        // buckets. Creator throw → '' bucket (defensive, matches nulls).
+        const creator = creators[d] ?? null;
+        if (creator !== null) {
+          try {
+            rawValue = creator({ value: rawValue, data: row });
+          } catch {
+            rawValue = null;
+          }
+        }
         const keyPart = rawValue == null ? '' : '' + rawValue;
         const parentMap = parent.childByKey;
         let bucket = parentMap.get(keyPart);
@@ -474,7 +526,11 @@ export class GroupPass<TRow = any> {
     const footers = this.includeFooter;
     const walk = (nodes: readonly GroupNode[]): void => {
       for (const n of nodes) {
-        const skipGroupEntry = elide && n.childCount === 1;
+        // 'leafGroupsOnly' elides only leaf-level single-child groups
+        // (childGroups empty); `true` elides at every level.
+        const skipGroupEntry = n.childCount === 1 && (
+          elide === true || (elide === 'leafGroupsOnly' && n.childGroups.length === 0)
+        );
         if (!skipGroupEntry) {
           flatOrder.push({ kind: 'group', key: n.key, depth: n.depth });
         }

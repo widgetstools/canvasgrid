@@ -159,8 +159,26 @@ export class WorkerCoordinator {
 
   setRowData(
     rows: unknown[], heightsByRowId?: Map<string, number>,
-  ): Promise<{ count: number; visibleCount: number; groupKeys?: string[] }> {
+  ): Promise<{ count: number; visibleCount: number; groupKeys?: string[]; expandedKeys?: string[] | null }> {
     return this.client.setRowData(rows, heightsByRowId);
+  }
+
+  ssrmHydrate(payload: {
+    rowCount: number;
+    startRow: number;
+    rows: unknown[];
+    reset?: boolean;
+  }): Promise<{ count: number; visibleCount: number }> {
+    return this.client.ssrmHydrate(payload);
+  }
+
+  ssrmSetClientPipeline(enabled: boolean): Promise<{ count: number; visibleCount: number; groupKeys?: string[] }> {
+    return this.client.ssrmSetClientPipeline(enabled);
+  }
+
+  /** Sparse SSRM v2 — host-computed grand totals (field-keyed; null clears). */
+  ssrmSetGrandTotals(totals: Record<string, unknown> | null): Promise<{ count: number; visibleCount: number }> {
+    return this.client.ssrmSetGrandTotals(totals);
   }
 
   applyTransaction(payload: {

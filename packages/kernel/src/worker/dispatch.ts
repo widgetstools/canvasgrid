@@ -160,6 +160,9 @@ import { handleExport } from './handlers/export';
 export const dispatchTable: DispatchTable = {
   // ── Data pipeline domain ──────────────────────────────────────────────────
   setRowData: handleDataPipeline as Handler,
+  ssrmHydrate: handleDataPipeline as Handler,
+  ssrmSetClientPipeline: handleDataPipeline as Handler,
+  ssrmSetGrandTotals: handleDataPipeline as Handler,
   applyTransaction: handleDataPipeline as Handler,
   updateColumns: handleDataPipeline as Handler,
   setEnableCellChangeFlash: handleDataPipeline as Handler,

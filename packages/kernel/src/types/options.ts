@@ -72,6 +72,35 @@ export interface CGridOptions<TRow = any> {
   rowData?: TRow[];
   getRowId: (row: TRow) => string;
   /**
+   * Row model. Default `'clientSide'` (full in-memory store). `'serverSide'`
+   * activates the SSRM block-cache path: the app supplies
+   * {@link serverSideDatasource}; the worker only hydrates viewport windows.
+   * Initial-only for the first cut.
+   */
+  rowModelType?: 'clientSide' | 'serverSide';
+  /**
+   * SSRM datasource — main-thread `getRows` implementation. Required when
+   * `rowModelType === 'serverSide'`. Runtime-mutable via
+   * `api.setServerSideDatasource`.
+   */
+  serverSideDatasource?: import('./ssrm').AnyServerSideDatasource<TRow>;
+  /** Rows per SSRM block fetch. Default `100`. Initial-only. */
+  cacheBlockSize?: number;
+  /** Max parallel `getRows` calls. Default `2`. Initial-only. */
+  maxConcurrentDatasourceRequests?: number;
+  /**
+   * SSRM CSRM feature parity bridge.
+   *
+   * - `true` — fully hydrate the book and run the worker CSRM pipeline
+   *   (filter / sort / group / pivot / totals) for the life of the grid.
+   * - `false` — lean sparse path; the datasource owns filter/sort/group/agg
+   *   and may attach {@link SSRM_ROW_META_KEY} on rows for group paint.
+   * - `undefined` (default) — auto: enable the client pipeline when
+   *   CSRM-shaping options are configured (`rowGroupPanelShow`, group/grand
+   *   totals, pivot mode, …). Grouping / pivot also force-enable at runtime.
+   */
+  serverSideEnableClientSidePipeline?: boolean;
+  /**
    * Default data-row height in CSS px. Clamped to at least
    * {@link MIN_ROW_HEIGHT_PX} (24) — shorter rows make scroll-blit seams
    * look like squashed / uneven row heights under HiDPI.
@@ -1027,9 +1056,9 @@ export interface CGridOptions<TRow = any> {
    *    `N === 0` expands the top-level groups only (their immediate
    *    child groups render as collapsed rows); `N === 1` expands two
    *    levels; etc. Useful for "show the outline" defaults.
-   *  - `N` where `N < 0` — every group starts collapsed. Use any
-   *    negative integer (`-1` is the canonical "collapse all" form,
-   *    matching how ag-grid documents the same flag in inverse).
+   *  - `-1` — expand EVERY group (AG-Grid parity: ag-grid documents
+   *    `-1` as "expand all"; equivalent to the `'all'` sentinel).
+   *  - any other `N < 0` — every group starts collapsed.
    *
    *  `groupDefaultExpandedKeys` (below), when supplied, takes
    *  precedence over the depth-based rule — the explicit list is the
@@ -1065,6 +1094,19 @@ export interface CGridOptions<TRow = any> {
    *  this cycle (matches the `groupDefaultExpanded` pattern; apps
    *  that need it can rebuild the grid). */
   groupRemoveSingleChildren?: boolean;
+  /** AG v33 name for single-child group elision — supersedes the
+   *  deprecated `groupRemoveSingleChildren`. `true` replaces any group
+   *  with a single descendant leaf by that leaf; `'leafGroupsOnly'`
+   *  applies the rule only at the lowest (leaf) group level, leaving
+   *  higher levels intact (AG `groupRemoveLowestSingleChildren`
+   *  equivalent). Wins over the deprecated flag when both are set.
+   *  Init-only, matching `groupRemoveSingleChildren`. */
+  groupHideParentOfSingleChild?: boolean | 'leafGroupsOnly';
+  /** AG parity (`agGroupCellRenderer` param `suppressDoubleClickExpand`)
+   *  — when `true`, double-clicking a group row no longer toggles its
+   *  expanded state. Chevron clicks and keyboard toggles are
+   *  unaffected. Default `false` (double-click toggles, matching AG). */
+  suppressDoubleClickExpand?: boolean;
   /** Cycle 15 / Task 10 — when `true` AND `groupDisplayType` resolves
    *  to `'singleColumn'`, every data row's auto-group cell paints a
    *  MUTED echo of its leaf-parent group's value (no chevron, no
@@ -1190,8 +1232,28 @@ export interface CGridOptions<TRow = any> {
   /** Cycle 15.5 / Task 8 — where the grand-total row appears.
    *  - `'top'` — before all group rows (just below the headers).
    *  - `'bottom'` — after all group rows (last row in the body).
-   *  - `null` / omitted — no grand total from this option; use
-   *    `totalsRowPosition` from Cycle 13 for a pinned grand total.
+   *  - `'pinnedTop'` / `'pinnedBottom'` — AG parity (2026-07-21): the
+   *    grand-total row is PINNED outside the scroll area (maps onto the
+   *    `totalsRowPosition` totals subgrid — always visible while the
+   *    body scrolls). Works on both CSRM (AggPass root totals) and
+   *    sparse SSRM v2 (skeleton root aggregates).
+   *  - `null` / omitted — no grand total from this option.
    *  Init-only this cycle. */
-  grandTotalRow?: 'top' | 'bottom' | null;
+  grandTotalRow?: 'top' | 'bottom' | 'pinnedTop' | 'pinnedBottom' | null;
+  /** AG parity (2026-07-21) — filters evaluate GROUP rows on their
+   *  aggregated values instead of leaf rows: a group whose aggregates
+   *  pass includes ALL of its descendants; non-passing groups keep only
+   *  subtrees containing passing groups. Only filter entries on columns
+   *  carrying an `aggFunc` constrain groups (other entries are ignored
+   *  while this is on). Boolean only — AG's per-node callback form is
+   *  not yet supported. CSRM only (sparse SSRM filtering is host-owned).
+   *  Implies AG's `suppressAggFilteredOnly` (aggregates cover all rows). */
+  groupAggFiltering?: boolean;
+  /** AG parity (2026-07-21) — when `true`, applying or changing sorts
+   *  never re-orders GROUP rows: only leaf rows sort within their
+   *  groups. Group order stays as produced by the group pass (CSRM) or
+   *  as delivered by the skeleton (sparse SSRM v2, where refetched
+   *  skeletons additionally keep the previous sibling order for
+   *  surviving groups). Default `false`. Init-only. */
+  groupMaintainOrder?: boolean;
 }

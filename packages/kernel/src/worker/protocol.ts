@@ -54,6 +54,15 @@ export interface WorkerInitPayload {
    *  entries. Chains that funnel down to a single row collapse
    *  entirely. Off by default. */
   groupRemoveSingleChildren?: boolean;
+  /** AG v33 `groupHideParentOfSingleChild` — supersedes
+   *  `groupRemoveSingleChildren`. `true` elides every single-child
+   *  group; `'leafGroupsOnly'` elides only leaf-level ones. Wins over
+   *  the deprecated flag when both are set. */
+  groupHideParentOfSingleChild?: boolean | 'leafGroupsOnly';
+  /** AG `groupMaintainOrder` — sorts never re-order group rows. */
+  groupMaintainOrder?: boolean;
+  /** AG `groupAggFiltering` — filters evaluate group aggregates. */
+  groupAggFiltering?: boolean;
   /** Cycle 15 / Task 10 — when `true`, the worker's grouped slicer
    *  populates every data row's `chunk.groupValue[i]` slot with its
    *  leaf-parent group's formatted value. The `'group'` renderer
@@ -99,6 +108,10 @@ export interface WorkerColumn {
    *  built-in-only union in Cycle 14 / Task 3. */
   aggFunc?: string | string[];
   filter?: 'text' | 'number' | 'date' | 'set';
+  /** AG `keyCreator` — `Function.prototype.toString()` source; the worker
+   *  rebuilds it via `new Function` (same mechanism as comparators) and
+   *  GroupPass buckets rows by its return value. */
+  keyCreatorSource?: string;
   /** Cycle 5 / Task 8 — column opted into autoHeight measurement. When true,
    *  the worker measures wrapped-text height for every visible row in this
    *  column and contributes the result into the row's resolved height. */
@@ -400,6 +413,32 @@ export interface WorkerCalcProgram {
 export type WorkerRequest =
   | { id: ReqId; type: 'init';             payload: WorkerInitPayload }
   | { id: ReqId; type: 'setRowData';       payload: { rows: unknown[]; heightsByRowId?: Map<string, number> } }
+  /** SSRM sparse hydrate — declare scroll `rowCount` and place `rows` at
+   *  `[startRow, startRow + rows.length)`. Empty slots paint blank. */
+  | {
+      id: ReqId;
+      type: 'ssrmHydrate';
+      payload: {
+        rowCount: number;
+        startRow: number;
+        rows: unknown[];
+        reset?: boolean;
+      };
+    }
+  /** Toggle CSRM pipeline over a fully hydrated SSRM store. */
+  | {
+      id: ReqId;
+      type: 'ssrmSetClientPipeline';
+      payload: { enabled: boolean };
+    }
+  /** Sparse SSRM v2 — install host-computed grand totals (keyed by FIELD;
+   *  the viewport handler maps to colIds). Overrides the AggPass totals,
+   *  which only see hydrated rows on the sparse path. `null` clears. */
+  | {
+      id: ReqId;
+      type: 'ssrmSetGrandTotals';
+      payload: { totals: Record<string, unknown> | null };
+    }
   | { id: ReqId; type: 'applyTransaction'; payload: { add?: unknown[]; update?: unknown[]; remove?: string[]; async: boolean; heightsByRowId?: Map<string, number> } }
   | { id: ReqId; type: 'setSortModel';     payload: SortModel }
   | { id: ReqId; type: 'setFilterModel';   payload: FilterModel }
@@ -669,6 +708,11 @@ export type WorkerResponse =
        *  tree without a follow-up round-trip. Absent for ungrouped
        *  grids so the reply stays small on the cheap path. */
       groupKeys?: string[];
+      /** AG parity 2026-07-21 — present when this data load re-seeded
+       *  `groupDefaultExpanded` defaults (the group model landed before
+       *  any data, so the seed ran against an empty tree). Main replaces
+       *  its expansion mirror. `null` = the all-expanded sentinel. */
+      expandedKeys?: string[] | null;
     }
   /** Cycle 15 / Task 7 — reply to `setGroupModel` AND `setExpandedKeys`
    *  that piggybacks on the existing rowCount channel but adds the list

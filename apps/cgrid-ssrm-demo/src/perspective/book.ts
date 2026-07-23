@@ -1,0 +1,1170 @@
+/**
+ * Shared Perspective book + per-blotter Views.
+ *
+ * STOMP/seed → Table.update → Views → sparse SSRM getRows (windowed only).
+ * Grouping / agg / filter / sort owned by Perspective — never full hydrate.
+ */
+import type { FilterModel, SkeletonGroup, SortModel } from '@cgrid/kernel';
+import { Client, type IMessage } from '@stomp/stompjs';
+import {
+  createPositionsTable,
+  type PositionRow,
+  type Table,
+  type View,
+} from './bootstrap';
+import { emptyGrandTotalRow } from '../columns';
+import {
+  buildCompositeGroupKey,
+  materializeGroupedWindow as buildGroupedSsrmWindow,
+  parseCompositeGroupKey,
+} from './ssrmGroupTree';
+
+const SNAPSHOT_END_TOKEN = 'Success';
+
+/** Perspective filter triple: [column, op, term]. */
+export type PspFilter = [string, string, string | number | boolean | null];
+
+const DATA_COLUMNS = [
+  'positionId',
+  'ticker',
+  'desk',
+  'region',
+  'instrumentType',
+  'notionalAmount',
+  'marketValue',
+  'pnl',
+  'dailyPnl',
+] as const;
+
+const VALUE_AGGREGATES = {
+  positionId: 'count',
+  notionalAmount: 'sum',
+  marketValue: 'sum',
+  pnl: 'sum',
+  dailyPnl: 'sum',
+} as const;
+
+export interface SsrmRowsRequest {
+  startRow: number;
+  endRow: number;
+  sortModel: SortModel;
+  filterModel: FilterModel;
+  rowGroupCols: string[];
+  expandedGroupKeys: string[];
+}
+
+export interface SsrmRowsResult {
+  rows: PositionRow[];
+  rowCount: number;
+  groupKeys: string[];
+}
+
+/** Fired from a blotter's Perspective View `on_update` (conflated). */
+export interface ViewTick {
+  viewId: string;
+  totals: PositionRow;
+  /** Soft-refresh SSRM blocks after grouped View recomputes. */
+  refreshSsrm: boolean;
+  /** Leaf row patches for flat mode live ticks. */
+  updates: PositionRow[];
+}
+
+export type BookPhase =
+  | 'idle'
+  | 'bootstrapping'
+  | 'connecting'
+  | 'snapshot'
+  | 'live'
+  | 'error'
+  | 'disconnected';
+
+export interface ViewSpec {
+  id: string;
+  label: string;
+  filter?: PspFilter[];
+}
+
+export interface BookTelemetry {
+  phase: BookPhase;
+  bookSize: number;
+  snapshotRowsLoaded: number;
+  liveBatches: number;
+  liveRowsIn: number;
+  liveUpdatesPerSec: number;
+  getRowsTotal: number;
+  rowsServedTotal: number;
+  viewCount: number;
+  views: Array<{
+    id: string;
+    label: string;
+    getRowsCalls: number;
+    rowsServed: number;
+    inflight: number;
+    projectedRows: number;
+  }>;
+  wsUrl: string;
+  engine: 'perspective';
+}
+
+export type BookFeed = 'stomp' | 'seed';
+
+export interface PerspectiveBookOptions {
+  feed?: BookFeed;
+  wsUrl?: string;
+  clientId?: string;
+  snapshotRows?: number;
+  rate?: number;
+  batchSize?: number;
+  updatesPerTick?: number;
+  sparse?: boolean;
+  onTelemetry?: (t: BookTelemetry) => void;
+  onPhase?: (phase: BookPhase) => void;
+  onViewTick?: (tick: ViewTick) => void;
+}
+
+const SEED_DESKS = [
+  'Securitized Products',
+  'Rates Flow',
+  'Credit Trading',
+  'Equity Derivatives',
+  'FX Spot',
+] as const;
+const SEED_REGIONS = ['AMER', 'EMEA', 'APAC'] as const;
+const SEED_INSTRUMENTS = ['Bond', 'Swap', 'Future', 'Option', 'Equity'] as const;
+const SEED_TICKERS = ['AAPL', 'MSFT', 'GOOG', 'AMZN', 'META', 'NVDA', 'TSLA', 'JPM', 'GS', 'BAC'] as const;
+
+function mulberry32(seed: number): () => number {
+  let a = seed >>> 0;
+  return () => {
+    a = (a + 0x6d2b79f5) >>> 0;
+    let t = a;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+function makeSeedRow(i: number, rnd: () => number): PositionRow {
+  const notional = Math.round(50_000 + rnd() * 5_000_000);
+  const pnl = Math.round((rnd() - 0.45) * 250_000 * 100) / 100;
+  return {
+    positionId: `P${String(i).padStart(6, '0')}`,
+    ticker: SEED_TICKERS[i % SEED_TICKERS.length]!,
+    desk: SEED_DESKS[i % SEED_DESKS.length]!,
+    region: SEED_REGIONS[i % SEED_REGIONS.length]!,
+    instrumentType: SEED_INSTRUMENTS[i % SEED_INSTRUMENTS.length]!,
+    notionalAmount: notional,
+    marketValue: Math.round(notional * (0.9 + rnd() * 0.25)),
+    pnl,
+    dailyPnl: Math.round(pnl * 0.05 * 100) / 100,
+  };
+}
+
+interface BoundView {
+  spec: ViewSpec;
+  view: View | null;
+  totalsView: View | null;
+  dataUpdateCb: number | null;
+  notifyTimer: number | null;
+  groupBy: string[];
+  /** Raw Perspective grouped rows — invalidated on View `on_update`. */
+  groupedRawCache: Record<string, unknown>[] | null;
+  groupKeys: string[];
+  lastQuerySig: string;
+  getRowsCalls: number;
+  rowsServed: number;
+  inflight: number;
+  projectedRows: number;
+}
+
+function rowMatchesViewFilter(spec: ViewSpec, row: PositionRow): boolean {
+  const filters = spec.filter ?? [];
+  if (filters.length === 0) return true;
+  for (const [col, op, term] of filters) {
+    const raw = row[col];
+    const s = String(raw ?? '').toLowerCase();
+    const needle = String(term ?? '').toLowerCase();
+    if (op === 'contains' && needle && !s.includes(needle)) return false;
+    if (op === '>' && !(Number(raw) > Number(term))) return false;
+    if (op === '<' && !(Number(raw) < Number(term))) return false;
+  }
+  return true;
+}
+
+function extractRows(parsed: unknown): Partial<PositionRow>[] {
+  if (Array.isArray(parsed)) {
+    return parsed.filter((r) => r && typeof r === 'object') as Partial<PositionRow>[];
+  }
+  if (parsed && typeof parsed === 'object') return [parsed as Partial<PositionRow>];
+  return [];
+}
+
+function cgridFilterToPsp(filterModel: FilterModel): PspFilter[] {
+  const out: PspFilter[] = [];
+  for (const [colId, entry] of Object.entries(filterModel)) {
+    if (!entry || typeof entry !== 'object') continue;
+    const e = entry as Record<string, unknown>;
+    if (e.filterType === 'text' || typeof e.filter === 'string') {
+      const needle = String(e.filter ?? '');
+      if (needle) out.push([colId, 'contains', needle]);
+    } else if (e.filterType === 'number' || typeof e.filter === 'number') {
+      const n = Number(e.filter);
+      if (!Number.isFinite(n)) continue;
+      const op = String(e.type ?? 'equals');
+      if (op === 'greaterThan') out.push([colId, '>', n]);
+      else if (op === 'lessThan') out.push([colId, '<', n]);
+      else out.push([colId, '==', n]);
+    }
+  }
+  return out;
+}
+
+function cgridSortToPsp(sortModel: SortModel): Array<[string, 'asc' | 'desc']> {
+  return sortModel.map((s) => [s.colId, s.direction] as [string, 'asc' | 'desc']);
+}
+
+function normalizeRowGroupCols(rowGroupCols: string[]): string[] {
+  return rowGroupCols.filter((c) => DATA_COLUMNS.includes(c as typeof DATA_COLUMNS[number]));
+}
+
+function rowGroupColsEqual(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((c, i) => c === b[i]);
+}
+
+export class PerspectiveBook {
+  private readonly opts: Required<
+    Pick<
+      PerspectiveBookOptions,
+      | 'feed'
+      | 'wsUrl'
+      | 'clientId'
+      | 'snapshotRows'
+      | 'rate'
+      | 'batchSize'
+      | 'updatesPerTick'
+      | 'sparse'
+    >
+  > &
+    Pick<PerspectiveBookOptions, 'onTelemetry' | 'onPhase' | 'onViewTick'>;
+
+  private pendingLiveBatch: PositionRow[] = [];
+
+  private phase: BookPhase = 'idle';
+  private table: Table | null = null;
+  private stomp: Client | null = null;
+  private seedLiveTimer: number | null = null;
+  private seedConnecting = false;
+  private snapshotComplete = false;
+  private updateBuffer: PositionRow[] = [];
+  private pauseFanout = false;
+
+  private snapshotRowsLoaded = 0;
+  private liveBatches = 0;
+  private liveRowsIn = 0;
+  private liveWindow: Array<{ t: number; n: number }> = [];
+  private getRowsTotal = 0;
+  private rowsServedTotal = 0;
+
+  private views = new Map<string, BoundView>();
+  /** Serialize getSsrmRows per view — concurrent remounts hang Perspective WASM. */
+  private getRowsChains = new Map<string, Promise<void>>();
+  /** Serialize Perspective table mutations (shared across all Views). */
+  private tableChain: Promise<void> = Promise.resolve();
+  /** Last getSsrmRows debug snapshot per view (demo / tests). */
+  lastGetRowsDebug = new Map<string, {
+    requestedGroupBy: string[];
+    boundGroupBy: string[];
+    branch: 'flat' | 'grouped' | 'empty';
+    rowCount: number;
+    served: number;
+  }>();
+  private telemetryTimer: number | null = null;
+  private flushTimer: number | null = null;
+
+  constructor(options: PerspectiveBookOptions = {}) {
+    this.opts = {
+      feed: options.feed ?? 'seed',
+      wsUrl: options.wsUrl ?? 'ws://localhost:8081',
+      clientId: options.clientId ?? `psp-${Math.floor(Math.random() * 1e6).toString(16)}`,
+      snapshotRows: options.snapshotRows ?? 10_000,
+      rate: options.rate ?? 40,
+      batchSize: options.batchSize ?? 50,
+      updatesPerTick: options.updatesPerTick ?? 5,
+      sparse: options.sparse ?? true,
+      onTelemetry: options.onTelemetry,
+      onPhase: options.onPhase,
+      onViewTick: options.onViewTick,
+    };
+    this.telemetryTimer = window.setInterval(() => this.emitTelemetry(), 250);
+  }
+
+  getPhase(): BookPhase {
+    return this.phase;
+  }
+
+  isFanoutPaused(): boolean {
+    return this.pauseFanout;
+  }
+
+  setPauseFanout(paused: boolean): void {
+    this.pauseFanout = paused;
+    if (!paused) void this.flushUpdates();
+    this.emitTelemetry();
+  }
+
+  setKnobs(partial: Partial<{ snapshotRows: number; rate: number; batchSize: number; updatesPerTick: number; wsUrl: string }>): void {
+    if (partial.snapshotRows !== undefined) this.opts.snapshotRows = partial.snapshotRows;
+    if (partial.rate !== undefined) this.opts.rate = partial.rate;
+    if (partial.batchSize !== undefined) this.opts.batchSize = partial.batchSize;
+    if (partial.updatesPerTick !== undefined) this.opts.updatesPerTick = partial.updatesPerTick;
+    if (partial.wsUrl !== undefined) this.opts.wsUrl = partial.wsUrl;
+    this.emitTelemetry();
+  }
+
+  async ensureTable(): Promise<Table> {
+    if (this.table) return this.table;
+    this.setPhase('bootstrapping');
+    this.table = await createPositionsTable(`positions-${this.opts.clientId}`);
+    this.setPhase('idle');
+    return this.table;
+  }
+
+  async registerView(spec: ViewSpec): Promise<View> {
+    await this.ensureTable();
+    await this.unregisterView(spec.id);
+    const bound = await this.mountViews(spec, [], []);
+    this.views.set(spec.id, bound);
+    void this.refreshProjected(spec.id);
+    this.emitTelemetry();
+    return bound.view!;
+  }
+
+  getView(viewId: string): View | null {
+    return this.views.get(viewId)?.view ?? null;
+  }
+
+  getGroupKeys(viewId: string): string[] {
+    return this.views.get(viewId)?.groupKeys ?? [];
+  }
+
+  /** Mark pending row-group columns; `getSsrmRows` remounts with full filter/sort. */
+  async setViewGroupBy(viewId: string, rowGroupCols: string[]): Promise<void> {
+    const bound = this.views.get(viewId);
+    if (!bound) return;
+    const next = normalizeRowGroupCols(rowGroupCols);
+    if (rowGroupColsEqual(next, bound.groupBy)) return;
+    bound.groupBy = next;
+    bound.groupedRawCache = null;
+    bound.groupKeys = [];
+  }
+
+  /** Serialize per-view Perspective work — concurrent remounts hang WASM. */
+  private async withViewChain<T>(viewId: string, fn: () => Promise<T>): Promise<T> {
+    const prev = this.getRowsChains.get(viewId) ?? Promise.resolve();
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    this.getRowsChains.set(viewId, prev.then(() => gate, () => gate));
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
+
+  /** Sparse SSRM v1 row window — flat or grouped (Perspective owns compute). */
+  async getSsrmRows(viewId: string, req: SsrmRowsRequest): Promise<SsrmRowsResult> {
+    return this.withViewChain(viewId, () => this.getSsrmRowsInner(viewId, req));
+  }
+
+  // ─── SSRM v2 skeleton contract (kernel owns the tree shape) ────────────
+
+  /** Every group row (all depths) for the current query — the kernel builds
+   *  the flatten index; expansion state never reaches Perspective. */
+  async getGroupSkeleton(
+    viewId: string,
+    req: { sortModel: SortModel; filterModel: FilterModel; rowGroupCols: string[] },
+  ): Promise<SkeletonGroup[]> {
+    return this.withViewChain(viewId, async () => {
+      const bound = this.views.get(viewId);
+      if (!bound?.view) return [];
+      await this.syncQuery(bound, viewId, req.sortModel, req.filterModel, req.rowGroupCols);
+      if (bound.groupBy.length === 0) return [];
+      const raw = await this.getGroupedRaw(bound);
+      const groups: SkeletonGroup[] = [];
+      for (const row of raw) {
+        const path = row.__ROW_PATH__;
+        if (!Array.isArray(path) || path.length > bound.groupBy.length) {
+          continue;
+        }
+        const aggregates: Record<string, unknown> = {};
+        for (const col of ['notionalAmount', 'marketValue', 'pnl', 'dailyPnl'] as const) {
+          if (row[col] !== undefined) aggregates[col] = row[col];
+        }
+        // `path: []` is Perspective's root aggregate row — the kernel reads
+        // it as the grand total (pinned totals row / grand-total footer).
+        groups.push({
+          path: path.map((v) => String(v ?? '')),
+          // Perspective `count` aggregate on positionId = leaves in subtree.
+          leafCount: path.length === 0 ? 0 : Math.max(0, Number(row.positionId ?? 0) | 0),
+          aggregates,
+        });
+      }
+      return groups;
+    });
+  }
+
+  /** Leaf window under one deepest-level group, addressed by raw path. */
+  async getLeafRows(
+    viewId: string,
+    req: {
+      groupPath: string[];
+      startRow: number;
+      endRow: number;
+      sortModel: SortModel;
+      filterModel: FilterModel;
+      rowGroupCols: string[];
+    },
+  ): Promise<PositionRow[]> {
+    return this.withViewChain(viewId, async () => {
+      const bound = this.views.get(viewId);
+      if (!bound?.view) return [];
+      const { extraFilter, sort } = await this.syncQuery(
+        bound, viewId, req.sortModel, req.filterModel, req.rowGroupCols,
+      );
+      return this.fetchLeafWindowByPath(
+        bound, req.groupPath, req.startRow, req.endRow, extraFilter, sort,
+      );
+    });
+  }
+
+  /** Flat (ungrouped) window for the v2 `getRows` fallback. Carries the
+   *  totalsView's root aggregates so the kernel's pinned grand total works
+   *  without a skeleton. */
+  async getFlatRows(
+    viewId: string,
+    req: { startRow: number; endRow: number; sortModel: SortModel; filterModel: FilterModel },
+  ): Promise<{ rows: PositionRow[]; rowCount: number; grandTotals?: Record<string, unknown> }> {
+    return this.withViewChain(viewId, async () => {
+      const bound = this.views.get(viewId);
+      if (!bound?.view) return { rows: [], rowCount: 0 };
+      await this.syncQuery(bound, viewId, req.sortModel, req.filterModel, [], true);
+      // count + read under one lock — see fetchLeafWindowByPath.
+      return this.withTableLock(async () => {
+        const rowCount = Math.max(0, Number(await bound.view!.num_rows()));
+        let grandTotals: Record<string, unknown> | undefined;
+        if (bound.totalsView) {
+          try {
+            const json = (await bound.totalsView.to_json({ start_row: 0, end_row: 1 })) as Record<string, unknown>[];
+            const row = json[0];
+            if (row) {
+              const { __ROW_PATH__: _p, ...rest } = row as Record<string, unknown> & { __ROW_PATH__?: unknown };
+              grandTotals = rest;
+            }
+          } catch { /* omit totals */ }
+        }
+        const start = Math.max(0, req.startRow | 0);
+        const end = Math.max(start, Math.min(req.endRow | 0, rowCount));
+        if (end <= start || rowCount === 0) return { rows: [], rowCount, grandTotals };
+        const rows = (await bound.view!.to_json({ start_row: start, end_row: end })) as PositionRow[];
+        return { rows, rowCount, grandTotals };
+      });
+    });
+  }
+
+  /** SSRM v2 — every descendant leaf row-id under one group (any depth).
+   *  Powers the group-checkbox selection cascade on the sparse path. */
+  async getGroupLeafIds(
+    viewId: string,
+    req: {
+      groupPath: string[];
+      sortModel: SortModel;
+      filterModel: FilterModel;
+      rowGroupCols: string[];
+    },
+  ): Promise<string[]> {
+    return this.withViewChain(viewId, async () => {
+      const bound = this.views.get(viewId);
+      if (!bound?.view || !this.table) return [];
+      const { extraFilter } = await this.syncQuery(
+        bound, viewId, req.sortModel, req.filterModel, req.rowGroupCols,
+      );
+      if (req.groupPath.length === 0 || req.groupPath.length > bound.groupBy.length) return [];
+      const groupFilter: PspFilter[] = req.groupPath.map(
+        (v, i) => [bound.groupBy[i]!, '==', v],
+      );
+      const filter = [...(bound.spec.filter ?? []), ...extraFilter, ...groupFilter];
+      return this.withTableLock(async () => {
+        const idView = await this.table!.view({ columns: ['positionId'], filter } as never);
+        try {
+          const json = (await idView.to_json()) as Array<{ positionId?: unknown }>;
+          return json
+            .map((r) => String(r.positionId ?? ''))
+            .filter((s) => s !== '');
+        } finally {
+          try { await idView.delete(); } catch { /* swallow */ }
+        }
+      });
+    });
+  }
+
+  private async withTableLock<T>(fn: () => Promise<T>): Promise<T> {
+    const prev = this.tableChain;
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => { release = resolve; });
+    this.tableChain = prev.then(() => gate, () => gate);
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release();
+    }
+  }
+
+  /**
+   * Sync the bound Perspective view to the requested query (sort / filter /
+   * groupBy), remounting when the signature changes. `trustEmptyGroupBy`
+   * (v2 flat path) skips the v1 race guard that resurrects a stale
+   * `bound.groupBy` when the request carries no group columns.
+   */
+  private async syncQuery(
+    bound: BoundView,
+    viewId: string,
+    sortModel: SortModel,
+    filterModel: FilterModel,
+    rowGroupCols: string[],
+    trustEmptyGroupBy = false,
+  ): Promise<{ extraFilter: PspFilter[]; sort: Array<[string, 'asc' | 'desc']> }> {
+    const extraFilter = cgridFilterToPsp(filterModel);
+    const sort = cgridSortToPsp(sortModel);
+    let requestedGroupBy = normalizeRowGroupCols(rowGroupCols);
+    // Race: columnRowGroupChanged may set bound.groupBy before SSRM ships cols.
+    if (!trustEmptyGroupBy && requestedGroupBy.length === 0 && bound.groupBy.length > 0) {
+      requestedGroupBy = bound.groupBy;
+    }
+    if (!rowGroupColsEqual(requestedGroupBy, bound.groupBy)) {
+      bound.groupBy = requestedGroupBy;
+      bound.groupedRawCache = null;
+      bound.groupKeys = [];
+    }
+    const querySig = JSON.stringify({
+      sort: sortModel,
+      filter: filterModel,
+      groupBy: bound.groupBy,
+    });
+    if (querySig !== bound.lastQuerySig) {
+      bound.lastQuerySig = querySig;
+      await this.withTableLock(() => this.remountDataView(bound, extraFilter, sort));
+      void this.refreshProjected(viewId);
+    }
+    return { extraFilter, sort };
+  }
+
+  private async getSsrmRowsInner(viewId: string, req: SsrmRowsRequest): Promise<SsrmRowsResult> {
+    const bound = this.views.get(viewId);
+    if (!bound?.view) {
+      return { rows: [], rowCount: 0, groupKeys: [] };
+    }
+
+    const requestedGroupBy = normalizeRowGroupCols(req.rowGroupCols);
+    const { extraFilter, sort } = await this.syncQuery(
+      bound, viewId, req.sortModel, req.filterModel, req.rowGroupCols,
+    );
+
+    if (bound.groupBy.length === 0) {
+      const rowCount = Math.max(0, Number(
+        await this.withTableLock(() => bound.view!.num_rows()),
+      ));
+      const start = Math.max(0, req.startRow | 0);
+      const end = Math.max(start, Math.min(req.endRow | 0, rowCount));
+      if (end <= start || rowCount === 0) {
+        this.lastGetRowsDebug.set(viewId, {
+          requestedGroupBy: [...requestedGroupBy],
+          boundGroupBy: [...bound.groupBy],
+          branch: 'empty',
+          rowCount,
+          served: 0,
+        });
+        return { rows: [], rowCount, groupKeys: [] };
+      }
+      const json = (await this.withTableLock(
+        () => bound.view!.to_json({ start_row: start, end_row: end }),
+      )) as PositionRow[];
+      this.lastGetRowsDebug.set(viewId, {
+        requestedGroupBy: [...requestedGroupBy],
+        boundGroupBy: [...bound.groupBy],
+        branch: 'flat',
+        rowCount,
+        served: json.length,
+      });
+      return { rows: json, rowCount, groupKeys: [] };
+    }
+
+    const start = Math.max(0, req.startRow | 0);
+    const end = Math.max(start, req.endRow | 0);
+    const { rows, rowCount } = await this.materializeGroupedWindow(
+      bound,
+      req.expandedGroupKeys,
+      extraFilter,
+      sort,
+      start,
+      end,
+    );
+    this.lastGetRowsDebug.set(viewId, {
+      requestedGroupBy: [...requestedGroupBy],
+      boundGroupBy: [...bound.groupBy],
+      branch: 'grouped',
+      rowCount,
+      served: rows.length,
+    });
+    return {
+      rows,
+      rowCount,
+      groupKeys: bound.groupKeys,
+    };
+  }
+
+  async fetchGrandTotal(viewId: string): Promise<PositionRow> {
+    // Serialize behind the view chain so a concurrent syncQuery remount
+    // can't hand us a deleted totalsView mid-read.
+    return this.withViewChain(viewId, async () => {
+      const bound = this.views.get(viewId);
+      if (!bound?.totalsView) return emptyGrandTotalRow();
+      try {
+        const json = await this.withTableLock(
+          () => bound.totalsView!.to_json({ start_row: 0, end_row: 1 }) as Promise<Record<string, unknown>[]>,
+        );
+        const row = json[0];
+        if (!row) return emptyGrandTotalRow();
+        const { __ROW_PATH__: _path, ...totals } = row as Record<string, unknown> & {
+          __ROW_PATH__?: unknown;
+        };
+        return { ...emptyGrandTotalRow(), ...totals } as PositionRow;
+      } catch {
+        return emptyGrandTotalRow();
+      }
+    });
+  }
+
+  private async materializeGroupedWindow(
+    bound: BoundView,
+    expandedGroupKeys: readonly string[],
+    extraFilter: PspFilter[],
+    sort: Array<[string, 'asc' | 'desc']>,
+    startRow: number,
+    endRow: number,
+  ): Promise<{ rows: PositionRow[]; rowCount: number }> {
+    const raw = await this.getGroupedRaw(bound);
+    return buildGroupedSsrmWindow(
+      raw,
+      {
+        rowGroupCols: bound.groupBy,
+        expandedGroupKeys,
+        includeGrandTotal: false,
+        includeGroupFooter: false,
+      },
+      startRow,
+      endRow,
+      (groupKey, leafStart, leafEnd) =>
+        this.fetchLeafWindow(bound, groupKey, leafStart, leafEnd, extraFilter, sort),
+    );
+  }
+
+  /** v1 shim — composite key → raw path, then the path-based fetch. */
+  private async fetchLeafWindow(
+    bound: BoundView,
+    groupKey: string,
+    leafStart: number,
+    leafEnd: number,
+    extraFilter: PspFilter[],
+    sort: Array<[string, 'asc' | 'desc']>,
+  ): Promise<PositionRow[]> {
+    const segments = parseCompositeGroupKey(groupKey);
+    return this.fetchLeafWindowByPath(
+      bound, segments.map((s) => s.value), leafStart, leafEnd, extraFilter, sort,
+    );
+  }
+
+  /** Windowed leaf rows for one fully-expanded deepest group. */
+  private async fetchLeafWindowByPath(
+    bound: BoundView,
+    groupPath: readonly string[],
+    leafStart: number,
+    leafEnd: number,
+    extraFilter: PspFilter[],
+    sort: Array<[string, 'asc' | 'desc']>,
+  ): Promise<PositionRow[]> {
+    if (!this.table || leafEnd <= leafStart) return [];
+    if (groupPath.length !== bound.groupBy.length) return [];
+
+    const groupFilter: PspFilter[] = bound.groupBy.map(
+      (colId, i) => [colId, '==', groupPath[i] ?? ''],
+    );
+    const filter = [...(bound.spec.filter ?? []), ...extraFilter, ...groupFilter];
+    const config: Record<string, unknown> = {
+      columns: [...DATA_COLUMNS],
+      filter,
+    };
+    if (sort.length > 0) config.sort = sort;
+
+    // ONE lock hold for create → count → read → delete. The old per-step
+    // locking left windows where a concurrent table op (live `update`,
+    // another view's remount) interleaved — the exact "concurrent ops hang
+    // Perspective WASM" trap the chains exist to prevent.
+    return this.withTableLock(async () => {
+      const leafView = await this.table!.view(config as never);
+      try {
+        const count = Number(await leafView.num_rows());
+        if (count <= 0) return [];
+        const start = Math.max(0, Math.min(leafStart, count));
+        const end = Math.max(start, Math.min(leafEnd, count));
+        if (end <= start) return [];
+        return (await leafView.to_json({ start_row: start, end_row: end })) as PositionRow[];
+      } finally {
+        try { await leafView.delete(); } catch { /* swallow */ }
+      }
+    });
+  }
+
+  private async getGroupedRaw(bound: BoundView): Promise<Record<string, unknown>[]> {
+    if (bound.groupedRawCache) return bound.groupedRawCache;
+    const raw = await this.withTableLock(
+      () => bound.view!.to_json() as Promise<Record<string, unknown>[]>,
+    );
+    bound.groupedRawCache = raw;
+    bound.groupKeys = [];
+    for (const row of raw) {
+      const path = row.__ROW_PATH__;
+      if (!Array.isArray(path) || path.length === 0) continue;
+      bound.groupKeys.push(
+        buildCompositeGroupKey(bound.groupBy, path.map((v) => String(v ?? ''))),
+      );
+    }
+    return raw;
+  }
+
+  private async remountDataView(
+    bound: BoundView,
+    extraFilter: PspFilter[],
+    sort: Array<[string, 'asc' | 'desc']>,
+  ): Promise<void> {
+    if (bound.dataUpdateCb !== null && bound.view) {
+      try { await bound.view.remove_update(bound.dataUpdateCb); } catch { /* swallow */ }
+    }
+    if (bound.totalsView) {
+      try { await bound.totalsView.delete(); } catch { /* swallow */ }
+    }
+    if (bound.view) {
+      try { await bound.view.delete(); } catch { /* swallow */ }
+    }
+
+    const filter = [...(bound.spec.filter ?? []), ...extraFilter];
+    const config: Record<string, unknown> = {
+      columns: [...DATA_COLUMNS],
+      filter,
+    };
+    if (sort.length > 0) config.sort = sort;
+    if (bound.groupBy.length > 0) {
+      config.group_by = bound.groupBy;
+      config.aggregates = { ...VALUE_AGGREGATES };
+    }
+
+    bound.view = await this.table!.view(config as never);
+    // Perspective IGNORES `aggregates` on an ungrouped view — the old
+    // group_by-less config made `fetchGrandTotal` read raw row 0 (zeros on
+    // an empty/loading table). Any group_by makes to_json emit the root
+    // aggregate row (`__ROW_PATH__: []`) first — the real grand total.
+    bound.totalsView = await this.table!.view({
+      columns: ['notionalAmount', 'marketValue', 'pnl', 'dailyPnl'],
+      filter,
+      group_by: ['desk'],
+      aggregates: { ...VALUE_AGGREGATES },
+    } as never);
+    bound.groupedRawCache = null;
+    bound.dataUpdateCb = Number(
+      await bound.view.on_update(() => {
+        bound.groupedRawCache = null;
+        bound.groupKeys = [];
+        this.scheduleViewTick(bound.spec.id);
+      }),
+    );
+    // Push fresh totals after every remount — the pinned grand-total row
+    // otherwise only updates on live ticks, so a query change (or the
+    // wire-time fetch racing the first remount) left it stale at zeros.
+    this.scheduleViewTick(bound.spec.id);
+  }
+
+  private async mountViews(
+    spec: ViewSpec,
+    extraFilter: PspFilter[],
+    sort: Array<[string, 'asc' | 'desc']>,
+  ): Promise<BoundView> {
+    const bound: BoundView = {
+      spec,
+      view: null,
+      totalsView: null,
+      dataUpdateCb: null,
+      notifyTimer: null,
+      groupBy: [],
+      groupedRawCache: null,
+      groupKeys: [],
+      lastQuerySig: '',
+      getRowsCalls: 0,
+      rowsServed: 0,
+      inflight: 0,
+      projectedRows: 0,
+    };
+    await this.withTableLock(() => this.remountDataView(bound, extraFilter, sort));
+    return bound;
+  }
+
+  noteGetRowsStart(viewId: string): void {
+    const v = this.views.get(viewId);
+    if (!v) return;
+    v.inflight++;
+    v.getRowsCalls++;
+    this.getRowsTotal++;
+    this.emitTelemetry();
+  }
+
+  noteGetRowsEnd(viewId: string, served: number, ok: boolean): void {
+    const v = this.views.get(viewId);
+    if (!v) return;
+    v.inflight = Math.max(0, v.inflight - 1);
+    if (ok) {
+      v.rowsServed += served;
+      this.rowsServedTotal += served;
+    }
+    this.emitTelemetry();
+  }
+
+  async unregisterView(viewId: string): Promise<void> {
+    const v = this.views.get(viewId);
+    if (!v) return;
+    if (v.notifyTimer !== null) {
+      clearTimeout(v.notifyTimer);
+      v.notifyTimer = null;
+    }
+    // Drop from the map FIRST so queued chain ops re-reading the view bail
+    // cleanly, then tear the handles down under the table lock — deleting a
+    // view while the engine is mid-op is a wasm-bindgen "null pointer /
+    // borrowed" panic.
+    this.views.delete(viewId);
+    await this.withTableLock(async () => {
+      if (v.view && v.dataUpdateCb !== null) {
+        try { await v.view.remove_update(v.dataUpdateCb); } catch { /* swallow */ }
+      }
+      if (v.view) {
+        try { await v.view.delete(); } catch { /* swallow */ }
+      }
+      if (v.totalsView) {
+        try { await v.totalsView.delete(); } catch { /* swallow */ }
+      }
+    });
+    this.emitTelemetry();
+  }
+
+  connect(): void {
+    if (this.stomp || this.seedConnecting || this.seedLiveTimer !== null) return;
+    if (this.opts.feed === 'seed') {
+      void this.connectSeed();
+      return;
+    }
+    void this.ensureTable().then(() => {
+      this.setPhase('connecting');
+      this.snapshotComplete = false;
+      this.snapshotRowsLoaded = 0;
+      this.liveBatches = 0;
+      this.liveRowsIn = 0;
+      this.liveWindow = [];
+      this.updateBuffer = [];
+
+      const client = new Client({
+        brokerURL: this.opts.wsUrl,
+        reconnectDelay: 2000,
+        heartbeatIncoming: 0,
+        heartbeatOutgoing: 0,
+        onConnect: () => this.onConnected(),
+        onStompError: () => this.setPhase('error'),
+        onWebSocketError: () => this.setPhase('error'),
+        onWebSocketClose: () => this.setPhase('disconnected'),
+      });
+      this.stomp = client;
+      client.activate();
+      this.emitTelemetry();
+    });
+  }
+
+  disconnect(): void {
+    this.stopSeedLive();
+    this.seedConnecting = false;
+    const c = this.stomp;
+    this.stomp = null;
+    if (c) {
+      try { void c.deactivate(); } catch { /* swallow */ }
+    }
+    this.setPhase('disconnected');
+  }
+
+  private async connectSeed(): Promise<void> {
+    this.seedConnecting = true;
+    try {
+      await this.ensureTable();
+      this.setPhase('connecting');
+      this.snapshotComplete = false;
+      this.snapshotRowsLoaded = 0;
+      this.liveBatches = 0;
+      this.liveRowsIn = 0;
+      this.liveWindow = [];
+      this.updateBuffer = [];
+      this.setPhase('snapshot');
+
+      const n = Math.max(100, this.opts.snapshotRows | 0);
+      const rnd = mulberry32(0xc6_1d);
+      const chunk = Math.max(200, this.opts.batchSize * 10);
+      for (let i = 0; i < n; i += chunk) {
+        if (!this.seedConnecting) return;
+        const end = Math.min(n, i + chunk);
+        const rows: PositionRow[] = [];
+        for (let j = i; j < end; j++) rows.push(makeSeedRow(j, rnd));
+        // Table writes take the same lock as view create/read/delete —
+        // unserialized writes interleaving with the SSRM leaf-view churn
+        // wedge Perspective WASM (poisoned op chain → frozen grid).
+        await this.withTableLock(() => this.table!.update(rows));
+        this.snapshotRowsLoaded = end;
+        this.emitTelemetry();
+        await new Promise<void>((r) => requestAnimationFrame(() => r()));
+      }
+
+      this.snapshotComplete = true;
+      try {
+        this.snapshotRowsLoaded = Number(await this.withTableLock(() => this.table!.size()));
+      } catch { /* swallow */ }
+      this.setPhase('live');
+      for (const id of this.views.keys()) void this.refreshProjected(id);
+      this.startSeedLive();
+    } catch (err) {
+      console.error('[PerspectiveBook] seed', err);
+      this.setPhase('error');
+    } finally {
+      this.seedConnecting = false;
+    }
+  }
+
+  private startSeedLive(): void {
+    this.stopSeedLive();
+    const intervalMs = Math.max(16, Math.round(1000 / Math.max(1, this.opts.rate)));
+    const rnd = mulberry32(0x11fe);
+    this.seedLiveTimer = window.setInterval(() => {
+      if (this.pauseFanout || !this.table || !this.snapshotComplete) return;
+      const n = Math.max(1, this.opts.updatesPerTick | 0);
+      const book = Math.max(1, this.snapshotRowsLoaded);
+      const rows: PositionRow[] = [];
+      for (let i = 0; i < n; i++) {
+        const idx = Math.floor(rnd() * book);
+        const row = makeSeedRow(idx, rnd);
+        row.pnl = Math.round((rnd() - 0.5) * 80_000 * 100) / 100;
+        row.dailyPnl = Math.round(row.pnl * 0.08 * 100) / 100;
+        row.marketValue = Math.round((row.notionalAmount ?? 0) * (0.92 + rnd() * 0.2));
+        rows.push(row);
+      }
+      this.liveRowsIn += rows.length;
+      this.liveWindow.push({ t: Date.now(), n: rows.length });
+      this.updateBuffer.push(...rows);
+      void this.flushUpdates();
+    }, intervalMs);
+  }
+
+  private stopSeedLive(): void {
+    if (this.seedLiveTimer !== null) {
+      clearInterval(this.seedLiveTimer);
+      this.seedLiveTimer = null;
+    }
+  }
+
+  getTelemetry(): BookTelemetry {
+    return this.buildTelemetry();
+  }
+
+  destroy(): void {
+    if (this.telemetryTimer !== null) {
+      clearInterval(this.telemetryTimer);
+      this.telemetryTimer = null;
+    }
+    if (this.flushTimer !== null) {
+      clearTimeout(this.flushTimer);
+      this.flushTimer = null;
+    }
+    this.disconnect();
+    for (const id of [...this.views.keys()]) void this.unregisterView(id);
+    if (this.table) {
+      try { void this.table.delete(); } catch { /* swallow */ }
+      this.table = null;
+    }
+  }
+
+  private setPhase(phase: BookPhase): void {
+    this.phase = phase;
+    this.opts.onPhase?.(phase);
+    this.emitTelemetry();
+  }
+
+  private emitTelemetry(): void {
+    this.opts.onTelemetry?.(this.buildTelemetry());
+  }
+
+  private buildTelemetry(): BookTelemetry {
+    const now = Date.now();
+    this.liveWindow = this.liveWindow.filter((x) => now - x.t < 1000);
+    const liveUpdatesPerSec = this.liveWindow.reduce((s, x) => s + x.n, 0);
+    return {
+      phase: this.phase,
+      bookSize: this.snapshotRowsLoaded || 0,
+      snapshotRowsLoaded: this.snapshotRowsLoaded,
+      liveBatches: this.liveBatches,
+      liveRowsIn: this.liveRowsIn,
+      liveUpdatesPerSec,
+      getRowsTotal: this.getRowsTotal,
+      rowsServedTotal: this.rowsServedTotal,
+      viewCount: this.views.size,
+      views: [...this.views.values()].map((v) => ({
+        id: v.spec.id,
+        label: v.spec.label,
+        getRowsCalls: v.getRowsCalls,
+        rowsServed: v.rowsServed,
+        inflight: v.inflight,
+        projectedRows: v.projectedRows,
+      })),
+      wsUrl: this.opts.feed === 'seed' ? 'seed://local' : this.opts.wsUrl,
+      engine: 'perspective',
+    };
+  }
+
+  private async refreshProjected(viewId: string): Promise<void> {
+    const v = this.views.get(viewId);
+    if (!v?.view) return;
+    try {
+      v.projectedRows = Number(await this.withTableLock(() => v.view!.num_rows()));
+      this.emitTelemetry();
+    } catch { /* swallow */ }
+  }
+
+  private onConnected(): void {
+    if (!this.stomp) return;
+    this.setPhase('snapshot');
+    const topic = `/snapshot/positions/${this.opts.clientId}`;
+    const trigger = `/snapshot/positions/${this.opts.clientId}/${this.opts.rate}/${this.opts.batchSize}`;
+    this.stomp.subscribe(topic, (msg: IMessage) => void this.onMessage(msg));
+    const headers: Record<string, string> = {
+      'snapshot-rows': String(this.opts.snapshotRows),
+      'updates-per-tick': String(this.opts.updatesPerTick),
+    };
+    if (this.opts.sparse) headers['live-mode'] = 'sparse';
+    this.stomp.publish({ destination: trigger, body: trigger, headers });
+  }
+
+  private async onMessage(msg: IMessage): Promise<void> {
+    const body = msg.body?.trim() ?? '';
+    if (!body) return;
+
+    if (body.includes(SNAPSHOT_END_TOKEN) || body.startsWith('Success: All')) {
+      if (this.snapshotComplete) return;
+      await this.flushUpdates(true);
+      this.snapshotComplete = true;
+      if (this.table) {
+        try { this.snapshotRowsLoaded = Number(await this.table.size()); } catch { /* swallow */ }
+      }
+      this.setPhase('live');
+      for (const id of this.views.keys()) void this.refreshProjected(id);
+      return;
+    }
+
+    let parsed: unknown;
+    try { parsed = JSON.parse(body); } catch { return; }
+    const deltas = extractRows(parsed);
+    if (deltas.length === 0) return;
+    const messageType = msg.headers['message-type'];
+
+    const rows: PositionRow[] = [];
+    for (const delta of deltas) {
+      const id = delta.positionId != null ? String(delta.positionId) : '';
+      if (!id) continue;
+      rows.push({ ...delta, positionId: id } as PositionRow);
+    }
+    if (rows.length === 0) return;
+
+    if (!this.snapshotComplete || messageType === 'snapshot') {
+      this.updateBuffer.push(...rows);
+      if (this.updateBuffer.length >= this.opts.batchSize) {
+        await this.flushUpdates();
+      } else {
+        this.scheduleFlush();
+      }
+      return;
+    }
+
+    this.liveRowsIn += rows.length;
+    this.liveWindow.push({ t: Date.now(), n: rows.length });
+    this.updateBuffer.push(...rows);
+    if (this.updateBuffer.length >= this.opts.batchSize) {
+      await this.flushUpdates();
+    } else {
+      this.scheduleFlush();
+    }
+  }
+
+  private scheduleFlush(): void {
+    if (this.flushTimer !== null) return;
+    this.flushTimer = window.setTimeout(() => {
+      this.flushTimer = null;
+      void this.flushUpdates();
+    }, 32);
+  }
+
+  private async flushUpdates(force = false): Promise<void> {
+    if (this.pauseFanout && !force) return;
+    if (!this.table || this.updateBuffer.length === 0) return;
+    const batch = this.updateBuffer.splice(0);
+    try {
+      // Serialized with view ops — see the seed-snapshot sibling comment.
+      await this.withTableLock(() => this.table!.update(batch));
+      if (!this.snapshotComplete) {
+        this.snapshotRowsLoaded = Number(await this.withTableLock(() => this.table!.size()));
+      } else {
+        this.liveBatches++;
+        this.pendingLiveBatch = batch;
+        for (const id of this.views.keys()) void this.refreshProjected(id);
+      }
+      this.emitTelemetry();
+    } catch (err) {
+      console.error('[PerspectiveBook] table.update', err);
+      this.setPhase('error');
+    }
+  }
+
+  private scheduleViewTick(viewId: string): void {
+    const v = this.views.get(viewId);
+    if (!v || this.pauseFanout) return;
+    if (v.notifyTimer !== null) return;
+    v.notifyTimer = window.setTimeout(() => {
+      v.notifyTimer = null;
+      void this.emitViewTick(viewId);
+    }, 100);
+  }
+
+  private async emitViewTick(viewId: string): Promise<void> {
+    if (this.pauseFanout || !this.opts.onViewTick) return;
+    const v = this.views.get(viewId);
+    if (!v) return;
+    const totals = await this.fetchGrandTotal(viewId);
+    const updates = v.groupBy.length === 0
+      ? this.pendingLiveBatch.filter((row) => rowMatchesViewFilter(v.spec, row))
+      : [];
+    this.opts.onViewTick({
+      viewId,
+      totals,
+      refreshSsrm: v.groupBy.length > 0,
+      updates,
+    });
+  }
+}

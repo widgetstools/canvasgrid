@@ -18,10 +18,14 @@
 import type { HandlerCtx } from '../dispatch';
 import type { WorkerRequest } from '../protocol';
 import type { IAggFunc } from '../aggFuncRegistry';
+import { readSsrmRowMeta } from '../../core/ssrmRowMeta';
 
 export type DataPipelineRequest = Extract<WorkerRequest, {
   type:
     | 'setRowData'
+    | 'ssrmHydrate'
+    | 'ssrmSetClientPipeline'
+    | 'ssrmSetGrandTotals'
     | 'applyTransaction'
     | 'updateColumns'
     | 'setEnableCellChangeFlash'
@@ -42,7 +46,29 @@ export async function handleDataPipeline(
 ): Promise<void> {
   const { state, post, helpers } = ctx;
   switch (req.type) {
+    case 'ssrmSetGrandTotals': {
+      state.ssrmGrandTotals = req.payload.totals;
+      post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount: state.visibleCache?.length ?? 0 });
+      return;
+    }
+
+    case 'ssrmSetClientPipeline': {
+      state.ssrmClientPipeline = req.payload.enabled === true;
+      state.visibleCache = null;
+      const visibleCount = await helpers.invalidateAndCount();
+      const groupKeys = helpers.isGroupingActive() ? helpers.currentGroupKeys() : undefined;
+      post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount, groupKeys });
+      return;
+    }
+
     case 'setRowData': {
+      // Leaving SSRM — CSRM full replace owns the store again.
+      state.ssrmActive = false;
+      state.ssrmClientPipeline = false;
+      state.ssrmOrder = [];
+      state.ssrmRowCount = 0;
+      state.ssrmGroupMetaSeen = false;
+      state.ssrmGrandTotals = null;
       state.store.setAll(req.payload.rows as unknown[], req.payload.heightsByRowId);
       // Cycle 21d / Task 11 — full data replace invalidates the calc
       // value cache; next ensureStageA pass does a full recompute.
@@ -61,11 +87,71 @@ export async function handleDataPipeline(
       // against the new one).
       state.pendingTouched.clear();
       state.visibleCache = null;
+      const wasPendingSeed = state.pendingDefaultExpandSeed;
       const visibleCount = await helpers.invalidateAndCount();
       // Cycle 15 / Task 7 — ride the groupKeys snapshot back on the
       // same reply so `knownGroupKeys` stays in sync.
       const groupKeys = helpers.isGroupingActive() ? helpers.currentGroupKeys() : undefined;
-      post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount, groupKeys });
+      // AG parity 2026-07-21 — this load may have re-seeded the
+      // groupDefaultExpanded defaults (model landed before data); ship
+      // the seeded set so main's expansion mirror stays truthful.
+      const expandedKeys = wasPendingSeed && !state.pendingDefaultExpandSeed
+        ? (state.expandedKeys === null ? null : Array.from(state.expandedKeys))
+        : undefined;
+      post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount, groupKeys, expandedKeys });
+      return;
+    }
+
+    case 'ssrmHydrate': {
+      const { rowCount, startRow, rows, reset } = req.payload;
+      state.ssrmActive = true;
+      state.ssrmRowCount = Math.max(0, rowCount | 0);
+      if (reset || state.ssrmOrder.length !== state.ssrmRowCount) {
+        state.ssrmOrder = new Array<string>(state.ssrmRowCount).fill('');
+        if (reset) {
+          state.store.setAll([]);
+          state.pendingFlashes.clear();
+          state.pendingTouched.clear();
+          state.calc.onSetRowData();
+          state.ssrmGroupMetaSeen = false;
+        }
+      }
+      const add: unknown[] = [];
+      const update: unknown[] = [];
+      for (let i = 0; i < rows.length; i++) {
+        const row = rows[i];
+        if (row == null) continue;
+        // Host-owned grouping ships group rows with `__ssrm` meta — flag
+        // gates the sparse sticky-ancestor scan (see workerState doc).
+        if (!state.ssrmGroupMetaSeen && readSsrmRowMeta(row)?.kind === 'group') {
+          state.ssrmGroupMetaSeen = true;
+        }
+        const idx = startRow + i;
+        if (idx < 0 || idx >= state.ssrmRowCount) continue;
+        let id: string;
+        try {
+          id = state.store.getRowId(row);
+        } catch {
+          continue;
+        }
+        const prev = state.ssrmOrder[idx];
+        state.ssrmOrder[idx] = id;
+        if (state.store.getById(id)) update.push(row);
+        else add.push(row);
+        // If this slot previously pointed at a different id, leave the
+        // orphan in the store — LRU eviction is a later cycle.
+        void prev;
+      }
+      if (add.length || update.length) {
+        state.store.apply({ add, update });
+      }
+      state.visibleCache = state.ssrmOrder;
+      post({
+        id: req.id,
+        type: 'rowCount',
+        count: state.store.size(),
+        visibleCount: state.ssrmRowCount,
+      });
       return;
     }
 

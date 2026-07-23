@@ -155,6 +155,32 @@ export type {
 export { MIN_ROW_HEIGHT_PX, clampRowHeight } from './types/options';
 
 export type {
+  // ssrm.ts — Server-Side Row Model
+  IServerSideDatasource,
+  IServerSideGetRowsParams,
+  IServerSideGetRowsRequest,
+  LoadSuccessParams,
+  ServerSideTransaction,
+  RefreshServerSideParams,
+  SsrmRowMeta,
+  SsrmRowKind,
+  // ssrm.ts — v2 skeleton contract (docs/ssrm-group-skeleton-design.md)
+  IServerSideDatasourceV2,
+  AnyServerSideDatasource,
+  SkeletonGroup,
+  IServerSideGetSkeletonRequest,
+  IServerSideGetSkeletonParams,
+  IServerSideGetLeafRowsRequest,
+  IServerSideGetLeafRowsParams,
+  IServerSideGetGroupLeafIdsRequest,
+  IServerSideGetGroupLeafIdsParams,
+} from './types/ssrm';
+export {
+  SSRM_ROW_META_KEY, attachSsrmRowMeta, readSsrmRowMeta,
+  isServerSideDatasourceV2,
+} from './types/ssrm';
+
+export type {
   // api.ts — CGridApi + transaction shapes
   Tx,
   TransactionResult,

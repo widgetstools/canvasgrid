@@ -342,8 +342,24 @@ export interface PositionsGridOptions {
    *  per-group total row at the specified edge of each expanded group. */
   groupTotalRow?: 'top' | 'bottom';
   /** Cycle 15.5 / Task 8 — `?grandTotalRow=bottom|top` renders a
-   *  single grand-total row at the specified edge of the entire body. */
-  grandTotalRow?: 'top' | 'bottom';
+   *  single grand-total row at the specified edge of the entire body.
+   *  AG parity 2026-07-21: pinned variants ride the totals subgrid. */
+  grandTotalRow?: 'top' | 'bottom' | 'pinnedTop' | 'pinnedBottom';
+  /** AG parity 2026-07-21 — `?groupMaintainOrder=1` locks group order
+   *  against sorts (leaves still sort within groups). */
+  groupMaintainOrder?: boolean;
+  /** AG parity 2026-07-21 — `?groupDefaultExpanded=N|-1` forwards the
+   *  option (N = number of levels open; -1 = all). */
+  groupDefaultExpanded?: number;
+  /** AG parity 2026-07-21 — `?groupAggFiltering=1` evaluates filters
+   *  against group aggregates instead of leaves. */
+  groupAggFiltering?: boolean;
+  /** AG parity 2026-07-21 — `?groupColumnFilter=1` sets
+   *  `autoGroupColumnDef.filter: 'agGroupColumnFilter'`. */
+  groupColumnFilter?: boolean;
+  /** AG parity 2026-07-21 — `?keyCreatorDemo=1` adds a BIG/SMALL
+   *  keyCreator to the notional column. */
+  keyCreatorDemo?: boolean;
   /** Cycle 18 / Task 5 — `?pivotDemo=on` opts a handful of categorical
    *  columns (sector, region, currency) into `enablePivot: true` and
    *  numeric columns (notionalAmount, quantity) into `enableValue: true`
@@ -567,6 +583,15 @@ export function createPositionsGrid(
         cellEditorParams: { min: 0, precision: 2 },
         ...(opts.pinning ? { lockPosition: 'right' as const } : {}),
         filter: 'number' as const,
+        // AG parity 2026-07-21 — `?keyCreatorDemo=1` buckets notional into
+        // BIG/SMALL via keyCreator so grouping by this numeric column
+        // produces derived keys (worker-serialized function).
+        ...(opts.keyCreatorDemo
+          ? {
+              enableRowGroup: true as const,
+              keyCreator: (p: { value: unknown }) => (Number(p.value) >= 6000 ? 'BIG' : 'SMALL'),
+            }
+          : {}),
       },
       { field: 'marketValue',    headerName: 'Market Value',  type: 'money', width: 130, aggFunc: 'sum', filter: 'number' as const },
       { field: 'currentPrice',   headerName: 'Price',         type: 'number', width: 100, aggFunc: 'avg', filter: 'number' as const },
@@ -956,6 +981,17 @@ export function createPositionsGrid(
     ...(opts.groupTotalRow ? { groupTotalRow: opts.groupTotalRow } : {}),
     // Cycle 15.5 / Task 8 — grand-total row position.
     ...(opts.grandTotalRow ? { grandTotalRow: opts.grandTotalRow } : {}),
+    // AG parity 2026-07-21 — group order lock + expansion-depth override.
+    ...(opts.groupMaintainOrder ? { groupMaintainOrder: true as const } : {}),
+    ...(opts.groupDefaultExpanded !== undefined
+      ? { groupDefaultExpanded: opts.groupDefaultExpanded }
+      : {}),
+    // AG parity 2026-07-21 second wave — filters over group aggregates +
+    // the auto-group column inheriting the grouped column's filter.
+    ...(opts.groupAggFiltering ? { groupAggFiltering: true as const } : {}),
+    ...(opts.groupColumnFilter
+      ? { autoGroupColumnDef: { filter: 'agGroupColumnFilter' as const } }
+      : {}),
     // Cycle 18 / Task 6 — pivot panel (top-of-grid drop strip ABOVE
     // the row group panel). `?pivotPanel=always|onlyWhenPivoting`.
     ...(opts.pivotPanelShow ? { pivotPanelShow: opts.pivotPanelShow } : {}),

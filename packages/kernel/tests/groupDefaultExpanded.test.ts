@@ -145,40 +145,40 @@ describe('GroupPass.computeDefaultExpandedKeys', () => {
   // depth-0 (top-level) groups. Per the plan spec: "number = expand
   // depth ≤ N". So N=0 expands ONLY the top-level groups; their
   // immediate child groups (depth 1) render as collapsed rows.
-  it('2. groupDefaultExpanded: 0 returns exactly the top-level group keys', () => {
+  // AG parity 2026-07-21: N counts LEVELS OPEN (0 = none, 1 = first level).
+  it('2. groupDefaultExpanded: 0 opens nothing (AG levels-open semantics)', () => {
     const { pass, ids } = passFixture();
     pass.setDefaultExpansion({ expanded: 0 });
     const out = pass.apply(ids);
     const set = pass.computeDefaultExpandedKeys(out.roots);
     expect(set).not.toBeNull();
-    // 2 top-level desks (APAC, EMEA) — sorted deterministically by
-    // composite key by GroupPass; the Set is unordered but contents
-    // are what we assert.
-    expect(set!.size).toBe(2);
-    expect(set!.has('desk:APAC')).toBe(true);
-    expect(set!.has('desk:EMEA')).toBe(true);
-    // Depth-1 region groups must NOT be in the set.
-    expect(set!.has('desk:APAC::region:Rates')).toBe(false);
-    expect(set!.has('desk:EMEA::region:Credit')).toBe(false);
+    expect(set!.size).toBe(0);
   });
 
-  // 3 — `groupDefaultExpanded: 1` expands depth 0 AND 1; depth 2
-  // (leaf type buckets) stays collapsed. Proves the depth ≤ N
-  // boundary inclusively.
-  it('3. groupDefaultExpanded: 1 includes depth 0 + 1 groups but not depth 2', () => {
+  it('3. groupDefaultExpanded: 1 opens exactly depth-0 groups (first level)', () => {
     const { pass, ids } = passFixture();
     pass.setDefaultExpansion({ expanded: 1 });
     const out = pass.apply(ids);
     const set = pass.computeDefaultExpandedKeys(out.roots);
     expect(set).not.toBeNull();
+    // Only the 2 top-level desks open; depth-1 regions stay collapsed.
+    expect(set!.size).toBe(2);
+    expect(set!.has('desk:APAC')).toBe(true);
+    expect(set!.has('desk:EMEA')).toBe(true);
+    expect(set!.has('desk:APAC::region:Rates')).toBe(false);
+    expect(set!.has('desk:EMEA::region:Credit')).toBe(false);
+  });
+
+  it('3b. groupDefaultExpanded: 2 opens depth 0 + 1 but not depth 2', () => {
+    const { pass, ids } = passFixture();
+    pass.setDefaultExpansion({ expanded: 2 });
+    const out = pass.apply(ids);
+    const set = pass.computeDefaultExpandedKeys(out.roots);
+    expect(set).not.toBeNull();
     // 2 desks + (APAC: 2 regions, EMEA: 2 regions) = 6 keys.
     expect(set!.size).toBe(6);
-    expect(set!.has('desk:APAC')).toBe(true);
     expect(set!.has('desk:APAC::region:Rates')).toBe(true);
-    expect(set!.has('desk:EMEA::region:Credit')).toBe(true);
-    // Depth-2 type leaves must NOT be in the set.
     expect(set!.has('desk:APAC::region:Rates::type:IRS')).toBe(false);
-    expect(set!.has('desk:EMEA::region:Credit::type:CDS')).toBe(false);
   });
 });
 
@@ -209,9 +209,11 @@ describe('CGrid — groupDefaultExpanded option', () => {
   // each desk start collapsed. End-to-end proof that the option
   // propagates through the worker init handshake AND the reply
   // re-seeds the main mirror.
-  it('5. groupDefaultExpanded: 0 exposes only top-level groups via getExpandedKeys', async () => {
+  it('5. groupDefaultExpanded: 1 exposes only top-level groups via getExpandedKeys', async () => {
+    // AG parity 2026-07-21: 1 = first level open (was 0 under the old
+    // depth<=N semantics).
     const { grid, restore } = buildWiredGrid(WIRED_ROWS, WIRED_COLS, {
-      groupDefaultExpanded: 0,
+      groupDefaultExpanded: 1,
     });
     await new Promise((r) => setTimeout(r, 50));
     grid.setGroupModel({ rowGroupCols: ['desk', 'region'] });
@@ -228,14 +230,25 @@ describe('CGrid — groupDefaultExpanded option', () => {
     restore();
   });
 
-  // 6 — Negative `groupDefaultExpanded` means "collapse all".
-  // `-1` is the canonical form (mirrors ag-grid's inverse). The
-  // mirror should hold an explicit empty `Set` — non-null so the
-  // slicer reads "no groups expanded" instead of the all-expanded
-  // sentinel.
-  it('6. groupDefaultExpanded: -1 collapses every group at first setGroupModel', async () => {
+  // 6 — AG parity (2026-07-21 audit): `groupDefaultExpanded: -1` means
+  // "expand ALL" — ag-grid documents -1 as expand-everything, and cgrid
+  // previously inverted it (collapse-all). Other negative values keep
+  // the collapse-all behavior.
+  it('6. groupDefaultExpanded: -1 expands every group (AG parity)', async () => {
     const { grid, restore } = buildWiredGrid(WIRED_ROWS, WIRED_COLS, {
       groupDefaultExpanded: -1,
+    });
+    await new Promise((r) => setTimeout(r, 50));
+    grid.setGroupModel({ rowGroupCols: ['desk', 'region'] });
+    await new Promise((r) => setTimeout(r, 50));
+    expect(grid.getExpandedKeys().size).toBeGreaterThan(0);
+    grid.destroy();
+    restore();
+  });
+
+  it('6b. other negative groupDefaultExpanded values collapse every group', async () => {
+    const { grid, restore } = buildWiredGrid(WIRED_ROWS, WIRED_COLS, {
+      groupDefaultExpanded: -2,
     });
     await new Promise((r) => setTimeout(r, 50));
     grid.setGroupModel({ rowGroupCols: ['desk', 'region'] });

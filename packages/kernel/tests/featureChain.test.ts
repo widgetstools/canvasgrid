@@ -126,6 +126,7 @@ function setup(opts: { rowCount?: number; cols?: string[]; initialFocus?: { row:
     getGroupKeyAtRow: () => '',
     isGroupRow: () => false,
     isGroupExpanded: () => false,
+    isGroupDoubleClickExpandSuppressed: () => false,
   } as unknown as CGridLike;
   const chain = new FeatureChain(grid);
   return { canvas, sel, chain, emitClicked, emitDoubleClicked, resizeColumn, cycleSort, scrollBy, openEditor, stopEditing };

@@ -107,9 +107,8 @@ export function computeViewport(opts: ViewportInput): ViewportState {
   // Row visibility — walk the subgrid stack.
   //
   // Header subgrids contribute every row at the top (no scroll). Data subgrids
-  // respect scrollTop and overscan. Other subgrids (totals/footer) render all
-  // rows immediately after the previous subgrid's bottom — Task-3 placement is
-  // structural; visual positioning of totals/footer is refined in a later task.
+  // respect scrollTop and overscan. Post-data subgrids (pinned-bottom /
+  // totals-bottom) dock to the container bottom and reserve body height.
   // ---------------------------------------------------------------------------
   const visibleRows: ViewportRow[] = [];
   let bodyTop = 0;
@@ -137,11 +136,9 @@ export function computeViewport(opts: ViewportInput): ViewportState {
   // Classify each subgrid by its position relative to the data subgrid
   // in stack order. Subgrids appearing BEFORE the first data subgrid pin
   // at the top (contributing to bodyTop); the data subgrid scrolls; any
-  // subgrid AFTER the data subgrid stacks below the visible data rows.
-  // Cycle 14 / Task 1 — this ordering convention is what gives `'top'`
-  // vs `'bottom'` totals their pinned position: the stack order in
-  // `cgrid.ts` decides which side of `DataSubgrid` the totals subgrid
-  // lands on; viewport math honours it without an explicit position flag.
+  // subgrid AFTER the data subgrid docks to the BOTTOM of the container
+  // (pinned-bottom / totals-bottom) and reserves height from the
+  // scrollable body so overscan data rows cannot push them off-canvas.
   const dataIndex = opts.subgrids.findIndex((sg) => sg.isData);
   const preDataSubgrids = dataIndex < 0
     ? opts.subgrids
@@ -175,7 +172,20 @@ export function computeViewport(opts: ViewportInput): ViewportState {
     }
   }
 
-  const bodyBottom = opts.containerHeight;
+  // Reserve footer / pinned-bottom height before sizing the scrollable body.
+  // Without this, Pass-3 used to stack post-data rows after overscanned
+  // data (often below `containerHeight`), so grand-total / pinned-bottom
+  // rows updated in options but never painted on screen.
+  let postDataHeight = 0;
+  for (const subgrid of postDataSubgrids) {
+    const rows = subgrid.getRowCount();
+    for (let local = 0; local < rows; local++) {
+      postDataHeight += subgrid.getRowHeight(local);
+    }
+  }
+
+  const containerBottom = opts.containerHeight;
+  const bodyBottom = Math.max(bodyTop, containerBottom - postDataHeight);
   const bodyHeight = Math.max(0, bodyBottom - bodyTop);
 
   // Pass 2: data subgrid(s). Only the data area scrolls. Per-row heights —
@@ -187,7 +197,6 @@ export function computeViewport(opts: ViewportInput): ViewportState {
   // (`subgrid.getRowHeight(0)` as the fallback row size). Within the visible
   // range we still walk per-row so variable-height rows position correctly
   // relative to one another (no overlap, no gap).
-  let yAfterData = bodyTop;
   for (const subgrid of opts.subgrids) {
     if (!subgrid.isData) continue;
     const totalRows = subgrid.getRowCount();
@@ -266,15 +275,12 @@ export function computeViewport(opts: ViewportInput): ViewportState {
       });
       top += h;
     }
-    // Advance yAfterData so trailing subgrids (totals/footer) land below the
-    // last visible data row — `top` is now exactly that bottom edge.
-    yAfterData = Math.max(yAfterData, top);
   }
 
-  // Pass 3: post-data subgrids — stacked after the visible data rows in
-  // the order they appear in the stack. Totals (bottom position) +
-  // future footer subgrids ride here.
-  let y = yAfterData;
+  // Pass 3: post-data subgrids dock to the container bottom (AG-style
+  // pinned-bottom / totals footer). Height was reserved from bodyHeight
+  // above so the scrollable data region ends at `bodyBottom`.
+  let y = bodyBottom;
   for (const subgrid of postDataSubgrids) {
     const rows = subgrid.getRowCount();
     for (let local = 0; local < rows; local++) {

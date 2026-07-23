@@ -144,10 +144,12 @@ export interface RuntimeOptionTarget<TRow = any> {
   forwardAsyncTransactionOptions(): void;
   /** Cycle 14 / Task 2 — rebuild the subgrid stack (without re-resolving
    *  the column tree) and recompute the viewport. The pinnedTopRowData /
-   *  pinnedBottomRowData runtime flips route through here: a re-mount
-   *  is cheaper than a `rebuildColumns` and skips the worker round-trip
-   *  that the column path would trigger. */
+   *  pinnedBottomRowData mount/unmount path routes through here.
+   *  Value-only TOTAL ticks use {@link refreshPinnedRowPixels} instead. */
   rebuildSubgrids(): void;
+  /** Repaint pinned/totals bands after in-place `pinned*RowData` value
+   *  changes (row count unchanged — no stack remount). */
+  refreshPinnedRowPixels(): void;
   /** Cycle 14 / Task 3 — forward the runtime `aggFuncs` swap to the
    *  worker so the AggFuncRegistry's custom layer reflects the new map.
    *  Implementation in `cgrid.ts` serialises each function, screens for
@@ -391,12 +393,20 @@ export function applyRuntimeOption<TRow>(
       target.refreshLayout();
       return;
     case 'pinnedTopRowData':
-    case 'pinnedBottomRowData':
-      // Cycle 14 / Task 2 — re-mount the subgrid stack. The new array is
-      // already stored in `target.options[key]`; rebuildSubgrids reads it
-      // back and picks up / drops the PinnedRowsSubgrid accordingly.
-      target.rebuildSubgrids();
+    case 'pinnedBottomRowData': {
+      // Mount/unmount when presence flips; value-only ticks just repaint
+      // the pinned band. Rebuilding the whole stack on every Perspective
+      // totals tick was starving the paint loop so options moved while
+      // the canvas stayed on the first TOTAL frame.
+      const arr = target.options[key];
+      const count = Array.isArray(arr) ? arr.length : 0;
+      const prevKey = key === 'pinnedTopRowData' ? '__prevPinnedTopCount' : '__prevPinnedBottomCount';
+      const prev = (target as unknown as Record<string, number>)[prevKey] ?? -1;
+      (target as unknown as Record<string, number>)[prevKey] = count;
+      if (prev !== count) target.rebuildSubgrids();
+      else target.refreshPinnedRowPixels();
       return;
+    }
     case 'rowGroupPanelShow':
       // Cycle 15 / Task 6 — runtime mount / unmount / show-mode swap.
       // CGrid normalises `undefined` / `'never'` to "unmount"; any other
