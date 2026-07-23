@@ -8880,6 +8880,23 @@ export class CGrid<TRow = any> {
         return { value: lookupRaw, valueFormatted: fmt };
       }
     }
+    // Grand-total label — the pinned grand-total row shows 'Total' in
+    // the auto-group column (AG parity with the in-body grand-total
+    // footer), customizable via the same
+    // `autoGroupColumnDef.cellRendererParams.totalValueGetter` hook the
+    // `'groupFooter'` renderer reads. Per-group lookups never resolve
+    // the auto-group column, and `cellAt` routes in-body auto-group
+    // cells through the group renderers before this lookup — only the
+    // TotalsSubgrid lands here with an auto-group colId.
+    if (parentGroupKey === '' && isAutoGroupColumnId(colId)) {
+      const totalValueGetter = (this.options.autoGroupColumnDef?.cellRendererParams as {
+        totalValueGetter?: (params: { value: string; isGrandTotal: boolean }) => unknown;
+      } | undefined)?.totalValueGetter;
+      const label = typeof totalValueGetter === 'function'
+        ? String(totalValueGetter({ value: '', isGrandTotal: true }) ?? '')
+        : 'Total';
+      return { value: label, valueFormatted: label };
+    }
     let raw: unknown;
     if (parentGroupKey !== '') {
       // Collapsed-group aggregate fix — a per-group lookup must NEVER

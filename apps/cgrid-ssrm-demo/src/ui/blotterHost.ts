@@ -114,6 +114,14 @@ export function mountBlotter(
     // pinnedBottomRowData + fetchGrandTotal plumbing in main.ts).
     grandTotalRow: 'pinnedBottom',
 
+    autoGroupColumnDef: {
+      cellRendererParams: {
+        // Label the pinned grand-total row (kernel default is 'Total').
+        totalValueGetter: (p: { isGrandTotal: boolean; value: string }) =>
+          p.isGrandTotal ? 'Grand Total' : `Total ${p.value}`,
+      },
+    },
+
     groupDisplayType: 'singleColumn',
 
     rowBuffer: 5,
