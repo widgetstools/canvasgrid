@@ -9503,8 +9503,15 @@ export class CGrid<TRow = any> {
     const bodyTop = vs.bodyTop;
     const bodyLeft = vs.bodyLeft;
     const bodyRight = vs.bodyRight;
+    // Cycle 21i moved the painted band to anchor on the auto-group
+    // column's left (pinned-left by default), not `bodyLeft` — the hit
+    // zone must live where the chevron paints, or with a pinned group
+    // column every sticky-caret click lands short of `bodyLeft` and
+    // falls through to the leaf row hidden under the band.
+    const autoGroupCol = vs.visibleColumns.find((c) => isAutoGroupColumnId(c.colId));
+    const bandLeft = autoGroupCol ? Math.min(autoGroupCol.left, bodyLeft) : bodyLeft;
     if (y < bodyTop || y >= bodyTop + ancestors.length * rowH) return null;
-    if (x < bodyLeft || x >= bodyRight) return null;
+    if (x < bandLeft || x >= bodyRight) return null;
     const bandIdx = Math.floor((y - bodyTop) / rowH);
     const ancestor = ancestors[bandIdx];
     if (!ancestor) return null;
@@ -9513,7 +9520,7 @@ export class CGrid<TRow = any> {
     const INDENT_UNIT = 14;
     const HIT_PAD = 4;
     const indentX = ancestor.depth * INDENT_UNIT;
-    const left = bodyLeft + PADDING + indentX;
+    const left = bandLeft + PADDING + indentX;
     const right = left + CHEVRON_SIZE;
     if (x < left - HIT_PAD || x > right + HIT_PAD) return null;
     return { groupKey: ancestor.key };
