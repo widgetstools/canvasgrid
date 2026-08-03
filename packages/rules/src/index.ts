@@ -12,6 +12,7 @@ export { DEFAULT_ALERTS_SETTINGS } from './types';
 
 export type {
   ThemeKind, StyleSlice, ThemeAwareStyle, FlashConfig, RuleIndicator,
+  RuleBorderStyle, RuleBorderSide, RuleBorderSpec,
   RuleScope, RuleBase, ConditionalStyleRule, IndicatorRule, StyleRule,
   AlertSeverity, AlertChannel, AlertTrigger, AlertRule, AlertEvent, AlertsSettings,
   RuleEvalContext, RuleCellResult, RuleValidationError, SetRulesResult,

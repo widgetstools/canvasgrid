@@ -132,12 +132,46 @@ export function shouldInsertAutoGroupColumn(
   return groupDisplayType === 'singleColumn';
 }
 
+/** Underlying grouped column facts needed by the
+ *  `filter: 'agGroupColumnFilter'` redirect (AG parity 2026-07-21). */
+export interface AutoGroupFilterSource {
+  field?: string;
+  filter?: string;
+}
+
+/** AG parity 2026-07-21 — `autoGroupColumnDef.filter: 'agGroupColumnFilter'`
+ *  makes the auto-group column inherit the UNDERLYING grouped column's
+ *  filter: the synthesized def adopts that column's `field` + concrete
+ *  filter type, so the existing filter UI + worker FilterPass work
+ *  unchanged (the model is stored against the auto column's colId).
+ *  singleColumn mode inherits from the FIRST group level;
+ *  multipleColumns inherits per depth. No underlying field → the filter
+ *  affordance is dropped. */
+function applyGroupColumnFilterRedirect<TRow>(
+  merged: CColDef<TRow>,
+  source: AutoGroupFilterSource | undefined,
+): void {
+  if ((merged.filter as unknown) !== 'agGroupColumnFilter') return;
+  if (source?.field) {
+    if (merged.field === undefined) {
+      merged.field = source.field as CColDef<TRow>['field'];
+    }
+    merged.filter = (source.filter ?? 'text') as CColDef<TRow>['filter'];
+  } else {
+    delete merged.filter;
+  }
+}
+
 export interface AutoGroupColumnInput<TRow = unknown> {
   /** App-supplied `autoGroupColumnDef` override (a partial `CColDef`). When
    *  provided, its fields layer onto the built-in defaults below. The
    *  `colId` field, if present, is ignored — the synthesized column
    *  always uses `AUTO_GROUP_COLUMN_ID`. */
   override?: Partial<CColDef<TRow>>;
+  /** Per-level underlying grouped column facts (field + filter type), in
+   *  `rowGroupCols` order — consumed by the `'agGroupColumnFilter'`
+   *  redirect. */
+  sourceColumns?: ReadonlyArray<AutoGroupFilterSource | undefined>;
 }
 
 /** Build the resolved SINGLE-COLUMN auto-group column. The returned def carries:
@@ -188,6 +222,7 @@ export function buildAutoGroupColumn<TRow = unknown>(
     // `autoGroupColumnDef: { pinned: null }` (or `false`).
     pinned: override.pinned !== undefined ? override.pinned : 'left',
   };
+  applyGroupColumnFilterRedirect(merged, input.sourceColumns?.[0]);
 
   // `resolveColDef` rejects defs without a `colId` AND a `field`; we
   // supply `colId` so the resolver runs cleanly without us pretending
@@ -224,6 +259,9 @@ export interface AutoGroupColumnsInput<TRow = unknown> {
    *  Length need not match `rowGroupCols.length` — extras are ignored,
    *  shorter arrays fall back per slot. */
   headerNames?: ReadonlyArray<string | undefined>;
+  /** Per-level underlying grouped column facts — `'agGroupColumnFilter'`
+   *  redirect (see `AutoGroupColumnInput.sourceColumns`). */
+  sourceColumns?: ReadonlyArray<AutoGroupFilterSource | undefined>;
 }
 
 export interface AutoGroupColumnsSynthesis<TRow = unknown> {
@@ -261,7 +299,10 @@ export function synthesizeAutoGroupColumns<TRow = unknown>(
 
   if (groupDisplayType === 'singleColumn') {
     return {
-      columns: [buildAutoGroupColumn<TRow>({ override: input.override })],
+      columns: [buildAutoGroupColumn<TRow>({
+        override: input.override,
+        sourceColumns: input.sourceColumns,
+      })],
       displayType: groupDisplayType,
       fullRowStrip: false,
     };
@@ -299,6 +340,7 @@ export function synthesizeAutoGroupColumns<TRow = unknown>(
         sortable: override.sortable ?? false,
         resizable: override.resizable ?? true,
       };
+      applyGroupColumnFilterRedirect(merged, input.sourceColumns?.[depth]);
       columns.push(resolveColDef<TRow>(merged));
     }
     return { columns, displayType: groupDisplayType, fullRowStrip: false };

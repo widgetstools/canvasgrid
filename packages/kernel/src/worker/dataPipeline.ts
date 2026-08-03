@@ -4,6 +4,7 @@ import type {
   CMultiConditionFilterModel, CSetFilterModel,
 } from '../types';
 import type { CalcValueSource } from './passes/calcPass';
+import { readSsrmRowMeta } from '../core/ssrmRowMeta';
 
 /**
  * Cycle 7 / Task 1 — the worker's `FilterPass` matcher speaks both the
@@ -703,8 +704,54 @@ export class FilterPass<TRow = any> {
     for (const col of columns) this.colIndex.set(col.colId, col);
   }
 
+  /** True when at least one filter entry is installed. */
+  hasActiveModel(): boolean {
+    for (const k in this.model) {
+      if (this.model[k]) return true;
+    }
+    return false;
+  }
+
+  /** ColIds with an installed filter entry. */
+  activeColIds(): string[] {
+    return Object.keys(this.model).filter((k) => !!this.model[k]);
+  }
+
+  /** Every row id, bypassing the filter model entirely — the
+   *  `groupAggFiltering` leaf path (filters evaluate group aggregates
+   *  instead of leaves). */
+  allRowIds(): string[] {
+    return Array.from(this.store.rows()).map((r) => this.store.getRowId(r));
+  }
+
+  /** AG `groupAggFiltering` — evaluate THIS model's entry for `colId`
+   *  against an arbitrary value (a group's aggregate). Returns null when
+   *  no entry / unknown column (no constraint). */
+  entryMatches(colId: string, value: unknown): boolean | null {
+    const rawEntry = this.model[colId];
+    if (!rawEntry) return null;
+    const col = this.colIndex.get(colId);
+    if (!col) return null;
+    return 'filterType' in rawEntry
+      ? matchesV2(rawEntry as CFilterModelEntry, value, col, this.compiledSetValues)
+      : matches(rawEntry as WorkerFilterModelEntry, value);
+  }
+
   apply(): string[] {
-    const entries = Object.entries(this.model);
+    return this.applyEntries(Object.entries(this.model));
+  }
+
+  /** `groupAggFiltering` mixed model — apply only the entries NOT in
+   *  `excludeColIds`; the excluded ones evaluate group aggregates instead
+   *  (worker `pruneGroupsByAggFilter`). Excluding every entry returns all
+   *  rows, same as `allRowIds()`. */
+  applyExcluding(excludeColIds: ReadonlySet<string>): string[] {
+    return this.applyEntries(
+      Object.entries(this.model).filter(([colId]) => !excludeColIds.has(colId)),
+    );
+  }
+
+  private applyEntries(entries: Array<[string, FilterModel[string]]>): string[] {
     if (entries.length === 0) {
       return Array.from(this.store.rows()).map((r) => this.store.getRowId(r));
     }
@@ -983,6 +1030,14 @@ export class ViewportSlicer<TRow = any> {
   /** Install (or clear, via `null`) the calc-column value source. */
   setCalcSource(src: CalcValueSource | null): void { this.calcSource = src; }
 
+  /** Sparse SSRM only — rows carry `__ssrm` meta the flat slicer must
+   *  surface as group/footer chrome. Off for plain client-side grids so
+   *  (a) a user row that happens to have a `__ssrm` field is not
+   *  reinterpreted as chrome and (b) the per-row store lookup + meta
+   *  parse stays off the CSRM hot path. */
+  private ssrmMeta = false;
+  setSsrmMetaEnabled(on: boolean): void { this.ssrmMeta = on; }
+
   slice(
     visibleIds: string[],
     req: ViewportRequest,
@@ -1021,6 +1076,7 @@ export class ViewportSlicer<TRow = any> {
     const groupChildCount = new Uint32Array(count);
     const isExpanded = new Uint8Array(count);
     isExpanded.fill(1);
+    const groupKey: string[] = new Array<string>(count).fill('');
     // Cycle 21e / Task 11 — string rowId per chunk slot, parallel to
     // `rowIds` (numeric id). The flat slicer is data-only, so every
     // slot is populated in the loop below.
@@ -1028,9 +1084,35 @@ export class ViewportSlicer<TRow = any> {
 
     for (let i = 0; i < count; i++) {
       const id = visibleIds[rowStart + i]!;
+      // SSRM unloaded slots use `''` — keep numeric id 0 and skip store.
+      if (!id) {
+        rowIds[i] = 0;
+        stringRowIds[i] = '';
+        heights[i] = 0;
+        continue;
+      }
       rowIds[i] = this.store.getNumericId(id);
       stringRowIds[i] = id;
       heights[i] = this.store.effectiveShippedHeight(id);
+      const meta = this.ssrmMeta ? readSsrmRowMeta(this.store.getById(id)) : undefined;
+      if (meta) {
+        groupDepth[i] = meta.depth;
+        if (meta.kind === 'group') {
+          rowKinds[i] = 1;
+          groupKey[i] = meta.key;
+          groupValue[i] = meta.label;
+          groupChildCount[i] = meta.childCount ?? 0;
+          isExpanded[i] = meta.expanded !== false ? 1 : 0;
+        } else if (meta.kind === 'footer') {
+          rowKinds[i] = 3;
+          groupKey[i] = meta.key;
+          // Footer label — the groupFooter renderer paints `Total {value}`
+          // (empty label = the grand-total footer, painted as `Total`).
+          groupValue[i] = meta.label;
+        } else if (meta.kind === 'grandTotal') {
+          rowKinds[i] = 2;
+        }
+      }
     }
 
     const numericCols: Record<string, Float64Array> = {};
@@ -1161,6 +1243,7 @@ export class ViewportSlicer<TRow = any> {
       groupValue,
       groupChildCount,
       isExpanded,
+      groupKey,
     };
   }
 }

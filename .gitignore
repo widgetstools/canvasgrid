@@ -34,3 +34,9 @@ e2e-results/
 
 # vitest coverage output
 packages/*/coverage/
+
+# Cursor editor config
+.cursor/
+
+# Detached dev-server logs
+vite-server.log

@@ -3,6 +3,8 @@ import { gridOptionsModule } from './modules/gridOptions';
 import { columnGroupsModule } from './modules/columnGroups';
 import { columnSettingsModule } from './modules/columnSettings';
 import { expressionLabModule } from './modules/expressionLab';
+import { conditionalStylingModule } from './modules/conditionalStyling';
+import { calculatedColumnsModule } from './modules/calculatedColumns';
 
 /** A tiny helper for building an icon button toolbar item. */
 function button(id: string, label: string, onClick: (ctx: CgExtContext) => void): ToolbarItem {
@@ -52,6 +54,8 @@ export function buildDefaultBundle(): CgExtension[] {
     gridOptionsModule(),
     columnGroupsModule(),
     columnSettingsModule(),
+    conditionalStylingModule(),
+    calculatedColumnsModule(),
     expressionLabModule(),
   ];
 }

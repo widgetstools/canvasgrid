@@ -176,11 +176,13 @@ describe('PinnedRowsSubgrid — viewport-math placement', () => {
 
   // CASE 7 — Pinned-BOTTOM stack: a PinnedRowsSubgrid stacked AFTER the
   // DataSubgrid lands in computeViewport's pass-3 post-data band. The
-  // pinned rows sit immediately below the last visible data row and DO
-  // NOT scroll — verified by snapshotting two viewports at different
-  // scrollTops and asserting the pinned row stays glued to the last data
-  // row's bottom in both.
-  it('mounts at the BOTTOM (post-data band) and stays non-scrolling under scroll', () => {
+  // band DOCKS to the container bottom (AG-style), reserving its height
+  // from the scrollable body, and DOES NOT scroll — verified by
+  // snapshotting two viewports at different scrollTops and asserting the
+  // pinned row stays at containerHeight - pinnedHeight in both. (A
+  // partially visible data row may extend past bodyBottom; the docked
+  // band paints over it, so we do not assert flush adjacency to data.)
+  it('DOCKS at the container bottom (post-data band) and stays non-scrolling under scroll', () => {
     const pinned = pinnedWith([{ label: 'Watchlist anchor', notional: 0, pnl: 0 }], 28);
     const opts = (scrollTop: number) => ({
       columnLayout: [{ colId: 'label', left: 0, width: 100 }],
@@ -194,10 +196,11 @@ describe('PinnedRowsSubgrid — viewport-math placement', () => {
     const scrolled = computeViewport(opts(4000));
     const basePinned = baseline.visibleRows.find((r) => r.subgrid.isPinned)!;
     const scrolledPinned = scrolled.visibleRows.find((r) => r.subgrid.isPinned)!;
-    const baseLastData = baseline.visibleRows.filter((r) => r.subgrid.isData).at(-1)!;
-    const scrolledLastData = scrolled.visibleRows.filter((r) => r.subgrid.isData).at(-1)!;
-    expect(basePinned.top).toBe(baseLastData.bottom);
-    expect(scrolledPinned.top).toBe(scrolledLastData.bottom);
+    // Docked: containerHeight (500) - pinned height (28) = 472, at any scroll depth.
+    expect(basePinned.top).toBe(500 - 28);
+    expect(basePinned.bottom).toBe(500);
+    expect(scrolledPinned.top).toBe(basePinned.top);
+    expect(scrolledPinned.bottom).toBe(basePinned.bottom);
     expect(basePinned.height).toBe(28);
     expect(scrolledPinned.height).toBe(28);
   });
@@ -226,10 +229,13 @@ describe('PinnedRowsSubgrid — viewport-math placement', () => {
   // CASE 9 — Coexistence with TotalsSubgrid at the same edge. The design
   // plan (cycle-14-aggregation-design.md § Task 2 — Coexistence) puts
   // totals OUTERMOST (closest to the chrome edge) and pinned INNERMOST
-  // (closest to data). For bottom: data → pinned-bottom → totals. We
-  // assert the y-order in the visible stack mirrors that, AND that both
-  // subgrids contribute exactly one row each at their declared heights.
-  it('coexists with a totals subgrid — order is data → pinned → totals (bottom)', () => {
+  // (closest to data). For bottom: data → pinned-bottom → totals. The
+  // whole post-data band DOCKS to the container bottom: it starts at
+  // containerHeight minus the summed post-data heights, and within the
+  // band the rows stack in subgrid-stack order. We assert the docked
+  // start, the intra-band y-order, and that both subgrids contribute
+  // exactly one row each at their declared heights.
+  it('coexists with a totals subgrid — docked band order is data → pinned → totals (bottom)', () => {
     const pinned = pinnedWith([{ label: 'Benchmark', notional: 1, pnl: 0 }], 28);
     const totals = new TotalsSubgrid(() => 30, () => ({ value: 0, valueFormatted: '0' }));
     const vs = computeViewport({
@@ -242,10 +248,12 @@ describe('PinnedRowsSubgrid — viewport-math placement', () => {
     });
     const pinnedRow = vs.visibleRows.find((r) => r.subgrid.isPinned)!;
     const totalsRow = vs.visibleRows.find((r) => r.subgrid.isTotals)!;
-    const lastData = vs.visibleRows.filter((r) => r.subgrid.isData).at(-1)!;
-    // Order: data ends, pinned starts immediately, totals starts at pinned end.
-    expect(pinnedRow.top).toBe(lastData.bottom);
+    // Docked band: starts at containerHeight (300) - (pinned 28 + totals 30) = 242.
+    // Within the band: pinned first (stack order), totals flush after it,
+    // and the band's last row bottoms out at the container edge.
+    expect(pinnedRow.top).toBe(300 - (28 + 30));
     expect(totalsRow.top).toBe(pinnedRow.bottom);
+    expect(totalsRow.bottom).toBe(300);
     expect(pinnedRow.height).toBe(28);
     expect(totalsRow.height).toBe(30);
   });

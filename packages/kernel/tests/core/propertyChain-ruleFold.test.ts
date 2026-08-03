@@ -104,6 +104,33 @@ describe('applyCellProps rule fold (Cycle 21e / Task 11)', () => {
     expect(cfg.border).toEqual({ all: { width: 1, color: '#c62828', style: 'dashed' } });
   });
 
+  it('per-side border spec forwards verbatim to the paint slot', () => {
+    registerRuleEngine(styleEngine({
+      border: {
+        top: { width: 2, color: '#c62828', style: 'dashed' },
+        bottom: { width: 1, color: '#2dd4bf', style: 'solid' },
+      },
+    }));
+    const [def] = resolveColDefs([{ colId: 'px', cellDataType: 'number' }] as any);
+    const cfg = freshConfig();
+    applyCellProps(cfg, baseCtx(def) as any);
+    expect(cfg.border).toEqual({
+      top: { width: 2, color: '#c62828', style: 'dashed' },
+      bottom: { width: 1, color: '#2dd4bf', style: 'solid' },
+    });
+  });
+
+  it('per-side border spec wins over the legacy borderColor/borderStyle pair', () => {
+    registerRuleEngine(styleEngine({
+      borderColor: '#c62828', borderStyle: 'dashed',
+      border: { left: { width: 3, color: '#123456', style: 'double' } },
+    }));
+    const [def] = resolveColDefs([{ colId: 'px', cellDataType: 'number' }] as any);
+    const cfg = freshConfig();
+    applyCellProps(cfg, baseCtx(def) as any);
+    expect(cfg.border).toEqual({ left: { width: 3, color: '#123456', style: 'double' } });
+  });
+
   it('matched empty → zero diff', () => {
     registerRuleEngine(styleEngine({ color: '#8e24aa' }, []));
     const [def] = resolveColDefs([{ colId: 'px', cellDataType: 'number' }] as any);

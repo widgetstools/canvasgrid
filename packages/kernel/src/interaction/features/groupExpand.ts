@@ -81,6 +81,27 @@ export class GroupExpandFeature extends Feature {
     super.handleMouseDown(ctx);
   }
 
+  /** AG parity — double-clicking anywhere on a GROUP row toggles its
+   *  expansion (matching `agGroupCellRenderer`'s default), unless
+   *  `suppressDoubleClickExpand` is set. Consumed so the double-click
+   *  neither opens an editor nor emits a spurious `cellDoubleClicked`. */
+  override handleDoubleClick(ctx: CGridEventCtx): void {
+    const hit = ctx.hit;
+    if (
+      hit !== null
+      && hit.kind === 'cell'
+      && !ctx.grid.isGroupDoubleClickExpandSuppressed()
+      && ctx.grid.isGroupRow(hit.rowIndex)
+    ) {
+      const groupKey = ctx.grid.getGroupKeyAtRow(hit.rowIndex);
+      if (groupKey !== '') {
+        ctx.grid.toggleGroupExpanded(groupKey);
+        return;
+      }
+    }
+    super.handleDoubleClick(ctx);
+  }
+
   override handleClick(ctx: CGridEventCtx): void {
     // Consume trailing clicks on sticky chevrons, body chevrons, and
     // checkboxes so apps don't see a spurious `cellClicked`.

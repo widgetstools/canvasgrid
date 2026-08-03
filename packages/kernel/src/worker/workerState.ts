@@ -65,6 +65,38 @@ export interface State {
   queue: TransactionQueue;
   columns: WorkerColumn[];
   visibleCache: string[] | null;
+  /** SSRM mode — sparse hydrate is active. */
+  ssrmActive: boolean;
+  /**
+   * When true with `ssrmActive`, `buildVisibleAsync` runs the full CSRM
+   * pipeline (filter → group → pivot → sort → agg) over hydrated store
+   * rows instead of returning raw `ssrmOrder`. Used so SSRM can host
+   * grouping, subtotals, pivot, client sort/filter, etc. after the book
+   * (or route) is fully hydrated.
+   */
+  ssrmClientPipeline: boolean;
+  /** Sparse visible order; `''` = unloaded placeholder slot. */
+  ssrmOrder: string[];
+  ssrmRowCount: number;
+  /**
+   * A sparse hydrate carried `__ssrm` group rows. Gates the sticky-ancestor
+   * scan on the sparse path — the worker group model is never shipped there
+   * (GroupPass stays off; the host owns grouping), so `state.group` can't
+   * be the signal. Reset on `reset` hydrates and on leaving SSRM.
+   */
+  ssrmGroupMetaSeen: boolean;
+  /** Sparse SSRM v2 — host-computed grand totals keyed by FIELD (skeleton
+   *  root aggregates). When set, getViewport ships these as `chunk.totals`
+   *  instead of AggPass output (which only sees hydrated rows). */
+  ssrmGrandTotals: Record<string, unknown> | null;
+  /** AG `groupMaintainOrder` — sorts never re-order group rows. */
+  groupMaintainOrder: boolean;
+  /** AG `groupAggFiltering` — filters evaluate group aggregates. */
+  groupAggFiltering: boolean;
+  /** AG parity — `groupDefaultExpanded` seeded against an EMPTY tree (the
+   *  group model landed before any data). The next non-empty tree build
+   *  re-seeds the defaults. */
+  pendingDefaultExpandSeed: boolean;
   /** Cache of `(font|width|text)` → wrapped-text-height. Bounded LRU. */
   measureCache: MeasureCache;
   /** Pending fallback batches keyed by `batchId`. */

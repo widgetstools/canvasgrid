@@ -6,7 +6,8 @@ import {
   RowStore, FilterPass, SortPass, AggPass, GroupPass, ViewportSlicer, TransactionQueue,
   QuickFilterPass, DistinctValuesPass, diffRowFields, PivotPass,
 } from './dataPipeline';
-import type { GroupNode } from './passes/groupPass';
+import type { GroupNode, GroupPassOutput } from './passes/groupPass';
+import { rebuildFlatOrder } from './passes/sortPass';
 import { CalcProgramStore } from './passes/calcPass';
 import {
   computeGroupVisibleRowCount,
@@ -54,18 +55,77 @@ export interface WorkerHost {
 export function createWorkerHost(post: PostFn): WorkerHost {
   let state: State | null = null;
 
-  function buildCandidates(): string[] {
+  function buildCandidates(aggFilterCols: ReadonlySet<string> | null = null): string[] {
     if (!state) return [];
     // Cycle 7 / Task 7 — QuickFilterPass runs BEFORE FilterPass. A null
     // return means no quick-filter constraint, so we skip the intersection
     // entirely.
+    // AG `groupAggFiltering` — entries on AGGREGATED columns evaluate group
+    // aggregates instead of leaves (excluded here, applied by
+    // `pruneGroupsByAggFilter`); entries on non-aggregated columns still
+    // filter leaves. Quick filter always applies at leaf level.
     const quickIds = state.quickFilter.apply();
-    let ids = state.filter.apply();
+    let ids = aggFilterCols && aggFilterCols.size > 0
+      ? state.filter.applyExcluding(aggFilterCols)
+      : state.filter.apply();
     if (quickIds !== null) {
       const allow = new Set(quickIds);
       ids = ids.filter((id) => allow.has(id));
     }
     return ids;
+  }
+
+  /** AG `groupAggFiltering` — evaluate the filter model against per-group
+   *  aggregate values and prune the tree. Passing groups keep their whole
+   *  subtree (implicit `suppressAggFilteredOnly`); non-passing groups
+   *  survive only when a descendant passes (as chrome, without their own
+   *  direct leaves). Returns null when no filter entry targets an
+   *  aggregated column — the model then imposes no group constraint. */
+  function pruneGroupsByAggFilter(ids: readonly string[]): GroupPassOutput | null {
+    if (!state) return null;
+    const out = state.groupOutput!;
+    const activeAggCols = state.filter.activeColIds().filter((colId) => {
+      const c = state!.columns.find((cc) => cc.colId === colId);
+      return c?.aggFunc != null;
+    });
+    if (activeAggCols.length === 0) return null;
+    const totals = state.agg.applyGroups(ids as string[], out).groupTotals;
+    const passes = (key: string): boolean => {
+      const t = totals[key];
+      for (const colId of activeAggCols) {
+        if (state!.filter.entryMatches(colId, t?.[colId]) !== true) return false;
+      }
+      return true;
+    };
+    const prune = (node: GroupNode): GroupNode | null => {
+      if (passes(node.key)) return node; // whole subtree included as-is
+      const children: GroupNode[] = [];
+      for (const c of node.childGroups) {
+        const p = prune(c);
+        if (p) children.push(p);
+      }
+      if (children.length === 0) return null;
+      let childCount = 0;
+      for (const c of children) childCount += c.childCount;
+      return {
+        ...node,
+        childGroups: children,
+        childIndices: new Uint32Array(0),
+        childCount,
+      };
+    };
+    const roots: GroupNode[] = [];
+    for (const r of out.roots) {
+      const p = prune(r);
+      if (p) roots.push(p);
+    }
+    const flatOrder = rebuildFlatOrder(
+      roots,
+      state.group.getIncludeFooter(),
+      state.group.getIncludeTotalFooter(),
+      state.group.getRemoveSingleChildren(),
+    );
+    return { roots, flatOrder, bypassed: false };
   }
 
   /** Cycle 7 / Task 8 — runs the external-filter round-trip when
@@ -87,10 +147,31 @@ export function createWorkerHost(post: PostFn): WorkerHost {
 
   async function buildVisibleAsync(): Promise<string[]> {
     if (!state) return [];
+    // SSRM sparse path — server owns filter/sort/agg; scroll order is
+    // authoritative. When `ssrmClientPipeline` is on the book has been
+    // fully hydrated and CSRM features (group/pivot/filter/sort/totals)
+    // run through the same pipeline as clientSide.
+    if (state.ssrmActive && !state.ssrmClientPipeline) {
+      return state.ssrmOrder;
+    }
     // Cycle 21d / Task 11 — CalcPass Stage A: materialise row-local calc
     // values BEFORE the filter reads them. No program → immediate no-op.
     state.calc.ensureStageA(state.store, (colId) => state!.columns.find((c) => c.colId === colId)?.field);
-    let ids = buildCandidates();
+    // AG `groupAggFiltering` — active only when grouping is on AND a
+    // filter model is installed. Entries on aggregated columns prune the
+    // GROUP tree by aggregate values below; entries on non-aggregated
+    // columns still filter leaves (a text filter on a plain column must
+    // not silently no-op).
+    const aggFiltering = state.groupAggFiltering
+      && state.group.getModel().rowGroupCols.length > 0
+      && state.filter.hasActiveModel();
+    const aggFilterCols = aggFiltering
+      ? new Set(state.filter.activeColIds().filter((colId) => {
+        const c = state!.columns.find((cc) => cc.colId === colId);
+        return c?.aggFunc != null;
+      }))
+      : null;
+    let ids = buildCandidates(aggFilterCols);
     const alwaysPass = state.alwaysPassIds;
     if (state.externalFilterPresent) {
       // Subtract alwaysPass from the candidate set the main thread
@@ -124,6 +205,24 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     // SortPass. The output is stored on state so Task 2's slicer + Task
     // 11's group-aware sort can read from it.
     state.groupOutput = state.group.apply(ids);
+    // AG parity 2026-07-21 — `groupDefaultExpanded` seeded while the tree
+    // was empty (group model before data): re-seed against the FIRST
+    // non-empty tree so the configured default actually applies.
+    if (
+      state.pendingDefaultExpandSeed
+      && !state.groupOutput.bypassed
+      && state.groupOutput.roots.length > 0
+    ) {
+      state.pendingDefaultExpandSeed = false;
+      state.expandedKeys = state.group.computeDefaultExpandedKeys(state.groupOutput.roots);
+    }
+    // AG `groupAggFiltering` — prune the group tree by aggregate values:
+    // a group whose aggregates pass the filter keeps its WHOLE subtree; a
+    // non-passing group survives only as chrome above passing descendants.
+    if (aggFiltering && !state.groupOutput.bypassed && state.groupOutput.roots.length > 0) {
+      const pruned = pruneGroupsByAggFilter(ids);
+      if (pruned !== null) state.groupOutput = pruned;
+    }
     // Cycle 15 / Task 8 — capture the pre-sort, post-filter rowId
     // array so descendant lookups (`collectGroupDescendantRowIds`) can
     // translate a GroupNode's `childIndices` back to string rowIds
@@ -185,6 +284,7 @@ export function createWorkerHost(post: PostFn): WorkerHost {
         includeFooter: state.group.getIncludeFooter(),
         includeTotalFooter: state.group.getIncludeTotalFooter(),
         removeSingleChildren: state.group.getRemoveSingleChildren(),
+        maintainOrder: state.groupMaintainOrder,
       }, state.pivotOut ?? undefined);
     } else {
       ids = state.sort.apply(ids);
@@ -336,10 +436,17 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       for (const node of nodes) {
         const colType = colTypeByColId.get(node.colId);
         const value = node.value;
+        // AG parity — rows with no value in the group column collect under
+        // a labeled "(Blanks)" group (was: empty label → em-dash glyph).
         let formatted: string;
-        if (value === null || value === undefined) formatted = '';
-        else if (colType === 'number' && typeof value === 'number') formatted = Number.isFinite(value) ? String(value) : '';
-        else formatted = String(value);
+        if (value === null || value === undefined) formatted = '(Blanks)';
+        // Non-finite numbers (NaN/Infinity) are values, not blanks — label
+        // them by their string form.
+        else if (colType === 'number' && typeof value === 'number') formatted = String(value);
+        else {
+          formatted = String(value);
+          if (formatted === '') formatted = '(Blanks)';
+        }
         map.set(node.key, {
           value: formatted,
           childCount: node.childCount,
@@ -367,13 +474,23 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     const limit = Math.min(rowStart, visibleOrder.length);
     for (let i = 0; i < limit; i++) {
       const entry = visibleOrder[i]!;
-      if (entry.kind === 'group') lastAtDepth.set(entry.depth, entry.key);
+      if (entry.kind === 'group') {
+        // A group at depth d starts a new subtree — deeper entries belong
+        // to the previous subtree and are no longer ancestors of rows
+        // below this point (prevents a cross-parent child in the band).
+        for (const depth of lastAtDepth.keys()) {
+          if (depth > entry.depth) lastAtDepth.delete(depth);
+        }
+        lastAtDepth.set(entry.depth, entry.key);
+      }
     }
     if (lastAtDepth.size === 0) return [];
     const result: StickyAncestor[] = [];
     for (const [depth, key] of [...lastAtDepth.entries()].sort((a, b) => a[0] - b[0])) {
       const meta = metaLookup.get(key);
-      if (!meta || !meta.isExpanded) continue;
+      // A collapsed (or unknown) group ends the ancestor chain — deeper
+      // entries cannot be true ancestors of rows below it.
+      if (!meta || !meta.isExpanded) break;
       result.push({ depth, key, colId: meta.colId, value: meta.value, childCount: meta.childCount, isExpanded: meta.isExpanded });
     }
     return result;
@@ -476,12 +593,19 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       // microtask later once `buildVisibleAsync` resolves. Cycle 7 / Task 8
       // — when an external filter is active the await also covers the
       // candidates ↔ result round-trip with main.
+      const wasPendingSeed = state!.pendingDefaultExpandSeed;
       void invalidateAndCount().then((visibleCount) => {
         // Cycle 15 / Task 7 — when grouping is active, fan the
         // current composite keys back so main's `knownGroupKeys`
         // mirror tracks any group added / removed by this txn.
         const groupKeys = isGroupingActive() ? currentGroupKeys() : undefined;
-        post({ type: 'modelUpdated', visibleCount, groupKeys });
+        // AG parity — first data can arrive via an async flush; if this
+        // rebuild consumed the deferred `groupDefaultExpanded` seed, ship
+        // the seeded set so main's expansion mirror stays truthful.
+        const expandedKeys = wasPendingSeed && !state!.pendingDefaultExpandSeed
+          ? (state!.expandedKeys === null ? null : Array.from(state!.expandedKeys))
+          : undefined;
+        post({ type: 'modelUpdated', visibleCount, groupKeys, expandedKeys });
       });
       return all;
     });
@@ -505,8 +629,12 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     // `setGroupModel` so the very first tree-build's flatOrder
     // honors `groupRemoveSingleChildren`. Init-only; matches the
     // Task 9 default-expansion pattern (no runtime mutation surface).
-    if (payload.groupRemoveSingleChildren === true) {
-      group.setRemoveSingleChildren(true);
+    {
+      // AG v33 `groupHideParentOfSingleChild` (boolean | 'leafGroupsOnly')
+      // supersedes the deprecated `groupRemoveSingleChildren` boolean.
+      const hideSingle = payload.groupHideParentOfSingleChild
+        ?? (payload.groupRemoveSingleChildren === true);
+      if (hideSingle) group.setRemoveSingleChildren(hideSingle);
     }
     // Cycle 15 / Task 12 — install the per-group footer flags before
     // the first `setGroupModel` so the very first tree-build's
@@ -547,6 +675,15 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       queue,
       columns: payload.columns,
       visibleCache: null,
+      ssrmActive: false,
+      ssrmClientPipeline: false,
+      ssrmOrder: [],
+      ssrmRowCount: 0,
+      ssrmGroupMetaSeen: false,
+      ssrmGrandTotals: null,
+      groupMaintainOrder: payload.groupMaintainOrder === true,
+      groupAggFiltering: payload.groupAggFiltering === true,
+      pendingDefaultExpandSeed: false,
       measureCache: new MeasureCache(1024),
       pendingFallbacks: new Map(),
       nextBatchId: 1,

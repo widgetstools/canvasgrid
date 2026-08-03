@@ -84,6 +84,9 @@ export interface ResolvedColDef<TRow = any> {
    *  surface only widens, never narrows. */
   comparator?: string | ((a: unknown, b: unknown, ar: TRow, br: TRow) => number);
   filter?: 'text' | 'number' | 'date' | 'set';
+  /** AG parity 2026-07-21 — group-key derivation for this column; ships
+   *  to the worker as serialized source (see `CColDef.keyCreator`). */
+  keyCreator?: (params: { value: unknown; data: TRow }) => string;
   /** Per-column override of `CGridOptions.floatingFilter`. `undefined` means
    *  inherit the grid-level value at `rebuildSubgridStack` time. The
    *  floating-filter overlay reads this on every `repositionAll`; explicit
@@ -919,9 +922,13 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
           if (s.textDecoration !== undefined) {
             patch.textDecoration = s.textDecoration as ColCellOverrides['textDecoration'];
           }
-          // borderColor/borderStyle → BorderSpec on all four sides.
-          // borderStyle 'none' (or color absent) → no border patch.
-          if (s.borderColor !== undefined && s.borderStyle !== 'none') {
+          // Per-side border spec forwards verbatim (already the kernel
+          // BorderSpec vocabulary — cellBordersPainter handles sides /
+          // `all` fallback / width-0 skip). Wins over the legacy pair.
+          if (s.border !== undefined) {
+            patch.border = s.border as import('../types').BorderSpec;
+          } else if (s.borderColor !== undefined && s.borderStyle !== 'none') {
+            // Legacy borderColor/borderStyle → all four sides, width 1.
             patch.border = {
               all: {
                 width: 1,
@@ -1287,7 +1294,10 @@ export function resolveColDef<TRow>(
     headerCheckboxSelection: merged.headerCheckboxSelection,
     cellRendererSelector: merged.cellRendererSelector as ResolvedColDef<TRow>['cellRendererSelector'],
     comparator: merged.comparator as ResolvedColDef<TRow>['comparator'],
-    filter: merged.filter,
+    // 'agGroupColumnFilter' is resolved to a concrete type during auto-group
+    // column synthesis; anywhere else it means "no filter" (AG parity).
+    filter: merged.filter === 'agGroupColumnFilter' ? undefined : merged.filter,
+    keyCreator: merged.keyCreator as ResolvedColDef<TRow>['keyCreator'],
     floatingFilter: merged.floatingFilter,
     filterParams: merged.filterParams,
     suppressFloatingFilterButton: merged.suppressFloatingFilterButton ?? false,

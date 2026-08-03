@@ -238,7 +238,7 @@ describe('computeViewport', () => {
     expect(firstVisible!.top).toBe(60);
   });
 
-  it('totals subgrid lands after data rows (positional sanity)', () => {
+  it('totals / pinned-bottom dock to the container bottom', () => {
     const vs = computeViewport({
       columnLayout: [{ colId: 'a', left: 0, width: 100 }],
       subgrids: [header(32), data(5, 30), totals(1, 28)],
@@ -247,11 +247,29 @@ describe('computeViewport', () => {
       overscanRows: 0,
     });
     const totalsRow = vs.visibleRows.find((r) => r.subgrid.isTotals);
-    const lastData = [...vs.visibleRows].filter((r) => r.subgrid.isData).pop();
     expect(totalsRow).toBeDefined();
-    expect(lastData).toBeDefined();
-    // Totals row comes immediately after the last data row.
-    expect(totalsRow!.top).toBeGreaterThanOrEqual(lastData!.bottom - 0.001);
-    expect(totalsRow!.height).toBe(28);
+    // Docked to the viewport bottom — not stacked after the last data row
+    // (which would sit mid-canvas when the book does not fill the body).
+    expect(totalsRow!.bottom).toBe(400);
+    expect(totalsRow!.top).toBe(372);
+    expect(vs.bodyBottom).toBe(372);
+    expect(vs.bodyHeight).toBe(340);
+  });
+
+  it('large books keep pinned-bottom on-canvas despite data overscan', () => {
+    const vs = computeViewport({
+      columnLayout: [{ colId: 'a', left: 0, width: 100 }],
+      subgrids: [header(32), data(10_000, 32), totals(1, 32)],
+      containerWidth: 100, containerHeight: 400,
+      scrollLeft: 0, scrollTop: 0,
+      overscanRows: 5,
+    });
+    const totalsRow = vs.visibleRows.find((r) => r.subgrid.isTotals);
+    expect(totalsRow).toBeDefined();
+    expect(totalsRow!.top).toBeGreaterThanOrEqual(0);
+    expect(totalsRow!.bottom).toBeLessThanOrEqual(400);
+    expect(totalsRow!.bottom).toBe(400);
+    // Scrollable body ends above the footer.
+    expect(vs.bodyBottom).toBe(368);
   });
 });

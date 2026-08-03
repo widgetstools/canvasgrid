@@ -16,6 +16,7 @@ import {
   type AutosizeGroupNode,
 } from '../autosize';
 import type { GroupNode } from '../passes/groupPass';
+import { materializeSsrmGroupTotals, computeSsrmStickyAncestors } from '../../core/ssrmRowMeta';
 
 export type ViewportRequest = Extract<WorkerRequest, {
   type:
@@ -147,6 +148,41 @@ export async function handleViewport(
       } else {
         chunk = state.slicer.slice(visIds, req.payload, pending, touchedPending);
         visibleSliceIds = visIds.slice(chunk.rowStart, chunk.rowStart + chunk.rowCount);
+        // Sparse SSRM — host supplies grouped rows + field aggregates; ship
+        // `groupTotals` in CSRM shape (AggPass parity) so paint needs no fork.
+        if (state.ssrmActive && !state.ssrmClientPipeline && chunk.groupKey) {
+          const stickyBoundary = req.payload.stickyBoundaryRow ?? chunk.rowStart;
+          const ssrmGroupTotals = materializeSsrmGroupTotals(
+            (id) => state.store.getById(id),
+            state.columns,
+            visibleSliceIds,
+            chunk.rowKinds,
+            chunk.groupKey,
+            visIds,
+            stickyBoundary,
+          );
+          if (Object.keys(ssrmGroupTotals).length > 0) {
+            chunk.groupTotals = ssrmGroupTotals;
+          }
+        }
+        // Sparse SSRM never ships the worker group model (GroupPass stays
+        // off — the host owns grouping), so `state.group` can't gate this
+        // path; `ssrmGroupMetaSeen` (set when a hydrate carries `__ssrm`
+        // group rows) is the signal. `rowGroupCols` still rides along when
+        // a model IS present; the helper falls back to composite-key
+        // segments for per-depth colIds otherwise.
+        if (
+          state.ssrmActive
+          && !state.ssrmClientPipeline
+          && state.ssrmGroupMetaSeen
+        ) {
+          stickyAncestors = computeSsrmStickyAncestors(
+            (id) => state.store.getById(id),
+            visIds,
+            req.payload.stickyBoundaryRow ?? chunk.rowStart,
+            state.group.getModel().rowGroupCols,
+          );
+        }
       }
       if (pending !== undefined && chunk.flashMask !== undefined) {
         // Drain: clear the (rowId, field) entries this chunk flashed.
@@ -203,6 +239,17 @@ export async function handleViewport(
       const aggResult = state.agg.apply(visIds);
       if (Object.keys(aggResult.totals).length > 0) {
         chunk.totals = aggResult.totals;
+      }
+      // Sparse SSRM v2 — AggPass only saw hydrated rows; the host-computed
+      // grand totals (skeleton root aggregates, field-keyed) are the truth.
+      if (state.ssrmActive && !state.ssrmClientPipeline && state.ssrmGrandTotals !== null) {
+        const mapped: Record<string, unknown> = {};
+        for (const c of state.columns) {
+          if (c.aggFunc != null && c.field && state.ssrmGrandTotals[c.field] !== undefined) {
+            mapped[c.colId] = state.ssrmGrandTotals[c.field];
+          }
+        }
+        if (Object.keys(mapped).length > 0) chunk.totals = mapped;
       }
       // Cycle 15 / Task 12 — per-group totals.
       //

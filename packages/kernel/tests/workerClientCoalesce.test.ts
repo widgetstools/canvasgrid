@@ -66,7 +66,27 @@ describe('WorkerClient — push coalescing', () => {
     expect(onModelUpdated).not.toHaveBeenCalled();
     flushFrame();
     expect(onModelUpdated).toHaveBeenCalledTimes(1);
-    expect(onModelUpdated).toHaveBeenCalledWith(300, ['k']);
+    expect(onModelUpdated).toHaveBeenCalledWith(300, ['k'], undefined);
+  });
+
+  it('a seed-bearing expandedKeys survives a later seed-less push in the same frame', () => {
+    const listener: CapturedListener = { cb: () => {} };
+    const worker = makeFakeWorker(listener);
+    const onModelUpdated = vi.fn();
+    new WorkerClient(worker, {
+      onModelUpdated,
+      onAsyncTransactionsFlushed: vi.fn(),
+      onError: vi.fn(),
+    });
+
+    // First push carries the one-shot groupDefaultExpanded seed; a second
+    // seed-less push in the same RAF window must not clobber it.
+    listener.cb({ data: { type: 'modelUpdated', visibleCount: 100, expandedKeys: ['g1'] } });
+    listener.cb({ data: { type: 'modelUpdated', visibleCount: 200 } });
+
+    flushFrame();
+    expect(onModelUpdated).toHaveBeenCalledTimes(1);
+    expect(onModelUpdated).toHaveBeenCalledWith(200, undefined, ['g1']);
   });
 
   it('coalesces heightsChanged into a single dispatch per frame, preserving every range', () => {

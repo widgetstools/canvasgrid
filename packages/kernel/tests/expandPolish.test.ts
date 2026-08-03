@@ -130,7 +130,8 @@ describe('isGroupOpenByDefault callback in GroupPass', () => {
     const { gp, roots } = buildOneLevel();
     gp.setIsGroupOpenByDefault(() => true);
     gp.setIsGroupOpenByDefault(null); // clear
-    gp.setDefaultExpansion({ expanded: -1 }); // collapse all
+    // AG parity (2026-07-21): -1 = expand all; other negatives collapse all.
+    gp.setDefaultExpansion({ expanded: -2 }); // collapse all
 
     const keys = gp.computeDefaultExpandedKeys(roots);
     expect(keys).not.toBeNull();

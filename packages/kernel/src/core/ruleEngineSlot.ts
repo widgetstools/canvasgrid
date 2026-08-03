@@ -27,8 +27,18 @@ export interface RuleCellPatchShape {
     fontWeight?: 'normal' | 'bold' | number;
     fontStyle?: 'normal' | 'italic';
     textDecoration?: string;
+    /** Legacy single-border pair (all sides, width 1). */
     borderColor?: string;
     borderStyle?: string;
+    /** Per-side borders — kernel `BorderSpec` vocabulary; wins over the
+     *  legacy pair when both are present. */
+    border?: {
+      top?: { width?: number; color?: string; style?: string };
+      right?: { width?: number; color?: string; style?: string };
+      bottom?: { width?: number; color?: string; style?: string };
+      left?: { width?: number; color?: string; style?: string };
+      all?: { width?: number; color?: string; style?: string };
+    };
   } | null;
   indicator: { iconName: string; color: string; target: string; position: string } | null;
   formatProgram: unknown | null;

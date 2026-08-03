@@ -383,37 +383,37 @@
 
 <!-- area:09 Row grouping -->
 | 09 | ✅ rowGroup (ColDef) | Enterprise | option | yes | P0 | Groups rows by this column's value; requires RowGroupingModule |
-| 09 | ✅ initialRowGroup (ColDef) | Enterprise | option | no | P1 | rowGroup applied on first column creation only |
+| 09 | initialRowGroup (ColDef) | Enterprise | option | no | P1 | rowGroup applied on first column creation only |
 | 09 | ✅ rowGroupIndex (ColDef) | Enterprise | option | yes | P0 | Position of this column in the multi-level group hierarchy |
-| 09 | ✅ initialRowGroupIndex (ColDef) | Enterprise | option | no | P1 | rowGroupIndex applied on first column creation only |
+| 09 | initialRowGroupIndex (ColDef) | Enterprise | option | no | P1 | rowGroupIndex applied on first column creation only |
 | 09 | ✅ enableRowGroup (ColDef) | Enterprise | option | yes | P1 | Allows user to drag column into row-group panel via GUI |
-| 09 | ✅ showRowGroup (ColDef) | Enterprise | option | no | P2 | Displays grouped-column value in a custom group column cell |
+| 09 | showRowGroup (ColDef) | Enterprise | option | no | P2 | Displays grouped-column value in a custom group column cell |
 | 09 | groupHierarchy (ColDef) | Enterprise | option | no | P2 | Declares virtual sub-columns for date-part or custom hierarchies |
 | 09 | rowGroupingHierarchy (ColDef) | Enterprise | option | no | P3 | Deprecated — use groupHierarchy instead |
 | 09 | ✅ groupDisplayType | Enterprise | option | yes | P0 | Controls group-column layout: singleColumn / multipleColumns / groupRows / custom |
 | 09 | ✅ groupDefaultExpanded | Enterprise | option | yes | P0 | Levels expanded on load; -1 expands all |
 | 09 | ✅ autoGroupColumnDef | Enterprise | option | yes | P0 | ColDef overrides for auto-generated group column(s) |
-| 09 | ✅ groupMaintainOrder | Enterprise | option | no | P1 | Prevents value-column sorts from reordering groups |
-| 09 | ✅ groupLockGroupColumns | Enterprise | option | no | P2 | Number of leading group columns locked from reorder/hide |
-| 09 | ✅ groupAggFiltering | Enterprise | option | no | P2 | Applies filters to group-level aggregated values |
+| 09 | groupMaintainOrder | Enterprise | option | no | P1 | Prevents value-column sorts from reordering groups |
+| 09 | groupLockGroupColumns | Enterprise | option | no | P2 | Number of leading group columns locked from reorder/hide |
+| 09 | groupAggFiltering | Enterprise | option | no | P2 | Applies filters to group-level aggregated values |
 | 09 | ✅ groupTotalRow | Enterprise | option | yes | P0 | Inserts aggregate total row inside each expanded group |
 | 09 | ✅ grandTotalRow | Enterprise | option | yes | P0 | Inserts grid-level aggregate total row |
-| 09 | ✅ suppressStickyTotalRow | Enterprise | option | no | P2 | Disables sticky behaviour of total rows |
-| 09 | ✅ groupSuppressBlankHeader | Enterprise | option | no | P2 | Hides blank group header cell when aggregate would jump |
+| 09 | suppressStickyTotalRow | Enterprise | option | no | P2 | Disables sticky behaviour of total rows |
+| 09 | groupSuppressBlankHeader | Enterprise | option | no | P2 | Hides blank group header cell when aggregate would jump |
 | 09 | ✅ showOpenedGroup | Enterprise | option | no | P2 | Shows opened-group value in group column for child rows |
 | 09 | ✅ groupHideOpenParents | Enterprise | option | no | P2 | Hides parent rows when expanded; children surface at top |
-| 09 | ✅ groupHideColumnsUntilExpanded | Enterprise | option | no | P2 | Hides deeper group columns until parent level is expanded |
+| 09 | groupHideColumnsUntilExpanded | Enterprise | option | no | P2 | Hides deeper group columns until parent level is expanded |
 | 09 | ✅ groupHideParentOfSingleChild | Enterprise | option | no | P2 | Replaces single-child group with the child row inline |
 | 09 | ✅ groupRemoveSingleChildren | Enterprise | option | no | P3 | Deprecated v33 — use groupHideParentOfSingleChild |
 | 09 | ✅ groupRemoveLowestSingleChildren | Enterprise | option | no | P3 | Deprecated v33 — use groupHideParentOfSingleChild: 'leafGroupsOnly' |
-| 09 | ✅ groupAllowUnbalanced | Enterprise | option | no | P2 | Prevents (Blanks) group for rows without a group-column value |
+| 09 | groupAllowUnbalanced | Enterprise | option | no | P2 | Prevents (Blanks) group for rows without a group-column value |
 | 09 | ✅ rowGroupPanelShow | Enterprise | option | yes | P1 | Visibility of drag-and-drop row group panel |
 | 09 | ✅ rowGroupPanelSuppressSort | Enterprise | option | no | P2 | Hides sort controls in row group panel |
 | 09 | ✅ groupRowRenderer | Enterprise | option | no | P2 | Custom renderer for groupRows display-type group rows |
 | 09 | ✅ groupRowRendererParams | Enterprise | option | no | P2 | Params for groupRowRenderer |
-| 09 | ✅ suppressGroupRowsSticky | Enterprise | option | no | P2 | Prevents group rows sticking at grid top while scrolling |
+| 09 | suppressGroupRowsSticky | Enterprise | option | no | P2 | Prevents group rows sticking at grid top while scrolling |
 | 09 | groupHierarchyConfig | Enterprise | option | no | P2 | Registers custom hierarchy types for colDef.groupHierarchy |
-| 09 | ✅ initialGroupOrderComparator | Enterprise | option | no | P2 | Callback for initial ordering of group nodes |
+| 09 | initialGroupOrderComparator | Enterprise | option | no | P2 | Callback for initial ordering of group nodes |
 | 09 | ✅ groupSelectsChildren | Enterprise | option | no | P2 | Deprecated v32.2 — use rowSelection.groupSelects; see 12-selection.md |
 | 09 | ✅ groupSelectsFiltered | Enterprise | option | no | P3 | Deprecated v32.2 — use rowSelection.groupSelects configuration instead. When true with groupSelectsChildren, only filtered descendants selected. |
 | 09 | ✅ setRowGroupColumns | Enterprise | api | no | P0 | Replaces current row-group columns |
@@ -424,7 +424,7 @@
 | 09 | ✅ expandAll | Community | api | yes | P0 | Expands all group nodes — primarily used with row grouping (Enterprise) |
 | 09 | ✅ collapseAll | Community | api | yes | P0 | Collapses all group nodes — primarily used with row grouping (Enterprise) |
 | 09 | ✅ setRowNodeExpanded | Community | api | no | P1 | Sets expanded state on a specific group node — primarily used with row grouping (Enterprise) |
-| 09 | ✅ onGroupExpandedOrCollapsed | Community | api | no | P1 | Signals grid that expansion state was mutated externally — primarily used with row grouping (Enterprise) |
+| 09 | onGroupExpandedOrCollapsed | Community | api | no | P1 | Signals grid that expansion state was mutated externally — primarily used with row grouping (Enterprise) |
 | 09 | ✅ rowGroupOpened | Community | event | no | P0 | Group row expanded or collapsed; event is core, row-group context needs RowGroupingModule (Enterprise) |
 | 09 | ✅ columnRowGroupChanged | Enterprise | event | no | P1 | Column added to or removed from group hierarchy |
 | 09 | ✅ groupDisplayType singleColumn mode | Enterprise | behavior | yes | P0 | All group levels share one auto column with indent |

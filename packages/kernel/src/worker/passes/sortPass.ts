@@ -178,7 +178,10 @@ export class SortPass<TRow = any> {
     options: {
       includeFooter?: boolean;
       includeTotalFooter?: boolean;
-      removeSingleChildren?: boolean;
+      removeSingleChildren?: boolean | 'leafGroupsOnly';
+      /** AG `groupMaintainOrder` — when true, skip the group-level
+       *  re-order entirely: sorts affect only leaf rows within groups. */
+      maintainOrder?: boolean;
     } = {},
     /** Cycle 18 / Task 8d — pivot output for the current viewport. When
      *  supplied AND the sort model targets a pivot-result column, each
@@ -230,7 +233,10 @@ export class SortPass<TRow = any> {
     // entry matches, the level keeps `GroupPass`'s composite-key sort.
     // Cycle 18 / Task 8d — also passes the pivot output so a pivot-
     // result sort entry can override the per-level grouping sort.
-    this.sortGroupLevels(roots, resolved, pivotOut);
+    // AG `groupMaintainOrder` — group order is locked; only leaves sort.
+    if (options.maintainOrder !== true) {
+      this.sortGroupLevels(roots, resolved, pivotOut);
+    }
 
     // Rebuild flatOrder DFS — preserves the GroupPass contract: each
     // group entry rides at its node `depth`; row entries ride at
@@ -244,7 +250,7 @@ export class SortPass<TRow = any> {
       roots,
       options.includeFooter === true,
       options.includeTotalFooter === true,
-      options.removeSingleChildren === true,
+      options.removeSingleChildren ?? false,
     );
     return { roots, flatOrder, bypassed: false };
   }
@@ -521,11 +527,11 @@ function compare(a: unknown, b: unknown, type: 'text' | 'number'): number {
  *  cleanly skips a collapsed group's whole subtree). Module-scope so
  *  the cycle 15 / task 11 perf test can exercise the standalone walk
  *  if a regression triggers. */
-function rebuildFlatOrder(
+export function rebuildFlatOrder(
   roots: readonly GroupNode[],
   includeFooter: boolean = false,
   includeTotalFooter: boolean = false,
-  removeSingleChildren: boolean = false,
+  removeSingleChildren: boolean | 'leafGroupsOnly' = false,
 ): FlatOrderEntry[] {
   const flatOrder: FlatOrderEntry[] = [];
   let maxGroupDepth = -1;
@@ -539,7 +545,11 @@ function rebuildFlatOrder(
   const rowDepth = maxGroupDepth + 1;
   const walk = (nodes: readonly GroupNode[]): void => {
     for (const n of nodes) {
-      const skipGroupEntry = removeSingleChildren && n.childCount === 1;
+      // Mirrors GroupPass's elision rule, incl. the 'leafGroupsOnly' mode.
+      const skipGroupEntry = n.childCount === 1 && (
+        removeSingleChildren === true
+        || (removeSingleChildren === 'leafGroupsOnly' && n.childGroups.length === 0)
+      );
       if (!skipGroupEntry) {
         flatOrder.push({ kind: 'group', key: n.key, depth: n.depth });
       }

@@ -131,8 +131,22 @@ const groupTotalRow: 'top' | 'bottom' | undefined =
   groupTotalRowRaw === 'top' || groupTotalRowRaw === 'bottom' ? groupTotalRowRaw : undefined;
 // Cycle 15.5 / Task 8 — `?grandTotalRow=top|bottom` grand-total row position.
 const grandTotalRowRaw = search.get('grandTotalRow');
-const grandTotalRow: 'top' | 'bottom' | undefined =
-  grandTotalRowRaw === 'top' || grandTotalRowRaw === 'bottom' ? grandTotalRowRaw : undefined;
+const grandTotalRow: 'top' | 'bottom' | 'pinnedTop' | 'pinnedBottom' | undefined =
+  grandTotalRowRaw === 'top' || grandTotalRowRaw === 'bottom'
+  || grandTotalRowRaw === 'pinnedTop' || grandTotalRowRaw === 'pinnedBottom'
+    ? grandTotalRowRaw
+    : undefined;
+// AG parity 2026-07-21 — group order lock + expansion depth.
+const groupMaintainOrder = search.get('groupMaintainOrder') === '1';
+// AG parity 2026-07-21 second wave.
+const groupAggFiltering = search.get('groupAggFiltering') === '1';
+const groupColumnFilter = search.get('groupColumnFilter') === '1';
+const keyCreatorDemo = search.get('keyCreatorDemo') === '1';
+const groupDefaultExpandedRaw = search.get('groupDefaultExpanded');
+const groupDefaultExpanded = groupDefaultExpandedRaw !== null
+  && Number.isFinite(Number(groupDefaultExpandedRaw))
+  ? Number(groupDefaultExpandedRaw)
+  : undefined;
 // Feature toggles wired to the toolbar checkboxes. Default OFF so the
 // demo opens with a CLEAN grid (no pinned columns, no header groups).
 // User opts each surface in via the header checkbox; the URL flag
@@ -169,7 +183,7 @@ const pivotMaxGeneratedColumns: number | undefined = pivotMaxRaw !== null
 // the Price column to a Tier 1 DSL string formatter. Opt-in so the
 // existing functional + visual baselines stay byte-stable.
 const formatDsl = search.get('formatDsl') === '1';
-const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, groupingDemo, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, rowGroupPanelMarketsGrid, groupSelectsChildren, groupIncludeFooter, groupIncludeTotalFooter, pinning, columnGroups, groupHideOpenParents, isGroupOpenByDefault, suppressCount, suppressGroupChangesColumnVisibility, groupTotalRow, grandTotalRow, pivotDemo, pivotPanelShow, pivotMaxGeneratedColumns, formatDsl });
+const grid = createPositionsGrid(host, { editType, variableHeights, autoHeight, cellClassDemo, customPanel, openColumns, statusBar, totalsRowPosition, pinnedTop, pinnedBottom, suppressAggHeader, groupByTicker, groupMultipleColumns, groupingDemo, rowGroupPanelEmpty, rowGroupPanelThreeChips, rowGroupPanelAlways, rowGroupPanelMarketsGrid, groupSelectsChildren, groupIncludeFooter, groupIncludeTotalFooter, pinning, columnGroups, groupHideOpenParents, isGroupOpenByDefault, suppressCount, suppressGroupChangesColumnVisibility, groupTotalRow, grandTotalRow, groupMaintainOrder, groupDefaultExpanded, groupAggFiltering, groupColumnFilter, keyCreatorDemo, pivotDemo, pivotPanelShow, pivotMaxGeneratedColumns, formatDsl });
 
 // Toolbar feature-toggle checkboxes. Toggling reloads the page with
 // the matching URL flag set / unset because the structural changes

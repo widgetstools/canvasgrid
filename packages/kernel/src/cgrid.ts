@@ -17,6 +17,17 @@ import type { ToolPanel, SideBarDef } from './interaction/toolPanels/types';
 import { TypedEventEmitter } from './core/eventEmitter';
 import { DisposableRegistry } from './core/disposable';
 import { ViewportManager } from './core/viewportManager';
+import { ServerSideRowModelController } from './core/serverSideRowModel';
+import { ServerSideRowModelV2Controller, type SsrmHostV2 } from './core/serverSideRowModelV2';
+import { isServerSideDatasourceV2 } from './types/ssrm';
+import { parseCompositeGroupKey, readSsrmRowMeta as readSsrmMeta } from './core/ssrmRowMeta';
+import type {
+  AnyServerSideDatasource,
+  IServerSideDatasource,
+  IServerSideDatasourceV2,
+  RefreshServerSideParams,
+  ServerSideTransaction,
+} from './types/ssrm';
 import { type ResolvedColDef, applyCellProps, composeFont } from './core/propertyChain';
 import { resolveColumnTree, isColGroupDef, visibleHeaderGroupDepth, type ColumnTree, type ColumnTreeNode, type ResolvedColGroupDef } from './core/columnTree';
 import { moveColumnToGroup as moveColumnToGroupPure, moveColumnGroup as moveColumnGroupPure } from './core/columnGroupMutation';
@@ -221,6 +232,14 @@ export type {
   CTextFilterOp, CNumberFilterOp, CDateFilterOp,
   FlashCellsParams,
   GroupModel,
+  IServerSideDatasource, IServerSideGetRowsParams, IServerSideGetRowsRequest,
+  LoadSuccessParams, ServerSideTransaction, RefreshServerSideParams,
+  SsrmRowMeta, SsrmRowKind,
+  // SSRM v2 skeleton contract (docs/ssrm-group-skeleton-design.md).
+  IServerSideDatasourceV2, AnyServerSideDatasource, SkeletonGroup,
+  IServerSideGetSkeletonRequest, IServerSideGetSkeletonParams,
+  IServerSideGetLeafRowsRequest, IServerSideGetLeafRowsParams,
+  IServerSideGetGroupLeafIdsRequest, IServerSideGetGroupLeafIdsParams,
   CValueGetterParams, CValueFormatterParams,
   CCellRendererSelector, CCellRendererSelectorParams, CCellRendererSelectorResult,
   ColCellOverrides,
@@ -251,6 +270,7 @@ export type { ConditionalRuleShape } from './core/ruleEngineSlot';
 // Grid Layouts (Phase A) — public value exports (reserved id, tier default,
 // bundle version).
 export { DEFAULT_LAYOUT_ID, DEFAULT_GRID_LEVEL_MODULES, LAYOUTS_BUNDLE_VERSION } from './types';
+export { SSRM_ROW_META_KEY, attachSsrmRowMeta, readSsrmRowMeta, isServerSideDatasourceV2 } from './types/ssrm';
 export type { CellPainter, CellPaintConfig, RegisterCellRendererOpts } from './renderer/cellRenderers/registry';
 // Workstream A (2026-07-06 CSS styling model) — renderer-palette bundle
 // type, so @cgrid/renderers (and follow-on structured-map work) can name
@@ -311,6 +331,9 @@ const NON_PERSISTABLE_RUNTIME_OPTIONS: ReadonlySet<string> = new Set([
  *  Node), with a monotonic-counter fallback so tests / older runtimes
  *  still get collision-free ids. */
 let layoutIdCounter = 0;
+/** One-shot guard for the 2026-07 `groupDefaultExpanded` semantics-change
+ *  warning (levels-open AG parity) — once per page load, not per grid. */
+let warnedGroupDefaultExpandedMigration = false;
 function generateLayoutId(): string {
   const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
   if (c?.randomUUID) return `layout-${c.randomUUID()}`;
@@ -1053,6 +1076,20 @@ export class CGrid<TRow = any> {
    *  `memoryBudgetMB` option is unset / 0 (caching disabled). */
   private chunkLRU: ChunkLRU<ViewportChunk> | null = null;
   private rowCount = 0;
+  /** SSRM controller — present only when `rowModelType === 'serverSide'`.
+   *  v1 (flat block cache) or v2 (client-owned group skeleton) depending on
+   *  the installed datasource's shape. */
+  private ssrm: ServerSideRowModelController<TRow> | ServerSideRowModelV2Controller<TRow> | null = null;
+  /** True when `ssrm` is the v2 skeleton controller. */
+  private ssrmV2 = false;
+  /**
+   * Main-thread mirror of worker `ssrmClientPipeline`. When true, sort /
+   * filter / group / pivot go through the CSRM worker path instead of
+   * datasource refresh.
+   */
+  private ssrmClientPipeline = false;
+  /** Serialise SSRM full-hydrate + pipeline toggles. */
+  private ssrmPipelineChain: Promise<void> = Promise.resolve();
   private chunk: ViewportChunk | null = null;
   /** Cycle 15 / Task 16 — latest sticky ancestor band from the worker.
    *  Refreshed on every `getViewport` reply. Empty when grouping is
@@ -1845,7 +1882,13 @@ export class CGrid<TRow = any> {
       // flash, height index, recompute, events, firstDataRendered latch)
       // live in `handleViewportChunk` and are reached via the coord's
       // `onViewportChunk` dep.
-      dispatchViewportRequest: (opts) => this.workerCoord.dispatchViewportRequest(opts),
+      dispatchViewportRequest: async (opts) => {
+        if (this.ssrm) {
+          await this.ssrm.ensureRange(opts.rowStart, opts.rowEnd);
+          if (this.destroyed) return;
+        }
+        await this.workerCoord.dispatchViewportRequest(opts);
+      },
     });
     this.recomputeViewport();
 
@@ -1943,14 +1986,14 @@ export class CGrid<TRow = any> {
       // painter restricts use to BRANCH pivot groups, so non-pivot
       // group headers (Cycle 4) never call into this lookup.
       getColumnGroupOpen: (groupId) => this.columnGroupState.isOpen(groupId),
-      // Task 5 — scroll self-blit source. `this.cgridCanvas` isn't assigned
-      // until the CGridCanvas construction below, but this closure only
-      // dereferences it at paint time (long after construction completes).
-      getCanvasElement: () => this.cgridCanvas.canvas,
+      // Task 5 — scroll self-blit source. `CGridCanvas` construction can
+      // paint synchronously inside `resize()` BEFORE `this.cgridCanvas` is
+      // assigned — optional-chain so that first paint skips the blit path.
+      getCanvasElement: () => this.cgridCanvas?.canvas,
       // C1 fix — the actual backing-store dpr (not a `canvas.width /
       // cssWidth` derived ratio) so the scroll blit's destination-rect math
       // is exact even at odd CSS widths.
-      getDevicePixelRatio: () => this.cgridCanvas.devicePixelRatio,
+      getDevicePixelRatio: () => this.cgridCanvas?.devicePixelRatio ?? 1,
       // Cycle 22 / Task 2 — Tier-1 cell-bitmap cache handle. Read fresh
       // per paint (gates on the option + availability, tracks dpr).
       getRasterCells: () => this.getRasterCellsCtx(),
@@ -2479,6 +2522,13 @@ export class CGrid<TRow = any> {
     // by CGridCanvas, so editor goes on top).
     this.root.appendChild(this.editorContainer);
 
+    // Theming — the constructor's first `cssReader.read()` can run before
+    // an app-injected stylesheet (Vite dev `<link rel="stylesheet">`, lazy
+    // CSS chunk, etc.) has applied its `--cg-*` bundle. DOM chrome reads
+    // live CSS vars on every frame, but canvas paint uses the cached
+    // `ResolvedTheme` snapshot — re-read once styles land.
+    this.scheduleThemeCssResync();
+
     // Cycle 19 / Task 5a — pivot engine. Owns the canonical PivotState
     // seeded from the `pivotMode` option (pivot/value columns are
     // configured afterwards via the imperative API / tool panels), the
@@ -2834,6 +2884,7 @@ export class CGrid<TRow = any> {
       hitTestGroupChevron: (x, y) => this.hitTestGroupChevron(x, y),
       hitTestStickyChevron: (x, y) => this.hitTestStickyChevron(x, y),
       toggleGroupExpanded: (key) => this.toggleGroupExpandedFromUi(key),
+      isGroupDoubleClickExpandSuppressed: () => this.isGroupDoubleClickExpandSuppressed(),
       // Cycle 15 / Task 8 — tri-state checkbox hit-test + cascade
       // toggle. Same geometry-on-grid / feature-stays-thin split as
       // the chevron path above.
@@ -3002,6 +3053,7 @@ export class CGrid<TRow = any> {
     this.disposables.add(this.events.on('bodyScrollEnd', () => {
       this.bodyScrollActive = false;
       this.flushDeferredAsyncTransactions();
+      this.flushDeferredSsrmUpdates();
       if (
         this.flashPausedForScroll
         || this.flashRegistry.size() > 0
@@ -3045,13 +3097,28 @@ export class CGrid<TRow = any> {
     this.workerCoord = new WorkerCoordinator(
       worker as unknown as import('./core/workerCoordinator').WorkerLike,
       {
-        onModelUpdated: (visibleCount, groupKeys) => {
-          this.rowCount = visibleCount;
+        onModelUpdated: (visibleCount, groupKeys, expandedKeys) => {
+          // Sparse SSRM owns rowCount through hydrate replies. A
+          // transaction-driven modelUpdated computed against a
+          // pre-resize ssrmOrder (live tick racing a regroup / initial
+          // hydrate) carries a stale count — applying it makes
+          // getDisplayedRowCount flap (e.g. flat 50k reasserting after
+          // a regroup reported 3) until the next hydrate corrects it.
+          if (!(this.ssrm && !this.ssrmClientPipeline)) {
+            this.rowCount = visibleCount;
+          }
           // Cycle 15 / Task 7 — keep the main-side mirror in lockstep
           // with the worker's tree across transactions that add or
           // remove group keys (e.g. a new ticker entered the dataset).
           // The worker only ships this when grouping is active.
           if (groupKeys !== undefined) this.knownGroupKeys = groupKeys;
+          // AG parity — a transaction-driven rebuild consumed the
+          // deferred `groupDefaultExpanded` seed; adopt the seeded set
+          // (same rule as the setRowData reply) so the first caret click
+          // doesn't ship a wrong mirror.
+          if (expandedKeys !== undefined) {
+            this.expandedKeys = expandedKeys === null ? null : new Set(expandedKeys);
+          }
           // Cycle 15 / Task 8 — descendants may have shifted (new rows
           // in a group, removed rows, new groups). The push doesn't
           // ship them; refresh the cache via a follow-up
@@ -3113,6 +3180,21 @@ export class CGrid<TRow = any> {
       },
     );
 
+    // Migration warning (2026-07, one per page load): `groupDefaultExpanded`
+    // moved to AG-Grid levels-open semantics. `-1` flipped from collapse-all
+    // to expand-all; `0` flipped from first-level-open to all-collapsed.
+    if (
+      !warnedGroupDefaultExpandedMigration
+      && (options.groupDefaultExpanded === -1 || options.groupDefaultExpanded === 0)
+    ) {
+      warnedGroupDefaultExpandedMigration = true;
+      console.warn(
+        `[cgrid] groupDefaultExpanded: ${options.groupDefaultExpanded} — semantics changed to AG-Grid levels-open: `
+        + '-1 now expands ALL groups (was: collapse all); 0 now collapses all (was: top level open); '
+        + 'N >= 1 opens N levels. Use groupDefaultExpandedKeys: [] for an explicit all-collapsed start.',
+      );
+    }
+
     this.workerCoord.init({
       rowIdField: inferRowIdField(options.getRowId),
       columns: this.workerColumns(),
@@ -3138,6 +3220,9 @@ export class CGrid<TRow = any> {
       // them. Init-only — `runtimeOptions.ts` rejects post-construction
       // mutation; apps reset by rebuilding the grid.
       groupRemoveSingleChildren: this.options.groupRemoveSingleChildren,
+      groupHideParentOfSingleChild: this.options.groupHideParentOfSingleChild,
+      groupMaintainOrder: this.options.groupMaintainOrder,
+      groupAggFiltering: this.options.groupAggFiltering,
       showOpenedGroup: this.options.showOpenedGroup,
       // Cycle 15 / Task 12 — forward the group-footer flags so the
       // first `setGroupModel` produces flatOrder entries with footers
@@ -3152,7 +3237,11 @@ export class CGrid<TRow = any> {
         ?? (this.options.groupTotalRow != null ? true : undefined),
       groupIncludeTotalFooter:
         this.options.groupIncludeTotalFooter
-        ?? (this.options.grandTotalRow != null ? true : undefined),
+        // Pinned variants map onto the totals SUBGRID, not the in-scroll
+        // footer row (see effectiveTotalsRowPosition).
+        ?? (this.options.grandTotalRow === 'top' || this.options.grandTotalRow === 'bottom'
+          ? true
+          : undefined),
       groupHideOpenParents: this.options.groupHideOpenParents,
     }).then(async () => {
       // Cycle 7 / Task 8 — register the external-filter round-trip BEFORE
@@ -3238,8 +3327,28 @@ export class CGrid<TRow = any> {
         await this.applyGroupSelectsChildren(true);
         this.selection.setGroupSelects('descendants', null);
       }
+      // SSRM mounts BEFORE gridReady so the canonical AG pattern — install
+      // the datasource from the gridReady handler — finds `this.ssrm` live.
+      if (options.rowModelType === 'serverSide') {
+        this.mountSsrmController(isServerSideDatasourceV2(options.serverSideDatasource));
+        if (options.serverSideDatasource) {
+          this.installServerSideDatasource(options.serverSideDatasource);
+        }
+      }
       this.events.emit({ type: 'gridReady', api: this.makeApi() });
-      if (options.rowData) this.setRowData(options.rowData);
+      if (options.rowModelType !== 'serverSide' && options.rowData) {
+        this.setRowData(options.rowData);
+      }
+      // AG parity — construction-time `colDef.rowGroup` / `rowGroupIndex`
+      // seed the group model (previously only initialState / API / panel
+      // grouping took effect; the colDef fields were parsed but inert).
+      // Runs BEFORE initialState so a snapshot's rowGroupColumns still win.
+      {
+        const seedGroupCols = this.computeInitialRowGroupColumns();
+        if (seedGroupCols.length > 0 && this.grouping.getRowGroupColumns().length === 0) {
+          this.setRowGroupColumns(seedGroupCols);
+        }
+      }
       // Cycle 23 / Task 6 — apply an initial-state snapshot AFTER the
       // grid is ready (so column tree, pivot state, selection model
       // are all live) but BEFORE the first user interaction. Bundles
@@ -3375,7 +3484,7 @@ export class CGrid<TRow = any> {
         // genuine focus moves, keyed on the RESOLVED (rowId, colId) pair so
         // model reorders that re-index the same logical cell stay silent.
         const fc = this.getFocusedCell();
-        const key = fc ? `${fc.rowId} ${fc.colId}` : null;
+        const key = fc ? `${fc.rowId}\u0000${fc.colId}` : null;
         if (key !== lastFocusEmitKey) {
           lastFocusEmitKey = key;
           if (fc) this.events.emit({ type: 'cellFocused', rowId: fc.rowId, colId: fc.colId });
@@ -3469,7 +3578,214 @@ export class CGrid<TRow = any> {
   // `on` / `off` / `addEventListener` / `removeEventListener` live further
   // down with the rest of the editor-cycle additions (Cycle 5 / Task 1).
 
+  setServerSideDatasource(ds: AnyServerSideDatasource<TRow> | null): void {
+    if (!this.ssrm) {
+      console.warn('[cgrid] setServerSideDatasource requires rowModelType: \"serverSide\"');
+      return;
+    }
+    this.installServerSideDatasource(ds);
+  }
+
+  /** Route a datasource to the matching controller kind, remounting the
+   *  controller when the kind (v1 flat-window vs v2 skeleton) changes. */
+  private installServerSideDatasource(ds: AnyServerSideDatasource<TRow> | null): void {
+    const wantV2 = isServerSideDatasourceV2(ds);
+    if (ds !== null && this.ssrm !== null && wantV2 !== this.ssrmV2) {
+      this.ssrm.destroy();
+      this.mountSsrmController(wantV2);
+    }
+    if (this.ssrmV2) {
+      (this.ssrm as ServerSideRowModelV2Controller<TRow>)
+        .setDatasource(ds as IServerSideDatasourceV2<TRow> | null);
+    } else {
+      (this.ssrm as ServerSideRowModelController<TRow>)
+        .setDatasource(ds as IServerSideDatasource<TRow> | null);
+    }
+  }
+
+  /** Shared host seam for both SSRM controllers. */
+  private buildSsrmHost(): SsrmHostV2<TRow> {
+    return {
+      getRowId: (row) => this.options.getRowId(row),
+      getSortModel: () => this.sortModel,
+      getFilterModel: () => this.getFilterModel(),
+      getRowGroupCols: () => this.grouping.getRowGroupColumns(),
+      getGroupKeys: () => [],
+      getExpandedGroupKeys: () => Array.from(this.getExpandedKeys()),
+      mergeGroupKeys: (keys) => {
+        if (keys.length === 0) return;
+        const merged = new Set(this.knownGroupKeys);
+        for (const k of keys) merged.add(k);
+        this.knownGroupKeys = [...merged];
+      },
+      // v2 skeleton — exact replacement (expandAll / collapseAll read this).
+      setGroupKeys: (keys) => {
+        this.knownGroupKeys = keys.slice();
+      },
+      // v2 skeleton — grand totals (field-keyed root aggregates) for the
+      // pinned totals subgrid + in-scroll grand-total footer.
+      setGrandTotals: (totals) => {
+        if (this.destroyed) return;
+        void this.workerCoord.ssrmSetGrandTotals(totals).then(() => {
+          if (!this.destroyed) this.cgridCanvas?.requestRepaint();
+        }).catch(() => { /* worker torn down */ });
+      },
+      setRowCount: (count, prevCount) => {
+        if (this.destroyed) return;
+        const prev = prevCount ?? this.rowCount;
+        if (prev === count) return;
+        this.rowCount = count;
+        this.rowHeightIndex = null;
+        this.recomputeViewport();
+        if (count < prev && this.viewportManager.scrollTop > this.viewport.maxScrollTop) {
+          this.viewportManager.setScroll(
+            this.viewportManager.scrollLeft,
+            this.viewport.maxScrollTop,
+          );
+        }
+        this.events.emit({ type: 'modelUpdated', visibleRowCount: count });
+        if (count > 0 && prev === 0 && this.ssrmWantsClientPipeline()) {
+          void this.enableSsrmClientPipeline();
+        }
+      },
+      getRefreshRange: () => {
+        const block = this.options.cacheBlockSize ?? 100;
+        const vp = this.viewport;
+        if (!vp || this.rowCount <= 0) {
+          return { rowStart: 0, rowEnd: block };
+        }
+        return {
+          rowStart: Math.max(0, vp.firstRow),
+          rowEnd: Math.min(this.rowCount, vp.lastRow + 1),
+        };
+      },
+      hydrateWindow: async (startRow, rows, rowCount, reset) => {
+        if (this.destroyed) return;
+        // Reset = new generation (purge / skeleton swap): drop the stale
+        // mirror so a long-lived blotter doesn't accumulate every row (and
+        // every stale generation's synthetics) ever hydrated.
+        if (reset) this.rowDataById.clear();
+        // Keep main-side id mirror in sync for selection / external APIs.
+        // Skeleton chrome (group/footer/grand-total rows) stays out of the
+        // mirror — it is paint state, not data, and forEachNode/getRowNode
+        // must not yield it.
+        for (const row of rows) {
+          const kind = readSsrmMeta(row)?.kind;
+          if (kind === 'group' || kind === 'footer' || kind === 'grandTotal') continue;
+          try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip */ }
+        }
+        const { visibleCount } = await this.workerCoord.ssrmHydrate({
+          rowCount,
+          startRow,
+          rows,
+          reset,
+        });
+        if (this.destroyed) return;
+        this.rowCount = visibleCount;
+        this.recomputeViewport();
+        if (this.viewportManager.scrollTop > this.viewport.maxScrollTop) {
+          this.viewportManager.setScroll(
+            this.viewportManager.scrollLeft,
+            this.viewport.maxScrollTop,
+          );
+        }
+      },
+      applyTransaction: (tx) => {
+        this.applyTransaction(tx as Tx<TRow>);
+      },
+      requestViewport: () => {
+        if (!this.destroyed) this.requestViewport('rowDataChanged');
+      },
+      isDestroyed: () => this.destroyed,
+    };
+  }
+
+  /** Instantiate the SSRM controller for the given datasource kind. */
+  private mountSsrmController(v2: boolean): void {
+    const host = this.buildSsrmHost();
+    this.ssrmV2 = v2;
+    if (v2) {
+      // In-scroll footer/grand-total config (pinned grandTotalRow variants
+      // ride the totals subgrid — see effectiveTotalsRowPosition).
+      const groupTotalRow = this.options.groupTotalRow
+        ?? (this.options.groupIncludeFooter === true ? 'bottom' : null);
+      const grandInScroll = this.options.grandTotalRow === 'top' || this.options.grandTotalRow === 'bottom'
+        ? this.options.grandTotalRow
+        : (this.options.groupIncludeTotalFooter === true ? 'bottom' : null);
+      this.ssrm = new ServerSideRowModelV2Controller<TRow>(host, {
+        rowIdField: inferRowIdField(this.options.getRowId),
+        cacheBlockSize: this.options.cacheBlockSize,
+        maxConcurrentDatasourceRequests: this.options.maxConcurrentDatasourceRequests,
+        groupTotalRow,
+        grandTotalRow: grandInScroll,
+        maintainOrder: this.options.groupMaintainOrder === true,
+      });
+    } else {
+      this.ssrm = new ServerSideRowModelController<TRow>(host, {
+        cacheBlockSize: this.options.cacheBlockSize,
+        maxConcurrentDatasourceRequests: this.options.maxConcurrentDatasourceRequests,
+      });
+    }
+  }
+
+  refreshServerSide(params?: RefreshServerSideParams): void {
+    if (
+      this.bodyScrollActive
+      && this.options.deferAsyncTransactionsWhileScrolling !== false
+    ) {
+      // Merge instead of overwrite: a queued purge must survive later soft
+      // refreshes landing in the same scroll (last-write-wins dropped it).
+      const next = params ?? {};
+      const prev = this.deferredSsrmRefresh;
+      this.deferredSsrmRefresh = prev
+        ? { ...prev, ...next, purge: prev.purge === true || next.purge === true }
+        : next;
+      return;
+    }
+    void this.ssrm?.refresh(params);
+  }
+
+  applyServerSideTransaction(tx: ServerSideTransaction<TRow>): void {
+    if (!this.ssrm) {
+      console.warn('[cgrid] applyServerSideTransaction requires rowModelType: \"serverSide\"');
+      return;
+    }
+    if (
+      this.bodyScrollActive
+      && this.options.deferAsyncTransactionsWhileScrolling !== false
+    ) {
+      this.deferredSsrmTxs.push(tx);
+      return;
+    }
+    this.dispatchServerSideTransaction(tx);
+  }
+
+  /** Apply an SSRM transaction immediately (bypasses scroll deferral). */
+  private dispatchServerSideTransaction(tx: ServerSideTransaction<TRow>): void {
+    // Keep main mirror warm for updates.
+    if (tx.update) {
+      for (const row of tx.update) {
+        try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip */ }
+      }
+    }
+    if (tx.add) {
+      for (const row of tx.add) {
+        try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip */ }
+      }
+    }
+    if (tx.remove) {
+      for (const row of tx.remove) {
+        try { this.rowDataById.delete(this.options.getRowId(row)); } catch { /* skip */ }
+      }
+    }
+    this.ssrm!.applyServerSideTransaction(tx);
+  }
+
   setRowData(rows: TRow[]): void {
+    if (this.ssrm) {
+      console.warn('[cgrid] setRowData is ignored in serverSide row model — use the datasource');
+      return;
+    }
     const heightsByRowId = this.resolveHeightsForRows(rows);
     // Cycle 7 / Task 8 — refresh the main-side row cache so the external
     // filter + alwaysPass predicates evaluate against current data.
@@ -3478,7 +3794,7 @@ export class CGrid<TRow = any> {
     for (const row of rows) {
       try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip bad rowId */ }
     }
-    this.workerCoord.setRowData(rows, heightsByRowId).then(({ visibleCount, groupKeys }) => {
+    this.workerCoord.setRowData(rows, heightsByRowId).then(({ visibleCount, groupKeys, expandedKeys }) => {
       if (this.destroyed) return;
       this.rowCount = visibleCount;
       // Cycle 15 / Task 7 — setRowData may have grown the set of
@@ -3486,6 +3802,11 @@ export class CGrid<TRow = any> {
       // time). The worker rides them back on the reply so the mirror
       // for `getExpandedKeys()` populates before the next UI tick.
       if (groupKeys !== undefined) this.knownGroupKeys = groupKeys;
+      // AG parity 2026-07-21 — this load re-seeded groupDefaultExpanded
+      // defaults (the model landed before data); adopt the worker's set.
+      if (expandedKeys !== undefined) {
+        this.expandedKeys = expandedKeys === null ? null : new Set(expandedKeys);
+      }
       // Persist / profile restore can paint row-group chips while the
       // worker still rejects unknown group ids (placeholder columnDefs).
       // `groupKeys === undefined` means the worker is not grouping at all
@@ -3581,6 +3902,20 @@ export class CGrid<TRow = any> {
       || (merged.remove && merged.remove.length > 0)
     ) {
       this.dispatchAsyncTransaction(merged);
+    }
+  }
+
+  /** Flush SSRM refresh / transactions deferred during body scroll. */
+  private flushDeferredSsrmUpdates(): void {
+    if (this.deferredSsrmTxs.length > 0) {
+      const queued = this.deferredSsrmTxs;
+      this.deferredSsrmTxs = [];
+      for (const tx of queued) this.dispatchServerSideTransaction(tx);
+    }
+    if (this.deferredSsrmRefresh !== null) {
+      const params = this.deferredSsrmRefresh;
+      this.deferredSsrmRefresh = null;
+      void this.ssrm?.refresh(params);
     }
   }
 
@@ -3864,6 +4199,13 @@ export class CGrid<TRow = any> {
     // into every strip's pixels — belt-and-suspenders over the chunk
     // window-diff (which also degrades to a full wipe for big reorders).
     if (this.rasterStrips !== null) this.stripLayoutEpochBump();
+    // SSRM sparse path — sort is applied by the datasource on the next getRows.
+    // Client-pipeline mode uses the CSRM SortPass below.
+    if (this.ssrm && !this.ssrmClientPipeline) {
+      this.events.emit({ type: 'sortChanged', sortModel: s });
+      this.ssrm.refresh({ purge: true });
+      return;
+    }
     this.workerCoord.setSortModel(s).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
       // Sort reorders rows — invalidate the Fenwick index so stale per-row
@@ -4092,6 +4434,18 @@ export class CGrid<TRow = any> {
       if ((entry as CFilterModelEntry & { filterType?: string }).filterType !== undefined) {
         this.columnFilterModels.set(id, entry as CFilterModelEntry);
       }
+    }
+    // SSRM sparse path — filter is applied by the datasource on the next getRows.
+    // Client-pipeline mode uses the CSRM FilterPass below.
+    if (this.ssrm && !this.ssrmClientPipeline) {
+      this.events.emit({
+        type: 'filterChanged',
+        filterModel: f,
+        source: 'api',
+        columns: changedColIds,
+      });
+      this.ssrm.refresh({ purge: true });
+      return;
     }
     this.workerCoord.setFilterModel(f).then(({ visibleCount }) => {
       this.rowCount = visibleCount;
@@ -4719,12 +5073,14 @@ export class CGrid<TRow = any> {
    *  rows. Identical to the value last shipped via `modelUpdated`. */
   getDisplayedRowCount(): number { return this.rowCount; }
 
-  /** Cycle 13 / Task 2 — total pre-filter row count. Reads off the
-   *  main-thread `rowDataById` cache (populated by `setRowData` +
-   *  maintained by `applyTransaction.add` / `.remove`), so it stays
-   *  cheap under a per-frame status-bar refresh — no worker round-trip,
-   *  no chunk walk. */
-  getTotalRowCount(): number { return this.rowDataById.size; }
+  /** Cycle 13 / Task 2 — total pre-filter row count. CSRM: size of the
+   *  main-thread `rowDataById` mirror. SSRM: same as displayed count
+   *  (the datasource owns filtering; `rowDataById` is only a hydrate
+   *  cache and must not drive the status bar). */
+  getTotalRowCount(): number {
+    if (this.ssrm) return this.rowCount;
+    return this.rowDataById.size;
+  }
 
   /** Cycle 21e / Task 10 — iterate every row in the main-thread
    *  `rowDataById` mirror (setRowData + all transaction paths keep it in
@@ -4741,11 +5097,118 @@ export class CGrid<TRow = any> {
     if (!this.destroyed) this.grouping.setGroupModel(g);
   }
 
+  /**
+   * SSRM → CSRM feature bridge: fully hydrate the book, then toggle the
+   * worker client pipeline so grouping / pivot / filter / sort / totals
+   * run through the same passes as `rowModelType: 'clientSide'`.
+   */
+  private ssrmWantsClientPipeline(): boolean {
+    if (this.options.rowModelType !== 'serverSide') return false;
+    const opt = this.options.serverSideEnableClientSidePipeline;
+    if (opt === false) return false;
+    // v2 skeleton datasource serves grouping natively on the sparse path —
+    // never auto-download the book; the pipeline is explicit opt-in only.
+    if (this.ssrmV2) return opt === true;
+    if (opt === true) return true;
+    // auto (undefined): CSRM-shaping options were configured at construction.
+    return this.hasSsrmCsrmFeatures();
+  }
+
+  /** Construction-time CSRM features that require the worker pipeline under SSRM. */
+  private hasSsrmCsrmFeatures(): boolean {
+    return (
+      this.options.groupTotalRow != null
+      || this.options.grandTotalRow != null
+      || this.options.groupIncludeFooter === true
+      || this.options.groupIncludeTotalFooter === true
+      || this.options.rowGroupPanelShow != null
+      || (this.options.initialState?.rowGroupColumns?.length ?? 0) > 0
+      || this.pivotEngine.isPivotMode()
+    );
+  }
+
+  private enableSsrmClientPipeline(): Promise<void> {
+    if (!this.ssrm || this.destroyed) return Promise.resolve();
+    if (this.ssrmClientPipeline) return Promise.resolve();
+    const run = async (): Promise<void> => {
+      if (!this.ssrm || this.destroyed) return;
+      const hydrated = await this.ssrm.ensureFullyHydrated();
+      if (!this.ssrm || this.destroyed) return;
+      // Refused (grouped v2 stays sparse): running the CSRM pipeline over a
+      // sparse store would treat skeleton group rows as leaf data.
+      if (!hydrated) return;
+      const reply = await this.workerCoord.ssrmSetClientPipeline(true);
+      if (this.destroyed) return;
+      this.ssrmClientPipeline = true;
+      if (reply.groupKeys !== undefined) this.knownGroupKeys = reply.groupKeys;
+      // Deferred groupDefaultExpanded seed may have fired on this rebuild.
+      if (reply.expandedKeys !== undefined) {
+        this.expandedKeys = reply.expandedKeys === null ? null : new Set(reply.expandedKeys);
+      }
+      this.rowCount = reply.visibleCount;
+      this.rowHeightIndex = null;
+      this.recomputeViewport();
+      this.requestViewport('rowDataChanged');
+    };
+    this.ssrmPipelineChain = this.ssrmPipelineChain.then(run, run);
+    return this.ssrmPipelineChain;
+  }
+
+  private disableSsrmClientPipeline(): Promise<void> {
+    if (!this.ssrm || this.destroyed) return Promise.resolve();
+    // Keep pipeline on when CSRM parity is requested for the life of the grid.
+    if (this.ssrmWantsClientPipeline()) {
+      return Promise.resolve();
+    }
+    if (!this.ssrmClientPipeline) return Promise.resolve();
+    const run = async (): Promise<void> => {
+      if (!this.ssrm || this.destroyed) return;
+      await this.workerCoord.ssrmSetClientPipeline(false);
+      if (this.destroyed) return;
+      this.ssrmClientPipeline = false;
+      this.ssrm.refresh({ purge: true });
+    };
+    this.ssrmPipelineChain = this.ssrmPipelineChain.then(run, run);
+    return this.ssrmPipelineChain;
+  }
+
+  /** GroupingCoordinator seam — ensure SSRM can host GroupPass first. */
+  private setWorkerGroupModelForSsrm(g: GroupModel): ReturnType<WorkerCoordinator['setGroupModel']> {
+    // Sparse SSRM (v2 skeleton, or v1 with the pipeline explicitly off) —
+    // the host owns group/agg. Purge so the next fetch reflects the new
+    // rowGroupCols (v2: skeleton refetch); worker GroupPass stays off.
+    if (this.isSparseSsrm()) {
+      void this.ssrm?.refresh({ purge: true });
+      return Promise.resolve({
+        visibleCount: this.rowCount,
+        groupKeys: [],
+        groupDescendants: [],
+        expandedKeys: null,
+      });
+    }
+    const wantsGroup = g.rowGroupCols.length > 0;
+    const prep = wantsGroup
+      ? this.enableSsrmClientPipeline()
+      : this.disableSsrmClientPipelineIfIdle();
+    return prep.then(() => this.workerCoord.setGroupModel(g));
+  }
+
+  /** Drop client pipeline only when neither grouping nor pivot needs it. */
+  private disableSsrmClientPipelineIfIdle(): Promise<void> {
+    if (this.pivotEngine.isPivotMode()) return Promise.resolve();
+    if (this.grouping.getRowGroupColumns().length > 0) return Promise.resolve();
+    return this.disableSsrmClientPipeline();
+  }
+
   // ─── Cycle 18 / Task 3 — pivot API + render wiring ─────────────────────
 
   isPivotMode(): boolean { return this.pivotEngine.isPivotMode(); }
   setPivotMode(pivotMode: boolean, opts?: { discardSettings?: boolean }): void {
     if (this.destroyed) return;
+    if (this.ssrm) {
+      if (pivotMode) void this.enableSsrmClientPipeline();
+      else void this.disableSsrmClientPipelineIfIdle();
+    }
     // Cycle 21i / Phase 1 (user directive) — `discardSettings` (passed by
     // the Pivot Mode toggle in the columns tool panel, i.e. a user-driven
     // switch) gives a clean slate on the mode change so table-mode state
@@ -4887,7 +5350,7 @@ export class CGrid<TRow = any> {
       workerColumns: () => this.workerColumns(),
       updateWorkerColumns: (cols) =>
         this.workerCoord.updateColumns(cols as WorkerColumn[]),
-      setWorkerGroupModel: (g) => this.workerCoord.setGroupModel(g),
+      setWorkerGroupModel: (g) => this.setWorkerGroupModelForSsrm(g),
       getRowGroupPanel: () => this.rowGroupPanel,
       getColumnTree: () => this.columnTree,
       getColumnDefsMap: () => this.columnDefsMap,
@@ -4952,8 +5415,15 @@ export class CGrid<TRow = any> {
 
   expandAll(): void {
     if (this.destroyed) return;
-    this.expandedKeys = null;
-    this.shipExpandedKeys(null);
+    // Sparse SSRM — the null sentinel maps to the DEFAULT expansion set,
+    // not expand-all; ship an explicit all-keys set instead.
+    if (this.isSparseSsrm()) {
+      this.expandedKeys = new Set(this.knownGroupKeys);
+      this.shipExpandedKeys(Array.from(this.expandedKeys));
+    } else {
+      this.expandedKeys = null;
+      this.shipExpandedKeys(null);
+    }
     this.events.emit({ type: 'expandOrCollapseAll', expanded: true });
   }
 
@@ -4966,6 +5436,72 @@ export class CGrid<TRow = any> {
     this.expandedKeys = new Set();
     this.shipExpandedKeys([]);
     this.events.emit({ type: 'expandOrCollapseAll', expanded: false });
+  }
+
+  /**
+   * Sparse SSRM with host-owned grouping + `groupDefaultExpanded: 0`.
+   * In that mode `expandedKeys === null` means "not yet toggled — all
+   * collapsed", matching `getRows` / painted chevrons. CSRM (and SSRM
+   * client pipeline) still treat null as the expand-all sentinel.
+   */
+  /**
+   * Sparse-SSRM default expansion for the null sentinel — mirrors the
+   * worker GroupPass rules over `knownGroupKeys` (AG semantics:
+   * `isGroupOpenByDefault` wins, then `groupDefaultExpandedKeys`, then
+   * `groupDefaultExpanded`: -1/'all' = everything, N = number of LEVELS
+   * open, 0/other negatives = nothing). Depth derives from the composite
+   * key's segment count.
+   */
+  private sparseDefaultExpandedKeys(): Set<string> {
+    const cb = this.options.isGroupOpenByDefault;
+    if (cb) {
+      const set = new Set<string>();
+      for (const key of this.knownGroupKeys) {
+        const route = parseCompositeGroupKey(key).map((s) => s.value);
+        try {
+          if (cb({ key, route })) set.add(key);
+        } catch { /* skip */ }
+      }
+      return set;
+    }
+    if (this.options.groupDefaultExpandedKeys !== undefined) {
+      return new Set(this.options.groupDefaultExpandedKeys);
+    }
+    const d = this.options.groupDefaultExpanded ?? 0;
+    if (d === 'all' || d === -1) return new Set(this.knownGroupKeys);
+    if (typeof d === 'number' && d > 0) {
+      const set = new Set<string>();
+      for (const key of this.knownGroupKeys) {
+        const depth = key.split('::').length - 1;
+        if (depth < d) set.add(key);
+      }
+      return set;
+    }
+    return new Set();
+  }
+
+  /** Under the null sentinel, is `groupKey` expanded? CSRM: yes (null =
+   *  expand-all). Sparse SSRM: membership in the default expansion set. */
+  private isKeyExpandedUnderNullSentinel(groupKey: string): boolean {
+    if (this.isSparseSsrm()) return this.sparseDefaultExpandedKeys().has(groupKey);
+    return true;
+  }
+
+  /** Host-owned-grouping SSRM: v2 skeleton datasource, or v1 with the
+   *  client pipeline explicitly disabled. Falls back to the construction
+   *  options before the controller mounts (the grouping coordinator can
+   *  ship the initial group model earlier in construction). */
+  private isSparseSsrm(): boolean {
+    if (this.options.rowModelType !== 'serverSide') return false;
+    if (this.options.serverSideEnableClientSidePipeline === false) return true;
+    if (this.ssrm !== null) return this.ssrmV2 && !this.ssrmClientPipeline;
+    return isServerSideDatasourceV2(this.options.serverSideDatasource);
+  }
+
+  /** Materialise an explicit set when leaving the null sentinel. */
+  private materializeExpandedKeysFromNull(): Set<string> {
+    if (this.isSparseSsrm()) return this.sparseDefaultExpandedKeys();
+    return new Set(this.knownGroupKeys);
   }
 
   /** Cycle 15 / Task 7 — toggle a specific group's expanded state.
@@ -4981,13 +5517,12 @@ export class CGrid<TRow = any> {
   setExpanded(groupKey: string, expanded: boolean): void {
     if (this.destroyed) return;
     // Materialise the mirror if we're entering explicit mode from
-    // the default-all sentinel. The materialised set holds every
-    // currently-known group key so the next ship-to-worker is a
-    // complete picture.
+    // the null sentinel.
     let next: Set<string>;
     if (this.expandedKeys === null) {
-      if (expanded) return; // already expanded under the default
-      next = new Set(this.knownGroupKeys);
+      const defaultExpanded = this.isKeyExpandedUnderNullSentinel(groupKey);
+      if (expanded === defaultExpanded) return;
+      next = this.materializeExpandedKeysFromNull();
     } else {
       next = new Set(this.expandedKeys);
     }
@@ -5009,9 +5544,12 @@ export class CGrid<TRow = any> {
    *  group key set. Returns a fresh `Set` each call (mutations don't
    *  affect grid state). When the mirror is at the default-all
    *  sentinel we materialise via `knownGroupKeys` so the snapshot is
-   *  honest about which keys are open. */
+   *  honest about which keys are open. Sparse SSRM with
+   *  `groupDefaultExpanded: 0` treats null as all-collapsed. */
   getExpandedKeys(): Set<string> {
-    if (this.expandedKeys === null) return new Set(this.knownGroupKeys);
+    if (this.expandedKeys === null) {
+      return this.materializeExpandedKeysFromNull();
+    }
     return new Set(this.expandedKeys);
   }
 
@@ -5025,6 +5563,20 @@ export class CGrid<TRow = any> {
    *  `groupDescendants` when the worker is emitting them. The
    *  selection model's membership resolver reads from this cache. */
   private shipExpandedKeys(keys: string[] | null): void {
+    // Sparse SSRM — expansion state drives the flattened order. v2: local
+    // skeleton reflow (same frame). v1: `refreshExpansion` drops the whole
+    // block cache (a toggle shifts every flattened index below it;
+    // band-only invalidation left stale rows to rehydrate at old offsets).
+    if (this.ssrm && !this.ssrmClientPipeline && this.isSparseSsrm()) {
+      void this.ssrm.refreshExpansion().then(() => {
+        if (this.destroyed) return;
+        this.rowHeightIndex = null;
+        this.recomputeViewport();
+        this.cgridCanvas.requestRepaint();
+        this.requestViewport();
+      }).catch((err) => { if (!this.destroyed) console.error('[cgrid]', err); });
+      return;
+    }
     this.workerCoord
       .setExpandedKeys(keys)
       .then(({ visibleCount, groupKeys, groupDescendants }) => {
@@ -5163,6 +5715,14 @@ export class CGrid<TRow = any> {
   }
   removeRowGroupColumn(colId: string): void {
     if (!this.destroyed) this.grouping.removeRowGroupColumn(colId);
+  }
+  /** AG v33 plural form — appends each column in order. */
+  addRowGroupColumns(colIds: string[]): void {
+    for (const colId of colIds) this.addRowGroupColumn(colId);
+  }
+  /** AG v33 plural form — removes each listed column. */
+  removeRowGroupColumns(colIds: string[]): void {
+    for (const colId of colIds) this.removeRowGroupColumn(colId);
   }
   moveRowGroupColumn(from: number, to: number): void {
     if (!this.destroyed) this.grouping.moveRowGroupColumn(from, to);
@@ -7536,6 +8096,38 @@ export class CGrid<TRow = any> {
     unregTip(colId);
   }
 
+  /** Re-read theme tokens once external stylesheets have applied. The
+   *  constructor's initial `cssReader.read()` can capture literal
+   *  fallbacks while DOM chrome (row-group panel, filters, status bar)
+   *  already resolves the live `--cg-*` bundle — leaving canvas rows
+   *  painted light on a dark theme until the next explicit theme swap. */
+  private scheduleThemeCssResync(): void {
+    if (typeof requestAnimationFrame !== 'function') return;
+    let cancelled = false;
+    this.disposables.add(() => { cancelled = true; });
+    const attempt = (framesLeft: number): void => {
+      requestAnimationFrame(() => {
+        if (cancelled || this.destroyed) return;
+        const next = this.cssReader.read();
+        const changed =
+          next.bg !== this.theme.bg
+          || next.headerBg !== this.theme.headerBg
+          || next.fg !== this.theme.fg
+          || next.rowAltBg !== this.theme.rowAltBg;
+        if (changed) {
+          this.theme = next;
+          this.rasterCacheEpochBump();
+          this.recomputeViewport();
+          this.repaintFull();
+          return;
+        }
+        if (framesLeft > 0) attempt(framesLeft - 1);
+      });
+    };
+    // Two deferred frames covers async `<link>` injection in Vite dev.
+    attempt(2);
+  }
+
   /** Cycle 22 / Task 3 — runtime per-token override. Apps tune
    *  individual `--cg-*` variables without writing CSS; the patch
    *  lands as inline styles on the grid root so `getComputedStyle`
@@ -7938,9 +8530,21 @@ export class CGrid<TRow = any> {
         // Cycle 14 / Task 2 — re-mount the subgrid stack so pinned-row
         // array changes (pinnedTopRowData / pinnedBottomRowData) take
         // effect without re-resolving the column tree.
+        //
+        // Value-only TOTAL ticks (same row count) still remount today;
+        // paint MUST land synchronously. A bare RAF `requestRepaint`
+        // under a high-frequency Perspective `on_update` storm can be
+        // perpetually deferred behind the next options write, leaving
+        // the canvas showing the first totals forever while
+        // `getGridOption('pinnedBottomRowData')` keeps moving.
         this.rebuildSubgridStack();
         this.recomputeViewport();
-        this.cgridCanvas?.requestRepaint();
+        this.repaintFull();
+        this.cgridCanvas?.paintNow();
+      },
+      /** Value-only pinned-row refresh — no stack remount. */
+      refreshPinnedRowPixels: () => {
+        this.repaintPinnedRowBands();
       },
       forwardAggFuncs: (funcs, triggerRefresh) => {
         // Cycle 14 / Task 3 — serialise each entry (with closure
@@ -8197,7 +8801,12 @@ export class CGrid<TRow = any> {
     if (this.options.pivotGrandTotals === true && this.pivotEngine.isPivotActive()) {
       return 'bottom';
     }
-    return this.options.totalsRowPosition ?? null;
+    if (this.options.totalsRowPosition != null) return this.options.totalsRowPosition;
+    // AG parity — `grandTotalRow: 'pinnedTop' | 'pinnedBottom'` rides the
+    // same pinned totals subgrid `totalsRowPosition` mounts.
+    if (this.options.grandTotalRow === 'pinnedBottom') return 'bottom';
+    if (this.options.grandTotalRow === 'pinnedTop') return 'top';
+    return null;
   }
 
   /** Cycle 14 / Task 2 — read the pinned-rows array for `position`. Returns
@@ -8225,6 +8834,33 @@ export class CGrid<TRow = any> {
       (row, colId) => this.pinnedCellLookup(row, colId),
     );
   }
+
+  /**
+   * Damage + paint pinned-top / pinned-bottom bands in place. Used when
+   * `pinned*RowData` values change without a mount/unmount (row count
+   * stable) so TOTAL ticks do not rebuild the whole subgrid stack.
+   */
+  private repaintPinnedRowBands(): void {
+    if (this.options.suppressPartialRepaint) {
+      this.repaintFull();
+      this.cgridCanvas?.paintNow();
+      return;
+    }
+    let top = Infinity;
+    let bottom = -Infinity;
+    let found = false;
+    for (const row of this.viewport.visibleRows) {
+      if (!(row.subgrid instanceof PinnedRowsSubgrid) && !row.subgrid.isTotals) continue;
+      found = true;
+      if (row.top < top) top = row.top;
+      if (row.bottom > bottom) bottom = row.bottom;
+    }
+    if (found) this.damageLedger.add({ kind: 'band', top, bottom });
+    else this.damageLedger.add({ kind: 'full' });
+    this.cgridCanvas?.requestRepaint();
+    this.cgridCanvas?.paintNow();
+  }
+
 
   /** Cycle 14 / Task 2 — resolve a single (row × column) cell value for a
    *  pinned subgrid. Honours `field` (with `colId` as fallback) and runs
@@ -8303,6 +8939,23 @@ export class CGrid<TRow = any> {
         return { value: lookupRaw, valueFormatted: fmt };
       }
     }
+    // Grand-total label — the pinned grand-total row shows 'Total' in
+    // the auto-group column (AG parity with the in-body grand-total
+    // footer), customizable via the same
+    // `autoGroupColumnDef.cellRendererParams.totalValueGetter` hook the
+    // `'groupFooter'` renderer reads. Per-group lookups never resolve
+    // the auto-group column, and `cellAt` routes in-body auto-group
+    // cells through the group renderers before this lookup — only the
+    // TotalsSubgrid lands here with an auto-group colId.
+    if (parentGroupKey === '' && isAutoGroupColumnId(colId)) {
+      const totalValueGetter = (this.options.autoGroupColumnDef?.cellRendererParams as {
+        totalValueGetter?: (params: { value: string; isGrandTotal: boolean }) => unknown;
+      } | undefined)?.totalValueGetter;
+      const label = typeof totalValueGetter === 'function'
+        ? String(totalValueGetter({ value: '', isGrandTotal: true }) ?? '')
+        : 'Total';
+      return { value: label, valueFormatted: label };
+    }
     let raw: unknown;
     if (parentGroupKey !== '') {
       // Collapsed-group aggregate fix — a per-group lookup must NEVER
@@ -8380,6 +9033,8 @@ export class CGrid<TRow = any> {
       this.columnResizeFlushRaf = 0;
     }
     this.columnResizeDragActive = false;
+    this.ssrm?.destroy();
+    this.ssrm = null;
     this.destroyed = true;
     this.deferredAsyncTxs = [];
     this.bodyScrollActive = false;
@@ -8497,12 +9152,17 @@ export class CGrid<TRow = any> {
       applyTransaction: (t) => this.applyTransaction(t),
       applyTransactionAsync: (t) => this.applyTransactionAsync(t),
       flushAsyncTransactions: () => this.flushAsyncTransactions(),
+      setServerSideDatasource: (ds) => this.setServerSideDatasource(ds),
+      refreshServerSide: (p) => this.refreshServerSide(p),
+      applyServerSideTransaction: (tx) => this.applyServerSideTransaction(tx),
       setSortModel: (s) => this.setSortModel(s),
       setFilterModel: (f) => this.setFilterModel(f),
       setGroupModel: (g) => this.setGroupModel(g),
       setRowGroupColumns: (cols) => this.setRowGroupColumns(cols),
       addRowGroupColumn: (colId) => this.addRowGroupColumn(colId),
       removeRowGroupColumn: (colId) => this.removeRowGroupColumn(colId),
+      addRowGroupColumns: (colIds) => this.addRowGroupColumns(colIds),
+      removeRowGroupColumns: (colIds) => this.removeRowGroupColumns(colIds),
       moveRowGroupColumn: (from, to) => this.moveRowGroupColumn(from, to),
       setRowGroupColumnSort: (colId, dir) => this.setRowGroupColumnSort(colId, dir),
       getRowGroupColumns: () => this.getRowGroupColumns(),
@@ -8919,8 +9579,15 @@ export class CGrid<TRow = any> {
     const bodyTop = vs.bodyTop;
     const bodyLeft = vs.bodyLeft;
     const bodyRight = vs.bodyRight;
+    // Cycle 21i moved the painted band to anchor on the auto-group
+    // column's left (pinned-left by default), not `bodyLeft` — the hit
+    // zone must live where the chevron paints, or with a pinned group
+    // column every sticky-caret click lands short of `bodyLeft` and
+    // falls through to the leaf row hidden under the band.
+    const autoGroupCol = vs.visibleColumns.find((c) => isAutoGroupColumnId(c.colId));
+    const bandLeft = autoGroupCol ? Math.min(autoGroupCol.left, bodyLeft) : bodyLeft;
     if (y < bodyTop || y >= bodyTop + ancestors.length * rowH) return null;
-    if (x < bodyLeft || x >= bodyRight) return null;
+    if (x < bandLeft || x >= bodyRight) return null;
     const bandIdx = Math.floor((y - bodyTop) / rowH);
     const ancestor = ancestors[bandIdx];
     if (!ancestor) return null;
@@ -8929,7 +9596,7 @@ export class CGrid<TRow = any> {
     const INDENT_UNIT = 14;
     const HIT_PAD = 4;
     const indentX = ancestor.depth * INDENT_UNIT;
-    const left = bodyLeft + PADDING + indentX;
+    const left = bandLeft + PADDING + indentX;
     const right = left + CHEVRON_SIZE;
     if (x < left - HIT_PAD || x > right + HIT_PAD) return null;
     return { groupKey: ancestor.key };
@@ -9002,6 +9669,20 @@ export class CGrid<TRow = any> {
   private cascadeGroupSelectionFromUi(groupKey: string, selected: boolean): void {
     if (this.destroyed) return;
     if (groupKey === '') return;
+    // Sparse SSRM v2 — descendants of unloaded leaves are unknown to the
+    // worker; resolve them through the datasource's optional
+    // `getGroupLeafIds`, seed the descendant cache, then cascade through
+    // the normal SelectionModel path (tri-state paint included).
+    if (this.ssrmV2 && this.ssrm instanceof ServerSideRowModelV2Controller) {
+      const ctrl = this.ssrm as ServerSideRowModelV2Controller<TRow>;
+      void ctrl.fetchGroupLeafIds(groupKey).then((ids) => {
+        if (this.destroyed) return;
+        if (ids !== null) this.groupDescendantsByKey.set(groupKey, ids);
+        this.selection.setGroupSelected(groupKey, selected);
+        this.rebuildSelectionFromPersistentIds();
+      }).catch(() => { /* leave selection untouched on datasource failure */ });
+      return;
+    }
     this.selection.setGroupSelected(groupKey, selected);
     // Rebuild the index-keyed selectedRowIndices so the painter highlights
     // the cascaded leaf rows. setGroupSelected only updates the persistent
@@ -9017,12 +9698,15 @@ export class CGrid<TRow = any> {
   private toggleGroupExpandedFromUi(groupKey: string): void {
     if (this.destroyed) return;
     if (groupKey === '') return;
+    // CSRM: null = expand-all. Sparse SSRM: null = the DEFAULT expansion
+    // set (per-key — must NOT materialise knownGroupKeys wholesale, which
+    // would expand every other desk when the user clicks the first).
     const currentlyExpanded = this.expandedKeys === null
-      ? true
+      ? this.isKeyExpandedUnderNullSentinel(groupKey)
       : this.expandedKeys.has(groupKey);
     const next = !currentlyExpanded;
     const materialised = this.expandedKeys === null
-      ? new Set(this.knownGroupKeys)
+      ? this.materializeExpandedKeysFromNull()
       : new Set(this.expandedKeys);
     if (next) materialised.add(groupKey);
     else materialised.delete(groupKey);
@@ -9034,6 +9718,51 @@ export class CGrid<TRow = any> {
       expanded: next,
       source: 'ui',
     });
+  }
+
+  /** AG parity — mirrors `CGridOptions.suppressDoubleClickExpand` for the
+   *  GroupExpandFeature's double-click handler. */
+  isGroupDoubleClickExpandSuppressed(): boolean {
+    return this.options.suppressDoubleClickExpand === true;
+  }
+
+  /** AG parity — derive construction-time row-group columns from
+   *  `colDef.rowGroup` / `rowGroupIndex`. Indexed entries order first
+   *  (by index, ties by definition order); bare `rowGroup: true` columns
+   *  follow in definition order. A set `rowGroupIndex` implies grouping
+   *  even without `rowGroup: true` (AG semantics). */
+  private computeInitialRowGroupColumns(): string[] {
+    // Read the RAW columnDefs — the resolver treats rowGroup/rowGroupIndex
+    // as reserved fields and does not carry them onto ResolvedColDef.
+    const leaves: Array<Record<string, unknown>> = [];
+    const collect = (list: readonly unknown[] | undefined): void => {
+      for (const d of (list ?? []) as Array<Record<string, unknown>>) {
+        if (d && Array.isArray((d as { children?: unknown[] }).children)) {
+          collect((d as { children: unknown[] }).children);
+        } else if (d) {
+          leaves.push(d);
+        }
+      }
+    };
+    collect(this.options.columnDefs as unknown as readonly unknown[]);
+
+    const entries: Array<{ colId: string; index: number | null; seq: number }> = [];
+    let seq = 0;
+    for (const d of leaves) {
+      const colId = String(d.colId ?? d.field ?? '');
+      const hasIdx = typeof d.rowGroupIndex === 'number';
+      if (colId !== '' && (hasIdx || d.rowGroup === true)) {
+        entries.push({ colId, index: hasIdx ? (d.rowGroupIndex as number) : null, seq });
+      }
+      seq++;
+    }
+    entries.sort((a, b) => {
+      if (a.index !== null && b.index !== null) return a.index - b.index || a.seq - b.seq;
+      if (a.index !== null) return -1;
+      if (b.index !== null) return 1;
+      return a.seq - b.seq;
+    });
+    return entries.map((e) => e.colId);
   }
 
   /** Cycle 15 / Task 5 — read the per-row group context from the
@@ -9297,7 +10026,10 @@ export class CGrid<TRow = any> {
   /** Cycle 15.5 / Task 6 — true when `groupKey` is in the current
    *  expanded set. Returns false for collapsed or unknown keys. */
   isGroupExpanded(groupKey: string): boolean {
-    if (this.expandedKeys === null) return true; // all-expanded sentinel
+    if (this.expandedKeys === null) {
+      // CSRM expand-all sentinel; sparse SSRM → per-key default set.
+      return this.isKeyExpandedUnderNullSentinel(groupKey);
+    }
     return this.expandedKeys.has(groupKey);
   }
 
@@ -9361,6 +10093,12 @@ export class CGrid<TRow = any> {
         aggFunc: c.aggFunc,
         filter: c.filter,
       };
+      // AG parity 2026-07-21 — keyCreator crosses to the worker as source
+      // (same serialization contract as comparators / custom aggFuncs).
+      const keyCreator = (c as unknown as { keyCreator?: unknown }).keyCreator;
+      if (typeof keyCreator === 'function') {
+        base.keyCreatorSource = String(keyCreator);
+      }
       // Cycle 7 / Task 5 — forward the text-filter `textFormatter`
       // so the worker's matchesText can normalise both the cell value
       // AND the filter value before the operator comparison fires.
@@ -10376,6 +11114,10 @@ export class CGrid<TRow = any> {
    */
   private bodyScrollActive = false;
   private deferredAsyncTxs: Tx<TRow>[] = [];
+  /** SSRM soft refresh queued while the user is scrolling. */
+  private deferredSsrmRefresh: RefreshServerSideParams | null = null;
+  /** SSRM transactions queued while the user is scrolling. */
+  private deferredSsrmTxs: ServerSideTransaction<TRow>[] = [];
   private flashPausedForScroll = false;
 
   /** Start (or keep alive) the per-rAF flash tick. Each tick calls
@@ -10631,12 +11373,8 @@ export class CGrid<TRow = any> {
     }
     // Group rows (rowKind === 1) show per-group aggregate values from
     // `chunk.groupTotals` when available — same source as the per-group
-    // footer row (rowKind === 3). This matches AG Grid's behaviour where
-    // a group row header shows the aggregated column values both when
-    // collapsed AND when expanded (the footer row echoes them below).
-    // Falls through to empty rather than the zero-filled numericCols
-    // slot so a group row without an aggFunc column shows nothing
-    // rather than a misleading "0".
+    // footer row (rowKind === 3). CSRM uses AggPass; sparse SSRM hosts
+    // materialise the same map in the worker from hydrated row fields.
     if ((this.chunk.rowKinds[localIndex] ?? 0) === 1) {
       const groupKey = this.chunk.groupKey?.[localIndex] ?? '';
       if (groupKey !== '') {
