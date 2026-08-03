@@ -1,6 +1,6 @@
 # Perspective WASM + cgrid SSRM — Phased Implementation
 
-**Status:** Phase 1 complete — awaiting human OK before Phase 2  
+**Status:** Phase 5 complete (2026-07-25) — SharedWorker multi-tab landed  
 **Contract (locked):** Perspective owns storage / filter / sort / group / agg / windows / ticks.  
 CGrid SSRM owns block cache + paint. No `serverSideEnableClientSidePipeline` on this path.
 
@@ -122,3 +122,33 @@ STOMP / seed ──► SharedWorker (Perspective WASM Table)
 - `apps/cgrid-ssrm-demo/src/perspective/validatePhase1.ts` — browser gate
 - Demo defaults to Perspective + seed; `serverSideEnableClientSidePipeline: false`
 - Note: `npm run dev:stomp` points at missing `../starui/...`; use seed until that host is restored
+
+---
+
+## Phase 5 results (2026-07-25)
+
+| Check | Status | Notes |
+|-------|--------|-------|
+| SharedWorker engine (one per origin) | **pass** | `sharedServer.worker.ts` — multi-session host, one session per connected tab |
+| Cross-tab table share, no reseed | **pass** | tab B attaches via `open_table('positions-shared')` in <1s, `snap === book === 10000` |
+| Live fan-out to follower tabs | **pass** | 27 grid tick dispatches / 3s on B while A feeds (flat views ride a conflated soft refresh; leader keeps the patch path) |
+| Feed leader election + takeover | **pass** | Web Locks (`cgrid-ssrm-demo:feed-leader`): close leader → follower acquires, resumes seed ticks (27 → 52 dispatches) |
+| Dedicated-Worker fallback | **pass** | `?worker=dedicated` (also automatic on SharedWorker init failure, 10s timeout) |
+| Phase 1 sparse-window gate regression | **pass** | `phase1-smoke.mjs`: served=1600 ≪ book=10000 under the shared engine |
+
+**Smoke command:** `node apps/cgrid-ssrm-demo/scripts/phase5-smoke.mjs` (dev server on :5191)
+
+**Code landed**
+- `apps/cgrid-ssrm-demo/src/perspective/sharedServer.worker.ts` — SharedWorker host for the
+  Perspective server WASM. Faithful port of the stock inline worker's engine machinery with
+  the structural fix the stock script lacks: a **session per connected port** (the stock
+  script's single module-global session makes concurrent tabs clobber each other). Engine
+  instantiated from the init message's structured-cloned `WebAssembly.Module`.
+- `bootstrap.ts` — `perspective.worker(SharedWorker)` with 10s-timeout dedicated fallback;
+  `openOrCreatePositionsTable` (fixed cross-tab name + `get_hosted_table_names`/`open_table`).
+- `book.ts` — feed-leader election via Web Locks with queued takeover; followers adopt the
+  live book (no reseed) and never delete the shared table on teardown; follower flat views
+  route remote ticks to a band-scoped soft refresh; telemetry carries `workerMode`/`feedRole`.
+- Known scope note: STOMP-mode takeover re-runs the snapshot into the keyed table (benign,
+  positionId-indexed); the tab-crash edge (no `close` event, no `cmd:'close'`) leaks a
+  session in the SharedWorker until the last tab closes it.

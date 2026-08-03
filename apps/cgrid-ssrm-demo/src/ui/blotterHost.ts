@@ -1,8 +1,8 @@
 import { CGrid, type AnyServerSideDatasource } from '@cgrid/kernel';
 
-import { COLUMNS } from '../columns';
+import { COLUMNS } from '@cgrid/perspective';
 
-import type { PositionRow } from '../perspective/bootstrap';
+import type { PositionRow } from '@cgrid/perspective';
 
 
 

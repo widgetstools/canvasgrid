@@ -89,6 +89,45 @@ describe('RuleEngine — evaluateCell fold', () => {
       fontWeight: 'bold',
     });
   });
+
+  it('per-side border spec folds like any property: wholesale replace, no per-side merge', () => {
+    const engine = engineWith(
+      styleRule({
+        id: 'lo',
+        priority: 10,
+        style: { base: { border: { top: { width: 2, color: '#c62828', style: 'dashed' } } } },
+      }),
+      styleRule({
+        id: 'hi',
+        priority: 20,
+        style: { base: { border: { bottom: { width: 1, color: '#2dd4bf', style: 'solid' } } } },
+      }),
+    );
+    const res = engine.evaluateCell(ctx());
+    // The winning rule's spec replaces the whole `border` object (same
+    // wholesale semantics as kernel override patches) — the low-priority
+    // rule's `top` edge does NOT survive into the fold.
+    expect(res.style!.border).toEqual({ bottom: { width: 1, color: '#2dd4bf', style: 'solid' } });
+  });
+
+  it('theme slice border replaces the base border wholesale', () => {
+    const engine = engineWith(
+      styleRule({
+        id: 'TB',
+        priority: 1,
+        style: {
+          base: { border: { all: { width: 1, color: '#111111', style: 'solid' } } },
+          dark: { border: { left: { width: 3, color: '#eeeeee', style: 'double' } } },
+        },
+      }),
+    );
+    expect(engine.evaluateCell(ctx({ theme: 'dark' })).style!.border).toEqual({
+      left: { width: 3, color: '#eeeeee', style: 'double' },
+    });
+    expect(engine.evaluateCell(ctx({ theme: 'light' })).style!.border).toEqual({
+      all: { width: 1, color: '#111111', style: 'solid' },
+    });
+  });
 });
 
 // ─── Scope targeting ────────────────────────────────────────────────────

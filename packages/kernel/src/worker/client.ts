@@ -13,7 +13,7 @@ export interface WorkerClientHandlers {
    *  for `getExpandedKeys()` stays in lockstep through transactions
    *  that add / remove groups. Absent under ungrouped grids — main
    *  ignores it on the cheap path. */
-  onModelUpdated: (visibleCount: number, groupKeys?: string[]) => void;
+  onModelUpdated: (visibleCount: number, groupKeys?: string[], expandedKeys?: string[] | null) => void;
   onAsyncTransactionsFlushed: (results: TransactionResult[]) => void;
   onError: (error: string) => void;
   /** Cycle 5 / Task 8 — worker has measured a chunk of autoHeight rows and
@@ -69,7 +69,7 @@ export class WorkerClient {
   // postSortRowsRequest) bypass the queue — the worker is awaiting a
   // synchronous reply on their callId/batchId.
   private flushScheduled = false;
-  private pendingModelUpdated: { visibleCount: number; groupKeys?: string[] } | null = null;
+  private pendingModelUpdated: { visibleCount: number; groupKeys?: string[]; expandedKeys?: string[] | null } | null = null;
   private pendingHeights: Array<{ rowStart: number; heights: Float32Array }> = [];
   private pendingTxnResults: TransactionResult[] = [];
   private destroyed = false;
@@ -103,7 +103,7 @@ export class WorkerClient {
     this.pendingModelUpdated = null;
     this.pendingHeights = [];
     this.pendingTxnResults = [];
-    if (model) this.handlers.onModelUpdated(model.visibleCount, model.groupKeys);
+    if (model) this.handlers.onModelUpdated(model.visibleCount, model.groupKeys, model.expandedKeys);
     if (heights.length) {
       const cb = this.handlers.onHeightsChanged;
       if (cb) for (const h of heights) cb(h.rowStart, h.heights);
@@ -121,7 +121,16 @@ export class WorkerClient {
       return;
     }
     if (msg.type === 'modelUpdated') {
-      this.pendingModelUpdated = { visibleCount: msg.visibleCount, groupKeys: msg.groupKeys };
+      this.pendingModelUpdated = {
+        visibleCount: msg.visibleCount,
+        groupKeys: msg.groupKeys,
+        // Coalescing keeps the latest push's fields, but a seed-bearing
+        // expandedKeys must survive a later seed-less push in the same
+        // RAF window — it is a one-shot signal.
+        expandedKeys: msg.expandedKeys !== undefined
+          ? msg.expandedKeys
+          : this.pendingModelUpdated?.expandedKeys,
+      };
       this.scheduleFlush();
     } else if (msg.type === 'asyncTransactionsFlushed') {
       for (const r of msg.results) this.pendingTxnResults.push(r);
@@ -181,8 +190,8 @@ export class WorkerClient {
     });
   }
 
-  ssrmSetClientPipeline(enabled: boolean): Promise<{ count: number; visibleCount: number; groupKeys?: string[] }> {
-    return this.send<{ count: number; visibleCount: number; groupKeys?: string[] }>({
+  ssrmSetClientPipeline(enabled: boolean): Promise<{ count: number; visibleCount: number; groupKeys?: string[]; expandedKeys?: string[] | null }> {
+    return this.send<{ count: number; visibleCount: number; groupKeys?: string[]; expandedKeys?: string[] | null }>({
       type: 'ssrmSetClientPipeline',
       payload: { enabled },
     });

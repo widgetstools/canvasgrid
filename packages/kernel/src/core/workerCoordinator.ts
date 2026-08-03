@@ -34,7 +34,7 @@ export interface WorkerCoordinatorDeps {
   /** Worker pushed a `modelUpdated` (sync transaction, async-tx flush, set
    *  model swap, etc.). `groupKeys` is present when grouping is active so
    *  CGrid's `expandedKeys` mirror stays in lockstep. */
-  onModelUpdated(visibleCount: number, groupKeys?: string[]): void;
+  onModelUpdated(visibleCount: number, groupKeys?: string[], expandedKeys?: string[] | null): void;
   /** Worker flushed a batch of async transactions; `results` carries one
    *  TransactionResult per buffered `applyTransactionAsync` call. */
   onAsyncTransactionsFlushed(results: TransactionResult[]): void;
@@ -89,7 +89,7 @@ export class WorkerCoordinator {
     // currently exposed) would light up; in practice deps is constructed
     // once per CGrid and lives for the grid's lifetime.
     const handlers: WorkerClientHandlers = {
-      onModelUpdated: (vc, gk) => this.deps.onModelUpdated(vc, gk),
+      onModelUpdated: (vc, gk, ek) => this.deps.onModelUpdated(vc, gk, ek),
       onAsyncTransactionsFlushed: (results) => this.deps.onAsyncTransactionsFlushed(results),
       onHeightsChanged: (rowStart, heights) => this.deps.onHeightsChanged(rowStart, heights),
       onMeasureTextRequest: (batchId, items) => this.deps.onMeasureTextRequest(batchId, items),
@@ -172,7 +172,7 @@ export class WorkerCoordinator {
     return this.client.ssrmHydrate(payload);
   }
 
-  ssrmSetClientPipeline(enabled: boolean): Promise<{ count: number; visibleCount: number; groupKeys?: string[] }> {
+  ssrmSetClientPipeline(enabled: boolean): Promise<{ count: number; visibleCount: number; groupKeys?: string[]; expandedKeys?: string[] | null }> {
     return this.client.ssrmSetClientPipeline(enabled);
   }
 

@@ -738,7 +738,20 @@ export class FilterPass<TRow = any> {
   }
 
   apply(): string[] {
-    const entries = Object.entries(this.model);
+    return this.applyEntries(Object.entries(this.model));
+  }
+
+  /** `groupAggFiltering` mixed model — apply only the entries NOT in
+   *  `excludeColIds`; the excluded ones evaluate group aggregates instead
+   *  (worker `pruneGroupsByAggFilter`). Excluding every entry returns all
+   *  rows, same as `allRowIds()`. */
+  applyExcluding(excludeColIds: ReadonlySet<string>): string[] {
+    return this.applyEntries(
+      Object.entries(this.model).filter(([colId]) => !excludeColIds.has(colId)),
+    );
+  }
+
+  private applyEntries(entries: Array<[string, FilterModel[string]]>): string[] {
     if (entries.length === 0) {
       return Array.from(this.store.rows()).map((r) => this.store.getRowId(r));
     }
@@ -1017,6 +1030,14 @@ export class ViewportSlicer<TRow = any> {
   /** Install (or clear, via `null`) the calc-column value source. */
   setCalcSource(src: CalcValueSource | null): void { this.calcSource = src; }
 
+  /** Sparse SSRM only — rows carry `__ssrm` meta the flat slicer must
+   *  surface as group/footer chrome. Off for plain client-side grids so
+   *  (a) a user row that happens to have a `__ssrm` field is not
+   *  reinterpreted as chrome and (b) the per-row store lookup + meta
+   *  parse stays off the CSRM hot path. */
+  private ssrmMeta = false;
+  setSsrmMetaEnabled(on: boolean): void { this.ssrmMeta = on; }
+
   slice(
     visibleIds: string[],
     req: ViewportRequest,
@@ -1073,7 +1094,7 @@ export class ViewportSlicer<TRow = any> {
       rowIds[i] = this.store.getNumericId(id);
       stringRowIds[i] = id;
       heights[i] = this.store.effectiveShippedHeight(id);
-      const meta = readSsrmRowMeta(this.store.getById(id));
+      const meta = this.ssrmMeta ? readSsrmRowMeta(this.store.getById(id)) : undefined;
       if (meta) {
         groupDepth[i] = meta.depth;
         if (meta.kind === 'group') {

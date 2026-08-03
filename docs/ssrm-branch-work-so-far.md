@@ -154,6 +154,18 @@ viewer-datagrid study; see the unification addendum in
 
 ---
 
+## Worklog: Phase 5 — SharedWorker multi-tab (2026-07-25)
+
+One Perspective engine per origin: `sharedServer.worker.ts` hosts the server
+WASM in a SharedWorker with a session per connected tab (the stock client's
+inline worker has `connect` wiring but a single global session — concurrent
+tabs clobber each other, hence the custom host). Every tab binds the fixed
+`positions-shared` table (`open_table` attach, <1s, no reseed); exactly one
+tab feeds (Web Locks leader election, queued takeover on leader close);
+follower flat views paint remote ticks via conflated soft refresh. Dedicated
+fallback via `?worker=dedicated` or automatic on init failure/timeout.
+Verified: `scripts/phase5-smoke.mjs` (11/11) + `phase1-smoke.mjs` regression.
+
 ## Related docs
 
 - `docs/superpowers/plans/notes/perspective-ssrm-phased-plan.md` — phased plan

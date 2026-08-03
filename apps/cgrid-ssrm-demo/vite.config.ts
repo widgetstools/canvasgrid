@@ -24,9 +24,18 @@ export default defineConfig({
     ],
   },
   optimizeDeps: {
-    exclude: ['@cgrid/kernel', '@perspective-dev/client', '@perspective-dev/server'],
+    exclude: ['@cgrid/kernel', '@perspective-dev/client', '@perspective-dev/server', '@cgrid/perspective'],
   },
   worker: {
     format: 'es',
+  },
+  build: {
+    rollupOptions: {
+      input: {
+        main: fileURLToPath(new URL('./index.html', import.meta.url)),
+        simple: fileURLToPath(new URL('./simple.html', import.meta.url)),
+        playground: fileURLToPath(new URL('./playground.html', import.meta.url)),
+      },
+    },
   },
 });

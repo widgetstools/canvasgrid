@@ -1,0 +1,31 @@
+{
+  "name": "@cgrid/perspective",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "main": "./src/index.ts",
+  "types": "./src/index.ts",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "import": "./src/index.ts"
+    }
+  },
+  "scripts": {
+    "build": "echo '@cgrid/perspective ships source (worker URLs resolve in the consuming app bundle)' && exit 0",
+    "test": "vitest run --passWithNoTests",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@perspective-dev/client": "^4.5.2",
+    "@perspective-dev/server": "^4.5.2",
+    "@stomp/stompjs": "^7.3.0"
+  },
+  "peerDependencies": {
+    "@cgrid/kernel": "*"
+  },
+  "devDependencies": {
+    "typescript": "~5.9.3",
+    "vitest": "^2.1.0"
+  }
+}

@@ -20,7 +20,7 @@ import { ViewportManager } from './core/viewportManager';
 import { ServerSideRowModelController } from './core/serverSideRowModel';
 import { ServerSideRowModelV2Controller, type SsrmHostV2 } from './core/serverSideRowModelV2';
 import { isServerSideDatasourceV2 } from './types/ssrm';
-import { parseCompositeGroupKey } from './core/ssrmRowMeta';
+import { parseCompositeGroupKey, readSsrmRowMeta as readSsrmMeta } from './core/ssrmRowMeta';
 import type {
   AnyServerSideDatasource,
   IServerSideDatasource,
@@ -331,6 +331,9 @@ const NON_PERSISTABLE_RUNTIME_OPTIONS: ReadonlySet<string> = new Set([
  *  Node), with a monotonic-counter fallback so tests / older runtimes
  *  still get collision-free ids. */
 let layoutIdCounter = 0;
+/** One-shot guard for the 2026-07 `groupDefaultExpanded` semantics-change
+ *  warning (levels-open AG parity) — once per page load, not per grid. */
+let warnedGroupDefaultExpandedMigration = false;
 function generateLayoutId(): string {
   const c = (globalThis as { crypto?: { randomUUID?: () => string } }).crypto;
   if (c?.randomUUID) return `layout-${c.randomUUID()}`;
@@ -3094,13 +3097,28 @@ export class CGrid<TRow = any> {
     this.workerCoord = new WorkerCoordinator(
       worker as unknown as import('./core/workerCoordinator').WorkerLike,
       {
-        onModelUpdated: (visibleCount, groupKeys) => {
-          this.rowCount = visibleCount;
+        onModelUpdated: (visibleCount, groupKeys, expandedKeys) => {
+          // Sparse SSRM owns rowCount through hydrate replies. A
+          // transaction-driven modelUpdated computed against a
+          // pre-resize ssrmOrder (live tick racing a regroup / initial
+          // hydrate) carries a stale count — applying it makes
+          // getDisplayedRowCount flap (e.g. flat 50k reasserting after
+          // a regroup reported 3) until the next hydrate corrects it.
+          if (!(this.ssrm && !this.ssrmClientPipeline)) {
+            this.rowCount = visibleCount;
+          }
           // Cycle 15 / Task 7 — keep the main-side mirror in lockstep
           // with the worker's tree across transactions that add or
           // remove group keys (e.g. a new ticker entered the dataset).
           // The worker only ships this when grouping is active.
           if (groupKeys !== undefined) this.knownGroupKeys = groupKeys;
+          // AG parity — a transaction-driven rebuild consumed the
+          // deferred `groupDefaultExpanded` seed; adopt the seeded set
+          // (same rule as the setRowData reply) so the first caret click
+          // doesn't ship a wrong mirror.
+          if (expandedKeys !== undefined) {
+            this.expandedKeys = expandedKeys === null ? null : new Set(expandedKeys);
+          }
           // Cycle 15 / Task 8 — descendants may have shifted (new rows
           // in a group, removed rows, new groups). The push doesn't
           // ship them; refresh the cache via a follow-up
@@ -3161,6 +3179,21 @@ export class CGrid<TRow = any> {
         isDestroyed: () => this.destroyed,
       },
     );
+
+    // Migration warning (2026-07, one per page load): `groupDefaultExpanded`
+    // moved to AG-Grid levels-open semantics. `-1` flipped from collapse-all
+    // to expand-all; `0` flipped from first-level-open to all-collapsed.
+    if (
+      !warnedGroupDefaultExpandedMigration
+      && (options.groupDefaultExpanded === -1 || options.groupDefaultExpanded === 0)
+    ) {
+      warnedGroupDefaultExpandedMigration = true;
+      console.warn(
+        `[cgrid] groupDefaultExpanded: ${options.groupDefaultExpanded} — semantics changed to AG-Grid levels-open: `
+        + '-1 now expands ALL groups (was: collapse all); 0 now collapses all (was: top level open); '
+        + 'N >= 1 opens N levels. Use groupDefaultExpandedKeys: [] for an explicit all-collapsed start.',
+      );
+    }
 
     this.workerCoord.init({
       rowIdField: inferRowIdField(options.getRowId),
@@ -3294,13 +3327,16 @@ export class CGrid<TRow = any> {
         await this.applyGroupSelectsChildren(true);
         this.selection.setGroupSelects('descendants', null);
       }
-      this.events.emit({ type: 'gridReady', api: this.makeApi() });
+      // SSRM mounts BEFORE gridReady so the canonical AG pattern — install
+      // the datasource from the gridReady handler — finds `this.ssrm` live.
       if (options.rowModelType === 'serverSide') {
         this.mountSsrmController(isServerSideDatasourceV2(options.serverSideDatasource));
         if (options.serverSideDatasource) {
           this.installServerSideDatasource(options.serverSideDatasource);
         }
-      } else if (options.rowData) {
+      }
+      this.events.emit({ type: 'gridReady', api: this.makeApi() });
+      if (options.rowModelType !== 'serverSide' && options.rowData) {
         this.setRowData(options.rowData);
       }
       // AG parity — construction-time `colDef.rowGroup` / `rowGroupIndex`
@@ -3448,7 +3484,7 @@ export class CGrid<TRow = any> {
         // genuine focus moves, keyed on the RESOLVED (rowId, colId) pair so
         // model reorders that re-index the same logical cell stay silent.
         const fc = this.getFocusedCell();
-        const key = fc ? `${fc.rowId} ${fc.colId}` : null;
+        const key = fc ? `${fc.rowId}\u0000${fc.colId}` : null;
         if (key !== lastFocusEmitKey) {
           lastFocusEmitKey = key;
           if (fc) this.events.emit({ type: 'cellFocused', rowId: fc.rowId, colId: fc.colId });
@@ -3625,8 +3661,17 @@ export class CGrid<TRow = any> {
       },
       hydrateWindow: async (startRow, rows, rowCount, reset) => {
         if (this.destroyed) return;
+        // Reset = new generation (purge / skeleton swap): drop the stale
+        // mirror so a long-lived blotter doesn't accumulate every row (and
+        // every stale generation's synthetics) ever hydrated.
+        if (reset) this.rowDataById.clear();
         // Keep main-side id mirror in sync for selection / external APIs.
+        // Skeleton chrome (group/footer/grand-total rows) stays out of the
+        // mirror — it is paint state, not data, and forEachNode/getRowNode
+        // must not yield it.
         for (const row of rows) {
+          const kind = readSsrmMeta(row)?.kind;
+          if (kind === 'group' || kind === 'footer' || kind === 'grandTotal') continue;
           try { this.rowDataById.set(this.options.getRowId(row), row); } catch { /* skip */ }
         }
         const { visibleCount } = await this.workerCoord.ssrmHydrate({
@@ -3688,7 +3733,13 @@ export class CGrid<TRow = any> {
       this.bodyScrollActive
       && this.options.deferAsyncTransactionsWhileScrolling !== false
     ) {
-      this.deferredSsrmRefresh = params ?? {};
+      // Merge instead of overwrite: a queued purge must survive later soft
+      // refreshes landing in the same scroll (last-write-wins dropped it).
+      const next = params ?? {};
+      const prev = this.deferredSsrmRefresh;
+      this.deferredSsrmRefresh = prev
+        ? { ...prev, ...next, purge: prev.purge === true || next.purge === true }
+        : next;
       return;
     }
     void this.ssrm?.refresh(params);
@@ -5081,11 +5132,19 @@ export class CGrid<TRow = any> {
     if (this.ssrmClientPipeline) return Promise.resolve();
     const run = async (): Promise<void> => {
       if (!this.ssrm || this.destroyed) return;
-      await this.ssrm.ensureFullyHydrated();
+      const hydrated = await this.ssrm.ensureFullyHydrated();
       if (!this.ssrm || this.destroyed) return;
+      // Refused (grouped v2 stays sparse): running the CSRM pipeline over a
+      // sparse store would treat skeleton group rows as leaf data.
+      if (!hydrated) return;
       const reply = await this.workerCoord.ssrmSetClientPipeline(true);
       if (this.destroyed) return;
       this.ssrmClientPipeline = true;
+      if (reply.groupKeys !== undefined) this.knownGroupKeys = reply.groupKeys;
+      // Deferred groupDefaultExpanded seed may have fired on this rebuild.
+      if (reply.expandedKeys !== undefined) {
+        this.expandedKeys = reply.expandedKeys === null ? null : new Set(reply.expandedKeys);
+      }
       this.rowCount = reply.visibleCount;
       this.rowHeightIndex = null;
       this.recomputeViewport();

@@ -922,9 +922,13 @@ export function applyCellProps(target: CellPaintConfig, ctx: ApplyCellPropsInput
           if (s.textDecoration !== undefined) {
             patch.textDecoration = s.textDecoration as ColCellOverrides['textDecoration'];
           }
-          // borderColor/borderStyle → BorderSpec on all four sides.
-          // borderStyle 'none' (or color absent) → no border patch.
-          if (s.borderColor !== undefined && s.borderStyle !== 'none') {
+          // Per-side border spec forwards verbatim (already the kernel
+          // BorderSpec vocabulary — cellBordersPainter handles sides /
+          // `all` fallback / width-0 skip). Wins over the legacy pair.
+          if (s.border !== undefined) {
+            patch.border = s.border as import('../types').BorderSpec;
+          } else if (s.borderColor !== undefined && s.borderStyle !== 'none') {
+            // Legacy borderColor/borderStyle → all four sides, width 1.
             patch.border = {
               all: {
                 width: 1,

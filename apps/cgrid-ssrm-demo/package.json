@@ -12,8 +12,7 @@
   },
   "dependencies": {
     "@cgrid/kernel": "*",
-    "@perspective-dev/client": "^4.5.2",
-    "@perspective-dev/server": "^4.5.2",
+    "@cgrid/perspective": "*",
     "@stomp/stompjs": "^7.3.0"
   },
   "devDependencies": {

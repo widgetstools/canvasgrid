@@ -1052,12 +1052,14 @@ export interface CGridOptions<TRow = any> {
    *  - `'all'` (default when the option is absent) — every group at
    *    every depth starts expanded. Equivalent to the Task 7 / Task 8
    *    behaviour shipped before this option existed.
-   *  - `N` where `N >= 0` — expand groups whose `depth <= N`. So
-   *    `N === 0` expands the top-level groups only (their immediate
-   *    child groups render as collapsed rows); `N === 1` expands two
-   *    levels; etc. Useful for "show the outline" defaults.
-   *  - `-1` — expand EVERY group (AG-Grid parity: ag-grid documents
-   *    `-1` as "expand all"; equivalent to the `'all'` sentinel).
+   *  AG-Grid levels-open semantics (BEHAVIOR CHANGE 2026-07 — see the
+   *  migration warning in cgrid.ts):
+   *  - `N` where `N >= 0` — the NUMBER of levels open. `0` starts
+   *    everything collapsed; `1` opens the first level (depth 0); `2`
+   *    opens two levels; etc. (Previously `depth <= N`, so `0` opened
+   *    the top level — every `N` now opens one fewer level.)
+   *  - `-1` — expand EVERY group (AG parity; equivalent to the `'all'`
+   *    sentinel). Previously `-1` collapsed everything.
    *  - any other `N < 0` — every group starts collapsed.
    *
    *  `groupDefaultExpandedKeys` (below), when supplied, takes

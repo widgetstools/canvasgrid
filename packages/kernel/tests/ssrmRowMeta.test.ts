@@ -81,7 +81,7 @@ describe('ssrmRowMeta sticky parity', () => {
     ]);
   });
 
-  it('computeSsrmStickyAncestors skips collapsed groups', () => {
+  it('computeSsrmStickyAncestors ends the chain at a collapsed group (descendants cannot be ancestors)', () => {
     const collapsed = attachSsrmRowMeta(
       { notional: 1000 },
       { kind: 'group', key: 'desk:FX', depth: 0, label: 'FX', childCount: 2, expanded: false },
@@ -94,7 +94,29 @@ describe('ssrmRowMeta sticky parity', () => {
       3,
       ['desk', 'region'],
     );
-    expect(ancestors.some((a) => a.depth === 0)).toBe(false);
-    expect(ancestors.some((a) => a.depth === 1)).toBe(true);
+    // A collapsed depth-0 group has no visible descendants, so neither it
+    // nor any recorded deeper group can be an ancestor of rows below it.
+    expect(ancestors).toEqual([]);
+  });
+
+  it('computeSsrmStickyAncestors drops deeper groups from a previous subtree (cross-parent band)', () => {
+    // Hydrated order: FX(d0) → FX/EMEA(d1) → leaf → Rates(d0) → leaf.
+    // Viewport top below Rates: the band must be [Rates], never
+    // [Rates, FX/EMEA] — EMEA belongs to the FX subtree.
+    const localStore = new Map(store);
+    localStore.set('g-rates', attachSsrmRowMeta(
+      { notional: 700, desk: 'Rates' },
+      { kind: 'group', key: 'desk:Rates', depth: 0, label: 'Rates', childCount: 1, expanded: true },
+    ));
+    const order = ['g-desk', 'g-region', 'leaf-1', 'g-rates', 'leaf-2'];
+    const ancestors = computeSsrmStickyAncestors(
+      (id) => localStore.get(id),
+      order,
+      4,
+      ['desk', 'region'],
+    );
+    expect(ancestors.map((a) => ({ depth: a.depth, key: a.key }))).toEqual([
+      { depth: 0, key: 'desk:Rates' },
+    ]);
   });
 });

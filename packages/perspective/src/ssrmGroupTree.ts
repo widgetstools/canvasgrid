@@ -375,13 +375,20 @@ export async function materializeGroupedWindow(
         }
         for (let i = 0; i < leafTotal; i++) {
           if (i >= localStart && i < localEnd) {
-            const leaf = leaves[i - localStart]!;
-            maybePush(attachSsrmRowMeta({ ...leaf } as PositionRow, {
-              kind: 'leaf',
-              key,
-              depth: path.length,
-              label: String(leaf.positionId ?? ''),
-            }));
+            const leaf = leaves[i - localStart];
+            if (leaf !== undefined) {
+              maybePush(attachSsrmRowMeta({ ...leaf } as PositionRow, {
+                kind: 'leaf',
+                key,
+                depth: path.length,
+                label: String(leaf.positionId ?? ''),
+              }));
+            } else {
+              // Fetch came back short of childCount (live churn shrank the
+              // group) — skip the missing tail but keep index advancing so
+              // later groups stay aligned.
+              index++;
+            }
           } else {
             index++;
           }

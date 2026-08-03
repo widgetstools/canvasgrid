@@ -6,7 +6,7 @@ import type {
   IServerSideGetRowsParams,
   SortModel,
 } from '@cgrid/kernel';
-import { emptyGrandTotalRow, GRAND_TOTAL_ROW_ID } from '../columns';
+import { emptyGrandTotalRow, GRAND_TOTAL_ROW_ID } from '@cgrid/perspective';
 
 export type StompRow = Record<string, unknown> & { positionId: string };
 
@@ -181,6 +181,7 @@ export class InstrumentedStompSsrmProvider {
   private store = new Map<string, StompRow>();
   private order: string[] = [];
   private liveBuffer: StompRow[] = [];
+  private liveFlushTimer: number | null = null;
   private snapshotComplete = false;
   private pauseFanout = false;
 
@@ -368,6 +369,10 @@ export class InstrumentedStompSsrmProvider {
   }
 
   disconnect(): void {
+    if (this.liveFlushTimer !== null) {
+      clearTimeout(this.liveFlushTimer);
+      this.liveFlushTimer = null;
+    }
     const c = this.client;
     this.client = null;
     if (c) {
@@ -495,7 +500,9 @@ export class InstrumentedStompSsrmProvider {
     const body = msg.body?.trim() ?? '';
     if (!body) return;
 
-    if (body.includes(SNAPSHOT_END_TOKEN) || body.startsWith('Success: All')) {
+    // Exact match — a data row containing "Success" in a text field must
+    // not end the snapshot early (data frames are JSON bodies).
+    if (body === SNAPSHOT_END_TOKEN || body.startsWith('Success: All')) {
       if (this.snapshotComplete) return;
       this.snapshotComplete = true;
       this.snapshotRowsLoaded = this.store.size;
@@ -551,8 +558,20 @@ export class InstrumentedStompSsrmProvider {
 
     if (this.liveBuffer.length >= this.opts.batchSize) {
       this.flushLive(this.liveBuffer.splice(0));
+    } else {
+      this.scheduleLiveFlush();
     }
     this.emitTelemetry();
+  }
+
+  /** Debounced flush so a trickle (< batchSize rows) never strands in the
+   *  live buffer — same scheduleFlush()/32ms idiom as the Perspective book. */
+  private scheduleLiveFlush(): void {
+    if (this.liveFlushTimer !== null) return;
+    this.liveFlushTimer = window.setTimeout(() => {
+      this.liveFlushTimer = null;
+      this.flushLive(this.liveBuffer.splice(0));
+    }, 32);
   }
 
   private flushLive(updates: StompRow[]): void {

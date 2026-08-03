@@ -799,6 +799,13 @@ export type WorkerPush =
        *  adds / removes groups — critical so `getExpandedKeys()`
        *  doesn't drift from the worker's tree. */
       groupKeys?: string[];
+      /** AG parity — present when THIS rebuild re-seeded the deferred
+       *  `groupDefaultExpanded` defaults (group model landed before any
+       *  data; the first data-bearing rebuild may arrive via a
+       *  transaction, not `setRowData`). Main replaces its expansion
+       *  mirror wholesale — without it the mirror stays at the empty
+       *  seed and the first caret click ships a wrong `setExpandedKeys`. */
+      expandedKeys?: string[] | null;
     }
   | { type: 'asyncTransactionsFlushed';  results: TransactionResult[] }
   /** Cycle 5 / Task 8 — worker pushes updated row heights after the

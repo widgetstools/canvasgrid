@@ -84,10 +84,12 @@ describe('TotalsSubgrid — surface', () => {
 });
 
 describe('TotalsSubgrid — viewport-math placement', () => {
-  it('mounts at the BOTTOM when stacked AFTER the data subgrid', () => {
+  it('DOCKS to the container bottom when stacked AFTER the data subgrid', () => {
     const vs = computeViewport({
       columnLayout: [{ colId: 'a', left: 0, width: 100 }],
-      // Stack: header → data → totals. Totals appears in pass 3 (post-data).
+      // Stack: header → data → totals. Totals appears in pass 3 (post-data)
+      // and docks to the container bottom (AG-style), reserving its height
+      // from the scrollable body.
       subgrids: [header(32), data(10, 30), totalsWith({}, 28)],
       containerWidth: 100,
       containerHeight: 200,
@@ -97,11 +99,14 @@ describe('TotalsSubgrid — viewport-math placement', () => {
     const totalsRows = vs.visibleRows.filter((r) => r.subgrid.isTotals);
     expect(totalsRows).toHaveLength(1);
     const totalsRow = totalsRows[0]!;
-    const dataRows = vs.visibleRows.filter((r) => r.subgrid.isData);
-    const lastData = dataRows[dataRows.length - 1]!;
-    // Totals row sits immediately below the last visible data row.
-    expect(totalsRow.top).toBe(lastData.bottom);
+    // Docked at containerHeight - totalsHeight — NOT stacked flush after the
+    // last visible data row (a partially visible data row may extend past
+    // bodyBottom; the docked band paints over it).
+    expect(totalsRow.top).toBe(200 - 28);
+    expect(totalsRow.bottom).toBe(200);
     expect(totalsRow.bottom - totalsRow.top).toBe(28);
+    // The scrollable body ends where the docked band begins.
+    expect(vs.bodyBottom).toBe(172);
   });
 
   it('mounts at the TOP when stacked BEFORE the data subgrid (still post-header)', () => {
@@ -137,9 +142,10 @@ describe('TotalsSubgrid — viewport-math placement', () => {
     expect(vs.visibleRows.filter((r) => r.subgrid.isTotals)).toHaveLength(0);
   });
 
-  it('totals row sticks at the body bottom regardless of scrollTop (non-scrolling)', () => {
-    // Tall data subgrid, scrolled deep. The totals row must remain at the
-    // same y-position relative to the visible band (it does NOT scroll).
+  it('totals row stays DOCKED at the container bottom regardless of scrollTop (non-scrolling)', () => {
+    // Tall data subgrid, scrolled deep. The totals row docks at
+    // containerHeight - totalsHeight and must NOT move when the data
+    // region scrolls underneath it.
     const baseline = computeViewport({
       columnLayout: [{ colId: 'a', left: 0, width: 100 }],
       subgrids: [header(32), data(1000, 30), totalsWith({}, 28)],
@@ -158,17 +164,18 @@ describe('TotalsSubgrid — viewport-math placement', () => {
     });
     const baselineTotals = baseline.visibleRows.find((r) => r.subgrid.isTotals)!;
     const scrolledTotals = scrolled.visibleRows.find((r) => r.subgrid.isTotals)!;
-    // Body region is fixed (header(32)→data→totals(28)); totals top equals
-    // last-data-bottom in both cases.
-    const baselineLastData = baseline.visibleRows.filter((r) => r.subgrid.isData).at(-1)!;
-    const scrolledLastData = scrolled.visibleRows.filter((r) => r.subgrid.isData).at(-1)!;
-    expect(baselineTotals.top).toBe(baselineLastData.bottom);
-    expect(scrolledTotals.top).toBe(scrolledLastData.bottom);
+    // Docked position: containerHeight (500) - totals height (28) = 472,
+    // identical at both scroll depths.
+    expect(baselineTotals.top).toBe(500 - 28);
+    expect(baselineTotals.bottom).toBe(500);
+    expect(scrolledTotals.top).toBe(baselineTotals.top);
+    expect(scrolledTotals.bottom).toBe(baselineTotals.bottom);
   });
 
-  it('coexists with FloatingFilter — totals lands after data, filter lands after header', () => {
-    // Stack: header → floatingFilter → data → totals. Both non-data
-    // subgrids should slot at their structural positions.
+  it('coexists with FloatingFilter — totals docks at the bottom, filter lands after header', () => {
+    // Stack: header → floatingFilter → data → totals. The filter slots in
+    // the pre-data band under the header; the totals docks to the
+    // container bottom (post-data band).
     const ff: Subgrid = {
       type: 'floatingFilter',
       isHeader: false, isData: false, isTotals: false, isFooter: false,
@@ -190,9 +197,12 @@ describe('TotalsSubgrid — viewport-math placement', () => {
     expect(vs.floatingFilterRowHeight).toBe(24);
     const totalsRow = vs.visibleRows.find((r) => r.subgrid.isTotals)!;
     expect(totalsRow.height).toBe(28);
-    // Totals row sits AFTER the last visible data row.
-    const lastData = vs.visibleRows.filter((r) => r.subgrid.isData).at(-1)!;
-    expect(totalsRow.top).toBe(lastData.bottom);
+    // Totals row docks at containerHeight (300) - totals height (28) = 272
+    // — not flush after the last visible data row, which may extend past
+    // bodyBottom and be painted over by the docked band.
+    expect(totalsRow.top).toBe(300 - 28);
+    expect(totalsRow.bottom).toBe(300);
+    expect(vs.bodyBottom).toBe(272);
   });
 
   it('honours per-grid pinnedRowHeight override (Cycle 5 — variable row heights)', () => {

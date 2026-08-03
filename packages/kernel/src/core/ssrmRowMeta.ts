@@ -163,13 +163,23 @@ export function computeSsrmStickyAncestors(
     const id = visibleIds[i];
     if (!id) continue;
     const meta = readSsrmRowMeta(getRowById(id));
-    if (meta?.kind === 'group') lastAtDepth.set(meta.depth, meta);
+    if (meta?.kind === 'group') {
+      // A group at depth d starts a new subtree at that depth — anything
+      // recorded deeper belongs to the PREVIOUS subtree and is no longer
+      // an ancestor of rows below this point.
+      for (const depth of lastAtDepth.keys()) {
+        if (depth > meta.depth) lastAtDepth.delete(depth);
+      }
+      lastAtDepth.set(meta.depth, meta);
+    }
   }
   if (lastAtDepth.size === 0) return [];
   const result: StickyAncestor[] = [];
   for (const depth of [...lastAtDepth.keys()].sort((a, b) => a - b)) {
     const meta = lastAtDepth.get(depth)!;
-    if (meta.expanded === false) continue;
+    // A collapsed group has no visible descendants — anything recorded
+    // deeper cannot be a true ancestor either, so the chain ends here.
+    if (meta.expanded === false) break;
     const segs = parseCompositeGroupKey(meta.key);
     const colId = rowGroupCols[depth] ?? segs[depth]?.colId ?? '';
     result.push({

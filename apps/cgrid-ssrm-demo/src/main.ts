@@ -1,12 +1,17 @@
 import '@cgrid/kernel/style.css';
 import './styles.css';
 
-import { PerspectiveBook, type BookTelemetry, type PspFilter, type ViewSpec } from './perspective/book';
-import { createPerspectiveSsrmDatasource } from './perspective/ssrmDatasource';
+import {
+  PerspectiveBook,
+  createPerspectiveSsrmDatasource,
+  type BookTelemetry,
+  type PositionRow,
+  type PspFilter,
+  type ViewSpec,
+} from '@cgrid/perspective';
 import { validatePhase1 } from './perspective/validatePhase1';
 import { renderVisualizer } from './ui/visualizer';
 import { mountBlotter, type BlotterMount } from './ui/blotterHost';
-import type { PositionRow } from './perspective/bootstrap';
 
 const THEME = 'cg-theme-starui-dark';
 const ENGINE = 'perspective' as const;
@@ -96,6 +101,19 @@ interface ViewTickPayload {
 const pendingViewTicks = new Map<string, ViewTickPayload>();
 const blotterScrollActive = new Map<string, boolean>();
 
+/** Coalesce mid-scroll ticks so later batches don't drop earlier row updates. */
+function mergeViewTicks(prev: ViewTickPayload, next: ViewTickPayload): ViewTickPayload {
+  const byId = new Map<string, PositionRow>();
+  for (const row of prev.updates) byId.set(row.positionId, row);
+  for (const row of next.updates) byId.set(row.positionId, row);
+  return {
+    viewId: next.viewId,
+    totals: next.totals,
+    refreshSsrm: prev.refreshSsrm || next.refreshSsrm,
+    updates: [...byId.values()],
+  };
+}
+
 function applyViewTick(payload: ViewTickPayload): void {
   const mount = blotters.get(payload.viewId);
   if (!mount) return;
@@ -130,7 +148,8 @@ const book = new PerspectiveBook({
   },
   onViewTick: (payload) => {
     if (blotterScrollActive.get(payload.viewId)) {
-      pendingViewTicks.set(payload.viewId, payload);
+      const prev = pendingViewTicks.get(payload.viewId);
+      pendingViewTicks.set(payload.viewId, prev ? mergeViewTicks(prev, payload) : payload);
       return;
     }
     applyViewTick(payload);
@@ -186,6 +205,10 @@ function wireBlotterSsrm(mount: BlotterMount, viewId: string): void {
 }
 
 const blotters = new Map<string, BlotterMount>();
+/** Per-blotter gridReady promise, armed at construction time in addView —
+ *  gridReady fires once during async init, so a listener attached later
+ *  (e.g. after boot's other `await addView` calls) would miss it. */
+const blotterReady = new Map<string, Promise<void>>();
 // Dev/e2e drivability — expose the mounted blotters + book (same pattern
 // as the positions app's `__cgrid`).
 (window as unknown as { __blotters: Map<string, BlotterMount> }).__blotters = blotters;
@@ -326,6 +349,14 @@ async function addView(spec: ViewSpec): Promise<void> {
     engine: ENGINE,
     enableCellChangeFlash: cellFlashEnabled,
   });
+  // Attach gridReady synchronously at construction (before any await) —
+  // see blotterReady. Mirrors multiBlotterSsrm's ready-promise pattern.
+  blotterReady.set(spec.id, new Promise<void>((resolve) => {
+    const off = mount.grid.on('gridReady', () => {
+      off();
+      resolve();
+    });
+  }));
   blotters.set(spec.id, mount);
   wireBlotterSsrm(mount, spec.id);
   viewToggleBtns.get(spec.id)?.classList.add('active');
@@ -338,6 +369,7 @@ async function removeView(id: string): Promise<void> {
   blotterUnsubs.delete(id);
   blotters.get(id)?.destroy();
   blotters.delete(id);
+  blotterReady.delete(id);
   stageWeights.delete(id);
   await book.unregisterView(id);
   viewToggleBtns.get(id)?.classList.remove('active');
@@ -461,17 +493,7 @@ async function boot(): Promise<void> {
     const spec = VIEW_CATALOG.find((v) => v.id === id)!;
     await addView(spec);
   }
-  await Promise.all(
-    [...blotters.values()].map(
-      (b) =>
-        new Promise<void>((resolve) => {
-          const off = b.grid.on('gridReady', () => {
-            off();
-            resolve();
-          });
-        }),
-    ),
-  );
+  await Promise.all([...blotterReady.values()]);
   book.connect();
   connectBtn.textContent = 'Disconnect';
 }

@@ -7,12 +7,14 @@
 import type { FilterModel, SkeletonGroup, SortModel } from '@cgrid/kernel';
 import { Client, type IMessage } from '@stomp/stompjs';
 import {
-  createPositionsTable,
+  getPerspectiveWorkerMode,
+  openOrCreatePositionsTable,
+  SHARED_TABLE_NAME,
   type PositionRow,
   type Table,
   type View,
 } from './bootstrap';
-import { emptyGrandTotalRow } from '../columns';
+import { emptyGrandTotalRow } from './positionColumns';
 import {
   buildCompositeGroupKey,
   materializeGroupedWindow as buildGroupedSsrmWindow,
@@ -104,6 +106,12 @@ export interface BookTelemetry {
   }>;
   wsUrl: string;
   engine: 'perspective';
+  /** Phase 5 — 'shared' when the engine lives in the per-origin
+   *  SharedWorker (cross-tab table), 'dedicated' on the fallback path. */
+  workerMode: 'shared' | 'dedicated';
+  /** Phase 5 — 'leader' feeds the table (seed ticks / STOMP); 'follower'
+   *  tabs share the book read-only and take over if the leader closes. */
+  feedRole: 'leader' | 'follower' | 'none';
 }
 
 export type BookFeed = 'stomp' | 'seed';
@@ -117,6 +125,20 @@ export interface PerspectiveBookOptions {
   batchSize?: number;
   updatesPerTick?: number;
   sparse?: boolean;
+  /** STOMP listener topic the snapshot + live frames arrive on.
+   *  Default `/snapshot/positions/{clientId}`. */
+  snapshotTopic?: string;
+  /** STOMP destination published to request the snapshot. Used VERBATIM
+   *  when set; default `{snapshotTopic}/{rate}/{batchSize}`. */
+  triggerTopic?: string;
+  /** Exact frame body marking end-of-snapshot (a `{token}: ...` prefixed
+   *  variant is also accepted). Default `'Success'`. */
+  snapshotEndToken?: string;
+  /** Name of the unique-key field in the STOMP payload rows. Mapped onto
+   *  the canonical `positionId` key (table index / getRowId / dedupe all
+   *  key on it). Default `'positionId'`. The SCHEMA itself stays the
+   *  positions shape — fully custom schemas are a later step. */
+  keyColumn?: string;
   onTelemetry?: (t: BookTelemetry) => void;
   onPhase?: (phase: BookPhase) => void;
   onViewTick?: (tick: ViewTick) => void;
@@ -290,9 +312,14 @@ export class PerspectiveBook {
       | 'batchSize'
       | 'updatesPerTick'
       | 'sparse'
+      | 'snapshotEndToken'
+      | 'keyColumn'
     >
   > &
-    Pick<PerspectiveBookOptions, 'onTelemetry' | 'onPhase' | 'onViewTick'>;
+    Pick<
+      PerspectiveBookOptions,
+      'onTelemetry' | 'onPhase' | 'onViewTick' | 'snapshotTopic' | 'triggerTopic'
+    >;
 
   private pendingLiveBatch: PositionRow[] = [];
 
@@ -304,6 +331,15 @@ export class PerspectiveBook {
   private snapshotComplete = false;
   private updateBuffer: PositionRow[] = [];
   private pauseFanout = false;
+
+  /** Phase 5 — set when `ensureTable` bound the cross-tab shared table. */
+  private sharedTable = false;
+  /** Phase 5 — this tab's role in the shared feed. */
+  private feedRole: 'leader' | 'follower' | 'none' = 'none';
+  /** Resolving this releases the Web Lock held while leading the feed. */
+  private releaseFeedLock: (() => void) | null = null;
+  private leadershipQueued = false;
+  private destroyed = false;
 
   private snapshotRowsLoaded = 0;
   private liveBatches = 0;
@@ -338,6 +374,10 @@ export class PerspectiveBook {
       batchSize: options.batchSize ?? 50,
       updatesPerTick: options.updatesPerTick ?? 5,
       sparse: options.sparse ?? true,
+      snapshotTopic: options.snapshotTopic,
+      triggerTopic: options.triggerTopic,
+      snapshotEndToken: options.snapshotEndToken ?? SNAPSHOT_END_TOKEN,
+      keyColumn: options.keyColumn ?? 'positionId',
       onTelemetry: options.onTelemetry,
       onPhase: options.onPhase,
       onViewTick: options.onViewTick,
@@ -371,9 +411,112 @@ export class PerspectiveBook {
   async ensureTable(): Promise<Table> {
     if (this.table) return this.table;
     this.setPhase('bootstrapping');
-    this.table = await createPositionsTable(`positions-${this.opts.clientId}`);
+    // Phase 5 — under the SharedWorker engine every tab binds ONE fixed
+    // table name (attach if another tab already created it). Dedicated
+    // fallback keeps the per-client name so parallel dedicated pages
+    // can't collide.
+    const { table, attached } = await openOrCreatePositionsTable(SHARED_TABLE_NAME);
+    if (getPerspectiveWorkerMode() === 'shared') {
+      this.table = table;
+      this.sharedTable = true;
+      void attached;
+    } else {
+      // openOrCreate on the dedicated engine just created 'positions-shared'
+      // locally — fine to use directly (nothing else shares this engine).
+      this.table = table;
+      this.sharedTable = false;
+    }
     this.setPhase('idle');
     return this.table;
+  }
+
+  // ─── Phase 5: feed leadership (Web Locks; one feeder per origin) ─────
+
+  private static readonly FEED_LOCK = 'cgrid-ssrm-demo:feed-leader';
+
+  private hasWebLocks(): boolean {
+    return typeof navigator !== 'undefined' && 'locks' in navigator;
+  }
+
+  /** Race for immediate leadership (`ifAvailable`); winner HOLDS the lock
+   *  until `releaseLeadership`. Resolves won/lost without blocking. */
+  private tryLeadFeed(): Promise<boolean> {
+    if (!this.sharedTable || !this.hasWebLocks()) {
+      this.feedRole = 'leader';
+      return Promise.resolve(true);
+    }
+    return new Promise<boolean>((resolveWon) => {
+      void navigator.locks.request(
+        PerspectiveBook.FEED_LOCK,
+        { ifAvailable: true },
+        async (lock) => {
+          if (lock === null || this.destroyed) {
+            resolveWon(false);
+            return;
+          }
+          this.feedRole = 'leader';
+          resolveWon(true);
+          await new Promise<void>((release) => { this.releaseFeedLock = release; });
+        },
+      );
+    });
+  }
+
+  /** Queue for takeover: when the current leader's tab closes, the lock
+   *  releases and this tab starts feeding the (already-populated) book. */
+  private queueFeedTakeover(): void {
+    if (!this.sharedTable || !this.hasWebLocks() || this.leadershipQueued) return;
+    this.leadershipQueued = true;
+    this.feedRole = 'follower';
+    this.emitTelemetry();
+    void navigator.locks.request(PerspectiveBook.FEED_LOCK, async () => {
+      if (this.destroyed) return;
+      this.feedRole = 'leader';
+      this.emitTelemetry();
+      // Book is live already (we adopted the snapshot) — just start feeding.
+      if (this.opts.feed === 'seed') this.startSeedLive();
+      else this.activateStomp();
+      await new Promise<void>((release) => { this.releaseFeedLock = release; });
+    });
+  }
+
+  private releaseLeadership(): void {
+    this.leadershipQueued = false;
+    if (this.releaseFeedLock) {
+      this.releaseFeedLock();
+      this.releaseFeedLock = null;
+    }
+    if (this.feedRole === 'leader') this.feedRole = 'none';
+  }
+
+  private async sharedTableSize(): Promise<number> {
+    try {
+      return Number(await this.withTableLock(() => this.table!.size()));
+    } catch {
+      return 0;
+    }
+  }
+
+  /** Follower boot: the leader owns the snapshot — poll until rows exist
+   *  (or give up and seed ourselves; keyed updates make that benign). */
+  private async waitForSharedSnapshot(timeoutMs = 30_000): Promise<number> {
+    const start = Date.now();
+    for (;;) {
+      const size = await this.sharedTableSize();
+      if (size > 0 || Date.now() - start > timeoutMs || this.destroyed) return size;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+  }
+
+  /** Adopt an already-populated shared book: no snapshot work, straight
+   *  to live; the leader's `table.update` ticks reach our views via the
+   *  shared engine's realtime poll. */
+  private async adoptSharedLive(size: number): Promise<void> {
+    this.snapshotComplete = true;
+    this.snapshotRowsLoaded = size;
+    this.setPhase('live');
+    for (const id of this.views.keys()) void this.refreshProjected(id);
+    this.emitTelemetry();
   }
 
   async registerView(spec: ViewSpec): Promise<View> {
@@ -560,11 +703,31 @@ export class PerspectiveBook {
             const rows = await this.withTableLock(
               () => readRows(bound.leafView!, { start_row: startOff, end_row: endOff }),
             );
-            return rows
-              .map((r) => String((r as { positionId?: unknown }).positionId ?? ''))
-              .filter((s) => s !== '');
+            // Same contiguity spot-check as fetchLeafWindowByPath — the
+            // first row of the window must belong to the requested group
+            // path, else offsets are stale and the selection cascade would
+            // collect the WRONG ids. On mismatch fall through to the
+            // filtered-view path below.
+            const first = rows[0] as Record<string, unknown> | undefined;
+            const contiguous = first === undefined || prefix.every(
+              (v, i) => String(first[bound.groupBy[i]!] ?? '') === v,
+            );
+            if (contiguous) {
+              return rows
+                .map((r) => String((r as { positionId?: unknown }).positionId ?? ''))
+                .filter((s) => s !== '');
+            }
+            if (!this.warnedLeafOffsetMismatch) {
+              this.warnedLeafOffsetMismatch = true;
+              console.warn(
+                '[PerspectiveBook] leaf offset window mismatched its group — grouped-view ordering '
+                + 'diverges from the leaf sort; falling back to filtered leaf reads until remount.',
+              );
+            }
+            bound.leafOffsetsUnreliable = true;
+          } else {
+            return [];
           }
-          return [];
         }
       }
       const groupFilter: PspFilter[] = req.groupPath.map(
@@ -956,6 +1119,9 @@ export class PerspectiveBook {
     // Push fresh totals after every remount — the pinned grand-total row
     // otherwise only updates on live ticks, so a query change (or the
     // wire-time fetch racing the first remount) left it stale at zeros.
+    // Drop any pending live batch first: the post-remount tick must not
+    // replay pre-remount rows as fresh updates.
+    this.pendingLiveBatch = [];
     this.scheduleViewTick(bound.spec.id);
   }
 
@@ -1038,10 +1204,45 @@ export class PerspectiveBook {
 
   connect(): void {
     if (this.stomp || this.seedConnecting || this.seedLiveTimer !== null) return;
-    if (this.opts.feed === 'seed') {
-      void this.connectSeed();
+    void this.connectRouted();
+  }
+
+  /** Phase 5 routing: dedicated engines feed unconditionally (old
+   *  behavior); on the shared engine, exactly one tab (the Web-Lock
+   *  holder) feeds while the rest attach to the live book and queue for
+   *  takeover. */
+  private async connectRouted(): Promise<void> {
+    await this.ensureTable();
+    if (!this.sharedTable) {
+      this.feedRole = 'leader';
+      if (this.opts.feed === 'seed') await this.connectSeed();
+      else this.activateStomp();
       return;
     }
+    const size = await this.sharedTableSize();
+    if (size > 0) {
+      await this.adoptSharedLive(size);
+      this.queueFeedTakeover();
+      return;
+    }
+    if (await this.tryLeadFeed()) {
+      if (this.opts.feed === 'seed') await this.connectSeed();
+      else this.activateStomp();
+      return;
+    }
+    const settled = await this.waitForSharedSnapshot();
+    if (settled > 0) {
+      await this.adoptSharedLive(settled);
+      this.queueFeedTakeover();
+      return;
+    }
+    // Leader never materialized (crashed mid-boot?) — seed ourselves;
+    // positionId-keyed updates make a duplicate snapshot benign.
+    if (this.opts.feed === 'seed') await this.connectSeed();
+    else this.activateStomp();
+  }
+
+  private activateStomp(): void {
     void this.ensureTable().then(() => {
       this.setPhase('connecting');
       this.snapshotComplete = false;
@@ -1070,6 +1271,8 @@ export class PerspectiveBook {
   disconnect(): void {
     this.stopSeedLive();
     this.seedConnecting = false;
+    // Phase 5 — stop leading so another tab can take the feed over.
+    this.releaseLeadership();
     const c = this.stomp;
     this.stomp = null;
     if (c) {
@@ -1159,6 +1362,7 @@ export class PerspectiveBook {
   }
 
   destroy(): void {
+    this.destroyed = true;
     if (this.telemetryTimer !== null) {
       clearInterval(this.telemetryTimer);
       this.telemetryTimer = null;
@@ -1170,7 +1374,12 @@ export class PerspectiveBook {
     this.disconnect();
     for (const id of [...this.views.keys()]) void this.unregisterView(id);
     if (this.table) {
-      try { void this.table.delete(); } catch { /* swallow */ }
+      // Phase 5 — the shared table belongs to every connected tab;
+      // deleting it here would blank the others. It dies with the
+      // SharedWorker when the last tab disconnects.
+      if (!this.sharedTable) {
+        try { void this.table.delete(); } catch { /* swallow */ }
+      }
       this.table = null;
     }
   }
@@ -1209,6 +1418,8 @@ export class PerspectiveBook {
       })),
       wsUrl: this.opts.feed === 'seed' ? 'seed://local' : this.opts.wsUrl,
       engine: 'perspective',
+      workerMode: getPerspectiveWorkerMode(),
+      feedRole: this.feedRole,
     };
   }
 
@@ -1224,8 +1435,10 @@ export class PerspectiveBook {
   private onConnected(): void {
     if (!this.stomp) return;
     this.setPhase('snapshot');
-    const topic = `/snapshot/positions/${this.opts.clientId}`;
-    const trigger = `/snapshot/positions/${this.opts.clientId}/${this.opts.rate}/${this.opts.batchSize}`;
+    const topic = this.opts.snapshotTopic
+      ?? `/snapshot/positions/${this.opts.clientId}`;
+    const trigger = this.opts.triggerTopic
+      ?? `${topic}/${this.opts.rate}/${this.opts.batchSize}`;
     this.stomp.subscribe(topic, (msg: IMessage) => void this.onMessage(msg));
     const headers: Record<string, string> = {
       'snapshot-rows': String(this.opts.snapshotRows),
@@ -1239,7 +1452,11 @@ export class PerspectiveBook {
     const body = msg.body?.trim() ?? '';
     if (!body) return;
 
-    if (body.includes(SNAPSHOT_END_TOKEN) || body.startsWith('Success: All')) {
+    // Exact match — a data row containing the token in a text field must
+    // not end the snapshot early (data frames are JSON bodies). The
+    // `{token}: ...` prefixed variant some servers send is also accepted.
+    const endToken = this.opts.snapshotEndToken;
+    if (body === endToken || body.startsWith(`${endToken}:`)) {
       if (this.snapshotComplete) return;
       await this.flushUpdates(true);
       this.snapshotComplete = true;
@@ -1257,11 +1474,17 @@ export class PerspectiveBook {
     if (deltas.length === 0) return;
     const messageType = msg.headers['message-type'];
 
+    // Key the payload on the configured column, mapped onto the canonical
+    // `positionId` (table index / getRowId / dedupe all key on it).
+    const keyColumn = this.opts.keyColumn;
     const rows: PositionRow[] = [];
     for (const delta of deltas) {
-      const id = delta.positionId != null ? String(delta.positionId) : '';
+      const raw = (delta as Record<string, unknown>)[keyColumn];
+      const id = raw != null ? String(raw) : '';
       if (!id) continue;
-      rows.push({ ...delta, positionId: id } as PositionRow);
+      const row = { ...delta, positionId: id } as PositionRow;
+      if (keyColumn !== 'positionId') delete (row as Record<string, unknown>)[keyColumn];
+      rows.push(row);
     }
     if (rows.length === 0) return;
 
@@ -1304,7 +1527,16 @@ export class PerspectiveBook {
         this.snapshotRowsLoaded = Number(await this.withTableLock(() => this.table!.size()));
       } else {
         this.liveBatches++;
-        this.pendingLiveBatch = batch;
+        // Accumulate (last write per id wins) — overwriting dropped any
+        // batch that landed while the 100ms view-tick debounce was armed.
+        if (this.pendingLiveBatch.length === 0) {
+          this.pendingLiveBatch = batch;
+        } else {
+          const byId = new Map<string, PositionRow>();
+          for (const row of this.pendingLiveBatch) byId.set(row.positionId, row);
+          for (const row of batch) byId.set(row.positionId, row);
+          this.pendingLiveBatch = [...byId.values()];
+        }
         for (const id of this.views.keys()) void this.refreshProjected(id);
       }
       this.emitTelemetry();
@@ -1332,10 +1564,22 @@ export class PerspectiveBook {
     const updates = v.groupBy.length === 0
       ? this.pendingLiveBatch.filter((row) => rowMatchesViewFilter(v.spec, row))
       : [];
+    // Consumed — clear once the LAST armed tick has fired (earlier ticks in
+    // the same round still need it; a later tick must not replay it as
+    // fresh updates).
+    if (![...this.views.values()].some((x) => x.notifyTimer !== null)) {
+      this.pendingLiveBatch = [];
+    }
+    // Phase 5 — on follower tabs the feeder's row batch lives in ANOTHER
+    // tab; this view only learned of the remote update via `on_update`.
+    // Route flat views to a band-scoped soft refresh so remote ticks
+    // paint (leaders keep the cheaper patch path).
+    const remoteFlatTick =
+      v.groupBy.length === 0 && updates.length === 0 && this.feedRole === 'follower';
     this.opts.onViewTick({
       viewId,
       totals,
-      refreshSsrm: v.groupBy.length > 0,
+      refreshSsrm: v.groupBy.length > 0 || remoteFlatTick,
       updates,
     });
   }

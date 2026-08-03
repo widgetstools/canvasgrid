@@ -1,7 +1,15 @@
 import { Client, type IMessage } from '@stomp/stompjs';
 import type {
+  CFilterModelEntry,
   CGrid,
+  CDateFilterModel,
+  CMultiConditionFilterModel,
+  CNumberFilterModel,
+  CSetFilterModel,
+  CTextFilterModel,
   FilterModel,
+  FilterModelEntry,
+  FilterModelEntryLegacy,
   IServerSideDatasource,
   IServerSideGetRowsParams,
   SortModel,
@@ -28,6 +36,15 @@ export interface StompSsrmDataProviderOptions {
   sparse?: boolean;
   onPhase?: (phase: ProviderPhase) => void;
   onStats?: (stats: { received: number; storeSize: number; gridCount: number }) => void;
+}
+
+interface GridBinding {
+  filter?: (row: StompRow) => boolean;
+  /** When true, grid filter/sort run in the worker after hydrate. */
+  clientPipeline: boolean;
+  /** Ids currently in this blotter's projected set (blotter + grid filters). */
+  projectedIds: Set<string>;
+  unsubFilter?: () => void;
 }
 
 const SNAPSHOT_END_TOKEN = 'Success';
@@ -78,29 +95,142 @@ function applySort(rows: StompRow[], sortModel: SortModel): StompRow[] {
   return out;
 }
 
+function parseDateMs(raw: unknown): number | null {
+  if (raw == null) return null;
+  const s = String(raw);
+  if (s === '') return null;
+  const t = Date.parse(s);
+  return Number.isNaN(t) ? null : t;
+}
+
+/** Mirror kernel `matchesV2` / legacy matcher for demo-side SSRM projection. */
+function matchesFilterEntry(entry: FilterModelEntry, raw: unknown): boolean {
+  if (!entry || typeof entry !== 'object') return true;
+  if ('filterType' in entry) {
+    return matchesV2(entry as CFilterModelEntry, raw);
+  }
+  return matchesLegacy(entry as FilterModelEntryLegacy, raw);
+}
+
+function matchesLegacy(entry: FilterModelEntryLegacy, raw: unknown): boolean {
+  if (entry.type === 'text') {
+    const s = String(raw ?? '').toLowerCase();
+    const q = entry.value.toLowerCase();
+    if (entry.op === 'contains') return s.includes(q);
+    if (entry.op === 'equals') return s === q;
+    if (entry.op === 'startsWith') return s.startsWith(q);
+    return false;
+  }
+  const n = Number(raw);
+  if (Number.isNaN(n)) return false;
+  if (entry.op === 'eq') return n === entry.value;
+  if (entry.op === 'gt') return n > entry.value;
+  if (entry.op === 'lt') return n < entry.value;
+  if (entry.op === 'between') return n >= entry.value && n <= (entry.value2 ?? entry.value);
+  return false;
+}
+
+function matchesV2(entry: CFilterModelEntry, raw: unknown): boolean {
+  if (entry.filterType === 'multi') return matchesMulti(entry, raw);
+  if (entry.filterType === 'text') return matchesText(entry, raw);
+  if (entry.filterType === 'number') return matchesNumber(entry, raw);
+  if (entry.filterType === 'date') return matchesDate(entry, raw);
+  if (entry.filterType === 'set') return matchesSet(entry, raw);
+  return false;
+}
+
+function matchesMulti(entry: CMultiConditionFilterModel, raw: unknown): boolean {
+  if (entry.conditions.length === 0) return true;
+  if (entry.operator === 'AND') {
+    for (const c of entry.conditions) {
+      if (!matchesV2(c, raw)) return false;
+    }
+    return true;
+  }
+  for (const c of entry.conditions) {
+    if (matchesV2(c, raw)) return true;
+  }
+  return false;
+}
+
+function matchesText(entry: CTextFilterModel, raw: unknown): boolean {
+  let haystack = String(raw ?? '');
+  let needle = entry.filter == null ? '' : entry.filter;
+  if (entry.caseSensitive !== true) {
+    haystack = haystack.toLowerCase();
+    needle = needle.toLowerCase();
+  }
+  switch (entry.type) {
+    case 'contains': return haystack.includes(needle);
+    case 'notContains': return !haystack.includes(needle);
+    case 'equals': return haystack === needle;
+    case 'notEqual': return haystack !== needle;
+    case 'startsWith': return haystack.startsWith(needle);
+    case 'endsWith': return haystack.endsWith(needle);
+    case 'blank': return haystack === '';
+    case 'notBlank': return haystack !== '';
+  }
+  return false;
+}
+
+function matchesNumber(entry: CNumberFilterModel, raw: unknown): boolean {
+  if (entry.type === 'blank') return raw == null || raw === '';
+  if (entry.type === 'notBlank') return raw != null && raw !== '';
+  const n = typeof raw === 'number' ? raw : Number(raw);
+  if (Number.isNaN(n)) return false;
+  const a = entry.filter;
+  if (a == null) return false;
+  switch (entry.type) {
+    case 'equals': return n === a;
+    case 'notEqual': return n !== a;
+    case 'lessThan': return n < a;
+    case 'lessThanOrEqual': return n <= a;
+    case 'greaterThan': return n > a;
+    case 'greaterThanOrEqual': return n >= a;
+    case 'inRange': return entry.filterTo != null && n >= a && n <= entry.filterTo;
+  }
+  return false;
+}
+
+function matchesDate(entry: CDateFilterModel, raw: unknown): boolean {
+  if (entry.type === 'blank') return raw == null || raw === '';
+  if (entry.type === 'notBlank') return raw != null && raw !== '';
+  const r = parseDateMs(raw);
+  if (r === null) return false;
+  const a = entry.filter == null ? null : parseDateMs(entry.filter);
+  if (a === null) return false;
+  switch (entry.type) {
+    case 'equals': return r === a;
+    case 'notEqual': return r !== a;
+    case 'lessThan': return r < a;
+    case 'lessThanOrEqual': return r <= a;
+    case 'greaterThan': return r > a;
+    case 'greaterThanOrEqual': return r >= a;
+    case 'inRange': {
+      const b = entry.filterTo == null ? null : parseDateMs(entry.filterTo);
+      return b !== null && r >= a && r <= b;
+    }
+  }
+  return false;
+}
+
+function matchesSet(entry: CSetFilterModel, raw: unknown): boolean {
+  if (raw == null) return false;
+  return entry.values.includes(String(raw));
+}
+
+function rowMatchesFilterModel(row: StompRow, filterModel: FilterModel): boolean {
+  for (const [colId, entry] of Object.entries(filterModel)) {
+    if (!entry) continue;
+    if (!matchesFilterEntry(entry, row[colId])) return false;
+  }
+  return true;
+}
+
 function applyFilterModel(rows: StompRow[], filterModel: FilterModel): StompRow[] {
   const entries = Object.entries(filterModel);
   if (entries.length === 0) return rows;
-  return rows.filter((row) => {
-    for (const [colId, entry] of entries) {
-      if (!entry || typeof entry !== 'object') continue;
-      const e = entry as Record<string, unknown>;
-      const raw = row[colId];
-      if (e.filterType === 'text' || typeof e.filter === 'string') {
-        const needle = String(e.filter ?? '').toLowerCase();
-        if (needle && !String(raw ?? '').toLowerCase().includes(needle)) return false;
-      } else if (e.filterType === 'number' || typeof e.filter === 'number') {
-        const n = Number(raw);
-        const f = Number(e.filter);
-        if (!Number.isFinite(n) || !Number.isFinite(f)) return false;
-        const op = String(e.type ?? 'equals');
-        if (op === 'equals' && n !== f) return false;
-        if (op === 'greaterThan' && !(n > f)) return false;
-        if (op === 'lessThan' && !(n < f)) return false;
-      }
-    }
-    return true;
-  });
+  return rows.filter((row) => rowMatchesFilterModel(row, filterModel));
 }
 
 export interface DatasourceOptions {
@@ -131,10 +261,11 @@ export class StompSsrmDataProvider {
   private order: string[] = [];
   private snapshotBuffer: StompRow[] = [];
   private liveBuffer: StompRow[] = [];
+  private liveFlushTimer: number | null = null;
   private snapshotComplete = false;
   private received = 0;
   /** Grids bound for live fan-out, each with its projection filter. */
-  private grids = new Map<CGrid<StompRow>, { filter?: (row: StompRow) => boolean }>();
+  private grids = new Map<CGrid<StompRow>, GridBinding>();
 
   constructor(options: StompSsrmDataProviderOptions = {}) {
     this.opts = {
@@ -160,9 +291,27 @@ export class StompSsrmDataProvider {
 
   /** Bind a grid for live `applyServerSideTransaction` fan-out. */
   attachGrid(grid: CGrid<StompRow>, options: DatasourceOptions = {}): () => void {
-    this.grids.set(grid, { filter: options.filter });
+    const clientPipeline = options.clientPipeline === true;
+    const binding: GridBinding = {
+      filter: options.filter,
+      clientPipeline,
+      projectedIds: this.computeProjectedIds(
+        options.filter,
+        clientPipeline ? {} : grid.getFilterModel(),
+      ),
+    };
+    // Kernel already purges SSRM on filter change; resync membership so
+    // subsequent live ticks classify add/remove against the new set.
+    binding.unsubFilter = grid.on('filterChanged', () => {
+      binding.projectedIds = this.computeProjectedIds(
+        binding.filter,
+        binding.clientPipeline ? {} : grid.getFilterModel(),
+      );
+    });
+    this.grids.set(grid, binding);
     this.emitStats();
     return () => {
+      binding.unsubFilter?.();
       this.grids.delete(grid);
       this.emitStats();
     };
@@ -220,6 +369,10 @@ export class StompSsrmDataProvider {
   }
 
   disconnect(): void {
+    if (this.liveFlushTimer !== null) {
+      clearTimeout(this.liveFlushTimer);
+      this.liveFlushTimer = null;
+    }
     const c = this.client;
     this.client = null;
     if (c) {
@@ -230,6 +383,7 @@ export class StompSsrmDataProvider {
 
   destroy(): void {
     this.disconnect();
+    for (const binding of this.grids.values()) binding.unsubFilter?.();
     this.grids.clear();
     this.store.clear();
     this.order = [];
@@ -263,12 +417,36 @@ export class StompSsrmDataProvider {
     return rows;
   }
 
-  private projectedCount(filter: ((row: StompRow) => boolean) | undefined): number {
-    if (!filter) return this.store.size;
+  private gridFilterModel(binding: GridBinding, grid: CGrid<StompRow>): FilterModel {
+    return binding.clientPipeline ? {} : grid.getFilterModel();
+  }
+
+  private computeProjectedIds(
+    filter: ((row: StompRow) => boolean) | undefined,
+    filterModel: FilterModel,
+  ): Set<string> {
+    const ids = new Set<string>();
+    for (const id of this.order) {
+      const row = this.store.get(id);
+      if (!row) continue;
+      if (filter && !filter(row)) continue;
+      if (!rowMatchesFilterModel(row, filterModel)) continue;
+      ids.add(id);
+    }
+    return ids;
+  }
+
+  private projectedCount(
+    filter: ((row: StompRow) => boolean) | undefined,
+    filterModel: FilterModel = {},
+  ): number {
     let n = 0;
     for (const id of this.order) {
       const row = this.store.get(id);
-      if (row && filter(row)) n++;
+      if (!row) continue;
+      if (filter && !filter(row)) continue;
+      if (!rowMatchesFilterModel(row, filterModel)) continue;
+      n++;
     }
     return n;
   }
@@ -291,7 +469,9 @@ export class StompSsrmDataProvider {
     const body = msg.body?.trim() ?? '';
     if (!body) return;
 
-    if (body.includes(SNAPSHOT_END_TOKEN) || body.startsWith('Success: All')) {
+    // Exact match — a data row containing "Success" in a text field must
+    // not end the snapshot early (data frames are JSON bodies).
+    if (body === SNAPSHOT_END_TOKEN || body.startsWith('Success: All')) {
       if (this.snapshotComplete) return;
       this.snapshotComplete = true;
       this.drainSnapshotBuffer();
@@ -345,23 +525,57 @@ export class StompSsrmDataProvider {
 
     if (this.liveBuffer.length >= this.opts.batchSize) {
       this.flushLive(this.liveBuffer.splice(0));
+    } else {
+      this.scheduleLiveFlush();
     }
     this.received += deltas.length;
     this.emitStats();
   }
 
+  /** Debounced flush so a trickle (< batchSize rows) never strands in the
+   *  live buffer — same scheduleFlush()/32ms idiom as the Perspective book. */
+  private scheduleLiveFlush(): void {
+    if (this.liveFlushTimer !== null) return;
+    this.liveFlushTimer = window.setTimeout(() => {
+      this.liveFlushTimer = null;
+      this.flushLive(this.liveBuffer.splice(0));
+    }, 32);
+  }
+
   private flushLive(updates: StompRow[]): void {
     if (updates.length === 0) return;
-    for (const [grid, { filter }] of this.grids) {
-      // Only push ticks that belong in this blotter's projection.
-      // Never overwrite SSRM rowCount with the full book size — that
-      // was making every blotter report Rows: 10,000 and could leave
-      // empty blocks stranded under a non-zero count.
-      const relevant = filter ? updates.filter(filter) : updates;
-      if (relevant.length === 0) continue;
+    for (const [grid, binding] of this.grids) {
+      const filterModel = this.gridFilterModel(binding, grid);
+      const add: StompRow[] = [];
+      const update: StompRow[] = [];
+      const remove: StompRow[] = [];
+
+      for (const row of updates) {
+        const id = row.positionId;
+        const inBlotter = !binding.filter || binding.filter(row);
+        const matchesNow = inBlotter && rowMatchesFilterModel(row, filterModel);
+        const wasIn = binding.projectedIds.has(id);
+
+        if (matchesNow) {
+          if (wasIn) update.push(row);
+          else {
+            add.push(row);
+            binding.projectedIds.add(id);
+          }
+        } else if (wasIn) {
+          remove.push(row);
+          binding.projectedIds.delete(id);
+        }
+      }
+
+      if (add.length === 0 && update.length === 0 && remove.length === 0) continue;
+
+      // rowCount must match getRows (blotter predicate + active filter model).
       grid.applyServerSideTransaction({
-        update: relevant,
-        rowCount: this.projectedCount(filter),
+        add: add.length ? add : undefined,
+        update: update.length ? update : undefined,
+        remove: remove.length ? remove : undefined,
+        rowCount: this.projectedCount(binding.filter, filterModel),
       });
     }
   }
@@ -377,7 +591,11 @@ export class StompSsrmDataProvider {
   }
 
   private reloadGrids(): void {
-    for (const grid of this.grids.keys()) {
+    for (const [grid, binding] of this.grids) {
+      binding.projectedIds = this.computeProjectedIds(
+        binding.filter,
+        this.gridFilterModel(binding, grid),
+      );
       grid.refreshServerSide({ purge: true });
     }
     // Second pass after flex panels get a real height.

@@ -77,10 +77,13 @@ export class ServerSideRowModelController<TRow = any> {
   /**
    * Load every block for the current `rowCount` and reset-hydrate the
    * worker so the CSRM pipeline can run over the full book (grouping,
-   * pivot, client sort/filter, totals).
+   * pivot, client sort/filter, totals). Always resolves true: the v1
+   * block model can fully hydrate in any state (the boolean exists for
+   * signature parity with v2, whose grouped path must refuse).
    */
-  ensureFullyHydrated(): Promise<void> {
-    return this.enqueue(() => this.ensureFullyHydratedInner());
+  async ensureFullyHydrated(): Promise<boolean> {
+    await this.enqueue(() => this.ensureFullyHydratedInner());
+    return true;
   }
 
   private async ensureFullyHydratedInner(): Promise<void> {
@@ -348,10 +351,19 @@ export class ServerSideRowModelController<TRow = any> {
           if (result.groupKeys?.length) {
             this.host.mergeGroupKeys?.(result.groupKeys);
           }
+          // A window shorter than the (just-updated) rowCount implies the
+          // server is still settling — cache it RETRYABLE ('failed'), not
+          // 'loaded': a partially short mid-book block cached as 'loaded'
+          // was never refetched, leaving a permanent blank band. When the
+          // reply omits rowCount, a short window means end-of-book (the
+          // count was inferred above) and stays 'loaded'.
+          const expected = this.rowCount > 0
+            ? Math.max(0, Math.min(this.cacheBlockSize, this.rowCount - startRow))
+            : result.rowData.length;
           this.blocks.set(blockIndex, {
             startRow,
             rows: result.rowData.slice(),
-            state: 'loaded',
+            state: result.rowData.length >= expected ? 'loaded' : 'failed',
           });
           resolve();
         },

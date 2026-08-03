@@ -54,16 +54,32 @@ export async function handleDataPipeline(
 
     case 'ssrmSetClientPipeline': {
       state.ssrmClientPipeline = req.payload.enabled === true;
+      if (!state.ssrmClientPipeline) {
+        // Sparse path re-entered — CSRM-derived pipeline output is dead
+        // state now. Left in place, `isGroupingActive()` stayed true and
+        // every getViewport walked the stale tree over `ssrmOrder`
+        // (setGroupModel can't rebuild it: buildVisibleAsync early-returns
+        // on the sparse path).
+        state.groupOutput = null;
+        state.pivotOut = null;
+        state.groupInputIds = null;
+        state.pivotInputIds = null;
+      }
       state.visibleCache = null;
+      const wasPendingSeed = state.pendingDefaultExpandSeed;
       const visibleCount = await helpers.invalidateAndCount();
       const groupKeys = helpers.isGroupingActive() ? helpers.currentGroupKeys() : undefined;
-      post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount, groupKeys });
+      const expandedKeys = wasPendingSeed && !state.pendingDefaultExpandSeed
+        ? (state.expandedKeys === null ? null : Array.from(state.expandedKeys))
+        : undefined;
+      post({ id: req.id, type: 'rowCount', count: state.store.size(), visibleCount, groupKeys, expandedKeys });
       return;
     }
 
     case 'setRowData': {
       // Leaving SSRM — CSRM full replace owns the store again.
       state.ssrmActive = false;
+      state.slicer.setSsrmMetaEnabled(false);
       state.ssrmClientPipeline = false;
       state.ssrmOrder = [];
       state.ssrmRowCount = 0;
@@ -105,8 +121,10 @@ export async function handleDataPipeline(
     case 'ssrmHydrate': {
       const { rowCount, startRow, rows, reset } = req.payload;
       state.ssrmActive = true;
+      state.slicer.setSsrmMetaEnabled(true);
       state.ssrmRowCount = Math.max(0, rowCount | 0);
-      if (reset || state.ssrmOrder.length !== state.ssrmRowCount) {
+      const reallocated = !reset && state.ssrmOrder.length !== state.ssrmRowCount;
+      if (reset || reallocated) {
         state.ssrmOrder = new Array<string>(state.ssrmRowCount).fill('');
         if (reset) {
           state.store.setAll([]);
@@ -118,6 +136,7 @@ export async function handleDataPipeline(
       }
       const add: unknown[] = [];
       const update: unknown[] = [];
+      let repointed = false;
       for (let i = 0; i < rows.length; i++) {
         const row = rows[i];
         if (row == null) continue;
@@ -138,12 +157,24 @@ export async function handleDataPipeline(
         state.ssrmOrder[idx] = id;
         if (state.store.getById(id)) update.push(row);
         else add.push(row);
-        // If this slot previously pointed at a different id, leave the
-        // orphan in the store — LRU eviction is a later cycle.
-        void prev;
+        if (prev !== '' && prev !== id) repointed = true;
       }
       if (add.length || update.length) {
         state.store.apply({ add, update });
+      }
+      // Orphan sweep — a reallocation (rowCount change) wipes every slot
+      // and a re-point strands the previous id; rows no slot references
+      // are unreachable for paint. Left in place they grew worker memory
+      // for the life of a ticking blotter (every count change orphaned
+      // the entire hydrated set).
+      if (reallocated || repointed) {
+        const referenced = new Set(state.ssrmOrder);
+        const orphans: string[] = [];
+        for (const row of state.store.rows()) {
+          const id = state.store.getRowId(row);
+          if (!referenced.has(id)) orphans.push(id);
+        }
+        if (orphans.length > 0) state.store.apply({ remove: orphans });
       }
       state.visibleCache = state.ssrmOrder;
       post({
@@ -191,9 +222,17 @@ export async function handleDataPipeline(
         }
         state.visibleCache = null;
         post({ id: req.id, type: 'transactionFlushed', results });
+        const wasPendingSeed = state.pendingDefaultExpandSeed;
         const visCount = await helpers.invalidateAndCount();
         const groupKeys = helpers.isGroupingActive() ? helpers.currentGroupKeys() : undefined;
-        post({ type: 'modelUpdated', visibleCount: visCount, groupKeys });
+        // AG parity — the first data may arrive via a transaction, not
+        // setRowData; if this rebuild consumed the deferred
+        // `groupDefaultExpanded` seed, ship the seeded set so main's
+        // expansion mirror stays truthful (same rule as setRowData).
+        const expandedKeys = wasPendingSeed && !state.pendingDefaultExpandSeed
+          ? (state.expandedKeys === null ? null : Array.from(state.expandedKeys))
+          : undefined;
+        post({ type: 'modelUpdated', visibleCount: visCount, groupKeys, expandedKeys });
       }
       return;
     }

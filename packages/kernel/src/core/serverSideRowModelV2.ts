@@ -20,7 +20,7 @@ import type {
   ServerSideTransaction,
 } from '../types/ssrm';
 import type { SsrmHost } from './serverSideRowModel';
-import { attachSsrmRowMeta } from './ssrmRowMeta';
+import { attachSsrmRowMeta, readSsrmRowMeta } from './ssrmRowMeta';
 import {
   FlattenIndex,
   toDisplayOrder,
@@ -61,7 +61,6 @@ export class ServerSideRowModelV2Controller<TRow = any> {
 
   /** Per-group leaf blocks; flat mode uses the '' key via `getRows`. */
   private readonly leafCaches = new Map<string, Map<number, LeafBlock<TRow>>>();
-  private loadedBlockCount = 0;
   private touchClock = 0;
   /** Bumped on ANY leaf-cache content change — part of the hydrate
    *  signature so unchanged windows skip the worker round trip entirely
@@ -201,11 +200,13 @@ export class ServerSideRowModelV2Controller<TRow = any> {
   }
 
   /** Full hydrate only exists for the flat fallback (client-pipeline
-   *  bridge). Grouped v2 is natively sparse — nothing to fully hydrate. */
-  async ensureFullyHydrated(): Promise<void> {
+   *  bridge). Grouped v2 is natively sparse — nothing to fully hydrate.
+   *  Returns false when hydration is refused so the caller must NOT
+   *  enable the client pipeline over the sparse store. */
+  async ensureFullyHydrated(): Promise<boolean> {
     if (this.host.getRowGroupCols().length > 0) {
       console.warn('[cgrid] SSRM v2: ensureFullyHydrated is unsupported while grouped — the skeleton path serves grouping natively');
-      return;
+      return false;
     }
     await this.enqueue(async () => {
       if (this.flatRowCount <= 0) await this.ensureRangeInner(0, this.blockSize);
@@ -220,6 +221,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       }
       await this.host.hydrateWindow(0, rows, this.flatRowCount, true);
     });
+    return true;
   }
 
   /**
@@ -260,9 +262,15 @@ export class ServerSideRowModelV2Controller<TRow = any> {
           updatesById.set(this.host.getRowId(row), row);
         } catch { /* skip */ }
       }
+      // Rows as stored after the patch, keyed by id — the worker REPLACES
+      // by id, so updates must carry the cached row's __ssrm meta or leaf
+      // depth/kind is stripped and the row paints unindented.
+      const patched = new Map<string, TRow>();
       for (const cache of this.leafCaches.values()) {
         for (const block of cache.values()) {
-          if (block.state !== 'loaded') continue;
+          // 'failed' blocks keep partial rows that DO paint — ticks must
+          // reach them too, not just fully loaded blocks.
+          if (block.state === 'loading') continue;
           for (let i = 0; i < block.rows.length; i++) {
             let id = '';
             try {
@@ -271,12 +279,25 @@ export class ServerSideRowModelV2Controller<TRow = any> {
               continue;
             }
             const next = updatesById.get(id);
-            if (next) block.rows[i] = next;
+            if (next === undefined) continue;
+            const prevMeta = readSsrmRowMeta(block.rows[i]);
+            const merged = prevMeta && !readSsrmRowMeta(next)
+              ? attachSsrmRowMeta(next as Record<string, unknown>, prevMeta) as TRow
+              : next;
+            block.rows[i] = merged;
+            patched.set(id, merged);
           }
         }
       }
       this.cacheEpoch++;
-      this.host.applyTransaction({ update: tx.update });
+      const updates = tx.update.map((row) => {
+        try {
+          return patched.get(this.host.getRowId(row)) ?? row;
+        } catch {
+          return row;
+        }
+      });
+      this.host.applyTransaction({ update: updates });
     }
     this.host.requestViewport();
   }
@@ -289,7 +310,6 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     this.index = null;
     this.groupBaseRows.clear();
     this.leafCaches.clear();
-    this.loadedBlockCount = 0;
   }
 
   // ─── op serialization ────────────────────────────────────────────────
@@ -310,7 +330,6 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       this.index = null;
       this.groupBaseRows.clear();
       this.leafCaches.clear();
-      this.loadedBlockCount = 0;
       this.cacheEpoch++;
       this.flatRowCount = 0;
       this.host.setGrandTotals?.(null);
@@ -467,12 +486,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
   }
 
   private dropGroupCache(groupKey: string): void {
-    const cache = this.leafCaches.get(groupKey);
-    if (!cache) return;
-    for (const block of cache.values()) {
-      if (block.state === 'loaded') this.loadedBlockCount--;
-    }
-    this.leafCaches.delete(groupKey);
+    if (!this.leafCaches.delete(groupKey)) return;
     this.cacheEpoch++;
   }
 
@@ -507,7 +521,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     for (const entry of index.entriesInRange(start, end)) {
       if (entry.kind !== 'leaf') continue;
       const blockIdx = Math.floor(entry.leafOffset / this.blockSize);
-      const tag = `${entry.node.key} ${blockIdx}`;
+      const tag = `${entry.node.key}\u0000${blockIdx}`;
       if (seen.has(tag)) continue;
       seen.add(tag);
       const block = this.leafCaches.get(entry.node.key)?.get(blockIdx);
@@ -574,10 +588,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
             touch: ++this.touchClock,
           });
           this.cacheEpoch++;
-          if (complete) {
-            this.loadedBlockCount++;
-            this.evictIfNeeded();
-          }
+          this.evictIfNeeded();
           resolve();
         },
         fail: () => {
@@ -596,14 +607,24 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     return run();
   }
 
+  /** Any block holding rows costs memory — 'loaded' AND 'failed' blocks
+   *  keeping partial rows for paint. Counted on the fly: the previous
+   *  incremental counter never saw failed partial blocks, so they
+   *  accumulated unevictably until purge. */
   private evictIfNeeded(): void {
-    while (this.loadedBlockCount > this.maxCachedLeafBlocks) {
+    const holdsRows = (b: LeafBlock<TRow>): boolean =>
+      b.state === 'loaded' || (b.state === 'failed' && b.rows.length > 0);
+    let count = 0;
+    for (const cache of this.leafCaches.values()) {
+      for (const block of cache.values()) if (holdsRows(block)) count++;
+    }
+    while (count > this.maxCachedLeafBlocks) {
       let lruKey = '';
       let lruIdx = -1;
       let lruTouch = Infinity;
       for (const [key, cache] of this.leafCaches) {
         for (const [idx, block] of cache) {
-          if (block.state === 'loaded' && block.touch < lruTouch) {
+          if (holdsRows(block) && block.touch < lruTouch) {
             lruTouch = block.touch;
             lruKey = key;
             lruIdx = idx;
@@ -611,8 +632,12 @@ export class ServerSideRowModelV2Controller<TRow = any> {
         }
       }
       if (lruIdx < 0) return;
-      this.leafCaches.get(lruKey)?.delete(lruIdx);
-      this.loadedBlockCount--;
+      const cache = this.leafCaches.get(lruKey);
+      cache?.delete(lruIdx);
+      // Emptied per-group maps go too — they leaked before (only
+      // dropGroupCache removed them).
+      if (cache && cache.size === 0) this.leafCaches.delete(lruKey);
+      count--;
       this.cacheEpoch++;
     }
   }
@@ -626,7 +651,6 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       const cache = this.leafCaches.get(entry.node.key);
       const block = cache?.get(blockIdx);
       if (block) {
-        if (block.state === 'loaded') this.loadedBlockCount--;
         cache!.delete(blockIdx);
         this.cacheEpoch++;
       }
@@ -649,11 +673,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
     const first = Math.floor(Math.max(0, rowStart) / this.blockSize);
     const last = Math.floor(Math.max(rowStart, rowEnd - 1) / this.blockSize);
     for (let b = first; b <= last; b++) {
-      const block = cache.get(b);
-      if (block) {
-        if (block.state === 'loaded') this.loadedBlockCount--;
-        cache.delete(b);
-      }
+      if (cache.delete(b)) this.cacheEpoch++;
     }
   }
 
@@ -747,12 +767,19 @@ export class ServerSideRowModelV2Controller<TRow = any> {
           if (result.grandTotals !== undefined) {
             this.host.setGrandTotals?.(result.grandTotals);
           }
+          const rows = result.rowData.slice();
+          // Same retryable rule as the grouped leaf path: a window shorter
+          // than the reported rowCount implies (server still settling) must
+          // NOT cache as 'loaded' — that turns a transient race into
+          // permanently blank rows. Whatever arrived still paints; 'failed'
+          // is refetched by the next ensureRange / soft refresh.
+          const expected = Math.max(0, Math.min(this.blockSize, this.flatRowCount - startRow));
+          const complete = rows.length >= expected;
           cache.set(blockIdx, {
-            rows: result.rowData.slice(),
-            state: 'loaded',
+            rows,
+            state: complete ? 'loaded' : 'failed',
             touch: ++this.touchClock,
           });
-          this.loadedBlockCount++;
           this.evictIfNeeded();
           resolve();
         },
@@ -838,6 +865,14 @@ export class ServerSideRowModelV2Controller<TRow = any> {
   private async hydrateRange(rowStart: number, rowEnd: number): Promise<void> {
     const index = this.index;
     if (!index || this.host.isDestroyed()) return;
+    // Every flush() below is a worker round-trip; a purge (dataGen bump)
+    // or a toggle's same-frame index swap can land between awaits. Stale
+    // hydrates must not reach the worker — they would reset ssrmRowCount
+    // to the old count and place rows at indices of the dead tree (the
+    // flat path has the same guard).
+    const gen = this.dataGen;
+    const stale = (): boolean =>
+      gen !== this.dataGen || this.index !== index || this.host.isDestroyed();
     const rowCount = index.rowCount;
     const start = Math.max(0, Math.floor(rowStart));
     const end = Math.min(rowCount, Math.max(start, Math.ceil(rowEnd)));
@@ -877,9 +912,10 @@ export class ServerSideRowModelV2Controller<TRow = any> {
         run.push(row);
       }
       cursor++;
-      if (this.host.isDestroyed()) return;
+      if (stale()) return;
     }
     await flush();
+    if (stale()) return;
 
     if (rowCount === 0 && this.reportedRowCount === 0) {
       await this.host.hydrateWindow(0, [], 0, false);
@@ -893,7 +929,7 @@ export class ServerSideRowModelV2Controller<TRow = any> {
       if (row !== null) {
         await this.host.hydrateWindow(anc.index, [row], rowCount, false);
       }
-      if (this.host.isDestroyed()) return;
+      if (stale()) return;
     }
 
     this.lastHydrate = { start, end, index, dataGen: this.dataGen, cacheEpoch: this.cacheEpoch };

@@ -55,16 +55,19 @@ export interface WorkerHost {
 export function createWorkerHost(post: PostFn): WorkerHost {
   let state: State | null = null;
 
-  function buildCandidates(skipColumnFilter = false): string[] {
+  function buildCandidates(aggFilterCols: ReadonlySet<string> | null = null): string[] {
     if (!state) return [];
     // Cycle 7 / Task 7 — QuickFilterPass runs BEFORE FilterPass. A null
     // return means no quick-filter constraint, so we skip the intersection
     // entirely.
-    // AG `groupAggFiltering` — the column filter model evaluates GROUP
-    // aggregates instead of leaves; leaves bypass FilterPass entirely
-    // (quick filter still applies at leaf level).
+    // AG `groupAggFiltering` — entries on AGGREGATED columns evaluate group
+    // aggregates instead of leaves (excluded here, applied by
+    // `pruneGroupsByAggFilter`); entries on non-aggregated columns still
+    // filter leaves. Quick filter always applies at leaf level.
     const quickIds = state.quickFilter.apply();
-    let ids = skipColumnFilter ? state.filter.allRowIds() : state.filter.apply();
+    let ids = aggFilterCols && aggFilterCols.size > 0
+      ? state.filter.applyExcluding(aggFilterCols)
+      : state.filter.apply();
     if (quickIds !== null) {
       const allow = new Set(quickIds);
       ids = ids.filter((id) => allow.has(id));
@@ -155,12 +158,20 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     // values BEFORE the filter reads them. No program → immediate no-op.
     state.calc.ensureStageA(state.store, (colId) => state!.columns.find((c) => c.colId === colId)?.field);
     // AG `groupAggFiltering` — active only when grouping is on AND a
-    // filter model is installed; leaves bypass the column filter and the
-    // model prunes the GROUP tree by aggregate values below.
+    // filter model is installed. Entries on aggregated columns prune the
+    // GROUP tree by aggregate values below; entries on non-aggregated
+    // columns still filter leaves (a text filter on a plain column must
+    // not silently no-op).
     const aggFiltering = state.groupAggFiltering
       && state.group.getModel().rowGroupCols.length > 0
       && state.filter.hasActiveModel();
-    let ids = buildCandidates(aggFiltering);
+    const aggFilterCols = aggFiltering
+      ? new Set(state.filter.activeColIds().filter((colId) => {
+        const c = state!.columns.find((cc) => cc.colId === colId);
+        return c?.aggFunc != null;
+      }))
+      : null;
+    let ids = buildCandidates(aggFilterCols);
     const alwaysPass = state.alwaysPassIds;
     if (state.externalFilterPresent) {
       // Subtract alwaysPass from the candidate set the main thread
@@ -429,7 +440,9 @@ export function createWorkerHost(post: PostFn): WorkerHost {
         // a labeled "(Blanks)" group (was: empty label → em-dash glyph).
         let formatted: string;
         if (value === null || value === undefined) formatted = '(Blanks)';
-        else if (colType === 'number' && typeof value === 'number') formatted = Number.isFinite(value) ? String(value) : '(Blanks)';
+        // Non-finite numbers (NaN/Infinity) are values, not blanks — label
+        // them by their string form.
+        else if (colType === 'number' && typeof value === 'number') formatted = String(value);
         else {
           formatted = String(value);
           if (formatted === '') formatted = '(Blanks)';
@@ -461,13 +474,23 @@ export function createWorkerHost(post: PostFn): WorkerHost {
     const limit = Math.min(rowStart, visibleOrder.length);
     for (let i = 0; i < limit; i++) {
       const entry = visibleOrder[i]!;
-      if (entry.kind === 'group') lastAtDepth.set(entry.depth, entry.key);
+      if (entry.kind === 'group') {
+        // A group at depth d starts a new subtree — deeper entries belong
+        // to the previous subtree and are no longer ancestors of rows
+        // below this point (prevents a cross-parent child in the band).
+        for (const depth of lastAtDepth.keys()) {
+          if (depth > entry.depth) lastAtDepth.delete(depth);
+        }
+        lastAtDepth.set(entry.depth, entry.key);
+      }
     }
     if (lastAtDepth.size === 0) return [];
     const result: StickyAncestor[] = [];
     for (const [depth, key] of [...lastAtDepth.entries()].sort((a, b) => a[0] - b[0])) {
       const meta = metaLookup.get(key);
-      if (!meta || !meta.isExpanded) continue;
+      // A collapsed (or unknown) group ends the ancestor chain — deeper
+      // entries cannot be true ancestors of rows below it.
+      if (!meta || !meta.isExpanded) break;
       result.push({ depth, key, colId: meta.colId, value: meta.value, childCount: meta.childCount, isExpanded: meta.isExpanded });
     }
     return result;
@@ -570,12 +593,19 @@ export function createWorkerHost(post: PostFn): WorkerHost {
       // microtask later once `buildVisibleAsync` resolves. Cycle 7 / Task 8
       // — when an external filter is active the await also covers the
       // candidates ↔ result round-trip with main.
+      const wasPendingSeed = state!.pendingDefaultExpandSeed;
       void invalidateAndCount().then((visibleCount) => {
         // Cycle 15 / Task 7 — when grouping is active, fan the
         // current composite keys back so main's `knownGroupKeys`
         // mirror tracks any group added / removed by this txn.
         const groupKeys = isGroupingActive() ? currentGroupKeys() : undefined;
-        post({ type: 'modelUpdated', visibleCount, groupKeys });
+        // AG parity — first data can arrive via an async flush; if this
+        // rebuild consumed the deferred `groupDefaultExpanded` seed, ship
+        // the seeded set so main's expansion mirror stays truthful.
+        const expandedKeys = wasPendingSeed && !state!.pendingDefaultExpandSeed
+          ? (state!.expandedKeys === null ? null : Array.from(state!.expandedKeys))
+          : undefined;
+        post({ type: 'modelUpdated', visibleCount, groupKeys, expandedKeys });
       });
       return all;
     });

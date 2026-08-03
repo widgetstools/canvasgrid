@@ -1,6 +1,6 @@
 import type { CColDef } from '@cgrid/kernel';
 
-import type { PositionRow } from './perspective/bootstrap';
+import type { PositionRow } from './bootstrap';
 
 
 
@@ -16,7 +16,7 @@ function isSyntheticId(id: unknown): boolean {
 
 
 
-export const COLUMNS: CColDef<PositionRow>[] = [
+export const POSITION_COLUMNS: CColDef<PositionRow>[] = [
 
   {
 
@@ -60,6 +60,9 @@ export const COLUMNS: CColDef<PositionRow>[] = [
 ];
 
 
+
+/** Back-compat alias — prefer `POSITION_COLUMNS` (or `provider.columnDefs`). */
+export const COLUMNS = POSITION_COLUMNS;
 
 export function emptyGrandTotalRow(): PositionRow {
 

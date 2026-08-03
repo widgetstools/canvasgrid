@@ -1,4 +1,4 @@
-import type { BookTelemetry } from '../perspective/book';
+import type { BookTelemetry } from '@cgrid/perspective';
 
 function fmt(n: number): string {
   return n.toLocaleString();
@@ -45,9 +45,11 @@ export function renderVisualizer(
     <section class="viz-provider">
       <div class="viz-provider-head">
         <div>
-          <div class="viz-kicker">Shared DataProvider · Phase 1</div>
+          <div class="viz-kicker">Shared DataProvider · Phase 5</div>
           <h2>Perspective WASM Table</h2>
-          <div class="viz-sub">${t.wsUrl} · engine=${t.engine}</div>
+          <div class="viz-sub">${t.wsUrl} · engine=${t.engine} · ${t.workerMode} worker${
+            t.workerMode === 'shared' ? ` · feed: ${t.feedRole}` : ''
+          }</div>
         </div>
         <div class="phase-badge ${phaseClass(t.phase)}">${t.phase}</div>
       </div>
@@ -62,7 +64,7 @@ export function renderVisualizer(
         <div class="stat"><span class="stat-label">Views</span><span class="stat-value">${fmt(t.viewCount)}</span></div>
       </div>
       <div class="knob-readout">
-        Phase 1: flat View windows · sort/filter/group → Phase 2–4 · SharedWorker multi-tab → Phase 5
+        Phase 5: one ${t.workerMode === 'shared' ? 'SharedWorker engine per origin — open this page in a second tab to share the book' : 'dedicated engine (SharedWorker unavailable or ?worker=dedicated)'} · feed leader elected via Web Locks
       </div>
     </section>
     <section class="viz-views">

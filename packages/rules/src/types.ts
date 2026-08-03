@@ -7,14 +7,39 @@ import type { FormatProgram } from '@cgrid/format';
 
 export type ThemeKind = 'light' | 'dark';
 
+/** Kernel `BorderStyle` vocabulary (cell.ts) — "none" is expressed by
+ *  omitting the side (or width 0), not as a style value. */
+export type RuleBorderStyle = 'solid' | 'dashed' | 'dotted' | 'double';
+
+export interface RuleBorderSide {
+  width?: number;
+  color?: string;
+  style?: RuleBorderStyle;
+}
+
+/** Per-side borders — the kernel `BorderSpec` shape: an explicit side wins
+ *  over `all`; absent side (or width 0) paints nothing. */
+export interface RuleBorderSpec {
+  top?: RuleBorderSide;
+  right?: RuleBorderSide;
+  bottom?: RuleBorderSide;
+  left?: RuleBorderSide;
+  all?: RuleBorderSide;
+}
+
 export interface StyleSlice {
   color?: string;
   backgroundColor?: string;
   fontWeight?: 'normal' | 'bold' | number;
   fontStyle?: 'normal' | 'italic';
   textDecoration?: 'none' | 'underline' | 'line-through';
+  /** Legacy single-border pair — all four sides, width 1. Superseded by
+   *  `border` (which wins when both are set); kept for stored rules. */
   borderColor?: string;
   borderStyle?: 'none' | 'solid' | 'dashed' | 'dotted';
+  /** Per-side borders. NOTE: like the kernel's override patches, the spec
+   *  replaces WHOLESALE between rules / theme slices — no per-side merge. */
+  border?: RuleBorderSpec;
 }
 
 /** Theme-aware style: `base` applies to both themes; `light`/`dark`
