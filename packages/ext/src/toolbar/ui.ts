@@ -34,12 +34,21 @@ export function mirrorThemeClass(anchor: HTMLElement, el: HTMLElement): void {
 }
 
 /** Simple click-away popup menu anchored under `anchor`.
- *  `opts.align` picks which anchor edge the panel hugs (default right). */
+ *  `opts.align` picks which anchor edge the panel hugs (default right).
+ *  `opts.fitTo` clamps width + position into a container (e.g. cockpit pane)
+ *  so wide panels like the format picker stay inside settings editors. */
 export function menu(
   anchor: HTMLElement,
   build: (close: () => void) => HTMLElement,
   onOpenChange?: (open: boolean) => void,
-  opts?: { align?: 'left' | 'right' },
+  opts?: {
+    align?: 'left' | 'right';
+    fitTo?: HTMLElement | (() => HTMLElement | null | undefined);
+    /** Preferred width before fitTo / viewport clamping. */
+    preferWidth?: number;
+    /** Below this fitted width, `is-compact` is added on the panel. */
+    compactBelow?: number;
+  },
 ): { toggle: () => void; destroy: () => void } {
   let panel: HTMLElement | null = null;
   const close = () => {
@@ -56,11 +65,44 @@ export function menu(
     panel.classList.add('cgext-menu');
     mirrorThemeClass(anchor, panel);
     document.body.appendChild(panel);
+
+    const margin = 8;
+    const fitSrc = typeof opts?.fitTo === 'function' ? opts.fitTo() : opts?.fitTo;
+    const fitEl = fitSrc ?? null;
+    const fit = fitEl?.getBoundingClientRect();
+    const bounds = fit
+      ? {
+          left: fit.left + margin,
+          right: fit.right - margin,
+          top: Math.max(margin, fit.top + margin),
+          bottom: Math.min(window.innerHeight - margin, fit.bottom - margin),
+        }
+      : {
+          left: margin,
+          right: window.innerWidth - margin,
+          top: margin,
+          bottom: window.innerHeight - margin,
+        };
+    const maxW = Math.max(220, bounds.right - bounds.left);
+    const prefer = opts?.preferWidth ?? panel.offsetWidth;
+    const width = Math.min(prefer, maxW);
+    panel.style.width = `${Math.round(width)}px`;
+    panel.style.maxWidth = `${Math.round(maxW)}px`;
+    panel.classList.toggle('is-compact', width < (opts?.compactBelow ?? 380));
+
     const r = anchor.getBoundingClientRect();
-    const top = Math.round(r.bottom + 4);
-    const left = opts?.align === 'left'
-      ? Math.round(Math.max(8, Math.min(r.left, window.innerWidth - panel.offsetWidth - 8)))
-      : Math.round(Math.max(8, r.right - panel.offsetWidth));
+    let top = Math.round(r.bottom + 4);
+    let left = opts?.align === 'left'
+      ? Math.round(r.left)
+      : Math.round(r.right - width);
+    left = Math.max(bounds.left, Math.min(left, bounds.right - width));
+    // Prefer below the anchor; flip above when the fitted box would clip.
+    const h = panel.offsetHeight;
+    if (top + h > bounds.bottom && r.top - 4 - h >= bounds.top) {
+      top = Math.round(r.top - 4 - h);
+    }
+    top = Math.max(bounds.top, Math.min(top, Math.max(bounds.top, bounds.bottom - Math.min(h, bounds.bottom - bounds.top))));
+
     panel.style.setProperty('--cgext-menu-top', `${top}px`);
     panel.style.setProperty('--cgext-menu-left', `${left}px`);
     document.addEventListener('pointerdown', onDoc, true);

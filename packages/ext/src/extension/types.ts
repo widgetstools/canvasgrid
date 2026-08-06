@@ -48,6 +48,8 @@ export interface ProfileController {
   save(): Promise<void>;
   /** Save current view under a new name; becomes the active profile. */
   saveAs(name: string): Promise<string>;
+  /** Reload the active saved snapshot, discarding unsaved grid edits. */
+  discard(): Promise<void>;
   rename(id: string, name: string): Promise<void>;
   remove(id: string): Promise<void>;
   switchTo(id: string): Promise<void>;

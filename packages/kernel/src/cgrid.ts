@@ -104,6 +104,11 @@ import { ColumnGroupsToolPanel } from './interaction/toolPanels/columnGroupsPane
 // sheet without depending on kernel-internal paths.
 export { GridOptionsToolPanel } from './interaction/toolPanels/gridOptionsPanel';
 export { ColumnGroupsToolPanel } from './interaction/toolPanels/columnGroupsPanel';
+export {
+  ColorPickerControl,
+  parseColor,
+  rgbaToString,
+} from './interaction/settingsForm/colorPicker';
 import { SideBarHost, normalizeSideBarOption, type SideBarGridContext } from './interaction/sideBar/host';
 import { StatusBarHost, normalizeStatusBarOption, type StatusBarGridContext } from './interaction/statusBar/host';
 import { StatusPanelRegistry } from './interaction/statusBar/registry';
@@ -3347,6 +3352,15 @@ export class CGrid<TRow = any> {
         const seedGroupCols = this.computeInitialRowGroupColumns();
         if (seedGroupCols.length > 0 && this.grouping.getRowGroupColumns().length === 0) {
           this.setRowGroupColumns(seedGroupCols);
+        }
+      }
+      // Same AG parity for measures: `colDef.aggFunc` seeds value columns
+      // so getColumnState round-trips them (and SSRM group-total paint,
+      // which gates on leaf.aggFunc, keeps working after a profile restore).
+      {
+        const seedValueCols = this.computeInitialValueColumns();
+        if (seedValueCols.length > 0 && this.getValueColumns().length === 0) {
+          this.setValueColumns(seedValueCols);
         }
       }
       // Cycle 23 / Task 6 — apply an initial-state snapshot AFTER the
@@ -9763,6 +9777,35 @@ export class CGrid<TRow = any> {
       return a.seq - b.seq;
     });
     return entries.map((e) => e.colId);
+  }
+
+  /** Construction-time `colDef.aggFunc` → value-column registry (AG parity).
+   *  Array-form `aggFunc: ['sum','avg']` seeds the first entry. */
+  private computeInitialValueColumns(): Array<{ colId: string; aggFunc: string }> {
+    const leaves: Array<Record<string, unknown>> = [];
+    const collect = (list: readonly unknown[] | undefined): void => {
+      for (const d of (list ?? []) as Array<Record<string, unknown>>) {
+        if (d && Array.isArray((d as { children?: unknown[] }).children)) {
+          collect((d as { children: unknown[] }).children);
+        } else if (d) {
+          leaves.push(d);
+        }
+      }
+    };
+    collect(this.options.columnDefs as unknown as readonly unknown[]);
+
+    const out: Array<{ colId: string; aggFunc: string }> = [];
+    for (const d of leaves) {
+      const colId = String(d.colId ?? d.field ?? '');
+      if (!colId) continue;
+      const agg = d.aggFunc;
+      if (typeof agg === 'string' && agg.length > 0) {
+        out.push({ colId, aggFunc: agg });
+      } else if (Array.isArray(agg) && typeof agg[0] === 'string' && agg[0].length > 0) {
+        out.push({ colId, aggFunc: agg[0] });
+      }
+    }
+    return out;
   }
 
   /** Cycle 15 / Task 5 — read the per-row group context from the

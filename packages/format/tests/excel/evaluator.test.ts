@@ -53,6 +53,32 @@ describe('Excel evaluator — Section routing', () => {
     expect(r.style?.color).toBe('var(--cg-neg-color, #E53935)');
   });
 
+  it('negative section without a literal minus suppresses the auto sign (Excel)', () => {
+    // Preset: Green / Red (no sign)
+    const r = fmt('[Green]#,##0.00;[Red]#,##0.00', -1234.57);
+    expect(r.text).toBe('1,234.57');
+    expect(r.text).not.toMatch(/-/);
+    expect(r.style?.color).toBe('var(--cg-neg-color, #E53935)');
+  });
+
+  it('negative section with $ prefix and no literal minus suppresses the auto sign', () => {
+    // Preset: Green / Red $ (no sign)
+    const r = fmt('[Green]$#,##0.00;[Red]$#,##0.00', -1234.57);
+    expect(r.text).toBe('$1,234.57');
+    expect(r.text).not.toMatch(/-/);
+  });
+
+  it('paren negative section does not put a minus inside the parentheses', () => {
+    const r = fmt('#,##0.00;(#,##0.00)', -1234.57);
+    expect(r.text).toBe('(1,234.57)');
+  });
+
+  it('red paren negative section keeps color without an inner minus', () => {
+    const r = fmt('#,##0.00;[Red](#,##0.00)', -1234.57);
+    expect(r.text).toBe('(1,234.57)');
+    expect(r.style?.color).toBe('var(--cg-neg-color, #E53935)');
+  });
+
   it('zero value uses third section when present', () => {
     const r = fmt('0.00;-0.00;"—"', 0);
     expect(r.text).toBe('—');

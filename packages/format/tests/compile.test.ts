@@ -179,8 +179,8 @@ describe('compileFormat — rule refs + hasRuleRefs (Cycle 21e)', () => {
     });
     expect(style?.color).toBe('#ff0000');
 
-    // Text path unaffected by the bracket.
-    expect(r.program.formatText({ value: 1234.5, row: {}, colId: 'x' })).toBe('$1,234.50');
+    // Text path unaffected by the bracket (leading space before $ is part of the format).
+    expect(r.program.formatText({ value: 1234.5, row: {}, colId: 'x' })).toBe(' $1,234.50');
 
     // Accessor absent → exact Cycle 21c reserve behavior.
     expect(r.program.resolveStyle({ value: 1234.5, row: {}, colId: 'x' })?.color).toBeUndefined();

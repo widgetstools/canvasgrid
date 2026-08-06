@@ -6,13 +6,13 @@ export default defineConfig({
   expect: { timeout: 10_000 },
   reporter: 'list',
   webServer: {
-    command: 'npm run dev -- --port 5175',
-    url: 'http://localhost:5175',
+    command: 'npm run dev -- --port 5176',
+    url: 'http://localhost:5176',
     reuseExistingServer: true,
     timeout: 60_000,
   },
   use: {
-    baseURL: 'http://localhost:5175',
+    baseURL: 'http://localhost:5176',
     headless: true,
     // Wide enough that every leaf column stays in the DOM even with every
     // group expanded. AG-Grid virtualizes columns horizontally; with all 7

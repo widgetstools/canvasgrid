@@ -6,6 +6,7 @@
 import { menu } from './ui';
 import { injectTitleBarStyles } from './titleBar';
 import { injectRibbonStyles, type BorderSideKey } from './ribbon';
+import { ribbonColorSwatch, syncRibbonColor } from './colorSwatch';
 
 export interface StyleChromeAdapter {
   /** Current style object (headerStyle / cellStyle slice). */
@@ -27,9 +28,9 @@ const I = {
   eraser: 'M7 21h13M5 13l6 6M20 8l-9 9-6-6 9-9a2.8 2.8 0 0 1 4 0l2 2a2.8 2.8 0 0 1 0 4z',
 };
 
-const DEFAULT_TEXT = '#4fd1c5';
+const DEFAULT_TEXT = '#e5e9f0';
 const DEFAULT_FILL = '#12333a';
-const DEFAULT_BORDER = '#2dd4bf';
+const DEFAULT_BORDER = '#e5e9f0';
 
 const BORDER_EDGE_PATHS: Record<BorderSideKey, string> = {
   all: 'M5 5h14v14H5z',
@@ -74,26 +75,6 @@ function pill(text: string): HTMLButtonElement {
   return b;
 }
 
-function colorSwatch(icon: string, title: string, defaultColor: string): {
-  button: HTMLButtonElement; input: HTMLInputElement;
-} {
-  const input = document.createElement('input');
-  input.type = 'color';
-  input.className = 'cgext-rb-colorinput';
-  input.value = defaultColor;
-  const button = iconBtn(icon, title);
-  button.classList.add('cgext-rb-swatch');
-  const bar = document.createElement('span');
-  bar.className = 'cgext-rb-swatchbar';
-  const sync = () => { bar.style.setProperty('--cgext-swatch', input.value); };
-  sync();
-  button.append(bar);
-  input.addEventListener('input', sync);
-  input.addEventListener('change', sync);
-  button.addEventListener('click', () => input.click());
-  return { button, input };
-}
-
 function borderSideBtn(side: BorderSideKey): HTMLButtonElement {
   const b = document.createElement('button');
   b.type = 'button';
@@ -120,14 +101,6 @@ function grp(name: string, ...rows: HTMLElement[]): HTMLDivElement {
   deck.append(...rows);
   g.append(deck, h('cgext-rb-grp-name', name));
   return g;
-}
-
-function syncColor(input: HTMLInputElement, value: unknown, fallback: string): void {
-  const next = typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
-  if (input.value !== next) {
-    input.value = next;
-    input.dispatchEvent(new Event('input'));
-  }
 }
 
 /**
@@ -169,12 +142,10 @@ export function mountFormatterStyleChrome(
   sizeStack.append(sizeUp, sizeDn);
   sizeWrap.append(sizeVal, sizeStack);
 
-  const { button: textColorBtn, input: textColorInput } =
-    colorSwatch(I.paintText, 'Text color', DEFAULT_TEXT);
-  textColorBtn.setAttribute('data-cg-field', 'fg');
-  const { button: fillColorBtn, input: fillColorInput } =
-    colorSwatch(I.fill, 'Fill color', DEFAULT_FILL);
-  fillColorBtn.setAttribute('data-cg-field', 'bg');
+  const textColor = ribbonColorSwatch(I.paintText, 'Text color', DEFAULT_TEXT);
+  textColor.button.setAttribute('data-cg-field', 'fg');
+  const fillColor = ribbonColorSwatch(I.fill, 'Fill color', DEFAULT_FILL);
+  fillColor.button.setAttribute('data-cg-field', 'bg');
 
   const alignL = toggleBtn(I.alignLeft, 'Align left');
   alignL.dataset.align = 'left';
@@ -194,9 +165,8 @@ export function mountFormatterStyleChrome(
   };
   const borderPreview = h('cgext-rb-bpreview');
   borderPreview.title = 'Current borders';
-  const { button: borderColorBtn, input: borderColorInput } =
-    colorSwatch('M4 4h16v16H4zM12 12h.01', 'Border color', DEFAULT_BORDER);
-  borderColorBtn.setAttribute('data-cg-field', 'borderColor');
+  const borderColor = ribbonColorSwatch('M4 4h16v16H4zM12 12h.01', 'Border color', DEFAULT_BORDER);
+  borderColor.button.setAttribute('data-cg-field', 'borderColor');
   const borderStylePill = pill('Solid');
   borderStylePill.setAttribute('data-cg-field', 'borderStyle');
   const borderWidthPill = pill('1 px');
@@ -207,11 +177,11 @@ export function mountFormatterStyleChrome(
   cluster.classList.add('cgext-style-chrome');
   cluster.dataset.toolbar = 'group-style';
   cluster.append(
-    grp('Font', mini(bold, italic, underline, strike, sizeWrap), mini(textColorBtn, textColorInput, fillColorBtn, fillColorInput)),
+    grp('Font', mini(bold, italic, underline, strike, sizeWrap), mini(textColor.button, textColor.host, fillColor.button, fillColor.host)),
     grp('Alignment', alignWrap),
     grp('Borders',
       mini(borderSideBtns.all, borderSideBtns.top, borderSideBtns.bottom, borderSideBtns.left, borderSideBtns.right, borderPreview),
-      mini(borderColorBtn, borderColorInput, borderStylePill, borderWidthPill, borderClear)),
+      mini(borderColor.button, borderColor.host, borderStylePill, borderWidthPill, borderClear)),
   );
   host.appendChild(cluster);
 
@@ -231,7 +201,7 @@ export function mountFormatterStyleChrome(
 
   const applyBorderEdit = (): void => {
     const spec = currentBorderSpec();
-    spec[borderSide] = { width: borderWidthVal, style: borderStyleVal, color: borderColorInput.value };
+    spec[borderSide] = { width: borderWidthVal, style: borderStyleVal, color: borderColor.input.value };
     apply({ border: spec });
   };
 
@@ -242,8 +212,8 @@ export function mountFormatterStyleChrome(
     underline.classList.toggle('is-on', s.textDecoration === 'underline');
     strike.classList.toggle('is-on', s.textDecoration === 'line-through');
     sizeVal.textContent = `${(typeof s.fontSize === 'number' ? s.fontSize : 12)}px`;
-    syncColor(textColorInput, s.fg, DEFAULT_TEXT);
-    syncColor(fillColorInput, s.bg, DEFAULT_FILL);
+    syncRibbonColor(textColor, s.fg, DEFAULT_TEXT);
+    syncRibbonColor(fillColor, s.bg, DEFAULT_FILL);
     const ha = s.halign ?? 'left';
     alignL.classList.toggle('is-on', ha === 'left');
     alignC.classList.toggle('is-on', ha === 'center');
@@ -263,7 +233,7 @@ export function mountFormatterStyleChrome(
     borderStylePill.querySelector('span')!.textContent =
       borderStyleVal.charAt(0).toUpperCase() + borderStyleVal.slice(1);
     borderWidthPill.querySelector('span')!.textContent = `${borderWidthVal} px`;
-    syncColor(borderColorInput, active?.color, DEFAULT_BORDER);
+    syncRibbonColor(borderColor, active?.color, DEFAULT_BORDER);
 
     const p = borderPreview.style;
     p.border = ''; p.borderTop = ''; p.borderRight = ''; p.borderBottom = ''; p.borderLeft = '';
@@ -295,8 +265,8 @@ export function mountFormatterStyleChrome(
   };
   sizeUp.addEventListener('click', () => bumpSize(1));
   sizeDn.addEventListener('click', () => bumpSize(-1));
-  textColorInput.addEventListener('change', () => apply({ fg: textColorInput.value }));
-  fillColorInput.addEventListener('change', () => apply({ bg: fillColorInput.value }));
+  textColor.input.addEventListener('change', () => apply({ fg: textColor.input.value }));
+  fillColor.input.addEventListener('change', () => apply({ bg: fillColor.input.value }));
   alignL.addEventListener('click', () => apply({ halign: 'left' }));
   alignC.addEventListener('click', () => apply({ halign: 'center' }));
   alignR.addEventListener('click', () => apply({ halign: 'right' }));
@@ -304,7 +274,7 @@ export function mountFormatterStyleChrome(
   for (const side of Object.keys(borderSideBtns) as BorderSideKey[]) {
     borderSideBtns[side].addEventListener('click', () => { borderSide = side; refresh(); });
   }
-  borderColorInput.addEventListener('change', () => applyBorderEdit());
+  borderColor.input.addEventListener('change', () => applyBorderEdit());
 
   const lineSampleItem = (
     label: string,
@@ -356,6 +326,9 @@ export function mountFormatterStyleChrome(
 
   refresh();
   return () => {
+    textColor.destroy();
+    fillColor.destroy();
+    borderColor.destroy();
     for (const d of disposers) { try { d(); } catch { /* */ } }
   };
 }

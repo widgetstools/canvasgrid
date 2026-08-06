@@ -1,4 +1,4 @@
-import { CGrid } from '@cgrid/kernel';
+import { CGrid, ColorPickerControl } from '@cgrid/kernel';
 import type { CColDef } from '@cgrid/kernel';
 import type { Feature } from './index';
 import type { ShowcaseRow } from '../seedData';
@@ -186,14 +186,10 @@ export const theming: Feature = {
       wrap.style.cssText = 'display:inline-flex; align-items:center; gap:4px; font-size:12px; color:var(--ctrl-label-color, #8b949e);';
       const lbl = document.createElement('span');
       lbl.textContent = label;
-      const input = document.createElement('input');
-      input.type = 'color';
-      input.value = defaultColor;
-      input.setAttribute('data-testid', testId);
-      input.style.cssText = 'width:28px; height:24px; border:1px solid rgba(127,127,127,0.3); border-radius:4px; background:transparent; cursor:pointer; padding:0;';
-      input.addEventListener('input', () => applyOverride(token, input.value));
+      const picker = new ColorPickerControl(defaultColor, (rgba) => applyOverride(token, rgba));
+      picker.el.setAttribute('data-testid', testId);
       wrap.appendChild(lbl);
-      wrap.appendChild(input);
+      wrap.appendChild(picker.el);
       return wrap;
     };
 

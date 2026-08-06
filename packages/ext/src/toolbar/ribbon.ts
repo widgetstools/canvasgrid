@@ -28,6 +28,30 @@ import { createIconPicker, type IconPickerHandle, type IconSelection } from './i
 import { formatPickerMenu, type FormatPickerHost } from './formatPicker';
 import { findPresetByFormat, type FormatDataType } from './formatPresets';
 import { columnPanelMenu, effectiveFlag, aggFuncChoices, type ColumnConfigGrid, type ColumnPanelHost } from './columnPanel';
+import {
+  activeLibraryTemplateId,
+  libraryTemplates,
+  templateManagerMenu,
+  type TemplateManagerGrid,
+  type TemplateManagerHost,
+} from './templateManager';
+import { createFormatHistory, type FormatHistoryGrid } from './formatHistory';
+import { isOwnTemplateId } from '@cgrid/calc';
+import {
+  ribbonColorSwatch,
+  syncRibbonColor,
+  type RibbonColorSwatch,
+} from './colorSwatch';
+
+/** Floating-filter type choices — same vocabulary as the Column popover's
+ *  Filter type segment (`auto` clears to kernel default via `filter: null`). */
+const FILTER_TYPE_OPTIONS = [
+  { v: 'auto', text: 'Auto', menu: 'Auto' },
+  { v: 'text', text: 'Text', menu: 'Text' },
+  { v: 'number', text: 'Num', menu: 'Number' },
+  { v: 'date', text: 'Date', menu: 'Date' },
+  { v: 'set', text: 'Set', menu: 'Set' },
+] as const;
 
 /** Lazily supplies the `@cgrid/edit` handle — the demo/consumer wires the
  *  edit engine after the grid is constructed, so the ribbon reads it on
@@ -54,7 +78,7 @@ const I = {
   paintText: 'M4 20h16M6 16l4-11 4 11M7.5 13h5',
   fill: 'M19 11l-8-8-8.5 8.5a2 2 0 0 0 0 3L8 20a2 2 0 0 0 3 0l8-8zM2 20h20',
   selection: 'M3 8V5a2 2 0 0 1 2-2h3M16 3h3a2 2 0 0 1 2 2v3M21 16v3a2 2 0 0 1-2 2h-3M8 21H5a2 2 0 0 1-2-2v-3',
-  popout: 'M15 3h6v6M10 14L21 3M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6',
+  close: 'M18 6L6 18M6 6l12 12',
   dollar: 'M12 1v22M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6',
   percent: 'M19 5L5 19M6.5 6.5m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0M17.5 17.5m-2.5 0a2.5 2.5 0 1 0 5 0a2.5 2.5 0 1 0-5 0',
   hash: 'M4 9h16M4 15h16M10 3L8 21M16 3l-2 18',
@@ -72,31 +96,6 @@ const I = {
 
 function svg(path: string, size = 14): string {
   return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="${path}"/></svg>`;
-}
-
-/** ONE colour-picker control: swatch button (live colour bar under the
- *  glyph, Excel-style) + its hidden `<input type="color">`, with the
- *  click-to-open forwarding and bar repaint wired in. Every colour picker
- *  in the ribbon is built from this — hand-assembling the trio per site
- *  is how the border picker shipped with a dead swatch (no forwarding). */
-function colorSwatch(icon: string, title: string, defaultColor: string): {
-  button: HTMLButtonElement; input: HTMLInputElement;
-} {
-  const input = document.createElement('input');
-  input.type = 'color';
-  input.className = 'cgext-rb-colorinput';
-  input.value = defaultColor;
-  const button = iconBtn(icon, title);
-  button.classList.add('cgext-rb-swatch');
-  const bar = document.createElement('span');
-  bar.className = 'cgext-rb-swatchbar';
-  const syncSwatch = () => { bar.style.setProperty('--cgext-swatch', input.value); };
-  syncSwatch();
-  button.append(bar);
-  input.addEventListener('input', syncSwatch);
-  input.addEventListener('change', syncSwatch);
-  button.addEventListener('click', () => input.click());
-  return { button, input };
 }
 
 /** ONE two-state labeled toggle (target-toggle chrome): the face shows the
@@ -195,10 +194,37 @@ function textInput(placeholder: string, size: 'sm' | 'md' = 'sm'): HTMLInputElem
 }
 // Colour-picker defaults — the swatch a picker shows when the focused
 // column has NO explicit colour of its own (refresh() reverts to these).
-const DEFAULT_TEXT_COLOR = '#4fd1c5';
+// Text + border track the theme foreground (not the chrome accent).
 const DEFAULT_FILL_COLOR = '#12333a';
 const DEFAULT_ICON_COLOR = '#4f9cf9';
-const DEFAULT_BORDER_COLOR = '#2dd4bf';
+
+/** Resolve `--cg-fg-color` to a `#rrggbb` the native color input can hold. */
+function defaultForeColor(anchor?: HTMLElement | null): string {
+  const fallback = '#e5e9f0';
+  try {
+    const root =
+      anchor?.closest<HTMLElement>('.cgext-root')
+      ?? document.querySelector<HTMLElement>('.cgext-root')
+      ?? document.body;
+    const raw = getComputedStyle(root).getPropertyValue('--cg-fg-color').trim() || fallback;
+    if (/^#[0-9a-fA-F]{6}$/.test(raw)) return raw.toLowerCase();
+    if (/^#[0-9a-fA-F]{3}$/.test(raw)) {
+      const r = raw[1]!, g = raw[2]!, b = raw[3]!;
+      return `#${r}${r}${g}${g}${b}${b}`.toLowerCase();
+    }
+    const probe = document.createElement('div');
+    probe.style.color = raw;
+    root.appendChild(probe);
+    const rgb = getComputedStyle(probe).color;
+    probe.remove();
+    const m = /^rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(rgb);
+    if (!m) return fallback;
+    const hex = (n: number) => n.toString(16).padStart(2, '0');
+    return `#${hex(+m[1]!)}${hex(+m[2]!)}${hex(+m[3]!)}`;
+  } catch {
+    return fallback;
+  }
+}
 
 /** Border-side segment: a faint frame with the chosen edge emphasized —
  *  reads as "which border am I editing" at a glance. */
@@ -290,8 +316,9 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       };
       const borderPreview = h('cgext-rb-bpreview');
       borderPreview.title = 'Current borders';
-      const { button: borderColorBtn, input: borderColorInput } =
-        colorSwatch('M4 4h16v16H4zM12 12h.01', 'Border color', DEFAULT_BORDER_COLOR);
+      const borderColor = ribbonColorSwatch(
+        'M4 4h16v16H4zM12 12h.01', 'Border color', defaultForeColor());
+      const borderColorBtn = borderColor.button;
       const borderStylePill = pill('Solid');
       const borderWidthPill = pill('1 px');
       const borderClear = iconBtn(I.eraser, 'Remove the border at this side');
@@ -312,11 +339,12 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       sizeWrap.append(sizeVal, sizeStack);
 
       // Paint — fg/bg colour pickers (share Formatting row A with Type/Icons).
-      // Buttons carry a live swatch bar mirroring their hidden colour input.
-      const { button: textColorBtn, input: textColorInput } =
-        colorSwatch(I.paintText, 'Text color', DEFAULT_TEXT_COLOR);
-      const { button: fillColorBtn, input: fillColorInput } =
-        colorSwatch(I.fill, 'Fill color', DEFAULT_FILL_COLOR);
+      // Buttons carry a live swatch bar; the shared ColorPickerControl popover
+      // (same as Grid Options) opens from the button.
+      const textColor = ribbonColorSwatch(I.paintText, 'Text color', defaultForeColor());
+      const textColorBtn = textColor.button;
+      const fillColor = ribbonColorSwatch(I.fill, 'Fill color', DEFAULT_FILL_COLOR);
+      const fillColorBtn = fillColor.button;
       // Icons — tile picker · colour · placement slot selector · clear. Icons
       // are column styling, so they share the Paint row. Placement is a SLOT
       // SELECTOR (see `wireFormattingToolbar`): the picker/colour/clear always
@@ -324,8 +352,8 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       // switch which slot is shown, never move an icon between slots.
       let iconApply: (sel: IconSelection) => void = () => {};
       const picker = createIconPicker({ onSelect: (sel) => iconApply(sel) });
-      const { button: iconColorBtn, input: iconColorInput } =
-        colorSwatch(I.paintText, 'Icon color', DEFAULT_ICON_COLOR);
+      const iconColor = ribbonColorSwatch(I.paintText, 'Icon color', DEFAULT_ICON_COLOR);
+      const iconColorBtn = iconColor.button;
       iconColorBtn.dataset.ip = 'color';
       const iconPlacePill = pill('Prefix'); iconPlacePill.dataset.ip = 'place';
       const iconClear = iconBtn(I.eraser, 'Clear icon at this placement'); iconClear.dataset.ip = 'clear';
@@ -337,11 +365,25 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       const decDown = decimalBtn('fewer', 'Fewer decimals');
       const decUp = decimalBtn('more', 'More decimals');
       const fmtCode = pill('# Format');
-      const clear = pill('Clear', false); clear.classList.add('cgext-rb-danger');
-      clear.title = 'Clear styling + format on the selected columns';
-      const eraser = iconBtn(I.eraser, 'Clear formatting');
-      const pop = iconBtn(I.popout, 'Pop out');
-      pop.addEventListener('click', () => ctx.events.emit({ type: 'popout' }));
+      const eraser = dangerIcon(I.eraser, 'Clear column customization');
+      eraser.dataset.fmt = 'clear';
+      eraser.title = 'Clear styling, format, filter, and template references for the selected column(s) in this layout';
+      const tplOpen = iconBtn(I.templates, 'Column templates');
+      tplOpen.dataset.tpl = 'open';
+      tplOpen.title = 'Column templates — apply, save, rename, or delete reusable styling presets';
+      const tplPill = pill('', true);
+      tplPill.dataset.tpl = 'pill';
+      tplPill.setAttribute('aria-label', 'Templates');
+      tplPill.title = 'Column templates — apply, save, rename, or delete reusable styling presets';
+      const clearAll = dangerIcon(I.trash, 'Clear all customization in this layout');
+      clearAll.dataset.fmt = 'clearAll';
+      clearAll.title = 'Clear every column\'s styling, format, filter, and template references from this layout';
+      const fmtUndo = iconBtn(I.undo, 'Undo formatting');
+      fmtUndo.dataset.fmt = 'undo';
+      fmtUndo.title = 'Undo formatting changes (until the layout is saved)';
+      const fmtRedo = iconBtn(I.redo, 'Redo formatting');
+      fmtRedo.dataset.fmt = 'redo';
+      fmtRedo.title = 'Redo formatting changes';
 
       // Column group — quick per-column configuration (spec 2026-07-08).
       const colOpen = document.createElement('button');
@@ -355,6 +397,13 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
       aggPill.dataset.col = 'agg';
       const colFF = toggleBtn(I.filter, 'Floating filter');
       colFF.dataset.col = 'ff';
+      // Filter type for the floating-filter row — only shown while FF is on
+      // (mirrors the Column popover's Filter type segment).
+      const filterTypePill = pill('Auto');
+      filterTypePill.dataset.col = 'filterType';
+      filterTypePill.title = 'Floating filter type';
+      filterTypePill.setAttribute('aria-label', 'Floating filter type');
+      filterTypePill.hidden = true;
       const colGrp = toggleBtn(I.agg, 'Groupable');
       colGrp.dataset.col = 'grp';
       const colAggH = toggleBtn(I.rows, 'Show aggregation in header');
@@ -376,40 +425,54 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
         s.append(l, ...controls);
         return s;
       };
+      const editClose = iconBtn(I.close, 'Hide editing toolbar');
+      editClose.dataset.tb = 'close-edit';
+      editClose.classList.add('cgext-es-close');
+      editClose.addEventListener('click', () => {
+        if (!editStrip.hidden) ctx.events.emit({ type: 'toggle-ribbon', section: 'edit' });
+      });
       editStrip.append(
         seg('History', undo, redo, histCount),
         seg('Smart edit', operand, opMul, opDiv, opAdd, opSub, setBtn, smartCount),
         seg('Bulk', bulkValue, bulkApply, bulkCount),
+        editClose,
       );
 
       const formatting = h('cgext-rb-cluster'); formatting.dataset.toolbar = 'formatting';
       formatting.append(
         grp('Target', mini(selPill), mini(targetToggle, scopeToggle)),
-        grp('Font', mini(bold, italic, underline, strike, sizeWrap), mini(textColorBtn, textColorInput, fillColorBtn, fillColorInput, headerCase)),
+        grp('Font', mini(bold, italic, underline, strike, sizeWrap), mini(textColorBtn, textColor.host, fillColorBtn, fillColor.host, headerCase)),
         grp('Alignment', mini(alignL, alignC, alignR)),
         grp('Borders',
           mini(borderSideBtns.all, borderSideBtns.top, borderSideBtns.bottom, borderSideBtns.left, borderSideBtns.right, borderPreview),
-          mini(borderColorBtn, borderColorInput, borderStylePill, borderWidthPill, borderClear)),
-        grp('Number', mini(fmtCode), mini(fmtDollar, fmtPercent, fmtThousands, decDown, decUp)),
-        grp('Icons', mini(picker.button, iconPlacePill), mini(iconColorBtn, iconColorInput, iconClear)),
-        grp('Column', mini(colOpen, aggPill), mini(colFF, colGrp, colAggH)),
-        grp('Templates', mini(iconBtn(I.templates, 'Templates'), pill('', true)), mini(clear, eraser, dangerIcon(I.trash, 'Delete template'))),
+          mini(borderColorBtn, borderColor.host, borderStylePill, borderWidthPill, borderClear)),
+        grp('Format', mini(fmtCode), mini(fmtDollar, fmtPercent, fmtThousands, decDown, decUp)),
+        grp('Icons', mini(picker.button, iconPlacePill), mini(iconColorBtn, iconColor.host, iconClear)),
+        grp('Column', mini(colOpen, aggPill), mini(colFF, filterTypePill, colGrp, colAggH)),
+        grp('Templates', mini(tplOpen, tplPill)),
+        grp('Clear', mini(fmtUndo, fmtRedo), mini(eraser, clearAll)),
       );
 
+      const fmtClose = iconBtn(I.close, 'Hide formatting toolbar');
+      fmtClose.dataset.tb = 'close-format';
+      fmtClose.addEventListener('click', () => {
+        if (!formatting.hidden) ctx.events.emit({ type: 'toggle-ribbon', section: 'format' });
+      });
+
       const spacer = h('cgext-rb-spacer');
-      root.append(formatting, spacer, pop);
+      root.append(formatting, spacer, fmtClose);
       host.append(editStrip, root);
 
       // Collapse leftover ribbon chrome when strips are toggled off. The
-      // band still hosts a flex spacer + pop-out button after the
+      // band still hosts a flex spacer + close button after the
       // formatting cluster is hidden — that left an empty bar above the
-      // row-group panel. Hide spacer/pop with formatting, and hide the
+      // row-group panel. Hide spacer/close with formatting, and hide the
       // whole `.cgext-ribbon` when BOTH toolbars are off.
       const syncRibbonChrome = () => {
         const formatOff = formatting.hidden;
         const editOff = editStrip.hidden;
         spacer.hidden = formatOff;
-        pop.hidden = formatOff;
+        fmtClose.hidden = formatOff;
         root.hidden = formatOff;
         const ribbonHost = host.closest('.cgext-ribbon');
         if (ribbonHost instanceof HTMLElement) {
@@ -437,18 +500,32 @@ function ribbonItem(getEdit?: EditHandleGetter): ToolbarItem {
         paintTargetToggle: targetT.paint, paintScopeToggle: scopeT.paint,
         bold, italic, underline, strike, alignL, alignC, alignR,
         sizeVal, sizeUp, sizeDn,
-        textColorBtn, textColorInput, fillColorBtn, fillColorInput, headerCase,
-        borderSideBtns, borderPreview, borderColorBtn, borderColorInput,
+        textColor, fillColor, headerCase,
+        borderSideBtns, borderPreview, borderColor,
         borderStylePill, borderWidthPill, borderClear,
         fmtDollar, fmtPercent, fmtThousands, decDown, decUp, fmtCode,
-        clear, eraser,
+        eraser,
+        tplOpen, tplPill, clearAll,
+        fmtUndo, fmtRedo,
         iconPicker: picker,
         setIconApply: (fn) => { iconApply = fn; },
-        iconColorBtn, iconColorInput, iconPlacePill, iconClear,
-        colOpen, aggPill, colFF, colGrp, colAggH,
+        iconColor, iconPlacePill, iconClear,
+        colOpen, aggPill, colFF, filterTypePill, colGrp, colAggH,
       });
 
-      return { destroy() { disposeEditing?.(); disposeFormatting(); picker.destroy(); off(); host.replaceChildren(); } };
+      return {
+        destroy() {
+          disposeEditing?.();
+          disposeFormatting();
+          textColor.destroy();
+          fillColor.destroy();
+          borderColor.destroy();
+          iconColor.destroy();
+          picker.destroy();
+          off();
+          host.replaceChildren();
+        },
+      };
     },
   };
 }
@@ -550,23 +627,26 @@ interface FormattingRefs {
   bold: HTMLButtonElement; italic: HTMLButtonElement; underline: HTMLButtonElement; strike: HTMLButtonElement;
   alignL: HTMLButtonElement; alignC: HTMLButtonElement; alignR: HTMLButtonElement;
   sizeVal: HTMLElement; sizeUp: HTMLButtonElement; sizeDn: HTMLButtonElement;
-  textColorBtn: HTMLButtonElement; textColorInput: HTMLInputElement;
-  fillColorBtn: HTMLButtonElement; fillColorInput: HTMLInputElement;
+  textColor: RibbonColorSwatch;
+  fillColor: RibbonColorSwatch;
   headerCase: HTMLButtonElement;
   borderSideBtns: Record<BorderSideKey, HTMLButtonElement>;
   borderPreview: HTMLElement;
-  borderColorBtn: HTMLButtonElement; borderColorInput: HTMLInputElement;
+  borderColor: RibbonColorSwatch;
   borderStylePill: HTMLButtonElement; borderWidthPill: HTMLButtonElement;
   borderClear: HTMLButtonElement;
   fmtDollar: HTMLButtonElement; fmtPercent: HTMLButtonElement; fmtThousands: HTMLButtonElement;
   decDown: HTMLButtonElement; decUp: HTMLButtonElement; fmtCode: HTMLButtonElement;
-  clear: HTMLButtonElement; eraser: HTMLButtonElement;
+  eraser: HTMLButtonElement;
+  tplOpen: HTMLButtonElement; tplPill: HTMLButtonElement; clearAll: HTMLButtonElement;
+  fmtUndo: HTMLButtonElement; fmtRedo: HTMLButtonElement;
   iconPicker: IconPickerHandle;
   setIconApply: (fn: (sel: IconSelection) => void) => void;
-  iconColorBtn: HTMLButtonElement; iconColorInput: HTMLInputElement;
+  iconColor: RibbonColorSwatch;
   iconPlacePill: HTMLButtonElement; iconClear: HTMLButtonElement;
   colOpen: HTMLButtonElement; aggPill: HTMLButtonElement;
-  colFF: HTMLButtonElement; colGrp: HTMLButtonElement; colAggH: HTMLButtonElement;
+  colFF: HTMLButtonElement; filterTypePill: HTMLButtonElement;
+  colGrp: HTMLButtonElement; colAggH: HTMLButtonElement;
 }
 
 /** Bind the Formatting toolbar to the kernel + calc engine: derive target
@@ -585,10 +665,15 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     getFocusedCell(): { rowId: string; colId: string } | null;
     getColumnHeaderName(colId: string): string | undefined;
     editColumn(colId: string, patch: Record<string, unknown>): void;
-    getTemplates(): Array<{ id: string; overrides: Record<string, unknown> }>;
-    removeTemplate(colId: string, templateId: string): void;
+    getTemplates(): Array<{ id: string; name: string; overrides: Record<string, unknown> }>;
+    getState(): { modules?: Record<string, { data?: unknown }> };
+    saveTemplate(spec: { id: string; name: string; overrides: Record<string, unknown> }): void;
+    renameTemplate(templateId: string, name: string): void;
     deleteTemplate(templateId: string): void;
-    addEventListener(type: string, fn: () => void): Unsub;
+    applyTemplate(colId: string, templateId: string): void;
+    removeTemplate(colId: string, templateId: string): void;
+    setState(snapshot: { version: number; modules: Record<string, { version: number; data: unknown }> }): void;
+    addEventListener(type: string, fn: (...args: unknown[]) => void): Unsub;
     getGridOption(key: string): unknown;
     getValueColumns(): Array<{ colId: string; aggFunc: string }>;
     addValueColumn(colId: string, aggFunc: string): void;
@@ -599,6 +684,18 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   };
   let target: 'cell' | 'header' = 'cell';
   let scope: 'selected' | 'all' = 'selected';
+
+  const history = createFormatHistory(grid as unknown as FormatHistoryGrid);
+  const refreshHistoryBtns = (): void => {
+    r.fmtUndo.disabled = !history.canUndo();
+    r.fmtRedo.disabled = !history.canRedo();
+  };
+  disposers.push(history.subscribe(refreshHistoryBtns));
+  /** Push an undo checkpoint, then run a formatting mutation. */
+  const withHistory = (mutate: () => void): void => {
+    history.push();
+    mutate();
+  };
 
   /** Columns identified from the selected cells (ranges first, focus fallback). */
   const selectedCols = (): string[] => {
@@ -648,18 +745,22 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     const cols = targetCols();
     if (!cols.length) return;
     const key = target === 'header' ? 'headerStyle' : 'cellStyle';
-    for (const colId of cols) {
-      try { grid.editColumn(colId, { [key]: patch }); } catch { /* unknown column */ }
-    }
+    withHistory(() => {
+      for (const colId of cols) {
+        try { grid.editColumn(colId, { [key]: patch }); } catch { /* unknown column */ }
+      }
+    });
     ctx.profiles.markDirty();
     refresh();
   };
   const applyFormat = (format: string): void => {
     const cols = targetCols();
     if (!cols.length) return;
-    for (const colId of cols) {
-      try { grid.editColumn(colId, { format }); } catch { /* non-compiling / unknown */ }
-    }
+    withHistory(() => {
+      for (const colId of cols) {
+        try { grid.editColumn(colId, { format }); } catch { /* non-compiling / unknown */ }
+      }
+    });
     ctx.profiles.markDirty();
     refresh();
   };
@@ -686,9 +787,11 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   };
 
   const clearFormat = (): void => {
-    for (const colId of targetCols()) {
-      try { grid.editColumn(colId, { format: null }); } catch { /* calc not wired */ }
-    }
+    withHistory(() => {
+      for (const colId of targetCols()) {
+        try { grid.editColumn(colId, { format: null }); } catch { /* calc not wired */ }
+      }
+    });
     ctx.profiles.markDirty();
     refresh();
   };
@@ -727,8 +830,9 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
           ? (grid.getColumnHeaderName?.(cols[0]!) ?? cols[0]!)
           : `${cols.length} columns`;
     for (const b of [r.bold, r.italic, r.underline, r.strike, r.alignL, r.alignC, r.alignR,
-      r.textColorBtn, r.fillColorBtn, r.fmtDollar, r.fmtPercent, r.fmtThousands,
-      r.decDown, r.decUp, r.fmtCode, r.clear, r.eraser, r.sizeUp, r.sizeDn]) {
+      r.textColor.button, r.fillColor.button, r.fmtDollar, r.fmtPercent, r.fmtThousands,
+      r.decDown, r.decUp, r.fmtCode, r.eraser, r.sizeUp, r.sizeDn,
+      r.tplOpen, r.tplPill]) {
       (b as HTMLButtonElement).disabled = none;
     }
     const s = currentStyle();
@@ -751,20 +855,11 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
         ? 'Restore original header caption case'
         : 'Uppercase all column header captions';
 
-    // Colour swatches — read the column's own fg/bg back into the pickers
-    // (the swatch bar repaints off the input event). Hex inputs can only
-    // represent #rrggbb; token/var() values read as unset. A column WITHOUT
-    // the setting reverts the picker to its default swatch, so the control
-    // always shows the focused column's state, never the previous pick.
-    const syncColor = (input: HTMLInputElement, value: unknown, fallback: string) => {
-      const next = typeof value === 'string' && /^#[0-9a-fA-F]{6}$/.test(value) ? value : fallback;
-      if (input.value !== next) {
-        input.value = next;
-        input.dispatchEvent(new Event('input'));
-      }
-    };
-    syncColor(r.textColorInput, s.fg, DEFAULT_TEXT_COLOR);
-    syncColor(r.fillColorInput, s.bg, DEFAULT_FILL_COLOR);
+    // Colour swatches — read the column's own fg/bg back into the pickers.
+    // Token/var() values read as unset. A column WITHOUT the setting reverts
+    // the picker to its default swatch.
+    syncRibbonColor(r.textColor, s.fg, defaultForeColor(r.textColor.button));
+    syncRibbonColor(r.fillColor, s.bg, DEFAULT_FILL_COLOR);
 
     // Borders — segment selection + per-side "has a border" dots, the active
     // side's stored values in the colour/style/width controls, and a live
@@ -785,12 +880,13 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
       r.borderStylePill.querySelector('span')!.textContent =
         borderStyleVal.charAt(0).toUpperCase() + borderStyleVal.slice(1);
       r.borderWidthPill.querySelector('span')!.textContent = `${borderWidthVal} px`;
-      syncColor(r.borderColorInput, active?.color, DEFAULT_BORDER_COLOR);
-      for (const el of [r.borderStylePill, r.borderWidthPill, r.borderClear, r.borderColorBtn]) el.disabled = none;
+      syncRibbonColor(r.borderColor, active?.color, defaultForeColor(r.borderColor.button));
+      for (const el of [r.borderStylePill, r.borderWidthPill, r.borderClear, r.borderColor.button]) el.disabled = none;
       const p = r.borderPreview.style;
       p.border = ''; p.borderTop = ''; p.borderRight = ''; p.borderBottom = ''; p.borderLeft = '';
+      const fg = defaultForeColor(r.borderColor.button);
       const css = (sd?: { width?: number; style?: string; color?: string }) =>
-        sd ? `${sd.width ?? 1}px ${sd.style ?? 'solid'} ${sd.color ?? DEFAULT_BORDER_COLOR}` : '';
+        sd ? `${sd.width ?? 1}px ${sd.style ?? 'solid'} ${sd.color ?? fg}` : '';
       if (bSpec.all) p.border = css(bSpec.all);
       if (bSpec.top) p.borderTop = css(bSpec.top);
       if (bSpec.bottom) p.borderBottom = css(bSpec.bottom);
@@ -798,18 +894,31 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
       if (bSpec.right) p.borderRight = css(bSpec.right);
     }
 
-    // Column group — quick toggles + agg pill mirror the focused column.
+    // Column group — quick toggles + agg / filter-type pills mirror the focused column.
     // `colOpen` stays enabled even with no target: the popover's own
     // "Select a cell or column first" hint explains the empty state instead
     // of a disabled trigger silently doing nothing.
     const colFirst = cols[0];
     r.aggPill.disabled = none;
+    r.filterTypePill.disabled = none;
     for (const b of [r.colFF, r.colGrp, r.colAggH]) b.disabled = none;
     if (!none && colFirst) {
       const cg = grid as unknown as ColumnConfigGrid;
-      r.colFF.classList.toggle('is-on', !!effectiveFlag(cg, colFirst, 'floatingFilter'));
+      const ffOn = !!effectiveFlag(cg, colFirst, 'floatingFilter');
+      r.colFF.classList.toggle('is-on', ffOn);
       r.colGrp.classList.toggle('is-on', !!effectiveFlag(cg, colFirst, 'enableRowGroup'));
       r.colAggH.classList.toggle('is-on', !effectiveFlag(cg, colFirst, 'suppressAggFuncInHeader'));
+      // Filter type only applies while the floating filter row is showing.
+      r.filterTypePill.hidden = !ffOn;
+      if (ffOn) {
+        const raw = effectiveFlag(cg, colFirst, 'filter');
+        const key = (typeof raw === 'string' && raw.length > 0) ? raw : 'auto';
+        const label = FILTER_TYPE_OPTIONS.find((o) => o.v === key)?.text ?? 'Auto';
+        r.filterTypePill.querySelector('span')!.textContent = label;
+        r.filterTypePill.classList.toggle('is-set', key !== 'auto');
+      } else {
+        r.filterTypePill.classList.remove('is-set');
+      }
       let agg: string | undefined;
       try { agg = cg.getValueColumns().find((v) => v.colId === colFirst)?.aggFunc; } catch { /* absent */ }
       r.aggPill.querySelector('span')!.textContent = `Σ ${agg ?? 'None'}`;
@@ -817,6 +926,8 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     } else {
       r.aggPill.querySelector('span')!.textContent = 'Σ None';
       r.aggPill.classList.remove('is-set');
+      r.filterTypePill.hidden = true;
+      r.filterTypePill.classList.remove('is-set');
       for (const b of [r.colFF, r.colGrp, r.colAggH]) b.classList.remove('is-on');
     }
 
@@ -829,16 +940,28 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
     if (captionEl) captionEl.textContent = `# ${label}`;
     r.fmtCode.classList.toggle('is-set', fmt !== undefined);
 
+    // Templates — pill shows the active library template name (if any).
+    {
+      const tplGrid = grid as unknown as TemplateManagerGrid;
+      const activeId = !none && cols[0] ? activeLibraryTemplateId(tplGrid, cols[0]) : undefined;
+      const activeName = activeId
+        ? libraryTemplates(tplGrid).find((t) => t.id === activeId)?.name
+        : undefined;
+      const tplCap = r.tplPill.querySelector('span');
+      if (tplCap) tplCap.textContent = activeName ?? '';
+      r.tplPill.classList.toggle('is-set', !!activeId);
+    }
+
     // Icons — reflect the selected slot into the picker preview + enablement.
     const slot = none ? null : currentIconSlot();
     r.iconPicker.setPreview(slot);
     const emojiSel = slot !== null && slot.emoji !== undefined;
-    r.iconColorBtn.disabled = none || emojiSel; // color is SVG-only
+    r.iconColor.button.disabled = none || emojiSel; // color is SVG-only
     r.iconClear.disabled = none || slot === null;
     r.iconPicker.button.disabled = none;
     r.iconPlacePill.disabled = none;
     // Icon colour reverts to its default swatch when the slot has none.
-    syncColor(r.iconColorInput, slot?.color, DEFAULT_ICON_COLOR);
+    syncRibbonColor(r.iconColor, slot?.color, DEFAULT_ICON_COLOR);
   };
 
   // Target toggle (cell vs header styling) — shared stateToggle control;
@@ -898,27 +1021,29 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   const applyIconSlot = (sel: IconSelection | null): void => {
     const cols = targetCols();
     if (!cols.length) return;
-    const color = sel?.name ? r.iconColorInput.value : undefined; // color is SVG-only
-    for (const colId of cols) {
-      try {
-        if (placement === 'prefix' || placement === 'suffix') {
-          const key = target === 'header' ? 'headerIcon' : 'cellIcon';
-          const value = sel === null
-            ? null
-            : { ...sel, ...(color ? { color } : {}), position: placement === 'prefix' ? 'leading' : 'trailing' };
-          grid.editColumn(colId, { [key]: value });
-        } else {
-          const styleKey = target === 'header' ? 'headerStyle' : 'cellStyle';
-          const existing = ((ownOverrides(colId)[styleKey] as { decorators?: Decorator[] } | undefined)?.decorators ?? []);
-          const kept = existing.filter((d) => d.position !== placement);
-          const next = sel === null ? kept : [...kept,
-            sel.name
-              ? { position: placement, kind: 'icon', icon: sel.name, ...(color ? { color } : {}) }
-              : { position: placement, kind: 'emoji', value: sel.emoji! }];
-          grid.editColumn(colId, { [styleKey]: { decorators: next } });
-        }
-      } catch { /* unknown column */ }
-    }
+    const color = sel?.name ? r.iconColor.input.value : undefined; // color is SVG-only
+    withHistory(() => {
+      for (const colId of cols) {
+        try {
+          if (placement === 'prefix' || placement === 'suffix') {
+            const key = target === 'header' ? 'headerIcon' : 'cellIcon';
+            const value = sel === null
+              ? null
+              : { ...sel, ...(color ? { color } : {}), position: placement === 'prefix' ? 'leading' : 'trailing' };
+            grid.editColumn(colId, { [key]: value });
+          } else {
+            const styleKey = target === 'header' ? 'headerStyle' : 'cellStyle';
+            const existing = ((ownOverrides(colId)[styleKey] as { decorators?: Decorator[] } | undefined)?.decorators ?? []);
+            const kept = existing.filter((d) => d.position !== placement);
+            const next = sel === null ? kept : [...kept,
+              sel.name
+                ? { position: placement, kind: 'icon', icon: sel.name, ...(color ? { color } : {}) }
+                : { position: placement, kind: 'emoji', value: sel.emoji! }];
+            grid.editColumn(colId, { [styleKey]: { decorators: next } });
+          }
+        } catch { /* unknown column */ }
+      }
+    });
     ctx.profiles.markDirty();
     refresh();
   };
@@ -949,8 +1074,8 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
       placement = value;
       const atDestination = currentIconSlot();
       if (moving && !atDestination) {
-        if (typeof moving.color === 'string' && /^#[0-9a-fA-F]{6}$/.test(moving.color)) {
-          r.iconColorInput.value = moving.color; // carry the tint along
+        if (typeof moving.color === 'string') {
+          r.iconColor.setValue(moving.color); // carry the tint along
         }
         placement = prev;
         applyIconSlot(null);                     // clear the old slot…
@@ -990,7 +1115,7 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   r.iconPlacePill.addEventListener('click', () => placeMenu.toggle());
   disposers.push(() => placeMenu.destroy());
 
-  r.iconColorInput.addEventListener('change', () => {
+  r.iconColor.input.addEventListener('change', () => {
     const cur = currentIconSlot();
     if (cur?.name) applyIconSlot({ name: cur.name }); // re-apply with new color
   });
@@ -1019,9 +1144,9 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   r.sizeUp.addEventListener('click', () => bumpSize(1));
   r.sizeDn.addEventListener('click', () => bumpSize(-1));
 
-  // Paint: fg / bg via native color inputs
-  r.textColorInput.addEventListener('change', () => applyStyle({ fg: r.textColorInput.value }));
-  r.fillColorInput.addEventListener('change', () => applyStyle({ bg: r.fillColorInput.value }));
+  // Paint: fg / bg via shared ColorPickerControl
+  r.textColor.input.addEventListener('change', () => applyStyle({ fg: r.textColor.input.value }));
+  r.fillColor.input.addEventListener('change', () => applyStyle({ bg: r.fillColor.input.value }));
 
   // Format presets + decimals (cell data only — formats don't apply to headers)
   const decimalsOf = (fmt: string | undefined): number => {
@@ -1037,18 +1162,95 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   r.decUp.addEventListener('click', () => applyFormat(numberFormat(decimalsOf(currentFormat()) + 1)));
   r.fmtCode.addEventListener('click', () => fmtPicker.toggle());
 
-  // Clear: drop the target columns' own templates (styling + format)
-  const clearFormatting = () => {
+  // Eraser: drop ALL layout customization for the selected column(s) —
+  // own-template fork, library template assignments, and direct override
+  // fields (style / format / filter / flags). Library template defs stay.
+  const clearColumnCustomization = () => {
     const cols = targetCols();
-    for (const colId of cols) {
-      const ownId = `__cgridOwn:${colId}`;
-      try { grid.removeTemplate(colId, ownId); } catch { /* not assigned */ }
-      try { grid.deleteTemplate(ownId); } catch { /* not present */ }
-    }
-    if (cols.length) { ctx.profiles.markDirty(); refresh(); }
+    if (!cols.length) return;
+    const drop = new Set(cols);
+    withHistory(() => {
+      let overrides: Array<{ colId?: string }> = [];
+      try {
+        const data = grid.getState()?.modules?.columnOverrides?.data;
+        overrides = Array.isArray(data) ? (data as Array<{ colId?: string }>) : [];
+      } catch { /* pre-init */ }
+      const next = overrides.filter((o) => typeof o.colId === 'string' && !drop.has(o.colId));
+      try {
+        grid.setState({
+          version: 4,
+          modules: { columnOverrides: { version: 1, data: next } },
+        });
+      } catch { /* calc not wired */ }
+      for (const colId of cols) {
+        try { grid.deleteTemplate(`__cgridOwn:${colId}`); } catch { /* absent */ }
+      }
+    });
+    ctx.profiles.markDirty();
+    refresh();
   };
-  r.clear.addEventListener('click', clearFormatting);
-  r.eraser.addEventListener('click', clearFormatting);
+  r.eraser.addEventListener('click', clearColumnCustomization);
+
+  // Trash: wipe EVERY column's layout customization (stern "Clear all").
+  // Shared library template defs are preserved; only assignments + own forks go.
+  const clearLayoutCustomization = () => {
+    withHistory(() => {
+      try {
+        grid.setState({
+          version: 4,
+          modules: { columnOverrides: { version: 1, data: [] } },
+        });
+      } catch { /* calc not wired */ }
+      try {
+        for (const t of grid.getTemplates()) {
+          if (isOwnTemplateId(t.id)) {
+            try { grid.deleteTemplate(t.id); } catch { /* absent */ }
+          }
+        }
+      } catch { /* calc not wired */ }
+    });
+    ctx.profiles.markDirty();
+    refresh();
+  };
+  r.clearAll.addEventListener('click', clearLayoutCustomization);
+
+  // Formatting undo/redo — session stack until a layout save/switch.
+  r.fmtUndo.addEventListener('click', () => {
+    if (!history.undo()) return;
+    ctx.profiles.markDirty();
+    refresh();
+  });
+  r.fmtRedo.addEventListener('click', () => {
+    if (!history.redo()) return;
+    ctx.profiles.markDirty();
+    refresh();
+  });
+  refreshHistoryBtns();
+  try {
+    disposers.push(grid.addEventListener('layoutChanged', () => { history.reset(); refreshHistoryBtns(); }));
+  } catch { /* bare test surfaces */ }
+
+  // ── Templates — library manager (stern ModuleLibrary parity) ─────────────
+  const tplHost: TemplateManagerHost = {
+    targetCols,
+    grid: grid as unknown as TemplateManagerGrid,
+    defaultSaveName: () => {
+      const first = targetCols()[0];
+      if (!first) return 'Style';
+      const name = grid.getColumnHeaderName?.(first) ?? first;
+      return `${name} Style`;
+    },
+    beforeChange: () => history.push(),
+    onApplied: () => { ctx.profiles.markDirty(); refresh(); },
+  };
+  const tplMenu = templateManagerMenu(r.tplPill, tplHost);
+  const openTpl = (): void => {
+    if (r.tplPill.disabled && r.tplOpen.disabled) return;
+    tplMenu.toggle();
+  };
+  r.tplPill.addEventListener('click', openTpl);
+  r.tplOpen.addEventListener('click', openTpl);
+  disposers.push(() => tplMenu.destroy());
 
   // ── Borders — per-side editor. The side segments are a SLOT SELECTOR
   // (like icon placement): colour/style/width always edit "the border at
@@ -1065,14 +1267,14 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
 
   const applyBorderEdit = (): void => {
     const spec = currentBorderSpec();
-    spec[borderSide] = { width: borderWidthVal, style: borderStyleVal, color: r.borderColorInput.value };
+    spec[borderSide] = { width: borderWidthVal, style: borderStyleVal, color: r.borderColor.input.value };
     applyStyle({ border: spec });
   };
 
   for (const side of Object.keys(r.borderSideBtns) as BorderSideKey[]) {
     r.borderSideBtns[side].addEventListener('click', () => { borderSide = side; refresh(); });
   }
-  r.borderColorInput.addEventListener('change', applyBorderEdit);
+  r.borderColor.input.addEventListener('change', applyBorderEdit);
   const lineSampleItem = (
     label: string,
     sample: { style?: string; width?: number },
@@ -1126,16 +1328,23 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
   // templates, so it persists into layouts like any other header styling.
   r.headerCase.addEventListener('click', () => {
     const next = headerCaseOn() ? 'none' : 'uppercase';
-    for (const colId of allCols()) {
-      try { grid.editColumn(colId, { headerStyle: { textTransform: next } }); } catch { /* unknown column */ }
-    }
+    withHistory(() => {
+      for (const colId of allCols()) {
+        try { grid.editColumn(colId, { headerStyle: { textTransform: next } }); } catch { /* unknown column */ }
+      }
+    });
     ctx.profiles.markDirty();
     refresh();
   });
 
   // ── Column group — popover + agg pill + quick toggles ────────────────────
   const colGrid = grid as unknown as ColumnConfigGrid;
-  const colHost: ColumnPanelHost = { targetCols, grid: colGrid, onApplied: () => { ctx.profiles.markDirty(); refresh(); } };
+  const colHost: ColumnPanelHost = {
+    targetCols,
+    grid: colGrid,
+    beforeChange: () => history.push(),
+    onApplied: () => { ctx.profiles.markDirty(); refresh(); },
+  };
   const colPanel = columnPanelMenu(r.colOpen, colHost);
   r.colOpen.addEventListener('click', () => colPanel.toggle());
   disposers.push(() => colPanel.destroy());
@@ -1177,22 +1386,61 @@ function wireFormattingToolbar(ctx: CgExtContext, r: FormattingRefs): () => void
       const first = targetCols()[0];
       if (!first) return;
       const next = !effectiveFlag(colGrid, first, key);
-      for (const colId of targetCols()) {
-        try { grid.editColumn(colId, patch(next)); } catch { /* unknown column */ }
-      }
+      withHistory(() => {
+        for (const colId of targetCols()) {
+          try { grid.editColumn(colId, patch(next)); } catch { /* unknown column */ }
+        }
+      });
       ctx.profiles.markDirty();
       refresh();
     });
   };
   quickFlag(r.colFF, 'floatingFilter', (next) => ({ floatingFilter: next }));
   quickFlag(r.colGrp, 'enableRowGroup', (next) => ({ enableRowGroup: next }));
+
+  const filterTypeOfFirst = (): string => {
+    const c = targetCols()[0];
+    if (!c) return 'auto';
+    const raw = effectiveFlag(colGrid, c, 'filter');
+    return (typeof raw === 'string' && raw.length > 0) ? raw : 'auto';
+  };
+  const filterTypeMenu = menu(r.filterTypePill, (close) => {
+    const list = h('cgext-menu-list');
+    const current = filterTypeOfFirst();
+    for (const opt of FILTER_TYPE_OPTIONS) {
+      const it = document.createElement('button');
+      it.type = 'button';
+      it.className = 'cgext-menu-item' + (current === opt.v ? ' is-active' : '');
+      it.textContent = opt.menu;
+      it.addEventListener('click', () => {
+        withHistory(() => {
+          for (const colId of targetCols()) {
+            try { grid.editColumn(colId, { filter: opt.v === 'auto' ? null : opt.v }); } catch { /* unknown */ }
+          }
+        });
+        ctx.profiles.markDirty();
+        refresh();
+        close();
+      });
+      list.appendChild(it);
+    }
+    return list;
+  });
+  r.filterTypePill.addEventListener('click', () => {
+    if (r.filterTypePill.hidden || r.filterTypePill.disabled) return;
+    filterTypeMenu.toggle();
+  });
+  disposers.push(() => filterTypeMenu.destroy());
+
   r.colAggH.addEventListener('click', () => {
     const first = targetCols()[0];
     if (!first) return;
     const next = !effectiveFlag(colGrid, first, 'suppressAggFuncInHeader'); // toggle suppress
-    for (const colId of targetCols()) {
-      try { grid.editColumn(colId, { suppressAggFuncInHeader: next }); } catch { /* unknown column */ }
-    }
+    withHistory(() => {
+      for (const colId of targetCols()) {
+        try { grid.editColumn(colId, { suppressAggFuncInHeader: next }); } catch { /* unknown column */ }
+      }
+    });
     ctx.profiles.markDirty();
     refresh();
   });
@@ -1255,6 +1503,18 @@ const RIBBON_CSS = `
   color: var(--cg-muted-fg-color, #7f8ba0); margin-right: 8px; white-space: nowrap;
 }
 .cgext-es-seg > .cgext-rb-stat { margin-left: 6px; }
+.cgext-es-close {
+  margin-left: auto;
+  flex: 0 0 auto;
+  color: var(--cg-muted-fg-color, #7f8ba0);
+}
+.cgext-es-close:hover { color: var(--cg-fg-color, #e5e9f0); }
+.cgext-rb-btn[data-tb="close-format"] {
+  align-self: center;
+  margin-left: 4px;
+  color: var(--cg-muted-fg-color, #7f8ba0);
+}
+.cgext-rb-btn[data-tb="close-format"]:hover { color: var(--cg-fg-color, #e5e9f0); }
 .cgext-rb-grp {
   display: flex; flex-direction: column; padding: 0 10px;
   border-right: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 70%, transparent);
@@ -1354,6 +1614,9 @@ const RIBBON_CSS = `
   background: var(--cg-control-bg, rgba(255,255,255,0.04));
   color: var(--cg-fg-color, #d6dce8); font: inherit; font-size: 12px; cursor: pointer; white-space: nowrap;
 }
+/* Author display on .cgext-rb-pill otherwise overrides the UA [hidden]
+ * rule — the filter-type pill is gated with hidden while floating filter is off. */
+.cgext-rb-pill[hidden] { display: none; }
 .cgext-rb-pill:hover { border-color: var(--cg-accent-color, #4f9cf9); }
 .cgext-rb-pill svg { color: var(--cg-muted-fg-color, #9aa4b6); }
 .cgext-rb-pill.cgext-rb-danger { color: var(--cg-neg-color, #e5646e); border-color: color-mix(in srgb, var(--cg-neg-color, #e5646e) 45%, var(--cg-border-color, #2a3140)); }
@@ -1382,6 +1645,10 @@ const RIBBON_CSS = `
 .cgext-rb-step:hover { color: var(--cg-fg-color, #e5e9f0); }
 
 .cgext-rb-colorinput { width: 0; height: 0; padding: 0; border: none; opacity: 0; position: absolute; pointer-events: none; }
+.cgext-rb-colorpicker-host {
+  position: absolute; width: 0; height: 0; overflow: hidden;
+  margin: 0; padding: 0; border: none; pointer-events: none;
+}
 
 .cgext-rb-danger-btn { color: var(--cg-neg-color, #e5646e); }
 .cgext-rb-danger-btn:hover { background: color-mix(in srgb, var(--cg-neg-color, #e5646e) 16%, transparent); color: var(--cg-neg-color, #e5646e); }

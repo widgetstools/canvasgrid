@@ -142,8 +142,12 @@ export function snapshotState(
       pivotIndex = def.pivotIndex ?? null;
     }
     let aggFunc: string | null;
-    if (runtime?.valueColumns) {
-      aggFunc = aggFuncById.get(leaf.colId) ?? null;
+    if (runtime?.valueColumns !== undefined) {
+      // Prefer the value-column registry, but fall back to the leaf's own
+      // `aggFunc` (typically seeded from colDef). An empty registry used to
+      // export `null` for every column and wipe colDef aggregates on the
+      // next profile/columnState round-trip — blanking SSRM group totals.
+      aggFunc = aggFuncById.get(leaf.colId) ?? def.aggFunc ?? null;
     } else {
       aggFunc = def.aggFunc ?? null;
     }

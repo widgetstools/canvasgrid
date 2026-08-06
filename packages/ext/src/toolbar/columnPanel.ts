@@ -37,12 +37,14 @@ export interface ColumnConfigGrid {
   setValueColumnAggFunc(colId: string, aggFunc: string): void;
   removeValueColumn(colId: string): void;
   setColumnsPinned(keys: string[], pinned: 'left' | 'right' | null): void;
-  getColumnState(): Array<{ colId: string; pinned?: 'left' | 'right' | null }>;
+  getColumnState(): Array<{ colId: string; pinned?: 'left' | 'right' | null; hide?: boolean }>;
 }
 export interface ColumnPanelHost {
   targetCols(): string[];
   grid: ColumnConfigGrid;
   onApplied(): void;
+  /** Called once before a mutating apply so the ribbon can push undo. */
+  beforeChange?(): void;
 }
 
 export type FlagKey =
@@ -96,6 +98,14 @@ function defaultChainValue(grid: ColumnConfigGrid, colId: string, key: FlagKey):
 
 /** Own template → base colDef → `defaultColDef`/`columnTypes` → per-key default. */
 export function effectiveFlag(grid: ColumnConfigGrid, colId: string, key: FlagKey): unknown {
+  // Live columnState wins for hide — Columns-panel / API hide is authoritative.
+  if (key === 'hide') {
+    try {
+      const st = grid.getColumnState().find((s) => s.colId === colId) as
+        | { colId: string; hide?: boolean } | undefined;
+      if (st && typeof st.hide === 'boolean') return st.hide;
+    } catch { /* engine absent */ }
+  }
   try {
     // Known limitation (matches the ribbon's existing formatting-toggle
     // readout convention): only the column's OWN template
@@ -103,9 +113,7 @@ export function effectiveFlag(grid: ColumnConfigGrid, colId: string, key: FlagKe
     // template resolves at the kernel/calc fold layer (and IS live on the
     // column) but is invisible to this read — the popover/quick-toggle can
     // show "off" for a value that's actually on, and the first toggle from
-    // that state writes what the user thinks is already active. Same family:
-    // `hide` reads template/def only, so a column hidden via the kernel
-    // columns panel (columnState) reads "Hidden: off" here too.
+    // that state writes what the user thinks is already active.
     const own = grid.getTemplates().find((t) => t.id === `__cgridOwn:${colId}`);
     const v = own?.overrides?.[key];
     if (v !== undefined) return v;
@@ -245,6 +253,7 @@ export function renderColumnSettingsSections(el: HTMLElement, host: ColumnPanelH
   const applyAll = (row: HTMLElement, fn: (colId: string) => void): void => {
     row.classList.remove('is-error');
     row.removeAttribute('title');
+    host.beforeChange?.();
     let errored = false;
     for (const colId of cols) {
       try { fn(colId); } catch (err) {

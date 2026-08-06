@@ -5,11 +5,14 @@
 // live ticks, ungroup to the flat 50k window, regroup. Exits non-zero on
 // any page error. Screenshot lands in test-results/ (gitignored).
 import { mkdirSync } from 'node:fs';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { launchChromium } from '../../../scripts/launch-chromium.mjs';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 
-const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const browser = await launchChromium(chromium);
 const page = await browser.newPage({ viewport: { width: 1400, height: 900 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(`pageerror: ${e.message}`));
@@ -81,8 +84,9 @@ console.log('regrouped by region (held 1.5s):', settle.n, '—', settle.transiti
 if (!settle.ok) errors.push(`regroup never settled: ${settle.transitions.join(', ')}`);
 
 await wait(800);
-mkdirSync(new URL('../test-results/', import.meta.url), { recursive: true });
-await page.screenshot({ path: new URL('../test-results/smoke.png', import.meta.url).pathname.slice(1) });
+const outDir = fileURLToPath(new URL('../test-results/', import.meta.url));
+mkdirSync(outDir, { recursive: true });
+await page.screenshot({ path: join(outDir, 'smoke.png') });
 
 if (errors.length) {
   console.log('PAGE ERRORS:');

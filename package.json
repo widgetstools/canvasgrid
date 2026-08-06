@@ -3,6 +3,9 @@
   "private": true,
   "version": "0.0.0",
   "packageManager": "npm@10.8.0",
+  "engines": {
+    "node": ">=22"
+  },
   "workspaces": [
     "packages/*",
     "apps/*"
@@ -10,12 +13,15 @@
   "scripts": {
     "dev:showcase": "npm run dev --workspace=cgrid-showcase",
     "dev:positions": "npm run dev --workspace=cgrid-positions",
+    "dev:customizer": "npm run dev --workspace=cgrid-customizer-demo",
     "dev:colgroups": "npm run dev --workspace=colgroups",
+    "dev:ag-showcase": "npm run dev --workspace=showcase",
     "dev:ext-demo": "npm run dev --workspace=cgrid-ext-demo",
     "dev:ssrm-demo": "npm run dev --workspace=cgrid-ssrm-demo",
     "dev:ext-ssrm-demo": "npm run dev --workspace=cgrid-ext-ssrm-demo",
-    "dev:stomp": "node ../starui/apps/stomp-view-server/dist/main.js",
-    "ext-demo:openfin": "concurrently -k -n stomp,vite,openfin -c yellow,cyan,magenta \"npm run dev:stomp\" \"npm run dev:ext-demo\" \"wait-on http://localhost:5188 && node apps/cgrid-ext-demo/openfin/launch.mjs\"",
+    "dev:stomp": "node scripts/run-stomp.mjs",
+    "ext-demo:openfin": "node scripts/run-ext-openfin.mjs",
+    "verify:demos": "node scripts/verify-demos.mjs",
     "build": "turbo run build",
     "build:kernel": "npm run build --workspace=@cgrid/kernel",
     "test": "turbo run test",

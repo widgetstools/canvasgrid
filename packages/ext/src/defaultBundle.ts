@@ -2,7 +2,6 @@ import type { CgExtension, ToolbarItem, CgExtContext } from './extension/types';
 import { gridOptionsModule } from './modules/gridOptions';
 import { columnGroupsModule } from './modules/columnGroups';
 import { columnSettingsModule } from './modules/columnSettings';
-import { expressionLabModule } from './modules/expressionLab';
 import { conditionalStylingModule } from './modules/conditionalStyling';
 import { calculatedColumnsModule } from './modules/calculatedColumns';
 
@@ -56,6 +55,5 @@ export function buildDefaultBundle(): CgExtension[] {
     columnSettingsModule(),
     conditionalStylingModule(),
     calculatedColumnsModule(),
-    expressionLabModule(),
   ];
 }

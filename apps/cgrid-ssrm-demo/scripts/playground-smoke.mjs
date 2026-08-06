@@ -1,6 +1,7 @@
 import { chromium } from 'playwright';
+import { launchChromium } from '../../../scripts/launch-chromium.mjs';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
-const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const browser = await launchChromium(chromium);
 const page = await browser.newPage({ viewport: { width: 1500, height: 900 } });
 const errors = [];
 page.on('pageerror', (e) => errors.push(e.message));

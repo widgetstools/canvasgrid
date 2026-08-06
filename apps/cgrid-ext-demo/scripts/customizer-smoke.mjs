@@ -1,6 +1,7 @@
 // Customizer modules smoke: conditional-styling + calculated-columns
 // settings modules, CM6 editor, and grid-config persistence.
 import { chromium } from 'playwright';
+import { launchChromium } from '../../../scripts/launch-chromium.mjs';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const failures = [];
@@ -9,7 +10,7 @@ const check = (label, ok, detail = '') => {
   if (!ok) failures.push(label);
 };
 
-const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const browser = await launchChromium(chromium);
 const page = await browser.newPage({ viewport: { width: 1500, height: 950 } });
 page.on('pageerror', (e) => console.log('[pageerror]', e.message));
 

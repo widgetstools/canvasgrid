@@ -289,7 +289,7 @@ const ext = new CGridExt<FlatRow>(app, {
   ext: {
     // Replace the spine's bare Settings/Save with the full MarketsGrid-style
     // title bar (brand, search, notifications, layouts + layout-save, date,
-    // settings, overflow). Column Settings + Expressions live in the settings
+    // settings, overflow). Column Settings lives in the settings sheet.
     // sheet via defaultBundle.
     extensions: [
       { remove: 'settings-launcher' },

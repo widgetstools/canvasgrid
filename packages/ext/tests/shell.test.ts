@@ -35,7 +35,7 @@ describe('ShellLayout', () => {
     expect(root.querySelector('.cgext-titlebar')!.textContent).toContain('save');
   });
 
-  it('opens the settings sheet and renders the requested module panel', () => {
+  it('opens the settings sheet and renders the requested module panel', async () => {
     const root = document.createElement('div');
     const shell = new ShellLayout(root);
     shell.mountSettingsModule(settingsModule('grid-options'), ctx);
@@ -44,7 +44,12 @@ describe('ShellLayout', () => {
     expect(shell.isSettingsOpen()).toBe(true);
     expect(root.querySelector('.cgext-sheet')!.textContent).toContain('panel:grid-options');
     expect(root.querySelector('.cgext-sheet-nav')).toBeNull(); // single module → no tabs
+    expect(root.querySelector('.cgext-sheet-footer')).toBeTruthy();
+    expect(root.querySelector('[data-testid="cgext-sheet-done"]')).toBeTruthy();
+    // Entrance uses rAF — wait so close sees `is-open` and runs the exit path.
+    await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
     shell.closeSettings();
+    await new Promise((r) => setTimeout(r, 200));
     expect(shell.isSettingsOpen()).toBe(false);
   });
 

@@ -32,3 +32,25 @@ jobs:
 
       - name: Kernel tests
         run: npm run test:kernel
+
+  # Keep demo Vite boot paths honest on Windows (path separators, npm.cmd,
+  # process trees). Self-contained demos only — no sibling starui STOMP.
+  demos-windows:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify demos boot
+        run: npm run verify:demos -- --only cgrid-showcase,cgrid-ssrm-demo,cgrid-ext-ssrm-demo,colgroups,showcase

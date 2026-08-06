@@ -32,7 +32,7 @@ export function expressionLabModule(): SettingsModule {
     id: 'expression-lab',
     kind: 'settings-module',
     title: 'Expressions',
-    icon: 'wand',
+    icon: 'sparkles',
     category: 'data',
 
     init(): void {

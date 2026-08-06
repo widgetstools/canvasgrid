@@ -12,6 +12,12 @@ const WRITE_METHODS = new Set([
   'setGridOption',
   'updateGridOptions',
   'setThemeParams',
+  'setSideBarVisible',
+  'editColumn',
+  'setColumnsPinned',
+  'addValueColumn',
+  'removeValueColumn',
+  'setValueColumnAggFunc',
 ]);
 
 /** API object suitable for `ToolPanel.init({ api })`. */

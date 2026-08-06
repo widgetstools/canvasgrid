@@ -4,6 +4,7 @@
 //
 //   node apps/cgrid-ssrm-demo/scripts/phase5-smoke.mjs
 import { chromium } from 'playwright';
+import { launchChromium } from '../../../scripts/launch-chromium.mjs';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const failures = [];
@@ -12,7 +13,7 @@ const check = (label, ok, detail = '') => {
   if (!ok) failures.push(label);
 };
 
-const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const browser = await launchChromium(chromium);
 // ONE context — SharedWorkers are shared per origin within a context.
 const ctx = await browser.newContext({ viewport: { width: 1500, height: 900 } });
 

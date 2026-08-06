@@ -396,7 +396,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     const footer = el('div', 'cg-colgroups-footer');
     this.applyBtn = el('button', 'cg-btn cg-btn-primary') as HTMLButtonElement;
     this.applyBtn.type = 'button';
-    this.applyBtn.textContent = 'Apply'; this.applyBtn.setAttribute('data-cg-apply', '');
+    this.applyBtn.textContent = 'Save'; this.applyBtn.setAttribute('data-cg-apply', '');
     this.applyBtn.disabled = true; this.applyBtn.onclick = () => this.onApply();
     this.resetBtn = el('button', 'cg-btn') as HTMLButtonElement;
     this.resetBtn.type = 'button';

@@ -39,7 +39,12 @@ export function evaluateExcel(tree: ExcelFormatTree, ctx: ExcelEvalContext): Exc
     return { text: '', style, iconName: null, sectionIndex: index };
   }
 
-  const text = renderSection(section, ctx);
+  // Multi-section formats (pos;neg[;zero;text]) format the ABSOLUTE
+  // magnitude in whichever section a negative value routes to — Excel
+  // only shows a minus when the section pattern itself contains one
+  // (e.g. `-0.00`). Single-section formats keep Intl's auto '-'.
+  const multiSection = tree.sections.length > 1;
+  const text = renderSection(section, ctx, multiSection);
   return { text, style, iconName: null, sectionIndex: index };
 }
 
@@ -97,7 +102,11 @@ function matchCondition(
   }
 }
 
-function renderSection(section: ExcelSection, ctx: ExcelEvalContext): string {
+function renderSection(
+  section: ExcelSection,
+  ctx: ExcelEvalContext,
+  multiSection: boolean,
+): string {
   const tokens = section.tokens;
   const kind = classifyTokens(tokens);
 
@@ -129,7 +138,7 @@ function renderSection(section: ExcelSection, ctx: ExcelEvalContext): string {
   if (kind === 'number' || kind === 'currency' || kind === 'percent') {
     const n = coerceNumber(ctx.value);
     if (n === null) return '';
-    return formatNumber(tokens, n, kind, ctx);
+    return formatNumber(tokens, n, kind, ctx, multiSection);
   }
 
   // Fallback
@@ -179,7 +188,10 @@ function classifyTokens(tokens: Token[]): SectionKind {
   // notation with a literal `$` prefix, not a currency format.
   if (tokens.some((t) => t.kind === 'exponent')) return 'number';
   if (tokens.some((t) => t.kind === 'percent')) return 'percent';
-  if (tokens.some((t) => t.kind === 'literal' && /[$€£¥]/.test(t.text))) return 'currency';
+  // `$` / `€` / etc. in Excel codes are LITERAL glyphs (Excel does not
+  // locale-swap them). Route through the number path so prefixes like
+  // `-$#,##0.00` keep the leading minus; the old 'currency' Intl path
+  // dropped every literal and re-emitted only the locale currency symbol.
   return 'number';
 }
 
@@ -294,18 +306,29 @@ function formatNumber(
   n: number,
   kind: SectionKind,
   ctx: ExcelEvalContext,
+  multiSection: boolean,
 ): string {
+  // Excel: when a format has a dedicated negative (or other) section,
+  // the digit run is the absolute magnitude. A visible minus only
+  // appears if the section pattern puts a literal '-' before the
+  // digits (or for single-section formats, via Intl). Applying abs
+  // whenever multi-section OR the pattern already owns the sign stops
+  // Intl from emitting "-1,234" inside patterns labeled "no sign" or
+  // wrapping it as "(-1,234)" inside paren sections.
+  const hasExplicitSign = hasLiteralSignPrefix(tokens);
+  const magnitude = n < 0 && (multiSection || hasExplicitSign) ? Math.abs(n) : n;
+
   if (kind === 'percent') {
     const options = deriveNumberOptions(tokens, kind, ctx.currency);
     const nf = getIntlNumberFormat(ctx.locale, options);
-    return nf.format(n); // Intl 'percent' ×100 and appends %
+    return nf.format(magnitude); // Intl 'percent' ×100 and appends %
   }
 
   if (kind === 'currency') {
     // Currency: Intl handles the symbol. Extract frac digits from tokens.
     const options = deriveNumberOptions(tokens, kind, ctx.currency);
     const nf = getIntlNumberFormat(ctx.locale, options);
-    return nf.format(n);
+    return nf.format(magnitude);
   }
 
   const expTok = tokens.find((t) => t.kind === 'exponent');
@@ -313,20 +336,12 @@ function formatNumber(
     return formatScientific(tokens, expTok, n);
   }
 
-  // Plain number.
-  // Split at the first numeric-format token boundary to get literal prefix/suffix.
-  // Use Math.abs so the sign is handled by Intl (which prepends '-' for negatives),
-  // except when the literal '-' is BEFORE the number tokens (explicit sign in format).
-  // In Excel, the literal '-' in the negative section IS the visual minus; Intl would
-  // double-add it when formatting a negative value. So we format abs(n) and let the
-  // literal prefix supply the sign character.
-  const hasExplicitSign = hasLiteralSignPrefix(tokens);
+  // Plain number — literal $ / € / etc. ride as prefix/suffix around Intl.
   const options = deriveNumberOptions(tokens, kind, ctx.currency);
   const nf = getIntlNumberFormat(ctx.locale, options);
-  const absVal = hasExplicitSign ? Math.abs(n) : n;
   const literalPrefix = extractLiteralPrefix(tokens);
   const literalSuffix = extractLiteralSuffix(tokens);
-  return literalPrefix + nf.format(absVal) + literalSuffix;
+  return literalPrefix + nf.format(magnitude) + literalSuffix;
 }
 
 function formatScientific(
@@ -353,11 +368,12 @@ function formatScientific(
   return `${literalPrefix}${m[1]}E${signStr}${digits}${literalSuffix}`;
 }
 
-/** Returns true when there's a '-' or '+' literal immediately before the first digit-placeholder. */
+/** True when a '-' / '+' literal rides before the first digit run — either
+ *  as its own token (`-` then `$` then `#…`) or coalesced (`-$` then `#…`). */
 function hasLiteralSignPrefix(tokens: Token[]): boolean {
   let foundSign = false;
   for (const t of tokens) {
-    if (t.kind === 'literal' && (t.text === '-' || t.text === '+')) {
+    if (t.kind === 'literal' && /^[+-]/.test(t.text)) {
       foundSign = true;
     } else if (
       t.kind === 'digit-placeholder' ||

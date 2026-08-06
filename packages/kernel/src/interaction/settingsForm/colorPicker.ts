@@ -93,10 +93,23 @@ export class ColorPickerControl {
   private swatch: HTMLButtonElement;
   private popover: HTMLElement | null = null;
   private hsva: HSVA;
+  /** Optional external trigger (e.g. ribbon icon button). When set, the
+   *  built-in swatch is hidden and open/reposition use the trigger instead. */
+  private trigger: HTMLElement | null = null;
+  private readonly onTriggerClick = (e: Event) => {
+    e.preventDefault();
+    e.stopPropagation();
+    this.toggle();
+  };
   private closeOnDocClick = (e: MouseEvent) => {
     const t = e.target as Node;
-    // Popover is portaled to <body>, so exclude BOTH the trigger and it.
-    if (this.popover && !this.el.contains(t) && !this.popover.contains(t)) this.close();
+    // Popover is portaled to <body>, so exclude the host, external trigger, and popover.
+    if (
+      this.popover
+      && !this.el.contains(t)
+      && !this.popover.contains(t)
+      && !(this.trigger?.contains(t))
+    ) this.close();
   };
 
   constructor(initial: string, private readonly onChange: (rgba: string) => void) {
@@ -114,6 +127,20 @@ export class ColorPickerControl {
     this.swatch.addEventListener('click', () => this.toggle());
   }
 
+  /**
+   * Drive this picker from an external control (Excel-style ribbon swatch,
+   * labeled button, etc.). Hides the built-in swatch; clicks on `trigger`
+   * open the popover, which anchors to the trigger's box.
+   */
+  attachTrigger(trigger: HTMLElement): void {
+    if (this.trigger) this.trigger.removeEventListener('click', this.onTriggerClick);
+    this.trigger = trigger;
+    this.swatch.hidden = true;
+    this.swatch.tabIndex = -1;
+    this.swatch.setAttribute('aria-hidden', 'true');
+    trigger.addEventListener('click', this.onTriggerClick);
+  }
+
   /** Update the control from an external value (e.g. form refresh). Skips
    *  when the value already matches our own output — otherwise a form
    *  refresh triggered by our own commit would re-seed HSVA from RGBA and
@@ -129,7 +156,16 @@ export class ColorPickerControl {
 
   destroy(): void {
     this.close();
+    if (this.trigger) {
+      this.trigger.removeEventListener('click', this.onTriggerClick);
+      this.trigger = null;
+    }
     this.el.remove();
+  }
+
+  /** Open / close the popover (also used by attachTrigger). */
+  toggle(): void {
+    if (this.popover) this.close(); else this.open();
   }
 
   private current(): string {
@@ -146,17 +182,13 @@ export class ColorPickerControl {
     this.swatch.style.setProperty('--cg-cp-color', this.current());
   }
 
-  private toggle(): void {
-    if (this.popover) this.close(); else this.open();
-  }
-
   private reposition = () => {
     if (!this.popover) return;
-    // Fixed positioning anchored to the swatch, flipped/clamped to stay in
-    // the viewport — so a swatch near the bottom of a scrolling panel never
-    // needs the popover scrolled into view.
+    // Fixed positioning anchored to the trigger/swatch, flipped/clamped to
+    // stay in the viewport — so a swatch near the bottom of a scrolling
+    // panel never needs the popover scrolled into view.
     const pop = this.popover;
-    const anchor = this.swatch.getBoundingClientRect();
+    const anchor = (this.trigger ?? this.swatch).getBoundingClientRect();
     const w = pop.offsetWidth;
     const h = pop.offsetHeight;
     const margin = 8;

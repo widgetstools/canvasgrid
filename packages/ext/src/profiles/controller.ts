@@ -63,6 +63,11 @@ export class ProfilesController implements ProfileController {
     this.notifyList();
   }
 
+  /** Revert the grid to the last saved snapshot of the active profile. */
+  async discard(): Promise<void> {
+    await this.switchTo(this.id);
+  }
+
   async saveAs(name: string): Promise<string> {
     const trimmed = name.trim();
     if (!trimmed) throw new Error('Profile name is required');

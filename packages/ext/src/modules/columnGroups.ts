@@ -15,10 +15,10 @@ export function columnGroupsModule(): SettingsModule {
     id: 'column-groups',
     kind: 'settings-module',
     title: 'Column Groups',
-    icon: 'columns',
+    icon: 'columns-3',
     category: 'layout',
 
-    init(): void { /* panel owns its own chrome + Apply persistence */ },
+    init(): void { /* panel owns its own chrome + Save/Reset persistence */ },
 
     mount(host, ctx) {
       return mountToolPanel(ColumnGroupsToolPanel, host, ctx, {

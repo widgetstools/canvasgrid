@@ -14,4 +14,9 @@ describe('ribbon Column group wiring', () => {
     expect(src.includes("grp('Column'")).toBe(true);
     expect(src.includes('columnPanelMenu')).toBe(true);
   });
+  it('exposes a filter-type pill gated on floating filter', () => {
+    expect(src.includes("dataset.col = 'filterType'")).toBe(true);
+    expect(src.includes('FILTER_TYPE_OPTIONS')).toBe(true);
+    expect(src.includes('filterTypePill.hidden')).toBe(true);
+  });
 });

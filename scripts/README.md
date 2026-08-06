@@ -1,5 +1,15 @@
 # Scripts
 
+## Cross-platform demo helpers
+
+| Script | Purpose |
+|--------|---------|
+| `node scripts/run-stomp.mjs` | Start sibling starui STOMP server (macOS/Windows/Linux) |
+| `node scripts/run-ext-openfin.mjs` | Vite + STOMP + OpenFin without shell `&&` |
+| `node scripts/verify-demos.mjs` | Boot each demo briefly and check HTTP |
+
+Also exposed as `npm run dev:stomp`, `npm run ext-demo:openfin`, `npm run verify:demos`.
+
 ## `run-cycle-tasks.sh` — autonomous cycle runner
 
 Spawns one Claude Code headless session per task in a cycle worklog and
@@ -7,6 +17,8 @@ runs them sequentially. Each session is **fresh** (no shared
 conversation context) and reads the worklog's per-task instructions
 itself. The runner just sequences the sessions and verifies a commit
 landed between each.
+
+> macOS/Linux only (bash). Not required to run product demos.
 
 ### Quickstart
 

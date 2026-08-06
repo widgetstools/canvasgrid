@@ -102,7 +102,16 @@ export function calculatedColumnsModule(): SettingsModule {
         return JSON.stringify(columns.find((c) => c.colId === selectedId)) !== JSON.stringify(draft);
       };
 
-      const selectColumn = (colId: string | null, asNew = false, seed?: CalculatedColumnDef): void => {
+      const selectColumn = (
+        colId: string | null,
+        asNew = false,
+        seed?: CalculatedColumnDef,
+        force = false,
+      ): void => {
+        if (!force && draft && isDirty() && !(asNew && seed) && colId !== selectedId) {
+          const ok = window.confirm('Discard unsaved column changes?');
+          if (!ok) return;
+        }
         editor?.destroy(); editor = null;
         fmtMenu?.destroy(); fmtMenu = null;
         selectedId = colId;
@@ -196,7 +205,9 @@ export function calculatedColumnsModule(): SettingsModule {
         const resetBtn = el('button', 'ckp-actbtn');
         resetBtn.type = 'button';
         resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
-        resetBtn.addEventListener('click', () => selectColumn(draftIsNew ? (columns[0]?.colId ?? null) : selectedId));
+        resetBtn.addEventListener('click', () => {
+          selectColumn(draftIsNew ? (columns[0]?.colId ?? null) : selectedId, false, undefined, true);
+        });
         const saveBtn = el('button', 'ckp-actbtn');
         saveBtn.type = 'button';
         saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
@@ -214,7 +225,9 @@ export function calculatedColumnsModule(): SettingsModule {
         pane.appendChild(chipsStrip);
 
         const syncDirty = (): void => {
-          saveBtn.disabled = !isDirty();
+          const dirty = isDirty();
+          saveBtn.disabled = !dirty;
+          resetBtn.disabled = !dirty && !draftIsNew;
           refsChip.set(`${countRefs(d.expression)} COLS`, 'info');
           fmtChip.set(d.format ? 'SET' : '—');
           widthChip.set(d.initialWidth ? `${d.initialWidth}PX` : 'AUTO');
@@ -243,8 +256,9 @@ export function calculatedColumnsModule(): SettingsModule {
             return [{ message: compiled.error.message, from: loc?.start ?? 0, to: loc?.end ?? text.length }];
           },
           onChange: (v) => { d.expression = v; syncDirty(); },
+          onCommit: () => { if (isDirty()) save(); },
         });
-        expr.body.append(editorHost, el('div', 'ckp-hint', "Type [ for columns · aggregates take a scope: SUM([price], 'group') · PREV([col]) for prior tick"));
+        expr.body.append(editorHost, el('div', 'ckp-hint', "Type [ for columns · ⌘↵ to save · aggregates take a scope: SUM([price], 'group') · PREV([col]) for prior tick"));
         pane.appendChild(expr.root);
 
         // 02 VALUE FORMATTER.
@@ -262,6 +276,8 @@ export function calculatedColumnsModule(): SettingsModule {
           applyFormat: (format) => { d.format = format; syncFmtBtn(); syncDirty(); },
           clearFormat: () => { d.format = undefined; syncFmtBtn(); syncDirty(); },
           dataType: () => toFormatDataType(d.cellDataType),
+        }, {
+          fitTo: () => fmtBtn.closest<HTMLElement>('.ckp-pane') ?? fmtBtn.closest<HTMLElement>('.ckp'),
         });
         fmtBtn.addEventListener('click', () => fmtMenu?.toggle());
         fmt.body.appendChild(fmtBtn);

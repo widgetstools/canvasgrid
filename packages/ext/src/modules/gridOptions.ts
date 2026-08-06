@@ -11,7 +11,7 @@ export function gridOptionsModule(): SettingsModule {
     id: 'grid-options',
     kind: 'settings-module',
     title: 'Options',
-    icon: 'sliders',
+    icon: 'sliders-horizontal',
     category: 'layout',
 
     init(): void { /* panel owns its own chrome */ },

@@ -2,6 +2,7 @@
 // boot, window sparsely, group via the panel path, and tick. Two tabs
 // must share the engine (Phase 5 under the facade). Dev server on :5191.
 import { chromium } from 'playwright';
+import { launchChromium } from '../../../scripts/launch-chromium.mjs';
 
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 const failures = [];
@@ -10,7 +11,7 @@ const check = (label, ok, detail = '') => {
   if (!ok) failures.push(label);
 };
 
-const browser = await chromium.launch({ channel: 'chrome', headless: true });
+const browser = await launchChromium(chromium);
 const ctx = await browser.newContext({ viewport: { width: 1400, height: 900 } });
 
 const boot = async () => {

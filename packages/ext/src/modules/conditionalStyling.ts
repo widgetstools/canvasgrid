@@ -131,7 +131,16 @@ export function conditionalStylingModule(): SettingsModule {
         } catch { return '—'; }
       };
 
-      const selectRule = (id: string | null, asNew = false, seed?: ConditionalStyleRule): void => {
+      const selectRule = (
+        id: string | null,
+        asNew = false,
+        seed?: ConditionalStyleRule,
+        force = false,
+      ): void => {
+        if (!force && draft && isDirty() && !(asNew && seed) && id !== selectedId) {
+          const ok = window.confirm('Discard unsaved rule changes?');
+          if (!ok) return;
+        }
         editor?.destroy(); editor = null;
         fmtMenu?.destroy(); fmtMenu = null;
         selectedId = id;
@@ -222,7 +231,9 @@ export function conditionalStylingModule(): SettingsModule {
         const resetBtn = el('button', 'ckp-actbtn');
         resetBtn.type = 'button';
         resetBtn.innerHTML = `${lucideSvg('rotate-ccw', 12)}<span>Reset</span>`;
-        resetBtn.addEventListener('click', () => selectRule(draftIsNew ? (rules[0]?.id ?? null) : d.id));
+        resetBtn.addEventListener('click', () => {
+          selectRule(draftIsNew ? (rules[0]?.id ?? null) : d.id, false, undefined, true);
+        });
         const saveBtn = el('button', 'ckp-actbtn');
         saveBtn.type = 'button';
         saveBtn.innerHTML = `${lucideSvg('save', 12)}<span>Save</span>`;
@@ -264,7 +275,11 @@ export function conditionalStylingModule(): SettingsModule {
         );
         pane.appendChild(controls);
 
-        const syncDirty = (): void => { saveBtn.disabled = !isDirty(); };
+        const syncDirty = (): void => {
+          const dirty = isDirty();
+          saveBtn.disabled = !dirty;
+          resetBtn.disabled = !dirty && !draftIsNew;
+        };
         syncDirty();
 
         // 01 EXPRESSION.
@@ -292,6 +307,7 @@ export function conditionalStylingModule(): SettingsModule {
           columnsProvider: () => editorColumns(ctx.grid),
           validate: runValidate,
           onChange: (v) => { d.condition = v; syncDirty(); },
+          onCommit: () => { if (isDirty()) save(); },
         });
         expr.body.append(editorHost, errBox, el('div', 'ckp-hint', 'Type [ for columns · ⌘↵ to save · [col.old] / [col.new] compare against the previous tick'));
         pane.appendChild(expr.root);
@@ -494,6 +510,8 @@ export function conditionalStylingModule(): SettingsModule {
           applyFormat: (format) => { d.valueFormatter = format; syncFmtBtn(); syncDirty(); },
           clearFormat: () => { d.valueFormatter = undefined; syncFmtBtn(); syncDirty(); },
           dataType: firstTargetType,
+        }, {
+          fitTo: () => fmtBtn.closest<HTMLElement>('.ckp-pane') ?? fmtBtn.closest<HTMLElement>('.ckp'),
         });
         fmtBtn.addEventListener('click', () => fmtMenu?.toggle());
         fmt.body.append(fmtBtn, el('div', 'ckp-hint', "Applied to cells where this rule matches — overrides the column's own formatter."));

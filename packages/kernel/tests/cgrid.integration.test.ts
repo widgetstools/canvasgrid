@@ -741,6 +741,24 @@ describe('CGrid integration', () => {
       grid.destroy();
     });
 
+    it('colDef.aggFunc seeds value columns and round-trips through getColumnState', async () => {
+      const { grid } = buildBareGrid<{ id: string; pnl: number }>(
+        [],
+        [{ field: 'id' }, { field: 'pnl', enableValue: true, aggFunc: 'sum' }],
+      );
+      // Construction seeds async on the gridReady path — wait a tick.
+      await Promise.resolve();
+      await new Promise((r) => setTimeout(r, 0));
+      expect(grid.getValueColumns()).toEqual([{ colId: 'pnl', aggFunc: 'sum' }]);
+      expect(grid.getColumnState().find((e) => e.colId === 'pnl')!.aggFunc).toBe('sum');
+      // Round-trip must not wipe the seed (empty valueColumns used to
+      // serialize aggFunc:null and clear measures on apply).
+      grid.applyColumnState({ state: grid.getColumnState() });
+      expect(grid.getValueColumns()).toEqual([{ colId: 'pnl', aggFunc: 'sum' }]);
+      expect(grid.getColumnState().find((e) => e.colId === 'pnl')!.aggFunc).toBe('sum');
+      grid.destroy();
+    });
+
     it('setValueColumnAggFunc updates aggFunc in getColumnState (runtime swap not def-stale)', () => {
       const { grid } = buildBareGrid<{ id: string; pnl: number }>(
         [],
