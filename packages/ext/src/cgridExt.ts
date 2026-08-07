@@ -90,6 +90,18 @@ export class CGridExt<TRow = any> {
   openSettings(id?: string): void { this.shell.openSettings(id); }
   closeSettings(): void { this.shell.closeSettings(); }
 
+  /**
+   * Re-apply the active profile after late-wired engines (`wireEdit` /
+   * `wireCalc` / `wireRules`) register their state modules. The ctor fires
+   * `profiles.bootstrap()` before hosts typically call those wires, so the
+   * first `setState` can miss `editSettings` / `calc` / `rules` slices.
+   * Await this after wiring so those modules restore from the saved snapshot.
+   */
+  async reapplyActiveProfile(): Promise<void> {
+    await this.profiles.bootstrap();
+    await this.profiles.switchTo(this.profiles.activeId());
+  }
+
   /** Registry → shell → grid, in that order — but the kernel Worker MUST be
    *  released even if registry or shell teardown throws, so grid.destroy()
    *  runs in an outer `finally` (and shell.destroy() in an inner one). */

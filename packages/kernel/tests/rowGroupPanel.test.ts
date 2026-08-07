@@ -27,6 +27,7 @@ interface RecordingContext extends RowGroupPanelGridContext {
   removeCalls: string[];
   moveCalls: Array<{ from: number; to: number }>;
   sortCalls: Array<{ colId: string; direction: 'asc' | 'desc' | null }>;
+  hideCalls: number;
   enabledCols: Set<string>;
   headerNames: Map<string, string>;
 }
@@ -37,6 +38,7 @@ function makeContext(): RecordingContext {
   const removeCalls: string[] = [];
   const moveCalls: Array<{ from: number; to: number }> = [];
   const sortCalls: Array<{ colId: string; direction: 'asc' | 'desc' | null }> = [];
+  let hideCalls = 0;
   const enabledCols = new Set<string>(['ticker', 'sector', 'region', 'desk']);
   const headerNames = new Map<string, string>([
     ['ticker', 'Ticker'],
@@ -51,6 +53,7 @@ function makeContext(): RecordingContext {
     removeCalls,
     moveCalls,
     sortCalls,
+    get hideCalls() { return hideCalls; },
     enabledCols,
     headerNames,
     setReservedSpace(side, height) {
@@ -73,6 +76,9 @@ function makeContext(): RecordingContext {
     },
     setRowGroupColumnSort(colId, direction) {
       sortCalls.push({ colId, direction });
+    },
+    hidePanel() {
+      hideCalls += 1;
     },
   };
 }
@@ -173,6 +179,28 @@ describe('RowGroupPanelHost', () => {
     const empty = root.querySelector('.cg-row-group-panel-empty') as HTMLElement | null;
     expect(empty).not.toBeNull();
     expect(empty!.textContent).toBe('Drag here to set row groups');
+    host.destroy();
+  });
+
+  it('renders AG-parity group icon on the left and hide ✕ on the right', () => {
+    const ctx = makeContext();
+    const host = new RowGroupPanelHost(root, ctx, 'always', []);
+    const icon = root.querySelector('.cg-row-group-panel-icon svg');
+    const close = root.querySelector('.cg-row-group-panel-close') as HTMLButtonElement | null;
+    expect(icon).not.toBeNull();
+    expect(close).not.toBeNull();
+    expect(close!.getAttribute('aria-label')).toBe('Hide row group panel');
+    close!.click();
+    expect(ctx.hideCalls).toBe(1);
+    host.destroy();
+  });
+
+  it('omits the hide ✕ when ctx.hidePanel is not provided', () => {
+    const ctx = makeContext();
+    delete (ctx as { hidePanel?: () => void }).hidePanel;
+    const host = new RowGroupPanelHost(root, ctx, 'always', ['ticker']);
+    expect(root.querySelector('.cg-row-group-panel-icon')).not.toBeNull();
+    expect(root.querySelector('.cg-row-group-panel-close')).toBeNull();
     host.destroy();
   });
 

@@ -3,6 +3,11 @@ import { drawIcon, hasIcon } from '../icons';
 import { wrapHeaderLines, fontPxSize, HEADER_LINE_HEIGHT_FACTOR } from './headerWrap';
 import { paintCellBorders } from '../painters/cellBordersPainter';
 import { paintCellDecorators } from '../painters/cellDecoratorsPainter';
+import {
+  paintCheckboxBox,
+  paintCheckboxCheck,
+  paintCheckboxDash,
+} from './checkboxGlyph';
 import type { CellContent } from '../../types';
 import type { RendererPalette } from '../../theming/cssReader';
 
@@ -582,20 +587,9 @@ export const checkboxCell: CellPainter = {
     const accent = isTrue && p.checkboxCheckedBg && p.checkboxCheckedBg !== 'transparent'
       ? p.checkboxCheckedBg
       : null;
-    if (accent) {
-      gc.cache.fillStyle = accent;
-      gc.fillRect(cx, cy, size, size);
-    }
-    gc.cache.strokeStyle = p.fg;
-    gc.cache.lineWidth = 1;
-    gc.strokeRect(cx + 0.5, cy + 0.5, size, size);
+    paintCheckboxBox(gc, cx, cy, size, { borderColor: p.fg, fill: accent });
     if (isTrue) {
-      gc.cache.strokeStyle = accent ? (p.checkboxCheckedFg ?? p.fg) : p.fg;
-      gc.beginPath();
-      gc.moveTo(cx + 3, cy + size / 2);
-      gc.lineTo(cx + size / 2 - 1, cy + size - 3);
-      gc.lineTo(cx + size - 2, cy + 3);
-      gc.stroke();
+      paintCheckboxCheck(gc, cx, cy, size, accent ? (p.checkboxCheckedFg ?? p.fg) : p.fg);
     }
   },
 };
@@ -650,26 +644,11 @@ export const headerCell: CellPainter = {
         && p.checkboxCheckedBg !== 'transparent'
         ? p.checkboxCheckedBg
         : null;
-      if (accent) {
-        gc.cache.fillStyle = accent;
-        gc.fillRect(cx, cy2, size, size);
-      }
-      gc.cache.strokeStyle = p.fg;
-      gc.cache.lineWidth = 1;
-      gc.strokeRect(cx + 0.5, cy2 + 0.5, size, size);
+      paintCheckboxBox(gc, cx, cy2, size, { borderColor: p.fg, fill: accent });
       if (checked) {
-        gc.cache.strokeStyle = accent ? (p.checkboxCheckedFg ?? p.fg) : p.fg;
-        gc.beginPath();
-        gc.moveTo(cx + 3, cy2 + size / 2);
-        gc.lineTo(cx + size / 2 - 1, cy2 + size - 3);
-        gc.lineTo(cx + size - 2, cy2 + 3);
-        gc.stroke();
+        paintCheckboxCheck(gc, cx, cy2, size, accent ? (p.checkboxCheckedFg ?? p.fg) : p.fg);
       } else if (partial) {
-        gc.cache.strokeStyle = accent ? (p.checkboxCheckedFg ?? p.fg) : p.fg;
-        gc.beginPath();
-        gc.moveTo(cx + 3, cy2 + size / 2);
-        gc.lineTo(cx + size - 3, cy2 + size / 2);
-        gc.stroke();
+        paintCheckboxDash(gc, cx, cy2, size, accent ? (p.checkboxCheckedFg ?? p.fg) : p.fg);
       }
       return;
     }

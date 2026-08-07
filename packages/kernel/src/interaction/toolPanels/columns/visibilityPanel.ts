@@ -203,7 +203,7 @@ export class ColumnVisibilityPanel {
     row.className = 'cg-columns-panel-search';
     const cb = document.createElement('input');
     cb.type = 'checkbox';
-    cb.className = 'cg-columns-panel-select-all';
+    cb.className = 'cg-checkbox cg-columns-panel-select-all';
     cb.setAttribute('aria-label', 'Select all columns');
     cb.addEventListener('change', () => {
       const makeVisible = cb.checked;
@@ -366,7 +366,7 @@ export class ColumnVisibilityPanel {
 
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
-    checkbox.className = 'cg-columns-panel-row-checkbox';
+    checkbox.className = 'cg-checkbox cg-columns-panel-row-checkbox';
     checkbox.checked = this.computeRowChecked(entry);
     checkbox.setAttribute('aria-label', this.deps.resolveLabel(entry.colId));
     checkbox.addEventListener('click', (e) => {
@@ -439,7 +439,7 @@ export class ColumnVisibilityPanel {
 
     const checkbox = document.createElement('input');
     checkbox.type = 'checkbox';
-    checkbox.className = 'cg-columns-panel-row-checkbox';
+    checkbox.className = 'cg-checkbox cg-columns-panel-row-checkbox';
     checkbox.setAttribute('aria-label', `Toggle all columns in ${label.textContent}`);
     checkbox.addEventListener('click', (e) => {
       e.stopPropagation();

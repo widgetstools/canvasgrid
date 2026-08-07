@@ -48,6 +48,7 @@
 import type { GroupingSortEntry } from '../../core/groupingState';
 import type { RowGroupPanelShow, RowGroupPanelDropVerdict } from './types';
 import { copyResolvedChipStyles } from '../chipGhostStyles';
+import { iconSvg } from '../../renderer/icons';
 
 /** Verbatim from `cgrid/src/interaction/toolPanels/columnsPanel.ts`'s
  *  Row Groups section. One drop-zone vocabulary across the grid. */
@@ -125,6 +126,10 @@ export interface RowGroupPanelGridContext {
    *  routing committed (chip should not be re-removed on drag-out),
    *  `false` when no foreign panel was hit OR the target rejected. */
   tryCrossPanelMove?(colId: string, clientX: number, clientY: number): boolean;
+  /** Hide the panel (panel-level ✕). Host apps typically wire this to
+   *  `setGridOption('rowGroupPanelShow', 'never')`. Optional so unit
+   *  tests can omit it; the ✕ is only rendered when this is provided. */
+  hidePanel?(): void;
 }
 
 /** Render-time options governing which decorations the host paints
@@ -397,26 +402,56 @@ export class RowGroupPanelHost {
   }
 
   /** Build the chip strip (or empty-state placeholder) and replace
-   *  the panel's children in one pass. */
+   *  the panel's children in one pass. Layout matches AG Grid's
+   *  horizontal column-drop: group icon | body | close. */
   private renderContents(): void {
     this.panel.replaceChildren();
+    // `replaceChildren` detaches any insertion line; drop the stale ref
+    // so the next drag recreates it under the new DOM.
+    this.insertionLine = null;
+
+    const icon = document.createElement('span');
+    icon.className = 'cg-row-group-panel-icon';
+    icon.setAttribute('aria-hidden', 'true');
+    icon.appendChild(iconSvg('group', 14));
+    this.panel.appendChild(icon);
+
+    const body = document.createElement('div');
+    body.className = 'cg-row-group-panel-body';
+
     if (this.rowGroupColumns.length === 0) {
       const empty = document.createElement('div');
       empty.className = 'cg-row-group-panel-empty';
       empty.textContent = EMPTY_PLACEHOLDER;
-      this.panel.appendChild(empty);
-      return;
-    }
-    for (let i = 0; i < this.rowGroupColumns.length; i++) {
-      const colId = this.rowGroupColumns[i]!;
-      if (i > 0) {
-        const sep = document.createElement('span');
-        sep.className = 'cg-row-group-panel-separator';
-        sep.setAttribute('aria-hidden', 'true');
-        sep.textContent = SEPARATOR_GLYPH;
-        this.panel.appendChild(sep);
+      body.appendChild(empty);
+    } else {
+      for (let i = 0; i < this.rowGroupColumns.length; i++) {
+        const colId = this.rowGroupColumns[i]!;
+        if (i > 0) {
+          const sep = document.createElement('span');
+          sep.className = 'cg-row-group-panel-separator';
+          sep.setAttribute('aria-hidden', 'true');
+          sep.textContent = SEPARATOR_GLYPH;
+          body.appendChild(sep);
+        }
+        body.appendChild(this.buildChip(colId, i));
       }
-      this.panel.appendChild(this.buildChip(colId, i));
+    }
+    this.panel.appendChild(body);
+
+    if (this.ctx.hidePanel) {
+      const close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'cg-row-group-panel-close';
+      close.setAttribute('aria-label', 'Hide row group panel');
+      close.title = 'Hide row group panel';
+      close.appendChild(iconSvg('x', 14));
+      close.addEventListener('click', (e) => {
+        e.stopPropagation();
+        this.ctx.hidePanel?.();
+      });
+      close.addEventListener('pointerdown', (e) => e.stopPropagation());
+      this.panel.appendChild(close);
     }
   }
 

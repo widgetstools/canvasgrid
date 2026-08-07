@@ -44,6 +44,8 @@ export class ShellLayout {
   private live: ModuleInstance | null = null;
   private activeId: string | null = null;
   private keyHandler: ((e: KeyboardEvent) => void) | null = null;
+  /** Tear down ResizeObserver / scroll listeners for the sheet tab strip. */
+  private navOverflowCleanup: (() => void) | null = null;
 
   constructor(private root: HTMLElement) {
     injectShellStyles();
@@ -92,6 +94,8 @@ export class ShellLayout {
   private renderSheet(id: string): void {
     this.live?.destroy();
     this.live = null;
+    this.navOverflowCleanup?.();
+    this.navOverflowCleanup = null;
     this.sheet.replaceChildren();
     this.activeId = id;
     const entry = this.modules.get(id)!;
@@ -113,11 +117,12 @@ export class ShellLayout {
     close.addEventListener('click', () => this.closeSettings());
     header.append(titles, close);
 
-    // Module switcher — icon + label strip (not wrapping text pills).
+    // Module switcher — icon + label strip with overflow carets (no scrollbar).
     const body = el('cgext-sheet-body');
     body.setAttribute('role', 'tabpanel');
     body.setAttribute('aria-labelledby', 'cgext-sheet-title');
     if (this.modules.size > 1) {
+      const wrap = el('cgext-sheet-nav-wrap');
       const nav = el('cgext-sheet-nav');
       nav.setAttribute('role', 'tablist');
       nav.setAttribute('aria-label', 'Settings sections');
@@ -127,6 +132,7 @@ export class ShellLayout {
         tab.className = 'cgext-sheet-nav-item';
         tab.setAttribute('role', 'tab');
         tab.setAttribute('aria-selected', String(mid === id));
+        tab.dataset.moduleId = mid;
         tab.title = module.title;
         if (mid === id) tab.classList.add('is-active');
         const iconHtml = moduleIconSvg(module.icon, 14);
@@ -139,7 +145,19 @@ export class ShellLayout {
         });
         nav.appendChild(tab);
       }
-      this.sheet.append(header, nav, body);
+      const prev = document.createElement('button');
+      prev.type = 'button';
+      prev.className = 'cgext-sheet-nav-scroll cgext-sheet-nav-scroll--prev';
+      prev.setAttribute('aria-label', 'Scroll tabs left');
+      prev.innerHTML = moduleIconSvg('chevrons-left', 14);
+      const next = document.createElement('button');
+      next.type = 'button';
+      next.className = 'cgext-sheet-nav-scroll cgext-sheet-nav-scroll--next';
+      next.setAttribute('aria-label', 'Scroll tabs right');
+      next.innerHTML = moduleIconSvg('chevrons-right', 14);
+      wrap.append(prev, nav, next);
+      this.sheet.append(header, wrap, body);
+      this.navOverflowCleanup = wireNavOverflow(wrap, nav, prev, next, id);
     } else {
       this.sheet.append(header, body);
     }
@@ -201,6 +219,8 @@ export class ShellLayout {
     this.sheet.classList.remove('is-open');
     this.sheet.setAttribute('aria-hidden', 'true');
     const finish = (): void => {
+      this.navOverflowCleanup?.();
+      this.navOverflowCleanup = null;
       this.live?.destroy();
       this.live = null;
       this.activeId = null;
@@ -220,6 +240,8 @@ export class ShellLayout {
 
   destroy(): void {
     this.unbindEscape();
+    this.navOverflowCleanup?.();
+    this.navOverflowCleanup = null;
     this.live?.destroy();
     this.live = null;
     for (const inst of this.toolbarInstances) inst?.destroy();
@@ -241,6 +263,70 @@ function sub(parent: HTMLElement, name: string): HTMLElement {
   let found = parent.querySelector<HTMLElement>(`:scope > .${key}`);
   if (!found) { found = el(key); parent.appendChild(found); }
   return found;
+}
+
+/**
+ * Drive horizontal tab overflow with chevron buttons instead of a native
+ * scrollbar. Carets appear only when content overflows; each click scrolls
+ * by ~75% of the visible strip. Returns a cleanup for observers/listeners.
+ */
+function wireNavOverflow(
+  wrap: HTMLElement,
+  nav: HTMLElement,
+  prev: HTMLButtonElement,
+  next: HTMLButtonElement,
+  activeId: string,
+): () => void {
+  const EDGE = 2;
+  const sync = (): void => {
+    const overflow = nav.scrollWidth > nav.clientWidth + EDGE;
+    wrap.classList.toggle('is-overflowing', overflow);
+    if (!overflow) {
+      prev.disabled = true;
+      next.disabled = true;
+      return;
+    }
+    prev.disabled = nav.scrollLeft <= EDGE;
+    next.disabled = nav.scrollLeft + nav.clientWidth >= nav.scrollWidth - EDGE;
+  };
+
+  const scrollByPage = (dir: -1 | 1): void => {
+    const step = Math.max(120, Math.floor(nav.clientWidth * 0.75));
+    nav.scrollBy({ left: dir * step, behavior: 'smooth' });
+  };
+
+  const onPrev = (): void => scrollByPage(-1);
+  const onNext = (): void => scrollByPage(1);
+  prev.addEventListener('click', onPrev);
+  next.addEventListener('click', onNext);
+  nav.addEventListener('scroll', sync, { passive: true });
+
+  let ro: ResizeObserver | null = null;
+  const onWinResize = (): void => sync();
+  if (typeof ResizeObserver !== 'undefined') {
+    ro = new ResizeObserver(() => sync());
+    ro.observe(nav);
+    ro.observe(wrap);
+  } else {
+    window.addEventListener('resize', onWinResize);
+  }
+
+  const revealActive = (): void => {
+    const active = nav.querySelector<HTMLElement>(
+      `.cgext-sheet-nav-item[data-module-id="${CSS.escape(activeId)}"]`,
+    );
+    active?.scrollIntoView({ inline: 'nearest', block: 'nearest' });
+    sync();
+  };
+  requestAnimationFrame(() => requestAnimationFrame(revealActive));
+
+  return () => {
+    ro?.disconnect();
+    if (!ro) window.removeEventListener('resize', onWinResize);
+    prev.removeEventListener('click', onPrev);
+    next.removeEventListener('click', onNext);
+    nav.removeEventListener('scroll', sync);
+  };
 }
 
 /** Inject the shell chrome CSS once per document. Kept in JS (not a
@@ -319,9 +405,9 @@ const SHELL_CSS = `
 .cgext-btn:disabled:hover { background: transparent; }
 /* Save button reflects a dirty profile — accent when actionable. */
 .cgext-btn.cgext-save:not(:disabled) {
-  background: var(--cg-accent-color, #4f9cf9);
-  border-color: var(--cg-accent-color, #4f9cf9);
-  color: #fff;
+  background: var(--cg-primary-color, var(--cg-accent-color, #4f9cf9));
+  border-color: var(--cg-primary-color, var(--cg-accent-color, #4f9cf9));
+  color: var(--cg-primary-fg, var(--cg-accent-fg, #ffffff));
 }
 .cgext-btn.cgext-save:not(:disabled):hover { filter: brightness(1.08); }
 
@@ -408,18 +494,64 @@ const SHELL_CSS = `
   color: var(--cg-fg-color, #e5e9f0);
 }
 .cgext-sheet-close:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: 1px; }
-.cgext-sheet-nav {
+.cgext-sheet-nav-wrap {
   flex: 0 0 auto;
   display: flex;
-  flex-wrap: nowrap;
-  gap: 2px;
-  padding: 8px 12px 0;
-  overflow-x: auto;
-  overflow-y: hidden;
-  scrollbar-width: thin;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+  overflow: hidden; /* never show a native strip scrollbar */
   border-bottom: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 85%, transparent);
   background: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 2%, transparent);
 }
+.cgext-sheet-nav {
+  flex: 1 1 auto;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 2px;
+  min-width: 0;
+  padding: 8px 4px 0;
+  overflow-x: hidden; /* carets replace the scrollbar */
+  overflow-y: hidden;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+.cgext-sheet-nav::-webkit-scrollbar { display: none; }
+.cgext-sheet-nav-wrap:not(.is-overflowing) .cgext-sheet-nav {
+  padding-left: 12px;
+  padding-right: 12px;
+}
+.cgext-sheet-nav-scroll {
+  appearance: none;
+  flex: 0 0 auto;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  margin: 8px 4px 0;
+  padding: 0;
+  border: 1px solid color-mix(in srgb, var(--cg-primary-color, var(--cg-accent-color, #4f9cf9)) 35%, transparent);
+  border-radius: var(--cg-radius, 2px);
+  /* Cursor primary/accent: tinted fill + accent icon (Anysphere #81A1C1 / Light #2778C1). */
+  background: color-mix(in srgb, var(--cg-primary-color, var(--cg-accent-color, #4f9cf9)) 14%, transparent);
+  color: var(--cg-accent-color, #4f9cf9);
+  cursor: pointer;
+  align-self: stretch;
+  max-height: 36px;
+  transition: background 120ms ease, color 120ms ease, opacity 120ms ease, border-color 120ms ease;
+}
+.cgext-sheet-nav-wrap.is-overflowing .cgext-sheet-nav-scroll { display: inline-flex; }
+.cgext-sheet-nav-scroll:hover:not(:disabled) {
+  background: var(--cg-primary-color, var(--cg-accent-color, #4f9cf9));
+  border-color: var(--cg-primary-color, var(--cg-accent-color, #4f9cf9));
+  color: var(--cg-primary-fg, var(--cg-accent-fg, #ffffff));
+}
+.cgext-sheet-nav-scroll:disabled {
+  opacity: 0.32;
+  cursor: default;
+}
+.cgext-sheet-nav-scroll:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: 1px; }
+.cgext-sheet-nav-scroll svg { display: block; }
 .cgext-sheet-nav-item {
   appearance: none;
   position: relative;
@@ -551,9 +683,9 @@ const SHELL_CSS = `
   background: var(--cg-row-alt-bg, rgba(255, 255, 255, 0.06));
 }
 .cgext-sheet-footbtn.action {
-  background: var(--cg-accent-color, #4f9cf9);
-  border-color: var(--cg-accent-color, #4f9cf9);
-  color: #fff;
+  background: var(--cg-primary-color, var(--cg-accent-color, #4f9cf9));
+  border-color: var(--cg-primary-color, var(--cg-accent-color, #4f9cf9));
+  color: var(--cg-primary-fg, var(--cg-accent-fg, #ffffff));
 }
 .cgext-sheet-footbtn.action:hover { filter: brightness(1.08); }
 .cgext-sheet-footbtn:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: 1px; }

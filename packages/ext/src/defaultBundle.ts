@@ -4,6 +4,12 @@ import { columnGroupsModule } from './modules/columnGroups';
 import { columnSettingsModule } from './modules/columnSettings';
 import { conditionalStylingModule } from './modules/conditionalStyling';
 import { calculatedColumnsModule } from './modules/calculatedColumns';
+import { dataChangeHistoryModule } from './modules/dataChangeHistory';
+import { alertsModule } from './modules/alerts';
+import { smartEditModule } from './modules/smartEdit';
+import { bulkUpdateModule } from './modules/bulkUpdate';
+import { plusMinusModule } from './modules/plusMinus';
+import { shortcutsModule } from './modules/shortcuts';
 
 /** A tiny helper for building an icon button toolbar item. */
 function button(id: string, label: string, onClick: (ctx: CgExtContext) => void): ToolbarItem {
@@ -54,6 +60,12 @@ export function buildDefaultBundle(): CgExtension[] {
     columnGroupsModule(),
     columnSettingsModule(),
     conditionalStylingModule(),
+    alertsModule(),
     calculatedColumnsModule(),
+    smartEditModule(),
+    bulkUpdateModule(),
+    plusMinusModule(),
+    shortcutsModule(),
+    dataChangeHistoryModule(),
   ];
 }

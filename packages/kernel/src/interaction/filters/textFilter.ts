@@ -194,6 +194,7 @@ export class TextFilterPopup implements FilterPopupFactory {
       csLabel.className = 'cg-filter-popup-case-sensitive-label';
       const cs = document.createElement('input');
       cs.type = 'checkbox';
+      cs.className = 'cg-checkbox';
       cs.setAttribute('data-cg-filter-case-sensitive', '');
       cs.checked = initial?.caseSensitive === true;
       const csText = document.createElement('span');

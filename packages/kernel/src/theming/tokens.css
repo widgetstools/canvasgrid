@@ -452,8 +452,10 @@
  * foreground at 7.5% alpha (#F0F0F013 / #14141413), never a solid grey, so
  * they read at the same optical weight on every surface. Hover/selection
  * washes are NEUTRAL foreground-alpha (Cursor's list tokens), not accent
- * tints; the nordic blue (#81A1C1 dark / #3C7CAB light) is reserved for
- * focus, primary actions, and links. Radius is a flat 2px everywhere.
+ * tints; the nordic blue primary (Cursor Dark Anysphere button.background
+ * #81A1C1 / Cursor Light #2778C1, with matching button.foreground) is
+ * reserved for focus, primary actions, and links. Radius is a flat 2px
+ * everywhere.
  * ========================================================================== */
 .cg-theme-cursor {
   color-scheme: light;
@@ -480,9 +482,11 @@
   /* list.hoverBackground #F2F2F2 / list.activeSelectionBackground #E8E8E8. */
   --cg-row-hover-bg: #F2F2F2;
   --cg-row-selected-bg: #E8E8E8;
-  /* Accent — focusBorder / button.background #005FB8. */
-  --cg-chrome-accent: #005FB8;
-  --cg-focus-ring-color: #005FB8;
+  /* Accent — Cursor Light primary button / link:
+   * button.background #2778C1, button.foreground #FCFCFC,
+   * textLink.foreground #0064B0 (links stay on the same blue family). */
+  --cg-chrome-accent: #2778C1;
+  --cg-focus-ring-color: #2778C1;
   --cg-focus-ring-width: 2px;
   --cg-editor-invalid-color: var(--cg-neg-color);
   --cg-flash-from-color: rgb(192 133 50 / 30%);
@@ -494,8 +498,8 @@
   --cg-floating-filter-placeholder: #767676;
   --cg-quick-filter-match-bg: rgb(192 133 50 / 20%);
   --cg-unsort-icon-color: #6E7681;
-  --cg-range-fill-color: rgb(0 95 184 / 12%);
-  --cg-range-border-color: rgb(0 95 184 / 55%);
+  --cg-range-fill-color: rgb(39 120 193 / 12%);
+  --cg-range-border-color: rgb(39 120 193 / 55%);
   /* Totals / pinned — sideBar/editorWidget #F8F8F8 lift. */
   --cg-totals-bg: #F8F8F8;
   --cg-totals-fg: #3B3B3B;
@@ -527,8 +531,8 @@
   --cg-tooltip-bg: #F8F8F8;
   --cg-tooltip-fg: #3B3B3B;
   --cg-tooltip-border: #E5E5E5;
-  --cg-checkbox-checked-bg: #005FB8;
-  --cg-checkbox-checked-fg: #FFFFFF;
+  --cg-checkbox-checked-bg: #2778C1;
+  --cg-checkbox-checked-fg: #FCFCFC;
   --cg-cell-horizontal-border-color: transparent;
   --cg-popup-bg: #FFFFFF;
   --cg-popup-border: #E5E5E5;
@@ -561,9 +565,11 @@
   /* list.hoverBackground #2A2D2E / list.inactiveSelectionBackground #37373D. */
   --cg-row-hover-bg: #2A2D2E;
   --cg-row-selected-bg: #37373D;
-  /* Accent — focusBorder / button.background #0078D4. */
-  --cg-chrome-accent: #0078D4;
-  --cg-focus-ring-color: #0078D4;
+  /* Accent — Cursor Dark Anysphere primary button / link:
+   * button.background #81A1C1, button.foreground #191c22,
+   * textLink.foreground #81A1C1. (Not VS Code Modern #0078D4.) */
+  --cg-chrome-accent: #81A1C1;
+  --cg-focus-ring-color: #81A1C1;
   --cg-focus-ring-width: 2px;
   --cg-editor-invalid-color: var(--cg-neg-color);
   --cg-flash-from-color: rgb(241 180 103 / 28%);
@@ -575,8 +581,8 @@
   --cg-floating-filter-placeholder: #989898;
   --cg-quick-filter-match-bg: rgb(241 180 103 / 20%);
   --cg-unsort-icon-color: #9D9D9D;
-  --cg-range-fill-color: rgb(0 120 212 / 14%);
-  --cg-range-border-color: rgb(0 120 212 / 55%);
+  --cg-range-fill-color: rgb(129 161 193 / 14%);
+  --cg-range-border-color: rgb(129 161 193 / 55%);
   /* Totals / pinned — editorWidget.background #202020, one step above the
    * #1F1F1F editor plane, mirroring how Cursor lifts widget surfaces. */
   --cg-totals-bg: #202020;
@@ -610,8 +616,8 @@
   --cg-tooltip-bg: #202020;
   --cg-tooltip-fg: #CCCCCC;
   --cg-tooltip-border: #2B2B2B;
-  --cg-checkbox-checked-bg: #0078D4;
-  --cg-checkbox-checked-fg: #FFFFFF;
+  --cg-checkbox-checked-bg: #81A1C1;
+  --cg-checkbox-checked-fg: #191c22;
   --cg-cell-horizontal-border-color: transparent;
   --cg-popup-bg: #1F1F1F;
   --cg-popup-border: #2B2B2B;
@@ -1397,12 +1403,9 @@
   line-height: 1;
 }
 .cg-filter-popup-case-sensitive-label input[type="checkbox"] {
-  margin: 0;
+  /* Paint comes from the shared `.cg-checkbox` rules; keep the layout
+   * hint so the label row still aligns. */
   flex-shrink: 0;
-  width: 13px;
-  height: 13px;
-  cursor: pointer;
-  accent-color: var(--cg-focus-ring-color);
 }
 .cg-filter-popup-inputs {
   flex-wrap: wrap;
@@ -1755,15 +1758,12 @@
   border-bottom: 1px solid var(--cg-border-color);
   flex: 0 0 auto;
 }
-/* "Select All / Deselect All" checkbox — matches column-row checkboxes in
- * size and accent; supports indeterminate state (some columns hidden). */
+/* "Select All / Deselect All" checkbox — shares `.cg-checkbox` paint
+ * (size / accent / centered check + dash) with column-row checkboxes. */
 .cg-columns-panel-select-all {
   flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
   margin: 0;
   cursor: pointer;
-  accent-color: var(--cg-focus-ring-color);
 }
 /* Wrapper that positions the search icon inside the input on the left. */
 .cg-columns-panel-search-wrap {
@@ -1957,10 +1957,20 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
-/* Custom rounded accent checkbox — appearance:none so `.checked` still
- * drives the refresh / select-all JS while the paint is fully ours. */
+/* Shared custom checkbox — canonical class is `.cg-checkbox`. Surface-
+ * specific class names are aliases so existing markup (columns panel,
+ * set filter, settings form, column-groups picker, …) gets the same
+ * centered check + indeterminate dash. appearance:none so `.checked` /
+ * `.indeterminate` still drive JS while paint is fully ours. */
+.cg-checkbox,
 .cg-columns-panel-row-checkbox,
-.cg-columns-panel-select-all {
+.cg-columns-panel-select-all,
+.cg-colgroups-checkbox,
+.cg-settings-checkbox,
+.cg-set-filter-select-all,
+.cg-set-filter-row > input[type="checkbox"],
+.cg-filter-popup-case-sensitive-label > input[type="checkbox"],
+.cg-cell-editor--checkbox {
   flex: 0 0 auto;
   appearance: none;
   -webkit-appearance: none;
@@ -1973,53 +1983,90 @@
   cursor: pointer;
   position: relative;
   transition: background 120ms ease, border-color 120ms ease;
+  vertical-align: middle;
 }
+.cg-checkbox:hover,
 .cg-columns-panel-row-checkbox:hover,
-.cg-columns-panel-select-all:hover {
+.cg-columns-panel-select-all:hover,
+.cg-colgroups-checkbox:hover,
+.cg-settings-checkbox:hover,
+.cg-set-filter-select-all:hover,
+.cg-set-filter-row > input[type="checkbox"]:hover,
+.cg-filter-popup-case-sensitive-label > input[type="checkbox"]:hover,
+.cg-cell-editor--checkbox:hover {
   border-color: color-mix(in srgb, var(--cg-fg-color) 65%, transparent);
 }
-/* Monochrome checked state — filled with the neutral grey chrome accent
- * (fg fallback for a11y themes that keep a solid highlight), check drawn in
- * the panel background, so the list stays grey with no pure-black/white box. */
+.cg-checkbox:checked,
 .cg-columns-panel-row-checkbox:checked,
-.cg-columns-panel-select-all:checked {
+.cg-columns-panel-select-all:checked,
+.cg-colgroups-checkbox:checked,
+.cg-settings-checkbox:checked,
+.cg-set-filter-select-all:checked,
+.cg-set-filter-row > input[type="checkbox"]:checked,
+.cg-filter-popup-case-sensitive-label > input[type="checkbox"]:checked,
+.cg-cell-editor--checkbox:checked {
   background: var(--cg-chrome-accent, var(--cg-fg-color));
   border-color: var(--cg-chrome-accent, var(--cg-fg-color));
 }
+.cg-checkbox:checked::after,
 .cg-columns-panel-row-checkbox:checked::after,
-.cg-columns-panel-select-all:checked::after {
+.cg-columns-panel-select-all:checked::after,
+.cg-colgroups-checkbox:checked::after,
+.cg-settings-checkbox:checked::after,
+.cg-set-filter-select-all:checked::after,
+.cg-set-filter-row > input[type="checkbox"]:checked::after,
+.cg-filter-popup-case-sensitive-label > input[type="checkbox"]:checked::after,
+.cg-cell-editor--checkbox:checked::after {
   content: '';
   position: absolute;
-  left: 4.5px;
-  top: 1px;
+  left: 50%;
+  top: 50%;
+  box-sizing: border-box;
   width: 5px;
   height: 9px;
+  margin: 0;
   border: solid var(--cg-bg-color);
   border-width: 0 2px 2px 0;
-  transform: rotate(45deg);
+  /* translate BEFORE rotate so the geometric center stays mid-box;
+   * -58% Y corrects the optical weight of the rotated L-shape. */
+  transform: translate(-50%, -58%) rotate(45deg);
 }
+.cg-checkbox:focus-visible,
 .cg-columns-panel-row-checkbox:focus-visible,
-.cg-columns-panel-select-all:focus-visible {
+.cg-columns-panel-select-all:focus-visible,
+.cg-colgroups-checkbox:focus-visible,
+.cg-settings-checkbox:focus-visible,
+.cg-set-filter-select-all:focus-visible,
+.cg-set-filter-row > input[type="checkbox"]:focus-visible,
+.cg-filter-popup-case-sensitive-label > input[type="checkbox"]:focus-visible,
+.cg-cell-editor--checkbox:focus-visible {
   outline: 2px solid var(--cg-focus-ring-color);
   outline-offset: 1px;
 }
-/* Indeterminate select-all / group tri-state (some — not all — descendants
- * hidden) — a centered dash. Shared by the "Select all" checkbox AND every
- * group row's checkbox (`.cg-columns-panel-row-checkbox` on a group row is
- * the same element, just driven by `computeGroupChecked` instead of the
- * global select-all count). */
+/* Indeterminate / partial — centered dash (same mid-point as the check). */
+.cg-checkbox:indeterminate,
 .cg-columns-panel-select-all:indeterminate,
-.cg-columns-panel-row-checkbox:indeterminate {
+.cg-columns-panel-row-checkbox:indeterminate,
+.cg-colgroups-checkbox:indeterminate,
+.cg-settings-checkbox:indeterminate,
+.cg-set-filter-select-all:indeterminate,
+.cg-set-filter-row > input[type="checkbox"]:indeterminate,
+.cg-filter-popup-case-sensitive-label > input[type="checkbox"]:indeterminate,
+.cg-cell-editor--checkbox:indeterminate {
   background: var(--cg-chrome-accent, var(--cg-fg-color));
   border-color: var(--cg-chrome-accent, var(--cg-fg-color));
 }
+.cg-checkbox:indeterminate::after,
 .cg-columns-panel-select-all:indeterminate::after,
-.cg-columns-panel-row-checkbox:indeterminate::after {
+.cg-columns-panel-row-checkbox:indeterminate::after,
+.cg-colgroups-checkbox:indeterminate::after,
+.cg-settings-checkbox:indeterminate::after,
+.cg-set-filter-select-all:indeterminate::after,
+.cg-set-filter-row > input[type="checkbox"]:indeterminate::after,
+.cg-filter-popup-case-sensitive-label > input[type="checkbox"]:indeterminate::after,
+.cg-cell-editor--checkbox:indeterminate::after {
   content: '';
   position: absolute;
-  /* Center on the box regardless of box-sizing / border width — the box is
-   * border-box with a 1.5px border, so fixed px offsets computed for the
-   * content edge land off-center. `50% + translate(-50%)` self-centers. */
   left: 50%;
   top: 50%;
   width: 8px;
@@ -2746,11 +2793,8 @@
   transform: translateX(12px);
 }
 .cg-settings-checkbox {
-  width: 14px;
-  height: 14px;
-  margin: 0;
-  accent-color: var(--cg-settings-accent);
-  cursor: pointer;
+  /* Paint comes from the shared `.cg-checkbox` rules. */
+  flex-shrink: 0;
 }
 .cg-settings-input {
   padding: 3px 6px;
@@ -4152,6 +4196,50 @@
   box-sizing: border-box;
 }
 
+/* AG-parity chrome: group icon (left) + flex body + hide ✕ (right). */
+.cg-row-group-panel-icon {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: var(--cg-muted-fg-color, color-mix(in srgb, var(--cg-fg-color) 55%, transparent));
+}
+.cg-row-group-panel-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  gap: var(--cg-row-group-panel-gap);
+  overflow: hidden;
+}
+.cg-row-group-panel-close {
+  appearance: none;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  border-radius: var(--cg-radius, 2px);
+  background: transparent;
+  color: var(--cg-muted-fg-color, color-mix(in srgb, var(--cg-fg-color) 55%, transparent));
+  cursor: pointer;
+}
+.cg-row-group-panel-close:hover {
+  color: var(--cg-fg-color);
+  background: color-mix(in srgb, var(--cg-fg-color) 8%, transparent);
+}
+.cg-row-group-panel-close:focus-visible {
+  outline: 2px solid var(--cg-focus-ring-color);
+  outline-offset: 1px;
+}
+
 /* Drop-target — no box-shadow highlight on the panel strip; the
  * floating pill ghost + insertion line are sufficient affordance. */
 .cg-row-group-panel[data-drop="accept"],
@@ -4312,6 +4400,7 @@
   font-size: var(--cg-font-size-sm);
   color: var(--cg-row-group-panel-empty-fg);
   text-align: center;
+  width: 100%;
 }
 
 /* Cycle 18 / Task 6 — pivot panel.
@@ -4496,6 +4585,55 @@
   .cg-grid .cg-group-footer-portal {
     break-after: page;
   }
+}
+
+/* ── Loading / busy overlay (`options.loading`) ─────────────────────────── */
+.cg-loading-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: auto;
+  background: color-mix(in srgb, var(--cg-bg-color, #0f141c) 72%, transparent);
+  backdrop-filter: blur(1px);
+}
+.cg-loading-overlay[hidden] {
+  display: none !important;
+}
+.cg-loading-overlay-card {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 22px;
+  border-radius: var(--cg-radius, 4px);
+  border: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 90%, transparent);
+  background: color-mix(in srgb, var(--cg-header-bg, var(--cg-bg-color, #171c26)) 92%, transparent);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.28);
+  color: var(--cg-fg-color, #e5e9f0);
+}
+.cg-loading-overlay-label {
+  font-family: var(--cg-font-family, inherit);
+  font-size: var(--cg-font-size-sm, 12.5px);
+  font-weight: 550;
+  letter-spacing: 0.02em;
+  color: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 78%, transparent);
+}
+.cg-loading-spinner {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: 2.5px solid color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 18%, transparent);
+  border-top-color: var(--cg-chrome-accent, var(--cg-focus-ring-color, #4f9cf9));
+  animation: cg-loading-spin 0.75s linear infinite;
+}
+@keyframes cg-loading-spin {
+  to { transform: rotate(360deg); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cg-loading-spinner { animation: none; border-top-color: var(--cg-chrome-accent, #4f9cf9); }
 }
 
 /* ── Excel-style edit sub-mode indicator ─────────────────────────────────── */

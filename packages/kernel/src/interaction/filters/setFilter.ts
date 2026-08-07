@@ -110,7 +110,7 @@ export class SetFilterPopup implements FilterPopupFactory {
       const label = document.createElement('label');
       const cb = document.createElement('input');
       cb.type = 'checkbox';
-      cb.className = 'cg-set-filter-select-all';
+      cb.className = 'cg-checkbox cg-set-filter-select-all';
       cb.setAttribute('data-cg-set-filter-select-all', '');
       cb.addEventListener('change', () => this.handleSelectAllToggle(cb.checked));
       const text = document.createElement('span');
@@ -209,6 +209,7 @@ export class SetFilterPopup implements FilterPopupFactory {
     row.style.padding = '0 8px';
     const cb = document.createElement('input');
     cb.type = 'checkbox';
+    cb.className = 'cg-checkbox';
     cb.value = value;
     cb.setAttribute('data-cg-set-filter-value', '');
     cb.checked = this.selected.has(value);

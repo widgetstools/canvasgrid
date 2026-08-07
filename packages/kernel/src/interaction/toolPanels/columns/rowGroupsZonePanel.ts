@@ -49,7 +49,7 @@ export class RowGroupsZonePanel {
     this.deps = deps;
     const handles = buildDropZoneSection({
       kind: 'groups',
-      iconName: 'menu',
+      iconName: 'group',
       headerText: 'Row Groups',
       ariaLabel: 'Row group columns',
       zoneClass: 'cg-columns-panel-rgz',

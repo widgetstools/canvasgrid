@@ -104,9 +104,26 @@ const ext = new CGridExt<PositionRow>(app, options);
 // same ordering contract as cgrid-ext-demo.
 wireFormat(ext.grid);
 ext.grid.updateGridOptions({ columnDefs: COLUMNS });
-editHandle = wireEditIntoKernel(ext.grid);
+editHandle = wireEditIntoKernel(ext.grid, {
+  // SSRM: journal undo/redo + smart/bulk commits must write the mock
+  // server book and hydrate via SSRM txs — default applyTransaction is
+  // CSRM-shaped and would leave the authoritative book untouched.
+  commitUpdates: (_rows, { patches, direction }) => {
+    const byId = new Map<string, PositionRow>();
+    for (const p of patches) {
+      const value = direction === 'undo' ? p.oldValue : p.newValue;
+      const updated = server.applyEdit(p.rowId, p.field, value);
+      if (updated) byId.set(updated.positionId, updated);
+    }
+    if (byId.size > 0) {
+      ext.grid.applyServerSideTransaction({ update: [...byId.values()] });
+    }
+  },
+});
 wireCalc(ext.grid);
 wireRules(ext.grid);
+
+void ext.reapplyActiveProfile();
 
 // Committed cell edits: the kernel patches its hydrated store for the
 // repaint, but the authoritative book lives in the (mock) server — persist

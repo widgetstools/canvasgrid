@@ -15,7 +15,8 @@ import {
 /**
  * Rigorous E2E for the Grid Customizer drawer (Customize) in cgrid-ext-demo.
  *
- * Tabs: Options · Column Groups · Column Settings · Styling Rules · Calculated Columns
+ * Tabs: Options · Column Groups · Column Settings · Styling Rules · Alerts ·
+ * Calculated Columns · Smart Edit · Bulk Update · Plus / Minus · Shortcuts · Edit History
  * Boot: `/?paintHarness` (deterministic rows, no STOMP).
  */
 
@@ -32,8 +33,20 @@ test.describe('Customizer shell', () => {
     await openCustomizer(page);
     await expect(page.locator('.cgext-sheet-eyebrow')).toHaveText('Customize');
     await expect(page.locator('.cgext-sheet-title')).toHaveText('Options');
-    await expect(page.locator('.cgext-sheet-nav-item')).toHaveCount(5);
-    for (const title of ['Options', 'Column Groups', 'Column Settings', 'Styling Rules', 'Calculated Columns']) {
+    await expect(page.locator('.cgext-sheet-nav-item')).toHaveCount(11);
+    for (const title of [
+      'Options',
+      'Column Groups',
+      'Column Settings',
+      'Styling Rules',
+      'Alerts',
+      'Calculated Columns',
+      'Smart Edit',
+      'Bulk Update',
+      'Plus / Minus',
+      'Shortcuts',
+      'Edit History',
+    ]) {
       await expect(page.locator('.cgext-sheet-nav-item', { hasText: title })).toBeVisible();
     }
     await expect(page.locator('.cgext-sheet-footer')).toBeVisible();
@@ -491,12 +504,13 @@ test.describe('Persistence', () => {
       timeout: 30_000,
     });
     // Demo wires rules/calc AFTER CGridExt construction; bootstrap can race
-    // ahead of module registration. Re-apply the saved profile once modules exist.
+    // ahead of module registration. reapplyActiveProfile reloads the snapshot
+    // once engines have registered their state modules.
     await page.evaluate(async () => {
       const ext = (window as unknown as {
-        __ext: { profiles: { switchTo: (id: string) => Promise<void>; activeId: () => string } };
+        __ext: { reapplyActiveProfile: () => Promise<void> };
       }).__ext;
-      await ext.profiles.switchTo(ext.profiles.activeId());
+      await ext.reapplyActiveProfile();
     });
 
     await expect.poll(async () =>
@@ -507,6 +521,200 @@ test.describe('Persistence', () => {
         return rules.length === 1 && rules[0].condition === '[pnl] > 0' && calc;
       }),
     { timeout: 15_000 }).toBe(true);
+  });
+});
+
+// ── Edit History ───────────────────────────────────────────────────────────
+
+test.describe('Edit History tab', () => {
+  test('panel opens; Suspended is live; stream toggle Saves', async ({ page }) => {
+    await openCustomizer(page, 'data-change-history');
+    await expect(page.locator('.cgext-sheet-title')).toHaveText('Edit History');
+    await expect(cockpit(page)).toContainText('Record Sources');
+    await expect(cockpit(page)).toContainText('Monitor');
+
+    // Suspended is the second switch in Global — live-applies.
+    const suspended = cockpit(page).locator('.ckp-switch').nth(1);
+    await suspended.click();
+    await expect.poll(async () =>
+      page.evaluate(() => {
+        const edit = (window as unknown as { __edit: { getSettings: () => { history: { suspended: boolean } } } }).__edit;
+        return edit.getSettings().history.suspended;
+      }),
+    ).toBe(true);
+
+    // Stream is the last record-source switch — deferred until Save.
+    const stream = cockpit(page).locator('.ckp-switch').last();
+    await stream.click();
+    await saveCard(page);
+    await expect.poll(async () =>
+      page.evaluate(() => {
+        const edit = (window as unknown as {
+          __edit: { getSettings: () => { history: { recordSources: { stream: boolean } } } };
+        }).__edit;
+        return edit.getSettings().history.recordSources.stream;
+      }),
+    ).toBe(true);
+  });
+
+  test('cell edit appears in monitor; toolbar Undo restores', async ({ page }) => {
+    const before = await page.evaluate(async () => {
+      const w = window as unknown as {
+        __edit: {
+          smartEdit: {
+            apply: (
+              targets: unknown[],
+              op: string,
+              n: number,
+            ) => Promise<{ applied: number; entry: { id: string } | null }>;
+          };
+          journal: { entries: () => unknown[]; canUndo: () => boolean };
+        };
+        __paintHarness: { rows: Array<{ positionId: string; pnl: number }> };
+        __ext: {
+          grid: {
+            forEachRow: (cb: (rowId: string, row: Record<string, unknown>) => void) => void;
+          };
+        };
+      };
+      const row = w.__paintHarness.rows[0];
+      if (!row) return { ok: false as const, reason: 'no harness row' };
+      const t = {
+        rowId: row.positionId,
+        colId: 'pnl',
+        field: 'pnl',
+        value: row.pnl,
+        rowIndex: 0,
+        rowData: row as unknown as Record<string, unknown>,
+        cellDataType: 'number',
+      };
+      const result = await w.__edit.smartEdit.apply([t], 'set', 12345);
+      let livePnl: unknown;
+      w.__ext.grid.forEachRow((id, r) => { if (id === t.rowId) livePnl = r.pnl; });
+      return {
+        ok: true as const,
+        rowId: t.rowId,
+        oldValue: t.value,
+        livePnl,
+        applied: result.applied,
+        entries: w.__edit.journal.entries().length,
+        canUndo: w.__edit.journal.canUndo(),
+      };
+    });
+    expect(before.ok).toBe(true);
+    if (!before.ok) return;
+    expect(before.applied).toBeGreaterThan(0);
+    expect(before.livePnl).toBe(12345);
+    expect(before.entries).toBeGreaterThan(0);
+    expect(before.canUndo).toBe(true);
+
+    await openCustomizer(page, 'data-change-history');
+    await expect(cockpit(page).locator('.ckp-monitor-row').first()).toBeVisible();
+    await closeViaDone(page);
+
+    await page.locator('.cgext-ribbon button[title="Undo"]').click();
+    await expect.poll(async () =>
+      page.evaluate((rowId) => {
+        const edit = (window as unknown as { __edit: { journal: { canUndo: () => boolean } } }).__edit;
+        const g = (window as unknown as {
+          __ext: { grid: { forEachRow: (cb: (id: string, row: Record<string, unknown>) => void) => void } };
+        }).__ext.grid;
+        let pnl: unknown;
+        g.forEachRow((id, r) => { if (id === rowId) pnl = r.pnl; });
+        return { canUndo: edit.journal.canUndo(), pnl };
+      }, before.rowId),
+    ).toMatchObject({ canUndo: false, pnl: before.oldValue });
+  });
+});
+
+// ── Alerts ───────────────────────────────────────────────────────────────
+
+test.describe('Alerts tab', () => {
+  test('creates a dataChange alert; edit fires toast + badge history', async ({ page }) => {
+    await openCustomizer(page, 'alerts');
+    await expect(page.locator('.cgext-sheet-title')).toHaveText('Alerts');
+    await page.locator('.ckp-addbtn').click();
+    await page.fill('.ckp .ckp-title', 'PnlAlert');
+    await typeInCm(page, '[pnl] != null');
+    await saveCard(page);
+    await closeViaDone(page);
+
+    // Mutate harness row 0 pnl via smart edit so cellValueChanged feeds alerts.
+    const fired = await page.evaluate(async () => {
+      const w = window as unknown as {
+        __edit: {
+          smartEdit: {
+            apply: (targets: unknown[], op: string, n: number) => Promise<{ applied: number }>;
+          };
+        };
+        __paintHarness: { rows: Array<{ positionId: string; pnl: number }> };
+        __ext: {
+          grid: {
+            getAlertHistory: () => Array<{ ruleName: string; message: string }>;
+            getAlertUnreadCount: () => number;
+            getAlertRules: () => Array<{ name: string }>;
+          };
+        };
+      };
+      const row = w.__paintHarness.rows[0]!;
+      await w.__edit.smartEdit.apply([{
+        rowId: row.positionId,
+        colId: 'pnl',
+        field: 'pnl',
+        value: row.pnl,
+        rowIndex: 0,
+        rowData: row,
+        cellDataType: 'number',
+      }], 'set', 99999);
+      // Give the rAF endTick a beat.
+      await new Promise((r) => requestAnimationFrame(() => r(null)));
+      await new Promise((r) => setTimeout(r, 50));
+      return {
+        rules: w.__ext.grid.getAlertRules().map((r) => r.name),
+        history: w.__ext.grid.getAlertHistory().length,
+        unread: w.__ext.grid.getAlertUnreadCount(),
+      };
+    });
+    expect(fired.rules).toContain('PnlAlert');
+    expect(fired.history).toBeGreaterThan(0);
+    expect(fired.unread).toBeGreaterThan(0);
+
+    await expect(page.locator('[data-testid="cgext-alerts-badge"]')).toBeVisible();
+  });
+});
+
+// ── Editing settings ─────────────────────────────────────────────────────
+
+test.describe('Editing settings tabs', () => {
+  test('Smart Edit Save toggles recordHistory; Edit History source stays in sync', async ({ page }) => {
+    await openCustomizer(page, 'smart-edit');
+    await expect(page.locator('.cgext-sheet-title')).toHaveText('Smart Edit');
+    // Last switch = Record history
+    await cockpit(page).locator('.ckp-switch').last().click();
+    await saveCard(page);
+    await expect.poll(async () =>
+      page.evaluate(() => {
+        const edit = (window as unknown as {
+          __edit: { getSettings: () => { smartEdit: { recordHistory: boolean }; history: { recordSources: { smartEdit: boolean } } } };
+        }).__edit;
+        return edit.getSettings().smartEdit.recordHistory === false
+          && edit.getSettings().history.recordSources.smartEdit === false;
+      }),
+    ).toBe(true);
+  });
+
+  test('Shortcuts add + Save registers a letter binding', async ({ page }) => {
+    await openCustomizer(page, 'shortcuts');
+    await page.locator('.ckp-addbtn').click();
+    await saveCard(page);
+    await expect.poll(async () =>
+      page.evaluate(() => {
+        const edit = (window as unknown as {
+          __edit: { getShortcuts: () => Array<{ shortcutKey: string; name: string }> };
+        }).__edit;
+        return edit.getShortcuts().length;
+      }),
+    ).toBeGreaterThan(0);
   });
 });
 

@@ -590,7 +590,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
     selectAllLabel.className = 'cg-colgroups-add-col-select-all';
     const selectAll = document.createElement('input');
     selectAll.type = 'checkbox';
-    selectAll.className = 'cg-colgroups-checkbox';
+    selectAll.className = 'cg-checkbox cg-colgroups-checkbox';
     selectAll.setAttribute('data-cg-add-col-select-all', '');
     selectAll.setAttribute('aria-label', 'Select all visible columns');
     const selectAllText = el('span', 'cg-colgroups-add-col-select-all-text');
@@ -643,7 +643,7 @@ export class ColumnGroupsToolPanel implements ToolPanel {
 
         const cb = document.createElement('input');
         cb.type = 'checkbox';
-        cb.className = 'cg-colgroups-checkbox';
+        cb.className = 'cg-checkbox cg-colgroups-checkbox';
         cb.checked = picked.has(col.colId);
         cb.setAttribute('aria-label', `Select ${col.headerName}`);
         cb.addEventListener('change', (e) => {

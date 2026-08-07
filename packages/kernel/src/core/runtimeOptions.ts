@@ -118,6 +118,8 @@ export interface RuntimeOptionTarget<TRow = any> {
    *  overlay (refreshes aria-label + aria-busy). Cheap; safe to call
    *  whenever any of the options' a11y-relevant fields change. */
   refreshA11y?(): void;
+  /** Show / hide the visual busy overlay from `options.loading`. */
+  syncLoadingOverlay?(): void;
   /** Re-resolve the column tree using the current `options.columnDefs` +
    *  the supplied (or current) `defaultColDef`. Triggers viewport + worker
    *  refresh. Used by both the `defaultColDef` runtime apply and the
@@ -295,10 +297,9 @@ export function applyRuntimeOption<TRow>(
       target.forwardAggFuncs(value as Record<string, unknown> | undefined, true);
       return;
     case 'loading':
-      // Cycle 24 / Task 3 — aria-busy reflects this flag. Push the new
-      // value through to the a11y overlay immediately so screen
-      // readers learn the loading transition.
+      // aria-busy + visual busy overlay track this flag together.
       target.refreshA11y?.();
+      target.syncLoadingOverlay?.();
       return;
     case 'suppressRowClickSelection':
     case 'rowMultiSelectWithClick':

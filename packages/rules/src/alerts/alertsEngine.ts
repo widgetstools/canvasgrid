@@ -232,6 +232,14 @@ export class AlertsEngine {
     return out;
   }
 
+  /** Drop the session notification ring and reset the unread counter.
+   *  Rules + settings are untouched. */
+  clearHistory(): void {
+    this.ring = [];
+    this.nextWrite = 0;
+    this.unread = 0;
+  }
+
   unreadCount(): number {
     return this.unread;
   }

@@ -20,6 +20,9 @@ export interface DataChangeHistorySettings {
   enabled: boolean;             // default true
   maxEntries: number;           // default 50 (undo depth); monitor list separately capped (100)
   suspended: boolean;           // pause recording, KEEP past entries (≠ disabled)
+  /** When true, EditJournal owns undo (Markets unifyUndo). Persisted for
+   *  profile parity; hosts may disable native cell-undo when this is on. */
+  unifyUndo: boolean;           // default true
   recordSources: { smartEdit: boolean; bulkUpdate: boolean; plusMinus: boolean;
                    shortcuts: boolean; cellEditor: boolean; stream: boolean };  // stream default FALSE
 }

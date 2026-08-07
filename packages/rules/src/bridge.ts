@@ -23,6 +23,7 @@
 
 import type {
   AlertRule, ChangeRecord, RowChangeSet, StyleRule, WireRulesOptions,
+  AlertsSettings, AlertEvent,
 } from './types';
 import { RuleEngine } from './ruleEngine';
 import { AlertsEngine } from './alerts/alertsEngine';
@@ -69,7 +70,21 @@ interface KernelGridSurface {
   // Grid Layouts / Phase C (C1) — optional so a minimal grid surface (or a
   // pre-Grid-Layouts kernel) still wires; it just won't persist the rule set.
   registerStateModule?(module: StateModuleShape): () => void;
+  notifyModuleStateChanged?(id: string): void;
   __rulesBridgeWired?: { rules: RuleEngine; alerts: AlertsEngine };
+  // Public alerts CRUD (attached by wireIntoKernel — mirrors style-rule
+  // CGridApi surface without requiring a kernel bump for every host).
+  getAlertRules?(): AlertRule[];
+  addAlertRule?(rule: AlertRule): void;
+  updateAlertRule?(id: string, patch: Partial<AlertRule>): void;
+  deleteAlertRule?(id: string): void;
+  getAlertsSettings?(): AlertsSettings;
+  setAlertsSettings?(patch: Partial<AlertsSettings>): void;
+  getAlertHistory?(): AlertEvent[];
+  markAlertRead?(): void;
+  clearAlertHistory?(): void;
+  getAlertUnreadCount?(): number;
+  onAlert?(fn: (alert: AlertEvent) => void): () => void;
 }
 
 /** Structural mirror of kernel's `StateModule` (core/moduleState.ts) — a
@@ -322,6 +337,88 @@ export function wireIntoKernel(
       // setRules zeroed the counters — re-seed over the current dataset so the
       // live match counts reflect the restored rule set.
       reseedCounts();
+    },
+  });
+
+  // 7. Dedicated `alerts` state module (Markets parity / worklog Phase 2) —
+  //    rules + settings only. Notification history is session-only and MUST
+  //    serialize as empty. Grid-level (see DEFAULT_GRID_LEVEL_MODULES) so
+  //    layout switches do not wipe alert config.
+  let alertsTouched =
+    (opts?.alertRules?.length ?? 0) > 0
+    || opts?.alertsSettings !== undefined;
+
+  const notifyAlerts = (): void => {
+    alertsTouched = true;
+    g.notifyModuleStateChanged?.('alerts');
+  };
+
+  const replaceAlertRules = (next: AlertRule[]): void => {
+    for (const err of alerts.setRules(next).errors) {
+      console.warn(`[cgrid/rules] skipped alert rule '${err.ruleId}': ${err.message}`);
+    }
+    notifyAlerts();
+  };
+
+  g.getAlertRules = () => alerts.getRules();
+  g.addAlertRule = (rule: AlertRule) => {
+    const current = alerts.getRules();
+    if (current.some((r) => r.id === rule.id)) return;
+    replaceAlertRules([...current, rule]);
+  };
+  g.updateAlertRule = (id: string, patch: Partial<AlertRule>) => {
+    const current = alerts.getRules();
+    if (!current.some((r) => r.id === id)) return;
+    replaceAlertRules(current.map((r) => (r.id === id ? { ...r, ...patch, id } : r)));
+  };
+  g.deleteAlertRule = (id: string) => {
+    const current = alerts.getRules();
+    const next = current.filter((r) => r.id !== id);
+    if (next.length === current.length) return;
+    replaceAlertRules(next);
+  };
+  g.getAlertsSettings = () => alerts.getSettings();
+  g.setAlertsSettings = (patch) => {
+    alerts.setSettings(patch);
+    notifyAlerts();
+  };
+  g.getAlertHistory = () => alerts.getHistory();
+  g.markAlertRead = () => { alerts.markAllRead(); };
+  g.clearAlertHistory = () => { alerts.clearHistory(); };
+  g.getAlertUnreadCount = () => alerts.unreadCount();
+  g.onAlert = (fn) => alerts.onAlert(fn);
+
+  g.registerStateModule?.({
+    id: 'alerts',
+    version: 1,
+    get: () => {
+      if (!alertsTouched && alerts.getRules().length === 0) return undefined;
+      return {
+        rules: alerts.getRules(),
+        settings: alerts.getSettings(),
+        history: [] as const,
+      };
+    },
+    set: (data) => {
+      const slice = (data && typeof data === 'object') ? data as {
+        rules?: AlertRule[];
+        settings?: Parameters<AlertsEngine['setSettings']>[0];
+      } : null;
+      if (slice?.settings) {
+        alerts.setSettings(slice.settings);
+        alertsTouched = true;
+      }
+      if (Array.isArray(slice?.rules)) {
+        for (const err of alerts.setRules(slice.rules).errors) {
+          console.warn(`[cgrid/rules] restore skipped alert '${err.ruleId}': ${err.message}`);
+        }
+        alertsTouched = true;
+      } else if (data === undefined || data === null) {
+        // Layout clearAbsent / empty restore — drop rules, keep settings.
+        alerts.setRules([]);
+      }
+      // Never restore history — session-only.
+      alerts.clearHistory();
     },
   });
 

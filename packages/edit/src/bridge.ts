@@ -143,6 +143,16 @@ export interface WireEditOptions {
   now?: () => number;
   /** Default: `makeExpressionEvaluate()` (real `@cgrid/expression`). */
   evaluate?: NudgeEvaluate;
+  /**
+   * Replace the default `grid.applyTransaction({ update })` used by
+   * smart/bulk/±/shortcut commits and journal undo/redo. SSRM hosts should
+   * persist to the authoritative book and call `applyServerSideTransaction`
+   * so rehydrate does not resurrect undone values.
+   */
+  commitUpdates?: (
+    rows: Record<string, unknown>[],
+    meta: { patches: CellPatch[]; direction: 'forward' | 'undo' },
+  ) => void;
 }
 
 export interface EditBridgeHandle {
@@ -160,7 +170,9 @@ export interface EditBridgeHandle {
   };
   getSettings(): EditSettings;
   updateSettings(partial: Parameters<typeof mergeEditSettings>[0]): void;
+  getNudges(): PlusMinusNudge[];
   setNudges(nudges: PlusMinusNudge[]): void;
+  getShortcuts(): ShortcutDefinition[];
   setShortcuts(shortcuts: ShortcutDefinition[]): void;
   destroy(): void;
 }
@@ -404,6 +416,7 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
         }
       }
       updates.push(clone);
+      rowMirror.set(rowId, clone);
       writtenCount += rowPatches.length;
     }
     if (updates.length === 0) return 0;
@@ -415,7 +428,11 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
 
     replaying = true;
     try {
-      g.applyTransaction({ update: updates });
+      if (opts?.commitUpdates) {
+        opts.commitUpdates(updates, { patches: deduped, direction });
+      } else {
+        g.applyTransaction({ update: updates });
+      }
     } finally {
       replaying = false;
     }
@@ -640,10 +657,18 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
       // kernel's stateUpdated -> persistState autosave runs.
       g.notifyModuleStateChanged?.('editSettings');
     },
-    setNudges: (next) => { nudges = next; },
+    getNudges: () => nudges.map((n) => ({ ...n, scope: { columnIds: [...n.scope.columnIds] } })),
+    setNudges: (next) => {
+      nudges = next;
+      settingsTouched = true;
+      g.notifyModuleStateChanged?.('editSettings');
+    },
+    getShortcuts: () => shortcuts.map((s) => ({ ...s, scope: { columnIds: [...s.scope.columnIds] } })),
     setShortcuts: (next) => {
       shortcuts = next;
       shortcutKeySet = collectShortcutKeys(shortcuts);
+      settingsTouched = true;
+      g.notifyModuleStateChanged?.('editSettings');
     },
     destroy,
   };
@@ -659,13 +684,34 @@ export function wireEditIntoKernel(grid: unknown, opts?: WireEditOptions): EditB
   // JSON.stringify comparison in get(): snapshots run once per coalesced
   // stateUpdated rAF flush (column-resize / range-select drags feed the
   // bus per frame), so get() must be allocation-free.
-  let settingsTouched = JSON.stringify(settings) !== JSON.stringify(mergeEditSettings());
+  //
+  // Phase 3 — nudges + shortcut defs ride the same envelope (optional
+  // `nudges` / `shortcutDefs` keys alongside EditSettings fields).
+  let settingsTouched =
+    JSON.stringify(settings) !== JSON.stringify(mergeEditSettings())
+    || nudges.length > 0
+    || shortcuts.length > 0;
   const unregisterStateModule = g.registerStateModule?.({
     id: 'editSettings',
     version: 1,
-    get: () => (settingsTouched ? settings : undefined),
+    get: () => {
+      if (!settingsTouched) return undefined;
+      return {
+        ...settings,
+        nudges,
+        shortcutDefs: shortcuts,
+      };
+    },
     set: (data) => {
-      settings = mergeEditSettings(data as Parameters<typeof mergeEditSettings>[0]);
+      const raw = (data && typeof data === 'object') ? data as Record<string, unknown> : {};
+      settings = mergeEditSettings(raw as Parameters<typeof mergeEditSettings>[0]);
+      if (Array.isArray(raw.nudges)) {
+        nudges = raw.nudges as PlusMinusNudge[];
+      }
+      if (Array.isArray(raw.shortcutDefs)) {
+        shortcuts = raw.shortcutDefs as ShortcutDefinition[];
+        shortcutKeySet = collectShortcutKeys(shortcuts);
+      }
       settingsTouched = true;
     },
   });

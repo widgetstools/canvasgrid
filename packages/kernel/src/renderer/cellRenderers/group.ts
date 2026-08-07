@@ -1,6 +1,12 @@
 import type { CachedContext2D } from '../gc';
 import { drawIcon } from '../icons';
 import type { CellPainter, CellPaintConfig } from './registry';
+import {
+  CHECKBOX_GLYPH_SIZE,
+  paintCheckboxBox,
+  paintCheckboxCheck,
+  paintCheckboxDash,
+} from './checkboxGlyph';
 
 /**
  * Cycle 15 / Task 4 + Task 5 — polished `'group'` cell renderer.
@@ -75,7 +81,7 @@ const EMPTY_GLYPH = '';
  *  checkbox and a group-row checkbox read as the same control. The
  *  GAP below sits between the chevron's right edge and the checkbox's
  *  left edge AND between the checkbox's right edge and the value text. */
-const CHECKBOX_SIZE = 14;
+const CHECKBOX_SIZE = CHECKBOX_GLYPH_SIZE;
 const CHECKBOX_GAP = 6;
 
 /** Exported chrome geometry — sole source of truth for the auto-group
@@ -346,36 +352,17 @@ function paintTriStateCheckbox(
   const interiorColor = state === 'partial'
     ? (p.groupCheckboxIndeterminateColor ?? p.fg)
     : (p.groupCheckboxCheckColor ?? p.fg);
-  // Outlined box. Identical to `checkboxCell` — same `+ 0.5` half-pixel
-  // snap for crisp 1 px strokes on integer-aligned bounds. The optional
-  // fill paints first so the border sits on top.
+  // Outlined box — shared glyph helper (same √ / dash as boolean +
+  // row-select cells). Optional fill paints under the border.
   const fill = p.groupCheckboxFill;
-  if (fill !== undefined && fill !== 'transparent') {
-    gc.cache.fillStyle = fill;
-    gc.fillRect(x, y, size, size);
-  }
-  gc.cache.strokeStyle = borderColor;
-  gc.cache.lineWidth = 1;
-  gc.strokeRect(x + 0.5, y + 0.5, size, size);
+  paintCheckboxBox(gc, x, y, size, {
+    borderColor,
+    fill: fill !== undefined && fill !== 'transparent' ? fill : null,
+  });
   if (state === 'all') {
-    // Same √ polyline as `checkboxCell` — one checkmark vocabulary
-    // across every checkbox cell in the grid (Task 8 design).
-    gc.cache.strokeStyle = interiorColor;
-    gc.beginPath();
-    gc.moveTo(x + 3, y + size / 2);
-    gc.lineTo(x + size / 2 - 1, y + size - 3);
-    gc.lineTo(x + size - 2, y + 3);
-    gc.stroke();
+    paintCheckboxCheck(gc, x, y, size, interiorColor);
   } else if (state === 'partial') {
-    // Horizontal dash centered vertically — the universally-learned
-    // indeterminate vocabulary (Excel / macOS). Matches the check
-    // stroke weight so the box reads as "active in some way" without
-    // a fill or color shift.
-    gc.cache.strokeStyle = interiorColor;
-    gc.beginPath();
-    gc.moveTo(x + 3, y + size / 2 + 0.5);
-    gc.lineTo(x + size - 3, y + size / 2 + 0.5);
-    gc.stroke();
+    paintCheckboxDash(gc, x, y, size, interiorColor);
   }
   // 'none' → border only.
 }

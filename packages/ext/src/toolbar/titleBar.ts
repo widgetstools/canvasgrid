@@ -15,14 +15,22 @@
  * geometry) — no external asset, crisp at any DPI.
  */
 import type { CgExtension, CgExtContext, ToolbarItem, ToolbarItemInstance } from '../extension/types';
-import { menu, svg, iconButton } from './ui';
+import { menu, mirrorThemeClass, svg, iconButton } from './ui';
 import { layoutsItem, layoutSaveItem } from './layoutsMenu';
+import { alertsBadgeItem } from './alertsChrome';
 
 export interface TitleBarOptions {
   /** Brand label shown at the far left (e.g. the grid's name). */
   name?: string;
-  /** Date shown in the date pill (display-only; caller controls semantics). */
+  /** Initial ISO `YYYY-MM-DD` shown in the toolbar date picker. */
   date?: string;
+  /** Fired when the user picks a date (ISO `YYYY-MM-DD`). */
+  onDateChange?: (iso: string) => void;
+  /**
+   * When `false`, only today's date is selectable (live data only).
+   * Defaults to `true` (any calendar day).
+   */
+  historyEnabled?: boolean;
 }
 
 /** Build the full title-bar extension set. Compose into `ext.extensions`
@@ -36,14 +44,55 @@ export function titleBarExtensions(opts: TitleBarOptions = {}): CgExtension[] {
   return [
     brandItem(opts.name ?? 'cgrid'),
     searchItem(),
-    notificationsItem(),
+    alertsBadgeItem(),
     layoutsItem(),
     layoutSaveItem(),
-    dateItem(opts.date ?? ''),
+    dateItem({
+      initial: opts.date ?? todayIsoDate(),
+      onDateChange: opts.onDateChange,
+      historyEnabled: opts.historyEnabled !== false,
+    }),
     overflowItem(),
     settingsItem(),
   ];
 }
+
+// ── toolbar date helpers (ISO calendar day, local timezone) ───────────────
+
+function pad2(n: number): string {
+  return String(n).padStart(2, '0');
+}
+
+function todayIsoDate(): string {
+  return dateToIso(new Date());
+}
+
+function dateToIso(d: Date): string {
+  return `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+}
+
+function isoToDate(iso: string): Date | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso.trim());
+  if (!m) return null;
+  const y = Number(m[1]);
+  const mo = Number(m[2]);
+  const d = Number(m[3]);
+  if (!y || !mo || !d) return null;
+  const dt = new Date(y, mo - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== mo - 1 || dt.getDate() !== d) return null;
+  return dt;
+}
+
+function sameDay(a: Date, b: Date): boolean {
+  return a.getFullYear() === b.getFullYear()
+    && a.getMonth() === b.getMonth()
+    && a.getDate() === b.getDate();
+}
+
+const MONTH_LABELS = [
+  'January', 'February', 'March', 'April', 'May', 'June',
+  'July', 'August', 'September', 'October', 'November', 'December',
+];
 
 // ── icons ────────────────────────────────────────────────────────────────
 const ICON = {
@@ -114,20 +163,209 @@ function searchItem(): ToolbarItem {
   });
 }
 
-function notificationsItem(): ToolbarItem {
-  return item('notifications', 'primary-right', (host) => {
-    host.appendChild(iconButton(ICON.bell, 'Notifications'));
-    return { destroy() { host.replaceChildren(); } };
-  });
-}
+function dateItem(opts: {
+  initial: string;
+  onDateChange?: (iso: string) => void;
+  historyEnabled: boolean;
+}): ToolbarItem {
+  return item('date', 'primary-right', (host, ctx) => {
+    let value = isoToDate(opts.initial) ? opts.initial : todayIsoDate();
+    let pop: HTMLElement | null = null;
+    let viewYear = 0;
+    let viewMonth = 0; // 0-based
 
-function dateItem(date: string): ToolbarItem {
-  return item('date', 'primary-right', (host) => {
-    const pill = document.createElement('div');
-    pill.className = 'cgext-date';
-    pill.innerHTML = `${svg(ICON.calendar, 14)}<span>${date || '—'}</span>`;
-    host.appendChild(pill);
-    return { destroy() { host.replaceChildren(); } };
+    const seedView = (): void => {
+      const d = isoToDate(value) ?? new Date();
+      viewYear = d.getFullYear();
+      viewMonth = d.getMonth();
+    };
+    seedView();
+
+    const trigger = document.createElement('button');
+    trigger.type = 'button';
+    trigger.className = 'cgext-date';
+    trigger.dataset.testid = 'toolbar-date-picker-trigger';
+    trigger.setAttribute('aria-haspopup', 'dialog');
+    trigger.setAttribute('aria-expanded', 'false');
+
+    const paintTrigger = (): void => {
+      trigger.setAttribute('aria-label', `Selected date ${value}`);
+      trigger.title = `As-of date ${value}`;
+      trigger.innerHTML = `${svg(ICON.calendar, 14)}<span class="cgext-date-label">${value || '—'}</span>`;
+    };
+    paintTrigger();
+
+    const closePop = (): void => {
+      if (!pop) return;
+      pop.remove();
+      pop = null;
+      trigger.setAttribute('aria-expanded', 'false');
+      document.removeEventListener('pointerdown', onDoc, true);
+      document.removeEventListener('keydown', onKey, true);
+    };
+
+    const onDoc = (e: PointerEvent): void => {
+      if (!pop) return;
+      const t = e.target as Node;
+      if (!pop.contains(t) && !trigger.contains(t)) closePop();
+    };
+
+    const onKey = (e: KeyboardEvent): void => {
+      if (e.key === 'Escape') {
+        e.stopPropagation();
+        closePop();
+        trigger.focus();
+      }
+    };
+
+    const commit = (iso: string): void => {
+      if (iso === value) {
+        closePop();
+        return;
+      }
+      value = iso;
+      paintTrigger();
+      opts.onDateChange?.(iso);
+      ctx.events.emit({ type: 'date-change', date: iso });
+      closePop();
+    };
+
+    const paintCalendar = (root: HTMLElement): void => {
+      root.replaceChildren();
+      const today = new Date();
+      const selected = isoToDate(value);
+
+      const head = document.createElement('div');
+      head.className = 'cgext-cal-head';
+      const prev = document.createElement('button');
+      prev.type = 'button';
+      prev.className = 'cgext-cal-nav';
+      prev.setAttribute('aria-label', 'Previous month');
+      prev.innerHTML = svg('M15 18l-6-6 6-6', 14);
+      prev.addEventListener('click', () => {
+        viewMonth -= 1;
+        if (viewMonth < 0) { viewMonth = 11; viewYear -= 1; }
+        paintCalendar(root);
+      });
+      const next = document.createElement('button');
+      next.type = 'button';
+      next.className = 'cgext-cal-nav';
+      next.setAttribute('aria-label', 'Next month');
+      next.innerHTML = svg('M9 18l6-6-6-6', 14);
+      next.addEventListener('click', () => {
+        viewMonth += 1;
+        if (viewMonth > 11) { viewMonth = 0; viewYear += 1; }
+        paintCalendar(root);
+      });
+      const title = document.createElement('div');
+      title.className = 'cgext-cal-title';
+      title.textContent = `${MONTH_LABELS[viewMonth]} ${viewYear}`;
+      head.append(prev, title, next);
+      root.appendChild(head);
+
+      const dow = document.createElement('div');
+      dow.className = 'cgext-cal-dow';
+      for (const d of ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa']) {
+        const cell = document.createElement('span');
+        cell.textContent = d;
+        dow.appendChild(cell);
+      }
+      root.appendChild(dow);
+
+      const grid = document.createElement('div');
+      grid.className = 'cgext-cal-grid';
+      grid.setAttribute('role', 'grid');
+      grid.setAttribute('aria-label', `${MONTH_LABELS[viewMonth]} ${viewYear}`);
+
+      const first = new Date(viewYear, viewMonth, 1);
+      const startDow = first.getDay(); // 0=Sun
+      const daysInMonth = new Date(viewYear, viewMonth + 1, 0).getDate();
+
+      for (let i = 0; i < startDow; i++) {
+        const empty = document.createElement('span');
+        empty.className = 'cgext-cal-day is-empty';
+        grid.appendChild(empty);
+      }
+
+      for (let day = 1; day <= daysInMonth; day++) {
+        const cellDate = new Date(viewYear, viewMonth, day);
+        const iso = dateToIso(cellDate);
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'cgext-cal-day';
+        btn.textContent = String(day);
+        btn.setAttribute('aria-label', iso);
+        if (sameDay(cellDate, today)) btn.classList.add('is-today');
+        if (selected && sameDay(cellDate, selected)) {
+          btn.classList.add('is-selected');
+          btn.setAttribute('aria-pressed', 'true');
+        }
+        const blocked = !opts.historyEnabled && !sameDay(cellDate, today);
+        if (blocked) {
+          btn.disabled = true;
+          btn.classList.add('is-disabled');
+        } else {
+          btn.addEventListener('click', () => commit(iso));
+        }
+        grid.appendChild(btn);
+      }
+      root.appendChild(grid);
+
+      const foot = document.createElement('div');
+      foot.className = 'cgext-cal-foot';
+      const todayBtn = document.createElement('button');
+      todayBtn.type = 'button';
+      todayBtn.className = 'cgext-cal-today';
+      todayBtn.textContent = 'Today';
+      todayBtn.addEventListener('click', () => commit(todayIsoDate()));
+      foot.appendChild(todayBtn);
+      root.appendChild(foot);
+    };
+
+    const openPop = (): void => {
+      if (pop) return;
+      seedView();
+      pop = document.createElement('div');
+      pop.className = 'cgext-date-pop';
+      pop.setAttribute('role', 'dialog');
+      pop.setAttribute('aria-label', 'Choose date');
+      mirrorThemeClass(trigger, pop);
+      paintCalendar(pop);
+      document.body.appendChild(pop);
+
+      const r = trigger.getBoundingClientRect();
+      const margin = 8;
+      const w = pop.offsetWidth;
+      const h = pop.offsetHeight;
+      let top = Math.round(r.bottom + 6);
+      let left = Math.round(r.right - w);
+      left = Math.max(margin, Math.min(left, window.innerWidth - w - margin));
+      if (top + h > window.innerHeight - margin && r.top - 6 - h >= margin) {
+        top = Math.round(r.top - 6 - h);
+      }
+      pop.style.top = `${top}px`;
+      pop.style.left = `${left}px`;
+
+      trigger.setAttribute('aria-expanded', 'true');
+      // Defer so the opening click doesn't immediately close.
+      setTimeout(() => {
+        document.addEventListener('pointerdown', onDoc, true);
+        document.addEventListener('keydown', onKey, true);
+      }, 0);
+    };
+
+    trigger.addEventListener('click', () => {
+      if (pop) closePop();
+      else openPop();
+    });
+
+    host.appendChild(trigger);
+    return {
+      destroy() {
+        closePop();
+        host.replaceChildren();
+      },
+    };
   });
 }
 
@@ -234,15 +472,20 @@ export function injectTitleBarStyles(): void {
 }
 
 const TITLEBAR_CSS = `
-/* Ext chrome token aliases — the ext stylesheets consume three tokens the
- * kernel themes don't declare (--cg-accent-color / --cg-muted-fg-color /
- * --cg-control-bg). Derive them from the active theme's own tokens on ANY
- * cg-theme-* class (grid root AND body-mounted popups, which mirror the
- * theme class) so every control follows the theme instead of falling back
- * to per-rule hardcoded colors. Fallbacks preserve the pre-token look for
- * unthemed hosts. */
+/* Ext chrome token aliases — the ext stylesheets consume tokens the
+ * kernel themes don't declare (--cg-accent-color / --cg-primary-color /
+ * --cg-muted-fg-color / --cg-control-bg). Derive them from the active
+ * theme's own tokens on ANY cg-theme-* class (grid root AND body-mounted
+ * popups, which mirror the theme class) so every control follows the theme
+ * instead of falling back to per-rule hardcoded colors.
+ * Cursor light: primary/accent #2778C1 on #FCFCFC; dark Anysphere: #81A1C1 on #191c22.
+ * Fallbacks preserve the pre-token look for unthemed hosts. */
 [class*="cg-theme-"] {
+  /* Primary fill + on-primary text from theme checkbox/button pair. */
+  --cg-primary-color: var(--cg-chrome-accent, #4f9cf9);
+  --cg-primary-fg: var(--cg-checkbox-checked-fg, #ffffff);
   --cg-accent-color: var(--cg-chrome-accent, #4f9cf9);
+  --cg-accent-fg: var(--cg-checkbox-checked-fg, #ffffff);
   --cg-muted-fg-color: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 62%, transparent);
   --cg-control-bg: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 6%, transparent);
   --cgext-space-1: 4px;
@@ -312,12 +555,79 @@ const TITLEBAR_CSS = `
 .cgext-settings-launcher.cgext-iconbtn { color: var(--cg-accent-color, #4f9cf9); }
 
 .cgext-date {
+  appearance: none;
   display: inline-flex; align-items: center; gap: 6px;
   height: 32px; padding: 0 var(--cgext-space-3);
   border: 1px solid var(--cg-border-color, #2a3140); border-radius: 2px;
-  color: var(--cg-fg-color, #e5e9f0); font-size: 12.5px; font-variant-numeric: tabular-nums;
+  background: var(--cg-control-bg, rgba(255,255,255,0.04));
+  color: var(--cg-fg-color, #e5e9f0); font: inherit; font-size: 12.5px;
+  font-variant-numeric: tabular-nums; cursor: pointer;
+  transition: border-color 120ms ease, background 120ms ease;
 }
-.cgext-date svg { color: var(--cg-muted-fg-color, #9aa4b6); }
+.cgext-date:hover { border-color: var(--cg-accent-color, #4f9cf9); }
+.cgext-date:focus-visible { outline: 2px solid var(--cg-accent-color, #4f9cf9); outline-offset: 1px; }
+.cgext-date svg { color: var(--cg-muted-fg-color, #9aa4b6); flex: 0 0 auto; }
+.cgext-date-label { font-weight: 550; }
+
+.cgext-date-pop {
+  position: fixed; z-index: 70;
+  width: 268px; padding: 10px;
+  background: var(--cg-popup-bg, #171c26);
+  border: 1px solid var(--cg-border-color, #2a3140); border-radius: var(--cg-radius, 2px);
+  box-shadow: 0 14px 36px rgba(0,0,0,0.42);
+  color: var(--cg-fg-color, #e5e9f0);
+  font: 12.5px/1.3 var(--cg-font-family, 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif);
+}
+.cgext-cal-head {
+  display: grid; grid-template-columns: 28px 1fr 28px; align-items: center;
+  gap: 4px; margin-bottom: 8px;
+}
+.cgext-cal-title {
+  text-align: center; font-weight: 650; font-size: 13px; letter-spacing: -0.01em;
+}
+.cgext-cal-nav {
+  appearance: none; width: 28px; height: 28px; padding: 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: none; border-radius: var(--cg-radius, 2px);
+  background: transparent; color: var(--cg-muted-fg-color, #9aa4b6); cursor: pointer;
+}
+.cgext-cal-nav:hover { background: var(--cg-row-alt-bg, rgba(255,255,255,0.07)); color: var(--cg-fg-color, #e5e9f0); }
+.cgext-cal-dow {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; margin-bottom: 4px;
+}
+.cgext-cal-dow > span {
+  text-align: center; font-size: 10px; font-weight: 650; letter-spacing: 0.04em;
+  text-transform: uppercase; color: var(--cg-muted-fg-color, #9aa4b6); padding: 4px 0;
+}
+.cgext-cal-grid {
+  display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px;
+}
+.cgext-cal-day {
+  appearance: none; height: 30px; padding: 0;
+  border: none; border-radius: var(--cg-radius, 2px);
+  background: transparent; color: inherit; font: inherit; font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+.cgext-cal-day.is-empty { visibility: hidden; pointer-events: none; }
+.cgext-cal-day:hover:not(:disabled) { background: var(--cg-row-alt-bg, rgba(255,255,255,0.07)); }
+.cgext-cal-day.is-today { box-shadow: inset 0 0 0 1px var(--cg-accent-color, #4f9cf9); }
+.cgext-cal-day.is-selected {
+  background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 22%, transparent);
+  color: var(--cg-accent-color, #4f9cf9); font-weight: 650;
+}
+.cgext-cal-day.is-disabled, .cgext-cal-day:disabled {
+  opacity: 0.35; cursor: default;
+}
+.cgext-cal-foot {
+  display: flex; justify-content: flex-end; margin-top: 8px; padding-top: 8px;
+  border-top: 1px solid color-mix(in srgb, var(--cg-border-color, #2a3140) 85%, transparent);
+}
+.cgext-cal-today {
+  appearance: none; border: none; background: transparent; cursor: pointer;
+  color: var(--cg-accent-color, #4f9cf9); font: inherit; font-weight: 550; font-size: 12px;
+  padding: 4px 6px; border-radius: var(--cg-radius, 2px);
+}
+.cgext-cal-today:hover { background: color-mix(in srgb, var(--cg-accent-color, #4f9cf9) 12%, transparent); }
 
 /* Right cluster: breathing room + hairline before utility icons. */
 .cgext-titlebar > .cgext-slot-primary-right {

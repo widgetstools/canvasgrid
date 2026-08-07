@@ -234,7 +234,7 @@ const ext = new CGridExt<FlatRow>(app, {
   persistState: true,
   getRowId: (r) => String(r.positionId),
   columnDefs: PAINT_HARNESS ? (columnDefs as CColDef<FlatRow>[]) : PLACEHOLDER_COLS,
-  theme: 'cg-theme-quartz-dark',
+  theme: 'cg-theme-cursor-dark',
   floatingFilterHeight: 34,
   floatingFilterInsetY: 8,
   // Wide blotters (hundreds of cols): FIXED widths + column virtualisation.
@@ -255,6 +255,9 @@ const ext = new CGridExt<FlatRow>(app, {
   // 32 ≈ one extra viewport of rows above + below on a typical host.
   ...(!PAINT_HARNESS ? { rowBuffer: 32 } : {}),
   rowGroupPanelShow: 'always',
+  // Busy overlay until the first STOMP snapshot lands (paint harness seeds
+  // sync data, so leave loading off there).
+  ...(!PAINT_HARNESS ? { loading: true } : {}),
   sideBar: { toolPanels: ['columns', 'filters'] },
   // `&noFlash` (closeout fix wave, I5/C3) boots with flash OFF — the real
   // default for a plain grid, and the exact configuration C3's bug needed
@@ -294,7 +297,14 @@ const ext = new CGridExt<FlatRow>(app, {
     extensions: [
       { remove: 'settings-launcher' },
       { remove: 'save' },
-      ...titleBarExtensions({ name: 'MarketsGrid', date: new Date().toISOString().slice(0, 10) }),
+      ...titleBarExtensions({
+        name: 'MarketsGrid',
+        date: new Date().toISOString().slice(0, 10),
+        onDateChange: (iso) => {
+          // Demo hook — host apps wire this to as-of / historical providers.
+          console.info('[cgrid-ext-demo] as-of date →', iso);
+        },
+      }),
       ...ribbonExtensions({ edit: () => editHandle }),
     ],
   },
@@ -316,6 +326,10 @@ editHandle = wireEditIntoKernel(ext.grid);
 (window as unknown as { __edit: unknown }).__edit = editHandle;
 wireCalc(ext.grid);
 wireRules(ext.grid);
+
+// Engines register state modules after CGridExt's ctor bootstrap — re-apply
+// so editSettings / calc / rules slices from the saved profile actually land.
+void ext.reapplyActiveProfile();
 
 // Expose for console poking + the hermetic E2E suite.
 (window as unknown as { __ext: unknown }).__ext = ext;
@@ -516,7 +530,14 @@ if (PAINT_HARNESS) {
   // The shell + grid are already mounted above and stay visible regardless
   // of feed state; connectStomp's onPhase('error') only affects these logs.
   connectStomp({
-    onPhase: (phase) => { console.info(`[cgrid-ext-demo] stomp phase: ${phase}`); },
+    onPhase: (phase) => {
+      console.info(`[cgrid-ext-demo] stomp phase: ${phase}`);
+      if (phase === 'error' || phase === 'disconnected') {
+        try { ext.grid.setGridOption('loading', false); } catch { /* ignore */ }
+      } else if (phase === 'connecting' || phase === 'snapshot') {
+        try { ext.grid.setGridOption('loading', true); } catch { /* ignore */ }
+      }
+    },
     onSnapshot: (rows) => {
       rows.forEach(decorateWithCategoricals);
       // Flatten nested objects to dotted keys (`risk.dv01`) so every server
@@ -532,6 +553,7 @@ if (PAINT_HARNESS) {
           : ''),
       );
       ext.setRowData(flat);
+      try { ext.grid.setGridOption('loading', false); } catch { /* ignore */ }
       // Persist/profile restore often paints row-group chips against
       // placeholder columns (worker rejects unknown ids). After real
       // columnDefs + data land, force-ship the group model. Also covers

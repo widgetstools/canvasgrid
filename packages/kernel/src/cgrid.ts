@@ -123,6 +123,7 @@ import {
   normalizePivotPanelShow,
   type PivotPanelGridContext,
 } from './interaction/pivotPanel/host';
+import { LoadingOverlay } from './interaction/loadingOverlay';
 import type { PivotValueColumn } from './core/pivotState';
 import { PivotEngine, type PivotEngineDeps, type PivotEngineOptions } from './core/pivotEngine';
 import {
@@ -1364,6 +1365,8 @@ export class CGrid<TRow = any> {
    *  primitives through this surface. */
   private editController!: EditController<TRow>;
   private a11y: A11yOverlay;
+  /** Busy overlay driven by `options.loading`. */
+  private loadingOverlay: LoadingOverlay;
   /** Cycle 19 / Task 3 — owns the WorkerClient + its handler wiring +
    *  the viewport-fetch dispatch ViewportManager forwards into. CGrid
    *  routes every worker call through this surface; the chunk-reply
@@ -3083,6 +3086,8 @@ export class CGrid<TRow = any> {
       ariaLabel: options.ariaLabel,
       ariaBusy: options.loading === true,
     });
+    this.loadingOverlay = new LoadingOverlay(this.root);
+    this.loadingOverlay.setLoading(options.loading === true);
     // Cycle 24 / Task 4 — wire screen-reader announcements. The a11y
     // overlay holds the role="status" aria-live region; we subscribe
     // here to state-affecting events and turn each into human-
@@ -6116,6 +6121,7 @@ export class CGrid<TRow = any> {
       setRowGroupColumnSort: (colId, direction) =>
         this.grouping.setRowGroupColumnSort(colId, direction),
       tryCrossPanelMove: (colId, x, y) => this.tryCrossPanelMoveFrom('rowGroup', colId, x, y),
+      hidePanel: () => this.setGridOption('rowGroupPanelShow', 'never'),
     };
   }
 
@@ -8515,6 +8521,7 @@ export class CGrid<TRow = any> {
       setTheme: (t) => this.setTheme(t),
       setDensity: (d) => this.setDensity(d),
       refreshA11y: () => this.updateA11y(),
+      syncLoadingOverlay: () => this.loadingOverlay.setLoading(this.options.loading === true),
       rebuildColumns: ({ defaultColDef }) => this.rebuildColumns({ defaultColDef }),
       refreshLayout: () => {
         this.recomputeViewport();
@@ -9084,6 +9091,7 @@ export class CGrid<TRow = any> {
     this.workerCoord.destroy();
     this.featureChain.destroy();
     this.a11y.destroy();
+    this.loadingOverlay.destroy();
     // Cycle 19 / Task 4 — `editController.editor.close()` +
     // `editController.rowEdit.close()` ride on the DisposableRegistry hook
     // the controller registers in its constructor; tearing down via

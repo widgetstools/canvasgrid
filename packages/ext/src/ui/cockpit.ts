@@ -229,6 +229,35 @@ export function injectCockpitStyles(): void {
   --ckp-surface: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 3.5%, transparent);
   --ckp-surface-2: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 5.5%, transparent);
 }
+/* Flat settings panels (no list rail) — single column with real gutters.
+   Master-detail modules keep the 2-col grid above; flat modules MUST add
+   this class or content lands in the rail column and sticks to edges. */
+.ckp.ckp-flat {
+  display: flex;
+  flex-direction: column;
+  grid-template-columns: unset;
+  padding: 18px 22px 28px;
+  overflow: hidden;
+  gap: 0;
+}
+.ckp.ckp-flat > .ckp-pane-head {
+  flex: 0 0 auto;
+  margin-bottom: 16px;
+  padding-bottom: 14px;
+}
+.ckp.ckp-flat > .ckp-flat-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+}
+.ckp.ckp-flat > .ckp-flat-foot {
+  flex: 0 0 auto;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--ckp-border);
+}
 .ckp * { box-sizing: border-box; }
 .ckp-caps {
   font-size: 10px; font-weight: 650; letter-spacing: 0.12em; text-transform: uppercase;
@@ -242,12 +271,12 @@ export function injectCockpitStyles(): void {
 /* rail */
 .ckp-rail {
   border-right: 1px solid var(--ckp-border);
-  padding: 14px 10px 16px;
+  padding: 16px 14px 20px;
   overflow-y: auto; min-height: 0;
   background: color-mix(in srgb, var(--cg-fg-color, #e5e9f0) 1.5%, transparent);
   scrollbar-width: thin;
 }
-.ckp-rail-head { display: flex; align-items: center; gap: 8px; padding: 0 6px 12px; }
+.ckp-rail-head { display: flex; align-items: center; gap: 8px; padding: 0 4px 14px; }
 .ckp-rail-head .ckp-caps { flex: 1 1 auto; color: var(--cg-fg-color, #e5e9f0); letter-spacing: 0.1em; }
 .ckp-count {
   font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10.5px;
@@ -283,9 +312,9 @@ export function injectCockpitStyles(): void {
 }
 .ckp-mini:hover { color: var(--cg-fg-color, #e5e9f0); background: var(--ckp-surface); }
 /* pane */
-.ckp-pane { min-width: 0; min-height: 0; overflow-y: auto; padding: 16px 18px 28px; scrollbar-width: thin; }
+.ckp-pane { min-width: 0; min-height: 0; overflow-y: auto; padding: 18px 22px 32px; scrollbar-width: thin; }
 .ckp-pane-head {
-  display: flex; gap: 10px; align-items: center; margin-bottom: 14px; padding-bottom: 12px;
+  display: flex; gap: 10px; align-items: center; margin-bottom: 16px; padding-bottom: 14px;
   border-bottom: 1px solid var(--ckp-border);
 }
 .ckp-title {
@@ -340,8 +369,9 @@ export function injectCockpitStyles(): void {
 .ckp-controls-strip > .ckp-caps { white-space: nowrap; }
 .ckp-controls-strip > * + .ckp-caps { margin-left: 10px; }
 /* bands */
-.ckp-band { margin: 0 0 18px; }
-.ckp-band-head { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; }
+.ckp-band { margin: 0 0 22px; }
+.ckp-band:last-child { margin-bottom: 8px; }
+.ckp-band-head { display: flex; gap: 10px; align-items: center; margin-bottom: 12px; }
 .ckp-band-num {
   font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 10.5px; font-weight: 600;
   color: color-mix(in srgb, var(--ckp-accent) 75%, var(--ckp-muted));
@@ -349,11 +379,17 @@ export function injectCockpitStyles(): void {
 }
 .ckp-band-title { font-size: 10.5px; font-weight: 650; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cg-fg-color, #e5e9f0); }
 .ckp-band-rule { flex: 1 1 auto; height: 1px; background: var(--ckp-border); }
-.ckp-band-body { padding-left: 2px; }
-/* rows + inputs */
-.ckp-row { display: grid; grid-template-columns: 118px 1fr; gap: 12px; align-items: start; margin-bottom: 12px; }
+.ckp-band-body { padding-left: 0; max-width: 560px; }
+/* rows + inputs — fixed label column so toggles/inputs share one vertical axis */
+.ckp-row {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  gap: 14px 16px;
+  align-items: start;
+  margin-bottom: 14px;
+}
 .ckp-row > .ckp-caps { padding-top: 8px; }
-.ckp-row-main { min-width: 0; }
+.ckp-row-main { min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 0; }
 .ckp-input {
   background: var(--ckp-surface); color: inherit;
   border: 1px solid var(--ckp-border); border-radius: var(--cg-radius, 2px);
@@ -368,21 +404,31 @@ export function injectCockpitStyles(): void {
   background: color-mix(in srgb, var(--ckp-accent) 5%, transparent);
 }
 .ckp-input.mono { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11.5px; }
-.ckp-num { width: 84px; }
-.ckp-numwrap { display: inline-flex; align-items: center; gap: 6px; width: 100%; }
-.ckp-numwrap .ckp-num { flex: 1 1 auto; width: auto; }
+.ckp-num { width: 96px; max-width: 100%; }
+.ckp-numwrap { display: inline-flex; align-items: center; gap: 6px; width: auto; max-width: 100%; }
+.ckp-numwrap .ckp-num { flex: 0 0 auto; width: 96px; }
 .ckp-suffix { font-size: 9.5px; letter-spacing: 0.1em; color: var(--ckp-muted); font-weight: 650; }
 .ckp-select { width: auto; min-width: 110px; text-transform: uppercase; font-size: 11px; font-weight: 550; }
-/* switch */
+/* Text / long inputs stay full band width */
+.ckp-row-main > .ckp-input:not(.ckp-num),
+.ckp-row-main > .ckp-select { width: 100%; max-width: 420px; }
+/* switch — fixed pill; never use flex-basis (row-main is a column flex) */
 .ckp-switch {
-  position: relative; flex: 0 0 36px; width: 36px; min-width: 36px; height: 20px;
-  border-radius: 10px; border: 1px solid var(--ckp-border);
-  background: var(--ckp-surface); cursor: pointer; padding: 0; overflow: hidden;
+  position: relative;
+  display: inline-block;
+  flex: none;
+  box-sizing: border-box;
+  width: 36px; min-width: 36px; max-width: 36px;
+  height: 20px; min-height: 20px; max-height: 20px;
+  border-radius: 999px; border: 1px solid var(--ckp-border);
+  background: var(--ckp-surface); cursor: pointer; padding: 0; margin: 0;
+  overflow: hidden; vertical-align: middle;
   transition: border-color 120ms ease, background 120ms ease;
 }
 .ckp-switch-knob {
   position: absolute; top: 2px; left: 2px; width: 14px; height: 14px; border-radius: 50%;
   background: var(--ckp-muted); transition: left 0.14s ease, background 0.14s ease;
+  pointer-events: none;
 }
 .ckp-switch.on { border-color: color-mix(in srgb, var(--ckp-accent) 55%, transparent); background: color-mix(in srgb, var(--ckp-accent) 14%, transparent); }
 .ckp-switch.on .ckp-switch-knob { left: 18px; background: var(--ckp-accent); }

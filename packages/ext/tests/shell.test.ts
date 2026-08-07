@@ -59,12 +59,16 @@ describe('ShellLayout', () => {
     shell.mountSettingsModule(settingsModule('grid-options'), ctx);
     shell.mountSettingsModule(settingsModule('column-settings'), ctx);
     shell.openSettings('grid-options');
+    const wrap = root.querySelector('.cgext-sheet-nav-wrap')!;
     const nav = root.querySelector('.cgext-sheet-nav')!;
+    expect(wrap).toBeTruthy();
     expect(nav).toBeTruthy();
+    expect(root.querySelector('.cgext-sheet-nav-scroll--prev')).toBeTruthy();
+    expect(root.querySelector('.cgext-sheet-nav-scroll--next')).toBeTruthy();
     expect(nav.textContent).toContain('grid-options');
     expect(nav.textContent).toContain('column-settings');
     expect(root.querySelector('.cgext-sheet-body')!.textContent).toBe('panel:grid-options');
-    nav.querySelectorAll('button')[1]!.click();
+    nav.querySelectorAll('.cgext-sheet-nav-item')[1]!.click();
     expect(root.querySelector('.cgext-sheet-body')!.textContent).toBe('panel:column-settings');
     expect(root.querySelector('.cgext-sheet-title')!.textContent).toBe('column-settings');
   });

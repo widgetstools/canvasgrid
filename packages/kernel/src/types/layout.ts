@@ -36,7 +36,7 @@ export const DEFAULT_LAYOUT_ID = 'default';
  * option, §10) stable as templates lights up. Everything NOT in this set
  * (`columnGroups`, `calc`, `rules`, …) is layout-tier.
  */
-export const DEFAULT_GRID_LEVEL_MODULES: readonly string[] = ['editSettings', 'templates'];
+export const DEFAULT_GRID_LEVEL_MODULES: readonly string[] = ['editSettings', 'templates', 'alerts'];
 
 /**
  * Schema version of an exported {@link GridLayoutsBundle} envelope. Bumped
@@ -53,7 +53,7 @@ export const LAYOUTS_BUNDLE_VERSION = 1;
  * Structurally a `GridState` — column geometry, filter/sort/group/pivot,
  * side-bar, scroll, `themeParams`, and the LAYOUT-tier module slices
  * (`columnGroups`, `calc`, `rules`, …) under `modules`. The grid-TIER
- * slices (`editSettings`, `templates`) do NOT belong here; the tier
+ * slices (`editSettings`, `templates`, `alerts`) do NOT belong here; the tier
  * filtering that decides what a capture includes is Unit A2's concern —
  * the TYPE is the full snapshot, the RUNTIME restricts it to the layout
  * tier. Per-column `templateIds` ride inside `columnState`.

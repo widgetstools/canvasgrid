@@ -246,7 +246,7 @@ export class SettingsForm {
         const input = document.createElement('input');
         input.type = 'checkbox';
         input.id = controlId;
-        input.className = 'cg-settings-checkbox';
+        input.className = 'cg-checkbox cg-settings-checkbox';
         input.addEventListener('change', () => commit(input.checked));
         return { control: input, sync: () => { input.checked = field.get() === true; } };
       }

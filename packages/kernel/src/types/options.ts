@@ -277,7 +277,7 @@ export interface CGridOptions<TRow = any> {
   /**
    * Grid Layouts — module ids treated as GRID-tier (shared across every
    * layout rather than captured per-layout). Defaults to
-   * `['editSettings', 'templates']` (see `DEFAULT_GRID_LEVEL_MODULES`).
+   * `['editSettings', 'templates', 'alerts']` (see `DEFAULT_GRID_LEVEL_MODULES`).
    */
   layoutGridLevelModules?: string[];
   /**
@@ -425,8 +425,9 @@ export interface CGridOptions<TRow = any> {
   /** Opaque application data forwarded to callbacks (matches ag-grid).
    *  Storage-only in Cycle 4. */
   context?: unknown;
-  /** Explicit loading-overlay toggle. Storage-only in Cycle 4; the overlay
-   *  surface lands in a later cycle. */
+  /** Explicit loading-overlay toggle. When `true`, the grid paints a busy
+   *  spinner over the viewport and sets `aria-busy`. Flip via
+   *  `setGridOption('loading', …)` during async loads. */
   loading?: boolean;
   /** Enables verbose console logging from the engine. Storage-only. */
   debug?: boolean;

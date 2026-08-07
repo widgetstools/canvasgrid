@@ -10,7 +10,7 @@ export class CheckboxCellEditor implements ICellEditor<unknown, boolean> {
     this.params = params;
     const input = document.createElement('input');
     input.type = 'checkbox';
-    input.className = 'cg-cell-editor cg-cell-editor--checkbox';
+    input.className = 'cg-checkbox cg-cell-editor cg-cell-editor--checkbox';
     input.checked = Boolean(params.value);
     input.style.cssText =
       'box-sizing:border-box; margin:0; padding:0; ' +

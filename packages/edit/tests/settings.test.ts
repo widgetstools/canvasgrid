@@ -19,6 +19,7 @@ describe('DEFAULT_EDIT_SETTINGS', () => {
         enabled: true,
         maxEntries: 50,
         suspended: false,
+        unifyUndo: true,
         recordSources: {
           smartEdit: true,
           bulkUpdate: true,
@@ -163,6 +164,7 @@ describe('shouldRecord', () => {
       enabled: true,
       maxEntries: 50,
       suspended: false,
+      unifyUndo: true,
       recordSources: {
         smartEdit: true,
         bulkUpdate: false,

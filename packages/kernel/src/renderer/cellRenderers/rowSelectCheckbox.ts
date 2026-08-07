@@ -12,8 +12,13 @@
  * resolves such columns to this renderer regardless of `cellDataType`.
  */
 import type { CellPainter } from './registry';
+import {
+  CHECKBOX_GLYPH_SIZE,
+  paintCheckboxBox,
+  paintCheckboxCheck,
+} from './checkboxGlyph';
 
-const SIZE = 14;
+const SIZE = CHECKBOX_GLYPH_SIZE;
 
 export const rowSelectCheckboxCell: CellPainter = {
   paint(gc, p) {
@@ -26,29 +31,23 @@ export const rowSelectCheckboxCell: CellPainter = {
 
     // Optional accent fill when the row is selected AND the theme
     // declared a non-transparent `--cg-checkbox-checked-bg`. Mirrors
-    // the existing `checkboxCell` painter so the two surfaces stay
+    // the boolean `checkboxCell` painter so the two surfaces stay
     // visually unified.
     const accent = p.isSelected
       && p.checkboxCheckedBg
       && p.checkboxCheckedBg !== 'transparent'
       ? p.checkboxCheckedBg
       : null;
-    if (accent) {
-      gc.cache.fillStyle = accent;
-      gc.fillRect(cx, cy, SIZE, SIZE);
-    }
-
-    gc.cache.strokeStyle = p.fg;
-    gc.cache.lineWidth = 1;
-    gc.strokeRect(cx + 0.5, cy + 0.5, SIZE, SIZE);
+    paintCheckboxBox(gc, cx, cy, SIZE, { borderColor: p.fg, fill: accent });
 
     if (p.isSelected) {
-      gc.cache.strokeStyle = accent ? (p.checkboxCheckedFg ?? p.fg) : p.fg;
-      gc.beginPath();
-      gc.moveTo(cx + 3, cy + SIZE / 2);
-      gc.lineTo(cx + SIZE / 2 - 1, cy + SIZE - 3);
-      gc.lineTo(cx + SIZE - 2, cy + 3);
-      gc.stroke();
+      paintCheckboxCheck(
+        gc,
+        cx,
+        cy,
+        SIZE,
+        accent ? (p.checkboxCheckedFg ?? p.fg) : p.fg,
+      );
     }
   },
 };

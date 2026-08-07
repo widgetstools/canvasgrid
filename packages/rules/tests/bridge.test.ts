@@ -439,3 +439,57 @@ describe('wireIntoKernel — rule-engine adapter CRUD surface (Phase C / C3)', (
     expect(rules.matchCount('neg-pnl')).toBe(2);
   });
 });
+
+describe('wireIntoKernel — alerts state module + public API', () => {
+  function moduleOf(grid: ReturnType<typeof makeFakeGrid>, id: string): StateModuleShape {
+    const mod = grid._calls.modules.find((m) => m.id === id);
+    if (!mod) throw new Error(`module '${id}' not registered`);
+    return mod;
+  }
+
+  it('registers a dedicated alerts module separate from rules', () => {
+    const grid = makeFakeGrid();
+    wireIntoKernel(grid, { alertRules: [PRICE_ALERT], now: () => 0 });
+    expect(moduleOf(grid, 'alerts').version).toBe(1);
+    expect(moduleOf(grid, 'rules').get()).toBeUndefined();
+    const snap = moduleOf(grid, 'alerts').get() as { rules: AlertRule[]; history: unknown[] };
+    expect(snap.rules.map((r) => r.id)).toEqual(['a-price']);
+    expect(snap.history).toEqual([]);
+  });
+
+  it('get() omits alerts when untouched and empty', () => {
+    const grid = makeFakeGrid();
+    wireIntoKernel(grid, { now: () => 0 });
+    expect(moduleOf(grid, 'alerts').get()).toBeUndefined();
+  });
+
+  it('set() restores rules+settings and clears history', () => {
+    const src = makeFakeGrid();
+    const { alerts: srcAlerts } = wireIntoKernel(src, { alertRules: [PRICE_ALERT, ROW_ALERT], now: () => 0 });
+    src.emit('cellValueChanged', {
+      rowId: 'r0', colId: 'price', oldValue: 1, newValue: 2, data: { price: 2, qty: 1 },
+    });
+    expect(srcAlerts.getHistory().length).toBeGreaterThan(0);
+    const snapshot = moduleOf(src, 'alerts').get();
+
+    const dest = makeFakeGrid();
+    const { alerts } = wireIntoKernel(dest, { now: () => 0 });
+    moduleOf(dest, 'alerts').set(snapshot, 1);
+    expect(alerts.getRules().map((r) => r.id).sort()).toEqual(['a-price', 'a-row']);
+    expect(alerts.getHistory()).toEqual([]);
+  });
+
+  it('attaches public CRUD helpers on the grid surface', () => {
+    const grid = makeFakeGrid() as ReturnType<typeof makeFakeGrid> & {
+      getAlertRules?: () => AlertRule[];
+      addAlertRule?: (r: AlertRule) => void;
+      deleteAlertRule?: (id: string) => void;
+    };
+    wireIntoKernel(grid, { now: () => 0 });
+    expect(grid.getAlertRules?.()).toEqual([]);
+    grid.addAlertRule?.(PRICE_ALERT);
+    expect(grid.getAlertRules?.().map((r) => r.id)).toEqual(['a-price']);
+    grid.deleteAlertRule?.('a-price');
+    expect(grid.getAlertRules?.()).toEqual([]);
+  });
+});
